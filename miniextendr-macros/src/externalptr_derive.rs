@@ -261,9 +261,20 @@ struct RestoredOptions {
 struct ExternalPtrAttrs {
     class_system: ClassSystem,
     restored: RestoredOptions,
-    /// `field_error(class = ...)`: the classes put in front of the errors the
-    /// R field readers raise themselves (#1899), `TypedExternal::FIELD_ERROR_CLASS`.
-    field_error: Vec<String>,
+    /// `field_error(class = ..., message = ...)`: the field readers' own
+    /// errors (#1899, #1920).
+    field_error: FieldErrorOptions,
+}
+
+/// `#[externalptr(field_error(class = ..., message = ...))]`.
+#[derive(Default)]
+struct FieldErrorOptions {
+    /// The classes put in front of the errors the R field readers raise
+    /// themselves (#1899), `TypedExternal::FIELD_ERROR_CLASS`.
+    class: Vec<String>,
+    /// The package's message for a receiver of the class whose pointer is no
+    /// `T` or that carries none (#1920), `TypedExternal::FIELD_ERROR_MESSAGE`.
+    message: Option<String>,
 }
 
 /// Parse `#[externalptr(...)]` attributes: the class system, the restored
@@ -279,11 +290,11 @@ struct ExternalPtrAttrs {
 /// - `#[externalptr(restored(class = "pkg_saved", message = "...", refuse = "every_read"))]`,
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
-/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"]))]`
+/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "..."))]`
 fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
     let mut restored: Option<RestoredOptions> = None;
-    let mut field_error: Option<Vec<String>> = None;
+    let mut field_error: Option<FieldErrorOptions> = None;
 
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
@@ -317,7 +328,7 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs>
                         return Err(syn::Error::new_spanned(
                             &meta.path,
                             format!(
-                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)` or `field_error(class = ...)`",
+                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)` or `field_error(class = ..., message = ...)`",
                                 ident_str
                             ),
                         ));
@@ -414,10 +425,11 @@ fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Rest
     Ok(options)
 }
 
-/// The argument of `field_error(...)`: `class = "..."` or `class = ["...",
-/// ...]`, once.
-fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Vec<String>> {
+/// The arguments of `field_error(...)`: `class = "..."` or `class = ["...",
+/// ...]`, and `message = "..."`, each once.
+fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<FieldErrorOptions> {
     let mut class: Option<Vec<String>> = None;
+    let mut message: Option<String> = None;
     meta.parse_nested_meta(|inner| {
         if inner.path.is_ident("class") {
             if class.is_some() {
@@ -425,14 +437,26 @@ fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<V
             }
             class = Some(parse_class_list(&inner)?);
             Ok(())
+        } else if inner.path.is_ident("message") {
+            if message.is_some() {
+                return Err(inner.error("`message` is given twice"));
+            }
+            let value: syn::LitStr = inner.value()?.parse()?;
+            if value.value().is_empty() {
+                return Err(syn::Error::new_spanned(value, "`message` is empty"));
+            }
+            message = Some(value.value());
+            Ok(())
         } else {
             Err(inner.error(
-                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`)",
+                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`) and `message = \"...\"`",
             ))
         }
     })?;
-    // syn refuses empty parentheses, so `class` was given.
-    Ok(class.unwrap_or_default())
+    Ok(FieldErrorOptions {
+        class: class.unwrap_or_default(),
+        message,
+    })
 }
 
 /// Check if a field has the `#[r_data]` attribute.
@@ -1625,9 +1649,12 @@ fn generate_field_syntax_helpers(
             .map(|slot| {
                 let rust_field = crate::naming::ident_name(&slot.name);
                 let call = match (&slot.kind, setter) {
+                    // The message names the receiver's R class (#1920), else
+                    // the Rust type.
                     (SlotKind::Computed(_), true) => format!(
-                        "stop(errorCondition(\"`{field}` of `{type_name}` is computed from the Rust \
-                         value and can't be assigned\", class = c({error_class_var}, \"miniextendr_read_only_field\"), \
+                        "stop(errorCondition(sprintf(\"`{field}` of `%s` is computed from the Rust \
+                         value and can't be assigned\", if (is.null(oldClass(x))) \"{type_name}\" else oldClass(x)[[1L]]), \
+                         class = c({error_class_var}, \"miniextendr_read_only_field\"), \
                          call = .miniextendr_frame_call(parent.frame())))",
                         field = slot.r_name,
                     ),
@@ -1677,8 +1704,8 @@ fn generate_field_syntax_helpers(
          {get_fn} <- function(x, name) switch(name,\n{get_arms})\n\
          {set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n\
          {error_class_var} <- {error_class}\n\
-         {no_field_fn} <- function(name, env) stop(errorCondition(\n\
-         \x20 sprintf(\"`%s` is not a field of `{type_name}`; its fields are {listed}\", name),\n\
+         {no_field_fn} <- function(name, env, cls) stop(errorCondition(\n\
+         \x20 sprintf(\"`%s` is not a field of `%s`; its fields are {listed}\", name, cls),\n\
          \x20 class = c({error_class_var}, \"miniextendr_no_field\"), call = .miniextendr_frame_call(env)))\n\
          {every_read_var} <- {every_read}\n\
          {live_fn} <- {live}\n",
@@ -2131,7 +2158,7 @@ fn generate_typed_external(
     input: &DeriveInput,
     info: &SidecarInfo,
     restored: &RestoredOptions,
-    field_error: &[String],
+    field_error: &FieldErrorOptions,
 ) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -2155,11 +2182,19 @@ fn generate_typed_external(
                 ::core::option::Option::Some(#message);
         }
     });
-    // `#[externalptr(field_error(class = ...))]` (#1899): the classes in
-    // front of the R accessors' type-mismatch and no-pointer errors.
-    let field_error_class = (!field_error.is_empty()).then(|| {
+    // `#[externalptr(field_error(class = ..., message = ...))]` (#1899,
+    // #1920): the classes in front of the R accessors' type-mismatch and
+    // no-pointer errors, and the package's message for both.
+    let field_error_class = (!field_error.class.is_empty()).then(|| {
+        let classes = &field_error.class;
         quote::quote! {
-            const FIELD_ERROR_CLASS: &'static [&'static str] = &[#(#field_error),*];
+            const FIELD_ERROR_CLASS: &'static [&'static str] = &[#(#classes),*];
+        }
+    });
+    let field_error_message = field_error.message.as_ref().map(|message| {
+        quote::quote! {
+            const FIELD_ERROR_MESSAGE: ::core::option::Option<&'static str> =
+                ::core::option::Option::Some(#message);
         }
     });
     let sidecars: Vec<_> = sidecar_slots(info).collect();
@@ -2203,6 +2238,7 @@ fn generate_typed_external(
             #restored_class
             #restored_message
             #field_error_class
+            #field_error_message
         }
     }
 }
@@ -2361,7 +2397,7 @@ pub fn derive_external_ptr(
         )
     };
     let sidecar_accessors =
-        generate_sidecar_accessors(&input, &sidecar_info, &restored, &field_error)?;
+        generate_sidecar_accessors(&input, &sidecar_info, &restored, &field_error.class)?;
     let erased_wrapper = generate_erased_wrapper(&input);
 
     Ok(quote::quote! {
@@ -2786,8 +2822,9 @@ mod tests {
         );
         assert!(
             helpers.contains(
-                "  group_by = stop(errorCondition(\"`group_by` of `Engine` is computed from the Rust \
-                 value and can't be assigned\", class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
+                "  group_by = stop(errorCondition(sprintf(\"`group_by` of `%s` is computed from the Rust \
+                 value and can't be assigned\", if (is.null(oldClass(x))) \"Engine\" else oldClass(x)[[1L]]), \
+                 class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
                  call = .miniextendr_frame_call(parent.frame()))),"
             ),
             "{helpers}"
@@ -2996,11 +3033,17 @@ mod tests {
             "#[externalptr(s3, field_error(class = [\"pkg_config\", \"pkg_error\"]), restored(class = \"pkg_saved\", refuse = \"every_read\"))] struct E;",
         )
         .unwrap();
-        assert_eq!(parsed.field_error, ["pkg_config", "pkg_error"]);
+        assert_eq!(parsed.field_error.class, ["pkg_config", "pkg_error"]);
+        assert_eq!(parsed.field_error.message, None);
         assert!(parsed.restored.every_read);
         assert_eq!(parsed.restored.class, ["pkg_saved"]);
         let parsed = attrs("#[externalptr(field_error(class = \"pkg_error\"))] struct E;").unwrap();
-        assert_eq!(parsed.field_error, ["pkg_error"]);
+        assert_eq!(parsed.field_error.class, ["pkg_error"]);
+        // A message alone keeps miniextendr's classes (#1920).
+        let parsed =
+            attrs("#[externalptr(field_error(message = \"not a rec\"))] struct E;").unwrap();
+        assert!(parsed.field_error.class.is_empty());
+        assert_eq!(parsed.field_error.message.as_deref(), Some("not a rec"));
         assert!(!parsed.restored.every_read);
 
         let refused = |source: &str, expected: &str| {
@@ -3023,8 +3066,16 @@ mod tests {
             "at least one",
         );
         refused(
-            "#[externalptr(field_error(message = \"m\"))] struct E;",
+            "#[externalptr(field_error(text = \"m\"))] struct E;",
             "unknown `field_error` option",
+        );
+        refused(
+            "#[externalptr(field_error(message = \"\"))] struct E;",
+            "`message` is empty",
+        );
+        refused(
+            "#[externalptr(field_error(message = \"a\", message = \"b\"))] struct E;",
+            "given twice",
         );
         refused(
             "#[externalptr(field_error(class = \"a\"), field_error(class = \"b\"))] struct E;",
@@ -3392,7 +3443,9 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("is not a field of `Engine`; its fields are `keys`, `for`"),
+            out.contains(
+                "function(name, env, cls) stop(errorCondition(\n  sprintf(\"`%s` is not a field of `%s`; its fields are `keys`, `for`\", name, cls),"
+            ),
             "{out}"
         );
         assert!(

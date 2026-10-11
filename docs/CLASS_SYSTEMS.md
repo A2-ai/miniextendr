@@ -1270,6 +1270,7 @@ the class system.
 use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
+#[externalptr(s3)]
 pub struct MyConfig {
     // Rust-only internal state
     cache: Vec<u8>,
@@ -1294,7 +1295,7 @@ impl MyConfig {
     }
 }
 
-#[miniextendr(r6(r_data_accessors))]
+#[miniextendr(s3(r_data_accessors))]
 impl MyConfig {
     pub fn new(name: String, score: f64) -> Self {
         MyConfig {
@@ -1348,11 +1349,12 @@ declared place: the standalone `MyConfig_get_cache_size(x)`, and `x$cache_size`
 / `x[["cache_size"]]` on S3, S4 and env classes with `r_data_accessors`. They
 have no setter: no `MyConfig_set_cache_size()`, and under the get/set form
 `x$cache_size <- v` raises `miniextendr_read_only_field` (`` `cache_size` of
-`MyConfig` is computed from the Rust value and can't be assigned ``). A
+`MyConfig` is computed from the Rust value and can't be assigned ``, naming
+the object's R class). A
 computed field exists only for R, so it must be `pub`; and it can't be an R6
 active binding or an S7 property, which need a setter (#1888), so it is
-refused under `#[externalptr(r6)]` / `#[externalptr(s7)]` (the example above
-would use S3, S4 or env). The getter's errors are its own: a
+refused under `#[externalptr(r6)]` / `#[externalptr(s7)]`; the example above
+is an S3 class for that reason. The getter's errors are its own: a
 `rust_error!(class = "pkg_error", "...")` in it reaches R with that class and
 the call as written (`x$cache_size`). It takes `&Self`, so it can't read
 `Sidecar` values, which are R fields already; it returns a value, not a
@@ -1398,34 +1400,44 @@ conversion raises the setter's argument error with the call as written
   semantics of an R6 or env object, not of a list. A class that needs a
   copy-on-modify `$<-` takes `r_data_accessors = "get"` and writes its own
   `$<-` method that returns a new object.
-- **An S3 bare pointer reads like the list it stands for.** `x$tags` takes
-  an exact field name and `x$ta` a unique prefix of one (`pmatch`, as R's
-  `$` on a list, with the same warning under
-  `options(warnPartialMatchDollar = TRUE)`); an unknown name, `""`, `NA` and
-  an ambiguous prefix are `NULL`. `x[["tags"]]`
-  takes an exact name, else `NULL`; `x[[2]]` takes a position in the field
-  order, as a list's `[[` does (`2.9` is the second field, a logical is a
-  position too, `NA` is `NULL`, `x[[9]]` past the last field raises
+- **No read matches a prefix of a name.** `x$ta` never reads `x$tags`, on
+  any class system and on any receiver: a pointer is not a list, and a
+  prefix match hides a typo (#1922).
+- **An S3 bare pointer refuses a name that is not a field.** `x$tags` and
+  `x[["tags"]]` take an exact field name; `x$nope`, `x$ta` and
+  `x[["nope"]]` raise `miniextendr_no_field`, naming the R class and its
+  fields, as a write does. `x[[2]]` takes a whole-number position in the
+  field order; `x[[9]]` past the last field raises
   `subscriptOutOfBoundsError` with the call `x[[9]]`, and so do `0` and a
   negative position, which on a list would raise R's own `get1index` error
-  or drop an element). Any other index (a vector of another
-  length, a list) goes to R's own `[[`, which can't subset a pointer. The writes
-  take an exact name only: `x$nope <- v` and `x[["nope"]] <- v` raise
-  `miniextendr_no_field`, naming the fields, and a position goes to R's own
-  `[[<-`.
-- **A name that is not a field** goes to R's own `$` / `[[` / `$<-` / `[[<-`
-  when the object is a list or an environment (an S3 list carrying the
-  handle in `.ptr` keeps its other elements, partial matching included), and
-  on an S4 object raises `miniextendr_no_field`. On an env class, `$` looks
-  the name up among the fields first, then among the methods, and gives
-  `NULL` for neither.
+  or drop an element. `x[[TRUE]]`, `x[[NA]]`, `x[[1.5]]` and any other
+  index (a vector of another length, a list) raise `notSubsettableError`
+  from the class's own `[[`, on the call as written (`x[[1:2]]`). All of
+  these carry the type's `field_error(class = ...)` in front. The writes
+  take an exact name only, and a position goes to R's own `[[<-`.
+- **`lookup = "list"` keeps a list's other lenience.** With
+  `s3(r_data_accessors, lookup = "list")` (or `= "get"`) the bare pointer
+  reads `NULL` for an unknown name, `""` and `NA`, and `[[` takes a
+  position as a list's does (`2.9` is the second field, a logical is a
+  position, `NA` is `NULL`; out of range is still
+  `subscriptOutOfBoundsError`). Names are still matched exactly.
+  `lookup = "strict"` is the default spelled out.
+- **A name that is not a field** goes to the object's own elements when it
+  is a list or an environment carrying the handle in `.ptr`, by the exact
+  name: `$` reads a list's element with `.subset2()` (R's own `$` on a list
+  would match a prefix) and an environment's binding with R's `$`, and `[[`
+  goes to R's own `[[` with `exact = TRUE` whatever the call passed. On an
+  S4 object it raises `miniextendr_no_field`. On an env class, `$` looks the
+  name up among the fields first, then among the methods, and gives `NULL`
+  for neither.
 
 The rule for each receiver:
 
 | Receiver | `$` | `[[` by name | `[[` by position | `$<-` / `[[<-`, unknown name |
 |---|---|---|---|---|
-| S3 bare pointer | exact, then a unique prefix, else `NULL` | exact, else `NULL` | field order; a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
-| S3 list or environment carrying `.ptr` | an exact field, else the object's own `$`, which matches prefixes of its own names | an exact field, else its own `[[` | its own `[[` | its own |
+| S3 bare pointer | exact, else `miniextendr_no_field` | exact, else `miniextendr_no_field` | a whole number in range; out of range, `subscriptOutOfBoundsError`; a logical, `NA` or fraction, `notSubsettableError` | `miniextendr_no_field` |
+| S3 bare pointer, `lookup = "list"` | exact, else `NULL` | exact, else `NULL` | field order, as a list's (truncated, a logical too, `NA` is `NULL`); a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
+| S3 list or environment carrying `.ptr` | an exact field, else its own element by the exact name | an exact field, else its own `[[` with `exact = TRUE` | its own `[[` | its own |
 | env class | a field, then a method, else `NULL` | the same | none | `miniextendr_no_field` |
 | S4 | an exact field, else `miniextendr_no_field` | none | none | `miniextendr_no_field` |
 
@@ -1510,13 +1522,18 @@ a static string per type: one type maps to one R class, so the package can
 name it literally.
 
 A class whose contract is that a reloaded object is refused on every use adds
-`refuse = "every_read"` to `restored(...)`. Then `names(x)` and an unknown
-name (`x$nope`, `x[["nope"]]`, `x[[NA]]`, an ambiguous prefix) on a bare
-pointer check the pointer first and raise the type's restored condition,
-and `.DollarNames(x)` returns `character(0)` for a restored pointer (it
-serves completion, so it never raises). The check is one more `.Call()` per
-such read, paid only by the types that opt in; a live object answers as
-before.
+`refuse = "every_read"` to `restored(...)`. Then every S3 reader (`$`, `[[`,
+`names()`, `as.list()`) checks a bare pointer, and a list or environment
+receiver, before it looks at the name or index, so `names(x)`, an unknown
+name, a position past the last field and an index that is neither a name
+nor a position all raise the type's restored condition. A list or
+environment of the class that carries no pointer (the shape an earlier
+release of the package may have saved) is refused on every read too, with
+`miniextendr_no_handle` behind the `restored(class = ...)` and
+`field_error(class = ...)` classes. A list carrying a live `.ptr` answers
+as before. `.DollarNames(x)` returns `character(0)` for a restored pointer
+(it serves completion, so it never raises). The check is one more `.Call()`
+per read, paid only by the types that opt in.
 
 #### The package's classes on the readers' own errors
 
@@ -1530,12 +1547,30 @@ pub struct Engine { /* ... */ }
 ```
 
 The classes go in front of each error's own class, which stays: a position
-that picks no field (`subscriptOutOfBoundsError`), a pointer of another type
-under the class, and a receiver of the class that carries no pointer, e.g. a
-list in an older format (`miniextendr_no_handle`, which gets the
+that picks no field (`subscriptOutOfBoundsError`), an index that is neither
+a name nor a position (`notSubsettableError`), a name that is not a field
+(`miniextendr_no_field`), a pointer of another type under the class, and a
+receiver of the class that carries no pointer (`miniextendr_no_handle`). A
+list or environment without a pointer, e.g. an older format, also gets the
 `restored(class = ...)` classes first, then these, each class once at its
 last place, so a parent class both lists end in follows both specific
-classes). The messages are miniextendr's.
+classes; an atomic vector given the class was never saved, so it gets these
+alone.
+
+The receiver refusals name the class the user sees: `this "engine" object
+holds a pointer of another type`, `... holds no pointer`, `... holds a null
+pointer` (the receiver's first class; a receiver without one is named by
+the Rust type). `field_error(message = "...")` replaces that text with the
+package's own, for both refusals:
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3, field_error(
+    class = ["pkg_error_field", "pkg_error"],
+    message = "not an engine; build one with engine()",
+))]
+pub struct Engine { /* ... */ }
+```
 
 #### Conditions the generated accessors raise
 
@@ -1544,9 +1579,9 @@ classes). The messages are miniextendr's.
 | a restored pointer | `miniextendr_restored_no_value` or `miniextendr_restored_other_version`, both with `miniextendr_restored`, behind the type's `restored(class = ...)` | the field methods, `as.list()` included; a struct or computed field's standalone getter; a `Sidecar` field's standalone accessors for another version's save |
 | `[[` with a position that picks no field (past the last, `0`, negative) | `subscriptOutOfBoundsError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
 | a pointer of another type under the class | `rust_error`, behind the type's `field_error(class = ...)` | every accessor |
-| a receiver of the class with no pointer | `miniextendr_no_handle`, behind the type's `field_error(class = ...)` and `restored(class = ...)` | every accessor |
-| `[[` with an index that is neither a name nor a position | `notSubsettableError` (R's own) | an S3 bare pointer |
-| no such field | `miniextendr_no_field` | S4 `$`; `$<-` / `[[<-` on a bare pointer (the reads give `NULL`) |
+| a receiver of the class with no pointer | `miniextendr_no_handle`, behind the type's `field_error(class = ...)`, and `restored(class = ...)` for a list or environment | every accessor; every S3 reader under `refuse = "every_read"` |
+| `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
+| no such field | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead) |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |

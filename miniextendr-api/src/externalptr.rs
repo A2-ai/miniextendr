@@ -408,6 +408,17 @@ pub(crate) unsafe fn classify_null_address<T: TypedExternal>(sexp: SEXP) -> Null
     }
 }
 
+/// The first R class of `receiver`, which is what the user sees and the
+/// field methods dispatched on (#1920); `None` for an object without a class
+/// attribute, such as an R6 object's `.ptr`, whose messages name the Rust
+/// type instead.
+pub(crate) fn receiver_class(receiver: SEXP) -> Option<String> {
+    let class = receiver.get_class();
+    (class.type_of() == SEXPTYPE::STRSXP && class.len() > 0)
+        .then(|| class.string_elt_str(0).map(str::to_owned))
+        .flatten()
+}
+
 /// The message of the [`RESTORED_NO_VALUE_CLASS`] error.
 pub(crate) fn restored_no_value_message(type_name: &str) -> String {
     format!(
@@ -453,19 +464,22 @@ pub(crate) fn restored_message_of<T: TypedExternal>(default: impl FnOnce() -> St
 /// [`RESTORED_OTHER_VERSION_CLASS`]), with the package's classes in front and
 /// its message when the type declares them (`#[externalptr(restored(...))]`),
 /// and returns the other cases for the caller to word as it did before. The
-/// condition is raised through the panic transport (`panic_any`), like
-/// `error!`.
+/// default message names `receiver`'s R class, the object the user called
+/// on (the pointer itself, or the list, environment or S4 object carrying
+/// it), else the Rust type. The condition is raised through the panic
+/// transport (`panic_any`), like `error!`.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `EXTPTRSXP` whose
 /// address is NULL.
 #[cold]
-pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddress {
+pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> NullAddress {
     let kind = unsafe { classify_null_address::<T>(sexp) };
+    let name = || receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
     let (message, class, data) = match kind {
         NullAddress::Restored => (
-            restored_message_of::<T>(|| restored_no_value_message(T::TYPE_NAME)),
+            restored_message_of::<T>(|| restored_no_value_message(&name())),
             RESTORED_NO_VALUE_CLASS,
             None,
         ),
@@ -475,7 +489,7 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddres
             current,
         } => (
             restored_message_of::<T>(|| {
-                restored_other_version_message(T::TYPE_NAME, crate_name, saved, current)
+                restored_other_version_message(&name(), crate_name, saved, current)
             }),
             RESTORED_OTHER_VERSION_CLASS,
             Some(vec![
@@ -618,6 +632,14 @@ pub trait TypedExternal: 'static {
     /// `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"]))]`;
     /// the default adds nothing.
     const FIELD_ERROR_CLASS: &'static [&'static str] = &[];
+
+    /// The package's message for the R accessors' refusal of a receiver
+    /// whose pointer is not a `T` or that carries no pointer (#1920),
+    /// replacing miniextendr's, which names the receiver's R class.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(field_error(message = "..."))]`.
+    const FIELD_ERROR_MESSAGE: Option<&'static str> = None;
 
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
     /// name, so the handle can flush the field's pending value into its slot
@@ -2084,7 +2106,7 @@ fn refuse_consumed_or_restored<T: TypedExternal>(ptr: &ExternalPtr<()>) {
     if ptr.has_null_address() {
         // SAFETY: `ptr.sexp` is a valid EXTPTRSXP without an address; on R's
         // main thread (the generated prelude).
-        unsafe { refuse_restored::<T>(ptr.sexp) };
+        unsafe { refuse_restored::<T>(ptr.sexp, ptr.sexp) };
     }
 }
 

@@ -453,8 +453,9 @@ Only `pub` fields with `#[r_data]` get R wrapper functions. With
 bindings (`obj$count`, `obj$count <- 2L`), with `s7(r_data_accessors)` S7
 properties (`obj@count`), and with `s3(r_data_accessors)`,
 `s4(r_data_accessors)` or `env(r_data_accessors)` `$` / `[[` methods that read
-them (on an S3 bare pointer as a list's do: a unique prefix, a position,
-`NULL` for an unknown name), `$<-` / `[[<-` methods that write them in place
+them (by the exact name, never a prefix; on an S3 bare pointer `[[` also
+takes a whole-number position, and an unknown name is an error unless
+`lookup = "list"` reads `NULL`), `$<-` / `[[<-` methods that write them in place
 and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
 class (`r_data_accessors = "get"` for the readers only). Under that S3, S4
 or env field syntax the `MyType_get_*()` / `MyType_set_*()` functions are
@@ -647,20 +648,27 @@ fields included: a reloaded object is refused, not recovered
   slots are positional, and another version may lay them out differently.
 - Both carry the class `miniextendr_restored`. A pointer miniextendr did
   not build (R's `new("externalptr")`, another library's) keeps the plain
-  `expected ExternalPtr<MyType>` errors.
+  errors, which name the receiver's R class (``this `myclass` object holds
+  a null pointer``, ``... holds a pointer of another type``), or the Rust
+  type for a receiver with no class.
 - `#[externalptr(restored(class = ["pkg_saved", "pkg_error"], message =
   "..."))]` on the type puts the package's classes, in order, in front of
   those (which stay) and replaces the message, in both cases and on every
   path above; `e$saved_version` / `e$current_version` stay. Its
-  `refuse = "every_read"` makes the field methods refuse the reads that
-  never reach an accessor too (`names()`, an unknown name), with
-  `.DollarNames()` returning `character(0)` (`CLASS_SYSTEMS.md`, "A
-  restored pointer").
+  `refuse = "every_read"` makes every S3 reader refuse first, before the
+  name or position is looked at: `names()`, `as.list()`, an unknown name
+  and a position too, on the bare pointer and on a list or environment
+  carrying it in `.ptr`, with `.DollarNames()` returning `character(0)`
+  (`CLASS_SYSTEMS.md`, "A restored pointer").
 - A receiver of the class that carries no pointer at all (a list without
   `.ptr`, e.g. an older format of the same class) raises
-  `miniextendr_no_handle` (`expected ExternalPtr<MyType>, got a
-  non-external-pointer object`) from every R accessor, behind the type's
-  `field_error(class = ...)` and `restored(class = ...)` classes.
+  `miniextendr_no_handle` (``this `myclass` object holds no pointer``)
+  from every R accessor, and under `refuse = "every_read"` from every S3
+  reader, behind the type's `field_error(class = ...)` classes. A list or
+  environment receiver also gets the `restored(class = ...)` classes, the
+  shape a save in an older format has; an atomic vector given the class
+  was never saved and does not. `field_error(message = "...")` replaces the
+  message of this refusal and of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.

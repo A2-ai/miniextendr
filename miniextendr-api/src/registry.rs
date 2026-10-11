@@ -1899,7 +1899,10 @@ const FRAME_CALL_HELPER: &str = concat!(
 /// `[[`; every position that picks no field (past the last one, `0`, a
 /// negative one) raises `subscriptOutOfBoundsError` with the type's
 /// field-error classes in front (`class`, the derive's
-/// `.rdata_error_class_<Type>`, #1899), on the generic's call.
+/// `.rdata_error_class_<Type>`, #1899), on the generic's call. Also
+/// `.miniextendr_field_index_error`, the same method's refusal of an index
+/// that is neither one name nor one position (#1920), and under
+/// `lookup = "strict"` of a non-whole number, a logical or `NA` (#1921).
 #[cfg(not(target_arch = "wasm32"))]
 const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks on a bare classed pointer, as
 # `[[` picks a list element: `2.9` is the second field, `TRUE` the first. A
@@ -1911,6 +1914,16 @@ const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks o
   k <- trunc(i)
   if (k < 1 || k > length(fields)) stop(errorCondition("subscript out of bounds", class = c(class, "subscriptOutOfBoundsError"), call = .miniextendr_frame_call(env)))
   fields[[k]]
+}
+
+# Internal helper: refuses a `[[` index on a bare classed pointer that is
+# neither one field name nor one position (`x[[1:2]]`, `x[[list(1)]]`, and
+# under strict lookup `x[[TRUE]]`, `x[[NA]]` or `x[[1.5]]` too), where R's
+# `[[.default` would report itself. The type's own classes (`class`) go in
+# front of R's `notSubsettableError`; the call is the generic's, `x[[1:2]]`,
+# resolved from the method's frame (`env`). `cls` is the R class.
+.miniextendr_field_index_error <- function(cls, env, class = NULL, strict = FALSE) {
+  stop(errorCondition(sprintf("`[[` on a `%s` object takes one field name or one %sposition", cls, if (strict) "whole-number " else ""), class = c(class, "notSubsettableError"), call = .miniextendr_frame_call(env)))
 }
 "#;
 
@@ -4281,19 +4294,30 @@ mod tests {
         );
     }
 
-    /// The preamble's field-position helper (#1891) is the one definition in
-    /// its block. A position is truncated as `[[` truncates it on a list; one
-    /// that picks no field (past the last, `0`, negative) raises R's own
+    /// The preamble's field-position helper (#1891) and the bad-index error
+    /// (#1920) are the two definitions in their block. A position is
+    /// truncated as `[[` truncates it on a list; one that picks no field
+    /// (past the last, `0`, negative) raises R's own
     /// `subscriptOutOfBoundsError` with the type's `field_error` classes in
     /// front (#1899), reporting the generic's call resolved from the method's
-    /// frame.
+    /// frame. An index that is no name or position raises the `field_error`
+    /// classes, then `notSubsettableError`, on that call.
     #[test]
     fn field_at_helper_picks_a_field_as_a_list_does() {
         let defs: Vec<&str> = FIELD_AT_HELPER
             .lines()
             .filter_map(parse_top_level_fn_def_name)
             .collect();
-        assert_eq!(defs, [".miniextendr_field_at"]);
+        assert_eq!(
+            defs,
+            [".miniextendr_field_at", ".miniextendr_field_index_error"]
+        );
+        assert!(FIELD_AT_HELPER.contains(
+            ".miniextendr_field_index_error <- function(cls, env, class = NULL, strict = FALSE) {"
+        ));
+        assert!(FIELD_AT_HELPER.contains(
+            "class = c(class, \"notSubsettableError\"), call = .miniextendr_frame_call(env)))"
+        ));
         assert!(
             FIELD_AT_HELPER
                 .contains(".miniextendr_field_at <- function(fields, i, env, class = NULL) {")
