@@ -124,7 +124,8 @@ fn tuple_row_class(sexp: miniextendr_api::SEXP) -> Result<(), miniextendr_api::c
     } else {
         Err(
             miniextendr_api::condition::RError::new("expected a tuple_row")
-                .class("tuple_row_required"),
+                .class("tuple_row_required")
+                .data("expected_class", "tuple_row"),
         )
     }
 }
@@ -208,4 +209,32 @@ fn tuple_native_metadata_and_na_checks_survive_container_forwarding() {
     assert!(!(AsNumeric(Some(1.0)), 1i32).__mx_has_na());
     assert!(vec![Some((AsNumeric(None),)), None].__mx_has_na());
     assert!(!Option::<(AsNumeric,)>::None.__mx_has_na());
+}
+
+#[test]
+fn tuple_fields_preserve_classed_refusals_and_payloads_when_batched() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        let input = scope
+            .protect(miniextendr_api::r_str!("list(list(1L, 'a'), 2L, list(3L, 'c'))").unwrap())
+            .get();
+        type Fields = (CheckedRow, i32, CheckedRow);
+        for unchecked in [false, true] {
+            let result = if unchecked {
+                Fields::try_from_sexp_unchecked(input)
+            } else {
+                Fields::try_from_list(List::try_from_sexp(input).unwrap())
+            };
+            match result.unwrap_err() {
+                SexpError::Condition(error) => {
+                    assert_eq!(error.classes(), ["tuple_row_required"]);
+                    assert_eq!(error.message_str(), "expected a tuple_row (elements 1, 3)");
+                    assert_eq!(error.fields().len(), 1);
+                    assert_eq!(error.fields()[0].0, "expected_class");
+                    assert_eq!(error.fields()[0].1.as_str(), Some("tuple_row"));
+                }
+                other => panic!("tuple conversion lost the field condition: {other:?}"),
+            }
+        }
+    });
 }
