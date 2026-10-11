@@ -94,3 +94,47 @@ test_that("flat env trait lookup refuses ambiguity and preserves explicit lookup
   expect_identical(receiver$limit(), 10L)
   expect_null(receiver$missing)
 })
+
+test_that("generated env methods close over the namespace and bind only self", {
+  a <- SimpleCounter$new_counter(10L)
+  bound <- a$get_value
+  expect_identical(ls(environment(bound), all.names = TRUE), "self")
+  expect_identical(environment(bound)$self, a)
+  expect_identical(parent.env(environment(bound)), asNamespace("miniextendr"))
+  expect_identical(bound(), 10L)
+})
+
+# Fixture: src/rust/env_method_lookup_tests.rs. LookupLeft and LookupRight
+# both provide `side`, `origin` and `LIMIT`; `label` is also inherent.
+test_that("generated env trait members shared by two traits need the trait named", {
+  LookupHost <- miniextendr:::LookupHost
+  h <- LookupHost$new(5L)
+
+  error <- tryCatch(h$side, error = identity)
+  expect_s3_class(error, "miniextendr_ambiguous_method")
+  expect_identical(error$method, "side")
+  expect_identical(error$traits, c("LookupLeft", "LookupRight"))
+  expect_identical(conditionCall(error), quote(h$side))
+  error <- tryCatch(h[["side"]], error = identity)
+  expect_s3_class(error, "miniextendr_ambiguous_method")
+  expect_identical(conditionCall(error), quote(h[["side"]]))
+  expect_error(h$origin(), class = "miniextendr_ambiguous_method")
+  expect_error(h$LIMIT(), class = "miniextendr_ambiguous_method")
+
+  expect_identical(h$LookupLeft$side(), "left 5")
+  expect_identical(h$LookupRight$side(), "right 5")
+  expect_identical(LookupHost$LookupLeft$side(h), "left 5")
+  expect_identical(LookupHost$LookupRight$side(h), "right 5")
+  expect_identical(h$LookupLeft$origin(), "left")
+  expect_identical(h$LookupRight$origin(), "right")
+  expect_identical(h$LookupLeft$LIMIT(), 10L)
+  expect_identical(h$LookupRight$LIMIT(), 20L)
+
+  expect_identical(h$label(), "inherent")
+  expect_identical(h$LookupLeft$label(), "left label")
+  expect_identical(h$LookupRight$label(), "right label")
+
+  expect_identical(h$left_only(), 6L)
+  expect_identical(h[["left_only"]](), 6L)
+  expect_null(h$no_such_member)
+})
