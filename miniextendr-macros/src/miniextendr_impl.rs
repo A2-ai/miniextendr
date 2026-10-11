@@ -4195,6 +4195,40 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// R6 always has an `initialize` member, including classes without a Rust
+/// constructor. R6 requires public, private and active names to be distinct;
+/// reject collisions before the generated class fails during package loading.
+fn check_r6_initialize_collision(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::R6 {
+        return Ok(());
+    }
+    for method in parsed
+        .public_instance_methods()
+        .chain(parsed.private_instance_methods())
+        .chain(parsed.active_instance_methods())
+    {
+        let name = if method.is_active() {
+            method
+                .method_attrs
+                .r6
+                .prop
+                .clone()
+                .unwrap_or_else(|| method.r_method_name())
+        } else {
+            method.r_method_name()
+        };
+        if name == "initialize" {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                "R6 member `initialize` conflicts with the generated constructor. \
+                 Rename the method or use `#[miniextendr(r_name = \"...\")]`; \
+                 for an active binding, choose a different `r6(prop = \"...\")`.",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Check the R formals of every generated method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
 /// the names each class system's wrapper binds itself:
@@ -4515,6 +4549,9 @@ pub fn expand_impl(
     // Every R formal must parse, be distinct, and leave the names the class
     // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
     if let Err(e) = check_method_formals(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_r6_initialize_collision(&parsed) {
         return e.into_compile_error().into();
     }
     // A replacement method (`s3(generic = "[[<-")`) takes `value` last.

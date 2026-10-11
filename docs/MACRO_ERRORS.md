@@ -248,6 +248,14 @@ writes its result back into the same R object, `-> Result<Self, E>` /
 `Clone`). Drop the attribute. See
 [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#consuming-receivers-self).
 
+### "R6 member `initialize` conflicts with the generated constructor"
+
+Every generated R6 class has an `initialize` member, even without a Rust
+constructor. An instance method or active binding cannot reuse that name.
+Rename the method, set `#[miniextendr(r_name = "reset")]`, or choose another
+`r6(prop = "...")` for an active binding. A static method or a method marked
+`constructor` may still be named `initialize` in Rust.
+
 ### "unsupported receiver type"
 
 The R handle stores the value itself, so a method can take `self`,
