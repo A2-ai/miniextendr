@@ -124,6 +124,25 @@ test_that("validate_with_attribute fails on wrong type", {
   )
 })
 
+test_that("typed-list attribute failures are argument conditions", {
+  missing <- tryCatch(validate_with_attribute(x = 1.0), error = identity)
+  wrong_type <- tryCatch(
+    validate_with_attribute(x = "not a number", y = 2.0),
+    error = identity
+  )
+  for (condition in list(missing, wrong_type)) {
+    expect_identical(class(condition), c("rust_error", "simpleError", "error", "condition"))
+    expect_identical(condition$kind, "conversion")
+    expect_identical(condition$param, "...")
+    expect_match(conditionMessage(condition), "dots validation failed:")
+  }
+  expect_equal(conditionCall(missing), quote(validate_with_attribute(x = 1.0)))
+  expect_equal(
+    conditionCall(wrong_type),
+    quote(validate_with_attribute(x = "not a number", y = 2.0))
+  )
+})
+
 test_that("validate_attr_optional works without optional field", {
   result <- validate_attr_optional(name = "Alice")
   expect_equal(result, "Hello, Alice!")
