@@ -342,3 +342,9 @@ test_that("a mutable Self argument may not alias another one (#1990)", {
   )
   expect_equal(a$get_value(), 4L)
 })
+
+test_that("traits whose names differ only in case both dispatch on one type (#1778)", {
+  g <- CaseGauge$new_case_gauge(5L)
+  expect_equal(g$Gauge$reading(), 5L)
+  expect_equal(g$gauge$reading(), -5L)
+})

@@ -432,3 +432,13 @@ test_that("derivedcurrency_format_amounts() formats with symbol prefix", {
   expect_type(result, "character")
   expect_equal(result, c("$1.00", "$2.50"))
 })
+
+test_that("Vctrs types whose Rust names differ only in case keep separate classes (#1778)", {
+  skip_if_vctrs_disabled()
+  upper <- new_case_pct_upper(c(0.1, 0.2))
+  lower <- new_case_pct_lower(c(0.3))
+  expect_s3_class(upper, "case_pct_upper")
+  expect_s3_class(lower, "case_pct_lower")
+  expect_false(inherits(upper, "case_pct_lower"))
+  expect_equal(vctrs::vec_data(upper), c(0.1, 0.2))
+})

@@ -290,7 +290,7 @@ pub fn get_reset_get(sexp: SEXP) -> i32 {
     counter.value()
 }
 
-/// Debug: Get TAG_RESETTABLE as hex string
+/// Debug: Get TAG_Resettable as hex string
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_resettable() -> String {
@@ -453,7 +453,7 @@ pub fn consumer_magic_number() -> i32 {
     42
 }
 
-/// Debug: Get TAG_COUNTER as hex string
+/// Debug: Get TAG_Counter as hex string
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_counter() -> String {

@@ -39,14 +39,7 @@ impl Split {
     pub fn second(&self) -> i32 { 2 }
 }
 
-#[cfg(feature = "vctrs")]
-#[derive(miniextendr_api::Vctrs)]
-#[vctrs(class = "case_percent_upper", base = "double")]
-pub struct Percent { #[vctrs(data)] data: Vec<f64> }
-#[cfg(feature = "vctrs")]
-#[derive(miniextendr_api::Vctrs)]
-#[vctrs(class = "case_percent_lower", base = "double")]
-#[allow(non_camel_case_types)]
-pub struct percent { #[vctrs(data)] data: Vec<f64> }
+// rpkg's vctrs_derive_example.rs covers case-distinct Vctrs types: this
+// crate doesn't have the `vctrs` feature.
 
 fn main() {}
