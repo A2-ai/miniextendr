@@ -33,7 +33,7 @@
 use crate::coerce::TryCoerce;
 use crate::from_r::{BatchedErrors, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 
 /// Fold a batched strict-vec [`BatchedErrors`] into the single panic every
 /// `checked_vec_*_into_sexp` raises for the return value of Rust type
@@ -79,7 +79,7 @@ macro_rules! impl_strict_r_int {
             const NAME: &'static str = stringify!($t);
             #[inline]
             fn to_r_int(self) -> Option<i32> {
-                i32::try_from(self).ok().filter(|&v| v != i32::MIN)
+                i32::try_from(self).ok().filter(|&v| !v.is_na())
             }
             fn range_reason(self) -> String {
                 format!(
@@ -483,7 +483,7 @@ where
     i32: TryCoerce<T>,
     <i32 as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    if v == crate::altrep_traits::NA_INTEGER {
+    if v.is_na() {
         return Ok(None);
     }
     TryCoerce::<T>::try_coerce(v)
@@ -498,7 +498,7 @@ where
     f64: TryCoerce<T>,
     <f64 as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    if crate::from_r::is_na_real(v) {
+    if v.is_na() {
         return Ok(None);
     }
     TryCoerce::<T>::try_coerce(v)

@@ -1900,7 +1900,7 @@ fn into_r_as_scalar_i32_na_to_f64_missing_value_errors() {
 /// NA_real_ is the specific R NaN bit pattern, distinct from arithmetic NaN.
 ///
 /// This test verifies the distinction via the Vec<Option<f64>> roundtrip path,
-/// which calls is_na_real internally.
+/// which uses IsNA internally.
 #[test]
 fn na_real_bit_exact_identity_via_vec_roundtrip() {
     r_test_utils::with_r_thread(|| {

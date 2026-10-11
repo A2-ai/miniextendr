@@ -50,7 +50,7 @@
 use crate::coerce::{CoerceError, TryCoerce};
 use crate::from_r::BATCHED_ERROR_CAP;
 use crate::into_r::IntoR;
-use crate::{RLogical, SEXP};
+use crate::{IsNA, RLogical, SEXP};
 use std::fmt;
 
 // region: Error type
@@ -413,7 +413,7 @@ impl IntoRAs<f64> for i32 {
         // i32::MIN is R's NA_integer_ sentinel. A blind `self as f64` would
         // turn it into the finite value -2147483648.0, silently destroying the
         // missing-value semantics. Detect it and surface MissingValue instead.
-        if self == crate::altrep_traits::NA_INTEGER {
+        if self.is_na() {
             return Err(StorageCoerceError::MissingValue {
                 to: "f64",
                 index: None,
@@ -506,7 +506,7 @@ impl IntoRAs<RLogical> for i32 {
         match self {
             0 => Ok(false.into_sexp()),
             1 => Ok(true.into_sexp()),
-            crate::altrep_traits::NA_INTEGER => Ok(RLogical::NA.into_sexp()),
+            v if v.is_na() => Ok(RLogical::NA.into_sexp()),
             _ => Err(StorageCoerceError::OutOfRange {
                 from: "i32",
                 to: "RLogical",
@@ -844,7 +844,7 @@ impl IntoRAs<f64> for Vec<i32> {
         let mut listed: Vec<StorageCoerceError> = Vec::new();
         let mut total = 0usize;
         for (i, val) in self.into_iter().enumerate() {
-            if val == crate::altrep_traits::NA_INTEGER {
+            if val.is_na() {
                 if listed.len() < BATCHED_ERROR_CAP {
                     listed.push(StorageCoerceError::MissingValue {
                         to: "f64",
@@ -873,7 +873,7 @@ impl IntoRAs<f64> for &[i32] {
         let mut listed: Vec<StorageCoerceError> = Vec::new();
         let mut total = 0usize;
         for (i, &val) in self.iter().enumerate() {
-            if val == crate::altrep_traits::NA_INTEGER {
+            if val.is_na() {
                 if listed.len() < BATCHED_ERROR_CAP {
                     listed.push(StorageCoerceError::MissingValue {
                         to: "f64",

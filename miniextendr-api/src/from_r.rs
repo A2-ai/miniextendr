@@ -53,22 +53,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::altrep_traits::NA_REAL;
 use crate::coerce::TryCoerce;
-use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
-
-/// Check if an f64 value is R's NA_real_, by R's own rule (`R_IsNA`).
-///
-/// This is different from `f64::is_nan()` which returns true for ALL NaN values.
-/// R's `NA_real_` is a NaN whose low 32-bit word is 1954, while regular
-/// NaN values (e.g., from `0.0/0.0`) should be preserved as valid values.
-///
-/// Only the low word is compared, as `R_IsNA` does: arithmetic on `NA_real_`
-/// quiets the NaN (`NA_real_ * 1` has bits `0x7FF8_0000_0000_07A2`, not
-/// [`NA_REAL`]'s `0x7FF0_0000_0000_07A2`), and R still reports that value as
-/// `NA`, so a computed `c(1, NA) * 2` must read as NA here too.
-#[inline]
-pub(crate) fn is_na_real(value: f64) -> bool {
-    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == (NA_REAL.to_bits() & 0xFFFF_FFFF)
-}
+use crate::{IsNA, RLogical, SEXP, SEXPTYPE, SexpExt};
 
 /// Whether R's `anyNA(sexp)` is `TRUE`: the check `no_na`'s R guard makes,
 /// done in Rust on an argument that the guard does not cover (see
@@ -101,9 +86,7 @@ pub(crate) fn any_na(sexp: SEXP) -> bool {
         SEXPTYPE::LGLSXP if altrep => {
             (0..n).any(|i| RLogical::from_i32(sexp.logical_elt(i)).is_na())
         }
-        SEXPTYPE::INTSXP if altrep => {
-            (0..n).any(|i| sexp.integer_elt(i) == crate::altrep_traits::NA_INTEGER)
-        }
+        SEXPTYPE::INTSXP if altrep => (0..n).any(|i| sexp.integer_elt(i).is_na()),
         SEXPTYPE::REALSXP if altrep => (0..n).any(|i| sexp.real_elt(i).is_nan()),
         SEXPTYPE::CPLXSXP if altrep => (0..n).any(|i| {
             let v = sexp.complex_elt(i);
@@ -112,9 +95,7 @@ pub(crate) fn any_na(sexp: SEXP) -> bool {
         SEXPTYPE::LGLSXP => unsafe { sexp.as_slice::<RLogical>() }
             .iter()
             .any(|v| v.is_na()),
-        SEXPTYPE::INTSXP => {
-            unsafe { sexp.as_slice::<i32>() }.contains(&crate::altrep_traits::NA_INTEGER)
-        }
+        SEXPTYPE::INTSXP => unsafe { sexp.as_slice::<i32>() }.iter().any(IsNA::is_na),
         SEXPTYPE::REALSXP => unsafe { sexp.as_slice::<f64>() }.iter().any(|v| v.is_nan()),
         SEXPTYPE::CPLXSXP => unsafe { sexp.as_slice::<crate::Rcomplex>() }
             .iter()
@@ -1153,7 +1134,7 @@ impl TryFromSexp for i32 {
                     actual: 0,
                 })
             })?;
-        if v == crate::altrep_traits::NA_INTEGER {
+        if v.is_na() {
             return Err(SexpNaError {
                 sexp_type: SEXPTYPE::INTSXP,
             }
@@ -1189,7 +1170,7 @@ impl TryFromSexp for i32 {
                     actual: 0,
                 })
             })?;
-        if v == crate::altrep_traits::NA_INTEGER {
+        if v.is_na() {
             return Err(SexpNaError {
                 sexp_type: SEXPTYPE::INTSXP,
             }
@@ -1809,12 +1790,12 @@ pub fn try_from_sexp_coerced_f64(sexp: SEXP) -> Result<f64, SexpError> {
     match sexp.type_of() {
         SEXPTYPE::INTSXP => {
             let v: Option<i32> = TryFromSexp::try_from_sexp(sexp)?;
-            Ok(v.map_or(crate::altrep_traits::NA_REAL, f64::from))
+            Ok(v.map_or(NA_REAL, f64::from))
         }
         SEXPTYPE::LGLSXP => {
             let v: RLogical = TryFromSexp::try_from_sexp(sexp)?;
             Ok(if v.is_na() {
-                crate::altrep_traits::NA_REAL
+                NA_REAL
             } else {
                 f64::from(v.to_i32())
             })
@@ -1842,7 +1823,7 @@ pub fn try_from_sexp_coerced_i32_vec(sexp: SEXP) -> Result<Vec<i32>, SexpError> 
         sexp,
         Ok,
         |v: f64| {
-            if is_na_real(v) {
+            if v.is_na() {
                 Ok(crate::altrep_traits::NA_INTEGER)
             } else {
                 coerced_scalars::coerce_value(v)
@@ -1865,18 +1846,12 @@ pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> 
     }
     from_numeric_vec_with(
         sexp,
-        |v: i32| {
-            Ok(if v == crate::altrep_traits::NA_INTEGER {
-                crate::altrep_traits::NA_REAL
-            } else {
-                f64::from(v)
-            })
-        },
+        |v: i32| Ok(if v.is_na() { NA_REAL } else { f64::from(v) }),
         Ok,
         |v: u8| Ok(f64::from(v)),
         |v: RLogical| {
             Ok(if v.is_na() {
-                crate::altrep_traits::NA_REAL
+                NA_REAL
             } else {
                 f64::from(v.to_i32())
             })
@@ -2218,7 +2193,7 @@ where
     from_numeric_vec_with(
         sexp,
         |v: i32| {
-            if v == crate::altrep_traits::NA_INTEGER {
+            if v.is_na() {
                 Err(SexpNaError {
                     sexp_type: SEXPTYPE::INTSXP,
                 }
@@ -3146,15 +3121,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn is_na_real_follows_r_is_na() {
-        assert!(is_na_real(NA_REAL));
+    fn real_na_follows_r_is_na() {
+        assert!(NA_REAL.is_na());
         // `NA_real_ * 1` in R: the same payload with the quiet bit set.
-        assert!(is_na_real(f64::from_bits(0x7FF8_0000_0000_07A2)));
+        assert!(f64::from_bits(0x7FF8_0000_0000_07A2).is_na());
         // `-NA_real_`: the sign bit flips, R still reads NA.
-        assert!(is_na_real(f64::from_bits(0xFFF0_0000_0000_07A2)));
-        assert!(!is_na_real(f64::NAN));
-        assert!(!is_na_real(1954.0));
-        assert!(!is_na_real(f64::from_bits(0x0000_0000_0000_07A2)));
+        assert!(f64::from_bits(0xFFF0_0000_0000_07A2).is_na());
+        assert!(!f64::NAN.is_na());
+        assert!(!1954.0f64.is_na());
+        assert!(!f64::from_bits(0x0000_0000_0000_07A2).is_na());
     }
 
     #[test]

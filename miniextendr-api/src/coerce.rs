@@ -40,7 +40,7 @@
 //! ```
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use crate::{Rboolean, Rcomplex};
+use crate::{IsNA, Rboolean, Rcomplex};
 
 /// Infallible coercion from `Self` to type `R`.
 ///
@@ -506,7 +506,7 @@ impl TryCoerce<bool> for i32 {
             0 => Ok(false),
             1 => Ok(true),
             // NA_LOGICAL is i32::MIN in R
-            i32::MIN => Err(LogicalCoerceError::NAValue),
+            v if v.is_na() => Err(LogicalCoerceError::NAValue),
             other => Err(LogicalCoerceError::InvalidValue(other)),
         }
     }

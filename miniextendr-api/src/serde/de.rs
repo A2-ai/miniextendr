@@ -4,12 +4,8 @@
 //! to deserialize any serde-compatible Rust type from R data structures.
 
 use super::error::RSerdeError;
-use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
-// Doubles are NA by R's `R_IsNA` rule (low word 1954), so a computed NA such as
-// `NA_real_ * 1` maps to `None` / `UnexpectedNa` too; any other NaN is a value.
 use crate::from_r::charsxp_to_str;
-use crate::from_r::is_na_real;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 /// Deserializer that converts R SEXP to Rust values.
@@ -103,7 +99,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             SEXPTYPE::LGLSXP if len == 1 => {
                 let val = self.sexp.logical_elt(0);
-                if val == NA_LOGICAL {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_bool(val != 0)
@@ -111,7 +107,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             SEXPTYPE::INTSXP if len == 1 => {
                 let val = self.sexp.integer_elt(0);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_i32(val)
@@ -119,7 +115,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             SEXPTYPE::REALSXP if len == 1 => {
                 let val = self.sexp.real_elt(0);
-                if is_na_real(val) {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_f64(val)
@@ -162,7 +158,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         }
 
         let val = self.sexp.logical_elt(0);
-        if val == NA_LOGICAL {
+        if val.is_na() {
             return Err(RSerdeError::UnexpectedNa);
         }
         visitor.visit_bool(val != 0)
@@ -208,14 +204,14 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             SEXPTYPE::INTSXP => {
                 let val = self.sexp.integer_elt(0);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 visitor.visit_i64(val as i64)
             }
             SEXPTYPE::REALSXP => {
                 let val = self.sexp.real_elt(0);
-                if is_na_real(val) {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !val.is_finite() {
@@ -286,7 +282,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             SEXPTYPE::INTSXP => {
                 let val = self.sexp.integer_elt(0);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if val < 0 {
@@ -299,7 +295,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             SEXPTYPE::REALSXP => {
                 let val = self.sexp.real_elt(0);
-                if is_na_real(val) {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !val.is_finite() || val != val.trunc() {
@@ -335,7 +331,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         match sexp_type {
             SEXPTYPE::INTSXP => {
                 let val = self.sexp.integer_elt(0);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if val < 0 {
@@ -348,7 +344,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             }
             SEXPTYPE::REALSXP => {
                 let val = self.sexp.real_elt(0);
-                if is_na_real(val) {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !val.is_finite() || val != val.trunc() {
@@ -440,19 +436,19 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             match sexp_type {
                 SEXPTYPE::LGLSXP => {
                     let val = self.sexp.logical_elt(0);
-                    if val == NA_LOGICAL {
+                    if val.is_na() {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::INTSXP => {
                     let val = self.sexp.integer_elt(0);
-                    if val == NA_INTEGER {
+                    if val.is_na() {
                         return visitor.visit_none();
                     }
                 }
                 SEXPTYPE::REALSXP => {
                     let val = self.sexp.real_elt(0);
-                    if is_na_real(val) {
+                    if val.is_na() {
                         return visitor.visit_none();
                     }
                 }
@@ -620,7 +616,7 @@ impl RDeserializer {
         }
 
         let val = self.sexp.integer_elt(0);
-        if val == NA_INTEGER {
+        if val.is_na() {
             return Err(RSerdeError::UnexpectedNa);
         }
         Ok(val)
@@ -638,14 +634,14 @@ impl RDeserializer {
         match sexp_type {
             SEXPTYPE::REALSXP => {
                 let val = self.sexp.real_elt(0);
-                if is_na_real(val) {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 Ok(val)
             }
             SEXPTYPE::INTSXP => {
                 let val = self.sexp.integer_elt(0);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 Ok(val as f64)
@@ -741,9 +737,9 @@ impl VectorElementDeserializer {
     /// RAWSXP has no NA representation, so raw elements are never NA.
     fn is_na(&self) -> bool {
         match self.sexp_type {
-            SEXPTYPE::LGLSXP => self.sexp.logical_elt(self.index as isize) == NA_LOGICAL,
-            SEXPTYPE::INTSXP => self.sexp.integer_elt(self.index as isize) == NA_INTEGER,
-            SEXPTYPE::REALSXP => is_na_real(self.sexp.real_elt(self.index as isize)),
+            SEXPTYPE::LGLSXP => self.sexp.logical_elt(self.index as isize).is_na(),
+            SEXPTYPE::INTSXP => self.sexp.integer_elt(self.index as isize).is_na(),
+            SEXPTYPE::REALSXP => self.sexp.real_elt(self.index as isize).is_na(),
             SEXPTYPE::STRSXP => self.sexp.string_elt(self.index as isize) == SEXP::na_string(),
             _ => false,
         }
@@ -775,7 +771,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
         match self.sexp_type {
             SEXPTYPE::LGLSXP => {
                 let val = self.sexp.logical_elt(self.index as isize);
-                if val == NA_LOGICAL {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_bool(val != 0)
@@ -783,7 +779,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
             }
             SEXPTYPE::INTSXP => {
                 let val = self.sexp.integer_elt(self.index as isize);
-                if val == NA_INTEGER {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_i32(val)
@@ -791,7 +787,7 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
             }
             SEXPTYPE::REALSXP => {
                 let val = self.sexp.real_elt(self.index as isize);
-                if is_na_real(val) {
+                if val.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_f64(val)

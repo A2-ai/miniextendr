@@ -70,8 +70,6 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_json;
 pub use serde_json::Value as JsonValue;
 
-use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
-
 // region: JSON conversion options
 
 /// How to handle NA values when converting R to JSON.
@@ -191,7 +189,7 @@ use crate::from_r::{
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::Rf_allocVector;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 
 /// Adapter trait for [`serde::Serialize`].
 ///
@@ -380,14 +378,14 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
         SEXPTYPE::LGLSXP => {
             if len == 1 {
                 let val = sexp.logical_elt(0);
-                if val == NA_LOGICAL {
+                if val.is_na() {
                     return handle_na(opts);
                 }
                 Ok(JsonValue::Bool(val != 0))
             } else {
                 let arr = (0..len).map(|i| {
                     let val = sexp.logical_elt(isize::try_from(i).expect("index overflow"));
-                    if val == NA_LOGICAL {
+                    if val.is_na() {
                         handle_na(opts)
                     } else {
                         Ok(JsonValue::Bool(val != 0))
@@ -400,13 +398,13 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             let slice: &[i32] = unsafe { SexpExt::as_slice(&sexp) };
             if len == 1 {
                 let val = slice[0];
-                if val == NA_INTEGER {
+                if val.is_na() {
                     return handle_na(opts);
                 }
                 Ok(JsonValue::Number(serde_json::Number::from(val)))
             } else {
                 let arr = slice.iter().map(|&val| {
-                    if val == NA_INTEGER {
+                    if val.is_na() {
                         handle_na(opts)
                     } else {
                         Ok(JsonValue::Number(serde_json::Number::from(val)))
@@ -488,7 +486,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
 
 fn real_to_json(val: f64, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
     // NA by R's `R_IsNA` rule (a computed NA counts); other NaNs are handled below.
-    if crate::from_r::is_na_real(val) {
+    if val.is_na() {
         return handle_na(opts);
     }
 
@@ -545,13 +543,13 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
 
     if len == 1 {
         let idx = slice[0];
-        if idx == NA_INTEGER {
+        if idx.is_na() {
             return handle_na(opts);
         }
         Ok(index_to_json(idx))
     } else {
         let arr = slice.iter().map(|&idx| {
-            if idx == NA_INTEGER {
+            if idx.is_na() {
                 handle_na(opts)
             } else {
                 Ok(index_to_json(idx))

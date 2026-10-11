@@ -66,7 +66,7 @@ pub use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use nalgebra::Scalar;
 
 // region: Blanket implementations for DVector and DMatrix
@@ -1647,7 +1647,7 @@ impl AltIntegerData for DVector<i32> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|&x| x == crate::altrep_traits::NA_INTEGER))
+        Some(!self.iter().any(IsNA::is_na))
     }
 }
 
