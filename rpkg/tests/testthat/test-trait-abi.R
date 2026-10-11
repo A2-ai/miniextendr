@@ -308,3 +308,37 @@ test_that("R6 trait static methods and associated constants work", {
   # R6TraitCounter::MAX_VALUE is 200
   expect_equal(R6TraitCounter$Counter$MAX_VALUE(), 200L)
 })
+
+test_that("trait methods take &Self and &mut Self arguments (#1990)", {
+  a <- SelfArgCounter$new_self_arg(3L)
+  b <- SelfArgCounter$new_self_arg(10L)
+
+  a$SelfArgs$copy_to(b)
+  expect_equal(b$get_value(), 3L)
+
+  b <- SelfArgCounter$new_self_arg(10L)
+  a$SelfArgs$swap_with(b)
+  expect_equal(c(a$get_value(), b$get_value()), c(10L, 3L))
+
+  # `type` is `r#type` in Rust.
+  expect_equal(a$SelfArgs$difference(b), 7L)
+  expect_equal(SelfArgCounter$SelfArgs$difference(a, type = b), 7L)
+
+  SelfArgCounter$SelfArgs$exchange(a, b)
+  expect_equal(c(a$get_value(), b$get_value()), c(3L, 10L))
+})
+
+test_that("a mutable Self argument may not alias another one (#1990)", {
+  a <- SelfArgCounter$new_self_arg(4L)
+
+  # Two shared references to one object are fine.
+  expect_equal(a$SelfArgs$difference(a), 0L)
+
+  expect_error(a$SelfArgs$copy_to(a), "'self' and 'other' alias the same object")
+  expect_error(a$SelfArgs$swap_with(a), "'self' and 'other' alias the same object")
+  expect_error(
+    SelfArgCounter$SelfArgs$exchange(a, a),
+    "'left' and 'right' alias the same object"
+  )
+  expect_equal(a$get_value(), 4L)
+})
