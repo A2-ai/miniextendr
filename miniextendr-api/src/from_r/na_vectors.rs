@@ -32,7 +32,7 @@ use crate::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
-    ($t:ty, $sexptype:ident, $dataptr:ident, $is_na:expr) => {
+    ($t:ty, $sexptype:ident, $dataptr:ident) => {
         impl TryFromSexp for Vec<Option<$t>> {
             type Error = SexpError;
 
@@ -52,15 +52,21 @@ macro_rules! impl_vec_option_try_from_sexp {
 
                 Ok(slice
                     .iter()
-                    .map(|&v| if $is_na(v) { None } else { Some(v) })
+                    .map(|&v| {
+                        if crate::IsNA::is_na(&v) {
+                            None
+                        } else {
+                            Some(v)
+                        }
+                    })
                     .collect())
             }
         }
     };
 }
 
-impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
-impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
+impl_vec_option_try_from_sexp!(f64, REALSXP, REAL);
+impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER);
 
 /// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
 impl TryFromSexp for Vec<Option<bool>> {

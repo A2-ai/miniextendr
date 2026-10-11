@@ -308,7 +308,8 @@ pub mod sys;
 pub use sexp::{SEXP, SEXPREC};
 pub use sexp_ext::SexpExt;
 pub use sexp_types::{
-    R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE, cetype_t,
+    IsNA, R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE,
+    cetype_t,
 };
 
 /// Automatic registration internals.
