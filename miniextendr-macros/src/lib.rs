@@ -76,7 +76,7 @@
 //! │                                                                          │
 //! │  1. Parse: syn::ItemImpl (trait impl)                                    │
 //! │  2. Generate:                                                            │
-//! │     ├── Vtable instance: static __VTABLE_<CRATE>_<TRAIT>_FOR_<TYPE>     │
+//! │     ├── Vtable instance: static __VTABLE_<crate>_<Trait>_FOR_<Type>     │
 //! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
 //! │     ├── Query function: fn __mx_query_<type>(tag) → vtable ptr           │
 //! │     └── Base vtable: static __MX_BASE_VTABLE_<TYPE>: ...                 │
@@ -112,7 +112,7 @@
 //! - Registration: `call_method_def_my_func`
 //!
 //! For a type `MyType` with trait `Counter` in a crate `mypkg`:
-//! - Vtable: `__VTABLE_MYPKG_COUNTER_FOR_MYTYPE`
+//! - Vtable: `__VTABLE_mypkg_Counter_FOR_MyType`
 //! - Wrapper: `__MxWrapperMyType`
 //! - Query: `__mx_query_mytype`
 //!

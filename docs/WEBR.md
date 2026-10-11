@@ -363,7 +363,7 @@ rig-installed arm64 `R` on `PATH` (see "arm64-native dev image" below).
   first package's code (observed in the #1259 scaffold leg). Every
   `#[miniextendr]`-generated `#[no_mangle]` symbol therefore carries the
   consuming crate's name: `C_<crate>_<fn>`, `C_<crate>_<Type>__<method>`,
-  `__mx_altrep_reg_<crate>_<Ident>`, `__VTABLE_<CRATE>_..._FOR_...`, etc.
+  `__mx_altrep_reg_<crate>_<Ident>`, `__VTABLE_<crate>_..._FOR_...`, etc.
   (single source of truth: `miniextendr-macros/src/naming.rs`). Registration
   name and linker symbol stay identical, so the generated `wasm_registry.rs`
   keeps reconstructing its `extern` declarations from `R_CallMethodDef.name`.

@@ -1,36 +1,41 @@
 use super::*;
 
 #[test]
-fn test_type_to_uppercase_name() {
+fn test_type_to_symbol_name() {
     // Simple type
     let ty: syn::Type = syn::parse_quote!(MyType);
-    assert_eq!(type_to_uppercase_name(&ty), "MYTYPE");
+    assert_eq!(type_to_symbol_name(&ty), "MyType");
 
     // Path type
     let ty: syn::Type = syn::parse_quote!(path::to::MyType);
-    assert_eq!(type_to_uppercase_name(&ty), "MYTYPE");
+    assert_eq!(type_to_symbol_name(&ty), "MyType");
+
+    let lower: syn::Type = syn::parse_quote!(mytype);
+    assert_eq!(type_to_symbol_name(&lower), "mytype");
+    let raw: syn::Type = syn::parse_quote!(r#type);
+    assert_eq!(type_to_symbol_name(&raw), "type");
 }
 
 /// Regression test for #394: generic monomorphisations must not produce the same
 /// vtable static name.  Before the fix, both `MyType<u32>` and `MyType<f64>`
 /// resolved to `MYTYPE`, causing a silent collision (wrong vtable wins).
 #[test]
-fn test_type_to_uppercase_name_generic_distinct() {
+fn test_type_to_symbol_name_generic_distinct() {
     let ty_u32: syn::Type = syn::parse_quote!(MyType<u32>);
     let ty_f64: syn::Type = syn::parse_quote!(MyType<f64>);
     let ty_plain: syn::Type = syn::parse_quote!(MyType);
 
-    let name_u32 = type_to_uppercase_name(&ty_u32);
-    let name_f64 = type_to_uppercase_name(&ty_f64);
-    let name_plain = type_to_uppercase_name(&ty_plain);
+    let name_u32 = type_to_symbol_name(&ty_u32);
+    let name_f64 = type_to_symbol_name(&ty_f64);
+    let name_plain = type_to_symbol_name(&ty_plain);
 
     // Both generic names must start with the base ident
     assert!(
-        name_u32.starts_with("MYTYPE_"),
+        name_u32.starts_with("MyType_"),
         "MyType<u32> should have a hash suffix, got: {name_u32}"
     );
     assert!(
-        name_f64.starts_with("MYTYPE_"),
+        name_f64.starts_with("MyType_"),
         "MyType<f64> should have a hash suffix, got: {name_f64}"
     );
 
@@ -42,12 +47,12 @@ fn test_type_to_uppercase_name_generic_distinct() {
 
     // Non-generic plain type must NOT get a hash suffix (clean name for simple cases)
     assert_eq!(
-        name_plain, "MYTYPE",
+        name_plain, "MyType",
         "plain MyType should not have a hash suffix"
     );
 
     // Hash suffix must be 16 hex chars (FNV-1a-64 output)
-    let suffix_u32 = name_u32.strip_prefix("MYTYPE_").unwrap();
+    let suffix_u32 = name_u32.strip_prefix("MyType_").unwrap();
     assert_eq!(
         suffix_u32.len(),
         16,
@@ -61,10 +66,48 @@ fn test_type_to_uppercase_name_generic_distinct() {
     // Hashes must be deterministic: calling again must yield the same result
     let ty_u32_again: syn::Type = syn::parse_quote!(MyType<u32>);
     assert_eq!(
-        type_to_uppercase_name(&ty_u32_again),
+        type_to_symbol_name(&ty_u32_again),
         name_u32,
-        "type_to_uppercase_name must be deterministic across calls"
+        "type_to_symbol_name must be deterministic across calls"
     );
+}
+
+/// Both impl paths must refer to the declaration's case-preserving builder.
+#[test]
+fn tpie_invocations_preserve_trait_case() {
+    let concrete_type: syn::Type = syn::parse_quote!(Host);
+    let mut vtables = Vec::new();
+    for spelling in ["Counter", "counter"] {
+        let trait_name = format_ident!("{spelling}");
+        let path: syn::Path = syn::parse_quote!(traits::#trait_name);
+        let output = generate_tpie_invocation(
+            &path,
+            &concrete_type,
+            ClassSystem::Env,
+            false,
+            false,
+            false,
+            false,
+        );
+        let output_str = output.to_string();
+        assert!(output_str.contains(&format!("__{spelling}_build_vtable")));
+        assert!(output_str.contains(&format!("__mx_impl_{spelling}")));
+        let file: syn::File = syn::parse2(output).expect("valid generated items");
+        let table = file
+            .items
+            .into_iter()
+            .find_map(|item| match item {
+                syn::Item::Static(item) => Some(item.ident),
+                _ => None,
+            })
+            .expect("vtable static");
+        assert_eq!(
+            table,
+            crate::naming::vtable_static_ident(&trait_name, "Host")
+        );
+        vtables.push(table);
+    }
+    assert_ne!(vtables[0], vtables[1]);
 }
 
 /// Helper to build a simple TraitMethod for testing R wrapper generation.
