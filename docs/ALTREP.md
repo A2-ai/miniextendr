@@ -854,6 +854,18 @@ pub fn simple_vec_int(values: Vec<i32>) -> SEXP {
 }
 ```
 
+### Owned unsized strings
+
+`Box<str>`, `Rc<str>` and `Arc<str>` convert to/from character scalars.
+Their `Option` and `Vec<Option<...>>` forms preserve NA; the plain forms
+follow `String` and map incoming NA to an empty string. `Cow<str>` keeps its
+existing scalar conversion.
+
+`Altrep<Vec<Box<str>>>`, `Altrep<Vec<Rc<str>>>` and `Altrep<Vec<Arc<str>>>`,
+including optional elements, retain their string owners and create CHARSXPs on
+demand. R writes materialize the authoritative STRSXP cache. The UTF-8 bytes of a
+single `str` are not exposed as a mutable R character-vector buffer.
+
 ### Shared slices: `Rc<[T]>` and `Arc<[T]>`
 
 `Altrep(Rc::<[i32]>::from(vec![1, 2, 3]))` and its `Arc` equivalent keep

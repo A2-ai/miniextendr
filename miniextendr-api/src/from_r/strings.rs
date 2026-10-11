@@ -236,3 +236,63 @@ impl TryFromSexp for Option<String> {
     }
 }
 // endregion
+
+// region: Owned unsized strings
+//
+// Preserve String's scalar/NA semantics and vector diagnostics. Each string is
+// owned before returning, so no CHARSXP borrow escapes in an Rc/Arc/Box.
+macro_rules! impl_owned_str_from_r {
+    ($owner:ident) => {
+        impl TryFromSexp for $owner<str> {
+            type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                String::try_from_sexp(sexp).map(Self::from)
+            }
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                unsafe { String::try_from_sexp_unchecked(sexp) }.map(Self::from)
+            }
+        }
+        impl TryFromSexp for Option<$owner<str>> {
+            type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                Option::<String>::try_from_sexp(sexp).map(|v| v.map($owner::from))
+            }
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                unsafe { Option::<String>::try_from_sexp_unchecked(sexp) }
+                    .map(|v| v.map($owner::from))
+            }
+        }
+        impl TryFromSexp for Vec<$owner<str>> {
+            type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                Vec::<String>::try_from_sexp(sexp)
+                    .map(|v| v.into_iter().map($owner::from).collect())
+            }
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                unsafe { Vec::<String>::try_from_sexp_unchecked(sexp) }
+                    .map(|v| v.into_iter().map($owner::from).collect())
+            }
+        }
+        impl TryFromSexp for Vec<Option<$owner<str>>> {
+            type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                Vec::<Option<String>>::try_from_sexp(sexp)
+                    .map(|v| v.into_iter().map(|s| s.map($owner::from)).collect())
+            }
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                unsafe { Vec::<Option<String>>::try_from_sexp_unchecked(sexp) }
+                    .map(|v| v.into_iter().map(|s| s.map($owner::from)).collect())
+            }
+        }
+    };
+}
+use std::rc::Rc;
+use std::sync::Arc;
+impl_owned_str_from_r!(Box);
+impl_owned_str_from_r!(Rc);
+impl_owned_str_from_r!(Arc);
+// endregion

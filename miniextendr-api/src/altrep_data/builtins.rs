@@ -1121,6 +1121,37 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 }
 // endregion
 
+// region: Vectors of owned unsized strings
+
+macro_rules! impl_owned_str_altrep_data {
+    ($owner:ident) => {
+        impl_len_vec!($owner<str>);
+        impl_len_vec!(Option<$owner<str>>);
+        impl AltStringData for Vec<$owner<str>> {
+            fn elt(&self, i: usize) -> Option<&str> {
+                Some(self[i].as_ref())
+            }
+            fn no_na(&self) -> Option<bool> {
+                Some(true)
+            }
+        }
+        impl AltStringData for Vec<Option<$owner<str>>> {
+            fn elt(&self, i: usize) -> Option<&str> {
+                self[i].as_deref()
+            }
+            fn no_na(&self) -> Option<bool> {
+                Some(self.iter().all(Option::is_some))
+            }
+        }
+        impl_serialize!(Vec<$owner<str>>);
+        impl_serialize!(Vec<Option<$owner<str>>>);
+    };
+}
+impl_owned_str_altrep_data!(Box);
+impl_owned_str_altrep_data!(Rc);
+impl_owned_str_altrep_data!(Arc);
+// endregion
+
 // region: Shared slices
 
 // A unique owner may already have supplied a pointer to R. Shared owners have
