@@ -81,7 +81,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -101,7 +101,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -121,7 +121,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -141,7 +141,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altraw_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -161,7 +161,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altstring_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -181,7 +181,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -209,7 +209,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altinteger_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -229,7 +229,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altreal_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -249,7 +249,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altlogical_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -269,7 +269,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altraw_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -289,7 +289,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altstring_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -309,7 +309,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altcomplex_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -351,6 +351,13 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Vec_f64
 );
 impl_builtin_altrep_family!(
+    Vec<crate::RLogical>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_RLogical
+);
+impl_builtin_altrep_family!(
     Vec<bool>,
     logical,
     materializing,
@@ -380,7 +387,7 @@ impl_builtin_altrep_family!(
 );
 // Cow string vectors — zero-copy from R, ALTREP output without copying back.
 // Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
-// Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
+// Unserialize: owns the decoded strings so the temporary R state can be collected.
 impl_builtin_altrep_family!(
     Vec<std::borrow::Cow<'static, str>>,
     string,
@@ -448,6 +455,13 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Box_f64
 );
 impl_builtin_altrep_family!(
+    Box<[crate::RLogical]>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_RLogical
+);
+impl_builtin_altrep_family!(
     Box<[bool]>,
     logical,
     materializing,
@@ -478,6 +492,13 @@ impl_builtin_altrep_family!(
 
 // Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
 // Borrowed variants expose R's data directly; Owned behaves like Vec.
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [crate::RLogical]>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Cow_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_RLogical
+);
 impl_builtin_altrep_family!(
     std::borrow::Cow<'static, [i32]>,
     integer,
@@ -553,6 +574,7 @@ macro_rules! impl_register_altrep_builtin {
 // Vec types - RegisterAltrep only (IntoR exists elsewhere, copies data)
 impl_register_altrep_builtin!(Vec<i32>, "Vec_i32");
 impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
+impl_register_altrep_builtin!(Vec<crate::RLogical>, "Vec_RLogical");
 impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
@@ -567,12 +589,14 @@ impl_register_altrep_builtin!(std::ops::Range<f64>, "Range_f64");
 // Box types - RegisterAltrep only
 impl_register_altrep_builtin!(Box<[i32]>, "Box_i32");
 impl_register_altrep_builtin!(Box<[f64]>, "Box_f64");
+impl_register_altrep_builtin!(Box<[crate::RLogical]>, "Box_RLogical");
 impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
 impl_register_altrep_builtin!(Box<[crate::Rcomplex]>, "Box_Rcomplex");
 
 // Cow types - RegisterAltrep for zero-copy borrow from R
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [crate::RLogical]>, "Cow_RLogical");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [i32]>, "Cow_i32");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [f64]>, "Cow_f64");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [u8]>, "Cow_u8");

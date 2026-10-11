@@ -3,13 +3,16 @@
 use miniextendr_api::{Coerce, CoerceError, RNativeType, TryCoerce, miniextendr};
 
 // Test 6: `RNativeType` derive macro - newtype wrappers (both tuple and named field)
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 struct UserId(i32); // Tuple struct
 
 #[allow(dead_code)] // Demonstrates RNativeType derive on pub tuple struct
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 pub struct Score(pub f64); // Tuple struct
 
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 struct Temperature {
     celsius: f64,

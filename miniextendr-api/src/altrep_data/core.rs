@@ -215,9 +215,10 @@ impl From<i32> for Sortedness {
 /// For immutable data (`&'static [T]`), `writable = true` should panic or
 /// return `None` since the data cannot be modified.
 ///
-/// The `__impl_altvec_dataptr` macro uses `dataptr_or_null` for read-only
-/// access and only calls `dataptr(&mut self, true)` when R requests a
-/// writable pointer.
+/// The `__impl_altvec_dataptr` macro first tries `dataptr_or_null` for
+/// read-only access. If no contiguous buffer exists yet, it calls
+/// `dataptr(&mut self, false)`; writable requests call
+/// `dataptr(&mut self, true)` directly.
 pub trait AltrepDataptr<T> {
     /// Get a pointer to the underlying data, possibly triggering materialization.
     ///

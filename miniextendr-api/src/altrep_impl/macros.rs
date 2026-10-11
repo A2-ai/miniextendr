@@ -468,7 +468,7 @@ macro_rules! __impl_altvec_extract_subset {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(data, indices)
-                    .unwrap_or($crate::SEXP::nil())
+                    .unwrap_or($crate::SEXP::null())
             }
         }
     };
@@ -984,8 +984,11 @@ macro_rules! __impl_altlogical_methods {
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                <$ty as $crate::altrep_data::AltLogicalData>::elt(data, i.max(0) as usize)
-                    .to_r_int()
+                let i = i.max(0) as usize;
+                if let Some(values) = <$ty as $crate::altrep_data::AltLogicalData>::as_r_slice(data) {
+                    return values[i];
+                }
+                <$ty as $crate::altrep_data::AltLogicalData>::elt(data, i).to_r_int()
             }
 
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltLogicalData, i32);

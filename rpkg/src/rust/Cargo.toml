@@ -82,6 +82,7 @@ full = [
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
     "either", "log", "worker-thread", "macro-coverage",
     "growth-debug", "blake3", "md5", "globset", "zstd", "blas-lapack",
+    "satellite", "jiff",
 ]
 
 [dependencies]

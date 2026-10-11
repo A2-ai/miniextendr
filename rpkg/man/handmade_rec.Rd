@@ -6,7 +6,6 @@
 \alias{names.handmade_rec}
 \alias{as.list.handmade_rec}
 \alias{.DollarNames.handmade_rec}
-\alias{handmade_rec}
 \alias{new_handmade_rec}
 \title{A list-like S3 class the package builds itself}
 \usage{
@@ -19,8 +18,6 @@
 \method{as.list}{handmade_rec}(x, ...)
 
 \method{.DollarNames}{handmade_rec}(x, pattern = "")
-
-handmade_rec
 
 new_handmade_rec(id)
 }

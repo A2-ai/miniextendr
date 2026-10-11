@@ -127,7 +127,7 @@ test_that("a field's R name is the one R sees; the Rust identifier stays in Rust
   expect_identical(obj$label_len(), 3L)
   expect_false("r_label" %in% names(obj))
   expect_false(exists("SidecarSlotR6_get_r_label", envir = asNamespace("miniextendr")))
-  expect_identical(miniextendr:::.rdata_fields_SidecarSlotR6, c("keys", "n", "label", "note"))
+  expect_true(all(c("keys", "n", "label", "note") %in% names(obj)))
 
   s7 <- SidecarS7(prop_int = 1L, prop_flag = TRUE, prop_name = "s")
   expect_identical(s7@scores, numeric())

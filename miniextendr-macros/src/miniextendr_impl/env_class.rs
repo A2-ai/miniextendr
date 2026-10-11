@@ -25,7 +25,8 @@ use super::ParsedImpl;
 /// - Static methods: `ClassName$method(...)` that call Rust directly
 /// - `$.ClassName` S3 method: dispatches `obj$method(...)` by looking up the method
 ///   in the class environment, binding `self` for instance methods, and supporting
-///   trait namespace environments (nested envs with `.__mx_instance__` attributes)
+///   trait namespace environments (nested envs with `.__mx_instance__` attributes),
+///   through the package's shared `.miniextendr_env_method` helper
 /// - `[[.ClassName` alias: delegates to `$.ClassName`
 /// - With `env(r_data_accessors)`: a field branch at the top of `$.ClassName`
 ///   (a `#[r_data]` field wins over a method of the same name),
@@ -230,53 +231,16 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if fields {
         lines.extend(super::field_syntax::env_field_branch(parsed_impl));
     }
-    lines.push(format!("  obj <- {}[[name]]", class_name));
-    lines.push("  if (is.environment(obj)) {".to_string());
-    lines.push("    # Trait namespace - wrap instance methods to prepend self".to_string());
-    lines.push("    bound <- new.env(parent = emptyenv())".to_string());
-    lines.push("    for (method_name in names(obj)) {".to_string());
-    lines.push("      method <- obj[[method_name]]".to_string());
-    lines.push("      if (is.function(method)) {".to_string());
-    lines.push("        if (isTRUE(attr(method, \".__mx_instance__\"))) {".to_string());
-    lines.push("          local({".to_string());
-    lines.push("            m <- method".to_string());
-    lines.push("            bound[[method_name]] <<- function(...) m(self, ...)".to_string());
-    lines.push("          })".to_string());
-    lines.push("        } else {".to_string());
-    lines.push("          bound[[method_name]] <- method".to_string());
-    lines.push("        }".to_string());
-    lines.push("      }".to_string());
-    lines.push("    }".to_string());
-    lines.push("    bound".to_string());
-    lines.push("  } else if (is.null(obj)) {".to_string());
-    lines.push("    # Not found at top level -- search trait namespace environments".to_string());
-    lines.push(format!("    for (ns_name in names({})) {{", class_name));
-    lines.push(format!("      ns <- {}[[ns_name]]", class_name));
-    lines.push(
-        "      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {".to_string(),
-    );
-    lines.push("        method <- ns[[name]]".to_string());
-    lines.push(
-        "        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {"
-            .to_string(),
-    );
-    lines.push("          # Instance method -- bind self as first arg".to_string());
-    lines.push("          m <- method".to_string());
-    lines.push("          s <- self".to_string());
-    lines.push("          return(function(...) m(s, ...))".to_string());
-    lines.push("        } else if (is.function(method)) {".to_string());
-    lines.push("          return(method)".to_string());
-    lines.push("        }".to_string());
-    lines.push("      }".to_string());
-    lines.push("    }".to_string());
+    let method_lookup = format!(".miniextendr_env_method(self, name, {class_name})");
     if fields {
+        lines.push(format!("  obj <- {method_lookup}"));
+        lines.push("  if (is.null(obj)) {".to_string());
         lines.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
+        lines.push("  }".to_string());
+        lines.push("  obj".to_string());
+    } else {
+        lines.push(format!("  {method_lookup}"));
     }
-    lines.push("    NULL".to_string());
-    lines.push("  } else {".to_string());
-    lines.push("    environment(obj) <- environment()".to_string());
-    lines.push("    obj".to_string());
-    lines.push("  }".to_string());
     lines.push("}".to_string());
     if class_has_no_rd {
         lines.push("#' @noRd".to_string());

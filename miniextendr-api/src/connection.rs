@@ -1535,8 +1535,23 @@ impl std::io::Write for RStderr {
 /// (`/dev/null` on Unix, `NUL` on Windows).
 ///
 /// Writes are discarded but still routed through R's connection machinery,
-/// so active `sink()` redirections see the writes. The connection is opened
-/// automatically on construction and auto-closes on `Drop`.
+/// so active `sink()` redirections see the writes.
+///
+/// # Ownership
+///
+/// A handle closes only the connection it opened, like std's `OwnedFd`
+/// versus `BorrowedFd`:
+///
+/// - **Owned**: [`RNullConnection::new`] (and `Default`) opens the null
+///   device. Dropping the handle closes that connection.
+/// - **Borrowed**: a `#[miniextendr]` parameter of this type accepts any
+///   open, write-capable R connection (`file("out.txt", "w")`, a
+///   `textConnection`, ...). The R caller owns that connection. Dropping the
+///   handle leaves it open, so the caller can keep writing to it and closes
+///   it when they're done.
+///
+/// Either way the handle keeps the connection object on R's precious list
+/// while it lives, and dropping it releases that pin.
 ///
 /// # Examples
 ///
@@ -1546,23 +1561,37 @@ impl std::io::Write for RStderr {
 ///
 /// let mut null = RNullConnection::new();
 /// writeln!(null, "discarded").unwrap();
-/// // closes automatically when dropped
+/// // closes automatically when dropped: this handle opened it
+/// ```
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn log_to(con: RNullConnection, text: &str) {
+///     let mut con = con;
+///     writeln!(con, "{text}").unwrap();
+///     // `con` is borrowed from the R caller: it stays open after this returns
+/// }
 /// ```
 pub struct RNullConnection {
-    /// The protected SEXP for `file(nullfile(), open = "w")`.
+    /// The R connection object: `file(nullfile(), open = "w")` for an owned
+    /// handle, the caller's connection for a borrowed one.
     ///
     /// Stored on the precious list so R's GC cannot collect it while Rust
-    /// holds the struct.
+    /// holds the struct. `Drop` (or `IntoR`) releases it exactly once.
     sexp: SEXP,
-    /// Whether the connection is still open (i.e., `close()` hasn't been
+    /// Whether this handle may still write (i.e., `close()` hasn't been
     /// called yet). Guards the `Drop` impl against double-close.
     open: bool,
+    /// Whether this handle opened the connection ([`RNullConnection::new`])
+    /// and so closes it. `false` for a connection borrowed from R.
+    owned: bool,
 }
 
 impl std::fmt::Debug for RNullConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RNullConnection")
             .field("open", &self.open)
+            .field("owned", &self.owned)
             .finish_non_exhaustive()
     }
 }
@@ -1603,7 +1632,11 @@ impl RNullConnection {
             // Pin on the precious list so GC cannot collect it while we hold it.
             R_PreserveObject(sexp);
 
-            RNullConnection { sexp, open: true }
+            RNullConnection {
+                sexp,
+                open: true,
+                owned: true,
+            }
         }
     }
 
@@ -1613,43 +1646,54 @@ impl RNullConnection {
         self.sexp
     }
 
-    /// Construct from a SEXP that has **already been added to R's precious list**.
+    /// Borrow a connection the R caller owns, from a SEXP that has
+    /// **already been added to R's precious list**.
     ///
     /// Used by `TryFromSexp for RNullConnection` which calls
     /// `R_PreserveObject` before handing the SEXP to this constructor.
-    /// The `Drop` impl will call `R_ReleaseObject` exactly once.
+    /// The handle never closes the R connection: `Drop` only calls
+    /// `R_ReleaseObject`, exactly once.
     ///
     /// # Safety
     ///
     /// - `sexp` must be a valid, open R connection SEXP.
     /// - Caller must have called `R_PreserveObject(sexp)` before this call.
     pub(crate) unsafe fn from_preserved_sexp(sexp: SEXP) -> Self {
-        RNullConnection { sexp, open: true }
+        RNullConnection {
+            sexp,
+            open: true,
+            owned: false,
+        }
     }
 
-    /// Close the connection explicitly.
+    /// Stop writing through this handle.
     ///
-    /// After calling this, `write` will return an error. The `Drop` impl
-    /// calls this automatically, so explicit calls are optional. A second
-    /// close is a no-op.
+    /// After calling this, `write` returns an error. A second close is a
+    /// no-op, and dropping the handle afterwards closes nothing more.
+    ///
+    /// - On an **owned** handle ([`RNullConnection::new`]) this closes the
+    ///   null-device connection now instead of at `Drop`.
+    /// - On a **borrowed** handle (a connection passed in from R) the R
+    ///   connection stays open: the R caller owns it and closes it. Only this
+    ///   handle stops writing.
     pub fn close(&mut self) {
         if self.open {
             self.open = false;
-            unsafe { self.close_inner() };
+            if self.owned {
+                unsafe { close_r_connection(self.sexp) };
+            }
         }
     }
+}
 
-    // Inner: call R's close() on the SEXP and release from precious list.
-    unsafe fn close_inner(&mut self) {
-        use crate::expression::RCall;
-        use crate::sys::R_ReleaseObject;
-        unsafe {
-            // Ignore close() errors — we still need to release the precious-list
-            // reference (otherwise the SEXP leaks).
-            let _ = RCall::new("close").arg(self.sexp).eval_base();
-            R_ReleaseObject(self.sexp);
-        }
-    }
+// Evaluate R's `close(con)` on a connection an owned handle opened. An R error
+// is ignored: there is nothing the caller could do about a failed close.
+//
+// # Safety
+// Must be called from the R main thread, with `sexp` rooted.
+unsafe fn close_r_connection(sexp: SEXP) {
+    use crate::expression::RCall;
+    let _ = unsafe { RCall::new("close").arg(sexp).eval_base() };
 }
 
 impl Default for RNullConnection {
@@ -1676,12 +1720,17 @@ impl std::io::Write for RNullConnection {
 
 impl Drop for RNullConnection {
     fn drop(&mut self) {
-        if self.open {
-            self.open = false;
-            crate::externalptr::drop_catching_panic(|| {
-                unsafe { self.close_inner() };
-            });
-        }
+        // Close only a connection this handle opened and hasn't closed yet; a
+        // borrowed one belongs to the R caller. Release the pin either way.
+        let close = self.open && self.owned;
+        self.open = false;
+        let sexp = self.sexp;
+        crate::externalptr::drop_catching_panic(|| unsafe {
+            if close {
+                close_r_connection(sexp);
+            }
+            crate::sys::R_ReleaseObject(sexp);
+        });
     }
 }
 

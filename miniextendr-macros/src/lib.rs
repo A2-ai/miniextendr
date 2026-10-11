@@ -404,19 +404,18 @@ fn validate_extern_signature(
 /// at the start of a function body when `#[miniextendr(dots =
 /// typed_list!(...))]` is used.
 ///
-/// Uses `unwrap_or_else(|e| panic!("...: {e}"))` rather than
-/// `Result::expect`, which formats the error with `Debug` instead of
-/// `Display` — for `TypedListError` that leaks PascalCase enum-variant names
-/// (`Missing { name: "x" }`) into the R-visible message instead of the
-/// human-phrased text (`missing required field: "x"`) that the direct
-/// `typed_list!` path already produces via `Display`. See audit A8.
+/// Raises through `arg_error!` so validation keeps the argument-condition
+/// kind, the R parameter name (`...`), and the crate's configured classes.
+/// Display formatting preserves TypedListError's human-readable diagnostics.
 pub(crate) fn build_dots_validation_stmt(
     dots_param: &syn::Ident,
     spec_tokens: &proc_macro2::TokenStream,
 ) -> syn::Stmt {
     syn::parse_quote! {
         let dots_typed = #dots_param.typed(#spec_tokens)
-            .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+            .unwrap_or_else(|e| ::miniextendr_api::arg_error!(
+                param = "...", "dots validation failed: {e}"
+            ));
     }
 }
 
@@ -1708,7 +1707,7 @@ pub fn miniextendr(
     }
 
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
-    let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
+    let has_export_tag = crate::roxygen::has_export_tag(&roxygen_tags);
     let has_internal_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "keywords internal");
     // `@source` provenance is opt-in per crate (#1552); the `# Generated from
     // Rust fn … (file:line:col)` comment below stays the navigation pointer.
@@ -2419,10 +2418,12 @@ pub fn r_ffi_checked(
 /// use miniextendr_api::RNativeType;
 ///
 /// // Tuple struct (most common)
+/// #[repr(transparent)]
 /// #[derive(Clone, Copy, RNativeType)]
 /// struct UserId(i32);
 ///
 /// // Named single-field struct
+/// #[repr(transparent)]
 /// #[derive(Clone, Copy, RNativeType)]
 /// struct Temperature { celsius: f64 }
 /// ```
@@ -2457,6 +2458,7 @@ pub fn r_ffi_checked(
 /// # Requirements
 ///
 /// - Must be a newtype struct (exactly one field, tuple or named)
+/// - Must use `#[repr(transparent)]` so native R buffers have the same layout
 /// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
 /// - Should also derive `Copy` (required by `RNativeType: Copy`)
 #[proc_macro_derive(RNativeType)]
@@ -2495,6 +2497,27 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 .into();
         }
     };
+
+    // RNativeType exposes slices of Self over the inner type's R allocation.
+    // A one-field Rust struct alone does not guarantee the required layout.
+    let transparent = input
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("repr"))
+        .any(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|reprs| reprs.iter().any(|repr| repr.path().is_ident("transparent")))
+        });
+    if !transparent {
+        return syn::Error::new_spanned(
+            name,
+            "#[derive(RNativeType)] requires #[repr(transparent)] for native R buffer access",
+        )
+        .into_compile_error()
+        .into();
+    }
 
     let expanded = quote::quote! {
         impl #impl_generics ::miniextendr_api::RNativeType for #name #ty_generics #where_clause {
@@ -2853,6 +2876,7 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 /// # Example
 ///
 /// ```ignore
+/// #[repr(transparent)]
 /// #[derive(Copy, Clone, RNativeType, PreferRNativeType)]
 /// struct Meters(f64);
 /// // IntoR produces a numeric scalar, not an ExternalPtr
@@ -3265,7 +3289,9 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// `name: ...` / `name: &Dots` parameter):
 /// ```ignore
 /// let dots_typed = __miniextendr_dots.typed(typed_list!(...))
-///     .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+///     .unwrap_or_else(|e| miniextendr_api::arg_error!(
+///         param = "...", "dots validation failed: {e}"
+///     ));
 /// ```
 ///
 /// See the [`#[miniextendr]`](macro@miniextendr) attribute documentation for more details.
@@ -3612,23 +3638,38 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         pub unsafe extern "C-unwind" fn #fn_name(
             dll: *mut ::miniextendr_api::sys::DllInfo,
         ) {
-            // wasm32: install the pre-generated runtime tables before
-            // package_init runs. linkme didn't gather anything (the slices
-            // are OnceLock-backed on wasm32), so register_routines /
-            // universal_query would otherwise see empty slices, and the
-            // raising guards no crate conversion classes (#1768).
-            #[cfg(target_arch = "wasm32")]
-            ::miniextendr_api::registry::install_wasm_runtime_slices(
-                __miniextendr_wasm_registry::MX_CALL_DEFS_WASM,
-                __miniextendr_wasm_registry::MX_ALTREP_REGISTRATIONS_WASM,
-                __miniextendr_wasm_registry::MX_TRAIT_DISPATCH_WASM,
-                __miniextendr_wasm_registry::MX_CONVERSION_ERROR_CLASS_WASM,
-            );
+            let __miniextendr_init_result = ::std::panic::catch_unwind(
+                ::std::panic::AssertUnwindSafe(|| {
+                    // wasm32: install the pre-generated runtime tables before
+                    // package_init runs. linkme didn't gather anything (the slices
+                    // are OnceLock-backed on wasm32), so register_routines /
+                    // universal_query would otherwise see empty slices, and the
+                    // raising guards no crate conversion classes (#1768).
+                    #[cfg(target_arch = "wasm32")]
+                    ::miniextendr_api::registry::install_wasm_runtime_slices(
+                        __miniextendr_wasm_registry::MX_CALL_DEFS_WASM,
+                        __miniextendr_wasm_registry::MX_ALTREP_REGISTRATIONS_WASM,
+                        __miniextendr_wasm_registry::MX_TRAIT_DISPATCH_WASM,
+                        __miniextendr_wasm_registry::MX_CONVERSION_ERROR_CLASS_WASM,
+                    );
 
-            unsafe {
-                // SAFETY: byte literal is a valid NUL-terminated string produced by the macro.
-                let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
-                ::miniextendr_api::init::package_init(dll, pkg_name);
+                    unsafe {
+                        // SAFETY: byte literal is a valid NUL-terminated string produced by the macro.
+                        let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
+                        ::miniextendr_api::init::package_init(dll, pkg_name);
+                    }
+                }),
+            );
+            if let ::core::result::Result::Err(payload) = __miniextendr_init_result {
+                // package_init normally raises through its R guard. This is
+                // the last-resort boundary for runtime/guard initialization:
+                // no Rust-owned message or payload may survive Rf_error.
+                ::core::mem::drop(payload);
+                unsafe {
+                    ::miniextendr_api::sys::Rf_error_unchecked(
+                        c"miniextendr package initialization panicked before completing".as_ptr(),
+                    );
+                }
             }
         }
 

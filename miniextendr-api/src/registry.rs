@@ -51,7 +51,7 @@ pub static MX_R_WRAPPERS: [RWrapperEntry];
 /// module-level contract, not encoded in the type (same convention as the
 /// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`). The `symbol` string is
 /// consumed by the host-time WASM snapshot writer to emit
-/// `extern "C" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
+/// `extern "C-unwind" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_ALTREP_REGISTRATIONS: [AltrepRegistration];
@@ -374,13 +374,14 @@ unsafe impl Sync for ClassNameEntry {}
 /// internal one for a type whose class has field syntax
 /// ([`ClassNameEntry::field_syntax`]): the class's `$` / `[[` are its R
 /// interface to the fields there, and the setters would write in place
-/// through every copy (#1900). Written with the sidecar fragments.
+/// through every copy (#1900). The internal rendering also carries the field
+/// helpers that those methods call. Written with the sidecar fragments.
 pub struct SidecarAccessorsEntry {
     /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
     pub rust_type: &'static str,
     /// The page and the exported accessors.
     pub exported: &'static str,
-    /// The same accessors with `@noRd` and no export.
+    /// The same accessors with `@noRd` and no export, plus field-syntax helpers.
     pub internal: &'static str,
     /// Source file of the derive (`file!()`), for the fragment order.
     pub source_file: &'static str,
@@ -481,10 +482,10 @@ unsafe impl Send for TraitDispatchEntry {}
 /// See [`MX_ALTREP_REGISTRATIONS`] for context.
 #[repr(C)]
 pub struct AltrepRegistration {
-    /// Registration function called once at `R_init_*`.
-    pub register: extern "C" fn(),
+    /// Registration function called inside the package-init unwind boundary.
+    pub register: extern "C-unwind" fn(),
     /// Symbol name of `register` (e.g. `"__mx_altrep_reg_MyType"`). Consumed by
-    /// the host-time WASM snapshot writer to emit `extern "C" { fn <symbol>(); }`
+    /// the host-time WASM snapshot writer to emit `extern "C-unwind" { fn <symbol>(); }`
     /// declarations in `wasm_registry.rs`.
     pub symbol: &'static str,
 }
@@ -531,7 +532,7 @@ pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag)
 /// Must be called from R's main thread during `R_init_*`.
 /// `dll` must be a valid pointer provided by R.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
+pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // 1. Register ALTREP classes (skip during wrapper generation)
     //
     // During wrapper-gen, the installed shared object is loaded temporarily via
@@ -1820,13 +1821,13 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 /// A generated S3 method passes `environment()` as its `.call` and as the
 /// raise fallback (`CallAttribution::Generic` in the macros), so the success
 /// path pays no more than for `sys.call()`, and the frame becomes a call only
-/// when a condition is raised. Three consumers: [`write_r_wrappers_to_file`]
-/// binds the expression under that name in the preamble ([`FRAME_CALL_HELPER`])
-/// for the R-side checks (`.miniextendr_arg_error`) and for a method with a
-/// `Call` parameter, which resolves it up front; [`RAISE_CONDITION_HELPER_FN`]
-/// inlines it, because the copy of that helper which signals deferred
-/// conditions runs in the base namespace, where the preamble's binding is not
-/// visible.
+/// when a condition is raised. [`write_r_wrappers_to_file`] binds the
+/// expression under that name in the preamble ([`FRAME_CALL_HELPER`]) for the
+/// package's raise helper, the R-side checks (`.miniextendr_arg_error`) and a
+/// method with a `Call` parameter, which resolves it up front;
+/// [`RAISE_CONDITION_HELPER_FN`] inlines it, because that copy of the raise
+/// helper signals deferred conditions from the base namespace, where the
+/// preamble's binding is not visible.
 ///
 /// The frame is looked up among the live frames (`sys.frames()`), newest
 /// first, so the helper works from the method itself, from the raise helper
@@ -2025,27 +2026,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 "#
 );
 
-/// R source of the `.miniextendr_raise_condition` helper as a bare
-/// `function(.val, .call_default)` expression.
-///
-/// Two consumers: [`write_r_wrappers_to_file`] binds it under that name at the
-/// top of the generated wrappers file, and
-/// [`crate::deferred_condition`] evaluates it once (in the base namespace) to
-/// signal queued conditions from Rust without depending on any package
-/// namespace. Keeping one source guarantees identical class layering and
-/// `data` splicing on both paths.
-///
-/// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
-/// re-raises the tagged Rust condition value as the matching R condition:
-/// `stop()` for the error kinds, `warning()` / `message()` /
-/// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
-/// The marker class it replaces is the one `arg_error!` writes (#1740). A
-/// frame in the call slot or as the default (a generated S3 method passes
-/// `environment()`, #1851) is resolved to the generic's call with an inline
-/// copy of [`frame_call_helper_fn!`], since the base-namespace copy of this
-/// helper cannot see the preamble's `.miniextendr_frame_call`.
-pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
-    r#"function(.val, .call_default) {
+/// One condition-transport body for the package and standalone Rust helpers.
+/// The resolver is a package binding or a self-contained function expression.
+macro_rules! raise_condition_helper_fn {
+    ($resolver:expr) => {
+        concat!(
+            r#"function(.val, .call_default) {
   .msg <- .val$error
   # `.val$call` is the call the Rust side captured, NULL to use the wrapper's
   # call, or FALSE for a condition raised without one (`call = none`, R's
@@ -2054,11 +2040,10 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
   # A generated S3 method passes its frame instead of a call, so that the
   # generic's call (`summary(x)` for `summary.cls(x)`, the assignment for a
   # replacement method) is built only now, when a condition is raised. The
-  # resolver is `.miniextendr_frame_call`, inlined: the copy of this helper
-  # that signals deferred conditions runs in the base namespace.
-  if (is.environment(.call)) .call <- ("#,
-    frame_call_helper_fn!(),
-    r#")(.call)
+  # resolver recovers the generic's call from that method frame.
+  if (is.environment(.call)) .call <- "#,
+            $resolver,
+            r#"(.call)
   .class <- .val$class
   # `arg_error!` writes the class ".miniextendr_conversion_error_class"
   # where the crate's `conversion_error_class` belongs: only the generated R
@@ -2105,7 +2090,82 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
   )
   invisible(NULL)
 }"#
-);
+        )
+    };
+}
+
+/// R source of the `.miniextendr_raise_condition` helper as a bare
+/// `function(.val, .call_default)` expression.
+///
+/// [`crate::deferred_condition`] evaluates this self-contained expression
+/// once (in the base namespace) to signal queued conditions from Rust without
+/// depending on any package namespace. [`write_r_wrappers_to_file`] renders
+/// the same template with the preamble's `.miniextendr_frame_call` binding as
+/// the resolver instead of a second inline copy. Keeping one source
+/// guarantees identical class layering and `data` splicing.
+///
+/// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
+/// re-raises the tagged Rust condition value as the matching R condition:
+/// `stop()` for the error kinds, `warning()` / `message()` /
+/// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
+/// The marker class it replaces is the one `arg_error!` writes (#1740). A
+/// frame in the call slot or as the default (a generated S3 method passes
+/// `environment()`, #1851) is resolved to the generic's call with an inline
+/// copy of [`frame_call_helper_fn!`], since the base-namespace copy of this
+/// helper cannot see the preamble's `.miniextendr_frame_call`.
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str =
+    raise_condition_helper_fn!(concat!("(", frame_call_helper_fn!(), ")"));
+
+/// The package preamble already binds the resolver; reuse it there.
+#[cfg(not(target_arch = "wasm32"))]
+const WRAPPER_RAISE_CONDITION_HELPER_FN: &str =
+    raise_condition_helper_fn!(".miniextendr_frame_call");
+
+/// Shared method lookup for environment classes. Each returned closure gets
+/// its own receiver-binding frame; native symbols resolve through this helper's
+/// package namespace. Field lookup and its condition call stay in the S3 method.
+#[cfg(not(target_arch = "wasm32"))]
+const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class's methods to one receiver.
+# The class's `$` / `[[` methods handle fields before calling this lookup.
+.miniextendr_env_method <- function(self, name, methods) {
+  obj <- methods[[name]]
+  if (is.environment(obj)) {
+    bound <- new.env(parent = emptyenv())
+    for (method_name in names(obj)) {
+      method <- obj[[method_name]]
+      if (is.function(method)) {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
+      }
+    }
+    bound
+  } else if (is.null(obj)) {
+    for (ns_name in names(methods)) {
+      ns <- methods[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
+  } else {
+    environment(obj) <- environment()
+    obj
+  }
+}
+"#;
 
 /// The `.miniextendr_conversion_error_class` binding that closes the wrappers
 /// preamble: the classes `.miniextendr_arg_error` puts on every R-side
@@ -2178,7 +2238,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // header (marker line + version/fingerprint line) once the body is final.
     let mut content = String::from(WRAPPERS_PREAMBLE_HEADER);
     content.push_str(".miniextendr_raise_condition <- ");
-    content.push_str(RAISE_CONDITION_HELPER_FN);
+    content.push_str(WRAPPER_RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
     content.push_str(CALLER_CALL_HELPER);
     content.push('\n');
@@ -2186,6 +2246,13 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push('\n');
     content.push_str(FIELD_AT_HELPER);
     content.push('\n');
+    if MX_CLASS_NAMES
+        .iter()
+        .any(|class| class.class_system == "env")
+    {
+        content.push_str(ENV_METHOD_HELPER);
+        content.push('\n');
+    }
     content.push_str(ARG_CHECK_HELPERS);
     content.push('\n');
     content.push_str(&conversion_error_class_binding());
@@ -4132,9 +4199,14 @@ mod tests {
         for (name, text) in [
             ("WRAPPERS_PREAMBLE_HEADER", WRAPPERS_PREAMBLE_HEADER),
             ("RAISE_CONDITION_HELPER_FN", RAISE_CONDITION_HELPER_FN),
+            (
+                "WRAPPER_RAISE_CONDITION_HELPER_FN",
+                WRAPPER_RAISE_CONDITION_HELPER_FN,
+            ),
             ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
             ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
             ("FIELD_AT_HELPER", FIELD_AT_HELPER),
+            ("ENV_METHOD_HELPER", ENV_METHOD_HELPER),
             ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
             ("the conversion_error_class binding", binding.as_str()),
         ] {
@@ -4191,6 +4263,11 @@ mod tests {
         assert!(RAISE_CONDITION_HELPER_FN.contains(&format!(
             "if (is.environment(.call)) .call <- ({fn_text})(.call)\n"
         )));
+        assert!(
+            WRAPPER_RAISE_CONDITION_HELPER_FN
+                .contains("if (is.environment(.call)) .call <- .miniextendr_frame_call(.call)\n")
+        );
+        assert!(!WRAPPER_RAISE_CONDITION_HELPER_FN.contains(fn_text));
         // No comment inside the shared text: it is inlined into the raise
         // helper, whose own comments sit outside it.
         assert!(!fn_text.contains('#'));

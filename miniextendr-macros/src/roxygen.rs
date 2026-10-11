@@ -549,6 +549,16 @@ pub(crate) fn has_roxygen_tag(tags: &[String], tag: &str) -> bool {
     }
 }
 
+/// Whether the author registers the function themselves, with `@export` or
+/// `@exportS3Method` (bare or `pkg::generic`), so a public standalone fn gets
+/// no automatic `@export`. Next to a delayed `@exportS3Method pkg::generic`
+/// a bare `@export` makes roxygen2 write an eager registration as well, and
+/// the package fails to load when `pkg` is only in Suggests (#1944).
+pub(crate) fn has_export_tag(tags: &[String]) -> bool {
+    let names = tag_names(tags);
+    names.contains("export") || names.contains("exportS3Method")
+}
+
 /// The topic named by the tag list's own `@rdname` tag, if it has one.
 ///
 /// Class generators default every method onto the class page (`@rdname

@@ -1898,7 +1898,7 @@ fn err_parts_mode_expr_selects_the_serde_path() {
 }
 
 #[test]
-fn dots_validation_stmt_formats_error_with_display_not_debug() {
+fn dots_validation_stmt_raises_argument_condition_with_display_message() {
     // Audit A8: `#[miniextendr(dots = typed_list!(...))]` used to inject
     // `.expect("dots validation failed")`, which Debug-formats the
     // `TypedListError` and leaks PascalCase enum-variant names (e.g.
@@ -1917,7 +1917,9 @@ fn dots_validation_stmt_formats_error_with_display_not_debug() {
     let s = normalize_tokens(quote::quote! { #stmt });
 
     assert!(s.contains("unwrap_or_else"));
-    assert!(s.contains("panic!(\"dotsvalidationfailed:{e}\")"));
+    assert!(
+        s.contains("::miniextendr_api::arg_error!(param=\"...\",\"dotsvalidationfailed:{e}\")")
+    );
     assert!(!s.contains(".expect("));
 }
 
