@@ -250,7 +250,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for SparseIterIntData<I> {
 /// Sparse iterator-backed real (f64) vector data adaptor.
 ///
 /// Uses `Iterator::nth()` to skip directly to requested indices.
-/// Only accessed elements are cached; skipped elements return `NaN`.
+/// Only accessed elements are cached; skipped elements return `NA_real_`.
 pub struct SparseIterRealData<I: Iterator<Item = f64>> {
     state: SparseIterState<I, f64>,
 }
@@ -281,7 +281,9 @@ impl<I: Iterator<Item = f64>> AltrepLen for SparseIterRealData<I> {
 
 impl<I: Iterator<Item = f64>> AltRealData for SparseIterRealData<I> {
     fn elt(&self, i: usize) -> f64 {
-        self.state.get_element(i).unwrap_or(f64::NAN)
+        self.state
+            .get_element(i)
+            .unwrap_or(crate::altrep_traits::NA_REAL)
     }
 
     fn as_slice(&self) -> Option<&[f64]> {
@@ -424,10 +426,9 @@ where
     I: Iterator<Item = crate::Rcomplex>,
 {
     fn elt(&self, i: usize) -> crate::Rcomplex {
-        self.state.get_element(i).unwrap_or(crate::Rcomplex {
-            r: f64::NAN,
-            i: f64::NAN,
-        })
+        self.state
+            .get_element(i)
+            .unwrap_or(<crate::Rcomplex as crate::RNativeType>::R_NA)
     }
 
     fn as_slice(&self) -> Option<&[crate::Rcomplex]> {

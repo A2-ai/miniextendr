@@ -1,10 +1,10 @@
-use crate::Rcomplex;
 use crate::altrep_data::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
     AltrepLen, IterComplexData, IterIntCoerceData, IterIntData, IterIntFromBoolData,
     IterLogicalData, IterRawData, IterRealCoerceData, IterRealData, IterStringData, Logical,
     Sortedness,
 };
+use crate::{IsNA, Rcomplex};
 
 #[test]
 pub(crate) fn test_logical_to_r_int() {
@@ -486,15 +486,15 @@ pub(crate) fn test_iter_coerce_get_region() {
 
 #[test]
 pub(crate) fn test_iter_real_coerce_option() {
-    // Iterator of Option<f64> coerced to f64 with None → NA (NaN)
+    // Iterator of Option<f64> coerced to f64 with None → NA_real_
     let iter = (0..5).map(|x| if x % 2 == 0 { Some(x as f64) } else { None });
     let data = IterRealCoerceData::from_iter(iter, 5);
 
     assert_eq!(AltrepLen::len(&data), 5);
     assert_eq!(AltRealData::elt(&data, 0), 0.0); // Some(0.0)
-    assert!(AltRealData::elt(&data, 1).is_nan()); // None → NaN
+    assert!(AltRealData::elt(&data, 1).is_na()); // None → NA_real_
     assert_eq!(AltRealData::elt(&data, 2), 2.0); // Some(2.0)
-    assert!(AltRealData::elt(&data, 3).is_nan()); // None → NaN
+    assert!(AltRealData::elt(&data, 3).is_na()); // None → NA_real_
     assert_eq!(AltRealData::elt(&data, 4), 4.0); // Some(4.0)
 }
 

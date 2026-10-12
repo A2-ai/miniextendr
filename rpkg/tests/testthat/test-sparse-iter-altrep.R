@@ -92,9 +92,9 @@ test_that("sparse real iterator skips elements correctly", {
   # Access element 50 first (value = 0 + 49 * 0.5 = 24.5)
   expect_equal(x[50], 24.5)
 
-  # Elements 1-49 were skipped and return an ordinary NaN, not NA_real_
-  expect_true(is.nan(x[1]))
-  expect_true(is.nan(x[25]))
+  # Elements 1-49 were skipped and return NA_real_, not an ordinary NaN
+  expect_true(is.na(x[1]) && !is.nan(x[1]))
+  expect_true(is.na(x[25]) && !is.nan(x[25]))
 
   # Element 50 was cached
   expect_equal(x[50], 24.5)
