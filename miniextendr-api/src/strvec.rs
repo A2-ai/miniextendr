@@ -7,25 +7,30 @@ use std::marker::PhantomData;
 
 use crate::SEXPTYPE::STRSXP;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
-use crate::gc_protect::{OwnedProtect, ProtectScope, Protected};
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::{SEXP, SexpExt};
+use crate::{Preserved, SEXP, SexpExt};
 
 /// Borrowed view over an R character vector (`STRSXP`).
 ///
-/// The `'a` lifetime leashes every `&str` this view hands out to the window in
-/// which the underlying `STRSXP` stays GC-reachable. At a `#[miniextendr]`
-/// boundary, write `StrVec<'_>`: R protects `.Call` arguments for the call's
-/// duration, so the elided lifetime is bounded by the call and the borrows
-/// cannot escape into an `ExternalPtr`, a global, or another thread — doing so
-/// is a compile error (the `&str` would have to outlive `'a`). Callers that own
-/// the rooting obligation reach for the `unsafe` `*_static` family instead.
+/// Strings returned by the view carry `'a`. Constructors must tie that lifetime
+/// to a root that keeps the source reachable. [`ProtectedStrVec::as_strvec`]
+/// does so through a borrow of its owner.
+///
+/// [`try_from_root`](Self::try_from_root) borrows a lifetime-carrying root.
+/// Generated wrappers use this path for `StrVec<'_>` parameters. Raw
+/// `TryFromSexp` is unavailable: a copyable SEXP cannot constrain the view's
+/// lifetime. Use [`ProtectedStrVec`] when the result must own its root.
 ///
 /// `Copy` and cheap (a single `SEXP`); covariant in `'a`.
 #[derive(Clone, Copy, Debug)]
 pub struct StrVec<'a>(SEXP, PhantomData<&'a str>);
 
 impl<'a> StrVec<'a> {
+    /// Strings do not retain a pointer to a native numeric vector.
+    #[doc(hidden)]
+    pub const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = None;
+
     /// Wrap an existing `STRSXP` without additional checks.
     ///
     /// # Safety
@@ -496,11 +501,20 @@ impl IntoR for StrVec<'_> {
     }
 }
 
-impl<'a> TryFromSexp for StrVec<'a> {
-    type Error = SexpError;
-    const CHARACTER_ONLY: bool = true;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+impl<'a> StrVec<'a> {
+    /// Borrow a character vector for the lifetime of its root.
+    ///
+    /// The result cannot acquire a lifetime longer than the supplied root.
+    /// Raw `TryFromSexp` is intentionally unavailable for this borrowed view.
+    ///
+    /// ```compile_fail
+    /// use miniextendr_api::{Root, StrVec};
+    /// fn escape<'a>(root: Root<'a>) -> StrVec<'static> {
+    ///     StrVec::try_from_root(root).unwrap()
+    /// }
+    /// ```
+    pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpError> {
+        let sexp = root.get();
         let actual = sexp.type_of();
         if actual != STRSXP {
             return Err(SexpTypeError {
@@ -509,6 +523,7 @@ impl<'a> TryFromSexp for StrVec<'a> {
             }
             .into());
         }
+        // The root, not an unconstrained return annotation, fixes `'a`.
         Ok(StrVec(sexp, PhantomData))
     }
 }
@@ -519,11 +534,11 @@ impl<'a> TryFromSexp for StrVec<'a> {
 /// GC-protected view over an R character vector (`STRSXP`).
 ///
 /// Unlike [`StrVec`] (which is `Copy` and trusts the caller for GC protection),
-/// `ProtectedStrVec` wraps a [`Protected<'static, StrVec<'static>>`](crate::gc_protect::Protected)
-/// that keeps the STRSXP alive — the `'static` on the inner view is sound here
-/// because the protect guard *is* the rooting obligation. All borrowed data
-/// (`&str`, iterators) it hands out has its lifetime tied to `&self`, not
-/// `'static` — preventing use-after-GC bugs at compile time.
+/// `ProtectedStrVec` holds a [`Preserved`] root on the STRSXP for its Rust
+/// lifetime. It can outlive a `.Call` frame and be dropped in any order
+/// relative to other handles.
+/// Borrowed strings and iterators are tied to `&self`. It is `!Send + !Sync`:
+/// reading and releasing the R object must happen on R's main thread.
 ///
 /// # When to use
 ///
@@ -544,16 +559,20 @@ impl<'a> TryFromSexp for StrVec<'a> {
 /// }
 /// ```
 pub struct ProtectedStrVec {
-    protected: Protected<'static, StrVec<'static>>,
+    sexp: SEXP,
+    /// `None` for [`from_sexp_trusted`](Self::from_sexp_trusted), whose caller
+    /// roots `sexp`. The field also makes the handle `!Send + !Sync`.
+    _root: Option<Preserved>,
     len: isize,
 }
 
 impl ProtectedStrVec {
     /// Create a protected view over an STRSXP.
     ///
-    /// Calls `Rf_protect` on the SEXP. Use [`from_sexp_trusted`](Self::from_sexp_trusted)
-    /// when the SEXP is already protected (e.g., `.Call` arguments) to avoid
-    /// double-protecting.
+    /// Roots the SEXP with a [`Preserved`] handle, released on drop,
+    /// independently of R's protection stack. Use
+    /// [`from_sexp_trusted`](Self::from_sexp_trusted) only when another owner
+    /// guarantees reachability for this handle's entire lifetime.
     ///
     /// # Safety
     ///
@@ -561,22 +580,23 @@ impl ProtectedStrVec {
     /// - Must be called from the R main thread.
     #[inline]
     pub unsafe fn new(sexp: SEXP) -> Self {
-        let inner = unsafe { StrVec::from_raw(sexp) };
-        let len = inner.len();
+        // Root before the length read, which can run an ALTREP callback.
+        let root = Preserved::new(sexp);
         Self {
-            protected: unsafe { Protected::new(sexp, inner) },
-            len,
+            sexp,
+            len: sexp.xlength(),
+            _root: Some(root),
         }
     }
 
     /// Create a view without adding GC protection.
     ///
     /// Use this when the SEXP is already protected by R (e.g., a `.Call`
-    /// argument, or in a `ProtectScope`). Avoids the redundant
-    /// `Rf_protect`/`Rf_unprotect` pair.
+    /// argument, or in a `ProtectScope`) for the handle's entire lifetime.
+    /// Avoids an additional preserved root.
     ///
     /// The lifetime-bound `&str` borrows are still enforced — this only
-    /// skips the protect stack push, not the safety guarantees.
+    /// skips acquiring a root; the unsafe caller must supply it.
     ///
     /// # Safety
     ///
@@ -585,11 +605,10 @@ impl ProtectedStrVec {
     /// - Must be called from the R main thread.
     #[inline]
     pub unsafe fn from_sexp_trusted(sexp: SEXP) -> Self {
-        let inner = unsafe { StrVec::from_raw(sexp) };
-        let len = inner.len();
         Self {
-            protected: unsafe { Protected::from_trusted(sexp, inner) },
-            len,
+            sexp,
+            _root: None,
+            len: sexp.xlength(),
         }
     }
 
@@ -610,16 +629,13 @@ impl ProtectedStrVec {
     /// Returns `None` for out-of-bounds or `NA_character_`.
     #[inline]
     pub fn get_str(&self, idx: isize) -> Option<&str> {
-        // charsxp_to_str returns &'static str, but lifetime elision
-        // restricts it to &'_ (tied to &self) — correct: data lives
-        // as long as the Protected guard keeps the STRSXP alive.
-        self.protected.get().get_str(idx)
+        self.as_strvec().get_str(idx)
     }
 
     /// Get the string at index as `Cow<str>` (encoding-safe, lifetime tied to `&self`).
     #[inline]
     pub fn get_cow(&self, idx: isize) -> Option<Cow<'_, str>> {
-        self.protected.get().get_cow(idx)
+        self.as_strvec().get_cow(idx)
     }
 
     /// Iterate over elements as `Option<&str>` (lifetime tied to `&self`).
@@ -645,13 +661,15 @@ impl ProtectedStrVec {
     /// Get the underlying SEXP (still protected by this handle).
     #[inline]
     pub fn as_sexp(&self) -> SEXP {
-        self.protected.get().as_sexp()
+        self.sexp
     }
 
     /// Get the inner `StrVec` view, leashed to `&self` (the protect guard).
     #[inline]
     pub fn as_strvec(&self) -> StrVec<'_> {
-        *self.protected.get()
+        // SAFETY: the owned root (or from_sexp_trusted's caller) keeps sexp
+        // reachable. The returned view cannot outlive this borrow.
+        unsafe { StrVec::from_raw(self.sexp) }
     }
 }
 
@@ -752,9 +770,9 @@ impl TryFromSexp for ProtectedStrVec {
             }
             .into());
         }
-        // Use from_sexp_trusted: TryFromSexp is called from generated .Call
-        // wrappers where R already protects the argument. No need to double-protect.
-        Ok(unsafe { ProtectedStrVec::from_sexp_trusted(sexp) })
+        // A raw conversion has no frame lifetime. Its result must own a root
+        // even when the input happens to be a .Call argument.
+        Ok(unsafe { ProtectedStrVec::new(sexp) })
     }
 }
 

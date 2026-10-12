@@ -1,0 +1,23 @@
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+ --> tests/ui/rooted_view_trait_static_param.rs:9:36
+  |
+9 |     fn keep(&self, strings: StrVec<'static>);
+  |                                    ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_view_trait_static_param.rs:10:35
+   |
+10 |     fn keep_slice(&self, values: &'static [i32]);
+   |                                   ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_view_trait_static_param.rs:25:36
+   |
+25 |     fn keep(&self, strings: StrVec<'static>) {
+   |                                    ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_view_trait_static_param.rs:28:35
+   |
+28 |     fn keep_slice(&self, values: &'static [i32]) {
+   |                                   ^^^^^^^

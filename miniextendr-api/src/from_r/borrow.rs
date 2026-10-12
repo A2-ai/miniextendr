@@ -319,7 +319,11 @@ mod tests {
             NativeBorrow::in_list(list)
         );
         assert_eq!(
-            <std::borrow::Cow<'static, [i32]>>::NATIVE_BORROW,
+            <std::borrow::Cow<'static, [i32]> as TryFromSexp>::NATIVE_BORROW,
+            None
+        );
+        assert_eq!(
+            <std::borrow::Cow<'_, [i32]> as crate::TryFromRoot<'_>>::NATIVE_BORROW,
             <&[i32]>::NATIVE_BORROW
         );
         assert_eq!(

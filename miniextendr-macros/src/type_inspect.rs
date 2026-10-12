@@ -199,6 +199,8 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "RndVec",
     "RndMat",
     "ProtectedStrVec",
+    "StrVec",
+    "RCow",
     "BuiltDataFrame",
     "NamedListBuilder",
     "BuiltList",
@@ -207,13 +209,14 @@ const MAIN_THREAD_BOUND: &[&str] = &[
 
 /// Returns `true` if `ty` is an input type bound to the R main thread.
 ///
-/// Checks only the outermost path segment: main-thread-bound inputs arrive
-/// bare (`x: SEXP`, `v: RDVector<f64>`), never nested inside containers.
+/// Checks rooted borrowing conversions (including character-vector Cow
+/// containers), then the outermost path segment for other framework handles.
 /// Return-type analysis keeps the narrower [`is_sexp_type`] and uses the
 /// recursive [`is_main_thread_bound_return`] for thread selection.
 #[inline]
 pub(crate) fn is_main_thread_bound_input(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
+    is_rooted_view(ty)
+        || matches!(ty, syn::Type::Path(p) if p
         .path
         .segments
         .last()
@@ -295,6 +298,109 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
         .segments
         .last()
         .is_some_and(|seg| seg.ident == "NArgs" && seg.arguments.is_none())
+}
+
+// endregion
+
+// region: borrowed vector views (#1427)
+
+/// Conversions selected from the rooted call argument rather than a raw SEXP.
+/// The Cow vector cases are character vectors, not arbitrary lists of views.
+pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
+    let syn::Type::Path(path) = ty else {
+        return false;
+    };
+    if path.qself.is_some() {
+        return false;
+    }
+    let Some(seg) = path.path.segments.last() else {
+        return false;
+    };
+    if seg.ident == "StrVec" || seg.ident == "RCow" || seg.ident == "Cow" {
+        return true;
+    }
+    seg.ident == "Vec"
+        && first_type_argument(seg).is_some_and(|elem| {
+            let elem = option_inner_type(elem).unwrap_or(elem);
+            matches!(elem, syn::Type::Path(p) if p.qself.is_none() && p.path.segments.last()
+            .is_some_and(|s| s.ident == "Cow"))
+        })
+}
+
+/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Keep worker selection separate: `&str` uses owned storage on the worker,
+/// while mutable/custom references still need their existing conversion path.
+pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
+    let ty = option_inner_type(ty).unwrap_or(ty);
+    let syn::Type::Reference(reference) = ty else {
+        return false;
+    };
+    if reference.mutability.is_some() {
+        return false;
+    }
+    match reference.elem.as_ref() {
+        syn::Type::Slice(_) => true,
+        syn::Type::Path(path) if path.qself.is_none() => {
+            path.path.segments.last().is_some_and(|seg| {
+                seg.arguments.is_none()
+                    && matches!(
+                        seg.ident.to_string().as_str(),
+                        "i32" | "f64" | "u8" | "RLogical" | "Rcomplex" | "str"
+                    )
+            })
+        }
+        _ => false,
+    }
+}
+
+/// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
+/// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
+/// call's argument slot. Returns the statement that binds `ident` with a
+/// `compile_error!` naming the fix, spanned at the lifetime, in place of a
+/// borrow-checker error about a generated temporary. The binding keeps the code
+/// that uses `ident` free of follow-on errors; it does not diverge, so that
+/// code draws no unreachable warning.
+pub(crate) fn static_rooted_view_binding(
+    ident: &syn::Ident,
+    ty: &syn::Type,
+) -> Option<proc_macro2::TokenStream> {
+    let lifetime = static_lifetime(ty)?;
+    Some(quote::quote_spanned! {lifetime.span()=>
+        ::core::compile_error!(
+            "this parameter borrows the call's argument and cannot be `'static`; write `'_` or \
+             elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to \
+             keep the data after the call"
+        );
+        let #ident: #ty = ::core::option::Option::<#ty>::None.unwrap();
+    })
+}
+
+/// The first `'static` lifetime written anywhere in `ty`.
+fn static_lifetime(ty: &syn::Type) -> Option<&syn::Lifetime> {
+    let is_static = |lt: &&syn::Lifetime| lt.ident == "static";
+    match ty {
+        syn::Type::Reference(r) => r
+            .lifetime
+            .as_ref()
+            .filter(is_static)
+            .or_else(|| static_lifetime(&r.elem)),
+        syn::Type::Path(p) => p.path.segments.iter().find_map(|seg| {
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|arg| match arg {
+                syn::GenericArgument::Lifetime(lt) => Some(lt).filter(is_static),
+                syn::GenericArgument::Type(ty) => static_lifetime(ty),
+                _ => None,
+            })
+        }),
+        syn::Type::Slice(s) => static_lifetime(&s.elem),
+        syn::Type::Array(a) => static_lifetime(&a.elem),
+        syn::Type::Paren(p) => static_lifetime(&p.elem),
+        syn::Type::Group(g) => static_lifetime(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().find_map(static_lifetime),
+        _ => None,
+    }
 }
 
 // endregion

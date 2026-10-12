@@ -136,28 +136,28 @@ pub fn test_f64_to_i32(x: f64) -> i32 {
 /// Test getting the length of an i32 slice from R.
 /// @param x Integer vector input.
 #[miniextendr(noexport)]
-pub fn test_i32_slice_len(x: &'static [i32]) -> i32 {
+pub fn test_i32_slice_len(x: &[i32]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of an i32 slice.
 /// @param x Integer vector input.
 #[miniextendr(noexport)]
-pub fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
+pub fn test_i32_slice_sum(x: &[i32]) -> i32 {
     x.iter().sum()
 }
 
 /// Test extracting the first element of an i32 slice (0 if empty).
 /// @param x Integer vector input.
 #[miniextendr(noexport)]
-pub fn test_i32_slice_first(x: &'static [i32]) -> i32 {
+pub fn test_i32_slice_first(x: &[i32]) -> i32 {
     x.first().copied().unwrap_or(0)
 }
 
 /// Test extracting the last element of an i32 slice (0 if empty).
 /// @param x Integer vector input.
 #[miniextendr(noexport)]
-pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
+pub fn test_i32_slice_last(x: &[i32]) -> i32 {
     x.last().copied().unwrap_or(0)
 }
 
@@ -165,21 +165,21 @@ pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
 /// Test getting the length of an f64 slice from R.
 /// @param x Numeric vector input.
 #[miniextendr(noexport)]
-pub fn test_f64_slice_len(x: &'static [f64]) -> i32 {
+pub fn test_f64_slice_len(x: &[f64]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of an f64 slice.
 /// @param x Numeric vector input.
 #[miniextendr(noexport)]
-pub fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
+pub fn test_f64_slice_sum(x: &[f64]) -> f64 {
     x.iter().sum()
 }
 
 /// Test computing the arithmetic mean of an f64 slice (0.0 if empty).
 /// @param x Numeric vector input.
 #[miniextendr(noexport)]
-pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
+pub fn test_f64_slice_mean(x: &[f64]) -> f64 {
     if x.is_empty() {
         0.0
     } else {
@@ -191,14 +191,14 @@ pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
 /// Test getting the length of a raw byte slice.
 /// @param x Raw vector input.
 #[miniextendr(noexport)]
-pub fn test_u8_slice_len(x: &'static [u8]) -> i32 {
+pub fn test_u8_slice_len(x: &[u8]) -> i32 {
     x.len() as i32
 }
 
 /// Test summing elements of a raw byte slice as i32.
 /// @param x Raw vector input.
 #[miniextendr(noexport)]
-pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
+pub fn test_u8_slice_sum(x: &[u8]) -> i32 {
     x.iter().map(|&b| b as i32).sum()
 }
 
@@ -206,16 +206,14 @@ pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
 /// Test getting the length of an RLogical slice.
 /// @param x Logical vector input.
 #[miniextendr(noexport)]
-pub fn test_logical_slice_len(x: &'static [miniextendr_api::RLogical]) -> i32 {
+pub fn test_logical_slice_len(x: &[miniextendr_api::RLogical]) -> i32 {
     x.len() as i32
 }
 
 /// Test whether any element of a logical slice is TRUE.
 /// @param x Logical vector input.
 #[miniextendr(noexport)]
-pub fn test_logical_slice_any_true(
-    x: &'static [miniextendr_api::RLogical],
-) -> miniextendr_api::Rboolean {
+pub fn test_logical_slice_any_true(x: &[miniextendr_api::RLogical]) -> miniextendr_api::Rboolean {
     use miniextendr_api::Rboolean;
     if x.iter().any(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE
@@ -227,9 +225,7 @@ pub fn test_logical_slice_any_true(
 /// Test whether all elements of a logical slice are TRUE.
 /// @param x Logical vector input.
 #[miniextendr(noexport)]
-pub fn test_logical_slice_all_true(
-    x: &'static [miniextendr_api::RLogical],
-) -> miniextendr_api::Rboolean {
+pub fn test_logical_slice_all_true(x: &[miniextendr_api::RLogical]) -> miniextendr_api::Rboolean {
     use miniextendr_api::Rboolean;
     if x.iter().all(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE

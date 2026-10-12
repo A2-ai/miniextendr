@@ -7,7 +7,7 @@
 //!
 //! # The `Cow<[T]>` hazard this replaces
 //!
-//! `Cow<[T]>` is zero-copy on the way *in* — `TryFromSexp` hands back
+//! `Cow<[T]>` is zero-copy on the way *in* through `TryFromRoot`, which returns
 //! `Cow::Borrowed(&[T])` pointing straight at R's vector data. But it cannot be
 //! returned to R zero-copy *safely*. A bare `&[T]` carries no provenance, so a
 //! borrowed **sub-slice** (`&cow[2..5]`) is byte-for-byte indistinguishable from
@@ -22,7 +22,7 @@
 //! # How `RCow` fixes it structurally
 //!
 //! [`RCow::Borrowed`] wraps [`RBorrow`], whose fields are private. The *only*
-//! constructor is [`RCow::try_from_sexp`], which always borrows a whole vector.
+//! constructor is [`RCow::try_from_root`], which always borrows a whole vector.
 //! There is no way to build a borrowed `RCow` over a sub-range (slice via
 //! [`Deref`] to get a plain `&[T]` instead). So a borrowed `RCow` always spans
 //! its entire source vector, and [`IntoR`] simply returns the stored SEXP — no
@@ -32,11 +32,12 @@
 //!
 //! # Lifetime contract
 //!
-//! As with `Cow<[T]>`, a borrowed `RCow` is valid only for the duration of the
-//! enclosing `.Call` (R protects the argument SEXP while Rust runs). Write
-//! `RCow<'_, T>` at a `#[miniextendr]` boundary: the `'a` leashes the borrow to
-//! the call, so sending it to another thread or storing it past the call return
-//! is a *compile error*, not an honor-system pitfall.
+//! A borrowed `RCow` is tied to the lifetime-carrying [`Root`](crate::Root)
+//! passed to `try_from_root`. Generated wrappers borrow that root from the
+//! live `.Call` argument slot. Write `RCow<'_, T>`: a `'static` parameter
+//! would require the call's local root to live forever and is rejected.
+//! Raw `TryFromSexp` is unavailable for `RCow`; callers outside wrappers use
+//! a [`ProtectScope`](crate::ProtectScope) root.
 
 use std::ops::Deref;
 
@@ -47,7 +48,7 @@ use crate::{RNativeType, SEXP};
 /// Borrowed arm of [`RCow`]: a whole-vector view that remembers its source SEXP.
 ///
 /// Fields are private by design — the only constructor is
-/// [`RCow::try_from_sexp`], so a borrowed view can never be a sub-slice. That
+/// [`RCow::try_from_root`], so a borrowed view can never be a sub-slice. That
 /// invariant is what lets [`IntoR`] return the source SEXP zero-copy without the
 /// provenance-free pointer probe that `Cow<[T]>` required (#880).
 pub struct RBorrow<'a, T> {
@@ -163,29 +164,30 @@ impl<T> From<Vec<T>> for RCow<'_, T> {
     }
 }
 
-/// Reads an R vector zero-copy, remembering the source SEXP so it can be handed
-/// straight back by [`IntoR`]. Rejects a mismatched [`SEXPTYPE`](crate::SEXPTYPE)
-/// just like the `&[T]` impl it delegates to.
-///
-/// The impl is generic over `'a` so a borrowed `RCow<'_, T>` argument is leashed
-/// to the enclosing `.Call` (R protects the argument SEXP for the call's
-/// duration). Storing it past the call return — in an `ExternalPtr`, a global,
-/// or another thread — is a compile error, not an honor-system hazard.
-impl<'a, T: RNativeType> TryFromSexp for RCow<'a, T> {
-    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
+impl<'a, T: RNativeType> RCow<'a, T> {
+    /// Native storage retained by a borrowed wrapper argument.
+    #[doc(hidden)]
+    pub const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <&[T] as TryFromSexp>::NATIVE_BORROW;
 
-    type Error = SexpTypeError;
-
+    /// Borrow an entire native vector for the lifetime of its root.
+    ///
+    /// Type checking is the same as for `&[T]`. Retaining the source SEXP
+    /// preserves zero-copy round-trip identity; retaining the root's lifetime
+    /// prevents the borrowed value escaping that root.
+    ///
+    /// ```compile_fail
+    /// use miniextendr_api::{Root, RCow};
+    /// fn escape<'a>(root: Root<'a>) -> RCow<'static, i32> {
+    ///     RCow::try_from_root(root).unwrap()
+    /// }
+    /// ```
     #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // The `&[T]` impl fabricates &'static; covariance narrows it to &'a.
-        let data: &'static [T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(RCow::Borrowed(RBorrow { sexp, data }))
-    }
-
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let data: &'static [T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+    pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpTypeError> {
+        let sexp = root.get();
+        // The root keeps the source reachable for `'a`, which bounds the
+        // slice; the conversion checks the element type.
+        let data: &'a [T] = TryFromSexp::try_from_sexp(sexp)?;
         Ok(RCow::Borrowed(RBorrow { sexp, data }))
     }
 }
@@ -232,7 +234,7 @@ impl<T: RNativeType> IntoR for RCow<'_, T> {
 mod tests {
     use super::*;
 
-    // The borrowed arm's behavior (TryFromSexp / zero-copy IntoR) requires a
+    // The borrowed arm's behavior (try_from_root / zero-copy IntoR) requires a
     // live R session and is exercised by the rpkg `zero_copy_rcow_*` fixtures
     // and the `gc_stress_rcow_roundtrip` gctorture guard. These unit tests cover
     // the R-independent surface (the owned arm and the Cow-like helpers).

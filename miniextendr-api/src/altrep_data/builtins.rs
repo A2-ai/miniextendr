@@ -1235,7 +1235,7 @@ impl_shared_slice_dataptr!(Arc, RLogical, i32);
 
 // region: Built-in implementations for Cow<'static, [T]>
 //
-// Cow<'static, [T]> enables zero-copy borrows from R vectors while retaining
+// Cow<'static, [T]> supports static Rust borrows or owned R conversions, retaining
 // ownership semantics. Borrowed variants expose the underlying R data directly
 // via dataptr; Owned variants behave like Vec<T>. Copy-on-write happens
 // automatically when R requests a writable dataptr on a Borrowed variant.
