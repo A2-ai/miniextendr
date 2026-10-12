@@ -435,6 +435,11 @@ become R errors after Rust destructors run. They do not become EOF or a
 successful short write. The connection can still be closed after an error;
 the framework does not roll back changes already made by the stream.
 
+`warning!()` and `message!()` cannot suspend a callback, so inside one they
+become an R error too. To report a warning or a message, queue it with
+`defer_warning!()` / `defer_message!()`: it is signalled when the callback
+returns.
+
 `open` retains a `FALSE` fallback so the builder tears down failed opens.
 `close` and `destroy` can run during garbage collection, so they suppress
 failures and deferred conditions; `destroy` still drops the Rust owner.

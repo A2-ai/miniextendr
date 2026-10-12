@@ -551,4 +551,50 @@ fn r_refuses_seek_and_truncate_where_the_stream_has_none() {
         RCall::new("close").arg(conn.get()).eval_base().unwrap();
     });
 }
+
+/// Queues a warning on every read; warning!() would end the callback.
+struct DeferringSource;
+impl miniextendr_api::connection::RConnectionImpl for DeferringSource {
+    fn read(&mut self, buf: &mut [u8]) -> usize {
+        miniextendr_api::defer_warning!("deferred from read");
+        buf[0] = 7;
+        1
+    }
+}
+
+#[test]
+fn a_warning_deferred_in_a_callback_reaches_r_handlers() {
+    use miniextendr_api::sys::R_GlobalEnv;
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(RCustomConnection::new().mode("rb").build(DeferringSource));
+        RCall::new("assign")
+            .arg_value("con")
+            .arg(conn.get())
+            .arg(R_GlobalEnv)
+            .eval_base()
+            .unwrap();
+        let seen = OwnedProtect::new(
+            miniextendr_api::r_eval_str_global(
+                r#"local({
+                    seen <- NULL
+                    value <- withCallingHandlers(
+                        readBin(con, "raw", 1L),
+                        warning = function(w) {
+                            seen <<- conditionMessage(w)
+                            invokeRestart("muffleWarning")
+                        }
+                    )
+                    c(seen, as.character(value))
+                })"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            Vec::<String>::try_from_sexp(seen.get()).unwrap(),
+            ["deferred from read", "07"]
+        );
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        miniextendr_api::r_eval_str_global("rm(con)").unwrap();
+    });
+}
 // endregion
