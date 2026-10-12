@@ -1,4 +1,7 @@
 //! None diagnostics use the R entry point's name (#2063).
+//!
+//! The worker fixtures need a worker feature, which rpkg's default build
+//! (`just test-rpkg`) leaves off; the R install enables `worker-thread`.
 
 use miniextendr_api::{ExternalPtr, miniextendr};
 
@@ -9,6 +12,7 @@ pub fn none_rust_main() -> Option<()> {
 }
 
 /// @noRd
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
 #[miniextendr(noexport, worker, r_name = "none_named_worker")]
 pub fn none_rust_worker() -> Option<()> {
     None
@@ -21,6 +25,7 @@ pub fn none_postfix_main() -> Option<()> {
 }
 
 /// @noRd
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
 #[miniextendr(noexport, worker, postfix = "_entry")]
 pub fn none_postfix_worker() -> Option<()> {
     None
@@ -51,7 +56,14 @@ impl NoneNameLookup {
     pub fn find(&self) -> Option<i32> {
         None
     }
+}
 
+// The worker methods, in a second impl block of the same class (#1776),
+// which repeats the class settings.
+/// @noRd
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
+#[miniextendr(env, noexport)]
+impl NoneNameLookup {
     #[miniextendr(env(worker), r_name = "load_value")]
     pub fn rust_load() -> Option<i32> {
         #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
