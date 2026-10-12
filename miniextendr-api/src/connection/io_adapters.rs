@@ -6,7 +6,9 @@
 //! A boxed trait object works through the same adapters:
 //! `RConnectionIo<Box<dyn Read>>`, `RConnectionIo<Box<dyn BufRead>>`,
 //! `RConnectionIo<Box<dyn Write>>`. The stream must be `'static`, because
-//! R decides when the connection is destroyed.
+//! R decides when the connection is destroyed. Writable adapters flush on
+//! close; a failed final flush becomes R's negative close status and warning,
+//! rather than being lost in the writer's `Drop`.
 
 use crate::SEXP;
 use crate::coerce::TryCoerce;
@@ -175,6 +177,23 @@ fn seek_previous(stream: &mut impl std::io::Seek, where_: f64, origin: i32) -> f
     previous
 }
 
+// Keep the write/flush/close contract identical for every writable adapter.
+macro_rules! impl_write {
+    () => {
+        fn write(&mut self, buf: &[u8]) -> usize {
+            write_full(&mut self.inner, buf)
+        }
+
+        fn flush(&mut self) -> i32 {
+            flush_writer(&mut self.inner)
+        }
+
+        fn close(&mut self) {
+            flush_writer(&mut self.inner);
+        }
+    };
+}
+
 macro_rules! impl_seek {
     () => {
         fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
@@ -232,13 +251,7 @@ define_io_adapter! {
     IoWrite<T: std::io::Write> {
         caps: { HAS_WRITE = true },
         methods: {
-            fn write(&mut self, buf: &[u8]) -> usize {
-                write_full(&mut self.inner, buf)
-            }
-
-            fn flush(&mut self) -> i32 {
-                flush_writer(&mut self.inner)
-            }
+            impl_write!();
         }
     }
 }
@@ -254,13 +267,7 @@ define_io_adapter! {
                 read_full(&mut self.inner, buf)
             }
 
-            fn write(&mut self, buf: &[u8]) -> usize {
-                write_full(&mut self.inner, buf)
-            }
-
-            fn flush(&mut self) -> i32 {
-                flush_writer(&mut self.inner)
-            }
+            impl_write!();
         }
     }
 }
@@ -288,13 +295,7 @@ define_io_adapter! {
     IoWriteSeek<T: std::io::Write, std::io::Seek> {
         caps: { HAS_WRITE = true, HAS_SEEK = true },
         methods: {
-            fn write(&mut self, buf: &[u8]) -> usize {
-                write_full(&mut self.inner, buf)
-            }
-
-            fn flush(&mut self) -> i32 {
-                flush_writer(&mut self.inner)
-            }
+            impl_write!();
 
             impl_seek!();
         }
@@ -328,13 +329,7 @@ define_io_adapter! {
                 read_full(&mut self.inner, buf)
             }
 
-            fn write(&mut self, buf: &[u8]) -> usize {
-                write_full(&mut self.inner, buf)
-            }
-
-            fn flush(&mut self) -> i32 {
-                flush_writer(&mut self.inner)
-            }
+            impl_write!();
 
             impl_seek!();
         }

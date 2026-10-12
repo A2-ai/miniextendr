@@ -471,8 +471,10 @@ pub struct Rconn {
 /// [`crate::error!`] become R errors after Rust destructors run. The std::io
 /// adapters preserve failures as `miniextendr_connection_io_error`, including
 /// the operation, I/O error kind and optional OS error number.
-/// Close and destroy may run during garbage collection: their failures remain
-/// suppressed. Opening failures return `false` so the builder can tear down.
+/// Close and destroy may run during garbage collection, so their panic payloads
+/// and deferred conditions are suppressed. A close panic sets status to `-1`:
+/// R then warns "Problem closing connection" and returns the negative status.
+/// Opening failures return `false` so the builder can tear down.
 ///
 /// # Memory Management
 ///
@@ -523,7 +525,10 @@ pub trait RConnectionImpl: Sized + 'static {
     /// Called when the connection is closed.
     ///
     /// This is called when `close()` is called on the R connection
-    /// or when it's auto-closed after being opened.
+    /// or when it's auto-closed after being opened. Flush buffered output here,
+    /// not in `Drop`, whose errors cannot be reported. A panic is contained and
+    /// sets a negative close status; R issues its usual close warning after this
+    /// callback returns, including when it is called by R's finalizer.
     fn close(&mut self) {}
 
     /// Called when the connection is being destroyed.
@@ -699,11 +704,19 @@ unsafe extern "C-unwind" fn open_trampoline<T: RConnectionImpl>(conn: *mut Rconn
 unsafe extern "C-unwind" fn close_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
     // R also calls close from its connection finalizer, without caller handlers.
     let _conditions = crate::deferred_condition::Suppress::new();
-    catch_connection_panic((), || {
+    let closed = catch_connection_panic(false, || {
         let state = unsafe { get_state::<T>(conn) };
         state.close();
-        unsafe { (*conn).isopen = Rboolean::FALSE };
+        true
     });
+    unsafe {
+        // R owns warning delivery (checkClose), including from its finalizer.
+        // A failed flush must not leave the connection marked open.
+        (*conn).isopen = Rboolean::FALSE;
+        if !closed {
+            (*conn).status = -1;
+        }
+    }
 }
 
 /// Destroy callback trampoline - drops the Rust state.

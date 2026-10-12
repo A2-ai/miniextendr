@@ -104,7 +104,7 @@ pub trait RConnectionImpl: Sized + 'static {
 | Method | When Called | Return Value | Notes |
 |--------|-----------|-------------|-------|
 | `open` | `open(conn)` in R or auto-open on first use | `true` = success, `false` = failure | |
-| `close` | `close(conn)` in R | (none) | Called before `destroy` |
+| `close` | `close(conn)` in R | (none) | Called before `destroy`; flush buffered output here. A panic makes `close()` warn and return `-1` |
 | `destroy` | Connection is garbage collected | (none) | Your type is dropped automatically after this |
 | `read` | `readBin()`, `readLines()`, etc. | Number of bytes read (0 = EOF) | R takes a short count as the end of the stream |
 | `write` | `writeBin()`, `writeLines()`, etc. | Number of bytes written | Write all of `buf`: R warns about a short count, or ignores it |
@@ -279,6 +279,14 @@ let conn = RCustomConnection::new()
     .build(adapter);
 ```
 
+Writable std::io adapters flush in `close`, before the writer is dropped, so a
+`BufWriter`'s bytes reach the sink when R closes the connection, not only when
+it is destroyed. A failed final flush, like any panic in a custom `close`,
+sets the connection's status to `-1` and leaves it closed: R warns "Problem
+closing connection", and `close(con)` returns `-1L`. The flush error's own
+message is not reported, because `close` also runs from R's finalizer, where no
+condition can be raised.
+
 ### Boxed I/O trait objects
 
 The existing adapters accept owned trait objects directly:
@@ -445,7 +453,10 @@ returns.
 
 `open` retains a `FALSE` fallback so the builder tears down failed opens.
 `close` and `destroy` can run during garbage collection, so they suppress
-failures and deferred conditions; `destroy` still drops the Rust owner.
+panic payloads and deferred conditions. A panic in `close` sets the
+connection's status to `-1`, which R reports with its own warning, "Problem
+closing connection", once the callback returns; `close(con)` then returns
+`-1L`. `destroy` still drops the Rust owner.
 
 ### Destroy Always Runs
 
