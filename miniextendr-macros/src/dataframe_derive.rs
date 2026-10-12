@@ -3659,23 +3659,63 @@ mod tests {
     /// Enum variant fields already become `Option<T>` columns (absent for the
     /// other variants), so an `Option<scalar>` field there is rejected with a
     /// pointer to the bare scalar instead of failing on `Vec<Option<Option<T>>>`.
+    /// A qualified payload gets the same message, not the generic wrapper one.
     #[test]
     fn option_scalar_enum_variant_field_rejected() {
-        let input: DeriveInput = syn::parse_quote! {
+        for note_ty in [
+            quote::quote!(Option<String>),
+            quote::quote!(::core::option::Option<::std::string::String>),
+        ] {
+            let input: DeriveInput = syn::parse_quote! {
+                #[derive(DataFrameRow)]
+                #[dataframe(tag = "kind")]
+                enum Event {
+                    Click { x: f64, note: #note_ty },
+                    Key { code: i32 },
+                }
+            };
+            let err = derive_dataframe_row(input)
+                .expect_err("Option<scalar> in enum variant must be rejected")
+                .to_string();
+            assert!(
+                err.contains("already become `Option<T>` columns"),
+                "got: {err}"
+            );
+        }
+    }
+
+    /// A qualified scalar classifies like its bare name (#2036): a leading `::`
+    /// or a path prefix keeps the field a reader scalar and an `Option<…>`
+    /// payload, so struct and enum rows keep both readers.
+    #[test]
+    fn qualified_scalar_fields_keep_readers() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Obs {
+                id: ::core::primitive::i32,
+                label: ::std::string::String,
+                note: ::core::option::Option<::alloc::string::String>,
+                weight: Option<std::primitive::f64>,
+                relative: Option<std::string::String>,
+                #[dataframe(width = 2)]
+                pinned: Vec<::std::string::String>,
+                keyed: BTreeMap<::core::primitive::i32, ::std::string::String>,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe ("), "got:\n{code}");
+        assert!(code.contains("fn try_from_dataframe_par ("), "got:\n{code}");
+
+        let code = expand(syn::parse_quote! {
             #[derive(DataFrameRow)]
             #[dataframe(tag = "kind")]
             enum Event {
-                Click { x: f64, note: Option<String> },
-                Key { code: i32 },
+                Named { label: ::std::string::String, pair: [::core::primitive::f64; 2] },
+                Keyed { keyed: BTreeMap<::std::string::String, std::primitive::i32> },
+                Empty,
             }
-        };
-        let err = derive_dataframe_row(input)
-            .expect_err("Option<scalar> in enum variant must be rejected")
-            .to_string();
-        assert!(
-            err.contains("already become `Option<T>` columns"),
-            "got: {err}"
-        );
+        });
+        assert!(code.contains("fn try_from_dataframe ("), "got:\n{code}");
+        assert!(code.contains("fn try_from_dataframe_par ("), "got:\n{code}");
     }
 
     /// Scalar named struct: the baseline `try_from_dataframe_par` shape (#765).

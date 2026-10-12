@@ -311,6 +311,18 @@ pub struct ShadowedRow {
     pub counts: ::std::collections::HashMap<::std::string::String, i32>,
 }
 
+// Untagged, so it gets both readers: the qualified scalars read back (#2036).
+#[derive(miniextendr_api::DataFrameRow)]
+pub struct ShadowedReadable {
+    pub id: i32,
+    pub label: ::std::string::String,
+    pub note: ::core::option::Option<::std::string::String>,
+    pub weight: ::core::primitive::f64,
+    pub coords: [::core::primitive::f64; 2],
+    #[dataframe(width = 2)]
+    pub names: ::std::vec::Vec<::std::string::String>,
+}
+
 #[derive(miniextendr_api::DataFrameRow)]
 #[dataframe(align, tag = "_type")]
 pub enum ShadowedEvent {

@@ -213,6 +213,16 @@ pub struct RNestOuter {
     pub mid: RMid,
 }
 
+/// Qualified scalar spellings keep the reader (#2036), and an `Option` around a
+/// qualified `String` stays an NA-able column. Columns `id`, `label`, `note`, `weight`.
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+pub struct RQualifiedRow {
+    pub id: ::core::primitive::i32,
+    pub label: ::std::string::String,
+    pub note: ::core::option::Option<std::string::String>,
+    pub weight: Option<::core::primitive::f64>,
+}
+
 // endregion
 
 // region: round-trip entrypoints (read → rebuild)
@@ -294,6 +304,16 @@ pub fn reader_flatten_mixed_roundtrip(df: SEXP) -> SEXP {
 pub fn reader_flatten_nested_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
     let rows: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(&frame).unwrap();
+    rows.into_dataframe().unwrap().into_sexp()
+}
+
+/// Qualified scalar spellings round-trip (#2036). Columns `id`, `label`, `note`, `weight`.
+/// @param df data.frame with `id`, `label`, and NA-able `note` / `weight`.
+/// @export
+#[miniextendr]
+pub fn reader_qualified_roundtrip(df: SEXP) -> SEXP {
+    let frame = DataFrame::from_sexp(df).unwrap();
+    let rows: Vec<RQualifiedRow> = <Vec<RQualifiedRow>>::from_dataframe(&frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 

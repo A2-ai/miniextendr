@@ -190,6 +190,28 @@ pub enum REMapH {
 
 // endregion
 
+// region: REQualified — qualified scalar spellings (#2036)
+
+/// Qualified scalar spellings keep the enum reader. Columns: `_type`, `id`,
+/// `label` (Named only), `pair_1..pair_2` (Named only), `keyed_keys` / `keyed_values`
+/// (Keyed only).
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum REQualified {
+    Named {
+        id: ::core::primitive::i32,
+        label: ::std::string::String,
+        pair: [::core::primitive::f64; 2],
+    },
+    Keyed {
+        id: i32,
+        keyed: BTreeMap<::std::string::String, std::primitive::i32>,
+    },
+    Empty,
+}
+
+// endregion
+
 // endregion
 
 // region: round-trip entrypoints
@@ -483,6 +505,39 @@ pub fn re_map_h_roundtrip_ok() -> bool {
     ];
     let df = rows.clone().into_dataframe().unwrap();
     let back: Vec<REMapH> = <Vec<REMapH>>::from_dataframe(&df).unwrap();
+    back == rows
+}
+
+// endregion
+
+// region: REQualified round-trip (#2036)
+
+/// Qualified scalar spellings round-trip, asserted internally.
+///
+/// Writes a mixed `REQualified` frame (payload, map and unit rows), reads it back
+/// with the reader, and compares the reconstructed rows to the originals. Returns
+/// `TRUE` on success. @export
+#[miniextendr]
+pub fn re_qualified_roundtrip_ok() -> bool {
+    let rows = vec![
+        REQualified::Named {
+            id: 1,
+            label: "a".to_string(),
+            pair: [1.5, -2.5],
+        },
+        REQualified::Keyed {
+            id: 2,
+            keyed: BTreeMap::from([("x".to_string(), 1), ("y".to_string(), 2)]),
+        },
+        REQualified::Empty,
+        REQualified::Named {
+            id: 4,
+            label: "d".to_string(),
+            pair: [0.0, 4.0],
+        },
+    ];
+    let df = rows.clone().into_dataframe().unwrap();
+    let back: Vec<REQualified> = <Vec<REQualified>>::from_dataframe(&df).unwrap();
     back == rows
 }
 
