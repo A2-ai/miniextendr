@@ -1,0 +1,49 @@
+//! Registered indexed native maps with value duplication.
+use super::macros::owned_class;
+use crate::AltrepMap;
+
+owned_class!(
+    AltrepMap<i32>,
+    __impl_altvec_integer_dataptr(),
+    __impl_altinteger_methods,
+    impl_inferbase_integer,
+    "Map_i32",
+    __mx_altrep_reg_builtin_Map_i32,
+    __MX_ALTREP_REG_MAP_I32
+);
+owned_class!(
+    AltrepMap<f64>,
+    __impl_altvec_real_dataptr(),
+    __impl_altreal_methods,
+    impl_inferbase_real,
+    "Map_f64",
+    __mx_altrep_reg_builtin_Map_f64,
+    __MX_ALTREP_REG_MAP_F64
+);
+owned_class!(
+    AltrepMap<u8>,
+    __impl_altvec_raw_dataptr(),
+    __impl_altraw_methods,
+    impl_inferbase_raw,
+    "Map_u8",
+    __mx_altrep_reg_builtin_Map_u8,
+    __MX_ALTREP_REG_MAP_U8
+);
+owned_class!(
+    AltrepMap<crate::Rcomplex>,
+    __impl_altvec_complex_dataptr(),
+    __impl_altcomplex_methods,
+    impl_inferbase_complex,
+    "Map_Rcomplex",
+    __mx_altrep_reg_builtin_Map_Rcomplex,
+    __MX_ALTREP_REG_MAP_RCOMPLEX
+);
+owned_class!(
+    AltrepMap<crate::RLogical>,
+    __impl_altvec_logical_dataptr(),
+    __impl_altlogical_methods,
+    impl_inferbase_logical,
+    "Map_RLogical",
+    __mx_altrep_reg_builtin_Map_RLogical,
+    __MX_ALTREP_REG_MAP_RLOGICAL
+);

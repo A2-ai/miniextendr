@@ -2177,3 +2177,30 @@ The existing bridge saves R's current materialized values after writes, so
 serializing cannot resurrect the iterator's older cache. String adapters still
 materialize on first access to provide stable borrowed strings; list adapters
 require an explicit GC-root policy and are not covered by these implementations.
+
+
+### A stable named map view
+
+`AltrepMap::from(map)` opts a `HashMap<String, T>` or `BTreeMap<String, T>` into
+a named native ALTREP vector. Supported values are `i32`, `f64`, `u8`,
+`Rcomplex`, and `RLogical`. The map stays owned in Rust and a sorted string-key
+index fixes positional order. This also makes its serialized state deterministic.
+
+```rust,ignore
+use std::collections::HashMap;
+use miniextendr_api::{AltrepMap, miniextendr};
+#[miniextendr]
+fn counts() -> AltrepMap<i32> {
+    AltrepMap::from(HashMap::from([("z".into(), 30), ("a".into(), 10)]))
+}
+// R: c(a = 10L, z = 30L), with values backed by ALTREP.
+```
+
+Return `AltrepMap` directly to attach names. `Altrep(AltrepMap::from(map))`
+uses the lower-level marker and creates only the unnamed value vector.
+The key index and R names are eager; value reads use the map until R requests
+contiguous storage. R writes then use its materialized cache. Duplication
+preserves the class, names, and current values; serialization after R writes
+uses those values instead of the original Rust map. The Rust accessors return
+the immutable original map. This representation exposes no bucket pointers and
+has no mutable-map API that could invalidate the key index.

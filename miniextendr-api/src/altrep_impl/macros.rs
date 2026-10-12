@@ -1229,3 +1229,41 @@ macro_rules! impl_altcomplex_from_data_generic {
     };
 }
 // endregion
+
+// Shared registration for owned built-ins with explicit value duplication.
+macro_rules! owned_class {
+    ($ty:ty, $dataptr:ident($($storage:ty)?), $methods:ident, $infer:ident, $class:literal, $register:ident, $entry:ident) => {
+        crate::__impl_altrep_base!(
+            $ty,
+            RUnwind,
+            with_serialize,
+            extra = {
+                const HAS_DUPLICATE: bool = true;
+                fn duplicate(x: crate::SEXP, _deep: bool) -> crate::SEXP {
+                    unsafe { crate::altrep_impl::duplicate_altrep_owner::<Self>(x) }
+                }
+            }
+        );
+        crate::$dataptr!($ty $(, $storage)?);
+        crate::$methods!($ty);
+        crate::$infer!($ty);
+        crate::altrep_impl::builtins::impl_register_altrep_builtin!($ty, $class);
+
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        pub extern "C-unwind" fn $register() {
+            <$ty as crate::altrep::RegisterAltrep>::get_or_init_class();
+        }
+        #[cfg_attr(
+                    not(target_arch = "wasm32"),
+                    crate::linkme::distributed_slice(crate::registry::MX_ALTREP_REGISTRATIONS),
+                    linkme(crate = crate::linkme)
+                )]
+        static $entry: crate::registry::AltrepRegistration = crate::registry::AltrepRegistration {
+            register: $register,
+            symbol: stringify!($register),
+        };
+    };
+}
+
+pub(super) use owned_class;

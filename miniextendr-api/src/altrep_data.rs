@@ -41,6 +41,7 @@ mod deque;
 mod iter;
 /// Helper macros for implementing ALTREP data traits.
 pub mod macros;
+mod map;
 mod stream;
 mod traits;
 
@@ -52,6 +53,7 @@ pub use core::{
     materialized_altrep_data2, materialized_altrep_region,
 };
 pub use iter::*;
+pub use map::AltrepMap;
 pub use stream::*;
 pub use traits::*;
 

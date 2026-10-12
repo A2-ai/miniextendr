@@ -323,5 +323,7 @@ pub mod macros;
 pub mod arrays;
 pub mod buffers;
 pub mod builtins;
+/// Indexed map classes (public for generated wasm registration).
+pub mod maps;
 pub mod shared_slices;
 pub mod static_slices;

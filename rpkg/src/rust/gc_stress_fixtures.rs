@@ -5427,3 +5427,24 @@ pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
         })
         .collect()
 }
+
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_map() {
+    use miniextendr_api::altrep_traits::AltVec;
+    use miniextendr_api::{AltrepMap, TryFromSexp};
+    use std::collections::HashMap;
+    unsafe {
+        let map = AltrepMap::from(HashMap::from([("z".into(), 30i32), ("a".into(), 10)]));
+        let x = OwnedProtect::new(map.into_sexp());
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
+        *<AltrepMap<i32> as AltVec>::dataptr(x.get(), true).cast::<i32>() = 99;
+        assert_eq!(Vec::<i32>::try_from_sexp(copy.get()).unwrap(), [10, 30]);
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [99, 30]);
+        let names = miniextendr_api::sys::Rf_getAttrib_unchecked(
+            x.get(),
+            miniextendr_api::sys::R_NamesSymbol,
+        );
+        assert_eq!(Vec::<String>::try_from_sexp(names).unwrap(), ["a", "z"]);
+    }
+}
