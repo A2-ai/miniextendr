@@ -407,3 +407,59 @@ test_that("structured data round-trip works for consumer DoubleCounter (no packa
 })
 
 # endregion
+
+# region: conversion failures at the trait-ABI boundary
+#
+# A shim converts its arguments with TryFromSexp, and a View converts the
+# shim's result back. A failure on either side panics inside an unwind
+# boundary: the shim returns a tagged condition that the View re-panics with,
+# and the consumer's wrapper raises it. Before, both sides called Rf_error,
+# which raised a plain error and skipped the Rust destructors on the way.
+
+test_that("a shim's failed argument conversion reaches the caller as rust_error", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # counter_add_raw() hands its R value to the shim as is, as a caller that
+  # skips the View does, so the producer's shim converts it.
+  counters <- list(new_counter(5L), new_stateful_counter(5L), new_double_counter(5L))
+  cases <- list(
+    list(n = "five", message = "type mismatch: expected INTSXP, got STRSXP"),
+    list(n = NA_integer_, message = "unexpected NA value in INTSXP"),
+    list(n = 1:2, message = "length mismatch: expected 1, got 2")
+  )
+  for (counter in counters) {
+    for (case in cases) {
+      e <- tryCatch(counter_add_raw(counter, case$n), error = function(e) e)
+      expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+      expect_true(startsWith(conditionMessage(e), case$message),
+        info = conditionMessage(e))
+      expect_true(grepl("counter_add_raw", deparse(conditionCall(e))[[1]]),
+        info = paste(deparse(conditionCall(e)), collapse = " "))
+    }
+    # The failed calls left the counter alone, and the shim still works.
+    expect_equal(peek_value(counter), 5L)
+    counter_add_raw(counter, 2L)
+    expect_equal(peek_value(counter), 7L)
+  }
+})
+
+test_that("a View's failed result conversion reaches the caller as rust_error", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # value() returns i32::MIN, which crosses as NA_integer_ (#1419), and the
+  # View cannot convert NA back to i32.
+  counter <- new_counter(-2147483647L)
+  e <- tryCatch(add_and_get(counter, -1L), error = function(e) e)
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  expect_true(startsWith(conditionMessage(e), "unexpected NA value in INTSXP"),
+    info = conditionMessage(e))
+  expect_true(grepl("add_and_get", deparse(conditionCall(e))[[1]]))
+
+  # The call is repeatable: nothing was left half done.
+  e2 <- tryCatch(peek_value(counter), error = function(e) e)
+  expect_identical(class(e2), class(e))
+})
+
+# endregion
