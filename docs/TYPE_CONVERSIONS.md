@@ -872,8 +872,9 @@ mutable. This includes `&T` / `&mut T` for `i32`, `f64`, `u8`, `RLogical`, and
 `Rcomplex`, and scalar/slice combinations. Scalar leaves require length one;
 slice leaves require a non-empty vector.
 
-The check follows the actual `TryFromSexp::NATIVE_BORROW` metadata, so type
-aliases retain the same checks. `Vec` and boxed-slice containers, nested lists,
+The check follows the selected conversion trait's `NATIVE_BORROW` metadata
+(`TryFromSexp` or `TryFromRoot`), so type aliases retain the same checks.
+`Vec` and boxed-slice containers, nested lists,
 optional values, forwarding newtypes, `Result<T, ()>`, `Missing<T>`, maps, and
 borrowed `Cow` / `RCow` views forward the relevant metadata. Duplicate mutable
 leaves within one argument are rejected too. Every conflicting parameter pair
@@ -932,7 +933,19 @@ framework type name at the boundary; an alias or a newtype needs an explicit
 root conversion in the body. Trait return conversions need owned values such
 as `ProtectedStrVec` or `Vec<T>`.
 
-Native references and their container conversions still use the raw conversion
-trait and remain part of the lifetime-boundary migration (#1427). `Cow` inputs
-use `TryFromRoot` when spelled explicitly at the wrapper boundary; raw
-`TryFromSexp` conversions of `Cow` return owned data.
+Main-thread wrappers and trait shims also use `TryFromRoot` for explicit
+shared native slices, scalar references (`&i32`, `&f64`, `&u8`, `&RLogical`,
+`&Rcomplex`), `&str`, and their `Option` forms. Their borrows are bounded by
+the local argument slot. Native scalar references still require length one;
+optional native references accept NULL, and optional strings preserve NA as
+`None`. Worker `&str` arguments keep their owned `String` conversion; this
+change does not move worker functions onto R's main thread.
+
+`Cow` inputs use `TryFromRoot` when spelled explicitly at the wrapper
+boundary; raw `TryFromSexp` conversions of `Cow` return owned data. Mutable
+references, worker native references, and containers of references still use
+the raw trait and remain part of the lifetime-boundary migration (#1427).
+A root proves liveness, not exclusive access, so `TryFromRoot` does not
+implement mutable references. A reference hidden behind an alias or a custom
+type also needs an explicit root conversion in the body to gain this lifetime
+bound.

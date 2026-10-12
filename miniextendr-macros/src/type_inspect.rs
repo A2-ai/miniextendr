@@ -327,6 +327,32 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         })
 }
 
+/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Keep worker selection separate: `&str` uses owned storage on the worker,
+/// while mutable/custom references still need their existing conversion path.
+pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
+    let ty = option_inner_type(ty).unwrap_or(ty);
+    let syn::Type::Reference(reference) = ty else {
+        return false;
+    };
+    if reference.mutability.is_some() {
+        return false;
+    }
+    match reference.elem.as_ref() {
+        syn::Type::Slice(_) => true,
+        syn::Type::Path(path) if path.qself.is_none() => {
+            path.path.segments.last().is_some_and(|seg| {
+                seg.arguments.is_none()
+                    && matches!(
+                        seg.ident.to_string().as_str(),
+                        "i32" | "f64" | "u8" | "RLogical" | "Rcomplex" | "str"
+                    )
+            })
+        }
+        _ => false,
+    }
+}
+
 /// Detect the unforced-dots parameter type, `LazyDots`: matched on the last
 /// path segment like the other markers, bare or with lifetime arguments only
 /// (`LazyDots<'_>`). Only the whole type by value is the parameter; any other

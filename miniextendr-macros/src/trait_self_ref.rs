@@ -17,12 +17,16 @@ pub(crate) fn native_borrow_checks<'a>(
             continue;
         }
         values.push(quote! { (*#argv.add(#index), #name) });
-        metadata.push(if crate::type_inspect::is_rooted_view(ty) {
-            let ty = crate::type_inspect::erase_lifetimes(ty);
-            quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
-        } else {
-            quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
-        });
+        metadata.push(
+            if crate::type_inspect::is_rooted_view(ty)
+                || crate::type_inspect::is_rooted_reference(ty)
+            {
+                let ty = crate::type_inspect::erase_lifetimes(ty);
+                quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
+            } else {
+                quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
+            },
+        );
     }
     if values.is_empty() {
         return TokenStream::new();

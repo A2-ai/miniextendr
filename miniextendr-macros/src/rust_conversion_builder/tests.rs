@@ -37,14 +37,14 @@ fn test_slice_conversion() {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
         let stmts = builder.build_conversion(&pat_type, &sexp_ident);
         assert_eq!(stmts.len(), 1);
-        assert!(stmts[0].to_string().contains("TryFromSexp"));
+        assert!(stmts[0].to_string().contains("TryFromRoot"));
     }
 }
 
 #[test]
 fn test_str_conversion_main_thread_borrows_zero_copy() {
     // Main-thread path (`build_conversion`): `&str` borrows R's CHARSXP pool
-    // directly — a single zero-copy `TryFromSexp` binding, no `String` allocation.
+    // directly — a single zero-copy `TryFromRoot` binding, no `String` allocation.
     let builder = RustConversionBuilder::new();
     let param = parse_param("s: &str");
     if let syn::FnArg::Typed(pat_type) = param {
@@ -52,7 +52,7 @@ fn test_str_conversion_main_thread_borrows_zero_copy() {
         let stmts = builder.build_conversion(&pat_type, &sexp_ident);
         assert_eq!(stmts.len(), 1); // single zero-copy borrow
         let s = stmts[0].to_string();
-        assert!(s.contains("TryFromSexp"));
+        assert!(s.contains("TryFromRoot"));
         // No owning-String detour and no Borrow trait on the main-thread path.
         assert!(!s.contains("String"));
         assert!(!s.contains("Borrow"));
@@ -62,7 +62,7 @@ fn test_str_conversion_main_thread_borrows_zero_copy() {
 #[test]
 fn test_str_conversion_worker_copies_then_borrows() {
     // Worker path (`build_conversion_split`): `&str` must be owned-then-borrowed
-    // because a borrowed view over R's CHARSXP pool is `!Send`.
+    // so the worker retains independent character storage for the borrow.
     let builder = RustConversionBuilder::new();
     let param = parse_param("s: &str");
     if let syn::FnArg::Typed(pat_type) = param {
@@ -1107,5 +1107,61 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
         let metadata = metadata.unwrap().to_string();
         assert!(metadata.contains("TryFromRoot"), "{metadata}");
         assert!(metadata.contains("NATIVE_BORROW"), "{metadata}");
+    }
+}
+
+#[test]
+fn main_thread_shared_references_bind_the_argument_root() {
+    let builder = RustConversionBuilder::new();
+    for ty in [
+        "&'a i32",
+        "&f64",
+        "&u8",
+        "&miniextendr_api::RLogical",
+        "&Rcomplex",
+        "&'a [i32]",
+        "&[NativeNewtype]",
+        "Option<&i32>",
+        "Option<&[f64]>",
+        "&'a str",
+        "Option<&'a str>",
+    ] {
+        let source = conversion_text(&builder, &format!("value: {ty}"));
+        assert!(source.contains("TryFromRoot"), "{ty}: {source}");
+        assert!(
+            source.contains("Root :: from_call_arg (& arg_0)"),
+            "{ty}: {source}"
+        );
+        assert!(!source.contains("TryFromSexp"), "{ty}: {source}");
+        let syn::FnArg::Typed(param) = parse_param(&format!("value: {ty}")) else {
+            unreachable!()
+        };
+        assert!(!crate::type_inspect::is_main_thread_bound_input(&param.ty));
+        // String references have no native alias metadata. Every native
+        // reference must retain its metadata through the rooted converter.
+        if !ty.contains("str") {
+            let metadata = builder.native_borrow_metadata(&param, &syn::parse_quote!(arg_0));
+            assert!(metadata.unwrap().to_string().contains("TryFromRoot"));
+        }
+    }
+    for ty in [
+        "&mut i32",
+        "&mut [i32]",
+        "&CustomObject",
+        "Option<&mut i32>",
+    ] {
+        let source = conversion_text(&builder, &format!("value: {ty}"));
+        assert!(!source.contains("TryFromRoot"), "{ty}: {source}");
+    }
+}
+
+#[test]
+fn match_arg_slices_keep_owned_selection_storage() {
+    let builder = RustConversionBuilder::new().with_match_arg_several_ok("modes".into());
+    for ty in ["&[Mode]", "&mut [Mode]"] {
+        let source = conversion_text(&builder, &format!("modes: {ty}"));
+        assert!(source.contains("match_arg_vec_from_sexp"), "{source}");
+        assert!(source.contains("__storage_modes"), "{source}");
+        assert!(!source.contains("TryFromRoot"), "{source}");
     }
 }
