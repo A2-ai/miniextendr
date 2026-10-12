@@ -141,3 +141,47 @@ fn is_identical_matches_identical_pairs() {
         }
     });
 }
+
+/// `copy_most_attrib` copies every attribute but `names`, `dim` and
+/// `dimnames`, and the object bit, as R's own `copyMostAttrib` does.
+#[test]
+fn copy_most_attrib_keeps_class_and_levels_not_names_or_shape() {
+    r_test_utils::with_r_thread(|| {
+        let scope = unsafe { ProtectScope::new() };
+        let factor = eval(
+            &scope,
+            "structure(c(a = 1L, b = 2L, c = 1L), levels = c('x', 'y'), class = 'factor', \
+             note = 'kept')",
+        );
+        // `note` is replaced, `extra` and the names stay.
+        let to = eval(
+            &scope,
+            "structure(c(p = 2L, q = 1L, r = 2L), note = 'old', extra = 1)",
+        );
+        assert!(!to.is_object());
+        to.copy_most_attrib(factor);
+        assert!(to.is_object());
+        let expected = eval(
+            &scope,
+            "structure(c(p = 2L, q = 1L, r = 2L), levels = c('x', 'y'), class = 'factor', \
+             note = 'kept', extra = 1)",
+        );
+        assert!(to.is_identical(expected), "factor attributes copied");
+
+        let matrix = eval(
+            &scope,
+            "structure(1:4, dim = c(2L, 2L), dimnames = list(c('a', 'b'), NULL), \
+             class = 'mx_grid')",
+        );
+        let plain = eval(&scope, "c(5L, 6L, 7L, 8L)");
+        unsafe { plain.copy_most_attrib_unchecked(matrix) };
+        let expected = eval(&scope, "structure(c(5L, 6L, 7L, 8L), class = 'mx_grid')");
+        assert!(plain.is_identical(expected), "dim and dimnames not copied");
+
+        // Copying from an object without attributes keeps the target's own.
+        let bare = eval(&scope, "c(1L, 2L)");
+        let named = eval(&scope, "c(u = 3L, v = 4L)");
+        named.copy_most_attrib(bare);
+        assert!(named.is_identical(eval(&scope, "c(u = 3L, v = 4L)")));
+    });
+}

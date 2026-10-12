@@ -67,6 +67,62 @@ pub fn expr_env_lookup(name: &str) -> Result<bool, REvalError> {
     }
 }
 
+/// `REnv::get` on `env`, or `REnv::get_inherits` when `inherits`:
+/// `list(value = <value>)` for a binding (a `NULL` one included), `NULL` when
+/// there is none.
+/// @param env An environment.
+/// @param name Character scalar name to look up.
+/// @param inherits Whether to search the enclosing environments.
+#[miniextendr(noexport)]
+pub fn expr_env_get(env: SEXP, name: &str, inherits: bool) -> SEXP {
+    // SAFETY: R's main thread, in this call's boundary; `env` is the rooted
+    // `.Call()` argument.
+    unsafe {
+        let env = REnv::from_sexp(env);
+        found(if inherits {
+            env.get_inherits(name)
+        } else {
+            env.get(name)
+        })
+    }
+}
+
+/// `REnv::get` on the namespace of package `pkg`, in the shape of
+/// [`expr_env_get`].
+/// @param pkg Character scalar package name.
+/// @param name Character scalar name to look up.
+#[miniextendr(noexport)]
+pub fn expr_namespace_get(pkg: &str, name: &str) -> Result<SEXP, REvalError> {
+    // SAFETY: R's main thread, in this call's boundary.
+    unsafe { Ok(found(REnv::package_namespace(pkg)?.get(name))) }
+}
+
+/// `list(value = <value>)`, or `NULL` for `None`.
+///
+/// # Safety
+///
+/// R's main thread; `value` is unprotected.
+unsafe fn found(value: Option<SEXP>) -> SEXP {
+    match value {
+        Some(value) => unsafe {
+            let value = OwnedProtect::new(value);
+            List::from_raw_pairs(vec![("value", value.get())]).into_sexp()
+        },
+        None => SEXP::nil(),
+    }
+}
+
+/// `REnv::define(name, value)` on `env`.
+/// @param env An environment.
+/// @param name Character scalar name to bind.
+/// @param value Any R object.
+#[miniextendr(noexport)]
+pub fn expr_env_define(env: SEXP, name: &str, value: SEXP) {
+    // SAFETY: R's main thread, in this call's boundary; both arguments are
+    // rooted `.Call()` arguments.
+    unsafe { REnv::from_sexp(env).define(name, value) }
+}
+
 /// Call `f()` through `RCall::eval_base`: `list(value = <value>)`, or, when
 /// it raises an R error, the caught `REvalError`'s parts:
 /// `list(message, classes, specific_classes, call, condition)`.

@@ -498,7 +498,7 @@ fn results_df(rows: Vec<Result<Row, ErrorRow>>) -> Result<DataFrameShape, String
 
 Every frame inside `DataFrameShape` is a rooted `BuiltDataFrame`. When an
 all-error split uses a caller-supplied sentinel, the shape keeps it alive in a
-`RootedSentinel` until `IntoR` consumes the result. The shape is therefore safe
+`Preserved` handle until `IntoR` consumes the result. The shape is therefore safe
 to hold across intervening R allocations; it is not a convert-immediately view.
 `DataFrameShape` is shared with the `#[derive(DataFrameRow)]` enum split
 (`rows.into_dataframe_split()`), so it lives in `miniextendr_api::dataframe`

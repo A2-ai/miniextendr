@@ -8,7 +8,7 @@ Safe wrappers for building and evaluating R function calls from Rust.
 |------|---------|
 | `RSymbol` | Interned R symbol (SYMSXP) -- never GC'd |
 | `RCall` | Builder for R function calls (LANGSXP) |
-| `REnv` | Well-known R environments (Global, Base, Empty) |
+| `REnv` | Well-known R environments (Global, Base, Empty) and their bindings |
 | `REvalError` | An R error caught by `RCall::eval` / `r_eval_str` / `try_eval_with_handlers`: R's condition |
 
 Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
@@ -194,6 +194,37 @@ Prefer `package_namespace(pkg)` over chasing symbols through
 against the package's own namespace regardless of what the user has
 attached on the search path. `eval_global()` has been removed; evaluate
 in `base()`, `base_namespace()`, or the caller's env instead.
+
+### Reading and writing bindings
+
+`get(name)` reads a binding of the environment's own frame and
+`get_inherits(name)` searches the enclosing environments too, as
+`get0(name, envir = env, inherits = FALSE / TRUE)` does. Both return `None`
+for an unbound name and `Some` of `NULL` for a name bound to `NULL`.
+`define(name, value)` binds `name` in the environment's own frame, as
+`assign()` does.
+
+```rust
+unsafe {
+    let ns = REnv::package_namespace("mypkg")?;
+    let helper = ns.get("helper").expect("mypkg defines helper");
+    let env = REnv::from_sexp(scope.new_env(REnv::base().as_sexp(), true, 2).get());
+    env.define("x", x);
+}
+```
+
+The same code runs on every R the crate supports: R 4.5 and later read with
+`R_getVarEx`, R 4.4 evaluates `base::get0()`. Like `get0()`, a read forces a
+promise binding (a lazy-loaded namespace function is one) and calls an active
+binding, so it is not a check for whether a name is bound. An R error raised
+while reading or binding (a failing promise or active binding, a locked
+environment or binding, the empty environment) unwinds to the miniextendr
+boundary as under `eval_with_handlers`, so call them inside one.
+
+The value `get` returns is unprotected. A plain binding or a forced promise
+keeps it reachable while the name stays bound to it; an active binding's value
+is held by nothing. Protect it before the next allocation unless the binding is
+known to be a plain value, and before anything that may rebind the name.
 
 ## r_eval_str
 

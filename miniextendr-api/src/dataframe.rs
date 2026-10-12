@@ -45,7 +45,7 @@ pub mod group;
 pub use group::{GroupDeclaration, GroupKey, GroupedDataFrame, RealKey, group_rows};
 
 mod shape;
-pub use shape::{DataFrameShape, RootedSentinel, SplitResults};
+pub use shape::{DataFrameShape, SplitResults};
 
 // region: Error type
 
@@ -645,7 +645,7 @@ impl DataFrame {
     /// - A data.frame column (a packed column) is subset the same way,
     ///   recursively.
     ///
-    /// Each column keeps all of its other attributes (`Rf_copyMostAttrib`, the
+    /// Each column keeps all of its other attributes ([`SexpExt::copy_most_attrib`], the
     /// `vctrs::vec_slice()` rule), so a `POSIXct` column keeps its `tzone`, a
     /// `difftime` its `units` and an `I()` column its `AsIs` class.
     ///
@@ -911,7 +911,7 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
             // (difftime), labels, and anything else a package keeps on a column.
             // Base `[` would drop the last kind on an unclassed column; a row
             // subset should not change a column's meaning.
-            crate::sys::Rf_copyMostAttrib(col, *out);
+            out.copy_most_attrib(col);
             // Element names are per row, so they are subset with the values.
             let col_names = col.get_names();
             if col_names != SEXP::nil() {
@@ -936,7 +936,7 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
             .collect();
 
         let out = crate::OwnedProtect::new(crate::convert::gather_column(col, &flat));
-        crate::sys::Rf_copyMostAttrib(col, *out);
+        out.copy_most_attrib(col);
 
         {
             let (new_dim, dim_vals) = crate::into_r::alloc_r_vector::<i32>(dims.len());
@@ -972,7 +972,7 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
 
 /// Copy the frame attributes of `from` onto the new frame `to`.
 ///
-/// Every attribute except `names` is copied (`Rf_copyMostAttrib`), the rule
+/// Every attribute except `names` is copied ([`SexpExt::copy_most_attrib`]), the rule
 /// `vctrs::vec_slice()`, tibble's `[` and `dplyr_reconstruct()` follow:
 /// `class`, `row.names` (verbatim; a producer that changes the rows sets its
 /// own afterwards) and anything else a package keeps on the frame, such as a
@@ -992,7 +992,7 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
 /// are set, protected by the caller.
 unsafe fn copy_frame_attrs(from: SEXP, to: SEXP, same_rows: bool) {
     unsafe {
-        crate::sys::Rf_copyMostAttrib(from, to);
+        to.copy_most_attrib(from);
         let grouped = from.inherits_class(c"grouped_df") || from.inherits_class(c"rowwise_df");
         if grouped && !(same_rows && grouping_columns_kept(from, to)) {
             ungroup_frame(to);
@@ -1192,9 +1192,9 @@ impl IntoR for DataFrame {
 /// [`NamedList::as_data_frame`]), and the partition type inside the split verbs'
 /// [`DataFrameShape`] ([`IntoDataFrameSplit::into_dataframe_split`], #1750; the
 /// serde `vec_to_dataframe_split` / `result_to_dataframe`, #1265). It roots the
-/// frame with `R_PreserveObject` on construction and releases it with
-/// `R_ReleaseObject` on drop, so holding it across allocations is safe by
-/// construction. It [`Deref`](std::ops::Deref)s to
+/// frame with a [`Preserved`](crate::Preserved) handle (`R_PreserveObject` on
+/// construction, `R_ReleaseObject` on drop), so holding it across allocations
+/// is safe by construction. It [`Deref`](std::ops::Deref)s to
 /// [`DataFrame`], so every read/edit method keeps working unchanged; hand the
 /// frame back to R with [`IntoR::into_sexp`] — or just return it from a
 /// `#[miniextendr]` fn, which converts it through [`IntoR`] transparently.
@@ -1209,8 +1209,6 @@ impl IntoR for DataFrame {
 /// [`DataFrame::with_column`]) also return `BuiltDataFrame`, and this type
 /// carries inherent forwards for the whole editing set, so
 /// `rows.into_dataframe()?.drop("x").select(&["y"])` is rooted at every link.
-/// (The `drop` forward is load-bearing: without it, method resolution on a
-/// `BuiltDataFrame` receiver finds `Drop::drop` — E0040.)
 ///
 /// # Residual
 ///
@@ -1220,10 +1218,8 @@ impl IntoR for DataFrame {
 /// constructor/editing path this type makes safe.
 pub struct BuiltDataFrame {
     view: DataFrame,
-    /// `!Send + !Sync`: rooting/unrooting mutates R's global precious list,
-    /// which is R-main-thread state. Construction and drop only ever happen
-    /// inside framework code already on the R thread.
-    _not_send: std::marker::PhantomData<*mut ()>,
+    /// Roots `view`'s frame for as long as the handle lives.
+    root: crate::Preserved,
 }
 
 impl BuiltDataFrame {
@@ -1232,20 +1228,12 @@ impl BuiltDataFrame {
     /// # Safety
     ///
     /// Must run on the R main thread. `sexp` must be a well-formed `data.frame`
-    /// VECSXP. Rooting is immediate — no allocation happens between entry and
-    /// `R_PreserveObject`, and `R_PreserveObject` protects `sexp` while it
-    /// allocates its cons cell — so a freshly-assembled unprotected SEXP is safe
-    /// to pass directly.
+    /// VECSXP. Rooting is immediate (see [`Preserved::new`](crate::Preserved::new)),
+    /// so a freshly-assembled unprotected SEXP is safe to pass directly.
     #[inline]
     pub unsafe fn adopt_sexp(sexp: SEXP) -> Self {
-        // SAFETY: R main thread (caller contract); R_PreserveObject keeps `sexp`
-        // reachable across its own allocation.
-        unsafe { crate::sys::R_PreserveObject(sexp) };
-        Self {
-            // SAFETY: caller guarantees `sexp` is a well-formed data.frame VECSXP.
-            view: unsafe { DataFrame::from_built_sexp(sexp) },
-            _not_send: std::marker::PhantomData,
-        }
+        // SAFETY: as documented on this fn.
+        unsafe { Self::from_root(crate::Preserved::new(sexp)) }
     }
 
     /// Root a [`DataFrame`] view, taking ownership of a fresh root.
@@ -1264,25 +1252,18 @@ impl BuiltDataFrame {
         unsafe { Self::adopt_sexp(df.as_sexp()) }
     }
 
-    /// Detach the rooted SEXP, releasing the Rust-side root without running
-    /// `Drop`. Shared by the [`IntoR`] hand-off methods.
+    /// Take over an existing root of a frame.
     ///
-    /// Mirrors [`DataFrame::as_sexp`] / [`IntoR::into_sexp`]: the returned SEXP is
-    /// unprotected and the caller (typically the `.Call` return path) takes over
-    /// protection. Releasing the precious-list root then returning matches that
-    /// existing hand-off contract — `R_ReleaseObject` does not allocate, so no GC
-    /// can run between the release and the return. `into_sexp` is exposed only
-    /// through [`IntoR`] (like [`DataFrame`]), so there is no inherent method to
-    /// shadow the trait's.
+    /// # Safety
+    ///
+    /// `root` holds a well-formed `data.frame` VECSXP.
     #[inline]
-    fn release_into_sexp(self) -> SEXP {
-        let sexp = self.view.as_sexp();
-        // SAFETY: `!Send` guarantees we are on the constructing (R main) thread;
-        // release the exact root added in `adopt_sexp`. `mem::forget` prevents
-        // `Drop` from releasing it a second time.
-        unsafe { crate::sys::R_ReleaseObject(sexp) };
-        std::mem::forget(self);
-        sexp
+    pub(crate) unsafe fn from_root(root: crate::Preserved) -> Self {
+        Self {
+            // SAFETY: caller guarantees `root` holds a well-formed data.frame VECSXP.
+            view: unsafe { DataFrame::from_built_sexp(root.as_sexp()) },
+            root,
+        }
     }
 
     // region: editing forwards (#1247) — keep chains rooted at every link
@@ -1290,14 +1271,12 @@ impl BuiltDataFrame {
     // These consume the handle (`self` stays alive until the tail expression
     // has produced — and rooted — the result, so the input frame is reachable
     // throughout the edit; its root is then released with no allocation in
-    // between). Plain `Deref` would instead copy out the view and, for `drop`,
-    // resolve to `Drop::drop` (E0040) — an inherent method shadows the trait.
+    // between). Plain `Deref` would instead copy out the view and return the
+    // view method's result, rooted or not.
 
     /// Remove a column by name — see [`DataFrame::drop`].
     ///
     /// Inherent forward: consumes this handle and returns the rooted result.
-    /// (Also shadows `Drop::drop`, which method resolution would otherwise
-    /// select — E0040.)
     #[must_use]
     pub fn drop(self, col: &str) -> BuiltDataFrame {
         (*self).drop(col)
@@ -1361,25 +1340,21 @@ impl std::ops::Deref for BuiltDataFrame {
     }
 }
 
-impl Drop for BuiltDataFrame {
-    fn drop(&mut self) {
-        // SAFETY: `!Send` guarantees drop runs on the R main thread; release the
-        // exact root added in `adopt_sexp`. `R_ReleaseObject` does not allocate.
-        unsafe { crate::sys::R_ReleaseObject(self.view.as_sexp()) };
-    }
-}
-
+/// Releases the root and hands the frame over, unprotected, as
+/// [`DataFrame::as_sexp`] / [`IntoR::into_sexp`] do: the caller (typically the
+/// `.Call` return path) takes over protection. `R_ReleaseObject` does not
+/// allocate, so no GC can run between the release and the return.
 impl IntoR for BuiltDataFrame {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        Ok(self.release_into_sexp())
+        Ok(self.root.into_sexp())
     }
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        Ok(self.release_into_sexp())
+        Ok(self.root.into_sexp())
     }
     #[inline]
     fn into_sexp(self) -> SEXP {
-        self.release_into_sexp()
+        self.root.into_sexp()
     }
 }
 
