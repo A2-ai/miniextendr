@@ -317,6 +317,36 @@ pub fn gc_stress_altrep_clone_cache() -> SEXP {
     unsafe { miniextendr_api::sys::Rf_duplicate(x.get()) }
 }
 
+/// Drive the allocating ALTREP bridges of classes with a non-default
+/// native-read guard under GC pressure, through R's own entry points: a
+/// materializing `Dataptr` (`rust_unwind`), then string `Elt`, `Set_elt` and
+/// `Duplicate` (`unsafe`). Returns `list(ints, strings)`: 64 sevens, and the
+/// duplicated strings `"written"`, `s1` ... `s31`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
+    use crate::altrep_ownership_tests::{RustUnwindInts, UnsafeStrings};
+    use miniextendr_api::sys;
+
+    unsafe {
+        let ints = OwnedProtect::new(RustUnwindInts { len: 64, value: 7 }.into_sexp());
+        let _ = sys::DATAPTR_RO(ints.get());
+        let strings: Vec<String> = (0..32).map(|i| format!("s{i}")).collect();
+        let strings = OwnedProtect::new(UnsafeStrings(strings).into_sexp());
+        for i in 0..32 {
+            let _ = sys::STRING_ELT(strings.get(), i);
+        }
+        let written = OwnedProtect::new(SEXP::charsxp("written"));
+        sys::SET_STRING_ELT(strings.get(), 0, written.get());
+        let copy = OwnedProtect::new(sys::Rf_duplicate(strings.get()));
+        let out = OwnedProtect::new(sys::Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        out.get().set_vector_elt(0, ints.get());
+        out.get().set_vector_elt(1, copy.get());
+        let names = OwnedProtect::new(vec!["ints", "strings"].into_sexp());
+        sys::Rf_setAttrib(out.get(), sys::R_NamesSymbol, names.get());
+        out.get()
+    }
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both

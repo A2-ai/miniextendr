@@ -113,8 +113,8 @@ struct AltrepFamilyConfig<'a> {
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
 /// | `duplicate = "clone"` | String | Keep ALTREP on duplication: clone the owner (requires `Clone`) and copy the R cache. Omission retains R's default, which materializes an ordinary vector. |
 /// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Supported on all atomic families. Not supported for List. |
-/// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
-/// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` -- uses `catch_unwind` only (unsafe if callbacks call R APIs). |
+/// | `unsafe` | Flag | Set native-read guard to `Unsafe` -- no panic protection. Allocating bridges stay protected. |
+/// | `rust_unwind` | Flag | Set native-read guard to `RustUnwind` -- `catch_unwind` only; reads must not call fallible R APIs. |
 /// | `r_unwind` | Flag | Set guard mode to `RUnwind` (default) -- uses `with_r_unwind_protect` for safe R API calls. |
 /// | `class = "name"` | `String` | Override the ALTREP class name (default: struct name). |
 struct AltrepAttrs {
@@ -304,18 +304,6 @@ impl AltrepAttrs {
         ))
     }
 
-    /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RustUnwind`).
-    ///
-    /// The default guard is `RUnwind`. Non-default guards (e.g., `RustUnwind`,
-    /// `Unsafe`) suppress the materializing-dataptr `AltVec` impl on the
-    /// no-option arm (behaviour preserved from the pre-#711 expanded path).
-    fn has_non_default_guard(&self) -> bool {
-        match &self.guard {
-            Some(g) => g != "RUnwind",
-            None => false,
-        }
-    }
-
     /// Validates that the requested `#[altrep(...)]` option flags are compatible with
     /// the given ALTREP type family.
     ///
@@ -402,7 +390,7 @@ impl AltrepAttrs {
         generics: &syn::Generics,
         family: &AltrepFamilyConfig,
     ) -> syn::Result<TokenStream> {
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = generics.split_for_impl();
         let AltrepFamilyConfig {
             family_name,
             ref dataptr_macro,
@@ -467,15 +455,6 @@ impl AltrepAttrs {
             }
         } else if has_subset {
             quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name #ty_generics); }
-        } else if self.has_non_default_guard() {
-            // Behaviour-preservation: the pre-#711 expanded path (the only path
-            // that handled non-default guards) emitted a *bare* `impl AltVec`
-            // for the no-dataptr/no-subset case — NOT the materializing macro.
-            // Match that exactly so this migration is a pure de-indirection
-            // with no semantic drift. (No production fixture combines a
-            // non-default guard with an ALTREP derive, so this branch is
-            // exercised only by the proc-macro unit tests.)
-            quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
         } else {
             let mat_macro =
                 syn::Ident::new(materializing_dataptr_macro, proc_macro2::Span::call_site());

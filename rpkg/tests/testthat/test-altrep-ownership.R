@@ -130,3 +130,56 @@ test_that("real and logical buffers read, copy and serialize their values", {
 })
 
 # endregion
+
+# region: native-read guards --------------------------------------------------
+
+test_that("a non-default native-read guard keeps the materializing data pointer", {
+  x <- miniextendr:::altrep_rust_unwind_ints(3L, 7L)
+  expect_identical(x + 1L, c(8L, 8L, 8L))
+  expect_identical(sort(x), c(7L, 7L, 7L))
+  x[2L] <- 0L
+  expect_identical(x, c(7L, 0L, 7L))
+  s <- miniextendr:::altrep_unsafe_strings(c("b", "a", "c"))
+  expect_identical(sort(s), c("a", "b", "c"))
+  expect_identical(paste0(s, "!"), c("b!", "a!", "c!"))
+  t <- s
+  t[1L] <- "z"
+  expect_identical(s, c("b", "a", "c"))
+  expect_identical(t, c("z", "a", "c"))
+  expect_true(is_altrep(t))
+})
+
+test_that("a panic in a string element read is an R error under any guard", {
+  s <- miniextendr:::altrep_unsafe_strings(c("a", "boom", "c"))
+  expect_identical(s[[1L]], "a")
+  expect_error(s[[2L]], "refuses element 2")
+  expect_identical(s[[3L]], "c")
+  expect_error(paste0(s, ""), "refuses element 2")
+})
+
+test_that("gc_stress_altrep_guarded_bridges returns the bridged values", {
+  res <- miniextendr:::gc_stress_altrep_guarded_bridges()
+  expect_identical(res$ints, rep(7L, 64L))
+  expect_identical(res$strings, c("written", sprintf("s%d", 1:31)))
+  expect_true(is_altrep(res$strings))
+})
+
+test_that("allocating bridges stay protected under a non-default guard", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  res <- miniextendr:::gc_stress_altrep_guarded_bridges()
+  x <- miniextendr:::altrep_rust_unwind_ints(16L, 2L)
+  y <- x + 1L
+  s <- miniextendr:::altrep_unsafe_strings(sprintf("v%d", 1:16))
+  t <- s
+  t[3L] <- "w"
+  u <- paste0(t, "")
+  gctorture(FALSE)
+  expect_identical(res$ints, rep(7L, 64L))
+  expect_identical(y, rep(3L, 16L))
+  expect_identical(u[1:4], c("v1", "v2", "w", "v4"))
+  expect_identical(s[3L], "v3")
+})
+
+# endregion

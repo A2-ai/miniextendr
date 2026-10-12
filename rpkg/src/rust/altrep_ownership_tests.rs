@@ -93,3 +93,55 @@ pub fn altrep_buffer_extend(x: SEXP, values: Vec<i32>) -> SEXP {
     x
 }
 // endregion
+
+// region: native-read guards
+
+/// Constant integers under the `rust_unwind` native-read guard.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(
+    len = "len",
+    elt = "value",
+    rust_unwind,
+    class = "OwnershipRustUnwindInts"
+)]
+pub struct RustUnwindInts {
+    pub len: usize,
+    pub value: i32,
+}
+
+/// Strings under the `unsafe` native-read guard, cloned on duplication.
+/// Reading the value `"boom"` panics.
+#[derive(Clone, miniextendr_api::AltrepString)]
+#[altrep(
+    manual,
+    r#unsafe,
+    duplicate = "clone",
+    class = "OwnershipUnsafeStrings"
+)]
+pub struct UnsafeStrings(pub Vec<String>);
+
+impl AltrepLen for UnsafeStrings {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl AltStringData for UnsafeStrings {
+    fn elt(&self, i: usize) -> Option<&str> {
+        assert_ne!(self.0[i], "boom", "UnsafeStrings refuses element {}", i + 1);
+        Some(&self.0[i])
+    }
+}
+
+/// Constant integers whose callbacks run under `rust_unwind`.
+#[miniextendr(noexport)]
+pub fn altrep_rust_unwind_ints(len: usize, value: i32) -> RustUnwindInts {
+    RustUnwindInts { len, value }
+}
+
+/// Strings whose native reads run under the `unsafe` guard.
+#[miniextendr(noexport)]
+pub fn altrep_unsafe_strings(values: Vec<String>) -> UnsafeStrings {
+    UnsafeStrings(values)
+}
+// endregion
