@@ -162,4 +162,45 @@ pub fn indicatif_to_null_connection() -> String {
     "ok".to_string()
 }
 
+/// Failed draws return I/O errors without poisoning this bar or a second bar.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn indicatif_connection_error_recovery(
+    conn: SEXP,
+    replacement: SEXP,
+    close_before_write: bool,
+) -> String {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::indicatif::TermLike;
+
+    let term = RTerm::new(conn, 40);
+    let bar = ProgressBar::with_draw_target(Some(2), term_like_connection(conn, 40));
+    if close_before_write {
+        unsafe { RCall::new("close").arg(conn).eval_base() }.unwrap();
+    }
+    let error = term
+        .write_str("failed draw")
+        .expect_err("connection must fail");
+    bar.force_draw();
+    bar.inc(1);
+    bar.force_draw();
+    bar.set_draw_target(term_like_connection(replacement, 40));
+    bar.set_style(ProgressStyle::with_template("recovered {pos}/{len}").unwrap());
+    bar.finish();
+
+    let second = ProgressBar::with_draw_target(Some(1), term_like_connection(replacement, 40));
+    second.set_style(ProgressStyle::with_template("second {pos}/{len}").unwrap());
+    second.finish();
+    error.to_string()
+}
+
+/// Draw one finished bar rendering `template` to `conn`.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn indicatif_draw_template(conn: SEXP, template: &str) {
+    let bar = ProgressBar::with_draw_target(Some(1), term_like_connection(conn, 40));
+    bar.set_style(ProgressStyle::with_template(template).unwrap());
+    bar.finish();
+}
+
 // endregion

@@ -155,7 +155,39 @@ fn boxed_writer_receives_bytes_flush_and_one_drop() {
         assert_eq!(&*bytes.borrow(), &[1, 2, 3]);
         assert!(flushes.get() > 0);
         assert_eq!(drops.get(), 0);
+        let before_close = flushes.get();
         RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        assert_eq!(flushes.get(), before_close + 1);
+        assert_eq!(drops.get(), 1);
+    });
+}
+
+#[test]
+fn r_close_flushes_a_buffered_writer_before_dropping_it() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let bytes = Rc::new(RefCell::new(Vec::new()));
+        let flushes = Rc::new(Cell::new(0));
+        let drops = Rc::new(Cell::new(0));
+        let sink = SharedSink {
+            bytes: bytes.clone(),
+            flushes: flushes.clone(),
+        };
+        let writer = Tracked {
+            inner: std::io::BufWriter::with_capacity(32, sink),
+            drops: drops.clone(),
+        };
+        let conn = OwnedProtect::new(RConnectionIo::new(writer).mode("wb").build_write());
+        RCall::new("writeBin")
+            .arg_value(b"buffered".to_vec())
+            .arg(conn.get())
+            .eval_base()
+            .unwrap();
+        assert!(bytes.borrow().is_empty());
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        // `BufWriter`'s `Drop` writes what it holds but never flushes the
+        // sink, so the one flush is close's.
+        assert_eq!(&*bytes.borrow(), b"buffered");
+        assert_eq!(flushes.get(), 1);
         assert_eq!(drops.get(), 1);
     });
 }
@@ -275,6 +307,7 @@ fn every_io_adapter_preserves_failures() {
             let mut adapter = $adapter::new(BrokenIo);
             expect_io_error("write", || adapter.write(&[0]));
             expect_io_error("flush", || adapter.flush());
+            expect_io_error("flush", || adapter.close());
         )*};
     }
     write_failure!(IoWrite, IoReadWrite, IoWriteSeek, IoReadWriteSeek);
@@ -469,7 +502,11 @@ fn r_receives_io_conditions_and_can_close_after_failure() {
             assert!(error.inherits("miniextendr_connection_io_error"), "{error}");
             assert!(error.message().contains("refused"), "{error}");
         }
-        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        let status = RCall::new("suppressWarnings")
+            .arg(RCall::new("close").arg(conn.get()).build())
+            .eval_base()
+            .unwrap();
+        assert_eq!(i32::try_from_sexp(status).unwrap(), -1);
         let conn = OwnedProtect::new(RConnectionIo::new(BrokenIo).mode("r").build_bufread());
         let error = RCall::new("readLines")
             .arg(conn.get())
@@ -595,6 +632,102 @@ fn a_warning_deferred_in_a_callback_reaches_r_handlers() {
         );
         RCall::new("close").arg(conn.get()).eval_base().unwrap();
         miniextendr_api::r_eval_str_global("rm(con)").unwrap();
+    });
+}
+// endregion
+
+// region: Writes that return R's error
+
+#[test]
+fn null_connection_writes_return_r_errors() {
+    use miniextendr_api::connection::RNullConnection;
+    use miniextendr_api::expression::r_eval_str_global;
+
+    r_test_utils::with_r_thread(|| unsafe {
+        // A connection whose write callback raises: every write is an `Err`,
+        // and the handle keeps working.
+        let failing = OwnedProtect::new(RConnectionIo::new(BrokenIo).build_write());
+        let mut con = RNullConnection::try_from_sexp(failing.get()).unwrap();
+        for _ in 0..2 {
+            let error = con.write_all(b"x").unwrap_err();
+            assert!(error.to_string().contains("write refused"), "{error}");
+        }
+        drop(con);
+        RCall::new("suppressWarnings")
+            .arg(RCall::new("close").arg(failing.get()).build())
+            .eval_base()
+            .unwrap();
+
+        // A connection R closed while the handle borrowed it.
+        let file = OwnedProtect::new(r_eval_str_global("file(nullfile(), \"w\")").unwrap());
+        let mut con = RNullConnection::try_from_sexp(file.get()).unwrap();
+        con.write_all(b"open\n").unwrap();
+        RCall::new("close").arg(file.get()).eval_base().unwrap();
+        let error = con.write_all(b"closed\n").unwrap_err();
+        assert!(error.to_string().contains("invalid connection"), "{error}");
+    });
+}
+// endregion
+
+// region: Close failures
+
+#[test]
+fn close_failures_warn_and_still_destroy_the_rust_owner() {
+    use miniextendr_api::connection::RConnectionImpl;
+    use miniextendr_api::expression::r_eval_str_global;
+
+    struct PanickingClose(Rc<Cell<usize>>);
+    impl RConnectionImpl for PanickingClose {
+        fn close(&mut self) {
+            panic!("close refused");
+        }
+    }
+    impl Drop for PanickingClose {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let closer = OwnedProtect::new(
+            r_eval_str_global(
+                r#"function(con) {
+            message <- ""
+            status <- withCallingHandlers(close(con), warning = function(w) {
+                message <<- conditionMessage(w)
+                invokeRestart("muffleWarning")
+            })
+            list(status, message)
+        }"#,
+            )
+            .unwrap(),
+        );
+        let check = |conn| {
+            let result = OwnedProtect::new(
+                RCall::from_sexp(closer.get())
+                    .arg(conn)
+                    .eval_base()
+                    .unwrap(),
+            );
+            let (status, message) = <(i32, String)>::try_from_sexp(result.get()).unwrap();
+            assert_eq!(status, -1);
+            assert!(message.contains("Problem closing connection"), "{message}");
+        };
+        let drops = Rc::new(Cell::new(0));
+        let conn = OwnedProtect::new(
+            RConnectionIo::new(Tracked {
+                inner: BrokenIo,
+                drops: drops.clone(),
+            })
+            .build_write(),
+        );
+        check(conn.get());
+        assert_eq!(drops.get(), 1);
+        let conn = OwnedProtect::new(RCustomConnection::new().build(PanickingClose(drops.clone())));
+        check(conn.get());
+        assert_eq!(drops.get(), 2);
+        RCall::new("gc").eval_base().unwrap();
+        assert_eq!(drops.get(), 2);
     });
 }
 // endregion

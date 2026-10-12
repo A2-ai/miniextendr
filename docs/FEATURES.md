@@ -177,9 +177,8 @@ through `ptr_R_WriteConsoleEx` (a non-API symbol), so this feature implies `nona
 All output is a no-op when called off the R main thread.
 
 **Provides:**
-- `progress::RTerm` -- `TermLike` implementation for R console output
-- `progress::RStream` -- stdout/stderr target selection
-- Convenience constructors: `term_like_stdout()`, `term_like_stderr()`, `term_like_*_with_hz()`
+- `progress::RTerm` -- `TermLike` implementation for R's console and other R connections
+- Convenience constructors: `term_like_stdout()`, `term_like_stderr()`, `term_like_connection()`, `term_like_*_with_hz()`
 
 See [PROGRESS.md](PROGRESS.md) for the full guide with examples.
 

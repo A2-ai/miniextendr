@@ -141,7 +141,7 @@ test_that("cursor_connection reads pre-filled data", {
 
 test_that("a failing read, write, flush or seek raises a classed condition", {
   con <- failing_io_connection()
-  on.exit(close(con))
+  on.exit(expect_warning(close(con), "Problem closing connection"))
   catch <- function(expr) {
     tryCatch(expr, miniextendr_connection_io_error = function(e) e)
   }
@@ -213,6 +213,16 @@ test_that("seek() and truncate() refuse a connection that supports neither", {
     "truncation not enabled for this connection",
     fixed = TRUE
   )
+})
+
+test_that("close() flushes a buffered writer before dropping it (#2043)", {
+  expect_identical(miniextendr:::buffered_connection_close_bytes(), charToRaw("buffered"))
+})
+
+test_that("a failed final flush warns and returns a negative close status (#2043)", {
+  con <- failing_io_connection()
+  expect_warning(status <- close(con), "Problem closing connection")
+  expect_identical(status, -1L)
 })
 
 # =============================================================================
@@ -386,6 +396,12 @@ test_that("a connection passed in as RNullConnection stays open after the call (
   expect_equal(readLines(tmp), c("from-rust", "after"))
 })
 
+test_that("a refused write through a borrowed RNullConnection is an error", {
+  con <- failing_io_connection()
+  on.exit(suppressWarnings(close(con)))
+  expect_error(rust_null_conn_write(con, "x"), "write refused", fixed = TRUE)
+})
+
 test_that("close() on a borrowed RNullConnection leaves the R connection open (#1917)", {
   tmp <- tempfile()
   con <- file(tmp, "w")
@@ -457,3 +473,4 @@ test_that("close() on a borrowed RTxtProgressBar leaves the bar open (#1917)", {
   expect_false(environment(pb$kill)$.killed)
   close(pb)
 })
+
