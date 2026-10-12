@@ -5,8 +5,9 @@ How to control which R representation a Rust type uses when returned from
 
 ## The Problem
 
-A Rust struct might implement multiple conversion traits: `IntoList`, `IntoExternalPtr`,
-`IntoDataFrame`. When you return it from a function, which conversion does `IntoR` use?
+A Rust struct might implement several conversion traits: `IntoList`, `TypedExternal`
+(from `#[derive(ExternalPtr)]`), `DataFrameRow`. When you return it from a function,
+which conversion does `IntoR` use?
 
 ```rust
 #[derive(IntoList, ExternalPtr)]
@@ -19,21 +20,25 @@ pub fn get_point() -> Point {
 }
 ```
 
-The answer depends on which `IntoR` implementation exists. Prefer* derives let you
-choose explicitly.
+A type has at most one `IntoR` impl, and the answer is whichever derive wrote it.
+`#[derive(ExternalPtr)]` writes one, so `get_point()` returns an external pointer.
+`IntoList` writes none: with `#[derive(IntoList)]` alone, returning `Point` does
+not compile. Prefer* derives write the `IntoR` impl for the representation you
+choose.
 
-## The Four Markers
+## The Prefer Derives
 
-| Derive | Marker Trait | Routes `IntoR` Through | R Result |
-|--------|-------------|----------------------|----------|
-| `PreferList` | `PrefersList` | `IntoList` | Named list |
-| `PreferDataFrame` | `PrefersDataFrame` | `IntoDataFrame` | data.frame |
-| `PreferExternalPtr` | `PrefersExternalPtr` | `ExternalPtr::new()` | External pointer |
-| `PreferRNativeType` | `PrefersRNativeType` | `AsRNative` | Native R vector |
+| Derive | Routes `IntoR` Through | Needs | R Result |
+|--------|----------------------|-------|----------|
+| `PreferList` | `IntoList::into_list` | `IntoList` | Named list |
+| `PreferExternalPtr` | `ExternalPtr::new()` | a hand-written `TypedExternal` | External pointer |
+| `PreferRNativeType` | `AsRNative` | `RNativeType` (so `Copy`) | Native R vector |
+| `PreferDataFrame` | the internal `ColumnSource` engine | not usable on your types; see below | data.frame |
+| `PreferVctrs` (`vctrs` feature) | `IntoVctrs::into_vctrs` | `#[derive(Vctrs)]` | vctrs object |
 
-Each derive does two things:
-1. Implements the empty marker trait
-2. Implements `IntoR` routing through the corresponding conversion
+Each derive writes the type's `IntoR` impl and nothing else. There are no marker
+traits to bound on: a type's representation default is just the `IntoR` impl
+the derive wrote.
 
 ## Usage
 
@@ -41,7 +46,10 @@ Each derive does two things:
 
 Return struct as an R named list:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{IntoList, PreferList, TryFromList, miniextendr};
+
 #[derive(IntoList, TryFromList, PreferList)]
 pub struct Config {
     pub name: String,
@@ -56,32 +64,61 @@ pub fn default_config() -> Config {
 // R: list(name = "default", value = 1.0, enabled = TRUE)
 ```
 
-Requires: `IntoList` (the `PrefersList` trait has `IntoList` as a supertrait).
+Requires: `IntoList` (the generated `IntoR` calls `into_list`). `TryFromList`
+is only needed to take `Config` as an argument.
 
 ### PreferDataFrame
 
-Return struct as an R data.frame (the struct must implement `IntoDataFrame`):
+`PreferDataFrame` builds its frame through `ColumnSource`, an internal trait that
+only the `{Row}DataFrame` companions written by `#[derive(DataFrameRow)]`
+implement, and those companions already convert to a data.frame. Deriving it on
+your own row struct fails with "`ColumnSource` is not implemented" (#2026). To return a
+data.frame, return a `BuiltDataFrame` or wrap the rows in `AsDataFrame`:
 
+<!-- docs-examples-check -->
 ```rust
-#[derive(IntoList, DataFrameRow, PreferDataFrame)]
+use miniextendr_api::{AsDataFrame, BuiltDataFrame, DataFrameRow, IntoDataFrame, miniextendr};
+
+#[derive(DataFrameRow)]
 pub struct Measurement {
     pub time: f64,
     pub value: f64,
 }
+
+#[miniextendr]
+pub fn measurements() -> BuiltDataFrame {
+    vec![Measurement { time: 0.0, value: 1.5 }].into_dataframe().unwrap()
+}
+
+#[miniextendr]
+pub fn measurements_wrapped() -> AsDataFrame<Vec<Measurement>> {
+    AsDataFrame(vec![Measurement { time: 0.0, value: 1.5 }])
+}
 ```
 
-Note: In practice, `#[miniextendr(dataframe)]` or `#[derive(DataFrameRow)]` handles
-this automatically via the companion type pattern. `PreferDataFrame` is for advanced
-cases where you have a custom `IntoDataFrame` impl.
+See [DATAFRAME.md](DATAFRAME.md) for the row-type derive.
 
 ### PreferExternalPtr
 
-Return struct as an opaque R external pointer:
+`#[derive(ExternalPtr)]` already writes an `IntoR` that returns an external
+pointer, so it needs no `PreferExternalPtr` (adding one is a conflicting-impl
+error). `PreferExternalPtr` is for a type whose `TypedExternal` impl you write
+by hand:
 
+<!-- docs-examples-check -->
 ```rust
-#[derive(ExternalPtr, PreferExternalPtr)]
+use miniextendr_api::externalptr::TypedExternal;
+use miniextendr_api::{PreferExternalPtr, miniextendr};
+
+#[derive(PreferExternalPtr)]
 pub struct Engine {
     state: Vec<f64>,
+}
+
+impl TypedExternal for Engine {
+    const TYPE_NAME: &'static str = "Engine";
+    const TYPE_NAME_CSTR: &'static [u8] = b"Engine\0";
+    const TYPE_ID_CSTR: &'static [u8] = concat!(module_path!(), "::Engine\0").as_bytes();
 }
 
 #[miniextendr]
@@ -93,11 +130,15 @@ pub fn create_engine() -> Engine {
 
 ### PreferRNativeType
 
-Return struct as a native R scalar (for newtype wrappers):
+Return struct as a native R scalar (for newtype wrappers; `RNativeType`
+requires `Copy`):
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{PreferRNativeType, RNativeType, miniextendr};
+
 #[repr(transparent)]
-#[derive(RNativeType, PreferRNativeType)]
+#[derive(Clone, Copy, RNativeType, PreferRNativeType)]
 pub struct Meters(f64);
 
 #[miniextendr]
@@ -109,9 +150,12 @@ pub fn distance() -> Meters {
 
 ## Function-Level Override: `prefer = "..."`
 
-Instead of deriving a marker on the type, you can override per-function:
+Instead of deriving a Prefer* on the type, you can override per-function:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{ExternalPtr, IntoList, miniextendr};
+
 #[derive(IntoList, ExternalPtr)]
 pub struct Point { x: f64, y: f64 }
 
@@ -135,27 +179,44 @@ pub fn point_as_ptr() -> Point {
 | `"vector"` / `"native"` | `AsRNative<T>` | Native R vector |
 | `"auto"` | (none) | Default `IntoR` impl |
 
+There is no function-level `"dataframe"`: return `AsDataFrame<Vec<Row>>` or a
+`BuiltDataFrame` instead.
+
 The function-level `prefer` is a one-off override. The type-level derive sets the
 permanent default.
 
 ## Via `#[miniextendr]` on Structs
 
-The `#[miniextendr(prefer = "...")]` attribute on structs combines ExternalPtr
-generation with a preference marker:
+On a struct, `prefer = "..."` selects what `#[miniextendr]` generates:
 
+| Attribute | Generates |
+|-----------|-----------|
+| `prefer = "list"` | Same as `#[miniextendr(list)]`: `IntoList` + `TryFromList` + `PreferList` |
+| `prefer = "dataframe"` | Same as `#[miniextendr(dataframe)]`: `IntoList` + `DataFrameRow` |
+| `prefer = "externalptr"` | Same as the default: `ExternalPtr` |
+| `prefer = "native"` | `ExternalPtr` without its `IntoR`, plus `PreferRNativeType` |
+
+`prefer = "native"` still needs `RNativeType`, so it only fits a
+`#[repr(transparent)]` newtype over a native type:
+
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{RNativeType, miniextendr};
+
 #[miniextendr(prefer = "list")]
 pub struct Config { pub name: String, pub value: f64 }
 // Generates: IntoList + TryFromList + PreferList
 
 #[miniextendr(prefer = "native")]
-pub struct Wrapper { pub data: Vec<i32> }
-// Generates: ExternalPtr + PreferRNativeType
+#[repr(transparent)]
+#[derive(Clone, Copy, RNativeType)]
+pub struct Meters(f64);
+// Generates: ExternalPtr (no IntoR) + PreferRNativeType
 ```
 
 ## Conflicts
 
-You cannot derive two Prefer* markers on the same type. They would both try to
+You cannot derive two Prefer* derives on the same type. They would both try to
 implement `IntoR`, causing a conflict:
 
 ```rust
@@ -163,6 +224,10 @@ implement `IntoR`, causing a conflict:
 #[derive(PreferList, PreferExternalPtr)]
 pub struct Bad { x: f64 }
 ```
+
+Alongside the conflicting-impl error, rustc reports a duplicate definition named
+`__miniextendr_conflicting_Prefer_derives__keep_ONE_or_use_call_site_As_wrappers`,
+which names the fix.
 
 Similarly, `#[derive(ExternalPtr)]` generates its own `IntoR` impl, so you cannot
 combine it with `PreferList`:
@@ -173,7 +238,8 @@ combine it with `PreferList`:
 pub struct AlsoBad { x: f64 }
 ```
 
-Use the function-level `prefer = "..."` override when you need different
+Use the function-level `prefer = "..."` override, or a call-site wrapper
+(`AsList`, `AsExternalPtr`, `AsDataFrame`), when you need different
 representations for the same type in different contexts.
 
 ## See Also

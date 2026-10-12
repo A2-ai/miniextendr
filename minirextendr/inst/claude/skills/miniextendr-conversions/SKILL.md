@@ -18,7 +18,7 @@ whole game.
 | `integer()` | `i32`, `Vec<i32>`, `&[i32]` | `NA_integer_` is an error unless `Option` |
 | `double()` | `f64`, `Vec<f64>`, `&[f64]` | `NA_real_` passes through as an NA NaN |
 | `logical()` | `bool` (errors on NA) or `RLogical` (three-state) | |
-| `character()` | `&str`, `String`, `Vec<String>` | `NA_character_` errors unless `Option` |
+| `character()` | `&str`, `String`, `Vec<String>` | `NA_character_` arrives as `""` unless `Option` |
 | `raw()` | `u8`, `Vec<u8>` | |
 | any + NA/NULL | `Option<T>` | NA and NULL both become `None` |
 | `list()` | `Dots`, typed structs via derives, `SEXP` | see the dataframe/classes skills |
@@ -54,11 +54,12 @@ R's NAs are type-specific sentinels, and Rust types must opt in to them:
   `f64::is_nan()` cannot distinguish NA from an ordinary NaN.
 - Logical NA is a **third state** — R logicals are ints underneath. `bool`
   errors on NA; use `RLogical` (`True` / `False` / `Na`) or `Option<bool>`.
-- `NA_character_` errors for `String`/`&str`; use `Option<String>`.
+- `NA_character_` arrives as `""` in `String`/`&str` (lossy); use
+  `Option<String>` to receive it as `None`.
 
 Vectors with NAs: `Vec<Option<T>>` preserves element-wise NA. `Vec<String>`
-from a character vector containing NA is an error — use
-`Vec<Option<String>>`.
+turns each `NA` of a character vector into `""` — use
+`Vec<Option<String>>` to keep them.
 
 Output direction: scalar `Option<T>` → `None` becomes the matching NA;
 `Option<Vec<T>>` → `None` becomes `NULL` (not NA). Downstream R code checking
@@ -97,13 +98,16 @@ tryCatch(checked_sqrt(-1), error = conditionMessage)
 #> "x must be non-negative, got -1"
 ```
 
-Returning `Result<T, E>` (with `E: Display`) also works: `Err` becomes an R
-error. Never call R's C error functions directly from Rust (the MXL300 lint
-blocks it) — `panic!` is the supported path and runs Rust destructors first.
+Returning `Result<T, E>` also works: `Err` becomes an R error. Without the
+`serde` feature its message is `E`'s `Debug` text, so a `String` error
+arrives in quotes; `Err(RError::new("..."))` (`miniextendr_api::condition`)
+gives a plain message and lets you add classes. Never call R's C error
+functions directly from Rust (the MXL300 lint flags it) — `panic!` is the
+supported path and runs Rust destructors first.
 
 ## Pitfalls
 
-- **`1` in R is a double.** `f(1)` fails a strict `i32` argument; `f(1L)`
+- **`1` in R is a double.** `f(1)` fails an `i32` argument; `f(1L)`
   passes. Coerce-mode types (`i64` etc.) accept both.
 - **`i32::MIN` is NA** — see above; it is excluded from valid `i32` range.
 - **`bool` in generic code**: R logicals are i32-based three-state, so `bool`

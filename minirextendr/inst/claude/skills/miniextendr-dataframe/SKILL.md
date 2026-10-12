@@ -21,11 +21,12 @@ NA contract for struct row types.
 
 ## The 90% case: derive a row type
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
-use miniextendr_api::{miniextendr, DataFrameRow, IntoList};
+use miniextendr_api::{miniextendr, DataFrameRow};
 
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(DataFrameRow)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -66,19 +67,21 @@ handing it a list that isn't a data.frame errors cleanly.
 - **Fixed arrays** `[T; N]` and `Vec<T>` + `#[dataframe(width = N)]` →
   expanded to `field_1 … field_N` columns (ragged `Vec` pads trailing `NA`,
   and round-trips losslessly).
-- **Nested structs** deriving `DataFrameRow` → flattened with a
+- **Nested structs** deriving `Clone` and `DataFrameRow` → flattened with a
   `<field>_` prefix, arbitrarily deep.
 - **Un-annotated `Vec<scalar>` / `Box<[scalar]>`** → an opaque list-column
   (one R list element per row).
-- **`HashMap`/`BTreeMap`** (scalar keys/values) → paired
-  `<field>_keys` / `<field>_values` list-columns, zipped back on read.
+- **`HashMap`/`BTreeMap`** (scalar keys/values) in an enum variant → paired
+  `<field>_keys` / `<field>_values` list-columns, zipped back on read. In a
+  struct row, a map field is one named-list column (also read back).
 - **`#[dataframe(skip)]`** → field not written (and therefore not readable
   back — `from_dataframe` on such a shape returns an error, not garbage).
 
 **Tagged enums** work as row types too: give the enum
 `#[dataframe(tag = "kind")]` and each variant's fields become columns, with
-the tag column dispatching per-row on the way back in. Unit-only nested enums
-can render as factors with `#[dataframe(as_factor)]`.
+the tag column dispatching per-row on the way back in. In a variant, a field
+whose type is a unit-only enum (deriving `Clone` and `DataFrameRow`) can
+render as a factor column with `#[dataframe(as_factor)]`.
 
 A few shapes are write-only (reading back returns a clear `DataFrameError`):
 borrowed fields (`&str`/`&[T]`), skipped fields, opaque non-scalar
@@ -136,9 +139,11 @@ serde path shines for third-party types you can't annotate.
 
 ## Pitfalls
 
-- **All-`None` columns land as logical NA columns** (that's R's convention
-  for "unknown type, all missing"); R coerces them to the right type on first
-  combine. Mixed Some/None columns are unaffected.
+- **All-`None` columns keep their type with `DataFrameRow`**: an
+  `Option<f64>` column that is `None` in every row is `c(NA_real_, ...)`.
+  The serde path (`SerdeRows`, `vec_to_dataframe`) infers types from values,
+  so there an all-`None` column lands as a logical NA column, which R coerces
+  to the right type on first combine.
 - **Column order for `HashMap` fields is non-deterministic** (use `BTreeMap`
   for byte-stable output); key→value pairing is always preserved.
 - **factors**: a factor column arrives as its integer codes through the

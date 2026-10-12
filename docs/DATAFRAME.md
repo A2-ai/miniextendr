@@ -60,8 +60,11 @@ For the full design rationale and the orphan-rule mechanics behind the blanket i
 `#[derive(DataFrameRow)]` is the primary path: derive it on a row struct, then
 return `BuiltDataFrame` from a `#[miniextendr]` function.
 
+<!-- docs-examples-check: quickstart -->
 ```rust
-use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, miniextendr};
+use miniextendr_api::{
+    BuiltDataFrame, DataFrame, DataFrameRow, FromDataFrame, IntoDataFrame, miniextendr,
+};
 
 #[derive(Clone, DataFrameRow)]
 struct Measurement {
@@ -83,6 +86,7 @@ fn get_measurements() -> BuiltDataFrame {
 
 The reverse direction reads a `DataFrame` argument back into rows:
 
+<!-- docs-examples-check: quickstart -->
 ```rust
 #[miniextendr]
 fn round_trip(df: DataFrame) -> BuiltDataFrame {
@@ -336,7 +340,7 @@ enum Event {
 }
 // In R (BTreeMap, sorted key order):
 //   _type   label  tally_keys    tally_values
-//   Tally   "a"    list("a","b") list(1L, 2L)
+//   Tally   "a"    c("a","b")    c(1L, 2L)
 //   Empty   "b"    NULL          NULL
 ```
 
@@ -420,7 +424,7 @@ enum Move {
 
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
-**Generic unit enums**: `#[derive(DataFrameRow)]` auto-emits `UnitEnumFactor` only when the enum has no generic type parameters (`impl_generics.is_empty()`). Generic unit enums must implement `UnitEnumFactor` manually if `as_factor` is needed.
+**Generic unit enums**: `#[derive(DataFrameRow)]` rejects enums with type or const generic parameters, so it never emits `UnitEnumFactor` for one. A generic unit enum must implement `UnitEnumFactor` by hand if `as_factor` is needed.
 
 #### `as_list` — opaque list-column
 
@@ -487,7 +491,7 @@ fn get_events() -> BuiltDataFrame {
 - All enum columns are `Vec<Option<T>>` (absent fields get `None`).
 - `tag = "col"` adds a variant discriminator column.
 - `align` is implicit for enums (accepted but not required).
-- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are still rejected (MXL112); see CLAUDE.md.
+- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are allowed too (only type and const generics are rejected).
 
 #### Type conflicts across variants
 
@@ -623,18 +627,18 @@ discoverable and gives NA-able keys a defined home (key on `Option<T>` —
 
 ```rust
 let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
-let by_site: BTreeMap<String, Vec<Measurement>> =
-    group_rows(rows, |m| m.site.clone());
+let by_sensor: BTreeMap<String, Vec<Measurement>> =
+    group_rows(rows, |m| m.sensor.clone());
 ```
 
 The result is plain Rust data — no SEXP contact — so stepping over groups with
 rayon is safe:
 
 ```rust
-let summaries: Vec<(String, f64)> = by_site
+let summaries: Vec<(String, f64)> = by_sensor
     .into_iter()
     .par_bridge()                       // rayon: rows are Send, no SEXPs held
-    .map(|(site, ms)| (site, ms.iter().map(|m| m.value).sum()))
+    .map(|(sensor, ms)| (sensor, ms.iter().map(|m| m.value).sum()))
     .collect();
 ```
 
@@ -908,7 +912,7 @@ struct Record {
 }
 ```
 
-Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u8`..`u64`, `isize`,
+Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 `usize`, `String` (the reader covers the same set as bare scalars: `u64`,
 `isize`, `usize` are write-only). `Option` around a map, a nested
 `DataFrameRow` struct, or a collection is rejected at compile time (see

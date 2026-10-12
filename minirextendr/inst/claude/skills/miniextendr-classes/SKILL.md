@@ -37,9 +37,11 @@ package already has an `.onLoad()`; `minirextendr::miniextendr_doctor()` warns w
 
 ## A complete R6 example
 
+<!-- docs-examples-check: counter -->
 ```rust
-use miniextendr_api::miniextendr;
+use miniextendr_api::{miniextendr, ExternalPtr};
 
+#[derive(ExternalPtr)]
 pub struct Counter {
     value: i32,
 }
@@ -66,7 +68,7 @@ After `minirextendr::miniextendr_build()`:
 
 ```r
 c <- Counter$new(10L)
-c$increment()$increment()   # void Rust methods return invisible(self) → chainable
+c$increment()$increment()   # `()` methods hand back the object → chainable
 c$get()
 #> [1] 12
 ```
@@ -76,7 +78,7 @@ c$get()
 | Rust receiver | Becomes |
 |---|---|
 | `&self` | instance method (read-only) |
-| `&mut self` | instance method (mutating; R6 returns `invisible(self)` for `()` returns) |
+| `&mut self` | instance method (mutating; a `()` return hands back the object, visibly) |
 | no receiver, returns `Self` | constructor (`new`) or static factory |
 | no receiver, other return | static method: `Type$method()` / `Type_method()` |
 
@@ -116,7 +118,7 @@ duplicate class definitions.
   `s4_*` — the generator prefixes `s4_` itself (the MXL111 lint catches the
   resulting `s4_s4_*`).
 - **S7**: properties come from `#[miniextendr(s7(getter))]` /
-  `s7(setter)` / `s7(validator)` methods; multiple dispatch via
+  `s7(setter)` / `s7(validate)` methods; multiple dispatch via
   `s7(dispatch = "x,y")`.
 - **vctrs**: constructor wraps `vctrs::new_vctr()` / `new_rcrd()` /
   `new_list_of()`. Constructors must return `SEXP` (not `Self`) and the impl
@@ -126,13 +128,14 @@ duplicate class definitions.
 
 Annotate the trait and each impl:
 
+<!-- docs-examples-check: counter -->
 ```rust
 #[miniextendr]
 pub trait Describe {
     fn describe(&self) -> String;
 }
 
-#[miniextendr]
+#[miniextendr(r6)]
 impl Describe for Counter {
     fn describe(&self) -> String {
         format!("Counter at {}", self.value)
@@ -140,17 +143,21 @@ impl Describe for Counter {
 }
 ```
 
-R gets dual calling forms: `Counter$Describe$describe(obj)` and
+A trait impl does not inherit the type's class system: a bare
+`#[miniextendr]` is env, so name the system of the type's own impl block
+(`r6` for the `Counter` above), or use `s3`, which works with every class
+system. Lint MXL008 reports a mismatch as a build warning. For an env class, R gets
+dual calling forms: `Counter$Describe$describe(obj)` and
 `obj$Describe$describe()`. This is how you share one method surface across
 several Rust types.
 
 ## Export control
 
 - Default: class and methods are exported.
-- `#[miniextendr(internal)]` — exported but `@keywords internal` (hidden from
-  the docs index).
-- `#[miniextendr(noexport)]` — not exported at all. Don't combine with
-  `internal` (redundant; the MXL203 lint flags it).
+- `#[miniextendr(internal)]` — not exported; documented with
+  `@keywords internal` (hidden from the docs index, still found by `?name`).
+- `#[miniextendr(noexport)]` — not exported and not documented. Combining
+  it with `internal` is a compile error.
 
 ## Pitfalls
 
