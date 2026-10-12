@@ -453,7 +453,7 @@ macro_rules! __impl_altvec_extract_subset {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_alt_elt {
-    ($ty:ty, $trait:path, $elem:ty, $na:expr) => {
+    ($ty:ty, $trait:path, $elem:ty) => {
         const HAS_ELT: bool = true;
 
         fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $elem {
@@ -731,7 +731,7 @@ macro_rules! __impl_altinteger_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltInteger for $ty where $($whr)* {
-            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltIntegerData, i32, i32::MIN);
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltIntegerData, i32);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltIntegerData, i32);
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltIntegerData);
             $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltIntegerData);
@@ -840,7 +840,7 @@ macro_rules! __impl_altreal_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltReal for $ty where $($whr)* {
-            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRealData, f64, f64::NAN);
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRealData, f64);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRealData, f64);
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltRealData);
             $crate::__impl_alt_no_na!($ty, $crate::altrep_data::AltRealData);
@@ -1042,7 +1042,7 @@ macro_rules! __impl_altraw_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltRaw for $ty where $($whr)* {
-            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRawData, u8, 0);
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltRawData, u8);
             $crate::__impl_alt_get_region!($ty, $crate::altrep_data::AltRawData, u8);
         }
     };
@@ -1178,15 +1178,7 @@ macro_rules! __impl_altcomplex_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltComplex for $ty where $($whr)* {
-            $crate::__impl_alt_elt!(
-                $ty,
-                $crate::altrep_data::AltComplexData,
-                $crate::Rcomplex,
-                $crate::Rcomplex {
-                    r: f64::NAN,
-                    i: f64::NAN
-                }
-            );
+            $crate::__impl_alt_elt!($ty, $crate::altrep_data::AltComplexData, $crate::Rcomplex);
             $crate::__impl_alt_get_region!(
                 $ty,
                 $crate::altrep_data::AltComplexData,
