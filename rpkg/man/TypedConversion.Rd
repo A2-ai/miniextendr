@@ -15,9 +15,9 @@
 \usage{
 TypedConversion(value, .ptr = NULL)
 
-TypedConversion_conversion_value(self, ...)
+TypedConversion_conversion_value(.mx_self, ...)
 
-TypedConversion_to_source(self, ...)
+TypedConversion_to_source(.mx_self, ...)
 
 TypedConversion_from_source(source)
 }
@@ -26,7 +26,7 @@ TypedConversion_from_source(source)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{TypedConversion} object.}
+\item{.mx_self}{A \code{TypedConversion} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

@@ -134,3 +134,50 @@ fn test_old_offset_wrong_for_overaligned() {
         erased_size.next_multiple_of(align_of::<Align32>())
     );
 }
+
+/// `ErasedObject<T>` stores an over-aligned value where its base vtable's
+/// `data_offset` says, and the vtable's `drop` (`drop_raw`) drops it once.
+#[test]
+fn test_erased_object_offset_and_single_drop() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+    #[repr(align(64))]
+    struct Counted {
+        value: u64,
+    }
+    impl Drop for Counted {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    unsafe extern "C" fn no_query(_: *mut mx_erased, _: mx_tag) -> *const c_void {
+        std::ptr::null()
+    }
+    static BASE: mx_base_vtable = mx_base_vtable {
+        drop: ErasedObject::<Counted>::drop_raw,
+        concrete_tag: mx_tag::new(1, 2),
+        query: no_query,
+        data_offset: ErasedObject::<Counted>::DATA_OFFSET,
+    };
+
+    assert_eq!(
+        ErasedObject::<Counted>::DATA_OFFSET,
+        size_of::<mx_erased>().next_multiple_of(align_of::<Counted>())
+    );
+    unsafe {
+        let ptr = ErasedObject::into_raw(Counted { value: 42 }, &BASE);
+        assert!(std::ptr::eq((*ptr).base, &BASE));
+        let base = &*(*ptr).base;
+        let data = ptr.cast::<u8>().add(base.data_offset).cast::<Counted>();
+        assert!(data.is_aligned());
+        assert_eq!((*data).value, 42);
+        assert_eq!(DROPS.load(Ordering::SeqCst), 0);
+        (base.drop)(ptr);
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+        (base.drop)(std::ptr::null_mut());
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+    }
+}

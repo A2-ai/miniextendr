@@ -9,14 +9,14 @@
 \usage{
 S7PropInner(label, .ptr = NULL)
 
-S7PropInner_label(self, ...)
+S7PropInner_label(.mx_self, ...)
 }
 \arguments{
 \item{label}{Character label of the inner class.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7PropInner} object.}
+\item{.mx_self}{A \code{S7PropInner} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

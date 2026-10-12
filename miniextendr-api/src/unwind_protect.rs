@@ -795,8 +795,9 @@ where
                         )
                     }
                 } else {
-                    // warning!/message!/condition! cannot be cleanly raised from ALTREP
-                    // context (no mechanism to suspend execution for non-fatal signals).
+                    // warning!/message!/condition! cannot be cleanly raised from an ALTREP
+                    // or connection callback (no mechanism to suspend execution for
+                    // non-fatal signals).
                     // Documented degradation: a plain R error with a fixed diagnostic,
                     // raised like the generic-panic branch below (`kind = "panic"`,
                     // `rust_error` class layering, issue #366): an error reporting the
@@ -805,9 +806,10 @@ where
                     // kept (`call = none` drops the guard's call).
                     let call = parts.call.apply(call);
                     drop(parts);
-                    let msg = "warning!/message!/condition! from ALTREP callback context \
-                               cannot be raised as non-fatal signals; use error!() instead. \
-                               This context has no R wrapper to handle signal restart.";
+                    let msg = "warning!/message!/condition! from an ALTREP or connection \
+                               callback context cannot be raised as non-fatal signals; use \
+                               error!() instead. This context has no R wrapper to handle \
+                               signal restart.";
                     crate::panic_telemetry::fire(msg, source);
                     unsafe {
                         raise_rust_condition_via_stop(|| panic_condition_value(msg, call), call)

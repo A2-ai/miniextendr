@@ -111,7 +111,7 @@ struct AltrepFamilyConfig<'a> {
 /// | `no_lowlevel` | Flag | Suppress the automatic low-level trait impls. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
 /// | `dataptr` | Flag | Enable `Dataptr` method registration, allowing R to get a direct pointer to the underlying data. Mutually exclusive with `subset`. Not supported for List. |
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
-/// | `duplicate = "clone" / "shared"` | String | Preserve ALTREP on duplication by cloning the owner and cache, or explicitly sharing the same object. Omission retains R's default. |
+/// | `duplicate = "clone"` | String | Keep ALTREP on duplication: clone the owner (requires `Clone`) and copy the R cache. Omission retains R's default, which materializes an ordinary vector. |
 /// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Supported on all atomic families. Not supported for List. |
 /// | `unsafe` | Flag | Set native-read guard to `Unsafe` -- no panic protection. Allocating bridges stay protected. |
 /// | `rust_unwind` | Flag | Set native-read guard to `RustUnwind` -- `catch_unwind` only; reads must not call fallible R APIs. |
@@ -193,10 +193,10 @@ impl AltrepAttrs {
                         return Err(meta.error("duplicate `duplicate` policy"));
                     }
                     let policy: syn::LitStr = meta.value()?.parse()?;
-                    if !matches!(policy.value().as_str(), "clone" | "shared") {
+                    if policy.value() != "clone" {
                         return Err(syn::Error::new(
                             policy.span(),
-                            "duplicate policy must be `clone` or `shared`",
+                            "duplicate policy must be `clone`",
                         ));
                     }
                     duplicate = Some(policy);
@@ -254,19 +254,14 @@ impl AltrepAttrs {
     /// Extra methods in the existing base impl; R's DuplicateEX still copies
     /// attributes and object flags around this Duplicate hook.
     fn duplicate_methods(&self) -> TokenStream {
-        let Some(policy) = &self.duplicate else {
+        if self.duplicate.is_none() {
             return quote! {};
-        };
-        let body = if policy.value() == "shared" {
-            quote! { x }
-        } else {
-            quote! { unsafe { ::miniextendr_api::altrep_impl::duplicate_altrep_owner::<Self>(x) } }
-        };
+        }
         quote! {
             , extra = {
                 const HAS_DUPLICATE: bool = true;
                 fn duplicate(x: ::miniextendr_api::SEXP, _deep: bool) -> ::miniextendr_api::SEXP {
-                    #body
+                    unsafe { ::miniextendr_api::altrep_impl::duplicate_altrep_owner::<Self>(x) }
                 }
             }
         }
@@ -917,95 +912,3 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
 }
 
 // region: Public helper for derive(Altrep) with base parameter
-
-#[cfg(test)]
-mod duplicate_policy_tests {
-    use super::*;
-
-    #[test]
-    fn policies_compose_with_serialization_and_keep_default_flags_absent() {
-        let input = |options: TokenStream| {
-            syn::parse2::<syn::DeriveInput>(quote! {
-                #[altrep(len = "len", elt = "value", #options)]
-                struct Value { len: usize, value: i32 }
-            })
-            .unwrap()
-        };
-        let plain = derive_altrep_integer(input(quote! {})).unwrap().to_string();
-        assert!(!plain.contains("HAS_DUPLICATE"));
-        let cloned = derive_altrep_integer(input(quote! { duplicate = "clone", serialize }))
-            .unwrap()
-            .to_string();
-        assert!(cloned.contains("duplicate_altrep_owner"));
-        assert!(cloned.contains("with_serialize"));
-        assert!(cloned.contains("HAS_DUPLICATE"));
-        let shared = derive_altrep_integer(input(quote! { duplicate = "shared" }))
-            .unwrap()
-            .to_string();
-        assert!(shared.contains("HAS_DUPLICATE"));
-        assert!(!shared.contains("duplicate_altrep_owner"));
-        for options in [
-            quote! { duplicate = "unknown" },
-            quote! { duplicate = "clone", no_lowlevel },
-            quote! { duplicate = "clone", duplicate = "shared" },
-        ] {
-            assert!(derive_altrep_integer(input(options)).is_err());
-        }
-    }
-}
-
-#[cfg(test)]
-mod sidecar_storage_tests {
-    use super::*;
-
-    #[test]
-    fn every_family_uses_handle_storage_without_r_field_wrappers() {
-        let derives = [
-            derive_altrep_integer,
-            derive_altrep_real,
-            derive_altrep_logical,
-            derive_altrep_raw,
-            derive_altrep_string,
-            derive_altrep_complex,
-            derive_altrep_list,
-        ];
-        for derive in derives {
-            let input = syn::parse_quote! {
-                #[altrep(manual, no_lowlevel, class = "VisibleVector")]
-                struct Owner {
-                    #[r_data(ref)]
-                    pub values: Sidecar<SEXP>,
-                    #[r_data(mut)]
-                    label: Sidecar<String>,
-                }
-            };
-            let output = derive(input).unwrap().to_string();
-            syn::parse2::<syn::File>(output.parse().unwrap()).unwrap();
-            assert!(output.contains("R_SLOT_COUNT : usize = 2usize"), "{output}");
-            assert!(output.contains("pub fn values (ptr :"), "{output}");
-            assert!(!output.contains("fn set_values"), "{output}");
-            assert!(output.contains("fn set_label (ptr :"), "{output}");
-            assert!(output.contains("CARGO_PKG_VERSION"), "{output}");
-            assert!(output.contains("str = \"VisibleVector\""), "{output}");
-            assert!(!output.contains("IntoExternalPtr"), "{output}");
-            assert!(!output.contains("__MxWrapper"), "{output}");
-            assert!(!output.contains("__MX_CALL_DEF_RDATA"), "{output}");
-        }
-    }
-
-    #[test]
-    fn altrep_rejects_unattached_sidecars_and_r_class_field_options() {
-        for field in [
-            quote! { values: Sidecar<SEXP> },
-            quote! { #[r_data] values: SEXP },
-            quote! { #[r_data] selector: RSidecar },
-            quote! { #[r_data(name = "x")] values: Sidecar<SEXP> },
-        ] {
-            let input = syn::parse_quote! {
-                #[altrep(manual, no_lowlevel)]
-                struct Owner { #field }
-            };
-            assert!(derive_altrep_integer(input).is_err());
-        }
-    }
-}

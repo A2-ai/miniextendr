@@ -125,6 +125,7 @@ undeclared `rlang::` use. miniextendr itself does not depend on rlang;
 | `env()` | its environment (`rlang::quo_get_env()`), read natively |
 | `as_name()` | `Some(name)` for a symbol or a single string, looking through nested quosures, else `None` |
 | `eval_tidy(data)` | `rlang::eval_tidy(quo, data)`: columns win over the quosure's variables, `.data$x` / `.env$x` pick a side, `data` may be `NULL` |
+| `args(&scope)` | the arguments of the quosure's call, each a `(name, Quosure)`; `None` when the expression is not a call ([below](#quosures-in-a-call)) |
 
 Other tidy-evaluation functions take the quosure through
 [`RCall`](#calls-built-in-rust), tidyselect for one:
@@ -150,6 +151,58 @@ pub fn select_cols(data: SEXP, cols: Quosure, call: Call) -> SEXP {
 does not exist raises tidyselect's `vctrs_error_subscript_oob` with
 `select_cols(df, c(TIME, ID))` as its call (the `Call` marker,
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
+
+### Quosures in a call
+
+An argument can hold several selections: a role map such as
+`f(data, cols = c(time = TAD, dose = NA))`, read entry by entry. Each argument
+of the `c()` call goes to `tidyselect::eval_select()` as a quosure of its own,
+and an `NA` or `NULL` entry keeps a meaning tidyselect refuses.
+`Quosure::args(&scope)` gives the arguments of the quosure's call as
+`(name, Quosure)` pairs, rooted by `scope`:
+
+```rust
+use miniextendr_api::gc_protect::ProtectScope;
+use miniextendr_api::{Missing, NamedListBuilder, Quosure, SEXP, SexpExt, miniextendr};
+
+#[miniextendr]
+pub fn roles(data: SEXP, cols: Missing<Quosure>) -> NamedListBuilder {
+    let mut out = NamedListBuilder::new();
+    let Missing::Present(cols) = cols else { return out };
+    let scope = unsafe { ProtectScope::new() };
+    let roles = cols
+        .args(&scope)
+        .unwrap_or_else(|| panic!("`cols` must be a call, `c(role = column, ...)`"));
+    for (role, quosure) in roles {
+        let expr = quosure.expr();
+        // `NA` / `NULL` as written; anything else selects columns.
+        let value = if expr.is_nil() || is_na(expr) { expr } else { select(quosure.sexp(), data) };
+        out.push_sexp(role.unwrap_or_default(), value);
+    }
+    out
+}
+```
+
+A wrapper that forwards with `c(time = {{ t }})` leaves an rlang quosure
+object inside the call. `args()` returns it as it is, in its own environment;
+every other argument is wrapped in the call quosure's environment with
+`rlang::new_quosure()`. A quosure wrapped again would be a formula tidyselect
+refuses (`Formula shorthand must be wrapped in where()`).
+
+The constructors under it are public:
+
+| Constructor | Returns |
+|---|---|
+| `Quosure::from_sexp(&sexp)` | the quosure `sexp` holds, `None` for anything else; a quosure whose expression is a quosure (`rlang::new_quosure(<quosure>)`) gives the innermost one |
+| `Quosure::new(expr, env, &scope)` | `rlang::new_quosure(expr, env)` for a bare expression, rooted by `scope`; a quosure `expr` as it is, through `from_sexp()` |
+
+Both are `unsafe`: they run on R's main thread inside a miniextendr boundary
+(where `eval_tidy()` can evaluate), and the quosure borrows a root the caller
+holds, the SEXP `from_sexp()` reads or the `ProtectScope` (one protection per
+`new()`, one list for all of `args()`). `new()` and `args()` call rlang for a
+bare expression and panic, naming rlang, when it cannot be loaded. The
+arguments of any call read as `(name, SEXP)` pairs with `PairListExt::args()`
+([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#reading-a-call-pairlistext)).
 
 ## Omitted arguments
 
@@ -311,9 +364,11 @@ expression has no `call()`
 ## Tests
 
 `rpkg/src/rust/quoted_tests.rs` (fixtures, including the `subset()` method,
-the `quoted_try_*` fixtures of `try_eval_with_handlers` and
-`gc_stress_quoted()`) and `rpkg/tests/testthat/test-quoted.R`; the rlang and
-tidyselect blocks skip when those packages are not installed.
+the `quoted_try_*` fixtures of `try_eval_with_handlers`, the role map
+`quosure_roles()`, `gc_stress_quoted()` and `gc_stress_quosure_args()`) and
+`rpkg/tests/testthat/test-quoted.R`; the rlang and tidyselect blocks skip when
+those packages are not installed. `miniextendr-api/tests/pairlist_quosure.rs`
+covers `PairListExt` and the `Quosure` constructors on embedded R.
 `gc_stress_try_eval_with_handlers()` is in `rpkg/src/rust/gc_stress_fixtures.rs`.
 
 ## See also

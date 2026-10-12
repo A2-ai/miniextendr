@@ -16,11 +16,11 @@
 \usage{
 S7Counter(initial, .ptr = NULL)
 
-S7Counter_s7_value(self, ...)
+S7Counter_s7_value(.mx_self, ...)
 
-S7Counter_s7_inc(self, ...)
+S7Counter_s7_inc(.mx_self, ...)
 
-S7Counter_s7_add(self, amount, ...)
+S7Counter_s7_add(.mx_self, amount, ...)
 
 S7Counter_default_counter()
 }
@@ -29,7 +29,7 @@ S7Counter_default_counter()
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Counter} object.}
+\item{.mx_self}{A \code{S7Counter} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

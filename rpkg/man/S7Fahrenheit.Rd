@@ -15,9 +15,9 @@
 \usage{
 S7Fahrenheit(value, .ptr = NULL)
 
-S7Fahrenheit_value(self, ...)
+S7Fahrenheit_value(.mx_self, ...)
 
-S7Fahrenheit_to_celsius(self, ...)
+S7Fahrenheit_to_celsius(.mx_self, ...)
 
 S7Fahrenheit_from_celsius(c)
 }
@@ -26,7 +26,7 @@ S7Fahrenheit_from_celsius(c)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Fahrenheit} object.}
+\item{.mx_self}{A \code{S7Fahrenheit} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

@@ -37,6 +37,7 @@
 //! - [`dots_position_tests`]: a `&Dots` parameter at any position (formals after `...`)
 //! - [`default_tests`]: Default parameter value tests
 //! - [`binding_hygiene_tests`]: Parameters named like generated wrapper and trait-shim bindings (#1677)
+//! - [`receiver_formals_tests`]: Parameters named like receivers, and methods on other packages' generics (#1677)
 //! - [`externalptr_tests`]: ExternalPtr functionality tests
 //! - [`externalptr_identity_tests`]: ExternalPtr identity preservation tests
 //! - [`visibility_tests`]: R return value visibility tests
@@ -135,6 +136,7 @@ mod altrep_condition_tests;
 mod altrep_container_tests;
 mod altrep_manual_fixture;
 mod altrep_no_lowlevel_fixture;
+mod altrep_ownership_tests;
 mod altrep_sexp_tests;
 mod altrep_shared_slice_tests;
 mod altrep_short_source_tests;
@@ -309,6 +311,7 @@ mod raw_ident_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
 mod rdata_sidecar_tests;
+mod receiver_formals_tests;
 mod receiver_tests;
 mod refcount_protect_tests;
 #[cfg(feature = "regex")]

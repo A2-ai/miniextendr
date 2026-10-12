@@ -9,14 +9,14 @@
 \usage{
 S7Shape(name, .ptr = NULL)
 
-S7Shape_shape_name(self, ...)
+S7Shape_shape_name(.mx_self, ...)
 }
 \arguments{
 \item{name}{Character name of the shape.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Shape} object.}
+\item{.mx_self}{A \code{S7Shape} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

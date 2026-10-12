@@ -126,18 +126,33 @@ pub(super) fn generate_trait_r_wrapper(
                 .join("\n"))
         }
     } else if internal {
-        // internal → documented, but @export/@exportMethod becomes @keywords internal
+        // internal → documented, but @export/@exportMethod becomes @keywords
+        // internal. The bare `@export` of an S3 method block (one with
+        // `@method`) stays: it is the `S3method()` registration, which an
+        // inherent `internal` S3 impl keeps too, and without it a method on
+        // another package's generic (`summary`) dispatches only from inside
+        // the namespace.
         let has_export = result.lines().any(|line| line.contains("@export"));
-        let mut processed: Vec<String> = result
-            .lines()
-            .flat_map(|line| {
-                if line.contains("@export") {
-                    vec!["#' @keywords internal".to_string()]
+        let lines: Vec<&str> = result.lines().collect();
+        let mut processed: Vec<String> = Vec::with_capacity(lines.len());
+        let mut start = 0;
+        while start < lines.len() {
+            let roxygen = lines[start].starts_with("#'");
+            let end = lines[start..]
+                .iter()
+                .position(|line| line.starts_with("#'") != roxygen)
+                .map_or(lines.len(), |len| start + len);
+            let block = &lines[start..end];
+            let registers_s3 = roxygen && block.iter().any(|line| line.contains("@method "));
+            for &line in block {
+                if line.contains("@export") && !(registers_s3 && line.trim_end() == "#' @export") {
+                    processed.push("#' @keywords internal".to_string());
                 } else {
-                    vec![line.to_string()]
+                    processed.push(line.to_string());
                 }
-            })
-            .collect();
+            }
+            start = end;
+        }
         // For class systems without @export (e.g., Env), insert @keywords internal
         // before the first roxygen tag if no @export line was found to replace.
         if !has_export && let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
@@ -890,16 +905,15 @@ fn generate_trait_s4_r_wrapper(
                 generic_roxygen = generic_roxygen.custom(tag.clone());
             }
             lines.extend(generic_roxygen.export().build());
-
-            // Define generic only if it doesn't already exist in THIS namespace
-            // (avoid clearing methods). Scoped to topenv(environment()) so an
-            // attached installed copy of the package can't satisfy the check and
-            // starve the setMethod below during load_all() (#1158).
-            lines.push(format!(
-            "if (!exists(\"{generic_name}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
-        ));
-            lines.push(String::new());
         }
+        // Define the generic unless it exists; an explicit `generic` may be
+        // another package's. Also ends the `@importFrom` block above.
+        lines.push(crate::miniextendr_impl::s4_class::s4_generic_guard(
+            &generic_name,
+            method.generic.is_some(),
+            receiver,
+        ));
+        lines.push(String::new());
 
         // S4 method roxygen + definition (include @param tags from method doc
         // comments). The block sits on `methods::setMethod()`: roxygen2 names

@@ -9,14 +9,14 @@
 \usage{
 S7OverrideCircle(radius, .ptr = NULL)
 
-S7OverrideCircle_override_radius(self, ...)
+S7OverrideCircle_override_radius(.mx_self, ...)
 }
 \arguments{
 \item{radius}{Numeric radius of the circle.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7OverrideCircle} object.}
+\item{.mx_self}{A \code{S7OverrideCircle} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

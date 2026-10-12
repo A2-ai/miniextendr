@@ -30,28 +30,28 @@
 \usage{
 S7Raiser(id, .ptr = NULL)
 
-S7Raiser_s7_id(self, ...)
+S7Raiser_s7_id(.mx_self, ...)
 
-S7Raiser_s7_raise_error(self, msg, ...)
+S7Raiser_s7_raise_error(.mx_self, msg, ...)
 
-S7Raiser_s7_raise_error_classed(self, class, msg, ...)
+S7Raiser_s7_raise_error_classed(.mx_self, class, msg, ...)
 
-S7Raiser_s7_raise_warning(self, msg, ...)
+S7Raiser_s7_raise_warning(.mx_self, msg, ...)
 
-S7Raiser_s7_raise_warning_classed(self, class, msg, ...)
+S7Raiser_s7_raise_warning_classed(.mx_self, class, msg, ...)
 
-S7Raiser_s7_raise_message(self, msg, ...)
+S7Raiser_s7_raise_message(.mx_self, msg, ...)
 
-S7Raiser_s7_raise_condition(self, msg, ...)
+S7Raiser_s7_raise_condition(.mx_self, msg, ...)
 
-S7Raiser_s7_raise_condition_classed(self, class, msg, ...)
+S7Raiser_s7_raise_condition_classed(.mx_self, class, msg, ...)
 }
 \arguments{
 \item{id}{(undocumented)}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Raiser} object.}
+\item{.mx_self}{A \code{S7Raiser} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

@@ -18,20 +18,20 @@
 \usage{
 ErrorInRS7Gauge(level, .ptr = NULL)
 
-ErrorInRS7Gauge_read_level(self, ...)
+ErrorInRS7Gauge_read_level(.mx_self, ...)
 
-ErrorInRS7Gauge_set_level(self, level, ...)
+ErrorInRS7Gauge_set_level(.mx_self, level, ...)
 
-ErrorInRS7Gauge_panic_method(self, ...)
+ErrorInRS7Gauge_panic_method(.mx_self, ...)
 
-ErrorInRS7Gauge_failing_result(self, ...)
+ErrorInRS7Gauge_failing_result(.mx_self, ...)
 }
 \arguments{
 \item{level}{(undocumented)}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{ErrorInRS7Gauge} object.}
+\item{.mx_self}{A \code{ErrorInRS7Gauge} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

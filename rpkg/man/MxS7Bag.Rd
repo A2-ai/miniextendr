@@ -22,13 +22,13 @@
 \usage{
 MxS7Bag(values, .ptr = NULL)
 
-MxS7Bag_subset(self, i, ...)
+MxS7Bag_subset(.mx_self, i, ...)
 
-MxS7Bag_concat(self, other, ...)
+MxS7Bag_concat(.mx_self, other, ...)
 
-MxS7Bag_dot(self, y, ...)
+MxS7Bag_dot(.mx_self, y, ...)
 
-MxS7Bag_tidy(self, ...)
+MxS7Bag_tidy(.mx_self, ...)
 }
 \arguments{
 \item{values}{Numeric values held by the bag.}
@@ -39,7 +39,7 @@ MxS7Bag_tidy(self, ...)
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
-\item{self}{A \code{MxS7Bag} object.}
+\item{.mx_self}{A \code{MxS7Bag} object.}
 
 \item{other}{Numeric values to append.}
 

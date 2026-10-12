@@ -104,8 +104,9 @@ duplicate class definitions.
 ## Per-system notes
 
 - **Env**: methods are functions in an environment; `obj$method()` works via
-  a generated `$` S3 method that binds `self`. No dependencies; not a formal
-  class system (no inheritance).
+  a generated `$` S3 method that binds the object as `.mx_self`, so method
+  arguments may be named `self` or `x` (`_self` in Rust). No dependencies;
+  not a formal class system (no inheritance).
 - **R6 extras**: `#[miniextendr(r6(private))]` for private methods,
   `#[miniextendr(r6(prop = "name"))]` for active bindings (computed
   properties), `r6(finalize)` for a GC destructor, `r6(deep_clone)` for
@@ -117,6 +118,10 @@ duplicate class definitions.
   registered via `methods::setGeneric`/`setMethod`. Don't name Rust methods
   `s4_*` — the generator prefixes `s4_` itself (the MXL111 lint catches the
   resulting `s4_s4_*`).
+- **Existing S3/S4 generics**: `s3(generic = "summary", receiver = "object")`
+  or `s4(generic = "show", receiver = "object", no_dots)` adds a method to a
+  generic another package owns, with that generic's receiver formal, instead
+  of defining a new generic.
 - **S7**: properties come from `#[miniextendr(s7(getter))]` /
   `s7(setter)` / `s7(validate)` methods; multiple dispatch via
   `s7(dispatch = "x,y")`.

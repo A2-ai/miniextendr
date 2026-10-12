@@ -13,6 +13,16 @@ through C frames (undefined behavior). Guard modes wrap callbacks in protection:
 | **RustUnwind** | `#[altrep(rust_unwind)]` | Rust panics only | ~1-2ns | No |
 | **Unsafe** | `#[altrep(unsafe)]` | Nothing | Zero | No |
 
+The mode applies to the callbacks that read the Rust data: `Length`, numeric
+`Elt` and `Get_region`, `Dataptr_or_null`, sortedness and NA hints, and
+`Inspect`. Every other callback always runs under `RUnwind`, whatever the
+mode, because the bridge itself allocates R objects there: those returning a
+SEXP (string and list `Elt`, `Sum` / `Min` / `Max`, `Duplicate`,
+serialization, `Coerce`, `Extract_subset`), `Dataptr` (which may fill an R
+vector in data2) and the string and list `Set_elt`. Choosing `rust_unwind` or
+`unsafe` keeps the default materializing `Dataptr`, so R operations that need
+a data pointer (`x + 1L`, `sort(x)`) still work.
+
 ## Syntax
 
 ```rust
@@ -132,7 +142,7 @@ The guard mode is set via the `const GUARD` associated constant on the `Altrep` 
 
 ```rust
 pub trait Altrep {
-    const GUARD: AltrepGuard = AltrepGuard::RustUnwind;
+    const GUARD: AltrepGuard = AltrepGuard::RUnwind;
     // ...
 }
 ```
@@ -154,7 +164,9 @@ where F: FnOnce() -> R {
 ```
 
 Since `T::GUARD` is a `const`, the compiler eliminates dead branches at
-monomorphization time. The chosen mode has zero runtime cost.
+monomorphization time. The chosen mode has zero runtime cost. The allocating
+callbacks listed under [Overview](#overview) call the `RUnwind` arm directly
+instead of dispatching on `T::GUARD`.
 
 ## See Also
 

@@ -161,8 +161,21 @@ where
     /// cached, but is never published as a complete buffer. A failed attempt
     /// drops the iterator; another attempt cannot resume an exhausted source.
     pub fn materialize_all(&self) -> &[T] {
+        match self.try_materialize_all() {
+            Ok(vec) => vec,
+            Err(cached) => panic!(
+                "ALTREP iterator ended before element {} of its declared length {}",
+                cached + 1,
+                self.len
+            ),
+        }
+    }
+
+    /// [`Self::materialize_all`] without the panic: `Err` carries the number
+    /// of elements the source produced before it ended.
+    pub fn try_materialize_all(&self) -> Result<&[T], usize> {
         if let Some(vec) = self.materialized.get() {
-            return vec;
+            return Ok(vec);
         }
 
         let mut cache = self.cache.borrow_mut();
@@ -175,17 +188,14 @@ where
                 cache.push(value);
             }
         }
-        assert!(
-            cache.len() == self.len,
-            "ALTREP iterator ended before element {} of its declared length {}",
-            cache.len() + 1,
-            self.len
-        );
+        if cache.len() != self.len {
+            return Err(cache.len());
+        }
 
         let vec = std::mem::take(&mut *cache);
         drop(cache);
         drop(iter_opt);
-        self.materialized.get_or_init(|| vec)
+        Ok(self.materialized.get_or_init(|| vec))
     }
 
     /// Get the materialized vector if all elements have been generated.
@@ -396,12 +406,8 @@ mod tests {
             assert_eq!(state.get_element(0), Some(0));
             assert_eq!(state.get_element(2), None);
         }
+        assert_eq!(state.try_materialize_all(), Err(2));
     }
-}
-
-#[cfg(test)]
-mod clone_tests {
-    use super::IterState;
 
     #[test]
     fn clone_preserves_a_partial_prefix_without_advancing_the_source() {

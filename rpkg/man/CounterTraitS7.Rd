@@ -14,18 +14,18 @@
 \usage{
 CounterTraitS7(v, .ptr = NULL)
 
-CounterTraitS7_get_value(self, ...)
+CounterTraitS7_get_value(.mx_self, ...)
 
-CounterTraitS7_custom_get(self, ...)
+CounterTraitS7_custom_get(.mx_self, ...)
 
-CounterTraitS7_custom_add(self, n, ...)
+CounterTraitS7_custom_add(.mx_self, n, ...)
 }
 \arguments{
 \item{v}{Initial counter value.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{CounterTraitS7} object.}
+\item{.mx_self}{A \code{CounterTraitS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

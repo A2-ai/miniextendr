@@ -1,14 +1,13 @@
 //! Native Vec ownership that preserves allocations already exposed to R.
-use std::cell::Cell;
-
 use super::{AltrepDataptr, AltrepLen, AltrepSerialize};
 use crate::{IntoR, RNativeType, SEXP, TryFromSexp};
 
 /// A growable native buffer whose exposed allocations survive later edits.
 ///
 /// Wrap in `Altrep` to return it to R. Built-in classes use value semantics:
-/// R duplication clones the current values. Custom derive classes may select
-/// `duplicate = "shared"` when aliases should observe updates instead.
+/// R duplication clones the current values, so a copy R makes keeps its own
+/// values. An edit through the owner of an R object changes that object in
+/// place, for every binding R has of it.
 ///
 /// [`edit`](Self::edit) detaches first if R has requested a data pointer, and
 /// keeps the old allocation until this owner is dropped. Previously returned
@@ -22,7 +21,7 @@ use crate::{IntoR, RNativeType, SEXP, TryFromSexp};
 #[derive(Debug)]
 pub struct AltrepBuffer<T: RNativeType> {
     values: Vec<T>,
-    exposed: Cell<bool>,
+    exposed: bool,
     retired: Vec<Vec<T>>,
 }
 
@@ -31,7 +30,7 @@ impl<T: RNativeType> AltrepBuffer<T> {
     pub fn new(values: Vec<T>) -> Self {
         Self {
             values,
-            exposed: Cell::new(false),
+            exposed: false,
             retired: Vec::new(),
         }
     }
@@ -45,10 +44,10 @@ impl<T: RNativeType> AltrepBuffer<T> {
     /// A panic in `edit` leaves earlier pointers valid and keeps any changes
     /// already made to the new Vec; it does not roll the edit back.
     pub fn edit<R>(&mut self, edit: impl FnOnce(&mut Vec<T>) -> R) -> R {
-        if self.exposed.get() {
+        if self.exposed {
             let next = self.values.clone();
             self.retired.push(std::mem::replace(&mut self.values, next));
-            self.exposed.set(false);
+            self.exposed = false;
         }
         edit(&mut self.values)
     }
@@ -120,7 +119,7 @@ macro_rules! native_buffer {
         }
         impl AltrepDataptr<$storage> for AltrepBuffer<$element> {
             fn dataptr(&mut self, _writable: bool) -> Option<*mut $storage> {
-                self.exposed.set(true);
+                self.exposed = true;
                 Some(self.values.as_mut_ptr().cast())
             }
             // Use the mutable path even for full read-only Dataptr requests,
@@ -144,7 +143,7 @@ impl super::AltLogicalData for AltrepBuffer<crate::RLogical> {
 }
 impl AltrepDataptr<i32> for AltrepBuffer<crate::RLogical> {
     fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-        self.exposed.set(true);
+        self.exposed = true;
         Some(self.values.as_mut_ptr().cast())
     }
 }

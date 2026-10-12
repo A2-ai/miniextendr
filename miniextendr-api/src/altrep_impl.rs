@@ -29,7 +29,6 @@ pub unsafe fn duplicate_altrep_owner<T>(x: crate::SEXP) -> crate::SEXP
 where
     T: crate::externalptr::TypedExternal + crate::altrep::RegisterAltrep + Clone,
 {
-    use crate::altrep_ext::AltrepSexpExt;
     unsafe {
         let original =
             crate::altrep_data1_as_unchecked::<T>(x).expect("ALTREP owner type mismatch");

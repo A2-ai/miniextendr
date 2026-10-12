@@ -572,25 +572,31 @@ pub trait RConnectionImpl: Sized + 'static {
     ///
     /// - `where_`: The position to seek to (or NA to query current position)
     /// - `origin`: 1 = start, 2 = current, 3 = end
-    /// - `rw`: 1 = read, 2 = write
+    /// - `rw`: 0 = the last used, 1 = read, 2 = write
     ///
-    /// Return the previous position, or -1 on failure. A query returns the
-    /// current position without moving. This is R's contract, unlike
-    /// `std::io::Seek`, which returns the new position.
+    /// Return the previous position. A query returns the current position
+    /// without moving. This is R's contract, unlike `std::io::Seek`, which
+    /// returns the new position. R hands the value to `seek()`'s caller as it
+    /// is, so report a failure with [`crate::error!`] or a panic, not -1.
     ///
-    /// The default returns -1 (seek not supported).
+    /// The default raises R's own error for a connection without seek
+    /// ("'seek' not enabled for this connection").
     fn seek(&mut self, _where: f64, _origin: i32, _rw: i32) -> f64 {
-        -1.0
+        crate::error!("'seek' not enabled for this connection")
     }
 
     /// Truncate the connection at the current position.
     ///
-    /// The default does nothing.
-    fn truncate(&mut self) {}
+    /// The default raises R's own error for a connection without truncation
+    /// ("truncation not enabled for this connection").
+    fn truncate(&mut self) {
+        crate::error!("truncation not enabled for this connection")
+    }
 
     /// Flush buffered output.
     ///
-    /// Return 0 on success, non-zero on failure.
+    /// Return 0. R ignores the value, so report a failure with
+    /// [`crate::error!`] or a panic.
     ///
     /// The default returns 0 (success/no-op).
     fn flush(&mut self) -> i32 {

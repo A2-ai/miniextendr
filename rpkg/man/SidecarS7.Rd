@@ -36,9 +36,9 @@ SidecarS7_set_scores(x, value)
 
 SidecarS7(prop_int, prop_flag, prop_name, .ptr = NULL)
 
-SidecarS7_score_total(self, ...)
+SidecarS7_score_total(.mx_self, ...)
 
-SidecarS7_add_score(self, score, ...)
+SidecarS7_add_score(.mx_self, score, ...)
 }
 \arguments{
 \item{x}{The SidecarS7 external pointer}
@@ -53,7 +53,7 @@ SidecarS7_add_score(self, score, ...)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{SidecarS7} object.}
+\item{.mx_self}{A \code{SidecarS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

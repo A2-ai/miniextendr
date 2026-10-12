@@ -191,9 +191,20 @@ fn test_internal_suppresses_export_s3() {
         "internal should add @keywords internal for S3, got:\n{}",
         result
     );
+    // The generic is not exported; the method stays registered, as on an
+    // inherent `internal` S3 impl.
     assert!(
-        !result.contains("@export"),
-        "internal should suppress @export for S3, got:\n{}",
+        !result.contains("@export s3_trait_Bar_value") && !result.contains("@export value"),
+        "internal should not export the generic for S3, got:\n{}",
+        result
+    );
+    let method_block = result
+        .split("\n\n")
+        .find(|block| block.contains("#' @method "))
+        .expect("an S3 method block");
+    assert!(
+        method_block.contains("#' @export\n"),
+        "internal should keep the S3 method registration, got:\n{}",
         result
     );
 }
@@ -2802,7 +2813,15 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
     );
     assert!(s4.contains(".ptr <- object@ptr"), "{s4}");
     assert!(s4.contains("\n  object\n})"), "{s4}");
-    assert!(!s4.contains("methods::setGeneric("), "{s4}");
+    assert!(
+        s4.contains(
+            "if (!exists(\"show\", mode = \"function\") && !(methods::isGeneric(\"show\") && \
+             methods::getGeneric(\"show\")@package != environmentName(topenv(environment())))) \
+             methods::setGeneric(\"show\", function(object, ...) standardGeneric(\"show\"))"
+        ),
+        "{s4}"
+    );
+    assert!(!s4.contains("#' @export\n"), "{s4}");
     assert!(!s4.contains("#' @param ..."), "{s4}");
 
     let mut explicit_dots = methods[0].clone();

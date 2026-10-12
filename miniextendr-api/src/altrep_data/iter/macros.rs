@@ -21,7 +21,13 @@ macro_rules! define_iter_data {
 
         impl<I: Iterator<Item = $item>> crate::altrep_data::AltrepSerialize for $name<I> {
             fn serialized_state(&self) -> crate::SEXP {
-                crate::IntoR::into_sexp(self.state.materialize_all().to_vec())
+                // A source shorter than the declared length leaves elements no
+                // saved state can restore. C NULL asks R to save the values the
+                // element reads give instead.
+                match self.state.try_materialize_all() {
+                    Ok(values) => crate::IntoR::into_sexp(values.to_vec()),
+                    Err(_) => crate::SEXP::null(),
+                }
             }
 
             fn unserialize(state: crate::SEXP) -> Option<Self> {

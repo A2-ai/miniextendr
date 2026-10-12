@@ -10,8 +10,10 @@ use std::borrow::Cow;
 
 // The duplicate policy is essential: R can duplicate before entering a
 // replacement function. Its default would materialize an ordinary R vector.
+// The live view's hand-written Duplicate returns the same object; the derive
+// offers only the value-semantics `duplicate = "clone"` policy.
 #[derive(miniextendr_api::AltrepInteger)]
-#[altrep(manual, dataptr, duplicate = "shared", class = "AssignmentLiveVec")]
+#[altrep(manual, no_lowlevel, class = "AssignmentLiveVec")]
 struct LiveVec(miniextendr_api::AltrepBuffer<i32>);
 
 #[derive(Clone, miniextendr_api::AltrepInteger)]
@@ -34,6 +36,9 @@ macro_rules! direct_integer_view {
 }
 direct_integer_view!(LiveVec);
 direct_integer_view!(CowVec);
+miniextendr_api::__impl_altvec_dataptr!(LiveVec, i32);
+miniextendr_api::__impl_altinteger_methods!(LiveVec);
+miniextendr_api::impl_inferbase_integer!(LiveVec);
 
 impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LiveVec {
     fn dataptr(&mut self, _: bool) -> Option<*mut i32> {
@@ -51,6 +56,17 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for CowVec {
         Some(self.0.as_ptr())
     }
 }
+impl Altrep for LiveVec {
+    fn length(x: SEXP) -> miniextendr_api::R_xlen_t {
+        unsafe { Self::altrep_extract_ref(x).0.len().try_into().unwrap() }
+    }
+    const HAS_DUPLICATE: bool = true;
+    fn duplicate(x: SEXP, _: bool) -> SEXP {
+        // Explicit reference semantics: aliases observe the same owner's growth.
+        x
+    }
+}
+
 // Test-only .Call callbacks. Typed accessors validate the object as generated
 // entry points do; a regression that materializes it must fail, not cast an
 // ordinary vector's header as ALTREP data1.

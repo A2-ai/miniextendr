@@ -9,7 +9,7 @@
 \usage{
 S7Animal(kind, legs, .ptr = NULL)
 
-S7Animal_animal_kind(self, ...)
+S7Animal_animal_kind(.mx_self, ...)
 }
 \arguments{
 \item{kind}{Character kind of animal.}
@@ -18,7 +18,7 @@ S7Animal_animal_kind(self, ...)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Animal} object.}
+\item{.mx_self}{A \code{S7Animal} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

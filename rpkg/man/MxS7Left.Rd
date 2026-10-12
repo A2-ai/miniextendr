@@ -9,14 +9,14 @@
 \usage{
 MxS7Left(label, .ptr = NULL)
 
-MxS7Left_mx_s7_pair(self, other, sep = ":", ...)
+MxS7Left_mx_s7_pair(.mx_self, other, sep = ":", ...)
 }
 \arguments{
 \item{label}{Label reported by \code{mx_s7_pair()}.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{MxS7Left} object.}
+\item{.mx_self}{A \code{MxS7Left} object.}
 
 \item{other}{Number to pair with.}
 

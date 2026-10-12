@@ -1,9 +1,13 @@
-//! `SexpExt` — the ergonomic extension trait on `SEXP`.
+//! `SexpExt` — the ergonomic extension trait on `SEXP` — and `PairListExt`,
+//! its pairlist (call) counterpart.
 //!
 //! Provides safe(r) accessors and type checks. This is the actual user-facing
-//! API surface most callers reach for; it's re-exported from
+//! API surface most callers reach for; both are re-exported from
 //! [`crate::prelude`].
 
+use std::marker::PhantomData;
+
+use crate::from_r::charsxp_to_str;
 use crate::gc_protect::ProtectScope;
 use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
 use crate::{IsNA, SEXP};
@@ -1104,34 +1108,82 @@ impl SexpExt for SEXP {
     // endregion
 }
 
-/// Extension trait for SEXP providing pairlist (cons cell) operations.
+/// Pairlist (cons cell) operations on a `SEXP`: R's calls (`LANGSXP`) and
+/// pairlists (`LISTSXP`, such as `formals(f)` or `pairlist(...)`).
 ///
-/// Pairlist nodes have three slots: CAR (value), CDR (next), and TAG (name).
-/// This trait encapsulates the raw C functions behind method calls.
-#[allow(dead_code)]
-pub(crate) trait PairListExt {
-    /// Create a cons cell with this SEXP as CAR and `cdr` as CDR.
+/// Each node has three slots: CAR (the value), CDR (the next node, `NULL`
+/// after the last) and TAG (the name, a symbol, or `NULL` when unnamed). A
+/// call's first node holds the function, the following nodes its arguments:
+///
+/// ```ignore
+/// use miniextendr_api::{PairListExt, SEXP};
+///
+/// // `call` is `c(time = TAD, dose = NA)`, rooted by the caller.
+/// fn roles(call: SEXP) -> Vec<(Option<String>, SEXP)> {
+///     call.args().map(|(name, value)| (name.map(str::to_owned), value)).collect()
+/// }
+/// ```
+///
+/// The values read from a node are reachable from the pairlist, so they stay
+/// rooted while it does. A pairlist R handed you (a `.Call()` argument, a
+/// quosure's expression) is shared: change only a node you own, such as one
+/// of a `shallow_duplicate()` of the call.
+pub trait PairListExt {
+    /// A new pairlist node, `CONS(self, cdr)`: this SEXP as its value, `cdr`
+    /// as the rest. The node is unprotected.
     fn cons(self, cdr: SEXP) -> SEXP;
 
-    /// Create a language cons cell with this SEXP as CAR and `cdr` as CDR.
+    /// A new call node, `LCONS(self, cdr)`: this SEXP (the function) as its
+    /// value, `cdr` (the arguments) as the rest. The node is unprotected.
     fn lcons(self, cdr: SEXP) -> SEXP;
 
-    /// Get the CAR (head/value) of this pairlist node.
+    /// The value of this node (`CAR`). On a call, the function.
     fn car(&self) -> SEXP;
 
-    /// Get the CDR (tail/rest) of this pairlist node.
+    /// The rest of the pairlist after this node (`CDR`): the next node, or
+    /// `NULL` after the last. On a call, its arguments.
     fn cdr(&self) -> SEXP;
 
-    /// Get the TAG (name symbol) of this pairlist node.
+    /// The name of this node (`TAG`): a symbol, or `NULL` when it has none.
     fn tag(&self) -> SEXP;
 
-    /// Set the TAG (name symbol) of this pairlist node.
+    /// The arguments of a call, or the elements of a pairlist, as
+    /// `(name, value)`. The name is `None` for an unnamed one; a repeated
+    /// name is kept.
+    ///
+    /// | `self` | yields |
+    /// |---|---|
+    /// | a call, `f(a, b = 2)` | its arguments, `(None, a)` then `(Some("b"), 2)`; the function is not one of them |
+    /// | a pairlist, `pairlist(a = 1, 2)` | every element, `(Some("a"), 1)` then `(None, 2)` |
+    /// | `NULL` (the empty pairlist) | nothing |
+    ///
+    /// An empty argument, the slot of `f(a = )`, is the missing argument
+    /// ([`SEXP::missing_arg()`]); a `NULL` argument does not end the walk.
+    /// The names are the print names of the tags; the borrow of `self` stands
+    /// for the root that keeps the pairlist alive.
+    ///
+    /// # Panics
+    ///
+    /// When `self` is not a call, a pairlist or `NULL`.
+    fn args(&self) -> PairListArgs<'_>;
+
+    /// Set the name of this node (`SET_TAG`): a symbol, or `NULL`.
+    ///
+    /// Only on a node you own, such as one of a `shallow_duplicate()` of the
+    /// call, never on a call or pairlist R handed you: R shares them.
     fn set_tag(&self, tag: SEXP);
 
-    /// Set the CAR (value) of this pairlist node.
+    /// Set the value of this node (`SETCAR`); returns `value`.
+    ///
+    /// Only on a node you own, such as one of a `shallow_duplicate()` of the
+    /// call, never on a call or pairlist R handed you: R shares them.
     fn set_car(&self, value: SEXP) -> SEXP;
 
-    /// Set the CDR (tail) of this pairlist node.
+    /// Set the rest of the pairlist after this node (`SETCDR`); returns
+    /// `tail`.
+    ///
+    /// Only on a node you own, such as one of a `shallow_duplicate()` of the
+    /// call, never on a call or pairlist R handed you: R shares them.
     fn set_cdr(&self, tail: SEXP) -> SEXP;
 
     /// Create a cons cell (no thread check).
@@ -1191,6 +1243,21 @@ impl PairListExt for SEXP {
         unsafe { TAG(*self) }
     }
 
+    fn args(&self) -> PairListArgs<'_> {
+        let first = match self.type_of() {
+            SEXPTYPE::LANGSXP => self.cdr(),
+            SEXPTYPE::LISTSXP | SEXPTYPE::NILSXP => *self,
+            other => panic!(
+                "`args()` reads a call, a pairlist or NULL, not {}",
+                other.type_name()
+            ),
+        };
+        PairListArgs {
+            node: first,
+            _list: PhantomData,
+        }
+    }
+
     #[inline]
     fn set_tag(&self, tag: SEXP) {
         unsafe { SET_TAG(*self, tag) }
@@ -1236,3 +1303,38 @@ impl PairListExt for SEXP {
         unsafe { SETCDR_unchecked(*self, tail) }
     }
 }
+
+/// The arguments of a call, or the elements of a pairlist, as
+/// `(name, value)`: see [`PairListExt::args`].
+///
+/// The `'a` borrow stands for the root that keeps the pairlist alive; the
+/// names borrow it too.
+pub struct PairListArgs<'a> {
+    /// The next node to read, `NULL` once every node has been read.
+    node: SEXP,
+    /// Borrows the root of the pairlist.
+    _list: PhantomData<&'a SEXP>,
+}
+
+impl<'a> Iterator for PairListArgs<'a> {
+    type Item = (Option<&'a str>, SEXP);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.node;
+        if node.is_nil() {
+            return None;
+        }
+        self.node = node.cdr();
+        let tag = node.tag();
+        // A tag is a symbol; its print name lives for the session.
+        let name = if tag.is_symbol() {
+            let name = unsafe { charsxp_to_str(tag.printname()) };
+            (!name.is_empty()).then_some(name)
+        } else {
+            None
+        };
+        Some((name, node.car()))
+    }
+}
+
+impl std::iter::FusedIterator for PairListArgs<'_> {}

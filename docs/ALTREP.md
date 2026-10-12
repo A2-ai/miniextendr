@@ -276,28 +276,42 @@ A live-view class can deliberately preserve its owner, while a value class can
 duplicate its ALTREP state and detach the storage on write. The latter must keep
 an existing alias unchanged.
 
-The derives offer `#[altrep(duplicate = "clone")]` for value semantics and
-`#[altrep(duplicate = "shared")]` for deliberate reference semantics. The
-clone policy requires `Clone`, clones the ExternalPtr owner (including sidecar
-slots), and copies the authoritative data2 cache, including partial string
-caches. The shared policy returns the same ALTREP object: aliases observe its
-mutations. Neither option changes the default when omitted. Both compose with
-`dataptr`, `subset`, and `serialize`; `no_lowlevel` requires your own policy.
+The derives offer `#[altrep(duplicate = "clone")]` for value semantics. It
+requires `Clone`, clones the data1 ExternalPtr owner, and copies the
+authoritative data2 cache, including a partial string cache. The copy stays
+ALTREP, and R's default `DuplicateEX` copies the attributes onto it, so
+`y <- x; y[1] <- 0L` leaves `x` unchanged. Omitting the option keeps R's
+default. It composes with `dataptr`, `subset` and `serialize`; `no_lowlevel`
+leaves the policy to your own `Altrep` impl.
 
 A custom `Clone` must detach buffers exposed for R writes. `Vec` and owned
 `Cow` clones do this; simply sharing an `Rc` allocation is not sufficient.
-Returning the same object also does not make an exposed pointer survive Vec
-reallocation: choose storage that retains exposed allocations when it grows.
 
-`AltrepBuffer<T>` is the native owner for this mutation contract. Return
-`Altrep(AltrepBuffer::new(values))` for `i32`, `f64`, `u8`, `Rcomplex`, or
-`RLogical`. Its `edit(|vec| ...)` method provides Vec operations; if R has
-already requested a pointer, editing first clones the current values and
-retains the old Vec until the owner is dropped. Old pointers remain valid
-snapshots and later callbacks read the updated values. Edits before pointer
-exposure reuse the existing allocation. Built-in buffer classes clone on R
-duplication and serialize the current values. A custom class can delegate
-its native data traits to the buffer and choose shared duplication explicitly.
+There is no derive option that returns the original object from `Duplicate`.
+R's `DuplicateEX` then leaves the attributes alone, so every copy R makes is
+the same SEXP: `y[1] <- 0L` writes into `x`, `names(y) <- ...` and
+`class(y) <- ...` rename and reclass `x`, `as.vector(y)` strips `x`'s names,
+and a function that modifies its argument modifies the caller's vector. A
+hand-written `no_lowlevel` `Duplicate` can still do this, as the live view in
+`tests/altrep_assignment.rs` does, but it gives up R's value semantics. A live
+view that keeps attributes per copy is tracked in
+[#2051](https://github.com/A2-ai/miniextendr/issues/2051).
+
+`AltrepBuffer<T>` is a native owner that can grow after R has a pointer to
+it. Return `Altrep(AltrepBuffer::new(values))` for `i32`, `f64`, `u8`,
+`Rcomplex` or `RLogical`. Its `edit(|vec| ...)` method gives the closure the
+`Vec`. Once R has requested a pointer, an edit first clones the values and
+keeps the old `Vec` until the owner is dropped, so the old pointer stays
+valid and later callbacks read the edited values. Before that, edits reuse
+the allocation. The built-in buffer classes clone on R duplication and
+serialize the current values. A custom class can delegate its native data
+traits to the buffer and pick its own duplication policy.
+
+R has no notification for a pointer it no longer uses, so every edit after
+an exposure keeps one more allocation until the owner is dropped
+([#2052](https://github.com/A2-ai/miniextendr/issues/2052)). An edit also
+changes the R object in place: every binding of that object sees it, since
+R only duplicates when it writes through a binding itself.
 
 Both duplication hooks are available today: implement `Altrep::duplicate` with
 `HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
@@ -329,16 +343,17 @@ sidecar handles from ALTREP callbacks
 
 ## Sidecars in callbacks
 
-The ALTREP derives accept `#[r_data]` on `Sidecar<T>` fields. They use the
-same `TypedExternal` slot visitor and Rust handle accessors as `ExternalPtr`
-derive. The values live in the data1 owner's R protection list; the Rust
-struct contains no pointer back to its owner. Only Rust accessors are
-emitted: an ALTREP vector does not get R class field wrappers. `ref` and
-`mut` control the generated getter and setter as usual.
+An ALTREP struct can hold R values in `#[r_data] Sidecar<T>` fields, as an
+`ExternalPtr` struct can. The values live in the protection list of the data1
+owner, so the ALTREP vector keeps them alive. The derive emits only the Rust
+accessors: `T::field(&ptr)`, and `T::set_field(&mut ptr, value)` with `mut`.
+An ALTREP vector has no R field methods, so `#[r_data]` takes only `ref` and
+`mut`.
 
-Use `#[altrep(manual, no_lowlevel)]` when a callback needs those fields.
-The existing low-level `Altrep` / `Alt*` callbacks receive the ALTREP SEXP,
-so they can recover the handle explicitly:
+The high-level data traits (`AltrepLen`, `Alt*Data`) receive `&self`, which
+has no way back to its handle, so they can't read sidecars (#1880). A
+callback that needs a sidecar uses `#[altrep(manual, no_lowlevel)]` and gets
+the handle from the ALTREP SEXP:
 
 ```rust,ignore
 #[derive(AltrepInteger)]
@@ -361,17 +376,18 @@ impl AltInteger for SidecarVector {
 }
 ```
 
-Implement `Altrep::length` and `AltVec` and invoke `impl_inferbase_integer!`
-as in `rpkg/src/rust/altrep_sidecar_tests.rs`, the complete example. Its
-`Dataptr` copies into data2 rather than giving R a writable pointer into the
-possibly shared sidecar value. Elt and length then use data2. Unspecified
-serialization and duplicate methods retain R's ordinary-vector fallbacks.
-The default `RUnwind` guard covers sidecar conversions and allocations.
+`rpkg/src/rust/altrep_sidecar_tests.rs` has the complete class, with
+`Altrep::length`, `AltVec` and `impl_inferbase_integer!`. Its `Dataptr`
+copies into data2 instead of handing R a writable pointer into the sidecar
+vector, which other R code may also reference. Once data2 exists, `Elt` and
+`length` read it. With no serialize or duplicate method, R serializes and
+duplicates the vector as an ordinary one. The default `RUnwind` guard covers
+the sidecar conversions and allocations.
 
-`AltrepLen` / `Alt*Data` still receive `&T`: use them for callbacks that need
-only Rust fields. A trait such as `Display` also receives only `&T` and
-cannot access an owner's sidecars without an explicit handle adapter;
-that trait-ABI work remains tracked in #1880.
+A class whose callbacks read only Rust fields can still use a sidecar to keep
+an R value alive. A `duplicate = "clone"` copy clones the handle, so the copy
+holds the same R values. Serialization never includes sidecars: R saves the
+class's serialized state, or else the values.
 
 ## High-Level Data Traits
 
@@ -2180,29 +2196,16 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - You don't need skipped elements ever again
 - Memory is constrained
 
-
-### Guard modes and materialization
-
-A derive's `unsafe` or `rust_unwind` option changes the guard for native reads
-and inspection. It does not remove the default materializing Dataptr method.
-SEXP-returning callbacks (including duplication and serialization), Dataptr,
-and string/list setters always run under R_UnwindProtect because their bridges
-can allocate R objects. This also protects `duplicate = "clone"` independently
-of the native-read guard. Use the default `r_unwind` when the remaining callbacks
-can enter R or invoke user R code. `no_lowlevel` leaves method installation to
-the author's low-level implementation.
-
-
 ### Serializing a concrete iterator cache
 
-The standard `Iter*Data<I>` atomic/string adapters implement `AltrepSerialize`.
-Saving realizes the finite declared sequence; restoring retains the concrete
-`I` type with no live iterator and serves the saved values from its cache. It
-does not require `I: Default` or erase `I` behind a trait object. With `I: Clone`,
-cloning an adapter copies both the cached prefix and remaining iterator without
-advancing either source.
+The atomic and string `Iter*Data<I>` adapters implement `AltrepSerialize`.
+Saving reads the whole declared sequence; restoring builds an adapter of the
+same concrete type that has no iterator and serves the saved values. `I` needs
+neither `Default` nor a trait object. With `I: Clone`, the adapters implement
+`Clone`, which copies the cached prefix and the remaining iterator without
+advancing either.
 
-A registered wrapper selects its policy explicitly:
+A registered class picks its policies with the derive options:
 
 ```rust,ignore
 #[derive(Clone, miniextendr_api::AltrepInteger)]
@@ -2223,11 +2226,13 @@ impl AltrepSerialize for RangeCache {
 }
 ```
 
-The existing bridge saves R's current materialized values after writes, so
-serializing cannot resurrect the iterator's older cache. String adapters still
-materialize on first access to provide stable borrowed strings; list adapters
-require an explicit GC-root policy and are not covered by these implementations.
-
+After R writes into the vector, the bridge serializes R's values, not the
+iterator's cache. A source that ends before the declared length has no
+complete state to save: the adapter then declines, and R saves the values
+the element reads give. String adapters materialize on first access, to hand
+out stable borrowed strings. `IterListData` has neither policy: its cached
+elements are not rooted
+([#2054](https://github.com/A2-ai/miniextendr/issues/2054)).
 
 ### A stable named map view
 

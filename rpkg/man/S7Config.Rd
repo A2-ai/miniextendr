@@ -9,7 +9,7 @@
 \usage{
 S7Config(name, score, version, .ptr = NULL)
 
-S7Config_get_version(self, ...)
+S7Config_get_version(.mx_self, ...)
 }
 \arguments{
 \item{name}{Character name (required property).}
@@ -20,7 +20,7 @@ S7Config_get_version(self, ...)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Config} object.}
+\item{.mx_self}{A \code{S7Config} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

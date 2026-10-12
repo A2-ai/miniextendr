@@ -12,16 +12,16 @@
 \usage{
 S7MatchArgHolder(mode = c("Fast", "Safe", "Debug"), .ptr = NULL)
 
-S7MatchArgHolder_current(self, ...)
+S7MatchArgHolder_current(.mx_self, ...)
 
-S7MatchArgHolder_set(self, mode = c("Fast", "Safe", "Debug"), ...)
+S7MatchArgHolder_set(.mx_self, mode = c("Fast", "Safe", "Debug"), ...)
 }
 \arguments{
 \item{mode}{One of "Fast", "Safe", "Debug".}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7MatchArgHolder} object.}
+\item{.mx_self}{A \code{S7MatchArgHolder} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
