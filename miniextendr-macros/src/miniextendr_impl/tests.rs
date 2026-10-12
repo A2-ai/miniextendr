@@ -8699,9 +8699,9 @@ fn none_errors_use_the_resolved_inherent_method_name() {
                 pub fn rust_lookup(&self) -> Option<i32> { None }
                 #[miniextendr(postfix = "_public")]
                 pub fn find(&self) -> Option<()> { None }
-                #[miniextendr(worker, r_name = "load_value")]
+                #[miniextendr(env(worker, no_main_thread), r_name = "load_value")]
                 pub fn rust_load() -> Option<i32> { None }
-                #[miniextendr(worker, postfix = "_public")]
+                #[miniextendr(env(worker, no_main_thread), postfix = "_public")]
                 pub fn load() -> Option<()> { None }
             }
         },
@@ -8722,5 +8722,10 @@ fn none_errors_use_the_resolved_inherent_method_name() {
             "{tokens}"
         );
         assert!(tokens.contains(&format!("Lookup__{rust}")), "{tokens}");
+        assert_eq!(
+            tokens.contains("run_on_worker"),
+            matches!(rust, "rust_load" | "load"),
+            "{tokens}"
+        );
     }
 }
