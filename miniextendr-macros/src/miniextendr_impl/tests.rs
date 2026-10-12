@@ -2636,6 +2636,35 @@ fn shared_member_names(first: &ClassWrapper, second: &ClassWrapper) -> Vec<Strin
         .collect()
 }
 
+/// The `deep_clone` handler is the private `deep_clone` member only, like the
+/// finalizer: not also a public method.
+#[test]
+fn r6_deep_clone_is_not_a_public_method() {
+    let parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r6(deep_clone))]
+                pub fn clone_field(&self, name: &str, value: SEXP) -> SEXP { value }
+            }
+        },
+    );
+    let class = generate_r6_class(&parsed);
+    let wrapper = class.render();
+    assert!(
+        wrapper.contains(
+            "Counter$set(\"private\", \"deep_clone\", function(name, value) \
+             .Call(C_miniextendr_macros_Counter__clone_field, .call = NULL, private$.ptr, name, value))"
+        ),
+        "{wrapper}"
+    );
+    assert!(
+        !wrapper.contains("\"public\", \"clone_field\""),
+        "{wrapper}"
+    );
+    assert_eq!(class.member_names, ["the R6 member `deep_clone`"]);
+}
+
 #[test]
 fn member_names_match_across_impl_blocks() {
     // Env, with a class override: the constructor binds `RCounter$new`, and so

@@ -3374,7 +3374,7 @@ impl ParsedImpl {
                 .any(|setting| crate::roxygen::has_roxygen_tag(std::slice::from_ref(tag), setting))
         };
         if !self.doc_tags.iter().all(settings_only) {
-            definitions.push("class documentation");
+            definitions.push("a doc comment on the impl");
         }
         if self.class_system == ClassSystem::S7
             && self.included_methods().any(|m| {
@@ -3420,13 +3420,15 @@ impl ParsedImpl {
         }
     }
 
-    /// Get public instance methods (have env, not private, not active).
+    /// Get public instance methods (have env, not private, not active, not an
+    /// R6 finalizer or `deep_clone` handler).
     pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
                 && m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
+                && !m.method_attrs.r6.deep_clone
                 && !m.is_private()
                 && !m.is_active()
         })
