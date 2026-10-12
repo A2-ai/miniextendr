@@ -4259,6 +4259,94 @@ fn check_r6_initialize_collision(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// The bindings of an `R6::R6Class()` generator object (R6 2.6). The R6
+/// generator assigns static methods onto that object (`Class$name <- function`),
+/// so a static method under one of these names silently replaces R6's own:
+/// `new` stops creating objects, `set` and `lock` are the generated `$set()` /
+/// `$lock()` calls, and `$new()` reads the data fields.
+const R6_GENERATOR_BINDINGS: &[&str] = &[
+    "active",
+    "class",
+    "classname",
+    "clone_method",
+    "cloneable",
+    "debug",
+    "debug_names",
+    "get_inherit",
+    "has_private",
+    "inherit",
+    "is_locked",
+    "lock",
+    "lock_class",
+    "lock_objects",
+    "new",
+    "parent_env",
+    "portable",
+    "private_fields",
+    "private_methods",
+    "public_fields",
+    "public_methods",
+    "self",
+    "set",
+    "undebug",
+    "unlock",
+];
+
+/// Reject an R6 static method whose R name is one of the generator object's
+/// own bindings ([`R6_GENERATOR_BINDINGS`]), which the static would replace
+/// without a warning when the package loads.
+fn check_r6_static_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::R6 {
+        return Ok(());
+    }
+    for method in parsed.static_methods() {
+        let name = method.r_method_name();
+        if R6_GENERATOR_BINDINGS.contains(&name.as_str()) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "R6 static method `{class}${name}` would replace the R6 generator's own \
+                     `{name}`: static methods are assigned onto the generator object. Rename \
+                     it with `#[miniextendr(r_name = \"...\")]`.",
+                    class = parsed.class_name(),
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Two instance methods of one S4 impl block that dispatch through the same
+/// generic emit two `setMethod("<generic>", "<Class>", ...)` calls with the
+/// same signature, and the second silently replaces the first. The default
+/// generic follows the R method name (`s4_<r_name>`), so `r_name = "x"` next to
+/// a method `x` is one way to get there; two equal `s4(generic = "...")`
+/// overrides are another.
+fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::S4 {
+        return Ok(());
+    }
+    let mut seen = std::collections::HashMap::new();
+    for method in parsed.instance_methods() {
+        let generic = s4_class::s4_generic_name(method);
+        if let Some(previous) = seen.insert(generic.clone(), method) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "S4 generic `{generic}` gets a method for `{}` from both `{}` and `{}`; \
+                     the second `setMethod()` would replace the first. Rename one with \
+                     `#[miniextendr(r_name = \"...\")]` or give it another \
+                     `s4(generic = \"...\")`.",
+                    parsed.class_name(),
+                    previous.ident,
+                    method.ident,
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Check the R formals of every generated method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
 /// the names each class system's wrapper binds itself:
@@ -4585,6 +4673,12 @@ pub fn expand_impl(
         return e.into_compile_error().into();
     }
     if let Err(e) = check_r6_initialize_collision(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_r6_static_collisions(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_s4_generic_collisions(&parsed) {
         return e.into_compile_error().into();
     }
     // A replacement method (`s3(generic = "[[<-")`) takes `value` last.

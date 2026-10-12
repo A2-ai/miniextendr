@@ -151,16 +151,24 @@ The Env system creates a plain R environment as the class namespace:
 ```r
 Type <- new.env(parent = emptyenv())
 Type$new <- function(...) { ... }
-Type$method_name <- function(x = self, ...) { ... }
+Type$method_name <- function(...) { ... }   # body reads a free `self`
+`$.Type` <- function(self, name) .miniextendr_env_method(self, name, Type)
 ```
 
-Instance methods use a default argument `x = self` pattern. The generated
-`$.Type` S3 method re-parents the method environment so that `self` is in scope
-when the user writes `obj$method()`. Specifically: `environment(obj) <- environment()`
-on the method binds `self` in the dispatch frame before forwarding. `[[.Type` is
-an alias to `$.Type`.
+Inherent instance methods take no receiver formal; their bodies read a free
+`self`. `$.Type` calls `.miniextendr_env_method` (the `ENV_METHOD_HELPER`
+preamble block in `miniextendr-api/src/registry.rs`), which returns the method
+with a fresh environment containing only `self`, whose parent is the method's
+own environment (the package namespace). Never re-parent a method into the
+helper's frame: its locals (`name`, `obj`, `methods`) would shadow package
+objects in method bodies and defaults (#1677). `[[.Type` is an alias to `$.Type`.
 
-Active-binding wrappers for trait namespace dispatch use `local({ m <- method; bound[[name]] <<- function(...) m(self, ...) })` to avoid shared-variable capture in a loop.
+Trait instance methods (`Type$Trait$m <- function(x, ...)`, stamped
+`.__mx_instance__`) take the object as their first argument. `obj$Trait`
+returns the namespace with each one wrapped as `function(...) m(self, ...)`,
+built inside `local()` to avoid shared-variable capture in a loop. A flat
+`obj$m` with no inherent `m` uses the one trait that provides `m`, and raises
+`miniextendr_ambiguous_method` (fields `method`, `traits`) when several do.
 
 ### R6 class
 

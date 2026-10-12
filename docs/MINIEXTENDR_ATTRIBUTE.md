@@ -1324,8 +1324,10 @@ impl Person {
 
 An S4 instance method uses `s4_<R method name>` as its default generic:
 `r#type` becomes `s4_type`, `r_name = "kind"` gives `s4_kind`, and
-`postfix = "_code"` gives `s4_type_code`. An explicit `generic = "category"`
-uses exactly `category`, without the prefix.
+`postfix = "_code"` gives `s4_type_code`. An explicit `s4(generic = "category")`
+uses exactly `category`, without the prefix (it can't be combined with
+`r_name`). Two instance methods of one impl block on the same generic are a
+compile error, since the second `setMethod()` would replace the first.
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,

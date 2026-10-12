@@ -29,6 +29,7 @@
 //! - [`s7_tests`]: S7 class system tests
 //! - [`class_system_matrix`]: Cross-class-system compatibility matrix
 //! - [`receiver_tests`]: Receiver-style impl block tests
+//! - [`env_method_lookup_tests`]: `obj$name` on an env class whose traits share member names (#1677)
 //!
 //! # R Interface
 //!
@@ -207,6 +208,7 @@ mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;
 mod encoding_tests;
+mod env_method_lookup_tests;
 mod error_in_r_tests;
 mod explicit_wrap_tests;
 mod export_control_tests;

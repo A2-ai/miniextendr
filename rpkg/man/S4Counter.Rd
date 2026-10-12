@@ -4,12 +4,16 @@
 \name{S4Counter}
 \alias{S4Counter}
 \alias{s4_add,S4Counter-method}
+\alias{s4_current,S4Counter-method}
 \alias{s4_get_value,S4Counter-method}
 \alias{s4_inc,S4Counter-method}
+\alias{s4_type,S4Counter-method}
 \alias{s4_value,S4Counter-method}
 \alias{S4Counter-s4_value}
 \alias{S4Counter-s4_inc}
 \alias{S4Counter-s4_add}
+\alias{S4Counter-s4_current}
+\alias{S4Counter-s4_type}
 \alias{S4Counter_default_counter}
 \title{S4Counter S4 Class}
 \usage{
@@ -30,6 +34,12 @@ Returns the current value.
 Increments the counter by 1 and returns the new value.
 
 Adds the given amount to the counter and returns the new value.
+
+Returns the current value through the generic \code{s4_current}: the
+default S4 generic follows the R method name.
+
+Returns \code{"counter"} through the generic \code{s4_type}: a raw identifier
+names the generic without its \code{r#}.
 
 A static method that returns a default counter (value = 0).
 }

@@ -20,8 +20,8 @@ use super::ParsedImpl;
 /// - Class environment: `ClassName <- new.env(parent = emptyenv())`
 /// - Constructor: `ClassName$new(...)` that calls the Rust `new` function, sets
 ///   `class(self) <- "ClassName"`, and returns the ExternalPtr as `self`
-/// - Instance methods: `ClassName$method(x = self, ...)` using default-arg binding
-///   so that `$` dispatch re-parents the environment to make `self` visible
+/// - Instance methods: `ClassName$method(...)` whose bodies read a free `self`,
+///   which `$` dispatch binds in a fresh environment over the method's own
 /// - Static methods: `ClassName$method(...)` that call Rust directly
 /// - `$.ClassName` S3 method: dispatches `obj$method(...)` by looking up the method
 ///   in the class environment, binding `self` for instance methods, and supporting

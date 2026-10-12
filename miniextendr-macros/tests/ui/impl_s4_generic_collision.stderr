@@ -1,0 +1,5 @@
+error: S4 generic `s4_kind` gets a method for `Counter` from both `kind` and `category`; the second `setMethod()` would replace the first. Rename one with `#[miniextendr(r_name = "...")]` or give it another `s4(generic = "...")`.
+  --> tests/ui/impl_s4_generic_collision.rs:22:12
+   |
+22 |     pub fn category(&self) -> i32 {
+   |            ^^^^^^^^
