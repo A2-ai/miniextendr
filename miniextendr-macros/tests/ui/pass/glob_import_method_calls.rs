@@ -6,8 +6,8 @@
 //! every exact-size collection: `RClone::clone`, `RDebug::debug_str`,
 //! `RDefault::default`, `RHash::hash`, `ROrd::cmp`, `RPartialOrd::partial_cmp`,
 //! and `RToVec::{len, is_empty, to_vec}`. A generated `x.clone()` then names two
-//! applicable methods (E0034), and an array's `x.len()` resolves to
-//! `RToVec::len` (an `i64`) before it reaches the slice's. This module
+//! applicable methods (E0034), and on an array or a `Box<[T]>`, `x.len()` finds
+//! `RToVec::len` (an `i64`) and `AltrepLen::len` before the slice's. This module
 //! glob-imports the crate, then invokes every derive, attribute and
 //! function-like macro (`common/every_macro.rs`) plus trait and inherent
 //! methods named after the glob's methods. rpkg's `glob_import_tests.rs`
