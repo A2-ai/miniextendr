@@ -93,7 +93,7 @@ impl RConnectionImpl for MemoryBuffer {
                     (self.data.len() as isize + offset) as usize
                 }
             }
-            _ => return -1.0,
+            _ => panic!("unknown seek origin {origin}"),
         };
 
         // R returns the previous position, unlike std::io::Seek.

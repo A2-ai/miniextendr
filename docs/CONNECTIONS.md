@@ -92,8 +92,8 @@ pub trait RConnectionImpl: Sized + 'static {
     fn read(&mut self, buf: &mut [u8]) -> usize { 0 }
     fn write(&mut self, buf: &[u8]) -> usize { 0 }
     fn fgetc(&mut self) -> i32 { /* reads one byte via read() */ }
-    fn seek(&mut self, where_: f64, origin: i32, rw: i32) -> f64 { -1.0 }
-    fn truncate(&mut self) {}
+    fn seek(&mut self, where_: f64, origin: i32, rw: i32) -> f64 { /* raises */ }
+    fn truncate(&mut self) { /* raises */ }
     fn flush(&mut self) -> i32 { 0 }
     fn vfprintf(&mut self, fmt: *const c_char, ap: *mut c_void) -> i32 { -1 }
 }
@@ -106,12 +106,12 @@ pub trait RConnectionImpl: Sized + 'static {
 | `open` | `open(conn)` in R or auto-open on first use | `true` = success, `false` = failure | |
 | `close` | `close(conn)` in R | (none) | Called before `destroy` |
 | `destroy` | Connection is garbage collected | (none) | Your type is dropped automatically after this |
-| `read` | `readBin()`, `readLines()`, etc. | Number of bytes read (0 = EOF) | |
-| `write` | `writeBin()`, `writeLines()`, etc. | Number of bytes written | |
+| `read` | `readBin()`, `readLines()`, etc. | Number of bytes read (0 = EOF) | R takes a short count as the end of the stream |
+| `write` | `writeBin()`, `writeLines()`, etc. | Number of bytes written | Write all of `buf`: R warns about a short count, or ignores it |
 | `fgetc` | Character-by-character reading | Byte as `i32`, or -1 on EOF | Default delegates to `read` |
-| `seek` | `seek(conn, where, origin)` | Previous position, or -1 on failure | See origin codes below |
-| `truncate` | `truncate(conn)` | (none) | |
-| `flush` | `flush(conn)` | 0 = success, non-zero = failure | |
+| `seek` | `seek(conn, where, origin)` | Previous position | See origin codes below; the default raises "'seek' not enabled for this connection" |
+| `truncate` | `truncate(conn)` | (none) | The default raises "truncation not enabled for this connection" |
+| `flush` | `flush(conn)` | 0 | R ignores the value |
 | `vfprintf` | Formatted print (rarely needed) | Characters written, or -1 | R typically uses `write` |
 
 ### Seek Origin Codes
@@ -123,6 +123,10 @@ pub trait RConnectionImpl: Sized + 'static {
 | 3 | From end | `"end"` |
 
 When `where_` is `NaN`, the caller is querying the current position -- return it without moving.
+
+R hands every returned value to the R caller as it is, so report a failed
+operation by raising an error (`error!` or a panic, see [Error Handling](#error-handling)),
+not by returning -1 or a short count.
 
 ### Memory Management
 
@@ -448,14 +452,33 @@ let _ = unsafe { Box::from_raw(private as *mut T) };
 ### std::io Error Handling
 
 The adapters raise `miniextendr_connection_io_error` with the original message
-and fields `operation`, `io_kind`, and `os_error` (the OS code when available).
-This applies to reads, buffered character reads, writes, flushes, and seeks.
-A successful zero-byte read still means EOF.
+and fields `operation`, `io_kind`, and `os_error` (the OS code when available,
+`NA` otherwise). This applies to reads, buffered character reads, writes,
+flushes, and seeks. A call that fails with `Interrupted` is repeated, as
+`read_exact` and `write_all` do.
+
+```r
+tryCatch(
+  readBin(con, "raw", 16L),
+  miniextendr_connection_io_error = function(e) c(e$operation, e$io_kind)
+)
+```
+
+R reads a short count from the `read` callback as the end of the stream, but
+`Read::read` may return fewer bytes at any time. So a read fills the buffer
+until the stream ends (`Ok(0)`), or until a non-blocking stream has nothing
+more for now (`WouldBlock`); R's socket connections stop at the same two
+points. A write is `write_all`, so a writer that stops mid-way (`WouldBlock`
+included) raises: R would drop the rest of a short formatted write silently.
 
 Seek returns the position **before** the move, as R requires. A position query
-does not move. Offsets must be finite whole numbers within the stream's integer
-range; absolute offsets cannot be negative. The std::io adapters use one shared
-read/write cursor, so `rw` does not select separate positions.
+does not move. As in R, a fractional offset is truncated. A position before the
+start leaves the stream where it is and returns that position, as `file()`
+connections do: `readLines()` and `scan()` re-position a non-blocking seekable
+connection with `seek(con, seek(con, -1, 1, 1), 1, 1)`. Other offsets the stream
+refuses (an infinite one, or before the start relative to the current position
+or the end) raise. The std::io adapters use one shared read/write cursor, so
+`rw` does not select separate positions.
 
 ## Trampoline Architecture
 
@@ -532,7 +555,7 @@ impl RConnectionImpl for MemoryBuffer {
             1 => where_.max(0.0) as usize,                        // Start
             2 => (self.position as isize + where_ as isize) as usize, // Current
             3 => (self.data.len() as isize + where_ as isize) as usize, // End
-            _ => return -1.0,
+            _ => panic!("unknown seek origin {origin}"),
         };
         let previous = miniextendr_api::coerce::TryCoerce::<f64>::try_coerce(self.position)
             .expect("connection position is representable in R");
