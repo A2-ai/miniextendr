@@ -911,36 +911,47 @@ outside that conversion; the list check does not supply a lifetime. Accept
 
 ## Borrowed vector roots
 
-`StrVec<'a>` and `RCow<'a, T>` borrow an R vector, so their lifetime has to
-come from whatever keeps that vector reachable. Neither implements
-`TryFromSexp`: a `SEXP` is `Copy` and carries no lifetime, so that impl let
-safe code pick any lifetime, `'static` included (#1427). Both take a root
-instead:
+`StrVec<'a>`, `RCow<'a, T>`, `Cow<'a, [T]>`, `Cow<'a, str>` and the shared
+references `&'a [T]` and `&'a str` borrow R storage, so their lifetime has to
+come from whatever keeps that storage reachable. A `SEXP` is `Copy` and carries
+no lifetime, so a `TryFromSexp` impl lets safe code pick any lifetime,
+`'static` included (#1427). These types convert through `TryFromRoot<'a>`
+instead, which takes a root:
 
-- `StrVec::try_from_root(root)` / `RCow::try_from_root(root)` with a
-  `Root<'a>` from a `ProtectScope`;
+- `T::try_from_root(root)` with a `Root<'a>` from a `ProtectScope`;
 - `ProtectedStrVec::as_strvec()`, which borrows an owned character vector.
 
-A `#[miniextendr]` parameter written `StrVec<'_>` or `RCow<'_, T>` (bare or
-path-qualified) is bound to the C wrapper's argument slot, so the view and
-every string or slice read from it cannot outlive the call. A `'static` view
-parameter is a compile error naming the fix: take `ProtectedStrVec` or an
-owned `Vec` to keep the data. Functions with these parameters run on R's main
-thread. The trait-ABI shims bind them the same way, to a local copy of the
-argument slot, after the arity check.
+`StrVec` and `RCow` have no `TryFromSexp` impl, and raw `TryFromSexp` for the
+`Cow` types returns owned data. The shared references keep their raw impls:
+`TryFromRoot` for a reference runs that conversion, with its checks, errors
+and alias metadata, and shortens the result to the root.
 
-The macro recognizes the views by name, so an alias or a newtype of one has to
-take a `SEXP` and call `try_from_root` in the body. `Missing`, `Either` and
-`Result<_, ()>` of a view, and trait methods returning one, have no rooted
-conversion yet (#2038). Native references (`&[T]`, `&str`), `Cow` and their
-containers still convert through `TryFromSexp` with an unconstrained lifetime
-(#1427).
+A `#[miniextendr]` parameter of one of these types (bare or path-qualified;
+`Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>` too) is bound to the C
+wrapper's argument slot, so it and every string or slice read from it cannot
+outlive the call. Functions with a view or `Cow` parameter run on R's main
+thread. Shared references (`&[T]`, `&str`, `&i32`, `&f64`, `&u8`, `&RLogical`,
+`&Rcomplex` and their `Option` forms) are bound the same way when the function
+runs on the main thread. The trait-ABI shims bind all of them to a local copy
+of the argument slot, after the arity check. A parameter that names `'static`
+anywhere in its type is a compile error naming the fix: write `'_` or elide
+the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to
+keep the data.
+
+The macro recognizes these types by name. An alias or a newtype of a view has
+to take a `SEXP` and call `try_from_root` in the body; one of a reference
+converts through `TryFromSexp`. On the worker thread, `&str` copies into a
+`String` and the native references convert through `TryFromSexp`. Mutable
+references and reference containers (`Vec<&str>`, `Option<&mut [T]>`) also
+still convert through `TryFromSexp` with an unconstrained lifetime (#1427).
+`Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
+one, have no rooted conversion yet (#2038).
 
 ---
 
 ## Known Limitations
 
-- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. The root-bound migration is tracked in #1427.
+- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. Generated parameters bind views, `Cow` and main-thread shared references to their root ([Borrowed vector roots](#borrowed-vector-roots)); the rest of the migration is tracked in #1427.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
 
