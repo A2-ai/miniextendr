@@ -16,8 +16,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 
 ## Rule registry
 - **MXL008** — trait-impl class-system compat with inherent impl.
-- **MXL009** — multiple impl blocks need distinct `label = "..."`.
-- **MXL010** — duplicate labels.
+- ~~**MXL009**~~ / ~~**MXL010**~~ — *removed*: they required a distinct `label = "..."` on each impl block of a type. The labels are gone; the wrapper writer merges a type's impl blocks into one class (#1776).
 - **MXL106** — non-`pub` fn would get `@export` → make `pub` or add `#[miniextendr(noexport)]`.
 - **MXL110** — parameter name is an R reserved word.
 - **MXL111** — `s4_*` method on `#[miniextendr(s4)]` impl (codegen auto-prefixes — yields `s4_s4_*`).

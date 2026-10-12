@@ -82,9 +82,11 @@ c$get()
 | no receiver, returns `Self` | constructor (`new`) or static factory |
 | no receiver, other return | static method: `Type$method()` / `Type_method()` |
 
-Multiple `impl` blocks for one type need labels:
-`#[miniextendr(r6, label = "extra")]` — otherwise the build errors on
-duplicate class definitions.
+A type's methods can be split over several `impl` blocks: they are merged into
+one class. Keep the constructor and the class doc comment in one block, and
+repeat the class options (`#[miniextendr(r6)]`, `class = "..."`, `internal`,
+`@noRd`, ...) on every block — the install stops with an error naming the
+blocks otherwise.
 
 ## What the generated code already handles (don't re-do it)
 

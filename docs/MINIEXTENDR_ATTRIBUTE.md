@@ -1180,7 +1180,6 @@ impl Counter {
 | Attribute | Applies To | Effect |
 |-----------|-----------|--------|
 | `class = "..."` | All systems | Custom R class name |
-| `label = "..."` | All systems | Distinguish multiple impl blocks on same type (each block still defines the whole class, #1776) |
 | `strict` / `no_strict` | All systems | Strict type conversion for all methods |
 | `internal` | All systems | `@keywords internal` on class |
 | `noexport` | All systems | Suppress `@export` on class |
@@ -1188,19 +1187,20 @@ impl Counter {
 | `blanket` | Trait impls | Skip trait ABI (for blanket impls) |
 
 ```rust
-// Two impl blocks need labels
-#[miniextendr(s4, label = "core")]
-impl Counter { /* constructors + getters */ }
+// A type's methods can be split over several impl blocks
+#[miniextendr(s4)]
+impl Counter { /* constructor + getters */ }
 
-#[miniextendr(s4, label = "mutations")]
+#[miniextendr(s4)]
 impl Counter { /* mutating methods */ }
 ```
 
-Env, R6 and S7 blocks (and S3 blocks with the constructor or a class named
-after the type) each define the class object, so the wrapper writer rejects a
-second block of such a class at install time. S4 and vctrs blocks pass that
-check, but no test covers yet whether they combine correctly at runtime
-(#1776); see [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
+The wrapper writer merges the blocks of a type into one class (#1776). One
+block defines the class (the constructor, the class documentation and S7
+properties go there), every block spells the same class settings (the class
+system with its options, `class`, `internal` / `noexport`, `@noRd` /
+`@keywords internal`), and no two blocks bind one member; see
+[Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
 
 ### R6-Specific Options
 

@@ -29,8 +29,6 @@ written.
 | Code | Description | Fix |
 |------|-------------|-----|
 | **MXL008** | Trait impl class system incompatible | Ensure trait impl uses same class system as inherent impl |
-| **MXL009** | Multiple impl blocks without labels | Add `#[miniextendr(label = "unique")]` to each impl block |
-| **MXL010** | Duplicate labels on impl blocks | Use unique labels for each impl block |
 | **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
 | **MXL120** | vctrs constructor returns `Self` / a named type, or the vctrs impl has an instance-method receiver | Return the plain vector payload; turn instance methods into static methods that take the vector data as a parameter |
 
@@ -189,17 +187,38 @@ function with a hand-written `/// @export` tag is contradictory (MXL106; the tag
 still exports it). Make the function `pub`, or drop the tag. To keep a `pub`
 function unexported, use `#[miniextendr(noexport)]` or `#[miniextendr(internal)]`.
 
-### "multiple impl blocks for Type need labels"
+### "unknown impl block option `label`"
 
-When a type has more than one `#[miniextendr]` impl block, each needs a unique label:
+Impl blocks need no labels: the wrapper writer merges the `#[miniextendr]` impl
+blocks of a type into one class (#1776). Remove `label = "..."`.
+
+### Impl blocks of one type that don't merge
+
+`R CMD INSTALL` stops in the wrapper writer, naming the impl blocks, when the
+blocks of a type break a rule of
+[Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks):
+
+- `two impl blocks of `MyType` each define the class`: only one block may have
+  the constructor, the impl doc comment and S7 properties. Move them into one
+  block.
+- `the impl blocks of `MyType` disagree on the class settings`: spell the same
+  class system and options, `class = "..."`, `internal` / `noexport` and
+  `@noRd` / `@keywords internal` on every block. The message shows both sides.
+- `two impl blocks of `MyType` define ...`: two methods get one R member name
+  (an env or R6 member, an R6 static method, an S4 or S7 method). Rename one
+  with `r_name = "..."`.
+- `R class `MyType` is claimed by two Rust types`: two types (for example two
+  `MyType`s in different modules) get one R class name. Give one a distinct
+  `class = "..."`.
 
 ```rust
-#[miniextendr(label = "core")]
+#[miniextendr(r6)]
 impl MyType {
+    pub fn new() -> Self { MyType }
     fn method_a(&self) -> i32 { 0 }
 }
 
-#[miniextendr(label = "extra")]
+#[miniextendr(r6)]
 impl MyType {
     fn method_b(&self) -> String { String::new() }
 }
