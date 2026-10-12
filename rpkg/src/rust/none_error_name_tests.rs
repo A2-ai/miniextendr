@@ -1,5 +1,9 @@
 //! None diagnostics use the R entry point's name (#2063).
 //!
+//! The fixtures that raise return `Option<()>`, which raises on `None` in
+//! every path. A `None` of `Option<scalar>` is a typed `NA` instead (#1415),
+//! so it would not reach the message these tests check.
+//!
 //! The worker fixtures need a worker feature, which rpkg's default build
 //! (`just test-rpkg`) leaves off; the R install enables `worker-thread`.
 
@@ -48,12 +52,12 @@ impl NoneNameLookup {
     }
 
     #[miniextendr(r_name = "find_value")]
-    pub fn rust_find(&self) -> Option<i32> {
+    pub fn rust_find(&self) -> Option<()> {
         None
     }
 
     #[miniextendr(postfix = "_entry")]
-    pub fn find(&self) -> Option<i32> {
+    pub fn find(&self) -> Option<()> {
         None
     }
 }
@@ -65,14 +69,14 @@ impl NoneNameLookup {
 #[miniextendr(env, noexport)]
 impl NoneNameLookup {
     #[miniextendr(env(worker), r_name = "load_value")]
-    pub fn rust_load() -> Option<i32> {
+    pub fn rust_load() -> Option<()> {
         #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
         assert!(!miniextendr_api::worker::is_r_main_thread());
         None
     }
 
     #[miniextendr(env(worker), postfix = "_entry")]
-    pub fn load() -> Option<i32> {
+    pub fn load() -> Option<()> {
         #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
         assert!(!miniextendr_api::worker::is_r_main_thread());
         None

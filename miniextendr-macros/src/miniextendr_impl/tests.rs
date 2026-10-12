@@ -9387,11 +9387,11 @@ fn none_errors_use_the_resolved_inherent_method_name() {
             impl Lookup {
                 pub fn new() -> Self { unimplemented!() }
                 #[miniextendr(r_name = "find_value")]
-                pub fn rust_lookup(&self) -> Option<i32> { None }
+                pub fn rust_lookup(&self) -> Option<()> { None }
                 #[miniextendr(postfix = "_public")]
                 pub fn find(&self) -> Option<()> { None }
                 #[miniextendr(env(worker), r_name = "load_value")]
-                pub fn rust_load() -> Option<i32> { None }
+                pub fn rust_load() -> Option<()> { None }
                 #[miniextendr(env(worker), postfix = "_public")]
                 pub fn load() -> Option<()> { None }
             }
