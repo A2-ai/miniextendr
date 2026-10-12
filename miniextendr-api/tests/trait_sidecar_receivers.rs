@@ -60,6 +60,12 @@ impl SlotProbe for SlotHost {
         }
         let read = || self.generation;
         assert_eq!(read(), self.generation);
+        macro_rules! generation {
+            () => {
+                self.generation
+            };
+        }
+        assert_eq!(generation!(), self.generation);
         assert_eq!(self::receiver_bonus(), 3);
         self.generation + __miniextendr_self + self::receiver_bonus() + Local(2).read()
     }
