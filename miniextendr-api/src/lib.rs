@@ -834,6 +834,8 @@ pub mod txt_progress_bar;
 pub use externalptr::{
     ErasedExternalPtr,
     ExternalPtr,
+    ExternalPtrMut,
+    ExternalPtrRef,
     ExternalSlice,
     IntoExternalPtr,
     TypedExternal,

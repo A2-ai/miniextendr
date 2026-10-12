@@ -75,7 +75,10 @@
 //!
 //! Methods must follow these constraints:
 //!
-//! - **Receiver**: `&self` or `&mut self` for instance methods, or none for static methods
+//! - **Receiver**: `&self`, `&mut self`, `self: ExternalPtrRef<'_, Self>` or
+//!   `self: ExternalPtrMut<'_, Self>` for instance methods, or none for static methods.
+//!   Borrowed-owner receivers require `Self: TypedExternal`; their emitted Rust
+//!   signatures are associated functions accepting the handle by value.
 //! - **Arguments**: Types that implement `TryFromSexp`
 //! - **Return**: Types that implement `IntoR`, or `()`
 //! - **No generics**: Methods cannot have generic type parameters
@@ -172,7 +175,7 @@ pub fn expand_trait(
 ///
 /// # Constraints
 ///
-/// - All methods must have `&self` or `&mut self` receiver
+/// - Instance methods use shared/mutable references or explicit borrowed-owner receivers
 /// - Methods cannot be async
 /// - Methods cannot have generic parameters
 /// - Generic type parameters on the trait itself are allowed
@@ -229,7 +232,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
         }
     }
 
-    // Check receiver - must be &self, &mut self, self: &Self, self: &mut Self, or no receiver
+    // Instance receivers borrow Self directly or carry an explicit borrowed owner.
     // Static methods are allowed but won't be included in the vtable
     // (they're resolved at compile time via <Type as Trait>::method())
     let receiver = method.sig.inputs.first();
@@ -246,7 +249,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
             false
         };
 
-        if !is_ref {
+        if !is_ref && crate::trait_receiver::owner_receiver(&method.sig).is_none() {
             return Err(syn::Error::new_spanned(
                 r,
                 format!(
@@ -336,16 +339,33 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     // IMPORTANT: For cross-package trait dispatch, the tag must NOT include module_path!()
     // Different packages defining the same trait signature should get the same tag.
     // We use just the trait name - in practice, trait names + methods should be unique enough.
-    let tag_path = trait_name.to_string();
+    let mut tag_path = trait_name.to_string();
+    // A handle receiver changes a vtable field's calling convention. Keep
+    // independently compiled old/plain and new/owner declarations distinct.
+    if methods.iter().any(|method| method.owner_receiver.is_some()) {
+        tag_path.push_str("::owner_receivers/v1");
+        for method in &methods {
+            let shape = match method.owner_receiver {
+                Some(crate::trait_receiver::OwnerReceiver::Shared) => "owner-ref",
+                Some(crate::trait_receiver::OwnerReceiver::Mutable) => "owner-mut",
+                None if method.is_mut => "mut",
+                None => "ref",
+            };
+            tag_path.push_str(&format!("::{}:{shape}", method.name));
+        }
+    }
 
     // Generate vtable fields
     let vtable_fields: Vec<_> = methods
         .iter()
         .map(|m| {
             let name = &m.name;
-            quote::quote! {
-                pub #name: ::miniextendr_api::abi::mx_meth
-            }
+            let abi = if m.owner_receiver.is_some() {
+                quote::quote!(::miniextendr_api::abi::mx_owner_meth)
+            } else {
+                quote::quote!(::miniextendr_api::abi::mx_meth)
+            };
+            quote::quote! { pub #name: #abi }
         })
         .collect();
 
@@ -411,6 +431,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             method
                 .attrs
                 .retain(|attr| !attr.path().is_ident("miniextendr"));
+            crate::trait_receiver::rewrite(&mut method.sig, method.default.as_mut());
         }
     }
 
@@ -668,15 +689,20 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     // conversion allocates, and stays rooted for the whole call: the shim reads
     // every `argv` entry back, and SEXP-backed parameters live on in the method
     // body (the `mx_meth` contract).
+    let owner_argument = method.owner_receiver.map(|_| {
+        quote::quote! {
+            self.__mx_view.owner().expect("this trait method requires an R-owned receiver"),
+        }
+    });
     let vtable_call = if argc > 0 {
         quote::quote! {
             let args: [::miniextendr_api::SEXP; #argc as usize] =
                 [#(__mx_roots.protect_raw(#arg_conversions)),*];
-            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #argc, args.as_ptr())
+            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument #argc, args.as_ptr())
         }
     } else {
         quote::quote! {
-            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), 0, ::std::ptr::null())
+            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument 0, ::std::ptr::null())
         }
     };
 
@@ -762,6 +788,12 @@ fn generate_method_shim(
     let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
     let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
     let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
+    let owner = syn::Ident::new("owner", proc_macro2::Span::mixed_site());
+    let owner_parameter = method.owner_receiver.map(|_| {
+        quote::quote! {
+            #owner: ::miniextendr_api::SEXP,
+        }
+    });
 
     let param_count = method.param_types.len();
     let expected_argc = param_count as i32;
@@ -830,7 +862,20 @@ fn generate_method_shim(
 
     // Generate method call (uses __ImplT)
     let param_names = &method.param_names;
-    let method_call = if method.is_mut {
+    let method_call = if let Some(kind) = method.owner_receiver {
+        let handle = kind.type_path();
+        let trait_args =
+            (!trait_param_idents.is_empty()).then(|| quote::quote!(<#(#trait_param_idents),*>));
+        quote::quote! {
+            let #self_ref = unsafe {
+                #handle::<#impl_t>::from_raw_parts(
+                    ::miniextendr_api::Root::from_call_arg(&#owner),
+                    #data.cast::<#impl_t>(),
+                )
+            };
+            <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
+        }
+    } else if method.is_mut {
         quote::quote! {
             let #self_ref = unsafe { &mut *#data.cast::<#impl_t>() };
             #self_ref.#method_name(#(#param_names),*)
@@ -886,6 +931,7 @@ fn generate_method_shim(
         #[allow(non_snake_case)]
         unsafe extern "C" fn #shim_name<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>(
             #data: *mut ::std::os::raw::c_void,
+            #owner_parameter
             #argc: i32,
             #argv: *const ::miniextendr_api::SEXP,
         ) -> ::miniextendr_api::SEXP
@@ -928,6 +974,7 @@ struct MethodInfo {
     has_self: bool,
     /// Whether receiver is `&mut self` (vs `&self`). Only meaningful if `has_self` is true.
     is_mut: bool,
+    owner_receiver: Option<crate::trait_receiver::OwnerReceiver>,
     /// Parameter types (excluding the self receiver).
     param_types: Vec<syn::Type>,
     /// Parameter names (excluding the self receiver). Uses `arg{i}` for unnamed patterns.
@@ -1152,6 +1199,7 @@ fn compute_extra_bounds(
 
     let mut needs_into_r = false;
     let mut needs_typed_external = false;
+    let needs_owner = methods.iter().any(|method| method.owner_receiver.is_some());
 
     // Track full types needing bounds (deduplicated by token string)
     let mut return_type_bound_keys: std::collections::BTreeMap<String, syn::Type> =
@@ -1213,6 +1261,10 @@ fn compute_extra_bounds(
         impl_bounds.push(
             quote::quote! { ::miniextendr_api::TypedExternal + ::core::marker::Send + 'static },
         );
+    }
+
+    if needs_owner && !needs_typed_external {
+        impl_bounds.push(quote::quote! { ::miniextendr_api::TypedExternal });
     }
 
     // Add full return type bounds: RewrittenType: IntoR
@@ -1291,8 +1343,8 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
 
     // Check for receiver
     let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
-        if let syn::FnArg::Receiver(r) = arg {
-            (true, r.mutability.is_some())
+        if let syn::FnArg::Receiver(_) = arg {
+            (true, crate::trait_receiver::is_mut(&method.sig))
         } else {
             (false, false)
         }
@@ -1378,6 +1430,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         name,
         has_self,
         is_mut,
+        owner_receiver: crate::trait_receiver::owner_receiver(&method.sig),
         param_types,
         param_names,
         return_type,

@@ -294,6 +294,15 @@ test_that("a trait-impl method sees the struct fields only", {
   expect_identical(SidecarSlotR6$RDisplay$as_r_string(obj), "n=2")
 })
 
+test_that("a trait method that takes the owner reads and writes a sidecar value", {
+  obj <- SidecarSlotR6$new(2L)
+  expect_identical(SidecarSlotR6$SidecarKeys$owner_keys(obj), 1:2)
+  SidecarSlotR6$SidecarKeys$set_owner_keys(obj, x = 7:9)
+  gc(full = TRUE)
+  expect_identical(obj$keys, 7:9)
+  expect_identical(SidecarSlotR6$SidecarKeys$owner_keys(obj), 7:9)
+})
+
 test_that("an S3 method that takes the handle reads and writes a sidecar value", {
   obj <- SidecarS3$new(1.5)
   expect_identical(tag_count(obj), 0L)

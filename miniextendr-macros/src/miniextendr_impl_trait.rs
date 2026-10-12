@@ -847,8 +847,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             rewrite_self_in_params(&mut sig, &concrete_type);
 
             let (has_self, is_mut) = sig.inputs.first().map_or((false, false), |arg| {
-                if let syn::FnArg::Receiver(r) = arg {
-                    (true, r.mutability.is_some())
+                if let syn::FnArg::Receiver(_) = arg {
+                    (true, crate::trait_receiver::is_mut(&sig))
                 } else {
                     (false, false)
                 }

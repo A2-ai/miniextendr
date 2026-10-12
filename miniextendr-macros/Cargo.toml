@@ -32,7 +32,7 @@ no-preconditions-default = []
 [dependencies]
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
-syn = { workspace = true }
+syn = { workspace = true, features = ["visit-mut"] }
 
 [dev-dependencies]
 trybuild = "1.0"

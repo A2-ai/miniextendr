@@ -496,8 +496,8 @@ the `#[r_data(...)]` option selects them:
 
 | `#[r_data(...)]` | Rust accessors |
 |---|---|
-| `ref` | `fn keys(ptr: &ExternalPtr<Self>) -> T` |
-| `mut` | `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` |
+| `ref` | `fn keys(ptr: &impl SidecarOwner<Self>) -> T` |
+| `mut` | `fn set_keys(ptr: &mut impl SidecarOwnerMut<Self>, value: T)` |
 | `ref, mut`, or a bare `#[r_data]` | both |
 
 `T` is any `IntoR + TryFromSexp` type. Rust code sees no `SEXP`s or slot
@@ -535,20 +535,50 @@ impl MyType {
 Any other Rust code with a handle makes the same calls: `MyType::keys(&ptr)`,
 `MyType::set_keys(&mut ptr, v)`.
 
-The struct holds nothing that points back at its pointer, so a `&MyType`
-cannot reach the values. A method with a plain `&self` / `&mut self`
-receiver sees the other fields only; so do a trait impl (`impl Trait for
-MyType`, `RDisplay`, the cross-package trait ABI) and the high-level ALTREP
-data traits (#1880). Give such a method a handle receiver, or pass the value
-in. ALTREP structs can have sidecars too: a low-level callback gets the
-handle with `altrep_data1_as_unchecked::<Self>(x)` and calls
-`Self::keys(&owner)`. See [Sidecars in callbacks](ALTREP.md#sidecars-in-callbacks).
+The struct holds nothing that points back at its pointer, so a plain
+`&self` / `&mut self` receiver cannot reach the values. Custom traits can
+ask for a borrowed owner explicitly:
+
+```rust
+#[miniextendr]
+pub trait KeyAccess: TypedExternal {
+    fn keys_copy(self: ExternalPtrRef<'_, Self>) -> Vec<i32>;
+    fn replace_keys(self: ExternalPtrMut<'_, Self>, keys: Vec<i32>);
+}
+
+#[miniextendr]
+impl KeyAccess for MyType {
+    fn keys_copy(self: ExternalPtrRef<'_, Self>) -> Vec<i32> {
+        Self::keys(&self)
+    }
+    fn replace_keys(mut self: ExternalPtrMut<'_, Self>, keys: Vec<i32>) {
+        Self::set_keys(&mut self, keys);
+    }
+}
+```
+
+Both `.Call` wrappers and cross-package trait shims supply the owner. These
+handles borrow the allocation and its GC root for the call; they cannot consume
+the Rust value or cross threads. The getter accepts either borrowed handle or
+an ordinary `ExternalPtr`; the setter requires a mutable handle. Native Rust
+calls use `KeyAccess::keys_copy(ExternalPtrRef::from(&ptr))` or
+`KeyAccess::replace_keys(ExternalPtrMut::from(&mut ptr), values)`. The macro
+rewrites the special receiver to an associated-function parameter on stable
+Rust, so use this UFCS form in Rust. Default trait bodies follow the same rule.
+
+A standard trait with a fixed `&self` signature, such as `Display`, still needs
+an explicit local adapter carrying the borrowed handle, or an inherent method
+with a handle receiver (#1880). High-level ALTREP data traits also receive only
+`&T`. ALTREP low-level callbacks can recover the owner explicitly with
+`altrep_data1_as_unchecked::<Self>(x)` and call `Self::keys(&owner)`. See
+[Sidecars in callbacks](ALTREP.md#sidecars-in-callbacks).
 
 How the value moves:
 
 - `Sidecar::new(v)` holds `v` as a *pending* value in the struct. Wrapping
-  the struct (`ExternalPtr::new` and the other constructors) moves every
-  pending value into the pointer's `prot` list. From then on the value lives
+  the struct (`ExternalPtr::new` and the other constructors, or the trait
+  ABI's `mx_wrap` for erased storage) moves every pending value into the
+  pointer's `prot` list. From then on the value lives
   in R only and the field is empty.
 - Every accessor, Rust or R, first moves a pending value of its field into
   the `prot` list. So `*ptr = MyType::new(..)` through `DerefMut` takes

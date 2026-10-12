@@ -10,7 +10,7 @@ use miniextendr_api::externalptr::{Computed, ErasedExternalPtr, ExternalPtr, RSi
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{List, SEXPTYPE, SexpExt, TryFromSexp};
+use miniextendr_api::{ExternalPtrMut, ExternalPtrRef, List, SEXPTYPE, SexpExt, TryFromSexp};
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 
@@ -930,6 +930,29 @@ impl SidecarSlotR6 {
 /// through the trait-impl receiver path, which sees the struct only.
 #[miniextendr(r6)]
 impl miniextendr_api::adapter_traits::RDisplay for SidecarSlotR6 {}
+
+/// A trait whose methods take the owner (`ExternalPtrRef` /
+/// `ExternalPtrMut`), so they reach the `Sidecar` values that a `&self`
+/// trait method such as `RDisplay` above cannot (#1880).
+#[miniextendr]
+pub trait SidecarKeys: miniextendr_api::TypedExternal {
+    fn owner_keys(self: ExternalPtrRef<'_, Self>) -> Vec<i32>;
+    fn set_owner_keys(self: ExternalPtrMut<'_, Self>, x: Vec<i32>);
+}
+
+/// SidecarKeys for SidecarSlotR6: both methods use `keys` through the owner.
+/// The argument is named `x`, a name the generated wrappers must leave to the
+/// user rather than bind to the receiver.
+#[miniextendr(r6)]
+impl SidecarKeys for SidecarSlotR6 {
+    fn owner_keys(self: ExternalPtrRef<'_, Self>) -> Vec<i32> {
+        Self::keys(&self)
+    }
+    /// @param x The new keys.
+    fn set_owner_keys(mut self: ExternalPtrMut<'_, Self>, x: Vec<i32>) {
+        Self::set_keys(&mut self, x);
+    }
+}
 
 /// Swaps the Rust values of two pointers. The sidecar values stay with each
 /// pointer: they live in its protection list.

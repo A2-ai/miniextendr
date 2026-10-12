@@ -8863,3 +8863,24 @@ fn s7_shortcut_keeps_user_self_separate_from_receiver() {
         "{wrapper}"
     );
 }
+
+/// Rewriting a by-value handle must preserve the mutable binding needed by
+/// setters, without treating the module path as another receiver expression.
+#[test]
+fn handle_receiver_rewrite_keeps_mutability_and_module_paths() {
+    let item = rewrite_external_ptr_receivers(syn::parse_quote! {
+        impl Engine {
+            fn replace(mut self: ExternalPtr<Self>) {
+                Self::set_keys(&mut self, self::default_keys());
+            }
+        }
+    });
+    let expected: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            fn replace(mut __miniextendr_self: ExternalPtr<Self>) {
+                Self::set_keys(&mut __miniextendr_self, self::default_keys());
+            }
+        }
+    };
+    assert_eq!(quote!(#item).to_string(), quote!(#expected).to_string());
+}

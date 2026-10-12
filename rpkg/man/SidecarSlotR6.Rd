@@ -11,6 +11,8 @@
 \alias{SidecarSlotR6_get_note}
 \alias{SidecarSlotR6_set_note}
 \alias{SidecarSlotR6$RDisplay$as_r_string}
+\alias{SidecarSlotR6$SidecarKeys$owner_keys}
+\alias{SidecarSlotR6$SidecarKeys$set_owner_keys}
 \title{SidecarSlotR6 Sidecar Accessors}
 \usage{
 SidecarSlotR6_get_keys(x)

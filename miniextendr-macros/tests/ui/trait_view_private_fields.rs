@@ -17,7 +17,7 @@ fn forge_fields() -> i32 {
         __mx_view: TraitViewData {
             data: 1 as *mut ::std::ffi::c_void,
             vtable: 1 as *const CounterVTable,
-            root: None,
+            owner: None,
         },
     };
     view.value()

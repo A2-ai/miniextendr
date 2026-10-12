@@ -159,13 +159,16 @@ Three field tiers are supported in sidecar slots:
   (after the type ID and the user slot), so the pointer roots it and
   `saveRDS()` writes it. The derive generates Rust accessors with the field's
   visibility, as associated functions taking the handle (#1856):
-  `#[r_data(ref)]` → `fn f(ptr: &ExternalPtr<Self>) -> T`, `#[r_data(mut)]`
-  → `fn set_f(ptr: &mut ExternalPtr<Self>, value: T)`, `#[r_data(ref, mut)]`
-  or a bare `#[r_data]` → both. A method that needs the value takes the
-  handle (`self: &ExternalPtr<Self>`) and calls `Self::f(self)`; the struct
-  holds nothing that points back at its pointer, so a plain `&self` method, a
-  trait impl and an ALTREP callback can't reach the values (#1880). A value
-  passed to
+  `#[r_data(ref)]` → `fn f(ptr: &impl SidecarOwner<Self>) -> T`,
+  `#[r_data(mut)]` → `fn set_f(ptr: &mut impl SidecarOwnerMut<Self>, value: T)`,
+  `#[r_data(ref, mut)]` or a bare `#[r_data]` → both. `ExternalPtr`,
+  `ExternalPtrRef` and `ExternalPtrMut` are the owners. A method that needs
+  the value takes the handle (`self: &ExternalPtr<Self>`) and calls
+  `Self::f(self)`; a trait method takes `self: ExternalPtrRef<'_, Self>` /
+  `self: ExternalPtrMut<'_, Self>`, which also works over a trait-ABI object.
+  The struct holds nothing that points back at its pointer, so a plain
+  `&self` method (a standard trait's included) and an ALTREP data-trait
+  callback can't reach the values (#1880). A value passed to
   `Sidecar::new` is pending until the struct is wrapped or the field is next
   accessed; `into_inner` reads the slots back as pending values, and
   `ExternalPtr::clone` shares the slot values as R objects. Main thread only.

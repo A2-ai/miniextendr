@@ -205,7 +205,7 @@
 //! static __MX_BASE_VTABLE_MyCounter: mx_base_vtable = mx_base_vtable {
 //!     drop: ErasedObject::<MyCounter>::drop_raw,
 //!     concrete_tag: __MX_TAG_MyCounter,
-//!     query: miniextendr_api::registry::universal_query,
+//!     query: ErasedObject::<MyCounter>::query,
 //!     data_offset: ErasedObject::<MyCounter>::DATA_OFFSET,
 //! };
 //! ```
@@ -2252,9 +2252,9 @@ pub(crate) fn generate_altrep_storage(
 }
 
 /// Generate the Rust accessors of each `Sidecar<T>` field, as associated
-/// functions of the struct taking the `ExternalPtr` handle, with the field's
-/// visibility: `fn keys(ptr: &ExternalPtr<Self>) -> T` for `#[r_data(ref)]`,
-/// `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` for `#[r_data(mut)]`,
+/// functions of the struct taking an owner handle, with the field's visibility:
+/// `fn keys(ptr: &impl SidecarOwner<Self>) -> T` for `#[r_data(ref)]`,
+/// `fn set_keys(ptr: &mut impl SidecarOwnerMut<Self>, value: T)` for `#[r_data(mut)]`,
 /// both for `#[r_data(ref, mut)]` or a bare `#[r_data]`. The struct holds no
 /// reference to its pointer, so there is no accessor on `&self` (#1856).
 ///
@@ -2281,7 +2281,7 @@ fn generate_sidecar_rust_accessors(input: &DeriveInput, info: &SidecarInfo) -> T
                 methods.push(quote::quote! {
                     #[doc = #doc]
                     #allow
-                    #vis fn #field(ptr: &::miniextendr_api::externalptr::ExternalPtr<Self>) -> #inner {
+                    #vis fn #field(ptr: &impl ::miniextendr_api::externalptr::SidecarOwner<Self>) -> #inner {
                         ::miniextendr_api::externalptr::sidecar_get::<Self, #inner>(
                             ptr, #index, #field_name, |this: &Self| &this.#field,
                         )
@@ -2298,7 +2298,7 @@ fn generate_sidecar_rust_accessors(input: &DeriveInput, info: &SidecarInfo) -> T
                 methods.push(quote::quote! {
                     #[doc = #doc]
                     #allow
-                    #vis fn #setter(ptr: &mut ::miniextendr_api::externalptr::ExternalPtr<Self>, value: #inner) {
+                    #vis fn #setter(ptr: &mut impl ::miniextendr_api::externalptr::SidecarOwnerMut<Self>, value: #inner) {
                         ::miniextendr_api::externalptr::sidecar_set::<Self, #inner>(
                             ptr, #index, #field_name, |this: &Self| &this.#field, value,
                         )
@@ -2423,7 +2423,7 @@ pub fn derive_external_ptr(
 ///
 /// For `#[derive(ExternalPtr)] struct MyCounter { ... }` generates:
 /// - `__MX_TAG_MyCounter` - concrete type tag (FNV-1a hash of module_path + type)
-/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with universal_query
+/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with trait/sidecar query
 /// - `__mx_wrap_MyCounter` - constructor returning `*mut mx_erased`
 fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     let type_ident = &input.ident;
@@ -2454,7 +2454,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
             ::miniextendr_api::abi::mx_base_vtable {
                 drop: ::miniextendr_api::abi::ErasedObject::<#type_ident>::drop_raw,
                 concrete_tag: #concrete_tag_name,
-                query: ::miniextendr_api::registry::universal_query,
+                query: ::miniextendr_api::abi::ErasedObject::<#type_ident>::query,
                 data_offset: ::miniextendr_api::abi::ErasedObject::<#type_ident>::DATA_OFFSET,
             };
 
@@ -3249,13 +3249,13 @@ mod tests {
         // methods on the struct (#1856).
         assert!(
             out.contains(
-                "pub fn keys (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Vec < i32 > { :: miniextendr_api :: externalptr :: sidecar_get :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys ,) }"
+                "pub fn keys (ptr : & impl :: miniextendr_api :: externalptr :: SidecarOwner < Self >) -> Vec < i32 > { :: miniextendr_api :: externalptr :: sidecar_get :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys ,) }"
             ),
             "{out}"
         );
         assert!(
             out.contains(
-                "pub fn set_keys (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : Vec < i32 >) { :: miniextendr_api :: externalptr :: sidecar_set :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys , value ,) }"
+                "pub fn set_keys (ptr : & mut impl :: miniextendr_api :: externalptr :: SidecarOwnerMut < Self > , value : Vec < i32 >) { :: miniextendr_api :: externalptr :: sidecar_set :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys , value ,) }"
             ),
             "{out}"
         );
@@ -3264,13 +3264,13 @@ mod tests {
         // no R accessor.
         assert!(
             out.contains(
-                "# [allow (dead_code)] fn steps (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Option < List >"
+                "# [allow (dead_code)] fn steps (ptr : & impl :: miniextendr_api :: externalptr :: SidecarOwner < Self >) -> Option < List >"
             ),
             "{out}"
         );
         assert!(
             out.contains(
-                "# [allow (dead_code)] fn set_steps (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : Option < List >)"
+                "# [allow (dead_code)] fn set_steps (ptr : & mut impl :: miniextendr_api :: externalptr :: SidecarOwnerMut < Self > , value : Option < List >)"
             ),
             "{out}"
         );
@@ -3334,14 +3334,14 @@ mod tests {
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
         assert!(
             out.contains(
-                "pub fn keys (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Vec < i32 >"
+                "pub fn keys (ptr : & impl :: miniextendr_api :: externalptr :: SidecarOwner < Self >) -> Vec < i32 >"
             ),
             "{out}"
         );
         assert!(!out.contains("fn set_keys"), "{out}");
         assert!(
             out.contains(
-                "# [allow (dead_code)] pub (crate) fn set_note (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : String)"
+                "# [allow (dead_code)] pub (crate) fn set_note (ptr : & mut impl :: miniextendr_api :: externalptr :: SidecarOwnerMut < Self > , value : String)"
             ),
             "{out}"
         );

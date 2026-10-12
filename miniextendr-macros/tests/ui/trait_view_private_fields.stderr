@@ -1,4 +1,4 @@
-error[E0451]: fields `data`, `vtable` and `root` of struct `miniextendr_api::trait_abi::TraitViewData` are private
+error[E0451]: fields `data`, `vtable` and `owner` of struct `miniextendr_api::trait_abi::TraitViewData` are private
   --> tests/ui/trait_view_private_fields.rs:18:13
    |
 17 |         __mx_view: TraitViewData {
@@ -7,5 +7,5 @@ error[E0451]: fields `data`, `vtable` and `root` of struct `miniextendr_api::tra
    |             ^^^^ private field
 19 |             vtable: 1 as *const CounterVTable,
    |             ^^^^^^ private field
-20 |             root: None,
-   |             ^^^^ private field
+20 |             owner: None,
+   |             ^^^^^ private field

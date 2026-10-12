@@ -24,6 +24,9 @@ pub use shared_traits::{
     __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
 };
 
+// Import the shared Tagged trait (owner receivers) and its generated ABI types
+pub use shared_traits::{__Tagged_build_vtable, TAG_Tagged, Tagged, TaggedVTable, TaggedView};
+
 // region: Env-style types (default class system)
 
 /// A simple data container for testing cross-package ExternalPtr dispatch.
@@ -531,6 +534,60 @@ pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
     let view = unsafe { CounterView::try_from_sexp(counter_sexp) }
         .expect("Object does not implement Counter trait");
     view.value()
+}
+// endregion
+
+// region: LabelledValue: the shared Tagged trait's owner receivers over a sidecar
+
+/// Labels kept in a sidecar. The shared `Tagged` trait reads and writes them
+/// through its owner receivers.
+#[derive(ExternalPtr)]
+pub struct LabelledValue {
+    #[r_data]
+    tags: miniextendr_api::externalptr::Sidecar<Vec<String>>,
+}
+
+/// @title LabelledValue (Env-style)
+/// @name LabelledValue
+/// @description Labels kept in a sidecar, reached through the `Tagged` trait.
+#[miniextendr]
+impl LabelledValue {
+    /// Create a LabelledValue with one label
+    /// @param first The first label
+    fn new(first: String) -> Self {
+        Self {
+            tags: miniextendr_api::externalptr::Sidecar::new(vec![first]),
+        }
+    }
+}
+
+#[miniextendr]
+impl Tagged for LabelledValue {
+    fn labels(self: miniextendr_api::ExternalPtrRef<'_, Self>) -> Vec<String> {
+        Self::tags(&self)
+    }
+
+    /// @param label The label to append
+    fn add_label(mut self: miniextendr_api::ExternalPtrMut<'_, Self>, label: String) {
+        let mut tags = Self::tags(&self);
+        tags.push(label);
+        Self::set_tags(&mut self, tags);
+    }
+}
+
+/// Create a LabelledValue for cross-package trait dispatch
+///
+/// The label starts as a pending sidecar value, which wrapping moves into the
+/// object's protection list.
+/// @param first The first label
+/// @return An external pointer to the wrapped value
+/// @export
+#[miniextendr]
+pub fn new_labelled(first: String) -> SEXP {
+    let value = LabelledValue {
+        tags: miniextendr_api::externalptr::Sidecar::new(vec![first]),
+    };
+    unsafe { ccall::mx_wrap(__mx_wrap_LabelledValue(value)) }
 }
 // endregion
 
