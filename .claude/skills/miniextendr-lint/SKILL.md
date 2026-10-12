@@ -72,12 +72,11 @@ Fix: align the trait-ABI configuration with the inherent impl structure.
 
 ### Export and visibility rules
 
-**MXL106** — Non-`pub` function that would receive `@export`.
-A function is marked `#[miniextendr]` but is not `pub`. Without `pub`, the
-function is not part of the crate's public API; exporting it from R would
-create a dangling entry point.
-Fix: add `pub`, or add `#[miniextendr(noexport)]` if the function is
-intentionally internal.
+**MXL106** — Non-`pub` function with a hand-written `/// @export` tag.
+The macro passes the tag through to the R wrapper, so roxygen exports a
+function that Rust keeps private: the two visibilities disagree.
+Fix: make it `pub fn` to export it, or drop the tag to keep the R wrapper
+internal.
 
 **MXL203** — Redundant `internal` + `noexport`.
 Both `internal` and `noexport` appear on the same item. These are not additive;

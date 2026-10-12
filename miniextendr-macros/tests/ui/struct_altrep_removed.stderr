@@ -3,3 +3,9 @@ error: #[miniextendr] no longer supports ALTREP (class/base attributes). Use #[d
   |
 6 | pub struct MyWrapper(Vec<i32>);
   |            ^^^^^^^^^
+
+error: #[miniextendr] no longer supports ALTREP (class/base attributes). Use #[derive(miniextendr_api::Altrep)] with #[altrep(class = "...")] instead.
+  --> tests/ui/struct_altrep_removed.rs:10:12
+   |
+10 | pub struct MyPair {
+   |            ^^^^^^

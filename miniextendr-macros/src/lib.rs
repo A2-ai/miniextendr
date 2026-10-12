@@ -2806,34 +2806,21 @@ pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
-/// Derive `PreferDataFrame`: when a type implements both `IntoDataFrame` (via `DataFrameRow`)
-/// and other conversion paths, this selects data.frame as the default `IntoR` conversion.
+/// Derive `PreferExternalPtr`: return a type with a hand-written `TypedExternal`
+/// implementation as an R external pointer. `#[derive(ExternalPtr)]` already
+/// supplies `IntoR`; adding this derive to it creates conflicting implementations.
 ///
 /// # Example
 ///
 /// ```ignore
-/// #[derive(DataFrameRow, PreferDataFrame)]
-/// struct Obs { time: f64, value: f64 }
-/// // IntoR produces data.frame(time = ..., value = ...)
-/// ```
-#[proc_macro_derive(PreferDataFrame)]
-pub fn derive_prefer_data_frame(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    list_derive::derive_prefer_data_frame(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
-}
-
-/// Derive `PreferExternalPtr`: when a type implements both `ExternalPtr` and
-/// other conversion paths (e.g., `IntoList`), this selects `ExternalPtr` wrapping
-/// as the default `IntoR` conversion.
-///
-/// # Example
-///
-/// ```ignore
-/// #[derive(ExternalPtr, IntoList, PreferExternalPtr)]
+/// #[derive(PreferExternalPtr)]
 /// struct Model { weights: Vec<f64> }
-/// // IntoR wraps as ExternalPtr (opaque R object), not list
+///
+/// impl miniextendr_api::TypedExternal for Model {
+///     const TYPE_NAME: &'static str = "Model";
+///     const TYPE_NAME_CSTR: &'static [u8] = b"Model\0";
+///     const TYPE_ID_CSTR: &'static [u8] = concat!(module_path!(), "::Model\0").as_bytes();
+/// }
 /// ```
 #[proc_macro_derive(PreferExternalPtr)]
 pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

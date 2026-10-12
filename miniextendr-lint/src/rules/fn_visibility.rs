@@ -28,11 +28,11 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                         item.line,
                         format!(
                             "function `{}` has `/// @export` but is not `pub`. \
-                             The @export tag has no effect without `pub fn`.",
+                             The explicit @export tag still exports its R wrapper, contrary to the private Rust visibility.",
                             item.name,
                         ),
                     )
-                    .with_help("Make the function `pub fn` to enable R export."),
+                    .with_help("Use `pub fn` for the export, or remove `@export` to keep the R wrapper internal."),
                 );
             }
         }

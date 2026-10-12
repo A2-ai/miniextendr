@@ -363,15 +363,17 @@ impl MyType {
 
 ## Lint Rules
 
-### MXL106: non-`pub` function not exported
+### MXL106: non-`pub` function with an `@export` tag
 
 ```
-warning[MXL106]: registered function `my_helper` is not `pub`
+[MXL106] src/lib.rs:12: function `my_helper` has `/// @export` but is not `pub`. ...
 ```
 
-This fires when a `#[miniextendr]` function is not `pub`. The C symbol is registered
-and the R wrapper exists, but users cannot call it from outside the package. Fix: add
-`pub`, or add `#[miniextendr(export)]` if you intentionally want to export a non-`pub` fn.
+This fires when a non-`pub` `#[miniextendr]` function carries a hand-written
+`/// @export` tag. The tag still exports the R wrapper, so R exports a function
+that Rust keeps private. Fix: make it `pub fn` to export it, or drop the tag to
+keep the R wrapper internal. To export a non-`pub` fn on purpose, use
+`#[miniextendr(export)]` instead of the tag.
 
 ### MXL203: `internal + noexport` redundancy
 

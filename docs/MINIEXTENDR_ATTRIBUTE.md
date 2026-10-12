@@ -1467,7 +1467,7 @@ impl<T: AsRef<str>> Display for T { /* ... */ }
 ### ALTREP via `#[miniextendr]` Is Removed
 
 `#[miniextendr]` no longer generates ALTREP classes. Applying the old ALTREP
-attributes (`class`, `base`) to a 1-field struct is a compile error with
+attributes (`class`, `base`) to a struct of any shape is a compile error with
 migration guidance. Use the per-family ALTREP derives instead:
 
 ```rust
@@ -1519,10 +1519,10 @@ explicit-mode counterpart: it generates `ExternalPtr` plus the
 |--------|--------|
 | `#[miniextendr]` (no mode attr) | ExternalPtr |
 | `#[miniextendr(list)]` | `IntoList` + `TryFromList` + `PreferList` |
-| `#[miniextendr(dataframe)]` | `IntoList` + `DataFrameRow` + companion type |
+| `#[miniextendr(dataframe)]` | `DataFrameRow` + companion type |
 | `#[miniextendr(externalptr)]` | `ExternalPtr` + `TypedExternal` |
 | `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`) |
-| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type) |
+| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`DataFrameRow` + companion type) |
 | `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit; identical to the no-mode-attr default) |
 | `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` (needs `RNativeType`) |
 
@@ -1582,16 +1582,15 @@ pub struct FitResult {
 
 **Skipping fields.** `#[into_list(ignore)]` drops a field from the list. On the
 way back (`TryFromList`) an ignored field is filled with `Default::default()`,
-so its type must implement `Default`. The attribute form `#[miniextendr(list)]`
-does not register `into_list` as a field attribute ("cannot find attribute
-`into_list`", #2024), so spell list mode as its three derives:
+so its type must implement `Default`. The helper works with both
+`#[miniextendr(list)]` and the equivalent three derives:
 
 <!-- docs-examples-check -->
 ```rust
-use miniextendr_api::{IntoList, PreferList, TryFromList};
+use miniextendr_api::miniextendr;
 use std::cell::RefCell;
 
-#[derive(IntoList, TryFromList, PreferList)]
+#[miniextendr(list)]
 pub struct Cfg {
     pub label: String,
     #[into_list(ignore)]
@@ -1639,10 +1638,15 @@ pub fn make_obs() -> ObsDataFrame {  // companion type
 // R: data.frame(id = c(1L, 2L), score = c(0.5, 0.8))
 ```
 
-As in list mode, the attribute form does not register the derive's helper
-attribute, so `#[dataframe(...)]` options (on the struct or its fields) need
-`#[derive(DataFrameRow)]` instead of `#[miniextendr(dataframe)]`. See
-[DATAFRAME.md](DATAFRAME.md) for the derive.
+Dataframe mode derives only `DataFrameRow`; the companion already implements
+`IntoR`. Add `#[derive(IntoList)]` explicitly if individual rows also need list
+conversion.
+
+`#[dataframe(...)]` options work on the struct and its fields with either
+`#[miniextendr(dataframe)]` or `#[derive(DataFrameRow)]`. For example,
+`#[dataframe(name = "ObsFrame")]` changes the companion type's name, and
+`#[dataframe(rename = "observation_id")]` changes a field's column name. See
+[DATAFRAME.md](DATAFRAME.md) for the available options.
 
 ---
 
@@ -1715,16 +1719,15 @@ These are separate from `#[miniextendr]` but complementary:
 | `MatchArg` | Enum ↔ R character with `match.arg()` |
 | `RNativeType` | Newtype for native R types |
 | `PreferList` | `IntoR` through list |
-| `PreferDataFrame` | `IntoR` through the companion's data.frame engine (internal; see [PREFER_DERIVES.md](PREFER_DERIVES.md)) |
 | `PreferExternalPtr` | `IntoR` through ExternalPtr, for a hand-written `TypedExternal` |
 | `PreferRNativeType` | `IntoR` through native SEXP |
 | `Vctrs` | vctrs-compatible S3 class (feature-gated) |
 | `PreferVctrs` | `IntoR` through `Vctrs` (feature-gated) |
 
 The `#[miniextendr]` attribute on structs/enums is a convenience that calls the
-appropriate derives internally. It generates the same impls as the derives, but
-it does not register their helper attributes (`#[into_list(...)]`,
-`#[dataframe(...)]`), so use the derives when you need those.
+appropriate derives internally. List and dataframe modes expand to normal
+`#[derive(...)]` invocations, so `#[into_list(...)]` in list mode and
+`#[dataframe(...)]` in dataframe mode work alongside other derives on the struct.
 
 ## See Also
 

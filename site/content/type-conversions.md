@@ -107,7 +107,6 @@ For custom types, derive macros select the `IntoR` conversion path:
 | Derive | `IntoR` result |
 |--------|----------------|
 | `#[derive(PreferList)]` | R named list |
-| `#[derive(PreferDataFrame)]` | R data frame |
 | `#[derive(PreferExternalPtr)]` | R external pointer |
 | `#[derive(PreferRNativeType)]` | Native SEXP (e.g., `INTSXP`) |
 

@@ -11,12 +11,11 @@
 //!
 //! ## Preference Derives
 //!
-//! These marker derives select the `IntoR` strategy for a type. Only one
+//! These derives select the `IntoR` strategy for a type. Only one
 //! preference derive should be applied to a given type:
 //!
 //! - `#[derive(PreferList)]` -- convert via `IntoList::into_list`
 //! - `#[derive(PreferExternalPtr)]` -- wrap in `ExternalPtr::new`
-//! - `#[derive(PreferDataFrame)]` -- convert via `ColumnSource::into_column_list`
 //! - `#[derive(PreferRNativeType)]` -- convert via `AsRNative` wrapper
 //!
 //! Stacking two of them is a conflict: each derive emits a fixed-name marker const
@@ -467,7 +466,8 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
 /// Derive `PreferExternalPtr`: emits an `IntoR` impl that wraps the value in
 /// `ExternalPtr::new` before converting to SEXP.
 ///
-/// The type must implement `TypedExternal` (typically via `#[derive(ExternalPtr)]`).
+/// The type must have a hand-written `TypedExternal` impl; `ExternalPtr` derive
+/// already supplies `IntoR` and must not be combined with this derive.
 /// The generated `IntoR::Error` is `Infallible`.
 pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
@@ -496,47 +496,6 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
                 ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
-            }
-        }
-
-        #conflict_marker
-    };
-
-    Ok(expand)
-}
-
-/// Derive `PreferDataFrame`: emits an `IntoR` impl that converts to R via
-/// `ColumnSource::into_column_list`, then `into_sexp`.
-///
-/// The type must implement `ColumnSource` (typically the companion struct generated
-/// by `#[derive(DataFrameRow)]`). The generated `IntoR::Error` is `Infallible`.
-pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let conflict_marker = prefer_conflict_marker(&input);
-
-    let expand = quote! {
-        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
-            type Error = ::core::convert::Infallible;
-
-            #[inline]
-            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
-            }
-
-            #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
-            }
-
-            #[inline]
-            fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
-            }
-
-            #[inline]
-            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
             }
         }
 
