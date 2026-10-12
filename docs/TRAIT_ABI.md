@@ -106,11 +106,26 @@ if vtable.is_null() {
 If the vtable exists, the generated shim converts R args, calls the Rust method, and converts the result back to R:
 
 ```rust
-// CounterView wraps the sexp and vtable for ergonomic calls
-let view = CounterView::try_from_sexp(sexp)?;
+// CounterView holds the data and vtable pointers and roots `sexp`
+let mut view = unsafe { CounterView::try_from_sexp(sexp) }?;
 let value = view.value();  // Calls through vtable
 view.increment();
 ```
+
+### View lifetime
+
+A View made by `try_from_sexp` roots its receiver until the View drops, in the
+same pool that owning `ExternalPtr` handles use. A View can therefore outlive
+the `.Call` argument or `PROTECT` that held the receiver when it was made, and
+the object's finalizer cannot drop the Rust value while a View still points
+at it. Views drop in any order. The pointers live in the runtime's private
+`TraitViewData`, so a View can only be built through the unsafe
+`TraitView::from_raw_parts`. `from_raw_parts(data, vtable, None)` roots
+nothing; its caller must keep `data` alive while the View exists.
+
+Rooting keeps the receiver alive; it does not track borrows. Calling a `&mut
+self` method through a View while another call into the same object is still
+running is not caught (#1965).
 
 ### Argument types
 
@@ -188,11 +203,11 @@ From R or consumer packages, both views work on the same object:
 
 ```rust
 // Get Counter view
-let counter_view = CounterView::try_from_sexp(sexp)?;
+let mut counter_view = unsafe { CounterView::try_from_sexp(sexp) }?;
 counter_view.increment();
 
 // Get Resettable view from same object
-let reset_view = ResettableView::try_from_sexp(sexp)?;
+let mut reset_view = unsafe { ResettableView::try_from_sexp(sexp) }?;
 reset_view.reset();
 ```
 
@@ -233,7 +248,8 @@ miniextendr_api::miniextendr_init!(mypkg);
 
 ## Source Files
 
-- `miniextendr-api/src/trait_abi/mod.rs` - Core types and traits
+- `miniextendr-api/src/trait_abi.rs` - Core types and traits
+- `miniextendr-api/src/trait_abi/view_data.rs` - `TraitViewData`, a View's pointers and receiver root
 - `miniextendr-api/src/trait_abi/ccall.rs` - C-callable wrappers and init
 - `miniextendr-api/src/abi.rs` - FFI-compatible struct definitions
 - `miniextendr-api/src/mx_abi.rs` - Rust implementation of mx_wrap/mx_get/mx_query

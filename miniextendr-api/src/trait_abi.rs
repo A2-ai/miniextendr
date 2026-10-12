@@ -172,7 +172,7 @@ use std::os::raw::c_void;
 /// ```
 ///
 /// The generated view keeps its pointers in [`TraitViewData`]. Views made
-/// from an R external pointer preserve that owner until they are dropped;
+/// from an R external pointer root that owner until they are dropped;
 /// raw Rust-owned views instead require the caller to keep their data alive.
 ///
 /// # Usage
@@ -193,6 +193,7 @@ use std::os::raw::c_void;
 /// - `vtable` must be a valid pointer to the trait's vtable
 /// - The vtable must remain valid for the lifetime of the view
 /// - The owner, when supplied, must keep `data` alive; otherwise the caller must
+///   keep `data` alive for the lifetime of the view
 pub trait TraitView: Sized {
     /// The type tag for this trait.
     ///
@@ -207,7 +208,7 @@ pub trait TraitView: Sized {
     /// - `vtable` must be a valid, non-null pointer to the trait's vtable
     /// - `vtable` must remain valid for the lifetime of the view
     /// - `owner`, when present, must be a live R object owning `data`; the
-    ///   implementation must preserve it for the lifetime of the view
+    ///   implementation must root it for the lifetime of the view
     /// - Without an owner, the caller must keep `data` alive for that lifetime
     /// - Calls must respect the concrete object's Rust borrowing rules
     /// - Construction, use and drop must all run on R's main thread
