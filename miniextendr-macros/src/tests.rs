@@ -2932,6 +2932,39 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
     // The data1-downcast branch legitimately expects an EXTPTRSXP.
     assert!(s.contains("expected:SEXPTYPE::EXTPTRSXP"));
 }
+
+#[test]
+fn test_derive_altrep_clone_duplicate_composes_and_is_opt_in() {
+    let input = |options: proc_macro2::TokenStream| {
+        syn::parse2::<syn::DeriveInput>(quote::quote! {
+            #[altrep(len = "len", elt = "value", #options)]
+            struct Value { len: usize, value: i32 }
+        })
+        .unwrap()
+    };
+    let plain = crate::altrep_derive::derive_altrep_integer(input(quote::quote! {}))
+        .unwrap()
+        .to_string();
+    assert!(!plain.contains("HAS_DUPLICATE"));
+    let cloned = crate::altrep_derive::derive_altrep_integer(input(
+        quote::quote! { duplicate = "clone", serialize },
+    ))
+    .unwrap()
+    .to_string();
+    assert!(cloned.contains("duplicate_altrep_owner"));
+    assert!(cloned.contains("with_serialize"));
+    assert!(cloned.contains("HAS_DUPLICATE"));
+    // Returning the same object from Duplicate would let an alias's element
+    // and attribute edits reach the original, so there is no "shared" policy.
+    for options in [
+        quote::quote! { duplicate = "shared" },
+        quote::quote! { duplicate = "unknown" },
+        quote::quote! { duplicate = "clone", no_lowlevel },
+        quote::quote! { duplicate = "clone", duplicate = "clone" },
+    ] {
+        assert!(crate::altrep_derive::derive_altrep_integer(input(options)).is_err());
+    }
+}
 // endregion
 
 // region: preconditions / no_preconditions and the no-preconditions-default feature

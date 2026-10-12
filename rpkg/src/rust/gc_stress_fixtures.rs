@@ -275,6 +275,48 @@ pub fn gc_stress_altrep_string_cache() -> SEXP {
     x.get()
 }
 
+#[derive(Clone, miniextendr_api::AltrepString)]
+#[altrep(manual, duplicate = "clone", class = "GcStressCloneCache")]
+struct GcStressCloneCache(Vec<Option<String>>);
+
+impl miniextendr_api::altrep_data::AltrepLen for GcStressCloneCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl miniextendr_api::altrep_data::AltStringData for GcStressCloneCache {
+    fn elt(&self, i: usize) -> Option<&str> {
+        self.0[i].as_deref()
+    }
+}
+
+/// Exercise `duplicate = "clone"` over a string ALTREP cache under GC pressure.
+///
+/// Duplicates a partly filled cache (still-empty C NULL slots), writes a value
+/// and an NA into the copy through `Set_elt`, fills it through `Dataptr`, then
+/// duplicates again: the copy's data2, not the original Rust values, wins.
+/// Returns the second copy, which is still ALTREP: `"written"`, `NA`, then
+/// `cache-<i>` for `i` in `2..24`, with `NA` where `i % 5 == 0`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_clone_cache() -> SEXP {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    type Data = GcStressCloneCache;
+
+    let values: Vec<Option<String>> = (0..24)
+        .map(|i| (i % 5 != 0).then(|| format!("cache-{i}")))
+        .collect();
+    let x = unsafe { OwnedProtect::new(GcStressCloneCache(values).into_sexp()) };
+    for i in (0..24).step_by(3) {
+        let _ = <Data as AltString>::elt(x.get(), i);
+    }
+    let x = unsafe { OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get())) };
+    let written = unsafe { OwnedProtect::new(SEXP::charsxp("written")) };
+    <Data as AltString>::set_elt(x.get(), 0, written.get());
+    <Data as AltString>::set_elt(x.get(), 1, SEXP::na_string());
+    let _ = <Data as AltVec>::dataptr(x.get(), false);
+    unsafe { miniextendr_api::sys::Rf_duplicate(x.get()) }
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both

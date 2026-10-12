@@ -120,10 +120,12 @@ macro_rules! __impl_altrep_base {
     // slice-like / unit) type starts and would NOT fail cleanly here. The
     // non-generic arms above forward to this one with empty `{}` brackets so
     // there is exactly one emission body per (guard, serialize) combination.
-    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident) => {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident $(, extra = {$($extra:item)*})?) => {
         impl<$($gen)*> $crate::altrep_traits::Altrep for $ty where $($whr)* {
             const GUARD: $crate::altrep_traits::AltrepGuard =
                 $crate::altrep_traits::AltrepGuard::$guard;
+
+            $($($extra)*)?
 
             fn length(x: $crate::SEXP) -> $crate::R_xlen_t {
                 if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
@@ -135,10 +137,12 @@ macro_rules! __impl_altrep_base {
             }
         }
     };
-    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident, with_serialize) => {
+    ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $guard:ident, with_serialize $(, extra = {$($extra:item)*})?) => {
         impl<$($gen)*> $crate::altrep_traits::Altrep for $ty where $($whr)* {
             const GUARD: $crate::altrep_traits::AltrepGuard =
                 $crate::altrep_traits::AltrepGuard::$guard;
+
+            $($($extra)*)?
 
             fn length(x: $crate::SEXP) -> $crate::R_xlen_t {
                 if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
@@ -198,11 +202,11 @@ macro_rules! __impl_altrep_base {
     // still resolves here rather than being intercepted by the brace arms
     // (which require a literal leading `{...}` group and so never match a
     // bare invocation).
-    ($ty:ty, $guard:ident) => {
-        $crate::__impl_altrep_base!({} $ty {}, $guard);
+    ($ty:ty, $guard:ident $(, extra = {$($extra:item)*})?) => {
+        $crate::__impl_altrep_base!({} $ty {}, $guard $(, extra = {$($extra)*})?);
     };
-    ($ty:ty, $guard:ident, with_serialize) => {
-        $crate::__impl_altrep_base!({} $ty {}, $guard, with_serialize);
+    ($ty:ty, $guard:ident, with_serialize $(, extra = {$($extra:item)*})?) => {
+        $crate::__impl_altrep_base!({} $ty {}, $guard, with_serialize $(, extra = {$($extra)*})?);
     };
 }
 

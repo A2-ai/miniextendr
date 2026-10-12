@@ -831,8 +831,8 @@ pub struct RepeatedComplex {
     value: Rcomplex,
 }
 
-#[derive(miniextendr_api::AltrepInteger)]
-#[altrep(manual, dataptr, serialize)]
+#[derive(::core::clone::Clone, miniextendr_api::AltrepInteger)]
+#[altrep(manual, dataptr, serialize, duplicate = "clone")]
 pub struct Ints {
     data: ::std::vec::Vec<i32>,
 }
@@ -942,8 +942,8 @@ impl AltrepSerialize for Logicals {
     }
 }
 
-#[derive(miniextendr_api::AltrepRaw)]
-#[altrep(manual)]
+#[derive(::core::clone::Clone, miniextendr_api::AltrepRaw)]
+#[altrep(manual, duplicate = "clone")]
 pub struct Raws {
     data: ::std::vec::Vec<u8>,
 }

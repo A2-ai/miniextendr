@@ -276,6 +276,27 @@ A live-view class can deliberately preserve its owner, while a value class can
 duplicate its ALTREP state and detach the storage on write. The latter must keep
 an existing alias unchanged.
 
+The derives offer `#[altrep(duplicate = "clone")]` for value semantics. It
+requires `Clone`, clones the data1 ExternalPtr owner, and copies the
+authoritative data2 cache, including a partial string cache. The copy stays
+ALTREP, and R's default `DuplicateEX` copies the attributes onto it, so
+`y <- x; y[1] <- 0L` leaves `x` unchanged. Omitting the option keeps R's
+default. It composes with `dataptr`, `subset` and `serialize`; `no_lowlevel`
+leaves the policy to your own `Altrep` impl.
+
+A custom `Clone` must detach buffers exposed for R writes. `Vec` and owned
+`Cow` clones do this; simply sharing an `Rc` allocation is not sufficient.
+
+There is no derive option that returns the original object from `Duplicate`.
+R's `DuplicateEX` then leaves the attributes alone, so every copy R makes is
+the same SEXP: `y[1] <- 0L` writes into `x`, `names(y) <- ...` and
+`class(y) <- ...` rename and reclass `x`, `as.vector(y)` strips `x`'s names,
+and a function that modifies its argument modifies the caller's vector. A
+hand-written `no_lowlevel` `Duplicate` can still do this, as the live view in
+`tests/altrep_assignment.rs` does, but it gives up R's value semantics. A live
+view that keeps attributes per copy is tracked in
+[#2051](https://github.com/A2-ai/miniextendr/issues/2051).
+
 Both duplication hooks are available today: implement `Altrep::duplicate` with
 `HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
 The bridge registers those callbacks conditionally. R's default `DuplicateEX`
