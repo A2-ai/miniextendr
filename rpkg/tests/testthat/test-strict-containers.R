@@ -62,6 +62,8 @@ test_that("without strict the same shapes still widen to doubles", {
   expect_identical(miniextendr:::lax_boxed_i64(FALSE), 1:3)
   expect_identical(miniextendr:::lax_boxed_i64(TRUE), big)
   expect_identical(miniextendr:::lax_slice_u64(TRUE), c(1, 3e9))
+  expect_identical(miniextendr:::lax_array_usize(FALSE), 1:2)
+  expect_identical(miniextendr:::lax_array_usize(TRUE), c(1, 3e9))
   expect_identical(miniextendr:::lax_optional_boxed_i64(TRUE), big)
   expect_null(miniextendr:::lax_optional_boxed_i64(NULL))
   expect_identical(miniextendr:::lax_boxed_rows_i64(TRUE), list(1:3, big))

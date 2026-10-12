@@ -61,9 +61,3 @@ pub fn fixed_array_empty_strings() -> [String; 0] {
 pub fn fixed_array_optional_i64(present: bool) -> Option<[i64; 2]> {
     present.then_some([1, 3_000_000_000])
 }
-
-/// @noRd
-#[miniextendr(noexport)]
-pub fn lax_array_usize(big: bool) -> [usize; 2] {
-    [1, if big { 3_000_000_000 } else { 2 }]
-}
