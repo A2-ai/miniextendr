@@ -71,7 +71,7 @@ fn test_str_conversion_worker_copies_then_borrows() {
         assert_eq!(owned.len(), 1); // String storage on main thread
         assert_eq!(borrowed.len(), 1); // borrow inside worker closure
         assert!(owned[0].to_string().contains("String"));
-        assert!(borrowed[0].to_string().contains("Borrow"));
+        assert!(borrowed[0].to_string().contains("as_str"));
     }
 }
 
@@ -1186,4 +1186,108 @@ fn match_arg_slices_keep_owned_selection_storage() {
         assert!(source.contains("__storage_modes"), "{source}");
         assert!(!source.contains("TryFromRoot"), "{source}");
     }
+}
+
+#[test]
+fn worker_character_containers_own_storage_before_borrowing() {
+    let builder = RustConversionBuilder::new();
+    for (ty, owned_ty, borrow) in [
+        ("&'a str", ":: std :: string :: String", "as_str"),
+        (
+            "Option<&'a str>",
+            ":: core :: option :: Option < :: std :: string :: String >",
+            "as_deref",
+        ),
+        (
+            "std::vec::Vec<&'a str>",
+            ":: std :: vec :: Vec < :: std :: string :: String >",
+            "String :: as_str",
+        ),
+        (
+            "Vec<core::option::Option<&'a str>>",
+            ":: std :: vec :: Vec < :: core :: option :: Option < :: std :: string :: String > >",
+            "Option :: as_deref",
+        ),
+    ] {
+        let syn::FnArg::Typed(param) = parse_param(&format!("text: {ty}")) else {
+            unreachable!()
+        };
+        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+        assert_eq!(owned.len(), 1, "{ty}");
+        assert_eq!(borrowed.len(), 1, "{ty}");
+        let owned = owned[0].to_string();
+        let borrowed = borrowed[0].to_string();
+        assert!(
+            owned.contains(&format!("let __owned_text : {owned_ty} =")),
+            "{owned}"
+        );
+        assert!(
+            owned.contains("TryFromSexp :: try_from_sexp (arg_0)"),
+            "{owned}"
+        );
+        assert!(!owned.contains("TryFromRoot"), "{owned}");
+        assert!(borrowed.contains(borrow), "{borrowed}");
+        assert!(borrowed.contains("'_"), "{borrowed}");
+        assert!(!borrowed.contains("miniextendr_api"), "{borrowed}");
+        assert!(!crate::type_inspect::is_main_thread_bound_input(&param.ty));
+        assert!(
+            builder
+                .native_borrow_metadata(&param, &syn::parse_quote!(arg_0))
+                .is_none()
+        );
+    }
+    // Other reference containers must not be mistaken for character vectors.
+    for ty in [
+        "Vec<&i32>",
+        "Vec<&mut str>",
+        "Option<Vec<&str>>",
+        "Vec<Vec<&str>>",
+    ] {
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        assert!(worker_string_storage(&ty, &syn::parse_quote!(__owned_text)).is_none());
+    }
+}
+
+#[test]
+fn worker_character_marker_wraps_the_borrow_inside_the_closure() {
+    let builder = RustConversionBuilder::new().with_param_markers(
+        "text".into(),
+        vec![crate::type_inspect::ParamMarker::Checked],
+    );
+    let syn::FnArg::Typed(param) = parse_param("text: Vec<Option<&str>>") else {
+        unreachable!()
+    };
+    let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+    assert_eq!(owned.len(), 1);
+    assert_eq!(borrowed.len(), 2);
+    assert!(borrowed[0].to_string().contains("Option :: as_deref"));
+    assert!(
+        borrowed[1]
+            .to_string()
+            .contains("Checked :: from_inner (text)")
+    );
+}
+
+#[test]
+fn worker_optional_string_choices_keep_the_null_decoder_and_argument_type() {
+    let builder = RustConversionBuilder::new().with_layered_choice(
+        "mode".into(),
+        ChoiceLeaf::Literal {
+            choices: vec!["low".into(), "high".into()],
+            several: false,
+        },
+    );
+    let syn::FnArg::Typed(param) = parse_param("mode: Option<&str>") else {
+        unreachable!()
+    };
+    let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+    let owned = owned[0].to_string();
+    assert!(owned.contains("match_arg_null_or"), "{owned}");
+    assert!(
+        owned.contains("String as :: miniextendr_api :: TryFromSexp"),
+        "{owned}"
+    );
+    assert!(owned.contains("Option<&str>"), "{owned}");
+    assert_eq!(borrowed.len(), 1);
+    assert!(borrowed[0].to_string().contains("as_deref"));
 }

@@ -517,15 +517,14 @@ pub fn sum(x: &[f64]) -> f64 {
 }
 ```
 
-The slice has a `'static` lifetime annotation, but this is a **lie** for API convenience. The actual lifetime is tied to R's GC protection of the SEXP.
+Main-thread wrappers and trait shims convert explicit shared native slices
+through `TryFromRoot`, tying the borrow to the rooted call argument. Use the
+slice during that call; copy to `Vec` when the data must outlive it.
 
-**Safe patterns:**
-- Use slice within the function
-- Copy data if you need to store it
-
-**Unsafe patterns:**
-- Storing the slice in a struct that outlives the function
-- Returning the slice (won't compile anyway)
+Raw `TryFromSexp` reference conversions and worker native references still
+have unconstrained lifetimes (#1427). Their callers must keep the source
+rooted and enforce borrowing rules themselves. A root supplies liveness;
+it does not grant exclusive access for a mutable slice.
 
 ---
 
@@ -542,12 +541,18 @@ pub fn process_string(s: &str) -> String {
 }
 ```
 
-The Rust type currently carries a `'static` lifetime for API convenience, but
-that lifetime is no more real than it is for borrowed numeric slices. R can
-garbage-collect a `CHARSXP` once it is unreachable. Use the borrow only within
-the `.Call`; copy to `String` before storing it. `NA_character_` becomes `""`
-on the plain borrowed/owned string paths, so use `Option<&str>` or
-`Option<String>` when NA must remain distinguishable from an empty string.
+Main-thread wrappers and trait shims bind explicit `&str` and `Option<&str>`
+inputs to the call's root through `TryFromRoot`. Worker wrappers convert
+`&str`, `Option<&str>`, `Vec<&str>` and `Vec<Option<&str>>` to the corresponding
+owned `String` forms on R's main thread, move that storage into the worker,
+and create the borrows there. The worker's strings do not point into R memory.
+
+Raw `TryFromSexp` character references, including main-thread `Vec<&str>`
+conversions, still expose an unconstrained lifetime (#1427). R can collect a
+`CHARSXP` once it becomes unreachable; copy to `String` before storing a raw
+borrow beyond its source's lifetime. `NA_character_` becomes `""` on the plain
+borrowed/owned string paths. Use optional strings when NA must remain
+distinguishable from an empty string.
 
 ---
 
