@@ -3,7 +3,11 @@
 \name{SplitR6}
 \alias{SplitR6}
 \alias{SplitR6$origin}
+\alias{SplitR6$from_half}
 \title{SplitR6 R6 Class}
+\arguments{
+\item{half}{Half the value.}
+}
 \description{
 R6 class with methods in two impl blocks.
 
@@ -11,6 +15,9 @@ Its second impl block adds an active binding, a private method, a
 finalizer and a static method.
 
 The value a new object starts from by default.
+
+An object holding twice \code{half}. The first block's \code{new} is the
+constructor, so this stays a static method.
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}

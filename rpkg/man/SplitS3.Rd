@@ -6,6 +6,7 @@
 \alias{split3_value.SplitS3}
 \alias{split3_doubled.SplitS3}
 \alias{splits3_origin}
+\alias{splits3_from_half}
 \title{S3 Class Split Over Two Impl Blocks}
 \usage{
 new_splits3(value)
@@ -16,6 +17,8 @@ new_splits3(value)
 
 splits3_origin()
 
+splits3_from_half(half)
+
 SplitS3
 }
 \arguments{
@@ -24,6 +27,8 @@ SplitS3
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
+
+\item{half}{Half the value.}
 }
 \description{
 S3 class with methods in two impl blocks.
@@ -41,4 +46,7 @@ S3 generic for \code{split3_doubled}
 Twice the value.
 
 The value a new object starts from by default.
+
+An object holding twice \code{half}. The first block's \code{new} is the
+constructor, so this stays a static method.
 }

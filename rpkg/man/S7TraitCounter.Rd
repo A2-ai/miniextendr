@@ -16,7 +16,7 @@
 \alias{attr(S7TraitCounter, "Counter")$MAX_VALUE}
 \title{S7TraitCounter S7 Class}
 \usage{
-S7TraitCounter(.ptr = NULL)
+S7TraitCounter(initial, .ptr = NULL)
 
 S7TraitCounter_get_value(.mx_self, ...)
 
@@ -29,13 +29,13 @@ S7TraitCounter_increment(.mx_self, ...)
 S7TraitCounter_checked_add(.mx_self, n, ...)
 }
 \arguments{
+\item{initial}{Starting value.}
+
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
 \item{.mx_self}{A \code{S7TraitCounter} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
-
-\item{initial}{(undocumented)}
 
 \item{n}{Amount to add.}
 }
@@ -50,7 +50,7 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Create a new S7 trait counter.
+\code{S7TraitCounter_new_s7trait()} is another name for the constructor \code{S7TraitCounter()}.
 
 S7 generic for trait method \code{Counter::value}
 

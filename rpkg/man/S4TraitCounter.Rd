@@ -16,6 +16,8 @@
 \alias{S4TraitCounter_Counter_MAX_VALUE}
 \title{S4TraitCounter S4 Class}
 \usage{
+S4TraitCounter(initial)
+
 S4TraitCounter_new_s4trait(initial)
 
 \S4method{s4_trait_Counter_value}{S4TraitCounter}(x, ...)
@@ -29,7 +31,7 @@ S4TraitCounter_Counter_default_initial()
 S4TraitCounter_Counter_MAX_VALUE()
 }
 \arguments{
-\item{initial}{(undocumented)}
+\item{initial}{Starting value.}
 
 \item{x}{A \code{S4TraitCounter} object}
 
@@ -40,9 +42,11 @@ S4TraitCounter_Counter_MAX_VALUE()
 \description{
 S4TraitCounter inherent methods (constructor and getters).
 
+Create a new S4 trait counter.
+
 Get value via inherent method.
 
-Create a new S4 trait counter.
+\code{S4TraitCounter_new_s4trait()} is another name for the constructor \code{S4TraitCounter()}.
 
 S4 generic for trait method \code{Counter::value}
 

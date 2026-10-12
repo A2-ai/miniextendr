@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{PanickyCounter}
 \alias{PanickyCounter}
+\alias{PanickyCounter$new}
 \alias{PanickyCounter$get_value}
 \alias{PanickyCounter$try_add}
 \alias{PanickyCounter$new_panicky}
@@ -26,9 +27,15 @@ PanickyCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+Create a new panicky counter.
+
+\describe{
+\item{\code{initial}}{Starting value.}
+}
+
 Get value.
 
 Add (may panic).
 
-Create a new panicky counter.
+\code{PanickyCounter$new_panicky()} is another name for the constructor \code{PanickyCounter$new()}.
 }

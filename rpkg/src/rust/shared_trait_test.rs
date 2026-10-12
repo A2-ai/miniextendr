@@ -112,6 +112,8 @@ pub struct AtomicCounter {
 // Bare (default class system): flips together with its trait impl below.
 #[miniextendr(env)]
 impl AtomicCounter {
+    /// Create an atomic counter holding `initial`.
+    /// @param initial Starting value.
     fn new_atomic(initial: i32) -> Self {
         Self {
             value: AtomicI32::new(initial),
