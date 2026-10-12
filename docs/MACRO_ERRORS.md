@@ -266,8 +266,9 @@ Env constructors, instance methods and static methods share the class
 namespace. A constructor always defines `Class$new`, even when its Rust name
 is `create`. Rename the other method with `#[miniextendr(r_name = "...")]`.
 A non-constructor `new` is allowed when the class has no constructor. The
-check sees one impl block: two labeled blocks of the same type are not
-compared (#1776).
+check sees one impl block; a member bound by two impl blocks of a type is
+reported when the package installs (see "Impl blocks of one type that don't
+merge" above).
 
 ### "R6 member `initialize` conflicts with the generated constructor"
 
@@ -293,7 +294,8 @@ Each S4 instance method becomes a `setMethod()` on its generic for the class:
 (`r_name`, `postfix`). Two methods of one impl block on the same generic would
 register the same signature twice, and the second would replace the first.
 Rename one with `#[miniextendr(r_name = "...")]`, or give it another
-`s4(generic = "...")`.
+`s4(generic = "...")`. Two impl blocks of a type with a method on one generic
+are reported when the package installs.
 
 ### "unsupported receiver type"
 
