@@ -484,14 +484,6 @@ impl<'a> MethodContext<'a> {
             .build()
     }
 
-    /// Build full R formals for instance methods (prefixing x/self parameter).
-    ///
-    /// For S3/S4/S7: `"x, <params>, ..."`
-    /// For Env/R6: `"<params>"` (self is implicit)
-    pub fn instance_formals(&self, add_self_param: bool) -> String {
-        self.instance_formals_with_dots(add_self_param, true)
-    }
-
     /// Full R formals of a `<generic>.<Class>` S3 method: `"x, <params>, ..."`,
     /// except that for a replacement generic (a name ending in `<-`, such as
     /// `[[<-` or `names<-`) the dispatch `...` goes before the last formal,
@@ -500,61 +492,30 @@ impl<'a> MethodContext<'a> {
     /// impl-block check (`check_s3_replacement_methods`) makes sure it is
     /// (#1853). A method that takes `&Dots` keeps its own order.
     pub fn s3_method_formals(&self) -> String {
-        if self.method.has_dots || !self.generic_name().ends_with("<-") {
-            return self.instance_formals(true);
+        let receiver = self.method.method_attrs.receiver.as_deref().unwrap_or("x");
+        let dots = !self.method.method_attrs.no_dispatch_dots;
+        if !dots || self.method.has_dots || !self.generic_name().ends_with("<-") {
+            return self.instance_formals_with_receiver(receiver, dots);
         }
         let mut formals = crate::roxygen::split_r_formals(&self.params);
         formals.retain(|formal| !formal.is_empty());
         let last = formals.pop();
-        let mut out = vec!["x"];
+        let mut out = vec![receiver];
         out.extend(formals);
         out.push("...");
         out.extend(last);
         out.join(", ")
     }
 
-    /// Build full R formals for instance methods with optional dots.
-    ///
-    /// When `include_dots` is false, omits `...` from the signature.
-    /// This is used for strict generics that don't accept extra args.
-    pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
-        let include_dispatch_dots = include_dots && !self.method.has_dots;
-        if add_self_param {
-            if include_dispatch_dots {
-                if self.params.is_empty() {
-                    "x, ...".to_string()
-                } else {
-                    format!("x, {}, ...", self.params)
-                }
-            } else {
-                // No dots - strict formals
-                if self.params.is_empty() {
-                    "x".to_string()
-                } else {
-                    format!("x, {}", self.params)
-                }
-            }
-        } else {
-            self.params.clone()
-        }
-    }
-
     /// Build instance formals with a custom receiver name (default is `x`).
     ///
-    /// Used by the S7 per-class fast-path shortcut (#949), whose receiver is
-    /// named `self` to mirror the property dispatch lambdas, rather than the
-    /// `x` used by the S7 generic.
+    /// Used by S3/S4 generic overrides and the S7 per-class shortcut.
     pub fn instance_formals_with_receiver(&self, receiver: &str, include_dots: bool) -> String {
-        let tail = if include_dots && !self.method.has_dots {
-            ", ..."
-        } else {
-            ""
-        };
-        if self.params.is_empty() {
-            format!("{receiver}{tail}")
-        } else {
-            format!("{receiver}, {}{tail}", self.params)
-        }
+        instance_formals(
+            &self.params,
+            receiver,
+            include_dots && !self.method.has_dots,
+        )
     }
 
     /// Get the generic name (uses override if present).
@@ -684,7 +645,7 @@ impl<'a> MethodContext<'a> {
 /// The formals of `r_params` that `doc_tags` leaves undocumented, each with
 /// its choice text from `choice_docs` (the write-time placeholder of a
 /// `match_arg` parameter, the literal line of a `choices(...)` one), or
-/// `None` for a formal that has none. Skips `self`, `.ptr` and `...`, and
+/// `None` for a formal that has none. Skips `.mx_self`, `.ptr` and `...`, and
 /// yields nothing when the tags take the arguments from another topic
 /// (`roxygen::params_documented_elsewhere` against `page`, #1590). The class
 /// page default a builder appends is not in `doc_tags`, and an author
@@ -704,7 +665,7 @@ fn generated_params<'p, 'd>(
     crate::roxygen::split_r_formals(r_params)
         .into_iter()
         .map(crate::roxygen::formal_name)
-        .filter(|name| !matches!(*name, ".ptr" | "..." | "self"))
+        .filter(|name| !matches!(*name, ".ptr" | "..." | ".mx_self"))
         .filter(|name| !crate::roxygen::param_documented(doc_tags, name))
         .map(|name| {
             let choice = choice_docs
@@ -1118,7 +1079,7 @@ impl<'a> MethodDocBuilder<'a> {
     /// Set the method's formal parameter names (comma-separated R params string).
     ///
     /// When set, auto-generates `@param name (undocumented)` for any parameter
-    /// not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
+    /// not already covered by a user `@param` tag. Skips `.mx_self`, `.ptr`, and
     /// `...` parameters. Generates nothing when the method's own tags take the
     /// arguments from another topic (`@rdname`, `@describeIn`,
     /// `@inheritParams`; see `roxygen::params_documented_elsewhere`).
@@ -1337,6 +1298,24 @@ impl ParsedImplExt for ParsedImpl {
         self.active_instance_methods().map(move |m| {
             MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
         })
+    }
+}
+
+/// Prefix an instance receiver and append only missing dispatch dots.
+/// Shared by inherent and trait wrapper contexts; explicit Dots keeps its place.
+pub(crate) fn instance_formals(params: &str, receiver: &str, include_dots: bool) -> String {
+    let has_dots = crate::roxygen::split_r_formals(params)
+        .iter()
+        .any(|p| p.trim() == "...");
+    let tail = if include_dots && !has_dots {
+        ", ..."
+    } else {
+        ""
+    };
+    if params.is_empty() {
+        format!("{receiver}{tail}")
+    } else {
+        format!("{receiver}, {params}{tail}")
     }
 }
 

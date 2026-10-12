@@ -12,16 +12,16 @@
 \usage{
 S7NonGenericCollision(values, .ptr = NULL)
 
-S7NonGenericCollision_var(self, ...)
+S7NonGenericCollision_var(.mx_self, ...)
 
-S7NonGenericCollision_get(self, ...)
+S7NonGenericCollision_get(.mx_self, ...)
 }
 \arguments{
 \item{values}{Numeric vector held by the gauge.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7NonGenericCollision} object.}
+\item{.mx_self}{A \code{S7NonGenericCollision} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

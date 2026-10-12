@@ -15,20 +15,20 @@
 \usage{
 ScalerS7(v, .ptr = NULL)
 
-ScalerS7_value(self, ...)
+ScalerS7_value(.mx_self, ...)
 
-ScalerS7_scale(self, x_factor, ...)
+ScalerS7_scale(.mx_self, x_factor, ...)
 
-ScalerS7_bump(self, amount, ...)
+ScalerS7_bump(.mx_self, amount, ...)
 
-ScalerS7_set_mode(self, mode = c("fast", "slow"), ...)
+ScalerS7_set_mode(.mx_self, mode = c("fast", "slow"), ...)
 }
 \arguments{
 \item{v}{(undocumented)}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{ScalerS7} object.}
+\item{.mx_self}{A \code{ScalerS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

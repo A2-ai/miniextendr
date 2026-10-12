@@ -9,14 +9,14 @@
 \usage{
 S7Celsius(value, .ptr = NULL)
 
-S7Celsius_value(self, ...)
+S7Celsius_value(.mx_self, ...)
 }
 \arguments{
 \item{value}{Numeric temperature in Celsius.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Celsius} object.}
+\item{.mx_self}{A \code{S7Celsius} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

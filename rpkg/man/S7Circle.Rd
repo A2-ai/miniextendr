@@ -9,14 +9,14 @@
 \usage{
 S7Circle(radius, .ptr = NULL)
 
-S7Circle_circle_area(self, ...)
+S7Circle_circle_area(.mx_self, ...)
 }
 \arguments{
 \item{radius}{Numeric radius of the circle.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Circle} object.}
+\item{.mx_self}{A \code{S7Circle} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

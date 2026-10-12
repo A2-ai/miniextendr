@@ -22,6 +22,44 @@ pub(crate) fn s4_generic_name(method: &ParsedMethod) -> String {
     }
 }
 
+/// The line that defines an S4 instance method's generic before its
+/// `setMethod()`, shared by the inherent and trait generators.
+///
+/// A generic of the package's own (`explicit` false) is defined unless this
+/// namespace already has it. Unconditional `setGeneric()` would replace the
+/// generic object and clear the methods other types registered on it, and the
+/// check must be a namespace-local `exists()`: a bare `isGeneric()` searches
+/// S4 metadata globally, so with an installed copy of the package attached,
+/// `load_all()` would skip `setGeneric()` while `setMethod()` still can't see
+/// the generic from the namespace being loaded, and `isGeneric(where =)`
+/// resolves the namespace to a package name, which fails mid-install (#1158).
+///
+/// An explicit `generic = "..."` may name a generic that lives elsewhere:
+/// `methods::show` (an S4 generic `exists()` misses when `methods` is not
+/// attached), the primitive `length`, base's S3 `summary`. It is defined only
+/// when no function of that name is visible and `methods::isGeneric()` finds
+/// no generic of another package, with `receiver` as its dispatch formal;
+/// otherwise `setMethod()` attaches to the existing one instead of masking it
+/// with a `function(x, ...)` generic of this package (#1677). A generic whose
+/// `@package` is this namespace's name is an installed copy's, the #1158 case,
+/// so it is defined anyway. `environmentName()` is a plain lookup, unlike
+/// `isGeneric(where =)`. A name nothing defines is created, but gets no
+/// generated page: whether it is the package's own is only known at load time
+/// (#2039).
+pub(crate) fn s4_generic_guard(generic: &str, explicit: bool, receiver: &str) -> String {
+    let condition = if explicit {
+        format!(
+            "!exists(\"{generic}\", mode = \"function\") && !(methods::isGeneric(\"{generic}\") && \
+             methods::getGeneric(\"{generic}\")@package != environmentName(topenv(environment())))"
+        )
+    } else {
+        format!("!exists(\"{generic}\", where = topenv(environment()), inherits = FALSE)")
+    };
+    format!(
+        "if ({condition}) methods::setGeneric(\"{generic}\", function({receiver}, ...) standardGeneric(\"{generic}\"))"
+    )
+}
+
 /// Generates the complete R wrapper string for an S4-style class.
 ///
 /// Produces the following R code:
@@ -30,7 +68,7 @@ pub(crate) fn s4_generic_name(method: &ParsedMethod) -> String {
 /// - Constructor function: `ClassName(...)` that calls the Rust `new` constructor
 ///   and wraps the result with `methods::new("<class>", ptr = .val)`
 /// - S4 generics: `methods::setGeneric(...)` for each instance method, guarded by
-///   a namespace-local `exists()` check (see #1158 for why not `isGeneric()`)
+///   [`s4_generic_guard`]
 /// - S4 methods: `methods::setMethod("<generic>", "<class>", function(x, ...) ...)`
 ///   dispatching to the Rust `.Call()` wrapper, extracting the ptr via `x@ptr`
 /// - Static methods: regular functions named `<class>_<method>(...)`
@@ -148,7 +186,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // pass can place the standalone Rd page before the method block.  This
         // ensures the synthesised doc block (ending with NULL) is separated from
         // the method's own roxygen comment by the `# source` line.
-        if !class_has_no_rd {
+        if !class_has_no_rd && method.method_attrs.generic.is_none() {
             lines.push(format!(
                 ".__MX_GENERIC_DOC__(kind=\"S4\", generic=\"{method_name}\", class=\"{class_name}\", export={should_export})"
             ));
@@ -168,8 +206,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // `base::match.arg()` validation block injected below.
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
             .with_impl_preconditions(parsed_impl.preconditions);
-        let call = ctx.instance_call("x@ptr");
-        let full_params = ctx.instance_formals(true);
+        let receiver = method.method_attrs.receiver.as_deref().unwrap_or("x");
+        let call = ctx.instance_call(&format!("{receiver}@ptr"));
+        let full_params =
+            ctx.instance_formals_with_receiver(receiver, !method.method_attrs.no_dispatch_dots);
 
         // Documentation for the generic - skip if class has @noRd
         // Use class-qualified @name to avoid duplicate \alias{generic} warnings
@@ -188,21 +228,13 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(doc_lines);
         }
 
-        // Define generic only if it doesn't already exist IN THIS NAMESPACE.
-        // Unconditional setGeneric() replaces the generic object, clearing
-        // previously registered methods — that matters when multiple types share
-        // the same generic name (e.g., s4_get_value used by both S4TraitCounter
-        // and CounterTraitS4). The check must be a namespace-local exists():
-        // a bare isGeneric() searches S4 metadata globally, so with an installed
-        // copy of the package *attached*, load_all() skips setGeneric here while
-        // setMethod below still can't see the generic from the namespace being
-        // loaded — "no existing definition for function ..." — and
-        // isGeneric(where=) resolves the namespace to a package name, which
-        // fails mid-install (findpack). exists() is a plain env lookup and the
-        // generic function is exactly what setGeneric assigns there (#1158).
-        lines.push(format!(
-            "if (!exists(\"{0}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{0}\", function(x, ...) standardGeneric(\"{0}\"))",
-            method_name
+        // Define the generic unless it exists. Several types can share one
+        // (s4_get_value on both S4TraitCounter and CounterTraitS4), and an
+        // explicit `generic` may be another package's (`show`).
+        lines.push(s4_generic_guard(
+            &method_name,
+            method.method_attrs.generic.is_some(),
+            receiver,
         ));
 
         // Define method with @exportMethod for proper S4 dispatch (if class should be exported)
@@ -213,15 +245,20 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let body_lines = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_chain_var(receiver.to_string())
             .with_invisible(method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(method, &type_ident.to_string())
             .build_s4_body();
 
         let what = format!("{}.{}", method_name, class_name);
+        let signature = if method.method_attrs.receiver.is_some() {
+            format!("c({receiver} = \"{class_name}\")")
+        } else {
+            format!("\"{class_name}\"")
+        };
         lines.push(format!(
-            "methods::setMethod(\"{}\", \"{}\", function({}) {{",
-            method_name, class_name, full_params
+            "methods::setMethod(\"{method_name}\", {signature}, function({full_params}) {{"
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &what);
         lines.extend(body_lines);

@@ -11,14 +11,14 @@
 \usage{
 S7Strict(value, .ptr = NULL)
 
-S7Strict_strict_length(self)
+S7Strict_strict_length(.mx_self)
 }
 \arguments{
 \item{value}{Integer value to store.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Strict} object.}
+\item{.mx_self}{A \code{S7Strict} object.}
 }
 \description{
 S7 class demonstrating strict generic dispatch (no_dots) and fallback.

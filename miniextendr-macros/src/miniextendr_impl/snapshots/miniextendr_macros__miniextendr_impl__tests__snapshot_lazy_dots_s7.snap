@@ -66,16 +66,16 @@ S7::method(extra, Bag) <- function(x, n, ...) {
 #' per-call dispatch overhead matters. **Footgun:** this shortcut does not
 #' perform subclass dispatch: a method override defined on a child class
 #' will *not* be honoured. Use the generic when subclassing is possible.
-#' @param self A `Bag` object.
+#' @param .mx_self A `Bag` object.
 #' @param ... Additional arguments; ignored by the fast-path shortcut.
 #' @param n (undocumented)
 #' @name Bag_extra
 #' @rdname Bag
 #' @export Bag_extra
-Bag_extra <- function(self, n, ...) {
+Bag_extra <- function(.mx_self, n, ...) {
   if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
   if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), self@.ptr, n, environment())
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), .mx_self@.ptr, n, environment())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

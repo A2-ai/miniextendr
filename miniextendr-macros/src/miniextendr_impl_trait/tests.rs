@@ -142,6 +142,9 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_post_checks: None,
         r_on_exit: None,
         no_shortcut: false,
+        generic: None,
+        receiver: None,
+        no_dispatch_dots: false,
         per_param: Default::default(),
         preconditions: None,
     }
@@ -188,9 +191,20 @@ fn test_internal_suppresses_export_s3() {
         "internal should add @keywords internal for S3, got:\n{}",
         result
     );
+    // The generic is not exported; the method stays registered, as on an
+    // inherent `internal` S3 impl.
     assert!(
-        !result.contains("@export"),
-        "internal should suppress @export for S3, got:\n{}",
+        !result.contains("@export s3_trait_Bar_value") && !result.contains("@export value"),
+        "internal should not export the generic for S3, got:\n{}",
+        result
+    );
+    let method_block = result
+        .split("\n\n")
+        .find(|block| block.contains("#' @method "))
+        .expect("an S3 method block");
+    assert!(
+        method_block.contains("#' @export\n"),
+        "internal should keep the S3 method registration, got:\n{}",
         result
     );
 }
@@ -478,14 +492,15 @@ fn test_s7_trait_impl_emits_fast_path_shortcut() {
     .unwrap();
 
     assert!(
-        result.contains("Foo_value <- function(self, ...)"),
+        result.contains("Foo_value <- function(.mx_self, ...)"),
         "S7 trait impl should emit a Foo_value fast-path shortcut, got:\n{}",
         result
     );
     assert!(
-        result
-            .contains(".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), self@.ptr)"),
-        "shortcut should .Call through self@.ptr directly, got:\n{}",
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), .mx_self@.ptr)"
+        ),
+        "shortcut should .Call through .mx_self@.ptr directly, got:\n{}",
         result
     );
     assert!(
@@ -599,14 +614,14 @@ fn test_trait_operator_r_names_are_quoted() {
         )
         .unwrap();
         assert!(
-            wrapper.contains("Foo$Bar$`[[` <- function(x) {"),
+            wrapper.contains("Foo$Bar$`[[` <- function(.mx_self) {"),
             "{class_system:?}:\n{wrapper}"
         );
     }
 }
 
-/// Void trait-impl shortcut methods chain via `self`, visibly (#1213); an
-/// `Invisible<()>` return marks the tail `invisible(self)`.
+/// Void trait-impl shortcut methods chain via `.mx_self`, visibly (#1213); an
+/// `Invisible<()>` return marks the tail `invisible(.mx_self)`.
 #[test]
 fn test_s7_trait_impl_void_shortcut_returns_self() {
     let type_ident = format_ident!("Foo");
@@ -628,13 +643,13 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     .unwrap();
 
     assert!(
-        result.contains("Foo_bump <- function(self, ...)"),
+        result.contains("Foo_bump <- function(.mx_self, ...)"),
         "void method should still get a shortcut, got:\n{}",
         result
     );
     assert!(
-        result.contains("  self\n"),
-        "void shortcut should return `self`, got:\n{}",
+        result.contains("  .mx_self\n"),
+        "void shortcut should return `.mx_self`, got:\n{}",
         result
     );
     assert!(
@@ -660,8 +675,8 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     )
     .unwrap();
     assert!(
-        result.contains("  invisible(self)"),
-        "marked void shortcut should return invisible(self), got:\n{}",
+        result.contains("  invisible(.mx_self)"),
+        "marked void shortcut should return invisible(.mx_self), got:\n{}",
         result
     );
     assert!(
@@ -723,7 +738,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s4() {
 }
 
 /// BUG1 regression (S7 leg) — covers both the dispatched-generic body and the
-/// fast-path shortcut, which extract the receiver via `x@.ptr` / `self@.ptr`
+/// fast-path shortcut, which extract the receiver via `x@.ptr` / `.mx_self@.ptr`
 /// respectively.
 #[test]
 fn test_bug1_x_prefixed_param_not_corrupted_s7() {
@@ -750,7 +765,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s7() {
     );
     assert!(
         result.contains(
-            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = sys.call(), self@.ptr, x_factor)"
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = sys.call(), .mx_self@.ptr, x_factor)"
         ),
         "shortcut: x_factor must reach the .Call() intact, got:\n{}",
         result
@@ -1699,12 +1714,12 @@ fn test_r6_instance_method_uses_class_qualified_namespace() {
     .unwrap();
 
     assert!(
-        result.contains("Foo$Bar$value <- function(x)"),
+        result.contains("Foo$Bar$value <- function(.mx_self)"),
         "R6 instance method should use the class-scoped Foo$Bar$value shape, got:\n{}",
         result
     );
     assert!(
-        result.contains("  .ptr <- x$.__enclos_env__$private$.ptr"),
+        result.contains("  .ptr <- .mx_self$.__enclos_env__$private$.ptr"),
         "R6 instance method should still extract the receiver ptr from the R6 object, got:\n{}",
         result
     );
@@ -2068,8 +2083,8 @@ fn test_s7_trait_shortcut_param_filler_follows_method_page() {
     method.doc_tags = vec![by_doc.clone(), "@rdname foo_steps".to_string()];
     let split = generate(&method);
     assert!(!split.contains("#' @param times "), "got:\n{split}");
-    // The structural `self` / `...` lines are left to the topic too (#1590).
-    assert!(!split.contains("#' @param self "), "got:\n{split}");
+    // The structural `.mx_self` / `...` lines are left to the topic too (#1590).
+    assert!(!split.contains("#' @param .mx_self "), "got:\n{split}");
     assert!(!split.contains("#' @param ... "), "got:\n{split}");
     assert_eq!(
         split.matches("#' @param by Step size.").count(),
@@ -2392,7 +2407,7 @@ fn test_s7_trait_shortcut_inherit_params_drops_fillers_only() {
     let block = block_above(&r, "Foo_step <- ");
     assert!(!r.contains("#' @param by "), "got:\n{r}");
     assert!(
-        block.contains(&"#' @param self A `Foo` object."),
+        block.contains(&"#' @param .mx_self A `Foo` object."),
         "got:\n{r}"
     );
     assert!(
@@ -2447,9 +2462,9 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
 
 // region: R formal names
 
-/// Every class system names a trait instance method's receiver `x`, and the
-/// S7 fast-path shortcut names its receiver `self`: a parameter taking either
-/// name (after its leading underscores are dropped) is a compile error. R6
+/// Dispatching class systems name a trait instance method's receiver `x`, and the
+/// S7 fast-path shortcut uses `.mx_self`, leaving user `self` free. A parameter
+/// named `x` still conflicts with the generic receiver. R6
 /// trait methods live outside the class, so `self` / `private` stay free.
 #[test]
 fn trait_method_formals_reject_the_receiver() {
@@ -2468,8 +2483,6 @@ fn trait_method_formals_reject_the_receiver() {
         method
     };
     for (class_system, system) in [
-        (ClassSystem::Env, "Env-class"),
-        (ClassSystem::R6, "R6"),
         (ClassSystem::S3, "S3"),
         (ClassSystem::S4, "S4"),
         (ClassSystem::S7, "S7"),
@@ -2502,26 +2515,29 @@ fn trait_method_formals_reject_the_receiver() {
         .to_string();
         assert!(msg.contains("which is an R reserved word"), "{msg}");
     }
-    wrapper(
-        ClassSystem::R6,
-        with_sig(
-            true,
-            syn::parse_quote!(fn m(&self, _self: i32, _private: i32) -> i32),
-        ),
-    )
-    .expect("R6 trait methods live outside the class");
+    for system in [ClassSystem::Env, ClassSystem::R6] {
+        let code = wrapper(
+            system,
+            with_sig(
+                true,
+                syn::parse_quote!(fn m(&self, x: i32, _self: i32, _private: i32) -> i32),
+            ),
+        )
+        .expect("dotted receiver cannot collide with Rust arguments");
+        assert!(
+            code.contains("function(.mx_self, x, self, private)"),
+            "{code}"
+        );
+        assert!(code.contains(", x, self, private)"), "{code}");
+    }
 
     let shortcut = with_sig(true, syn::parse_quote!(fn m(&self, _self: i32) -> i32));
-    let msg = wrapper(ClassSystem::S7, shortcut.clone())
-        .expect_err("shortcut receiver")
-        .to_string();
+    let code = wrapper(ClassSystem::S7, shortcut.clone()).expect("shortcut receiver is dotted");
     assert!(
-        msg.contains(
-            "which is the receiver of the fast-path shortcut `Foo_m()` generated for this S7 \
-             trait method"
-        ),
-        "{msg}"
+        code.contains("Foo_m <- function(.mx_self, self, ...)"),
+        "{code}"
     );
+    assert!(code.contains(".mx_self@.ptr, self)"), "{code}");
     wrapper(
         ClassSystem::S7,
         TraitMethod {
@@ -2756,3 +2772,104 @@ fn suppressed_trait_methods_keep_no_links() {
 }
 
 // endregion
+
+#[test]
+fn trait_s3_s4_methods_match_existing_generic_formals() {
+    let source: syn::ItemImpl = syn::parse_quote! {
+        impl Operations for Foo {
+            #[miniextendr(s3(generic = "predict", receiver = "object"))]
+            fn predict_value(&self, x: i32) -> i32 { x }
+            #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+            fn show_value(&self) {}
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered).unwrap();
+    let generate = |method: TraitMethod, system| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Operations"),
+            &[method],
+            &[],
+            opts(system, false, false, false),
+        )
+        .unwrap()
+    };
+    let s3 = generate(methods[0].clone(), ClassSystem::S3);
+    assert!(
+        s3.contains("predict.Foo <- function(object, x, ...)"),
+        "{s3}"
+    );
+    assert!(s3.contains(", object, x)"), "{s3}");
+    assert!(s3.contains("#' @method predict Foo"), "{s3}");
+    assert!(s3.contains("#' @param object An object"), "{s3}");
+    assert!(!s3.contains("UseMethod("), "{s3}");
+    assert!(!s3.contains("#' @export predict\n"), "{s3}");
+
+    let s4 = generate(methods[1].clone(), ClassSystem::S4);
+    assert!(
+        s4.contains("methods::setMethod(\"show\", c(object = \"Foo\"), function(object)"),
+        "{s4}"
+    );
+    assert!(s4.contains(".ptr <- object@ptr"), "{s4}");
+    assert!(s4.contains("\n  object\n})"), "{s4}");
+    assert!(
+        s4.contains(
+            "if (!exists(\"show\", mode = \"function\") && !(methods::isGeneric(\"show\") && \
+             methods::getGeneric(\"show\")@package != environmentName(topenv(environment())))) \
+             methods::setGeneric(\"show\", function(object, ...) standardGeneric(\"show\"))"
+        ),
+        "{s4}"
+    );
+    assert!(!s4.contains("#' @export\n"), "{s4}");
+    assert!(!s4.contains("#' @param ..."), "{s4}");
+
+    let mut explicit_dots = methods[0].clone();
+    explicit_dots.sig = syn::parse_quote!(fn predict_value(&self, _dots: &Dots) -> i32);
+    let with_dots = generate(explicit_dots.clone(), ClassSystem::S3);
+    assert!(with_dots.contains("function(object, ...)"), "{with_dots}");
+    assert!(!with_dots.contains("..., ..."), "{with_dots}");
+    explicit_dots.no_dispatch_dots = true;
+    let no_added_dots = generate(explicit_dots, ClassSystem::S3);
+    assert!(
+        no_added_dots.contains("function(object, ...)"),
+        "{no_added_dots}"
+    );
+}
+
+#[test]
+fn trait_generic_receiver_options_reject_conflicts_and_wrong_context() {
+    let generate = |method: TraitMethod, system| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Operations"),
+            &[method],
+            &[],
+            opts(system, false, false, false),
+        )
+    };
+    let mut method = make_test_method("show", true);
+    method.generic = Some("show".into());
+    method.receiver = Some("object".into());
+    method.no_dispatch_dots = true;
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        assert!(generate(method.clone(), system).is_err());
+    }
+    let mut no_generic = method.clone();
+    no_generic.generic = None;
+    assert!(generate(no_generic, ClassSystem::S4).is_err());
+    let mut static_method = method.clone();
+    static_method.has_self = false;
+    assert!(generate(static_method, ClassSystem::S4).is_err());
+    method.sig = syn::parse_quote!(fn show(&self, object: i32));
+    let error = generate(method, ClassSystem::S4).unwrap_err().to_string();
+    assert!(
+        error.contains("receiver of the generated S4 trait method"),
+        "{error}"
+    );
+}

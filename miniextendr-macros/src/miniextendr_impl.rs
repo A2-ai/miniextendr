@@ -674,6 +674,10 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
+    /// First formal of an existing S3/S4 generic (for example `object` for show).
+    pub receiver: Option<String>,
+    /// Omit the automatic dispatch dots for an existing S3/S4 generic.
+    pub no_dispatch_dots: bool,
     /// Override class suffix for S3 methods.
     ///
     /// Use this to implement double-dispatch methods (like vctrs coercion)
@@ -1408,6 +1412,16 @@ impl ParsedMethod {
         class_system: ClassSystem,
         span: proc_macro2::Span,
     ) -> syn::Result<()> {
+        if (attrs.receiver.is_some() || attrs.no_dispatch_dots)
+            && (!matches!(class_system, ClassSystem::S3 | ClassSystem::S4)
+                || attrs.generic.is_none())
+        {
+            return Err(syn::Error::new(
+                span,
+                "`receiver` and `no_dots` require an explicit S3/S4 `generic = \"...\"`",
+            ));
+        }
+
         // R6-only boolean markers must not appear under any other class system.
         if class_system != ClassSystem::R6 {
             if attrs.r6.active {
@@ -1578,6 +1592,12 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.generic = Some(value.value());
+                        } else if inner.path.is_ident("receiver") {
+                            let value: syn::LitStr = inner.value()?.parse()?;
+                            let name = crate::naming::parse_r_receiver(&value)?;
+                            if method_attrs.receiver.replace(name).is_some() {
+                                return Err(inner.error("receiver may be specified only once"));
+                            }
                         } else if inner.path.is_ident("class") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1606,7 +1626,11 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7.deprecated = Some(value.value());
                         } else if inner.path.is_ident("no_dots") {
-                            method_attrs.s7.no_dots = true;
+                            if meta.path.is_ident("s3") || meta.path.is_ident("s4") {
+                                method_attrs.no_dispatch_dots = true;
+                            } else {
+                                method_attrs.s7.no_dots = true;
+                            }
                         } else if inner.path.is_ident("dispatch") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -3902,7 +3926,7 @@ mod r6_class;
 /// S3 class wrapper generator (`structure()` + `generic.Class` dispatch).
 mod s3_class;
 /// S4 class wrapper generator (`setClass` / `setMethod` formal OOP).
-mod s4_class;
+pub(crate) mod s4_class;
 /// S7 class wrapper generator (`new_class` / `new_generic` modern R OOP).
 pub(crate) mod s7_class;
 /// vctrs-compatible class wrapper generator (`new_vctr` / `new_rcrd` / `new_list_of`).
@@ -4351,10 +4375,9 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
 /// the names each class system's wrapper binds itself:
 ///
-/// - the receiver of an instance method: `self` for Env, `x` for S3 and S4,
+/// - the receiver of an instance method: `x` for S3 and S4,
 ///   the first dispatch argument (`x` unless `s7(dispatch)` or an operator
-///   says otherwise) for S7, plus `self` when S7 also emits the
-///   `<Class>_<method>` fast-path shortcut;
+///   says otherwise) for S7; shortcuts use the collision-free `.mx_self`;
 /// - `self` and `private`, which R6 binds inside `initialize` and every method
 ///   of the class: the wrapper reads the pointer from `private$.ptr` and
 ///   returns `self` from a chaining method.
@@ -4363,7 +4386,6 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 /// nothing; S7 property accessors have fixed formals; vctrs impls take no
 /// instance methods (MXL120).
 fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
-    let class_name = parsed.class_name();
     let receiver = |name: &str, method: &str| {
         (
             name.to_string(),
@@ -4373,9 +4395,15 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
     for m in parsed.included_methods() {
         let is_ctor = parsed.is_method_constructor(m);
         let instance = m.env.is_instance() && !is_ctor && !m.is_finalizer();
+        if (m.method_attrs.receiver.is_some() || m.method_attrs.no_dispatch_dots) && !instance {
+            return Err(syn::Error::new_spanned(
+                &m.ident,
+                "`receiver` and `no_dots` apply only to instance methods",
+            ));
+        }
+        let generic_receiver = m.method_attrs.receiver.as_deref().unwrap_or("x");
         let s7 = &m.method_attrs.s7;
         let reserved = match parsed.class_system {
-            ClassSystem::Env if instance => vec![receiver("self", "Env-class method")],
             ClassSystem::R6 if instance || is_ctor => vec![
                 (
                     "self".to_string(),
@@ -4390,8 +4418,8 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
                         .to_string(),
                 ),
             ],
-            ClassSystem::S3 if instance => vec![receiver("x", "S3 method")],
-            ClassSystem::S4 if instance => vec![receiver("x", "S4 method")],
+            ClassSystem::S3 if instance => vec![receiver(generic_receiver, "S3 method")],
+            ClassSystem::S4 if instance => vec![receiver(generic_receiver, "S4 method")],
             ClassSystem::S7 if instance && !(s7.getter || s7.setter || s7.validate) => {
                 let generic = m
                     .method_attrs
@@ -4400,20 +4428,7 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
                     .unwrap_or_else(|| m.r_method_name());
                 let dispatch =
                     s7_class::s7_dispatch_args(m, &s7_class::s7_generic_target(&generic));
-                let mut reserved = vec![receiver(&dispatch[0], "S7 method")];
-                if !(s7.fallback || s7.no_shortcut)
-                    && let Some(shortcut) =
-                        s7_class::s7_shortcut_name(&class_name, &m.r_method_name())
-                {
-                    reserved.push((
-                        "self".to_string(),
-                        format!(
-                            "is the receiver of the fast-path shortcut `{shortcut}()` generated \
-                             for this S7 method (`s7(no_shortcut)` drops the shortcut)"
-                        ),
-                    ));
-                }
-                reserved
+                vec![receiver(&dispatch[0], "S7 method")]
             }
             _ => Vec::new(),
         };

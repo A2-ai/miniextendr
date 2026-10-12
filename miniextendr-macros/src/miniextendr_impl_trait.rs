@@ -183,6 +183,10 @@ struct TraitMethod {
     /// (set via `#[miniextendr(s7(no_shortcut))]`). Only meaningful for S7 trait
     /// impls; ignored by the other class systems.
     no_shortcut: bool,
+    /// Existing S3/S4 generic and its receiver/formals contract.
+    generic: Option<String>,
+    receiver: Option<String>,
+    no_dispatch_dots: bool,
     /// Per-parameter `#[miniextendr(match_arg(...))]` / `choices(...)` /
     /// `several_ok` attributes, keyed by Rust parameter name. Mirrors
     /// `MethodAttrs::per_param` on the inherent-impl path (`miniextendr_impl.rs`)
@@ -881,6 +885,9 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 r_post_checks: None,
                 r_on_exit: None,
                 no_shortcut: false,
+                generic: None,
+                receiver: None,
+                no_dispatch_dots: false,
                 per_param: Default::default(),
                 preconditions: None,
                 r_name: if tm.sig.ident == tm.r_name {

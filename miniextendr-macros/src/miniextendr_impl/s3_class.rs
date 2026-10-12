@@ -123,6 +123,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .map(|s| s.to_string())
             .unwrap_or_else(|| class_name.clone());
         let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
+        let receiver = ctx.method.method_attrs.receiver.as_deref().unwrap_or("x");
         let full_params = ctx.s3_method_formals(); // x, params, ... (`value` last for `*<-`)
 
         // Only create the S3 generic if no generic/class override was provided
@@ -207,8 +208,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // topic's own block documents them instead: roxygen2 keeps the
             // later `@param` of a name, and this block sorts last (#1590).
             if !crate::roxygen::joins_author_topic(&ctx.method.doc_tags, Some(&class_name)) {
-                lines.push("#' @param x An object.".to_string());
-                lines.push("#' @param ... Additional arguments.".to_string());
+                lines.push(format!("#' @param {receiver} An object."));
+                if !ctx.method.method_attrs.no_dispatch_dots || ctx.method.has_dots {
+                    lines.push("#' @param ... Additional arguments.".to_string());
+                }
             }
             if should_register_s3method {
                 lines.push("#' @export".to_string());
@@ -223,7 +226,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}.{}", generic_name, class_name);
         ctx.emit_method_prelude(&mut lines, "  ", &what);
 
-        let call = ctx.instance_call("x");
+        let call = ctx.instance_call(receiver);
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_raise_default(ctx.call_attribution.raise_default())
@@ -231,7 +234,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method, &type_ident.to_string())
-            .with_chain_var("x".to_string());
+            .with_chain_var(receiver.to_string());
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());

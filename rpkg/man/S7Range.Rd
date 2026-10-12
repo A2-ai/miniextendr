@@ -12,9 +12,9 @@
 \usage{
 S7Range(start, end, .ptr = NULL)
 
-S7Range_s7_start(self, ...)
+S7Range_s7_start(.mx_self, ...)
 
-S7Range_s7_end(self, ...)
+S7Range_s7_end(.mx_self, ...)
 }
 \arguments{
 \item{start}{Numeric start of the range.}
@@ -23,7 +23,7 @@ S7Range_s7_end(self, ...)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Range} object.}
+\item{.mx_self}{A \code{S7Range} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

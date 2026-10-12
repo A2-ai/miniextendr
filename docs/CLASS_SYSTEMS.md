@@ -109,15 +109,15 @@ Counter$new <- function(initial) {
 }
 
 Counter$value <- function() {
-  .val <- .Call(C_mypkg_Counter__value, .call = sys.call(), self)
+  .val <- .Call(C_mypkg_Counter__value, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
 Counter$inc <- function() {
-  .val <- .Call(C_mypkg_Counter__inc, .call = sys.call(), self)
+  .val <- .Call(C_mypkg_Counter__inc, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  self
+  .mx_self
 }
 
 `$.Counter` <- function(self, name) {
@@ -129,16 +129,20 @@ Counter$inc <- function() {
 The object *is* the external pointer: the constructor takes the `EXTPTRSXP`
 returned by `.Call()`, sets its class attribute, and returns it. There is no
 list and no `.ptr` field. The methods live in the `Counter` environment and
-take no receiver formal; each body refers to a bare `self`. That name resolves
+take no receiver formal; each body refers to `.mx_self`. No Rust parameter
+can produce a dotted R name, so a method may take arguments named `self` or
+`x`. An R formal is the Rust parameter name without leading underscores, so
+`_self: i32` becomes `self`; clippy's `duplicate_underscore_argument` lint
+flags `_self` beside `&self`, so allow it where you use one. `.mx_self` resolves
 through the `$.Counter` dispatcher: `c$value()` calls `$.Counter(c, "value")`,
 which calls `.miniextendr_env_method`, a helper the wrapper file defines (its
 source is in `miniextendr-api/src/registry.rs`). The helper fetches
 `Counter$value` and returns it with a new enclosing environment that holds
-only `self`. That environment's parent is the method's original environment,
+only `.mx_self`. That environment's parent is the method's original environment,
 the package namespace, so package objects used by method bodies and parameter
 defaults keep resolving there. The method stored in `Counter` is unchanged, and each
 returned closure keeps its own receiver alive. `[[` is aliased to the same
-dispatcher. A `&mut self` method returns `self`, so calls
+dispatcher. A `&mut self` method returns `.mx_self`, so calls
 chain. Errors raised from Rust come back as a tagged value and are re-raised by
 `.miniextendr_raise_condition` with the call attributed to the user's frame
 (see `docs/CALL_ATTRIBUTION.md`).
@@ -162,10 +166,12 @@ c[["value"]]() # same dispatch as `$`
 ```
 
 Trait methods implemented for an env class sit in a namespace named after the
-trait: `c$MyTrait$method()` binds `self` for you, and
-`Counter$MyTrait$method(c)` is the standalone form. Calling an inherent method
-without an object (`Counter$value()`) fails with `object 'self' not found`,
-because nothing bound `self`.
+trait: `c$MyTrait$method()` binds the receiver for you, and
+`Counter$MyTrait$method(c)` is the standalone form. Its receiver formal is
+`.mx_self`, as for R6 trait methods (`Type$Trait$method(obj, ...)`), so trait
+methods may take arguments named `x`, `self` or `private`; pass the object by
+position. Calling an inherent method without an object (`Counter$value()`)
+fails with `object '.mx_self' not found`, because nothing bound `.mx_self`.
 
 ### When to Use
 
@@ -481,9 +487,12 @@ impl Gene {
         self.chromosome
     }
 
-    #[miniextendr(s4(generic = "show"))]
-    pub fn display(&self) {
+    /// `Invisible<()>`: a void method returns the object, and `show()` at
+    /// the console would print it again (#1213)
+    #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+    pub fn display(&self) -> Invisible<()> {
         println!("Gene {} on chr{}", self.symbol, self.chromosome);
+        Invisible(())
     }
 }
 ```
@@ -522,6 +531,41 @@ symbol(g)       # "TP53"
 chromosome(g)   # 17
 show(g)         # Gene TP53 on chr17
 ```
+
+### Methods on an existing generic (S3 and S4)
+
+`s3(generic = "...")` and `s4(generic = "...")` add a method to a generic that
+already exists: base's `print`, `format` or `summary`, `methods::show`, the
+primitive `length`, or a generic of an imported package. The method's receiver
+formal is `x`; when the generic names its first argument differently, say so
+with `receiver`, and drop the `...` the wrapper otherwise appends with
+`no_dots` when the generic has none:
+
+```rust
+#[miniextendr(s3(generic = "summary", receiver = "object"))]
+pub fn summarise(&self) -> String { ... }  // summary.Gene <- function(object, ...)
+
+#[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+pub fn display(&self) -> Invisible<()> { ... }  // setMethod("show", c(object = "Gene"), function(object) ...)
+```
+
+The receiver is what the wrapper reads the pointer from and what a void or
+`&mut self` method hands back. The generic's other formals are ordinary Rust
+parameters (`all.equal(target, current, ...)` is `receiver = "target"` plus a
+`current` parameter); a parameter whose R name is the receiver is a compile
+error. A `&Dots` parameter still supplies `...` under `no_dots`. `receiver` and
+`no_dots` need `generic` and an instance method; trait impl methods accept all
+three.
+
+An explicit S3 `generic` never defines a generic. An explicit S4 `generic` is
+defined only when no generic or function of that name is visible from the
+package, so the method attaches to `show` or `length` instead of masking them
+with a generic of the package's own. A generic from an installed copy of the
+same package does not count, so `load_all()` with that copy attached still
+defines it. A name nothing defines is created as
+`setGeneric(name, function(<receiver>, ...))`, but gets no generated help page
+(#2039); without `generic`, an S4 method uses the documented
+`s4_<method>` generic.
 
 ### When to Use
 
@@ -622,10 +666,12 @@ print(p1)          # Point(0, 0)
 ### Fast-path dispatch shortcuts
 
 Every non-fallback S7 instance method also gets a plain function
-`<ClassName>_<method>(self, ...)` whose body calls the underlying Rust routine
+`<ClassName>_<method>(.mx_self, ...)` whose body calls the underlying Rust routine
 directly, bypassing `S7::S7_dispatch()` (the class walk + method-table lookup).
 On hot loops this is several times faster than calling the generic. Trait-impl
 S7 methods (`#[miniextendr(s7)] impl Trait for Type`) get the same shortcuts.
+The dotted receiver leaves an argument named `self` free; pass the object by
+position. The generic's dispatch arguments are unchanged.
 
 ```r
 # Generic (full S7 dispatch — honours subclass overrides)

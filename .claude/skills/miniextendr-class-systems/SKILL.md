@@ -151,19 +151,20 @@ The Env system creates a plain R environment as the class namespace:
 ```r
 Type <- new.env(parent = emptyenv())
 Type$new <- function(...) { ... }
-Type$method_name <- function(...) { ... }   # body reads a free `self`
+Type$method_name <- function(...) { ... }   # body reads a free `.mx_self`
 `$.Type` <- function(self, name) .miniextendr_env_method(self, name, Type)
 ```
 
 Inherent instance methods take no receiver formal; their bodies read a free
-`self`. `$.Type` calls `.miniextendr_env_method` (the `ENV_METHOD_HELPER`
+`.mx_self`, a name no Rust parameter can spell, so a method may take `self` or
+`x` arguments. `$.Type` calls `.miniextendr_env_method` (the `ENV_METHOD_HELPER`
 preamble block in `miniextendr-api/src/registry.rs`), which returns the method
-with a fresh environment containing only `self`, whose parent is the method's
-own environment (the package namespace). Never re-parent a method into the
+with a fresh environment containing only `.mx_self`, whose parent is the
+method's own environment (the package namespace). Never re-parent a method into the
 helper's frame: its locals (`name`, `obj`, `methods`) would shadow package
 objects in method bodies and defaults (#1677). `[[.Type` is an alias to `$.Type`.
 
-Trait instance methods (`Type$Trait$m <- function(x, ...)`, stamped
+Trait instance methods (`Type$Trait$m <- function(.mx_self, ...)`, stamped
 `.__mx_instance__`) take the object as their first argument. `obj$Trait`
 returns the namespace with each one wrapped as `function(...) m(self, ...)`,
 built inside `local()` to avoid shared-variable capture in a loop. A flat
@@ -322,8 +323,9 @@ and as `obj$Trait$method()` — is available only for the Env class system. For 
 - `Type$Trait$method(obj)` — the class environment holds a nested environment for
   the trait, with methods that accept the object as their first argument.
 - `obj$Trait$method()` — via `$.Type` dispatch, the trait namespace environment is
-  found and `self` is bound. Instance methods are stamped with a
-  `.__mx_instance__` attribute so the dispatcher knows to prepend `self`.
+  found and the object is bound. Instance methods are stamped with a
+  `.__mx_instance__` attribute so the dispatcher knows to pass the object as
+  their first (`.mx_self`) argument.
 
 This mirrors the pattern from `miniextendr-macros/src/miniextendr_impl/env_class.rs`,
 where `local({ m <- method; bound[[name]] <<- function(...) m(self, ...) })` creates
