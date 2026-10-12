@@ -15,9 +15,9 @@
 \usage{
 AttributeConversion(value, .ptr = NULL)
 
-AttributeConversion_conversion_value(self, ...)
+AttributeConversion_conversion_value(.mx_self, ...)
 
-AttributeConversion_to_source(self, ...)
+AttributeConversion_to_source(.mx_self, ...)
 
 AttributeConversion_from_source(source)
 }
@@ -26,7 +26,7 @@ AttributeConversion_from_source(source)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{AttributeConversion} object.}
+\item{.mx_self}{A \code{AttributeConversion} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

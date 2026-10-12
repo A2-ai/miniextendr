@@ -14,23 +14,23 @@
 \usage{
 EitherRoutesS7(start = c("oral", "bolus", "infusion"), .ptr = NULL)
 
-EitherRoutesS7_routes_given(self, ...)
+EitherRoutesS7_routes_given(.mx_self, ...)
 
 EitherRoutesS7_plan_routes_s7(
-  self,
+  .mx_self,
   routes = c("oral", "bolus", "infusion"),
   tiers = c("low", "mid", "high"),
   ...
 )
 
-EitherRoutesS7_either_grades(self, grades = c("low", "mid", "high"), ...)
+EitherRoutesS7_either_grades(.mx_self, grades = c("low", "mid", "high"), ...)
 }
 \arguments{
 \item{start}{One or more of "oral", "bolus", "infusion", or a data frame; omitting the argument means no choice.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{EitherRoutesS7} object.}
+\item{.mx_self}{A \code{EitherRoutesS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 

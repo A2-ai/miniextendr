@@ -12,14 +12,14 @@
 \usage{
 S7PipeBuilder(.ptr = NULL)
 
-S7PipeBuilder_s7_add(self, amount, ...)
+S7PipeBuilder_s7_add(.mx_self, amount, ...)
 
-S7PipeBuilder_s7_total(self, ...)
+S7PipeBuilder_s7_total(.mx_self, ...)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7PipeBuilder} object.}
+\item{.mx_self}{A \code{S7PipeBuilder} object.}
 
 \item{amount}{Amount to add.}
 

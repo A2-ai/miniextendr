@@ -15,21 +15,21 @@
 OmitPickS7(.ptr = NULL)
 
 OmitPickS7_omit_pick_s7(
-  self,
+  .mx_self,
   mode = c("Fast", "Safe", "Debug"),
   modes = c("Fast", "Safe", "Debug"),
   level = c("low", "mid", "high"),
   ...
 )
 
-OmitPickS7_omit_grade(self, grade = c("low", "mid", "high"), ...)
+OmitPickS7_omit_grade(.mx_self, grade = c("low", "mid", "high"), ...)
 
-OmitPickS7_omit_grades(self, grades = c("low", "mid", "high"), ...)
+OmitPickS7_omit_grades(.mx_self, grades = c("low", "mid", "high"), ...)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{OmitPickS7} object.}
+\item{.mx_self}{A \code{OmitPickS7} object.}
 
 \item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
 

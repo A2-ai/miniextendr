@@ -16,9 +16,9 @@
 \usage{
 MxS7Money(amount, .ptr = NULL)
 
-MxS7Money_add(self, e2, ...)
+MxS7Money_add(.mx_self, e2, ...)
 
-MxS7Money_equals(self, e2, ...)
+MxS7Money_equals(.mx_self, e2, ...)
 }
 \arguments{
 \item{amount}{Numeric amount.}
@@ -29,7 +29,7 @@ MxS7Money_equals(self, e2, ...)
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
-\item{self}{A \code{MxS7Money} object.}
+\item{.mx_self}{A \code{MxS7Money} object.}
 }
 \description{
 S7 money class with \code{+}, \code{*}, \code{==} and \code{<} methods.

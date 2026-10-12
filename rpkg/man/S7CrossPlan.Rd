@@ -21,22 +21,22 @@
 \usage{
 S7CrossPlan(seed, .ptr = NULL)
 
-S7CrossPlan_s7_cross_build(self, width, height, ...)
+S7CrossPlan_s7_cross_build(.mx_self, width, height, ...)
 
-S7CrossPlan_s7_build_r6(self, width, height, ...)
+S7CrossPlan_s7_build_r6(.mx_self, width, height, ...)
 
-S7CrossPlan_s7_build_handle_r6(self, width, height, ...)
+S7CrossPlan_s7_build_handle_r6(.mx_self, width, height, ...)
 
-S7CrossPlan_s7_try_build_r6(self, width, height, fail, ...)
+S7CrossPlan_s7_try_build_r6(.mx_self, width, height, fail, ...)
 
-S7CrossPlan_s7_build_many_r6(self, width, height, count, ...)
+S7CrossPlan_s7_build_many_r6(.mx_self, width, height, count, ...)
 }
 \arguments{
 \item{seed}{Seed added to built board cells.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7CrossPlan} object.}
+\item{.mx_self}{A \code{S7CrossPlan} object.}
 
 \item{width}{Board width.}
 

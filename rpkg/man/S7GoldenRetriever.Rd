@@ -12,16 +12,16 @@
 \usage{
 S7GoldenRetriever(name, .ptr = NULL)
 
-S7GoldenRetriever_retriever_name(self, ...)
+S7GoldenRetriever_retriever_name(.mx_self, ...)
 
-S7GoldenRetriever_color(self, ...)
+S7GoldenRetriever_color(.mx_self, ...)
 }
 \arguments{
 \item{name}{Character name of the dog.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7GoldenRetriever} object.}
+\item{.mx_self}{A \code{S7GoldenRetriever} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

@@ -9,14 +9,14 @@
 \usage{
 ConvertInput(value, .ptr = NULL)
 
-ConvertInput_conversion_value(self, ...)
+ConvertInput_conversion_value(.mx_self, ...)
 }
 \arguments{
 \item{value}{Nonnegative integer for successful conversion.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{ConvertInput} object.}
+\item{.mx_self}{A \code{ConvertInput} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

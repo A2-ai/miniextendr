@@ -12,16 +12,16 @@
 \usage{
 S7Dog(breed, .ptr = NULL)
 
-S7Dog_dog_breed(self, ...)
+S7Dog_dog_breed(.mx_self, ...)
 
-S7Dog_bark(self, ...)
+S7Dog_bark(.mx_self, ...)
 }
 \arguments{
 \item{breed}{Character breed of the dog.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7Dog} object.}
+\item{.mx_self}{A \code{S7Dog} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

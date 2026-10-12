@@ -9,14 +9,14 @@
 \usage{
 Shape(kind, .ptr = NULL)
 
-Shape_shape_kind(self, ...)
+Shape_shape_kind(.mx_self, ...)
 }
 \arguments{
 \item{kind}{Character kind of the shape.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{Shape} object.}
+\item{.mx_self}{A \code{Shape} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

@@ -9,14 +9,14 @@
 \usage{
 S7CrossBoard(cells, .ptr = NULL)
 
-S7CrossBoard_s7_cross_cells(self, ...)
+S7CrossBoard_s7_cross_cells(.mx_self, ...)
 }
 \arguments{
 \item{cells}{Number of cells.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7CrossBoard} object.}
+\item{.mx_self}{A \code{S7CrossBoard} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

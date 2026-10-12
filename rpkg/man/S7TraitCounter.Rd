@@ -18,20 +18,20 @@
 \usage{
 S7TraitCounter(.ptr = NULL)
 
-S7TraitCounter_get_value(self, ...)
+S7TraitCounter_get_value(.mx_self, ...)
 
 S7TraitCounter_new_s7trait(initial)
 
-S7TraitCounter_value(self, ...)
+S7TraitCounter_value(.mx_self, ...)
 
-S7TraitCounter_increment(self, ...)
+S7TraitCounter_increment(.mx_self, ...)
 
-S7TraitCounter_checked_add(self, n, ...)
+S7TraitCounter_checked_add(.mx_self, n, ...)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7TraitCounter} object.}
+\item{.mx_self}{A \code{S7TraitCounter} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
