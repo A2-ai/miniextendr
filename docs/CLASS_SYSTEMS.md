@@ -484,7 +484,7 @@ impl Gene {
         self.chromosome
     }
 
-    #[miniextendr(s4(generic = "show"))]
+    #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
     pub fn display(&self) {
         println!("Gene {} on chr{}", self.symbol, self.chromosome);
     }
@@ -1810,3 +1810,17 @@ take the by-value enum).
 5. **Use S7** for new packages wanting modern OOP
 
 When in doubt, start with the default (Env) and migrate if needed.
+
+
+### Matching existing S3/S4 generic formals
+
+An explicit `s3(generic = "predict", receiver = "object")` emits
+`predict.Class <- function(object, ...)`, using `object` for pointer access and
+chaining. `s4(generic = "show", receiver = "object", no_dots)` emits a method
+with `function(object)` and reuses the existing generic without redefining it.
+The default receiver remains `x`. `no_dots` suppresses only automatically added
+dispatch dots; an explicit Rust `Dots` parameter still supplies `...`.
+Match the other generic formals with Rust parameter names and defaults as usual.
+A receiver name that duplicates a user parameter is rejected during expansion.
+These options apply to inherent instance methods of an existing generic; for a
+standalone S3 function, spell the full signature directly.

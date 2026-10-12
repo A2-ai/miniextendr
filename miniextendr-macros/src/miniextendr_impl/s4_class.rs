@@ -148,7 +148,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // pass can place the standalone Rd page before the method block.  This
         // ensures the synthesised doc block (ending with NULL) is separated from
         // the method's own roxygen comment by the `# source` line.
-        if !class_has_no_rd {
+        if !class_has_no_rd && method.method_attrs.generic.is_none() {
             lines.push(format!(
                 ".__MX_GENERIC_DOC__(kind=\"S4\", generic=\"{method_name}\", class=\"{class_name}\", export={should_export})"
             ));
@@ -168,8 +168,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // `base::match.arg()` validation block injected below.
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
             .with_impl_preconditions(parsed_impl.preconditions);
-        let call = ctx.instance_call("x@ptr");
-        let full_params = ctx.instance_formals(true);
+        let receiver = method.method_attrs.receiver.as_deref().unwrap_or("x");
+        let call = ctx.instance_call(&format!("{receiver}@ptr"));
+        let full_params =
+            ctx.instance_formals_with_receiver(receiver, !method.method_attrs.no_dispatch_dots);
 
         // Documentation for the generic - skip if class has @noRd
         // Use class-qualified @name to avoid duplicate \alias{generic} warnings
@@ -200,10 +202,14 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // isGeneric(where=) resolves the namespace to a package name, which
         // fails mid-install (findpack). exists() is a plain env lookup and the
         // generic function is exactly what setGeneric assigns there (#1158).
-        lines.push(format!(
+        // An explicit override refers to an existing generic. Re-defining it
+        // as function(x, ...) changes its dispatch contract (show takes object).
+        if method.method_attrs.generic.is_none() {
+            lines.push(format!(
             "if (!exists(\"{0}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{0}\", function(x, ...) standardGeneric(\"{0}\"))",
             method_name
         ));
+        }
 
         // Define method with @exportMethod for proper S4 dispatch (if class should be exported)
         if should_export {
@@ -213,15 +219,20 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let body_lines = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_chain_var(receiver.to_string())
             .with_invisible(method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(method, &type_ident.to_string())
             .build_s4_body();
 
         let what = format!("{}.{}", method_name, class_name);
+        let signature = if method.method_attrs.receiver.is_some() {
+            format!("c({receiver} = \"{class_name}\")")
+        } else {
+            format!("\"{class_name}\"")
+        };
         lines.push(format!(
-            "methods::setMethod(\"{}\", \"{}\", function({}) {{",
-            method_name, class_name, full_params
+            "methods::setMethod(\"{method_name}\", {signature}, function({full_params}) {{"
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &what);
         lines.extend(body_lines);

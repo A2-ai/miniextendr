@@ -674,6 +674,10 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
+    /// First formal of an existing S3/S4 generic (for example `object` for show).
+    pub receiver: Option<String>,
+    /// Omit the automatic dispatch dots for an existing S3/S4 generic.
+    pub no_dispatch_dots: bool,
     /// Override class suffix for S3 methods.
     ///
     /// Use this to implement double-dispatch methods (like vctrs coercion)
@@ -1408,6 +1412,16 @@ impl ParsedMethod {
         class_system: ClassSystem,
         span: proc_macro2::Span,
     ) -> syn::Result<()> {
+        if (attrs.receiver.is_some() || attrs.no_dispatch_dots)
+            && (!matches!(class_system, ClassSystem::S3 | ClassSystem::S4)
+                || attrs.generic.is_none())
+        {
+            return Err(syn::Error::new(
+                span,
+                "`receiver` and `no_dots` require an explicit S3/S4 `generic = \"...\"`",
+            ));
+        }
+
         // R6-only boolean markers must not appear under any other class system.
         if class_system != ClassSystem::R6 {
             if attrs.r6.active {
@@ -1578,6 +1592,15 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.generic = Some(value.value());
+                        } else if inner.path.is_ident("receiver") {
+                            let value: syn::LitStr = inner.value()?.parse()?;
+                            let name = value.value();
+                            if !crate::naming::is_syntactic_r_name(&name) || !crate::r_class_formatter::is_bare_identifier(&name) {
+                                return Err(syn::Error::new(value.span(), "receiver must start with a letter and contain only letters, digits and underscores"));
+                            }
+                            if method_attrs.receiver.replace(name).is_some() {
+                                return Err(inner.error("receiver may be specified only once"));
+                            }
                         } else if inner.path.is_ident("class") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1606,7 +1629,11 @@ impl ParsedMethod {
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7.deprecated = Some(value.value());
                         } else if inner.path.is_ident("no_dots") {
-                            method_attrs.s7.no_dots = true;
+                            if meta.path.is_ident("s3") || meta.path.is_ident("s4") {
+                                method_attrs.no_dispatch_dots = true;
+                            } else {
+                                method_attrs.s7.no_dots = true;
+                            }
                         } else if inner.path.is_ident("dispatch") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -4373,6 +4400,13 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
     for m in parsed.included_methods() {
         let is_ctor = parsed.is_method_constructor(m);
         let instance = m.env.is_instance() && !is_ctor && !m.is_finalizer();
+        if (m.method_attrs.receiver.is_some() || m.method_attrs.no_dispatch_dots) && !instance {
+            return Err(syn::Error::new_spanned(
+                &m.ident,
+                "`receiver` and `no_dots` apply only to instance methods",
+            ));
+        }
+        let generic_receiver = m.method_attrs.receiver.as_deref().unwrap_or("x");
         let s7 = &m.method_attrs.s7;
         let reserved = match parsed.class_system {
             ClassSystem::R6 if instance || is_ctor => vec![
@@ -4389,8 +4423,8 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
                         .to_string(),
                 ),
             ],
-            ClassSystem::S3 if instance => vec![receiver("x", "S3 method")],
-            ClassSystem::S4 if instance => vec![receiver("x", "S4 method")],
+            ClassSystem::S3 if instance => vec![receiver(generic_receiver, "S3 method")],
+            ClassSystem::S4 if instance => vec![receiver(generic_receiver, "S4 method")],
             ClassSystem::S7 if instance && !(s7.getter || s7.setter || s7.validate) => {
                 let generic = m
                     .method_attrs
