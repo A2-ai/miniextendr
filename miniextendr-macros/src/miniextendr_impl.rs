@@ -1594,10 +1594,7 @@ impl ParsedMethod {
                             method_attrs.generic = Some(value.value());
                         } else if inner.path.is_ident("receiver") {
                             let value: syn::LitStr = inner.value()?.parse()?;
-                            let name = value.value();
-                            if !crate::naming::is_syntactic_r_name(&name) || !crate::r_class_formatter::is_bare_identifier(&name) {
-                                return Err(syn::Error::new(value.span(), "receiver must start with a letter and contain only letters, digits and underscores"));
-                            }
+                            let name = crate::naming::parse_r_receiver(&value)?;
                             if method_attrs.receiver.replace(name).is_some() {
                                 return Err(inner.error("receiver may be specified only once"));
                             }

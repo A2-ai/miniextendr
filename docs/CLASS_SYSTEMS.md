@@ -1827,5 +1827,6 @@ The default receiver remains `x`. `no_dots` suppresses only automatically added
 dispatch dots; an explicit Rust `Dots` parameter still supplies `...`.
 Match the other generic formals with Rust parameter names and defaults as usual.
 A receiver name that duplicates a user parameter is rejected during expansion.
-These options apply to inherent instance methods of an existing generic; for a
-standalone S3 function, spell the full signature directly.
+These options apply to both inherent and trait instance methods of an existing
+generic. The trait path also reuses the generic without redefining or exporting
+it. For a standalone S3 function, spell the full signature directly.

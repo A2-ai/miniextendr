@@ -520,22 +520,8 @@ impl<'a> MethodContext<'a> {
     /// When `include_dots` is false, omits `...` from the signature.
     /// This is used for strict generics that don't accept extra args.
     pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
-        let include_dispatch_dots = include_dots && !self.method.has_dots;
         if add_self_param {
-            if include_dispatch_dots {
-                if self.params.is_empty() {
-                    "x, ...".to_string()
-                } else {
-                    format!("x, {}, ...", self.params)
-                }
-            } else {
-                // No dots - strict formals
-                if self.params.is_empty() {
-                    "x".to_string()
-                } else {
-                    format!("x, {}", self.params)
-                }
-            }
+            self.instance_formals_with_receiver("x", include_dots)
         } else {
             self.params.clone()
         }
@@ -543,20 +529,13 @@ impl<'a> MethodContext<'a> {
 
     /// Build instance formals with a custom receiver name (default is `x`).
     ///
-    /// Used by the S7 per-class fast-path shortcut (#949), whose receiver is
-    /// named `self` to mirror the property dispatch lambdas, rather than the
-    /// `x` used by the S7 generic.
+    /// Used by S3/S4 generic overrides and the S7 per-class shortcut.
     pub fn instance_formals_with_receiver(&self, receiver: &str, include_dots: bool) -> String {
-        let tail = if include_dots && !self.method.has_dots {
-            ", ..."
-        } else {
-            ""
-        };
-        if self.params.is_empty() {
-            format!("{receiver}{tail}")
-        } else {
-            format!("{receiver}, {}{tail}", self.params)
-        }
+        instance_formals(
+            &self.params,
+            receiver,
+            include_dots && !self.method.has_dots,
+        )
     }
 
     /// Get the generic name (uses override if present).
@@ -1339,6 +1318,24 @@ impl ParsedImplExt for ParsedImpl {
         self.active_instance_methods().map(move |m| {
             MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
         })
+    }
+}
+
+/// Prefix an instance receiver and append only missing dispatch dots.
+/// Shared by inherent and trait wrapper contexts; explicit Dots keeps its place.
+pub(crate) fn instance_formals(params: &str, receiver: &str, include_dots: bool) -> String {
+    let has_dots = crate::roxygen::split_r_formals(params)
+        .iter()
+        .any(|p| p.trim() == "...");
+    let tail = if include_dots && !has_dots {
+        ", ..."
+    } else {
+        ""
+    };
+    if params.is_empty() {
+        format!("{receiver}{tail}")
+    } else {
+        format!("{receiver}, {params}{tail}")
     }
 }
 

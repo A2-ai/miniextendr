@@ -142,6 +142,9 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_post_checks: None,
         r_on_exit: None,
         no_shortcut: false,
+        generic: None,
+        receiver: None,
+        no_dispatch_dots: false,
         per_param: Default::default(),
         preconditions: None,
     }
@@ -2758,3 +2761,96 @@ fn suppressed_trait_methods_keep_no_links() {
 }
 
 // endregion
+
+#[test]
+fn trait_s3_s4_methods_match_existing_generic_formals() {
+    let source: syn::ItemImpl = syn::parse_quote! {
+        impl Operations for Foo {
+            #[miniextendr(s3(generic = "predict", receiver = "object"))]
+            fn predict_value(&self, x: i32) -> i32 { x }
+            #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+            fn show_value(&self) {}
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered).unwrap();
+    let generate = |method: TraitMethod, system| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Operations"),
+            &[method],
+            &[],
+            opts(system, false, false, false),
+        )
+        .unwrap()
+    };
+    let s3 = generate(methods[0].clone(), ClassSystem::S3);
+    assert!(
+        s3.contains("predict.Foo <- function(object, x, ...)"),
+        "{s3}"
+    );
+    assert!(s3.contains(", object, x)"), "{s3}");
+    assert!(s3.contains("#' @method predict Foo"), "{s3}");
+    assert!(s3.contains("#' @param object An object"), "{s3}");
+    assert!(!s3.contains("UseMethod("), "{s3}");
+    assert!(!s3.contains("#' @export predict\n"), "{s3}");
+
+    let s4 = generate(methods[1].clone(), ClassSystem::S4);
+    assert!(
+        s4.contains("methods::setMethod(\"show\", c(object = \"Foo\"), function(object)"),
+        "{s4}"
+    );
+    assert!(s4.contains(".ptr <- object@ptr"), "{s4}");
+    assert!(s4.contains("\n  object\n})"), "{s4}");
+    assert!(!s4.contains("methods::setGeneric("), "{s4}");
+    assert!(!s4.contains("#' @param ..."), "{s4}");
+
+    let mut explicit_dots = methods[0].clone();
+    explicit_dots.sig = syn::parse_quote!(fn predict_value(&self, _dots: &Dots) -> i32);
+    let with_dots = generate(explicit_dots.clone(), ClassSystem::S3);
+    assert!(with_dots.contains("function(object, ...)"), "{with_dots}");
+    assert!(!with_dots.contains("..., ..."), "{with_dots}");
+    explicit_dots.no_dispatch_dots = true;
+    let no_added_dots = generate(explicit_dots, ClassSystem::S3);
+    assert!(
+        no_added_dots.contains("function(object, ...)"),
+        "{no_added_dots}"
+    );
+}
+
+#[test]
+fn trait_generic_receiver_options_reject_conflicts_and_wrong_context() {
+    let generate = |method: TraitMethod, system| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Operations"),
+            &[method],
+            &[],
+            opts(system, false, false, false),
+        )
+    };
+    let mut method = make_test_method("show", true);
+    method.generic = Some("show".into());
+    method.receiver = Some("object".into());
+    method.no_dispatch_dots = true;
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        assert!(generate(method.clone(), system).is_err());
+    }
+    let mut no_generic = method.clone();
+    no_generic.generic = None;
+    assert!(generate(no_generic, ClassSystem::S4).is_err());
+    let mut static_method = method.clone();
+    static_method.has_self = false;
+    assert!(generate(static_method, ClassSystem::S4).is_err());
+    method.sig = syn::parse_quote!(fn show(&self, object: i32));
+    let error = generate(method, ClassSystem::S4).unwrap_err().to_string();
+    assert!(
+        error.contains("receiver of the generated S4 trait method"),
+        "{error}"
+    );
+}

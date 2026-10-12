@@ -446,6 +446,18 @@ pub(crate) fn r_string_escape(s: &str) -> String {
 
 // endregion
 
+/// Parse a dispatch receiver that is safe to emit as a bare R symbol.
+pub(crate) fn parse_r_receiver(value: &syn::LitStr) -> syn::Result<String> {
+    let name = value.value();
+    if !is_syntactic_r_name(&name) || !crate::r_class_formatter::is_bare_identifier(&name) {
+        return Err(syn::Error::new(
+            value.span(),
+            "receiver must start with a letter and contain only letters, digits and underscores",
+        ));
+    }
+    Ok(name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
