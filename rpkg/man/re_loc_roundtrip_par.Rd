@@ -10,5 +10,5 @@ re_loc_roundtrip_par(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Parallel RELoc round-trip (delegates to sequential due to Struct field). @export
+Parallel RELoc round-trip (delegates to sequential due to Struct field).
 }

@@ -13,5 +13,5 @@ Builds a mixed \code{REMapH} frame (payload + empty-map + absent-variant rows), 
 it, reads it back with the reader, and compares the reconstructed rows to the
 originals. \code{HashMap} equality is order-independent, so this proves the \verb{_keys} /
 \verb{_values} list-columns regroup back into the correct key→value associations
-regardless of iteration order. Returns \code{TRUE} on success. @export
+regardless of iteration order. Returns \code{TRUE} on success.
 }

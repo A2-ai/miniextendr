@@ -7,5 +7,5 @@
 re_tracked_align()
 }
 \description{
-Produce the writer output for a mixed RETracked frame. @export
+Produce the writer output for a mixed RETracked frame.
 }
