@@ -752,6 +752,17 @@ jobs:
       - name: Tests (miniextendr-api, ndarray feature)
         run: cargo test -p miniextendr-api --locked --no-fail-fast --features ndarray --test ndarray_generic --test ndarray_all_types --test ndarray_string
 
+      # The custom-connection tests are gated on the opt-in `connections`
+      # feature the same way: the integration suite is
+      # `#![cfg(feature = "connections")]` and the unit tests sit in the
+      # feature-gated `connection` module, so the workspace run above never
+      # compiles them. The `connection::` filter keeps the lib binary to the
+      # unit tests the feature adds; the rest already ran above.
+      - name: Tests (miniextendr-api, connections feature)
+        run: |
+          cargo test -p miniextendr-api --locked --no-fail-fast --features connections --lib -- connection::
+          cargo test -p miniextendr-api --locked --no-fail-fast --features connections --test connection
+
       # The blas-lapack suites are feature-gated the same way. The second
       # binary lives in miniextendr-bench, a dependent of miniextendr-api: it
       # checks that the build script's BLAS/LAPACK link directives reach other

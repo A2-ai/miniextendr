@@ -370,9 +370,9 @@ fmt *cargo_flags:
 
 # Run tests: every cargo leg plus the trybuild UI suites; failures are summarized at the end
 #
-# Legs: root workspace (UI suites skipped there, see `test-ui`), ndarray
-# integration tests, consumer.pkg, producer.pkg, rpkg/src/rust (under the
-# path overrides), then `just test-ui`. Every leg runs even when an earlier one
+# Legs: root workspace (UI suites skipped there, see `test-ui`), the ndarray,
+# connections and blas-lapack feature suites, consumer.pkg, producer.pkg,
+# rpkg/src/rust (under the path overrides), then `just test-ui`. Every leg runs even when an earlier one
 # fails (like CI's `--no-fail-fast` across suites), so one red run shows the
 # full failure surface instead of the first casualty; the recipe exits non-zero
 # if any leg failed. The rpkg leg rewrites rpkg/src/rust/Cargo.lock under the
@@ -413,6 +413,12 @@ test *args:
     leg_ndarray() {
         cargo test -p miniextendr-api --features ndarray --no-fail-fast --test ndarray_generic --test ndarray_all_types --test ndarray_string $cargo_flags -- --no-capture $test_args
     }
+    # The custom-connection suites need the opt-in `connections` feature; the
+    # lib binary's other tests already ran in the root leg.
+    leg_connections() {
+        cargo test -p miniextendr-api --features connections --no-fail-fast --lib $cargo_flags -- connection:: --no-capture $test_args &&
+        cargo test -p miniextendr-api --features connections --no-fail-fast --test connection $cargo_flags -- --no-capture $test_args
+    }
     # Feature-gated like the ndarray suites. The miniextendr-bench binary is a
     # dependent of miniextendr-api: it checks that the build script's
     # BLAS/LAPACK link directives reach other crates' targets.
@@ -435,6 +441,7 @@ test *args:
 
     leg "root workspace" leg_root
     leg "ndarray" leg_ndarray
+    leg "connections" leg_connections
     leg "blas-lapack" leg_blas_lapack
     leg "consumer.pkg" leg_cross consumer.pkg
     leg "producer.pkg" leg_cross producer.pkg
