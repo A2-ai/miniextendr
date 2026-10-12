@@ -634,13 +634,14 @@ pub enum Nested {
     Without { id: i32 },
 }
 
-// Rows with `try_from_dataframe` readers: every field reads back. A
-// `::std::string::String` field (or key) gets no reader, so these use only
-// primitive scalars. Without a nested struct the `rayon` reader assembles rows
-// by index; with one it hands off to the sequential reader.
+// Rows with `try_from_dataframe` readers: every field reads back, including
+// qualified strings (#2036). Without a nested struct the `rayon` reader
+// assembles rows by index; with one it hands off to the sequential reader.
 #[derive(miniextendr_api::DataFrameRow)]
 pub struct Readable {
     pub id: i32,
+    pub label: ::std::string::String,
+    pub note: ::core::option::Option<::std::string::String>,
     pub weight: f64,
     pub flag: bool,
     pub maybe: ::core::option::Option<f64>,
@@ -656,7 +657,7 @@ pub struct Readable {
 #[derive(miniextendr_api::DataFrameRow)]
 #[dataframe(tag = "_type")]
 pub enum ReadableEvent {
-    Point { id: i32, coords: [f64; 2], flag: bool },
+    Point { id: i32, coords: [f64; 2], flag: bool, label: ::std::string::String },
     Scores {
         #[dataframe(width = 2)]
         scores: ::std::vec::Vec<f64>,
