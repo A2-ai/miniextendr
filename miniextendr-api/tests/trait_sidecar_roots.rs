@@ -1,8 +1,9 @@
 //! Erased trait objects must transfer pending sidecars into R-traced slots.
 mod r_test_utils;
 
+use miniextendr_api::externalptr::Sidecar;
 use miniextendr_api::gc_protect::OwnedProtect;
-use miniextendr_api::{ExternalPtr, IntoR, SEXP, SEXPTYPE, SexpExt, Sidecar, TryFromSexp};
+use miniextendr_api::{ExternalPtr, IntoR, SEXP, SEXPTYPE, SexpExt, TryFromSexp};
 
 // Inspect the actual GC edge, without manufacturing an ordinary ExternalPtr
 // over erased storage. This R API is crate-private in the runtime facade.

@@ -5092,7 +5092,7 @@ pub trait ViewArgProbe {
 pub struct ViewArgHost {
     prefix: String,
     #[r_data]
-    keepalive: miniextendr_api::Sidecar<SEXP>,
+    keepalive: miniextendr_api::externalptr::Sidecar<SEXP>,
 }
 
 #[miniextendr(env, noexport)]
@@ -5100,7 +5100,7 @@ impl ViewArgHost {
     fn new(prefix: String) -> Self {
         Self {
             prefix,
-            keepalive: miniextendr_api::Sidecar::new(SEXP::nil()),
+            keepalive: miniextendr_api::externalptr::Sidecar::new(SEXP::nil()),
         }
     }
 }
@@ -5144,7 +5144,7 @@ pub fn gc_stress_trait_view_args() -> String {
     let (view, owner) = unsafe {
         let source = OwnedProtect::new(vec![13_i32, 21, 34].into_sexp());
         let mut host = ViewArgHost::new("host".to_string());
-        host.keepalive = miniextendr_api::Sidecar::new(source.get());
+        host.keepalive = miniextendr_api::externalptr::Sidecar::new(source.get());
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
             __mx_wrap_ViewArgHost(host),
         ));
