@@ -252,7 +252,7 @@ pub trait TraitView: Sized {
 
             // The wrapper struct layout is:
             //   #[repr(C)]
-            //   struct __MxWrapper<T> {
+            //   struct ErasedObject<T> {
             //       erased: mx_erased,  // offset 0
             //       data: T,            // offset = size_of::<mx_erased>() rounded up to align_of::<T>()
             //   }

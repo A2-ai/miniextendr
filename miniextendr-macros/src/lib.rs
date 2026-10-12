@@ -77,7 +77,7 @@
 //! │  1. Parse: syn::ItemImpl (trait impl)                                    │
 //! │  2. Generate:                                                            │
 //! │     ├── Vtable instance: static __VTABLE_<crate>_<Trait>_FOR_<Type>     │
-//! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
+//! │     ├── Shared runtime storage: ErasedObject<Type>                     │
 //! │     ├── Shared query: registry::universal_query                        │
 //! │     └── Base vtable: static __MX_BASE_VTABLE_<Type>: ...                 │
 //! │  3. Original impl preserved                                              │
@@ -113,7 +113,7 @@
 //!
 //! For a type `MyType` with trait `Counter` in a crate `mypkg`:
 //! - Vtable: `__VTABLE_mypkg_Counter_FOR_MyType`
-//! - Wrapper: `__MxWrapperMyType`
+//! - Storage: runtime `ErasedObject<MyType>`
 //! - Query: `__mx_query_mytype`
 //!
 //! ## Return Type Handling
@@ -2556,7 +2556,7 @@ pub fn derive_is_na(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 ///
 /// This generates additional infrastructure for type-erased trait dispatch:
-/// - `__MxWrapperMyCounter` - Type-erased wrapper struct
+/// - Shared runtime `ErasedObject<MyCounter>` storage and destructor
 /// - `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
 /// - `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 ///
