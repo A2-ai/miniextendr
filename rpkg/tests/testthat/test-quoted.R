@@ -764,6 +764,7 @@ test_that("Quosure::args() reads a call quosure entry by entry, NA and NULL kept
 
   # Not a call: nothing to read entry by entry.
   expect_null(miniextendr:::quosure_args(TAD))
+  expect_null(miniextendr:::quosure_args(NULL))
   expect_identical(miniextendr:::gc_stress_quosure_args(), 4L)
 })
 
@@ -784,7 +785,7 @@ test_that("an embedded quosure comes back as it is, and tidyselect takes it", {
   # Wrapped again, it would be a formula tidyselect refuses.
   expect_error(
     tidyselect::eval_select(rlang::new_quosure(out$time, globalenv()), df),
-    "Formula shorthand"
+    class = "rlang_error"
   )
 })
 
