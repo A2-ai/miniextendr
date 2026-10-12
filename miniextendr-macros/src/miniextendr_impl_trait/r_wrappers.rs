@@ -55,7 +55,7 @@ pub(super) fn generate_trait_r_wrapper(
         impl_preconditions,
     } = opts;
     reject_unsupported_describe_in(methods, class_system)?;
-    check_trait_method_formals(type_ident, methods, class_system)?;
+    check_trait_method_formals(methods, class_system)?;
     let generate = match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper,
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
@@ -330,12 +330,10 @@ fn push_param_tags(lines: &mut Vec<String>, method: &TraitMethod) {
 
 /// Check the R formals of every trait method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)). Every
-/// dispatching class system names an instance method's receiver `x`; S7 also emits a
-/// `<Type>_<method>` fast-path shortcut whose receiver is `self`. Static
-/// methods and Env/R6 trait methods reserve nothing: their injected receiver
-/// `.mx_self` cannot be spelled by a Rust parameter.
+/// dispatching class system names an instance method's receiver `x`. S7
+/// shortcuts and Env/R6 trait methods use the injected receiver
+/// `.mx_self`, which cannot be spelled by a Rust parameter.
 fn check_trait_method_formals(
-    type_ident: &syn::Ident,
     methods: &[TraitMethod],
     class_system: ClassSystem,
 ) -> syn::Result<()> {
@@ -354,21 +352,6 @@ fn check_trait_method_formals(
                 "x".to_string(),
                 format!("is the receiver of the generated {system} trait method"),
             ));
-            if class_system == ClassSystem::S7
-                && !method.no_shortcut
-                && let Some(shortcut) = crate::miniextendr_impl::s7_class::s7_shortcut_name(
-                    &type_ident.to_string(),
-                    &method.r_method_name(),
-                )
-            {
-                reserved.push((
-                    "self".to_string(),
-                    format!(
-                        "is the receiver of the fast-path shortcut `{shortcut}()` generated for \
-                         this S7 trait method (`s7(no_shortcut)` drops the shortcut)"
-                    ),
-                ));
-            }
         }
         crate::r_wrapper_builder::check_r_formals(&method.sig.inputs, &reserved)?;
     }
@@ -1102,20 +1085,20 @@ fn generate_trait_s7_r_wrapper(
         };
         if let Some(shortcut_name) = shortcut_name {
             let shortcut_formals = if ctx.params.is_empty() {
-                "self, ...".to_string()
+                ".mx_self, ...".to_string()
             } else {
-                format!("self, {}, ...", ctx.params)
+                format!(".mx_self, {}, ...", ctx.params)
             };
-            let shortcut_call = ctx.instance_call("self@.ptr");
+            let shortcut_call = ctx.instance_call(".mx_self@.ptr");
 
             // Roxygen: shared advisory prose + scaffolding. The shared @rdname
             // page (type_str) already carries the method's prose via the generic
-            // block above, so only document `self` + each formal here to keep the
+            // block above, so only document `.mx_self` + each formal here to keep the
             // shortcut's \usage fully covered (no "undocumented argument" warning).
             //
             // A method-level `@rdname` naming another page or a `@describeIn`
             // sends the shortcut to a topic whose own block documents its
-            // arguments (#1590): only the type page needs the structural `self` /
+            // arguments (#1590): only the type page needs the structural `.mx_self` /
             // `...` lines, and the advisory's description would be a paragraph of
             // the topic's description that names no function. Its first line
             // stays as the block's title, which a page of the shortcut's own
@@ -1128,7 +1111,7 @@ fn generate_trait_s7_r_wrapper(
             let advisory_len = if joined { 1 } else { advisory.len() };
             lines.extend(advisory.into_iter().take(advisory_len));
             if !joined {
-                lines.push(format!("#' @param self A `{}` object.", type_str));
+                lines.push(format!("#' @param .mx_self A `{}` object.", type_str));
             }
             push_param_tags(&mut lines, method);
             // Auto-document any formal lacking an explicit @param tag. `...` is
@@ -1143,7 +1126,7 @@ fn generate_trait_s7_r_wrapper(
             let choice_docs = ctx.choice_param_docs();
             for formal in crate::roxygen::split_r_formals(&shortcut_formals) {
                 let pname = crate::roxygen::formal_name(formal);
-                if joined || pname == "self" {
+                if joined || pname == ".mx_self" {
                     continue;
                 }
                 let documented = crate::roxygen::param_documented(&method.doc_tags, pname);
@@ -1180,7 +1163,7 @@ fn generate_trait_s7_r_wrapper(
             ));
             ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
             lines.extend(ctx.method_body_lines(&shortcut_call, ClassSystem::S7));
-            finish_instance_body(&mut lines, method, "self");
+            finish_instance_body(&mut lines, method, ".mx_self");
             lines.push("}".to_string());
             lines.push(String::new());
         }

@@ -1104,9 +1104,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             s7_shortcut_name(&class_name, &method_name)
         };
         if let Some(shortcut_name) = shortcut_name {
-            let shortcut_call = ctx.instance_call("self@.ptr");
+            let shortcut_call = ctx.instance_call(".mx_self@.ptr");
             let shortcut_formals =
-                ctx.instance_formals_with_receiver("self", !method_attrs.s7.no_dots);
+                ctx.instance_formals_with_receiver(".mx_self", !method_attrs.s7.no_dots);
 
             // Document the shortcut as a standalone function merged onto the
             // class @rdname page (same shape as static methods). Prepend a
@@ -1114,11 +1114,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // subclass-override footgun, then reuse MethodDocBuilder for the
             // @name / @rdname / @source / @param scaffolding so roxygen2 emits a
             // complete \usage + \arguments block (no "undocumented argument"
-            // warning). `@param self` is documented explicitly because
+            // warning). `@param .mx_self` is documented explicitly because
             // MethodDocBuilder skips the receiver.
             if !class_has_no_rd {
                 lines.extend(shortcut_advisory_lines(&method_name, &class_name));
-                lines.push(format!("#' @param self A `{}` object.", class_name));
+                lines.push(format!("#' @param .mx_self A `{}` object.", class_name));
                 // `...` appears in the shortcut signature for parity with the S7
                 // generic but MethodDocBuilder doesn't document it, so emit it
                 // here to avoid an "Undocumented arguments" R CMD check warning.
@@ -1162,7 +1162,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method, &type_ident.to_string())
-                .with_chain_var("self".to_string())
+                .with_chain_var(".mx_self".to_string())
                 .build_s7_body();
 
             let what = format!("{}.{}", generic_name, class_name);

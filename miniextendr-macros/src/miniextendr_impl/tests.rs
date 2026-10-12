@@ -1906,8 +1906,8 @@ fn s7_external_generic_carries_dispatch_args() {
         "  compare <- S7::new_external_generic(\"pkgx\", \"compare\", c(\"x\", \"y\"))",
         "S7::method(compare, list(Bag, S7::class_any)) <- function(x, y, ...) {",
         // The Rust names keep their shortcuts.
-        "Bag_tidy <- function(self, ...) {",
-        "Bag_compare <- function(self, y, ...) {",
+        "Bag_tidy <- function(.mx_self, ...) {",
+        "Bag_compare <- function(.mx_self, y, ...) {",
     ] {
         assert!(
             wrapper.contains(expected),
@@ -1937,7 +1937,7 @@ fn s7_unqualified_generic_override_defines_a_new_generic() {
         "if (!base::exists(\"%mx_cat%\", mode = \"function\")) {",
         "  `%mx_cat%` <- S7::new_generic(\"%mx_cat%\", \"x\", function(x, ...) S7::S7_dispatch())",
         "S7::method(`%mx_cat%`, Bag) <- function(x, other, ...) {",
-        "Bag_concat <- function(self, other, ...) {",
+        "Bag_concat <- function(.mx_self, other, ...) {",
     ] {
         assert!(
             wrapper.contains(expected),
@@ -1965,7 +1965,7 @@ fn s7_no_shortcut_suppresses_shortcut() {
 
     // `get` still gets its shortcut.
     assert!(
-        wrapper.contains("Counter_get <- function(self, ...)"),
+        wrapper.contains("Counter_get <- function(.mx_self, ...)"),
         "un-annotated method should keep its shortcut, got:\n{}",
         wrapper
     );
@@ -2109,7 +2109,7 @@ fn s7_operator_r_names_skip_the_shortcut() {
             quote::quote!(#[miniextendr(s7(generic = #generic))]),
         ));
         for expected in [
-            "Foo_operator <- function(self, i, ...) {",
+            "Foo_operator <- function(.mx_self, i, ...) {",
             "#' @export Foo_operator",
         ] {
             assert!(
@@ -2277,7 +2277,7 @@ fn s7_syntactic_names_stay_bare() {
         "#' @rawNamespace export(at)",
         "  at <- S7::new_generic(\"at\", \"x\", function(x, ...) S7::S7_dispatch())",
         "S7::method(at, Foo) <- function(x, i, ...) {",
-        "Foo_at <- function(self, i, ...) {",
+        "Foo_at <- function(.mx_self, i, ...) {",
     ] {
         assert!(
             wrapper.contains(expected),
@@ -2394,9 +2394,9 @@ fn s7_ops_operator_methods_dispatch_on_both_operands() {
         wrapper.contains("S7::method(`%*%`, list(Money, S7::class_any)) <- function(x, y, ...) {"),
         "{wrapper}"
     );
-    // The Rust name keeps its shortcut; its receiver is still `self`.
+    // The Rust name keeps its shortcut with a dotted receiver.
     assert!(
-        wrapper.contains("Money_op <- function(self, y, ...) {"),
+        wrapper.contains("Money_op <- function(.mx_self, y, ...) {"),
         "{wrapper}"
     );
 }
@@ -4440,7 +4440,7 @@ fn s7_generic_multi_dispatch() {
         "    S7::method(.mx_g, list(S7::class_any, S7::class_any)) <- function(x, other, ...) .mx_masked(x, other, ...)",
         "S7::method(compare, list(Dog, S7::class_any)) <- function(x, other, scale, ...) {",
         "x@.ptr, other, scale)",
-        "Dog_compare <- function(self, other, scale, ...) {",
+        "Dog_compare <- function(.mx_self, other, scale, ...) {",
     ] {
         assert!(
             wrapper.contains(expected),
@@ -7363,8 +7363,8 @@ fn env_member_collisions_only_reserve_members_that_are_emitted() {
 // region: R formal names (receivers, R6 bindings, reserved words)
 
 /// A method parameter must not take the R argument name the class system's
-/// wrapper binds itself: the receiver (`x` for S3 / S4 / S7,
-/// `self` for the S7 fast-path shortcut) or R6's `self` / `private` inside the
+/// wrapper binds itself: the receiver (`x` for S3 / S4 / S7) or R6's
+/// `self` / `private` inside the
 /// class. Static methods and non-R6 constructors are plain functions.
 #[test]
 fn method_formals_reject_receiver_and_class_bindings() {
@@ -7401,12 +7401,6 @@ fn method_formals_reject_receiver_and_class_bindings() {
         ClassSystem::S7,
         syn::parse_quote!(impl Coll { pub fn m(&self, r#x: i32) -> i32 { 0 } }),
         "which is the receiver of the generated S7 method",
-    );
-    rejected(
-        ClassSystem::S7,
-        syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32) -> i32 { 0 } }),
-        "which is the receiver of the fast-path shortcut `Coll_m()` generated for this S7 \
-         method (`s7(no_shortcut)` drops the shortcut)",
     );
     // Reserved words and repeated names, on any method.
     rejected(
@@ -7467,11 +7461,10 @@ fn method_formals_reject_receiver_and_class_bindings() {
         ClassSystem::S3,
         syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32, _private: i32) -> i32 { 0 } }),
     );
-    // Without the shortcut `self` is free; an explicit dispatch receiver frees `x`.
+    // The shortcut leaves `self` free; an explicit dispatch receiver frees `x`.
     accepted(
         ClassSystem::S7,
         syn::parse_quote!(impl Coll {
-            #[miniextendr(s7(no_shortcut))]
             pub fn m(&self, _self: i32) -> i32 { 0 }
         }),
     );
@@ -8629,5 +8622,34 @@ fn existing_generic_receiver_cannot_hide_a_user_argument() {
             .unwrap_err()
             .to_string()
             .contains("R argument `object`")
+    );
+}
+
+#[test]
+fn s7_shortcut_keeps_user_self_separate_from_receiver() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Counter {
+                /// @param self Amount to add.
+                pub fn add(&mut self, _self: i32) { }
+            }
+        },
+    );
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("Counter_add <- function(.mx_self, self, ...)"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains(".mx_self@.ptr, self)"), "{wrapper}");
+    assert!(wrapper.contains("  .mx_self\n"), "{wrapper}");
+    assert!(
+        wrapper.contains("#' @param self Amount to add."),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @param .mx_self A `Counter` object."),
+        "{wrapper}"
     );
 }

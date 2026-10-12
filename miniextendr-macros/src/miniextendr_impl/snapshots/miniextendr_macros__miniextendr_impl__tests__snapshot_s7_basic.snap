@@ -64,13 +64,13 @@ S7::method(get, Counter) <- function(x, ...) {
 #' per-call dispatch overhead matters. **Footgun:** this shortcut does not
 #' perform subclass dispatch: a method override defined on a child class
 #' will *not* be honoured. Use the generic when subclassing is possible.
-#' @param self A `Counter` object.
+#' @param .mx_self A `Counter` object.
 #' @param ... Additional arguments; ignored by the fast-path shortcut.
 #' @name Counter_get
 #' @rdname Counter
 #' @export Counter_get
-Counter_get <- function(self, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), self@.ptr)
+Counter_get <- function(.mx_self, ...) {
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), .mx_self@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -111,15 +111,15 @@ S7::method(increment, Counter) <- function(x, ...) {
 #' per-call dispatch overhead matters. **Footgun:** this shortcut does not
 #' perform subclass dispatch: a method override defined on a child class
 #' will *not* be honoured. Use the generic when subclassing is possible.
-#' @param self A `Counter` object.
+#' @param .mx_self A `Counter` object.
 #' @param ... Additional arguments; ignored by the fast-path shortcut.
 #' @name Counter_increment
 #' @rdname Counter
 #' @export Counter_increment
-Counter_increment <- function(self, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), self@.ptr)
+Counter_increment <- function(.mx_self, ...) {
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), .mx_self@.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  self
+  .mx_self
 }
 
 # Counter::from_parts (1:1)

@@ -4380,8 +4380,7 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 ///
 /// - the receiver of an instance method: `x` for S3 and S4,
 ///   the first dispatch argument (`x` unless `s7(dispatch)` or an operator
-///   says otherwise) for S7, plus `self` when S7 also emits the
-///   `<Class>_<method>` fast-path shortcut;
+///   says otherwise) for S7; shortcuts use the collision-free `.mx_self`;
 /// - `self` and `private`, which R6 binds inside `initialize` and every method
 ///   of the class: the wrapper reads the pointer from `private$.ptr` and
 ///   returns `self` from a chaining method.
@@ -4390,7 +4389,6 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 /// nothing; S7 property accessors have fixed formals; vctrs impls take no
 /// instance methods (MXL120).
 fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
-    let class_name = parsed.class_name();
     let receiver = |name: &str, method: &str| {
         (
             name.to_string(),
@@ -4433,20 +4431,7 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
                     .unwrap_or_else(|| m.r_method_name());
                 let dispatch =
                     s7_class::s7_dispatch_args(m, &s7_class::s7_generic_target(&generic));
-                let mut reserved = vec![receiver(&dispatch[0], "S7 method")];
-                if !(s7.fallback || s7.no_shortcut)
-                    && let Some(shortcut) =
-                        s7_class::s7_shortcut_name(&class_name, &m.r_method_name())
-                {
-                    reserved.push((
-                        "self".to_string(),
-                        format!(
-                            "is the receiver of the fast-path shortcut `{shortcut}()` generated \
-                             for this S7 method (`s7(no_shortcut)` drops the shortcut)"
-                        ),
-                    ));
-                }
-                reserved
+                vec![receiver(&dispatch[0], "S7 method")]
             }
             _ => Vec::new(),
         };
