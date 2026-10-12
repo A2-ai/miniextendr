@@ -5091,12 +5091,17 @@ pub trait ViewArgProbe {
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ViewArgHost {
     prefix: String,
+    #[r_data]
+    keepalive: miniextendr_api::Sidecar<SEXP>,
 }
 
 #[miniextendr(env, noexport)]
 impl ViewArgHost {
     fn new(prefix: String) -> Self {
-        Self { prefix }
+        Self {
+            prefix,
+            keepalive: miniextendr_api::Sidecar::new(SEXP::nil()),
+        }
     }
 }
 
@@ -5128,14 +5133,25 @@ impl ViewArgProbe for ViewArgHost {
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_trait_view_args() -> String {
-    let host = ViewArgHost::new("host".to_string());
-    // The constructor's temporary root ends before argument conversion. The
-    // View itself must retain the receiver through every subsequent allocation.
-    let view = unsafe {
+    use miniextendr_api::TryFromSexp;
+    // Inspect the erased owner's GC edge directly; ordinary ExternalPtr
+    // accessors require Any storage, which this allocation does not use.
+    unsafe extern "C-unwind" {
+        fn R_ExternalPtrProtected(owner: SEXP) -> SEXP;
+    }
+    // Temporary constructor roots end before argument conversion. The View
+    // must retain its receiver, which in turn must retain its sidecar value.
+    let (view, owner) = unsafe {
+        let source = OwnedProtect::new(vec![13_i32, 21, 34].into_sexp());
+        let mut host = ViewArgHost::new("host".to_string());
+        host.keepalive = miniextendr_api::Sidecar::new(source.get());
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
             __mx_wrap_ViewArgHost(host),
         ));
-        ViewArgProbeView::from_sexp(handle.get())
+        let slots = R_ExternalPtrProtected(handle.get());
+        assert_eq!(slots.type_of(), miniextendr_api::SEXPTYPE::VECSXP);
+        assert_eq!(slots.vector_elt(2), source.get());
+        (ViewArgProbeView::from_sexp(handle.get()), handle.get())
     };
     let joined = view.join_args(
         "first".to_string(),
@@ -5147,6 +5163,12 @@ pub fn gc_stress_trait_view_args() -> String {
     assert_eq!(
         joined, r#"host|first|second|[1.5, 2.5]|["x", "y"]|last"#,
         "trait View arguments were corrupted"
+    );
+    let slots = unsafe { R_ExternalPtrProtected(owner) };
+    assert_eq!(
+        Vec::<i32>::try_from_sexp(slots.vector_elt(2)).unwrap(),
+        [13, 21, 34],
+        "trait View lost its receiver's sidecar root",
     );
     joined
 }

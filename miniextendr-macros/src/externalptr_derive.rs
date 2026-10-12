@@ -205,7 +205,7 @@
 //! static __MX_BASE_VTABLE_MyCounter: mx_base_vtable = mx_base_vtable {
 //!     drop: ErasedObject::<MyCounter>::drop_raw,
 //!     concrete_tag: __MX_TAG_MyCounter,
-//!     query: miniextendr_api::registry::universal_query,
+//!     query: ErasedObject::<MyCounter>::query,
 //!     data_offset: ErasedObject::<MyCounter>::DATA_OFFSET,
 //! };
 //! ```
@@ -2423,7 +2423,7 @@ pub fn derive_external_ptr(
 ///
 /// For `#[derive(ExternalPtr)] struct MyCounter { ... }` generates:
 /// - `__MX_TAG_MyCounter` - concrete type tag (FNV-1a hash of module_path + type)
-/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with universal_query
+/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with trait/sidecar query
 /// - `__mx_wrap_MyCounter` - constructor returning `*mut mx_erased`
 fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     let type_ident = &input.ident;
@@ -2454,7 +2454,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
             ::miniextendr_api::abi::mx_base_vtable {
                 drop: ::miniextendr_api::abi::ErasedObject::<#type_ident>::drop_raw,
                 concrete_tag: #concrete_tag_name,
-                query: ::miniextendr_api::registry::universal_query,
+                query: ::miniextendr_api::abi::ErasedObject::<#type_ident>::query,
                 data_offset: ::miniextendr_api::abi::ErasedObject::<#type_ident>::DATA_OFFSET,
             };
 

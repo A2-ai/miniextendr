@@ -547,8 +547,9 @@ and call `Self::keys(&owner)`. See [Sidecars in callbacks](ALTREP.md#sidecars-in
 How the value moves:
 
 - `Sidecar::new(v)` holds `v` as a *pending* value in the struct. Wrapping
-  the struct (`ExternalPtr::new` and the other constructors) moves every
-  pending value into the pointer's `prot` list. From then on the value lives
+  the struct (`ExternalPtr::new` and the other constructors, or the trait
+  ABI's `mx_wrap` for erased storage) moves every pending value into the
+  pointer's `prot` list. From then on the value lives
   in R only and the field is empty.
 - Every accessor, Rust or R, first moves a pending value of its field into
   the `prot` list. So `*ptr = MyType::new(..)` through `DerefMut` takes
