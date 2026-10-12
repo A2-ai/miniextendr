@@ -9,12 +9,16 @@
 //!
 //! For non-blanket traits (RIterator, RExtend, etc.), the impl block IS emitted
 //! and contains the actual implementation.
+//!
+//! Adapter methods named like a std method are `r_`-prefixed in Rust and keep
+//! the std name in R (#2020): an empty impl takes the R name from the trait,
+//! an impl with a body repeats `#[miniextendr(r_name = "...")]`.
 
-// All impls here are env pinned: several adapter traits have multiple impls
-// in this file, and r6 trait-impl wrapper names are not class-qualified —
-// flipping under r6-default collides them (#1115); env trait attachment also
-// requires env inherent impls under s7-default. Explicit env keeps this file
-// meaning what its tests assert, independent of *-default features.
+// The impls here are env pinned, except the class-system cells at the end,
+// which pin their own system: several adapter traits have multiple impls in
+// this file, and env trait attachment requires env inherent impls under
+// s7-default. Explicit class systems keep this file meaning what its tests
+// assert, independent of *-default features.
 
 use miniextendr_api::adapter_traits::RIterator;
 use miniextendr_api::{ExternalPtr, miniextendr};
@@ -302,11 +306,13 @@ impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
         self.0.borrow_mut().extend(items);
     }
 
-    fn len(&self) -> i64 {
-        self.0.borrow().len() as i64
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64 {
+        i64::try_from(self.0.borrow().len()).expect("length fits i64")
     }
 
-    fn is_empty(&self) -> bool {
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
         self.0.borrow().is_empty()
     }
 }
@@ -353,17 +359,20 @@ impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
 /// RToVec trait implementation for IntSet (extract sorted integer vector).
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
-    fn to_vec(&self) -> Vec<i32> {
+    #[miniextendr(r_name = "to_vec")]
+    fn r_to_vec(&self) -> Vec<i32> {
         let mut v: Vec<_> = self.0.iter().cloned().collect();
         v.sort();
         v
     }
 
-    fn len(&self) -> i64 {
-        self.0.len() as i64
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64 {
+        i64::try_from(self.0.len()).expect("length fits i64")
     }
 
-    fn is_empty(&self) -> bool {
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
@@ -498,6 +507,168 @@ impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
 /// `@keywords internal`. See audit A10.
 #[miniextendr(env, noexport)]
 impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
+// endregion
+
+// region: Renamed adapter methods keep their R names in every class system (#2020)
+//
+// `RHash::r_hash`, `RClone::r_clone`, `RDefault::r_default` and
+// `RFromStr::r_from_str` are `hash()`, `clone()`, `default()` and `from_str()`
+// in R. `Point` above is the env cell; these are the other four, all through
+// empty (TPIE) impls, which take the R names from the trait definition.
+
+/// Parses a bare integer; shared by the class-system cells below.
+fn parse_adapter_value(s: &str) -> Result<i32, String> {
+    s.trim().parse().map_err(|_| format!("not an integer: {s}"))
+}
+
+#[derive(Clone, Debug, Default, Hash, ExternalPtr)]
+pub struct AdapterNamesS3 {
+    value: i32,
+}
+
+impl FromStr for AdapterNamesS3 {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_adapter_value(s).map(|value| Self { value })
+    }
+}
+
+#[miniextendr(s3)]
+impl AdapterNamesS3 {
+    /// @param value Initial value.
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+/// RHash trait ABI registration for AdapterNamesS3.
+#[miniextendr(s3)]
+impl miniextendr_api::adapter_traits::RHash for AdapterNamesS3 {}
+
+/// RClone trait ABI registration for AdapterNamesS3.
+#[miniextendr(s3)]
+impl miniextendr_api::adapter_traits::RClone for AdapterNamesS3 {}
+
+/// RDefault trait ABI registration for AdapterNamesS3.
+#[miniextendr(s3)]
+impl miniextendr_api::adapter_traits::RDefault for AdapterNamesS3 {}
+
+/// RFromStr trait ABI registration for AdapterNamesS3.
+#[miniextendr(s3)]
+impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesS3 {}
+
+#[derive(Clone, Debug, Default, Hash, ExternalPtr)]
+pub struct AdapterNamesS4 {
+    value: i32,
+}
+
+impl FromStr for AdapterNamesS4 {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_adapter_value(s).map(|value| Self { value })
+    }
+}
+
+#[miniextendr(s4, internal)]
+impl AdapterNamesS4 {
+    /// @param value Initial value.
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+/// RHash trait ABI registration for AdapterNamesS4.
+#[miniextendr(s4, internal)]
+impl miniextendr_api::adapter_traits::RHash for AdapterNamesS4 {}
+
+/// RClone trait ABI registration for AdapterNamesS4.
+#[miniextendr(s4, internal)]
+impl miniextendr_api::adapter_traits::RClone for AdapterNamesS4 {}
+
+/// RDefault trait ABI registration for AdapterNamesS4.
+#[miniextendr(s4, internal)]
+impl miniextendr_api::adapter_traits::RDefault for AdapterNamesS4 {}
+
+/// RFromStr trait ABI registration for AdapterNamesS4.
+#[miniextendr(s4, internal)]
+impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesS4 {}
+
+#[derive(Clone, Debug, Default, Hash, ExternalPtr)]
+pub struct AdapterNamesS7 {
+    value: i32,
+}
+
+impl FromStr for AdapterNamesS7 {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_adapter_value(s).map(|value| Self { value })
+    }
+}
+
+#[miniextendr(s7, internal)]
+impl AdapterNamesS7 {
+    /// @param value Initial value.
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+/// RHash trait ABI registration for AdapterNamesS7.
+#[miniextendr(s7, internal)]
+impl miniextendr_api::adapter_traits::RHash for AdapterNamesS7 {}
+
+/// RClone trait ABI registration for AdapterNamesS7.
+#[miniextendr(s7, internal)]
+impl miniextendr_api::adapter_traits::RClone for AdapterNamesS7 {}
+
+/// RDefault trait ABI registration for AdapterNamesS7.
+#[miniextendr(s7, internal)]
+impl miniextendr_api::adapter_traits::RDefault for AdapterNamesS7 {}
+
+/// RFromStr trait ABI registration for AdapterNamesS7.
+#[miniextendr(s7, internal)]
+impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesS7 {}
+
+#[derive(Clone, Debug, Default, Hash, ExternalPtr)]
+pub struct AdapterNamesR6 {
+    value: i32,
+}
+
+impl FromStr for AdapterNamesR6 {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_adapter_value(s).map(|value| Self { value })
+    }
+}
+
+#[miniextendr(r6)]
+impl AdapterNamesR6 {
+    /// Create a new AdapterNamesR6.
+    /// @param value Initial value.
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+/// RHash trait ABI registration for AdapterNamesR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RHash for AdapterNamesR6 {}
+
+/// RClone trait ABI registration for AdapterNamesR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RClone for AdapterNamesR6 {}
+
+/// RDefault trait ABI registration for AdapterNamesR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RDefault for AdapterNamesR6 {}
+
+/// RFromStr trait ABI registration for AdapterNamesR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesR6 {}
 // endregion
 
 // region: Module registration

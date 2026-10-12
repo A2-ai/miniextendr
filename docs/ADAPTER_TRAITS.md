@@ -78,47 +78,77 @@ impl RNum for MyNumber {
 `miniextendr-api` provides ready-to-use adapter traits for common std library traits.
 These have blanket implementations so you just need to export them for your types:
 
-| Trait | Wraps | Methods |
-|-------|-------|---------|
-| `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` |
-| `RDisplay` | `Display` | `as_r_string()` |
-| `RFromStr` | `FromStr` | `from_str(s) -> Option<Self>` |
-| `RHash` | `Hash` | `hash() -> String` |
-| `ROrd` | `Ord` | `cmp(&self, other) -> i32` |
-| `RPartialOrd` | `PartialOrd` | `partial_cmp(&self, other) -> Option<i32>` |
-| `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` |
-| `RClone` | `Clone` | `clone() -> Self` |
-| `RCopy` | `Copy` | `copy() -> Self`, `is_copy() -> bool` |
-| `RDefault` | `Default` | `default() -> Self` |
+| Trait | Wraps | R methods | Rust methods |
+|-------|-------|-----------|--------------|
+| `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` | same |
+| `RDisplay` | `Display` | `as_r_string()` | same |
+| `RFromStr` | `FromStr` | `from_str(s)` | `r_from_str(s) -> Option<Self>` |
+| `RHash` | `Hash` | `hash()` | `r_hash() -> String` |
+| `ROrd` | `Ord` | `cmp(other)` | `r_cmp(&self, other) -> i32` |
+| `RPartialOrd` | `PartialOrd` | `partial_cmp(other)` | `r_partial_cmp(&self, other) -> Option<i32>` |
+| `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` | same |
+| `RClone` | `Clone` | `clone()` | `r_clone() -> Self` |
+| `RCopy` | `Copy` | `copy()`, `is_copy()` | same |
+| `RDefault` | `Default` | `default()` | `r_default() -> Self` |
+
+### Rust names differ from the R names
+
+R calls these methods by the std names, but in Rust a method whose name std
+already uses carries an `r_` prefix (`r_clone`, `r_cmp`, `r_len`, ...) and
+keeps the std name for R through `#[miniextendr(r_name = "...")]`. The blanket
+impls cover every `Clone`, `Default`, `Hash`, `Ord`, `PartialOrd` and `FromStr`
+type, and `RToVec` covers arrays and boxed slices. With std's names, importing
+one of these traits (by name or through `use miniextendr_api::*;`) would make
+the module's own `v.clone()`, `String::default()` or `a.cmp(&b)` ambiguous
+(E0034), and `[T; N]::len()` would return `i64`. With the prefix, an import
+never shadows a std method.
+
+An empty `#[miniextendr] impl` takes the R names from the trait definition. An
+impl with a body, which the generic and associated-type traits below always
+need, repeats the `r_name` on each renamed method, as `RIterator` does for
+`next`. Either way the impl names the trait by its
+`miniextendr_api::adapter_traits` path, where the trait's vtable items live.
 
 ### Generic / Associated-Type Adapter Traits
 
 These traits have generic parameters or associated types, and are supported via
 concrete vtable shim generation at the impl site:
 
-| Trait | Wraps | Methods | Notes |
-|-------|-------|---------|-------|
-| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `count()`, `collect_n()`, `skip()`, `nth()` | `next` renamed to `next_item` via `r_name`; `size_hint` skipped |
-| `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | `extend_from_slice` skipped |
-| `RFromIter<T>` | `FromIterator` | `from_vec(items) -> Self` | |
-| `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | |
-| `RMakeIter<T, I>` | (iterator factory) | `make_iter() -> I` | `I` must implement `RIterator` |
+| Trait | Wraps | R methods | Notes |
+|-------|-------|-----------|-------|
+| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `count()`, `collect_n()`, `skip()`, `nth()` | Rust `next` is `next_item` in R via `r_name`; `size_hint` skipped |
+| `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | Rust `r_len` / `r_is_empty`; `extend_from_slice` skipped |
+| `RFromIter<T>` | `FromIterator` | `from_vec(items)` | |
+| `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | Rust `r_to_vec` / `r_len` / `r_is_empty` |
+| `RMakeIter<T, I>` | (iterator factory) | `make_iter()` | `I` must implement `RIterator` |
+
+`RIterator` keeps the names `count`, `skip` and `nth`: its only blanket impl is
+on `RefCell<I>`, which has no such methods and is not an iterator, so an import
+leaves `Iterator`'s methods alone.
 
 **Usage:**
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::{RDebug, RDisplay, RClone};
+use miniextendr_api::{RClone, RDebug};
 
 #[derive(Debug, Clone, ExternalPtr)]
 struct MyData { value: i32 }
 
-// Expose Debug, Display (via Debug), and Clone to R
+// Expose Debug and Clone to R: `x$RDebug$debug_str()`, `x$RClone$clone()`.
+// An empty impl names the trait by its module path.
 #[miniextendr]
-impl RDebug for MyData {}
+impl miniextendr_api::adapter_traits::RDebug for MyData {}
 
 #[miniextendr]
-impl RClone for MyData {}
+impl miniextendr_api::adapter_traits::RClone for MyData {}
+
+// With the traits imported, `.clone()` is still `Clone::clone`; the adapter
+// method is `r_clone()`.
+fn copies(data: &MyData) -> (MyData, MyData) {
+    (data.clone(), data.r_clone())
+}
 
 // Registration is automatic via #[miniextendr].
 ```
@@ -152,7 +182,6 @@ its R interface:
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::RIterator;
 
 #[derive(ExternalPtr)]
 struct CountUp {
@@ -160,23 +189,25 @@ struct CountUp {
     max: i32,
 }
 
-// RIterator has an associated type Item, resolved to i32 here
+// RIterator has an associated type Item, resolved to i32 here. An impl with
+// a body repeats the trait's `r_name` and `skip` attributes.
 #[miniextendr]
-impl RIterator for CountUp {
+impl miniextendr_api::adapter_traits::RIterator for CountUp {
     type Item = i32;
 
+    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<i32> { /* ... */ }
+    #[miniextendr(skip)]
+    fn size_hint(&self) -> (i64, Option<i64>) { /* ... */ }
     fn count(&self) -> i64 { /* ... */ }
     fn collect_n(&self, n: i32) -> Vec<i32> { /* ... */ }
     fn skip(&self, n: i32) -> i32 { /* ... */ }
     fn nth(&self, n: i32) -> Option<i32> { /* ... */ }
-    // size_hint is #[miniextendr(skip)] - not exposed to R
-    // next is #[miniextendr(r_name = "next_item")] - called next_item() in R
 }
 ```
 
 In R, the method is called `next_item()` (not `next()`, which would shadow
-R's built-in).
+R's built-in), and `size_hint()` isn't exported.
 
 ## Alternative: Newtype Wrapper
 
@@ -284,19 +315,25 @@ When an adapter trait has a blanket impl, you can write an empty `#[miniextendr]
 block and the trait's default implementations are automatically used:
 
 ```rust
-use miniextendr_api::{RDebug, RClone};
+use miniextendr_api::prelude::*;
 
 #[derive(Debug, Clone, ExternalPtr)]
 struct MyData { value: i32 }
 
 // Empty body - uses blanket impl from RDebug
 #[miniextendr]
-impl RDebug for MyData {}
+impl miniextendr_api::adapter_traits::RDebug for MyData {}
 
 // Empty body - uses blanket impl from RClone
 #[miniextendr]
-impl RClone for MyData {}
+impl miniextendr_api::adapter_traits::RClone for MyData {}
 ```
+
+The empty body is expanded by a helper macro the trait definition exports, and
+the impl refers to the trait's vtable items next to it, so the impl names the
+trait by its module path (`miniextendr_api::adapter_traits::RClone`). Neither a
+bare imported name nor the crate-root re-export (`miniextendr_api::RClone`)
+works there.
 
 This generates all the R wrappers, vtable registration, and C-callable shims
 without requiring you to re-implement the methods.
@@ -320,7 +357,8 @@ pub trait MyTrait {
 
 ### `#[miniextendr(r_name = "...")]`
 
-Rename a method in R to avoid conflicts with R keywords or built-ins:
+Rename a method in R to avoid conflicts with R keywords or built-ins, or
+give a Rust method that avoids a std name its std name in R:
 
 ```rust
 #[miniextendr]

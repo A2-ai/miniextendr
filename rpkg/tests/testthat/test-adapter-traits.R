@@ -82,8 +82,13 @@ test_that("Point - RFromStr from_str parses string to Point", {
   expect_equal(p$x(), 10L)
   expect_equal(p$y(), 20L)
 
-  # Invalid string returns error (Option<T> with None becomes R error)
-  expect_error(Point$RFromStr$from_str("invalid"), "returned no value")
+  # Invalid string returns error (Option<T> with None becomes R error). The
+  # message names the method as R calls it, not its Rust name `r_from_str`.
+  expect_error(
+    Point$RFromStr$from_str("invalid"),
+    "`from_str()` returned no value",
+    fixed = TRUE
+  )
 
   # Empty parens with valid numbers
   p2 <- Point$RFromStr$from_str("(-5, 15)")
@@ -104,6 +109,31 @@ test_that("Point - RCopy works", {
 
   # is_copy() returns TRUE for Copy types
   expect_true(p1$RCopy$is_copy())
+})
+
+# Adapter methods named like a std method are `r_`-prefixed in Rust, so that
+# importing the traits leaves Rust's own `.clone()` / `.cmp()` alone (#2020).
+# R sees only the std names.
+test_that("renamed adapter methods keep their std names in R", {
+  r_names <- list(
+    list(Point$RHash, "hash"),
+    list(Point$ROrd, "cmp"),
+    list(Point$RClone, "clone"),
+    list(Point$RDefault, "default"),
+    list(Point$RFromStr, "from_str"),
+    list(MyFloat$RPartialOrd, "partial_cmp"),
+    list(GrowableVec$RExtend, "len"),
+    list(GrowableVec$RExtend, "is_empty"),
+    list(IntSet$RToVec, "to_vec"),
+    list(IntSet$RToVec, "len"),
+    list(IntSet$RToVec, "is_empty")
+  )
+  for (entry in r_names) {
+    trait <- entry[[1]]
+    name <- entry[[2]]
+    expect_true(is.function(trait[[name]]), info = name)
+    expect_null(trait[[paste0("r_", name)]], info = name)
+  }
 })
 
 # =============================================================================
@@ -138,7 +168,11 @@ test_that("MyFloat - RPartialOrd handles NaN correctly", {
 
   # NaN is not comparable to anything (including itself)
   # Option<T> returning None throws error in miniextendr
-  expect_error(nan$RPartialOrd$partial_cmp(f1), "returned no value")
+  expect_error(
+    nan$RPartialOrd$partial_cmp(f1),
+    "`partial_cmp()` returned no value",
+    fixed = TRUE
+  )
   expect_error(f1$RPartialOrd$partial_cmp(nan), "returned no value")
   expect_error(nan$RPartialOrd$partial_cmp(nan), "returned no value")
 })
@@ -188,7 +222,12 @@ test_that("IntVecIter - basic iteration works", {
   expect_equal(it$RIterator$next_item(), 2L)
   expect_equal(it$RIterator$next_item(), 3L)
   # Option<T> returning None throws error in miniextendr
-  expect_error(it$RIterator$next_item(), "returned no value")
+  # The message names the R method, not the Rust `next`.
+  expect_error(
+    it$RIterator$next_item(),
+    "`next_item()` returned no value",
+    fixed = TRUE
+  )
 })
 
 test_that("IntVecIter - RIterator next_item and count work via trait namespace", {
@@ -368,4 +407,108 @@ test_that("IterableVecIter - collect via RIterator works", {
 
   result <- it_ptr$RIterator$collect_n(10L)
   expect_equal(result, c(100L, 200L, 300L))
+})
+
+# =============================================================================
+# Renamed adapter methods under S3, S4, S7 and R6 (#2020)
+# =============================================================================
+#
+# `hash()`, `clone()`, `default()` and `from_str()` are `r_hash`, `r_clone`,
+# `r_default` and `r_from_str` in Rust. Each class system reaches them under
+# the R name through its own calling convention.
+
+test_that("AdapterNamesS3 - renamed adapter methods keep their R names", {
+  a <- AdapterNamesS3$new(4L)
+  copy <- clone(a)
+  expect_s3_class(copy, "AdapterNamesS3")
+  expect_equal(hash(copy), hash(a))
+  expect_false(hash(a) == hash(AdapterNamesS3$new(5L)))
+
+  zero <- AdapterNamesS3$RDefault$default()
+  expect_s3_class(zero, "AdapterNamesS3")
+  expect_equal(hash(zero), hash(AdapterNamesS3$new(0L)))
+
+  parsed <- AdapterNamesS3$RFromStr$from_str("4")
+  expect_s3_class(parsed, "AdapterNamesS3")
+  expect_equal(hash(parsed), hash(a))
+  expect_error(
+    AdapterNamesS3$RFromStr$from_str("four"),
+    "`from_str()` returned no value",
+    fixed = TRUE
+  )
+
+  expect_false(exists("r_hash", mode = "function"))
+  expect_false(exists("r_clone", mode = "function"))
+})
+
+test_that("AdapterNamesS4 - renamed adapter methods keep their R names", {
+  skip_if_not(isClass("AdapterNamesS4"), "S4 class AdapterNamesS4 not registered")
+  a <- AdapterNamesS4(4L)
+  copy <- s4_trait_RClone_clone(a)
+  expect_true(is(copy, "AdapterNamesS4"))
+  expect_equal(s4_trait_RHash_hash(copy), s4_trait_RHash_hash(a))
+  expect_false(s4_trait_RHash_hash(a) == s4_trait_RHash_hash(AdapterNamesS4(5L)))
+
+  zero <- AdapterNamesS4_RDefault_default()
+  expect_true(is(zero, "AdapterNamesS4"))
+  expect_equal(s4_trait_RHash_hash(zero), s4_trait_RHash_hash(AdapterNamesS4(0L)))
+
+  parsed <- AdapterNamesS4_RFromStr_from_str("4")
+  expect_equal(s4_trait_RHash_hash(parsed), s4_trait_RHash_hash(a))
+  expect_error(
+    AdapterNamesS4_RFromStr_from_str("four"),
+    "`from_str()` returned no value",
+    fixed = TRUE
+  )
+
+  expect_false(exists("s4_trait_RHash_r_hash"))
+  expect_false(exists("AdapterNamesS4_RDefault_r_default"))
+})
+
+test_that("AdapterNamesS7 - renamed adapter methods keep their R names", {
+  a <- AdapterNamesS7(4L)
+  expect_s3_class(a, "miniextendr::AdapterNamesS7")
+  copy <- s7_trait_RClone_clone(a)
+  expect_s3_class(copy, "miniextendr::AdapterNamesS7")
+  expect_equal(s7_trait_RHash_hash(copy), s7_trait_RHash_hash(a))
+  expect_false(s7_trait_RHash_hash(a) == s7_trait_RHash_hash(AdapterNamesS7(5L)))
+
+  zero <- attr(AdapterNamesS7, "RDefault")$default()
+  expect_s3_class(zero, "miniextendr::AdapterNamesS7")
+  expect_equal(s7_trait_RHash_hash(zero), s7_trait_RHash_hash(AdapterNamesS7(0L)))
+
+  parsed <- attr(AdapterNamesS7, "RFromStr")$from_str("4")
+  expect_equal(s7_trait_RHash_hash(parsed), s7_trait_RHash_hash(a))
+  expect_error(
+    attr(AdapterNamesS7, "RFromStr")$from_str("four"),
+    "`from_str()` returned no value",
+    fixed = TRUE
+  )
+
+  expect_false(exists("s7_trait_RHash_r_hash"))
+  expect_null(attr(AdapterNamesS7, "RDefault")$r_default)
+})
+
+test_that("AdapterNamesR6 - renamed adapter methods keep their R names", {
+  a <- AdapterNamesR6$new(4L)
+  copy <- AdapterNamesR6$RClone$clone(a)
+  expect_true(R6::is.R6(copy))
+  expect_s3_class(copy, "AdapterNamesR6")
+  expect_equal(AdapterNamesR6$RHash$hash(copy), AdapterNamesR6$RHash$hash(a))
+  expect_false(AdapterNamesR6$RHash$hash(a) == AdapterNamesR6$RHash$hash(AdapterNamesR6$new(5L)))
+
+  zero <- AdapterNamesR6$RDefault$default()
+  expect_s3_class(zero, "AdapterNamesR6")
+  expect_equal(AdapterNamesR6$RHash$hash(zero), AdapterNamesR6$RHash$hash(AdapterNamesR6$new(0L)))
+
+  parsed <- AdapterNamesR6$RFromStr$from_str("4")
+  expect_equal(AdapterNamesR6$RHash$hash(parsed), AdapterNamesR6$RHash$hash(a))
+  expect_error(
+    AdapterNamesR6$RFromStr$from_str("four"),
+    "`from_str()` returned no value",
+    fixed = TRUE
+  )
+
+  expect_null(AdapterNamesR6$RHash$r_hash)
+  expect_null(AdapterNamesR6$RClone$r_clone)
 })

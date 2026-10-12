@@ -415,3 +415,17 @@ NULL
 #' @param ... Additional arguments.
 #' @name custom_get
 NULL
+
+# Trait generics of the adapter-trait S3 impls (AdapterNamesS3).
+
+#' Hash an object through the RHash adapter trait
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name hash
+NULL
+
+#' Clone an object through the RClone adapter trait
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name clone
+NULL
