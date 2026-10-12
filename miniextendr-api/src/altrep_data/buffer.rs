@@ -137,7 +137,7 @@ impl super::AltLogicalData for AltrepBuffer<crate::RLogical> {
     fn elt(&self, i: usize) -> super::Logical {
         self.values[i].into()
     }
-    fn as_slice(&self) -> Option<&[i32]> {
+    fn as_r_slice(&self) -> Option<&[i32]> {
         // RLogical has the same layout and valid bit patterns as i32.
         Some(unsafe { std::slice::from_raw_parts(self.values.as_ptr().cast(), self.values.len()) })
     }
