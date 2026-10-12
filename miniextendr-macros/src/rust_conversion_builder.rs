@@ -264,7 +264,12 @@ impl RustConversionBuilder {
                 }
             }
         }
-        Some(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW })
+        if crate::type_inspect::is_rooted_reference(ty) {
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            Some(quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW })
+        } else {
+            Some(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW })
+        }
     }
 
     /// The binding of a `Quoted` / `Quosure` parameter (#1835) from the
@@ -438,20 +443,18 @@ impl RustConversionBuilder {
 
     /// Inner implementation of [`Self::build_conversion_split`].
     ///
-    /// `zero_copy_str` controls how a `&str` argument is lowered:
+    /// `root_shared_inputs` selects the main-thread shared-borrow path:
     /// - `true` (main-thread, single-scope): emit a direct zero-copy `&str` borrow
-    ///   over R's CHARSXP pool via `TryFromSexp` — no `String` allocation. Sound
-    ///   because the SEXP outlives the borrow inside the `with_r_unwind_protect`
-    ///   closure, and the `&str`'s lifetime is tied to that scope (storing it beyond
-    ///   the call is a borrow-checker error).
+    ///   over R's CHARSXP pool via `TryFromRoot` — no `String` allocation.
+    ///   Shared native references use the same root-bound path; its lifetime
+    ///   prevents the result from escaping the call as a static reference.
     /// - `false` (worker): convert to an owned `String` on the main thread, then
-    ///   borrow `&str` inside the worker closure — the `String` is `Send`, the
-    ///   borrowed view is not.
+    ///   borrow `&str` inside the worker closure, keeping its owned storage alive.
     fn build_conversion_split_inner(
         &self,
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
-        zero_copy_str: bool,
+        root_shared_inputs: bool,
     ) -> (Vec<TokenStream>, Vec<TokenStream>) {
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
             return (vec![], vec![]);
@@ -496,7 +499,15 @@ impl RustConversionBuilder {
             return (vec![stmt], vec![]);
         }
 
-        if crate::type_inspect::is_rooted_view(ty) {
+        let param_name = crate::naming::ident_name(ident);
+        let rooted_reference = root_shared_inputs
+            && crate::type_inspect::is_rooted_reference(ty)
+            && !self.match_arg_several_ok_params.contains(&param_name)
+            && !self
+                .layered_choice_params
+                .iter()
+                .any(|(name, _)| *name == param_name);
+        if crate::type_inspect::is_rooted_view(ty) || rooted_reference {
             if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
                 return (vec![stmt], vec![]);
             }
@@ -619,8 +630,9 @@ impl RustConversionBuilder {
                     };
                     (vec![stmt], vec![])
                 } else if is_slice {
-                    // &[T]: use TryFromSexp (backed by DATAPTR_RO). The binding is
-                    // annotated with the lifetime-erased type (`&'a [T]` → `&'_ [T]`):
+                    // Worker shared slices and mutable slices still use TryFromSexp.
+                    // Annotate the binding with the lifetime-erased type
+                    // (`&'a [T]` → `&'_ [T]`):
                     // the user's lifetime need not be in scope, and the `Err` arm's
                     // probe needs the error type named.
                     let span = ty.span();
@@ -632,38 +644,20 @@ impl RustConversionBuilder {
                     (vec![stmt], vec![])
                 } else if is_str {
                     let span = ty.span();
-                    if zero_copy_str {
-                        // Main-thread path: borrow R's CHARSXP pool directly via the
-                        // `&'static str` TryFromSexp impl — zero allocation. The SEXP
-                        // is a live wrapper argument for the whole call, so the borrow
-                        // is sound; its lifetime is tied to this scope, so storing it
-                        // beyond the call is a borrow-checker error (no-store guarantee).
-                        // The binding carries the lifetime-erased type, as for slices.
-                        let try_expr = quote_spanned! {span=>
-                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                        };
-                        let binding_ty = crate::type_inspect::erase_lifetimes(ty);
-                        let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
-                        (vec![stmt], vec![])
-                    } else {
-                        // Worker path: convert to owned String, then borrow using the
-                        // Borrow trait. The String moves into the worker closure (it is
-                        // Send); a borrowed view over R's CHARSXP pool is not.
-                        let owned_ident =
-                            quote::format_ident!("__owned_{}", plain, span = binding_span);
-                        // Owned conversion: SEXP -> String
-                        let string_ty: syn::Type = syn::parse_quote!(::std::string::String);
-                        let try_expr = quote_spanned! {span=>
-                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                        };
-                        let owned_stmt =
-                            self.conversion_stmt(try_expr, &ctx, &owned_ident, &string_ty, span);
-                        // Borrow: String -> &str (using Borrow trait)
-                        let borrow_stmt = quote_spanned! {span=>
-                            let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
-                        };
-                        (vec![owned_stmt], vec![borrow_stmt])
-                    }
+                    // Shared main-thread &str returned through TryFromRoot above.
+                    // Workers retain their owned String, borrowed inside the closure.
+                    let owned_ident =
+                        quote::format_ident!("__owned_{}", plain, span = binding_span);
+                    let string_ty: syn::Type = syn::parse_quote!(::std::string::String);
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                    };
+                    let owned_stmt =
+                        self.conversion_stmt(try_expr, &ctx, &owned_ident, &string_ty, span);
+                    let borrow_stmt = quote_spanned! {span=>
+                        let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
+                    };
+                    (vec![owned_stmt], vec![borrow_stmt])
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
                     let span = ty.span();

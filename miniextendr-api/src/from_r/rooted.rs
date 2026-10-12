@@ -9,7 +9,9 @@ use std::borrow::Cow;
 /// This conversion carries the root lifetime that raw [`TryFromSexp`]
 /// cannot express.
 /// Generated wrappers use the rooted `.Call` argument for `StrVec`, `RCow`,
-/// and `Cow` inputs (including the character-vector Cow containers).
+/// and `Cow` inputs (including the character-vector Cow containers). Main-thread
+/// wrappers and trait shims also use it for explicit shared native references
+/// and optional shared references. Worker `&str` inputs still copy to `String`.
 /// A type alias can use this trait explicitly in the function body.
 ///
 /// A root proves liveness, not exclusive access: this trait does not provide
@@ -30,6 +32,18 @@ use std::borrow::Cow;
 ///     Vec::try_from_root(root).unwrap()
 /// }
 /// ```
+/// ```compile_fail
+/// use miniextendr_api::{Root, TryFromRoot};
+/// fn escape<'a>(root: Root<'a>) -> &'static [i32] {
+///     <&[i32]>::try_from_root(root).unwrap()
+/// }
+/// ```
+/// ```compile_fail
+/// use miniextendr_api::{Root, TryFromRoot};
+/// fn escape<'a>(root: Root<'a>) -> Option<&'static str> {
+///     <Option<&str>>::try_from_root(root).unwrap()
+/// }
+/// ```
 pub trait TryFromRoot<'a>: Sized {
     /// The error reported when the R representation is not accepted.
     type Error;
@@ -40,6 +54,36 @@ pub trait TryFromRoot<'a>: Sized {
 
     /// Convert without allowing an R-backed borrow to outlive `root`.
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error>;
+}
+
+/// A shared reference converts as its raw `'static` form does, with the same
+/// checks, errors and alias metadata, and so does a custom `TryFromSexp` impl
+/// for a reference to the user's own type. Only the lifetime changes: the
+/// result borrows from the root, not from `'static`.
+impl<'a, T: ?Sized + 'static> TryFromRoot<'a> for &'a T
+where
+    &'static T: TryFromSexp,
+{
+    type Error = <&'static T as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<NativeBorrow> = <&'static T as TryFromSexp>::NATIVE_BORROW;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        // The root retains the vector, and so the data it holds, for 'a.
+        <&'static T as TryFromSexp>::try_from_sexp(root.get())
+    }
+}
+
+/// `NULL` (and `NA` for strings) is `None`, as in the raw conversion.
+impl<'a, T: ?Sized + 'static> TryFromRoot<'a> for Option<&'a T>
+where
+    Option<&'static T>: TryFromSexp,
+{
+    type Error = <Option<&'static T> as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<NativeBorrow> = <Option<&'static T> as TryFromSexp>::NATIVE_BORROW;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        <Option<&'static T> as TryFromSexp>::try_from_sexp(root.get())
+    }
 }
 
 impl<'a> TryFromRoot<'a> for StrVec<'a> {
@@ -61,13 +105,10 @@ impl<'a, T: RNativeType> TryFromRoot<'a> for RCow<'a, T> {
 
 impl<'a, T: RNativeType> TryFromRoot<'a> for Cow<'a, [T]> {
     type Error = SexpTypeError;
-    const NATIVE_BORROW: Option<NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
+    const NATIVE_BORROW: Option<NativeBorrow> = <&[T] as TryFromRoot<'a>>::NATIVE_BORROW;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        // SAFETY: Root keeps the source live for 'a on R's thread. The
-        // native-slice conversion checks the element type before borrowing.
-        let data: &'a [T] = unsafe { TryFromSexp::try_from_sexp_unchecked(root.get())? };
-        Ok(Cow::Borrowed(data))
+        <&[T]>::try_from_root(root).map(Cow::Borrowed)
     }
 }
 
@@ -75,9 +116,7 @@ impl<'a> TryFromRoot<'a> for Cow<'a, str> {
     type Error = SexpError;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        // As with StrVec, the character data stays reachable through root.
-        let value: &'a str = unsafe { TryFromSexp::try_from_sexp_unchecked(root.get())? };
-        Ok(Cow::Borrowed(value))
+        <&str>::try_from_root(root).map(Cow::Borrowed)
     }
 }
 

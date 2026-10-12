@@ -876,8 +876,9 @@ mutable. This includes `&T` / `&mut T` for `i32`, `f64`, `u8`, `RLogical`, and
 `Rcomplex`, and scalar/slice combinations. Scalar leaves require length one;
 slice leaves require a non-empty vector.
 
-The check follows the actual `TryFromSexp::NATIVE_BORROW` metadata, so type
-aliases retain the same checks. `Vec` and boxed-slice containers, nested lists,
+The check follows the selected conversion trait's `NATIVE_BORROW` metadata
+(`TryFromSexp` or `TryFromRoot`), so type aliases retain the same checks.
+`Vec` and boxed-slice containers, nested lists,
 optional values, forwarding newtypes, `Result<T, ()>`, `Missing<T>`, maps, and
 borrowed `Cow` / `RCow` views forward the relevant metadata. Tuples describe
 each field by position (#2014): a borrowed field is checked against the

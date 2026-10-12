@@ -419,7 +419,7 @@ fn generate_concrete_vtable_shims(
 
                     if let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty) {
                         crate::trait_self_ref::extract(&name, concrete_type, i, mutable, &argc, &argv)
-                    } else if crate::type_inspect::is_rooted_view(&pt.ty) {
+                    } else if crate::type_inspect::is_rooted_view(&pt.ty) || crate::type_inspect::is_rooted_reference(&pt.ty) {
                         crate::trait_self_ref::rooted_view_arg(&name, &pt.ty, i, &argv)
                     } else {
                         let ty = &pt.ty;

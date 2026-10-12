@@ -327,6 +327,32 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         })
 }
 
+/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Keep worker selection separate: `&str` uses owned storage on the worker,
+/// while mutable/custom references still need their existing conversion path.
+pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
+    let ty = option_inner_type(ty).unwrap_or(ty);
+    let syn::Type::Reference(reference) = ty else {
+        return false;
+    };
+    if reference.mutability.is_some() {
+        return false;
+    }
+    match reference.elem.as_ref() {
+        syn::Type::Slice(_) => true,
+        syn::Type::Path(path) if path.qself.is_none() => {
+            path.path.segments.last().is_some_and(|seg| {
+                seg.arguments.is_none()
+                    && matches!(
+                        seg.ident.to_string().as_str(),
+                        "i32" | "f64" | "u8" | "RLogical" | "Rcomplex" | "str"
+                    )
+            })
+        }
+        _ => false,
+    }
+}
+
 /// A `'static` borrowed view parameter (`StrVec<'static>`, `RCow<'static, T>`)
 /// can never be bound: its root is the call's argument slot. Returns the
 /// statement that binds `ident` with a `compile_error!` naming the fix, spanned
