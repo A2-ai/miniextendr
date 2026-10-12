@@ -6,7 +6,52 @@ use std::rc::Rc;
 
 use miniextendr_api::altrep_data::{AltListData, AltrepLen, AltrepSerialize, IterListData};
 use miniextendr_api::altrep_traits::Altrep;
+use miniextendr_api::expression::r_eval_str_global;
 use miniextendr_api::{IntoR, OwnedProtect, SEXP, SexpExt};
+
+/// Run R's collector, which also runs the finalizers it made ready.
+fn gc() {
+    unsafe { r_eval_str_global("invisible(gc())").unwrap() };
+}
+
+/// How many environments from [`watched_env`] R has finalized.
+fn finalized() -> i32 {
+    unsafe { r_eval_str_global("mx_list_iter_finalized").unwrap() }.integer_elt(0)
+}
+
+/// A new environment, held by nothing, whose finalizer counts itself.
+fn watched_env(_: i32) -> SEXP {
+    unsafe {
+        r_eval_str_global(
+            "local({
+                 e <- new.env()
+                 reg.finalizer(e, function(e) mx_list_iter_finalized <<- mx_list_iter_finalized + 1L)
+                 e
+             })",
+        )
+        .unwrap()
+    }
+}
+
+#[test]
+fn yielded_objects_live_as_long_as_an_adapter_holds_them() {
+    r_test_utils::with_r_thread(|| unsafe {
+        r_eval_str_global("mx_list_iter_finalized <- 0L").unwrap();
+        let data = IterListData::from_iter((0..3).map(watched_env as fn(i32) -> SEXP), 3);
+        data.elt(2);
+        gc();
+        assert_eq!(finalized(), 0, "the cache roots every yielded object");
+
+        let copy = data.clone();
+        drop(data);
+        gc();
+        assert_eq!(finalized(), 0, "the clone's cache holds the same objects");
+        drop(copy);
+        gc();
+        assert_eq!(finalized(), 3, "dropping the last adapter releases them");
+        r_eval_str_global("rm(mx_list_iter_finalized)").unwrap();
+    });
+}
 
 #[test]
 fn allocating_prefix_is_rooted_and_clones_advance_independently() {
@@ -64,14 +109,18 @@ fn short_nonfused_source_saves_nulls_and_never_resumes() {
         assert_eq!(state.get().vector_elt(0).integer_elt(0), 7);
         assert!(state.get().vector_elt(1).is_nil());
         assert_eq!(calls.get(), 2);
+        // The state is a list of its own: changing it leaves the cache alone.
+        state.get().set_vector_elt(2, vec![8_i32].into_sexp());
+        assert!(data.elt(2).is_nil());
 
         type Restored = IterListData<std::iter::Empty<SEXP>>;
         let restored = Restored::unserialize(state.get()).unwrap();
-        state.get().set_vector_elt(0, SEXP::nil());
         drop(data);
         miniextendr_api::sys::R_gc();
+        assert_eq!(restored.len(), 3);
         assert_eq!(restored.elt(0).integer_elt(0), 7);
-        assert!(restored.elt(2).is_nil());
+        assert!(restored.elt(1).is_nil());
+        assert_eq!(restored.elt(2).integer_elt(0), 8);
         assert!(Restored::unserialize(SEXP::nil()).is_none());
     });
 }

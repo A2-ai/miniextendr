@@ -46,10 +46,10 @@
 //! cache and never needs to construct `I`. Delegate that trait from a concrete
 //! registered class and select `#[altrep(manual, serialize, duplicate = "clone")]`.
 //! The bridge preserves authoritative R writes in data2 as well as that cache.
-//! The list adapter owns one preserved R list for its cache, rooting each
-//! yielded value before requesting another. Its clone copies that list and
-//! its remaining iterator; serialization saves a realized list. These
-//! operations, including dropping the adapter, belong on R's main thread.
+//! The list adapter keeps its cache in one R list that it roots itself,
+//! storing each yielded value before requesting another. Its clone copies that
+//! list and its remaining iterator; serialization saves the realized list.
+//! These operations, including dropping the adapter, belong on R's main thread.
 //!
 //! ## Submodules
 //!

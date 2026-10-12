@@ -3,29 +3,37 @@
 use std::cell::{Cell, OnceCell, RefCell};
 
 use crate::altrep_data::{AltListData, AltrepLen, AltrepSerialize};
-use crate::{OwnedProtect, Preserved, SEXP, SEXPTYPE, SexpExt};
+use crate::externalptr::PoolRoot;
+use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
 /// Iterator-backed list data with a rooted cache of the yielded R objects.
 ///
 /// Construction does not advance the iterator or allocate R storage. The first
-/// in-bounds read allocates one preserved list of the declared length. Each
-/// yielded object is stored there before the next call to `Iterator::next`,
-/// so allocating iterators can return fresh, unprotected objects. The iterator
-/// remains responsible for rooting any R objects it keeps between calls.
+/// in-bounds read allocates one list of the declared length, and each yielded
+/// object goes into it before the next call to `Iterator::next`. So the
+/// iterator can return fresh, unprotected objects, as in
+/// `(0..n).map(|i| vec![i].into_sexp())`. It remains responsible for rooting
+/// any R objects it keeps between calls.
 ///
-/// Reads generate only the requested prefix. Missing elements of a short
+/// The cache list is rooted in the same pool as owning `ExternalPtr` handles.
+/// The adapter roots it itself, so it is safe before it is attached to an
+/// ALTREP object, and releases it on drop. That pool releases in O(1) in any
+/// order: R's finalizers drop ALTREP owners newest first, whatever order their
+/// caches were created in.
+///
+/// Reads generate only the requested prefix. Elements past the end of a short
 /// source read as R `NULL`; the source is dropped on its first `None` and never
 /// resumed. An infinite source is consumed only up to the declared length.
 ///
-/// `Clone` copies the cache and the remaining iterator without advancing it.
-/// Serialization realizes the finite sequence, including missing `NULL`s;
-/// restoration does not require an instance of `I`. Delegate these data traits
-/// from a concrete `#[derive(AltrepList)]` class with
+/// `Clone` copies the cache list, sharing its elements as R's
+/// `shallow_duplicate()` does, and clones the remaining iterator without
+/// advancing it. Serialization realizes the declared prefix, `NULL`s included,
+/// and restoration needs no `I`. Delegate these data traits from a concrete
+/// `#[derive(AltrepList)]` class with
 /// `#[altrep(manual, serialize, duplicate = "clone")]`.
 ///
-/// Like [`Preserved`], this adapter is `!Send + !Sync`. Access, clone and drop
-/// it on R's main thread. Its cache stays rooted even before it is attached to
-/// an ALTREP owner, and is released when the adapter drops.
+/// The adapter is `!Send + !Sync`: build, read, clone and drop it on R's main
+/// thread.
 ///
 /// ```ignore
 /// use miniextendr_api::{IntoR, altrep_data::IterListData};
@@ -35,7 +43,12 @@ pub struct IterListData<I: Iterator<Item = SEXP>> {
     len: usize,
     iter: RefCell<Option<I>>,
     cached: Cell<usize>,
-    cache: OnceCell<Preserved>,
+    cache: OnceCell<PoolRoot>,
+}
+
+/// An in-bounds list index as R's index type.
+fn r_index(i: usize) -> R_xlen_t {
+    R_xlen_t::try_from(i).expect("ALTREP list length exceeds R_xlen_t")
 }
 
 impl<I: Iterator<Item = SEXP>> IterListData<I> {
@@ -51,13 +64,8 @@ impl<I: Iterator<Item = SEXP>> IterListData<I> {
 
     fn cache(&self) -> SEXP {
         self.cache
-            .get_or_init(|| {
-                let len = crate::R_xlen_t::try_from(self.len)
-                    .expect("ALTREP list length exceeds R_xlen_t");
-                // The new list is preserved immediately, before another R allocation.
-                Preserved::new(unsafe { SEXP::alloc_list(len) })
-            })
-            .as_sexp()
+            .get_or_init(|| unsafe { PoolRoot::new(SEXP::alloc_list(r_index(self.len))) })
+            .get()
     }
 }
 
@@ -80,47 +88,37 @@ impl<I: Iterator<Item = SEXP>> AltListData for IterListData<I> {
         if i >= self.len {
             return SEXP::nil();
         }
-        // Hold the borrow during cache allocation and next(): reentry must
-        // fail before it can advance the same source or initialize a second cache.
+        // Hold the borrow during cache allocation and next(): a reentrant read
+        // fails here instead of advancing the same source twice.
         let mut iter = self.iter.borrow_mut();
         let cache = self.cache();
         while self.cached.get() <= i {
-            match iter.as_mut().and_then(Iterator::next) {
-                Some(value) => {
-                    let value = unsafe { OwnedProtect::new(value) };
-                    cache.set_vector_elt(
-                        crate::R_xlen_t::try_from(self.cached.get()).unwrap(),
-                        value.get(),
-                    );
-                    self.cached.set(self.cached.get() + 1);
-                }
-                None => {
-                    iter.take();
-                    break;
-                }
-            }
+            let Some(value) = iter.as_mut().and_then(Iterator::next) else {
+                *iter = None;
+                break;
+            };
+            // Nothing allocates between next() returning and this store.
+            cache.set_vector_elt(r_index(self.cached.get()), value);
+            self.cached.set(self.cached.get() + 1);
         }
         if self.cached.get() == self.len {
-            iter.take();
+            *iter = None;
         }
-        cache.vector_elt(crate::R_xlen_t::try_from(i).unwrap())
+        cache.vector_elt(r_index(i))
     }
 }
 
 impl<I: Iterator<Item = SEXP> + Clone> Clone for IterListData<I> {
     fn clone(&self) -> Self {
-        let source = self.iter.borrow();
-        let iter = source.clone();
         let cache = OnceCell::new();
         if let Some(values) = self.cache.get() {
-            // A clone must not overwrite slots in the original when their
-            // iterators advance independently. Copy nested list values too.
-            let copy = Preserved::new(unsafe { crate::sys::Rf_duplicate(values.as_sexp()) });
-            let _ = cache.set(copy);
+            // The copy fills its own slots as its iterator advances. R copies
+            // an element both lists hold before changing it.
+            let _ = cache.set(unsafe { PoolRoot::new(values.get().shallow_duplicate()) });
         }
         Self {
             len: self.len,
-            iter: RefCell::new(iter),
+            iter: RefCell::new(self.iter.borrow().clone()),
             cached: Cell::new(self.cached.get()),
             cache,
         }
@@ -131,31 +129,22 @@ impl<I: Iterator<Item = SEXP>> AltrepSerialize for IterListData<I> {
     fn serialized_state(&self) -> SEXP {
         if self.len != 0 {
             self.elt(self.len - 1);
-        } else {
-            self.iter.borrow_mut().take();
         }
-        // Publish an independent list, retaining no writable alias of the cache.
-        unsafe { crate::sys::Rf_duplicate(self.cache()) }
+        // A list of its own, so the caller may change it.
+        self.cache().shallow_duplicate()
     }
 
     fn unserialize(state: SEXP) -> Option<Self> {
         if state.type_of() != SEXPTYPE::VECSXP {
             return None;
         }
-        let state = Preserved::new(state);
-        let restored = Self {
-            len: state.len(),
+        // R hands over a list it just read, so it becomes the cache as is.
+        let len = state.len();
+        Some(Self {
+            len,
             iter: RefCell::new(None),
-            cached: Cell::new(state.len()),
-            cache: OnceCell::new(),
-        };
-        let cache = restored.cache();
-        // Copy into a plain list even when the input is itself ALTREP. Root
-        // each possibly transient Elt result before reading the next one.
-        for i in 0..state.xlength() {
-            let value = unsafe { OwnedProtect::new(state.vector_elt(i)) };
-            cache.set_vector_elt(i, value.get());
-        }
-        Some(restored)
+            cached: Cell::new(len),
+            cache: OnceCell::from(unsafe { PoolRoot::new(state) }),
+        })
     }
 }

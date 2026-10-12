@@ -225,3 +225,37 @@ test_that("a short iterator source saves what its element reads give", {
 })
 
 # endregion
+
+# region: list iterator caches ------------------------------------------------
+
+list_values <- function(n) lapply(seq_len(n) - 1L, function(i) c(i, i + 10L))
+
+test_that("a list iterator cache stays ALTREP through a clone-policy copy", {
+  x <- miniextendr:::altrep_list_cache(4L, 4L)
+  expect_true(is_altrep(x))
+  expect_identical(x[[3L]], c(2L, 12L))
+  expect_identical(x, list_values(4L))
+  y <- x
+  names(y) <- letters[1:4]
+  expect_true(is_altrep(y))
+  expect_null(names(x))
+  expect_identical(unname(y), x)
+})
+
+test_that("a list iterator cache round-trips through serialization", {
+  x <- miniextendr:::altrep_list_cache(4L, 4L)
+  expect_identical(x[[1L]], c(0L, 10L))
+  restored <- unserialize(serialize(x, NULL))
+  expect_true(is_altrep(restored))
+  expect_identical(restored, list_values(4L))
+})
+
+test_that("a short list source saves NULL where it produced nothing", {
+  x <- miniextendr:::altrep_list_cache(2L, 4L)
+  expect_identical(x, c(list_values(2L), list(NULL, NULL)))
+  restored <- unserialize(serialize(x, NULL))
+  expect_true(is_altrep(restored))
+  expect_identical(restored, x)
+})
+
+# endregion
