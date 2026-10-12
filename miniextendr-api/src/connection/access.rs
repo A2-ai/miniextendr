@@ -49,47 +49,50 @@ pub(crate) unsafe fn write_caught(sexp: crate::SEXP, buf: &[u8]) -> std::io::Res
     use crate::{OwnedProtect, SEXP, SexpExt};
     use std::io;
 
-    let eval = |call: RCall| {
-        unsafe { call.eval_base() }.map_err(|error| io::Error::other(error.to_string()))
-    };
-    // writeBin/writeChar otherwise open a closed connection for the call;
-    // keep R_WriteConnection's open-only contract.
-    let open = eval(RCall::new("isOpen").arg(sexp).arg_value("w"))?;
-    if open.as_logical() != Some(true) {
-        return Err(io::Error::new(
-            io::ErrorKind::BrokenPipe,
-            "connection is not open for writing",
-        ));
+    // The caller guarantees R-main-thread access for call construction too.
+    unsafe {
+        let eval = |call: RCall| {
+            call.eval_base()
+                .map_err(|error| io::Error::other(error.to_string()))
+        };
+        // writeBin/writeChar otherwise open a closed connection for the call;
+        // keep R_WriteConnection's open-only contract.
+        let open = eval(RCall::new("isOpen").arg(sexp).arg_value("w"))?;
+        if open.as_logical() != Some(true) {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "connection is not open for writing",
+            ));
+        }
+        let is_text = {
+            let summary = OwnedProtect::new(eval(RCall::new("summary.connection").arg(sexp))?);
+            summary.get().vector_elt(3).string_elt_str(0) == Some("text")
+        };
+        if !is_text {
+            eval(RCall::new("writeBin").arg_value(buf).arg(sexp))?;
+            return Ok(buf.len());
+        }
+        let text = match std::str::from_utf8(buf) {
+            Ok(text) => text,
+            Err(error) => std::str::from_utf8(&buf[..error.valid_up_to()]).expect("a UTF-8 prefix"),
+        };
+        let text = text.split('\0').next().unwrap_or_default();
+        if text.is_empty() {
+            return Ok(0);
+        }
+        let nchars = i32::try_from(text.chars().count())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        let write = RCall::new("writeChar")
+            .arg_value(text)
+            .arg(sexp)
+            .named_value("nchars", nchars)
+            .named_arg("eos", SEXP::nil())
+            .named_value("useBytes", true);
+        // Bypassing text re-encoding is intentional for this byte-write API.
+        // Suppress writeChar's warning about that; errors remain caught by eval.
+        eval(RCall::new("suppressWarnings").arg(write.build()))?;
+        Ok(text.len())
     }
-    let is_text = {
-        let summary =
-            unsafe { OwnedProtect::new(eval(RCall::new("summary.connection").arg(sexp))?) };
-        summary.get().vector_elt(3).string_elt_str(0) == Some("text")
-    };
-    if !is_text {
-        eval(RCall::new("writeBin").arg_value(buf).arg(sexp))?;
-        return Ok(buf.len());
-    }
-    let text = match std::str::from_utf8(buf) {
-        Ok(text) => text,
-        Err(error) => std::str::from_utf8(&buf[..error.valid_up_to()]).expect("a UTF-8 prefix"),
-    };
-    let text = text.split('\0').next().unwrap_or_default();
-    if text.is_empty() {
-        return Ok(0);
-    }
-    let nchars = i32::try_from(text.chars().count())
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
-    let write = RCall::new("writeChar")
-        .arg_value(text)
-        .arg(sexp)
-        .named_value("nchars", nchars)
-        .named_arg("eos", SEXP::nil())
-        .named_value("useBytes", true);
-    // Bypassing text re-encoding is intentional for this byte-write API.
-    // Suppress writeChar's warning about that; errors remain caught by eval.
-    eval(RCall::new("suppressWarnings").arg(unsafe { write.build() }))?;
-    Ok(text.len())
 }
 
 #[cfg(r_4_6)]
