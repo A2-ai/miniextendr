@@ -26,7 +26,7 @@ AdapterNamesS7_clone(.mx_self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
-S7 generic for trait method \code{RHash::r_hash}
+S7 generic for trait method \code{RHash::hash}
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -34,7 +34,7 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-S7 generic for trait method \code{RClone::r_clone}
+S7 generic for trait method \code{RClone::clone}
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

@@ -31,9 +31,9 @@ AdapterNamesS4_RFromStr_from_str(s)
 \item{s}{(undocumented)}
 }
 \description{
-S4 generic for trait method \code{RHash::r_hash}
+S4 generic for trait method \code{RHash::hash}
 
-S4 generic for trait method \code{RClone::r_clone}
+S4 generic for trait method \code{RClone::clone}
 }
 \section{Slots}{
 
