@@ -1,6 +1,7 @@
 # Arguments passed unevaluated (`Quoted`, `Quosure`) and R code evaluated from
 # Rust in the caller's R context (`eval_with_handlers`, #1835; with an R error
-# returned as `Err`, `try_eval_with_handlers`, #1893):
+# returned as `Err`, `try_eval_with_handlers`, #1893), and the arguments of a
+# call read as pairlist entries or as quosures (#1903):
 # src/rust/quoted_tests.rs.
 #
 # Each evaluating fixture holds a Rust value whose destructor counts its runs
@@ -694,6 +695,124 @@ test_that("try_eval_with_handlers: repeated errors and exits leave the session u
 
 # endregion
 
+# region: pairlists and quosures in a call (#1903)
+
+test_that("args() reads a call's arguments, a pairlist's elements and NULL", {
+  out <- miniextendr:::pairlist_args(quote(f(a, b = 2, NULL)))
+  # The function is not an argument, and a NULL argument does not end the walk.
+  expect_length(out, 3L)
+  expect_identical(names(out), c("", "b", ""))
+  expect_identical(out[[1L]], quote(a))
+  expect_identical(out[[2L]], 2)
+  expect_null(out[[3L]])
+
+  expect_identical(miniextendr:::pairlist_args(pairlist(a = 1, 2)), list(a = 1, 2))
+  expect_length(miniextendr:::pairlist_args(NULL), 0L)
+  expect_length(miniextendr:::pairlist_args(quote(f())), 0L)
+
+  e <- tryCatch(miniextendr:::pairlist_args(1:3), error = identity)
+  expect_match(conditionMessage(e), "`args()` reads a call, a pairlist or NULL, not integer", fixed = TRUE)
+})
+
+test_that("set_car() on a shallow_duplicate() of a call changes the copy only", {
+  call <- quote(subset(x, a > 1))
+  expect_identical(
+    miniextendr:::pairlist_replace_first_arg(call, quote(y)),
+    quote(subset(y, a > 1))
+  )
+  expect_identical(call, quote(subset(x, a > 1)))
+})
+
+test_that("Quosure::from_sexp() reads a quosure, looking through nested ones", {
+  skip_if_not_installed("rlang")
+  q <- rlang::quo(TAD)
+  expect_identical(miniextendr:::quosure_from_sexp(q), q)
+  # `new_quosure()` of a quosure nests it; the inner one is what it stands for.
+  expect_identical(miniextendr:::quosure_from_sexp(rlang::new_quosure(q, globalenv())), q)
+  expect_null(miniextendr:::quosure_from_sexp(quote(TAD)))
+  expect_null(miniextendr:::quosure_from_sexp(~TAD))
+  expect_null(miniextendr:::quosure_from_sexp(NULL))
+})
+
+test_that("Quosure::new() wraps a bare expression and returns a quosure as it is", {
+  skip_if_not_installed("rlang")
+  env <- new.env()
+  q <- miniextendr:::quosure_new(quote(a + b), env)
+  expect_true(rlang::is_quosure(q))
+  expect_identical(rlang::quo_get_expr(q), quote(a + b))
+  expect_identical(rlang::quo_get_env(q), env)
+
+  inner <- rlang::quo(TAD)
+  expect_identical(miniextendr:::quosure_new(inner, env), inner)
+  expect_identical(miniextendr:::quosure_new(rlang::new_quosure(inner, env), env), inner)
+
+  e <- tryCatch(miniextendr:::quosure_new(quote(x), NULL), error = identity)
+  expect_match(conditionMessage(e), "takes an environment as `env`, not NULL", fixed = TRUE)
+})
+
+test_that("Quosure::args() reads a call quosure entry by entry, NA and NULL kept", {
+  skip_if_not_installed("rlang")
+  out <- miniextendr:::quosure_args(c(time = TAD, dose = NA, NULL, wt = "WT"))
+  expect_identical(names(out), c("time", "dose", "", "wt"))
+  expect_true(all(vapply(out, rlang::is_quosure, logical(1L))))
+  expect_identical(
+    lapply(out, rlang::quo_get_expr),
+    list(time = quote(TAD), dose = NA, NULL, wt = "WT")
+  )
+  here <- environment()
+  for (q in out) expect_identical(rlang::quo_get_env(q), here)
+
+  # Not a call: nothing to read entry by entry.
+  expect_null(miniextendr:::quosure_args(TAD))
+  expect_identical(miniextendr:::gc_stress_quosure_args(), 4L)
+})
+
+test_that("an embedded quosure comes back as it is, and tidyselect takes it", {
+  skip_if_not_installed("rlang")
+  skip_if_not_installed("tidyselect")
+  df <- data.frame(TAD = 1, DOSE = 2)
+
+  inner <- rlang::quo(TAD)
+  out <- miniextendr:::quosure_args(c(time = !!inner, dose = NA))
+  expect_identical(out$time, inner)
+
+  # A wrapper forwarding with `c(time = {{ t }})` leaves a quosure in the call.
+  fwd <- function(t) miniextendr:::quosure_args(c(time = {{ t }}))
+  out <- fwd(TAD)
+  expect_identical(rlang::quo_get_expr(out$time), quote(TAD))
+  expect_identical(tidyselect::eval_select(out$time, df), c(TAD = 1L))
+  # Wrapped again, it would be a formula tidyselect refuses.
+  expect_error(
+    tidyselect::eval_select(rlang::new_quosure(out$time, globalenv()), df),
+    "Formula shorthand"
+  )
+})
+
+test_that("a role map: NA and NULL entries kept, the others selected, forwarded or not", {
+  skip_if_not_installed("rlang")
+  skip_if_not_installed("tidyselect")
+  df <- data.frame(TAD = 1, DOSE = 2, WT = 3)
+  expect_identical(
+    miniextendr:::quosure_roles(df, c(time = TAD, dose = NA, wt = NULL)),
+    list(time = c(TAD = 1L), dose = NA, wt = NULL)
+  )
+  roles_of <- function(data, t) {
+    miniextendr:::quosure_roles(data, c(time = {{ t }}, dose = DOSE, wt = NA))
+  }
+  expect_identical(
+    roles_of(df, TAD),
+    list(time = c(TAD = 1L), dose = c(DOSE = 2L), wt = NA)
+  )
+  expect_length(miniextendr:::quosure_roles(df), 0L)
+
+  e <- tryCatch(miniextendr:::quosure_roles(df, TAD), error = identity)
+  expect_match(conditionMessage(e), "`cols` must be a call", fixed = TRUE)
+  e <- tryCatch(miniextendr:::quosure_roles(df, c(time = ZZ)), error = identity)
+  expect_s3_class(e, "vctrs_error_subscript_oob")
+})
+
+# endregion
+
 # region: GC stress
 
 test_that("unevaluated arguments and R exits survive gctorture", {
@@ -778,6 +897,21 @@ test_that("Quosure evaluation survives gctorture", {
     out <- miniextendr:::quosure_eval_tidy(tbl, a * 2)
     e <- tryCatch(miniextendr:::quosure_eval_tidy(tbl, stop("gc")), error = identity)
     if (identical(out, c(2, 4, 6, 8, 10)) && identical(conditionMessage(e), "gc")) {
+      ok <- ok + 1L
+    }
+  }
+  gctorture(FALSE)
+  expect_identical(ok, 3L)
+})
+
+test_that("Quosure::args() holds its quosures under gctorture", {
+  skip_gc_stress_if_disabled()
+  skip_if_not_installed("rlang")
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  ok <- 0L
+  for (i in seq_len(3L)) {
+    if (identical(miniextendr:::gc_stress_quosure_args(), 4L)) {
       ok <- ok + 1L
     }
   }
