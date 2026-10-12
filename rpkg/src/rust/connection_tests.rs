@@ -485,7 +485,9 @@ pub fn rust_get_stderr() -> miniextendr_api::connection::RStderr {
 /// Useful for capturing stderr output from Rust code via `capture.output()`.
 /// @param message Character string to emit on stderr.
 #[cfg(feature = "connections")]
-#[miniextendr]
+// R's connections are written on R's main thread: stay there under
+// `worker-default`.
+#[miniextendr(no_worker)]
 pub fn rust_write_to_stderr(message: String) {
     use miniextendr_api::connection::RStderr;
     use std::io::Write;

@@ -354,7 +354,9 @@ pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
 /// is built, survives a collection; then a clone-policy copy, the only root
 /// of its sidecar once the original is unprotected, survives one too. No
 /// arguments, for the no-arg gctorture sweep (#430).
-#[miniextendr(noexport)]
+// Sidecar accessors run on R's main thread only: stay there under
+// `worker-default`.
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_altrep_sidecar() {
     use crate::altrep_sidecar_tests::{
         SidecarVector, altrep_cloned_sidecar_ints, altrep_cloned_sidecar_tag, make_sidecar_altrep,
@@ -4326,7 +4328,8 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 /// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
 /// (#430): it holds no SEXPs across allocations itself, but exercising the worker
 /// dispatch under GC pressure is cheap insurance.
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: it calls `run_on_worker` itself.
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_worker_roundtrip() -> i32 {
     use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
