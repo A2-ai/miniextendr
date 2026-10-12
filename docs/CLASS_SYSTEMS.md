@@ -1056,34 +1056,95 @@ paths.
 
 ## Multiple Impl Blocks
 
-A type can have more than one `#[miniextendr]` impl block when every block has
-a distinct `label` (lint rules MXL009 and MXL010):
+A type's methods can be split over several `#[miniextendr]` impl blocks, in one
+file or across modules, in every class system. The blocks need no names: the
+wrapper writer merges them per Rust type, defines the class once and attaches
+the methods of every block to it (#1776).
 
 ```rust
-#[miniextendr(s4, label = "core")]
-impl MyType {
-    pub fn new() -> Self { ... }
-    pub fn value(&self) -> i32 { ... }
+/// A counter.
+#[miniextendr(r6)]
+impl Counter {
+    pub fn new(start: i32) -> Self { Counter { value: start } }
+    pub fn value(&self) -> i32 { self.value }
 }
 
-#[miniextendr(s4, label = "math")]
-impl MyType {
-    pub fn add(&mut self, x: i32) { ... }
-    pub fn multiply(&mut self, x: i32) { ... }
+#[miniextendr(r6)]
+impl Counter {
+    pub fn add(&mut self, by: i32) { self.value += by }
+
+    #[miniextendr(r6(active))]
+    pub fn doubled(&self) -> i32 { self.value * 2 }
+
+    #[miniextendr(r6(private))]
+    pub fn checked(&self) -> bool { self.value >= 0 }
+
+    pub fn origin() -> i32 { 0 }
 }
 ```
 
-The label keeps the generated Rust names of the blocks apart, but each block
-still generates the whole R class (#1776). Env, R6 and S7 blocks each define
-the class object (`MyType <- new.env(...)`, `R6::R6Class(...)`,
-`S7::new_class(...)`), and so does an S3 block that has the constructor or whose
-class is named after the type. A second definition would replace the first,
-together with the methods bound to it, so the wrapper writer stops the install
-with an error naming both blocks. Until the blocks are merged per type (#1776),
-keep such a class in one impl block. S4 declares its class with
-`methods::setClass()` and vctrs with functions only, so their blocks define no
-class object and pass this check; no test covers yet whether their blocks
-combine correctly at runtime (#1776).
+```r
+c <- Counter$new(5L)
+c$add(2L)
+c$value()       # 7
+c$doubled       # 14
+Counter$origin() # 0
+```
+
+One block defines the class: it writes the class object (`new.env()`,
+`R6::R6Class()`, `methods::setClass()`, `S7::new_class()`), the constructor,
+and what the class options add (the `$` / `[[` field methods of
+`r_data_accessors`, R6's `$lock()`). Every block adds its methods, static
+methods and `as.<class>()` coercions, in source order. R6 private methods,
+`finalize` and `deep_clone` are `$set("private", ...)` calls, so any block can
+have them; an R6 active binding's `@field` and a lifecycle import of any block
+go to the class's roxygen block.
+
+Every block's doc comment documents the class. The class's roxygen block has
+the defining block's impl doc comment (for S3 and vctrs, with the
+constructor's), then each other block's, in source order:
+
+- Prose and the tags roxygen2 collects (`@description`, `@details`,
+  `@section`, `@seealso`, `@family`, `@importFrom`, ...) add up; each block's
+  prose becomes another `@description` paragraph. A tag repeated exactly, such
+  as one `@importFrom` or `@family` on two blocks, is written once. (`@return`,
+  `@examples` and `@export` belong on the methods, as for one block, and so
+  does `@param` outside R6.)
+- A generated line gives way to the same tag on another block: the
+  `@title <Class> <system> Class` default, `@name`, `@rdname`, `@export`, a
+  constructor `@param` filler and an R6 active binding's generated `@field`. So
+  when the defining block has no doc comment, another block can title the class.
+- A class has one title: two blocks with different `@title`s stop the install.
+- The defining block decides the class's page. A `@name` or `@rdname` on
+  another block must repeat the defining block's (its own, or the default
+  `<Class>`); a different one stops the install, because the defining block's
+  generated documentation was written for its page. Put page tags on the
+  defining block.
+
+Each method's doc comment documents that method, whichever block has it. An R6
+impl-level `@param`, which roxygen2 hands down to the class's methods, spares
+the methods of its own block their `(no documentation available)` placeholder;
+a method in another block documents the argument itself (#2066).
+
+The blocks of a type follow four rules, checked when the wrapper writer
+assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the
+install with an error naming the blocks:
+
+- **One block defines the class.** Only one block may have the constructor and
+  S7 properties (`s7(getter)`, `s7(setter)`, `s7(validate)`). That block
+  defines the class; without one, the first block in source order does.
+- **The doc comments agree on the title and page**: one `@title` value, and a
+  `@name` / `@rdname` only as the defining block has it (see above).
+- **The blocks agree on the class settings**: the class system with its options
+  (`r6(lock_class = TRUE)`, `s3(r_data_accessors)`, `vctrs(kind = ...)`, ...),
+  `class = "..."`, `internal` / `noexport`, and the `@noRd` /
+  `@keywords internal` tags. These decide how every block's methods are
+  generated, documented and exported, so each block spells them; the class
+  docs have them once. `strict` and `preconditions` are per-block method
+  defaults and may differ.
+- **No two blocks bind one member**: an env or R6 member, an R6 static method,
+  an S4 or S7 method of the class. Rust already rejects two methods of one name
+  (E0592); this catches two R names made equal with `r_name = "..."`.
 
 ## Names the wrapper writer rejects
 
@@ -1094,22 +1155,26 @@ when the wrapper writer assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`,
 so the install stops there, with an error naming both producers (the Rust impl,
 function or sidecar field, with its source position):
 
-- **Two Rust types with one R class name**, through `class = "..."`. Their
-  class objects and methods would overwrite each other.
+- **Two Rust types with one R class name**, through `class = "..."` or two
+  types of one name in different modules. Their class objects and methods
+  would overwrite each other.
 - **A class object and a function of the same name**: the Env or S3 class
   environment (`Type <- new.env(...)`), `R6::R6Class(...)` or
   `S7::new_class(...)`, against a free `#[miniextendr]` function, an S7
   shortcut or a sidecar accessor. S4's `methods::setClass()` binds no name, so
   the S4 constructor function shares the class name as intended.
-- **A class object defined twice**, by two labelled impl blocks of one type
-  (see [Multiple Impl Blocks](#multiple-impl-blocks)).
+- **Impl blocks of one type that break the rules** of
+  [Multiple Impl Blocks](#multiple-impl-blocks): two blocks that each define
+  the class, blocks with different class settings, or a member bound by two
+  blocks.
 - **A generic and a plain binding of the same name.** The S3, S4 and S7
   generics that methods attach to are created inside `if (...)` guards. Several
   classes may declare the same generic so their methods share dispatch, but a
   function or class object with the generic's name would replace it or be
   replaced by it.
 - **Two functions of the same name**, such as an S7 shortcut and a sidecar
-  accessor or a free function (#991).
+  accessor or a free function (#991), including two blocks of one type whose
+  S3 methods or static methods get one name.
 
 Rename the function or method with `r_name = "..."`, or the class with
 `class = "..."`.

@@ -62,8 +62,6 @@ pub fn should_skip_dir(path: &Path) -> bool {
 pub struct MiniextendrImplAttrs {
     /// Class system (e.g., "r6", "s3", "s4", "s7", or empty for env)
     pub class_system: Option<String>,
-    /// Optional label for distinguishing multiple impl blocks of the same type
-    pub label: Option<String>,
     /// Has `internal` flag
     pub internal: bool,
     /// Has `noexport` flag
@@ -75,7 +73,7 @@ pub struct MiniextendrImplAttrs {
 /// The class-system identifiers an impl-level `#[miniextendr(...)]` names.
 const CLASS_SYSTEMS: [&str; 6] = ["env", "r6", "s3", "s4", "s7", "vctrs"];
 
-/// Parse the #[miniextendr(...)] attribute to extract class system, label, and flags.
+/// Parse the #[miniextendr(...)] attribute to extract class system and flags.
 pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
     let mut result = MiniextendrImplAttrs::default();
 
@@ -105,13 +103,7 @@ pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs
                     continue;
                 }
 
-                if part.starts_with("label") {
-                    if let Some(eq_pos) = part.find('=') {
-                        let value = part[eq_pos + 1..].trim();
-                        let value = value.trim_matches('"').trim_matches('\'');
-                        result.label = Some(value.to_string());
-                    }
-                } else if part == "internal" {
+                if part == "internal" {
                     result.internal = true;
                 } else if part == "noexport" {
                     result.noexport = true;

@@ -122,7 +122,6 @@ The `#[miniextendr]` attribute supports many options:
 #[miniextendr(s3)]                   // S3 methods
 #[miniextendr(s4)]                   // S4 class
 #[miniextendr(s7)]                   // S7 class
-#[miniextendr(label = "name")]       // Label for multiple impl blocks
 ```
 
 ---

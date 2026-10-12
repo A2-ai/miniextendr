@@ -11,7 +11,8 @@
 
 use super::ParsedImpl;
 
-/// Generates the complete R wrapper string for an S3-style class.
+/// Generates the R wrapper of an S3-style class, in the parts the wrapper
+/// writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces the following R code:
 /// - Constructor: `new_<class>(...)` function that calls the Rust `new` constructor
@@ -27,7 +28,10 @@ use super::ParsedImpl;
 ///
 /// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
-pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The constructor and the field methods are the head; the S3 methods and the
+/// static methods are the members; the class environment is the tail.
+pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
         should_export_from_tags,
@@ -55,32 +59,27 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // the package's own tests) couldn't dispatch on the type at all. See #431.
     let should_register_s3method = !parsed_impl.noexport;
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
+    // The class block is the constructor's; a block without one still
+    // documents the class with its impl docs.
+    crate::roxygen::push_roxygen_tags(&mut w.class_docs, class_doc_tags);
 
     // Constructor with combined class and constructor documentation
     if let Some(ctx) = parsed_impl.constructor_context() {
+        w.member_names.push(format!("`{class_name}$new`"));
         lines.push(ctx.source_comment(type_ident));
         let mut ctor_doc_tags = Vec::new();
         ctor_doc_tags.extend(class_doc_tags.iter().cloned());
         ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
         let ctor_choice_docs = ctx.choice_param_docs();
 
-        lines.extend(
-            ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3")
-                .with_ctor_params(&ctx.params, &ctor_choice_docs)
-                .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-                .build(),
-        );
-        // Inject lifecycle imports from methods into class-level roxygen block
-        if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-            parsed_impl
-                .methods
-                .iter()
-                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-        ) {
-            let insert_pos = lines.len().saturating_sub(1);
-            lines.insert(insert_pos, format!("#' {}", lc_import));
-        }
+        let class_docs = ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3")
+            .with_ctor_params(&ctx.params, &ctor_choice_docs)
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+        lines.extend(class_docs.build());
+        w.class_docs = class_docs.docs();
+        w.mark_class_doc_lines(&mut lines, parsed_impl);
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
         for check in ctx.precondition_checks() {
             lines.push(format!("  {}", check));
@@ -110,6 +109,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             should_register_s3method,
         ));
     }
+    w.head = std::mem::take(&mut lines);
 
     // Instance methods as S3 generics + methods. Their conditions report the
     // generic's call, resolved from the method frame on a raise (#1851).
@@ -280,6 +280,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("}".to_string());
         lines.push(String::new());
     }
+    w.members = std::mem::take(&mut lines);
 
     // The class environment holds `Class$new()` and the trait namespaces
     // (`Type$Trait`, named by the Rust type, for a trait's static methods and
@@ -319,5 +320,12 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    lines.join("\n")
+    w.tail = lines;
+    w
+}
+
+/// The S3 class as one string: [`generate_s3_class`], rendered.
+#[cfg(test)]
+pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_s3_class(parsed_impl).render()
 }

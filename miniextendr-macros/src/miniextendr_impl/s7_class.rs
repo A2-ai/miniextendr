@@ -307,7 +307,7 @@ fn emit_s7_local_generic(
 
 /// Roxygen prose for the fast-path dispatch shortcut advisory block.
 ///
-/// Shared between the inherent-impl S7 generator ([`generate_s7_r_wrapper`])
+/// Shared between the inherent-impl S7 generator ([`generate_s7_class`])
 /// and the trait-impl S7 generator
 /// (`miniextendr_impl_trait::r_wrappers::generate_trait_s7_r_wrapper`) so both
 /// emit identical guidance. Returns `#'`-prefixed lines (no trailing `@param`
@@ -445,7 +445,8 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
     }
 }
 
-/// Generates the complete R wrapper string for an S7-style class.
+/// Generates the R wrapper of an S7-style class, in the parts the wrapper
+/// writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces the following R code:
 /// - Class definition: `ClassName <- S7::new_class("ClassName", ...)` with a `.ptr` property
@@ -470,7 +471,10 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// - S7 parent/abstract: optional `parent` and `abstract = TRUE` in class definition
 ///
 /// Roxygen2 documentation and `@importFrom S7 ...` tags are generated automatically.
-pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The class definition, with its properties and constructor, is the head; the
+/// methods, static methods and `convert()` methods are the members.
+pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
@@ -487,6 +491,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let should_export =
         should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
 
     // Collect S7 property getters, setters, and validators
@@ -602,13 +607,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         import_parts.push("new_property");
     }
 
-    // Check if any methods use S7 convert (convert_from or convert_to)
+    // The `convert()` methods bind S7's `convert` by name: the class docs
+    // import it for whichever impl block of the type has them.
     let has_convert_methods = parsed_impl.methods.iter().any(|m| {
         m.should_include()
             && (m.method_attrs.s7.convert_from.is_some() || m.method_attrs.s7.convert_to.is_some())
     });
     if has_convert_methods {
-        import_parts.push("convert");
+        w.class_doc_lines
+            .push("#' @importFrom S7 convert".to_string());
     }
 
     // Collect unique S7 class types used in properties
@@ -634,22 +641,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let imports = format!("@importFrom S7 {}", import_parts.join(" "));
 
     // Class definition with documentation
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(&imports)
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
-    // Inject lifecycle imports from methods into class-level roxygen block
-    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl
-            .methods
-            .iter()
-            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-    ) {
-        let insert_pos = lines.len().saturating_sub(1);
-        lines.insert(insert_pos, format!("#' {}", lc_import));
-    }
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
+        .with_imports(&imports)
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
+    w.mark_class_doc_lines(&mut lines, parsed_impl);
 
     // Document constructor params — include constructor @param tags and auto-generate
     // for undocumented ones. Class-level @param tags are already emitted by ClassDocBuilder;
@@ -685,9 +682,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     // Choice param: the literal `choices(...)` line, or a
                     // match_arg placeholder rewritten at wrapper write time to
                     // the rendered choice description (#210).
-                    lines.push(format!("#' @param {} {}", param_name, doc));
+                    lines.push(super::class_default(format!(
+                        "#' @param {} {}",
+                        param_name, doc
+                    )));
                 } else {
-                    lines.push(format!("#' @param {} (undocumented)", param_name));
+                    lines.push(super::class_default(format!(
+                        "#' @param {} (undocumented)",
+                        param_name
+                    )));
                 }
             }
         }
@@ -697,10 +700,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
             && !crate::roxygen::joins_author_topic(class_doc_tags, Some(&class_name))
         {
-            lines.push(
-                "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
-                    .to_string(),
-            );
+            lines.push(super::class_default(
+                "#' @param .ptr Internal pointer (used by static methods, not for direct use).",
+            ));
         }
 
         // @prop tags for impl-block S7 properties (getter/setter pairs).
@@ -807,7 +809,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(ref validator_ident) = prop.validator_method_ident
             && let Some(validator_method) = find_method(validator_ident)
         {
-            let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
+            let ctx = MethodContext::new(validator_method, type_ident);
             // Validator is called with just the value, not self.
             // Use null_call_attribution: this runs inside S7's dispatch lambda, so
             // sys.call() would name S7 internals, not the user's call site.
@@ -822,7 +824,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(ref getter_ident) = prop.getter_method_ident
             && let Some(getter_method) = find_method(getter_ident)
         {
-            let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
+            let ctx = MethodContext::new(getter_method, type_ident);
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let getter_call = ctx.instance_call_null_attr("self@.ptr");
             if let Some(ref msg) = prop.deprecated {
@@ -840,7 +842,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if let Some(ref setter_ident) = prop.setter_method_ident
             && let Some(setter_method) = find_method(setter_ident)
         {
-            let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
+            let ctx = MethodContext::new(setter_method, type_ident);
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let setter_call = ctx.instance_call_null_attr("self@.ptr");
 
@@ -939,6 +941,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.push(")".to_string());
     lines.push(String::new());
+    w.head = std::mem::take(&mut lines);
 
     // Instance methods as S7 generics + methods
     // Skip methods that are property getters/setters (they're handled as S7 properties)
@@ -966,6 +969,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_formals = ctx.instance_formals_with_receiver(receiver, include_dots);
         let signature =
             s7_method_signature(&class_name, dispatch_args.len(), method_attrs.s7.fallback);
+        w.member_names.push(format!(
+            "the S7 method of `{generic_name}` for `{signature}`"
+        ));
 
         // Emit the generic-doc marker BEFORE the source comment so that the
         // write-time pass can place the standalone Rd page before the method block.
@@ -1241,7 +1247,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_from (static method pattern)
         // S7 convert signature is function(from, to) - one parameter for the source object
         if let Some(ref from_type) = attrs.s7.convert_from {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+            w.member_names.push(format!(
+                "the S7 `convert()` method from `{from_type}` to `{class_name}`"
+            ));
+            let ctx = MethodContext::new(method, type_ident)
                 .with_impl_preconditions(parsed_impl.preconditions);
 
             // Documentation for convert method (skip if class has @noRd)
@@ -1308,7 +1317,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_to (instance method pattern)
         // S7 convert signature is function(from, to) - self becomes from
         if let Some(ref to_type) = attrs.s7.convert_to {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+            w.member_names.push(format!(
+                "the S7 `convert()` method from `{class_name}` to `{to_type}`"
+            ));
+            let ctx = MethodContext::new(method, type_ident)
                 .with_impl_preconditions(parsed_impl.preconditions);
 
             // Documentation for convert method (skip if class has @noRd)
@@ -1369,5 +1381,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    lines.join("\n")
+    w.members = lines;
+    w
+}
+
+/// The S7 class as one string: [`generate_s7_class`], rendered.
+#[cfg(test)]
+pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_s7_class(parsed_impl).render()
 }

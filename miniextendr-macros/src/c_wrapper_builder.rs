@@ -214,9 +214,11 @@ pub struct CWrapperContext {
     pub r_name: Option<String>,
     /// Identifier for the generated C wrapper (e.g., `C_<crate>_foo` or `C_<crate>_Type__method`).
     pub c_ident: syn::Ident,
-    /// Identifier of the `R_WRAPPER_*` or `R_WRAPPERS_IMPL_*` const that holds the
-    /// generated R wrapper code string. Used for rustdoc cross-references.
-    pub r_wrapper_const: syn::Ident,
+    /// Identifier of the `R_WRAPPER_*` const that holds the generated R wrapper
+    /// code string, for a rustdoc cross-reference. `None` for impl methods: the
+    /// class's wrapper parts are registered in an anonymous `const _` per impl
+    /// block, which has no path to link to.
+    pub r_wrapper_const: Option<syn::Ident>,
     /// Function parameters (excluding the `self` receiver for methods).
     /// Each parameter becomes a `SEXP` argument in the C wrapper signature.
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
@@ -1397,18 +1399,17 @@ impl CWrapperContext {
     /// Generates a rustdoc comment string for the C wrapper function.
     ///
     /// Includes the original function/method name, thread strategy label, and a
-    /// cross-reference to the R wrapper constant.
+    /// cross-reference to the R wrapper constant when there is one.
     fn generate_doc_comment(&self, thread_info: &str) -> String {
-        if let Some(ref type_ident) = self.type_context {
-            format!(
-                "C wrapper for [`{}::{}`] ({}). See [`{}`] for R wrapper.",
-                type_ident, self.fn_ident, thread_info, self.r_wrapper_const
-            )
-        } else {
-            format!(
-                "C wrapper for [`{}`] ({}). See [`{}`] for R wrapper.",
-                self.fn_ident, thread_info, self.r_wrapper_const
-            )
+        let item = match self.type_context {
+            Some(ref type_ident) => format!("{}::{}", type_ident, self.fn_ident),
+            None => self.fn_ident.to_string(),
+        };
+        match self.r_wrapper_const {
+            Some(ref r_wrapper_const) => format!(
+                "C wrapper for [`{item}`] ({thread_info}). See [`{r_wrapper_const}`] for R wrapper."
+            ),
+            None => format!("C wrapper for [`{item}`] ({thread_info})."),
         }
     }
 }
@@ -1416,8 +1417,8 @@ impl CWrapperContext {
 /// Builder for [`CWrapperContext`].
 ///
 /// Created via [`CWrapperContext::builder`]. All fields except `fn_ident` and `c_ident`
-/// (provided at construction) default to empty/false/None. Required fields (`call_expr`,
-/// `r_wrapper_const`) must be set before calling [`build`](Self::build) or it will panic.
+/// (provided at construction) default to empty/false/None. The required `call_expr`
+/// must be set before calling [`build`](Self::build) or it will panic.
 ///
 /// Optional fields like `thread_strategy` and `return_handling` are auto-detected from
 /// the function signature if not explicitly set.
@@ -1428,7 +1429,7 @@ pub struct CWrapperContextBuilder {
     r_name: Option<String>,
     /// C wrapper function identifier (set at construction).
     c_ident: syn::Ident,
-    /// R wrapper constant identifier for doc cross-references. **Required.**
+    /// R wrapper constant identifier for doc cross-references, if the wrapper has one.
     r_wrapper_const: Option<syn::Ident>,
     /// Function parameters (excluding `self`). Defaults to empty.
     inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
@@ -1494,8 +1495,8 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Sets the R wrapper constant identifier (e.g., `R_WRAPPER_my_func`).
-    /// **Required** -- [`build`](Self::build) panics if not set.
+    /// Sets the R wrapper constant identifier (e.g., `R_WRAPPER_my_func`) the
+    /// wrapper's rustdoc links to.
     pub fn r_wrapper_const(mut self, ident: syn::Ident) -> Self {
         self.r_wrapper_const = Some(ident);
         self
@@ -1720,14 +1721,11 @@ impl CWrapperContextBuilder {
     ///
     /// # Panics
     ///
-    /// Panics if `call_expr` or `r_wrapper_const` was not set.
+    /// Panics if `call_expr` was not set.
     pub fn build(self) -> CWrapperContext {
         let call_expr = self
             .call_expr
             .expect("call_expr is required for CWrapperContext");
-        let r_wrapper_const = self
-            .r_wrapper_const
-            .expect("r_wrapper_const is required for CWrapperContext");
 
         // Detect thread strategy if not explicitly set.
         // Main thread is the default for all methods (safer, simpler execution model).
@@ -1742,7 +1740,7 @@ impl CWrapperContextBuilder {
             fn_ident: self.fn_ident,
             r_name: self.r_name,
             c_ident: self.c_ident,
-            r_wrapper_const,
+            r_wrapper_const: self.r_wrapper_const,
             inputs: self.inputs,
             output: self.output,
             pre_call: self.pre_call,
