@@ -3,7 +3,7 @@
 //! This module handles `#[miniextendr]` when applied to structs or enums (not functions,
 //! impl blocks, or traits). It dispatches to the correct derive helper based on:
 //!
-//! - Field count (1-field → ALTREP by default, multi-field → ExternalPtr by default)
+//! - Item shape (structs → ExternalPtr, fieldless enums → RFactor by default)
 //! - Explicit mode attributes (`list`, `dataframe`, `externalptr`, `match_arg`, `factor`)
 //! - Preference markers (`prefer = "..."`)
 //!
@@ -11,13 +11,13 @@
 //!
 //! | Syntax | Result |
 //! |---|---|
-//! | `#[miniextendr]` on 1-field struct | ALTREP (backwards compat) |
+//! | `#[miniextendr]` on struct | ExternalPtr |
 //! | `#[miniextendr(externalptr)]` on 1-field struct | ExternalPtr |
 //! | `#[miniextendr(list)]` on 1-field struct | List conversion |
-//! | `#[miniextendr(class = "...", base = "...")]` on 1-field struct | ALTREP (explicit) |
+//! | `#[miniextendr(class = "...", base = "...")]` on 1-field struct | Error: use an ALTREP derive |
 //! | `#[miniextendr]` on multi-field struct | ExternalPtr |
 //! | `#[miniextendr(list)]` on multi-field struct | IntoList + TryFromList + PreferList |
-//! | `#[miniextendr(dataframe)]` on multi-field struct | DataFrameRow + PreferDataFrame |
+//! | `#[miniextendr(dataframe)]` on struct | IntoList + DataFrameRow (companion has IntoR) |
 //! | `#[miniextendr(prefer = "...")]` on struct | Prefer* marker |
 //! | `#[miniextendr]` on fieldless enum | RFactor |
 //! | `#[miniextendr(match_arg)]` on fieldless enum | MatchArg |
@@ -35,7 +35,7 @@ struct StructEnumAttrs {
     list: bool,
     /// Derive `DataFrameRow` for struct-to-data-frame conversion.
     dataframe: bool,
-    /// Force `ExternalPtr` derive even on single-field structs (which default to ALTREP).
+    /// Explicitly select the `ExternalPtr` derive.
     externalptr: bool,
     /// Derive `MatchArg` for enum (single-selection from R character scalar).
     match_arg: bool,
@@ -277,46 +277,38 @@ fn expand_struct(
         .into();
     }
 
-    // Convert to DeriveInput for the derive helpers
+    // Emit actual derives so rustc registers their helper attributes (#2024).
+    // Calling their implementations directly would leave unclaimed helpers on
+    // the struct; stripping them would hide options from other derives.
+    if effective_list {
+        return quote::quote! {
+            #[derive(
+                ::miniextendr_api::IntoList,
+                ::miniextendr_api::TryFromList,
+                ::miniextendr_api::PreferList,
+            )]
+            #item_struct
+        }
+        .into();
+    }
+
+    if effective_dataframe {
+        // DataFrame mode currently also derives IntoList for individual rows.
+        // DataFrameRow itself supplies the companion's IntoR implementation.
+        return quote::quote! {
+            #[derive(::miniextendr_api::IntoList, ::miniextendr_api::DataFrameRow)]
+            #item_struct
+        }
+        .into();
+    }
+
+    // The ExternalPtr helper needs the native preference flag below.
     let derive_input: syn::DeriveInput = match syn::parse(item.clone()) {
         Ok(d) => d,
         Err(e) => return e.into_compile_error().into(),
     };
-    // Strip #[miniextendr(...)] from the DeriveInput attrs — derive helpers don't expect them
     let derive_input = strip_miniextendr_attrs(derive_input);
-
     let item_ts: proc_macro2::TokenStream = item.into();
-
-    if effective_list {
-        // List mode: IntoList + TryFromList + PreferList
-        let result = (|| -> syn::Result<proc_macro2::TokenStream> {
-            let into_list = crate::list_derive::derive_into_list(derive_input.clone())?;
-            let try_from_list = crate::list_derive::derive_try_from_list(derive_input.clone())?;
-            let prefer_list = crate::list_derive::derive_prefer_list(derive_input)?;
-            Ok(quote::quote! {
-                #item_ts
-                #into_list
-                #try_from_list
-                #prefer_list
-            })
-        })();
-        return result.unwrap_or_else(|e| e.into_compile_error()).into();
-    }
-
-    if effective_dataframe {
-        // DataFrame mode: IntoList + DataFrameRow (which now includes companion IntoR)
-        // IntoList is required by DataFrameRow's trait assertion.
-        let result = (|| -> syn::Result<proc_macro2::TokenStream> {
-            let into_list = crate::list_derive::derive_into_list(derive_input.clone())?;
-            let dataframe_row = crate::dataframe_derive::derive_dataframe_row(derive_input)?;
-            Ok(quote::quote! {
-                #item_ts
-                #into_list
-                #dataframe_row
-            })
-        })();
-        return result.unwrap_or_else(|e| e.into_compile_error()).into();
-    }
 
     // Default for multi-field or explicit externalptr: ExternalPtr
     // Also handles prefer = "native" (ExternalPtr + native preference marker)
