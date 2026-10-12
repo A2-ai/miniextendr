@@ -211,6 +211,11 @@ Their two access paths differ deliberately:
   straight into R's buffer — no intermediate copy, no cache churn during a
   full scan.
 
+R's region iteration (`ITERATE_BY_REGION`, behind `sum()` and friends) reads
+every slot it asked for, whatever count `get_region` returns. So when the
+reader writes fewer elements than asked, the adaptor fills the rest with `NA`,
+the value `elt` reads there.
+
 That split only survives if newtype wrappers forward it. A wrapper that
 implements only `elt` silently reverts `get_region` to the default elt-loop,
 which re-walks the chunk cache once per element:

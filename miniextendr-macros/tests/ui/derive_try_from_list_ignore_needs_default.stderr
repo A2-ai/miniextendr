@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `Opaque: Default` is not satisfied
+  --> tests/ui/derive_try_from_list_ignore_needs_default.rs:13:14
+   |
+13 |     skipped: Opaque,
+   |              ^^^^^^ the trait `Default` is not implemented for `Opaque`
+   |
+help: consider annotating `Opaque` with `#[derive(Default)]`
+   |
+ 7 + #[derive(Default)]
+ 8 | struct Opaque(std::rc::Rc<i32>);
+   |

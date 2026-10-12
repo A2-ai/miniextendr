@@ -18,48 +18,35 @@ A source file the lint cannot parse gets a `<file>: failed to parse: <error>` wa
 
 ## Lint Codes Reference
 
-### Errors (CI-blocking)
+The build script prints every diagnostic as a cargo warning
+(`warning: <crate>@<version>: [MXL008] <file>:<line>: ...`) and never fails the build;
+`just lint` lists them without failing either. The groups below are the
+rules' severities: an error-severity rule flags code that will not work as
+written.
+
+### Errors
 
 | Code | Description | Fix |
 |------|-------------|-----|
-| **MXL001** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL002** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL003** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL004** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL005** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL006** | Reserved | (Legacy lint, no longer applicable) |
-| **MXL007** | `impl Type;` requires ExternalPtr derive | Add `#[derive(ExternalPtr)]` or implement `TypedExternal` |
 | **MXL008** | Trait impl class system incompatible | Ensure trait impl uses same class system as inherent impl |
 | **MXL009** | Multiple impl blocks without labels | Add `#[miniextendr(label = "unique")]` to each impl block |
 | **MXL010** | Duplicate labels on impl blocks | Use unique labels for each impl block |
+| **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
+| **MXL120** | vctrs constructor returns `Self` / a named type, or the vctrs impl has an instance-method receiver | Return the plain vector payload; turn instance methods into static methods that take the vector data as a parameter |
 
 ### Warnings (P0: high impact)
 
 | Code | Description | Fix |
 |------|-------------|-----|
-| **MXL100** | Duplicate entrypoint symbol | Rename one of the conflicting entries |
-| **MXL101** | Duplicate registration entries | Remove the duplicate entry |
-| **MXL102** | Trait impl missing TypedExternal | Implement `TypedExternal` for the type |
-| **MXL103** | Generic concrete type in trait-ABI | Use concrete (non-generic) types for trait ABI |
-| **MXL104** | `#[cfg]` mismatch between item and registration | Ensure `#[cfg]` attributes match on both |
-| **MXL105** | Unreachable module file | Check file paths and module hierarchy |
-| **MXL106** | Registered function is not `pub` | Add `pub` to the function definition |
-| **MXL107** | Missing `#[miniextendr] impl Trait for Type` | Add the attribute to the trait impl |
-| **MXL108** | Missing registration for trait impl | Add `#[miniextendr]` to the trait impl |
-| **MXL109** | `#[cfg]` mismatch between `mod` declarations | Ensure `#[cfg]` attributes are consistent |
-| **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
+| **MXL106** | Non-`pub` function carries a `/// @export` tag | Make it `pub fn`, or drop the tag to keep it private |
 | **MXL111** | `s4_*` method on `#[miniextendr(s4)]` impl | Drop the `s4_` prefix — codegen auto-prepends it (you'd get `s4_s4_*`) |
-| **MXL112** | Explicit lifetime parameter on `#[miniextendr]` fn or impl | Use owned types (`Vec<T>` / `String`) — `&[T]` and `&str` arguments work without explicit lifetime annotations |
 
 ### Warnings (P1: important)
 
 | Code | Description | Fix |
 |------|-------------|-----|
-| **MXL200** | Trait tag collision preflight | Use unique trait names or labels |
-| **MXL201** | Impl label mismatch | Check label spelling matches across impls |
-| **MXL202** | Orphan child module reference | Remove the reference to non-existent child module |
-| **MXL203** | `internal` + `noexport` redundancy | Use just `#[miniextendr(internal)]` (implies noexport) |
-| **MXL204** | Multiple root-level registrations | Only one root registration per crate |
+| **MXL203** | `internal` + `noexport` redundancy | Remove `noexport` and keep `internal`, which already suppresses `@export` (the function macro rejects the pair too) |
+| **MXL204** | Doc link `[pkg::topic]` into an R package that is neither the package itself, a `DESCRIPTION` dependency, nor shipped with R | For a Rust item, write `[text][crate::path]`; for an R package, add it to `DESCRIPTION` |
 
 ### Warnings (P2: safety)
 
@@ -67,6 +54,8 @@ A source file the lint cannot parse gets a `<file>: failed to parse: <error>` wa
 |------|-------------|-----|
 | **MXL300** | Direct `Rf_error`/`Rf_errorcall` call | Use `panic!()` or return `Err(...)` instead |
 | **MXL301** | `_unchecked` FFI call outside guard context | Use the checked wrapper, or ensure you're inside `with_r_unwind_protect` |
+| **MXL302** | `into_sexp()` inside a `vec!`/array literal (unprotected SEXPs across allocations) | Protect each element through a `ProtectScope`, or use the `IntoList` / `DataFrameRow` derives |
+| **MXL304** | Call to, or declaration of, R's non-API `ATTRIB` / `SET_ATTRIB` | `SexpExt::has_attributes()`, `is_identical()`, `get_attr()` / `set_attr()`, or `DUPLICATE_ATTRIB` |
 
 #### MXL300: Direct Rf_error calls
 
@@ -89,7 +78,7 @@ Functions like `Rf_ScalarInteger_unchecked()` bypass miniextendr's main-thread r
 
 ## Inline Suppression
 
-Both MXL300 and MXL301 support inline suppression via `// mxl::allow(...)` comments. The suppression comment can appear:
+MXL300, MXL301, MXL302 and MXL304 support inline suppression via `// mxl::allow(...)` comments. The suppression comment can appear:
 
 1. **On the same line** (trailing comment):
 
@@ -139,7 +128,7 @@ unsafe {
 
 - Prefix: `// mxl::allow(`
 - Codes: comma-separated, whitespace around commas is ignored
-- Only `MXL300` and `MXL301` are currently suppressible
+- Only `MXL300`, `MXL301`, `MXL302` and `MXL304` are currently suppressible
 
 ## Common Proc-Macro Errors
 
@@ -193,9 +182,12 @@ Rust's `...` is only valid as the last parameter; write a dots parameter that is
 
 Unnamed dots (a bare `...` or `_: ...`) get `_dots: &Dots`. `miniextendr-lint` can't parse such a file either, so its "failed to parse" warning ends with `line <n>: ` and the same text.
 
-### "expected `pub` function"
+### "function `f` has `/// @export` but is not `pub`"
 
-Only `pub` functions get `@export` in R wrappers. If the function is intentionally private, use `#[miniextendr(noexport)]` or `#[miniextendr(internal)]`.
+Only `pub` functions get an automatic `@export` in R wrappers, so a private
+function with a hand-written `/// @export` tag is contradictory (MXL106; the tag
+still exports it). Make the function `pub`, or drop the tag. To keep a `pub`
+function unexported, use `#[miniextendr(noexport)]` or `#[miniextendr(internal)]`.
 
 ### "multiple impl blocks for Type need labels"
 
@@ -215,18 +207,19 @@ impl MyType {
 
 ### "trait impl class system incompatible"
 
-A trait impl's class system must match the inherent impl's class system:
+A trait impl's class system must match the inherent impl's class system (MXL008).
+An `s3` trait impl works with every inherent class system. A trait impl does not
+inherit the inherent impl's system: a bare `#[miniextendr]` counts as `env`.
 
 ```rust
-#[miniextendr(s3)]
+#[miniextendr(s7)]
 impl MyType { /* ... */ }
 
-// This will error if the trait impl uses a different class system
-#[miniextendr]  // Must inherit s3 from the inherent impl
+#[miniextendr]  // MXL008: env-style trait impl on an s7 type; write #[miniextendr(s7)] or (s3)
 impl Display for MyType { /* ... */ }
 ```
 
-### "type must derive ExternalPtr or implement TypedExternal"
+### "the trait bound `MyType: TypedExternal` is not satisfied"
 
 Types used in `#[miniextendr]` impl blocks need pointer identity:
 

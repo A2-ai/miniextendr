@@ -158,7 +158,7 @@ where
         self.state
             .get_element(i)
             .map(|val| val.coerce())
-            .unwrap_or(f64::NAN)
+            .unwrap_or(crate::altrep_traits::NA_REAL)
     }
 }
 
@@ -335,10 +335,9 @@ where
     I: Iterator<Item = crate::Rcomplex>,
 {
     fn elt(&self, i: usize) -> crate::Rcomplex {
-        self.state.get_element(i).unwrap_or(crate::Rcomplex {
-            r: f64::NAN,
-            i: f64::NAN,
-        })
+        self.state
+            .get_element(i)
+            .unwrap_or(<crate::Rcomplex as crate::RNativeType>::R_NA)
     }
 
     fn as_slice(&self) -> Option<&[crate::Rcomplex]> {

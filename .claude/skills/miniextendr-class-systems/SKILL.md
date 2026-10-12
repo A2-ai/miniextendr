@@ -250,7 +250,7 @@ S7 generates:
 
 - Class definition: `S7::new_class("<class>", parent = ..., properties = list(...), constructor = function(...) ...)`.
 - Properties: `S7::new_property(...)` for each `#[miniextendr(s7(getter))]` /
-  `#[miniextendr(s7(setter))]` / `#[miniextendr(s7(validator))]` annotated method.
+  `#[miniextendr(s7(setter))]` / `#[miniextendr(s7(validate))]` annotated method.
   The `.ptr` property holds the ExternalPtr.
 - Instance methods: `S7::new_generic(...)` + `S7::method(generic, class, function(x, ...) ...)`.
   The ExternalPtr is extracted from the S7 object via `x@.ptr`.

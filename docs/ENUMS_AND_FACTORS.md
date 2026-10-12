@@ -19,6 +19,7 @@ Note the two are **mutually exclusive**: deriving `ExternalPtr` alongside
 ## RFactor: enum as R Factor
 
 Maps a Rust enum to an R factor with levels. Each variant becomes a level.
+The enum must be `Copy` (`RFactor` and its supertrait `MatchArg` require it).
 
 ```rust
 #[derive(Copy, Clone, RFactor)]
@@ -142,7 +143,8 @@ RFactor derive internally.
 
 Maps a Rust enum to R character strings with `match.arg()` validation. Supports
 partial matching and defaults to the first variant when `NULL` is passed (an
-`Option<T>` parameter is the exception; see "Optional Choice" below).
+`Option<T>` parameter is the exception; see "Optional Choice" below). The enum
+must be `Copy` (`MatchArg: Copy`).
 
 ```rust
 #[derive(Copy, Clone, MatchArg)]

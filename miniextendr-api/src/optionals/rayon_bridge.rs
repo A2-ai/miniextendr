@@ -1257,7 +1257,9 @@ pub trait RParallelExtend<T: Send> {
 ///
 /// # Safety contract
 ///
-/// - Backing Vec must have `len == n` (elements initialized — use `vec![default; n]`).
+/// - Backing Vec must have `len == n` with every element initialized (the
+///   derive fills it with `Default` placeholders, or `None`); each write drops
+///   the placeholder it replaces.
 /// - Every index in `0..n` must be written exactly once before the Vec is read.
 /// - No two threads may write to the same index.
 #[doc(hidden)]
@@ -1270,7 +1272,7 @@ unsafe impl<T: Send> Send for ColumnWriter<T> {}
 unsafe impl<T: Send> Sync for ColumnWriter<T> {}
 
 impl<T> ColumnWriter<T> {
-    /// Create a new writer for a pre-initialized Vec (use `vec![default; n]`).
+    /// Create a new writer for a Vec whose elements are all initialized.
     ///
     /// # Safety
     /// Vec must have `len` already set. Caller must write all indices before reading.
@@ -1282,7 +1284,8 @@ impl<T> ColumnWriter<T> {
         }
     }
 
-    /// Write a value at index. Each index must be written by exactly one thread.
+    /// Replace the value at index, dropping the one there. Each index must be
+    /// written by exactly one thread.
     ///
     /// # Safety
     /// - `index` must be in bounds (`< len`).
@@ -1294,7 +1297,7 @@ impl<T> ColumnWriter<T> {
             "ColumnWriter: index {index} out of bounds"
         );
         unsafe {
-            self.ptr.add(index).write(value);
+            *self.ptr.add(index) = value;
         }
     }
 }

@@ -8,55 +8,77 @@ use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::ListBuilder;
 use miniextendr_api::{ExternalPtr, IntoR, SEXP, miniextendr};
 
-/// Advertise a borrowing tuple, but stop before creating any references. A
+/// Advertise a native borrow, but stop before creating any reference. A
 /// regression must fail an assertion without itself exercising aliased &mut.
-pub struct BorrowProbe;
+macro_rules! probe {
+    ($name:ident, $borrow:ty) => {
+        pub struct $name;
 
-impl TryFromSexp for BorrowProbe {
-    type Error = SexpError;
-    const NATIVE_BORROW: Option<NativeBorrow> = <(&'static mut i32, &'static i32)>::NATIVE_BORROW;
+        impl TryFromSexp for $name {
+            type Error = SexpError;
+            const NATIVE_BORROW: Option<NativeBorrow> = <$borrow>::NATIVE_BORROW;
 
-    fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> {
-        panic!("argument conversion reached");
-    }
+            fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> {
+                panic!("argument conversion reached");
+            }
+        }
+
+        impl IntoR for $name {
+            type Error = std::convert::Infallible;
+
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                panic!("the test never calls a trait View");
+            }
+        }
+    };
 }
 
-impl IntoR for BorrowProbe {
-    type Error = std::convert::Infallible;
-
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        panic!("the test never calls a trait View");
-    }
-}
+probe!(WriteProbe, &'static mut i32);
+probe!(ReadProbe, &'static i32);
+probe!(WriteListProbe, Vec<&'static mut i32>);
 
 #[derive(ExternalPtr)]
 pub struct Sink;
 
+// `other` sits between the native arguments, so the preflight must read the
+// original argv positions 0 and 2.
 #[miniextendr]
-pub trait InspectPair {
-    fn inspect(&self, pair: BorrowProbe) -> i32;
+pub trait Inspect {
+    fn inspect(&self, write: WriteProbe, other: &Self, read: ReadProbe) -> i32;
+    fn inspect_list(&self, items: WriteListProbe) -> i32;
 }
 
-impl InspectPair for Sink {
-    fn inspect(&self, _: BorrowProbe) -> i32 {
+impl Inspect for Sink {
+    fn inspect(&self, _: WriteProbe, _: &Self, _: ReadProbe) -> i32 {
+        panic!("the converter must stop before the method");
+    }
+    fn inspect_list(&self, _: WriteListProbe) -> i32 {
         panic!("the converter must stop before the method");
     }
 }
 
 #[miniextendr]
 pub trait InspectGeneric<T> {
-    fn inspect(&self, pair: T) -> i32;
+    fn inspect(&self, write: T, other: &Self, read: ReadProbe) -> i32;
+    fn inspect_list(&self, items: WriteListProbe) -> i32;
 }
 
-// This path generates its shim at the concrete impl, not the trait declaration.
+// This path generates its shims at the concrete impl, not the trait declaration.
 #[miniextendr(env, noexport)]
-impl InspectGeneric<BorrowProbe> for Sink {
-    fn inspect(&self, _pair: BorrowProbe) -> i32 {
+impl InspectGeneric<WriteProbe> for Sink {
+    // A concrete shim reports the impl's parameter names, not the trait's
+    // (#2029), so these match the declaration's.
+    fn inspect(&self, write: WriteProbe, other: &Self, read: ReadProbe) -> i32 {
+        let _ = (write, other, read);
+        panic!("the converter must stop before the method");
+    }
+    fn inspect_list(&self, items: WriteListProbe) -> i32 {
+        let _ = items;
         panic!("the converter must stop before the method");
     }
 }
 
-fn pair(scope: &ProtectScope, left: SEXP, right: SEXP) -> SEXP {
+fn list(scope: &ProtectScope, left: SEXP, right: SEXP) -> SEXP {
     unsafe {
         let builder = ListBuilder::new(scope, 2);
         builder.set(0, left);
@@ -65,37 +87,63 @@ fn pair(scope: &ProtectScope, left: SEXP, right: SEXP) -> SEXP {
     }
 }
 
-fn check_shim(shim: mx_meth) {
+/// Call a shim and return the message of the tagged condition it must return.
+fn shim_message(scope: &ProtectScope, shim: mx_meth, data: *mut Sink, args: &[SEXP]) -> String {
+    unsafe {
+        let argc = i32::try_from(args.len()).unwrap();
+        let argv = if args.is_empty() {
+            std::ptr::null()
+        } else {
+            args.as_ptr()
+        };
+        let result = scope.protect(shim(data.cast(), argc, argv)).get();
+        let (_, parts) = RCondition::from_tagged_sexp(result)
+            .expect("shim must return a tagged condition")
+            .into_parts();
+        parts.message
+    }
+}
+
+fn check_shims(inspect: mx_meth, inspect_list: mx_meth) {
     unsafe {
         let scope = ProtectScope::new();
         let v = scope.protect(7i32.into_sexp()).get();
-        let other = scope.protect(8i32.into_sexp()).get();
+        let w = scope.protect(8i32.into_sexp()).get();
+        let other = ExternalPtr::new(Sink);
         let mut sink = Sink;
-        let data = std::ptr::from_mut(&mut sink).cast();
-        for (value, expected) in [
-            (pair(&scope, v, v), "aliasing native arguments"),
-            (pair(&scope, v, other), "argument conversion reached"),
-        ] {
-            let args = [value];
-            let result = scope.protect(shim(data, 1, args.as_ptr())).get();
-            let (_, parts) = RCondition::from_tagged_sexp(result)
-                .expect("shim must return a tagged condition")
-                .into_parts();
-            assert!(parts.message.contains(expected), "{}", parts.message);
-        }
-        // Arity must be checked before the new preflight dereferences argv.
-        let result = scope.protect(shim(data, 0, std::ptr::null())).get();
-        let (_, parts) = RCondition::from_tagged_sexp(result)
-            .expect("arity mismatch must return a tagged condition")
-            .into_parts();
-        assert!(parts.message.contains("expected 1 arguments, got 0"));
+        let data = std::ptr::from_mut(&mut sink);
+
+        let message = shim_message(&scope, inspect, data, &[v, other.as_sexp(), v]);
+        assert!(
+            message.contains(
+                "aliasing native arguments: parameters `write` and `read` borrow the same"
+            ),
+            "{message}"
+        );
+        let message = shim_message(&scope, inspect, data, &[v, other.as_sexp(), w]);
+        assert!(message.contains("argument conversion reached"), "{message}");
+
+        let message = shim_message(&scope, inspect_list, data, &[list(&scope, v, v)]);
+        assert!(
+            message.contains("aliasing native arguments: parameter `items` contains duplicate"),
+            "{message}"
+        );
+        let message = shim_message(&scope, inspect_list, data, &[list(&scope, v, w)]);
+        assert!(message.contains("argument conversion reached"), "{message}");
+
+        // Arity must be checked before the preflight dereferences argv.
+        let message = shim_message(&scope, inspect, data, &[]);
+        assert!(message.contains("expected 3 arguments, got 0"), "{message}");
+        let message = shim_message(&scope, inspect_list, data, &[]);
+        assert!(message.contains("expected 1 arguments, got 0"), "{message}");
     }
 }
 
 #[test]
 fn declaration_shim_checks_native_aliases_before_argument_conversion() {
     r_test_utils::with_r_thread(|| {
-        check_shim(__InspectPair_build_vtable::<Sink>().inspect);
+        let vtable = __Inspect_build_vtable::<Sink>();
+        check_shims(vtable.inspect, vtable.inspect_list);
     });
 }
 
@@ -107,6 +155,6 @@ fn concrete_generic_shim_checks_native_aliases_before_argument_conversion() {
             .find(|entry| entry.trait_tag == TAG_InspectGeneric)
             .expect("generic impl must register its concrete vtable");
         let vtable = unsafe { &*entry.vtable.cast::<InspectGenericVTable>() };
-        check_shim(vtable.inspect);
+        check_shims(vtable.inspect, vtable.inspect_list);
     });
 }

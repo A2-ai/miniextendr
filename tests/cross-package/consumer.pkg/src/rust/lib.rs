@@ -210,6 +210,23 @@ pub fn peek_value(counter_sexp: SEXP) -> i32 {
     counter.value()
 }
 
+/// Call `Counter::add` through the vtable with an R value, as a caller that
+/// skips the View would: nothing converts the argument on this side, so the
+/// implementing package's shim converts whatever it is given.
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param n Any R value, passed to the shim as is
+/// @export
+#[miniextendr]
+pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    // SAFETY: `n` is a `.Call()` argument, rooted for the whole call, and the
+    // vtable and data come from the View of a live Counter object.
+    unsafe {
+        let result = ((*counter.vtable).add)(counter.data, 1, &n);
+        miniextendr_api::trait_abi::repanic_if_rust_error(result);
+    }
+}
+
 /// Check if an object implements the Counter trait
 /// @param sexp Any R object
 /// @return TRUE if the object implements Counter trait

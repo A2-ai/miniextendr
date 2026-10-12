@@ -60,8 +60,11 @@ For the full design rationale and the orphan-rule mechanics behind the blanket i
 `#[derive(DataFrameRow)]` is the primary path: derive it on a row struct, then
 return `BuiltDataFrame` from a `#[miniextendr]` function.
 
+<!-- docs-examples-check: quickstart -->
 ```rust
-use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, miniextendr};
+use miniextendr_api::{
+    BuiltDataFrame, DataFrame, DataFrameRow, FromDataFrame, IntoDataFrame, miniextendr,
+};
 
 #[derive(Clone, DataFrameRow)]
 struct Measurement {
@@ -83,6 +86,7 @@ fn get_measurements() -> BuiltDataFrame {
 
 The reverse direction reads a `DataFrame` argument back into rows:
 
+<!-- docs-examples-check: quickstart -->
 ```rust
 #[miniextendr]
 fn round_trip(df: DataFrame) -> BuiltDataFrame {
@@ -336,7 +340,7 @@ enum Event {
 }
 // In R (BTreeMap, sorted key order):
 //   _type   label  tally_keys    tally_values
-//   Tally   "a"    list("a","b") list(1L, 2L)
+//   Tally   "a"    c("a","b")    c(1L, 2L)
 //   Empty   "b"    NULL          NULL
 ```
 
@@ -420,7 +424,7 @@ enum Move {
 
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
-**Generic unit enums**: `#[derive(DataFrameRow)]` auto-emits `UnitEnumFactor` only when the enum has no generic type parameters (`impl_generics.is_empty()`). Generic unit enums must implement `UnitEnumFactor` manually if `as_factor` is needed.
+**Generic unit enums**: `#[derive(DataFrameRow)]` rejects enums with type or const generic parameters, so it never emits `UnitEnumFactor` for one. A generic unit enum must implement `UnitEnumFactor` by hand if `as_factor` is needed.
 
 #### `as_list` — opaque list-column
 
@@ -487,7 +491,7 @@ fn get_events() -> BuiltDataFrame {
 - All enum columns are `Vec<Option<T>>` (absent fields get `None`).
 - `tag = "col"` adds a variant discriminator column.
 - `align` is implicit for enums (accepted but not required).
-- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are still rejected (MXL112); see CLAUDE.md.
+- Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are allowed too (only type and const generics are rejected).
 
 #### Type conflicts across variants
 
@@ -560,11 +564,37 @@ struct Measurement { /* ... */ }
 
 ### Requirements
 
-A row needs no trait besides the derive: nothing it generates turns a single
-row into a list, and the generated `{Row}DataFrame` companion derives nothing,
-so the field types need no `Debug` or `Clone` either. Derive or write
-`IntoList` only if you also return one row to R as a list, and then any impl
-works, derived or hand-written.
+A row needs no trait besides the derive. Of each field type the derive asks
+only what turning that field into columns needs, and a missing impl is
+reported at the field:
+
+| Field | What its type needs |
+|---|---|
+| scalar or opaque column (`i32`, `String`, `Vec<T>`, `HashMap<K, V>`, …) | its column converts to R (`Vec<T>: IntoR`; in an enum, `Vec<Option<T>>`) |
+| `[T; N]`, or `width` / `expand` over an owned `Vec<T>` / `Box<[T]>` | `T`'s columns convert to R; the elements are moved, so `T` needs no `Clone` or `Copy` |
+| the same over a borrowed `&[T; N]` / `&[T]` | also `T: Clone`: each element is cloned out of the borrow |
+| flattened struct, nested enum | `#[derive(DataFrameRow)]`; no `Clone`: values are moved into their columns, and out of them when an enum is read back |
+| `as_factor` | a unit-only enum with `#[derive(DataFrameRow)]`; no `Clone` or `Copy` |
+| `as_list` | `IntoList` (see below) |
+| `skip` | nothing |
+
+The rest of what the derive generates exists only where the field types allow
+it, so it never adds a requirement:
+
+- The `{Row}DataFrame` companion is `Debug` / `Clone` when every column type
+  is (for a `Vec<T>` column, when `T` is).
+- A named-field struct companion without expansion iterates its rows
+  (`IntoIterator`, `ColumnarFrame::into_rows`) when every `skip` field's type
+  is `Default`: the skipped fields are rebuilt with `Default::default()`.
+- With `rayon`, `from_rows_par` / `into_dataframe_par` fill the columns in
+  parallel when the row type is `Send` and so are the column values, a struct's
+  placeholder-filled columns (scalar and `[T; N]` columns) are `Default`, and
+  flattened struct and `as_list` values are `Clone` (they are copied out before
+  the rows move to other threads). Otherwise the same call fills the columns
+  sequentially.
+
+Derive or write `IntoList` for the row only if you also return one row to R as
+a list, and then any impl works, derived or hand-written.
 
 #### List-columns of struct or enum values
 
@@ -623,18 +653,18 @@ discoverable and gives NA-able keys a defined home (key on `Option<T>` —
 
 ```rust
 let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
-let by_site: BTreeMap<String, Vec<Measurement>> =
-    group_rows(rows, |m| m.site.clone());
+let by_sensor: BTreeMap<String, Vec<Measurement>> =
+    group_rows(rows, |m| m.sensor.clone());
 ```
 
 The result is plain Rust data — no SEXP contact — so stepping over groups with
 rayon is safe:
 
 ```rust
-let summaries: Vec<(String, f64)> = by_site
+let summaries: Vec<(String, f64)> = by_sensor
     .into_iter()
     .par_bridge()                       // rayon: rows are Send, no SEXPs held
-    .map(|(site, ms)| (site, ms.iter().map(|m| m.value).sum()))
+    .map(|(sensor, ms)| (sensor, ms.iter().map(|m| m.value).sum()))
     .collect();
 ```
 
@@ -908,7 +938,7 @@ struct Record {
 }
 ```
 
-Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u8`..`u64`, `isize`,
+Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 `usize`, `String` (the reader covers the same set as bare scalars: `u64`,
 `isize`, `usize` are write-only). `Option` around a map, a nested
 `DataFrameRow` struct, or a collection is rejected at compile time (see

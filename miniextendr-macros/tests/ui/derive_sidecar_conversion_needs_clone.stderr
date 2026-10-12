@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `Col: Clone` is not satisfied
+  --> tests/ui/derive_sidecar_conversion_needs_clone.rs:18:14
+   |
+18 |     pub col: Col,
+   |              ^^^ the trait `Clone` is not implemented for `Col`
+   |
+help: consider annotating `Col` with `#[derive(Clone)]`
+   |
+ 9 + #[derive(Clone)]
+10 | pub struct Col(f64);
+   |

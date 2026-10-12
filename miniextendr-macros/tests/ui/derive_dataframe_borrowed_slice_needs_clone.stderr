@@ -1,0 +1,23 @@
+error[E0277]: the trait bound `Col: Clone` is not satisfied
+  --> tests/ui/derive_dataframe_borrowed_slice_needs_clone.rs:15:18
+   |
+15 |     values: &'a [Col],
+   |                  ^^^ the trait `Clone` is not implemented for `Col`
+   |
+help: consider annotating `Col` with `#[derive(Clone)]`
+   |
+ 9 + #[derive(Clone)]
+10 | struct Col(f64);
+   |
+
+error[E0277]: the trait bound `Col: Clone` is not satisfied
+  --> tests/ui/derive_dataframe_borrowed_slice_needs_clone.rs:24:22
+   |
+24 |         values: &'a [Col],
+   |                      ^^^ the trait `Clone` is not implemented for `Col`
+   |
+help: consider annotating `Col` with `#[derive(Clone)]`
+   |
+ 9 + #[derive(Clone)]
+10 | struct Col(f64);
+   |

@@ -41,7 +41,7 @@ The repository root is a Cargo workspace. The primary crates are:
   actually live in `miniextendr-api/src/registry.rs`, called by the wrapper
   pass after the link.
 - `miniextendr-lint/` — build-time static analysis. Runs via `build.rs` during
-  `cargo check`. Enforces MXL-coded rules (MXL300, MXL301, MXL112, etc.).
+  `cargo check`. Enforces MXL-coded rules (MXL300, MXL301, MXL302, etc.).
 - `miniextendr-bench/` — benchmarks (separate workspace member).
 - `miniextendr-cli/` — CLI helpers.
 - `cargo-revendor/` — standalone cargo subcommand, intentionally excluded from

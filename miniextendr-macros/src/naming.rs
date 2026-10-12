@@ -48,6 +48,18 @@ pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("R_WRAPPER_{name}")
 }
 
+/// The binder of a conditional bound, `for<'__mx_cond> FieldTy: Trait`.
+///
+/// A where clause on a concrete type that does not hold is an error where the
+/// impl is written (E0277). Behind a higher-ranked binder the same bound is
+/// checked where the impl is used, so the impl just does not apply to that
+/// type. Derives use it for impls that exist only when the user's field types
+/// allow them, such as a companion's `Debug`. The name stays clear of user
+/// lifetimes, which a binder must not shadow (E0496).
+pub(crate) fn conditional_bound_lifetime() -> syn::Lifetime {
+    syn::Lifetime::new("'__mx_cond", proc_macro2::Span::call_site())
+}
+
 /// The C wrapper's receiver slot, shared with method extraction and return
 /// handling. Its mixed-site span keeps a user parameter named `self_sexp`
 /// from replacing the original R handle after conversion.

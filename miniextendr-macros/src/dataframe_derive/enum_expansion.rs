@@ -11,8 +11,9 @@ use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
-    classify_field_type, is_bare_reader_scalar_ty, is_reader_scalar_ty, list_column_fn,
-    parse_field_attrs,
+    classify_field_type, companion_debug_clone, expanded_elem_idents, field_is_borrowed_ref,
+    fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty, is_reader_scalar_ty,
+    list_column_fn, owned_elems_iter, parallel_columns_impl, parse_field_attrs, width_elems,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -151,6 +152,7 @@ pub(super) fn derive_enum_dataframe(
                                         rust_name: rust_name.clone(),
                                         elem_ty: elem_ty.clone(),
                                         len,
+                                        borrowed: field_is_borrowed_ref(&f.ty),
                                     },
                                 )));
                             }
@@ -165,6 +167,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name: rust_name.clone(),
                                             elem_ty: elem_ty.clone(),
                                             width,
+                                            borrowed: field_is_borrowed_ref(&f.ty),
                                         },
                                     )));
                                 } else if fa.expand {
@@ -175,6 +178,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name: rust_name.clone(),
                                             elem_ty: elem_ty.clone(),
                                             container_ty: f.ty.clone(),
+                                            borrowed: field_is_borrowed_ref(&f.ty),
                                         },
                                     )));
                                 } else {
@@ -399,6 +403,7 @@ pub(super) fn derive_enum_dataframe(
                                         rust_name,
                                         elem_ty: elem_ty.clone(),
                                         len,
+                                        borrowed: field_is_borrowed_ref(&f.ty),
                                     },
                                 )));
                             }
@@ -413,6 +418,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name,
                                             elem_ty: elem_ty.clone(),
                                             width,
+                                            borrowed: field_is_borrowed_ref(&f.ty),
                                         },
                                     )));
                                 } else if fa.expand {
@@ -423,6 +429,7 @@ pub(super) fn derive_enum_dataframe(
                                             rust_name,
                                             elem_ty: elem_ty.clone(),
                                             container_ty: f.ty.clone(),
+                                            borrowed: field_is_borrowed_ref(&f.ty),
                                         },
                                     )));
                                 } else {
@@ -736,19 +743,37 @@ pub(super) fn derive_enum_dataframe(
         TokenStream::new()
     };
 
-    let mut df_fields: Vec<TokenStream> = columns
+    // The column fields with their types: declared below, and bounding the
+    // companion's conditional `Debug` / `Clone`.
+    let mut column_fields: Vec<(syn::Ident, TokenStream)> = columns
         .iter()
         .map(|col| {
-            let name = &col.col_name;
             let ty = &col.ty;
-            quote! { pub #name: ::std::vec::Vec<::core::option::Option<#ty>> }
+            (
+                col.col_name.clone(),
+                quote! { ::std::vec::Vec<::core::option::Option<#ty>> },
+            )
         })
         .collect();
     // Auto-expand fields: Vec<Option<ContainerType>>
     for ac in &auto_expand_cols {
-        let name = &ac.df_field;
         let cty = &ac.container_ty;
-        df_fields.push(quote! { pub #name: ::std::vec::Vec<::core::option::Option<#cty>> });
+        column_fields.push((
+            ac.df_field.clone(),
+            quote! { ::std::vec::Vec<::core::option::Option<#cty>> },
+        ));
+    }
+    let df_fields: Vec<TokenStream> = column_fields
+        .iter()
+        .map(|(name, ty)| quote! { pub #name: #ty })
+        .collect();
+
+    let mut companion_fields: Vec<(syn::Ident, TokenStream)> = Vec::new();
+    if has_tag {
+        companion_fields.push((
+            format_ident!("_tag"),
+            quote! { ::std::vec::Vec<::std::string::String> },
+        ));
     }
 
     // When the companion struct would otherwise have no fields (unit-only enum,
@@ -758,9 +783,11 @@ pub(super) fn derive_enum_dataframe(
     let phantom_field = if !has_any_field && !impl_generics.to_token_stream().is_empty() {
         let type_params: Vec<_> = input.generics.type_params().map(|tp| &tp.ident).collect();
         if !type_params.is_empty() {
+            let phantom_ty = quote! { ::std::marker::PhantomData<(#(#type_params,)*)> };
+            companion_fields.push((format_ident!("_phantom"), phantom_ty.clone()));
             quote! {
                 #[allow(dead_code)]
-                _phantom: ::std::marker::PhantomData<(#(#type_params,)*)>,
+                _phantom: #phantom_ty,
             }
         } else {
             TokenStream::new()
@@ -768,6 +795,8 @@ pub(super) fn derive_enum_dataframe(
     } else {
         TokenStream::new()
     };
+    companion_fields.extend(column_fields);
+    let companion_debug_clone = companion_debug_clone(df_name, &input.generics, &companion_fields);
 
     let dataframe_struct = quote! {
         pub struct #df_name #impl_generics #where_clause {
@@ -775,6 +804,8 @@ pub(super) fn derive_enum_dataframe(
             #(#df_fields),*
             #phantom_field
         }
+
+        #companion_debug_clone
     };
     // endregion
 
@@ -923,6 +954,11 @@ pub(super) fn derive_enum_dataframe(
                 let df_field = &ac.df_field;
                 let base_name_str = &ac.base_name;
                 let elem_ty = &ac.elem_ty;
+                let elems_iter = owned_elems_iter(
+                    &quote! { __row_vec },
+                    field_is_borrowed_ref(&ac.container_ty),
+                    elem_ty,
+                );
                 quote! {
                     {
                         let __auto = self.#df_field;
@@ -934,11 +970,16 @@ pub(super) fn derive_enum_dataframe(
                         let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                             .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
                             .collect();
-                        for __opt_vec in &__auto {
-                            for (__i, __col) in __cols.iter_mut().enumerate() {
-                                __col.push(
-                                    __opt_vec.as_ref().and_then(|v| v.get(__i).cloned()),
-                                );
+                        for __opt_vec in __auto {
+                            let mut __elems = ::core::option::Option::map(
+                                __opt_vec,
+                                |__row_vec| #elems_iter,
+                            );
+                            for __col in __cols.iter_mut() {
+                                __col.push(::core::option::Option::and_then(
+                                    ::core::option::Option::as_mut(&mut __elems),
+                                    ::core::iter::Iterator::next,
+                                ));
                             }
                         }
                         for (__i, __col) in __cols.into_iter().enumerate() {
@@ -1188,7 +1229,7 @@ pub(super) fn derive_enum_dataframe(
                     if col.present_in.contains(&variant_idx) {
                         let col_name_str = col_name.to_string();
 
-                        for erf in &vi.fields {
+                        for (pos, erf) in vi.fields.iter().enumerate() {
                             match erf {
                                 EnumResolvedField::Single(data)
                                     if data.col_name == *col_name =>
@@ -1201,22 +1242,20 @@ pub(super) fn derive_enum_dataframe(
                                     }
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
-                                    for i in 1..=data.len {
-                                        let expanded_name = format!("{}_{}", data.base_name, i);
+                                    let elems = enum_elem_idents(pos, data.len);
+                                    for (i, elem) in elems.iter().enumerate() {
+                                        let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                         if expanded_name == col_name_str {
-                                            let binding = &data.binding;
-                                            let idx = syn::Index::from(i - 1);
-                                            return quote! { #col_name.push(::core::option::Option::Some(#binding[#idx])); };
+                                            return quote! { #col_name.push(::core::option::Option::Some(#elem)); };
                                         }
                                     }
                                 }
                                 EnumResolvedField::ExpandedVec(data) => {
-                                    for i in 1..=data.width {
-                                        let expanded_name = format!("{}_{}", data.base_name, i);
+                                    let elems = enum_elem_idents(pos, data.width);
+                                    for (i, elem) in elems.iter().enumerate() {
+                                        let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                         if expanded_name == col_name_str {
-                                            let binding = &data.binding;
-                                            let get_idx = i - 1;
-                                            return quote! { #col_name.push(#binding.get(#get_idx).cloned()); };
+                                            return quote! { #col_name.push(#elem); };
                                         }
                                     }
                                 }
@@ -1258,6 +1297,8 @@ pub(super) fn derive_enum_dataframe(
                 })
                 .collect();
 
+            let elem_prelude = expanded_elem_prelude(vi);
+
             // Auto-expand push statements
             let auto_expand_pushes: Vec<TokenStream> = auto_expand_cols
                 .iter()
@@ -1296,6 +1337,7 @@ pub(super) fn derive_enum_dataframe(
                     quote! {
                         #row_name::#variant_name { #(#field_bindings),* } => {
                             #tag_push
+                            #elem_prelude
                             #(#col_pushes)*
                             #(#auto_expand_pushes)*
                         }
@@ -1309,6 +1351,7 @@ pub(super) fn derive_enum_dataframe(
                     quote! {
                         #row_name::#variant_name(#(#field_bindings),*) => {
                             #tag_push
+                            #elem_prelude
                             #(#col_pushes)*
                             #(#auto_expand_pushes)*
                         }
@@ -1386,7 +1429,27 @@ pub(super) fn derive_enum_dataframe(
     // endregion
 
     // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
-    let from_rows_par_method = if !columns.is_empty() || !auto_expand_cols.is_empty() || has_tag {
+    //
+    // The companion's `ParallelColumns` impl moves each row to a rayon worker,
+    // which writes the row's values into `None`-filled columns. It needs the
+    // rows and the column values to be `Send`; that is its conditional `where`
+    // clause, so a row shape without it is not an error: `from_rows_par` falls
+    // back to `from_rows` (`from_rows_par_override`).
+    let has_par_impl = !columns.is_empty() || !auto_expand_cols.is_empty() || has_tag;
+    let (parallel_columns_item, from_rows_par_method) = if has_par_impl {
+        let mut par_bounds: Vec<(TokenStream, TokenStream)> = vec![(
+            quote! { #row_name #ty_generics },
+            quote! { ::core::marker::Send },
+        )];
+        for col in &columns {
+            let ty = &col.ty;
+            par_bounds.push((quote! { #ty }, quote! { ::core::marker::Send }));
+        }
+        for ac in &auto_expand_cols {
+            let cty = &ac.container_ty;
+            par_bounds.push((quote! { #cty }, quote! { ::core::marker::Send }));
+        }
+
         // Column declarations
         let mut par_col_decls = Vec::new();
         if has_tag {
@@ -1394,19 +1457,20 @@ pub(super) fn derive_enum_dataframe(
                 let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
             });
         }
+        let nones = |name: &syn::Ident, ty: &syn::Type| {
+            quote! {
+                let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> =
+                    ::core::iter::Iterator::collect(::core::iter::Iterator::take(
+                        ::core::iter::repeat_with(|| ::core::option::Option::None),
+                        len,
+                    ));
+            }
+        };
         for col in &columns {
-            let name = &col.col_name;
-            let ty = &col.ty;
-            par_col_decls.push(quote! {
-                let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> = ::std::vec![::core::option::Option::None; len];
-            });
+            par_col_decls.push(nones(&col.col_name, &col.ty));
         }
         for ac in &auto_expand_cols {
-            let name = &ac.df_field;
-            let cty = &ac.container_ty;
-            par_col_decls.push(quote! {
-                let mut #name: ::std::vec::Vec<::core::option::Option<#cty>> = ::std::vec![::core::option::Option::None; len];
-            });
+            par_col_decls.push(nones(&ac.df_field, &ac.container_ty));
         }
 
         // Writer declarations
@@ -1459,7 +1523,7 @@ pub(super) fn derive_enum_dataframe(
                         let w_name = format_ident!("__w_{}", crate::naming::unraw(col_name));
                         if col.present_in.contains(&variant_idx) {
                             let col_name_str = col_name.to_string();
-                            for erf in &vi.fields {
+                            for (pos, erf) in vi.fields.iter().enumerate() {
                                 match erf {
                                     EnumResolvedField::Single(data)
                                         if data.col_name == *col_name =>
@@ -1472,22 +1536,20 @@ pub(super) fn derive_enum_dataframe(
                                         }
                                     }
                                     EnumResolvedField::ExpandedFixed(data) => {
-                                        for i in 1..=data.len {
-                                            let expanded_name = format!("{}_{}", data.base_name, i);
+                                        let elems = enum_elem_idents(pos, data.len);
+                                        for (i, elem) in elems.iter().enumerate() {
+                                            let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                let binding = &data.binding;
-                                                let idx = syn::Index::from(i - 1);
-                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding[#idx])); };
+                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#elem)); };
                                             }
                                         }
                                     }
                                     EnumResolvedField::ExpandedVec(data) => {
-                                        for i in 1..=data.width {
-                                            let expanded_name = format!("{}_{}", data.base_name, i);
+                                        let elems = enum_elem_idents(pos, data.width);
+                                        for (i, elem) in elems.iter().enumerate() {
+                                            let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                let binding = &data.binding;
-                                                let get_idx = i - 1;
-                                                return quote! { #w_name.write(__i, #binding.get(#get_idx).cloned()); };
+                                                return quote! { #w_name.write(__i, #elem); };
                                             }
                                         }
                                     }
@@ -1528,6 +1590,8 @@ pub(super) fn derive_enum_dataframe(
                     })
                     .collect();
 
+                let elem_prelude = expanded_elem_prelude(vi);
+
                 // Auto-expand write calls
                 let auto_expand_writes: Vec<TokenStream> = auto_expand_cols
                     .iter()
@@ -1563,6 +1627,7 @@ pub(super) fn derive_enum_dataframe(
                         quote! {
                             #row_name::#variant_name { #(#field_bindings),* } => {
                                 #tag_write
+                                #elem_prelude
                                 #(#col_writes)*
                                 #(#auto_expand_writes)*
                             }
@@ -1576,6 +1641,7 @@ pub(super) fn derive_enum_dataframe(
                         quote! {
                             #row_name::#variant_name(#(#field_bindings),*) => {
                                 #tag_write
+                                #elem_prelude
                                 #(#col_writes)*
                                 #(#auto_expand_writes)*
                             }
@@ -1612,31 +1678,33 @@ pub(super) fn derive_enum_dataframe(
             par_struct_fields.push(quote! { #name });
         }
 
-        quote! {
-            // api-side rayon gate (#1117): the cfg lives on miniextendr-api's
-            // macro, not stamped into the consumer crate.
-            ::miniextendr_api::__dataframe_row_when_rayon! {
-                // Parallel override of `ColumnarFrame::from_rows_par` (rayon scatter-write).
-                #[allow(clippy::uninit_vec)]
-                fn from_rows_par(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                    ::miniextendr_api::optionals::parallel::ensure_pool();
-                    let len = rows.len();
-                    #(#par_col_decls)*
-                    {
-                        #(#writer_decls)*
-                        rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
-                            match __row {
-                                #(#par_match_arms)*
-                            }
-                        });
-                    }
-                    #df_name { #par_tag_field #(#par_struct_fields),* }
+        let parallel_columns_item = parallel_columns_impl(
+            df_name,
+            row_name,
+            &input.generics,
+            &par_bounds,
+            quote! {
+                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
+                ::miniextendr_api::optionals::parallel::ensure_pool();
+                let len = rows.len();
+                #(#par_col_decls)*
+                {
+                    #(#writer_decls)*
+                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                        match __row {
+                            #(#par_match_arms)*
+                        }
+                    });
                 }
-            }
-        }
+                #df_name { #par_tag_field #(#par_struct_fields),* }
+            },
+        );
+        (
+            parallel_columns_item,
+            from_rows_par_override(quote! { #row_name #ty_generics }),
+        )
     } else {
-        TokenStream::new()
+        (TokenStream::new(), TokenStream::new())
     };
     // endregion
 
@@ -1988,6 +2056,7 @@ pub(super) fn derive_enum_dataframe(
         #into_dataframe_impl
         #from_vec_impl
         #df_methods
+        #parallel_columns_item
         #row_methods
         #split_method
         #marker_impl
@@ -2000,6 +2069,53 @@ pub(super) fn derive_enum_dataframe(
     })
     // endregion
 }
+
+// region: expanded field elements
+
+/// The variables an expanded field's elements are bound to, for the field at
+/// `pos` in its variant: by position, since all of a variant's fields are bound
+/// before any column is filled.
+fn enum_elem_idents(pos: usize, n: usize) -> Vec<syn::Ident> {
+    expanded_elem_idents(&format!("f{pos}"), n)
+}
+
+/// Bind the elements of variant `vi`'s `[T; N]` / `width = N` fields to the
+/// variables [`enum_elem_idents`] names, for a match arm whose pattern binds
+/// each field to its `binding`.
+fn expanded_elem_prelude(vi: &VariantInfo) -> TokenStream {
+    let lets: Vec<TokenStream> = vi
+        .fields
+        .iter()
+        .enumerate()
+        .filter_map(|(pos, erf)| match erf {
+            EnumResolvedField::ExpandedFixed(data) => {
+                let binding = &data.binding;
+                let elems = enum_elem_idents(pos, data.len);
+                Some(fixed_array_elems(
+                    &quote! { #binding },
+                    data.borrowed,
+                    &data.elem_ty,
+                    &elems,
+                ))
+            }
+            EnumResolvedField::ExpandedVec(data) => {
+                let binding = &data.binding;
+                let elems = enum_elem_idents(pos, data.width);
+                let iter = format_ident!("__mxv_f{}", pos);
+                Some(width_elems(
+                    &quote! { #binding },
+                    data.borrowed,
+                    &data.elem_ty,
+                    &iter,
+                    &elems,
+                ))
+            }
+            _ => None,
+        })
+        .collect();
+    quote! { #(#lets)* }
+}
+// endregion
 
 // region: generate_split_method
 
@@ -2154,28 +2270,46 @@ fn generate_split_method(
                 let push_stmts: Vec<TokenStream> = vi
                     .fields
                     .iter()
-                    .flat_map(|erf| {
+                    .enumerate()
+                    .flat_map(|(pos, erf)| {
                         let binding = erf.binding();
                         match erf {
                             EnumResolvedField::Single(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
                                 vec![quote! { #buf.push(#binding); }]
                             }
-                            EnumResolvedField::ExpandedFixed(data) => (0..data.len)
-                                .map(|i| {
+                            EnumResolvedField::ExpandedFixed(data) => {
+                                let elems = enum_elem_idents(pos, data.len);
+                                let mut stmts = vec![fixed_array_elems(
+                                    &quote! { #binding },
+                                    data.borrowed,
+                                    &data.elem_ty,
+                                    &elems,
+                                )];
+                                stmts.extend(elems.iter().enumerate().map(|(i, elem)| {
                                     let buf =
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
-                                    let idx = syn::Index::from(i);
-                                    quote! { #buf.push(#binding[#idx]); }
-                                })
-                                .collect(),
-                            EnumResolvedField::ExpandedVec(data) => (0..data.width)
-                                .map(|i| {
+                                    quote! { #buf.push(#elem); }
+                                }));
+                                stmts
+                            }
+                            EnumResolvedField::ExpandedVec(data) => {
+                                let elems = enum_elem_idents(pos, data.width);
+                                let iter = format_ident!("__mxv_f{}", pos);
+                                let mut stmts = vec![width_elems(
+                                    &quote! { #binding },
+                                    data.borrowed,
+                                    &data.elem_ty,
+                                    &iter,
+                                    &elems,
+                                )];
+                                stmts.extend(elems.iter().enumerate().map(|(i, elem)| {
                                     let buf =
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
-                                    quote! { #buf.push(#binding.get(#i).cloned()); }
-                                })
-                                .collect(),
+                                    quote! { #buf.push(#elem); }
+                                }));
+                                stmts
+                            }
                             EnumResolvedField::AutoExpandVec(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                 vec![quote! { #buf.push(#binding); }]
@@ -2386,6 +2520,8 @@ fn generate_split_method(
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                 let base_str = &data.base_name;
                                 let elem_ty = &data.elem_ty;
+                                let elems_iter =
+                                    owned_elems_iter(&quote! { __row_vec }, data.borrowed, elem_ty);
                                 vec![quote! {
                                     {
                                         let __auto = #buf;
@@ -2393,9 +2529,10 @@ fn generate_split_method(
                                         let mut __auto_cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                                             .map(|_| ::std::vec::Vec::with_capacity(#n_var))
                                             .collect();
-                                        for __row_vec in &__auto {
-                                            for (__ai, __acol) in __auto_cols.iter_mut().enumerate() {
-                                                __acol.push(__row_vec.get(__ai).cloned());
+                                        for __row_vec in __auto {
+                                            let mut __elems = #elems_iter;
+                                            for __acol in __auto_cols.iter_mut() {
+                                                __acol.push(::core::iter::Iterator::next(&mut __elems));
                                             }
                                         }
                                         for (__ai, __acol) in __auto_cols.into_iter().enumerate() {
@@ -2718,6 +2855,111 @@ fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
     }
 }
 
+/// The value of field `erf` in row `__i` of variant `variant_name_str`, read
+/// from the reader's extracted columns. With `take`, each cell is moved out of
+/// its column: the sequential reader owns the columns and visits each row once.
+/// Without it, the cell is cloned: the parallel reader shares the columns
+/// across threads, and reads only scalar columns, which are all `Clone`.
+fn enum_reader_field_value(
+    erf: &EnumResolvedField,
+    variant_name_str: &str,
+    take: bool,
+) -> TokenStream {
+    let cell = |col_var: &syn::Ident| {
+        if take {
+            quote! { ::core::option::Option::take(&mut #col_var[__i]) }
+        } else {
+            quote! { ::core::clone::Clone::clone(&#col_var[__i]) }
+        }
+    };
+    let required = |col_var: &syn::Ident, what: &str, col_name_str: &str| {
+        let cell = cell(col_var);
+        let msg = format!("variant `{{}}` row {{}}: {what} `{{}}` is NA but field is required");
+        quote! {
+            #cell.ok_or_else(|| ::std::format!(#msg, #variant_name_str, __i, #col_name_str))?
+        }
+    };
+    match erf {
+        EnumResolvedField::Single(data) => {
+            let col_var = format_ident!("__col_{}", crate::naming::unraw(&data.col_name));
+            let what = if data.is_factor {
+                "factor column"
+            } else {
+                "column"
+            };
+            required(&col_var, what, &data.col_name.to_string())
+        }
+        EnumResolvedField::ExpandedFixed(data) => {
+            let elem_ty = &data.elem_ty;
+            let len = data.len;
+            let slots: Vec<TokenStream> = (1..=data.len)
+                .map(|k| {
+                    let col_var = format_ident!("__col_{}_{}", data.base_name, k);
+                    required(&col_var, "column", &format!("{}_{}", data.base_name, k))
+                })
+                .collect();
+            quote! { { let __arr: [#elem_ty; #len] = [ #(#slots),* ]; __arr } }
+        }
+        EnumResolvedField::ExpandedVec(data) => {
+            let elem_ty = &data.elem_ty;
+            let slots: Vec<TokenStream> = (1..=data.width)
+                .map(|k| cell(&format_ident!("__col_{}_{}", data.base_name, k)))
+                .collect();
+            quote! { [ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into() }
+        }
+        EnumResolvedField::AutoExpandVec(data) => {
+            let elem_ty = &data.elem_ty;
+            let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
+            let cells = if take {
+                quote! {
+                    ::core::iter::Iterator::filter_map(#cols_var.iter_mut(), |__c| {
+                        ::core::option::Option::take(&mut __c[__i])
+                    })
+                }
+            } else {
+                quote! {
+                    ::core::iter::Iterator::filter_map(#cols_var.iter(), |__c| {
+                        ::core::clone::Clone::clone(&__c[__i])
+                    })
+                }
+            };
+            quote! { #cells.collect::<::std::vec::Vec<#elem_ty>>().into() }
+        }
+        EnumResolvedField::Map(data) => {
+            let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
+            let vals_var = format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
+            let base = &data.base_name;
+            let map_ty = &data.map_ty;
+            let keys = required(&keys_var, "map column", base);
+            let vals = required(&vals_var, "map column", base);
+            quote! {
+                {
+                    let __keys = #keys;
+                    let __vals = #vals;
+                    if __keys.len() != __vals.len() {
+                        return ::core::result::Result::Err(::std::format!(
+                            "variant `{}` row {}: map column `{}` has {} keys but {} values",
+                            #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                        ));
+                    }
+                    __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                }
+            }
+        }
+        EnumResolvedField::Struct(data) => {
+            let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
+            let base = &data.base_name;
+            let cell = cell(&vec_var);
+            quote! {
+                #cell.ok_or_else(|| ::std::format!(
+                    "variant `{}` row {}: struct field `{}` is absent for this variant",
+                    #variant_name_str, __i, #base
+                ))?
+            }
+        }
+    }
+}
+
 /// Build the `try_from_dataframe` / `try_from_dataframe_par` methods for a tagged enum.
 ///
 /// Returns `None` if the enum is not reader-capable (tagless, has skipped fields,
@@ -2755,11 +2997,14 @@ fn build_enum_reader(
         return None;
     }
 
-    // Determine if any variant has a Struct field (affects _par strategy).
-    let has_struct_field = variant_infos.iter().any(|vi| {
-        vi.fields
-            .iter()
-            .any(|f| matches!(f, EnumResolvedField::Struct(_)))
+    // Struct-flatten and factor columns hold user types, which need not be
+    // `Clone`: the parallel reader, which clones cells, delegates to the
+    // sequential one, which moves them, for these shapes.
+    let par_delegates = variant_infos.iter().any(|vi| {
+        vi.fields.iter().any(|f| {
+            matches!(f, EnumResolvedField::Struct(_))
+                || matches!(f, EnumResolvedField::Single(d) if d.is_factor)
+        })
     });
 
     // Auto-expand columns are discovered at runtime in the generated code — no prelude needed.
@@ -2831,7 +3076,7 @@ fn build_enum_reader(
         if col.is_factor {
             // as_factor column: use unit_factor_option_vec_from_sexp.
             extracts.push(quote! {
-                let #col_var: ::std::vec::Vec<::core::option::Option<#ty>> = {
+                let mut #col_var: ::std::vec::Vec<::core::option::Option<#ty>> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
@@ -2852,7 +3097,7 @@ fn build_enum_reader(
             // Regular column: pull as Vec<Option<ty>> via TryFromSexp.
             let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#ty>);
             extracts.push(quote! {
-                let #col_var: ::std::vec::Vec<#opt_ty> = {
+                let mut #col_var: ::std::vec::Vec<#opt_ty> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
@@ -2890,7 +3135,7 @@ fn build_enum_reader(
         let cols_var = format_ident!("__aev_{}", base_name.replace('-', "_"));
         let opt_elem_ty: syn::Type = syn::parse_quote!(::core::option::Option<#elem_ty>);
         extracts.push(quote! {
-            let #cols_var: ::std::vec::Vec<::std::vec::Vec<#opt_elem_ty>> = {
+            let mut #cols_var: ::std::vec::Vec<::std::vec::Vec<#opt_elem_ty>> = {
                 let mut __cols: ::std::vec::Vec<::std::vec::Vec<#opt_elem_ty>> = ::std::vec::Vec::new();
                 let mut __k: usize = 1;
                 loop {
@@ -2948,7 +3193,7 @@ fn build_enum_reader(
                     .collect();
 
                 extracts.push(quote! {
-                    let #vec_var: ::std::vec::Vec<::core::option::Option<#inner_ty>> = {
+                    let mut #vec_var: ::std::vec::Vec<::core::option::Option<#inner_ty>> = {
                         // Build presence mask: row i is present iff its tag is one of the
                         // variants that contribute this Struct field.
                         let __contributing: &[&str] = &[#(#contributing_variant_names),*];
@@ -3025,7 +3270,7 @@ fn build_enum_reader(
     // per-row dispatch zips `keys[i]` and `values[i]` back into the map type.
     let emit_map_col_extract = |col_var: &syn::Ident, col_name: &str, elem_ty: &syn::Type| {
         quote! {
-            let #col_var: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> = {
+            let mut #col_var: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> = {
                 let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
                     ::std::format!("column `{}` is missing from the data.frame", #col_name)
                 })?;
@@ -3090,247 +3335,36 @@ fn build_enum_reader(
     // Parallel variant: arms return Ok(row) instead of pushing to a Vec.
     let mut par_match_arms: Vec<TokenStream> = Vec::new();
 
-    for (variant_idx, vi) in variant_infos.iter().enumerate() {
+    for vi in variant_infos {
         let variant_name_str = vi.name.to_string();
         let variant_ident = &vi.name;
 
-        // Build the field expressions for this variant.
-        let mut field_exprs: Vec<TokenStream> = Vec::new();
-
-        for erf in &vi.fields {
-            let rust_name = erf.rust_name();
-
-            let expr = match erf {
-                EnumResolvedField::Single(data) => {
-                    let col_var = format_ident!("__col_{}", crate::naming::unraw(&data.col_name));
-                    let col_name_str = data.col_name.to_string();
-                    if data.is_factor {
-                        quote! {
-                            #rust_name: #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                "variant `{}` row {}: factor column `{}` is NA but field is required",
-                                #variant_name_str, __i, #col_name_str
-                            ))?
-                        }
-                    } else {
-                        quote! {
-                            #rust_name: #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                "variant `{}` row {}: column `{}` is NA but field is required",
-                                #variant_name_str, __i, #col_name_str
-                            ))?
-                        }
-                    }
+        let arm_body = |take: bool| -> TokenStream {
+            let values = vi
+                .fields
+                .iter()
+                .map(|erf| enum_reader_field_value(erf, &variant_name_str, take));
+            match vi.shape {
+                VariantShape::Named => {
+                    let names = vi.fields.iter().map(|erf| erf.rust_name());
+                    quote! { #row_name::#variant_ident { #(#names: #values),* } }
                 }
-                EnumResolvedField::ExpandedFixed(data) => {
-                    let elem_ty = &data.elem_ty;
-                    let len = data.len;
-                    let slots: Vec<TokenStream> = (1..=data.len)
-                        .map(|k| {
-                            let col_var = format_ident!("__col_{}_{}", data.base_name, k);
-                            let col_name_str = format!("{}_{}", data.base_name, k);
-                            quote! {
-                                #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                    "variant `{}` row {}: column `{}` is NA but field is required",
-                                    #variant_name_str, __i, #col_name_str
-                                ))?
-                            }
-                        })
-                        .collect();
-                    quote! {
-                        #rust_name: {
-                            let __arr: [#elem_ty; #len] = [ #(#slots),* ];
-                            __arr
-                        }
-                    }
-                }
-                EnumResolvedField::ExpandedVec(data) => {
-                    let elem_ty = &data.elem_ty;
-                    let slots: Vec<TokenStream> = (1..=data.width)
-                        .map(|k| {
-                            let col_var = format_ident!("__col_{}_{}", data.base_name, k);
-                            quote! { #col_var[__i].clone() }
-                        })
-                        .collect();
-                    quote! {
-                        #rust_name: [ #(#slots),* ]
-                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
-                    }
-                }
-                EnumResolvedField::AutoExpandVec(data) => {
-                    let elem_ty = &data.elem_ty;
-                    let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
-                    quote! {
-                        #rust_name: #cols_var
-                            .iter()
-                            .filter_map(|__c| __c[__i].clone())
-                            .collect::<::std::vec::Vec<#elem_ty>>()
-                            .into()
-                    }
-                }
-                EnumResolvedField::Map(data) => {
-                    let keys_var =
-                        format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
-                    let vals_var =
-                        format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
-                    let base = &data.base_name;
-                    let map_ty = &data.map_ty;
-                    quote! {
-                        #rust_name: {
-                            let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
-                                "variant `{}` row {}: map column `{}` is NA but field is required",
-                                #variant_name_str, __i, #base
-                            ))?;
-                            let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
-                                "variant `{}` row {}: map column `{}` is NA but field is required",
-                                #variant_name_str, __i, #base
-                            ))?;
-                            if __keys.len() != __vals.len() {
-                                return ::core::result::Result::Err(::std::format!(
-                                    "variant `{}` row {}: map column `{}` has {} keys but {} values",
-                                    #variant_name_str, __i, #base, __keys.len(), __vals.len()
-                                ));
-                            }
-                            __keys.into_iter().zip(__vals).collect::<#map_ty>()
-                        }
-                    }
-                }
-                EnumResolvedField::Struct(data) => {
-                    let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
-                    let base = &data.base_name;
-                    quote! {
-                        #rust_name: #vec_var[__i].clone().ok_or_else(|| ::std::format!(
-                            "variant `{}` row {}: struct field `{}` is absent for this variant",
-                            #variant_name_str, __i, #base
-                        ))?
-                    }
-                }
-            };
-            field_exprs.push(expr);
-        }
-
-        // Build the match arm for this variant.
-        let arm_body = match vi.shape {
-            VariantShape::Named => {
-                if field_exprs.is_empty() {
-                    quote! { #row_name::#variant_ident {} }
-                } else {
-                    quote! { #row_name::#variant_ident { #(#field_exprs),* } }
-                }
+                VariantShape::Tuple => quote! { #row_name::#variant_ident( #(#values),* ) },
+                VariantShape::Unit => quote! { #row_name::#variant_ident },
             }
-            VariantShape::Tuple => {
-                // For tuple variants we need positional args, not `rust_name: expr`.
-                // Rebuild expressions without the `rust_name:` prefix.
-                let positional_exprs: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                    match erf {
-                        EnumResolvedField::Single(data) => {
-                            let col_var = format_ident!("__col_{}", crate::naming::unraw(&data.col_name));
-                            let col_name_str = data.col_name.to_string();
-                            if data.is_factor {
-                                quote! {
-                                    #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                        "variant `{}` row {}: factor column `{}` is NA but field is required",
-                                        #variant_name_str, __i, #col_name_str
-                                    ))?
-                                }
-                            } else {
-                                quote! {
-                                    #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                        "variant `{}` row {}: column `{}` is NA but field is required",
-                                        #variant_name_str, __i, #col_name_str
-                                    ))?
-                                }
-                            }
-                        }
-                        EnumResolvedField::ExpandedFixed(data) => {
-                            let elem_ty = &data.elem_ty;
-                            let len = data.len;
-                            let slots: Vec<TokenStream> = (1..=data.len)
-                                .map(|k| {
-                                    let col_var = format_ident!("__col_{}_{}", data.base_name, k);
-                                    let col_name_str = format!("{}_{}", data.base_name, k);
-                                    quote! {
-                                        #col_var[__i].clone().ok_or_else(|| ::std::format!(
-                                            "variant `{}` row {}: column `{}` is NA but field is required",
-                                            #variant_name_str, __i, #col_name_str
-                                        ))?
-                                    }
-                                })
-                                .collect();
-                            quote! { { let __arr: [#elem_ty; #len] = [ #(#slots),* ]; __arr } }
-                        }
-                        EnumResolvedField::ExpandedVec(data) => {
-                            let elem_ty = &data.elem_ty;
-                            let slots: Vec<TokenStream> = (1..=data.width)
-                                .map(|k| {
-                                    let col_var = format_ident!("__col_{}_{}", data.base_name, k);
-                                    quote! { #col_var[__i].clone() }
-                                })
-                                .collect();
-                            quote! { [ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into() }
-                        }
-                        EnumResolvedField::AutoExpandVec(data) => {
-                            let elem_ty = &data.elem_ty;
-                            let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
-                            quote! {
-                                #cols_var.iter().filter_map(|__c| __c[__i].clone()).collect::<::std::vec::Vec<#elem_ty>>().into()
-                            }
-                        }
-                        EnumResolvedField::Map(data) => {
-                            let keys_var =
-                                format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
-                            let vals_var = format_ident!(
-                                "__mapcol_{}_values",
-                                data.base_name.replace('-', "_")
-                            );
-                            let base = &data.base_name;
-                            let map_ty = &data.map_ty;
-                            quote! {
-                                {
-                                    let __keys = #keys_var[__i].clone().ok_or_else(|| ::std::format!(
-                                        "variant `{}` row {}: map column `{}` is NA but field is required",
-                                        #variant_name_str, __i, #base
-                                    ))?;
-                                    let __vals = #vals_var[__i].clone().ok_or_else(|| ::std::format!(
-                                        "variant `{}` row {}: map column `{}` is NA but field is required",
-                                        #variant_name_str, __i, #base
-                                    ))?;
-                                    if __keys.len() != __vals.len() {
-                                        return ::core::result::Result::Err(::std::format!(
-                                            "variant `{}` row {}: map column `{}` has {} keys but {} values",
-                                            #variant_name_str, __i, #base, __keys.len(), __vals.len()
-                                        ));
-                                    }
-                                    __keys.into_iter().zip(__vals).collect::<#map_ty>()
-                                }
-                            }
-                        }
-                        EnumResolvedField::Struct(data) => {
-                            let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
-                            let base = &data.base_name;
-                            quote! {
-                                #vec_var[__i].clone().ok_or_else(|| ::std::format!(
-                                    "variant `{}` row {}: struct field `{}` is absent",
-                                    #variant_name_str, __i, #base
-                                ))?
-                            }
-                        }
-                    }
-                }).collect();
-                quote! { #row_name::#variant_ident( #(#positional_exprs),* ) }
-            }
-            VariantShape::Unit => quote! { #row_name::#variant_ident },
         };
 
-        let _ = variant_idx; // variant_idx used logically above via contributing_variant_names
-
         // Sequential arm: push onto __rows.
+        let seq_body = arm_body(true);
         match_arms.push(quote! {
             #variant_name_str => {
-                __rows.push(#arm_body);
+                __rows.push(#seq_body);
             }
         });
         // Parallel arm: return Ok(row_value).
+        let par_body = arm_body(false);
         par_match_arms.push(quote! {
-            #variant_name_str => ::core::result::Result::Ok(#arm_body),
+            #variant_name_str => ::core::result::Result::Ok(#par_body),
         });
     }
     // endregion
@@ -3358,10 +3392,10 @@ fn build_enum_reader(
     // endregion
 
     // region: parallel body
-    // For shapes with Struct fields, delegate to sequential (avoids Clone on par region).
-    // For pure-scalar/expansion shapes, extract all columns on the R thread then
-    // parallelize per-row dispatch over pre-extracted owned Vecs.
-    let par_body = if has_struct_field {
+    // For shapes with Struct or factor fields, delegate to sequential (see
+    // `par_delegates`). For pure-scalar/expansion shapes, extract all columns on
+    // the R thread then parallelize per-row dispatch over pre-extracted owned Vecs.
+    let par_body = if par_delegates {
         quote! { Self::try_from_dataframe(sexp) }
     } else {
         // Extract all columns on the R thread, then parallelize per-row dispatch.
@@ -3417,7 +3451,11 @@ fn build_enum_reader(
             /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
             /// rayon. All SEXP access happens up front on the R/worker thread; the
             /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
-            /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
+            /// struct-flatten/nested-enum or factor fields delegate to the sequential
+            /// reader instead.
+            // The extracted columns are `mut` for the sequential reader, which
+            // moves cells out of them; this one only reads them.
+            #[allow(unused_mut)]
             pub fn try_from_dataframe_par(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {

@@ -58,6 +58,13 @@ fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
     Ok(ignored)
 }
 
+/// `ty: Default`, the bound an `#[into_list(ignore)]` field puts on
+/// `TryFromList`, spanned at `ty` so a type without `Default` is reported at
+/// the field.
+fn default_bound(ty: &syn::Type) -> syn::WherePredicate {
+    syn::parse_quote_spanned! {ty.span()=> #ty: ::core::default::Default }
+}
+
 /// Derive `IntoList` for structs (Rust -> R).
 ///
 /// Generates an `impl IntoList for T` that converts the struct into an R list:
@@ -239,7 +246,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 let ty = &f.ty;
 
                 if field_is_ignored(f)? {
-                    bounds.push(parse_quote!(#ty: ::core::default::Default));
+                    bounds.push(default_bound(ty));
                     field_inits.push(quote! { #ident: ::core::default::Default::default() });
                     continue;
                 }
@@ -315,7 +322,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 let ty = &f.ty;
 
                 if ignored_fields[idx] {
-                    bounds.push(parse_quote!(#ty: ::core::default::Default));
+                    bounds.push(default_bound(ty));
                     ctor_args.push(quote! { ::core::default::Default::default() });
                     continue;
                 }

@@ -1,10 +1,7 @@
 //! Sparse iterator ALTREP adaptors: the values a vector reads once its source ends.
 
 use miniextendr_api::altrep_traits::NA_INTEGER;
-use miniextendr_api::{
-    AltComplexData, AltIntegerData, AltRealData, IsNA, Rcomplex, SparseIterComplexData,
-    SparseIterIntData, SparseIterRealData,
-};
+use miniextendr_api::{AltIntegerData, SparseIterIntData};
 
 /// Yields `1..=produced`, then `None` once, then `100, 101, ...` forever.
 fn resuming(produced: i32) -> impl Iterator<Item = i32> {
@@ -49,23 +46,4 @@ fn reads_past_a_short_source_are_missing() {
     assert_eq!(data.elt(2), NA_INTEGER);
     assert_eq!(data.elt(5), NA_INTEGER);
     assert_eq!(data.elt(1), 2);
-}
-
-#[test]
-fn skipped_real_and_complex_elements_are_ordinary_nan() {
-    let real = SparseIterRealData::from_iter((0..4).map(f64::from), 4);
-    assert_eq!(real.elt(3), 3.0);
-    let skipped = real.elt(0);
-    assert!(skipped.is_nan() && !skipped.is_na());
-
-    let values = (0..4).map(|i| Rcomplex {
-        r: f64::from(i),
-        i: -f64::from(i),
-    });
-    let complex = SparseIterComplexData::from_iter(values, 4);
-    assert_eq!(complex.elt(3).r, 3.0);
-    let skipped = complex.elt(0);
-    for part in [skipped.r, skipped.i] {
-        assert!(part.is_nan() && !part.is_na());
-    }
 }

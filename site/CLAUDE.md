@@ -56,6 +56,14 @@ CI gates this on every PR that touches `docs/**`, `site/**`, or
 from the Pages deploy workflow, so a broken link fails the PR instead of
 only being caught after merging to main).
 
+**Compiled examples**: a ```` ```rust ```` block in `docs/*.md` or an
+end-user skill (`minirextendr/inst/claude/skills/*/SKILL.md`) whose fence is
+preceded by the line `<!-- docs-examples-check -->` is `cargo check`ed by
+`just docs-examples-check` (CI: the `Docs Examples Check` job). Blocks marked
+`<!-- docs-examples-check: name -->` with the same name compile as one module.
+A marked block must compile as written, its own `use` lines included. Mark a
+block once it is complete; leave fragments (`...`, `/* ... */`) unmarked.
+
 **Cross-renderer anchor gotcha**: GitHub's heading slugifier and Zola's
 disagree on several characters — most importantly, Zola always folds
 underscores to hyphens (`Set_elt` → `set-elt`) while GitHub preserves them,

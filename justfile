@@ -57,6 +57,7 @@
 #     just site-docs           - Regenerate site/content/manual/ from docs/
 #     just site-build          - Build Zola site (run site-docs first for doc changes)
 #     just site-serve          - Local preview server (run site-docs first for doc changes)
+#     just docs-examples-check - Compile-check the marked Rust examples in docs/ and skills
 #     just llm-docs            - Regenerate LLM-ready Rust API docs
 #     just llm-docs-check      - Test the renderer and regenerate the LLM docs
 #     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
@@ -1868,6 +1869,14 @@ site-serve:
 # is a quarterly-audit concern, not enforced here).
 site-check: site-docs
     cd site && zola check
+
+# `cargo check` the Rust blocks marked `<!-- docs-examples-check -->` in
+# docs/*.md and the end-user skills (or in the given files), against this
+# checkout's miniextendr-api. Needs R, like any miniextendr-api build. Gates CI
+# (the Docs Examples Check job). See scripts/docs-examples-check.sh.
+# Fail when a marked example does not compile (exits nonzero)
+docs-examples-check *files:
+    bash scripts/docs-examples-check.sh {{files}}
 
 # Bump version across all Cargo.toml and DESCRIPTION files.
 bump-version version:

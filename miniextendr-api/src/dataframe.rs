@@ -1519,7 +1519,10 @@ pub trait ColumnarFrame<Row>: Sized {
     /// [`from_rows`](ColumnarFrame::from_rows).
     ///
     /// Defaults to the sequential path; `#[derive(DataFrameRow)]` overrides it with a genuine
-    /// parallel column fill for shapes that support one.
+    /// parallel column fill wherever the row shape allows one: the rows and column values are
+    /// `Send`, placeholder-filled columns are `Default`, and struct-flattened / `as_list`
+    /// values are `Clone`. A row shape without these still compiles and gets the sequential
+    /// path.
     #[cfg(feature = "rayon")]
     fn from_rows_par(rows: Vec<Row>) -> Self {
         Self::from_rows(rows)
@@ -1535,6 +1538,75 @@ pub trait ColumnarFrame<Row>: Sized {
         Self: IntoIterator<Item = Row>,
     {
         self.into_iter().collect()
+    }
+}
+
+/// The parallel column fill `#[derive(DataFrameRow)]` writes for a companion.
+///
+/// The derive implements it only where the row shape allows a parallel fill:
+/// the rows and every column value can move to another thread (`Send`), and
+/// what the fill needs of its columns holds (`Default` for a placeholder,
+/// `Clone` for a value copied out before the rows move). Each of those bounds
+/// sits behind a higher-ranked binder, so the impl simply does not apply when
+/// one fails. [`ColumnarFrame::from_rows_par`] then falls back to `from_rows`
+/// through [`FromRowsParProbe`] instead of failing to compile, so turning on
+/// `rayon` anywhere in a crate graph never breaks a row type.
+#[cfg(feature = "rayon")]
+#[doc(hidden)]
+pub trait ParallelColumns<Row>: Sized {
+    /// Fill the companion's columns from the rows in parallel.
+    fn from_rows_parallel(rows: Vec<Row>) -> Self;
+}
+
+/// Selects the derive's `from_rows_par`: [`ParallelColumns`] when the
+/// companion implements it, `from_rows` otherwise.
+///
+/// The derived override calls
+/// `(&FromRowsParProbe::<Self, Row>::new()).fill_columns(rows)` with
+/// [`FromRowsParParallel`] and [`FromRowsParSequential`] in scope. Method
+/// lookup tries the receiver type `&FromRowsParProbe` first, where only the
+/// parallel trait's method fits (and only if its impl applies), then
+/// `&&FromRowsParProbe`, where the sequential one does.
+#[cfg(feature = "rayon")]
+#[doc(hidden)]
+pub struct FromRowsParProbe<Df, Row>(std::marker::PhantomData<fn() -> (Df, Row)>);
+
+#[cfg(feature = "rayon")]
+impl<Df, Row> FromRowsParProbe<Df, Row> {
+    /// The probe for companion `Df` over `Row`.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        FromRowsParProbe(std::marker::PhantomData)
+    }
+}
+
+/// The parallel arm of [`FromRowsParProbe`].
+#[cfg(feature = "rayon")]
+#[doc(hidden)]
+pub trait FromRowsParParallel<Df, Row> {
+    /// Fill `Df` with [`ParallelColumns::from_rows_parallel`].
+    fn fill_columns(&self, rows: Vec<Row>) -> Df;
+}
+
+#[cfg(feature = "rayon")]
+impl<Df: ParallelColumns<Row>, Row> FromRowsParParallel<Df, Row> for FromRowsParProbe<Df, Row> {
+    fn fill_columns(&self, rows: Vec<Row>) -> Df {
+        Df::from_rows_parallel(rows)
+    }
+}
+
+/// The sequential arm of [`FromRowsParProbe`].
+#[cfg(feature = "rayon")]
+#[doc(hidden)]
+pub trait FromRowsParSequential<Df, Row> {
+    /// Fill `Df` with [`ColumnarFrame::from_rows`].
+    fn fill_columns(&self, rows: Vec<Row>) -> Df;
+}
+
+#[cfg(feature = "rayon")]
+impl<Df: ColumnarFrame<Row>, Row> FromRowsParSequential<Df, Row> for &FromRowsParProbe<Df, Row> {
+    fn fill_columns(&self, rows: Vec<Row>) -> Df {
+        Df::from_rows(rows)
     }
 }
 // endregion
