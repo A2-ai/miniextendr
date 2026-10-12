@@ -112,7 +112,7 @@ Make both `#[miniextendr]` and derive paths available for every feature.
 
 - [x] `#[miniextendr]` on multi-field struct → ExternalPtr
 - [x] `#[miniextendr(list)]` on struct → IntoList + TryFromList + PreferList
-- [x] `#[miniextendr(dataframe)]` on struct → IntoList + DataFrameRow + IntoR on companion
+- [x] `#[miniextendr(dataframe)]` on struct → DataFrameRow + IntoR on companion
 - [x] `#[miniextendr]` on fieldless enum → RFactor
 - [x] `#[miniextendr(match_arg)]` on fieldless enum → MatchArg
 - [x] `#[miniextendr(prefer = "...")]` on struct → Prefer\* markers

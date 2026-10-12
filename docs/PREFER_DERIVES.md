@@ -33,7 +33,6 @@ choose.
 | `PreferList` | `IntoList::into_list` | `IntoList` | Named list |
 | `PreferExternalPtr` | `ExternalPtr::new()` | a hand-written `TypedExternal` | External pointer |
 | `PreferRNativeType` | `AsRNative` | `RNativeType` (so `Copy`) | Native R vector |
-| `PreferDataFrame` | the internal `ColumnSource` engine | not usable on your types; see below | data.frame |
 | `PreferVctrs` (`vctrs` feature) | `IntoVctrs::into_vctrs` | `#[derive(Vctrs)]` | vctrs object |
 
 Each derive writes the type's `IntoR` impl and nothing else. There are no marker
@@ -64,16 +63,14 @@ pub fn default_config() -> Config {
 // R: list(name = "default", value = 1.0, enabled = TRUE)
 ```
 
-Requires: `IntoList` (the generated `IntoR` calls `into_list`). `TryFromList`
-is only needed to take `Config` as an argument.
+Requires: `IntoList` (the generated `IntoR` calls `into_list`). Add
+`TryFromList` to reconstruct `Config` from an R `List`.
 
-### PreferDataFrame
+### Returning data frames
 
-`PreferDataFrame` builds its frame through `ColumnSource`, an internal trait that
-only the `{Row}DataFrame` companions written by `#[derive(DataFrameRow)]`
-implement, and those companions already convert to a data.frame. Deriving it on
-your own row struct fails with "`ColumnSource` is not implemented" (#2026). To return a
-data.frame, return a `BuiltDataFrame` or wrap the rows in `AsDataFrame`:
+`#[derive(DataFrameRow)]` generates a `{Row}DataFrame` companion that already
+converts to a data.frame. Return that companion, a `BuiltDataFrame`, or wrap
+rows in `AsDataFrame`:
 
 <!-- docs-examples-check -->
 ```rust
@@ -192,7 +189,7 @@ On a struct, `prefer = "..."` selects what `#[miniextendr]` generates:
 | Attribute | Generates |
 |-----------|-----------|
 | `prefer = "list"` | Same as `#[miniextendr(list)]`: `IntoList` + `TryFromList` + `PreferList` |
-| `prefer = "dataframe"` | Same as `#[miniextendr(dataframe)]`: `IntoList` + `DataFrameRow` |
+| `prefer = "dataframe"` | Same as `#[miniextendr(dataframe)]`: `DataFrameRow` |
 | `prefer = "externalptr"` | Same as the default: `ExternalPtr` |
 | `prefer = "native"` | `ExternalPtr` without its `IntoR`, plus `PreferRNativeType` |
 

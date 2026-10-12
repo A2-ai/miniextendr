@@ -18,12 +18,11 @@
 //! | `DataFrameRow` | `CovRow` |
 //! | `RFactor` | `CovFactor` |
 //!
-//! ## Excluded (marker-only, require complex prerequisites)
+//! ## Covered elsewhere
 //!
-//! - `PreferExternalPtr`: needs `IntoExternalPtr` (from `ExternalPtr`) but combined
-//!   with `ExternalPtr` creates conflicting blanket `IntoR` impls.
-//! - `PreferDataFrame`: needs `IntoDataFrame` which only exists on generated
-//!   `*DataFrame` companion types from `DataFrameRow`.
+//! - `PreferExternalPtr`: needs a hand-written `TypedExternal` impl; the `Boxed`
+//!   fixture in `miniextendr-macros/tests/ui/pass/assoc_item_variant_names.rs`
+//!   covers it. `ExternalPtr` derive already supplies `IntoR`.
 
 // ExternalPtr derive
 #[derive(miniextendr_api::ExternalPtr)]
@@ -48,8 +47,8 @@ pub struct CovPreferList {
 #[derive(miniextendr_api::RNativeType, miniextendr_api::PreferRNativeType, Clone, Copy)]
 pub struct CovPreferNative(pub i32);
 
-// DataFrameRow requires IntoList
-#[derive(miniextendr_api::IntoList, miniextendr_api::DataFrameRow)]
+// DataFrameRow supplies the companion conversion without IntoList on the row.
+#[derive(miniextendr_api::DataFrameRow)]
 pub struct CovRow {
     pub x: i32,
 }

@@ -22,7 +22,8 @@
 //! Use these derives when a type should *always* use a specific conversion:
 //!
 //! - `#[derive(IntoList, PreferList)]`: Type always converts to R list
-//! - `#[derive(ExternalPtr, PreferExternalPtr)]`: Type always converts to external pointer
+//! - `#[derive(ExternalPtr)]`: Type always converts to external pointer
+//!   (`PreferExternalPtr` is for a hand-written `TypedExternal` impl)
 //! - `#[derive(RNativeType, PreferRNativeType)]`: Newtype always converts to native R scalar
 //!
 //! ```ignore
@@ -511,10 +512,10 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
 
 /// Wrap a value and convert it to an R `data.frame` via [`IntoDataFrame`](crate::dataframe::IntoDataFrame) when returned.
 ///
-/// Use this at a call site to force a single return value into a data.frame without making
-/// that the type's default representation (for the always-a-data.frame default, use
-/// `#[derive(PreferDataFrame)]` / `#[miniextendr(dataframe)]`). The inner `T` is typically a
-/// `Vec<Row>` where `Row` derives [`DataFrameRow`](crate::markers::DataFrameRow).
+/// The inner `T` is typically a `Vec<Row>` where `Row` derives
+/// [`DataFrameRow`](crate::markers::DataFrameRow). To return a frame directly,
+/// return the generated `{Row}DataFrame` companion or build a
+/// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) with `IntoDataFrame`.
 ///
 /// A failed conversion ([`DataFrameError`](crate::dataframe::DataFrameError)) surfaces in R as
 /// an error condition.

@@ -97,7 +97,6 @@ Control which `IntoR` / `TryFromSexp` path a type takes when multiple are possib
 | Derive | Purpose |
 |--------|---------|
 | `#[derive(PreferExternalPtr)]` | Prefer `ExternalPtr` wrapping |
-| `#[derive(PreferDataFrame)]` | Prefer data-frame representation |
 | `#[derive(PreferList)]` | Prefer named-list representation |
 | `#[derive(PreferRNativeType)]` | Prefer native R scalar representation |
 

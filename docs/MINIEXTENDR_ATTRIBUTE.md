@@ -1518,10 +1518,10 @@ explicit-mode counterpart: it generates `ExternalPtr` plus the
 |--------|--------|
 | `#[miniextendr]` (no mode attr) | ExternalPtr |
 | `#[miniextendr(list)]` | `IntoList` + `TryFromList` + `PreferList` |
-| `#[miniextendr(dataframe)]` | `IntoList` + `DataFrameRow` + companion type |
+| `#[miniextendr(dataframe)]` | `DataFrameRow` + companion type |
 | `#[miniextendr(externalptr)]` | `ExternalPtr` + `TypedExternal` |
 | `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`) |
-| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type) |
+| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`DataFrameRow` + companion type) |
 | `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit; identical to the no-mode-attr default) |
 | `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` (needs `RNativeType`) |
 
@@ -1637,6 +1637,10 @@ pub fn make_obs() -> ObsDataFrame {  // companion type
 // R: data.frame(id = c(1L, 2L), score = c(0.5, 0.8))
 ```
 
+Dataframe mode derives only `DataFrameRow`; the companion already implements
+`IntoR`. Add `#[derive(IntoList)]` explicitly if individual rows also need list
+conversion.
+
 `#[dataframe(...)]` options work on the struct and its fields with either
 `#[miniextendr(dataframe)]` or `#[derive(DataFrameRow)]`. For example,
 `#[dataframe(name = "ObsFrame")]` changes the companion type's name, and
@@ -1714,7 +1718,6 @@ These are separate from `#[miniextendr]` but complementary:
 | `MatchArg` | Enum ↔ R character with `match.arg()` |
 | `RNativeType` | Newtype for native R types |
 | `PreferList` | `IntoR` through list |
-| `PreferDataFrame` | `IntoR` through the companion's data.frame engine (internal; see [PREFER_DERIVES.md](PREFER_DERIVES.md)) |
 | `PreferExternalPtr` | `IntoR` through ExternalPtr, for a hand-written `TypedExternal` |
 | `PreferRNativeType` | `IntoR` through native SEXP |
 | `Vctrs` | vctrs-compatible S3 class (feature-gated) |
@@ -1722,8 +1725,8 @@ These are separate from `#[miniextendr]` but complementary:
 
 The `#[miniextendr]` attribute on structs/enums is a convenience that calls the
 appropriate derives internally. List and dataframe modes expand to normal
-`#[derive(...)]` invocations, so their helper attributes (`#[into_list(...)]`,
-`#[dataframe(...)]`) work alongside any other derives on the struct.
+`#[derive(...)]` invocations, so `#[into_list(...)]` in list mode and
+`#[dataframe(...)]` in dataframe mode work alongside other derives on the struct.
 
 ## See Also
 
