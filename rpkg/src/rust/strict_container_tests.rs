@@ -49,6 +49,12 @@ pub fn strict_array_usize(big: bool) -> [usize; 2] {
 }
 
 /// @noRd
+#[miniextendr(noexport)]
+pub fn lax_array_usize(big: bool) -> [usize; 2] {
+    if big { [1, 3_000_000_000] } else { [1, 2] }
+}
+
+/// @noRd
 #[miniextendr(noexport, strict)]
 pub fn strict_optional_boxed_i64(big: Option<bool>) -> Option<Box<[i64]>> {
     big.map(|big| values(big).into_boxed_slice())
