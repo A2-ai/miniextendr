@@ -294,9 +294,9 @@ SimpleCounter$new <- function(initial) { ... }
 
 # Trait namespace: instance methods take the object first
 SimpleCounter$Counter <- new.env(parent = emptyenv())
-SimpleCounter$Counter$value <- function(x) { ... }
+SimpleCounter$Counter$value <- function(.mx_self) { ... }
 attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
-SimpleCounter$Counter$increment <- function(x) { ... }
+SimpleCounter$Counter$increment <- function(.mx_self) { ... }
 attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 # $ dispatch handles both inherent methods and trait namespaces
@@ -361,7 +361,7 @@ double_counter(c)      # 12
 2. **Producer** registers these in `R_init_producer_miniextendr`
 3. **Consumer** imports `producer`, ensuring the DLL is loaded
 4. **Consumer** calls trait methods via the `$Trait$method` syntax
-5. The `$.SimpleCounter` dispatch binds `self` and returns trait methods with proper scope
+5. The `$.SimpleCounter` dispatch binds the object as each instance method's first argument (`.mx_self`, a name no Rust parameter can take)
 
 ### Cross-Package Vtable Dispatch (Future)
 

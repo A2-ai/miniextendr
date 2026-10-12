@@ -129,7 +129,11 @@ Counter$inc <- function() {
 The object *is* the external pointer: the constructor takes the `EXTPTRSXP`
 returned by `.Call()`, sets its class attribute, and returns it. There is no
 list and no `.ptr` field. The methods live in the `Counter` environment and
-take no receiver formal; each body refers to `.mx_self`. That name resolves
+take no receiver formal; each body refers to `.mx_self`. No Rust parameter
+can produce a dotted R name, so a method may take arguments named `self` or
+`x`. An R formal is the Rust parameter name without leading underscores, so
+`_self: i32` becomes `self`; clippy's `duplicate_underscore_argument` lint
+flags `_self` beside `&self`, so allow it where you use one. `.mx_self` resolves
 through the `$.Counter` dispatcher: `c$value()` calls `$.Counter(c, "value")`,
 which calls `.miniextendr_env_method`, a helper the wrapper file defines (its
 source is in `miniextendr-api/src/registry.rs`). The helper fetches
@@ -150,9 +154,6 @@ the matching trait names in `condition$traits`, reporting the call as written
 (`obj$method`). Select the trait explicitly
 with `obj$Trait$method()`. An inherent method of that name takes precedence.
 The same rule applies to trait static methods and associated constants.
-Env and R6 trait namespace functions take `.mx_self` as their receiver formal;
-`x`, `self`, and `private` remain available to user arguments. R6 methods inside
-the class still use R6's own `self` and `private` bindings.
 
 ### Usage
 
@@ -165,10 +166,12 @@ c[["value"]]() # same dispatch as `$`
 ```
 
 Trait methods implemented for an env class sit in a namespace named after the
-trait: `c$MyTrait$method()` binds `self` for you, and
-`Counter$MyTrait$method(c)` is the standalone form. Calling an inherent method
-without an object (`Counter$value()`) fails with `object 'self' not found`,
-because nothing bound `self`.
+trait: `c$MyTrait$method()` binds the receiver for you, and
+`Counter$MyTrait$method(c)` is the standalone form. Its receiver formal is
+`.mx_self`, as for R6 trait methods (`Type$Trait$method(obj, ...)`), so trait
+methods may take arguments named `x`, `self` or `private`; pass the object by
+position. Calling an inherent method without an object (`Counter$value()`)
+fails with `object '.mx_self' not found`, because nothing bound `.mx_self`.
 
 ### When to Use
 
@@ -484,9 +487,12 @@ impl Gene {
         self.chromosome
     }
 
+    /// `Invisible<()>`: a void method returns the object, and `show()` at
+    /// the console would print it again (#1213)
     #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
-    pub fn display(&self) {
+    pub fn display(&self) -> Invisible<()> {
         println!("Gene {} on chr{}", self.symbol, self.chromosome);
+        Invisible(())
     }
 }
 ```
@@ -525,6 +531,41 @@ symbol(g)       # "TP53"
 chromosome(g)   # 17
 show(g)         # Gene TP53 on chr17
 ```
+
+### Methods on an existing generic (S3 and S4)
+
+`s3(generic = "...")` and `s4(generic = "...")` add a method to a generic that
+already exists: base's `print`, `format` or `summary`, `methods::show`, the
+primitive `length`, or a generic of an imported package. The method's receiver
+formal is `x`; when the generic names its first argument differently, say so
+with `receiver`, and drop the `...` the wrapper otherwise appends with
+`no_dots` when the generic has none:
+
+```rust
+#[miniextendr(s3(generic = "summary", receiver = "object"))]
+pub fn summarise(&self) -> String { ... }  // summary.Gene <- function(object, ...)
+
+#[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+pub fn display(&self) -> Invisible<()> { ... }  // setMethod("show", c(object = "Gene"), function(object) ...)
+```
+
+The receiver is what the wrapper reads the pointer from and what a void or
+`&mut self` method hands back. The generic's other formals are ordinary Rust
+parameters (`all.equal(target, current, ...)` is `receiver = "target"` plus a
+`current` parameter); a parameter whose R name is the receiver is a compile
+error. A `&Dots` parameter still supplies `...` under `no_dots`. `receiver` and
+`no_dots` need `generic` and an instance method; trait impl methods accept all
+three.
+
+An explicit S3 `generic` never defines a generic. An explicit S4 `generic` is
+defined only when no generic or function of that name is visible from the
+package, so the method attaches to `show` or `length` instead of masking them
+with a generic of the package's own. A generic from an installed copy of the
+same package does not count, so `load_all()` with that copy attached still
+defines it. A name nothing defines is created as
+`setGeneric(name, function(<receiver>, ...))`, but gets no generated help page
+(#2039); without `generic`, an S4 method uses the documented
+`s4_<method>` generic.
 
 ### When to Use
 
@@ -624,16 +665,13 @@ print(p1)          # Point(0, 0)
 
 ### Fast-path dispatch shortcuts
 
-Shortcuts take `.mx_self` as their receiver. This leaves a user argument named
-`self` free, including on trait methods; it does not change the S7 generic's
-dispatch argument names.
-
-
 Every non-fallback S7 instance method also gets a plain function
-`<ClassName>_<method>(self, ...)` whose body calls the underlying Rust routine
+`<ClassName>_<method>(.mx_self, ...)` whose body calls the underlying Rust routine
 directly, bypassing `S7::S7_dispatch()` (the class walk + method-table lookup).
 On hot loops this is several times faster than calling the generic. Trait-impl
 S7 methods (`#[miniextendr(s7)] impl Trait for Type`) get the same shortcuts.
+The dotted receiver leaves an argument named `self` free; pass the object by
+position. The generic's dispatch arguments are unchanged.
 
 ```r
 # Generic (full S7 dispatch — honours subclass overrides)
@@ -1815,18 +1853,3 @@ take the by-value enum).
 5. **Use S7** for new packages wanting modern OOP
 
 When in doubt, start with the default (Env) and migrate if needed.
-
-
-### Matching existing S3/S4 generic formals
-
-An explicit `s3(generic = "predict", receiver = "object")` emits
-`predict.Class <- function(object, ...)`, using `object` for pointer access and
-chaining. `s4(generic = "show", receiver = "object", no_dots)` emits a method
-with `function(object)` and reuses the existing generic without redefining it.
-The default receiver remains `x`. `no_dots` suppresses only automatically added
-dispatch dots; an explicit Rust `Dots` parameter still supplies `...`.
-Match the other generic formals with Rust parameter names and defaults as usual.
-A receiver name that duplicates a user parameter is rejected during expansion.
-These options apply to both inherent and trait instance methods of an existing
-generic. The trait path also reuses the generic without redefining or exporting
-it. For a standalone S3 function, spell the full signature directly.
