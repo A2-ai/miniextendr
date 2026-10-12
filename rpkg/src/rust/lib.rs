@@ -185,6 +185,7 @@ mod console_output_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
+mod dataframe_bounds_test;
 mod dataframe_derive_alignment_tests;
 mod dataframe_enum_payload_matrix;
 mod dataframe_examples;

@@ -630,7 +630,7 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
 
 /// True if `ty` is a borrowed reference (`&[T]`, `&[T; N]`, `&str`, …). Such
 /// expansion fields can't be reconstructed by value in the R→Rust reader.
-fn field_is_borrowed_ref(ty: &syn::Type) -> bool {
+pub(super) fn field_is_borrowed_ref(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Reference(_))
 }
 // endregion
@@ -731,6 +731,8 @@ struct ExpandedFixedData {
     /// `false` for a borrowed origin (`&[T; N]`) — owned R data can't produce a
     /// borrow, so the struct gets no reader (see [`field_reader_capable`]).
     readable: bool,
+    /// The field is `&[T; N]`: its elements are cloned out, not moved.
+    borrowed: bool,
 }
 
 /// Data for [`ResolvedField::ExpandedVec`].
@@ -749,6 +751,8 @@ struct ExpandedVecData {
     /// `false` for a borrowed origin (`&[T]`); `Vec<T>` / `Box<[T]>` are readable
     /// (the reader collects a `Vec<T>` and `.into()`-converts to the field type).
     readable: bool,
+    /// The field is `&[T]`: its elements are cloned out, not moved.
+    borrowed: bool,
 }
 
 /// Data for [`ResolvedField::Struct`].
@@ -788,6 +792,8 @@ struct AutoExpandVecData {
     /// Whether the field can be reconstructed by value in the R→Rust reader.
     /// `false` for a borrowed origin (`&[T]`); `Vec<T>` / `Box<[T]>` are readable.
     readable: bool,
+    /// The field is `&[T]`: its elements are cloned out, not moved.
+    borrowed: bool,
 }
 
 /// Resolve a struct field into a [`ResolvedField`], applying field attributes.
@@ -871,6 +877,7 @@ fn resolve_struct_field(
                 len,
                 tuple_index,
                 readable: !field_is_borrowed_ref(ty),
+                borrowed: field_is_borrowed_ref(ty),
             }),
         ))),
         FieldTypeKind::VariableVec(elem_ty)
@@ -885,6 +892,7 @@ fn resolve_struct_field(
                         width,
                         tuple_index,
                         readable: !field_is_borrowed_ref(ty),
+                        borrowed: field_is_borrowed_ref(ty),
                     },
                 ))))
             } else if field_attrs.expand {
@@ -897,6 +905,7 @@ fn resolve_struct_field(
                         container_ty: ty.clone(),
                         tuple_index,
                         readable: !field_is_borrowed_ref(ty),
+                        borrowed: field_is_borrowed_ref(ty),
                     },
                 ))))
             } else {
@@ -1178,6 +1187,222 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 }
 // endregion
 
+// region: Field-type bounds (shared by the struct and enum paths)
+//
+// The derive asks of a field type only what turning that field into columns
+// needs: a column's `IntoR`, `IntoList` for an `as_list` value, `DataFrameRow`
+// for a flattened struct. Everything else it emits for a field type exists
+// only where the type allows it: the companion's `Debug` / `Clone`, the rows
+// iterator that rebuilds `skip` fields with `Default`, and the parallel fill
+// behind `from_rows_par` carry conditional bounds
+// (`crate::naming::conditional_bound_lifetime`) instead.
+
+/// `where` clause: `where_clause`'s predicates, then `for<'__mx_cond> ty: bound`
+/// for each `(ty, bound)` pair.
+pub(super) fn conditional_where(
+    where_clause: Option<&syn::WhereClause>,
+    bounds: &[(TokenStream, TokenStream)],
+) -> TokenStream {
+    let binder = crate::naming::conditional_bound_lifetime();
+    let mut preds: Vec<TokenStream> = where_clause
+        .into_iter()
+        .flat_map(|wc| wc.predicates.iter())
+        .map(|p| quote! { #p })
+        .collect();
+    preds.extend(
+        bounds
+            .iter()
+            .map(|(ty, bound)| quote! { for<#binder> #ty: #bound }),
+    );
+    if preds.is_empty() {
+        TokenStream::new()
+    } else {
+        quote! { where #(#preds),* }
+    }
+}
+
+/// `Debug` and `Clone` for a companion, each implemented only when every field
+/// type has it. `#[derive(Debug, Clone)]` would demand both of every column's
+/// element type (#2013). `fields` are the companion's fields with their types.
+pub(super) fn companion_debug_clone(
+    df_name: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &[(syn::Ident, TokenStream)],
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let bounds = |bound: TokenStream| -> Vec<(TokenStream, TokenStream)> {
+        fields
+            .iter()
+            .map(|(_, ty)| (ty.clone(), bound.clone()))
+            .collect()
+    };
+    let debug_where = conditional_where(where_clause, &bounds(quote! { ::core::fmt::Debug }));
+    let clone_where = conditional_where(where_clause, &bounds(quote! { ::core::clone::Clone }));
+    let df_name_str = df_name.to_string();
+    let idents: Vec<&syn::Ident> = fields.iter().map(|(ident, _)| ident).collect();
+    let names: Vec<String> = idents
+        .iter()
+        .map(|ident| crate::naming::ident_name(ident))
+        .collect();
+    quote! {
+        #[automatically_derived]
+        #[allow(unused_lifetimes)]
+        impl #impl_generics ::core::fmt::Debug for #df_name #ty_generics #debug_where {
+            fn fmt(&self, __f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                __f.debug_struct(#df_name_str)
+                    #(.field(#names, &self.#idents))*
+                    .finish()
+            }
+        }
+
+        #[automatically_derived]
+        #[allow(unused_lifetimes)]
+        impl #impl_generics ::core::clone::Clone for #df_name #ty_generics #clone_where {
+            fn clone(&self) -> Self {
+                Self { #(#idents: ::core::clone::Clone::clone(&self.#idents)),* }
+            }
+        }
+    }
+}
+
+/// The parallel column fill of a companion: `ParallelColumns` with `body` as
+/// `from_rows_parallel(rows)`, implemented only where `bounds` hold (see
+/// `miniextendr_api::dataframe::ParallelColumns`). Emitted only when
+/// miniextendr-api has `rayon`; pair it with [`from_rows_par_override`].
+pub(super) fn parallel_columns_impl(
+    df_name: &syn::Ident,
+    row_name: &syn::Ident,
+    generics: &syn::Generics,
+    bounds: &[(TokenStream, TokenStream)],
+    body: TokenStream,
+) -> TokenStream {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let where_tokens = conditional_where(where_clause, bounds);
+    quote! {
+        // The `#[cfg(feature = "rayon")]` gate lives on the api-side macro
+        // (evaluated against miniextendr-api's own features), not here —
+        // stamping the cfg into the consumer crate trips `unexpected_cfgs`
+        // wherever the derive is used without a `rayon` feature (#1117).
+        ::miniextendr_api::__dataframe_row_when_rayon! {
+            #[allow(unused_lifetimes)]
+            impl #impl_generics ::miniextendr_api::dataframe::ParallelColumns<#row_name #ty_generics>
+                for #df_name #ty_generics #where_tokens
+            {
+                fn from_rows_parallel(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
+                    #body
+                }
+            }
+        }
+    }
+}
+
+/// The `from_rows_par` override of a companion's `ColumnarFrame` impl: the
+/// companion's `ParallelColumns` impl where it applies, `from_rows` otherwise
+/// (`miniextendr_api::dataframe::FromRowsParProbe`).
+pub(super) fn from_rows_par_override(row_ty: TokenStream) -> TokenStream {
+    quote! {
+        ::miniextendr_api::__dataframe_row_when_rayon! {
+            // The explicit borrow is what lets lookup fall back to the
+            // sequential arm; it is not needless.
+            #[allow(clippy::needless_borrow)]
+            fn from_rows_par(rows: ::std::vec::Vec<#row_ty>) -> Self {
+                #[allow(unused_imports)]
+                use ::miniextendr_api::dataframe::{
+                    FromRowsParParallel as _, FromRowsParSequential as _,
+                };
+                (&::miniextendr_api::dataframe::FromRowsParProbe::<Self, #row_ty>::new())
+                    .fill_columns(rows)
+            }
+        }
+    }
+}
+
+/// `<ty as Clone>::clone`, spanned at `ty`: a type without `Clone` is then
+/// reported at the user's field instead of at the derive.
+pub(super) fn spanned_clone_fn(ty: &syn::Type) -> TokenStream {
+    let span = syn::spanned::Spanned::span(ty);
+    quote_spanned! {span=> <#ty as ::core::clone::Clone>::clone }
+}
+
+/// Bind each element of fixed-array field value `access` to its own variable
+/// in `elems`: moved out of an owned array (indexing would need `Copy`), cloned
+/// out of a borrowed one, which is the only way to own an element behind a
+/// reference.
+pub(super) fn fixed_array_elems(
+    access: &TokenStream,
+    borrowed: bool,
+    elem_ty: &syn::Type,
+    elems: &[syn::Ident],
+) -> TokenStream {
+    if borrowed {
+        let clone = spanned_clone_fn(elem_ty);
+        let lets: Vec<TokenStream> = elems
+            .iter()
+            .enumerate()
+            .map(|(i, elem)| {
+                let idx = syn::Index::from(i);
+                quote! { let #elem = #clone(&#access[#idx]); }
+            })
+            .collect();
+        quote! { #(#lets)* }
+    } else {
+        quote! { let [#(#elems),*] = #access; }
+    }
+}
+
+/// The elements of an expanded `Vec<T>` / `Box<[T]>` / `&[T]` field value
+/// `access` as an iterator of owned `T`: moved out of an owned container,
+/// cloned out of a borrowed slice. `IntoIterator::into_iter` is called by path
+/// so a `Box<[T]>` iterates by value in every edition.
+pub(super) fn owned_elems_iter(
+    access: &TokenStream,
+    borrowed: bool,
+    elem_ty: &syn::Type,
+) -> TokenStream {
+    if borrowed {
+        // A closure, not the clone fn itself: the closure is `FnMut` whatever
+        // `elem_ty` implements, so a missing `Clone` is reported once, at the
+        // field, instead of again wherever the iterator is used.
+        let clone = spanned_clone_fn(elem_ty);
+        quote! {
+            ::core::iter::Iterator::map(
+                ::core::iter::IntoIterator::into_iter(#access),
+                |__mx_elem: &#elem_ty| #clone(__mx_elem),
+            )
+        }
+    } else {
+        quote! { ::core::iter::IntoIterator::into_iter(#access) }
+    }
+}
+
+/// Bind the first `elems.len()` elements of a `width = N` field value `access`
+/// to `Option<T>` variables (`None` past its end; elements past `N` are
+/// dropped), through iterator variable `iter`.
+pub(super) fn width_elems(
+    access: &TokenStream,
+    borrowed: bool,
+    elem_ty: &syn::Type,
+    iter: &syn::Ident,
+    elems: &[syn::Ident],
+) -> TokenStream {
+    let elems_iter = owned_elems_iter(access, borrowed, elem_ty);
+    quote! {
+        let mut #iter = #elems_iter;
+        #(let #elems = ::core::iter::Iterator::next(&mut #iter);)*
+    }
+}
+
+/// The variables [`fixed_array_elems`] / [`width_elems`] bind for the `n`
+/// columns of the field `key` names. Leading underscores are dropped from `key`
+/// so the variables stay snake case (`_0` gives `__mxe1_0`).
+pub(super) fn expanded_elem_idents(key: &str, n: usize) -> Vec<syn::Ident> {
+    let key = key.trim_start_matches('_');
+    (1..=n)
+        .map(|k| format_ident!("__mxe{}_{}", k, key))
+        .collect()
+}
+// endregion
+
 // region: Struct path (existing logic, extracted)
 
 /// The expression that turns companion column `self.#name` into a column SEXP:
@@ -1264,15 +1489,16 @@ fn derive_struct_dataframe(
     let has_expansion = resolved
         .iter()
         .any(|rf| !matches!(rf, ResolvedField::Single(..)));
-    // Track which Rust fields were skipped (for destructure patterns).
-    let skipped_fields: Vec<syn::Ident> = match &data.fields {
+    // Track which Rust fields were skipped, with their types (for destructure
+    // patterns and the rows iterator's `Default` bounds).
+    let skipped_fields: Vec<(syn::Ident, syn::Type)> = match &data.fields {
         Fields::Named(fields) => fields
             .named
             .iter()
             .filter_map(|f| {
                 let fa = parse_field_attrs(f).ok()?;
                 if fa.skip {
-                    Some(f.ident.as_ref().unwrap().clone())
+                    Some((f.ident.as_ref().unwrap().clone(), f.ty.clone()))
                 } else {
                     None
                 }
@@ -1431,34 +1657,48 @@ fn derive_struct_dataframe(
         TokenStream::new()
     };
 
-    let mut df_fields_tokens: Vec<TokenStream> = flat_cols
+    // The column fields with their types: declared below, and bounding the
+    // companion's conditional `Debug` / `Clone`.
+    let mut column_fields: Vec<(syn::Ident, TokenStream)> = flat_cols
         .iter()
         .map(|fc| {
-            let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
-            quote! { pub #name: ::std::vec::Vec<#ty> }
+            (fc.df_field.clone(), quote! { ::std::vec::Vec<#ty> })
         })
         .collect();
     for ac in &auto_expand_cols {
-        let name = &ac.df_field;
         let cty = &ac.container_ty;
-        df_fields_tokens.push(quote! { pub #name: ::std::vec::Vec<#cty> });
+        column_fields.push((ac.df_field.clone(), quote! { ::std::vec::Vec<#cty> }));
     }
     for sc in &struct_cols {
-        let name = &sc.df_field;
         let ity = &sc.inner_ty;
-        df_fields_tokens.push(quote! { pub #name: ::std::vec::Vec<#ity> });
+        column_fields.push((sc.df_field.clone(), quote! { ::std::vec::Vec<#ity> }));
     }
+    let df_fields_tokens: Vec<TokenStream> = column_fields
+        .iter()
+        .map(|(name, ty)| quote! { pub #name: #ty })
+        .collect();
 
-    let len_field_decl = if flat_cols.is_empty()
-        && auto_expand_cols.is_empty()
-        && struct_cols.is_empty()
-        && !has_tag
-    {
+    let has_len_field =
+        flat_cols.is_empty() && auto_expand_cols.is_empty() && struct_cols.is_empty() && !has_tag;
+    let len_field_decl = if has_len_field {
         quote! { pub _len: usize, }
     } else {
         TokenStream::new()
     };
+
+    let mut companion_fields: Vec<(syn::Ident, TokenStream)> = Vec::new();
+    if has_tag {
+        companion_fields.push((
+            format_ident!("_tag"),
+            quote! { ::std::vec::Vec<::std::string::String> },
+        ));
+    }
+    if has_len_field {
+        companion_fields.push((format_ident!("_len"), quote! { usize }));
+    }
+    companion_fields.extend(column_fields);
+    let companion_debug_clone = companion_debug_clone(df_name, &input.generics, &companion_fields);
 
     let dataframe_struct = quote! {
         #vis struct #df_name #impl_generics #where_clause {
@@ -1466,6 +1706,8 @@ fn derive_struct_dataframe(
             #len_field_decl
             #(#df_fields_tokens),*
         }
+
+        #companion_debug_clone
     };
     // endregion
 
@@ -1598,6 +1840,8 @@ fn derive_struct_dataframe(
                     let col_name = &data.col_name;
                     let col_name_str = &data.col_name_str;
                     let elem_ty = &data.elem_ty;
+                    let elems_iter =
+                        owned_elems_iter(&quote! { __row_vec }, data.borrowed, elem_ty);
                     quote! {
                         {
                             let __auto = self.#col_name;
@@ -1605,9 +1849,10 @@ fn derive_struct_dataframe(
                             let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                                 .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
                                 .collect();
-                            for __row_vec in &__auto {
-                                for (__i, __col) in __cols.iter_mut().enumerate() {
-                                    __col.push(__row_vec.get(__i).cloned());
+                            for __row_vec in __auto {
+                                let mut __elems = #elems_iter;
+                                for __col in __cols.iter_mut() {
+                                    __col.push(::core::iter::Iterator::next(&mut __elems));
                                 }
                             }
                             for (__i, __col) in __cols.into_iter().enumerate() {
@@ -1766,16 +2011,21 @@ fn derive_struct_dataframe(
                     let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__arr_{}", crate::naming::unraw(&data.rust_name));
-                let pushes: Vec<TokenStream> = (0..data.len)
-                    .map(|i| {
+                let elems = expanded_elem_idents(
+                    &crate::naming::unraw(&data.rust_name).to_string(),
+                    data.len,
+                );
+                let bind = fixed_array_elems(&access, data.borrowed, &data.elem_ty, &elems);
+                let pushes: Vec<TokenStream> = elems
+                    .iter()
+                    .enumerate()
+                    .map(|(i, elem)| {
                         let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
-                        let idx = syn::Index::from(i);
-                        quote! { #col_ident.push(#bind[#idx]); }
+                        quote! { #col_ident.push(#elem); }
                     })
                     .collect();
                 quote! {
-                    let #bind = #access;
+                    #bind
                     #(#pushes)*
                 }
             }
@@ -1786,15 +2036,27 @@ fn derive_struct_dataframe(
                     let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__vec_{}", crate::naming::unraw(&data.rust_name));
-                let pushes: Vec<TokenStream> = (0..data.width)
-                    .map(|i| {
+                let iter = format_ident!(
+                    "__mxv_{}",
+                    crate::naming::unraw(&data.rust_name)
+                        .to_string()
+                        .trim_start_matches('_')
+                );
+                let elems = expanded_elem_idents(
+                    &crate::naming::unraw(&data.rust_name).to_string(),
+                    data.width,
+                );
+                let bind = width_elems(&access, data.borrowed, &data.elem_ty, &iter, &elems);
+                let pushes: Vec<TokenStream> = elems
+                    .iter()
+                    .enumerate()
+                    .map(|(i, elem)| {
                         let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
-                        quote! { #col_ident.push(#bind.get(#i).cloned()); }
+                        quote! { #col_ident.push(#elem); }
                     })
                     .collect();
                 quote! {
-                    let #bind = #access;
+                    #bind
                     #(#pushes)*
                 }
             }
@@ -1874,7 +2136,7 @@ fn derive_struct_dataframe(
     // For skipped fields in destructure: bind to `_`
     let skip_bindings: Vec<TokenStream> = skipped_fields
         .iter()
-        .map(|name| quote! { let _ = row.#name; })
+        .map(|(name, _)| quote! { let _ = row.#name; })
         .collect();
 
     let from_vec_impl = quote! {
@@ -1900,33 +2162,63 @@ fn derive_struct_dataframe(
 
     // region: Generate from_rows_par (parallel scatter-write via ColumnWriter)
     //
-    // Two field kinds require special handling instead of parallel scatter-write:
-    //   - struct (DataFrameRow-flattened) fields (#485): companion stores
-    //     `Vec<Inner>` where `Inner` doesn't implement `Default`. These are
-    //     collected sequentially in a pre-pass (`for __prerow in &rows { ... }`)
-    //     before `into_par_iter()` consumes the vector. Requires `Inner: Clone`.
-    //   - `as_list`-on-struct fields (#485 opt-out) store the struct values too
-    //     (converted to a list-column only at frame assembly), and the struct
-    //     need not implement `Default`. Same pre-pass approach.
-    // Both are handled via sequential pre-pass + skip in the parallel loop.
-    // The pre-pass is O(n) extra per struct/list-struct field but does not change
-    // asymptotic complexity — just adds a constant factor for these column types.
-    let from_rows_par_method = if !flat_cols.is_empty()
+    // The companion's `ParallelColumns` impl moves each row to a rayon worker,
+    // which writes the row's values into columns pre-filled with `Default`
+    // placeholders. Two field kinds keep their values in the companion and have
+    // no placeholder:
+    //   - struct (DataFrameRow-flattened) fields (#485): companion stores `Vec<Inner>`.
+    //   - `as_list`-on-struct fields (#485 opt-out): converted to a list-column
+    //     only at frame assembly.
+    // Both are cloned in a sequential pre-pass (`for __prerow in &rows { ... }`)
+    // before `into_par_iter()` consumes the rows, and skipped in the parallel loop.
+    // The pre-pass is O(n) extra per such field: a constant factor, not a change
+    // in asymptotic complexity.
+    //
+    // What the fill needs of the field types (the rows `Send`, placeholder
+    // columns `Default + Send`, pre-pass columns `Clone`) is the impl's
+    // conditional `where` clause, so a row shape without it is not an error:
+    // `from_rows_par` falls back to `from_rows` (`from_rows_par_override`).
+    let has_par_impl = !flat_cols.is_empty()
         || !auto_expand_cols.is_empty()
         || has_tag
         || has_struct
-        || has_into_list_struct
-    {
+        || has_into_list_struct;
+    let (parallel_columns_item, from_rows_par_method) = if has_par_impl {
+        let mut par_bounds: Vec<(TokenStream, TokenStream)> = vec![(
+            quote! { #row_name #ty_generics },
+            quote! { ::core::marker::Send },
+        )];
+        for fc in &flat_cols {
+            let ty = &fc.vec_elem_ty;
+            let bound = if fc.needs_into_list {
+                quote! { ::core::clone::Clone }
+            } else {
+                quote! { ::core::default::Default + ::core::marker::Send }
+            };
+            par_bounds.push((quote! { #ty }, bound));
+        }
+        for ac in &auto_expand_cols {
+            let cty = &ac.container_ty;
+            par_bounds.push((
+                quote! { #cty },
+                quote! { ::core::default::Default + ::core::marker::Send },
+            ));
+        }
+        for sc in &struct_cols {
+            let ity = &sc.inner_ty;
+            par_bounds.push((quote! { #ity }, quote! { ::core::clone::Clone }));
+        }
+
         // Column declarations:
-        //   - scalar / expand cols: vec![default; len]  (scatter-write in parallel)
-        //   - struct / as_list-struct cols: Vec::with_capacity(len) filled in pre-pass
+        //   - scalar / expand cols: `Default` placeholders (scatter-written in parallel)
+        //   - struct / as_list-struct cols: filled in the pre-pass
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
                 let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
             });
         }
-        // Sequential pre-pass: struct fields (Inner: Clone required).
+        // Sequential pre-pass: struct fields.
         // Iterate resolved to pick up tuple_index for tuple-struct outers.
         for rf in &resolved {
             if let ResolvedField::Struct(data) = rf {
@@ -1946,8 +2238,8 @@ fn derive_struct_dataframe(
                 });
             }
         }
-        // Sequential pre-pass: as_list-on-struct fields (the struct need not be
-        // `Default`). Pure Rust: the list-column is built at frame assembly.
+        // Sequential pre-pass: as_list-on-struct fields. Pure Rust: the
+        // list-column is built at frame assembly.
         for rf in &resolved {
             if let ResolvedField::Single(data) = rf
                 && data.needs_into_list
@@ -1969,23 +2261,25 @@ fn derive_struct_dataframe(
             }
         }
         // Parallel scalar/expand columns.
+        let placeholders = |name: &syn::Ident, ty: &syn::Type| {
+            quote! {
+                let mut #name: ::std::vec::Vec<#ty> = ::core::iter::Iterator::collect(
+                    ::core::iter::Iterator::take(
+                        ::core::iter::repeat_with(<#ty as ::core::default::Default>::default),
+                        len,
+                    ),
+                );
+            }
+        };
         for fc in &flat_cols {
             if fc.needs_into_list {
                 // Handled in the sequential pre-pass above.
                 continue;
             }
-            let name = &fc.df_field;
-            let ty = &fc.vec_elem_ty;
-            par_col_decls.push(quote! {
-                let mut #name: ::std::vec::Vec<#ty> = ::std::vec![<#ty as ::core::default::Default>::default(); len];
-            });
+            par_col_decls.push(placeholders(&fc.df_field, &fc.vec_elem_ty));
         }
         for ac in &auto_expand_cols {
-            let name = &ac.df_field;
-            let cty = &ac.container_ty;
-            par_col_decls.push(quote! {
-                let mut #name: ::std::vec::Vec<#cty> = ::std::vec![<#cty as ::core::default::Default>::default(); len];
-            });
+            par_col_decls.push(placeholders(&ac.df_field, &ac.container_ty));
         }
 
         // Writer declarations (only for scatter-write cols — struct/as_list pre-pass
@@ -2051,16 +2345,21 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__arr_{}", crate::naming::unraw(&data.rust_name));
-                    let writes: Vec<TokenStream> = (0..data.len)
-                        .map(|i| {
+                    let elems = expanded_elem_idents(
+                        &crate::naming::unraw(&data.rust_name).to_string(),
+                        data.len,
+                    );
+                    let bind = fixed_array_elems(&access, data.borrowed, &data.elem_ty, &elems);
+                    let writes: Vec<TokenStream> = elems
+                        .iter()
+                        .enumerate()
+                        .map(|(i, elem)| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
-                            let idx = syn::Index::from(i);
-                            quote! { #w_name.write(__i, #bind[#idx]); }
+                            quote! { #w_name.write(__i, #elem); }
                         })
                         .collect();
                     quote! {
-                        let #bind = #access;
+                        #bind
                         #(#writes)*
                     }
                 }
@@ -2071,15 +2370,27 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__vec_{}", crate::naming::unraw(&data.rust_name));
-                    let writes: Vec<TokenStream> = (0..data.width)
-                        .map(|i| {
+                    let iter = format_ident!(
+                        "__mxv_{}",
+                        crate::naming::unraw(&data.rust_name)
+                            .to_string()
+                            .trim_start_matches('_')
+                    );
+                    let elems = expanded_elem_idents(
+                        &crate::naming::unraw(&data.rust_name).to_string(),
+                        data.width,
+                    );
+                    let bind = width_elems(&access, data.borrowed, &data.elem_ty, &iter, &elems);
+                    let writes: Vec<TokenStream> = elems
+                        .iter()
+                        .enumerate()
+                        .map(|(i, elem)| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
-                            quote! { #w_name.write(__i, #bind.get(#i).cloned()); }
+                            quote! { #w_name.write(__i, #elem); }
                         })
                         .collect();
                     quote! {
-                        let #bind = #access;
+                        #bind
                         #(#writes)*
                     }
                 }
@@ -2119,30 +2430,12 @@ fn derive_struct_dataframe(
 
         let par_skip_bindings: Vec<TokenStream> = skipped_fields
             .iter()
-            .map(|name| quote! { let _ = __row.#name; })
+            .map(|(name, _)| quote! { let _ = __row.#name; })
             .collect();
 
         // Return struct fields
         let par_tag_field = if has_tag {
             quote! { _tag, }
-        } else {
-            TokenStream::new()
-        };
-        // Emit `_len: len` only when the companion struct has a `_len` field —
-        // that is, when there are truly no column vecs at all (no scalars, no
-        // as_list-on-struct fields, no struct-flattened fields, no tag).
-        // `as_list`-on-struct fields live in `flat_cols` with `needs_into_list=true`;
-        // they provide their own length reference and do NOT require `_len`.
-        // The `flat_cols.iter().all(…)` guard is redundant with `flat_cols.is_empty()`
-        // but makes the intent explicit: _len is emitted only when every dimension
-        // that tracks length is absent.
-        let par_len_field = if flat_cols.is_empty()
-            && flat_cols.iter().all(|fc| !fc.needs_into_list)
-            && auto_expand_cols.is_empty()
-            && !has_tag
-            && struct_cols.is_empty()
-        {
-            quote! { _len: len, }
         } else {
             TokenStream::new()
         };
@@ -2170,6 +2463,7 @@ fn derive_struct_dataframe(
         let par_loop = if has_par_cols {
             quote! {
                 {
+                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                     ::miniextendr_api::optionals::parallel::ensure_pool();
                     #(#writer_decls)*
                     rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
@@ -2184,30 +2478,24 @@ fn derive_struct_dataframe(
             quote! { let _rows = rows; }
         };
 
-        quote! {
-            // The `#[cfg(feature = "rayon")]` gate lives on the api-side macro
-            // (evaluated against miniextendr-api's own features), not here —
-            // stamping the cfg into the consumer crate trips `unexpected_cfgs`
-            // wherever the derive is used without a `rayon` feature (#1117).
-            ::miniextendr_api::__dataframe_row_when_rayon! {
-                // Parallel override of `ColumnarFrame::from_rows_par` (rayon scatter-write).
-                // Scalar/expand columns are scatter-written in parallel; struct-flattened and
-                // `as_list`-on-struct fields are collected in a sequential pre-pass (they don't
-                // implement `Default`). Inner struct types must be `Clone`; that bound rides the
-                // `impl ColumnarFrame` block below (a trait-method override cannot add its own
-                // stricter `where` clause).
-                #[allow(clippy::uninit_vec)]
-                fn from_rows_par(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
-                    let len = rows.len();
-                    #(#par_col_decls)*
-                    #par_loop
-                    #df_name { #par_tag_field #par_len_field #(#par_struct_fields),* }
-                }
-            }
-        }
+        let parallel_columns_item = parallel_columns_impl(
+            df_name,
+            row_name,
+            &input.generics,
+            &par_bounds,
+            quote! {
+                let len = rows.len();
+                #(#par_col_decls)*
+                #par_loop
+                #df_name { #par_tag_field #(#par_struct_fields),* }
+            },
+        );
+        (
+            parallel_columns_item,
+            from_rows_par_override(quote! { #row_name #ty_generics }),
+        )
     } else {
-        TokenStream::new()
+        (TokenStream::new(), TokenStream::new())
     };
 
     // ── IntoIterator (only for named non-empty structs without expansion) ─
@@ -2266,19 +2554,25 @@ fn derive_struct_dataframe(
         };
 
         // Skipped fields are reconstructed via `Default::default()` each time
-        // `next()` yields a row. This is why any field type annotated with
-        // `#[dataframe(skip)]` must implement `Default`.
+        // `next()` yields a row, so the companion iterates rows only where every
+        // `#[dataframe(skip)]` field type implements `Default`.
         let skip_defaults: Vec<TokenStream> = skipped_fields
             .iter()
-            .map(|name| quote! { , #name: ::core::default::Default::default() })
+            .map(|(name, _)| quote! { , #name: ::core::default::Default::default() })
             .collect();
+        let skip_bounds: Vec<(TokenStream, TokenStream)> = skipped_fields
+            .iter()
+            .map(|(_, ty)| (quote! { #ty }, quote! { ::core::default::Default }))
+            .collect();
+        let iter_where = conditional_where(where_clause, &skip_bounds);
 
         quote! {
             #vis struct #iterator_name #impl_generics #where_clause {
                 #(#iter_field_decls),*
             }
 
-            impl #impl_generics ::core::iter::IntoIterator for #df_name #ty_generics #where_clause {
+            #[allow(unused_lifetimes)]
+            impl #impl_generics ::core::iter::IntoIterator for #df_name #ty_generics #iter_where {
                 type Item = #row_name #ty_generics;
                 type IntoIter = #iterator_name #ty_generics;
 
@@ -2290,7 +2584,8 @@ fn derive_struct_dataframe(
                 }
             }
 
-            impl #impl_generics ::core::iter::Iterator for #iterator_name #ty_generics #where_clause {
+            #[allow(unused_lifetimes)]
+            impl #impl_generics ::core::iter::Iterator for #iterator_name #ty_generics #iter_where {
                 type Item = #row_name #ty_generics;
 
                 fn next(&mut self) -> ::core::option::Option<Self::Item> {
@@ -2792,36 +3087,11 @@ fn derive_struct_dataframe(
     //
     // The pure-Rust columnar verbs live on the `ColumnarFrame` trait, not as inherent
     // methods: `from_rows` (= the `From<Vec<Row>>` impl), `into_rows` (= the companion's
-    // `IntoIterator`, for row-iterable shapes) and the parallel `from_rows_par` override.
-    // The `Inner: Clone` bound the struct-flatten parallel builder needs rides the impl
-    // block (a trait-method override cannot carry its own stricter `where` clause); the
-    // sequential `From` path is unaffected and stays `Clone`-free.
-    let columnar_clone_bounds: Vec<TokenStream> = struct_cols
-        .iter()
-        .map(|sc| {
-            let inner_ty = &sc.inner_ty;
-            quote! { #inner_ty: ::core::clone::Clone }
-        })
-        .collect();
-    let columnar_where = {
-        let mut preds: Vec<TokenStream> = Vec::new();
-        if let Some(wc) = where_clause {
-            for p in wc.predicates.iter() {
-                preds.push(quote! { #p });
-            }
-        }
-        for cb in &columnar_clone_bounds {
-            preds.push(cb.clone());
-        }
-        if preds.is_empty() {
-            TokenStream::new()
-        } else {
-            quote! { where #(#preds),* }
-        }
-    };
+    // `IntoIterator`, for row-iterable shapes) and the `from_rows_par` override, which
+    // picks the parallel fill where the row shape allows one.
     let df_methods = quote! {
         impl #impl_generics ::miniextendr_api::dataframe::ColumnarFrame<#row_name #ty_generics>
-            for #df_name #ty_generics #columnar_where
+            for #df_name #ty_generics #where_clause
         {
             fn from_rows(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
                 rows.into()
@@ -2877,8 +3147,6 @@ fn derive_struct_dataframe(
     // Compile-time assertions for struct-flattened fields (#485): each inner
     // type must implement `DataFrameRow`, otherwise users get a confusing
     // error pointing at the `to_dataframe` call site instead of the field.
-    // Note: `Clone` is no longer asserted here — it is enforced via a where
-    // clause on `from_rows_par` itself, giving a clearer error at the call site.
     let struct_assertions: Vec<TokenStream> = struct_cols
         .iter()
         .map(|sc| {
@@ -2906,8 +3174,8 @@ fn derive_struct_dataframe(
     // merged parallel builder (#777 `from_rows_par`) and reader (#765 `try_from_dataframe[_par]`),
     // converting the reader's bare `String` error into the unified `DataFrameError`.
 
-    // The parallel build uses the scatter-write builder when one was generated for this shape;
-    // otherwise it falls back to the sequential transposition.
+    // The parallel build goes through `from_rows_par` when the derive overrides it for this
+    // shape; otherwise it is the sequential transposition.
     let has_par_builder = !from_rows_par_method.is_empty();
     let rows_into_dataframe_par_body = if has_par_builder {
         quote! {
@@ -2995,6 +3263,7 @@ fn derive_struct_dataframe(
         #into_dataframe_impl
         #from_vec_impl
         #df_methods
+        #parallel_columns_item
         #into_iterator_impl
         #row_methods
         #marker_impl
@@ -3221,6 +3490,8 @@ pub(super) struct EnumExpandedFixedData {
     pub(super) elem_ty: syn::Type,
     /// Array length.
     pub(super) len: usize,
+    /// The field is `&[T; N]`: its elements are cloned out, not moved.
+    pub(super) borrowed: bool,
 }
 
 /// Data for [`EnumResolvedField::ExpandedVec`].
@@ -3235,6 +3506,8 @@ pub(super) struct EnumExpandedVecData {
     pub(super) elem_ty: syn::Type,
     /// Pinned width.
     pub(super) width: usize,
+    /// The field is `&[T]`: its elements are cloned out, not moved.
+    pub(super) borrowed: bool,
 }
 
 /// Data for [`EnumResolvedField::AutoExpandVec`].
@@ -3249,6 +3522,8 @@ pub(super) struct EnumAutoExpandVecData {
     pub(super) elem_ty: syn::Type,
     /// Container type for companion struct (`Vec<T>` or `Box<[T]>`).
     pub(super) container_ty: syn::Type,
+    /// The field is `&[T]`: its elements are cloned out, not moved.
+    pub(super) borrowed: bool,
 }
 
 /// Data for [`EnumResolvedField::Map`].

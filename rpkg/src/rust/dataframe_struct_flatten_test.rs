@@ -35,9 +35,8 @@ use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
 /// A 2-column inner struct. Used as the field type in most fixtures below.
 ///
 /// `IntoList` is derived so the `as_list` opt-out branch keeps compiling.
-/// `Default` is derived so the `#[dataframe(skip)]` fixture compiles
-/// (the macro reconstructs skipped fields via `Default::default()` in
-/// `IntoIterator::next()`).
+/// `Default` lets the `#[dataframe(skip)]` fixture's companion iterate its
+/// rows (`into_rows` rebuilds the skipped field with `Default::default()`).
 #[derive(Clone, Debug, Default, DataFrameRow, IntoList)]
 pub struct FlatPoint {
     pub x: f64,

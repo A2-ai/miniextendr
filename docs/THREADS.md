@@ -73,6 +73,11 @@ fn compute_and_report(x: Vec<f64>) -> Vec<f64> {
 }
 ```
 
+The arguments, converted on the main thread, move into the worker, and the
+return value moves back for conversion, so their types must be `Send`. A
+function over a `!Send` type, such as an `ExternalPtr<T>` whose `T` is not
+`Send`, needs `#[miniextendr(no_worker)]` under `worker-default`.
+
 `with_r_thread` is not a general cross-thread executor. From an arbitrary
 spawned thread outside an active `run_on_worker` call, it panics instead of
 silently running R on the wrong thread.

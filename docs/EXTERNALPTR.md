@@ -466,7 +466,7 @@ Access via Sidecar".
 | Field type | Where the value lives | Getter | Setter |
 |---|---|---|---|
 | `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
-| any `IntoR + TryFromSexp` type | the Rust struct | converts with `IntoR` | converts with `TryFromSexp`, or raises `'name' must be ...` |
+| any `Clone + IntoR + TryFromSexp` type | the Rust struct | converts a clone with `IntoR` (the struct is only borrowed) | converts with `TryFromSexp`, or raises `'name' must be ...` |
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
 | `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR` | none; the field syntax raises `miniextendr_read_only_field` |
 
