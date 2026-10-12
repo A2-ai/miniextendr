@@ -259,3 +259,73 @@ test_that("a short list source saves NULL where it produced nothing", {
 })
 
 # endregion
+
+# region: list writes ---------------------------------------------------------
+
+# A derive list keeps its values in Rust until R first writes to it; that write
+# copies the values into data2, which holds them from then on.
+list_makers <- list(
+  allocating = function() miniextendr:::integer_sequence_list(4L),
+  "clone-policy cache" = function() miniextendr:::altrep_list_cache(4L, 4L)
+)
+elements <- function(x) lapply(seq_along(x), function(i) x[[i]])
+
+for (kind in names(list_makers)) {
+  make <- list_makers[[kind]]
+
+  test_that(paste("an unshared", kind, "list takes writes"), {
+    # Read a separate list: `elements(x)` would leave `x` referenced, so the
+    # writes below would go to a copy.
+    expected <- elements(make())
+    expected[[1L]] <- 0L
+    expected[[2L]][1L] <- 99L
+    x <- make()
+    x[[1L]] <- 0L
+    x[[2L]][1L] <- 99L
+    expect_true(is_altrep(x))
+    expect_identical(elements(x), expected)
+
+    grown <- make()
+    grown$new <- 1
+    expect_length(grown, 5L)
+    expect_identical(grown$new, 1)
+  })
+
+  test_that(paste("a write to a copy of a", kind, "list leaves the original alone"), {
+    x <- make()
+    before <- elements(x)
+    y <- x
+    y[[1L]] <- 0L
+    expect_identical(y[[1L]], 0L)
+    z <- x
+    z[[2L]][1L] <- 99L
+    expect_identical(z[[2L]][1L], 99L)
+    # R's deep duplicate as well as the shallow one `y <- x` triggers.
+    d <- rlang::duplicate(x, shallow = FALSE)
+    d[[3L]][1L] <- 99L
+    expect_identical(d[[3L]][1L], 99L)
+    expect_identical(elements(x), before)
+  })
+}
+
+test_that("a write to a list cache's copy leaves the original's elements alone", {
+  # The copy shares its cached elements with the original; R copies an
+  # element both lists hold before changing it.
+  x <- miniextendr:::altrep_list_cache(4L, 4L)
+  before <- elements(x)
+  y <- x
+  expect_true(is_altrep(y))
+  y[[2L]][1L] <- 99L
+  expect_true(is_altrep(y))
+  expect_identical(elements(x), before)
+  expect_identical(y[[2L]], c(99L, 11L))
+})
+
+test_that("serialization after a write saves R's values", {
+  x <- miniextendr:::altrep_list_cache(4L, 4L)
+  x[[2L]] <- "written"
+  restored <- unserialize(serialize(x, NULL))
+  expect_identical(restored, c(list_values(1L), list("written"), list_values(4L)[3:4]))
+})
+
+# endregion

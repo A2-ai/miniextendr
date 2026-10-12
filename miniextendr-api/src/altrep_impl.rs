@@ -294,6 +294,46 @@ unsafe fn mark_altstring_written(cache: crate::SEXP) {
 }
 // endregion
 
+// region: List ALTREP writes
+
+/// `Set_elt` for bridge-generated list ALTREPs; R's default raises an error.
+///
+/// The first write copies every element into a plain list in data2. From then
+/// on that list holds the vector's values: `Elt` and `Length` read it,
+/// `Duplicate` copies it, and serialization leaves the vector to R.
+///
+/// # Safety
+///
+/// `x` is a live list ALTREP of `T` on R's main thread, `v` a valid SEXP and
+/// `0 <= i < length`.
+#[doc(hidden)]
+pub unsafe fn altlist_set_elt<T>(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP)
+where
+    T: crate::altrep_traits::AltList,
+{
+    use crate::SexpExt;
+
+    unsafe {
+        // R disables GC around Set_elt, but a direct caller may not: keep `v`
+        // and the new list live while the element reads allocate.
+        let v = crate::OwnedProtect::new(v);
+        let values = match crate::altrep_data::materialized_altrep_data2(x) {
+            Some(values) => values,
+            None => {
+                let n = T::length(x);
+                let values = crate::OwnedProtect::new(crate::SEXP::alloc_list(n));
+                for j in 0..n {
+                    values.get().set_vector_elt(j, T::elt(x, j));
+                }
+                crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, values.get());
+                values.get()
+            }
+        };
+        values.set_vector_elt(i, v.get());
+    }
+}
+// endregion
+
 // region: Centralized ALTREP buffer access helper
 
 /// Create a mutable slice from an ALTREP `get_region` output buffer pointer.

@@ -5822,4 +5822,43 @@ pub fn gc_stress_altrep_list_iterator() -> SEXP {
         state.get()
     }
 }
+
+/// Write into derive lists, through R's `SET_VECTOR_ELT` (GC off) and through
+/// the class's own `set_elt` (GC on): an allocating list, an iterator cache,
+/// and a clone of the cache taken after its first write.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_list_writes() -> SEXP {
+    use miniextendr_api::altrep_data::IterListData;
+    use miniextendr_api::altrep_traits::{AltList, Altrep};
+
+    unsafe {
+        // Each element of this list is a new vector on every read, so its
+        // first write allocates all of them while it fills data2.
+        let sequence = OwnedProtect::new(crate::integer_sequence_list(6));
+        <crate::IntegerSequenceListData as AltList>::set_elt(
+            sequence.get(),
+            2,
+            vec![99_i32].into_sexp(),
+        );
+        sequence.get().set_vector_elt(4, "four".into_sexp());
+
+        let source = (0..8).map(gc_list_element as fn(i32) -> SEXP);
+        let cache = OwnedProtect::new(
+            GcRootedIteratorList(IterListData::from_exact_iter(source)).into_sexp(),
+        );
+        <GcRootedIteratorList as AltList>::set_elt(cache.get(), 1, "written".into_sexp());
+        let copy = OwnedProtect::new(<GcRootedIteratorList as Altrep>::duplicate(
+            cache.get(),
+            true,
+        ));
+        copy.get().set_vector_elt(0, vec![-1_i32].into_sexp());
+
+        let out = OwnedProtect::new(SEXP::alloc_list(3));
+        out.get().set_vector_elt(0, sequence.get());
+        out.get().set_vector_elt(1, cache.get());
+        out.get().set_vector_elt(2, copy.get());
+        out.get()
+    }
+}
 // endregion
