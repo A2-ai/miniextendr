@@ -138,6 +138,15 @@ impl mx_tag {
 #[allow(non_camel_case_types)]
 pub type mx_meth = unsafe extern "C" fn(data: *mut c_void, argc: i32, argv: *const SEXP) -> SEXP;
 
+/// A trait method whose explicit borrowed receiver needs its R owner.
+///
+/// In addition to [`mx_meth`]'s contract, `owner` must be the caller-rooted
+/// external pointer holding `data`, with initialized sidecar slots. Only
+/// owner-receiver methods use this signature; ordinary receivers keep `mx_meth`.
+#[allow(non_camel_case_types)]
+pub type mx_owner_meth =
+    unsafe extern "C" fn(data: *mut c_void, owner: SEXP, argc: i32, argv: *const SEXP) -> SEXP;
+
 /// Base vtable present in all erased objects.
 ///
 /// This vtable provides the minimal operations needed for any erased object:

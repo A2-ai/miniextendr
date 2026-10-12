@@ -503,3 +503,50 @@ fn trait_method_rejects_precondition_markers() {
         assert!(err.contains(expected), "{err}");
     }
 }
+
+/// Mixed vtable signatures must not share an interface tag, including when
+/// only the position of the owner-aware slot changes.
+#[test]
+fn owner_interface_tags_distinguish_calling_conventions_and_method_order() {
+    fn tag_expression(item: ItemTrait) -> String {
+        let generated: syn::File = syn::parse2(generate_trait_abi(&item)).unwrap();
+        generated
+            .items
+            .iter()
+            .find_map(|item| {
+                let syn::Item::Const(item) = item else {
+                    return None;
+                };
+                (item.ident == "TAG_Layout")
+                    .then(|| quote::ToTokens::to_token_stream(&item.expr).to_string())
+            })
+            .unwrap()
+    }
+    let ordinary = tag_expression(syn::parse_quote! {
+        pub trait Layout {
+            fn owned(&self) -> i32;
+            fn plain(&self) -> i32;
+        }
+    });
+    let owner_first = tag_expression(syn::parse_quote! {
+        pub trait Layout: TypedExternal {
+            fn owned(self: ExternalPtrRef<'_, Self>) -> i32;
+            fn plain(&self) -> i32;
+        }
+    });
+    let owner_second = tag_expression(syn::parse_quote! {
+        pub trait Layout: TypedExternal {
+            fn plain(&self) -> i32;
+            fn owned(self: ExternalPtrRef<'_, Self>) -> i32;
+        }
+    });
+    let owner_mut = tag_expression(syn::parse_quote! {
+        pub trait Layout: TypedExternal {
+            fn owned(self: ExternalPtrMut<'_, Self>) -> i32;
+            fn plain(&self) -> i32;
+        }
+    });
+    assert_ne!(owner_first, ordinary);
+    assert_ne!(owner_first, owner_second);
+    assert_ne!(owner_first, owner_mut);
+}

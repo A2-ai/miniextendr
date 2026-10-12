@@ -164,6 +164,7 @@ mod match_arg_keys;
 mod miniextendr_fn;
 mod return_wrap;
 mod s7_conversion;
+mod trait_receiver;
 mod trait_self_ref;
 mod type_inspect;
 mod typed_dataframe;

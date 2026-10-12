@@ -40,10 +40,13 @@ typedef struct mx_base_vtable {
 
 ### Trait Vtables
 
-Each trait gets its own vtable with function pointers for each method. All methods use a uniform ABI:
+Each trait gets its own vtable with function pointers for each method. Ordinary
+receivers use `mx_meth`; explicit `ExternalPtrRef` / `ExternalPtrMut` receivers
+use `mx_owner_meth`, whose owner must stay rooted for the entire call:
 
 ```c
 typedef SEXP (*mx_meth)(void *data, int argc, const SEXP *argv);
+typedef SEXP (*mx_owner_meth)(void *data, SEXP owner, int argc, const SEXP *argv);
 ```
 
 ## How It Works
@@ -98,8 +101,18 @@ Types without sidecars allocate no protection list. Keep pending R-backed
 values rooted until `mx_wrap` returns, and root its result before allocating.
 
 This storage remains `ErasedObject<T>`, not ordinary `ExternalPtr<T>`/`Any`
-storage. Rooting the fields does not give a plain `&T` trait receiver access to
-them; explicit receiver-handle access is still tracked in #1880.
+storage. A trait method needing its sidecar owner takes
+`self: ExternalPtrRef<'_, Self>` or `self: ExternalPtrMut<'_, Self>` on a trait
+bounded by `TypedExternal`. Its shim constructs a borrowed handle from the
+checked data pointer and caller-rooted owner after argument alias preflight.
+Generated sidecar accessors accept the borrowed handles. Plain `&T` methods
+still carry no owner implicitly.
+
+The View passes its retained owner only to these methods. A raw Rust-owned
+View constructed with `from_raw_parts(..., None)` refuses an owner-receiver
+method before dispatch. Traits containing owner receivers have distinct tags
+from otherwise same-named plain-receiver declarations, since their vtable
+fields have different signatures. The base-vtable layout does not change.
 
 ### 4. Dispatch with `mx_query`
 

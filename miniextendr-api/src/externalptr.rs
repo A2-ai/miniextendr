@@ -2778,6 +2778,9 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 mod altrep_helpers;
 pub use altrep_helpers::*;
 
+mod borrowed;
+pub use borrowed::{ExternalPtrMut, ExternalPtrRef, SidecarOwner, SidecarOwnerMut};
+
 mod sidecar;
 pub use sidecar::*;
 

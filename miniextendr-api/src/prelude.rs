@@ -62,6 +62,8 @@ pub use crate::{
 };
 // endregion
 
+pub use crate::{ExternalPtrMut, ExternalPtrRef};
+
 // region: Core traits
 pub use crate::altrep::RegisterAltrep;
 // Round out the ALTREP surface so it matches the DataFrame/serde prelude precedent.

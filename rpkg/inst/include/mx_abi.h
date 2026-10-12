@@ -114,6 +114,10 @@ static inline int mx_tag_eq(mx_tag a, mx_tag b) {
  */
 typedef SEXP (*mx_meth)(void *data, int argc, const SEXP *argv);
 
+/* Explicit borrowed-owner receiver: owner roots data and its sidecar slots
+ * for the whole call. Only fields declared with this signature use it. */
+typedef SEXP (*mx_owner_meth)(void *data, SEXP owner, int argc, const SEXP *argv);
+
 /* ============================================================================
  * Vtable and Erased Object Types
  * ============================================================================ */
