@@ -725,3 +725,54 @@ pub fn rust_txt_progress_bar_close(pb: miniextendr_api::txt_progress_bar::RTxtPr
 }
 
 // endregion
+
+/// Buffered writers flush explicitly during close, before their Drop runs.
+/// @noRd
+#[cfg(feature = "connections")]
+#[miniextendr(noexport)]
+pub fn buffered_connection_close_bytes() -> Vec<u8> {
+    use miniextendr_api::OwnedProtect;
+    use miniextendr_api::expression::RCall;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    struct Sink {
+        bytes: Rc<RefCell<Vec<u8>>>,
+        flushes: Rc<Cell<usize>>,
+    }
+    impl std::io::Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.bytes.borrow_mut().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes.set(self.flushes.get() + 1);
+            Ok(())
+        }
+    }
+    let bytes = Rc::new(RefCell::new(Vec::new()));
+    let flushes = Rc::new(Cell::new(0));
+    let writer = std::io::BufWriter::with_capacity(
+        32,
+        Sink {
+            bytes: bytes.clone(),
+            flushes: flushes.clone(),
+        },
+    );
+    unsafe {
+        let conn = OwnedProtect::new(RConnectionIo::new(writer).build_write());
+        RCall::new("writeBin")
+            .arg_value(b"buffered".as_slice())
+            .arg(conn.get())
+            .eval_base()
+            .unwrap();
+        assert!(bytes.borrow().is_empty());
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    }
+    // BufWriter's Drop writes buffered bytes, but never calls the underlying
+    // writer's flush. This proves the explicit close path did so.
+    assert_eq!(flushes.get(), 1);
+    Rc::try_unwrap(bytes)
+        .expect("closed connection released its sink")
+        .into_inner()
+}

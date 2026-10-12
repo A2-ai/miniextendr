@@ -141,7 +141,7 @@ test_that("cursor_connection reads pre-filled data", {
 
 test_that("a failing read, write, flush or seek raises a classed condition", {
   con <- failing_io_connection()
-  on.exit(close(con))
+  on.exit(expect_warning(close(con), "Problem closing connection"))
   catch <- function(expr) {
     tryCatch(expr, miniextendr_connection_io_error = function(e) e)
   }
@@ -456,4 +456,15 @@ test_that("close() on a borrowed RTxtProgressBar leaves the bar open (#1917)", {
   expect_true(rust_txt_progress_bar_close(pb))
   expect_false(environment(pb$kill)$.killed)
   close(pb)
+})
+
+
+test_that("writer close flushes its buffered output explicitly", {
+  expect_identical(miniextendr:::buffered_connection_close_bytes(), charToRaw("buffered"))
+})
+
+test_that("a failed final flush warns and returns a negative close status", {
+  con <- failing_io_connection()
+  expect_warning(status <- close(con), "Problem closing connection")
+  expect_identical(status, -1L)
 })

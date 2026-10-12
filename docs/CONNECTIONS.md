@@ -279,6 +279,13 @@ let conn = RCustomConnection::new()
     .build(adapter);
 ```
 
+Writable std::io adapters flush in `close`, before the writer is dropped.
+A final flush failure or any panic in a custom close callback sets the
+connection's status to `-1` and leaves it marked closed. R's own `checkClose`
+then warns "Problem closing connection"; explicit `close(con)` returns the
+negative status. This warning mechanism also works during R finalization. The
+original Rust panic/condition payload is not raised from a finalizer.
+
 ### Boxed I/O trait objects
 
 The existing adapters accept owned trait objects directly:
@@ -442,7 +449,9 @@ returns.
 
 `open` retains a `FALSE` fallback so the builder tears down failed opens.
 `close` and `destroy` can run during garbage collection, so they suppress
-failures and deferred conditions; `destroy` still drops the Rust owner.
+panic payloads and deferred conditions. A close panic additionally sets status
+`-1`, which R reports through its standard close warning after the Rust
+callback returns. `destroy` still drops the Rust owner.
 
 ### Destroy Always Runs
 
