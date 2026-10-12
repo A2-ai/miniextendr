@@ -1606,25 +1606,28 @@ fn s4_generic_names_follow_r_method_names() {
             syn::parse_quote! { impl Counter { #method } },
         );
         let wrapper = generate_s4_r_wrapper(&parsed);
+        // The package's own generic is defined unless the namespace has it;
+        // an explicit one only when no function of that name is visible and
+        // no other package's generic is, since it may be another package's
+        // (#1677); an installed copy's generic does not count (#1158).
+        let condition = if generic == "category" {
+            format!(
+                "!exists(\"{generic}\", mode = \"function\") && !(methods::isGeneric(\"{generic}\") && \
+                 methods::getGeneric(\"{generic}\")@package != environmentName(topenv(environment())))"
+            )
+        } else {
+            format!("!exists(\"{generic}\", where = topenv(environment()), inherits = FALSE)")
+        };
         for expected in [
+            format!(
+                "if ({condition}) methods::setGeneric(\"{generic}\", function(x, ...) standardGeneric(\"{generic}\"))"
+            ),
             format!("methods::setMethod(\"{generic}\", \"Counter\""),
             format!("#' @exportMethod {generic}\n"),
             format!("#' @aliases {generic},Counter-method\n"),
         ] {
             assert!(wrapper.contains(&expected), "missing {expected}: {wrapper}");
         }
-        let creates_generic = parsed
-            .instance_methods()
-            .next()
-            .unwrap()
-            .method_attrs
-            .generic
-            .is_none();
-        assert_eq!(
-            wrapper.contains(&format!("methods::setGeneric(\"{generic}\"")),
-            creates_generic,
-            "{wrapper}"
-        );
         assert!(!wrapper.contains("s4_r#"), "{wrapper}");
     }
 }
@@ -8600,7 +8603,17 @@ fn existing_generics_keep_their_receiver_formals() {
         r.contains("setMethod(\"show\", c(object = \"Model\"), function(object)"),
         "{r}"
     );
-    assert!(!r.contains("setGeneric(\"show\""), "{r}");
+    // `show` is methods' generic: defined only if no function or other
+    // package's generic of that name is visible, so the method attaches to it
+    // instead of masking it.
+    assert!(
+        r.contains(
+            "if (!exists(\"show\", mode = \"function\") && !(methods::isGeneric(\"show\") && \
+             methods::getGeneric(\"show\")@package != environmentName(topenv(environment())))) \
+             methods::setGeneric(\"show\", function(object, ...) standardGeneric(\"show\"))"
+        ),
+        "{r}"
+    );
     assert!(!r.contains(".__MX_GENERIC_DOC__"), "{r}");
     assert!(r.contains(".call = sys.call(), object@ptr)"), "{r}");
     assert!(r.contains("  object\n})"), "{r}");

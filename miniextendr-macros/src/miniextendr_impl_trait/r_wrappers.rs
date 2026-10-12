@@ -890,16 +890,15 @@ fn generate_trait_s4_r_wrapper(
                 generic_roxygen = generic_roxygen.custom(tag.clone());
             }
             lines.extend(generic_roxygen.export().build());
-
-            // Define generic only if it doesn't already exist in THIS namespace
-            // (avoid clearing methods). Scoped to topenv(environment()) so an
-            // attached installed copy of the package can't satisfy the check and
-            // starve the setMethod below during load_all() (#1158).
-            lines.push(format!(
-            "if (!exists(\"{generic_name}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
-        ));
-            lines.push(String::new());
         }
+        // Define the generic unless it exists; an explicit `generic` may be
+        // another package's. Also ends the `@importFrom` block above.
+        lines.push(crate::miniextendr_impl::s4_class::s4_generic_guard(
+            &generic_name,
+            method.generic.is_some(),
+            receiver,
+        ));
+        lines.push(String::new());
 
         // S4 method roxygen + definition (include @param tags from method doc
         // comments). The block sits on `methods::setMethod()`: roxygen2 names

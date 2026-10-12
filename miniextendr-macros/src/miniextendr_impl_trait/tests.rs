@@ -2802,7 +2802,15 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
     );
     assert!(s4.contains(".ptr <- object@ptr"), "{s4}");
     assert!(s4.contains("\n  object\n})"), "{s4}");
-    assert!(!s4.contains("methods::setGeneric("), "{s4}");
+    assert!(
+        s4.contains(
+            "if (!exists(\"show\", mode = \"function\") && !(methods::isGeneric(\"show\") && \
+             methods::getGeneric(\"show\")@package != environmentName(topenv(environment())))) \
+             methods::setGeneric(\"show\", function(object, ...) standardGeneric(\"show\"))"
+        ),
+        "{s4}"
+    );
+    assert!(!s4.contains("#' @export\n"), "{s4}");
     assert!(!s4.contains("#' @param ..."), "{s4}");
 
     let mut explicit_dots = methods[0].clone();

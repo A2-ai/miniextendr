@@ -3926,7 +3926,7 @@ mod r6_class;
 /// S3 class wrapper generator (`structure()` + `generic.Class` dispatch).
 mod s3_class;
 /// S4 class wrapper generator (`setClass` / `setMethod` formal OOP).
-mod s4_class;
+pub(crate) mod s4_class;
 /// S7 class wrapper generator (`new_class` / `new_generic` modern R OOP).
 pub(crate) mod s7_class;
 /// vctrs-compatible class wrapper generator (`new_vctr` / `new_rcrd` / `new_list_of`).
