@@ -1607,14 +1607,24 @@ fn s4_generic_names_follow_r_method_names() {
         );
         let wrapper = generate_s4_r_wrapper(&parsed);
         for expected in [
-            format!("methods::setGeneric(\"{generic}\", function(x, ...)"),
-            format!("standardGeneric(\"{generic}\")"),
             format!("methods::setMethod(\"{generic}\", \"Counter\""),
             format!("#' @exportMethod {generic}\n"),
             format!("#' @aliases {generic},Counter-method\n"),
         ] {
             assert!(wrapper.contains(&expected), "missing {expected}: {wrapper}");
         }
+        let creates_generic = parsed
+            .instance_methods()
+            .next()
+            .unwrap()
+            .method_attrs
+            .generic
+            .is_none();
+        assert_eq!(
+            wrapper.contains(&format!("methods::setGeneric(\"{generic}\"")),
+            creates_generic,
+            "{wrapper}"
+        );
         assert!(!wrapper.contains("s4_r#"), "{wrapper}");
     }
 }
@@ -8561,3 +8571,63 @@ fn lazy_dots_method_refusals() {
 }
 
 // endregion
+
+#[test]
+fn existing_generics_keep_their_receiver_formals() {
+    let s3 = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Model {
+                #[miniextendr(s3(generic = "predict", receiver = "object"))]
+                pub fn predict(&mut self, x: i32) {}
+            }
+        },
+    );
+    check_method_formals(&s3).unwrap();
+    let r = generate_s3_r_wrapper(&s3);
+    assert!(
+        r.contains("predict.Model <- function(object, x, ...)"),
+        "{r}"
+    );
+    assert!(r.contains(".call = environment(), object, x)"), "{r}");
+    assert!(r.contains("  object\n}"), "{r}");
+
+    let s4 = parse_impl(
+        ClassSystem::S4,
+        syn::parse_quote! {
+            impl Model {
+                #[miniextendr(s4(generic = "show", receiver = "object", no_dots))]
+                pub fn display(&mut self) {}
+            }
+        },
+    );
+    check_method_formals(&s4).unwrap();
+    let r = generate_s4_r_wrapper(&s4);
+    assert!(
+        r.contains("setMethod(\"show\", c(object = \"Model\"), function(object)"),
+        "{r}"
+    );
+    assert!(!r.contains("setGeneric(\"show\""), "{r}");
+    assert!(!r.contains(".__MX_GENERIC_DOC__"), "{r}");
+    assert!(r.contains(".call = sys.call(), object@ptr)"), "{r}");
+    assert!(r.contains("  object\n})"), "{r}");
+}
+
+#[test]
+fn existing_generic_receiver_cannot_hide_a_user_argument() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Model {
+                #[miniextendr(s3(generic = "predict", receiver = "object"))]
+                pub fn predict(&self, _object: i32) -> i32 { 0 }
+            }
+        },
+    );
+    assert!(
+        check_method_formals(&parsed)
+            .unwrap_err()
+            .to_string()
+            .contains("R argument `object`")
+    );
+}

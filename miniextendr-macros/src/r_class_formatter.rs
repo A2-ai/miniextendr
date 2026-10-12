@@ -500,13 +500,15 @@ impl<'a> MethodContext<'a> {
     /// impl-block check (`check_s3_replacement_methods`) makes sure it is
     /// (#1853). A method that takes `&Dots` keeps its own order.
     pub fn s3_method_formals(&self) -> String {
-        if self.method.has_dots || !self.generic_name().ends_with("<-") {
-            return self.instance_formals(true);
+        let receiver = self.method.method_attrs.receiver.as_deref().unwrap_or("x");
+        let dots = !self.method.method_attrs.no_dispatch_dots;
+        if !dots || self.method.has_dots || !self.generic_name().ends_with("<-") {
+            return self.instance_formals_with_receiver(receiver, dots);
         }
         let mut formals = crate::roxygen::split_r_formals(&self.params);
         formals.retain(|formal| !formal.is_empty());
         let last = formals.pop();
-        let mut out = vec!["x"];
+        let mut out = vec![receiver];
         out.extend(formals);
         out.push("...");
         out.extend(last);

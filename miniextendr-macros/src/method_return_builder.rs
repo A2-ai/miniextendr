@@ -549,6 +549,7 @@ impl MethodReturnBuilder {
     /// Returns lines suitable for embedding inside an outer
     /// `function(...) { ... }` block, mirroring [`build_s7_body`](Self::build_s7_body).
     pub fn build_s4_body(&self) -> Vec<String> {
+        let chain_var = self.chain_var.as_deref().unwrap_or("x");
         self.build_with_tails(ReturnTails {
             self_tail: Box::new(|indent, class_name| {
                 assert!(
@@ -560,7 +561,7 @@ impl MethodReturnBuilder {
                     indent, class_name
                 )]
             }),
-            chain_tail: Box::new(|indent| vec![format!("{}x", indent)]),
+            chain_tail: Box::new(|indent| vec![format!("{indent}{chain_var}")]),
             direct_tail: Box::new(|indent| vec![format!("{}.val", indent)]),
         })
     }
