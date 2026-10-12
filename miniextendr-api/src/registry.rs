@@ -411,7 +411,7 @@ pub struct ClassBlockEntry {
     /// blocks of a type must have the same.
     pub settings: &'static str,
     /// What this block has that only the defining block may: `"a
-    /// constructor"`, `"class documentation"`, `"S7 properties"`.
+    /// constructor"`, `"a doc comment on the impl"`, `"S7 properties"`.
     pub defines: &'static [&'static str],
     /// The class definition as this block would write it: the class's
     /// roxygen block (with the [`CLASS_DOC_LINES_MARKER`] line), the class
@@ -864,14 +864,17 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
         if let [a, b, ..] = defining.as_slice() {
             errors.push(format!(
                 "miniextendr: two impl blocks of `{}` each define the class: {} has {}, \
-                 {} has {}. Only one impl block of a type carries the constructor, the \
-                 class documentation and any S7 properties; the other blocks add methods \
-                 (#1776).",
+                 {} has {}. A type's impl blocks merge into one class, and only one of \
+                 them may have a constructor, a doc comment on the impl or S7 \
+                 properties: move what {} has into {}. Document the methods of the other \
+                 blocks on the methods themselves (#1776).",
                 first.rust_type,
                 class_block_name(a),
                 a.defines.join(" and "),
                 class_block_name(b),
                 b.defines.join(" and "),
+                class_block_name(b),
+                class_block_name(a),
             ));
         }
 
@@ -5584,16 +5587,20 @@ mod tests {
         let mut ctor = widget_block(10, "\n\n", "\n\n");
         ctor.defines = &["a constructor"];
         let mut docs = widget_block(40, "\n\n", "\n\n");
-        docs.defines = &["class documentation", "S7 properties"];
+        docs.defines = &["a doc comment on the impl", "S7 properties"];
         let msg = merge_class_blocks(&[ctor, docs])
             .err()
             .expect("two blocks define the class");
         assert!(
             msg.contains(
                 "two impl blocks of `Widget` each define the class: `impl Widget` (lib.rs:10) \
-                 has a constructor, `impl Widget` (lib.rs:40) has class documentation and S7 \
-                 properties"
+                 has a constructor, `impl Widget` (lib.rs:40) has a doc comment on the impl \
+                 and S7 properties."
             ),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("move what `impl Widget` (lib.rs:40) has into `impl Widget` (lib.rs:10)"),
             "{msg}"
         );
     }
