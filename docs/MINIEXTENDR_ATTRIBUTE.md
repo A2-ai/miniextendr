@@ -1578,7 +1578,7 @@ pub struct FitResult {
 way back (`TryFromList`) an ignored field is filled with `Default::default()`,
 so its type must implement `Default`. The attribute form `#[miniextendr(list)]`
 does not register `into_list` as a field attribute ("cannot find attribute
-`into_list`"), so spell list mode as its three derives:
+`into_list`", #2024), so spell list mode as its three derives:
 
 <!-- docs-examples-check -->
 ```rust

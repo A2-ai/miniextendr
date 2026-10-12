@@ -78,7 +78,10 @@ miniextendr uses `R_UnwindProtect` to ensure proper cleanup:
 
 ### Automatic Error Conversion
 
-Return `Result<T, E>` where `E: Display` for automatic error conversion:
+Return `Result<T, E>` for automatic error conversion. The R message is `E`'s
+`Debug` text, so a `String` error arrives quoted. With the `serde` feature on,
+an `E: Serialize + Display` (`String` included) uses its `Display` text
+instead:
 
 ```rust
 #[miniextendr]
@@ -89,7 +92,8 @@ pub fn parse_number(s: &str) -> Result<i32, String> {
 
 ```r
 parse_number("42")    # 42
-parse_number("abc")   # Error: Parse error: invalid digit found in string
+parse_number("abc")   # Error: "Parse error: invalid digit found in string"
+                      # (no quotes with the serde feature)
 ```
 
 ### Classed errors for R handlers
@@ -102,7 +106,12 @@ that `tryCatch()` can dispatch on, while keeping `?` composition in Rust. See
 
 ### Custom Error Types
 
-Any type implementing `Display` works:
+Any `Debug` error type works, and the message is its `Debug` text:
+`validate(101)` below raises `OutOfRange { min: 0, max: 100, got: 101 }`, not
+the `Display` text (only an `E: Serialize + Display` under the `serde` feature
+uses `Display`). To raise the `Display` text, return an `RError`
+(`.map_err(|e| RError::new(e.to_string()))`) or implement `RConditionData`
+(see [Classed errors](#classed-errors-for-r-handlers) above):
 
 ```rust
 use std::fmt;

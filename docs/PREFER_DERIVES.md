@@ -72,7 +72,7 @@ is only needed to take `Config` as an argument.
 `PreferDataFrame` builds its frame through `ColumnSource`, an internal trait that
 only the `{Row}DataFrame` companions written by `#[derive(DataFrameRow)]`
 implement, and those companions already convert to a data.frame. Deriving it on
-your own row struct fails with "`ColumnSource` is not implemented". To return a
+your own row struct fails with "`ColumnSource` is not implemented" (#2026). To return a
 data.frame, return a `BuiltDataFrame` or wrap the rows in `AsDataFrame`:
 
 <!-- docs-examples-check -->
