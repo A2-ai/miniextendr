@@ -6,6 +6,7 @@
 \alias{$.IntVecIter}
 \alias{[[.IntVecIter}
 \alias{IntVecIter$RIterator$next_item}
+\alias{IntVecIter$RIterator$size_hint}
 \alias{IntVecIter$RIterator$count}
 \alias{IntVecIter$RIterator$collect_n}
 \alias{IntVecIter$RIterator$skip}
