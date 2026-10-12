@@ -330,9 +330,10 @@ fn push_param_tags(lines: &mut Vec<String>, method: &TraitMethod) {
 
 /// Check the R formals of every trait method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)). Every
-/// class system names an instance method's receiver `x`; S7 also emits a
+/// dispatching class system names an instance method's receiver `x`; S7 also emits a
 /// `<Type>_<method>` fast-path shortcut whose receiver is `self`. Static
-/// methods are plain functions and reserve nothing.
+/// methods and Env/R6 trait methods reserve nothing: their injected receiver
+/// `.mx_self` cannot be spelled by a Rust parameter.
 fn check_trait_method_formals(
     type_ident: &syn::Ident,
     methods: &[TraitMethod],
@@ -348,7 +349,7 @@ fn check_trait_method_formals(
     };
     for method in methods {
         let mut reserved = Vec::new();
-        if method.has_self {
+        if method.has_self && !matches!(class_system, ClassSystem::Env | ClassSystem::R6) {
             reserved.push((
                 "x".to_string(),
                 format!("is the receiver of the generated {system} trait method"),
@@ -448,10 +449,10 @@ fn reject_unsupported_describe_in(
 
 /// Generate Env-style R wrapper code for trait methods.
 ///
-/// Env-class trait methods use a namespace hierarchy: `Type$Trait$method(x, ...)`.
-/// Instance methods take `x` as the first parameter (the self object) and are
+/// Env-class trait methods use a namespace hierarchy: `Type$Trait$method(.mx_self, ...)`.
+/// Instance methods take `.mx_self` as the first parameter (the self object) and are
 /// stamped with `.__mx_instance__` attribute for `$` dispatch detection.
-/// Void instance methods return the receiver `x` for pipe-friendly chaining
+/// Void instance methods return the receiver for pipe-friendly chaining
 /// (invisibly only when marked `Invisible<..>`, #1213).
 ///
 /// Static methods and constants also live under `Type$Trait$name`. A method
@@ -511,11 +512,11 @@ fn generate_trait_env_r_wrapper(
         // Build .Call() invocation — C name uses Rust ident, R name uses r_name
         let (full_params, call) = if method.has_self {
             let fp = if ctx.params.is_empty() {
-                "x".to_string()
+                ".mx_self".to_string()
             } else {
-                format!("x, {}", ctx.params)
+                format!(".mx_self, {}", ctx.params)
             };
-            (fp, ctx.instance_call("x"))
+            (fp, ctx.instance_call(".mx_self"))
         } else {
             (ctx.params.clone(), ctx.static_call())
         };
@@ -525,7 +526,7 @@ fn generate_trait_env_r_wrapper(
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::Env));
         if method.has_self {
-            finish_instance_body(&mut lines, method, "x");
+            finish_instance_body(&mut lines, method, ".mx_self");
         }
         lines.push("}".to_string());
 
@@ -1323,11 +1324,11 @@ fn generate_trait_r6_r_wrapper(
             .with_impl_preconditions(impl_preconditions);
         let target = ctx.namespace_target(ClassSystem::R6);
 
-        // Build parameter list (x first, then others)
+        // The injected receiver cannot collide with a Rust parameter.
         let full_params = if ctx.params.is_empty() {
-            "x".to_string()
+            ".mx_self".to_string()
         } else {
-            format!("x, {}", ctx.params)
+            format!(".mx_self, {}", ctx.params)
         };
 
         // Namespace-member roxygen — a `$<-` assignment target, so roxygen emits
@@ -1355,10 +1356,10 @@ fn generate_trait_r6_r_wrapper(
             ctx.namespace_symbol(ClassSystem::R6)
         ));
         // R6 objects store the ExternalPtr in private$.ptr — extract it for .Call()
-        lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
+        lines.push("  .ptr <- .mx_self$.__enclos_env__$private$.ptr".to_string());
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(ctx.method_body_lines(&call, ClassSystem::R6));
-        finish_instance_body(&mut lines, method, "x");
+        finish_instance_body(&mut lines, method, ".mx_self");
         lines.push("}".to_string());
         lines.push(String::new());
     }

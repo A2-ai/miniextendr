@@ -599,7 +599,7 @@ fn test_trait_operator_r_names_are_quoted() {
         )
         .unwrap();
         assert!(
-            wrapper.contains("Foo$Bar$`[[` <- function(x) {"),
+            wrapper.contains("Foo$Bar$`[[` <- function(.mx_self) {"),
             "{class_system:?}:\n{wrapper}"
         );
     }
@@ -1699,12 +1699,12 @@ fn test_r6_instance_method_uses_class_qualified_namespace() {
     .unwrap();
 
     assert!(
-        result.contains("Foo$Bar$value <- function(x)"),
+        result.contains("Foo$Bar$value <- function(.mx_self)"),
         "R6 instance method should use the class-scoped Foo$Bar$value shape, got:\n{}",
         result
     );
     assert!(
-        result.contains("  .ptr <- x$.__enclos_env__$private$.ptr"),
+        result.contains("  .ptr <- .mx_self$.__enclos_env__$private$.ptr"),
         "R6 instance method should still extract the receiver ptr from the R6 object, got:\n{}",
         result
     );
@@ -2447,7 +2447,7 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
 
 // region: R formal names
 
-/// Every class system names a trait instance method's receiver `x`, and the
+/// Dispatching class systems name a trait instance method's receiver `x`, and the
 /// S7 fast-path shortcut names its receiver `self`: a parameter taking either
 /// name (after its leading underscores are dropped) is a compile error. R6
 /// trait methods live outside the class, so `self` / `private` stay free.
@@ -2468,8 +2468,6 @@ fn trait_method_formals_reject_the_receiver() {
         method
     };
     for (class_system, system) in [
-        (ClassSystem::Env, "Env-class"),
-        (ClassSystem::R6, "R6"),
         (ClassSystem::S3, "S3"),
         (ClassSystem::S4, "S4"),
         (ClassSystem::S7, "S7"),
@@ -2502,14 +2500,21 @@ fn trait_method_formals_reject_the_receiver() {
         .to_string();
         assert!(msg.contains("which is an R reserved word"), "{msg}");
     }
-    wrapper(
-        ClassSystem::R6,
-        with_sig(
-            true,
-            syn::parse_quote!(fn m(&self, _self: i32, _private: i32) -> i32),
-        ),
-    )
-    .expect("R6 trait methods live outside the class");
+    for system in [ClassSystem::Env, ClassSystem::R6] {
+        let code = wrapper(
+            system,
+            with_sig(
+                true,
+                syn::parse_quote!(fn m(&self, x: i32, _self: i32, _private: i32) -> i32),
+            ),
+        )
+        .expect("dotted receiver cannot collide with Rust arguments");
+        assert!(
+            code.contains("function(.mx_self, x, self, private)"),
+            "{code}"
+        );
+        assert!(code.contains(", x, self, private)"), "{code}");
+    }
 
     let shortcut = with_sig(true, syn::parse_quote!(fn m(&self, _self: i32) -> i32));
     let msg = wrapper(ClassSystem::S7, shortcut.clone())

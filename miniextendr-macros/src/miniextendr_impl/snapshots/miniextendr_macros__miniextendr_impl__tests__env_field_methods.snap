@@ -25,7 +25,7 @@ Engine$new <- function(n) {
 #' @name Engine$size
 #' @rdname Engine
 Engine$size <- function() {
-  .val <- .Call(C_miniextendr_macros_Engine__size, .call = sys.call(), self)
+  .val <- .Call(C_miniextendr_macros_Engine__size, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

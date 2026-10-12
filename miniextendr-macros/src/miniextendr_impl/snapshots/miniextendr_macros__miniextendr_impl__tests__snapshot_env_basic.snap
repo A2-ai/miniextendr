@@ -31,7 +31,7 @@ Counter$new <- function(value) {
 #' @name Counter$get
 #' @rdname Counter
 Counter$get <- function() {
-  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), self)
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -41,9 +41,9 @@ Counter$get <- function() {
 #' @name Counter$increment
 #' @rdname Counter
 Counter$increment <- function() {
-  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), self)
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  self
+  .mx_self
 }
 
 # Counter::add (1:1)
@@ -53,7 +53,7 @@ Counter$increment <- function() {
 Counter$add <- function(n) {
   if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
   if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Counter__add, .call = sys.call(), self, n)
+  .val <- .Call(C_miniextendr_macros_Counter__add, .call = sys.call(), .mx_self, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
