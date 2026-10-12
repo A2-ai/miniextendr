@@ -25,17 +25,17 @@
 \usage{
 S7SerdePersist(label, values, maybe_note, keys, counts, .ptr = NULL)
 
-S7SerdePersist_s7_persist_label(self, ...)
+S7SerdePersist_s7_persist_label(.mx_self, ...)
 
-S7SerdePersist_s7_persist_values(self, ...)
+S7SerdePersist_s7_persist_values(.mx_self, ...)
 
-S7SerdePersist_s7_persist_note(self, ...)
+S7SerdePersist_s7_persist_note(.mx_self, ...)
 
-S7SerdePersist_s7_persist_id(self, ...)
+S7SerdePersist_s7_persist_id(.mx_self, ...)
 
-S7SerdePersist_s7_persist_lookup_get(self, key, ...)
+S7SerdePersist_s7_persist_lookup_get(.mx_self, key, ...)
 
-S7SerdePersist_s7_persist_to_r(self, ...)
+S7SerdePersist_s7_persist_to_r(.mx_self, ...)
 
 S7SerdePersist_from_r_data(data)
 }
@@ -52,7 +52,7 @@ S7SerdePersist_from_r_data(data)
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{S7SerdePersist} object.}
+\item{.mx_self}{A \code{S7SerdePersist} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
