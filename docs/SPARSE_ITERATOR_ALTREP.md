@@ -1,6 +1,6 @@
 # Sparse Iterator ALTREP Guide
 
-Sparse iterator ALTREP vectors use `Iterator::nth()` to skip directly to requested indices, caching only the elements that are actually accessed. This makes them ideal for large vectors where only a few elements are needed.
+Sparse iterator ALTREP vectors use `Iterator::nth()` to skip to requested indices, caching only the elements that are actually accessed. They suit increasing-index access to a small part of a large source. Skipping consumes values permanently, so they do not provide ordinary random-access vector semantics.
 
 **See also**: [ALTREP.md](ALTREP.md) for the full ALTREP system documentation, [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) for a quick reference.
 
@@ -12,7 +12,7 @@ Standard (prefix-caching) iterator ALTREP vectors cache every element from index
 
 Sparse iterators take a different approach: they use `Iterator::nth()` to skip directly to the requested index, consuming (discarding) intermediate elements. Only the actually-accessed elements are stored in a `BTreeMap<usize, T>`. This means:
 
-- **Accessing element 999,999** generates only that one element (O(1) memory for a single access)
+- **Accessing element 999,999** caches only that element (O(1) cache memory for a single access). The iterator may still compute every skipped value.
 - **Skipped elements are permanently lost** -- they return the type's NA/default value
 - **Memory scales with access count**, not with the highest accessed index
 
@@ -30,7 +30,7 @@ Sparse iterators trade **completeness for efficiency**. You get O(num_accessed) 
 
 ### Core Data Structure
 
-The `SparseIterState<I, T>` struct (defined in `miniextendr-api/src/altrep_data/iter.rs`) holds three fields:
+The `SparseIterState<I, T>` struct (defined in `miniextendr-api/src/altrep_data/iter/sparse.rs`) holds three fields:
 
 ```rust
 pub struct SparseIterState<I, T> {
@@ -50,7 +50,7 @@ When R requests element at index `i`:
 4. **Backward request**: If `i < next_index`, the element was already skipped -- return `None`.
 5. **Cache the result**: Store the element in the `BTreeMap` for future lookups.
 
-`None` is mapped to the type-appropriate NA/default by each concrete data type.
+`None` is mapped to the type-appropriate NA/default by each concrete data type. Once `nth()` returns `None`, the source is dropped and never polled again, even if it is not fused. Reaching the declared length also drops the source without requesting another element; a zero-length prefix never polls it. Cached values remain readable.
 
 ### Iterator::nth() -- The Key Mechanism
 
@@ -62,18 +62,18 @@ For custom iterators, `nth()` defaults to calling `next()` N times, but you can 
 
 ## Available Types
 
-miniextendr provides four sparse iterator data types:
+miniextendr provides five sparse iterator data types:
 
 | Type | Element | NA/Default Value | Trait |
 |------|---------|-----------------|-------|
 | `SparseIterIntData<I>` | `i32` | `NA_INTEGER` (`i32::MIN`) | `AltIntegerData` |
-| `SparseIterRealData<I>` | `f64` | `NaN` (which R displays as `NA`) | `AltRealData` |
+| `SparseIterRealData<I>` | `f64` | Ordinary `NaN` | `AltRealData` |
 | `SparseIterLogicalData<I>` | `bool` | `Logical::Na` (NA_logical) | `AltLogicalData` |
 | `SparseIterRawData<I>` | `u8` | `0` (raw has no NA concept) | `AltRawData` |
-
-There is also `SparseIterComplexData<I>` for complex number vectors.
+| `SparseIterComplexData<I>` | `Rcomplex` | Ordinary `NaN` in both components | `AltComplexData` |
 
 All types share the same behavior:
+
 - `as_slice()` always returns `None` (sparse storage cannot provide a contiguous slice)
 - `get_region()` fills a buffer element-by-element via `elt()`
 - `len()` returns the declared length
@@ -233,7 +233,7 @@ sparse[1]    #> NA  (skipped, gone forever)
 
 ## Sparse Real Iterator Example
 
-Real-valued sparse iterators work the same way, with `NaN` (displayed as `NA` in R) for skipped elements:
+Real-valued sparse iterators return ordinary `NaN` for skipped elements. R displays it as `NaN`; it is not the `NA_real_` sentinel recognized by Rust's `IsNA`. R's `is.na()` and `is.nan()` both return `TRUE` for it:
 
 ```rust
 type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
@@ -262,7 +262,7 @@ pub fn sparse_iter_real(from: f64, step: f64, length_out: i32) -> SEXP {
 ```r
 x <- sparse_iter_real(0, 0.5, 100L)
 x[50]   #> 24.5  (0 + 49 * 0.5)
-x[1]    #> NA    (skipped)
+x[1]    #> NaN   (skipped)
 x[51]   #> 25.0  (still available)
 ```
 
@@ -272,7 +272,7 @@ x[51]   #> 25.0  (still available)
 
 ### Use Sparse Iterators When:
 
-- **Sampling**: You need random elements from a large range (e.g., `x[sample(1e6, 100)]`)
+- **Sampling in increasing order**: Sort selected indices before reading a fresh sparse vector (e.g., `x[sort(sample(1e6, 100))]`). An unordered sample can lose requested values when a higher index is read first.
 - **Tail access**: You primarily access elements near the end of a large vector
 - **Memory-constrained**: You cannot afford to cache millions of elements
 - **One-shot access**: Each element is accessed at most once, in roughly increasing order
@@ -293,8 +293,9 @@ x[51]   #> 25.0  (still available)
 | `x[1:n]` (full scan) | Best | Equivalent but wastes BTreeMap overhead |
 | `x[n]` (single tail access) | Caches 0..n, O(n) memory | O(1) memory |
 | `x[c(10, 20, 30)]` (few scattered) | Caches 0..30, O(30) memory | O(3) memory |
-| `sum(x)` / `mean(x)` | Best (materializes once) | NAs for all skipped elements |
-| `x[sample(n, k)]` (random sample) | Caches 0..max(sample), O(max) | O(k) memory |
+| `sum(x)` / `mean(x)` | Preserves all source values | Includes the defaults for skipped elements |
+| `x[sort(sample(n, k))]` on a fresh vector | Caches through the largest index | O(k) cache memory |
+| `x[sample(n, k)]` (unordered sample) | Preserves all requested values | Can return defaults for skipped indices |
 
 ---
 
@@ -305,9 +306,10 @@ Each R type has a different representation for "no value":
 | Type | Skipped Element Value | R Display |
 |------|----------------------|-----------|
 | Integer (`SparseIterIntData`) | `NA_INTEGER` (`i32::MIN`) | `NA` |
-| Real (`SparseIterRealData`) | `NaN` | `NA` |
+| Real (`SparseIterRealData`) | Ordinary `NaN` | `NaN` |
 | Logical (`SparseIterLogicalData`) | `Logical::Na` | `NA` |
 | Raw (`SparseIterRawData`) | `0` | `00` |
+| Complex (`SparseIterComplexData`) | Ordinary `NaN` in both parts | `NaN+NaNi` |
 
 Note that raw vectors have no NA concept in R, so skipped raw elements return `0x00`. This means you cannot distinguish a skipped element from a legitimately-zero element in a raw sparse iterator.
 
@@ -315,13 +317,13 @@ Note that raw vectors have no NA concept in R, so skipped raw elements return `0
 
 ## Limitations
 
-1. **No backward access**: Once an element is skipped, it returns NA/default forever. There is no way to "rewind" the iterator.
+1. **Skipped values cannot be recovered**: Backward reads of cached elements work. An element discarded by a skip returns NA/default forever; there is no way to rewind the iterator.
 
-2. **No `as_slice()`**: Sparse storage uses `BTreeMap`, not a contiguous array. Operations requiring a contiguous slice (like `DATAPTR` materialization) will trigger R's default materialization path.
+2. **No `as_slice()`**: Sparse storage uses `BTreeMap`, not a contiguous array. When R needs a data pointer (`DATAPTR`, for example to duplicate or save the vector), the vector is copied into an ordinary R vector by reading every element in increasing order: cached values, the NA/default for skipped elements, and newly computed values for elements the iterator has not reached yet. Later reads come from that copy.
 
-3. **No serialization**: Like all iterator-backed ALTREP, sparse iterators cannot be serialized with `saveRDS()` because the iterator state is not reconstructable. Serialization will trigger materialization first.
+3. **Serialization loses the iterator**: Without custom serialization hooks, saving materializes the vector (see above) and R writes it as an ordinary vector; `readRDS()` restores that vector. Cached values survive, skipped positions keep their NA/default values, and elements the iterator had not reached are computed when the vector is saved. Preserving the ALTREP class requires an explicit serialization and reconstruction policy on the concrete class.
 
-4. **Aggregate functions see NAs**: Calling `sum()`, `mean()`, or similar functions on a partially-accessed sparse vector will include NAs for skipped elements. Use `na.rm = TRUE` to ignore them, or use prefix-caching iterators if you need aggregates.
+4. **Aggregates see the skipped-position defaults**: `sum()` and `mean()` include integer/logical NA or real/complex NaN for skipped elements. `na.rm = TRUE` ignores these, but cannot recover the discarded values. Use prefix-caching iterators when an aggregate must include every source value.
 
 5. **Raw vectors cannot signal "missing"**: Since `u8` has no NA concept, `SparseIterRawData` returns `0` for skipped elements. This is indistinguishable from a real `0` value.
 
@@ -350,6 +352,6 @@ These methods are available on the underlying `SparseIterState<I, T>`:
 | `len()` | `usize` | Total declared vector length |
 | `is_empty()` | `bool` | Whether length is 0 |
 | `get_element(i)` | `Option<T>` | Get element (may skip forward) |
-| `iterator_position()` | `Option<usize>` | Next index the iterator will produce |
+| `iterator_position()` | `Option<usize>` | Next source index, or `None` after EOF or completion of the declared prefix |
 | `is_cached(i)` | `bool` | Whether element `i` has been cached |
 | `cached_count()` | `usize` | Number of elements currently in cache |

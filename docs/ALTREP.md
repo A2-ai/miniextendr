@@ -2049,7 +2049,7 @@ use miniextendr_api::altrep_data::SparseIterIntData;
 let data = SparseIterIntData::from_iter((0..1_000_000).map(|x| x * 2), 1_000_000);
 
 // Access element 999_999 - skips directly there
-let elem = data.elt(999_999);  // Only this element is generated
+let elem = data.elt(999_999);  // Only this element is cached
 
 // Element 0 was skipped and is now inaccessible
 let first = data.elt(0);  // Returns NA_INTEGER
@@ -2059,6 +2059,8 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - Cache is sparse `BTreeMap<usize, T>`
 - Only accessed elements are cached
 - Skipped elements return NA/default forever
+- The first `None` permanently ends the source, even if it is not fused
+- Completing the declared prefix drops the source without an extra poll
 - `as_slice()` always returns `None`
 - Memory usage: O(num_accessed)
 
@@ -2100,7 +2102,7 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - You need `as_slice()` or full materialization later
 
 **Use `SparseIterState` (skipping) when:**
-- Access is truly sparse (e.g., sampling)
+- Access is sparse and moves forward (e.g., sorted sampling)
 - Vector is very large but you only need a few elements
 - You don't need skipped elements ever again
 - Memory is constrained
