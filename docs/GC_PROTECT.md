@@ -14,7 +14,7 @@ balance `PROTECT`/`UNPROTECT` calls.
 |----------|-------|----------|---------------|----------|
 | [PROTECT stack](#protectscope) | Within `.Call` | ~50k (ppsize) | LIFO | Temporary allocations |
 | [ProtectPool](#protectpool) | Cross-`.Call` | Unlimited | Any order | Cross-call, many objects (10.1 ns/op) |
-| [Preserve list](#preserve-list) | Cross-`.Call` | Unlimited | Any order | Few long-lived R objects |
+| [Preserve list](#preserve-list) (`Preserved`) | Cross-`.Call` | Unlimited | Any order | Few long-lived R objects |
 | [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Legacy - see ProtectPool |
 
 ### PROTECT Stack Types
@@ -326,36 +326,43 @@ long-lived objects that are rarely released (e.g., cached lookup tables).
 
 ## Preserve List
 
-R's own cross-`.Call` rooting primitive: call `R_PreserveObject` directly to
-add a SEXP to R's internal preserved list, and `R_ReleaseObject` to remove it.
-There is no `ProtectScope`/`ProtectPool`/`OwnedProtect`-style Rust wrapper for
-this — miniextendr code that needs a single long-lived root calls the two FFI
-functions directly and pairs them with a `Drop` impl. `BuiltDataFrame`
-(`miniextendr-api/src/dataframe.rs`) is the canonical example: it calls
-`R_PreserveObject` in its constructor and `R_ReleaseObject` in `Drop`, rooting
-exactly one frame for the handle's lifetime. `TxtProgressBar` and the
-`ExternalPtr` type-tag table (`mx_abi.rs`) follow the same pattern.
+R's own cross-`.Call` rooting primitive: `R_PreserveObject` adds a SEXP to
+R's precious list, and `R_ReleaseObject` removes it. `Preserved` is the owned
+handle for one such root: it preserves on construction, preserves again on
+`Clone` (each handle releases its own entry), and releases on `Drop`. It is
+`!Send + !Sync`, dereferences to its `SEXP`, and returns the object to R
+through `IntoR`, releasing the root as it does.
 
 ```rust
-unsafe fn root_for_later(sexp: SEXP) {
-    R_PreserveObject(sexp); // adds one CONSXP to R's preserved list
-    // ... sexp survives GC across `.Call` boundaries until released ...
-    R_ReleaseObject(sexp); // O(n) scan of the preserved list
+use miniextendr_api::Preserved;
+
+struct Fit {
+    data: Preserved, // the data frame the model was fitted on
 }
+
+let fit = Fit { data: Preserved::new(df) }; // a fresh, unprotected SEXP is fine
+// ... any number of allocations and `.Call`s later, while `fit` lives:
+let n = fit.data.len();
 ```
 
-Cost is the ~28.9 ns/op figure in the [Performance](#performance) comparison
-above: each insert allocates one CONSXP, and `R_ReleaseObject` scans R's
-preserved list linearly, so releasing many objects — or releasing out of
-insertion order — degrades as the list grows. `ProtectPool` exists precisely
-to avoid this: it wraps a *single* `R_PreserveObject` call around a whole
-VECSXP and manages slots itself, giving O(1) any-order release regardless of
-object count.
+A struct holding a `Preserved` can live in an `ExternalPtr`; R's finalizer
+then drops it and releases the root. `BuiltDataFrame`, `BuiltList`,
+`NamedListBuilder`, `REvalError`, `LazyDots` and the `DataFrameShape`
+sentinel each hold one.
 
-Reach for the Preserve List directly only for a small number of long-lived,
-rarely-released objects (a singleton cache, or one owned handle like
-`BuiltDataFrame`). For anything with higher churn or object count, prefer
-`ProtectPool`.
+Cost is the ~28.9 ns/op figure in the [Performance](#performance) comparison
+above: each insert allocates one CONSXP, and `R_ReleaseObject` searches R's
+precious list from the head, one step per object preserved after this one and
+not yet released. Releasing many objects, or releasing them out of insertion
+order, degrades as the list grows. (Starting R with `R_HASH_PRECIOUS` set
+splits the list into 1069 hashed buckets.) `ProtectPool` exists precisely to
+avoid this: it wraps a *single* `R_PreserveObject` call around a whole VECSXP
+and manages slots itself, giving O(1) any-order release regardless of object
+count.
+
+Use `Preserved` for a small number of long-lived, rarely released objects (a
+cached lookup table, the data a Rust value keeps). For anything with higher
+churn or object count, prefer `ProtectPool`.
 
 ## When to Use What
 
@@ -364,6 +371,7 @@ rarely-released objects (a singleton cache, or one owned handle like
 | Multiple values, known at function start | `ProtectScope` |
 | Single value, simple case | `OwnedProtect` |
 | Accumulator loop, repeated replacement | `ReprotectSlot` |
+| One or a few SEXPs a Rust value keeps beyond the `.Call` | `Preserved` |
 | Many SEXPs that must outlive a `.Call`, any-order release | `ProtectPool` |
 | Building typed vectors from iterators | `scope.collect()` |
 | Building lists with unknown length | `ListAccumulator` |
@@ -509,7 +517,7 @@ Need GC protection?
 │  ├─ Few values (< 100) → ProtectScope
 │  └─ Accumulator loop → ReprotectSlot
 ├─ Across .Call invocations?
-│  └─ Small number (< 10) → ProtectPool or R_PreserveObject
+│  └─ Small number (< 10) → Preserved or ProtectPool
 └─ Many values (100+) / hot loop with many SEXPs?
    └─ ThreadLocalArena (or RefCountedArena for a non-thread-local instance)
 ```

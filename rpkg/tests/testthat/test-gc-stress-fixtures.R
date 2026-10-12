@@ -655,3 +655,44 @@ test_that("gc_stress_trait_view_args keeps View arguments rooted under gctorture
 })
 
 # endregion
+
+# region: Preserved (#1999) and REnv bindings (#1997) -------------------------
+
+check_preserved <- function(result) {
+  expect_named(result, c("frame", "sums", "kept"))
+  expect_identical(result$frame, data.frame(id = 1:5, label = letters[1:5]))
+  expect_identical(result$sums, c(40L, 32L, 24L, 16L, 8L, 0L))
+  expect_type(result$kept, "externalptr")
+}
+
+check_env_bindings <- function(env) {
+  for (i in 0:7) {
+    expect_identical(get(paste0("v", i), envir = env, inherits = FALSE), rep(i, 16L))
+  }
+  expect_false(exists("shared", envir = env, inherits = FALSE))
+  expect_identical(get("shared", envir = env), "parent")
+}
+
+test_that("Preserved handles in an ExternalPtr struct keep their objects", {
+  result <- miniextendr:::gc_stress_preserved()
+  check_preserved(result)
+  # The pointer's finalizer drops the struct and releases its handles.
+  rm(result)
+  gc()
+  check_env_bindings(miniextendr:::gc_stress_env_bindings())
+})
+
+test_that("Preserved handles and REnv::define hold values under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  preserved <- miniextendr:::gc_stress_preserved()
+  env <- miniextendr:::gc_stress_env_bindings()
+  gctorture(FALSE)
+  check_preserved(preserved)
+  check_env_bindings(env)
+  rm(preserved)
+  gc()
+})
+
+# endregion

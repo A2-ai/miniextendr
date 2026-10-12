@@ -239,13 +239,14 @@ impl<'a> Quoted<'a> {
 ///
 /// # Safety
 ///
-/// R's main thread; `data` a rooted list, `enclos` an environment. The result
-/// is unprotected.
+/// R's main thread, inside a miniextendr boundary; `data` a rooted list,
+/// `enclos` an environment. The result is unprotected.
 unsafe fn data_mask(data: SEXP, enclos: SEXP) -> SEXP {
     unsafe {
         let n = data.len();
         let size = i32::try_from(n).unwrap_or(i32::MAX);
         let mask = OwnedProtect::new(crate::sys::R_NewEnv(enclos, crate::Rboolean::TRUE, size));
+        let env = crate::expression::REnv::from_sexp(mask.get());
         let names = data.get_names();
         if names.type_of() == SEXPTYPE::STRSXP {
             for i in (0..n).rev() {
@@ -255,8 +256,7 @@ unsafe fn data_mask(data: SEXP, enclos: SEXP) -> SEXP {
                     continue;
                 }
                 // `names` is held by `data`; the symbol table keeps the symbol.
-                let sym = crate::sys::Rf_installChar(name);
-                crate::sys::Rf_defineVar(sym, data.vector_elt(i), mask.get());
+                env.define_symbol(SEXP::install_char(name), data.vector_elt(i));
             }
         }
         mask.get()

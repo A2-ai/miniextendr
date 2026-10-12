@@ -668,7 +668,7 @@ pub mod dataframe;
 pub use dataframe::{
     BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameShape, FromDataFrame,
     GroupDeclaration, GroupKey, GroupedDataFrame, IntoDataFrame, IntoDataFrameSplit, RealKey,
-    RootedSentinel, SplitResults, group_rows,
+    SplitResults, group_rows,
 };
 
 // Closure-per-column DataFrame builder (parallel fill with `rayon`, serial
@@ -852,6 +852,10 @@ pub mod gc_protect;
 pub use gc_protect::{
     OwnedProtect, ProtectIndex, ProtectScope, Protected, Protector, ReprotectSlot, Root,
 };
+
+// One owned precious-list root (R_PreserveObject / R_ReleaseObject)
+pub mod preserved;
+pub use preserved::Preserved;
 
 // VECSXP pool with generational keys (slotmap-backed)
 pub mod protect_pool;

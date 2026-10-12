@@ -3016,7 +3016,7 @@ pub fn gc_stress_split_collated() -> SEXP {
 /// at the `Bare` boundary) released when the helper returned, so the shape
 /// was sound only under an implicit "convert immediately, do not allocate in
 /// between" contract. Now every leg rides its own root (`BuiltDataFrame` /
-/// `RootedSentinel`), so this fixture allocates heavily *between* the helper
+/// `Preserved`), so this fixture allocates heavily *between* the helper
 /// call and the `IntoR` conversion, then validates the converted values.
 /// Under `gctorture(TRUE)` every allocation is a full GC — an unrooted
 /// partition would be reaped in the burst.
@@ -3166,7 +3166,7 @@ pub fn gc_stress_dataframe_shape_held() {
         assert_eq!(err_df.nrow(), 5, "shape_held: Err nrow");
     }
 
-    // Split with the all-Err sentinel: the `RootedSentinel`'s own root must
+    // Split with the all-Err sentinel: the `Preserved` handle's own root must
     // keep the sentinel STRSXP alive across the burst.
     {
         let all_err: Vec<Result<OkRow, ErrRow>> = (0..10i32)
@@ -5533,6 +5533,109 @@ pub fn gc_stress_list_accumulator() -> SEXP {
             assert_eq!(elt.xlength(), i + 1, "element {i} was collected");
         }
         list
+    }
+}
+
+// endregion
+
+// region: Preserved (#1999) and REnv bindings (#1997)
+
+/// A Rust value that keeps R objects the way a fitted model keeps its data:
+/// [`Preserved`](miniextendr_api::Preserved) fields of a struct that lives in
+/// an `ExternalPtr`, released when R's finalizer drops the struct.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct GcStressKeptFrame {
+    frame: miniextendr_api::Preserved,
+    columns: Vec<miniextendr_api::Preserved>,
+}
+
+/// Hold R objects in `Preserved` handles across R allocations: a data frame
+/// R built and six vectors, cloned, partly dropped out of order, then moved
+/// into an `ExternalPtr` and read back through it. Under `gctorture(TRUE)`
+/// every allocation collects, so an object no handle roots is freed before
+/// the read-back.
+///
+/// Returns `list(frame, sums, kept)`: the frame (a clone handed back through
+/// `IntoR`), the column sums read through the pointer (`40, 32, 24, 16, 8, 0`),
+/// and the pointer itself, whose finalizer releases the struct's handles.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_preserved() -> miniextendr_api::NamedListBuilder {
+    use miniextendr_api::expression::r_eval_str_global;
+    use miniextendr_api::{ExternalPtr, NamedListBuilder, Preserved};
+
+    let churn = || {
+        for i in 0..32i32 {
+            let _ = vec![i; 64].into_sexp();
+            let _ = vec![format!("s{i}"); 4].into_sexp();
+        }
+    };
+
+    let frame = Preserved::new(
+        unsafe { r_eval_str_global("data.frame(id = 1:5, label = letters[1:5])") }
+            .expect("data.frame() evaluates"),
+    );
+    let mut columns: Vec<Preserved> = (0..6).map(|i| Preserved::new(vec![i; 8])).collect();
+    churn();
+    // The struct gets its own entries; the originals drop in another order.
+    let kept = GcStressKeptFrame {
+        frame: frame.clone(),
+        columns: columns.iter().rev().cloned().collect(),
+    };
+    columns.swap(1, 4);
+    drop(columns);
+    drop(frame);
+    let kept = ExternalPtr::new(kept);
+    churn();
+
+    let sums: Vec<i32> = kept
+        .columns
+        .iter()
+        .map(|column| unsafe { column.as_slice::<i32>() }.iter().sum())
+        .collect();
+    let mut out = NamedListBuilder::new();
+    out.push("frame", kept.frame.clone());
+    out.push("sums", sums);
+    out.push("kept", kept);
+    churn();
+    out
+}
+
+/// Bind fresh, unrooted values with `REnv::define` in a new environment and
+/// read them back with `REnv::get` / `get_inherits`, under allocation
+/// pressure: `define` must root each value while it allocates.
+///
+/// Returns the child environment, whose `v0` … `v7` hold `rep(i, 16)`; its
+/// parent holds `shared = "parent"`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_env_bindings() -> SEXP {
+    use miniextendr_api::ProtectScope;
+    use miniextendr_api::expression::REnv;
+
+    unsafe {
+        let scope = ProtectScope::new();
+        let parent = scope.new_env(REnv::base().as_sexp(), true, 4);
+        let child = scope.new_env(parent.get(), true, 8);
+        let parent_env = REnv::from_sexp(parent.get());
+        let child_env = REnv::from_sexp(child.get());
+        parent_env.define("shared", "parent".into_sexp());
+        for i in 0..8i32 {
+            child_env.define(&format!("v{i}"), vec![i; 16].into_sexp());
+            let _ = vec![i; 64].into_sexp();
+        }
+        for i in 0..8i32 {
+            let value = child_env.get(&format!("v{i}")).expect("bound above");
+            assert_eq!(value.as_slice::<i32>(), &[i; 16], "v{i} was collected");
+        }
+        assert!(child_env.get("shared").is_none());
+        let shared = child_env
+            .get_inherits("shared")
+            .expect("bound in the parent");
+        assert_eq!(shared.string_elt_str(0), Some("parent"));
+        child.get()
     }
 }
 

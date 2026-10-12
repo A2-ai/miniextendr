@@ -1038,7 +1038,7 @@ fn real_labels(column: SEXP, values: &[f64], col: &str) -> Result<Vec<String>, D
     // REALSXP rooted by `OwnedProtect` until the labels are copied out.
     let labels = unsafe {
         let keys = crate::OwnedProtect::new(values.into_sexp());
-        crate::sys::Rf_copyMostAttrib(column, keys.get());
+        keys.copy_most_attrib(column);
         crate::convert::read_character(keys.get())
     }
     .map_err(|e| label_error(e.to_string()))?;

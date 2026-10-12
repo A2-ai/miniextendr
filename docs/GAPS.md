@@ -579,7 +579,7 @@ unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
 |---------|-------|-------|
 | Return SEXP immediately from `.Call` | Yes | R receives it before another allocation can collect it |
 | Store in an `ExternalPtr`'s protected slot | Yes | R traces the slot while the external pointer is reachable |
-| Store in `BuiltDataFrame` / `RootedSentinel` | Yes | The handle pairs `R_PreserveObject` with `Drop` |
+| Store in `Preserved` / `BuiltDataFrame` / `BuiltList` | Yes | The handle pairs `R_PreserveObject` with `Drop`; for many roots use `ProtectPool` |
 | Store in `ProtectPool` | Yes | The preserved VECSXP traces occupied slots across calls |
 | Store raw SEXP in Rust struct | **No** | Can be GC'd without warning |
 | Store in `OwnedProtect` | Yes | Valid only while the guard and its PROTECT-stack order remain in scope |

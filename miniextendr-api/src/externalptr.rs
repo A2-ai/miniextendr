@@ -682,35 +682,23 @@ impl TypedExternal for () {
 // region: Class-handle unwrapping (audit A9)
 
 /// Look up a variable bound directly in a single environment frame (no search
-/// of enclosing frames), using `base::get0(..., inherits = FALSE)`.
+/// of enclosing frames) with [`REnv::get`](crate::expression::REnv::get).
 ///
 /// Returns `None` for a non-environment, an absent binding, or `NULL` (none
 /// can hold a class handle). Promises and active bindings are evaluated once;
-/// their errors propagate under the caller's unwind protection. Evaluating
-/// `get0` keeps this path on R's public API on R 4.4 as well as newer R.
+/// their errors unwind to the caller's miniextendr boundary.
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread.
-unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
+/// R's main thread, inside a miniextendr boundary.
+unsafe fn env_binding(env: SEXP, name: &str) -> Option<SEXP> {
     unsafe {
         if !env.is_environment() {
             return None;
         }
-        let scope = ProtectScope::new();
-        scope.protect(env);
-        let name = scope.protect_raw(crate::sys::Rf_mkString(name.as_ptr()));
-        let mode = scope.protect_raw(crate::sys::Rf_mkString(c"any".as_ptr()));
-        let inherits = scope.protect_raw(SEXP::scalar_logical(false));
-        let call = scope.protect_raw(crate::sys::Rf_lang5(
-            Rf_install(c"get0".as_ptr()),
-            name,
-            env,
-            mode,
-            inherits,
-        ));
-        let val = crate::sys::Rf_eval(call, crate::sys::R_BaseEnv);
-        (!val.is_null_or_nil()).then_some(val)
+        crate::expression::REnv::from_sexp(env)
+            .get(name)
+            .filter(|val| !val.is_null_or_nil())
     }
 }
 
@@ -761,7 +749,8 @@ unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
 ///
 /// # Safety
 ///
-/// - Must be called from R's main thread.
+/// - Must be called from R's main thread, inside a miniextendr boundary: an R
+///   error from a promise or active binding the lookup forces unwinds to it.
 /// - The returned SEXP is reachable from `sexp` (an env binding, S4 slot, or
 ///   attribute) for as long as `sexp` itself is protected. Macro-generated
 ///   `.Call()` wrappers hold every argument alive in the call's PROTECT stack
@@ -770,7 +759,7 @@ unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
 pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
     unsafe {
         if sexp.is_environment() {
-            if let Some(direct) = env_binding(sexp, c".ptr") {
+            if let Some(direct) = env_binding(sexp, ".ptr") {
                 if direct.type_of() == SEXPTYPE::EXTPTRSXP {
                     return Some(direct);
                 }
@@ -778,9 +767,9 @@ pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
             // An active binding can return a fresh environment that is not
             // retained by its owner. Keep it rooted across the next lookup.
             let scope = ProtectScope::new();
-            let enclos = scope.protect_raw(env_binding(sexp, c".__enclos_env__")?);
-            let private = scope.protect_raw(env_binding(enclos, c"private")?);
-            let inner = env_binding(private, c".ptr")?;
+            let enclos = scope.protect_raw(env_binding(sexp, ".__enclos_env__")?);
+            let private = scope.protect_raw(env_binding(enclos, "private")?);
+            let inner = env_binding(private, ".ptr")?;
             return (inner.type_of() == SEXPTYPE::EXTPTRSXP).then_some(inner);
         }
 
