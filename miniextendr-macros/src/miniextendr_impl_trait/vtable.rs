@@ -1252,7 +1252,9 @@ pub(super) fn generate_trait_method_c_wrapper(
 
     // Build the wrapper using the builder infrastructure
     // Use custom call_method_def_ident to avoid collisions with inherent impl methods
+    // Messages R sees name the method as R calls it (`r_name`).
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_name(method.r_method_name())
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
         .output(method.sig.output.clone())
@@ -1283,7 +1285,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
         let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
         // Instance method: generate self extraction and call with self_ref
-        let trait_method_name = format!("{}::{}()", trait_name, method_ident);
+        let trait_method_name = format!("{}::{}()", trait_name, method.r_method_name());
         let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
         let downcast = if method.is_mut {
             quote::quote!(downcast_mut)

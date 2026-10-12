@@ -1,8 +1,9 @@
 //! #2020: generated code stays unambiguous under `use miniextendr_api::*`.
-//! The glob brings in the adapter traits, whose blanket impls give every
-//! `Clone` type a second `clone` (`RClone`), so a generated `x.clone()` is
-//! ambiguous. The UI fixture `tests/ui/pass/glob_import_method_calls.rs`
-//! covers every macro the UI tests' crate can compile; this module covers the
+//! The glob brings in the adapter traits, whose blanket impls gave every
+//! `Clone` type a second `clone` while `RClone`'s method had that name (it
+//! is `r_clone` now), so a generated `x.clone()` was ambiguous. The UI
+//! fixture `tests/ui/pass/glob_import_method_calls.rs` covers every macro
+//! the UI tests' crate can compile; this module covers the
 //! paths that need features that crate lacks: the parallel `DataFrameRow`
 //! readers (`rayon`), the Vctrs derive (`vctrs`), a worker wrapper
 //! (`worker-thread`) and a serde-classed error (`serde`).

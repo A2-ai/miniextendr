@@ -7,7 +7,6 @@
 //!
 //! ```rust,ignore
 //! use miniextendr_api::prelude::*;
-//! use miniextendr_api::adapter_traits::RDebug;
 //!
 //! #[derive(Debug, ExternalPtr)]
 //! struct MyData {
@@ -16,15 +15,31 @@
 //!
 //! // RDebug is automatically available for any Debug type
 //! #[miniextendr]
-//! impl RDebug for MyData {}
+//! impl miniextendr_api::adapter_traits::RDebug for MyData {}
 //! ```
 //!
 //! In R:
 //! ```r
 //! data <- MyData$new(...)
-//! data$debug_str()        # "MyData { values: [1, 2, 3] }"
-//! data$debug_str_pretty() # Pretty-printed with newlines
+//! data$RDebug$debug_str()        # "MyData { values: [1, 2, 3] }"
+//! data$RDebug$debug_str_pretty() # Pretty-printed with newlines
 //! ```
+//!
+//! # Rust method names
+//!
+//! A method whose name a std trait or a covered type already uses gets an
+//! `r_` prefix in Rust and keeps the std name in R through
+//! `#[miniextendr(r_name = "...")]`: `RClone::r_clone` is `clone()` in R.
+//! The blanket impls cover every `Clone`, `Default`, `Hash`, `Ord`,
+//! `PartialOrd` and `FromStr` type, and `RToVec` every array and boxed slice,
+//! so with the std names an import of these traits would make the importing
+//! module's own `v.clone()` or `a.cmp(&b)` ambiguous (E0034), and its
+//! `[T; N]::len()` an `i64`.
+//!
+//! An empty `#[miniextendr] impl` takes the R names from the trait (it names
+//! the trait by its `miniextendr_api::adapter_traits` path, as below). An impl with a body, which the
+//! generic `RToVec<T>` and `RExtend<T>` and the associated-type `RIterator`
+//! always need, repeats the `r_name` on each renamed method.
 
 use crate::miniextendr;
 use std::collections::hash_map::DefaultHasher;
@@ -49,7 +64,7 @@ use std::str::FromStr;
 /// struct Config { name: String, value: i32 }
 ///
 /// #[miniextendr]
-/// impl RDebug for Config {}
+/// impl miniextendr_api::adapter_traits::RDebug for Config {}
 /// ```
 #[miniextendr]
 pub trait RDebug {
@@ -91,7 +106,7 @@ impl<T: Debug> RDebug for T {
 /// }
 ///
 /// #[miniextendr]
-/// impl RDisplay for Version {}
+/// impl miniextendr_api::adapter_traits::RDisplay for Version {}
 /// ```
 #[miniextendr]
 pub trait RDisplay {
@@ -112,7 +127,8 @@ impl<T: Display> RDisplay for T {
 ///
 /// # Methods
 ///
-/// - `hash()` - Returns the 64-bit hash as a 16-character hex string
+/// - `r_hash()` (`hash()` in R) - Returns the 64-bit hash as a 16-character
+///   hex string
 ///
 /// # Note
 ///
@@ -133,7 +149,7 @@ impl<T: Display> RDisplay for T {
 /// struct Record { id: String, value: i64 }
 ///
 /// #[miniextendr]
-/// impl RHash for Record {}
+/// impl miniextendr_api::adapter_traits::RHash for Record {}
 /// ```
 #[miniextendr]
 pub trait RHash {
@@ -142,13 +158,14 @@ pub trait RHash {
     /// Returns the [`DefaultHasher`] `u64` output as a 16-character lowercase
     /// hex string. See the trait-level docs for why a string rather than a
     /// number.
-    fn hash(&self) -> String;
+    #[miniextendr(r_name = "hash")]
+    fn r_hash(&self) -> String;
 }
 
 impl<T: Hash> RHash for T {
-    fn hash(&self) -> String {
+    fn r_hash(&self) -> String {
         let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
+        Hash::hash(self, &mut hasher);
         // R has no faithful 64-bit integer; hex-encode the full u64 so every
         // bit survives the trip to R (a numeric would round above 2^53).
         format!("{:016x}", hasher.finish())
@@ -162,7 +179,7 @@ impl<T: Hash> RHash for T {
 ///
 /// # Methods
 ///
-/// - `cmp(&self, other: &Self)` - Returns -1, 0, or 1
+/// - `r_cmp(&self, other: &Self)` (`cmp()` in R) - Returns -1, 0, or 1
 ///
 /// # Example
 ///
@@ -171,7 +188,7 @@ impl<T: Hash> RHash for T {
 /// struct Priority(u32);
 ///
 /// #[miniextendr]
-/// impl ROrd for Priority {}
+/// impl miniextendr_api::adapter_traits::ROrd for Priority {}
 /// ```
 #[miniextendr]
 pub trait ROrd {
@@ -181,12 +198,13 @@ pub trait ROrd {
     /// - `-1` if `self < other`
     /// - `0` if `self == other`
     /// - `1` if `self > other`
-    fn cmp(&self, other: &Self) -> i32;
+    #[miniextendr(r_name = "cmp")]
+    fn r_cmp(&self, other: &Self) -> i32;
 }
 
 impl<T: Ord> ROrd for T {
-    fn cmp(&self, other: &Self) -> i32 {
-        match self.cmp(other) {
+    fn r_cmp(&self, other: &Self) -> i32 {
+        match Ord::cmp(self, other) {
             std::cmp::Ordering::Less => -1,
             std::cmp::Ordering::Equal => 0,
             std::cmp::Ordering::Greater => 1,
@@ -201,7 +219,8 @@ impl<T: Ord> ROrd for T {
 ///
 /// # Methods
 ///
-/// - `partial_cmp(&self, other: &Self)` - Returns Some(-1/0/1) or None
+/// - `r_partial_cmp(&self, other: &Self)` (`partial_cmp()` in R) - Returns
+///   Some(-1/0/1) or None
 ///
 /// # Example
 ///
@@ -211,7 +230,7 @@ impl<T: Ord> ROrd for T {
 /// struct MyFloat(f64);
 ///
 /// #[miniextendr]
-/// impl RPartialOrd for MyFloat {}
+/// impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat {}
 /// ```
 #[miniextendr]
 pub trait RPartialOrd {
@@ -221,13 +240,15 @@ pub trait RPartialOrd {
     /// - `Some(-1)` if `self < other`
     /// - `Some(0)` if `self == other`
     /// - `Some(1)` if `self > other`
-    /// - `None` if values are incomparable (maps to NA in R)
-    fn partial_cmp(&self, other: &Self) -> Option<i32>;
+    /// - `None` if values are incomparable (in R, an error: `` `partial_cmp()`
+    ///   returned no value``)
+    #[miniextendr(r_name = "partial_cmp")]
+    fn r_partial_cmp(&self, other: &Self) -> Option<i32>;
 }
 
 impl<T: PartialOrd> RPartialOrd for T {
-    fn partial_cmp(&self, other: &Self) -> Option<i32> {
-        self.partial_cmp(other).map(|ord| match ord {
+    fn r_partial_cmp(&self, other: &Self) -> Option<i32> {
+        PartialOrd::partial_cmp(self, other).map(|ord| match ord {
             std::cmp::Ordering::Less => -1,
             std::cmp::Ordering::Equal => 0,
             std::cmp::Ordering::Greater => 1,
@@ -271,7 +292,7 @@ impl<T: PartialOrd> RPartialOrd for T {
 /// struct MyErrorWrapper(MyError);
 ///
 /// #[miniextendr]
-/// impl RError for MyErrorWrapper {}
+/// impl miniextendr_api::adapter_traits::RError for MyErrorWrapper {}
 /// ```
 #[miniextendr]
 pub trait RError {
@@ -318,7 +339,8 @@ impl<T: std::error::Error> RError for T {
 ///
 /// # Methods
 ///
-/// - `from_str(s: &str)` - Parse a string into this type, returning None on failure
+/// - `r_from_str(s: &str)` (`from_str()` in R) - Parse a string into this
+///   type, returning None on failure
 ///
 /// # Example
 ///
@@ -330,24 +352,25 @@ impl<T: std::error::Error> RError for T {
 /// struct IpAddress(IpAddr);
 ///
 /// #[miniextendr]
-/// impl RFromStr for IpAddress {}
+/// impl miniextendr_api::adapter_traits::RFromStr for IpAddress {}
 /// ```
 ///
 /// In R:
 /// ```r
-/// ip <- IpAddress$from_str("192.168.1.1")
+/// ip <- IpAddress$RFromStr$from_str("192.168.1.1")
 /// ```
 #[miniextendr]
 pub trait RFromStr: Sized {
     /// Parse a string into this type.
     ///
-    /// Returns `Some(value)` on success, `None` on parse failure.
-    /// The None case maps to NULL in R.
-    fn from_str(s: &str) -> Option<Self>;
+    /// Returns `Some(value)` on success, `None` on parse failure, which R
+    /// raises as `` `from_str()` returned no value``.
+    #[miniextendr(r_name = "from_str")]
+    fn r_from_str(s: &str) -> Option<Self>;
 }
 
 impl<T: FromStr> RFromStr for T {
-    fn from_str(s: &str) -> Option<Self> {
+    fn r_from_str(s: &str) -> Option<Self> {
         s.parse().ok()
     }
 }
@@ -360,7 +383,7 @@ impl<T: FromStr> RFromStr for T {
 ///
 /// # Methods
 ///
-/// - `clone()` - Create a deep copy of this value
+/// - `r_clone()` (`clone()` in R) - Create a deep copy of this value
 ///
 /// # Example
 ///
@@ -369,23 +392,24 @@ impl<T: FromStr> RFromStr for T {
 /// struct Buffer { data: Vec<u8> }
 ///
 /// #[miniextendr]
-/// impl RClone for Buffer {}
+/// impl miniextendr_api::adapter_traits::RClone for Buffer {}
 /// ```
 ///
 /// In R:
 /// ```r
 /// buf1 <- Buffer$new(...)
-/// buf2 <- buf1$clone()  # Independent copy
+/// buf2 <- buf1$RClone$clone()  # Independent copy
 /// ```
 #[miniextendr]
 pub trait RClone {
     /// Create a deep copy of this value.
-    fn clone(&self) -> Self;
+    #[miniextendr(r_name = "clone")]
+    fn r_clone(&self) -> Self;
 }
 
 impl<T: Clone> RClone for T {
-    fn clone(&self) -> Self {
-        self.clone()
+    fn r_clone(&self) -> Self {
+        Clone::clone(self)
     }
 }
 
@@ -396,7 +420,8 @@ impl<T: Clone> RClone for T {
 ///
 /// # Methods
 ///
-/// - `default()` - Create a new instance with default values
+/// - `r_default()` (`default()` in R) - Create a new instance with default
+///   values
 ///
 /// # Example
 ///
@@ -409,22 +434,23 @@ impl<T: Clone> RClone for T {
 /// }
 ///
 /// #[miniextendr]
-/// impl RDefault for Config {}
+/// impl miniextendr_api::adapter_traits::RDefault for Config {}
 /// ```
 ///
 /// In R:
 /// ```r
-/// config <- Config$default()  # All fields have default values
+/// config <- Config$RDefault$default()  # All fields have default values
 /// ```
 #[miniextendr]
 pub trait RDefault {
     /// Create a new instance with default values.
-    fn default() -> Self;
+    #[miniextendr(r_name = "default")]
+    fn r_default() -> Self;
 }
 
 impl<T: Default> RDefault for T {
-    fn default() -> Self {
-        Self::default()
+    fn r_default() -> Self {
+        <T as Default>::default()
     }
 }
 
@@ -454,14 +480,14 @@ impl<T: Default> RDefault for T {
 /// struct Point { x: f64, y: f64 }
 ///
 /// #[miniextendr]
-/// impl RCopy for Point {}
+/// impl miniextendr_api::adapter_traits::RCopy for Point {}
 /// ```
 ///
 /// In R:
 /// ```r
 /// p1 <- Point$new(1.0, 2.0)
-/// p2 <- p1$copy()  # Cheap bitwise copy
-/// p1$is_copy()       # TRUE
+/// p2 <- p1$RCopy$copy()  # Cheap bitwise copy
+/// p1$RCopy$is_copy()       # TRUE
 /// ```
 #[miniextendr]
 pub trait RCopy {
@@ -495,8 +521,8 @@ impl<T: Copy> RCopy for T {
 ///
 /// # Methods
 ///
-/// - `next()` - Get the next element, or None if exhausted
-/// - `size_hint()` - Get estimated remaining elements as `c(lower, upper)`
+/// - `next()` (`next_item()` in R) - Get the next element, or None if exhausted
+/// - `size_hint()` - Get estimated remaining elements (not exported to R)
 /// - `count()` - Consume and count remaining elements
 /// - `collect_n(n)` - Collect up to n elements into a vector
 /// - `skip(n)` - Skip n elements
@@ -505,42 +531,60 @@ impl<T: Copy> RCopy for T {
 /// # Example
 ///
 /// ```rust,ignore
+/// use miniextendr_api::adapter_traits::RIterator;
 /// use std::cell::RefCell;
 ///
 /// #[derive(ExternalPtr)]
 /// struct MyIter(RefCell<std::vec::IntoIter<i32>>);
 ///
+/// #[miniextendr(env)]
 /// impl MyIter {
 ///     fn new(data: Vec<i32>) -> Self {
 ///         Self(RefCell::new(data.into_iter()))
 ///     }
 /// }
 ///
-/// impl RIterator for MyIter {
+/// // An impl with a body lists every method the trait exports and repeats
+/// // the trait's `r_name` / `skip` attributes; each forwards to the cell.
+/// #[miniextendr(env)]
+/// impl miniextendr_api::adapter_traits::RIterator for MyIter {
 ///     type Item = i32;
 ///
-///     fn next(&self) -> Option<Self::Item> {
-///         self.0.borrow_mut().next()
+///     #[miniextendr(r_name = "next_item")]
+///     fn next(&self) -> Option<i32> {
+///         self.0.next()
 ///     }
 ///
+///     #[miniextendr(skip)]
 ///     fn size_hint(&self) -> (i64, Option<i64>) {
-///         let (lo, hi) = self.0.borrow().size_hint();
-///         (lo as i64, hi.map(|h| h as i64))
+///         self.0.size_hint()
+///     }
+///
+///     fn count(&self) -> i64 {
+///         self.0.count()
+///     }
+///
+///     fn collect_n(&self, n: i32) -> Vec<i32> {
+///         self.0.collect_n(n)
+///     }
+///
+///     fn skip(&self, n: i32) -> i32 {
+///         self.0.skip(n)
+///     }
+///
+///     fn nth(&self, n: i32) -> Option<i32> {
+///         self.0.nth(n)
 ///     }
 /// }
-///
-/// #[miniextendr]
-/// impl RIterator for MyIter {}
 /// ```
 ///
-/// In R (note: `next` is a reserved word, so expose as `next_item` or similar):
+/// In R (`next` is a reserved word, so the method is `next_item`):
 /// ```r
 /// it <- MyIter$new(c(1L, 2L, 3L))
-/// it$next_item()   # 1L
-/// it$next_item()   # 2L
-/// it$size_hint()   # c(1, 1) - one element remaining
-/// it$next_item()   # 3L
-/// it$next_item()   # NULL (exhausted)
+/// it$RIterator$next_item()   # 1L
+/// it$RIterator$next_item()   # 2L
+/// it$RIterator$collect_n(5L) # 3L
+/// it$RIterator$next_item()   # error: returned no value (exhausted)
 /// ```
 ///
 /// # Design Note
@@ -560,8 +604,8 @@ pub trait RIterator {
 
     /// Get the next element from the iterator.
     ///
-    /// Returns `Some(item)` if there are more elements, `None` if exhausted.
-    /// None maps to NULL in R.
+    /// Returns `Some(item)` if there are more elements, `None` if exhausted,
+    /// which R raises as `` `next_item()` returned no value``.
     #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item>;
 
@@ -678,6 +722,8 @@ impl<I: Iterator> RIterator for std::cell::RefCell<I> {
 ///
 /// - `extend_from_vec(items)` - Extend the collection with items from a vector
 /// - `extend_from_slice(items)` - Extend from a slice (for Clone items)
+/// - `r_len()` (`len()` in R) - Get the current length, or -1 if unknown
+/// - `r_is_empty()` (`is_empty()` in R) - Check if the collection is empty
 ///
 /// # Example
 ///
@@ -687,27 +733,39 @@ impl<I: Iterator> RIterator for std::cell::RefCell<I> {
 /// #[derive(ExternalPtr)]
 /// struct MyVec(RefCell<Vec<i32>>);
 ///
+/// #[miniextendr(env)]
 /// impl MyVec {
 ///     fn new() -> Self {
 ///         Self(RefCell::new(Vec::new()))
 ///     }
 /// }
 ///
-/// impl RExtend<i32> for MyVec {
+/// // The trait is generic, so the impl spells out each exported method and
+/// // repeats the R names of the renamed ones.
+/// #[miniextendr(env)]
+/// impl miniextendr_api::adapter_traits::RExtend<i32> for MyVec {
 ///     fn extend_from_vec(&self, items: Vec<i32>) {
 ///         self.0.borrow_mut().extend(items);
 ///     }
-/// }
 ///
-/// #[miniextendr]
-/// impl RExtend<i32> for MyVec {}
+///     #[miniextendr(r_name = "len")]
+///     fn r_len(&self) -> i64 {
+///         i64::try_from(self.0.borrow().len()).expect("length fits i64")
+///     }
+///
+///     #[miniextendr(r_name = "is_empty")]
+///     fn r_is_empty(&self) -> bool {
+///         self.0.borrow().is_empty()
+///     }
+/// }
 /// ```
 ///
 /// In R:
 /// ```r
 /// v <- MyVec$new()
-/// v$extend_from_vec(c(1L, 2L, 3L))  # Add items
-/// v$extend_from_vec(c(4L, 5L))      # Add more items
+/// v$RExtend$extend_from_vec(c(1L, 2L, 3L))  # Add items
+/// v$RExtend$extend_from_vec(c(4L, 5L))      # Add more items
+/// v$RExtend$len()                           # 5
 /// ```
 ///
 /// # Design Note
@@ -738,15 +796,17 @@ pub trait RExtend<T> {
     /// Get the current length of the collection.
     ///
     /// Optional - returns -1 if not implemented.
-    fn len(&self) -> i64 {
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64 {
         -1 // Indicates "unknown" - implementers can override
     }
 
     /// Check if the collection is empty.
     ///
     /// Returns false when length is unknown.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
+        self.r_len() == 0
     }
 }
 
@@ -768,19 +828,17 @@ pub trait RExtend<T> {
 /// #[derive(ExternalPtr)]
 /// struct MySet(std::collections::HashSet<i32>);
 ///
-/// impl RFromIter<i32> for MySet {
+/// #[miniextendr(env)]
+/// impl miniextendr_api::adapter_traits::RFromIter<i32> for MySet {
 ///     fn from_vec(items: Vec<i32>) -> Self {
 ///         Self(items.into_iter().collect())
 ///     }
 /// }
-///
-/// #[miniextendr]
-/// impl RFromIter<i32> for MySet {}
 /// ```
 ///
 /// In R:
 /// ```r
-/// set <- MySet$from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
+/// set <- MySet$RFromIter$from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
 /// ```
 #[miniextendr]
 pub trait RFromIter<T>: Sized {
@@ -804,9 +862,10 @@ where
 ///
 /// # Methods
 ///
-/// - `to_vec()` - Collect all elements into a vector (cloning elements)
-/// - `len()` - Get the number of elements
-/// - `is_empty()` - Check if the collection is empty
+/// - `r_to_vec()` (`to_vec()` in R) - Collect all elements into a vector
+///   (cloning elements)
+/// - `r_len()` (`len()` in R) - Get the number of elements
+/// - `r_is_empty()` (`is_empty()` in R) - Check if the collection is empty
 ///
 /// # Design Note
 ///
@@ -819,36 +878,57 @@ where
 /// # Example
 ///
 /// ```rust,ignore
+/// use miniextendr_api::adapter_traits::RToVec;
 /// use std::collections::HashSet;
 ///
 /// #[derive(ExternalPtr)]
 /// struct MySet(HashSet<i32>);
 ///
-/// // RToVec is automatically available via blanket impl
-/// #[miniextendr]
-/// impl RToVec<i32> for MySet {}
+/// // `&MySet` doesn't iterate, so the blanket impl doesn't cover the wrapper:
+/// // the impl forwards to the set, which it does cover. The trait is generic,
+/// // so the impl spells out each method and repeats its R name.
+/// #[miniextendr(env)]
+/// impl miniextendr_api::adapter_traits::RToVec<i32> for MySet {
+///     #[miniextendr(r_name = "to_vec")]
+///     fn r_to_vec(&self) -> Vec<i32> {
+///         self.0.r_to_vec()
+///     }
+///
+///     #[miniextendr(r_name = "len")]
+///     fn r_len(&self) -> i64 {
+///         self.0.r_len()
+///     }
+///
+///     #[miniextendr(r_name = "is_empty")]
+///     fn r_is_empty(&self) -> bool {
+///         self.0.is_empty()
+///     }
+/// }
 /// ```
 ///
 /// In R:
 /// ```r
 /// set <- MySet$new(...)
-/// vec <- set$to_vec()    # Get all elements as vector
-/// set$len()              # Number of elements
-/// set$is_empty()         # Check if empty
+/// vec <- set$RToVec$to_vec()    # Get all elements as vector
+/// set$RToVec$len()              # Number of elements
+/// set$RToVec$is_empty()         # Check if empty
 /// ```
 #[miniextendr]
 pub trait RToVec<T> {
     /// Collect all elements into a vector.
     ///
     /// Elements are cloned from the collection.
-    fn to_vec(&self) -> Vec<T>;
+    #[miniextendr(r_name = "to_vec")]
+    fn r_to_vec(&self) -> Vec<T>;
 
     /// Get the number of elements in the collection.
-    fn len(&self) -> i64;
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64;
 
     /// Check if the collection is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
+        self.r_len() == 0
     }
 }
 
@@ -865,12 +945,12 @@ where
     for<'a> &'a C: IntoIterator<Item = &'a T>,
     for<'a> <&'a C as IntoIterator>::IntoIter: ExactSizeIterator,
 {
-    fn to_vec(&self) -> Vec<T> {
+    fn r_to_vec(&self) -> Vec<T> {
         self.into_iter().cloned().collect()
     }
 
-    fn len(&self) -> i64 {
-        self.into_iter().len() as i64
+    fn r_len(&self) -> i64 {
+        i64::try_from(self.into_iter().len()).expect("collection length exceeds i64::MAX")
     }
 }
 
@@ -902,34 +982,22 @@ where
 /// #[derive(ExternalPtr)]
 /// struct MyVecIter(RefCell<std::vec::IntoIter<i32>>);
 ///
-/// impl RIterator for MyVecIter {
-///     type Item = i32;
-///     fn next(&self) -> Option<i32> {
-///         self.0.borrow_mut().next()
-///     }
-///     fn size_hint(&self) -> (i64, Option<i64>) {
-///         let (lo, hi) = self.0.borrow().size_hint();
-///         (lo as i64, hi.map(|h| h as i64))
-///     }
-/// }
+/// // `MyVecIter` implements `RIterator` as in the `RIterator` example.
 ///
-/// impl RMakeIter<i32, MyVecIter> for MyVec {
+/// #[miniextendr(env)]
+/// impl miniextendr_api::adapter_traits::RMakeIter<i32, MyVecIter> for MyVec {
 ///     fn make_iter(&self) -> MyVecIter {
 ///         MyVecIter(RefCell::new(self.0.clone().into_iter()))
 ///     }
 /// }
-///
-/// #[miniextendr]
-/// impl RMakeIter<i32, MyVecIter> for MyVec {}
 /// ```
 ///
-/// In R (note: expose `next` as `next_item` since `next` is reserved):
+/// In R (`next` is a reserved word, so the method is `next_item`):
 /// ```r
 /// v <- MyVec$new(c(1L, 2L, 3L))
-/// it <- v$make_iter()   # Create iterator
-/// it$next_item()        # 1L
-/// it$next_item()        # 2L
-/// v$to_vec()            # c(1L, 2L, 3L) - original unchanged
+/// it <- v$RMakeIter$make_iter()   # Create iterator
+/// it$RIterator$next_item()        # 1L
+/// it$RIterator$next_item()        # 2L
 /// ```
 #[miniextendr]
 pub trait RMakeIter<T, I>
@@ -974,23 +1042,23 @@ mod tests {
         let b = "test";
         let c = "other";
 
-        assert_eq!(RHash::hash(&a), RHash::hash(&b));
-        assert_ne!(RHash::hash(&a), RHash::hash(&c));
+        assert_eq!(a.r_hash(), b.r_hash());
+        assert_ne!(a.r_hash(), c.r_hash());
     }
 
     #[test]
     fn test_rord() {
-        assert_eq!(ROrd::cmp(&1i32, &2), -1);
-        assert_eq!(ROrd::cmp(&2i32, &2), 0);
-        assert_eq!(ROrd::cmp(&3i32, &2), 1);
+        assert_eq!(1i32.r_cmp(&2), -1);
+        assert_eq!(2i32.r_cmp(&2), 0);
+        assert_eq!(3i32.r_cmp(&2), 1);
     }
 
     #[test]
     fn test_rpartialord() {
-        assert_eq!(RPartialOrd::partial_cmp(&1.0f64, &2.0), Some(-1));
-        assert_eq!(RPartialOrd::partial_cmp(&2.0f64, &2.0), Some(0));
-        assert_eq!(RPartialOrd::partial_cmp(&3.0f64, &2.0), Some(1));
-        assert_eq!(RPartialOrd::partial_cmp(&f64::NAN, &1.0), None);
+        assert_eq!(1.0f64.r_partial_cmp(&2.0), Some(-1));
+        assert_eq!(2.0f64.r_partial_cmp(&2.0), Some(0));
+        assert_eq!(3.0f64.r_partial_cmp(&2.0), Some(1));
+        assert_eq!(f64::NAN.r_partial_cmp(&1.0), None);
     }
 
     #[test]
@@ -1052,50 +1120,38 @@ mod tests {
 
     #[test]
     fn test_rfromstr_success() {
-        let result: Option<i32> = RFromStr::from_str("42");
-        assert_eq!(result, Some(42));
-
-        let result: Option<f64> = RFromStr::from_str("3.141592653589793");
-        assert_eq!(result, Some(std::f64::consts::PI));
-
-        let result: Option<bool> = RFromStr::from_str("true");
-        assert_eq!(result, Some(true));
+        assert_eq!(i32::r_from_str("42"), Some(42));
+        assert_eq!(
+            f64::r_from_str("3.141592653589793"),
+            Some(std::f64::consts::PI)
+        );
+        assert_eq!(bool::r_from_str("true"), Some(true));
     }
 
     #[test]
     fn test_rfromstr_failure() {
-        let result: Option<i32> = RFromStr::from_str("not a number");
-        assert_eq!(result, None);
-
-        let result: Option<f64> = RFromStr::from_str("abc");
-        assert_eq!(result, None);
+        assert_eq!(i32::r_from_str("not a number"), None);
+        assert_eq!(f64::r_from_str("abc"), None);
     }
 
     #[test]
     fn test_rclone() {
         let v = vec![1, 2, 3];
-        let cloned = RClone::clone(&v);
+        let cloned = v.r_clone();
         assert_eq!(v, cloned);
 
         // Verify it's a deep copy
         let s = String::from("hello");
-        let cloned_s = RClone::clone(&s);
+        let cloned_s = s.r_clone();
         assert_eq!(s, cloned_s);
     }
 
     #[test]
     fn test_rdefault() {
-        let default_i32: i32 = RDefault::default();
-        assert_eq!(default_i32, 0);
-
-        let default_vec: Vec<i32> = RDefault::default();
-        assert!(default_vec.is_empty());
-
-        let default_string: String = RDefault::default();
-        assert_eq!(default_string, "");
-
-        let default_bool: bool = RDefault::default();
-        assert!(!default_bool);
+        assert_eq!(i32::r_default(), 0);
+        assert!(Vec::<i32>::r_default().is_empty());
+        assert_eq!(String::r_default(), "");
+        assert!(!bool::r_default());
     }
 
     #[test]
@@ -1235,8 +1291,8 @@ mod tests {
             self.0.borrow_mut().extend(items);
         }
 
-        fn len(&self) -> i64 {
-            self.0.borrow().len() as i64
+        fn r_len(&self) -> i64 {
+            i64::try_from(self.0.borrow().len()).expect("length fits i64")
         }
     }
 
@@ -1244,15 +1300,17 @@ mod tests {
     fn test_rextend_basic() {
         let v = TestExtendVec::new();
         assert_eq!(v.get(), Vec::<i32>::new());
-        assert_eq!(v.len(), 0);
+        assert_eq!(v.r_len(), 0);
+        assert!(v.r_is_empty());
 
         v.extend_from_vec(vec![1, 2, 3]);
         assert_eq!(v.get(), vec![1, 2, 3]);
-        assert_eq!(v.len(), 3);
+        assert_eq!(v.r_len(), 3);
+        assert!(!v.r_is_empty());
 
         v.extend_from_vec(vec![4, 5]);
         assert_eq!(v.get(), vec![1, 2, 3, 4, 5]);
-        assert_eq!(v.len(), 5);
+        assert_eq!(v.r_len(), 5);
     }
 
     #[test]
@@ -1260,7 +1318,18 @@ mod tests {
         let v = TestExtendVec::new();
         v.extend_from_vec(vec![]);
         assert_eq!(v.get(), Vec::<i32>::new());
-        assert_eq!(v.len(), 0);
+        assert_eq!(v.r_len(), 0);
+    }
+
+    /// The default `r_len` reports an unknown length, which isn't empty.
+    #[test]
+    fn test_rextend_unknown_len() {
+        struct Sink;
+        impl RExtend<i32> for Sink {
+            fn extend_from_vec(&self, _items: Vec<i32>) {}
+        }
+        assert_eq!(Sink.r_len(), -1);
+        assert!(!Sink.r_is_empty());
     }
 
     #[test]
@@ -1304,19 +1373,17 @@ mod tests {
     #[test]
     fn test_rtovec_vec() {
         let v = vec![1, 2, 3];
-        let collected: Vec<i32> = RToVec::to_vec(&v);
-        assert_eq!(collected, vec![1, 2, 3]);
-        assert_eq!(RToVec::<i32>::len(&v), 3);
-        assert!(!RToVec::<i32>::is_empty(&v));
+        assert_eq!(v.r_to_vec(), vec![1, 2, 3]);
+        assert_eq!(v.r_len(), 3);
+        assert!(!v.r_is_empty());
     }
 
     #[test]
     fn test_rtovec_empty() {
         let v: Vec<i32> = vec![];
-        let collected: Vec<i32> = RToVec::to_vec(&v);
-        assert!(collected.is_empty());
-        assert_eq!(RToVec::<i32>::len(&v), 0);
-        assert!(RToVec::<i32>::is_empty(&v));
+        assert!(v.r_to_vec().is_empty());
+        assert_eq!(v.r_len(), 0);
+        assert!(v.r_is_empty());
     }
 
     #[test]
@@ -1327,18 +1394,45 @@ mod tests {
         set.insert(2);
         set.insert(3);
 
-        let mut collected: Vec<i32> = RToVec::to_vec(&set);
+        let mut collected = set.r_to_vec();
         collected.sort();
         assert_eq!(collected, vec![1, 2, 3]);
-        assert_eq!(RToVec::<i32>::len(&set), 3);
+        assert_eq!(set.r_len(), 3);
     }
 
     #[test]
     fn test_rtovec_slice() {
         let arr = [10, 20, 30];
-        let collected: Vec<i32> = RToVec::to_vec(&arr);
-        assert_eq!(collected, vec![10, 20, 30]);
-        assert_eq!(RToVec::<i32>::len(&arr), 3);
+        assert_eq!(arr.r_to_vec(), vec![10, 20, 30]);
+        assert_eq!(arr.r_len(), 3);
+    }
+
+    /// With every adapter trait in scope (`use super::*`), the std methods of
+    /// the types their blanket impls cover still resolve to std, with std's
+    /// result types.
+    #[test]
+    fn test_std_methods_resolve_with_adapters_in_scope() {
+        use std::hash::DefaultHasher;
+
+        let v = vec![1, 2, 3];
+        let cloned: Vec<i32> = v.clone();
+        assert_eq!(cloned, v);
+        assert_eq!(String::default(), "");
+        assert_eq!(1.cmp(&2), std::cmp::Ordering::Less);
+        assert_eq!(1.0f64.partial_cmp(&2.0), Some(std::cmp::Ordering::Less));
+        let mut hasher = DefaultHasher::new();
+        v.hash(&mut hasher);
+        let _: u64 = hasher.finish();
+        assert_eq!(i32::from_str("7"), Ok(7));
+
+        let arr = [10, 20, 30];
+        let len: usize = arr.len();
+        assert_eq!(len, 3);
+        assert!(!arr.is_empty());
+        let boxed: Box<[i32]> = vec![1, 2].into_boxed_slice();
+        let boxed_len: usize = boxed.len();
+        assert_eq!(boxed_len, 2);
+        assert_eq!(boxed.to_vec(), vec![1, 2]);
     }
 
     // Tests for RMakeIter

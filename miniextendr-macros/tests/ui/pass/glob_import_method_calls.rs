@@ -1,17 +1,25 @@
-//! #2020: generated method calls must stay unambiguous under
-//! `use miniextendr_api::*`.
+//! #2020: generated method calls, and the importing crate's own std method
+//! calls, must stay unambiguous under `use miniextendr_api::*` or a named
+//! import of the adapter traits.
 //!
 //! The glob brings in the crate's adapter traits, whose blanket impls cover
-//! every `Clone`, `Debug`, `Default`, `Hash`, `Ord` or `PartialOrd` type and
-//! every exact-size collection: `RClone::clone`, `RDebug::debug_str`,
-//! `RDefault::default`, `RHash::hash`, `ROrd::cmp`, `RPartialOrd::partial_cmp`,
-//! and `RToVec::{len, is_empty, to_vec}`. A generated `x.clone()` then names two
-//! applicable methods (E0034), and on an array or a `Box<[T]>`, `x.len()` finds
-//! `RToVec::len` (an `i64`) and `AltrepLen::len` before the slice's. This module
-//! glob-imports the crate, then invokes every derive, attribute and
-//! function-like macro (`common/every_macro.rs`) plus trait and inherent
-//! methods named after the glob's methods. rpkg's `glob_import_tests.rs`
-//! covers the paths that need features this crate doesn't have.
+//! every `Clone`, `Debug`, `Default`, `Hash`, `Ord`, `PartialOrd` or `FromStr`
+//! type and every exact-size collection. When their methods had std's names
+//! (`RClone::clone`, `RDefault::default`, `RHash::hash`, `ROrd::cmp`,
+//! `RPartialOrd::partial_cmp`, `RFromStr::from_str`,
+//! `RToVec::{len, is_empty, to_vec}`), any `x.clone()` named two applicable
+//! methods (E0034), and on an array or a `Box<[T]>`, `x.len()` found
+//! `RToVec::len` (an `i64`) before the slice's. Those methods are now
+//! `r_`-prefixed in Rust (`r_clone`, ...) and keep the std names in R. On an
+//! array or a `Box<[T]>` of an R-native element type, `AltrepLen::len` (a
+//! `usize`) still resolves before the slice's.
+//!
+//! This module glob-imports the crate, then invokes every derive, attribute
+//! and function-like macro (`common/every_macro.rs`), trait and inherent
+//! methods named after the glob's methods, the adapter traits' empty impls,
+//! and user code calling the std methods. The `named` module imports the
+//! adapter traits by name instead. rpkg's `glob_import_tests.rs` covers the
+//! paths that need features this crate doesn't have.
 #![allow(dead_code)]
 
 use miniextendr_api::*;
@@ -271,6 +279,198 @@ impl Slots {
 
 // endregion
 
+// region: the adapter traits' own impls
+
+// Empty impls expand from the trait's metadata, which carries the R names
+// (`clone`, `default`, `hash`, `cmp`, `partial_cmp`, `from_str`) of the
+// `r_`-prefixed Rust methods. The impls name the trait by its module path,
+// where its vtable items live; the glob brings in only the traits.
+#[derive(
+    ::core::clone::Clone,
+    ::core::fmt::Debug,
+    ::core::default::Default,
+    ::core::hash::Hash,
+    ::core::cmp::PartialEq,
+    ::core::cmp::Eq,
+    ::core::cmp::PartialOrd,
+    ::core::cmp::Ord,
+    ExternalPtr,
+)]
+pub struct Adapted {
+    pub count: i32,
+}
+
+impl ::core::str::FromStr for Adapted {
+    type Err = ::core::num::ParseIntError;
+
+    fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
+        <i32 as ::core::str::FromStr>::from_str(s).map(|count| Adapted { count })
+    }
+}
+
+#[miniextendr(env)]
+impl Adapted {
+    pub fn new(count: i32) -> Self {
+        Adapted { count }
+    }
+}
+
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RClone for Adapted {}
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RDefault for Adapted {}
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RHash for Adapted {}
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::ROrd for Adapted {}
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RPartialOrd for Adapted {}
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RFromStr for Adapted {}
+
+// The generic traits take an impl with a body, which repeats the R names.
+#[derive(ExternalPtr)]
+pub struct Bag(::std::cell::RefCell<::std::vec::Vec<i32>>);
+
+#[miniextendr(env)]
+impl Bag {
+    pub fn new() -> Self {
+        Bag(::std::cell::RefCell::new(::std::vec::Vec::new()))
+    }
+}
+
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RToVec<i32> for Bag {
+    #[miniextendr(r_name = "to_vec")]
+    fn r_to_vec(&self) -> ::std::vec::Vec<i32> {
+        self.0.borrow().r_to_vec()
+    }
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64 {
+        self.0.borrow().r_len()
+    }
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+}
+
+#[miniextendr(env)]
+impl miniextendr_api::adapter_traits::RExtend<i32> for Bag {
+    fn extend_from_vec(&self, items: ::std::vec::Vec<i32>) {
+        self.0.borrow_mut().extend(items);
+    }
+    #[miniextendr(r_name = "len")]
+    fn r_len(&self) -> i64 {
+        self.0.borrow().r_len()
+    }
+    #[miniextendr(r_name = "is_empty")]
+    fn r_is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+}
+
+// endregion
+
+// region: user code calling std methods next to the glob
+
+// Each call names its std method only, and the annotations pin std's result
+// types. `Word` has no `AltrepLen` impl, so its arrays and boxed slices reach
+// the slice's inherent `len` / `is_empty` / `to_vec`.
+
+#[derive(
+    ::core::clone::Clone,
+    ::core::fmt::Debug,
+    ::core::default::Default,
+    ::core::hash::Hash,
+    ::core::cmp::PartialEq,
+    ::core::cmp::Eq,
+    ::core::cmp::PartialOrd,
+    ::core::cmp::Ord,
+)]
+pub struct Version(u32, u32);
+
+impl ::core::str::FromStr for Version {
+    type Err = ::std::string::String;
+
+    fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
+        let (major, minor) = s.split_once('.').ok_or("expected major.minor")?;
+        let major = major.parse().map_err(|_| "bad major")?;
+        let minor = minor.parse().map_err(|_| "bad minor")?;
+        ::core::result::Result::Ok(Version(major, minor))
+    }
+}
+
+#[derive(::core::clone::Clone, ::core::fmt::Debug, ::core::cmp::PartialEq)]
+pub struct Word(&'static str);
+
+/// Calls every std method an adapter trait used to shadow. Expanded once at
+/// the top level (the glob) and once in `named`.
+macro_rules! std_method_calls {
+    () => {
+        pub fn std_method_calls() {
+            use ::core::cmp::Ordering;
+            use ::core::hash::{Hash, Hasher};
+            use ::core::str::FromStr;
+            use ::std::hash::DefaultHasher;
+            use ::std::string::String;
+            use ::std::vec::Vec;
+
+            let v = Version(1, 2);
+            let w: Version = v.clone();
+            let d: Version = Version::default();
+            let s: String = String::default();
+            let ord: Ordering = v.cmp(&w);
+            let partial: ::core::option::Option<Ordering> = 1.5f64.partial_cmp(&2.0);
+            let mut hasher = DefaultHasher::new();
+            v.hash(&mut hasher);
+            let _: u64 = hasher.finish();
+            let parsed: ::core::result::Result<Version, String> = Version::from_str("3.4");
+            let n: ::core::result::Result<i32, ::core::num::ParseIntError> = i32::from_str("7");
+            ::core::assert_eq!((d, s, ord), (Version(0, 0), String::new(), Ordering::Equal));
+            ::core::assert_eq!(partial, ::core::option::Option::Some(Ordering::Less));
+            ::core::assert_eq!(parsed, ::core::result::Result::Ok(Version(3, 4)));
+            ::core::assert_eq!(n, ::core::result::Result::Ok(7));
+
+            // `AltrepLen` covers `i32`: its `len` comes first, also a `usize`.
+            let ints = [1i32, 2, 3];
+            let ints_len: usize = ints.len();
+            let ints_empty: bool = ints.is_empty();
+            let ints_vec: Vec<i32> = ints.to_vec();
+            let boxed: Box<[i32]> = ::std::vec![4, 5].into_boxed_slice();
+            let boxed_len: usize = boxed.len();
+            let boxed_vec: Vec<i32> = boxed.to_vec();
+            ::core::assert_eq!((ints_len, ints_empty, boxed_len), (3, false, 2));
+            ::core::assert_eq!((ints_vec, boxed_vec), (::std::vec![1, 2, 3], ::std::vec![4, 5]));
+
+            let words = [Word("a"), Word("b")];
+            let words_len: usize = words.len();
+            let words_empty: bool = words.is_empty();
+            let words_vec: Vec<Word> = words.to_vec();
+            let boxed_words: Box<[Word]> = ::std::vec![Word("c")].into_boxed_slice();
+            let boxed_words_len: usize = boxed_words.len();
+            let boxed_words_vec: Vec<Word> = boxed_words.to_vec();
+            ::core::assert_eq!((words_len, words_empty, words_vec.len()), (2, false, 2));
+            ::core::assert_eq!(boxed_words_len, 1);
+            ::core::assert_eq!(boxed_words_vec, ::std::vec![Word("c")]);
+        }
+    };
+}
+
+std_method_calls!();
+
+/// User code that imports the adapter traits by name. No call resolves to
+/// them, which is the point, so the imports are unused.
+mod named {
+    use super::{Version, Word};
+    #[allow(unused_imports)]
+    use miniextendr_api::{RClone, RDefault, RExtend, RFromStr, RHash, ROrd, RPartialOrd, RToVec};
+
+    std_method_calls!();
+}
+
+// endregion
+
 // region: arrays and boxed slices, whose `len` is `AltrepLen`'s and `RToVec`'s
 // before it is the slice's
 
@@ -330,4 +530,7 @@ pub fn boxed(xs: Box<[i32]>, ys: Box<[f64]>) -> Box<[f64]> {
 
 miniextendr_api::miniextendr_init!(glob_import);
 
-fn main() {}
+fn main() {
+    std_method_calls();
+    named::std_method_calls();
+}

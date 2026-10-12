@@ -209,6 +209,9 @@ impl ErrPartsMode {
 pub struct CWrapperContext {
     /// Identifier of the original Rust function or method being wrapped.
     pub fn_ident: syn::Ident,
+    /// The name R calls the item by, for the messages the wrapper raises
+    /// (`` `name()` returned no value``). `None` uses `fn_ident`.
+    pub r_name: Option<String>,
     /// Identifier for the generated C wrapper (e.g., `C_<crate>_foo` or `C_<crate>_Type__method`).
     pub c_ident: syn::Ident,
     /// Identifier of the `R_WRAPPER_*` or `R_WRAPPERS_IMPL_*` const that holds the
@@ -314,6 +317,7 @@ impl CWrapperContext {
     pub fn builder(fn_ident: syn::Ident, c_ident: syn::Ident) -> CWrapperContextBuilder {
         CWrapperContextBuilder {
             fn_ident,
+            r_name: None,
             c_ident,
             r_wrapper_const: None,
             inputs: syn::punctuated::Punctuated::new(),
@@ -379,6 +383,14 @@ impl CWrapperContext {
                 #call_method_def
             }
         }
+    }
+
+    /// The name the wrapper's messages give the item: `r_name` when set,
+    /// otherwise the Rust identifier.
+    fn message_name(&self) -> String {
+        self.r_name
+            .clone()
+            .unwrap_or_else(|| self.fn_ident.to_string())
     }
 
     /// Builds the C wrapper's parameter list from the Rust function signature.
@@ -757,7 +769,7 @@ impl CWrapperContext {
     /// For `Option`/`Result` variants, also emits error-path code that returns a
     /// tagged condition SEXP (which the R-side wrapper raises).
     fn generate_return_handling(&self, call_expr: &TokenStream) -> TokenStream {
-        let fn_ident = &self.fn_ident;
+        let fn_name = self.message_name();
         let err_parts = self.err_parts.expr();
         let self_sexp = crate::naming::self_sexp_ident();
 
@@ -804,7 +816,7 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::SelfHandleOption => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result: ::core::option::Option<()> = #call_expr;
                     if __result.is_none() {
@@ -824,7 +836,7 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result = #call_expr;
                     if __result.is_none() {
@@ -836,7 +848,7 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result = #call_expr;
                     match __result {
@@ -862,7 +874,7 @@ impl CWrapperContext {
             ReturnHandling::OptionIntoRUnwrap => {
                 // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
                 // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
@@ -879,7 +891,7 @@ impl CWrapperContext {
             // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
             // ExternalPtr like the bare-Self path rather than routing through IntoR.
             ReturnHandling::OptionExternalPtr => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result = #call_expr;
                     let __result = match __result {
@@ -998,7 +1010,7 @@ impl CWrapperContext {
         &self,
         call_expr: &TokenStream,
     ) -> (TokenStream, TokenStream) {
-        let fn_ident = &self.fn_ident;
+        let fn_name = self.message_name();
         let err_parts = self.err_parts.expr();
 
         match &self.return_handling {
@@ -1053,7 +1065,7 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let convert = quote! {
@@ -1068,7 +1080,7 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 let worker = quote! { #call_expr };
                 let convert = quote! {
                     match __miniextendr_result {
@@ -1101,7 +1113,7 @@ impl CWrapperContext {
             ReturnHandling::OptionIntoRUnwrap => {
                 // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
                 // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");
@@ -1120,7 +1132,7 @@ impl CWrapperContext {
             // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
             // ExternalPtr like the bare-Self path rather than routing through IntoR.
             ReturnHandling::OptionExternalPtr => {
-                let error_msg = format!("`{}()` returned no value", fn_ident);
+                let error_msg = format!("`{fn_name}()` returned no value");
                 let worker = quote! { #call_expr };
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
@@ -1412,6 +1424,8 @@ impl CWrapperContext {
 pub struct CWrapperContextBuilder {
     /// Rust function/method identifier (set at construction).
     fn_ident: syn::Ident,
+    /// R-facing name for raised messages. Defaults to `fn_ident`.
+    r_name: Option<String>,
     /// C wrapper function identifier (set at construction).
     c_ident: syn::Ident,
     /// R wrapper constant identifier for doc cross-references. **Required.**
@@ -1473,6 +1487,13 @@ pub struct CWrapperContextBuilder {
 }
 
 impl CWrapperContextBuilder {
+    /// Sets the name R calls the item by, used in the messages the wrapper
+    /// raises in place of the Rust identifier (a trait method's `r_name`).
+    pub fn r_name(mut self, r_name: String) -> Self {
+        self.r_name = Some(r_name);
+        self
+    }
+
     /// Sets the R wrapper constant identifier (e.g., `R_WRAPPER_my_func`).
     /// **Required** -- [`build`](Self::build) panics if not set.
     pub fn r_wrapper_const(mut self, ident: syn::Ident) -> Self {
@@ -1719,6 +1740,7 @@ impl CWrapperContextBuilder {
 
         CWrapperContext {
             fn_ident: self.fn_ident,
+            r_name: self.r_name,
             c_ident: self.c_ident,
             r_wrapper_const,
             inputs: self.inputs,

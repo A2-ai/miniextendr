@@ -91,22 +91,27 @@ Built-in adapter traits provide blanket implementations for common std traits:
 
 - `RDebug` - Debug string output (`debug_str()`, `debug_str_pretty()`)
 - `RDisplay` - Display string output (`as_r_string()`)
-- `RHash` - Full-width hash computation (`hash() -> String`, encoded as hex)
-- `ROrd` - Total ordering comparison (`cmp() -> -1/0/1`)
-- `RPartialOrd` - Partial ordering (`partial_cmp() -> Option<i32>`)
+- `RHash` - Full-width hash computation (`hash()` in R, `r_hash() -> String`
+  in Rust, encoded as hex)
+- `ROrd` - Total ordering comparison (`cmp()` in R, `r_cmp() -> -1/0/1` in
+  Rust)
+- `RPartialOrd` - Partial ordering (`partial_cmp()` in R,
+  `r_partial_cmp() -> Option<i32>` in Rust)
 
-Any type implementing the corresponding std trait automatically gets these
-methods:
+Methods whose names std already uses carry an `r_` prefix in Rust, so
+importing an adapter trait never shadows `Clone::clone`, `Ord::cmp` and the
+like; R sees the std names. Any type implementing the corresponding std trait
+automatically gets these methods:
 
 ```rust
 #[derive(Debug, Hash, Ord, PartialOrd, Eq, PartialEq, ExternalPtr)]
 struct Version(u32, u32, u32);
 
 #[miniextendr]
-impl RDebug for Version {}
+impl miniextendr_api::adapter_traits::RDebug for Version {}
 
 #[miniextendr]
-impl ROrd for Version {}
+impl miniextendr_api::adapter_traits::ROrd for Version {}
 ```
 
 See `ADAPTER_TRAITS.md` and `ADAPTER_COOKBOOK.md` for patterns and recipes.
