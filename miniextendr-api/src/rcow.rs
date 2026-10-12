@@ -185,9 +185,9 @@ impl<'a, T: RNativeType> RCow<'a, T> {
     #[inline]
     pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpTypeError> {
         let sexp = root.get();
-        // SAFETY: Root guarantees the source lives for `'a` and stays on R's
-        // main thread. The native-slice conversion checks its element type.
-        let data: &'a [T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        // The root keeps the source reachable for `'a`, which bounds the
+        // slice; the conversion checks the element type.
+        let data: &'a [T] = TryFromSexp::try_from_sexp(sexp)?;
         Ok(RCow::Borrowed(RBorrow { sexp, data }))
     }
 }
