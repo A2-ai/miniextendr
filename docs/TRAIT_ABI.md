@@ -2,6 +2,19 @@
 
 The trait ABI lets R (and other packages) call Rust trait methods without knowing the concrete Rust type at compile time. It does this by storing a tiny "header + vtable" next to the object and using R external pointers to carry it around.
 
+## R names on trait implementations
+
+An annotated implementation inherits `#[miniextendr(r_name = "...")]` and
+`#[miniextendr(skip)]` from the trait declaration. This also applies to impls
+with method bodies, generic traits and traits with associated types. An
+explicit `r_name` on an impl method overrides the inherited R name; a method
+skipped by the declaration stays skipped. Other method options, docs and
+parameter attributes belong to the implementation.
+
+The declaration supplies this metadata through a hidden macro re-exported
+under the trait's name, in Rust's macro namespace. Implementers do not need
+to import or invoke that macro separately.
+
 ## Key Concepts
 
 ### Type Tags (`mx_tag`)

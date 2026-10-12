@@ -67,6 +67,19 @@ pub(crate) fn self_sexp_ident() -> syn::Ident {
     syn::Ident::new("self_sexp", proc_macro2::Span::mixed_site())
 }
 
+/// A private export name for a trait's metadata macro. The public macro is
+/// re-exported beside the trait under the trait's own name, in Rust's separate
+/// macro namespace, so imports carry both. An expansion-local suffix prevents
+/// same-named traits in different modules from colliding at the crate root.
+/// This name never enters the trait tag or any C/wasm registration symbol.
+pub(crate) fn trait_metadata_macro_ident(trait_name: &syn::Ident) -> syn::Ident {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let suffix = NEXT.fetch_add(1, Ordering::Relaxed);
+    let name = unraw(trait_name);
+    quote::format_ident!("__mx_trait_metadata_{name}_{suffix}")
+}
+
 // region: crate-prefixed C symbol naming (#1273)
 //
 // Every `#[miniextendr]`-emitted `#[no_mangle]` C symbol is prefixed with the

@@ -36,10 +36,10 @@
 //! module's own `v.clone()` or `a.cmp(&b)` ambiguous (E0034), and its
 //! `[T; N]::len()` an `i64`.
 //!
-//! An empty `#[miniextendr] impl` takes the R names from the trait (it names
-//! the trait by its `miniextendr_api::adapter_traits` path, as below). An impl with a body, which the
-//! generic `RToVec<T>` and `RExtend<T>` and the associated-type `RIterator`
-//! always need, repeats the `r_name` on each renamed method.
+//! Both empty and populated `#[miniextendr] impl` blocks inherit the trait's
+//! R names and skipped methods. This includes generic `RToVec<T>` and
+//! `RExtend<T>` and the associated-type `RIterator`. An explicit impl-level
+//! `r_name` overrides the declaration's name for that implementation.
 
 use crate::miniextendr;
 use std::collections::hash_map::DefaultHasher;
@@ -544,13 +544,12 @@ impl<T: Copy> RCopy for T {
 ///     }
 /// }
 ///
-/// // An impl with a body lists every method the trait exports and repeats
-/// // the trait's `r_name` attribute; each forwards to the cell.
+/// // An impl with a body inherits the trait's R names; each method here
+/// // forwards to the cell.
 /// #[miniextendr(env)]
 /// impl miniextendr_api::adapter_traits::RIterator for MyIter {
 ///     type Item = i32;
 ///
-///     #[miniextendr(r_name = "next_item")]
 ///     fn next(&self) -> Option<i32> {
 ///         self.0.next()
 ///     }
@@ -744,12 +743,10 @@ impl<I: Iterator> RIterator for std::cell::RefCell<I> {
 ///         self.0.borrow_mut().extend(items);
 ///     }
 ///
-///     #[miniextendr(r_name = "len")]
 ///     fn r_len(&self) -> i64 {
 ///         i64::try_from(self.0.borrow().len()).expect("length fits i64")
 ///     }
 ///
-///     #[miniextendr(r_name = "is_empty")]
 ///     fn r_is_empty(&self) -> bool {
 ///         self.0.borrow().is_empty()
 ///     }
@@ -882,20 +879,17 @@ where
 ///
 /// // `&MySet` doesn't iterate, so the blanket impl doesn't cover the wrapper:
 /// // the impl forwards to the set, which it does cover. The trait is generic,
-/// // so the impl spells out each method and repeats its R name.
+/// // so the impl spells out each method; R names come from the trait.
 /// #[miniextendr(env)]
 /// impl miniextendr_api::adapter_traits::RToVec<i32> for MySet {
-///     #[miniextendr(r_name = "to_vec")]
 ///     fn r_to_vec(&self) -> Vec<i32> {
 ///         self.0.r_to_vec()
 ///     }
 ///
-///     #[miniextendr(r_name = "len")]
 ///     fn r_len(&self) -> i64 {
 ///         self.0.r_len()
 ///     }
 ///
-///     #[miniextendr(r_name = "is_empty")]
 ///     fn r_is_empty(&self) -> bool {
 ///         self.0.is_empty()
 ///     }
