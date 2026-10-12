@@ -2147,3 +2147,41 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - Vector is very large but you only need a few elements
 - You don't need skipped elements ever again
 - Memory is constrained
+
+### Serializing a concrete iterator cache
+
+The atomic and string `Iter*Data<I>` adapters implement `AltrepSerialize`.
+Saving reads the whole declared sequence; restoring builds an adapter of the
+same concrete type that has no iterator and serves the saved values. `I` needs
+neither `Default` nor a trait object. With `I: Clone`, the adapters implement
+`Clone`, which copies the cached prefix and the remaining iterator without
+advancing either.
+
+A registered class picks its policies with the derive options:
+
+```rust,ignore
+#[derive(Clone, miniextendr_api::AltrepInteger)]
+#[altrep(manual, serialize, duplicate = "clone", class = "RangeCache")]
+struct RangeCache(IterIntData<std::ops::Range<i32>>);
+
+impl AltrepLen for RangeCache {
+    fn len(&self) -> usize { self.0.len() }
+}
+impl AltIntegerData for RangeCache {
+    fn elt(&self, i: usize) -> i32 { self.0.elt(i) }
+}
+impl AltrepSerialize for RangeCache {
+    fn serialized_state(&self) -> SEXP { self.0.serialized_state() }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        IterIntData::unserialize(state).map(Self)
+    }
+}
+```
+
+After R writes into the vector, the bridge serializes R's values, not the
+iterator's cache. A source that ends before the declared length has no
+complete state to save: the adapter then declines, and R saves the values
+the element reads give. String adapters materialize on first access, to hand
+out stable borrowed strings. `IterListData` has neither policy: its cached
+elements are not rooted
+([#2054](https://github.com/A2-ai/miniextendr/issues/2054)).

@@ -1,6 +1,9 @@
 //! ALTREP ownership-policy fixtures for `test-altrep-ownership.R`.
 
-use miniextendr_api::altrep_data::{AltIntegerData, AltStringData, AltrepDataptr, AltrepLen};
+use miniextendr_api::altrep_data::{
+    AltIntegerData, AltRealData, AltStringData, AltrepDataptr, AltrepLen, AltrepSerialize,
+    IterIntData, IterRealData,
+};
 use miniextendr_api::altrep_registration::RegisterAltrep;
 use miniextendr_api::{Altrep, AltrepBuffer, RLogical, SEXP, SexpExt, miniextendr};
 
@@ -143,5 +146,77 @@ pub fn altrep_rust_unwind_ints(len: usize, value: i32) -> RustUnwindInts {
 #[miniextendr(noexport)]
 pub fn altrep_unsafe_strings(values: Vec<String>) -> UnsafeStrings {
     UnsafeStrings(values)
+}
+// endregion
+
+// region: iterator caches
+
+/// A lazily cached integer range that clones and serializes its cache.
+#[derive(Clone, miniextendr_api::AltrepInteger)]
+#[altrep(manual, serialize, duplicate = "clone", class = "OwnershipRangeCache")]
+pub struct RangeCache(IterIntData<std::ops::Range<i32>>);
+
+impl AltrepLen for RangeCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl AltIntegerData for RangeCache {
+    fn elt(&self, i: usize) -> i32 {
+        self.0.elt(i)
+    }
+}
+
+impl AltrepSerialize for RangeCache {
+    fn serialized_state(&self) -> SEXP {
+        self.0.serialized_state()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        IterIntData::unserialize(state).map(Self)
+    }
+}
+
+/// Reals from a source that ends before the declared length.
+#[derive(Clone, miniextendr_api::AltrepReal)]
+#[altrep(
+    manual,
+    serialize,
+    duplicate = "clone",
+    class = "OwnershipShortRealCache"
+)]
+pub struct ShortRealCache(IterRealData<std::vec::IntoIter<f64>>);
+
+impl AltrepLen for ShortRealCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl AltRealData for ShortRealCache {
+    fn elt(&self, i: usize) -> f64 {
+        self.0.elt(i)
+    }
+}
+
+impl AltrepSerialize for ShortRealCache {
+    fn serialized_state(&self) -> SEXP {
+        self.0.serialized_state()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        IterRealData::unserialize(state).map(Self)
+    }
+}
+
+/// `from:(to - 1)`, read lazily from a Rust range.
+#[miniextendr(noexport)]
+pub fn altrep_range_cache(from: i32, to: i32) -> RangeCache {
+    RangeCache(IterIntData::from_exact_iter(from..to))
+}
+
+/// `values` from a source declared `len` long.
+#[miniextendr(noexport)]
+pub fn altrep_short_real_cache(values: Vec<f64>, len: usize) -> ShortRealCache {
+    ShortRealCache(IterRealData::from_iter(values.into_iter(), len))
 }
 // endregion

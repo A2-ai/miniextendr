@@ -37,6 +37,7 @@ use crate::altrep_data::{
 /// - **Cached:** Once generated, elements stored in cache for repeat access
 /// - **Materializable:** Can be fully materialized for `Dataptr` or serialization
 /// - **Borrow-checked:** Uses `RefCell` for interior mutability on the R thread
+#[derive(Clone)]
 pub struct IterState<I, T> {
     /// Vector length (from `ExactSizeIterator::len()` or explicit)
     len: usize,
@@ -70,6 +71,19 @@ where
             iter: RefCell::new(Some(iter)),
             cache: RefCell::new(Vec::with_capacity(len.min(1024))),
             materialized: OnceLock::new(),
+        }
+    }
+
+    /// Restore a realized sequence without constructing or advancing an iterator.
+    ///
+    /// The iterator type is retained, but its state is absent: all reads use the
+    /// supplied values. This supports deserialization even when `I: !Default`.
+    pub fn from_values(values: Vec<T>) -> Self {
+        Self {
+            len: values.len(),
+            iter: RefCell::new(None),
+            cache: RefCell::new(Vec::new()),
+            materialized: OnceLock::from(values),
         }
     }
 
@@ -147,8 +161,21 @@ where
     /// cached, but is never published as a complete buffer. A failed attempt
     /// drops the iterator; another attempt cannot resume an exhausted source.
     pub fn materialize_all(&self) -> &[T] {
+        match self.try_materialize_all() {
+            Ok(vec) => vec,
+            Err(cached) => panic!(
+                "ALTREP iterator ended before element {} of its declared length {}",
+                cached + 1,
+                self.len
+            ),
+        }
+    }
+
+    /// [`Self::materialize_all`] without the panic: `Err` carries the number
+    /// of elements the source produced before it ended.
+    pub fn try_materialize_all(&self) -> Result<&[T], usize> {
         if let Some(vec) = self.materialized.get() {
-            return vec;
+            return Ok(vec);
         }
 
         let mut cache = self.cache.borrow_mut();
@@ -161,17 +188,14 @@ where
                 cache.push(value);
             }
         }
-        assert!(
-            cache.len() == self.len,
-            "ALTREP iterator ended before element {} of its declared length {}",
-            cache.len() + 1,
-            self.len
-        );
+        if cache.len() != self.len {
+            return Err(cache.len());
+        }
 
         let vec = std::mem::take(&mut *cache);
         drop(cache);
         drop(iter_opt);
-        self.materialized.get_or_init(|| vec)
+        Ok(self.materialized.get_or_init(|| vec))
     }
 
     /// Get the materialized vector if all elements have been generated.
@@ -382,5 +406,28 @@ mod tests {
             assert_eq!(state.get_element(0), Some(0));
             assert_eq!(state.get_element(2), None);
         }
+        assert_eq!(state.try_materialize_all(), Err(2));
+    }
+
+    #[test]
+    fn clone_preserves_a_partial_prefix_without_advancing_the_source() {
+        let original = IterState::new(10..20i32, 6);
+        assert_eq!(original.get_element(2), Some(12));
+        let cloned = original.clone();
+        assert!(original.as_materialized().is_none());
+        assert!(cloned.as_materialized().is_none());
+        assert_eq!(cloned.materialize_all(), &[10, 11, 12, 13, 14, 15]);
+        assert!(original.as_materialized().is_none());
+        assert_eq!(original.get_element(3), Some(13));
+        assert_eq!(original.materialize_all(), cloned.materialize_all());
+    }
+
+    #[test]
+    fn restored_values_need_no_iterator_constructor() {
+        type Source = std::iter::Take<std::iter::Repeat<i32>>;
+        let restored = IterState::<Source, i32>::from_values(vec![4, 5, 6]);
+        assert_eq!(restored.len(), 3);
+        assert_eq!(restored.get_element(1), Some(5));
+        assert_eq!(restored.materialize_all(), &[4, 5, 6]);
     }
 }

@@ -183,3 +183,45 @@ test_that("allocating bridges stay protected under a non-default guard", {
 })
 
 # endregion
+
+# region: iterator caches -----------------------------------------------------
+
+test_that("an iterator cache survives a clone-policy copy", {
+  x <- miniextendr:::altrep_range_cache(10L, 16L)
+  expect_identical(x[[3L]], 12L)
+  y <- x
+  y[1L] <- 0L
+  expect_true(is_altrep(y))
+  expect_identical(y, c(0L, 11:15))
+  expect_identical(x, 10:15)
+  expect_true(is_altrep(x))
+})
+
+test_that("an iterator cache round-trips through serialization", {
+  x <- miniextendr:::altrep_range_cache(10L, 16L)
+  expect_identical(x[[2L]], 11L)
+  restored <- unserialize(serialize(x, NULL))
+  expect_true(is_altrep(restored))
+  expect_identical(restored, 10:15)
+  copy <- restored
+  copy[6L] <- 0L
+  expect_true(is_altrep(copy))
+  expect_identical(restored, 10:15)
+})
+
+test_that("serialization after an R write saves the written values", {
+  x <- miniextendr:::altrep_range_cache(10L, 16L)
+  x[2L] <- 99L
+  restored <- unserialize(serialize(x, NULL))
+  expect_identical(restored, c(10L, 99L, 12:15))
+})
+
+test_that("a short iterator source saves what its element reads give", {
+  x <- miniextendr:::altrep_short_real_cache(c(1, 2), 4L)
+  expect_identical(x[1:2], c(1, 2))
+  expect_identical(x[3:4], c(NA_real_, NA_real_))
+  restored <- unserialize(serialize(x, NULL))
+  expect_identical(restored, x[seq_along(x)])
+})
+
+# endregion
