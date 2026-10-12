@@ -932,8 +932,10 @@ pub mod markers;
 ///
 /// Provides [`RDebug`], [`RDisplay`], [`RHash`], [`ROrd`], [`RPartialOrd`],
 /// [`RError`], [`RFromStr`], [`RClone`], [`RCopy`], [`RDefault`], [`RIterator`],
-/// [`RExtend`], and [`RFromIter`] with blanket implementations where possible.
-/// See module docs for usage.
+/// [`RExtend`], [`RFromIter`], [`RToVec`], and [`RMakeIter`] with blanket
+/// implementations where possible. Methods that share a name with a std
+/// method are `r_`-prefixed in Rust and keep the std name in R, so importing
+/// these traits leaves std calls alone. See module docs for usage.
 ///
 /// [`RDebug`]: adapter_traits::RDebug
 /// [`RDisplay`]: adapter_traits::RDisplay
@@ -948,6 +950,8 @@ pub mod markers;
 /// [`RIterator`]: adapter_traits::RIterator
 /// [`RExtend`]: adapter_traits::RExtend
 /// [`RFromIter`]: adapter_traits::RFromIter
+/// [`RToVec`]: adapter_traits::RToVec
+/// [`RMakeIter`]: adapter_traits::RMakeIter
 pub mod adapter_traits;
 pub use adapter_traits::{
     RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,

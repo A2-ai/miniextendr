@@ -379,14 +379,19 @@ struct Temperature { celsius: f64 }
 `RNativeType` describes native storage and enables borrowed slices. Derive
 `IntoR` as well to return owned values and containers:
 
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::{IntoR, RNativeType};
+use miniextendr_api::{IntoR, RNativeType, miniextendr};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, RNativeType, IntoR)]
-struct UserId(i32);
+pub struct UserId(i32);
 
-fn ids() -> Vec<UserId> { vec![UserId(1), UserId(2)] }
+#[miniextendr]
+pub fn ids() -> Vec<UserId> {
+    vec![UserId(1), UserId(2)]
+}
+// R: c(1L, 2L)
 ```
 
 This composition enables `UserId`, `Vec<UserId>`, `Box<[UserId]>`,

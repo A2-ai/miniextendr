@@ -620,7 +620,9 @@ test_that("gc_stress_lazy_dots keeps the dots' expressions rooted under gctortur
 
 # The View behind a `#[miniextendr]` trait converts each argument to a SEXP
 # before the vtable call; every converted argument has to stay rooted while
-# the later ones allocate and while the shim converts them back.
+# the later ones allocate and while the shim converts them back. The View is
+# also its receiver's only root: the fixture runs a full collection before
+# the call and errors if that finalized the receiver.
 trait_view_args_expected <- 'host|first|second|[1.5, 2.5]|["x", "y"]|last'
 
 test_that("gc_stress_trait_view_args passes every argument through the View", {

@@ -5238,20 +5238,40 @@ impl ViewArgProbe for ViewArgHost {
 /// reads a freed or reused node. The same-size strings make a reused node
 /// likely, which turns the use-after-free into a wrong value or a type error.
 ///
+/// The View is also the receiver's only root once it is built. A full
+/// collection runs finalizers, which the allocation-triggered collections
+/// of `gctorture(TRUE)` do not; without that root it would drop the host,
+/// and a weak reference reports this before the View reads the freed host.
+///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_trait_view_args() -> String {
-    // Temporary constructor roots end before argument conversion. The View
-    // must retain its receiver, which in turn must retain its sidecar value.
-    let view = unsafe {
-        let source = OwnedProtect::new(vec![13_i32, 21, 34].into_sexp());
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::{Rboolean, sys};
+
+    // The constructor's temporary root ends before argument conversion. The
+    // View itself must retain the receiver through every subsequent allocation.
+    let (view, weak) = unsafe {
+        let scope = ProtectScope::new();
+        let source = scope.protect(vec![13_i32, 21, 34].into_sexp());
         let mut host = ViewArgHost::new("host".to_string());
         host.keepalive = miniextendr_api::externalptr::Sidecar::new(source.get());
-        let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
-            __mx_wrap_ViewArgHost(host),
-        ));
-        ViewArgProbeView::from_sexp(handle.get())
+        let handle = scope
+            .protect(miniextendr_api::trait_abi::ccall::mx_wrap(
+                __mx_wrap_ViewArgHost(host),
+            ))
+            .get();
+        let weak = sys::R_MakeWeakRef(handle, SEXP::nil(), SEXP::nil(), Rboolean::FALSE);
+        let weak = scope.protect(weak).get();
+        (ViewArgProbeView::from_sexp(handle), weak)
     };
+    // Nothing allocated since the scope ended.
+    let weak = unsafe { OwnedProtect::new(weak) };
+    unsafe { sys::R_gc() };
+    assert!(
+        !unsafe { sys::R_WeakRefKey(weak.get()) }.is_nil(),
+        "the trait View lost its receiver root"
+    );
     let joined = view.join_args(
         "first".to_string(),
         "second".to_string(),

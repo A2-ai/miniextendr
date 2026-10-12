@@ -49,13 +49,13 @@ test_that("env trait -> Self factory methods return a classed object (#1141)", {
 test_that("empty r6 trait impls re-wrap -> Self like impls with bodies", {
   a <- CloneableR6$new(6L)
 
-  # instance -> Self (RClone::clone)
+  # instance -> Self (RClone's clone(), `r_clone` in Rust)
   a2 <- CloneableR6$RClone$clone(a)
   expect_true(R6::is.R6(a2))
   expect_s3_class(a2, "CloneableR6")
   expect_equal(a2$value(), 6L)
 
-  # static -> Self (RDefault::default)
+  # static -> Self (RDefault's default(), `r_default` in Rust)
   a3 <- CloneableR6$RDefault$default()
   expect_true(R6::is.R6(a3))
   expect_s3_class(a3, "CloneableR6")

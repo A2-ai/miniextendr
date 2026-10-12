@@ -6,7 +6,7 @@
 //!
 //! To construct a generated view, use [`TraitView::try_from_sexp`] instead of
 //! casting the vtable returned by [`mx_query`]. A view needs both the concrete
-//! data pointer and the vtable, and retains its R owner.
+//! data pointer and the vtable, and roots its R receiver.
 //!
 //! [`TraitView::try_from_sexp`]: super::TraitView::try_from_sexp
 

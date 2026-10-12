@@ -18,10 +18,11 @@ name: gctorture nightly
 # plus a manual workflow_dispatch trigger for on-demand verification.
 
 on:
-  # 04:00 UTC daily — a low-traffic hour, and offset from the weekly CI cron
-  # (Sat 06:00 UTC in ci.yml) so the two never contend for runner capacity.
-  schedule:
-    - cron: '0 4 * * *'
+  # The nightly schedule is DISABLED (#2070, see #1751: shards hit the
+  # 300-minute timeout). gctorture runs locally until then; the manual trigger
+  # below still works. To re-enable, restore:
+  #   schedule:
+  #     - cron: '0 4 * * *'   # 04:00 UTC daily, offset from ci.yml's Sat 06:00 cron
   # Manual trigger so the sweep can be exercised on demand (e.g. to validate
   # this workflow, or after landing SEXP-storage changes) without waiting for
   # the nightly cron.

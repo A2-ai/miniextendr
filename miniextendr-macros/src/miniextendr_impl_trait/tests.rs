@@ -2620,6 +2620,29 @@ fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImp
     .to_string()
 }
 
+/// A method with an `r_name` (the adapter traits' `r_clone`, `r_from_str`,
+/// #2020) is called by its Rust name, and the messages R sees name it by its
+/// R name: the `None` error and the receiver type check.
+#[test]
+fn trait_method_messages_use_the_r_name() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(r_name = "parse")]
+            fn r_parse(s: &str) -> Option<Self> { unimplemented!() }
+            #[miniextendr(r_name = "clone")]
+            fn r_clone(&self) -> Option<i32> { unimplemented!() }
+        }
+    };
+    let out = trait_impl_expansion(quote::quote!(env), impl_item);
+    assert!(out.contains("< Meter as Scale > :: r_parse ("), "{out}");
+    assert!(out.contains("< Meter as Scale > :: r_clone ("), "{out}");
+    assert!(out.contains("\"`parse()` returned no value\""), "{out}");
+    assert!(out.contains("\"`clone()` returned no value\""), "{out}");
+    assert!(out.contains("\"Scale::clone()\""), "{out}");
+    assert!(!out.contains("r_parse()"), "{out}");
+    assert!(!out.contains("r_clone()"), "{out}");
+}
+
 /// A trait method's bare `preconditions` / `no_preconditions` and its
 /// `preconditions(p)` / `no_preconditions(p)` lists come before the impl
 /// block's (#1017, #1566).
@@ -2699,7 +2722,7 @@ fn tpie_carries_no_preconditions() {
         internal = false;
         noexport = false;
         no_preconditions = true;
-        method { r_name = from_str; fn from_str(s: &str) -> Option<Self>; }
+        method { r_name = from_str; fn r_from_str(s: &str) -> Option<Self>; }
     };
     assert!(input.no_preconditions);
 }

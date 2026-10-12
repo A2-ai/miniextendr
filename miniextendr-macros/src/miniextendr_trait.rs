@@ -45,7 +45,7 @@
 //!     pub add: mx_meth,
 //! }
 //!
-//! // View combining data pointer and vtable
+//! // View over the data and vtable pointers; roots its R receiver
 //! pub struct CounterView {
 //!     __mx_view: miniextendr_api::trait_abi::TraitViewData<CounterVTable>,
 //! }
@@ -66,7 +66,7 @@
 //!     CounterVTable {
 //!         value: __Counter_value_shim::<T>,
 //!         increment: __Counter_increment_shim::<T>,
-//!         add: __counter_add_shim::<T>,
+//!         add: __Counter_add_shim::<T>,
 //!     }
 //! }
 //! ```
