@@ -591,6 +591,39 @@ fn generate_concrete_vtable_shims(
     quote::quote! { #(#shims)* }
 }
 
+/// Inherit only declaration-level R naming/export metadata. The implementation
+/// owns its execution options, docs and signatures; an explicit impl rename
+/// wins, while a declaration's skipped method is never exported accidentally.
+pub(super) fn inherit_method_metadata(
+    implementation: &mut ItemImpl,
+    declaration: &[syn::TraitItemFn],
+) -> syn::Result<()> {
+    for item in &mut implementation.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        let Some(declared) = declaration
+            .iter()
+            .find(|declared| declared.sig.ident == method.sig.ident)
+        else {
+            continue; // rustc diagnoses methods that do not belong to the trait.
+        };
+        let inherited = parse_trait_method_attrs(&declared.attrs)?;
+        let own = parse_trait_method_attrs(&method.attrs)?;
+        if own.r_name.is_none()
+            && let Some(r_name) = inherited.r_name
+        {
+            method
+                .attrs
+                .push(syn::parse_quote!(#[miniextendr(r_name = #r_name)]));
+        }
+        if inherited.skip && !own.skip {
+            method.attrs.push(syn::parse_quote!(#[miniextendr(skip)]));
+        }
+    }
+    Ok(())
+}
+
 /// Extract all methods from a trait impl block as [`TraitMethod`] structs.
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,

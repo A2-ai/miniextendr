@@ -381,6 +381,7 @@ pub fn expand_miniextendr_impl_trait(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     // Parse class system from attribute (defaults to Env if empty)
+    let attr_tokens = TokenStream::from(attr.clone());
     let impl_attrs: ImplAttrs = syn::parse_macro_input!(attr as ImplAttrs);
     let impl_item = syn::parse_macro_input!(item as ItemImpl);
 
@@ -425,10 +426,14 @@ pub fn expand_miniextendr_impl_trait(
         return output.into();
     }
 
-    // Generate the vtable static and R wrappers
-    let expanded = generate_vtable_static(&impl_item, &trait_path, &concrete_type, &impl_attrs);
-
-    expanded.into()
+    // Ask the declaration for its R metadata before generating wrappers.
+    // Rust imports/re-exports the metadata macro beside the trait itself.
+    let mut macro_path = trait_path;
+    macro_path.segments.last_mut().unwrap().arguments = syn::PathArguments::None;
+    quote::quote! {
+        #macro_path! { @impl { #attr_tokens } { #impl_item } }
+    }
+    .into()
 }
 
 /// Extract the trait path and concrete type from an impl block.
@@ -538,6 +543,52 @@ fn type_to_symbol_name(ty: &syn::Type) -> String {
 // endregion
 
 // region: TPIE: Trait-Provided Impl Expansion
+
+/// Populated impl plus declaration metadata, supplied by the trait's macro.
+/// Keep this as Rust syntax so method bodies, generics and author attributes
+/// pass through without a second bespoke representation.
+struct ImplWithMetadata {
+    attrs: ImplAttrs,
+    implementation: ItemImpl,
+    methods: Vec<syn::TraitItemFn>,
+}
+
+impl syn::parse::Parse for ImplWithMetadata {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        input.parse::<syn::Token![@]>()?;
+        input.parse::<syn::Token![impl]>()?;
+        let attrs;
+        syn::braced!(attrs in input);
+        let attrs = attrs.parse()?;
+        let implementation;
+        syn::braced!(implementation in input);
+        let implementation = implementation.parse()?;
+        let metadata;
+        syn::braced!(metadata in input);
+        let mut methods = Vec::new();
+        while !metadata.is_empty() {
+            methods.push(metadata.parse()?);
+        }
+        Ok(Self {
+            attrs,
+            implementation,
+            methods,
+        })
+    }
+}
+
+impl ImplWithMetadata {
+    fn expand(mut self) -> syn::Result<TokenStream> {
+        vtable::inherit_method_metadata(&mut self.implementation, &self.methods)?;
+        let (trait_path, concrete_type) = extract_trait_and_type(&self.implementation)?;
+        Ok(generate_vtable_static(
+            &self.implementation,
+            &trait_path,
+            &concrete_type,
+            &self.attrs,
+        ))
+    }
+}
 
 /// Input to the `__mx_trait_impl_expand!` proc macro.
 ///
@@ -811,6 +862,14 @@ fn unwrap_group_type(ty: &syn::Type) -> syn::Type {
 /// Parses TPIE metadata tokens and generates C wrappers, R wrappers,
 /// and call defs — the same outputs as a manual trait impl with method bodies.
 pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    if matches!(input.clone().into_iter().next(), Some(proc_macro::TokenTree::Punct(p)) if p.as_char() == '@')
+    {
+        let metadata = syn::parse_macro_input!(input as ImplWithMetadata);
+        return metadata
+            .expand()
+            .unwrap_or_else(syn::Error::into_compile_error)
+            .into();
+    }
     let tpie_input = syn::parse_macro_input!(input as TpieInput);
 
     // Unwrap Group tokens (macro_rules! wraps $concrete_type:ty and $trait_path:path
@@ -1003,11 +1062,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// Generate vtable static + TPIE macro invocation for an empty trait impl.
 ///
 /// When `#[miniextendr] impl Trait for Type {}` has no method bodies, this
-/// generates the vtable static and delegates to the `__mx_impl_{Trait}!` macro
+/// generates the vtable static and delegates to the trait's metadata macro
 /// (generated at the trait definition site) to expand C/R wrappers.
-///
-/// Requires a fully qualified trait path (at least 2 segments) so the TPIE macro
-/// can be resolved from the trait's crate root.
 fn generate_tpie_invocation(
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
@@ -1042,19 +1098,10 @@ fn generate_tpie_invocation(
         last.arguments = syn::PathArguments::None;
     }
 
-    // Build TPIE macro path: crate_root::__mx_impl_TraitName
-    if trait_path.segments.len() < 2 {
-        return syn::Error::new_spanned(
-            trait_path,
-            "empty trait impl requires a fully qualified trait path \
-             (e.g., miniextendr_api::adapter_traits::RDebug) so the TPIE \
-             macro can be resolved",
-        )
-        .into_compile_error();
-    }
-
-    let crate_ident = &trait_path.segments[0].ident;
-    let macro_name = format_ident!("__mx_impl_{}", trait_name);
+    // Resolve metadata through the same path as the trait. The declaration
+    // exports both in separate Rust namespaces.
+    let mut macro_path = trait_path.clone();
+    macro_path.segments.last_mut().unwrap().arguments = syn::PathArguments::None;
     let class_system_ident = class_system.to_ident();
     let no_rd_ident = if class_has_no_rd {
         format_ident!("true")
@@ -1087,7 +1134,7 @@ fn generate_tpie_invocation(
         pub static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
 
-        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident, #no_preconditions_ident);
+        #macro_path !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident, #no_preconditions_ident);
     }
 }
 

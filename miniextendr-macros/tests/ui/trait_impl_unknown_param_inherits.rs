@@ -6,6 +6,7 @@ use miniextendr_macros::miniextendr;
 
 struct Dummy;
 
+#[miniextendr]
 trait MyTrait {
     fn fit(&self, model: f64) -> f64;
 }

@@ -6,6 +6,7 @@ use miniextendr_macros::miniextendr;
 
 struct Dummy;
 
+#[miniextendr]
 trait MyTrait {
     fn scale(&self, x_factor: f64) -> f64;
 }

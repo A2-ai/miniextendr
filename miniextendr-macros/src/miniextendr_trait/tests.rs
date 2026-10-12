@@ -596,3 +596,55 @@ fn interface_tags_track_exported_signatures() {
         assert_eq!(original, tag(unchanged), "{unchanged}");
     }
 }
+
+#[test]
+fn every_trait_exports_its_metadata_under_the_traits_name() {
+    for trait_item in [
+        syn::parse_quote! { pub trait Collection<T> {
+            #[miniextendr(r_name = "len")]
+            fn r_len(&self) -> i32;
+            #[miniextendr(skip)]
+            fn hidden(&self, value: T);
+        } },
+        syn::parse_quote! { pub trait Collection {
+            type Item;
+            #[miniextendr(r_name = "len")]
+            fn r_len(&self) -> i32;
+            #[miniextendr(skip)]
+            fn hidden(&self, value: Self::Item);
+        } },
+    ] {
+        let output = generate_trait_abi(&trait_item);
+        let file: syn::File = syn::parse2(output.clone()).unwrap();
+        let exports: Vec<_> = file
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                syn::Item::Use(item) => Some(quote::ToTokens::to_token_stream(item).to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(exports.len(), 1);
+        assert!(exports[0].contains("as Collection"));
+        let text = output.to_string();
+        assert!(text.contains("@ impl"));
+        assert!(text.contains("r_name = \"len\""));
+        assert!(text.contains("miniextendr (skip)"));
+    }
+}
+
+#[test]
+fn metadata_macros_do_not_collide_for_same_named_traits_in_separate_modules() {
+    let trait_item = syn::parse_quote! { pub trait Repeated { fn value(&self) -> i32; } };
+    let export = || {
+        let file: syn::File = syn::parse2(generate_trait_abi(&trait_item)).unwrap();
+        file.items
+            .into_iter()
+            .find_map(|item| match item {
+                syn::Item::Macro(item) if item.mac.path.is_ident("macro_rules") => item.ident,
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_ne!(export(), export());
+}

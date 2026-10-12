@@ -528,55 +528,75 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         }
     };
 
-    // TPIE: Generate macro_rules! for non-generic traits without associated types.
-    // This enables `#[miniextendr] impl Trait for Type {}` (empty body) to auto-expand wrappers.
-    let tpie_macro = if !has_generics && assoc_types.is_empty() {
-        // Collect ALL non-skipped methods (including static) for TPIE metadata
-        let tpie_method_metadata: Vec<TokenStream> = {
-            let mut collected = Vec::new();
-            for item in &trait_item.items {
-                if let syn::TraitItem::Fn(method) = item {
-                    let info = match extract_method_info(method) {
-                        Ok(info) => info,
-                        Err(e) => return e.into_compile_error(),
-                    };
-                    if !info.skip {
-                        let r_name_ident = if let Some(ref rn) = info.r_name {
-                            quote::format_ident!("{}", rn)
-                        } else {
-                            method.sig.ident.clone()
-                        };
-                        let sig = &method.sig;
-                        collected.push(quote::quote! {
-                            method { r_name = #r_name_ident; #sig; }
-                        });
-                    }
-                }
+    // All impls receive the declaration's R metadata, including generic traits
+    // and traits with associated types. Signatures for empty impls still use
+    // the established non-generic TPIE path.
+    let mut method_metadata = Vec::new();
+    let mut tpie_method_metadata = Vec::new();
+    for item in &trait_item.items {
+        if let syn::TraitItem::Fn(method) = item {
+            let info = match extract_method_info(method) {
+                Ok(info) => info,
+                Err(e) => return e.into_compile_error(),
+            };
+            let name = &method.sig.ident;
+            let r_name_attr = info
+                .r_name
+                .as_ref()
+                .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
+            let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
+            // Only metadata crosses this path; impl signatures, bodies and
+            // parameter attributes keep their original spans and type scope.
+            method_metadata.push(quote::quote! {
+                #r_name_attr #skip_attr fn #name();
+            });
+            if !has_generics && assoc_types.is_empty() && !info.skip {
+                let r_name = info
+                    .r_name
+                    .as_deref()
+                    .map(crate::naming::name_ident)
+                    .unwrap_or_else(|| name.clone());
+                let sig = &method.sig;
+                tpie_method_metadata.push(quote::quote! {
+                    method { r_name = #r_name; #sig; }
+                });
             }
-            collected
-        };
-
-        let tpie_macro_name = quote::format_ident!("__mx_impl_{}", trait_name);
+        }
+    }
+    let empty_impl_arm = if !has_generics && assoc_types.is_empty() {
         quote::quote! {
-            #[macro_export]
-            #[doc(hidden)]
-            macro_rules! #tpie_macro_name {
-                ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
-                    $crate::__mx_trait_impl_expand! {
-                        concrete_type = $concrete_type;
-                        trait_path = $trait_path;
-                        class_system = $class_system;
-                        no_rd = $no_rd;
-                        internal = $internal;
-                        noexport = $noexport;
-                        no_preconditions = $no_preconditions;
-                        #(#tpie_method_metadata)*
-                    }
-                };
-            }
+            ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
+                ::miniextendr_api::__mx_trait_impl_expand! {
+                    concrete_type = $concrete_type;
+                    trait_path = $trait_path;
+                    class_system = $class_system;
+                    no_rd = $no_rd;
+                    internal = $internal;
+                    noexport = $noexport;
+                    no_preconditions = $no_preconditions;
+                    #(#tpie_method_metadata)*
+                }
+            };
         }
     } else {
         quote::quote! {}
+    };
+    let metadata_macro_name = crate::naming::trait_metadata_macro_ident(trait_name);
+    let metadata_macro = quote::quote! {
+        #[macro_export]
+        #[doc(hidden)]
+        macro_rules! #metadata_macro_name {
+            (@impl { $($attrs:tt)* } { $($implementation:tt)* }) => {
+                ::miniextendr_api::__mx_trait_impl_expand! {
+                    @impl { $($attrs)* } { $($implementation)* }
+                    { #(#method_metadata)* }
+                }
+            };
+            #empty_impl_arm
+        }
+        #[doc(hidden)]
+        #[allow(unused_imports)]
+        #vis use #metadata_macro_name as #trait_name;
     };
 
     quote::quote! {
@@ -610,7 +630,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 
         #shim_and_builder
 
-        #tpie_macro
+        #metadata_macro
     }
 }
 

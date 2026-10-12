@@ -328,7 +328,8 @@ impl miniextendr_api::adapter_traits::RPartialOrd for Adapted {}
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RFromStr for Adapted {}
 
-// The generic traits take an impl with a body, which repeats the R names.
+// The generic traits take an impl with a body, which inherits the R names
+// (#2062).
 #[derive(ExternalPtr)]
 pub struct Bag(::std::cell::RefCell<::std::vec::Vec<i32>>);
 
@@ -341,15 +342,12 @@ impl Bag {
 
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RToVec<i32> for Bag {
-    #[miniextendr(r_name = "to_vec")]
     fn r_to_vec(&self) -> ::std::vec::Vec<i32> {
         self.0.borrow().r_to_vec()
     }
-    #[miniextendr(r_name = "len")]
     fn r_len(&self) -> i64 {
         self.0.borrow().r_len()
     }
-    #[miniextendr(r_name = "is_empty")]
     fn r_is_empty(&self) -> bool {
         self.0.borrow().is_empty()
     }
@@ -360,11 +358,9 @@ impl miniextendr_api::adapter_traits::RExtend<i32> for Bag {
     fn extend_from_vec(&self, items: ::std::vec::Vec<i32>) {
         self.0.borrow_mut().extend(items);
     }
-    #[miniextendr(r_name = "len")]
     fn r_len(&self) -> i64 {
         self.0.borrow().r_len()
     }
-    #[miniextendr(r_name = "is_empty")]
     fn r_is_empty(&self) -> bool {
         self.0.borrow().is_empty()
     }

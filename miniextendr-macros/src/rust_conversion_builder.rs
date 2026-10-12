@@ -324,6 +324,7 @@ impl RustConversionBuilder {
         }
         let message = format!("argument \"{r_name}\" is missing, with no default");
         let crate_class = &self.conversion_error_class;
+        let call = crate::naming::call_slot_ident();
         // SAFETY (of the emitted `unsafe`): as above; the `None` arm returns
         // the tagged condition from inside the wrapper's closure, like a
         // conversion `Err` arm.
@@ -336,7 +337,7 @@ impl RustConversionBuilder {
                             #message,
                             #r_name,
                             &[#(#crate_class),*],
-                            ::core::option::Option::Some(__miniextendr_call),
+                            ::core::option::Option::Some(#call),
                         )
                     };
                 }
@@ -486,6 +487,7 @@ impl RustConversionBuilder {
         // method took it, where the wrapper's own call is the only attribution.
         if crate::type_inspect::call_marker(ty).is_some() {
             let span = ty.span();
+            let call = crate::naming::call_slot_ident();
             // The binding keeps the method's own use of the parameter from adding
             // a follow-on "cannot find value" to the diagnostic; the wrapper's call
             // slot is in scope in every C wrapper, so it also type-checks.
@@ -494,7 +496,7 @@ impl RustConversionBuilder {
                     "`Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` \
                      functions only; class and trait methods attribute conditions to the wrapper's own call"
                 );
-                let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+                let #ident: #ty = <#ty>::from_sexp(#call);
             };
             return (vec![stmt], vec![]);
         }
@@ -1299,6 +1301,7 @@ fn conversion_err_arm(
         None if *expected_known => Expected::Literal(prefix),
         None => Expected::FromError(declared.as_ref()),
     };
+    let call = crate::naming::call_slot_ident();
     let value = conversion_value_tokens(
         &ConversionSubject {
             expected,
@@ -1308,13 +1311,14 @@ fn conversion_err_arm(
             rust_type,
         },
         crate_class,
-        &quote! { ::core::option::Option::Some(__miniextendr_call) },
+        &quote! { ::core::option::Option::Some(#call) },
         span,
     );
+    let err = crate::naming::conversion_error_ident();
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
-        ::core::result::Result::Err(e) => return unsafe { #value },
+        ::core::result::Result::Err(#err) => return unsafe { #value },
     }
 }
 
@@ -1337,6 +1341,7 @@ fn no_na_value_stmt(
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
+    let call = crate::naming::call_slot_ident();
     let has_na = match input {
         Some(sexp) => quote_spanned! {span=>
             ::miniextendr_api::TryFromSexp::__mx_input_has_na(&#ident, #sexp)
@@ -1356,7 +1361,7 @@ fn no_na_value_stmt(
                     #message,
                     #r_name,
                     &[#(#crate_class),*],
-                    ::core::option::Option::Some(__miniextendr_call),
+                    ::core::option::Option::Some(#call),
                 )
             };
         }
@@ -1424,10 +1429,11 @@ pub(crate) fn conversion_value_tokens(
         rust_type,
     } = subject;
     let rust_type = quote! { ::core::option::Option::Some(#rust_type) };
+    let e = crate::naming::conversion_error_ident();
     // A `match_arg` choice error words the whole message as the R-side
     // `match_arg` check does (#1767). A type with a literal expectation is
     // never a `match_arg` type, so only the other two arms ask.
-    let arg_message = quote! { ::miniextendr_api::__mx_conversion_arg_message!(e, #quoted) };
+    let arg_message = quote! { ::miniextendr_api::__mx_conversion_arg_message!(#e, #quoted) };
     match expected {
         Expected::Literal(prefix) => quote_spanned! {span=>
             ::miniextendr_api::error_value::conversion_condition_value(
@@ -1435,7 +1441,7 @@ pub(crate) fn conversion_value_tokens(
                 #param,
                 #rust_type,
                 &[#(#crate_class),*],
-                ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                ::miniextendr_api::__mx_conversion_err_parts!(#e, true),
                 ::core::option::Option::None,
                 #call,
             )
@@ -1446,13 +1452,13 @@ pub(crate) fn conversion_value_tokens(
                 #param,
                 #rust_type,
                 &[#(#crate_class),*],
-                ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                ::miniextendr_api::__mx_conversion_err_parts!(#e, true),
                 #arg_message,
                 #call,
             )
         },
         Expected::FromError(declared) => {
-            let from_error = quote! { ::miniextendr_api::__mx_conversion_expectation!(e) };
+            let from_error = quote! { ::miniextendr_api::__mx_conversion_expectation!(#e) };
             let expected = match declared {
                 Some(declared) => quote! { (#declared).or_else(|| #from_error) },
                 None => from_error,
@@ -1468,7 +1474,7 @@ pub(crate) fn conversion_value_tokens(
                     #param,
                     #rust_type,
                     &[#(#crate_class),*],
-                    ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
+                    ::miniextendr_api::__mx_conversion_err_parts!(#e, __mx_expected.is_some()),
                     #arg_message,
                     #call,
                 )
@@ -1493,7 +1499,8 @@ pub(crate) fn declared_expectation(ty: &syn::Type) -> TokenStream {
     let value = crate::type_inspect::option_inner_type(value).unwrap_or(value);
     if crate::type_inspect::either_arms(value).is_some() {
         let arms = expected_arm(value);
-        quote! { ::miniextendr_api::from_r::either_expectation(&e, &#arms) }
+        let e = crate::naming::conversion_error_ident();
+        quote! { ::miniextendr_api::from_r::either_expectation(&#e, &#arms) }
     } else {
         let value = crate::type_inspect::erase_lifetimes(value);
         quote! {

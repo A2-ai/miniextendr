@@ -91,7 +91,7 @@ fn tpie_invocations_preserve_trait_case() {
         );
         let output_str = output.to_string();
         assert!(output_str.contains(&format!("__{spelling}_build_vtable")));
-        assert!(output_str.contains(&format!("__mx_impl_{spelling}")));
+        assert!(output_str.contains(&format!("traits :: {spelling} !")));
         let file: syn::File = syn::parse2(output).expect("valid generated items");
         let table = file
             .items
@@ -2932,3 +2932,76 @@ fn trait_static_methods_keep_r_values_on_the_main_thread() {
         );
     }
 }
+
+// region: declaration metadata for populated impls (#2062)
+
+#[test]
+fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() {
+    let mut input: ImplWithMetadata = syn::parse_quote! {
+        @impl { env, noexport } {
+            impl api::Collection<i32> for Bag {
+                type Item = i32;
+                #[miniextendr(check_interrupt, defaults(n = "1L"))]
+                fn r_take(&self, n: i32) -> Vec<i32> { vec![n] }
+                #[miniextendr(r_name = "custom_len")]
+                fn r_len(&self) -> i32 { 1 }
+                fn hidden(&self, value: RustOnly) { drop(value); }
+            }
+        }
+        {
+            #[miniextendr(r_name = "take")]
+            fn r_take();
+            #[miniextendr(r_name = "len")]
+            fn r_len();
+            #[miniextendr(skip)]
+            fn hidden();
+        }
+    };
+    let original = input.implementation.items.clone();
+    vtable::inherit_method_metadata(&mut input.implementation, &input.methods).unwrap();
+    let methods =
+        vtable::extract_methods(&input.implementation, crate::roxygen::RdPage::Rendered).unwrap();
+    assert_eq!(methods[0].r_method_name(), "take");
+    assert!(methods[0].check_interrupt);
+    assert!(methods[0].param_defaults.contains_key("n"));
+    assert_eq!(methods[1].r_method_name(), "custom_len");
+    assert!(methods[2].skip);
+    for (before, after) in original.iter().zip(&input.implementation.items) {
+        if let (syn::ImplItem::Fn(before), syn::ImplItem::Fn(after)) = (before, after) {
+            assert_eq!(before.sig, after.sig);
+            assert_eq!(before.block, after.block);
+        }
+    }
+    let output = input.expand().unwrap().to_string();
+    assert!(output.contains("custom_len"));
+    assert!(!output.contains("call_method_def_Bag__Collection_hidden"));
+    assert!(!output.contains("Collection__hidden"));
+}
+
+#[test]
+fn inherited_skip_never_becomes_a_wrapper_even_with_an_impl_rename() {
+    let input: ImplWithMetadata = syn::parse_quote! {
+        @impl { env } {
+            impl api::Hidden for Bag {
+                #[miniextendr(r_name = "visible")]
+                fn rust_only(&self, value: RustOnly) { drop(value); }
+            }
+        }
+        { #[miniextendr(skip)] fn rust_only(); }
+    };
+    let output = input.expand().unwrap();
+    let file: syn::File = syn::parse2(output).unwrap();
+    assert!(
+        file.items
+            .iter()
+            .any(|item| matches!(item, syn::Item::Impl(_)))
+    );
+    assert!(
+        !file
+            .items
+            .iter()
+            .any(|item| matches!(item, syn::Item::Fn(_)))
+    );
+}
+
+// endregion
