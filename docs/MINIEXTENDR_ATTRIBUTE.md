@@ -670,7 +670,8 @@ overflow-checked conversion, nor the thread-checked FFI variants.
 Functions taking or returning `!Send` framework types automatically run on the
 main thread — the generated wrapper can only execute there. No attribute is
 needed. This covers `SEXP` (parameters and returns), the R-backed views
-(`AltrepSexp`, `RDVector`, `RDMatrix`, `RndVec`, `RndMat`, `ProtectedStrVec`),
+(`AltrepSexp`, `RDVector`, `RDMatrix`, `RndVec`, `RndMat`, `ProtectedStrVec`,
+and the borrowed `StrVec` / `RCow` parameters),
 and the GC-rooted owned handles (`BuiltDataFrame`, `DataFrameShape`) anywhere
 in the return type, including nested inside `Result`, `Option`, or containers.
 Arbitrary user `!Send` types can't be detected syntactically — mark those

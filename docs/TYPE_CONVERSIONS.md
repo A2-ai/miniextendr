@@ -903,6 +903,35 @@ ensure its mutable and shared views satisfy Rust's borrowing rules. Accept
 
 ---
 
+## Borrowed vector roots
+
+`StrVec<'a>` and `RCow<'a, T>` borrow an R vector, so their lifetime has to
+come from whatever keeps that vector reachable. Neither implements
+`TryFromSexp`: a `SEXP` is `Copy` and carries no lifetime, so that impl let
+safe code pick any lifetime, `'static` included (#1427). Both take a root
+instead:
+
+- `StrVec::try_from_root(root)` / `RCow::try_from_root(root)` with a
+  `Root<'a>` from a `ProtectScope`;
+- `ProtectedStrVec::as_strvec()`, which borrows an owned character vector.
+
+A `#[miniextendr]` parameter written `StrVec<'_>` or `RCow<'_, T>` (bare or
+path-qualified) is bound to the C wrapper's argument slot, so the view and
+every string or slice read from it cannot outlive the call. A `'static` view
+parameter is a compile error naming the fix: take `ProtectedStrVec` or an
+owned `Vec` to keep the data. Functions with these parameters run on R's main
+thread. The trait-ABI shims bind them the same way, to a local copy of the
+argument slot, after the arity check.
+
+The macro recognizes the views by name, so an alias or a newtype of one has to
+take a `SEXP` and call `try_from_root` in the body. `Missing`, `Either` and
+`Result<_, ()>` of a view, and trait methods returning one, have no rooted
+conversion yet (#2038). Native references (`&[T]`, `&str`), `Cow` and their
+containers still convert through `TryFromSexp` with an unconstrained lifetime
+(#1427).
+
+---
+
 ## Known Limitations
 
 - **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
@@ -919,21 +948,3 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds
 - [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
 - [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes
 - [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) -- Type conversion error messages
-
-### Borrowed vector roots
-
-`StrVec<'a>::try_from_root(Root<'a>)` and `RCow<'a, T>::try_from_root(Root<'a>)`
-bind the returned view to the input root. Obtain one from a `ProtectScope`, or
-use `ProtectedStrVec::as_strvec()` to borrow an owned character vector.
-These views do not implement raw `TryFromSexp`.
-
-The macro recognizes `StrVec<'_>` and `RCow<'_, T>` parameters (including
-qualified names), binds a root to the `.Call` slot, and converts the result
-before that slot goes out of scope. These inputs stay on R's thread. Trait
-shims bind the root to a local argv slot after arity/alias checks. Use the
-framework type name at the boundary; an alias or a newtype needs an explicit
-root conversion in the body. Trait return conversions need owned values such
-as `ProtectedStrVec` or `Vec<T>`.
-
-Native references, `Cow`, and their container conversions still use the raw
-conversion trait and remain part of the lifetime-boundary migration (#1427).

@@ -132,7 +132,7 @@ sound. Slice it via `Deref` to get a plain `&[T]`; use `to_mut()` /
 |---|---|---|
 | Storage | SEXP and lifetime marker | SEXP, length and owned-root state |
 | Copy | `Copy` | `!Copy` |
-| GC protection | Caller roots the source | Preserved until drop |
+| GC protection | Borrows a root (call argument, `ProtectScope`, owner) | Preserved until drop |
 | Borrow lifetime | The view's `'a` | Borrow of `&self` |
 | Iterator | `StrVecIter<'a>` | `ProtectedStrVecIter<'a>` |
 
@@ -186,8 +186,8 @@ use miniextendr_api::StrVec;
 
 #[miniextendr]
 pub fn has_empty(strings: StrVec<'_>) -> bool {
-    // StrVec is Copy - just a SEXP wrapper. R protects .Call arguments,
-    // so this is safe within the function body.
+    // The wrapper binds the view to the call's argument, so neither it nor
+    // a &str read from it can outlive the call.
     strings.iter().any(|opt| opt == Some(""))
 }
 ```
@@ -396,7 +396,7 @@ Need strings from R?
 ├── Vector, read-only → Vec<Cow<'static, str>>  (zero-copy per element)
 ├── Vector, NA-aware → Vec<Option<Cow<'static, str>>>
 ├── View with GC safety → ProtectedStrVec
-└── Lightweight view → StrVec           (Copy, caller manages GC)
+└── Lightweight view → StrVec<'_>       (Copy, borrows the call's argument)
 
 Need numerics from R?
 ├── As Rust slice → &[f64] / &[i32]    (zero-copy, 'static lifetime)
