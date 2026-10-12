@@ -1081,3 +1081,21 @@ fn test_lazy_dots_binds_from_the_wrapper_frame_in_every_context() {
         );
     }
 }
+
+#[test]
+fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
+    let builder = RustConversionBuilder::new();
+    for src in ["x: StrVec<'a>", "x: miniextendr_api::RCow<'a, i32>"] {
+        let code = conversion_text(&builder, src);
+        assert!(code.contains("try_from_root"), "{code}");
+        assert!(code.contains("Root :: from_call_arg (& arg_0)"), "{code}");
+        assert!(!code.contains("TryFromSexp"), "{code}");
+        assert!(code.contains("'_"), "{code}");
+        let syn::FnArg::Typed(param) = parse_param(src) else {
+            unreachable!()
+        };
+        assert!(crate::type_inspect::is_main_thread_bound_input(&param.ty));
+        let metadata = builder.native_borrow_metadata(&param, &syn::parse_quote!(arg_0));
+        assert!(metadata.unwrap().to_string().contains("NATIVE_BORROW"));
+    }
+}

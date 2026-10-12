@@ -91,7 +91,7 @@ pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
 }
 ```
 
-### `RCow<'static, T>`: safe zero-copy round-trip
+### `RCow<'_, T>`: safe zero-copy round-trip
 
 When you want the round-trip back to R to *also* be zero-copy, use `RCow`
 instead of `Cow`. `RCow`'s borrowed arm remembers the source SEXP it was read
@@ -103,13 +103,13 @@ use miniextendr_api::RCow;
 
 // Zero-copy BOTH directions: returns the original R vector unchanged.
 #[miniextendr]
-pub fn passthrough_rcow(x: RCow<'static, f64>) -> RCow<'static, f64> {
+pub fn passthrough_rcow(x: RCow<'_, f64>) -> RCow<'_, f64> {
     x
 }
 
 // Mutation triggers copy-on-write, then materializes a fresh R vector.
 #[miniextendr]
-pub fn doubled_rcow(mut x: RCow<'static, f64>) -> RCow<'static, f64> {
+pub fn doubled_rcow(mut x: RCow<'_, f64>) -> RCow<'_, f64> {
     for v in x.to_mut() {
         *v *= 2.0;
     }
@@ -150,8 +150,10 @@ let dangling: &str;
 
 `StrVec<'a>` is a lightweight view for an already-rooted character vector.
 `owner.as_strvec()` binds its lifetime to a `ProtectedStrVec` owner. The raw
-`TryFromSexp` conversion still has an unconstrained lifetime (#1427); a wrapper
-argument root alone does not stop such a view escaping the call.
+`TryFromSexp` conversion is unavailable for `StrVec` and `RCow`: use
+`try_from_root(root)` with a `ProtectScope` root. Generated wrappers bind their
+view to the live argument slot. Native reference and `Cow` conversions still
+need the same migration (#1427).
 
 **Usage examples:**
 
@@ -183,7 +185,7 @@ pub fn first_non_na(strings: ProtectedStrVec) -> String {
 use miniextendr_api::StrVec;
 
 #[miniextendr]
-pub fn has_empty(strings: StrVec) -> bool {
+pub fn has_empty(strings: StrVec<'_>) -> bool {
     // StrVec is Copy - just a SEXP wrapper. R protects .Call arguments,
     // so this is safe within the function body.
     strings.iter().any(|opt| opt == Some(""))

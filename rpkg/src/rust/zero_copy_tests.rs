@@ -42,11 +42,12 @@ pub fn zero_copy_cow_i32_roundtrip(x: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn zero_copy_rcow_f64_identity(x: SEXP) -> bool {
+    use miniextendr_api::ProtectScope;
     use miniextendr_api::RCow;
-    use miniextendr_api::from_r::TryFromSexp;
     use miniextendr_api::into_r::IntoR;
 
-    let rc: RCow<'static, f64> = TryFromSexp::try_from_sexp(x).unwrap();
+    let scope = unsafe { ProtectScope::new() };
+    let rc: RCow<'_, f64> = RCow::try_from_root(unsafe { scope.protect(x) }).unwrap();
     rc.into_sexp() == x
 }
 
@@ -54,11 +55,12 @@ pub fn zero_copy_rcow_f64_identity(x: SEXP) -> bool {
 /// @export
 #[miniextendr]
 pub fn zero_copy_rcow_i32_identity(x: SEXP) -> bool {
+    use miniextendr_api::ProtectScope;
     use miniextendr_api::RCow;
-    use miniextendr_api::from_r::TryFromSexp;
     use miniextendr_api::into_r::IntoR;
 
-    let rc: RCow<'static, i32> = TryFromSexp::try_from_sexp(x).unwrap();
+    let scope = unsafe { ProtectScope::new() };
+    let rc: RCow<'_, i32> = RCow::try_from_root(unsafe { scope.protect(x) }).unwrap();
     rc.into_sexp() == x
 }
 
@@ -67,11 +69,12 @@ pub fn zero_copy_rcow_i32_identity(x: SEXP) -> bool {
 /// @export
 #[miniextendr]
 pub fn zero_copy_rcow_f64_mutated_is_copy(x: SEXP) -> SEXP {
+    use miniextendr_api::ProtectScope;
     use miniextendr_api::RCow;
-    use miniextendr_api::from_r::TryFromSexp;
     use miniextendr_api::into_r::IntoR;
 
-    let mut rc: RCow<'static, f64> = TryFromSexp::try_from_sexp(x).unwrap();
+    let scope = unsafe { ProtectScope::new() };
+    let mut rc: RCow<'_, f64> = RCow::try_from_root(unsafe { scope.protect(x) }).unwrap();
     for v in rc.to_mut() {
         *v *= 2.0;
     }
@@ -279,3 +282,19 @@ pub fn zero_copy_protected_strvec_unique(strings: miniextendr_api::ProtectedStrV
 }
 
 // endregion
+
+/// Borrowed character views are tied to the generated call's root.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn rooted_strvec_first(strings: miniextendr_api::StrVec<'_>) -> Option<String> {
+    strings.get_str(0).map(str::to_owned)
+}
+
+/// RCow may return through IntoR while its input root is still live.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn rooted_rcow_identity(
+    values: miniextendr_api::RCow<'_, i32>,
+) -> miniextendr_api::RCow<'_, i32> {
+    values
+}

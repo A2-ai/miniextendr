@@ -4196,19 +4196,20 @@ pub fn gc_stress_cow_subslice_roundtrip() {
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
 pub fn gc_stress_rcow_roundtrip() {
+    use miniextendr_api::ProtectScope;
     use miniextendr_api::RCow;
-    use miniextendr_api::from_r::TryFromSexp;
 
     let src = vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp();
-    let _src_guard = unsafe { miniextendr_api::OwnedProtect::new(src) };
+    let scope = unsafe { ProtectScope::new() };
+    let source = unsafe { scope.protect(src) };
 
     // Borrowed round-trip must return the *same* SEXP (true zero-copy).
-    let borrowed: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    let borrowed: RCow<'_, f64> = RCow::try_from_root(source).unwrap();
     let back = borrowed.into_sexp();
     assert_eq!(back, src, "borrowed RCow round-trip must be identity");
 
     // Copy-on-write: mutating forces a fresh, value-correct R vector.
-    let mut owned: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    let mut owned: RCow<'_, f64> = RCow::try_from_root(source).unwrap();
     for v in owned.to_mut() {
         *v += 100.0;
     }

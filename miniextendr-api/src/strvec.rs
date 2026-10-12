@@ -17,16 +17,20 @@ use crate::{Preserved, SEXP, SexpExt};
 /// to a root that keeps the source reachable. [`ProtectedStrVec::as_strvec`]
 /// does so through a borrow of its owner.
 ///
-/// The raw [`TryFromSexp`] implementation currently does not constrain `'a`:
-/// using `StrVec<'_>` in a wrapper alone does not prevent a borrow from escaping.
-/// Until the borrowed conversion boundary is replaced (#1427), callers of that
-/// path must keep the source rooted for every use of the view and its strings.
+/// [`try_from_root`](Self::try_from_root) borrows a lifetime-carrying root.
+/// Generated wrappers use this path for `StrVec<'_>` parameters. Raw
+/// `TryFromSexp` is unavailable: a copyable SEXP cannot constrain the view's
+/// lifetime. Use [`ProtectedStrVec`] when the result must own its root.
 ///
 /// `Copy` and cheap (a single `SEXP`); covariant in `'a`.
 #[derive(Clone, Copy, Debug)]
 pub struct StrVec<'a>(SEXP, PhantomData<&'a str>);
 
 impl<'a> StrVec<'a> {
+    /// Strings do not retain a pointer to a native numeric vector.
+    #[doc(hidden)]
+    pub const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = None;
+
     /// Wrap an existing `STRSXP` without additional checks.
     ///
     /// # Safety
@@ -497,11 +501,20 @@ impl IntoR for StrVec<'_> {
     }
 }
 
-impl<'a> TryFromSexp for StrVec<'a> {
-    type Error = SexpError;
-    const CHARACTER_ONLY: bool = true;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+impl<'a> StrVec<'a> {
+    /// Borrow a character vector for the lifetime of its root.
+    ///
+    /// The result cannot acquire a lifetime longer than the supplied root.
+    /// Raw `TryFromSexp` is intentionally unavailable for this borrowed view.
+    ///
+    /// ```compile_fail
+    /// use miniextendr_api::{Root, StrVec};
+    /// fn escape<'a>(root: Root<'a>) -> StrVec<'static> {
+    ///     StrVec::try_from_root(root).unwrap()
+    /// }
+    /// ```
+    pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpError> {
+        let sexp = root.get();
         let actual = sexp.type_of();
         if actual != STRSXP {
             return Err(SexpTypeError {
@@ -510,6 +523,7 @@ impl<'a> TryFromSexp for StrVec<'a> {
             }
             .into());
         }
+        // The root, not an unconstrained return annotation, fixes `'a`.
         Ok(StrVec(sexp, PhantomData))
     }
 }

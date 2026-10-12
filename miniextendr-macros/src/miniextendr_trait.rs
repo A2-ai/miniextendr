@@ -777,6 +777,8 @@ fn generate_method_shim(
             let name_str = crate::naming::ident_name(name);
             if let Some(mutable) = crate::type_inspect::self_ref_mutability(ty) {
                 crate::trait_self_ref::extract(name, &impl_t, i, mutable, &argc, &argv)
+            } else if crate::type_inspect::is_rooted_view(ty) {
+                crate::trait_self_ref::rooted_view_arg(name, ty, i, &argv)
             } else {
                 quote::quote! {
                     let #name: #ty = unsafe {

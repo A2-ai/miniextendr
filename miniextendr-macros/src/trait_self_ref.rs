@@ -17,7 +17,12 @@ pub(crate) fn native_borrow_checks<'a>(
             continue;
         }
         values.push(quote! { (*#argv.add(#index), #name) });
-        metadata.push(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW });
+        metadata.push(if crate::type_inspect::is_rooted_view(ty) {
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            quote! { <#ty>::NATIVE_BORROW }
+        } else {
+            quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
+        });
     }
     if values.is_empty() {
         return TokenStream::new();
@@ -38,6 +43,33 @@ pub(crate) fn native_borrow_checks<'a>(
             }
         }
     }}
+}
+
+/// Bind a borrowed view to a local copy of an argv slot. A borrow directly
+/// from the raw argv pointer would itself have an unconstrained lifetime.
+/// Arity and native alias checks must run before this code. A conversion
+/// failure panics, as `trait_abi::extract_arg` does.
+pub(crate) fn rooted_view_arg(
+    name: &syn::Ident,
+    ty: &syn::Type,
+    index: usize,
+    argv: &syn::Ident,
+) -> TokenStream {
+    let slot = format_ident!(
+        "__mx_root_{}",
+        crate::naming::unraw(name),
+        span = proc_macro2::Span::mixed_site()
+    );
+    let ty = crate::type_inspect::erase_lifetimes(ty);
+    quote! {
+        let #slot = unsafe { *#argv.add(#index) };
+        let #name: #ty = match <#ty>::try_from_root(unsafe {
+            ::miniextendr_api::Root::from_call_arg(&#slot)
+        }) {
+            ::core::result::Result::Ok(value) => value,
+            ::core::result::Result::Err(error) => ::core::panic!("{error}"),
+        };
+    }
 }
 
 pub(crate) fn handle_ident(name: &syn::Ident) -> syn::Ident {

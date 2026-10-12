@@ -919,3 +919,21 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds
 - [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
 - [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes
 - [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) -- Type conversion error messages
+
+### Borrowed vector roots
+
+`StrVec<'a>::try_from_root(Root<'a>)` and `RCow<'a, T>::try_from_root(Root<'a>)`
+bind the returned view to the input root. Obtain one from a `ProtectScope`, or
+use `ProtectedStrVec::as_strvec()` to borrow an owned character vector.
+These views do not implement raw `TryFromSexp`.
+
+The macro recognizes `StrVec<'_>` and `RCow<'_, T>` parameters (including
+qualified names), binds a root to the `.Call` slot, and converts the result
+before that slot goes out of scope. These inputs stay on R's thread. Trait
+shims bind the root to a local argv slot after arity/alias checks. Use the
+framework type name at the boundary; an alias or a newtype needs an explicit
+root conversion in the body. Trait return conversions need owned values such
+as `ProtectedStrVec` or `Vec<T>`.
+
+Native references, `Cow`, and their container conversions still use the raw
+conversion trait and remain part of the lifetime-boundary migration (#1427).
