@@ -1130,6 +1130,21 @@ fn static_borrowed_parameters_are_refused_at_their_lifetime() {
         let code = conversion_text(&builder, src);
         assert!(!code.contains("compile_error"), "{code}");
     }
+    // A worker borrows a local copy, which can't be `'static` either.
+    for src in [
+        "x: &'static [i32]",
+        "x: Option<&'static i32>",
+        "x: &'static str",
+        "x: Vec<Option<&'static str>>",
+    ] {
+        let syn::FnArg::Typed(param) = parse_param(src) else {
+            unreachable!()
+        };
+        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+        let code = quote::quote!(#(#owned)*).to_string();
+        assert!(code.contains("cannot be `'static`"), "{code}");
+        assert!(borrowed.is_empty(), "{src}");
+    }
 }
 
 #[test]

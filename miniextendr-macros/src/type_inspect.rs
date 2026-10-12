@@ -382,7 +382,7 @@ pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
 
 /// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
 /// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
-/// call's argument slot. Returns the statement that binds `ident` with a
+/// call's argument slot, or on the worker a copy that ends with the call. Returns the statement that binds `ident` with a
 /// `compile_error!` naming the fix, spanned at the lifetime, in place of a
 /// borrow-checker error about a generated temporary. The binding keeps the code
 /// that uses `ident` free of follow-on errors; it does not diverge, so that

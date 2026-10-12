@@ -543,6 +543,10 @@ impl RustConversionBuilder {
             && !self.match_arg_several_ok_params.contains(&param_name)
             && let Some((owned_ty, borrow_expr)) = worker_string_storage(ty, &owned_ident)
         {
+            // The borrow is of a local copy, so it can't be `'static` either.
+            if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
+                return (vec![stmt], vec![]);
+            }
             let span = ty.span();
             // Preserve the existing decoder for a string with choices, but
             // decode into owned storage. Diagnostics keep the author's type.
@@ -565,6 +569,9 @@ impl RustConversionBuilder {
             && !self.match_arg_several_ok_params.contains(&param_name)
             && let Some((owned_ty, copy, borrow)) = worker_native_storage(ty, &owned_ident)
         {
+            if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
+                return (vec![stmt], vec![]);
+            }
             let span = ty.span();
             let bound_ty = crate::type_inspect::erase_lifetimes(ty);
             // Check the borrowed representation before copying: scalar inputs
