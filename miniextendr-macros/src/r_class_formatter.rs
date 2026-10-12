@@ -686,7 +686,7 @@ impl<'a> MethodContext<'a> {
 /// The formals of `r_params` that `doc_tags` leaves undocumented, each with
 /// its choice text from `choice_docs` (the write-time placeholder of a
 /// `match_arg` parameter, the literal line of a `choices(...)` one), or
-/// `None` for a formal that has none. Skips `self`, `.ptr` and `...`, and
+/// `None` for a formal that has none. Skips `.mx_self`, `.ptr` and `...`, and
 /// yields nothing when the tags take the arguments from another topic
 /// (`roxygen::params_documented_elsewhere` against `page`, #1590). The class
 /// page default a builder appends is not in `doc_tags`, and an author
@@ -706,7 +706,7 @@ fn generated_params<'p, 'd>(
     crate::roxygen::split_r_formals(r_params)
         .into_iter()
         .map(crate::roxygen::formal_name)
-        .filter(|name| !matches!(*name, ".ptr" | "..." | "self"))
+        .filter(|name| !matches!(*name, ".ptr" | "..." | ".mx_self"))
         .filter(|name| !crate::roxygen::param_documented(doc_tags, name))
         .map(|name| {
             let choice = choice_docs
@@ -1120,7 +1120,7 @@ impl<'a> MethodDocBuilder<'a> {
     /// Set the method's formal parameter names (comma-separated R params string).
     ///
     /// When set, auto-generates `@param name (undocumented)` for any parameter
-    /// not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
+    /// not already covered by a user `@param` tag. Skips `.mx_self`, `.ptr`, and
     /// `...` parameters. Generates nothing when the method's own tags take the
     /// arguments from another topic (`@rdname`, `@describeIn`,
     /// `@inheritParams`; see `roxygen::params_documented_elsewhere`).

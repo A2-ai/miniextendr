@@ -478,14 +478,15 @@ fn test_s7_trait_impl_emits_fast_path_shortcut() {
     .unwrap();
 
     assert!(
-        result.contains("Foo_value <- function(self, ...)"),
+        result.contains("Foo_value <- function(.mx_self, ...)"),
         "S7 trait impl should emit a Foo_value fast-path shortcut, got:\n{}",
         result
     );
     assert!(
-        result
-            .contains(".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), self@.ptr)"),
-        "shortcut should .Call through self@.ptr directly, got:\n{}",
+        result.contains(
+            ".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), .mx_self@.ptr)"
+        ),
+        "shortcut should .Call through .mx_self@.ptr directly, got:\n{}",
         result
     );
     assert!(
@@ -605,8 +606,8 @@ fn test_trait_operator_r_names_are_quoted() {
     }
 }
 
-/// Void trait-impl shortcut methods chain via `self`, visibly (#1213); an
-/// `Invisible<()>` return marks the tail `invisible(self)`.
+/// Void trait-impl shortcut methods chain via `.mx_self`, visibly (#1213); an
+/// `Invisible<()>` return marks the tail `invisible(.mx_self)`.
 #[test]
 fn test_s7_trait_impl_void_shortcut_returns_self() {
     let type_ident = format_ident!("Foo");
@@ -628,13 +629,13 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     .unwrap();
 
     assert!(
-        result.contains("Foo_bump <- function(self, ...)"),
+        result.contains("Foo_bump <- function(.mx_self, ...)"),
         "void method should still get a shortcut, got:\n{}",
         result
     );
     assert!(
-        result.contains("  self\n"),
-        "void shortcut should return `self`, got:\n{}",
+        result.contains("  .mx_self\n"),
+        "void shortcut should return `.mx_self`, got:\n{}",
         result
     );
     assert!(
@@ -660,8 +661,8 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     )
     .unwrap();
     assert!(
-        result.contains("  invisible(self)"),
-        "marked void shortcut should return invisible(self), got:\n{}",
+        result.contains("  invisible(.mx_self)"),
+        "marked void shortcut should return invisible(.mx_self), got:\n{}",
         result
     );
     assert!(
@@ -723,7 +724,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s4() {
 }
 
 /// BUG1 regression (S7 leg) — covers both the dispatched-generic body and the
-/// fast-path shortcut, which extract the receiver via `x@.ptr` / `self@.ptr`
+/// fast-path shortcut, which extract the receiver via `x@.ptr` / `.mx_self@.ptr`
 /// respectively.
 #[test]
 fn test_bug1_x_prefixed_param_not_corrupted_s7() {
@@ -750,7 +751,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s7() {
     );
     assert!(
         result.contains(
-            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = sys.call(), self@.ptr, x_factor)"
+            ".Call(C_miniextendr_macros_Foo__Bar__scale, .call = sys.call(), .mx_self@.ptr, x_factor)"
         ),
         "shortcut: x_factor must reach the .Call() intact, got:\n{}",
         result
@@ -2068,8 +2069,8 @@ fn test_s7_trait_shortcut_param_filler_follows_method_page() {
     method.doc_tags = vec![by_doc.clone(), "@rdname foo_steps".to_string()];
     let split = generate(&method);
     assert!(!split.contains("#' @param times "), "got:\n{split}");
-    // The structural `self` / `...` lines are left to the topic too (#1590).
-    assert!(!split.contains("#' @param self "), "got:\n{split}");
+    // The structural `.mx_self` / `...` lines are left to the topic too (#1590).
+    assert!(!split.contains("#' @param .mx_self "), "got:\n{split}");
     assert!(!split.contains("#' @param ... "), "got:\n{split}");
     assert_eq!(
         split.matches("#' @param by Step size.").count(),
@@ -2392,7 +2393,7 @@ fn test_s7_trait_shortcut_inherit_params_drops_fillers_only() {
     let block = block_above(&r, "Foo_step <- ");
     assert!(!r.contains("#' @param by "), "got:\n{r}");
     assert!(
-        block.contains(&"#' @param self A `Foo` object."),
+        block.contains(&"#' @param .mx_self A `Foo` object."),
         "got:\n{r}"
     );
     assert!(
@@ -2448,8 +2449,8 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
 // region: R formal names
 
 /// Dispatching class systems name a trait instance method's receiver `x`, and the
-/// S7 fast-path shortcut names its receiver `self`: a parameter taking either
-/// name (after its leading underscores are dropped) is a compile error. R6
+/// S7 fast-path shortcut uses `.mx_self`, leaving user `self` free. A parameter
+/// named `x` still conflicts with the generic receiver. R6
 /// trait methods live outside the class, so `self` / `private` stay free.
 #[test]
 fn trait_method_formals_reject_the_receiver() {
@@ -2517,16 +2518,12 @@ fn trait_method_formals_reject_the_receiver() {
     }
 
     let shortcut = with_sig(true, syn::parse_quote!(fn m(&self, _self: i32) -> i32));
-    let msg = wrapper(ClassSystem::S7, shortcut.clone())
-        .expect_err("shortcut receiver")
-        .to_string();
+    let code = wrapper(ClassSystem::S7, shortcut.clone()).expect("shortcut receiver is dotted");
     assert!(
-        msg.contains(
-            "which is the receiver of the fast-path shortcut `Foo_m()` generated for this S7 \
-             trait method"
-        ),
-        "{msg}"
+        code.contains("Foo_m <- function(.mx_self, self, ...)"),
+        "{code}"
     );
+    assert!(code.contains(".mx_self@.ptr, self)"), "{code}");
     wrapper(
         ClassSystem::S7,
         TraitMethod {

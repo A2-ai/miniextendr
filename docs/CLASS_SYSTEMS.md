@@ -624,6 +624,11 @@ print(p1)          # Point(0, 0)
 
 ### Fast-path dispatch shortcuts
 
+Shortcuts take `.mx_self` as their receiver. This leaves a user argument named
+`self` free, including on trait methods; it does not change the S7 generic's
+dispatch argument names.
+
+
 Every non-fallback S7 instance method also gets a plain function
 `<ClassName>_<method>(self, ...)` whose body calls the underlying Rust routine
 directly, bypassing `S7::S7_dispatch()` (the class walk + method-table lookup).

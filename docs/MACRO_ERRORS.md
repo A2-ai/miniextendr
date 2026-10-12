@@ -295,12 +295,14 @@ it rejects the names R cannot use:
 - two parameters with the same R name (`x` and `_x`): R rejects a repeated
   argument name;
 - a name the class system's wrapper binds itself: the receiver of an instance
-  method (`self` for Env, `x` for S3, S4 and every trait method, the first
-  dispatch argument for S7, `x` by default, and `self` for the S7 fast-path
-  shortcut, which `s7(no_shortcut)` drops) and
+  method (`x` by default for S3/S4, the first dispatch argument for S7) and
   R6's `self` and `private` inside the class (`initialize` and every method).
 
-Rename the Rust parameter. Static methods and constructors outside R6 are plain
+Env methods, Env/R6 trait namespaces, and S7 shortcuts use `.mx_self`, leaving
+`self` and `x` free wherever they are not generic dispatch formals. For an
+existing S3/S4 generic, `receiver = "object"` selects a different formal.
+
+Rename the Rust parameter when it conflicts with the selected receiver. Static methods and constructors outside R6 are plain
 functions and reserve nothing.
 
 ### "`postfix` and `r_name` both set the R wrapper name"
