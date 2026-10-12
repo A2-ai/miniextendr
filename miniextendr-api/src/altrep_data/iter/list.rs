@@ -78,7 +78,7 @@ impl<I: ExactSizeIterator<Item = SEXP>> IterListData<I> {
 }
 
 impl<I: Iterator<Item = SEXP>> AltrepLen for IterListData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }

@@ -371,9 +371,11 @@ NaN-orderable floating-point wrapper.
 
 | Rust Type | R Type | Notes |
 |-----------|--------|-------|
-| `OrderedFloat<f64>` | `numeric` | Panics on NaN |
+| `OrderedFloat<f64>` | `numeric` | NaN sorts after all other values |
 
-**Adapter trait:** `ROrderedFloatOps`
+**Adapter trait:** `ROrderedFloatOps`, with explicit Rust helper names such as
+`r_round()` and `r_inner()`. Ordinary `.round()` still returns the inner float
+type (`f32` or `f64`); the adapter returns `f64`.
 
 #### Example
 
@@ -450,9 +452,11 @@ complex_multiply(1+2i, 3+4i)
 Generic numeric operations via blanket implementations over `num_traits` traits.
 
 **Provides:**
-- `RNum` -- basic numeric operations (add, sub, mul, div, rem, pow)
-- `RSigned` -- signed number operations (abs, signum)
-- `RFloat` -- floating-point operations (floor, ceil, round, sqrt, etc.)
+- `RNum` -- numeric identities (`r_zero`, `r_one`, `r_is_zero`, `r_is_one`)
+- `RSigned` -- signed number operations (`r_abs`, `r_signum`, sign predicates)
+- `RFloat` -- floating-point operations (`r_floor`, `r_ceil`, `r_round`, `r_sqrt`, etc.)
+
+The `r_` prefix preserves standard numeric method lookup under glob imports.
 
 #### Example
 
@@ -463,13 +467,13 @@ use miniextendr_api::num_traits_impl::RFloat;
 #[miniextendr]
 fn safe_sqrt(x: f64) -> f64 {
     let clamped = if x < 0.0 { 0.0 } else { x };
-    RFloat::sqrt(&clamped)
+    RFloat::r_sqrt(&clamped)
 }
 
 /// Check if a number is a normal finite value (not zero, subnormal, inf, or NaN).
 #[miniextendr]
 fn is_normal(x: f64) -> bool {
-    RFloat::is_normal(&x)
+    RFloat::r_is_normal(&x)
 }
 ```
 

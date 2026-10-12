@@ -27,7 +27,7 @@ macro_rules! int_fixture {
         struct $name(Vec<i32>);
 
         impl AltrepLen for $name {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 self.0.len()
             }
         }
@@ -149,7 +149,7 @@ impl<T> AltrepLen for GenericIntFixture<T>
 where
     T: Copy + Into<i32> + 'static,
 {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -188,7 +188,7 @@ miniextendr_api::impl_altinteger_from_data_generic!(
 struct LglBasic(Vec<bool>);
 
 impl AltrepLen for LglBasic {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -208,7 +208,7 @@ miniextendr_api::impl_altlogical_from_data!(LglBasic);
 struct StrBasic(Vec<Option<String>>);
 
 impl AltrepLen for StrBasic {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

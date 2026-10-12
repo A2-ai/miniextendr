@@ -280,7 +280,7 @@ pub fn gc_stress_altrep_string_cache() -> SEXP {
 struct GcStressCloneCache(Vec<Option<String>>);
 
 impl miniextendr_api::altrep_data::AltrepLen for GcStressCloneCache {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -5782,8 +5782,8 @@ fn gc_list_element(i: i32) -> SEXP {
 struct GcRootedIteratorList(miniextendr_api::altrep_data::IterListData<GcListSource>);
 
 impl miniextendr_api::altrep_data::AltrepLen for GcRootedIteratorList {
-    fn len(&self) -> usize {
-        miniextendr_api::altrep_data::AltrepLen::len(&self.0)
+    fn altrep_len(&self) -> usize {
+        miniextendr_api::altrep_data::AltrepLen::altrep_len(&self.0)
     }
 }
 
@@ -5892,7 +5892,7 @@ pub fn gc_stress_altrep_list_writes() -> SEXP {
 struct GcTransientBorrowList;
 
 impl miniextendr_api::altrep_data::AltrepLen for GcTransientBorrowList {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         8
     }
 }

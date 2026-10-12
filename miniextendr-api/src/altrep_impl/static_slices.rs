@@ -24,7 +24,7 @@ impl crate::altrep_traits::Altrep for &'static [i32] {
     fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data =
             unsafe { <&'static [i32] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 
@@ -133,7 +133,7 @@ impl crate::altrep_traits::Altrep for &'static [f64] {
     fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data =
             unsafe { <&'static [f64] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 
@@ -236,7 +236,7 @@ impl crate::altrep_traits::Altrep for &'static [bool] {
         let data = unsafe {
             <&'static [bool] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
         };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 
@@ -289,7 +289,7 @@ impl crate::altrep_traits::Altrep for &'static [u8] {
     fn length(x: crate::SEXP) -> crate::R_xlen_t {
         let data =
             unsafe { <&'static [u8] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 
@@ -354,7 +354,7 @@ impl crate::altrep_traits::Altrep for &'static [String] {
         let data = unsafe {
             <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
         };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 
@@ -398,7 +398,7 @@ impl crate::altrep_traits::Altrep for &'static [&'static str] {
         let data = unsafe {
             <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
         };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
+        crate::altrep_data::AltrepLen::altrep_len(data) as crate::R_xlen_t
     }
 }
 

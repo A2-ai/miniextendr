@@ -15,7 +15,7 @@ use miniextendr_api::{Altrep, AltrepBuffer, IntoR, RLogical, SEXP, SexpExt, mini
 pub struct ClonedInts(Vec<i32>);
 
 impl AltrepLen for ClonedInts {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -38,7 +38,7 @@ impl AltrepDataptr<i32> for ClonedInts {
 pub struct ClonedStrings(Vec<Option<String>>);
 
 impl AltrepLen for ClonedStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -124,7 +124,7 @@ pub struct RustUnwindInts {
 pub struct UnsafeStrings(pub Vec<String>);
 
 impl AltrepLen for UnsafeStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -157,7 +157,7 @@ pub fn altrep_unsafe_strings(values: Vec<String>) -> UnsafeStrings {
 pub struct RangeCache(IterIntData<std::ops::Range<i32>>);
 
 impl AltrepLen for RangeCache {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -188,7 +188,7 @@ impl AltrepSerialize for RangeCache {
 pub struct ShortRealCache(IterRealData<std::vec::IntoIter<f64>>);
 
 impl AltrepLen for ShortRealCache {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

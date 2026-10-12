@@ -9,7 +9,7 @@ struct Tagged<T: ?Sized> {
 }
 
 impl AltrepLen for Tagged<[i32]> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.values.len()
     }
 }
@@ -38,7 +38,7 @@ fn trailing_dst_implements_length_and_extraction_as_a_view() {
         values: [1, 2, 3],
     });
     assert_eq!(owner.tag, 7);
-    assert_eq!(AltrepLen::len(&*owner), 3);
+    assert_eq!(AltrepLen::altrep_len(&*owner), 3);
     fn accepts_extraction_view<T: AltrepExtract + ?Sized>() {}
     accepts_extraction_view::<Tagged<[i32]>>();
 }
@@ -103,8 +103,8 @@ fn boxed_trait_object_marker_preserves_the_vtable() {
 // Registration and ownership stay on the sized Box; its callbacks can expose
 // the custom unsized view without changing ExternalPtr's storage representation.
 impl AltrepLen for Box<Tagged<[i32]>> {
-    fn len(&self) -> usize {
-        AltrepLen::len(&**self)
+    fn altrep_len(&self) -> usize {
+        AltrepLen::altrep_len(&**self)
     }
 }
 impl miniextendr_api::altrep_data::AltIntegerData for Box<Tagged<[i32]>> {

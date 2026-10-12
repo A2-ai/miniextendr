@@ -497,7 +497,7 @@ fn generate_altrep_len(
 
     quote! {
         impl #impl_generics ::miniextendr_api::altrep_data::AltrepLen for #name #ty_generics #where_clause {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 self.#len_field
             }
         }

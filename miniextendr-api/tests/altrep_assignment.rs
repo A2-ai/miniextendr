@@ -23,7 +23,7 @@ struct CowVec(Cow<'static, [i32]>);
 macro_rules! direct_integer_view {
     ($ty:ty) => {
         impl miniextendr_api::altrep_data::AltrepLen for $ty {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 self.0.len()
             }
         }
@@ -217,7 +217,7 @@ fn ordinary_element_replacement_preserves_cow_altrep_and_the_old_pointer() {
 #[altrep(manual, duplicate = "clone", class = "AssignmentStringCache")]
 struct CachedStrings(Vec<String>);
 impl miniextendr_api::altrep_data::AltrepLen for CachedStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

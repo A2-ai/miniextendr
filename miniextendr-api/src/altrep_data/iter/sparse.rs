@@ -225,7 +225,7 @@ impl<I: ExactSizeIterator<Item = i32>> SparseIterIntData<I> {
 }
 
 impl<I: Iterator<Item = i32>> AltrepLen for SparseIterIntData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -243,7 +243,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for SparseIterIntData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -274,7 +274,7 @@ impl<I: ExactSizeIterator<Item = f64>> SparseIterRealData<I> {
 }
 
 impl<I: Iterator<Item = f64>> AltrepLen for SparseIterRealData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -291,7 +291,7 @@ impl<I: Iterator<Item = f64>> AltRealData for SparseIterRealData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -319,7 +319,7 @@ impl<I: ExactSizeIterator<Item = bool>> SparseIterLogicalData<I> {
 }
 
 impl<I: Iterator<Item = bool>> AltrepLen for SparseIterLogicalData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -333,7 +333,9 @@ impl<I: Iterator<Item = bool>> AltLogicalData for SparseIterLogicalData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx).to_r_int())
+        fill_region(start, len, self.altrep_len(), buf, |idx| {
+            self.elt(idx).to_r_int()
+        })
     }
 }
 
@@ -361,7 +363,7 @@ impl<I: ExactSizeIterator<Item = u8>> SparseIterRawData<I> {
 }
 
 impl<I: Iterator<Item = u8>> AltrepLen for SparseIterRawData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -376,7 +378,7 @@ impl<I: Iterator<Item = u8>> AltRawData for SparseIterRawData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -416,7 +418,7 @@ impl<I> AltrepLen for SparseIterComplexData<I>
 where
     I: Iterator<Item = crate::Rcomplex>,
 {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -436,7 +438,7 @@ where
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [crate::Rcomplex]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 

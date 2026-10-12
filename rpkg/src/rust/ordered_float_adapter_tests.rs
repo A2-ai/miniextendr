@@ -78,17 +78,17 @@ pub fn ordered_float_ops_via_trait(x: f64) -> Vec<f64> {
 
     let v = OrderedFloat(x);
     vec![
-        ROrderedFloatOps::inner(&v),
-        ROrderedFloatOps::floor(&v),
-        ROrderedFloatOps::ceil(&v),
-        ROrderedFloatOps::round(&v),
-        ROrderedFloatOps::trunc(&v),
-        ROrderedFloatOps::fract(&v),
-        ROrderedFloatOps::abs(&v),
-        ROrderedFloatOps::signum(&v),
-        ROrderedFloatOps::min_with(&v, 0.0),
-        ROrderedFloatOps::max_with(&v, 0.0),
-        ROrderedFloatOps::clamp_to(&v, -1.0, 1.0),
+        ROrderedFloatOps::r_inner(&v),
+        ROrderedFloatOps::r_floor(&v),
+        ROrderedFloatOps::r_ceil(&v),
+        ROrderedFloatOps::r_round(&v),
+        ROrderedFloatOps::r_trunc(&v),
+        ROrderedFloatOps::r_fract(&v),
+        ROrderedFloatOps::r_abs(&v),
+        ROrderedFloatOps::r_signum(&v),
+        ROrderedFloatOps::r_min_with(&v, 0.0),
+        ROrderedFloatOps::r_max_with(&v, 0.0),
+        ROrderedFloatOps::r_clamp_to(&v, -1.0, 1.0),
     ]
 }
 
@@ -100,11 +100,11 @@ pub fn ordered_float_ops_predicates(x: f64) -> Vec<bool> {
 
     let v = OrderedFloat(x);
     vec![
-        ROrderedFloatOps::is_nan(&v),
-        ROrderedFloatOps::is_infinite(&v),
-        ROrderedFloatOps::is_finite(&v),
-        ROrderedFloatOps::is_positive(&v),
-        ROrderedFloatOps::is_negative(&v),
+        ROrderedFloatOps::r_is_nan(&v),
+        ROrderedFloatOps::r_is_infinite(&v),
+        ROrderedFloatOps::r_is_finite(&v),
+        ROrderedFloatOps::r_is_positive(&v),
+        ROrderedFloatOps::r_is_negative(&v),
     ]
 }
 

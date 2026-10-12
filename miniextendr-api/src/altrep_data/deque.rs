@@ -13,7 +13,7 @@ use super::{
 use crate::{IntoR, Rcomplex, SEXP, TryFromSexp};
 
 impl<T> AltrepLen for VecDeque<T> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         VecDeque::len(self)
     }
 }

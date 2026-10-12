@@ -170,7 +170,7 @@ pub struct MxDerivedIntsData {
 }
 
 impl miniextendr_api::altrep_data::AltrepLen for MxDerivedIntsData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }

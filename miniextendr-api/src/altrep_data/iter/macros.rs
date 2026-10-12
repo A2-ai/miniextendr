@@ -45,7 +45,7 @@ macro_rules! define_iter_data {
         }
 
         impl<I: Iterator<Item = $item>> crate::altrep_data::AltrepLen for $name<I> {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 self.state.len()
             }
         }

@@ -19,7 +19,7 @@ pub struct LazyStrings {
 }
 
 impl AltrepLen for LazyStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.values.len()
     }
 }
@@ -195,7 +195,7 @@ pub struct SubsetStrings {
 }
 
 impl AltrepLen for SubsetStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.values.len()
     }
 }

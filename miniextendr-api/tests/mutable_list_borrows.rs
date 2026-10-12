@@ -61,7 +61,7 @@ struct Window {
 }
 
 impl AltrepLen for Window {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
