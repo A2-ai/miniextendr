@@ -47,7 +47,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks (below the crate's `preconditions` key) | `preconditions`, `Checked<T>` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
-| `worker-default` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
+| `worker-default` | Select worker execution (implies `worker-thread`) | fns + static methods | `no_worker` |
 
 All six `*-default` features above are denylisted from rpkg's auto-detected
 default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
@@ -161,22 +161,33 @@ impl MyType { ... }
 
 ### Methods
 
-Per-method options (`worker`, `main_thread`, `coerce`) also respect feature
-defaults:
+Per-method `worker` and `coerce` options respect feature defaults. Worker
+selection applies to static methods, including constructors: arguments and
+return values crossing the thread boundary must be `Send`. An explicit
+`main_thread` (or `unsafe(main_thread)`) overrides worker selection;
+`no_worker` opts a method out of `worker-default`.
+
+Instance methods always stay on R's main thread because they borrow their
+receiver. Methods taking `Dots` or `LazyDots` stay there too. A `worker`
+option on either does not move the borrowed R state across threads.
 
 ```rust
 // With worker-default + coerce-default features enabled:
-
 #[miniextendr(r6)]
 impl MyType {
-    #[miniextendr(r6())]              // worker=true, coerce=true (from features)
-    fn method1(&self, x: f32) { }
+    // worker=true, coerce=true (from features)
+    pub fn compute(x: f32) -> f32 { x * 2.0 }
 
-    #[miniextendr(r6(no_worker))]     // worker=false, coerce=true
-    fn method2(&self) { }
+    #[miniextendr(r6(no_worker))]     // main thread, coerce=true
+    pub fn local(x: f32) -> f32 { x }
 
     #[miniextendr(r6(no_coerce))]     // worker=true, coerce=false
-    fn method3(&self, x: f32) { }
+    pub fn strict_compute(x: f32) -> f32 { x * 2.0 }
+
+    #[miniextendr(r6(worker, main_thread))] // explicit main-thread override
+    pub fn on_main(x: f32) -> f32 { x }
+
+    pub fn value(&self) -> f32 { self.value } // always main thread
 }
 ```
 
@@ -263,7 +274,7 @@ For each option, the resolution is:
 
 1. **Explicit attribute** -- `strict` or `no_strict` on the item → uses that value
 2. **Feature default** -- `cfg!(feature = "strict-default")` → uses the feature setting (for feature-controlled options)
-3. **Built-in default** -- `main_thread=true`, tagged-condition transport always on, `false` for other boolean options, `Env` for class system
+3. **Built-in default** -- main-thread execution (`worker=false`, no forced thread override), tagged-condition transport always on, `false` for other boolean options, `Env` for class system
 
 Explicit attributes always win over feature/built-in defaults.
 
