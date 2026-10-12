@@ -27,3 +27,20 @@ fn converted_string_owners_outlive_source_roots_and_drop_in_any_order() {
         );
     });
 }
+
+#[test]
+fn borrowed_views_use_scope_roots_and_keep_rcow_round_trip_identity() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = miniextendr_api::ProtectScope::new();
+        let chars = scope.protect(vec![Some("rooted"), None].into_sexp());
+        let strings = miniextendr_api::StrVec::try_from_root(chars).unwrap();
+        let nums = scope.protect(vec![1_i32, 2, 3].into_sexp());
+        let values = miniextendr_api::RCow::<i32>::try_from_root(nums).unwrap();
+        miniextendr_api::sys::R_gc();
+        assert_eq!(strings.iter().collect::<Vec<_>>(), [Some("rooted"), None]);
+        assert_eq!(&*values, &[1, 2, 3]);
+        assert_eq!(values.into_sexp(), nums.get());
+        assert!(miniextendr_api::StrVec::try_from_root(nums).is_err());
+        assert!(miniextendr_api::RCow::<i32>::try_from_root(chars).is_err());
+    });
+}

@@ -211,6 +211,10 @@ impl RustConversionBuilder {
         {
             return None;
         }
+        if crate::type_inspect::is_rooted_view(ty) {
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            return Some(quote! { <#ty>::NATIVE_BORROW });
+        }
         let param_name = crate::naming::ident_name(&pat_ident.ident);
         match ty {
             syn::Type::ImplTrait(_) => return None,
@@ -489,6 +493,20 @@ impl RustConversionBuilder {
                 );
                 let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
             };
+            return (vec![stmt], vec![]);
+        }
+
+        if crate::type_inspect::is_rooted_view(ty) {
+            let span = ty.span();
+            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+            // The unsafe boundary borrows a rooted .Call argument. Both the
+            // root and the resulting view are bounded by that local slot.
+            let try_expr = quote_spanned! {span=>
+                <#bound_ty>::try_from_root(unsafe {
+                    ::miniextendr_api::Root::from_call_arg(&#sexp_ident)
+                })
+            };
+            let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
             return (vec![stmt], vec![]);
         }
 

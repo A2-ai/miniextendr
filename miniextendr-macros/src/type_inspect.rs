@@ -199,6 +199,8 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "RndVec",
     "RndMat",
     "ProtectedStrVec",
+    "StrVec",
+    "RCow",
     "BuiltDataFrame",
     "NamedListBuilder",
     "BuiltList",
@@ -300,6 +302,14 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
 // endregion
 
 // region: unforced dots (#1892)
+
+/// Borrowed vector views whose construction needs a lifetime-carrying root.
+/// Like the other framework parameter markers, these are recognized by their
+/// last path segment. An owned result uses ProtectedStrVec or Vec instead.
+pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p) if p.qself.is_none() && p.path.segments.last()
+        .is_some_and(|s| s.ident == "StrVec" || s.ident == "RCow"))
+}
 
 /// Detect the unforced-dots parameter type, `LazyDots`: matched on the last
 /// path segment like the other markers, bare or with lifetime arguments only

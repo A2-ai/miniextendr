@@ -14,7 +14,7 @@ use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use miniextendr_api::match_arg::{EitherArmProbe, EitherArmProbeFallback};
 use miniextendr_api::{
     AsCharacter, AsCharacterVec, AsFromStr, AsFromStrVec, DataFrame, List, Missing,
-    ProtectedStrVec, SEXP, StrVec,
+    ProtectedStrVec, SEXP,
 };
 
 /// Read through a generic, so the rows are not `assert!` on constants.
@@ -66,7 +66,6 @@ fn character_only_table() {
             character_only::<Cow<'static, str>>(),
             true,
         ),
-        ("StrVec", character_only::<StrVec<'static>>(), true),
         ("ProtectedStrVec", character_only::<ProtectedStrVec>(), true),
         ("AsFromStr<i32>", character_only::<AsFromStr<i32>>(), true),
         (
