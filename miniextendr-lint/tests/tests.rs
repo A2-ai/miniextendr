@@ -408,6 +408,37 @@ fn mxl111_no_fire_for_s4_constructor() {
 }
 
 #[test]
+fn mxl111_no_fire_for_s4_receiverless_methods() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    // `s4_from_value` is the inferred constructor and `s4_default` a static
+    // method: neither becomes an `s4_`-prefixed generic.
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(s4)]
+        impl Foo {
+            pub fn s4_from_value(x: i32) -> Self { Foo { x } }
+            pub fn s4_default() -> i32 { 0 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .all(|d| format!("{}", d.code) != "MXL111"),
+        "MXL111 must not fire on receiver-less methods of an s4 impl, got: {:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
 fn mxl301_ffi_unchecked_usage() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");

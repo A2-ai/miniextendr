@@ -19,7 +19,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - ~~**MXL009**~~ / ~~**MXL010**~~ — *removed*: they required a distinct `label = "..."` on each impl block of a type. The labels are gone; the wrapper writer merges a type's impl blocks into one class (#1776).
 - **MXL106** — non-`pub` fn with a hand-written `/// @export` (the tag still exports it) → make it `pub` or drop the tag.
 - **MXL110** — parameter name is an R reserved word.
-- **MXL111** — `s4_*` method on `#[miniextendr(s4)]` impl (codegen auto-prefixes — yields `s4_s4_*`).
+- **MXL111** — `s4_*` instance method on `#[miniextendr(s4)]` impl (codegen auto-prefixes — yields `s4_s4_*`). Receiver-less methods (constructor, statics) are not prefixed and not checked.
 - ~~**MXL112**~~ — *removed*: lifetime params are now allowed on `#[miniextendr]` fns/impls. Lifetimes are erased at codegen and produce a single monomorphic symbol, making them FFI-safe with `#[no_mangle]`. Only type/const generic params are rejected by the macro (they require monomorphization).
 - **MXL120** — vctrs constructor returns `Self`/named type, or impl has an instance-method receiver (`&self`, `self: &ExternalPtr<Self>`, etc.). Mirrors the proc-macro hard error in `miniextendr-macros`.
 - **MXL203** — redundant `internal` + `noexport`.
