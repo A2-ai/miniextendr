@@ -35,7 +35,7 @@ struct Preferred {
 }
 
 // A separate derive must still receive its own helpers; Obs's TryFromList
-// above also needs the same into_list(ignore) helper as the shorthand.
+// above consumes into_list(ignore) while dataframe mode consumes dataframe(skip).
 #[miniextendr(list)]
 #[derive(DataFrameRow)]
 #[dataframe(name = "DualFrame")]

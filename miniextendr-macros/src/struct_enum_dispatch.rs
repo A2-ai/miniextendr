@@ -17,7 +17,7 @@
 //! | `#[miniextendr(class = "...", base = "...")]` on 1-field struct | Error: use an ALTREP derive |
 //! | `#[miniextendr]` on multi-field struct | ExternalPtr |
 //! | `#[miniextendr(list)]` on multi-field struct | IntoList + TryFromList + PreferList |
-//! | `#[miniextendr(dataframe)]` on struct | IntoList + DataFrameRow (companion has IntoR) |
+//! | `#[miniextendr(dataframe)]` on struct | DataFrameRow (companion has IntoR) |
 //! | `#[miniextendr(prefer = "...")]` on struct | Prefer* marker |
 //! | `#[miniextendr]` on fieldless enum | RFactor |
 //! | `#[miniextendr(match_arg)]` on fieldless enum | MatchArg |
@@ -197,7 +197,7 @@ pub fn expand_struct_or_enum(
 ///   migration guidance (ALTREP via `#[miniextendr]` is removed — use the
 ///   `#[derive(Altrep*)]` family)
 /// - Explicit `list` mode: `IntoList` + `TryFromList` + `PreferList`
-/// - Explicit `dataframe` mode: `IntoList` + `DataFrameRow` + companion `IntoR`
+/// - Explicit `dataframe` mode: `DataFrameRow` + companion `IntoR`
 /// - Default multi-field or explicit `externalptr`: `ExternalPtr`
 /// - `prefer = "native"`: `ExternalPtr` (without the `IntoExternalPtr` marker,
 ///   #1283) + `PreferRNativeType` marker
@@ -293,10 +293,9 @@ fn expand_struct(
     }
 
     if effective_dataframe {
-        // DataFrame mode currently also derives IntoList for individual rows.
-        // DataFrameRow itself supplies the companion's IntoR implementation.
+        // Row columns do not need an IntoList implementation on the row.
         return quote::quote! {
-            #[derive(::miniextendr_api::IntoList, ::miniextendr_api::DataFrameRow)]
+            #[derive(::miniextendr_api::DataFrameRow)]
             #item_struct
         }
         .into();

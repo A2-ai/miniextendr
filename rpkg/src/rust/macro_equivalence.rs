@@ -95,9 +95,9 @@ pub fn mx_fit_roundtrip(estimate: Vec<f64>, sigma: f64) -> Vec<f64> {
 }
 // endregion
 
-// region: 3. #[miniextendr(dataframe)] on struct → DataFrameRow + PreferDataFrame
+// region: 3. #[miniextendr(dataframe)] on struct → DataFrameRow
 
-/// Struct with dataframe mode: generates IntoList + DataFrameRow + IntoR on companion.
+/// Struct with dataframe mode: generates DataFrameRow + IntoR on the companion.
 /// The companion MxObsDataFrame type can be returned directly from `#[miniextendr]` functions.
 #[miniextendr(dataframe)]
 pub struct MxObs {
