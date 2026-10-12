@@ -1,22 +1,35 @@
-use miniextendr_api::{IsNA, RLogical, RNativeType, Rcomplex};
+use miniextendr_api::{IntoR, IsNA, RLogical, RNativeType, Rcomplex};
 
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType, IsNA)]
+#[derive(Clone, Copy, RNativeType, IsNA, IntoR)]
 pub struct Tuple(pub i32);
 
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType, IsNA)]
+#[derive(Clone, Copy, RNativeType, IsNA, IntoR)]
 pub struct Named { pub value: f64 }
 
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType, IsNA)]
+#[derive(Clone, Copy, RNativeType, IsNA, IntoR)]
 pub struct Generic<T: RNativeType>(pub T)
 where
     T: std::fmt::Debug;
 
 fn needs_na<T: IsNA>() {}
 
+fn needs_output<T: IntoR>() {}
+
 fn main() {
+    needs_output::<Tuple>();
+    needs_output::<Vec<Tuple>>();
+    needs_output::<Box<[Tuple]>>();
+    needs_output::<Option<Vec<Tuple>>>();
+    needs_output::<Vec<Vec<Tuple>>>();
+    needs_output::<Vec<Option<Vec<Tuple>>>>();
+    needs_output::<Vec<Box<[Tuple]>>>();
+    needs_output::<Vec<[Tuple; 2]>>();
+    needs_output::<Vec<Named>>();
+    needs_output::<Vec<Generic<RLogical>>>();
+    needs_output::<Vec<Generic<u8>>>();
     needs_na::<Tuple>();
     needs_na::<Named>();
     needs_na::<Generic<i32>>();

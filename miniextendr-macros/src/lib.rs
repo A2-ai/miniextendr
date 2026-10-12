@@ -2335,8 +2335,11 @@ pub fn r_ffi_checked(
 
 /// Derive macro for implementing `RNativeType` on a newtype wrapper.
 ///
-/// This allows newtype wrappers around R native types to work with `Vec<T>`,
-/// `&[T]` conversions and the `Coerce<R>` traits.
+/// This gives newtypes native buffer access, borrowed `&[T]` conversions, and
+/// participation in the `Coerce<R>` traits. Add `#[derive(IntoR)]` to return
+/// owned values: `T`, `Vec<T>`, `Box<[T]>`, and their supported nested containers.
+/// `RNativeType` describes storage; `IntoR` selects the output representation.
+/// Keeping them separate also permits an `ExternalPtr` representation.
 /// The inner type must implement `RNativeType`. Add `#[derive(IsNA)]`
 /// to forward missing-value detection when the inner type supports NA.
 ///
