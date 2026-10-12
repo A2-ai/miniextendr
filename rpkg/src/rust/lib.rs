@@ -279,6 +279,7 @@ mod native_sexp_altrep_fixture;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;
 mod newtype_check_tests;
+mod none_error_name_tests;
 #[cfg(feature = "num-complex")]
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]

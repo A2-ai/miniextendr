@@ -3850,6 +3850,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     // Build the context using the builder
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_name(method.r_method_name())
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
         .pre_call(pre_call)

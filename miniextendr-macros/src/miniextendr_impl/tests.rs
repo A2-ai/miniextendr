@@ -9378,3 +9378,45 @@ fn vctrs_no_constructor_class_docs() {
 }
 
 // endregion
+
+#[test]
+fn none_errors_use_the_resolved_inherent_method_name() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Lookup {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r_name = "find_value")]
+                pub fn rust_lookup(&self) -> Option<i32> { None }
+                #[miniextendr(postfix = "_public")]
+                pub fn find(&self) -> Option<()> { None }
+                #[miniextendr(env(worker, no_main_thread), r_name = "load_value")]
+                pub fn rust_load() -> Option<i32> { None }
+                #[miniextendr(env(worker, no_main_thread), postfix = "_public")]
+                pub fn load() -> Option<()> { None }
+            }
+        },
+    );
+    for (rust, r) in [
+        ("rust_lookup", "find_value"),
+        ("find", "find_public"),
+        ("rust_load", "load_value"),
+        ("load", "load_public"),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, rust);
+        assert!(
+            tokens.contains(&format!("`{r}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(
+            !tokens.contains(&format!("`{rust}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(tokens.contains(&format!("Lookup__{rust}")), "{tokens}");
+        assert_eq!(
+            tokens.contains("run_on_worker"),
+            matches!(rust, "rust_load" | "load"),
+            "{tokens}"
+        );
+    }
+}

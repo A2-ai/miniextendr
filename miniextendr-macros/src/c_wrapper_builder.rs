@@ -1489,7 +1489,8 @@ pub struct CWrapperContextBuilder {
 
 impl CWrapperContextBuilder {
     /// Sets the name R calls the item by, used in the messages the wrapper
-    /// raises in place of the Rust identifier (a trait method's `r_name`).
+    /// raises in place of the Rust identifier. Share the resolved name with
+    /// the R wrapper generator, including renames and postfixes.
     pub fn r_name(mut self, r_name: String) -> Self {
         self.r_name = Some(r_name);
         self
