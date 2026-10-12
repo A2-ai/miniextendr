@@ -113,11 +113,12 @@
 //!
 //! ```ignore
 //! // In package "geometry" (depends on "shapes")
-//! use shapes::{TAG_Shape, ShapeView};
+//! use shapes::ShapeView;
+//! use miniextendr_api::trait_abi::TraitView;
 //!
 //! fn calculate_area(obj: SEXP) -> f64 {
 //!     unsafe {
-//!         let view = mx_query_as::<ShapeView>(obj, TAG_Shape)
+//!         let view = ShapeView::try_from_sexp(obj)
 //!             .expect("object does not implement Shape");
 //!         // Call method through vtable
 //!         view.area()
