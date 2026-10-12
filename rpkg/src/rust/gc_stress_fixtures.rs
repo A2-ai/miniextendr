@@ -5232,20 +5232,21 @@ impl ViewArgProbe for ViewArgHost {
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_trait_view_args() -> String {
     let host = ViewArgHost::new("host".to_string());
-    // SAFETY: main thread (`no_worker`); the wrapped handle is protected for
-    // the whole View call.
-    let joined = unsafe {
+    // The constructor's temporary root ends before argument conversion. The
+    // View itself must retain the receiver through every subsequent allocation.
+    let view = unsafe {
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
             __mx_wrap_ViewArgHost(host),
         ));
-        ViewArgProbeView::from_sexp(handle.get()).join_args(
-            "first".to_string(),
-            "second".to_string(),
-            vec![1.5, 2.5],
-            vec!["x".to_string(), "y".to_string()],
-            "last".to_string(),
-        )
+        ViewArgProbeView::from_sexp(handle.get())
     };
+    let joined = view.join_args(
+        "first".to_string(),
+        "second".to_string(),
+        vec![1.5, 2.5],
+        vec!["x".to_string(), "y".to_string()],
+        "last".to_string(),
+    );
     assert_eq!(
         joined, r#"host|first|second|[1.5, 2.5]|["x", "y"]|last"#,
         "trait View arguments were corrupted"

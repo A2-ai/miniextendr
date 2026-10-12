@@ -133,6 +133,10 @@
 
 pub mod ccall;
 pub mod conv;
+mod view_data;
+
+#[doc(hidden)]
+pub use view_data::TraitViewData;
 
 // Re-export commonly used items
 pub use conv::{check_arity, extract_arg, from_sexp, missing_to_sexp, nil, to_sexp, try_from_sexp};
@@ -166,19 +170,9 @@ use std::os::raw::c_void;
 /// }
 /// ```
 ///
-/// The macro generates `CounterView` that implements `TraitView`:
-/// ```ignore
-/// impl TraitView for CounterView {
-///     const TAG: mx_tag = TAG_Counter;
-///
-///     unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void) -> Self {
-///         Self {
-///             data,
-///             vtable: vtable.cast::<CounterVTable>(),
-///         }
-///     }
-/// }
-/// ```
+/// The generated view keeps its pointers in [`TraitViewData`]. Views made
+/// from an R external pointer preserve that owner until they are dropped;
+/// raw Rust-owned views instead require the caller to keep their data alive.
 ///
 /// # Usage
 ///
@@ -196,7 +190,8 @@ use std::os::raw::c_void;
 /// The `from_raw_parts` method is unsafe because:
 /// - `data` must be a valid pointer to the concrete object
 /// - `vtable` must be a valid pointer to the trait's vtable
-/// - The pointers must remain valid for the lifetime of the view
+/// - The vtable must remain valid for the lifetime of the view
+/// - The owner, when supplied, must keep `data` alive; otherwise the caller must
 pub trait TraitView: Sized {
     /// The type tag for this trait.
     ///
@@ -209,8 +204,14 @@ pub trait TraitView: Sized {
     ///
     /// - `data` must be a valid, non-null pointer to the concrete object
     /// - `vtable` must be a valid, non-null pointer to the trait's vtable
-    /// - Both pointers must remain valid for the lifetime of the view
-    unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void) -> Self;
+    /// - `vtable` must remain valid for the lifetime of the view
+    /// - `owner`, when present, must be a live R object owning `data`; the
+    ///   implementation must preserve it for the lifetime of the view
+    /// - Without an owner, the caller must keep `data` alive for that lifetime
+    /// - Calls must respect the concrete object's Rust borrowing rules
+    /// - Construction, use and drop must all run on R's main thread
+    unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void, owner: Option<SEXP>)
+    -> Self;
 
     /// Try to create a view from an R SEXP.
     ///
@@ -220,7 +221,9 @@ pub trait TraitView: Sized {
     /// # Safety
     ///
     /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
-    /// - Must be called on R's main thread
+    /// - The object must stay live through construction; the view then roots it
+    /// - Calls must respect the concrete object's Rust borrowing rules
+    /// - Construction, use and drop must all run on R's main thread
     ///
     /// # Returns
     ///
@@ -262,7 +265,7 @@ pub trait TraitView: Sized {
             let data_offset = (*base).data_offset;
             let data = erased_ptr.cast::<u8>().add(data_offset).cast::<c_void>();
 
-            Some(Self::from_raw_parts(data, vtable))
+            Some(Self::from_raw_parts(data, vtable, Some(sexp)))
         }
     }
 

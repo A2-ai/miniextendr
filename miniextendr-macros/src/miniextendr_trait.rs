@@ -46,10 +46,8 @@
 //! }
 //!
 //! // View combining data pointer and vtable
-//! #[repr(C)]
 //! pub struct CounterView {
-//!     pub data: *mut std::ffi::c_void,
-//!     pub vtable: *const CounterVTable,
+//!     __mx_view: miniextendr_api::trait_abi::TraitViewData<CounterVTable>,
 //! }
 //!
 //! // Shim for each method
@@ -434,15 +432,12 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             #[doc = #source_loc_doc]
             #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             ///
-            /// Combines a data pointer with a vtable pointer for method dispatch.
-            /// Use `try_from_sexp` to create a view from an R external pointer.
-            #[repr(C)]
+            /// Keeps the receiver alive for method dispatch. Use `try_from_sexp`
+            /// to create a view with its own root for the R external pointer.
+            /// Construction, use and drop belong on R's main thread.
             #[allow(non_camel_case_types)]
             #vis struct #view_name {
-                /// Pointer to the concrete object data.
-                pub data: *mut ::std::os::raw::c_void,
-                /// Pointer to the vtable for this trait.
-                pub vtable: *const #vtable_name,
+                __mx_view: ::miniextendr_api::trait_abi::TraitViewData<#vtable_name>,
             }
 
             // TraitView implementation
@@ -453,10 +448,12 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 unsafe fn from_raw_parts(
                     data: *mut ::std::os::raw::c_void,
                     vtable: *const ::std::os::raw::c_void,
+                    owner: ::core::option::Option<::miniextendr_api::SEXP>,
                 ) -> Self {
                     Self {
-                        data,
-                        vtable: vtable.cast::<#vtable_name>(),
+                        __mx_view: unsafe {
+                            ::miniextendr_api::trait_abi::TraitViewData::new(data, vtable, owner)
+                        },
                     }
                 }
             }
@@ -471,10 +468,12 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 /// # Safety
                 ///
                 /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
-                /// - Must be called on R's main thread
+                /// - The object must stay live through construction; the view then roots it
+                /// - Calls must respect the concrete object's Rust borrowing rules
+                /// - Construction, use and drop must all run on R's main thread
                 #[inline]
                 pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::option::Option<Self> {
-                    <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp)
+                    unsafe { <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp) }
                 }
 
                 /// Try to create a view, panicking with error message on failure.
@@ -484,7 +483,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 /// Same as `try_from_sexp`.
                 #[inline]
                 pub unsafe fn from_sexp(sexp: ::miniextendr_api::SEXP) -> Self {
-                    Self::try_from_sexp(sexp)
+                    unsafe { Self::try_from_sexp(sexp) }
                         .expect(::core::concat!("Object does not implement ", #trait_name_str, " trait"))
                 }
 
@@ -673,11 +672,11 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         quote::quote! {
             let args: [::miniextendr_api::SEXP; #argc as usize] =
                 [#(__mx_roots.protect_raw(#arg_conversions)),*];
-            ((*self.vtable).#method_name)(self.data, #argc, args.as_ptr())
+            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #argc, args.as_ptr())
         }
     } else {
         quote::quote! {
-            ((*self.vtable).#method_name)(self.data, 0, ::std::ptr::null())
+            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), 0, ::std::ptr::null())
         }
     };
 
