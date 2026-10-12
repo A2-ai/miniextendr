@@ -1052,6 +1052,23 @@ pub struct Root<'a> {
 }
 
 impl<'a> Root<'a> {
+    /// Borrow a root from a live FFI argument slot without another PROTECT.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; the value and everything borrowed from it must remain
+    /// GC-reachable for `'a`. Generated `.Call` wrappers satisfy this because
+    /// R roots the argument until the wrapper returns. A reference to an
+    /// arbitrary local SEXP does not by itself establish that guarantee.
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn from_call_arg(sexp: &'a SEXP) -> Self {
+        Self {
+            sexp: *sexp,
+            _scope: PhantomData,
+        }
+    }
+
     /// Get the underlying SEXP.
     #[inline]
     pub fn get(&self) -> SEXP {
