@@ -20,6 +20,8 @@ SplitS4_origin()
 \description{
 S4 class with methods in two impl blocks.
 
+Its second impl block adds a generic and a static method.
+
 Create an object holding \code{value}.
 
 The current value.

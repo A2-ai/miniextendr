@@ -35,5 +35,7 @@ vctrs class with functions in two impl blocks.
 
 Create a vector of \code{amounts}.
 
+Its second impl block adds a static function.
+
 The sum of \code{amounts}.
 }

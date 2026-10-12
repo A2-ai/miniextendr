@@ -57,11 +57,10 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     let mut lines = Vec::new();
 
     // Class environment documentation and definition
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, &parsed_impl.doc_tags, "")
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, &parsed_impl.doc_tags, "")
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
     w.mark_class_doc_lines(&mut lines, parsed_impl);
     lines.push(format!("{} <- new.env(parent = emptyenv())", class_name));
     lines.push(String::new());

@@ -101,18 +101,21 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
     // Class definition with documentation (S4 uses setClass, no @export on class definition)
     let has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
-            .with_imports("@importFrom methods setClass setGeneric setMethod new")
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
+        .with_imports("@importFrom methods setClass setGeneric setMethod new")
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
     w.mark_class_doc_lines(&mut lines, parsed_impl);
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class
     // definition). Only pop when the last line actually IS the auto-added
     // @export — with internal/noexport the builder emits no @export, and a
     // blind pop would instead drop `@keywords internal` / `@noRd` / a user tag.
-    if !has_export && lines.last().is_some_and(|l| l == "#' @export") {
+    if !has_export
+        && lines
+            .last()
+            .is_some_and(|l| *l == super::class_default("#' @export"))
+    {
         lines.pop();
     }
     if !class_has_no_rd {

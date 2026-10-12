@@ -199,11 +199,15 @@ blocks of a type break a rule of
 [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks):
 
 - ``two impl blocks of `MyType` each define the class``: only one block may have
-  the constructor, a doc comment on the impl and S7 properties. The message
-  names what each block has; move the later block's into the earlier one. A doc
-  comment on every block, common in code written for the old `label = "..."`
-  blocks, trips this: keep the class doc on the block with the constructor and
-  document the other blocks' methods on the methods.
+  the constructor and S7 properties. The message names what each block has;
+  move the later block's into the earlier one. Doc comments don't count: every
+  block's doc comment documents the class.
+- ``the impl blocks of `MyType` give the class two titles``: two blocks' doc
+  comments have different `@title`s. The message shows both; keep one.
+- ``the impl blocks of `MyType` put the class on two help pages``: a block that
+  does not define the class has a `@name` or `@rdname` other than the defining
+  block's (its own tag, or the default `<Class>`). Move the tag to the block
+  with the constructor, or remove it.
 - ``the impl blocks of `MyType` disagree on the class settings``: spell the same
   class system and options, `class = "..."`, `internal` / `noexport` and
   `@noRd` / `@keywords internal` on every block. The message shows both sides.

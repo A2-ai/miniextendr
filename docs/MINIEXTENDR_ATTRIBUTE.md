@@ -1196,9 +1196,10 @@ impl Counter { /* mutating methods */ }
 ```
 
 The wrapper writer merges the blocks of a type into one class (#1776). One
-block defines the class (the constructor, the class documentation and S7
-properties go there), every block spells the same class settings (the class
-system with its options, `class`, `internal` / `noexport`, `@noRd` /
+block defines the class (the constructor and S7 properties go there), every
+block's doc comment documents the class (one `@title`, page tags on the
+defining block), every block spells the same class settings (the class system
+with its options, `class`, `internal` / `noexport`, `@noRd` /
 `@keywords internal`), and no two blocks bind one member; see
 [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
 

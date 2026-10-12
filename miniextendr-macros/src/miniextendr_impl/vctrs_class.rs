@@ -75,6 +75,9 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
     let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
+    // The class block is the constructor's; a block without one still
+    // documents the class with its impl docs.
+    crate::roxygen::push_roxygen_tags(&mut w.class_docs, class_doc_tags);
 
     // Constructor with combined class and constructor documentation
     if let Some(ctx) = parsed_impl.constructor_context() {
@@ -84,13 +87,12 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
         let ctor_choice_docs = ctx.choice_param_docs();
 
-        lines.extend(
-            ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
-                .with_ctor_params(&ctx.params, &ctor_choice_docs)
-                .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
-                .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-                .build(),
-        );
+        let class_docs = ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
+            .with_ctor_params(&ctx.params, &ctor_choice_docs)
+            .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+        lines.extend(class_docs.build());
+        w.class_docs = class_docs.docs();
         w.mark_class_doc_lines(&mut lines, parsed_impl);
 
         // Generate constructor body based on vctrs kind

@@ -5,6 +5,8 @@
 \title{SplitR6Clone R6 Class}
 \description{
 Cloneable R6 class with its deep-clone handler in a second impl block.
+
+Its second impl block has the deep-clone handler.
 }
 \section{Methods}{
 \subsection{Public methods}{

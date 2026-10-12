@@ -1,7 +1,10 @@
 //! Types whose methods are split across two `#[miniextendr]` impl blocks, one
-//! type per class system (#1776). The first block of each type holds the class
-//! doc comment and the constructor, the second adds methods; the wrapper
-//! writer defines the class once and attaches the methods of both blocks.
+//! type per class system (#1776). The first block of each type holds the
+//! constructor, the second adds methods; the wrapper writer defines the class
+//! once, attaches the methods of both blocks, and documents the class with the
+//! doc comments of both, the first block's first. `SplitEnv`'s first block has
+//! none, so its second gives the class its title; `SplitS3`'s first block
+//! titles the class itself.
 
 use miniextendr_api::{ExternalPtr, IntoR, SEXP, miniextendr};
 
@@ -13,7 +16,6 @@ pub struct SplitEnv {
     value: i32,
 }
 
-/// Env class with methods in two impl blocks.
 #[miniextendr(env)]
 impl SplitEnv {
     /// Create an object holding `value`.
@@ -28,6 +30,8 @@ impl SplitEnv {
     }
 }
 
+/// Its second impl block documents the class and adds the arithmetic.
+/// @title Env Class Split Over Two Impl Blocks
 #[miniextendr(env)]
 impl SplitEnv {
     /// Add `by` to the value.
@@ -71,6 +75,8 @@ impl SplitR6 {
     }
 }
 
+/// Its second impl block adds an active binding, a private method, a
+/// finalizer and a static method.
 #[miniextendr(r6)]
 impl SplitR6 {
     /// Add `by` to the value.
@@ -130,6 +136,7 @@ impl SplitR6Clone {
     }
 }
 
+/// Its second impl block has the deep-clone handler.
 #[miniextendr(r6(cloneable))]
 impl SplitR6Clone {
     /// Give a deep clone its own Rust value; R6 calls this for every field,
@@ -154,6 +161,7 @@ pub struct SplitS3 {
 }
 
 /// S3 class with methods in two impl blocks.
+/// @title S3 Class Split Over Two Impl Blocks
 #[miniextendr(s3)]
 impl SplitS3 {
     /// Create an object holding `value`.
@@ -168,6 +176,7 @@ impl SplitS3 {
     }
 }
 
+/// Its second impl block adds a generic and a static method.
 #[miniextendr(s3)]
 impl SplitS3 {
     /// Twice the value.
@@ -205,6 +214,7 @@ impl SplitS4 {
     }
 }
 
+/// Its second impl block adds a generic and a static method.
 #[miniextendr(s4)]
 impl SplitS4 {
     /// Twice the value.
@@ -242,6 +252,7 @@ impl SplitS7 {
     }
 }
 
+/// Its second impl block adds a generic and a static method.
 #[miniextendr(s7)]
 impl SplitS7 {
     /// Twice the value.
@@ -273,6 +284,7 @@ impl SplitVctrs {
     }
 }
 
+/// Its second impl block adds a static function.
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "split"))]
 impl SplitVctrs {
     /// The sum of `amounts`.

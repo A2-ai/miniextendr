@@ -307,7 +307,7 @@ fn emit_s7_local_generic(
 
 /// Roxygen prose for the fast-path dispatch shortcut advisory block.
 ///
-/// Shared between the inherent-impl S7 generator ([`generate_s7_r_wrapper`])
+/// Shared between the inherent-impl S7 generator ([`generate_s7_class`])
 /// and the trait-impl S7 generator
 /// (`miniextendr_impl_trait::r_wrappers::generate_trait_s7_r_wrapper`) so both
 /// emit identical guidance. Returns `#'`-prefixed lines (no trailing `@param`
@@ -641,12 +641,11 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     let imports = format!("@importFrom S7 {}", import_parts.join(" "));
 
     // Class definition with documentation
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(&imports)
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
+        .with_imports(&imports)
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
     w.mark_class_doc_lines(&mut lines, parsed_impl);
 
     // Document constructor params — include constructor @param tags and auto-generate
@@ -683,9 +682,15 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     // Choice param: the literal `choices(...)` line, or a
                     // match_arg placeholder rewritten at wrapper write time to
                     // the rendered choice description (#210).
-                    lines.push(format!("#' @param {} {}", param_name, doc));
+                    lines.push(super::class_default(format!(
+                        "#' @param {} {}",
+                        param_name, doc
+                    )));
                 } else {
-                    lines.push(format!("#' @param {} (undocumented)", param_name));
+                    lines.push(super::class_default(format!(
+                        "#' @param {} (undocumented)",
+                        param_name
+                    )));
                 }
             }
         }
@@ -695,10 +700,9 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
             && !crate::roxygen::joins_author_topic(class_doc_tags, Some(&class_name))
         {
-            lines.push(
-                "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
-                    .to_string(),
-            );
+            lines.push(super::class_default(
+                "#' @param .ptr Internal pointer (used by static methods, not for direct use).",
+            ));
         }
 
         // @prop tags for impl-block S7 properties (getter/setter pairs).

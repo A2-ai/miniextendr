@@ -6,7 +6,7 @@
 \alias{split3_value.SplitS3}
 \alias{split3_doubled.SplitS3}
 \alias{splits3_origin}
-\title{SplitS3 S3 Class}
+\title{S3 Class Split Over Two Impl Blocks}
 \usage{
 new_splits3(value)
 
@@ -29,6 +29,8 @@ SplitS3
 S3 class with methods in two impl blocks.
 
 Create an object holding \code{value}.
+
+Its second impl block adds a generic and a static method.
 
 S3 generic for \code{split3_value}
 

@@ -152,7 +152,7 @@ impl Counter { /* constructor and getters */ }
 impl Counter { /* additional methods */ }
 ```
 
-One block defines the class: it has the constructor, the class documentation and any S7 properties. Every block spells the same class settings (the class system with its options, `class = "..."`, `internal` / `noexport`, `@noRd` / `@keywords internal`), and no two blocks may bind the same member. `R CMD INSTALL` stops with an error naming the blocks otherwise. See [Multiple Impl Blocks](/manual/class-systems/#multiple-impl-blocks) in the manual.
+One block defines the class: it has the constructor and any S7 properties. Every block's doc comment documents the class, the defining block's first, with one `@title` and page tags (`@name`, `@rdname`) only on the defining block. Every block spells the same class settings (the class system with its options, `class = "..."`, `internal` / `noexport`, `@noRd` / `@keywords internal`), and no two blocks may bind the same member. `R CMD INSTALL` stops with an error naming the blocks otherwise. See [Multiple Impl Blocks](/manual/class-systems/#multiple-impl-blocks) in the manual.
 
 ## Full reference
 

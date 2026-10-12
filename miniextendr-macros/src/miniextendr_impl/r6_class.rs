@@ -142,7 +142,9 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
     }
 
     if method.method_attrs.noexport || method.method_attrs.internal {
-        return vec![format!("#' @field {prop_name} (internal)")];
+        return vec![super::class_default(format!(
+            "#' @field {prop_name} (internal)"
+        ))];
     }
 
     let description = method.doc_tags.iter().find_map(|tag| {
@@ -152,12 +154,16 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
             .or_else(|| tag.strip_prefix("@title "))
     });
     let Some(description) = description else {
-        return vec![format!("#' @field {prop_name} Active binding.")];
+        return vec![super::class_default(format!(
+            "#' @field {prop_name} Active binding."
+        ))];
     };
 
     let mut description_lines = description.lines();
     let first = description_lines.next().unwrap_or("Active binding.");
-    let mut lines = vec![format!("#' @field {prop_name} {first}")];
+    let mut lines = vec![super::class_default(format!(
+        "#' @field {prop_name} {first}"
+    ))];
     lines.extend(description_lines.map(crate::roxygen::roxygen_line));
     lines
 }
@@ -206,12 +212,11 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     let mut lines = Vec::new();
 
     // Start R6Class definition with documentation
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
-            .with_imports("@importFrom R6 R6Class")
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
+        .with_imports("@importFrom R6 R6Class")
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
     // Every R6 ExternalPtr class accepts .ptr so write-time cross-class return
     // wrapping can land in the target constructor.
     if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
@@ -219,8 +224,9 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(
             insert_pos,
-            "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
-                .to_string(),
+            super::class_default(
+                "#' @param .ptr Internal pointer (used by static methods, not for direct use).",
+            ),
         );
     }
     w.mark_class_doc_lines(&mut lines, parsed_impl);

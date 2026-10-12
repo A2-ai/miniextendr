@@ -7,6 +7,9 @@
 \description{
 R6 class with methods in two impl blocks.
 
+Its second impl block adds an active binding, a private method, a
+finalizer and a static method.
+
 The value a new object starts from by default.
 }
 \section{Active bindings}{

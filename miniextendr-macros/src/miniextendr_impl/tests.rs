@@ -2665,6 +2665,105 @@ fn r6_deep_clone_is_not_a_public_method() {
     assert_eq!(class.member_names, ["the R6 member `deep_clone`"]);
 }
 
+/// An impl block's doc comment is its `class_docs`, which the wrapper writer
+/// puts at the docs marker of the class's roxygen block with every other
+/// block's (#1776): documenting a second block is not defining the class.
+#[test]
+fn impl_docs_are_class_docs_in_every_class_system() {
+    let vctrs_attrs = || VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: None,
+    };
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let parse = |code: syn::ItemImpl| match system {
+            ClassSystem::Vctrs => parse_impl_vctrs(vctrs_attrs(), code),
+            _ => parse_impl(system, code),
+        };
+        let documented = parse(syn::parse_quote! {
+            /// More counter functions.
+            /// @concept counting
+            impl Counter {
+                pub fn origin() -> i32 { 0 }
+            }
+        });
+        assert!(documented.class_definitions().is_empty(), "{system:?}");
+        let generate = match system {
+            ClassSystem::Env => generate_env_class,
+            ClassSystem::R6 => generate_r6_class,
+            ClassSystem::S3 => generate_s3_class,
+            ClassSystem::S4 => generate_s4_class,
+            ClassSystem::S7 => generate_s7_class,
+            ClassSystem::Vctrs => generate_vctrs_class,
+        };
+        assert_eq!(
+            generate(&documented).class_docs,
+            [
+                "#' @description More counter functions.",
+                "#' @concept counting"
+            ],
+            "{system:?}"
+        );
+
+        // A vctrs constructor returns the vector payload.
+        let ctor: syn::ItemImpl = if system == ClassSystem::Vctrs {
+            syn::parse_quote! {
+                /// Counters.
+                /// @family counters
+                impl Counter {
+                    pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
+                }
+            }
+        } else {
+            syn::parse_quote! {
+                /// Counters.
+                /// @family counters
+                impl Counter {
+                    pub fn new() -> Self { unimplemented!() }
+                }
+            }
+        };
+        let class = generate(&parse(ctor));
+        assert_eq!(
+            class.class_docs,
+            ["#' @description Counters.", "#' @family counters"],
+            "{system:?}"
+        );
+        assert_eq!(
+            class
+                .head
+                .iter()
+                .filter(|l| *l == CLASS_DOCS_MARKER)
+                .count(),
+            1,
+            "{system:?}"
+        );
+        assert!(
+            class
+                .head
+                .iter()
+                .any(|l| l.starts_with(CLASS_DEFAULT_PREFIX) && l.contains("#' @title ")),
+            "{system:?}: {:#?}",
+            class.head
+        );
+        assert!(
+            class
+                .render()
+                .contains("#' @description Counters.\n#' @family counters\n"),
+            "{system:?}"
+        );
+    }
+}
+
 #[test]
 fn member_names_match_across_impl_blocks() {
     // Env, with a class override: the constructor binds `RCounter$new`, and so

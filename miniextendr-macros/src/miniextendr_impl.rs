@@ -3360,21 +3360,13 @@ impl ParsedImpl {
     }
 
     /// What this impl block has that only one block of a type may: the
-    /// constructor, the class documentation (any impl doc beyond the
-    /// [`CLASS_SETTING_TAGS`]) and S7 properties. The wrapper writer defines
-    /// the class from the block that has them (#1776).
+    /// constructor and S7 properties. The wrapper writer defines the class
+    /// from the block that has them (#1776); the impl docs of every block
+    /// merge into the class's roxygen block ([`ClassWrapper::class_docs`]).
     pub fn class_definitions(&self) -> Vec<&'static str> {
         let mut definitions = Vec::new();
         if self.constructor().is_some() {
             definitions.push("a constructor");
-        }
-        let settings_only = |tag: &String| {
-            CLASS_SETTING_TAGS
-                .iter()
-                .any(|setting| crate::roxygen::has_roxygen_tag(std::slice::from_ref(tag), setting))
-        };
-        if !self.doc_tags.iter().all(settings_only) {
-            definitions.push("a doc comment on the impl");
         }
         if self.class_system == ClassSystem::S7
             && self.included_methods().any(|m| {
@@ -4037,6 +4029,27 @@ pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
 /// which the wrapper writer replaces.
 pub(crate) const CLASS_DOC_LINES_MARKER: &str = ".__MX_CLASS_DOC_LINES__";
 
+/// The line of [`ClassWrapper::head`] where the class's roxygen block takes
+/// the [`ClassWrapper::class_docs`] of every impl block of the type, the
+/// defining block's first. Spelled the same as
+/// `miniextendr_api::registry::CLASS_DOCS_MARKER`.
+pub(crate) const CLASS_DOCS_MARKER: &str = ".__MX_CLASS_DOCS__";
+
+/// Opens a roxygen line of a class's roxygen block that a doc tag written on
+/// another impl block of the type replaces: a generated `@title`, `@name`,
+/// `@rdname`, `@export`, constructor `@param` or R6 `@field`. The wrapper
+/// writer drops the line when another block's [`ClassWrapper::class_docs`]
+/// have the tag (for `@param` / `@field`, for the same name), and otherwise
+/// keeps it without the prefix. Spelled the same as
+/// `miniextendr_api::registry::CLASS_DEFAULT_PREFIX`.
+pub(crate) const CLASS_DEFAULT_PREFIX: &str = ".__MX_CLASS_DEFAULT__";
+
+/// `line` as a generated default of the class's roxygen block
+/// ([`CLASS_DEFAULT_PREFIX`]).
+pub(crate) fn class_default(line: impl std::fmt::Display) -> String {
+    format!("{CLASS_DEFAULT_PREFIX}{line}")
+}
+
 /// One impl block's R wrapper, in the parts the wrapper writer merges per
 /// Rust type (#1776): the class is defined once, from the defining block's
 /// `head` and `tail`, and every block's `members` attach to it. See
@@ -4044,9 +4057,13 @@ pub(crate) const CLASS_DOC_LINES_MARKER: &str = ".__MX_CLASS_DOC_LINES__";
 #[derive(Debug, Default)]
 pub struct ClassWrapper {
     /// The class definition: the class's roxygen block, with the
+    /// [`CLASS_DOCS_MARKER`] line where the impl docs go and the
     /// [`CLASS_DOC_LINES_MARKER`] line where member-derived class docs go,
     /// the class object, the constructor and the class-level helpers.
     pub head: Vec<String>,
+    /// The block's own doc comment as roxygen lines (with the constructor's,
+    /// for S3 and vctrs, whose class block is the constructor's block).
+    pub class_docs: Vec<String>,
     /// Roxygen lines the block's members add to the class's roxygen block.
     pub class_doc_lines: Vec<String>,
     /// The block's methods and static methods.
@@ -4080,16 +4097,27 @@ impl ClassWrapper {
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
         for line in &self.head {
-            if line == CLASS_DOC_LINES_MARKER {
-                lines.extend(self.class_doc_lines.iter().cloned());
+            if line == CLASS_DOCS_MARKER {
+                lines.extend(self.class_docs.iter().cloned());
+            } else if line == CLASS_DOC_LINES_MARKER {
+                lines.extend(self.class_doc_lines.iter().map(|l| strip_class_default(l)));
             } else {
-                lines.push(line.clone());
+                lines.push(strip_class_default(line));
             }
         }
         lines.extend(self.members.iter().cloned());
         lines.extend(self.tail.iter().cloned());
         lines.join("\n")
     }
+}
+
+/// `line` without its [`CLASS_DEFAULT_PREFIX`], as the writer keeps a
+/// default that no other block replaces.
+#[cfg(test)]
+fn strip_class_default(line: &str) -> String {
+    line.strip_prefix(CLASS_DEFAULT_PREFIX)
+        .unwrap_or(line)
+        .to_string()
 }
 
 /// Generate R S3 method wrappers for `as.<class>()` coercion methods.
@@ -4902,6 +4930,7 @@ pub fn expand_impl(
         crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs));
     let r_part = |lines: &[String]| crate::r_wrapper_raw_literal(&lines.join("\n"), &formals);
     let head = r_part(&class.head);
+    let class_docs = r_part(&class.class_docs);
     let class_doc_lines = r_part(&class.class_doc_lines);
     let members = r_part(&class.members);
     let tail = r_part(&class.tail);
@@ -4963,6 +4992,7 @@ pub fn expand_impl(
                     settings: #settings,
                     defines: &[#(#defines),*],
                     head: #head,
+                    class_docs: #class_docs,
                     class_doc_lines: #class_doc_lines,
                     members: #members,
                     member_names: &[#(#member_names),*],

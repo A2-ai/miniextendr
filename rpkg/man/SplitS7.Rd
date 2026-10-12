@@ -31,6 +31,8 @@ SplitS7_origin()
 \description{
 S7 class with methods in two impl blocks.
 
+Its second impl block adds a generic and a static method.
+
 The current value.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}

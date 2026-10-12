@@ -1091,30 +1091,56 @@ c$doubled       # 14
 Counter$origin() # 0
 ```
 
-One block defines the class: it writes the class documentation, the class
-object (`new.env()`, `R6::R6Class()`, `methods::setClass()`,
-`S7::new_class()`), the constructor, and what the class options add (the
-`$` / `[[` field methods of `r_data_accessors`, R6's `$lock()`). Every block
-adds its methods, static methods and `as.<class>()` coercions, in source order.
-R6 private methods, `finalize` and `deep_clone` are `$set("private", ...)`
-calls, so any block can have them; an R6 active binding's `@field` and a
-lifecycle import of any block go to the class's roxygen block.
+One block defines the class: it writes the class object (`new.env()`,
+`R6::R6Class()`, `methods::setClass()`, `S7::new_class()`), the constructor,
+and what the class options add (the `$` / `[[` field methods of
+`r_data_accessors`, R6's `$lock()`). Every block adds its methods, static
+methods and `as.<class>()` coercions, in source order. R6 private methods,
+`finalize` and `deep_clone` are `$set("private", ...)` calls, so any block can
+have them; an R6 active binding's `@field` and a lifecycle import of any block
+go to the class's roxygen block.
 
-The blocks of a type follow three rules, checked when the wrapper writer
+Every block's doc comment documents the class. The class's roxygen block has
+the defining block's impl doc comment (for S3 and vctrs, with the
+constructor's), then each other block's, in source order:
+
+- Prose and the tags roxygen2 collects (`@description`, `@details`,
+  `@section`, `@seealso`, `@family`, `@importFrom`, ...) add up; each block's
+  prose becomes another `@description` paragraph. A tag repeated exactly, such
+  as one `@importFrom` or `@family` on two blocks, is written once. (`@return`,
+  `@examples` and `@export` belong on the methods, as for one block, and so
+  does `@param` outside R6.)
+- A generated line gives way to the same tag on another block: the
+  `@title <Class> <system> Class` default, `@name`, `@rdname`, `@export`, a
+  constructor `@param` filler and an R6 active binding's generated `@field`. So
+  when the defining block has no doc comment, another block can title the class.
+- A class has one title: two blocks with different `@title`s stop the install.
+- The defining block decides the class's page. A `@name` or `@rdname` on
+  another block must repeat the defining block's (its own, or the default
+  `<Class>`); a different one stops the install, because the defining block's
+  generated documentation was written for its page. Put page tags on the
+  defining block.
+
+Each method's doc comment documents that method, whichever block has it. An R6
+impl-level `@param`, which roxygen2 hands down to the class's methods, spares
+the methods of its own block their `(no documentation available)` placeholder;
+a method in another block documents the argument itself.
+
+The blocks of a type follow four rules, checked when the wrapper writer
 assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the
 install with an error naming the blocks:
 
-- **One block defines the class.** Only one block may have the constructor,
-  the class documentation (the impl's doc comment) and S7 properties (`s7(getter)`,
-  `s7(setter)`, `s7(validate)`). That block defines the class; without one, the
-  first block in source order does.
+- **One block defines the class.** Only one block may have the constructor and
+  S7 properties (`s7(getter)`, `s7(setter)`, `s7(validate)`). That block
+  defines the class; without one, the first block in source order does.
+- **The doc comments agree on the title and page**: one `@title` value, and a
+  `@name` / `@rdname` only as the defining block has it (see above).
 - **The blocks agree on the class settings**: the class system with its options
   (`r6(lock_class = TRUE)`, `s3(r_data_accessors)`, `vctrs(kind = ...)`, ...),
   `class = "..."`, `internal` / `noexport`, and the `@noRd` /
   `@keywords internal` tags. These decide how every block's methods are
-  generated, documented and exported, so each block spells them, and `@noRd` /
-  `@keywords internal` on a block that does not define the class are settings,
-  not class documentation. `strict` and `preconditions` are per-block method
+  generated, documented and exported, so each block spells them; the class
+  docs have them once. `strict` and `preconditions` are per-block method
   defaults and may differ.
 - **No two blocks bind one member**: an env or R6 member, an R6 static method,
   an S4 or S7 method of the class. Rust already rejects two methods of one name

@@ -9,7 +9,7 @@
 \alias{SplitEnv$origin}
 \alias{$.SplitEnv}
 \alias{[[.SplitEnv}
-\title{SplitEnv Class}
+\title{Env Class Split Over Two Impl Blocks}
 \usage{
 SplitEnv
 
@@ -23,7 +23,7 @@ SplitEnv
 \item{name}{Method name for dispatch.}
 }
 \description{
-Env class with methods in two impl blocks.
+Its second impl block documents the class and adds the arithmetic.
 
 Create an object holding \code{value}.
 
