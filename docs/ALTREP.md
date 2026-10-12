@@ -327,11 +327,57 @@ R inputs [#1427](https://github.com/A2-ai/miniextendr/issues/1427), and access t
 sidecar handles from ALTREP callbacks
 [#1880](https://github.com/A2-ai/miniextendr/issues/1880).
 
+## Sidecars in callbacks
+
+The ALTREP derives accept `#[r_data]` on `Sidecar<T>` fields. They use the
+same `TypedExternal` slot visitor and Rust handle accessors as `ExternalPtr`
+derive. The values live in the data1 owner's R protection list; the Rust
+struct contains no pointer back to its owner. Only Rust accessors are
+emitted: an ALTREP vector does not get R class field wrappers. `ref` and
+`mut` control the generated getter and setter as usual.
+
+Use `#[altrep(manual, no_lowlevel)]` when a callback needs those fields.
+The existing low-level `Altrep` / `Alt*` callbacks receive the ALTREP SEXP,
+so they can recover the handle explicitly:
+
+```rust,ignore
+#[derive(AltrepInteger)]
+#[altrep(manual, no_lowlevel)]
+struct SidecarVector {
+    #[r_data(ref)]
+    values: Sidecar<SEXP>,
+}
+
+impl AltInteger for SidecarVector {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        // An existing data2 cache takes precedence after materialization.
+        if let Some(cache) = unsafe { materialized_altrep_data2(x) } {
+            return i32::elt(cache, i);
+        }
+        let owner = unsafe { altrep_data1_as_unchecked::<Self>(x) }.unwrap();
+        i32::elt(Self::values(&owner), i)
+    }
+}
+```
+
+Implement `Altrep::length` and `AltVec` and invoke `impl_inferbase_integer!`
+as in `rpkg/src/rust/altrep_sidecar_tests.rs`, the complete example. Its
+`Dataptr` copies into data2 rather than giving R a writable pointer into the
+possibly shared sidecar value. Elt and length then use data2. Unspecified
+serialization and duplicate methods retain R's ordinary-vector fallbacks.
+The default `RUnwind` guard covers sidecar conversions and allocations.
+
+`AltrepLen` / `Alt*Data` still receive `&T`: use them for callbacks that need
+only Rust fields. A trait such as `Display` also receives only `&T` and
+cannot access an owner's sidecars without an explicit handle adapter;
+that trait-ABI work remains tracked in #1880.
+
 ## High-Level Data Traits
 
 ### Core Trait: `AltrepLen`
 
-Every ALTREP type must implement `AltrepLen`:
+Every type using the high-level bridge implements `AltrepLen`:
 
 ```rust
 impl AltrepLen for MyData {

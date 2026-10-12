@@ -5471,3 +5471,32 @@ pub fn gc_stress_protected_strvec() {
         drop(transient);
     }
 }
+
+/// ALTREP data1 roots a sidecar source; data2 writes detach from that source.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_sidecar() {
+    use crate::altrep_sidecar_tests::{SidecarVector, make_sidecar_altrep};
+    use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep};
+    use miniextendr_api::{RNativeType, TryFromSexp};
+    unsafe {
+        let values = OwnedProtect::new(vec![3_i32, 5, 8].into_sexp());
+        let x = OwnedProtect::new(make_sidecar_altrep(values.get()).into_sexp());
+        assert!(SidecarVector::dataptr_or_null(x.get()).is_null());
+        assert_eq!(SidecarVector::length(x.get()), 3);
+        let pointer = SidecarVector::dataptr(x.get(), true).cast::<i32>();
+        *pointer.add(1) = 99;
+        assert_eq!(SidecarVector::elt(x.get(), 1), 99);
+        assert_eq!(i32::elt(values.get(), 1), 5);
+        drop(x);
+        // This owner now provides the only root for its newly allocated source.
+        let x = OwnedProtect::new({
+            let values = OwnedProtect::new(vec![11_i32, 13, 17].into_sexp());
+            // Pop the source guard before protecting the returned ALTREP;
+            // no allocation occurs between returning it and PROTECT.
+            make_sidecar_altrep(values.get()).into_sexp()
+        });
+        miniextendr_api::sys::R_gc();
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [11, 13, 17]);
+    }
+}

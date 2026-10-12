@@ -566,12 +566,8 @@ fn derive_altrep_generic(
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits
@@ -910,12 +906,8 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits
@@ -958,6 +950,62 @@ mod duplicate_policy_tests {
             quote! { duplicate = "clone", duplicate = "shared" },
         ] {
             assert!(derive_altrep_integer(input(options)).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod sidecar_storage_tests {
+    use super::*;
+
+    #[test]
+    fn every_family_uses_handle_storage_without_r_field_wrappers() {
+        let derives = [
+            derive_altrep_integer,
+            derive_altrep_real,
+            derive_altrep_logical,
+            derive_altrep_raw,
+            derive_altrep_string,
+            derive_altrep_complex,
+            derive_altrep_list,
+        ];
+        for derive in derives {
+            let input = syn::parse_quote! {
+                #[altrep(manual, no_lowlevel, class = "VisibleVector")]
+                struct Owner {
+                    #[r_data(ref)]
+                    pub values: Sidecar<SEXP>,
+                    #[r_data(mut)]
+                    label: Sidecar<String>,
+                }
+            };
+            let output = derive(input).unwrap().to_string();
+            syn::parse2::<syn::File>(output.parse().unwrap()).unwrap();
+            assert!(output.contains("R_SLOT_COUNT : usize = 2usize"), "{output}");
+            assert!(output.contains("pub fn values (ptr :"), "{output}");
+            assert!(!output.contains("fn set_values"), "{output}");
+            assert!(output.contains("fn set_label (ptr :"), "{output}");
+            assert!(output.contains("CARGO_PKG_VERSION"), "{output}");
+            assert!(output.contains("str = \"VisibleVector\""), "{output}");
+            assert!(!output.contains("IntoExternalPtr"), "{output}");
+            assert!(!output.contains("__MxWrapper"), "{output}");
+            assert!(!output.contains("__MX_CALL_DEF_RDATA"), "{output}");
+        }
+    }
+
+    #[test]
+    fn altrep_rejects_unattached_sidecars_and_r_class_field_options() {
+        for field in [
+            quote! { values: Sidecar<SEXP> },
+            quote! { #[r_data] values: SEXP },
+            quote! { #[r_data] selector: RSidecar },
+            quote! { #[r_data(name = "x")] values: Sidecar<SEXP> },
+        ] {
+            let input = syn::parse_quote! {
+                #[altrep(manual, no_lowlevel)]
+                struct Owner { #field }
+            };
+            assert!(derive_altrep_integer(input).is_err());
         }
     }
 }
