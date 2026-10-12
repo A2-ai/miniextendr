@@ -213,3 +213,78 @@ test_that("scalar preflight requires length one but treats NA as borrowed storag
     expect_error(case$fn(case$x, case$x, case$x), "aliasing")
   }
 })
+
+test_that("tuple fields are checked against each other and other parameters (#2014)", {
+  v <- 1L
+  err <- tryCatch(alias_tuple_internal(list(v, v)), error = identity)
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "parameter `pair` contains duplicate elements", fixed = TRUE)
+  expect_identical(v, 1L)
+
+  v <- c(1L, 2L)
+  err <- tryCatch(alias_tuple_and_direct(list(v, "tag"), v), error = identity)
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "parameters `pair` and `other`", fixed = TRUE)
+  expect_identical(v, c(1L, 2L))
+
+  x <- 7L
+  expect_error(alias_tuple_pairs(list(x, "a"), list(x, "b")),
+               "parameters `left` and `right`", fixed = TRUE)
+  expect_error(alias_tuple_nested(list(list(1L, x), list(x))), "duplicate elements")
+  expect_error(alias_tuple_type_alias(list(x, x)), "duplicate elements")
+  expect_error(alias_tuple_list_field(list(list(x, x), 9L), 10L), "duplicate elements")
+  expect_error(alias_tuple_list_field(list(list(1L), x), x),
+               "parameters `pair` and `other`", fixed = TRUE)
+  expect_identical(x, 7L)
+
+  a <- 1L
+  b <- 5L
+  expect_identical(alias_tuple_internal(list(a, b)), 6L)
+  expect_identical(a, 6L)
+  expect_identical(alias_tuple_pairs(list(a, "x"), list(b, "y")), 5L)
+  expect_identical(alias_tuple_nested(list(list(1L, a), list(b))), 6L)
+  expect_identical(alias_tuple_type_alias(list(a, b)), 11L)
+  expect_identical(b, 5L)
+})
+
+test_that("owned, shared-only and differently typed tuple fields pass the guard", {
+  v <- 3L
+  expect_identical(alias_tuple_owned_mut(list(v, v)), 6L)
+  expect_identical(v, 6L)
+  w <- 4L
+  expect_identical(alias_tuple_shared(list(w, w)), 8L)
+  y <- 1L
+  r <- 2.5
+  expect_identical(alias_tuple_mixed_types(list(y, r, r)), 7)
+  expect_identical(y, 2L)
+  # A field of the wrong type keeps its conversion error.
+  err <- tryCatch(alias_tuple_mixed_types(list(y, y, r)), error = identity)
+  expect_s3_class(err, "error")
+  expect_false(grepl("aliasing", conditionMessage(err), fixed = TRUE))
+  expect_identical(y, 2L)
+  # A list of the wrong length keeps the tuple's length error.
+  err <- tryCatch(alias_tuple_internal(list(w, w, w)), error = identity)
+  expect_match(conditionMessage(err), "must be a list of length 2", fixed = TRUE)
+  expect_false(grepl("aliasing", conditionMessage(err), fixed = TRUE))
+})
+
+test_that("worker wrappers check tuple fields before dispatch", {
+  skip_if_not(miniextendr_has_feature("worker-thread") ||
+                miniextendr_has_feature("worker-default"), "worker feature not enabled")
+  x <- 2L
+  expect_error(alias_worker_tuple_internal(list(x, x)), "duplicate elements")
+  expect_identical(x, 2L)
+  a <- 1L
+  b <- 2L
+  expect_identical(alias_worker_tuple_internal(list(a, b)), 3L)
+  expect_identical(a, 3L)
+})
+
+test_that("tuple alias checks retain roots under gctorture", {
+  skip_gc_stress_if_disabled()
+  result <- tryCatch({
+    gctorture(TRUE)
+    miniextendr:::gc_stress_tuple_alias_guard()
+  }, finally = gctorture(FALSE))
+  expect_null(result)
+})

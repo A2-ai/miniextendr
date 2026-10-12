@@ -69,6 +69,7 @@ pub trait Coerce<R> {
 |------|----|-------|
 | `&[T]` | `Vec<R>` | Where `T: Copy + Coerce<R>` |
 | `Vec<T>` | `Vec<R>` | Where `T: Coerce<R>` |
+| `(A, B, ...)` | `(RA, RB, ...)` | Field by field, 1–12 fields, where each `A: Coerce<RA>` |
 
 ```rust
 let slice: &[i8] = &[1, 2, 3];

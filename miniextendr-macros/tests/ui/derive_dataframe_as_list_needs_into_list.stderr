@@ -10,11 +10,15 @@ help: the trait `IntoList` is not implemented for `Inner`
  7 | struct Inner {
    | ^^^^^^^^^^^^
    = help: the following other types implement trait `IntoList`:
-             BTreeMap<K, V>
-             BTreeSet<T>
-             HashMap<K, V>
-             HashSet<T>
-             Vec<T>
+             (A,)
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+             (A, B, C, D, E, F, G)
+             (A, B, C, D, E, F, G, H)
+           and $N others
 note: required by a bound in `miniextendr_api::list::into_list_column`
   --> $WORKSPACE/miniextendr-api/src/list.rs
    |
@@ -33,11 +37,15 @@ help: the trait `IntoList` is not implemented for `Dir`
 11 | enum Dir {
    | ^^^^^^^^
    = help: the following other types implement trait `IntoList`:
-             BTreeMap<K, V>
-             BTreeSet<T>
-             HashMap<K, V>
-             HashSet<T>
-             Vec<T>
+             (A,)
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+             (A, B, C, D, E, F, G)
+             (A, B, C, D, E, F, G, H)
+           and $N others
 note: required by a bound in `miniextendr_api::list::into_option_list_column`
   --> $WORKSPACE/miniextendr-api/src/list.rs
    |
@@ -56,11 +64,15 @@ help: the trait `IntoList` is not implemented for `Dir`
 11 | enum Dir {
    | ^^^^^^^^
    = help: the following other types implement trait `IntoList`:
-             BTreeMap<K, V>
-             BTreeSet<T>
-             HashMap<K, V>
-             HashSet<T>
-             Vec<T>
+             (A,)
+             (A, B)
+             (A, B, C)
+             (A, B, C, D)
+             (A, B, C, D, E)
+             (A, B, C, D, E, F)
+             (A, B, C, D, E, F, G)
+             (A, B, C, D, E, F, G, H)
+           and $N others
 note: required by a bound in `miniextendr_api::list::into_list_column`
   --> $WORKSPACE/miniextendr-api/src/list.rs
    |

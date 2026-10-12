@@ -258,6 +258,22 @@ pub fn demo_error_data_keyed(value: i32, code: i32) {
     );
 }
 
+/// Raise an error whose `pair` field is a tuple, an unnamed list in R.
+///
+/// Handlers read `e$pair[[1]]` / `e$pair[[2]]`.
+///
+/// @param value Integer stored as the pair's first element.
+/// @param label String stored as the pair's second element.
+/// @export
+#[miniextendr]
+pub fn demo_error_data_tuple(value: i32, label: String) {
+    miniextendr_api::error!(
+        class = "tuple_error",
+        data = { pair = (value, label) },
+        "tuple payload"
+    );
+}
+
 // endregion
 
 // region: NA-scalar regression pin (issue #1103)

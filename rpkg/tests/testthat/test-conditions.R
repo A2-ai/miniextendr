@@ -317,6 +317,11 @@ test_that("keyed builder sugar produces the same fields as a pair list", {
   expect_equal(class(e)[1], "keyed_error")
 })
 
+test_that("tuple field is an unnamed list (#2015)", {
+  e <- tryCatch(demo_error_data_tuple(3L, "x"), tuple_error = function(e) e)
+  expect_identical(e$pair, list(3L, "x"))
+})
+
 test_that("gc_stress_condition_data drives the richer payload path without error", {
   expect_null(miniextendr:::gc_stress_condition_data())
 })

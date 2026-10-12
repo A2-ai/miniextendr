@@ -204,6 +204,7 @@ tryCatch(
 | `Vec<String>` / `Vec<&str>` | `character(n)` |
 | `Option<T>` / `Vec<Option<T>>` for the scalar families above | typed `NA` |
 | `i64` / `u32` | integer when it fits; otherwise double |
+| `(A, B, ...)` tuples (1–12 fields) of these values | unnamed list, one element per field |
 | `RValue::Null` | `NULL` |
 | `RValue::Complex`, `RValue::Raw` | complex / raw vector |
 | `RValue::List` | recursively nested, optionally named list |

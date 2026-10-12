@@ -514,15 +514,16 @@ test_that("AdapterNamesR6 - renamed adapter methods keep their R names", {
 })
 
 test_that("RIterator size_hint is exposed as a positional list", {
+  # Bounds that fit in an R integer come back as integers.
   it <- IntVecIter$new(c(10L, 20L, 30L))
-  expect_equal(it$RIterator$size_hint(), list(3, 3))
+  expect_identical(it$RIterator$size_hint(), list(3L, 3L))
   expect_equal(it$RIterator$next_item(), 10L)
-  expect_equal(it$RIterator$size_hint(), list(2, 2))
+  expect_identical(it$RIterator$size_hint(), list(2L, 2L))
   expect_equal(it$RIterator$collect_n(10L), c(20L, 30L))
-  expect_equal(it$RIterator$size_hint(), list(0, 0))
+  expect_identical(it$RIterator$size_hint(), list(0L, 0L))
 
   xs <- IterableVec$new(c(1L, 2L))
   borrowed <- xs$RMakeIter$make_iter()
   class(borrowed) <- "IterableVecIter"
-  expect_equal(borrowed$RIterator$size_hint(), list(2, 2))
+  expect_identical(borrowed$RIterator$size_hint(), list(2L, 2L))
 })

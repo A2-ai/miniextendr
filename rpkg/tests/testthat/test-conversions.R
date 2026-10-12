@@ -962,6 +962,23 @@ test_that("tuple argument batches all element errors", {
   )
 })
 
+test_that("12-tuple argument round-trips the largest arity", {
+  wide <- list(1L, "two", TRUE, 4.5, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L)
+  expect_identical(conv_tuple12_roundtrip(wide), wide)
+  expect_error(
+    conv_tuple12_roundtrip(wide[-12]),
+    "'wide' must be a list of length 12: got length 11",
+    fixed = TRUE
+  )
+})
+
+test_that("tuple list traits keep positional semantics (#2015)", {
+  expect_identical(conv_tuple_list_traits(list(1L, "a")), list(2L, "a"))
+  # Names are ignored on the way in; the result is unnamed.
+  expect_identical(conv_tuple_list_traits(list(s = 1L, n = "a")), list(2L, "a"))
+  expect_error(conv_tuple_list_traits(list(1L)), "length")
+  expect_error(conv_tuple_list_traits(list("x", 2L)), "element 1.*element 2")
+})
 
 test_that("tuple containers keep positional rows and NULL values", {
   rows <- list(list(1L, "one"), NULL, list(3L, "three"))
@@ -971,14 +988,4 @@ test_that("tuple containers keep positional rows and NULL values", {
   expect_identical(miniextendr:::conv_tuple_option_roundtrip(list(1L, "one")), list(1L, "one"))
   expect_error(miniextendr:::conv_tuple_rows_roundtrip(list(list("bad", 2), NULL, list("bad", 2))),
                "elements 1, 3")
-})
-
-test_that("tuple borrows reject aliases before converting fields", {
-  x <- 7L
-  expect_error(miniextendr:::conv_tuple_borrow_pair(list(x, x)), "aliasing native arguments")
-  expect_identical(miniextendr:::conv_tuple_borrow_pair(list(7L, 8L)), 15L)
-  expect_error(miniextendr:::conv_tuple_borrow_cross(list(x, "tag"), x), "aliasing native arguments")
-  if (exists("conv_tuple_borrow_worker", envir = asNamespace("miniextendr"), inherits = FALSE)) {
-    expect_error(miniextendr:::conv_tuple_borrow_worker(list(x, x)), "aliasing native arguments")
-  }
 })
