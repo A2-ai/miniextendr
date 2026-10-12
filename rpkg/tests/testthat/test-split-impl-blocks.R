@@ -23,6 +23,19 @@ test_that("an R6 class keeps the members of both impl blocks", {
   expect_identical(SplitR6$origin(), 0L)
 })
 
+test_that("an R6 deep_clone from a second impl block runs on a deep clone", {
+  obj <- SplitR6Clone$new(1L)
+  deep <- obj$clone(deep = TRUE)
+  deep$set(5L)
+  # The handler gave the deep clone its own Rust value.
+  expect_identical(obj$value(), 1L)
+  expect_identical(deep$value(), 5L)
+  # A shallow clone shares the pointer: the handler did not run.
+  shallow <- obj$clone()
+  shallow$set(9L)
+  expect_identical(obj$value(), 9L)
+})
+
 test_that("an S3 class keeps the methods of both impl blocks", {
   obj <- SplitS3$new(5L)
   expect_s3_class(obj, "SplitS3")

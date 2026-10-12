@@ -3,7 +3,7 @@
 //! doc comment and the constructor, the second adds methods; the wrapper
 //! writer defines the class once and attaches the methods of both blocks.
 
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::{ExternalPtr, IntoR, SEXP, miniextendr};
 
 // region: env
 
@@ -100,6 +100,47 @@ impl SplitR6 {
     /// The value a new object starts from by default.
     pub fn origin() -> i32 {
         0
+    }
+}
+
+/// A cloneable R6 class whose `deep_clone` is in its second impl block.
+#[derive(ExternalPtr)]
+pub struct SplitR6Clone {
+    value: i32,
+}
+
+/// Cloneable R6 class with its deep-clone handler in a second impl block.
+#[miniextendr(r6(cloneable))]
+impl SplitR6Clone {
+    /// Create an object holding `value`.
+    /// @param value Starting value.
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+
+    /// The current value.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+
+    /// Replace the value.
+    /// @param value New value.
+    pub fn set(&mut self, value: i32) {
+        self.value = value;
+    }
+}
+
+#[miniextendr(r6(cloneable))]
+impl SplitR6Clone {
+    /// Give a deep clone its own Rust value; R6 calls this for every field,
+    /// the pointer included.
+    #[miniextendr(r6(deep_clone))]
+    pub fn clone_field(&self, name: &str, value: SEXP) -> SEXP {
+        if name == ".ptr" {
+            ExternalPtr::new(Self { value: self.value }).into_sexp()
+        } else {
+            value
+        }
     }
 }
 // endregion
