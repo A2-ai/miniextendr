@@ -1111,16 +1111,24 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
 }
 
 #[test]
-fn static_borrowed_vector_views_are_refused_at_their_lifetime() {
+fn static_borrowed_parameters_are_refused_at_their_lifetime() {
     let builder = RustConversionBuilder::new();
     for src in [
         "x: StrVec<'static>",
         "x: miniextendr_api::RCow<'static, f64>",
+        "x: Cow<'static, str>",
+        "x: Vec<Option<Cow<'static, str>>>",
+        "x: &'static [i32]",
+        "x: Option<&'static str>",
     ] {
         let code = conversion_text(&builder, src);
         assert!(code.contains("compile_error"), "{code}");
         assert!(code.contains("cannot be `'static`"), "{code}");
         assert!(!code.contains("try_from_root"), "{code}");
+    }
+    for src in ["x: Cow<'_, str>", "x: &'a [i32]", "x: Option<&str>"] {
+        let code = conversion_text(&builder, src);
+        assert!(!code.contains("compile_error"), "{code}");
     }
 }
 

@@ -353,33 +353,54 @@ pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
     }
 }
 
-/// A `'static` borrowed view parameter (`StrVec<'static>`, `RCow<'static, T>`)
-/// can never be bound: its root is the call's argument slot. Returns the
-/// statement that binds `ident` with a `compile_error!` naming the fix, spanned
-/// at the lifetime, in place of a borrow-checker error about a generated
-/// temporary. The binding keeps the code that uses `ident` free of follow-on
-/// errors; it does not diverge, so that code draws no unreachable warning.
+/// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
+/// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
+/// call's argument slot. Returns the statement that binds `ident` with a
+/// `compile_error!` naming the fix, spanned at the lifetime, in place of a
+/// borrow-checker error about a generated temporary. The binding keeps the code
+/// that uses `ident` free of follow-on errors; it does not diverge, so that
+/// code draws no unreachable warning.
 pub(crate) fn static_rooted_view_binding(
     ident: &syn::Ident,
     ty: &syn::Type,
 ) -> Option<proc_macro2::TokenStream> {
-    let syn::Type::Path(p) = ty else {
-        return None;
-    };
-    let syn::PathArguments::AngleBracketed(args) = &p.path.segments.last()?.arguments else {
-        return None;
-    };
-    let lifetime = args.args.iter().find_map(|arg| match arg {
-        syn::GenericArgument::Lifetime(lt) if lt.ident == "static" => Some(lt),
-        _ => None,
-    })?;
+    let lifetime = static_lifetime(ty)?;
     Some(quote::quote_spanned! {lifetime.span()=>
         ::core::compile_error!(
-            "a `StrVec` / `RCow` parameter borrows the call's argument and cannot be `'static`; \
-             write `'_`, or take `ProtectedStrVec` or an owned `Vec` to keep the data after the call"
+            "this parameter borrows the call's argument and cannot be `'static`; write `'_` or \
+             elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to \
+             keep the data after the call"
         );
         let #ident: #ty = ::core::option::Option::<#ty>::None.unwrap();
     })
+}
+
+/// The first `'static` lifetime written anywhere in `ty`.
+fn static_lifetime(ty: &syn::Type) -> Option<&syn::Lifetime> {
+    let is_static = |lt: &&syn::Lifetime| lt.ident == "static";
+    match ty {
+        syn::Type::Reference(r) => r
+            .lifetime
+            .as_ref()
+            .filter(is_static)
+            .or_else(|| static_lifetime(&r.elem)),
+        syn::Type::Path(p) => p.path.segments.iter().find_map(|seg| {
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|arg| match arg {
+                syn::GenericArgument::Lifetime(lt) => Some(lt).filter(is_static),
+                syn::GenericArgument::Type(ty) => static_lifetime(ty),
+                _ => None,
+            })
+        }),
+        syn::Type::Slice(s) => static_lifetime(&s.elem),
+        syn::Type::Array(a) => static_lifetime(&a.elem),
+        syn::Type::Paren(p) => static_lifetime(&p.elem),
+        syn::Type::Group(g) => static_lifetime(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().find_map(static_lifetime),
+        _ => None,
+    }
 }
 
 // endregion
