@@ -335,25 +335,10 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     .into_iter()
     .collect();
 
-    // Generate tag path string for hashing
-    // IMPORTANT: For cross-package trait dispatch, the tag must NOT include module_path!()
-    // Different packages defining the same trait signature should get the same tag.
-    // We use just the trait name - in practice, trait names + methods should be unique enough.
-    let mut tag_path = trait_name.to_string();
-    // A handle receiver changes a vtable field's calling convention. Keep
-    // independently compiled old/plain and new/owner declarations distinct.
-    if methods.iter().any(|method| method.owner_receiver.is_some()) {
-        tag_path.push_str("::owner_receivers/v1");
-        for method in &methods {
-            let shape = match method.owner_receiver {
-                Some(crate::trait_receiver::OwnerReceiver::Shared) => "owner-ref",
-                Some(crate::trait_receiver::OwnerReceiver::Mutable) => "owner-mut",
-                None if method.is_mut => "mut",
-                None => "ref",
-            };
-            tag_path.push_str(&format!("::{}:{shape}", method.name));
-        }
-    }
+    // Query must reject incompatible declarations before a View reads a slot.
+    // Package/module paths must not enter the tag: independently compiled
+    // declarations of the same interface need to agree across DLLs.
+    let tag_path = trait_abi_tag_path(trait_name, &methods);
 
     // Generate vtable fields
     let vtable_fields: Vec<_> = methods
@@ -626,6 +611,47 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 
         #tpie_macro
     }
+}
+
+/// Encode the exported interface, in vtable order, for `mx_tag_from_path`.
+///
+/// Types use syn's token rendering, not their source whitespace. This is a
+/// syntactic contract: the macro cannot resolve aliases or imported names.
+/// Length-prefix every component so custom R names cannot change its framing.
+fn trait_abi_tag_path(trait_name: &syn::Ident, methods: &[MethodInfo]) -> String {
+    fn push(out: &mut String, component: &str) {
+        use std::fmt::Write;
+        write!(out, "{}:{component}", component.len()).unwrap();
+    }
+
+    let mut tag = String::from("miniextendr::trait-abi/v2;");
+    push(&mut tag, &crate::naming::ident_name(trait_name));
+    push(&mut tag, &methods.len().to_string());
+    for method in methods {
+        let name = crate::naming::ident_name(&method.name);
+        push(&mut tag, &name);
+        push(&mut tag, method.r_name.as_deref().unwrap_or(&name));
+        push(
+            &mut tag,
+            match method.owner_receiver {
+                Some(crate::trait_receiver::OwnerReceiver::Shared) => "owner-ref",
+                Some(crate::trait_receiver::OwnerReceiver::Mutable) => "owner-mut",
+                None if method.is_mut => "mut",
+                None => "ref",
+            },
+        );
+        push(&mut tag, &method.param_types.len().to_string());
+        for ty in &method.param_types {
+            push(&mut tag, &quote::ToTokens::to_token_stream(ty).to_string());
+        }
+        let result = method
+            .return_type
+            .as_ref()
+            .map(|ty| quote::ToTokens::to_token_stream(ty).to_string())
+            .unwrap_or_else(|| "()".to_owned());
+        push(&mut tag, &result);
+    }
+    tag
 }
 
 /// Generate a method wrapper for the View struct.
