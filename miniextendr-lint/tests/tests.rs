@@ -61,13 +61,21 @@ fn mxl106_non_pub_fn_with_export_tag() {
     .unwrap();
 
     let report = run(dir.path()).expect("lint should succeed");
+    let mxl106 = report
+        .diagnostics
+        .iter()
+        .find(|d| format!("{}", d.code) == "MXL106")
+        .unwrap_or_else(|| {
+            panic!(
+                "expected MXL106 warning for non-pub fn with @export, got: {:?}",
+                report.diagnostics
+            )
+        });
+    // The tag is passed through to the R wrapper, so it does export (#2026).
     assert!(
-        report
-            .diagnostics
-            .iter()
-            .any(|d| format!("{}", d.code) == "MXL106"),
-        "expected MXL106 warning for non-pub fn with @export, got: {:?}",
-        report.diagnostics
+        mxl106.message.contains("still exports"),
+        "MXL106 should say the tag still exports the wrapper, got: {}",
+        mxl106.message
     );
 }
 

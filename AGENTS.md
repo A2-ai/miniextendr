@@ -268,7 +268,7 @@ Modify in order:
 Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). Disable with `MINIEXTENDR_LINT=0`.
 
 - **MXL008**: trait-impl class-system compat with inherent impl
-- **MXL106**: non-`pub` function that would get `@export` → make `pub` or add `#[miniextendr(noexport)]`
+- **MXL106**: non-`pub` function with a hand-written `/// @export` (the tag still exports it) → make it `pub` or drop the tag
 - **MXL110**: parameter name is an R reserved word → codegen will break
 - **MXL111**: `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends, you'll get `s4_s4_*`
 - **MXL203**: redundant `internal` + `noexport`
