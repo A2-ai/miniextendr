@@ -11,11 +11,8 @@
 //! is a fresh item namespace every expansion — and this compiles without any
 //! per-block disambiguator.
 //!
-//! (Two *unlabeled* inherent impl blocks on one type is not a valid
-//! reproduction: they also collide on `R_WRAPPERS_IMPL_<TYPE>`, which is
-//! unrelated to the tag-const bug. Two *labeled* inherent blocks compile
-//! since #1242 — see `impl_labeled_blocks_class_name_no_collision.rs`.
-//! Inherent + trait is the real-world case exercised here.)
+//! Inherent + trait is the case exercised here; several inherent blocks of one
+//! type are covered by `impl_blocks_merged_per_type.rs`.
 
 #![allow(dead_code)]
 

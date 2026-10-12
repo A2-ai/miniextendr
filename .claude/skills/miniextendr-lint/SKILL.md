@@ -70,16 +70,6 @@ corresponding inherent impl. Triggers when the class-system configuration
 conflicts with the method signatures or receiver types on the inherent impl.
 Fix: align the trait-ABI configuration with the inherent impl structure.
 
-**MXL009** — Multiple impl blocks without distinct labels.
-When a type has more than one `#[miniextendr]` impl block, each must carry a
-`label = "..."` attribute to disambiguate R class names. Without labels the
-codegen produces duplicate identifiers.
-Fix: add `#[miniextendr(label = "my_label")]` to each impl block.
-
-**MXL010** — Duplicate labels on impl blocks.
-Two impl blocks on the same type share the same `label = "..."` value.
-Fix: assign unique labels to each block.
-
 ### Export and visibility rules
 
 **MXL106** — Non-`pub` function that would receive `@export`.
@@ -198,7 +188,7 @@ exploration escape hatch only; committed code must be clean.
 - `miniextendr-lint/src/rules.rs` — rule dispatcher
 - `miniextendr-lint/src/rules/rf_error.rs` — MXL300
 - `miniextendr-lint/src/rules/ffi_unchecked.rs` — MXL301
-- `miniextendr-lint/src/rules/impl_validation.rs` — MXL008 / MXL009 / MXL010
+- `miniextendr-lint/src/rules/impl_validation.rs` — MXL008
 - `miniextendr-lint/src/rules/fn_visibility.rs` — MXL106
 - `miniextendr-lint/src/rules/r_reserved_params.rs` — MXL110
 - `miniextendr-lint/src/rules/s4_method_prefix.rs` — MXL111

@@ -23,7 +23,7 @@ use crate::diagnostic::Diagnostic;
 pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
-    // Per-file impl validation (MXL008, MXL009, MXL010)
+    // Per-file impl validation (MXL008)
     impl_validation::check(index, &mut diagnostics);
 
     // Per-file: function visibility (MXL106)

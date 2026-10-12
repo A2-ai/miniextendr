@@ -275,7 +275,6 @@ test-rpkg *cargo_flags:
 # Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
 # Lint output appears as cargo warnings. Errors indicate:
-# - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 lint:

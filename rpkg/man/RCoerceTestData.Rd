@@ -30,8 +30,6 @@ new_rcoercetestdata(names, values)
 
 \method{as_integer}{RCoerceTestData}(x, ...)
 
-RCoerceTestData
-
 \method{as.data.frame}{RCoerceTestData}(x, ...)
 
 \method{as.list}{RCoerceTestData}(x, ...)
@@ -41,6 +39,8 @@ RCoerceTestData
 \method{as.double}{RCoerceTestData}(x, ...)
 
 \method{as.integer}{RCoerceTestData}(x, ...)
+
+RCoerceTestData
 }
 \arguments{
 \item{names}{Character vector of names.}

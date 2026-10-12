@@ -29,14 +29,16 @@ impl widget {
 #[derive(ExternalPtr)]
 pub struct Split;
 
-// Case-distinct labels on one type need separate wrapper entries too.
-#[miniextendr(env, label = "ops")]
+// Case-distinct methods in two impl blocks of one type need separate C
+// wrappers too.
+#[miniextendr(env)]
 impl Split {
-    pub fn first(&self) -> i32 { 1 }
+    pub fn value(&self) -> i32 { 1 }
 }
-#[miniextendr(env, label = "Ops")]
+#[miniextendr(env)]
 impl Split {
-    pub fn second(&self) -> i32 { 2 }
+    #[allow(non_snake_case)]
+    pub fn Value(&self) -> i32 { 2 }
 }
 
 // rpkg's vctrs_derive_example.rs covers case-distinct Vctrs types: this

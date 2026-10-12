@@ -107,13 +107,12 @@ pub enum LintKind {
 pub struct LintItem {
     pub kind: LintKind,
     pub name: String,
-    pub label: Option<String>,
     pub line: usize,
 }
 
 impl PartialEq for LintItem {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.name == other.name && self.label == other.label
+        self.kind == other.kind && self.name == other.name
     }
 }
 
@@ -123,27 +122,12 @@ impl std::hash::Hash for LintItem {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.name.hash(state);
-        self.label.hash(state);
     }
 }
 
 impl LintItem {
     pub fn new(kind: LintKind, name: String, line: usize) -> Self {
-        Self {
-            kind,
-            name,
-            label: None,
-            line,
-        }
-    }
-
-    pub fn with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self {
-        Self {
-            kind,
-            name,
-            label,
-            line,
-        }
+        Self { kind, name, line }
     }
 }
 // endregion
@@ -173,7 +157,6 @@ pub struct FileData {
     // Impl block details
     pub inherent_impl_class_systems: HashMap<String, (String, usize)>,
     pub attributed_trait_impls: Vec<AttributedTraitImpl>,
-    pub impl_blocks_per_type: HashMap<String, Vec<(Option<String>, usize)>>,
 
     // Function details
     pub fn_visibility: HashMap<String, bool>,
@@ -708,14 +691,9 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     impl_attrs.class_system.clone().unwrap_or_default();
                                 data.inherent_impl_class_systems
                                     .insert(type_name.clone(), (class_system.clone(), line));
-                                data.impl_blocks_per_type
-                                    .entry(type_name.clone())
-                                    .or_default()
-                                    .push((impl_attrs.label.clone(), line));
-                                data.miniextendr_items.push(LintItem::with_label(
+                                data.miniextendr_items.push(LintItem::new(
                                     LintKind::Impl,
                                     type_name.clone(),
-                                    impl_attrs.label.clone(),
                                     line,
                                 ));
 

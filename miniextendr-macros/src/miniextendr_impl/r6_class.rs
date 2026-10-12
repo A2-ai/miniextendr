@@ -37,10 +37,11 @@
 //! ```
 //!
 //! `initialize` stays inline (R6Class needs a well-formed core; its `$new` doc
-//! stays on the class page). Private methods, `finalize`, `deep_clone`, and the
-//! `.ptr` field stay inline in the `private` list. The `$set` calls are part of
-//! the same wrapper fragment string as the class definition, so their ordering
-//! after the class is inherent.
+//! stays on the class page), and so does the `.ptr` field in the `private`
+//! list. Private methods, `finalize` and `deep_clone` are
+//! `$set("private", ...)` blocks without roxygen, so that every impl block of a
+//! type adds its own (#1776). The wrapper writer emits every block's `$set`
+//! calls after the class definition.
 //!
 //! Because R6's `$set()` refuses to modify a locked class, the generator always
 //! creates the class with `lock_class = FALSE` and, when the user asked for
@@ -141,7 +142,9 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
     }
 
     if method.method_attrs.noexport || method.method_attrs.internal {
-        return vec![format!("#' @field {prop_name} (internal)")];
+        return vec![super::class_default(format!(
+            "#' @field {prop_name} (internal)"
+        ))];
     }
 
     let description = method.doc_tags.iter().find_map(|tag| {
@@ -151,12 +154,16 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
             .or_else(|| tag.strip_prefix("@title "))
     });
     let Some(description) = description else {
-        return vec![format!("#' @field {prop_name} Active binding.")];
+        return vec![super::class_default(format!(
+            "#' @field {prop_name} Active binding."
+        ))];
     };
 
     let mut description_lines = description.lines();
     let first = description_lines.next().unwrap_or("Active binding.");
-    let mut lines = vec![format!("#' @field {prop_name} {first}")];
+    let mut lines = vec![super::class_default(format!(
+        "#' @field {prop_name} {first}"
+    ))];
     lines.extend(description_lines.map(crate::roxygen::roxygen_line));
     lines
 }
@@ -167,7 +174,8 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
 /// `(no documentation available)` (parent not found or not in-package).
 pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
 
-/// Generates the complete R wrapper string for an R6-style class.
+/// Generates the R wrapper of an R6-style class, in the parts the wrapper
+/// writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces an `R6::R6Class(...)` core definition followed by per-method
 /// `$set()` blocks (see the module docs for the full `$set`-form shape, #369):
@@ -175,45 +183,40 @@ pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
 ///   or accepts a pre-made `.ptr` when static methods return `Self` (factory pattern)
 /// - Public methods: one `ClassName$set("public", "name", function(...) {...})`
 ///   block per `&self`/`&mut self` instance method, each with its own roxygen
-/// - Private methods (inline in `private`): methods marked with `#[miniextendr(private)]`
+/// - Private methods: one `ClassName$set("private", "name", function(...) {...})`
+///   block per method marked with `#[miniextendr(private)]`
 /// - Active bindings: one `ClassName$set("active", "name", function(...) {...})`
 ///   block per getter/setter property (`#[miniextendr(r6(prop = "..."))]`)
-/// - Private `.ptr` field: holds the `ExternalPtr` to the Rust struct
-/// - Finalizer (inline in `private`): optional destructor called when the R6 object is garbage-collected
-/// - Deep clone (inline in `private`): optional custom clone logic via `#[miniextendr(r6(deep_clone))]`
+/// - Private `.ptr` field (inline in `private`): holds the `ExternalPtr` to the Rust struct
+/// - Finalizer (`$set("private", "finalize", ...)`): optional destructor called when the
+///   R6 object is garbage-collected
+/// - Deep clone (`$set("private", "deep_clone", ...)`): optional custom clone logic via
+///   `#[miniextendr(r6(deep_clone))]`
 /// - Static methods: emitted as `ClassName$method_name <- function(...)` outside the class
 /// - Class options: `lock_objects`, `lock_class`, `cloneable`, `portable`, `inherit`
 ///
 /// Also generates roxygen2 documentation blocks for the class, its methods,
 /// and active bindings.
-pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The `R6Class()` core is the head; the `$set()` blocks and the static
+/// methods are the members; the sidecar active bindings and `$lock()` are the
+/// tail, after every block's `$set()`.
+pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
 
     // Start R6Class definition with documentation
-    lines.extend(
-        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
-            .with_imports("@importFrom R6 R6Class")
-            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
-            .build(),
-    );
-    // Inject lifecycle imports from methods into class-level roxygen block
-    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl
-            .methods
-            .iter()
-            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-    ) {
-        // Insert before @export (which is last)
-        let insert_pos = lines.len().saturating_sub(1);
-        lines.insert(insert_pos, format!("#' {}", lc_import));
-    }
-
+    let class_docs = ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
+        .with_imports("@importFrom R6 R6Class")
+        .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    lines.extend(class_docs.build());
+    w.class_docs = class_docs.docs();
     // Every R6 ExternalPtr class accepts .ptr so write-time cross-class return
     // wrapping can land in the target constructor.
     if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
@@ -221,10 +224,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let insert_pos = lines.len().saturating_sub(1);
         lines.insert(
             insert_pos,
-            "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
-                .to_string(),
+            super::class_default(
+                "#' @param .ptr Internal pointer (used by static methods, not for direct use).",
+            ),
         );
     }
+    w.mark_class_doc_lines(&mut lines, parsed_impl);
 
     // Active bindings are documented on the class block. roxygen2 8.0 parses
     // every dynamic `$set()` target as a method, even for `$set("active", ...)`;
@@ -232,15 +237,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // matching R6 method. Class-level fields are resolved against the runtime
     // R6 class and retain the same rendered Active bindings section.
     let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
-    let active_field_lines: Vec<_> = active_method_contexts
-        .iter()
-        .flat_map(|ctx| active_binding_field_lines(ctx.method, class_doc_tags))
-        .collect();
-    let active_field_insert = lines
-        .iter()
-        .position(|line| line == "#' @export")
-        .unwrap_or(lines.len());
-    lines.splice(active_field_insert..active_field_insert, active_field_lines);
+    w.class_doc_lines.extend(
+        active_method_contexts
+            .iter()
+            .flat_map(|ctx| active_binding_field_lines(ctx.method, class_doc_tags)),
+    );
 
     // R6Class definition — optionally include inherit.
     // Use a placeholder so the resolver can look up the actual R class name
@@ -376,69 +377,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.push("  ),".to_string());
 
-    // Private list - includes .ptr and any private methods
+    // Private list: the `.ptr` field. The private methods, `finalize` and
+    // `deep_clone` are `$set("private", ...)` members below.
     lines.push("  private = list(".to_string());
-
-    // Private instance methods
-    for ctx in parsed_impl.private_instance_method_contexts() {
-        lines.push(format!("    {}", ctx.source_comment(type_ident)));
-        // A list element name is an R symbol: quote operator names (#1475).
-        lines.push(format!(
-            "    {} = function({}) {{",
-            crate::naming::r_def_name(&ctx.method.r_method_name()),
-            ctx.params
-        ));
-
-        // The same prelude as a public method, so a private one keeps its
-        // lifecycle notice and its argument checks.
-        let what = format!("{}${}", class_name, ctx.method.r_method_name());
-        ctx.emit_method_prelude(&mut lines, "      ", &what);
-
-        let call = ctx.instance_call("private$.ptr");
-        let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
-            .with_strategy(strategy)
-            .with_invisible(ctx.method.is_invisible())
-            .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method, &type_ident.to_string())
-            .with_indent(6);
-        lines.extend(return_builder.build_r6_body());
-
-        lines.push("    },".to_string());
-    }
-
-    // Finalizer (if any)
-    if let Some(finalizer) = parsed_impl.finalizer() {
-        let c_ident = finalizer
-            .c_wrapper_ident(type_ident, parsed_impl.label())
-            .to_string();
-        let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
-            .null_call_attribution()
-            .with_self("private$.ptr")
-            .build();
-        lines.push(format!("    finalize = function() {finalize_call},"));
-    }
-
-    // deep_clone (if any method marked with #[miniextendr(r6(deep_clone))])
-    if let Some(dc_method) = parsed_impl
-        .methods
-        .iter()
-        .find(|m| m.method_attrs.r6.deep_clone && m.should_include())
-    {
-        let c_ident = dc_method
-            .c_wrapper_ident(type_ident, parsed_impl.label())
-            .to_string();
-        let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
-            .null_call_attribution()
-            .with_self("private$.ptr")
-            .with_args(&["name", "value"])
-            .build();
-        lines.push(format!(
-            "    deep_clone = function(name, value) {deep_clone_call},"
-        ));
-    }
-
-    // .ptr field (always last, no trailing comma)
     lines.push("    .ptr = NULL".to_string());
     lines.push("  ),".to_string());
 
@@ -464,6 +405,73 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if cloneable { "TRUE" } else { "FALSE" }
     ));
     lines.push(")".to_string());
+    w.head = std::mem::take(&mut lines);
+
+    // Private members — the private methods, `finalize` and `deep_clone` —
+    // one `$set("private", ...)` block each, so every impl block of the type
+    // adds its own to the class (#1776). No roxygen block: roxygen2 documents
+    // public members only.
+    for ctx in parsed_impl.private_instance_method_contexts() {
+        let r_name = ctx.method.r_method_name();
+        w.member_names.push(format!("the R6 member `{r_name}`"));
+        lines.push(String::new());
+        lines.push(ctx.source_comment(type_ident));
+        lines.push(format!(
+            "{}$set(\"private\", \"{}\", function({}) {{",
+            class_name, r_name, ctx.params
+        ));
+
+        // The same prelude as a public method, so a private one keeps its
+        // lifecycle notice and its argument checks.
+        let what = format!("{}${}", class_name, r_name);
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
+
+        let call = ctx.instance_call("private$.ptr");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method, &type_ident.to_string())
+            .with_indent(2); // top-level `$set` closure body indents 2 spaces
+        lines.extend(return_builder.build_r6_body());
+
+        lines.push("})".to_string());
+    }
+
+    // Finalizer (if any)
+    if let Some(finalizer) = parsed_impl.finalizer() {
+        w.member_names.push("the R6 member `finalize`".to_string());
+        let c_ident = finalizer.c_wrapper_ident(type_ident).to_string();
+        let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
+            .with_self("private$.ptr")
+            .build();
+        lines.push(String::new());
+        lines.push(format!(
+            "{class_name}$set(\"private\", \"finalize\", function() {finalize_call})"
+        ));
+    }
+
+    // deep_clone (if any method marked with #[miniextendr(r6(deep_clone))])
+    if let Some(dc_method) = parsed_impl
+        .methods
+        .iter()
+        .find(|m| m.method_attrs.r6.deep_clone && m.should_include())
+    {
+        w.member_names
+            .push("the R6 member `deep_clone`".to_string());
+        let c_ident = dc_method.c_wrapper_ident(type_ident).to_string();
+        let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
+            .null_call_attribution()
+            .with_self("private$.ptr")
+            .with_args(&["name", "value"])
+            .build();
+        lines.push(String::new());
+        lines.push(format!(
+            "{class_name}$set(\"private\", \"deep_clone\", function(name, value) {deep_clone_call})"
+        ));
+    }
 
     // Public instance methods — one `$set("public", ...)` block each, so roxygen2
     // 8.0.0 documents every method from the block directly above its `$set` call
@@ -476,6 +484,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Add roxygen documentation for this method.
         // Note: @title is replaced with @description for R6 method docs (roxygen requirement)
         let r_name = ctx.method.r_method_name();
+        w.member_names.push(format!("the R6 member `{r_name}`"));
         let has_description = ctx
             .method
             .doc_tags
@@ -571,6 +580,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .prop
             .clone()
             .unwrap_or_else(|| ctx.method.r_method_name());
+        w.member_names.push(format!("the R6 member `{prop_name}`"));
 
         // Check if there's a matching setter for this property
         let setter = parsed_impl.find_setter_for_prop(&prop_name);
@@ -610,9 +620,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // transported Rust condition (the bare `.Call()` used to
             // discard the tagged condition value, silently dropping the
             // assignment error).
-            let setter_c_ident = setter_method
-                .c_wrapper_ident(type_ident, parsed_impl.label.as_deref())
-                .to_string();
+            let setter_c_ident = setter_method.c_wrapper_ident(type_ident).to_string();
             let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&setter_c_ident)
                 .with_self("private$.ptr")
                 .with_args(&["value"])
@@ -658,15 +666,6 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
-    if parsed_impl.r_data_accessors.enabled() {
-        let type_name = type_ident.to_string();
-        lines.push(format!(
-            ".rdata_active_bindings_{}({})",
-            type_name, class_name
-        ));
-    }
-
     // Check if class has @noRd. A plain `noexport` (without `internal`) is folded
     // in here too — it must suppress Rd contribution entirely, matching
     // `ClassDocBuilder::build`'s `suppress_rd` gate (see r_class_formatter.rs).
@@ -676,6 +675,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as separate functions on the class object
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.r_method_name();
+        w.member_names.push(format!("`{class_name}${method_name}`"));
         // `$` takes an R symbol: quote operator names (#1475).
         let static_method_name =
             format!("{}${}", class_name, crate::naming::r_def_name(&method_name));
@@ -706,16 +706,34 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push("}".to_string());
     }
+    w.members = std::mem::take(&mut lines);
+
+    // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
+    if parsed_impl.r_data_accessors.enabled() {
+        let type_name = type_ident.to_string();
+        lines.push(format!(
+            ".rdata_active_bindings_{}({})",
+            type_name, class_name
+        ));
+    }
 
     // Re-apply the requested `lock_class = TRUE` now that every `$set()` block —
     // public methods, active bindings, and (above) any sidecar accessors — has
-    // run. The class was created with `lock_class = FALSE` (see the class-options
-    // block) precisely so those `$set` calls would succeed; `$lock()` restores
-    // the locked semantics. Emitted last so nothing further can `$set` it.
+    // run, in every impl block of the type. The class was created with
+    // `lock_class = FALSE` (see the class-options block) precisely so those
+    // `$set` calls would succeed; `$lock()` restores the locked semantics.
+    // Emitted last so nothing further can `$set` it.
     if lock_class {
         lines.push(String::new());
         lines.push(format!("{}$lock()", class_name));
     }
 
-    lines.join("\n")
+    w.tail = lines;
+    w
+}
+
+/// The R6 class as one string: [`generate_r6_class`], rendered.
+#[cfg(test)]
+pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_r6_class(parsed_impl).render()
 }

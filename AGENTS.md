@@ -240,6 +240,7 @@ Never commit it or any other build artifact: CI's Generated Files Check (`just c
 - **typed_list!**: `#[miniextendr(dots = typed_list!(...))]` validates and creates `dots_typed`
 - **`impl Trait`**: return position only (`-> impl IntoR`). Argument position fails type inference (E0283 across `let` bindings for `TryFromSexp + Trait`).
 - **S4 helpers**: `slot()`/`slot<-()` live in `methods` — resolve via `getNamespace("methods")`, not `R_BaseEnv`.
+- **Several impl blocks per type (#1776)**: each `#[miniextendr]` impl block registers its R wrapper in parts (`ClassBlockEntry` in `MX_CLASS_BLOCKS`, inside an anonymous `const _`), and `registry::merge_class_blocks` merges the blocks of a type (keyed by `core::any::type_name`) into one class at write time: the defining block (constructor, S7 properties) gives the class definition, every block its members, and every block's impl docs (`class_docs`) the class's roxygen block, the defining block's first: exact duplicate tags collapse, a generated `CLASS_DEFAULT_PREFIX` line (`@title`, `@name`, `@rdname`, `@export`, ctor `@param`, R6 `@field`) gives way to the same tag on another block, and two `@title`s or a page tag differing from the defining block's are errors. Blocks must agree on the class settings (`ParsedImpl::class_settings`) and bind no member twice. There is no `label`.
 
 ### FFI thread checking (`#[r_ffi_checked]`)
 
@@ -267,8 +268,6 @@ Modify in order:
 Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). Disable with `MINIEXTENDR_LINT=0`.
 
 - **MXL008**: trait-impl class-system compat with inherent impl
-- **MXL009**: multiple impl blocks missing distinct labels → add `#[miniextendr(label = "...")]`
-- **MXL010**: duplicate labels
 - **MXL106**: non-`pub` function that would get `@export` → make `pub` or add `#[miniextendr(noexport)]`
 - **MXL110**: parameter name is an R reserved word → codegen will break
 - **MXL111**: `s4_*` method name on `#[miniextendr(s4)]` impl — codegen auto-prepends, you'll get `s4_s4_*`

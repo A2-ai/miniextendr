@@ -1,5 +1,0 @@
-error: expected string literal
- --> tests/ui/impl_label_invalid_type.rs:7:23
-  |
-7 | #[miniextendr(label = constructors)]
-  |                       ^^^^^^^^^^^^

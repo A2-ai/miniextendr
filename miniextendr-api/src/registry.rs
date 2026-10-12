@@ -19,8 +19,8 @@ use std::os::raw::c_void;
 // slices (MX_CALL_DEFS / MX_ALTREP_REGISTRATIONS / MX_TRAIT_DISPATCH) but
 // back them with a `OnceLock` populated from the user crate's
 // `wasm_registry.rs` snapshot at `R_init_*` time (see
-// `install_wasm_runtime_slices` below). The five host-only slices
-// (MX_R_WRAPPERS, MX_MATCH_ARG_*, MX_CLASS_NAMES, MX_S7_SIDECAR_PROPS) are
+// `install_wasm_runtime_slices` below). The host-only slices (MX_R_WRAPPERS,
+// MX_MATCH_ARG_*, MX_CLASS_NAMES, MX_CLASS_BLOCKS, MX_S7_SIDECAR_PROPS, ...) are
 // only consumed by the wrapper-gen pass — that pass is itself
 // native-only, so the slices, their consumers, and the `wasm_registry_writer`
 // module are all `cfg(not(target_arch = "wasm32"))`-gated.
@@ -92,6 +92,16 @@ pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_CLASS_NAMES: [ClassNameEntry];
+
+/// The R class parts of every `#[miniextendr(env|r6|s3|s4|s7|vctrs)]` impl
+/// block. **Host-only.**
+///
+/// [`collect_r_wrappers`] merges the blocks of each Rust type into one class
+/// fragment: the class is defined once and every block's members attach to it
+/// (#1776).
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_CLASS_BLOCKS: [ClassBlockEntry];
 
 /// S7 sidecar property documentation entries. **Host-only.**
 ///
@@ -359,13 +369,99 @@ pub struct ClassNameEntry {
     /// `#[r_data]` fields (`s3(r_data_accessors)`, `s4(...)`, `env(...)`).
     /// The type's standalone `Type_get_f()` / `Type_set_f()` are then
     /// written without an export or a page ([`SidecarAccessorsEntry`],
-    /// #1900). Labeled impl blocks of one type may differ here: one that
-    /// opts in is enough.
+    /// #1900).
     pub field_syntax: bool,
 }
 
 // SAFETY: &'static str fields and a bool — immutable and valid for program lifetime.
 unsafe impl Sync for ClassNameEntry {}
+
+/// The line of [`ClassBlockEntry::head`] where the class's roxygen block
+/// takes the [`ClassBlockEntry::class_doc_lines`] of every impl block of the
+/// type. Spelled the same as `miniextendr_macros`'s `CLASS_DOC_LINES_MARKER`.
+pub const CLASS_DOC_LINES_MARKER: &str = ".__MX_CLASS_DOC_LINES__";
+
+/// The line of [`ClassBlockEntry::head`] where the class's roxygen block
+/// takes the [`ClassBlockEntry::class_docs`] of every impl block of the
+/// type, the defining block's first. Spelled the same as
+/// `miniextendr_macros`'s `CLASS_DOCS_MARKER`.
+pub const CLASS_DOCS_MARKER: &str = ".__MX_CLASS_DOCS__";
+
+/// Opens a generated line of a class's roxygen block, in
+/// [`ClassBlockEntry::head`] or [`ClassBlockEntry::class_doc_lines`], that a
+/// doc tag on another impl block of the type replaces: `@title`, `@name`,
+/// `@rdname`, `@export`, a constructor's `@param` or an R6 `@field`. The
+/// writer drops the line when another block's
+/// [`class_docs`](ClassBlockEntry::class_docs) have the tag (for `@param` and
+/// `@field`, for the same name), and otherwise writes it without the prefix.
+/// Spelled the same as `miniextendr_macros`'s `CLASS_DEFAULT_PREFIX`.
+pub const CLASS_DEFAULT_PREFIX: &str = ".__MX_CLASS_DEFAULT__";
+
+/// One `#[miniextendr]` impl block's share of its Rust type's R class (#1776).
+///
+/// A type's methods may be split over several impl blocks. Each block
+/// registers its R wrapper in parts, and [`collect_r_wrappers`] writes one
+/// class per type: the defining block's [`head`](Self::head), every block's
+/// [`members`](Self::members) in source order, then the defining block's
+/// [`tail`](Self::tail). The defining block is the one with a
+/// [`defines`](Self::defines) entry (at most one block may have any), else
+/// the first in source order. The class's roxygen block has the
+/// [`class_docs`](Self::class_docs) of every block, the defining block's
+/// first. Every part is R source, framed by the newline the macro's raw
+/// string literal adds at each end.
+pub struct ClassBlockEntry {
+    /// Rust type identifier as written in the impl, e.g. `"Counter"`.
+    pub rust_type: &'static str,
+    /// The type's `core::any::type_name`, which tells apart two types that
+    /// share an identifier. The blocks of one type are merged by it.
+    pub type_path: fn() -> &'static str,
+    /// R-visible class name (`class = "..."`, else the type's identifier).
+    pub r_class_name: &'static str,
+    /// Source file of the impl block (`file!()`).
+    pub source_file: &'static str,
+    /// Line of the impl's type in `source_file`.
+    pub source_line: u32,
+    /// Column of the impl's type, for the `# Generated from` header.
+    pub source_column: u32,
+    /// The class-level settings, rendered: class system and its options,
+    /// `class = "..."`, `internal` / `noexport`, and the `@noRd` /
+    /// `@keywords internal` tags. They shape every block's members, so all
+    /// blocks of a type must have the same.
+    pub settings: &'static str,
+    /// What this block has that only the defining block may: `"a
+    /// constructor"`, `"S7 properties"`.
+    pub defines: &'static [&'static str],
+    /// The class definition as this block would write it: the class's
+    /// roxygen block (with the [`CLASS_DOCS_MARKER`] and
+    /// [`CLASS_DOC_LINES_MARKER`] lines, and [`CLASS_DEFAULT_PREFIX`]
+    /// lines), the class object, the constructor, and the class-level
+    /// helpers.
+    pub head: &'static str,
+    /// The block's doc comment as roxygen lines (with the constructor's for
+    /// S3 and vctrs, whose class block is the constructor's). The class's
+    /// roxygen block has every block's, the defining block's first; a tag
+    /// repeated exactly is written once, and two blocks giving the class
+    /// different `@title`s, or a page other than the defining block's
+    /// (`@name`, `@rdname`), are refused.
+    pub class_docs: &'static str,
+    /// Roxygen lines this block's members add to the class's roxygen block,
+    /// such as an R6 active binding's `@field` or a lifecycle import.
+    pub class_doc_lines: &'static str,
+    /// The block's members: its methods, static methods and coercions.
+    pub members: &'static str,
+    /// Names the members bind in the class's own namespaces (`$name` of an
+    /// env class or of an R6 generator, R6 members, S4 and S7 method
+    /// registrations), for the check that two blocks don't bind the same one.
+    /// Top-level functions are left to the duplicate-definition scan of the
+    /// written file.
+    pub member_names: &'static [&'static str],
+    /// What follows every block's members, such as R6's `$lock()`.
+    pub tail: &'static str,
+}
+
+// SAFETY: &'static str fields, a fn pointer and integers — immutable and valid
+// for program lifetime.
+unsafe impl Sync for ClassBlockEntry {}
 
 /// The standalone R accessors `#[derive(ExternalPtr)]` generates for a
 /// type's public `#[r_data]` fields, `Type_get_f(x)` / `Type_set_f(x,
@@ -395,11 +491,11 @@ unsafe impl Sync for SidecarAccessorsEntry {}
 /// Build the `rust_type → ClassNameEntry` lookup used by every placeholder
 /// resolver in `write_r_wrappers_to_file`.
 ///
-/// Multiple labeled `#[miniextendr]` impl blocks on one type each register a
-/// `ClassNameEntry` (#1242) — the class name is a property of the *type*, so
-/// identical duplicates collapse here. *Conflicting* registrations (same
-/// `rust_type`, different `r_class_name` or `class_system` — e.g. two labeled
-/// blocks with disagreeing `class = "..."` overrides) panic: silently keeping
+/// Each `#[miniextendr]` impl block of a type registers a `ClassNameEntry`
+/// (#1242, #1776) — the class name is a property of the *type*, so identical
+/// duplicates collapse here. *Conflicting* registrations (same `rust_type`,
+/// different `r_class_name` or `class_system` — e.g. two blocks with
+/// disagreeing `class = "..."` overrides) panic: silently keeping
 /// whichever entry linkme ordered last would resolve `.__MX_CLASS_REF_*__`
 /// placeholders nondeterministically. `field_syntax` may differ between the
 /// blocks ([`sidecar_accessor_fragments`] reads every entry). Distinct Rust
@@ -636,20 +732,20 @@ pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo)
 fn sidecar_accessor_fragments(
     accessors: &[SidecarAccessorsEntry],
     classes: &[ClassNameEntry],
-) -> Vec<RWrapperEntry> {
+) -> Vec<WrapperFragment> {
     accessors
         .iter()
         .map(|entry| {
             let field_syntax = classes
                 .iter()
                 .any(|class| class.rust_type == entry.rust_type && class.field_syntax);
-            RWrapperEntry {
+            WrapperFragment {
                 priority: RWrapperPriority::Sidecar,
-                content: if field_syntax {
+                content: std::borrow::Cow::Borrowed(if field_syntax {
                     entry.internal
                 } else {
                     entry.exported
-                },
+                }),
                 source_file: entry.source_file,
                 source_line: entry.source_line,
             }
@@ -657,53 +753,522 @@ fn sidecar_accessor_fragments(
         .collect()
 }
 
+// region: impl blocks merged per type (#1776)
+
+/// A wrapper fragment to write: an [`RWrapperEntry`]'s text, or a fragment
+/// assembled at write time (a class merged from its impl blocks, a type's
+/// sidecar accessors).
+#[cfg(not(target_arch = "wasm32"))]
+struct WrapperFragment {
+    priority: RWrapperPriority,
+    source_file: &'static str,
+    source_line: u32,
+    content: std::borrow::Cow<'static, str>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<&RWrapperEntry> for WrapperFragment {
+    fn from(entry: &RWrapperEntry) -> Self {
+        WrapperFragment {
+            priority: entry.priority,
+            source_file: entry.source_file,
+            source_line: entry.source_line,
+            content: std::borrow::Cow::Borrowed(entry.content),
+        }
+    }
+}
+
+/// A [`ClassBlockEntry`] part without the newline its raw string literal
+/// adds at each end.
+#[cfg(not(target_arch = "wasm32"))]
+fn class_part(part: &str) -> &str {
+    let part = part.strip_prefix('\n').unwrap_or(part);
+    part.strip_suffix('\n').unwrap_or(part)
+}
+
+/// How a merge error names an impl block: `` `impl Counter` (lib.rs:12) ``.
+#[cfg(not(target_arch = "wasm32"))]
+fn class_block_name(block: &ClassBlockEntry) -> String {
+    format!(
+        "`impl {}` ({}:{})",
+        block.rust_type, block.source_file, block.source_line
+    )
+}
+
+/// Merge the impl blocks of each Rust type into one class fragment (#1776).
+///
+/// Blocks are grouped by [`ClassBlockEntry::type_path`] and taken in source
+/// order. A type's fragment is the defining block's head, with the
+/// `class_docs` of every block (the defining block's first) at its
+/// [`CLASS_DOCS_MARKER`] line and the `class_doc_lines` of every block at its
+/// [`CLASS_DOC_LINES_MARKER`] line, then each block's members, then the
+/// defining block's tail. A tag repeated exactly is written once, and a
+/// generated [`CLASS_DEFAULT_PREFIX`] line gives way to the same tag on
+/// another block. A `# Generated from Rust impl` header precedes each
+/// part whose block differs from the previous part's, so the
+/// duplicate-definition scan of the written file
+/// ([`detect_duplicate_wrapper_defs`]) names the block a definition comes from.
+///
+/// Every problem is collected into one message:
+///
+/// - two Rust types claim one R class name: their class objects and methods
+///   would overwrite each other when the package loads (#1677);
+/// - the blocks of a type disagree on the class settings
+///   ([`ClassBlockEntry::settings`]), which shape every block's members;
+/// - two blocks of a type each have something only the defining block may
+///   have ([`ClassBlockEntry::defines`]);
+/// - the doc comments of a type's blocks give the class two titles, or a
+///   page other than the defining block's ([`class_doc_conflicts`]);
+/// - two blocks of a type bind the same member name
+///   ([`ClassBlockEntry::member_names`]), the later replacing the earlier.
+#[cfg(not(target_arch = "wasm32"))]
+fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>, String> {
+    use std::collections::HashMap;
+
+    let mut ordered: Vec<&ClassBlockEntry> = blocks.iter().collect();
+    ordered.sort_by_key(|b| (b.source_file, b.source_line, b.source_column));
+
+    // The blocks of each type, in source order; types in order of their first block.
+    let mut types: Vec<(&'static str, Vec<&ClassBlockEntry>)> = Vec::new();
+    let mut type_index: HashMap<&'static str, usize> = HashMap::new();
+    for block in ordered {
+        let path = (block.type_path)();
+        let i = *type_index.entry(path).or_insert_with(|| {
+            types.push((path, Vec::new()));
+            types.len() - 1
+        });
+        types[i].1.push(block);
+    }
+
+    let mut errors: Vec<String> = Vec::new();
+
+    // One Rust type per R class name.
+    let mut class_owner: HashMap<&'static str, (&'static str, &ClassBlockEntry)> = HashMap::new();
+    for (path, type_blocks) in &types {
+        for block in type_blocks {
+            match class_owner.get(block.r_class_name) {
+                Some(&(owner, first)) if owner != *path => {
+                    errors.push(format!(
+                        "miniextendr: R class `{}` is claimed by two Rust types, `{owner}` \
+                         ({}) and `{path}` ({}). Their class objects and methods would \
+                         overwrite each other when the package loads; give one a distinct \
+                         `class = \"...\"`.",
+                        block.r_class_name,
+                        class_block_name(first),
+                        class_block_name(block),
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    class_owner.insert(block.r_class_name, (path, block));
+                }
+            }
+        }
+    }
+
+    let mut fragments = Vec::with_capacity(types.len());
+    for (_, type_blocks) in &types {
+        let first = type_blocks[0];
+        let type_errors = errors.len();
+
+        for block in &type_blocks[1..] {
+            if block.settings != first.settings {
+                errors.push(format!(
+                    "miniextendr: the impl blocks of `{}` disagree on the class settings: \
+                     `{}` on {}, `{}` on {}. The blocks are merged into one class, and \
+                     these settings shape every block's methods: spell the same class \
+                     system and options, `class = \"...\"`, `internal` / `noexport` and \
+                     `@noRd` / `@keywords internal` on each block (#1776).",
+                    first.rust_type,
+                    first.settings,
+                    class_block_name(first),
+                    block.settings,
+                    class_block_name(block),
+                ));
+            }
+        }
+
+        let defining: Vec<&ClassBlockEntry> = type_blocks
+            .iter()
+            .copied()
+            .filter(|b| !b.defines.is_empty())
+            .collect();
+        if let [a, b, ..] = defining.as_slice() {
+            errors.push(format!(
+                "miniextendr: two impl blocks of `{}` each define the class: {} has {}, \
+                 {} has {}. A type's impl blocks merge into one class, and only one of \
+                 them may have a constructor or S7 properties: move what {} has into \
+                 {} (#1776).",
+                first.rust_type,
+                class_block_name(a),
+                a.defines.join(" and "),
+                class_block_name(b),
+                b.defines.join(" and "),
+                class_block_name(b),
+                class_block_name(a),
+            ));
+        }
+
+        let definer = defining.first().copied().unwrap_or(first);
+        errors.extend(class_doc_conflicts(definer, type_blocks));
+
+        let mut members: HashMap<&str, &ClassBlockEntry> = HashMap::new();
+        for &block in type_blocks {
+            for &name in block.member_names {
+                match members.get(name) {
+                    Some(&previous) if !std::ptr::eq(previous, block) => {
+                        errors.push(format!(
+                            "miniextendr: two impl blocks of `{}` define {name}: {} and {}. \
+                             The later definition would replace the earlier one when the \
+                             package loads; rename one with \
+                             `#[miniextendr(r_name = \"...\")]` (#1776).",
+                            first.rust_type,
+                            class_block_name(previous),
+                            class_block_name(block),
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        members.insert(name, block);
+                    }
+                }
+            }
+        }
+
+        if errors.len() > type_errors {
+            continue;
+        }
+        fragments.push(WrapperFragment {
+            priority: RWrapperPriority::Class,
+            source_file: first.source_file,
+            source_line: first.source_line,
+            content: std::borrow::Cow::Owned(merged_class_content(definer, type_blocks)),
+        });
+    }
+
+    if errors.is_empty() {
+        Ok(fragments)
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+/// One roxygen tag of a class's docs: its `#'` lines, the first opening the
+/// tag (`#' @name ...`), or the lines before the first tag. `default` marks a
+/// generated line ([`CLASS_DEFAULT_PREFIX`], stripped from `lines`).
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, PartialEq)]
+struct DocTag<'a> {
+    default: bool,
+    lines: Vec<&'a str>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<'a> DocTag<'a> {
+    /// The tags of `text`, a run of roxygen lines: a tag runs from its
+    /// `#' @tag` line to the next one, as roxygen2 reads it.
+    fn parse(text: &'a str) -> Vec<Self> {
+        let mut tags: Vec<Self> = Vec::new();
+        for line in text.lines() {
+            let (default, line) = match line.strip_prefix(CLASS_DEFAULT_PREFIX) {
+                Some(line) => (true, line),
+                None => (false, line),
+            };
+            match tags.last_mut() {
+                Some(tag) if !default && !line.starts_with("#' @") => tag.lines.push(line),
+                _ => tags.push(Self {
+                    default,
+                    lines: vec![line],
+                }),
+            }
+        }
+        tags
+    }
+
+    /// A head's generated default line, as a one-line tag; `None` for
+    /// any other line.
+    fn default_line(line: &'a str) -> Option<Self> {
+        line.strip_prefix(CLASS_DEFAULT_PREFIX).map(|line| Self {
+            default: true,
+            lines: vec![line],
+        })
+    }
+
+    /// The tag's name (`title` for `#' @title ...`), or `""` before the
+    /// first tag.
+    fn name(&self) -> &'a str {
+        self.lines[0]
+            .strip_prefix("#' @")
+            .and_then(|rest| rest.split_whitespace().next())
+            .unwrap_or("")
+    }
+
+    /// The tag's text after its name, continuation lines included.
+    fn value(&self) -> String {
+        let first = self.lines[0]
+            .strip_prefix("#' @")
+            .map_or("", |rest| rest.trim_start()[self.name().len()..].trim());
+        let rest = self.lines[1..]
+            .iter()
+            .map(|line| line.strip_prefix("#'").unwrap_or(line).trim());
+        std::iter::once(first)
+            .chain(rest)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string()
+    }
+
+    /// Whether this tag replaces the generated `default` (a tag of the same
+    /// name; for `@param` and `@field`, naming the same argument or field,
+    /// and `@inheritParams` for any `@param`).
+    fn replaces(&self, default: &DocTag<'_>) -> bool {
+        match default.name() {
+            name @ ("param" | "field") => {
+                let value = default.value();
+                let arg = value.split_whitespace().next().unwrap_or("");
+                (self.name() == name
+                    && self
+                        .value()
+                        .split_whitespace()
+                        .next()
+                        .is_some_and(|names| names.split(',').any(|n| n.trim() == arg)))
+                    || (name == "param" && self.name() == "inheritParams")
+            }
+            name => self.name() == name,
+        }
+    }
+}
+
+/// Every block's [`class_docs`](ClassBlockEntry::class_docs) as tags, the
+/// defining block's first, then the others' in source order.
+#[cfg(not(target_arch = "wasm32"))]
+fn block_docs<'a>(
+    definer: &'a ClassBlockEntry,
+    blocks: &[&'a ClassBlockEntry],
+) -> Vec<(&'a ClassBlockEntry, Vec<DocTag<'a>>)> {
+    let others = blocks
+        .iter()
+        .copied()
+        .filter(|b| !std::ptr::eq(*b, definer));
+    std::iter::once(definer)
+        .chain(others)
+        .map(|b| (b, DocTag::parse(class_part(b.class_docs))))
+        .collect()
+}
+
+/// The problems the doc comments of a type's impl blocks make for its merged
+/// roxygen block (#1776): every block's doc tags are written, so two
+/// different `@title`s give the class two titles (roxygen2 silently keeps
+/// the first), and a `@name` or `@rdname` other than the defining block's
+/// would move the class block to a page the defining block's generated
+/// documentation was not written for.
+#[cfg(not(target_arch = "wasm32"))]
+fn class_doc_conflicts(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> Vec<String> {
+    let mut errors = Vec::new();
+    let docs = block_docs(definer, blocks);
+    let tag_value =
+        |tags: &[DocTag<'_>], name: &str| tags.iter().find(|t| t.name() == name).map(|t| t.value());
+
+    let mut title: Option<(&ClassBlockEntry, String)> = None;
+    for (block, tags) in &docs {
+        let Some(value) = tag_value(tags, "title") else {
+            continue;
+        };
+        match &title {
+            None => title = Some((block, value)),
+            Some((first, first_value)) if *first_value != value => {
+                errors.push(format!(
+                    "miniextendr: the impl blocks of `{}` give the class two titles: {} \
+                     has `@title {first_value}`, {} has `@title {value}`. A type's impl \
+                     blocks merge into one class with one help page: keep one `@title` \
+                     (#1776).",
+                    definer.rust_type,
+                    class_block_name(first),
+                    class_block_name(block),
+                ));
+                break;
+            }
+            Some(_) => {}
+        }
+    }
+
+    // The page the defining block documents the class on: its own tag, else
+    // the generated default.
+    let head_defaults: Vec<DocTag<'_>> = class_part(definer.head)
+        .lines()
+        .filter_map(DocTag::default_line)
+        .collect();
+    for name in ["name", "rdname"] {
+        let page = tag_value(&docs[0].1, name).or_else(|| tag_value(&head_defaults, name));
+        for (block, tags) in &docs[1..] {
+            let Some(value) = tag_value(tags, name) else {
+                continue;
+            };
+            if page.as_ref() == Some(&value) {
+                continue;
+            }
+            let page = match &page {
+                Some(page) => format!("`@{name} {page}`"),
+                None => format!("no `@{name}`"),
+            };
+            errors.push(format!(
+                "miniextendr: the impl blocks of `{}` put the class on two help pages: {}, \
+                 which defines the class, has {page}, and {} has `@{name} {value}`. The \
+                 block that defines the class decides its page: move `@{name} {value}` \
+                 into {}, or remove it (#1776).",
+                definer.rust_type,
+                class_block_name(definer),
+                class_block_name(block),
+                class_block_name(definer),
+            ));
+        }
+    }
+    errors
+}
+
+/// The text of a type's merged class: see [`merge_class_blocks`].
+#[cfg(not(target_arch = "wasm32"))]
+fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> String {
+    let block_docs = block_docs(definer, blocks);
+    // A default of `owner` gives way to the same tag on another block; its
+    // own docs were seen when it was generated.
+    let replaced = |owner: &ClassBlockEntry, default: &DocTag<'_>| {
+        block_docs.iter().any(|(block, tags)| {
+            !std::ptr::eq(*block, owner) && tags.iter().any(|t| t.replaces(default))
+        })
+    };
+    let mut class_docs: Vec<DocTag<'_>> = Vec::new();
+    for tag in block_docs.iter().flat_map(|(_, tags)| tags) {
+        if !class_docs.contains(tag) {
+            class_docs.push(tag.clone());
+        }
+    }
+    let mut class_doc_lines: Vec<DocTag<'_>> = Vec::new();
+    for block in blocks {
+        for mut tag in DocTag::parse(class_part(block.class_doc_lines)) {
+            if tag.default && replaced(block, &tag) {
+                continue;
+            }
+            tag.default = false;
+            if !class_doc_lines.contains(&tag) {
+                class_doc_lines.push(tag);
+            }
+        }
+    }
+    // `split`, not `lines`: a blank last line separates the head from the
+    // members.
+    let mut head_lines: Vec<&str> = Vec::new();
+    for line in class_part(definer.head).split('\n') {
+        if line == CLASS_DOCS_MARKER {
+            head_lines.extend(class_docs.iter().flat_map(|t| t.lines.iter().copied()));
+        } else if line == CLASS_DOC_LINES_MARKER {
+            head_lines.extend(class_doc_lines.iter().flat_map(|t| t.lines.iter().copied()));
+        } else if let Some(tag) = DocTag::default_line(line) {
+            if !replaced(definer, &tag) {
+                head_lines.push(tag.lines[0]);
+            }
+        } else {
+            head_lines.push(line);
+        }
+    }
+    let head = head_lines.join("\n");
+
+    let mut parts: Vec<(&ClassBlockEntry, &str)> = vec![(definer, &head)];
+    parts.extend(blocks.iter().map(|&b| (b, class_part(b.members))));
+    parts.push((definer, class_part(definer.tail)));
+
+    let mut content = String::new();
+    let mut previous: Option<&ClassBlockEntry> = None;
+    for (block, text) in parts {
+        if text.is_empty() {
+            continue;
+        }
+        if previous.is_some_and(|p| std::ptr::eq(p, block)) {
+            content.push('\n');
+            content.push_str(text);
+            continue;
+        }
+        if previous.is_some() {
+            content.truncate(content.trim_end_matches('\n').len());
+            content.push_str("\n\n");
+        }
+        content.push_str(&format!(
+            "# Generated from Rust impl `{}` ({}:{}:{})\n",
+            block.rust_type, block.source_file, block.source_line, block.source_column
+        ));
+        content.push_str(text.trim_start_matches('\n'));
+        previous = Some(block);
+    }
+    content
+}
+
+// endregion
+
 /// Collect all R wrapper entries, sorted and deduplicated.
 ///
-/// Entries are ordered by `sort_wrapper_entries`: priority first, then source
-/// file, then source line. Within each priority group, S7 class definitions are
-/// additionally topologically sorted so parents are defined before children
-/// (S7 `parent = X` requires X to exist).
+/// Each type's impl blocks are first merged into one class fragment
+/// (`merge_class_blocks`, #1776); a conflict between them panics with every
+/// problem found. Entries are then ordered by `sort_wrapper_entries`: priority
+/// first, then source file, then source line. Within each priority group, S7
+/// class definitions are additionally topologically sorted so parents are
+/// defined before children (S7 `parent = X` requires X to exist).
 ///
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
-    let accessors = sidecar_accessor_fragments(&MX_SIDECAR_ACCESSORS, &MX_CLASS_NAMES);
-    let mut entries: Vec<&RWrapperEntry> = MX_R_WRAPPERS.iter().chain(&accessors).collect();
+    let classes = merge_class_blocks(&MX_CLASS_BLOCKS).unwrap_or_else(|msg| panic!("{msg}"));
+    let mut entries: Vec<WrapperFragment> = MX_R_WRAPPERS
+        .iter()
+        .map(WrapperFragment::from)
+        .chain(classes)
+        .chain(sidecar_accessor_fragments(
+            &MX_SIDECAR_ACCESSORS,
+            &MX_CLASS_NAMES,
+        ))
+        .collect();
     sort_wrapper_entries(&mut entries);
 
-    let mut seen = std::collections::HashSet::<&str>::new();
-    let mut fragments: Vec<(&RWrapperEntry, &'static str)> = Vec::with_capacity(entries.len());
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut fragments: Vec<(
+        RWrapperPriority,
+        &'static str,
+        std::borrow::Cow<'static, str>,
+    )> = Vec::with_capacity(entries.len());
     for entry in entries {
-        let trimmed = entry.content.trim();
-        if !trimmed.is_empty() && seen.insert(trimmed) {
-            fragments.push((entry, trimmed));
+        let trimmed = match entry.content {
+            std::borrow::Cow::Borrowed(content) => std::borrow::Cow::Borrowed(content.trim()),
+            std::borrow::Cow::Owned(content) => std::borrow::Cow::Owned(content.trim().to_string()),
+        };
+        if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
+            fragments.push((entry.priority, entry.source_file, trimmed));
         }
     }
 
     // Standalone functions: the default `@title`, the generated `@param`
     // fillers and the `@order` of blocks on an author topic are decided
     // together, per page.
-    let standalone: Vec<StandaloneFragment<'static>> = fragments
+    let standalone: Vec<StandaloneFragment<'_>> = fragments
         .iter()
-        .filter(|(entry, _)| entry.priority == RWrapperPriority::Function)
-        .map(|(entry, content)| StandaloneFragment {
+        .filter(|(priority, _, _)| *priority == RWrapperPriority::Function)
+        .map(|(_, source_file, content)| StandaloneFragment {
             content,
-            stem: source_file_stem(entry.source_file),
+            stem: source_file_stem(source_file),
         })
         .collect();
     let mut resolved = resolve_standalone_pages(&standalone).into_iter();
 
     let mut result: Vec<std::borrow::Cow<'static, str>> = fragments
-        .iter()
-        .map(|(entry, content)| {
-            if entry.priority == RWrapperPriority::Function {
+        .into_iter()
+        .map(|(priority, _, content)| {
+            if priority == RWrapperPriority::Function {
                 std::borrow::Cow::Owned(
                     resolved
                         .next()
                         .expect("one resolved fragment per standalone function"),
                 )
             } else {
-                std::borrow::Cow::Borrowed(*content)
+                content
             }
         })
         .collect();
@@ -923,7 +1488,7 @@ fn insert_roxygen_line(content: &str, new_line: &str) -> String {
 /// link order (#1476). The sort is stable, so entries generated at the same
 /// file and line (a `macro_rules!` expansion) keep their registration order.
 #[cfg(not(target_arch = "wasm32"))]
-fn sort_wrapper_entries(entries: &mut [&RWrapperEntry]) {
+fn sort_wrapper_entries(entries: &mut [WrapperFragment]) {
     entries.sort_by_key(|e| (e.priority, e.source_file, e.source_line));
 }
 
@@ -2842,9 +3407,10 @@ fn sidecar_accessor_names(
 /// binding assignment: its same-named constructor function remains valid.
 /// Guarded S3/S4/S7 generic declarations may repeat across classes, but must
 /// not share their binding with an ordinary function or class object (#1677).
-/// A class object defined twice comes from two impl blocks of one type: each
-/// block generates the whole class (#1776), so the later one replaces the
-/// earlier one together with the methods bound to it.
+/// A class object defined twice would replace the first together with the
+/// methods bound to it. The impl blocks of one Rust type are merged into one
+/// class before this scan, and two types claiming one class name are refused
+/// there ([`merge_class_blocks`], #1776), so this is the last line of defence.
 ///
 /// Every message names both producers, read from the
 /// `# Generated from Rust …` header that opens each wrapper fragment.
@@ -2919,9 +3485,7 @@ fn detect_duplicate_wrapper_defs(
             return Err(format!(
                 "miniextendr: class `{name}` is defined more than once ({both}). The \
                  second definition replaces the first at load time, together with the \
-                 methods bound to it. Each `#[miniextendr]` impl block of a type defines \
-                 the whole class (#1776): keep the type's methods in one impl block. If \
-                 the blocks belong to different Rust types, give one a distinct \
+                 methods bound to it. Give one of the classes a distinct \
                  `class = \"...\"`."
             ));
         }
@@ -3210,7 +3774,7 @@ mod tests {
         result
     }
 
-    /// Two labeled impl blocks on one type register identical entries (#1242);
+    /// Two impl blocks of one type register identical entries (#1242, #1776);
     /// the index collapses them instead of treating the duplicate key as an error.
     #[test]
     fn class_name_index_dedups_identical_entries() {
@@ -3313,8 +3877,7 @@ mod tests {
     }
 
     /// A type's standalone sidecar accessors are written internal when one of
-    /// its impl blocks (labeled blocks may differ) gives the class field
-    /// syntax, exported otherwise (#1900).
+    /// its impl blocks gives the class field syntax, exported otherwise (#1900).
     #[test]
     fn sidecar_accessors_follow_the_field_syntax() {
         let accessors = [
@@ -3345,7 +3908,7 @@ mod tests {
             class("Plain", false),
         ];
         let fragments = sidecar_accessor_fragments(&accessors, &classes);
-        let contents: Vec<_> = fragments.iter().map(|f| f.content).collect();
+        let contents: Vec<&str> = fragments.iter().map(|f| f.content.as_ref()).collect();
         assert_eq!(contents, ["internal Fields", "exported Plain"]);
         assert!(
             fragments
@@ -4365,22 +4928,23 @@ mod tests {
             source_file: &'static str,
             source_line: u32,
             content: &'static str,
-        ) -> RWrapperEntry {
-            RWrapperEntry {
+        ) -> WrapperFragment {
+            WrapperFragment {
                 priority,
-                content,
+                content: std::borrow::Cow::Borrowed(content),
                 source_file,
                 source_line,
             }
         }
-        let a = entry(RWrapperPriority::Function, "b.rs", 10, "b10");
-        let b = entry(RWrapperPriority::Function, "a.rs", 30, "a30");
-        let c = entry(RWrapperPriority::Class, "z.rs", 1, "class");
-        let d = entry(RWrapperPriority::Function, "a.rs", 5, "a5");
-        let e = entry(RWrapperPriority::Function, "a.rs", 5, "a5-second");
-        let mut entries = vec![&a, &b, &c, &d, &e];
+        let mut entries = vec![
+            entry(RWrapperPriority::Function, "b.rs", 10, "b10"),
+            entry(RWrapperPriority::Function, "a.rs", 30, "a30"),
+            entry(RWrapperPriority::Class, "z.rs", 1, "class"),
+            entry(RWrapperPriority::Function, "a.rs", 5, "a5"),
+            entry(RWrapperPriority::Function, "a.rs", 5, "a5-second"),
+        ];
         sort_wrapper_entries(&mut entries);
-        let order: Vec<&str> = entries.iter().map(|e| e.content).collect();
+        let order: Vec<&str> = entries.iter().map(|e| e.content.as_ref()).collect();
         // Classes first; then functions in file order, then source order; the
         // two entries at the same file:line keep their registration order.
         assert_eq!(order, ["class", "a5", "a5-second", "a30", "b10"]);
@@ -4888,10 +5452,10 @@ mod tests {
         }
     }
 
-    /// Two labeled impl blocks of one type each define the class (#1776): the
-    /// second would drop the first block's methods.
+    /// Two class objects of one name in the written file: the second would
+    /// drop the first one's methods (#1677, #1776).
     #[test]
-    fn duplicate_class_objects_name_both_impl_blocks() {
+    fn duplicate_class_objects_name_both_producers() {
         for class in [
             "Widget <- new.env(parent = emptyenv())",
             "Widget <- R6::R6Class(\"Widget\",",
@@ -4903,15 +5467,14 @@ mod tests {
                  # Generated from Rust impl `Widget` (lib.rs:40:6)\n{class}\n"
             );
             let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
-                .expect_err("a second class object drops the first block's methods");
+                .expect_err("a second class object drops the first one's methods");
             assert!(
                 error.contains("class `Widget` is defined more than once"),
                 "{error}"
             );
             assert!(error.contains("(lib.rs:10:6)"), "{error}");
             assert!(error.contains("(lib.rs:40:6)"), "{error}");
-            assert!(error.contains("one impl block"), "{error}");
-            assert!(error.contains("#1776"), "{error}");
+            assert!(error.contains("distinct `class = \"...\"`"), "{error}");
         }
     }
 
@@ -5101,6 +5664,363 @@ mod tests {
         );
         let map = std::collections::HashMap::new();
         assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
+    }
+
+    // endregion
+
+    // region: impl blocks merged per type (#1776)
+
+    fn widget_path() -> &'static str {
+        "pkg::widgets::Widget"
+    }
+
+    fn other_widget_path() -> &'static str {
+        "pkg::legacy::Widget"
+    }
+
+    /// An env-class impl block of `Widget` at `lib.rs:<line>`, with the
+    /// `parts` given as raw-literal text (framed by newlines) and no
+    /// settings, definitions or member names.
+    fn widget_block(line: u32, head: &'static str, members: &'static str) -> ClassBlockEntry {
+        ClassBlockEntry {
+            rust_type: "Widget",
+            type_path: widget_path,
+            r_class_name: "Widget",
+            source_file: "lib.rs",
+            source_line: line,
+            source_column: 6,
+            settings: "env",
+            defines: &[],
+            head,
+            class_docs: "\n\n",
+            class_doc_lines: "\n\n",
+            members,
+            member_names: &[],
+            tail: "\n\n",
+        }
+    }
+
+    fn merged(blocks: &[ClassBlockEntry]) -> Vec<String> {
+        merge_class_blocks(blocks)
+            .unwrap_or_else(|msg| panic!("{msg}"))
+            .into_iter()
+            .map(|f| f.content.into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn merge_defines_the_class_once_with_every_blocks_members() {
+        let mut ctor = widget_block(
+            10,
+            "\n#' Widget\n.__MX_CLASS_DOC_LINES__\n#' @export\nWidget <- new.env()\n",
+            "\nWidget$get <- function() 1\n",
+        );
+        ctor.defines = &["a constructor"];
+        ctor.class_doc_lines = "\n#' @importFrom lifecycle deprecate_warn\n";
+        ctor.tail = "\n`$.Widget` <- function(self, name) NULL\n";
+        let mut more = widget_block(
+            40,
+            "\n#' Widget\n.__MX_CLASS_DOC_LINES__\n#' @export\nWidget <- new.env()\n",
+            "\nWidget$set <- function() 2\n",
+        );
+        more.class_doc_lines =
+            "\n#' @importFrom lifecycle deprecate_warn\n#' @importFrom lifecycle badge\n";
+        // The registration order of the blocks doesn't matter.
+        let classes = merged(&[more, ctor]);
+        assert_eq!(classes.len(), 1);
+        assert_eq!(
+            classes[0],
+            "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             #' Widget\n\
+             #' @importFrom lifecycle deprecate_warn\n\
+             #' @importFrom lifecycle badge\n\
+             #' @export\n\
+             Widget <- new.env()\n\
+             Widget$get <- function() 1\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             Widget$set <- function() 2\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             `$.Widget` <- function(self, name) NULL"
+        );
+    }
+
+    #[test]
+    fn merge_defines_the_class_from_the_block_with_the_constructor() {
+        let first = widget_block(10, "\nWidget <- new.env() # first\n", "\nWidget$a <- 1\n");
+        let mut ctor = widget_block(40, "\nWidget <- new.env() # ctor\n", "\nWidget$b <- 2\n");
+        ctor.defines = &["a constructor"];
+        let classes = merged(&[first, ctor]);
+        assert_eq!(
+            classes[0],
+            "# Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             Widget <- new.env() # ctor\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             Widget$a <- 1\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             Widget$b <- 2"
+        );
+        // Without one, the first block in source order defines the class.
+        let first = widget_block(10, "\nWidget <- new.env() # first\n", "\n\n");
+        let second = widget_block(40, "\nWidget <- new.env() # second\n", "\n\n");
+        assert_eq!(
+            merged(&[second, first])[0],
+            "# Generated from Rust impl `Widget` (lib.rs:10:6)\nWidget <- new.env() # first"
+        );
+    }
+
+    #[test]
+    fn merge_keeps_one_block_as_written() {
+        // The head's blank last line separates it from the members.
+        let mut block = widget_block(
+            10,
+            "\n#' Widget\n.__MX_CLASS_DOC_LINES__\n#' @export\nWidget <- new.env()\n\n",
+            "\nWidget$get <- function() 1\n",
+        );
+        block.tail = "\nWidget$lock()\n";
+        assert_eq!(
+            merged(&[block])[0],
+            "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             #' Widget\n\
+             #' @export\n\
+             Widget <- new.env()\n\
+             \n\
+             Widget$get <- function() 1\n\
+             Widget$lock()"
+        );
+    }
+
+    #[test]
+    fn merge_refuses_blocks_with_different_settings() {
+        // `@noRd` on one block only: the other's methods would be documented
+        // on a page that does not exist.
+        let mut hidden = widget_block(10, "\n\n", "\n\n");
+        hidden.settings = "env, @noRd";
+        let plain = widget_block(40, "\n\n", "\n\n");
+        let msg = merge_class_blocks(&[hidden, plain])
+            .err()
+            .expect("settings differ");
+        assert!(
+            msg.contains("the impl blocks of `Widget` disagree on the class settings"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("`env, @noRd` on `impl Widget` (lib.rs:10)"),
+            "{msg}"
+        );
+        assert!(msg.contains("`env` on `impl Widget` (lib.rs:40)"), "{msg}");
+    }
+
+    #[test]
+    fn merge_refuses_two_defining_blocks() {
+        let mut ctor = widget_block(10, "\n\n", "\n\n");
+        ctor.defines = &["a constructor"];
+        let mut props = widget_block(40, "\n\n", "\n\n");
+        props.defines = &["a constructor", "S7 properties"];
+        let msg = merge_class_blocks(&[ctor, props])
+            .err()
+            .expect("two blocks define the class");
+        assert!(
+            msg.contains(
+                "two impl blocks of `Widget` each define the class: `impl Widget` (lib.rs:10) \
+                 has a constructor, `impl Widget` (lib.rs:40) has a constructor and S7 \
+                 properties."
+            ),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("move what `impl Widget` (lib.rs:40) has into `impl Widget` (lib.rs:10)"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn merge_refuses_a_member_bound_by_two_blocks() {
+        let mut first = widget_block(10, "\n\n", "\n\n");
+        first.member_names = &["`Widget$get`", "`Widget$set`"];
+        let mut second = widget_block(40, "\n\n", "\n\n");
+        second.member_names = &["`Widget$get`"];
+        let msg = merge_class_blocks(&[first, second])
+            .err()
+            .expect("`$get` is bound twice");
+        assert!(
+            msg.contains(
+                "two impl blocks of `Widget` define `Widget$get`: `impl Widget` (lib.rs:10) \
+                 and `impl Widget` (lib.rs:40)."
+            ),
+            "{msg}"
+        );
+        assert!(!msg.contains("Widget$set"), "{msg}");
+    }
+
+    #[test]
+    fn merge_refuses_two_types_with_one_class_name() {
+        // Same identifier, different modules: two types, not two blocks of one.
+        let mine = widget_block(10, "\nWidget <- new.env()\n", "\n\n");
+        let mut theirs = widget_block(40, "\nWidget <- new.env()\n", "\n\n");
+        theirs.type_path = other_widget_path;
+        theirs.source_file = "legacy.rs";
+        let msg = merge_class_blocks(&[mine, theirs])
+            .err()
+            .expect("one class, two types");
+        assert!(
+            msg.contains(
+                "R class `Widget` is claimed by two Rust types, `pkg::legacy::Widget` \
+                 (`impl Widget` (legacy.rs:40)) and `pkg::widgets::Widget` \
+                 (`impl Widget` (lib.rs:10))"
+            ),
+            "{msg}"
+        );
+    }
+
+    /// A class head as the class generators write it: generated defaults, the
+    /// docs and doc-lines markers, then the class object.
+    const DOCUMENTED_HEAD: &str = "\n\
+        .__MX_CLASS_DEFAULT__#' @title Widget Class\n\
+        .__MX_CLASS_DEFAULT__#' @name Widget\n\
+        .__MX_CLASS_DEFAULT__#' @rdname Widget\n\
+        .__MX_CLASS_DOCS__\n\
+        .__MX_CLASS_DEFAULT__#' @param .ptr Internal pointer.\n\
+        #' @source Generated by miniextendr\n\
+        .__MX_CLASS_DOC_LINES__\n\
+        .__MX_CLASS_DEFAULT__#' @export\n\
+        Widget <- new.env()\n";
+
+    #[test]
+    fn merge_writes_every_blocks_docs_after_the_definers() {
+        let mut ctor = widget_block(40, DOCUMENTED_HEAD, "\n\n");
+        ctor.defines = &["a constructor"];
+        ctor.class_docs = "\n#' @description Widgets hold a value.\n#' @importFrom stats median\n";
+        let mut first = widget_block(10, DOCUMENTED_HEAD, "\n\n");
+        first.class_docs = "\n#' @description More methods.\n#' @details One.\n#'\n#' }\n\
+                            #' @importFrom stats median\n#' @export\n";
+        let mut last = widget_block(70, DOCUMENTED_HEAD, "\n\n");
+        last.class_docs = "\n#' @details Two.\n#'\n#' }\n#' @param .ptr Pointer.\n";
+        let classes = merged(&[last, first, ctor]);
+        // The defining block's docs, then the others' in source order; an
+        // identical tag once, the blank and `}` lines of two tags each kept;
+        // a default another block writes itself gives way.
+        assert_eq!(
+            classes[0],
+            "# Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             #' @title Widget Class\n\
+             #' @name Widget\n\
+             #' @rdname Widget\n\
+             #' @description Widgets hold a value.\n\
+             #' @importFrom stats median\n\
+             #' @description More methods.\n\
+             #' @details One.\n\
+             #'\n\
+             #' }\n\
+             #' @export\n\
+             #' @details Two.\n\
+             #'\n\
+             #' }\n\
+             #' @param .ptr Pointer.\n\
+             #' @source Generated by miniextendr\n\
+             Widget <- new.env()"
+        );
+    }
+
+    #[test]
+    fn merge_takes_the_title_from_any_block() {
+        let mut ctor = widget_block(10, DOCUMENTED_HEAD, "\n\n");
+        ctor.defines = &["a constructor"];
+        let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
+        more.class_docs = "\n#' @title Widgets\n#' @rdname Widget\n";
+        let classes = merged(&[ctor, more]);
+        assert!(
+            classes[0].starts_with(
+                "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+                 #' @name Widget\n\
+                 #' @title Widgets\n\
+                 #' @rdname Widget\n\
+                 #' @param .ptr Internal pointer.\n"
+            ),
+            "{}",
+            classes[0]
+        );
+    }
+
+    #[test]
+    fn merge_drops_a_member_default_another_block_documents() {
+        let mut ctor = widget_block(10, DOCUMENTED_HEAD, "\n\n");
+        ctor.defines = &["a constructor"];
+        ctor.class_docs = "\n#' @field doubled Twice the value.\n#' @inheritParams widget_ops\n";
+        let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
+        more.class_doc_lines = "\n.__MX_CLASS_DEFAULT__#' @field doubled Active binding.\n\
+                                .__MX_CLASS_DEFAULT__#' @field halved Active binding.\n";
+        let class = &merged(&[ctor, more])[0];
+        assert!(
+            class.contains("#' @field doubled Twice the value.\n"),
+            "{class}"
+        );
+        assert!(!class.contains("@field doubled Active binding."), "{class}");
+        assert!(
+            class.contains("#' @field halved Active binding.\n"),
+            "{class}"
+        );
+        // The defining block's own docs were seen when its defaults were
+        // generated: its `@param .ptr` default stays.
+        assert!(
+            class.contains("#' @param .ptr Internal pointer.\n"),
+            "{class}"
+        );
+    }
+
+    #[test]
+    fn merge_refuses_two_titles() {
+        let mut ctor = widget_block(10, DOCUMENTED_HEAD, "\n\n");
+        ctor.defines = &["a constructor"];
+        ctor.class_docs = "\n#' @title Widgets\n";
+        let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
+        more.class_docs = "\n#' @title Gadgets\n";
+        let same = widget_block(70, DOCUMENTED_HEAD, "\n\n");
+        let msg = merge_class_blocks(&[ctor, more, same])
+            .err()
+            .expect("two titles");
+        assert_eq!(
+            msg,
+            "miniextendr: the impl blocks of `Widget` give the class two titles: \
+             `impl Widget` (lib.rs:10) has `@title Widgets`, `impl Widget` (lib.rs:40) has \
+             `@title Gadgets`. A type's impl blocks merge into one class with one help \
+             page: keep one `@title` (#1776)."
+        );
+    }
+
+    #[test]
+    fn merge_refuses_a_page_other_than_the_definers() {
+        let mut ctor = widget_block(10, DOCUMENTED_HEAD, "\n\n");
+        ctor.defines = &["a constructor"];
+        let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
+        more.class_docs = "\n#' @rdname widget_ops\n";
+        let msg = merge_class_blocks(&[ctor, more]).err().expect("two pages");
+        assert_eq!(
+            msg,
+            "miniextendr: the impl blocks of `Widget` put the class on two help pages: \
+             `impl Widget` (lib.rs:10), which defines the class, has `@rdname Widget`, and \
+             `impl Widget` (lib.rs:40) has `@rdname widget_ops`. The block that defines \
+             the class decides its page: move `@rdname widget_ops` into `impl Widget` \
+             (lib.rs:10), or remove it (#1776)."
+        );
+    }
+
+    #[test]
+    fn merge_reports_every_problem_at_once() {
+        let mut first = widget_block(10, "\n\n", "\n\n");
+        first.defines = &["a constructor"];
+        first.member_names = &["`Widget$get`"];
+        let mut second = widget_block(40, "\n\n", "\n\n");
+        second.defines = &["a constructor"];
+        second.member_names = &["`Widget$get`"];
+        second.settings = "env, internal";
+        let msg = merge_class_blocks(&[first, second])
+            .err()
+            .expect("three problems");
+        assert_eq!(msg.lines().count(), 3, "{msg}");
     }
 
     // endregion

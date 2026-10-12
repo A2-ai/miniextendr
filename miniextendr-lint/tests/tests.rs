@@ -72,66 +72,6 @@ fn mxl106_non_pub_fn_with_export_tag() {
 }
 
 #[test]
-fn mxl009_multiple_impl_blocks_without_labels() {
-    let dir = tempfile::tempdir().unwrap();
-    let src_dir = dir.path().join("src");
-    fs::create_dir(&src_dir).unwrap();
-
-    fs::write(
-        src_dir.join("lib.rs"),
-        r#"
-        #[miniextendr]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        #[miniextendr]
-        impl Counter {
-            fn get_value(&self) -> i32 { self.value }
-        }
-        "#,
-    )
-    .unwrap();
-
-    let report = run(dir.path()).expect("lint should succeed");
-    assert!(
-        report.errors.iter().any(|e| e.contains("missing labels")),
-        "expected MXL009 error for missing labels, got: {:?}",
-        report.errors
-    );
-}
-
-#[test]
-fn mxl010_duplicate_labels() {
-    let dir = tempfile::tempdir().unwrap();
-    let src_dir = dir.path().join("src");
-    fs::create_dir(&src_dir).unwrap();
-
-    fs::write(
-        src_dir.join("lib.rs"),
-        r#"
-        #[miniextendr(label = "ops")]
-        impl Counter {
-            fn new() -> Self { Counter { value: 0 } }
-        }
-
-        #[miniextendr(label = "ops")]
-        impl Counter {
-            fn get_value(&self) -> i32 { self.value }
-        }
-        "#,
-    )
-    .unwrap();
-
-    let report = run(dir.path()).expect("lint should succeed");
-    assert!(
-        report.errors.iter().any(|e| e.contains("duplicate label")),
-        "expected MXL010 error for duplicate labels, got: {:?}",
-        report.errors
-    );
-}
-
-#[test]
 fn mxl203_internal_plus_noexport_redundancy() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
@@ -157,8 +97,10 @@ fn mxl203_internal_plus_noexport_redundancy() {
     );
 }
 
+/// A type's methods may be split over several impl blocks (#1776): the
+/// wrapper writer merges them into one class.
 #[test]
-fn no_errors_for_labeled_impl_blocks() {
+fn no_errors_for_several_impl_blocks_of_one_type() {
     let dir = tempfile::tempdir().unwrap();
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
@@ -166,12 +108,12 @@ fn no_errors_for_labeled_impl_blocks() {
     fs::write(
         src_dir.join("lib.rs"),
         r#"
-        #[miniextendr(label = "constructors")]
+        #[miniextendr]
         impl Counter {
             fn new() -> Self { Counter { value: 0 } }
         }
 
-        #[miniextendr(label = "methods")]
+        #[miniextendr]
         impl Counter {
             fn get_value(&self) -> i32 { self.value }
         }
@@ -182,7 +124,7 @@ fn no_errors_for_labeled_impl_blocks() {
     let report = run(dir.path()).expect("lint should succeed");
     assert!(
         report.errors.is_empty(),
-        "properly labeled impl blocks should not error, got: {:?}",
+        "several impl blocks of one type should not error, got: {:?}",
         report.errors
     );
 }

@@ -29,8 +29,6 @@ written.
 | Code | Description | Fix |
 |------|-------------|-----|
 | **MXL008** | Trait impl class system incompatible | Ensure trait impl uses same class system as inherent impl |
-| **MXL009** | Multiple impl blocks without labels | Add `#[miniextendr(label = "unique")]` to each impl block |
-| **MXL010** | Duplicate labels on impl blocks | Use unique labels for each impl block |
 | **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
 | **MXL120** | vctrs constructor returns `Self` / a named type, or the vctrs impl has an instance-method receiver | Return the plain vector payload; turn instance methods into static methods that take the vector data as a parameter |
 
@@ -189,17 +187,45 @@ function with a hand-written `/// @export` tag is contradictory (MXL106; the tag
 still exports it). Make the function `pub`, or drop the tag. To keep a `pub`
 function unexported, use `#[miniextendr(noexport)]` or `#[miniextendr(internal)]`.
 
-### "multiple impl blocks for Type need labels"
+### "unknown impl block option `label`"
 
-When a type has more than one `#[miniextendr]` impl block, each needs a unique label:
+Impl blocks need no labels: the wrapper writer merges the `#[miniextendr]` impl
+blocks of a type into one class (#1776). Remove `label = "..."`.
+
+### Impl blocks of one type that don't merge
+
+`R CMD INSTALL` stops in the wrapper writer, naming the impl blocks, when the
+blocks of a type break a rule of
+[Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks):
+
+- ``two impl blocks of `MyType` each define the class``: only one block may have
+  the constructor and S7 properties. The message names what each block has;
+  move the later block's into the earlier one. Doc comments don't count: every
+  block's doc comment documents the class.
+- ``the impl blocks of `MyType` give the class two titles``: two blocks' doc
+  comments have different `@title`s. The message shows both; keep one.
+- ``the impl blocks of `MyType` put the class on two help pages``: a block that
+  does not define the class has a `@name` or `@rdname` other than the defining
+  block's (its own tag, or the default `<Class>`). Move the tag to the block
+  with the constructor, or remove it.
+- ``the impl blocks of `MyType` disagree on the class settings``: spell the same
+  class system and options, `class = "..."`, `internal` / `noexport` and
+  `@noRd` / `@keywords internal` on every block. The message shows both sides.
+- ``two impl blocks of `MyType` define ...``: two methods get one R member name
+  (an env or R6 member, an R6 static method, an S4 or S7 method). Rename one
+  with `r_name = "..."`.
+- ``R class `MyType` is claimed by two Rust types``: two types (for example two
+  `MyType`s in different modules) get one R class name. Give one a distinct
+  `class = "..."`.
 
 ```rust
-#[miniextendr(label = "core")]
+#[miniextendr(r6)]
 impl MyType {
+    pub fn new() -> Self { MyType }
     fn method_a(&self) -> i32 { 0 }
 }
 
-#[miniextendr(label = "extra")]
+#[miniextendr(r6)]
 impl MyType {
     fn method_b(&self) -> String { String::new() }
 }
@@ -247,8 +273,9 @@ Env constructors, instance methods and static methods share the class
 namespace. A constructor always defines `Class$new`, even when its Rust name
 is `create`. Rename the other method with `#[miniextendr(r_name = "...")]`.
 A non-constructor `new` is allowed when the class has no constructor. The
-check sees one impl block: two labeled blocks of the same type are not
-compared (#1776).
+check sees one impl block; a member bound by two impl blocks of a type is
+reported when the package installs (see "Impl blocks of one type that don't
+merge" above).
 
 ### "R6 member `initialize` conflicts with the generated constructor"
 
@@ -274,7 +301,8 @@ Each S4 instance method becomes a `setMethod()` on its generic for the class:
 (`r_name`, `postfix`). Two methods of one impl block on the same generic would
 register the same signature twice, and the second would replace the first.
 Rename one with `#[miniextendr(r_name = "...")]`, or give it another
-`s4(generic = "...")`.
+`s4(generic = "...")`. Two impl blocks of a type with a method on one generic
+are reported when the package installs.
 
 ### "unsupported receiver type"
 
