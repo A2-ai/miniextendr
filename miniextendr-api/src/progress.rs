@@ -9,10 +9,13 @@
 //!   (`ptr_R_WriteConsoleEx`, falling back to `Rprintf` / `REprintf`). This is
 //!   required because R's terminal connections do **not** wire a `write`
 //!   callback — calling `R_WriteConnection` on them raises an R error.
-//! - For any other connection (`file()`, `textConnection()`, `sink()` targets,
-//!   custom connections), the bytes are handed to `R_WriteConnection`. This is
-//!   what makes `sink(file)` / `capture.output()` / file or text connections
-//!   capture indicatif progress-bar output.
+//! - For any other connection (`file()`, `rawConnection()`, custom connections),
+//!   `writeBin` / `writeChar` run through caught R
+//!   evaluation. Connection errors become `io::Error`s returned to indicatif,
+//!   so a failed draw does not unwind through its locks. Text writes use bytes
+//!   without a terminator; an embedded NUL reports an error instead of success.
+//!   The connection needs a byte-write callback (`textConnection()` has only
+//!   formatted output, so it returns a write error).
 //!
 //! # `Send` / `Sync`
 //!
@@ -30,7 +33,7 @@
 //! console hook does not consult the `sink()` stack. To capture indicatif
 //! output through `sink()`, target a non-terminal connection explicitly via
 //! [`term_like_connection`] or build an `RTerm` from a `file()` /
-//! `textConnection()` SEXP.
+//! `rawConnection()` SEXP.
 //!
 //! # GC / lifetime
 //!
@@ -69,7 +72,7 @@ enum TermKind {
     TerminalStdout,
     /// `stderr()` terminal — write via the console hook with otype 1.
     TerminalStderr,
-    /// Any other R connection — write via `R_WriteConnection`.
+    /// Any other R connection — write via caught R evaluation.
     Connection,
 }
 
@@ -81,7 +84,7 @@ enum TermKind {
 /// connection SEXP.
 ///
 /// See the [module docs](self) for the dispatch rules (terminal connections
-/// go through the console hook, everything else through `R_WriteConnection`)
+/// go through the console hook, other writes catch R errors as `io::Error`s)
 /// and the `Send` / `Sync` story.
 ///
 /// Construct via [`RTerm::new`] from any R connection SEXP (e.g. the SEXP
@@ -195,9 +198,23 @@ impl RTerm {
             TermKind::TerminalStderr => {
                 crate::connection::write_console_to(buf, 1);
             }
-            TermKind::Connection => unsafe {
-                crate::connection::access::write(self.sexp, buf);
-            },
+            TermKind::Connection => return self.write_connection(buf),
+        }
+        Ok(())
+    }
+
+    fn write_connection(&self, mut buf: &[u8]) -> io::Result<()> {
+        while !buf.is_empty() {
+            // write_bytes already checked R's main thread. Catch R errors as
+            // values here: unwinding would poison indicatif's drawing lock.
+            let written = unsafe { crate::connection::access::write_caught(self.sexp, buf) }?;
+            if written == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "connection did not write the remaining progress output",
+                ));
+            }
+            buf = &buf[written..];
         }
         Ok(())
     }
@@ -386,10 +403,10 @@ pub fn term_like_stderr_with_hz(width: u16, refresh_rate: u8) -> ProgressDrawTar
 
 /// Build an indicatif draw target from an arbitrary R connection SEXP.
 ///
-/// This is the path that makes `sink()` / `capture.output()` / file / text /
-/// custom R connections capture progress-bar output. Bytes are routed via
-/// `R_WriteConnection` when the connection isn't a terminal; terminal
-/// connections fall back to the console hook (see module docs).
+/// This is the path that makes file, raw and byte-writable custom R
+/// connections capture progress-bar output. Non-terminal writes
+/// return connection failures to indicatif as `io::Error`s; terminal
+/// connections use the console hook (see module docs).
 ///
 /// # Examples
 ///
@@ -397,7 +414,7 @@ pub fn term_like_stderr_with_hz(width: u16, refresh_rate: u8) -> ProgressDrawTar
 /// use miniextendr_api::progress::term_like_connection;
 /// use miniextendr_api::indicatif::ProgressBar;
 ///
-/// // `conn_sexp` is a textConnection / file / custom connection from R.
+/// // `conn_sexp` is a rawConnection / file / custom connection from R.
 /// let pb = ProgressBar::with_draw_target(Some(100), term_like_connection(conn_sexp, 80));
 /// ```
 pub fn term_like_connection(conn: impl IntoR, width: u16) -> ProgressDrawTarget {

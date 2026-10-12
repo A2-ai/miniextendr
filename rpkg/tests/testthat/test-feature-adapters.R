@@ -1614,8 +1614,8 @@ test_that("indicatif_elapsed_demo finishes", {
 test_that("indicatif routes bytes through a rawConnection", {
   skip_if_missing_feature("indicatif")
   # NOT textConnection: text connections implement only the text-mode write
-  # method, while the Rust side writes bytes via R_WriteConnection (the binary
-  # method) — a textConnection fails with "'write' not enabled for this
+  # method, while the Rust side writes via writeBin/writeChar (the byte
+  # callbacks) — a textConnection fails with "'write' not enabled for this
   # connection". rawConnection is binary and still captures in memory.
   conn <- rawConnection(raw(0), open = "wb")
   on.exit(try(close(conn), silent = TRUE), add = TRUE)
@@ -2060,4 +2060,32 @@ test_that("rbuf_trait_chunks drives chunk/advance/copy_to_vec/to_vec", {
   skip_if_missing_feature("bytes")
   res <- rbuf_trait_chunks(as.raw(c(10, 20, 30, 40)))
   expect_identical(res, c(4L, 2L, 20L, 30L, 1L))
+})
+
+
+test_that("indicatif survives failing connection writes and keeps drawing", {
+  skip_if_missing_feature("indicatif")
+  skip_if_missing_feature("connections")
+  failing <- failing_io_connection()
+  replacement <- rawConnection(raw(0), "wb")
+  on.exit(suppressWarnings(close(failing)), add = TRUE)
+  on.exit(close(replacement), add = TRUE)
+  error <- miniextendr:::indicatif_connection_error_recovery(failing, replacement, FALSE)
+  expect_match(error, "write.*refused")
+  bytes <- rawToChar(rawConnectionValue(replacement))
+  expect_match(bytes, "recovered")
+  expect_match(bytes, "second")
+})
+
+test_that("indicatif survives a connection closed while a bar is live", {
+  skip_if_missing_feature("indicatif")
+  target <- rawConnection(raw(0), "wb")
+  on.exit(try(close(target), silent = TRUE), add = TRUE)
+  replacement <- rawConnection(raw(0), "wb")
+  on.exit(close(replacement), add = TRUE)
+  error <- miniextendr:::indicatif_connection_error_recovery(target, replacement, TRUE)
+  expect_match(error, "connection")
+  bytes <- rawToChar(rawConnectionValue(replacement))
+  expect_match(bytes, "recovered")
+  expect_match(bytes, "second")
 })

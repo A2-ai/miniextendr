@@ -34,6 +34,64 @@ pub(crate) struct ConnState {
 
 pub(crate) use imp::{can_seek, is_blocking, read, state, write};
 
+/// Write through caught R evaluation, returning a connection failure as an
+/// I/O error. Used by progress drawing (which must not unwind through its
+/// locks) and by the pre-4.6 implementation of `write`.
+///
+/// Text connections accept only the UTF-8 prefix before the first NUL. A
+/// caller writing the whole buffer must loop and reject a zero-byte write.
+///
+/// # Safety
+/// `sexp` is a rooted R connection; called on R's main thread.
+#[cfg(any(not(r_4_6), feature = "indicatif"))]
+pub(crate) unsafe fn write_caught(sexp: crate::SEXP, buf: &[u8]) -> std::io::Result<usize> {
+    use crate::expression::RCall;
+    use crate::{OwnedProtect, SEXP, SexpExt};
+    use std::io;
+
+    let eval = |call: RCall| {
+        unsafe { call.eval_base() }.map_err(|error| io::Error::other(error.to_string()))
+    };
+    // writeBin/writeChar otherwise open a closed connection for the call;
+    // keep R_WriteConnection's open-only contract.
+    let open = eval(RCall::new("isOpen").arg(sexp).arg_value("w"))?;
+    if open.as_logical() != Some(true) {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "connection is not open for writing",
+        ));
+    }
+    let is_text = {
+        let summary =
+            unsafe { OwnedProtect::new(eval(RCall::new("summary.connection").arg(sexp))?) };
+        summary.get().vector_elt(3).string_elt_str(0) == Some("text")
+    };
+    if !is_text {
+        eval(RCall::new("writeBin").arg_value(buf).arg(sexp))?;
+        return Ok(buf.len());
+    }
+    let text = match std::str::from_utf8(buf) {
+        Ok(text) => text,
+        Err(error) => std::str::from_utf8(&buf[..error.valid_up_to()]).expect("a UTF-8 prefix"),
+    };
+    let text = text.split('\0').next().unwrap_or_default();
+    if text.is_empty() {
+        return Ok(0);
+    }
+    let nchars = i32::try_from(text.chars().count())
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+    let write = RCall::new("writeChar")
+        .arg_value(text)
+        .arg(sexp)
+        .named_value("nchars", nchars)
+        .named_arg("eos", SEXP::nil())
+        .named_value("useBytes", true);
+    // Bypassing text re-encoding is intentional for this byte-write API.
+    // Suppress writeChar's warning about that; errors remain caught by eval.
+    eval(RCall::new("suppressWarnings").arg(unsafe { write.build() }))?;
+    Ok(text.len())
+}
+
 #[cfg(r_4_6)]
 mod imp {
     use std::ffi::CStr;
@@ -132,7 +190,6 @@ mod imp {
     use super::ConnState;
     use crate::expression::RCall;
     use crate::gc_protect::OwnedProtect;
-    use crate::into_r::IntoR;
     use crate::{SEXP, SexpExt};
 
     // Evaluate `call` in base, panicking with R's message on an R error (a
@@ -277,30 +334,6 @@ mod imp {
     /// When the connection is not open or cannot write, or with R's message
     /// when the write fails.
     pub(crate) unsafe fn write(sexp: SEXP, buf: &[u8]) -> usize {
-        unsafe {
-            if !checked_state(sexp, true).is_text {
-                eval(RCall::new("writeBin").arg(buf.into_sexp()).arg(sexp));
-                return buf.len();
-            }
-            let text = match std::str::from_utf8(buf) {
-                Ok(text) => text,
-                Err(e) => std::str::from_utf8(&buf[..e.valid_up_to()]).expect("a UTF-8 prefix"),
-            };
-            let text = text.split('\0').next().unwrap_or_default();
-            if text.is_empty() {
-                return 0;
-            }
-            // `nchars` counts characters in a UTF-8 locale, even with
-            // `useBytes = TRUE`; `eos = NULL` writes no terminator.
-            eval(
-                RCall::new("writeChar")
-                    .arg(SEXP::scalar_string_from_str(text))
-                    .arg(sexp)
-                    .named_arg("nchars", r_int(text.chars().count()))
-                    .named_arg("eos", SEXP::nil())
-                    .named_arg("useBytes", SEXP::scalar_logical(true)),
-            );
-            text.len()
-        }
+        unsafe { super::write_caught(sexp, buf) }.unwrap_or_else(|error| panic!("{error}"))
     }
 }
