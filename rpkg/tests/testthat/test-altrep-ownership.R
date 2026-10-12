@@ -79,3 +79,54 @@ test_that("gc_stress_altrep_clone_cache keeps cached strings under gctorture", {
 })
 
 # endregion
+
+# region: AltrepBuffer --------------------------------------------------------
+
+test_that("R writes into a native buffer reach reads, copies and serialization", {
+  x <- miniextendr:::altrep_buffer_ints(c(1L, 2L, 3L))
+  x[2L] <- 99L
+  expect_true(is_altrep(x))
+  expect_identical(x, c(1L, 99L, 3L))
+  expect_identical(sum(x), 103L)
+  y <- x
+  y[1L] <- 0L
+  expect_identical(x, c(1L, 99L, 3L))
+  expect_identical(y, c(0L, 99L, 3L))
+  expect_true(is_altrep(y))
+  restored <- unserialize(serialize(x, NULL))
+  expect_true(is_altrep(restored))
+  expect_identical(restored, c(1L, 99L, 3L))
+})
+
+test_that("a buffer edit after R took its pointer keeps R's writes", {
+  x <- miniextendr:::altrep_buffer_ints(c(1L, 2L, 3L))
+  invisible(x + 0L)
+  x[3L] <- 30L
+  miniextendr:::altrep_buffer_extend(x, c(4L, 5L))
+  expect_true(is_altrep(x))
+  expect_identical(x, c(1L, 2L, 30L, 4L, 5L))
+  expect_identical(x + 0L, c(1L, 2L, 30L, 4L, 5L))
+  y <- x
+  y[5L] <- 50L
+  miniextendr:::altrep_buffer_extend(x, 6L)
+  expect_identical(x, c(1L, 2L, 30L, 4L, 5L, 6L))
+  expect_identical(y, c(1L, 2L, 30L, 4L, 50L))
+})
+
+test_that("real and logical buffers read, copy and serialize their values", {
+  r <- miniextendr:::altrep_buffer_reals(c(1.5, NA, 3))
+  r[1L] <- 2.5
+  expect_identical(r, c(2.5, NA, 3))
+  expect_true(is_altrep(unserialize(serialize(r, NULL))))
+  l <- miniextendr:::altrep_buffer_logicals(c(TRUE, NA, FALSE))
+  expect_identical(l, c(TRUE, NA, FALSE))
+  expect_identical(l[[2L]], NA)
+  m <- l
+  m[2L] <- TRUE
+  expect_identical(l, c(TRUE, NA, FALSE))
+  expect_identical(m, c(TRUE, TRUE, FALSE))
+  expect_true(is_altrep(m))
+  expect_identical(unserialize(serialize(m, NULL)), c(TRUE, TRUE, FALSE))
+})
+
+# endregion

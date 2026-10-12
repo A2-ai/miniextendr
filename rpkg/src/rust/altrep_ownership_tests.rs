@@ -1,7 +1,8 @@
 //! ALTREP ownership-policy fixtures for `test-altrep-ownership.R`.
 
 use miniextendr_api::altrep_data::{AltIntegerData, AltStringData, AltrepDataptr, AltrepLen};
-use miniextendr_api::miniextendr;
+use miniextendr_api::altrep_registration::RegisterAltrep;
+use miniextendr_api::{Altrep, AltrepBuffer, RLogical, SEXP, SexpExt, miniextendr};
 
 // region: duplicate = "clone"
 
@@ -55,5 +56,40 @@ pub fn altrep_cloned_ints(values: Vec<i32>) -> ClonedInts {
 #[miniextendr(noexport)]
 pub fn altrep_cloned_strings(values: Vec<Option<String>>) -> ClonedStrings {
     ClonedStrings(values)
+}
+// endregion
+
+// region: AltrepBuffer
+
+/// A native integer buffer ALTREP.
+#[miniextendr(noexport)]
+pub fn altrep_buffer_ints(values: Vec<i32>) -> Altrep<AltrepBuffer<i32>> {
+    Altrep(AltrepBuffer::new(values))
+}
+
+/// A native real buffer ALTREP.
+#[miniextendr(noexport)]
+pub fn altrep_buffer_reals(values: Vec<f64>) -> Altrep<AltrepBuffer<f64>> {
+    Altrep(AltrepBuffer::new(values))
+}
+
+/// A native logical buffer ALTREP.
+#[miniextendr(noexport)]
+pub fn altrep_buffer_logicals(values: Vec<RLogical>) -> Altrep<AltrepBuffer<RLogical>> {
+    Altrep(AltrepBuffer::new(values))
+}
+
+/// Append to an integer buffer ALTREP in place and return it.
+#[miniextendr(noexport)]
+pub fn altrep_buffer_extend(x: SEXP, values: Vec<i32>) -> SEXP {
+    let class = <AltrepBuffer<i32> as RegisterAltrep>::get_or_init_class();
+    assert!(
+        x.is_altrep() && unsafe { class.inherits(x) },
+        "not an integer buffer ALTREP"
+    );
+    let buffer = unsafe { miniextendr_api::altrep_data1_mut::<AltrepBuffer<i32>>(x) }
+        .expect("integer buffer owner");
+    buffer.edit(|current| current.extend(values));
+    x
 }
 // endregion

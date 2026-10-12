@@ -297,6 +297,22 @@ hand-written `no_lowlevel` `Duplicate` can still do this, as the live view in
 view that keeps attributes per copy is tracked in
 [#2051](https://github.com/A2-ai/miniextendr/issues/2051).
 
+`AltrepBuffer<T>` is a native owner that can grow after R has a pointer to
+it. Return `Altrep(AltrepBuffer::new(values))` for `i32`, `f64`, `u8`,
+`Rcomplex` or `RLogical`. Its `edit(|vec| ...)` method gives the closure the
+`Vec`. Once R has requested a pointer, an edit first clones the values and
+keeps the old `Vec` until the owner is dropped, so the old pointer stays
+valid and later callbacks read the edited values. Before that, edits reuse
+the allocation. The built-in buffer classes clone on R duplication and
+serialize the current values. A custom class can delegate its native data
+traits to the buffer and pick its own duplication policy.
+
+R has no notification for a pointer it no longer uses, so every edit after
+an exposure keeps one more allocation until the owner is dropped
+([#2052](https://github.com/A2-ai/miniextendr/issues/2052)). An edit also
+changes the R object in place: every binding of that object sees it, since
+R only duplicates when it writes through a binding itself.
+
 Both duplication hooks are available today: implement `Altrep::duplicate` with
 `HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
 The bridge registers those callbacks conditionally. R's default `DuplicateEX`

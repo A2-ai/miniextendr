@@ -320,6 +320,7 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 pub mod macros;
 
 pub mod arrays;
+pub mod buffers;
 pub mod builtins;
 pub mod shared_slices;
 pub mod static_slices;

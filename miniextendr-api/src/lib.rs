@@ -331,6 +331,7 @@ pub use altrep_data::{
     AltRawData,
     AltRealData,
     AltStringData,
+    AltrepBuffer,
     AltrepDataptr,
     AltrepExtract,
     AltrepIteratorExt,

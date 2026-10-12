@@ -14,7 +14,7 @@ use std::borrow::Cow;
 // offers only the value-semantics `duplicate = "clone"` policy.
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(manual, no_lowlevel, class = "AssignmentLiveVec")]
-struct LiveVec(Vec<i32>);
+struct LiveVec(miniextendr_api::AltrepBuffer<i32>);
 
 #[derive(Clone, miniextendr_api::AltrepInteger)]
 #[altrep(manual, dataptr, duplicate = "clone", class = "AssignmentCowVec")]
@@ -29,7 +29,7 @@ macro_rules! direct_integer_view {
         }
         impl miniextendr_api::altrep_data::AltIntegerData for $ty {
             fn elt(&self, i: usize) -> i32 {
-                self.0[i]
+                self.0.as_ref()[i]
             }
         }
     };
@@ -42,10 +42,10 @@ miniextendr_api::impl_inferbase_integer!(LiveVec);
 
 impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LiveVec {
     fn dataptr(&mut self, _: bool) -> Option<*mut i32> {
-        Some(self.0.as_mut_ptr())
+        miniextendr_api::altrep_data::AltrepDataptr::dataptr(&mut self.0, true)
     }
     fn dataptr_or_null(&self) -> Option<*const i32> {
-        Some(self.0.as_ptr())
+        None
     }
 }
 impl miniextendr_api::altrep_data::AltrepDataptr<i32> for CowVec {
@@ -76,7 +76,7 @@ unsafe extern "C-unwind" fn grow_live_vec(x: SEXP, size: SEXP) -> SEXP {
         return SEXP::nil();
     };
     let data = &mut (*view).0;
-    data.resize(size, 99);
+    data.edit(|values| values.resize(size, 99));
     x
 }
 
@@ -125,7 +125,7 @@ unsafe fn assignment_env(
 #[test]
 fn replacement_function_refreshes_a_live_vec_after_capacity_growth() {
     r_test_utils::with_r_thread(|| unsafe {
-        let x = OwnedProtect::new(LiveVec(vec![10i32, 20]).into_sexp());
+        let x = OwnedProtect::new(LiveVec(vec![10i32, 20].into()).into_sexp());
         let old_capacity = <LiveVec as AltrepExtract>::altrep_extract_ref(x.get())
             .0
             .capacity();
@@ -145,11 +145,10 @@ fn replacement_function_refreshes_a_live_vec_after_capacity_growth() {
         assert_eq!(<LiveVec as Altrep>::length(x.get()), 4096);
         let data = <LiveVec as AltrepExtract>::altrep_extract_ref(x.get());
         assert!(data.0.capacity() > old_capacity);
-        assert_eq!(data.0.as_ptr().cast(), current_ptr.cast_const());
-        // The allocator may grow in place. The storage regression separately
-        // forces a changed allocation; both paths must reacquire the pointer.
-        // old_ptr is never dereferenced after the replacement boundary.
-        let _ = old_ptr;
+        assert_eq!(data.0.as_slice().as_ptr().cast(), current_ptr.cast_const());
+        // The old allocation survives the shared owner's edit boundary.
+        assert_ne!(old_ptr, current_ptr);
+        assert_eq!(*old_ptr.cast::<i32>(), 10);
     });
 }
 
