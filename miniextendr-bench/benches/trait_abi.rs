@@ -97,7 +97,7 @@ impl OwnedCounterView {
         let erased = ErasedCounter::new(start);
         let vtable = unsafe { erased.query_counter_vtable() };
         let data = unsafe { erased.data_ptr() };
-        let view = unsafe { <CounterView as TraitView>::from_raw_parts(data, vtable) };
+        let view = unsafe { <CounterView as TraitView>::from_raw_parts(data, vtable, None) };
         Self {
             _erased: erased,
             view,
@@ -158,7 +158,7 @@ fn query_view_value(bencher: divan::Bencher) {
         .bench_local_refs(|erased| unsafe {
             let vtable = erased.query_counter_vtable();
             let data = erased.data_ptr();
-            let view = <CounterView as TraitView>::from_raw_parts(data, vtable);
+            let view = <CounterView as TraitView>::from_raw_parts(data, vtable, None);
             divan::black_box(view.value());
         });
 }
@@ -259,7 +259,7 @@ impl OwnedMathOpsView {
             ((*base).query)(erased.ptr, TAG_MathOps)
         };
         let data = unsafe { erased.data_ptr() };
-        let view = unsafe { <MathOpsView as TraitView>::from_raw_parts(data, vtable) };
+        let view = unsafe { <MathOpsView as TraitView>::from_raw_parts(data, vtable, None) };
         Self {
             _erased: erased,
             view,

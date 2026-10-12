@@ -310,6 +310,25 @@ fn generate_preserves_original_trait() {
     assert!(output_str.contains("fn value"));
 }
 
+/// Pointer invariants belong to the runtime, outside the caller's module.
+#[test]
+fn view_keeps_typed_runtime_storage_and_forwards_its_owner() {
+    let item: ItemTrait = syn::parse_quote! {
+        pub trait Counter { fn value(&self) -> i32; }
+    };
+    let output = generate_trait_abi(&item).to_string();
+    assert!(
+        output.contains("TraitViewData < CounterVTable >"),
+        "{output}"
+    );
+    assert!(
+        output.contains("TraitViewData :: new (data , vtable , owner)"),
+        "{output}"
+    );
+    assert!(!output.contains("pub data :"), "{output}");
+    assert!(!output.contains("pub vtable :"), "{output}");
+}
+
 /// The View protects each converted argument before the next conversion
 /// allocates, and the returned SEXP until it is converted back to Rust.
 #[test]
