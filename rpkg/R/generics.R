@@ -388,6 +388,21 @@ NULL
 #' @name either_grades
 NULL
 
+# SplitS3 fixture generics (#1776): one from each of the type's two impl
+# blocks, exported by the auto-generated wrappers under @rdname SplitS3.
+
+#' Get the value of an object through an S3 method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name split3_value
+NULL
+
+#' Double the value of an object through an S3 method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name split3_doubled
+NULL
+
 # Trait generics of the Counter / MatrixCounter S3 impls (S3TraitCounter,
 # CounterTraitS3). The S3 trait wrappers export the generic by name, so it
 # needs an alias like the inherent-impl generics above.
