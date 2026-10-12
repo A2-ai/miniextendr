@@ -191,9 +191,20 @@ fn test_internal_suppresses_export_s3() {
         "internal should add @keywords internal for S3, got:\n{}",
         result
     );
+    // The generic is not exported; the method stays registered, as on an
+    // inherent `internal` S3 impl.
     assert!(
-        !result.contains("@export"),
-        "internal should suppress @export for S3, got:\n{}",
+        !result.contains("@export s3_trait_Bar_value") && !result.contains("@export value"),
+        "internal should not export the generic for S3, got:\n{}",
+        result
+    );
+    let method_block = result
+        .split("\n\n")
+        .find(|block| block.contains("#' @method "))
+        .expect("an S3 method block");
+    assert!(
+        method_block.contains("#' @export\n"),
+        "internal should keep the S3 method registration, got:\n{}",
         result
     );
 }
