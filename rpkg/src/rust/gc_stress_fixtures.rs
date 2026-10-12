@@ -5228,24 +5228,45 @@ impl ViewArgProbe for ViewArgHost {
 /// reads a freed or reused node. The same-size strings make a reused node
 /// likely, which turns the use-after-free into a wrong value or a type error.
 ///
+/// The View is also the receiver's only root once it is built. A full
+/// collection runs finalizers, which the allocation-triggered collections
+/// of `gctorture(TRUE)` do not; without that root it would drop the host,
+/// and a weak reference reports this before the View reads the freed host.
+///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_trait_view_args() -> String {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::{Rboolean, sys};
+
     let host = ViewArgHost::new("host".to_string());
-    // SAFETY: main thread (`no_worker`); the wrapped handle is protected for
-    // the whole View call.
-    let joined = unsafe {
-        let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
-            __mx_wrap_ViewArgHost(host),
-        ));
-        ViewArgProbeView::from_sexp(handle.get()).join_args(
-            "first".to_string(),
-            "second".to_string(),
-            vec![1.5, 2.5],
-            vec!["x".to_string(), "y".to_string()],
-            "last".to_string(),
-        )
+    // The constructor's temporary root ends before argument conversion. The
+    // View itself must retain the receiver through every subsequent allocation.
+    let (view, weak) = unsafe {
+        let scope = ProtectScope::new();
+        let handle = scope
+            .protect(miniextendr_api::trait_abi::ccall::mx_wrap(
+                __mx_wrap_ViewArgHost(host),
+            ))
+            .get();
+        let weak = sys::R_MakeWeakRef(handle, SEXP::nil(), SEXP::nil(), Rboolean::FALSE);
+        let weak = scope.protect(weak).get();
+        (ViewArgProbeView::from_sexp(handle), weak)
     };
+    // Nothing allocated since the scope ended.
+    let weak = unsafe { OwnedProtect::new(weak) };
+    unsafe { sys::R_gc() };
+    assert!(
+        !unsafe { sys::R_WeakRefKey(weak.get()) }.is_nil(),
+        "the trait View lost its receiver root"
+    );
+    let joined = view.join_args(
+        "first".to_string(),
+        "second".to_string(),
+        vec![1.5, 2.5],
+        vec!["x".to_string(), "y".to_string()],
+        "last".to_string(),
+    );
     assert_eq!(
         joined, r#"host|first|second|[1.5, 2.5]|["x", "y"]|last"#,
         "trait View arguments were corrupted"

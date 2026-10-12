@@ -72,7 +72,7 @@ Generates:
 
 - `TAG_Counter: mx_tag` - Trait identifier
 - `CounterVTable` - Function pointer table
-- `CounterView` - Runtime wrapper (data + vtable)
+- `CounterView` - Runtime wrapper (data + vtable pointers; roots its R receiver)
 - `__Counter_build_vtable::<T>()` - Vtable builder
 
 ### 2. Implement the Trait

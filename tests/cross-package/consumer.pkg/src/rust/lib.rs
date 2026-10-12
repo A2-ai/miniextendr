@@ -218,11 +218,16 @@ pub fn peek_value(counter_sexp: SEXP) -> i32 {
 /// @export
 #[miniextendr]
 pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
-    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
-    // SAFETY: `n` is a `.Call()` argument, rooted for the whole call, and the
-    // vtable and data come from the View of a live Counter object.
+    // SAFETY: both inputs are `.Call()` arguments, rooted for the whole
+    // call. Query checks the erased-object tag and Counter implementation
+    // before we read the header and its alignment-correct data offset.
     unsafe {
-        let result = ((*counter.vtable).add)(counter.data, 1, &n);
+        let vtable = ccall::mx_query(counter_sexp, TAG_Counter).cast::<CounterVTable>();
+        assert!(!vtable.is_null(), "object does not implement Counter");
+        let erased = ccall::mx_get(counter_sexp);
+        let offset = (*(*erased).base).data_offset;
+        let data = erased.cast::<u8>().add(offset).cast();
+        let result = ((*vtable).add)(data, 1, &n);
         miniextendr_api::trait_abi::repanic_if_rust_error(result);
     }
 }
@@ -234,6 +239,46 @@ pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
 #[miniextendr]
 pub fn is_counter(sexp: SEXP) -> bool {
     unsafe { CounterView::try_from_sexp(sexp).is_some() }
+}
+
+/// Make a Counter, keep it only through a View, collect, then read the View
+///
+/// The factory's result is reachable from nothing in R, so once the stack
+/// roots used to build the View end, the View's own root is the only one.
+/// A full collection then finalizes the Counter unless the View keeps it.
+/// @param make_counter A function of no arguments that returns a Counter
+/// @return The counter's value, or `NA` if the collection finalized it
+/// @export
+#[miniextendr]
+pub fn view_value_after_gc(make_counter: SEXP) -> Option<i32> {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope};
+    use miniextendr_api::{Rboolean, sys};
+
+    // SAFETY: on R's main thread inside `.Call`. Every SEXP is protected
+    // while anything allocates; the weak reference is the only one carried
+    // across the scope's end, and it is protected again before the next
+    // allocation.
+    unsafe {
+        let (view, weak) = {
+            let scope = ProtectScope::new();
+            let counter = RCall::from_sexp(make_counter)
+                .eval(sys::R_GlobalEnv)
+                .expect("make_counter() failed");
+            let counter = scope.protect(counter).get();
+            // The weak reference reports the collection without reading the
+            // object after it is freed.
+            let weak = sys::R_MakeWeakRef(counter, SEXP::nil(), SEXP::nil(), Rboolean::FALSE);
+            let weak = scope.protect(weak).get();
+            (CounterView::from_sexp(counter), weak)
+        };
+        let weak = OwnedProtect::new(weak);
+        sys::R_gc();
+        if sys::R_WeakRefKey(weak.get()).is_nil() {
+            return None;
+        }
+        Some(view.value())
+    }
 }
 // endregion
 

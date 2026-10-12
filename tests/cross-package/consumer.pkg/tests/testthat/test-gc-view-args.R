@@ -29,3 +29,15 @@ test_that("View arguments stay rooted across a cross-package vtable call under g
 
   expect_identical(results, rep("view arg message", 5L))
 })
+
+# A View made from a producer object must keep that object alive by itself.
+# `view_value_after_gc()` drops every other root, runs a full collection and
+# reports `NA` when the collection finalized the producer's Counter.
+test_that("a cross-package View keeps its receiver alive through a collection", {
+  skip_on_cran()
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  expect_identical(view_value_after_gc(function() new_counter(5L)), 5L)
+  expect_identical(view_value_after_gc(function() new_double_counter(7L)), 7L)
+})
