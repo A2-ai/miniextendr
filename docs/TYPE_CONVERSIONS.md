@@ -889,15 +889,20 @@ a native reference must describe it, and forwarding converters must preserve
 the delegated conversion's metadata. Branch-dependent `Either<L, R>` conversions
 need separate handling, tracked in [#1504](https://github.com/A2-ai/miniextendr/issues/1504).
 
-The guard compares R object identities. Code using `TryFromSexp` directly must
-ensure its mutable and shared views satisfy Rust's borrowing rules. Accept
+The wrapper guard compares R object identities. Mutable list conversions
+(`Vec<&mut T>`, `Vec<&mut [T]>`, and their optional-element forms) also collect
+and check every raw buffer range before constructing references. This rejects
+distinct ALTREP objects exposing identical or partially overlapping storage.
+Type, length, and overlap failures are reported together with element positions.
+Direct callers must still keep the sources rooted and exclude borrows held
+outside that conversion; the list check does not supply a lifetime. Accept
 `Vec<T>` for copy-in/copy-out semantics when an input's ownership is uncertain.
 
 ---
 
 ## Known Limitations
 
-- **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
+- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. The root-bound migration is tracked in #1427.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
 
@@ -927,5 +932,7 @@ framework type name at the boundary; an alias or a newtype needs an explicit
 root conversion in the body. Trait return conversions need owned values such
 as `ProtectedStrVec` or `Vec<T>`.
 
-Native references, `Cow`, and their container conversions still use the raw
-conversion trait and remain part of the lifetime-boundary migration (#1427).
+Native references and their container conversions still use the raw conversion
+trait and remain part of the lifetime-boundary migration (#1427). `Cow` inputs
+use `TryFromRoot` when spelled explicitly at the wrapper boundary; raw
+`TryFromSexp` conversions of `Cow` return owned data.
