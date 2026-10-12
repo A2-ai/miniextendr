@@ -109,7 +109,7 @@ pub trait RConnectionImpl: Sized + 'static {
 | `read` | `readBin()`, `readLines()`, etc. | Number of bytes read (0 = EOF) | |
 | `write` | `writeBin()`, `writeLines()`, etc. | Number of bytes written | |
 | `fgetc` | Character-by-character reading | Byte as `i32`, or -1 on EOF | Default delegates to `read` |
-| `seek` | `seek(conn, where, origin)` | New position, or -1 on failure | See origin codes below |
+| `seek` | `seek(conn, where, origin)` | Previous position, or -1 on failure | See origin codes below |
 | `truncate` | `truncate(conn)` | (none) | |
 | `flush` | `flush(conn)` | 0 = success, non-zero = failure | |
 | `vfprintf` | Formatted print (rarely needed) | Characters written, or -1 | R typically uses `write` |
@@ -425,22 +425,15 @@ unsafe {
 
 ### Panic Safety
 
-All callback trampolines are wrapped in `catch_connection_panic`, which catches Rust panics and returns a safe fallback value:
+Ordinary I/O callbacks (`read`, `write`, `fgetc`, `seek`, `truncate`, `flush`,
+`vfprintf`) run under `R_UnwindProtect`. Rust panics and `error!` conditions
+become R errors after Rust destructors run. They do not become EOF or a
+successful short write. The connection can still be closed after an error;
+the framework does not roll back changes already made by the stream.
 
-| Callback | Fallback on Panic |
-|----------|-------------------|
-| `open` | `FALSE` (open failed) |
-| `close` | (no-op) |
-| `destroy` | (still drops Box, always) |
-| `read` | 0 (EOF) |
-| `write` | 0 (no bytes written) |
-| `fgetc` | -1 (EOF) |
-| `seek` | -1.0 (seek failed) |
-| `truncate` | (no-op) |
-| `flush` | -1 (failure) |
-| `vfprintf` | -1 (failure) |
-
-Panics are caught, telemetry is fired via `panic_telemetry::fire()`, and R receives a non-fatal error indicator. The connection remains in a consistent state.
+`open` retains a `FALSE` fallback so the builder tears down failed opens.
+`close` and `destroy` can run during garbage collection, so they suppress
+failures and deferred conditions; `destroy` still drops the Rust owner.
 
 ### Destroy Always Runs
 
@@ -454,11 +447,15 @@ let _ = unsafe { Box::from_raw(private as *mut T) };
 
 ### std::io Error Handling
 
-The adapter types convert `std::io::Error` to connection-friendly values:
-- Read errors return 0 (EOF)
-- Write errors return 0 (no bytes written)
-- Flush errors return -1 (failure)
-- Seek errors return -1.0 (failure)
+The adapters raise `miniextendr_connection_io_error` with the original message
+and fields `operation`, `io_kind`, and `os_error` (the OS code when available).
+This applies to reads, buffered character reads, writes, flushes, and seeks.
+A successful zero-byte read still means EOF.
+
+Seek returns the position **before** the move, as R requires. A position query
+does not move. Offsets must be finite whole numbers within the stream's integer
+range; absolute offsets cannot be negative. The std::io adapters use one shared
+read/write cursor, so `rw` does not select separate positions.
 
 ## Trampoline Architecture
 
@@ -470,16 +467,16 @@ R calls C function pointer
   v
 trampoline<T>(conn: *mut Rconn) -> ReturnType
   |
-  +--> catch_connection_panic(fallback, || {
+  +--> connection_callback(|| {
   |      let state = get_state::<T>(conn);  // Extract &mut T from conn.private
   |      state.method(args)                  // Call trait method
   |    })
   |
   v
-Return value (or fallback on panic)
+Return value (or an R error after Rust unwinding)
 ```
 
-Each trampoline is a generic `unsafe extern "C-unwind" fn` parameterized by `T: RConnectionImpl`. When you call `build::<T>(state)`, the compiler generates concrete function pointers for your specific type. The `C-unwind` ABI allows panics to propagate up to the `catch_connection_panic` boundary.
+Each trampoline is a generic `unsafe extern "C-unwind" fn` parameterized by `T: RConnectionImpl`. When you call `build::<T>(state)`, the compiler generates concrete function pointers for your specific type. The guard catches Rust panics and R exits before returning to C.
 
 The `private` field of the `Rconn` struct stores a `Box::into_raw(Box::new(state))` pointer. Trampolines cast this back to `&mut T` via `get_state()`.
 
@@ -537,8 +534,10 @@ impl RConnectionImpl for MemoryBuffer {
             3 => (self.data.len() as isize + where_ as isize) as usize, // End
             _ => return -1.0,
         };
+        let previous = miniextendr_api::coerce::TryCoerce::<f64>::try_coerce(self.position)
+            .expect("connection position is representable in R");
         self.position = new_pos.min(self.data.len());
-        self.position as f64
+        previous
     }
 
     fn flush(&mut self) -> i32 { 0 }

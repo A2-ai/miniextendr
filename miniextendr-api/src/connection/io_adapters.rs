@@ -9,6 +9,7 @@
 //! R decides when the connection is destroyed.
 
 use crate::SEXP;
+use crate::coerce::TryCoerce;
 
 use super::{RConnectionImpl, RCustomConnection};
 
@@ -75,31 +76,58 @@ macro_rules! define_io_adapter {
     };
 }
 
-// Helper macro for seek implementation (shared across all seekable adapters)
+/// Transport the original I/O error through the callback's R-unwind guard.
+/// A failed read must never look like EOF, nor a failed write like success.
+fn io_result<T>(operation: &str, result: std::io::Result<T>) -> T {
+    result.unwrap_or_else(|error| {
+        crate::error!(
+            class = "miniextendr_connection_io_error",
+            data = {
+                operation = operation,
+                io_kind = format!("{:?}", error.kind()),
+                os_error = error.raw_os_error()
+            },
+            "connection {operation} failed: {error}"
+        )
+    })
+}
+
+// R's seek callback returns the position BEFORE moving (also for a query).
+// All std::io adapters share one cursor for reading and writing.
 macro_rules! impl_seek {
     () => {
         fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-            // Handle position query (where_ is NA/NaN)
+            let previous = io_result("seek", self.inner.stream_position());
+            let previous: f64 =
+                io_result("seek", previous.try_coerce().map_err(std::io::Error::other));
             if where_.is_nan() {
-                return self
-                    .inner
-                    .stream_position()
-                    .map(|pos| pos as f64)
-                    .unwrap_or(-1.0);
+                return previous;
             }
-
-            // Map R's origin to SeekFrom
+            let invalid = |error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error);
             let seek_from = match origin {
-                1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
-                2 => std::io::SeekFrom::Current(where_ as i64),
-                3 => std::io::SeekFrom::End(where_ as i64),
-                _ => return -1.0,
+                1 => std::io::SeekFrom::Start(io_result(
+                    "seek",
+                    where_.try_coerce().map_err(invalid),
+                )),
+                2 => std::io::SeekFrom::Current(io_result(
+                    "seek",
+                    where_.try_coerce().map_err(invalid),
+                )),
+                3 => {
+                    std::io::SeekFrom::End(io_result("seek", where_.try_coerce().map_err(invalid)))
+                }
+                _ => {
+                    return io_result(
+                        "seek",
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "seek origin must be start, current, or end",
+                        )),
+                    )
+                }
             };
-
-            self.inner
-                .seek(seek_from)
-                .map(|pos| pos as f64)
-                .unwrap_or(-1.0)
+            io_result("seek", self.inner.seek(seek_from));
+            previous
         }
     };
 }
@@ -126,7 +154,7 @@ define_io_adapter! {
         caps: { HAS_READ = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                io_result("read", self.inner.read(buf))
             }
         }
     }
@@ -154,11 +182,12 @@ define_io_adapter! {
         caps: { HAS_WRITE = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                io_result("write", self.inner.write(buf))
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                io_result("flush", self.inner.flush());
+                0
             }
         }
     }
@@ -172,15 +201,16 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                io_result("read", self.inner.read(buf))
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                io_result("write", self.inner.write(buf))
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                io_result("flush", self.inner.flush());
+                0
             }
         }
     }
@@ -194,7 +224,7 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                io_result("read", self.inner.read(buf))
             }
 
             impl_seek!();
@@ -210,11 +240,12 @@ define_io_adapter! {
         caps: { HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                io_result("write", self.inner.write(buf))
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                io_result("flush", self.inner.flush());
+                0
             }
 
             impl_seek!();
@@ -246,15 +277,16 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                io_result("read", self.inner.read(buf))
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                io_result("write", self.inner.write(buf))
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                io_result("flush", self.inner.flush());
+                0
             }
 
             impl_seek!();
@@ -270,18 +302,17 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_BUFREAD = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                io_result("read", self.inner.read(buf))
             }
 
             fn fgetc(&mut self) -> i32 {
                 // Use fill_buf for optimized buffered reading
-                match self.inner.fill_buf() {
-                    Ok(buffer) if !buffer.is_empty() => {
-                        let byte = buffer[0];
-                        self.inner.consume(1);
-                        byte as i32
-                    }
-                    _ => -1, // EOF or error
+                let buffer = io_result("read", self.inner.fill_buf());
+                if let Some(&byte) = buffer.first() {
+                    self.inner.consume(1);
+                    i32::from(byte)
+                } else {
+                    -1 // EOF
                 }
             }
         }

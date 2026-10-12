@@ -205,3 +205,162 @@ fn distribution_iterator_is_readable_as_r_doubles() {
     });
 }
 // endregion
+
+// region: I/O failures and R's seek return contract
+
+struct BrokenIo;
+impl Read for BrokenIo {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("read refused"))
+    }
+}
+impl Write for BrokenIo {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("write refused"))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("flush refused"))
+    }
+}
+impl BufRead for BrokenIo {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        Err(std::io::Error::other("read refused"))
+    }
+    fn consume(&mut self, _: usize) {}
+}
+impl std::io::Seek for BrokenIo {
+    fn seek(&mut self, _: std::io::SeekFrom) -> std::io::Result<u64> {
+        Err(std::io::Error::other("seek refused"))
+    }
+}
+
+fn expect_io_error<T>(operation: &str, f: impl FnOnce() -> T) {
+    use miniextendr_api::condition::{RCondition, catch_condition};
+    use miniextendr_api::rvalue::RValue;
+    let condition = match catch_condition(f) {
+        Err(condition) => condition,
+        Ok(_) => panic!("I/O failure was swallowed"),
+    };
+    let RCondition::Error {
+        message,
+        class,
+        data,
+        ..
+    } = condition
+    else {
+        panic!("expected error condition")
+    };
+    assert_eq!(class, ["miniextendr_connection_io_error"]);
+    assert!(message.contains(operation), "{message}");
+    let data = data.unwrap();
+    assert!(data.iter().any(|(name, value)| name == "operation"
+        && matches!(value, RValue::Character(v) if v == &[Some(operation.to_string())])));
+    assert!(data.iter().any(|(name, _)| name == "io_kind"));
+    assert!(data.iter().any(|(name, _)| name == "os_error"));
+}
+
+#[test]
+fn every_io_adapter_preserves_failures() {
+    use miniextendr_api::connection::*;
+    macro_rules! read_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("read", || adapter.read(&mut [0; 1]));
+            expect_io_error("read", || adapter.fgetc());
+        )*};
+    }
+    read_failure!(IoRead, IoReadWrite, IoReadSeek, IoReadWriteSeek, IoBufRead);
+    macro_rules! write_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("write", || adapter.write(&[0]));
+            expect_io_error("flush", || adapter.flush());
+        )*};
+    }
+    write_failure!(IoWrite, IoReadWrite, IoWriteSeek, IoReadWriteSeek);
+    macro_rules! seek_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("seek", || adapter.seek(0.0, 1, 0));
+        )*};
+    }
+    seek_failure!(IoReadSeek, IoWriteSeek, IoReadWriteSeek);
+}
+
+#[test]
+fn seek_adapters_return_old_positions_and_reject_invalid_offsets() {
+    use miniextendr_api::connection::*;
+    macro_rules! check {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(Cursor::new(vec![0_u8; 8]));
+            assert_eq!(adapter.seek(3.0, 1, 0), 0.0);
+            assert_eq!(adapter.seek(f64::NAN, 1, 0), 3.0);
+            assert_eq!(adapter.seek(2.0, 2, 0), 3.0);
+            assert_eq!(adapter.seek(-1.0, 3, 0), 5.0);
+            for offset in [-1.0, 0.5, f64::INFINITY, f64::MAX] {
+                expect_io_error("seek", || adapter.seek(offset, 1, 0));
+                assert_eq!(adapter.seek(f64::NAN, 1, 0), 7.0);
+            }
+            expect_io_error("seek", || adapter.seek(0.0, 99, 0));
+        )*};
+    }
+    check!(IoReadSeek, IoWriteSeek, IoReadWriteSeek);
+}
+
+#[test]
+fn r_receives_io_conditions_and_can_close_after_failure() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(RConnectionIo::new(BrokenIo).build_read_write_seek());
+        for error in [
+            RCall::new("readBin")
+                .arg(conn.get())
+                .arg_value("raw")
+                .arg_value(1_i32)
+                .eval_base()
+                .unwrap_err(),
+            RCall::new("writeBin")
+                .arg_value(vec![1_u8])
+                .arg(conn.get())
+                .eval_base()
+                .unwrap_err(),
+            RCall::new("flush").arg(conn.get()).eval_base().unwrap_err(),
+            RCall::new("seek")
+                .arg(conn.get())
+                .arg_value(0_f64)
+                .eval_base()
+                .unwrap_err(),
+        ] {
+            assert!(error.inherits("miniextendr_connection_io_error"), "{error}");
+            assert!(error.message().contains("refused"), "{error}");
+        }
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        let conn = OwnedProtect::new(RConnectionIo::new(BrokenIo).mode("r").build_bufread());
+        let error = RCall::new("readLines")
+            .arg(conn.get())
+            .eval_base()
+            .unwrap_err();
+        assert!(error.inherits("miniextendr_connection_io_error"), "{error}");
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+#[test]
+fn r_seek_returns_the_position_before_the_move() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(
+            RConnectionIo::new(Cursor::new(vec![0_u8; 8])).build_read_write_seek(),
+        );
+        for (where_, previous) in [(3.0, 0.0), (5.0, 3.0), (f64::NAN, 5.0)] {
+            let value = OwnedProtect::new(
+                RCall::new("seek")
+                    .arg(conn.get())
+                    .arg_value(where_)
+                    .eval_base()
+                    .unwrap(),
+            );
+            assert_eq!(f64::try_from_sexp(value.get()).unwrap(), previous);
+        }
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+// endregion
