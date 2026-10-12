@@ -282,19 +282,3 @@ pub fn zero_copy_protected_strvec_unique(strings: miniextendr_api::ProtectedStrV
 }
 
 // endregion
-
-/// Borrowed character views are tied to the generated call's root.
-/// @noRd
-#[miniextendr(noexport)]
-pub fn rooted_strvec_first(strings: miniextendr_api::StrVec<'_>) -> Option<String> {
-    strings.get_str(0).map(str::to_owned)
-}
-
-/// RCow may return through IntoR while its input root is still live.
-/// @noRd
-#[miniextendr(noexport)]
-pub fn rooted_rcow_identity(
-    values: miniextendr_api::RCow<'_, i32>,
-) -> miniextendr_api::RCow<'_, i32> {
-    values
-}

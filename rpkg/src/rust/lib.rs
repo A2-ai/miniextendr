@@ -318,6 +318,7 @@ mod refcount_protect_tests;
 mod regex_adapter_tests;
 mod rmath_tests;
 mod rng_tests;
+mod rooted_view_tests;
 mod roxygen_carry_tests;
 mod roxygen_no_page_links_tests;
 mod roxygen_prose_links_tests;
