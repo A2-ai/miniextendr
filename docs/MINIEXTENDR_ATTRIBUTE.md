@@ -1581,16 +1581,15 @@ pub struct FitResult {
 
 **Skipping fields.** `#[into_list(ignore)]` drops a field from the list. On the
 way back (`TryFromList`) an ignored field is filled with `Default::default()`,
-so its type must implement `Default`. The attribute form `#[miniextendr(list)]`
-does not register `into_list` as a field attribute ("cannot find attribute
-`into_list`", #2024), so spell list mode as its three derives:
+so its type must implement `Default`. The helper works with both
+`#[miniextendr(list)]` and the equivalent three derives:
 
 <!-- docs-examples-check -->
 ```rust
-use miniextendr_api::{IntoList, PreferList, TryFromList};
+use miniextendr_api::miniextendr;
 use std::cell::RefCell;
 
-#[derive(IntoList, TryFromList, PreferList)]
+#[miniextendr(list)]
 pub struct Cfg {
     pub label: String,
     #[into_list(ignore)]
@@ -1638,10 +1637,11 @@ pub fn make_obs() -> ObsDataFrame {  // companion type
 // R: data.frame(id = c(1L, 2L), score = c(0.5, 0.8))
 ```
 
-As in list mode, the attribute form does not register the derive's helper
-attribute, so `#[dataframe(...)]` options (on the struct or its fields) need
-`#[derive(DataFrameRow)]` instead of `#[miniextendr(dataframe)]`. See
-[DATAFRAME.md](DATAFRAME.md) for the derive.
+`#[dataframe(...)]` options work on the struct and its fields with either
+`#[miniextendr(dataframe)]` or `#[derive(DataFrameRow)]`. For example,
+`#[dataframe(name = "ObsFrame")]` changes the companion type's name, and
+`#[dataframe(rename = "observation_id")]` changes a field's column name. See
+[DATAFRAME.md](DATAFRAME.md) for the available options.
 
 ---
 
@@ -1721,9 +1721,9 @@ These are separate from `#[miniextendr]` but complementary:
 | `PreferVctrs` | `IntoR` through `Vctrs` (feature-gated) |
 
 The `#[miniextendr]` attribute on structs/enums is a convenience that calls the
-appropriate derives internally. It generates the same impls as the derives, but
-it does not register their helper attributes (`#[into_list(...)]`,
-`#[dataframe(...)]`), so use the derives when you need those.
+appropriate derives internally. List and dataframe modes expand to normal
+`#[derive(...)]` invocations, so their helper attributes (`#[into_list(...)]`,
+`#[dataframe(...)]`) work alongside any other derives on the struct.
 
 ## See Also
 
