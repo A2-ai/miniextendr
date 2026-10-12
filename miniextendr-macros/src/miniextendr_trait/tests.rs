@@ -550,3 +550,49 @@ fn owner_interface_tags_distinguish_calling_conventions_and_method_order() {
     assert_ne!(owner_first, owner_second);
     assert_ne!(owner_first, owner_mut);
 }
+
+/// The identity covers the whole exported interface, not only owner receivers.
+#[test]
+fn interface_tags_track_exported_signatures() {
+    fn tag(source: &str) -> String {
+        let item: ItemTrait = syn::parse_str(source).unwrap();
+        let methods: Vec<_> = item
+            .items
+            .iter()
+            .filter_map(|item| {
+                let syn::TraitItem::Fn(method) = item else {
+                    return None;
+                };
+                let info = extract_method_info(method).unwrap();
+                (info.has_self && !info.skip).then_some(info)
+            })
+            .collect();
+        trait_abi_tag_path(&item.ident, &methods)
+    }
+
+    let original = tag("trait Layout { fn read(&self, count: i32) -> i32; fn reset(&mut self); }");
+    for changed in [
+        "trait Layout { fn read(&self, count: i32) -> i32; }",
+        "trait Layout { fn read(&self, count: i32) -> i32; fn size(&self) -> i32; fn reset(&mut self); }",
+        "trait Layout { fn reset(&mut self); fn read(&self, count: i32) -> i32; }",
+        "trait Layout { fn read(&mut self, count: i32) -> i32; fn reset(&mut self); }",
+        "trait Layout { fn read(&self, count: f64) -> i32; fn reset(&mut self); }",
+        "trait Layout { fn read(&self, count: i32) -> f64; fn reset(&mut self); }",
+        "trait Layout { fn read(&self, count: i32, extra: i32) -> i32; fn reset(&mut self); }",
+        "trait Layout { fn renamed(&self, count: i32) -> i32; fn reset(&mut self); }",
+        "trait Layout { #[miniextendr(r_name = \"peek\")] fn read(&self, count: i32) -> i32; fn reset(&mut self); }",
+        "trait Layout { #[miniextendr(skip)] fn read(&self, count: i32) -> i32; fn reset(&mut self); }",
+        "trait Other { fn read(&self, count: i32) -> i32; fn reset(&mut self); }",
+    ] {
+        assert_ne!(original, tag(changed), "{changed}");
+    }
+    for unchanged in [
+        "trait Layout { fn read(&self, renamed_arg: i32) -> i32; fn reset(&mut self) -> (); }",
+        "trait Layout { #[doc = \"New docs\"] fn read(&self, count: i32) -> i32 { count } fn reset(&mut self) {} }",
+        "trait Layout { fn read(&self, count: i32) -> i32; fn reset(&mut self); fn new() -> Self; }",
+        "trait Layout { fn read(&self, count: i32) -> i32; #[miniextendr(skip)] fn hidden(&self); fn reset(&mut self); }",
+        "trait Layout { #[miniextendr(r_name = \"read\")] fn read(&self, count: i32) -> i32; fn reset(&mut self); }",
+    ] {
+        assert_eq!(original, tag(unchanged), "{unchanged}");
+    }
+}

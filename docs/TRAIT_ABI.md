@@ -6,12 +6,23 @@ The trait ABI lets R (and other packages) call Rust trait methods without knowin
 
 ### Type Tags (`mx_tag`)
 
-A 128-bit identifier for a trait or concrete type, generated from the fully-qualified Rust path via hashing.
+A 128-bit identifier used to query an object's interfaces. Generated trait tags
+hash a versioned signature description: the trait name and every exported
+instance method in declaration order, including its Rust and R names, receiver
+convention, argument types and return type. Adding, removing or reordering a
+method changes the tag, as does changing a signature. An incompatible consumer
+gets a failed query before it can read a vtable slot. Old name-only tags also
+fail to match; rebuild both packages after upgrading the ABI generator.
 
-```rust
-// Generated at compile time from "crate::Counter"
-const TAG_Counter: mx_tag = mx_tag_from_path("crate::Counter");
-```
+Package and module paths are excluded so independently compiled declarations of
+the same interface agree. Docs, argument variable names, default bodies, static
+methods and skipped methods do not affect the tag. Types are compared by their
+parsed token spelling, independent of source whitespace. This is a syntactic
+interface contract, not Rust type identity: packages must use the same spelling
+and agree on what imported names, aliases and associated types mean. An alias
+and its expanded type can conservatively produce different tags.
+
+Concrete type tags are separate from these trait interface tags.
 
 ### Erased Header (`mx_erased`)
 
