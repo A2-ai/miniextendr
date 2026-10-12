@@ -52,15 +52,14 @@ impl NoneNameLookup {
         None
     }
 
-    // Explicit override until inherent worker selection is fixed (#2031).
-    #[miniextendr(env(worker, no_main_thread), r_name = "load_value")]
+    #[miniextendr(env(worker), r_name = "load_value")]
     pub fn rust_load() -> Option<i32> {
         #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
         assert!(!miniextendr_api::worker::is_r_main_thread());
         None
     }
 
-    #[miniextendr(env(worker, no_main_thread), postfix = "_entry")]
+    #[miniextendr(env(worker), postfix = "_entry")]
     pub fn load() -> Option<i32> {
         #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
         assert!(!miniextendr_api::worker::is_r_main_thread());

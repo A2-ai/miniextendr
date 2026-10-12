@@ -1468,8 +1468,8 @@ impl ParsedMethod {
             ));
         }
 
-        // Worker attribute is now supported on methods
-        // (validation happens during wrapper generation based on return type)
+        // Static methods can select worker dispatch. Receiver and dots borrows
+        // keep their wrappers on the main thread (see generate_method_c_wrapper).
 
         Ok(())
     }
@@ -2048,7 +2048,9 @@ impl ParsedMethod {
 
         // Resolve feature defaults for fields not explicitly set
         method_attrs.worker = worker.unwrap_or(cfg!(feature = "worker-default"));
-        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(true);
+        // Main-thread execution is already the fallback when worker is false.
+        // Only an explicit override may take precedence over worker selection.
+        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(false);
         method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "coerce-default"));
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
@@ -3627,7 +3629,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
-    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(worker)]
+    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(env(worker))]
     // or by the worker-default feature flag)
     let thread_strategy =
         if method.method_attrs.unsafe_main_thread || method.env.is_instance() || method.has_dots {

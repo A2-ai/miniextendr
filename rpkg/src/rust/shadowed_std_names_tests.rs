@@ -267,10 +267,10 @@ impl ShadowedWorkerCounter {
 
     /// Add the byte length of `label` to `base` on the worker thread. Only a
     /// static method can run there (an instance method borrows `self` on the
-    /// main thread), and only with `no_main_thread` as well as `worker`.
+    /// main thread).
     /// @param base An integer.
     /// @param label A string.
-    #[miniextendr(env(worker, no_main_thread))]
+    #[miniextendr(env(worker))]
     pub fn add_len(base: i32, label: &str) -> ::core::result::Result<i32, ::std::string::String> {
         i32::try_from(label.len())
             .map(|n| base + n)
