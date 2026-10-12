@@ -1,7 +1,7 @@
 //! Explicit owner-bearing trait receivers, rewritten for stable Rust.
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::quote;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OwnerReceiver {
@@ -75,10 +75,6 @@ pub(crate) fn rewrite(sig: &mut syn::Signature, body: Option<&mut syn::Block>) {
     sig.inputs[0] = syn::parse_quote!(#receiver_ident: #ty);
     if let Some(body) = body {
         sig.inputs[0] = syn::parse_quote!(#mutability #receiver_ident: #ty);
-        let tokens = crate::miniextendr_impl::replace_self_in_tokens(
-            body.to_token_stream(),
-            &receiver_ident,
-        );
-        *body = syn::parse2(tokens).expect("rewritten trait receiver body");
+        crate::receiver_body::rewrite(body, &receiver_ident);
     }
 }

@@ -35,6 +35,10 @@ fn host() -> SlotHost {
     }
 }
 
+fn receiver_bonus() -> i32 {
+    3
+}
+
 #[miniextendr(env, noexport)]
 impl SlotProbe for SlotHost {
     fn read(self: ExternalPtrRef<'_, Self>) -> Vec<i32> {
@@ -48,7 +52,16 @@ impl SlotProbe for SlotHost {
         self.generation
     }
     fn binding(self: ExternalPtrRef<'_, Self>, __miniextendr_self: i32) -> i32 {
-        self.generation + __miniextendr_self
+        struct Local(i32);
+        impl Local {
+            fn read(&self) -> i32 {
+                self.0
+            }
+        }
+        let read = || self.generation;
+        assert_eq!(read(), self.generation);
+        assert_eq!(self::receiver_bonus(), 3);
+        self.generation + __miniextendr_self + self::receiver_bonus() + Local(2).read()
     }
     fn compare(self: ExternalPtrMut<'_, Self>, other: &Self) -> i32 {
         self.generation - other.generation
@@ -91,7 +104,7 @@ fn erased_views_read_write_and_keep_sidecars_after_temporary_roots_drop() {
         miniextendr_api::sys::R_gc();
         assert_eq!(view.read(), [34, 55]);
         assert_eq!(view.plain(), 1);
-        assert_eq!(view.binding(7), 8);
+        assert_eq!(view.binding(7), 13);
     });
 }
 
