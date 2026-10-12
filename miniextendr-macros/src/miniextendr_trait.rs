@@ -378,25 +378,25 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let shim_fns: Vec<_> = methods
         .iter()
         .map(|m| {
-            generate_method_shim(
+            associated_method_shim(generate_method_shim(
                 trait_name,
                 m,
                 &extra_bounds,
                 &trait_param_idents,
                 &trait_type_params,
                 trait_where_clause,
-            )
+            ))
         })
         .collect();
 
-    // Generate vtable field initializers (turbofish includes trait type params)
+    // Declaration-side builders select the same associated callbacks as impls.
     let vtable_inits: Vec<_> = methods
         .iter()
         .map(|m| {
             let name = &m.name;
             let shim_name = crate::naming::trait_method_shim_ident(trait_name, name);
             quote::quote! {
-                #name: #shim_name::<#(#trait_param_idents,)* #impl_t>
+                #name: <#impl_t as #trait_bound>::#shim_name
             }
         })
         .collect();
@@ -418,6 +418,12 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .retain(|attr| !attr.path().is_ident("miniextendr"));
             crate::trait_receiver::rewrite(&mut method.sig, method.default.as_mut());
         }
+    }
+
+    if !has_generics {
+        clean_trait.items.extend(shim_fns.iter().map(|tokens| {
+            syn::TraitItem::Fn(syn::parse2(tokens.clone()).expect("generated associated shim"))
+        }));
     }
 
     let trait_name_str = trait_name.to_string();
@@ -506,9 +512,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::quote! {}
     } else {
         quote::quote! {
-            // Method shims
-            #(#shim_fns)*
-
             #[doc = ::core::concat!(
                 "Build a vtable for a concrete type implementing `",
                 ::core::stringify!(#trait_name),
@@ -562,6 +565,11 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             }
         }
     }
+    // The impl receives the exact declaration layout and fingerprint, never
+    // a guessed path to companion items. No caller-scope types occur here.
+    let abi_metadata = quote::quote! {
+        abi #trait_name #has_generics #tag_path { #(#vtable_fields),* }
+    };
     let empty_impl_arm = if !has_generics && assoc_types.is_empty() {
         quote::quote! {
             ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
@@ -573,6 +581,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                     internal = $internal;
                     noexport = $noexport;
                     no_preconditions = $no_preconditions;
+                    #abi_metadata
                     #(#tpie_method_metadata)*
                 }
             };
@@ -589,6 +598,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ::miniextendr_api::__mx_trait_impl_expand! {
                     @impl { $($attrs)* } { $($implementation)* }
                     { #(#method_metadata)* }
+                    #abi_metadata
                 }
             };
             #empty_impl_arm
@@ -1014,6 +1024,41 @@ fn generate_method_shim(
             })
         }
     }
+}
+
+/// Move the declaration shim into the trait so an impl can name it through
+/// any path to that trait. `Self: Sized` keeps these static ABI callbacks out
+/// of Rust trait objects. Types in the body still resolve at the declaration.
+fn associated_method_shim(tokens: TokenStream) -> TokenStream {
+    use quote::ToTokens;
+    use syn::visit_mut::VisitMut;
+
+    struct ImplTypeToSelf;
+    impl VisitMut for ImplTypeToSelf {
+        fn visit_path_mut(&mut self, path: &mut syn::Path) {
+            syn::visit_mut::visit_path_mut(self, path);
+            if let Some(first) = path.segments.first_mut()
+                && first.ident == "__ImplT"
+            {
+                first.ident = syn::Ident::new("Self", first.ident.span());
+            }
+        }
+    }
+
+    let mut shim: syn::TraitItemFn = syn::parse2(tokens).expect("generated method shim");
+    let syn::GenericParam::Type(implementation) =
+        shim.sig.generics.params.pop().unwrap().into_value()
+    else {
+        unreachable!("the final generated parameter is __ImplT")
+    };
+    let bounds = implementation.bounds;
+    shim.sig
+        .generics
+        .make_where_clause()
+        .predicates
+        .push(syn::parse_quote!(Self: ::core::marker::Sized + #bounds));
+    ImplTypeToSelf.visit_trait_item_fn_mut(&mut shim);
+    shim.into_token_stream()
 }
 
 /// Information extracted from a trait method for code generation.

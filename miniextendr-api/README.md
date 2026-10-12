@@ -108,10 +108,10 @@ automatically gets these methods:
 struct Version(u32, u32, u32);
 
 #[miniextendr]
-impl miniextendr_api::adapter_traits::RDebug for Version {}
+impl miniextendr_api::RDebug for Version {}
 
 #[miniextendr]
-impl miniextendr_api::adapter_traits::ROrd for Version {}
+impl miniextendr_api::ROrd for Version {}
 ```
 
 See `ADAPTER_TRAITS.md` and `ADAPTER_COOKBOOK.md` for patterns and recipes.
