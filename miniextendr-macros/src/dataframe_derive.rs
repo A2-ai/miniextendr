@@ -2742,7 +2742,9 @@ fn derive_struct_dataframe(
                             });
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                            par_builds.push(quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) });
+                            par_builds.push(
+                                quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
+                            );
                         }
                         // Scalar Single — and reader-capable map Single (#764):
                         // `pull_col`'s `Vec<#ty>: TryFromSexp` covers both
@@ -2751,7 +2753,9 @@ fn derive_struct_dataframe(
                             extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                            par_builds.push(quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) });
+                            par_builds.push(
+                                quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
+                            );
                         }
                     }
                 }
@@ -2916,7 +2920,8 @@ fn derive_struct_dataframe(
                     });
                     seq_decls.push(quote! { let mut #it_var = #vec_var.into_iter(); });
                     seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                    par_builds.push(quote! { #rust_name: ::core::clone::Clone::clone(&#vec_var[__i]) });
+                    par_builds
+                        .push(quote! { #rust_name: ::core::clone::Clone::clone(&#vec_var[__i]) });
                 }
                 // Non-String-keyed map (#919): read two parallel list-columns
                 // `<base>_keys` / `<base>_values` (VECSXP of typed vectors), then
