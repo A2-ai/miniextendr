@@ -34,6 +34,7 @@
 //! they auto-implement `AltrepLen` and the matching `Alt*Data` trait, and can
 //! optionally call the low-level `impl_alt*_from_data!` helpers.
 
+mod buffer;
 mod builtins;
 mod core;
 mod deque;
@@ -43,6 +44,7 @@ pub mod macros;
 mod stream;
 mod traits;
 
+pub use buffer::AltrepBuffer;
 pub(crate) use core::fill_region;
 pub use core::{
     AltrepDataptr, AltrepExtract, AltrepExtractSubset, AltrepLen, AltrepSerialize, InferBase,

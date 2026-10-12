@@ -289,6 +289,16 @@ A custom `Clone` must detach buffers exposed for R writes. `Vec` and owned
 Returning the same object also does not make an exposed pointer survive Vec
 reallocation: choose storage that retains exposed allocations when it grows.
 
+`AltrepBuffer<T>` is the native owner for this mutation contract. Return
+`Altrep(AltrepBuffer::new(values))` for `i32`, `f64`, `u8`, `Rcomplex`, or
+`RLogical`. Its `edit(|vec| ...)` method provides Vec operations; if R has
+already requested a pointer, editing first clones the current values and
+retains the old Vec until the owner is dropped. Old pointers remain valid
+snapshots and later callbacks read the updated values. Edits before pointer
+exposure reuse the existing allocation. Built-in buffer classes clone on R
+duplication and serialize the current values. A custom class can delegate
+its native data traits to the buffer and choose shared duplication explicitly.
+
 Both duplication hooks are available today: implement `Altrep::duplicate` with
 `HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
 The bridge registers those callbacks conditionally. R's default `DuplicateEX`
