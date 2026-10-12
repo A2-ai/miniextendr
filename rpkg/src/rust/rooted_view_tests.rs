@@ -1,14 +1,26 @@
-//! Borrowed `StrVec<'_>` / `RCow<'_, T>` parameters (#1427), driven by
-//! `tests/testthat/test-rooted-views.R`.
+//! Borrowed `StrVec<'_>` / `RCow<'_, T>` parameters, and the `Cow` and
+//! shared-reference parameters that borrow R storage the same way (#1427),
+//! driven by `tests/testthat/test-rooted-views.R`.
 //!
-//! Neither view implements `TryFromSexp`: every generated path binds it with
-//! `try_from_root` to a root that lives only as long as the call. Each path is
-//! here: a free function, an inherent method, a trait method called from R
-//! (the impl's C wrapper) and the same trait method called through the
-//! trait's View (the vtable shim).
+//! Every generated path binds them with `try_from_root` to a root that lives
+//! only as long as the call. Each path is here: a free function, an inherent
+//! method, a trait method called from R (the impl's C wrapper) and the same
+//! trait method called through the trait's View (the vtable shim).
+
+use std::borrow::Cow;
 
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::{IntoR, RCow, StrVec, miniextendr};
+
+/// `label:values:text`, with `NA` for a missing label.
+fn describe(values: &[i32], label: Option<&str>, text: &str) -> String {
+    let values = values
+        .iter()
+        .map(i32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{}:{values}:{text}", label.unwrap_or("NA"))
+}
 
 /// The first string of a borrowed character vector (`NA` for `NA` or empty).
 /// @noRd
@@ -23,6 +35,24 @@ pub fn rooted_strvec_first(strings: StrVec<'_>) -> Option<String> {
 #[miniextendr(noexport)]
 pub fn rooted_rcow_identity(values: RCow<'_, i32>) -> RCow<'_, i32> {
     values
+}
+
+/// Borrowed slice, scalar, optional string and `Cow` parameters together.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn rooted_refs_describe(
+    values: &[i32],
+    scale: &f64,
+    label: Option<&str>,
+    text: Cow<'_, str>,
+    words: Vec<Option<Cow<'_, str>>>,
+) -> String {
+    let words = words
+        .iter()
+        .map(|word| word.as_deref().unwrap_or("NA"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{}:{scale}:{words}", describe(values, label, &text))
 }
 
 /// Env class whose inherent and trait methods take borrowed views.
@@ -47,6 +77,14 @@ impl RootedViewHost {
     pub fn echo<'a>(&self, values: RCow<'a, i32>) -> RCow<'a, i32> {
         values
     }
+
+    /// `label:values:text`.
+    /// @param values An integer vector.
+    /// @param label A string, or `NULL`.
+    /// @param text A string.
+    pub fn describe(&self, values: &[i32], label: Option<&str>, text: Cow<'_, str>) -> String {
+        describe(values, label, &text)
+    }
 }
 
 /// Trait methods taking borrowed views.
@@ -56,6 +94,8 @@ pub trait RootedViews {
     fn view_first(&self, strings: StrVec<'_>) -> Option<String>;
     /// A copy of the values.
     fn view_values(&self, values: RCow<'_, i32>) -> Vec<i32>;
+    /// `label:values:text`.
+    fn view_describe(&self, values: &[i32], label: Option<&str>, text: Cow<'_, str>) -> String;
 }
 
 #[miniextendr(env, noexport)]
@@ -68,6 +108,13 @@ impl RootedViews for RootedViewHost {
     /// @param values An integer vector.
     fn view_values(&self, values: RCow<'_, i32>) -> Vec<i32> {
         values.to_vec()
+    }
+
+    /// @param values An integer vector.
+    /// @param label A string, or `NULL`.
+    /// @param text A string.
+    fn view_describe(&self, values: &[i32], label: Option<&str>, text: Cow<'_, str>) -> String {
+        describe(values, label, &text)
     }
 }
 
@@ -89,6 +136,7 @@ pub fn rooted_views_through_view() -> Vec<String> {
         let values = scope.protect(vec![1_i32, 2, 3].into_sexp());
         let first = view.view_first(StrVec::try_from_root(strings).expect("a character vector"));
         let copied = view.view_values(RCow::try_from_root(values).expect("an integer vector"));
+        let described = view.view_describe(&[4, 5], None, Cow::Borrowed("shim"));
         vec![
             first.unwrap_or_else(|| "<NA>".to_string()),
             copied
@@ -96,6 +144,7 @@ pub fn rooted_views_through_view() -> Vec<String> {
                 .map(i32::to_string)
                 .collect::<Vec<_>>()
                 .join(","),
+            described,
         ]
     }
 }
