@@ -1614,9 +1614,10 @@ test_that("indicatif_elapsed_demo finishes", {
 test_that("indicatif routes bytes through a rawConnection", {
   skip_if_missing_feature("indicatif")
   # NOT textConnection: text connections implement only the text-mode write
-  # method, while the Rust side writes bytes via R_WriteConnection (the binary
-  # method) — a textConnection fails with "'write' not enabled for this
-  # connection". rawConnection is binary and still captures in memory.
+  # method, while the Rust side writes through the byte `write` callback
+  # (R_WriteConnection, or writeBin/writeChar before R 4.6) — a
+  # textConnection fails with "'write' not enabled for this connection".
+  # rawConnection is binary and still captures in memory.
   conn <- rawConnection(raw(0), open = "wb")
   on.exit(try(close(conn), silent = TRUE), add = TRUE)
   result <- indicatif_drive_connection(conn, 3L)
@@ -1650,6 +1651,51 @@ test_that("indicatif routes through RNullConnection without panicking", {
   before <- showConnections(all = TRUE)
   expect_equal(indicatif_to_null_connection(), "ok")
   expect_identical(showConnections(all = TRUE), before)
+})
+
+test_that("indicatif survives failing connection writes and keeps drawing (#2044)", {
+  skip_if_missing_feature("indicatif")
+  skip_if_missing_feature("connections")
+  failing <- failing_io_connection()
+  replacement <- rawConnection(raw(0), "wb")
+  on.exit(suppressWarnings(close(failing)), add = TRUE)
+  on.exit(close(replacement), add = TRUE)
+  error <- miniextendr:::indicatif_connection_error_recovery(failing, replacement, FALSE)
+  expect_match(error, "write refused", fixed = TRUE)
+  bytes <- rawToChar(rawConnectionValue(replacement))
+  expect_match(bytes, "recovered")
+  expect_match(bytes, "second")
+})
+
+test_that("indicatif survives a connection closed while a bar is live (#2044)", {
+  skip_if_missing_feature("indicatif")
+  target <- rawConnection(raw(0), "wb")
+  on.exit(try(close(target), silent = TRUE), add = TRUE)
+  replacement <- rawConnection(raw(0), "wb")
+  on.exit(close(replacement), add = TRUE)
+  error <- miniextendr:::indicatif_connection_error_recovery(target, replacement, TRUE)
+  expect_match(error, "invalid connection", fixed = TRUE)
+  bytes <- rawToChar(rawConnectionValue(replacement))
+  expect_match(bytes, "recovered")
+  expect_match(bytes, "second")
+})
+
+test_that("indicatif writes multibyte output whole in a single-byte locale", {
+  skip_if_missing_feature("indicatif")
+  # Before R 4.6, a text-mode write goes through writeChar(), whose `nchars`
+  # counts bytes here: a character count would cut the output short.
+  template <- "\u2588\u2591 done"
+  expected <- charToRaw(enc2utf8(template))
+  ctype <- Sys.getlocale("LC_CTYPE")
+  on.exit(Sys.setlocale("LC_CTYPE", ctype), add = TRUE)
+  skip_if(identical(suppressWarnings(Sys.setlocale("LC_CTYPE", "C")), ""))
+  skip_if(l10n_info()$MBCS)
+  path <- tempfile()
+  on.exit(unlink(path), add = TRUE)
+  conn <- file(path, "w")
+  miniextendr:::indicatif_draw_template(conn, template)
+  close(conn)
+  expect_gt(length(grepRaw(expected, readBin(path, "raw", 1000L), fixed = TRUE)), 0L)
 })
 
 # =============================================================================

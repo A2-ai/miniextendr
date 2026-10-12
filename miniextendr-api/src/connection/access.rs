@@ -13,6 +13,10 @@
 //!
 //! R has no R-level getter for the blocking flag, so [`is_blocking`] is
 //! `None` before R 4.6.
+//!
+//! [`write`] raises R's error (before R 4.6, panics with its message);
+//! [`write_caught`] returns it as an `io::Error`, for a caller that must not
+//! unwind, such as a `std::io::Write` impl or a progress-bar draw.
 
 /// A connection's state, the fields `summary()` reports.
 pub(crate) struct ConnState {
@@ -32,11 +36,12 @@ pub(crate) struct ConnState {
     pub(crate) can_write: bool,
 }
 
-pub(crate) use imp::{can_seek, is_blocking, read, state, write};
+pub(crate) use imp::{can_seek, is_blocking, read, state, write, write_caught};
 
 #[cfg(r_4_6)]
 mod imp {
     use std::ffi::CStr;
+    use std::io;
     use std::os::raw::{c_char, c_void};
 
     use super::ConnState;
@@ -125,20 +130,57 @@ mod imp {
             crate::sys::R_WriteConnection(conn, buf.as_ptr().cast::<c_void>(), buf.len())
         }
     }
+
+    /// [`write`] with R's error (no connection, not open, cannot write, or
+    /// a write callback that raises) returned as an `io::Error`. The count
+    /// is the write callback's, which can be short.
+    ///
+    /// # Safety
+    ///
+    /// `sexp` rooted; called on R's main thread.
+    pub(crate) unsafe fn write_caught(sexp: SEXP, buf: &[u8]) -> io::Result<usize> {
+        struct Write<'a> {
+            sexp: SEXP,
+            buf: &'a [u8],
+            written: usize,
+        }
+
+        // An R error jumps out of here, over nothing to drop.
+        unsafe extern "C-unwind" fn body(data: *mut c_void) -> SEXP {
+            let data = data.cast::<Write<'_>>();
+            unsafe { (*data).written = write((*data).sexp, (*data).buf) };
+            SEXP::nil()
+        }
+
+        let mut data = Write {
+            sexp,
+            buf,
+            written: 0,
+        };
+        unsafe { crate::expression::try_call(body, (&raw mut data).cast()) }
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        Ok(data.written)
+    }
 }
 
 #[cfg(not(r_4_6))]
 mod imp {
+    use std::io;
+
     use super::ConnState;
     use crate::expression::RCall;
     use crate::gc_protect::OwnedProtect;
-    use crate::into_r::IntoR;
     use crate::{SEXP, SexpExt};
+
+    // Evaluate `call` in base, with R's error as an `io::Error`.
+    unsafe fn try_eval(call: RCall) -> io::Result<SEXP> {
+        unsafe { call.eval_base() }.map_err(|e| io::Error::other(e.to_string()))
+    }
 
     // Evaluate `call` in base, panicking with R's message on an R error (a
     // panic becomes an R error at the `#[miniextendr]` boundary).
     unsafe fn eval(call: RCall) -> SEXP {
-        unsafe { call.eval_base() }.unwrap_or_else(|e| panic!("{e}"))
+        unsafe { try_eval(call) }.unwrap_or_else(|e| panic!("{e}"))
     }
 
     // An `n` / `nchars` argument, which R takes as an integer.
@@ -158,10 +200,15 @@ mod imp {
     ///
     /// With R's message when `sexp` is no connection.
     pub(crate) unsafe fn state(sexp: SEXP) -> ConnState {
+        unsafe { try_state(sexp) }.unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    // [`state`] with R's error as an `io::Error`.
+    unsafe fn try_state(sexp: SEXP) -> io::Result<ConnState> {
         unsafe {
             // A list of seven strings, always in this order: description,
             // class, mode, text, opened, can read, can write.
-            let summary = OwnedProtect::new(eval(RCall::new("summary.connection").arg(sexp)));
+            let summary = OwnedProtect::new(try_eval(RCall::new("summary.connection").arg(sexp))?);
             let field = |i: isize| {
                 summary
                     .get()
@@ -170,7 +217,7 @@ mod imp {
                     .unwrap_or_default()
                     .to_owned()
             };
-            ConnState {
+            Ok(ConnState {
                 description: field(0),
                 class: field(1),
                 mode: field(2),
@@ -178,7 +225,7 @@ mod imp {
                 is_open: field(4) == "opened",
                 can_read: field(5) == "yes",
                 can_write: field(6) == "yes",
-            }
+            })
         }
     }
 
@@ -204,18 +251,19 @@ mod imp {
 
     // `R_ReadConnection` / `R_WriteConnection` refuse a closed connection,
     // where `readBin()` and friends would open it for the call.
-    unsafe fn checked_state(sexp: SEXP, write: bool) -> ConnState {
-        let state = unsafe { state(sexp) };
+    unsafe fn checked_state(sexp: SEXP, write: bool) -> io::Result<ConnState> {
+        let state = unsafe { try_state(sexp) }?;
+        let refuse = |message| Err(io::Error::other(message));
         if !state.is_open {
-            panic!("connection is not open");
+            return refuse("connection is not open");
         }
         if write && !state.can_write {
-            panic!("cannot write to this connection");
+            return refuse("cannot write to this connection");
         }
         if !write && !state.can_read {
-            panic!("cannot read from this connection");
+            return refuse("cannot read from this connection");
         }
-        state
+        Ok(state)
     }
 
     /// Read up to `buf.len()` bytes, at most `i32::MAX`.
@@ -231,7 +279,8 @@ mod imp {
     pub(crate) unsafe fn read(sexp: SEXP, buf: &mut [u8]) -> usize {
         unsafe {
             let n = r_int(buf.len().min(i32::MAX as usize));
-            let value = if checked_state(sexp, false).is_text {
+            let state = checked_state(sexp, false).unwrap_or_else(|e| panic!("{e}"));
+            let value = if state.is_text {
                 // `readChar()` warns that it skips a text-mode connection's
                 // pushback and re-encoding; so does `R_ReadConnection`.
                 let read = RCall::new("readChar")
@@ -264,6 +313,20 @@ mod imp {
 
     /// Write `buf`; returns the bytes written.
     ///
+    /// # Safety
+    ///
+    /// As [`state`].
+    ///
+    /// # Panics
+    ///
+    /// With [`write_caught`]'s error.
+    pub(crate) unsafe fn write(sexp: SEXP, buf: &[u8]) -> usize {
+        unsafe { write_caught(sexp, buf) }.unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// Write `buf`, with R's error returned as an `io::Error`; returns the
+    /// bytes written.
+    ///
     /// A text-mode connection takes a string, so it gets the longest prefix
     /// of `buf` that is UTF-8 without a NUL byte; `0` when there is none, and
     /// `write_all()` then fails with `WriteZero`.
@@ -272,15 +335,16 @@ mod imp {
     ///
     /// As [`state`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// When the connection is not open or cannot write, or with R's message
-    /// when the write fails.
-    pub(crate) unsafe fn write(sexp: SEXP, buf: &[u8]) -> usize {
+    /// When the connection is not open or cannot write, with R's message
+    /// when the write fails, and for non-ASCII text in a multibyte locale
+    /// other than UTF-8 (see [`nchars`]).
+    pub(crate) unsafe fn write_caught(sexp: SEXP, buf: &[u8]) -> io::Result<usize> {
         unsafe {
-            if !checked_state(sexp, true).is_text {
-                eval(RCall::new("writeBin").arg(buf.into_sexp()).arg(sexp));
-                return buf.len();
+            if !checked_state(sexp, true)?.is_text {
+                try_eval(RCall::new("writeBin").arg_value(buf).arg(sexp))?;
+                return Ok(buf.len());
             }
             let text = match std::str::from_utf8(buf) {
                 Ok(text) => text,
@@ -288,19 +352,46 @@ mod imp {
             };
             let text = text.split('\0').next().unwrap_or_default();
             if text.is_empty() {
-                return 0;
+                return Ok(0);
             }
-            // `nchars` counts characters in a UTF-8 locale, even with
-            // `useBytes = TRUE`; `eos = NULL` writes no terminator.
-            eval(
+            let nchars = i32::try_from(nchars(text)?)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+            // `eos = NULL` writes no terminator.
+            try_eval(
                 RCall::new("writeChar")
-                    .arg(SEXP::scalar_string_from_str(text))
+                    .arg_value(text)
                     .arg(sexp)
-                    .named_arg("nchars", r_int(text.chars().count()))
+                    .named_value("nchars", nchars)
                     .named_arg("eos", SEXP::nil())
-                    .named_arg("useBytes", SEXP::scalar_logical(true)),
-            );
-            text.len()
+                    .named_value("useBytes", true),
+            )?;
+            Ok(text.len())
+        }
+    }
+
+    /// `writeChar()`'s `nchars` for all of `text`. It counts characters in a
+    /// multibyte locale and bytes in any other, even with `useBytes = TRUE`;
+    /// a character count in a single-byte locale writes only that many bytes.
+    /// UTF-8 bytes are characters only in a UTF-8 locale, so another
+    /// multibyte locale is refused.
+    ///
+    /// # Safety
+    ///
+    /// Called on R's main thread.
+    unsafe fn nchars(text: &str) -> io::Result<usize> {
+        if text.is_ascii() {
+            return Ok(text.len());
+        }
+        // A list whose first two elements are `MBCS` and `UTF-8`.
+        let info = unsafe { OwnedProtect::new(try_eval(RCall::new("l10n_info"))?) };
+        let flag = |i: isize| info.get().vector_elt(i).as_logical() == Some(true);
+        match (flag(0), flag(1)) {
+            (false, _) => Ok(text.len()),
+            (true, true) => Ok(text.chars().count()),
+            (true, false) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "a text-mode connection takes non-ASCII UTF-8 only in a UTF-8 or single-byte locale",
+            )),
         }
     }
 }

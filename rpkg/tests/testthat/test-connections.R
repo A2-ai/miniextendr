@@ -386,6 +386,12 @@ test_that("a connection passed in as RNullConnection stays open after the call (
   expect_equal(readLines(tmp), c("from-rust", "after"))
 })
 
+test_that("a refused write through a borrowed RNullConnection is an error", {
+  con <- failing_io_connection()
+  on.exit(suppressWarnings(close(con)))
+  expect_error(rust_null_conn_write(con, "x"), "write refused", fixed = TRUE)
+})
+
 test_that("close() on a borrowed RNullConnection leaves the R connection open (#1917)", {
   tmp <- tempfile()
   con <- file(tmp, "w")

@@ -320,9 +320,12 @@ instead (#1905):
   indicatif connection target): `writeBin()`
   on a binary connection; `writeChar(useBytes = TRUE)` on a text-mode one,
   which takes the longest prefix of the bytes that is UTF-8 without a NUL.
-  Reads use `readBin()` / `readChar(useBytes = TRUE)`. Each calls the
-  connection's own `read` / `write` callback, as the C entry points do, and
-  each refuses a connection that is not open.
+  `writeChar()` counts `nchars` in characters in a multibyte locale and in
+  bytes in any other, so non-ASCII text is written whole in a UTF-8 or
+  single-byte locale and refused in another multibyte one. Reads use
+  `readBin()` / `readChar(useBytes = TRUE)`. Each calls the connection's own
+  `read` / `write` callback, as the C entry points do, and each refuses a
+  connection that is not open.
 - **The raw handle** (`get_connection`, `ConnectionCapabilities::from_handle`)
   exists only on R >= 4.6. `read_connection` / `write_connection` take the
   connection SEXP and work on every R.

@@ -1556,7 +1556,9 @@ impl std::io::Write for RStderr {
 /// (`/dev/null` on Unix, `NUL` on Windows).
 ///
 /// Writes are discarded but still routed through R's connection machinery,
-/// so active `sink()` redirections see the writes.
+/// so active `sink()` redirections see the writes. A write R refuses (the
+/// connection was closed, or its write callback raised) returns R's message
+/// as an `io::Error`.
 ///
 /// # Ownership
 ///
@@ -1731,7 +1733,9 @@ impl std::io::Write for RNullConnection {
                 "RNullConnection is closed",
             ));
         }
-        Ok(unsafe { access::write(self.sexp, buf) })
+        // A borrowed connection's write can fail: return R's error rather
+        // than jump over the caller's frames.
+        unsafe { access::write_caught(self.sexp, buf) }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {

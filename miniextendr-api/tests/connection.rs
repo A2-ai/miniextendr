@@ -598,3 +598,36 @@ fn a_warning_deferred_in_a_callback_reaches_r_handlers() {
     });
 }
 // endregion
+
+// region: Writes that return R's error
+
+#[test]
+fn null_connection_writes_return_r_errors() {
+    use miniextendr_api::connection::RNullConnection;
+    use miniextendr_api::expression::r_eval_str_global;
+
+    r_test_utils::with_r_thread(|| unsafe {
+        // A connection whose write callback raises: every write is an `Err`,
+        // and the handle keeps working.
+        let failing = OwnedProtect::new(RConnectionIo::new(BrokenIo).build_write());
+        let mut con = RNullConnection::try_from_sexp(failing.get()).unwrap();
+        for _ in 0..2 {
+            let error = con.write_all(b"x").unwrap_err();
+            assert!(error.to_string().contains("write refused"), "{error}");
+        }
+        drop(con);
+        RCall::new("suppressWarnings")
+            .arg(RCall::new("close").arg(failing.get()).build())
+            .eval_base()
+            .unwrap();
+
+        // A connection R closed while the handle borrowed it.
+        let file = OwnedProtect::new(r_eval_str_global("file(nullfile(), \"w\")").unwrap());
+        let mut con = RNullConnection::try_from_sexp(file.get()).unwrap();
+        con.write_all(b"open\n").unwrap();
+        RCall::new("close").arg(file.get()).eval_base().unwrap();
+        let error = con.write_all(b"closed\n").unwrap_err();
+        assert!(error.to_string().contains("invalid connection"), "{error}");
+    });
+}
+// endregion
