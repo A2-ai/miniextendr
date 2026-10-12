@@ -131,16 +131,15 @@ fn is_external_ptr_type(ty: &syn::Type) -> bool {
 
 /// Replace every occurrence of the `self` keyword/ident in a TokenStream
 /// with a replacement identifier. Does NOT touch `Self` (capital S).
-fn replace_self_in_tokens(
+pub(crate) fn replace_self_in_tokens(
     tokens: proc_macro2::TokenStream,
-    replacement: &str,
+    replacement: &proc_macro2::Ident,
 ) -> proc_macro2::TokenStream {
-    let replacement_ident = proc_macro2::Ident::new(replacement, proc_macro2::Span::call_site());
     tokens
         .into_iter()
         .map(|tt| match tt {
             proc_macro2::TokenTree::Ident(ref ident) if ident == "self" => {
-                proc_macro2::TokenTree::Ident(replacement_ident.clone())
+                proc_macro2::TokenTree::Ident(replacement.clone())
             }
             proc_macro2::TokenTree::Group(group) => {
                 let new_stream = replace_self_in_tokens(group.stream(), replacement);
@@ -174,6 +173,8 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
             continue;
         }
 
+        let receiver_ident =
+            proc_macro2::Ident::new("__miniextendr_self", proc_macro2::Span::mixed_site());
         // Determine if this is an ExternalPtr receiver and build the replacement param.
         let new_param: Option<syn::FnArg> =
             if let syn::Type::Reference(type_ref) = receiver.ty.as_ref() {
@@ -182,7 +183,7 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
                     let mutability = type_ref.mutability;
                     let inner_ty = &type_ref.elem;
                     Some(syn::parse_quote! {
-                        __miniextendr_self: &#mutability #inner_ty
+                        #receiver_ident: &#mutability #inner_ty
                     })
                 } else {
                     None
@@ -191,7 +192,7 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
                 // self: ExternalPtr<Self> (by value)
                 let inner_ty = &receiver.ty;
                 Some(syn::parse_quote! {
-                    __miniextendr_self: #inner_ty
+                    #receiver_ident: #inner_ty
                 })
             } else {
                 None
@@ -210,7 +211,7 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
 
         // Replace `self` in method body
         let old_body = method.block.clone();
-        let new_tokens = replace_self_in_tokens(old_body.into_token_stream(), "__miniextendr_self");
+        let new_tokens = replace_self_in_tokens(old_body.into_token_stream(), &receiver_ident);
         method.block =
             syn::parse2(new_tokens).expect("failed to reparse method body after self replacement");
     }

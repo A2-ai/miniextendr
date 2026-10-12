@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use std::fmt;
 
 use super::{
-    ExternalPtr, NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
+    NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
     refuse_restored, unwrap_class_handle,
 };
 use crate::condition::{ConditionCall, RCondition};
@@ -36,12 +36,12 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// Declare it as `#[r_data] pub keys: Sidecar<Vec<i32>>` on a
 /// `#[derive(ExternalPtr)]` struct. The derive generates accessors as
 /// associated functions of the struct, with the field's visibility. They take
-/// the `ExternalPtr` handle, which keeps the pointer alive, not the struct:
+/// an owner handle, which keeps the pointer alive, not the struct:
 ///
 /// | `#[r_data(...)]` | Rust accessors |
 /// |---|---|
-/// | `ref` | `fn keys(ptr: &ExternalPtr<Self>) -> T` |
-/// | `mut` | `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` |
+/// | `ref` | `fn keys(ptr: &impl SidecarOwner<Self>) -> T` |
+/// | `mut` | `fn set_keys(ptr: &mut impl SidecarOwnerMut<Self>, value: T)` |
 /// | `ref, mut`, or a bare `#[r_data]` | both |
 ///
 /// Rust code sees no `SEXP`s, slot indices or other R plumbing: a plain
@@ -87,6 +87,12 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// Engine::set_keys(&mut ptr, vec![9]);
 /// assert_eq!(Engine::keys(&ptr), vec![9]);
 /// ```
+///
+/// The same accessors accept [`super::ExternalPtrRef`] and
+/// [`super::ExternalPtrMut`], borrowed handles carried by explicit trait
+/// receivers (`self: ExternalPtrRef<'_, Self>` / `ExternalPtrMut<'_, Self>`).
+/// Shared handles allow reads; mutable handles allow reads and writes. A
+/// plain `&self` receiver still has no implicit route back to an R owner.
 ///
 /// # Values
 ///
@@ -171,7 +177,11 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// write (`Deref` still gives the struct fields). The same holds for a
 /// struct moved out of its pointer through `&mut` (`mem::replace`,
 /// `mem::take`): it carries nothing to follow, so nothing can read a freed R
-/// object (#1856). A trait-impl method (`impl Trait for Type`) and the
+/// object (#1856). A trait method takes its owner as
+/// `self: ExternalPtrRef<'_, Self>` or `self: ExternalPtrMut<'_, Self>`
+/// ([`ExternalPtrRef`](crate::ExternalPtrRef)), over an `ExternalPtr` or a
+/// trait-ABI object, and passes it to the same accessors. A `&self` trait
+/// method, such as one of a standard trait with a fixed signature, and the
 /// high-level ALTREP data traits receive only the struct (#1880).
 /// ALTREP derives also accept `#[r_data] Sidecar<T>` fields: with
 /// `#[altrep(manual, no_lowlevel)]`, low-level callbacks recover the handle
@@ -401,7 +411,7 @@ pub(super) unsafe fn copy_sidecar_slots<T: TypedExternal>(source: SEXP, target: 
 /// slot does not convert to `T`.
 #[doc(hidden)]
 pub fn sidecar_get<O, T>(
-    ptr: &ExternalPtr<O>,
+    ptr: &impl super::SidecarOwner<O>,
     index: usize,
     name: &'static str,
     field: fn(&O) -> &Sidecar<T>,
@@ -413,8 +423,8 @@ where
 {
     assert_main_thread(name, O::TYPE_NAME);
     // SAFETY: on R's main thread; the handle's EXTPTRSXP is live and was
-    // built by `ExternalPtr` for an `O`, so its `prot` list has the slot.
-    let prot = unsafe { R_ExternalPtrProtected(ptr.as_sexp()) };
+    // built for an `O`, so its `prot` list has the slot.
+    let prot = unsafe { R_ExternalPtrProtected(ptr.__mx_owner()) };
     field(ptr).flush_into(prot, index);
     convert_slot::<T>(prot, index, name, O::TYPE_NAME)
 }
@@ -431,7 +441,7 @@ where
 /// Off R's main thread, naming the field, before touching R.
 #[doc(hidden)]
 pub fn sidecar_set<O, T>(
-    ptr: &mut ExternalPtr<O>,
+    ptr: &mut impl super::SidecarOwnerMut<O>,
     index: usize,
     name: &'static str,
     field: fn(&O) -> &Sidecar<T>,
@@ -442,7 +452,7 @@ pub fn sidecar_set<O, T>(
 {
     assert_main_thread(name, O::TYPE_NAME);
     // SAFETY: as in `sidecar_get`. Storing allocates nothing.
-    let prot = unsafe { R_ExternalPtrProtected(ptr.as_sexp()) };
+    let prot = unsafe { R_ExternalPtrProtected(ptr.__mx_owner()) };
     field(ptr).discard_pending();
     prot.set_vector_elt(prot_index(index), value.into_sexp());
 }

@@ -215,6 +215,7 @@ pub(super) fn generate_vtable_static(
                 method
                     .attrs
                     .retain(|attr| !attr.path().is_ident("miniextendr"));
+                crate::trait_receiver::rewrite(&mut method.sig, Some(&mut method.block));
             }
         }
         quote::quote! { #clean_impl }
@@ -391,6 +392,13 @@ fn generate_concrete_vtable_shims(
         let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
         let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
         let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
+        let owner_kind = crate::trait_receiver::owner_receiver(&method.sig);
+        let owner = syn::Ident::new("owner", proc_macro2::Span::mixed_site());
+        let owner_parameter = owner_kind.map(|_| {
+            quote::quote! {
+                #owner: ::miniextendr_api::SEXP,
+            }
+        });
 
         // Count non-self parameters
         let param_count = method
@@ -513,7 +521,18 @@ fn generate_concrete_vtable_shims(
         let invocation = unwrap_marker(quote::quote! {
             <#concrete_type as #trait_path>::#method_ident(#self_ref, #(#param_names),*)
         });
-        let method_call = if method.is_mut {
+        let method_call = if let Some(kind) = owner_kind {
+            let handle = kind.type_path();
+            quote::quote! {
+                let #self_ref = unsafe {
+                    #handle::<#concrete_type>::from_raw_parts(
+                        ::miniextendr_api::Root::from_call_arg(&#owner),
+                        #data.cast::<#concrete_type>(),
+                    )
+                };
+                #invocation
+            }
+        } else if method.is_mut {
             quote::quote! {
                 let #self_ref = unsafe { &mut *#data.cast::<#concrete_type>() };
                 #invocation
@@ -550,6 +569,7 @@ fn generate_concrete_vtable_shims(
             #[allow(non_snake_case)]
             unsafe extern "C" fn #shim_name(
                 #data: *mut ::std::os::raw::c_void,
+                #owner_parameter
                 #argc: i32,
                 #argv: *const ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
@@ -588,8 +608,8 @@ pub(super) fn extract_methods(
         if let syn::ImplItem::Fn(method) = item {
             // Check receiver type
             let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
-                if let syn::FnArg::Receiver(r) = arg {
-                    (true, r.mutability.is_some())
+                if let syn::FnArg::Receiver(_) = arg {
+                    (true, crate::trait_receiver::is_mut(&method.sig))
                 } else {
                     (false, false)
                 }
@@ -1284,45 +1304,64 @@ pub(super) fn generate_trait_method_c_wrapper(
         let self_sexp = crate::naming::self_sexp_ident();
         let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
         let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
-        // Instance method: generate self extraction and call with self_ref
-        let trait_method_name = format!("{}::{}()", trait_name, method.r_method_name());
         let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
-        let downcast = if method.is_mut {
-            quote::quote!(downcast_mut)
-        } else {
-            quote::quote!(downcast_ref)
-        };
-        let self_borrow = quote::quote! {
-            let #self_ref = match #self_ptr.#downcast::<#type_ident>() {
-                ::core::option::Option::Some(value) => value,
-                ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
-                    &#self_ptr, #trait_method_name,
-                ),
-            };
-        };
-        let self_setup = if self_ref_params.is_empty() {
-            self_borrow
-        } else {
-            // Delay the receiver borrow until the other handles have been
-            // extracted and checked. A shared pointer here is used only for
-            // comparison, never to obtain the mutable receiver.
-            post_conversion.push(self_borrow);
+        let self_extraction = if let Some(kind) = crate::trait_receiver::owner_receiver(&method.sig)
+        {
+            let handle = kind.type_path();
+            let address = (!self_ref_params.is_empty()).then(|| quote::quote! {
+                let __miniextendr_receiver_addr = #self_ptr.as_ptr().cast::<::core::ffi::c_void>();
+            });
+            // The alias preflight above runs before constructing either an
+            // exclusive handle or any &Self argument reference.
+            post_conversion.push(quote::quote! {
+                let #self_ref = <#handle<'_, #type_ident> as ::core::convert::From<_>>::from(
+                    &#receiver_mutability #self_ptr,
+                );
+            });
             quote::quote! {
-                let __miniextendr_receiver_addr = match #self_ptr.downcast_ref::<#type_ident>() {
-                    ::core::option::Option::Some(value) => ::core::ptr::from_ref(value).cast::<::core::ffi::c_void>(),
+                let #receiver_mutability #self_ptr = unsafe {
+                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp)
+                };
+                #address
+            }
+        } else {
+            let trait_method_name = format!("{}::{}()", trait_name, method.r_method_name());
+            let downcast = if method.is_mut {
+                quote::quote!(downcast_mut)
+            } else {
+                quote::quote!(downcast_ref)
+            };
+            let self_borrow = quote::quote! {
+                let #self_ref = match #self_ptr.#downcast::<#type_ident>() {
+                    ::core::option::Option::Some(value) => value,
                     ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
                         &#self_ptr, #trait_method_name,
                     ),
                 };
-            }
-        };
-        let self_extraction = quote::quote! {
-            let #receiver_mutability #self_ptr = unsafe {
-                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
-                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp)
-                )
             };
-            #self_setup
+            let self_setup = if self_ref_params.is_empty() {
+                self_borrow
+            } else {
+                // Compare addresses first, then borrow through the mutable
+                // path after argument conversion and alias preflight.
+                post_conversion.push(self_borrow);
+                quote::quote! {
+                    let __miniextendr_receiver_addr = match #self_ptr.downcast_ref::<#type_ident>() {
+                        ::core::option::Option::Some(value) => ::core::ptr::from_ref(value).cast::<::core::ffi::c_void>(),
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                            &#self_ptr, #trait_method_name,
+                        ),
+                    };
+                }
+            };
+            quote::quote! {
+                let #receiver_mutability #self_ptr = unsafe {
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
+                        ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp)
+                    )
+                };
+                #self_setup
+            }
         };
 
         // Call expression with self_ref and dereferenced &Self params
