@@ -697,7 +697,8 @@ pub use rng::{RngGuard, with_rng};
 
 // Re-export from_r
 pub use from_r::{
-    SexpClassError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+    SexpClassError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromRoot,
+    TryFromSexp,
 };
 
 // Encoding / locale probing (mainly for debugging). The module is always

@@ -38,22 +38,22 @@ pub fn passthrough_df(df: RecordBatch) -> RecordBatch {
 R stores strings as STRSXP (array of CHARSXP pointers). Each CHARSXP is interned,
 GC-managed, and has a known `LENGTH`. Instead of copying into `String`, borrow directly.
 
-### `Cow<'static, str>`: scalar
+### `Cow<'_, str>`: scalar
 
 ```rust
 #[miniextendr]
-pub fn greet(name: Cow<'static, str>) -> String {
+pub fn greet(name: Cow<'_, str>) -> String {
     // name is Cow::Borrowed - points directly into R's CHARSXP data
     // No allocation unless you call .to_mut()
     format!("Hello, {}!", name)
 }
 ```
 
-### `Vec<Cow<'static, str>>`: vector, zero-copy per element
+### `Vec<Cow<'_, str>>`: vector, zero-copy per element
 
 ```rust
 #[miniextendr]
-pub fn upper_first(words: Vec<Cow<'static, str>>) -> Vec<String> {
+pub fn upper_first(words: Vec<Cow<'_, str>>) -> Vec<String> {
     // Each element is Cow::Borrowed (zero-copy from R's CHARSXP pool)
     words.iter().map(|w| {
         let mut s = w.to_string();
@@ -66,16 +66,16 @@ pub fn upper_first(words: Vec<Cow<'static, str>>) -> Vec<String> {
 
 // NA-aware variant: None for NA_character_
 #[miniextendr]
-pub fn count_non_na(words: Vec<Option<Cow<'static, str>>>) -> i32 {
+pub fn count_non_na(words: Vec<Option<Cow<'_, str>>>) -> i32 {
     words.iter().filter(|w| w.is_some()).count() as i32
 }
 ```
 
-### `Cow<'static, [T]>`: numeric slices
+### `Cow<'_, [T]>`: numeric slices
 
 ```rust
 #[miniextendr]
-pub fn sum_cow(x: Cow<'static, [f64]>) -> f64 {
+pub fn sum_cow(x: Cow<'_, [f64]>) -> f64 {
     // Cow::Borrowed - x points directly into R's REALSXP data
     x.iter().sum()
 }
@@ -86,7 +86,7 @@ pub fn sum_cow(x: Cow<'static, [f64]>) -> f64 {
 // borrowed sub-slice can't be told apart from a full borrow — the copy is the
 // only sound choice (see #880).
 #[miniextendr]
-pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
+pub fn passthrough_cow(x: Cow<'_, [i32]>) -> Cow<'_, [i32]> {
     x  // zero-copy in; copy back out
 }
 ```
@@ -152,8 +152,10 @@ let dangling: &str;
 `owner.as_strvec()` binds its lifetime to a `ProtectedStrVec` owner. The raw
 `TryFromSexp` conversion is unavailable for `StrVec` and `RCow`: use
 `try_from_root(root)` with a `ProtectScope` root. Generated wrappers bind their
-view to the live argument slot. Native reference and `Cow` conversions still
-need the same migration (#1427).
+view to the live argument slot. `TryFromRoot` also supplies zero-copy `Cow`
+inputs, including `Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>`.
+Raw `TryFromSexp` for those Cow types returns owned data, so it may safely
+outlive the source. Native references and their containers remain #1427.
 
 **Usage examples:**
 
@@ -324,7 +326,9 @@ pub fn string_lengths(x: RStringArray) -> Vec<i32> {
 
 ### ALTREP for Cow string vectors
 
-`Vec<Cow<'static, str>>` supports ALTREP with seamless serialization:
+`Vec<Cow<'static, str>>` supports ALTREP with serialization. Borrowed input tied to
+one call must become owned before it can back a persistent ALTREP object;
+static Rust strings can remain borrowed:
 
 ```rust
 use miniextendr_api::IntoRAltrep;
@@ -391,16 +395,16 @@ the result in `Cow::Borrowed` (always borrowed, never owned).
 
 ```text
 Need strings from R?
-├── Scalar → Cow<'static, str>          (zero-copy)
+├── Scalar → Cow<'_, str>          (zero-copy)
 ├── Vector, need ownership → Vec<String> (copies, lossy NA→"")
-├── Vector, read-only → Vec<Cow<'static, str>>  (zero-copy per element)
-├── Vector, NA-aware → Vec<Option<Cow<'static, str>>>
+├── Vector, read-only → Vec<Cow<'_, str>>  (zero-copy per element)
+├── Vector, NA-aware → Vec<Option<Cow<'_, str>>>
 ├── View with GC safety → ProtectedStrVec
 └── Lightweight view → StrVec<'_>       (Copy, borrows the call's argument)
 
 Need numerics from R?
 ├── As Rust slice → &[f64] / &[i32]    (zero-copy, 'static lifetime)
-├── Copy-on-write → Cow<'static, [f64]> (zero-copy, copies on .to_mut())
+├── Copy-on-write → Cow<'_, [f64]> (zero-copy, copies on .to_mut())
 ├── As Arrow array → Float64Array       (zero-copy both directions)
 └── Owned copy → Vec<f64>              (copies)
 
@@ -409,6 +413,7 @@ Need data frames?
 └── As Arrow (string cols too) → use RStringArray per column
 ```
 
-The `'static` lifetimes above are API-level convenience types, not GC roots.
-The borrows remain valid only while the source SEXP/CHARSXP is reachable;
-normally keep them inside the generated `.Call` frame or use a rooted wrapper.
+The Cow paths above borrow through `TryFromRoot`; their lifetimes end with
+the root. A raw `TryFromSexp` conversion returns owned Cow data instead.
+Native-reference conversions still require the source to remain reachable;
+that remaining lifetime migration is tracked in #1427.

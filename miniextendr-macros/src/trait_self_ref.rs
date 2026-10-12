@@ -19,7 +19,7 @@ pub(crate) fn native_borrow_checks<'a>(
         values.push(quote! { (*#argv.add(#index), #name) });
         metadata.push(if crate::type_inspect::is_rooted_view(ty) {
             let ty = crate::type_inspect::erase_lifetimes(ty);
-            quote! { <#ty>::NATIVE_BORROW }
+            quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
         } else {
             quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
         });
@@ -66,7 +66,7 @@ pub(crate) fn rooted_view_arg(
     let ty = crate::type_inspect::erase_lifetimes(ty);
     quote! {
         let #slot = unsafe { *#argv.add(#index) };
-        let #name: #ty = match <#ty>::try_from_root(unsafe {
+        let #name: #ty = match <#ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
             ::miniextendr_api::Root::from_call_arg(&#slot)
         }) {
             ::core::result::Result::Ok(value) => value,

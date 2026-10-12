@@ -88,7 +88,7 @@ pub fn zero_copy_rcow_f64_mutated_is_copy(x: SEXP) -> SEXP {
 /// Returns TRUE if `Cow<str>` from R is Cow::Borrowed (zero-copy).
 /// @export
 #[miniextendr]
-pub fn zero_copy_cow_str_is_borrowed(x: Cow<'static, str>) -> bool {
+pub fn zero_copy_cow_str_is_borrowed(x: Cow<'_, str>) -> bool {
     matches!(x, Cow::Borrowed(_))
 }
 
@@ -99,7 +99,7 @@ pub fn zero_copy_cow_str_is_borrowed(x: Cow<'static, str>) -> bool {
 /// Returns TRUE if all elements of `Vec<Cow<str>>` are Cow::Borrowed.
 /// @export
 #[miniextendr]
-pub fn zero_copy_vec_cow_str_all_borrowed(x: Vec<Cow<'static, str>>) -> bool {
+pub fn zero_copy_vec_cow_str_all_borrowed(x: Vec<Cow<'_, str>>) -> bool {
     x.iter().all(|c| matches!(c, Cow::Borrowed(_)))
 }
 
@@ -262,9 +262,7 @@ mod arrow {
 /// Round-trip `Cow<[f64]>` and return the result.
 /// @export
 #[miniextendr]
-pub fn zero_copy_cow_f64_roundtrip(
-    x: std::borrow::Cow<'static, [f64]>,
-) -> std::borrow::Cow<'static, [f64]> {
+pub fn zero_copy_cow_f64_roundtrip(x: std::borrow::Cow<'_, [f64]>) -> std::borrow::Cow<'_, [f64]> {
     x
 }
 

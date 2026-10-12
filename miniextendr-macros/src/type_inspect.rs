@@ -209,13 +209,14 @@ const MAIN_THREAD_BOUND: &[&str] = &[
 
 /// Returns `true` if `ty` is an input type bound to the R main thread.
 ///
-/// Checks only the outermost path segment: main-thread-bound inputs arrive
-/// bare (`x: SEXP`, `v: RDVector<f64>`), never nested inside containers.
+/// Checks rooted borrowing conversions (including character-vector Cow
+/// containers), then the outermost path segment for other framework handles.
 /// Return-type analysis keeps the narrower [`is_sexp_type`] and uses the
 /// recursive [`is_main_thread_bound_return`] for thread selection.
 #[inline]
 pub(crate) fn is_main_thread_bound_input(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
+    is_rooted_view(ty)
+        || matches!(ty, syn::Type::Path(p) if p
         .path
         .segments
         .last()
@@ -303,12 +304,27 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
 
 // region: borrowed vector views (#1427)
 
-/// Borrowed vector views whose construction needs a lifetime-carrying root.
-/// Like the other framework parameter markers, these are recognized by their
-/// last path segment. An owned result uses ProtectedStrVec or Vec instead.
+/// Conversions selected from the rooted call argument rather than a raw SEXP.
+/// The Cow vector cases are character vectors, not arbitrary lists of views.
 pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p.qself.is_none() && p.path.segments.last()
-        .is_some_and(|s| s.ident == "StrVec" || s.ident == "RCow"))
+    let syn::Type::Path(path) = ty else {
+        return false;
+    };
+    if path.qself.is_some() {
+        return false;
+    }
+    let Some(seg) = path.path.segments.last() else {
+        return false;
+    };
+    if seg.ident == "StrVec" || seg.ident == "RCow" || seg.ident == "Cow" {
+        return true;
+    }
+    seg.ident == "Vec"
+        && first_type_argument(seg).is_some_and(|elem| {
+            let elem = option_inner_type(elem).unwrap_or(elem);
+            matches!(elem, syn::Type::Path(p) if p.qself.is_none() && p.path.segments.last()
+            .is_some_and(|s| s.ident == "Cow"))
+        })
 }
 
 /// A `'static` borrowed view parameter (`StrVec<'static>`, `RCow<'static, T>`)

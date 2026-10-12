@@ -213,7 +213,7 @@ impl RustConversionBuilder {
         }
         if crate::type_inspect::is_rooted_view(ty) {
             let ty = crate::type_inspect::erase_lifetimes(ty);
-            return Some(quote! { <#ty>::NATIVE_BORROW });
+            return Some(quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW });
         }
         let param_name = crate::naming::ident_name(&pat_ident.ident);
         match ty {
@@ -505,7 +505,7 @@ impl RustConversionBuilder {
             // The unsafe boundary borrows a rooted .Call argument. Both the
             // root and the resulting view are bounded by that local slot.
             let try_expr = quote_spanned! {span=>
-                <#bound_ty>::try_from_root(unsafe {
+                <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
                     ::miniextendr_api::Root::from_call_arg(&#sexp_ident)
                 })
             };
