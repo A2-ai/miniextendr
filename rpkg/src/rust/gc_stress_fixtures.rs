@@ -5744,3 +5744,82 @@ pub fn gc_stress_protected_strvec() {
 }
 
 // endregion
+
+// region: rooted iterator list cache (#2054)
+
+type GcListSource = std::iter::Map<std::ops::Range<i32>, fn(i32) -> SEXP>;
+
+fn gc_list_element(i: i32) -> SEXP {
+    if i == 2 {
+        SEXP::nil()
+    } else {
+        vec![i, i + 10].into_sexp()
+    }
+}
+
+#[derive(Clone, miniextendr_api::AltrepList)]
+#[altrep(manual, serialize, duplicate = "clone", class = "GcRootedIteratorList")]
+struct GcRootedIteratorList(miniextendr_api::altrep_data::IterListData<GcListSource>);
+
+impl miniextendr_api::altrep_data::AltrepLen for GcRootedIteratorList {
+    fn len(&self) -> usize {
+        miniextendr_api::altrep_data::AltrepLen::len(&self.0)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltListData for GcRootedIteratorList {
+    fn elt(&self, i: usize) -> SEXP {
+        miniextendr_api::altrep_data::AltListData::elt(&self.0, i)
+    }
+}
+
+impl miniextendr_api::altrep_data::AltrepSerialize for GcRootedIteratorList {
+    fn serialized_state(&self) -> SEXP {
+        miniextendr_api::altrep_data::AltrepSerialize::serialized_state(&self.0)
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        <miniextendr_api::altrep_data::IterListData<GcListSource> as miniextendr_api::altrep_data::AltrepSerialize>::unserialize(state).map(Self)
+    }
+}
+
+/// Keep allocating iterator elements through reads, duplication and restoration.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_list_iterator() -> SEXP {
+    use miniextendr_api::altrep_data::{AltrepSerialize, IterListData};
+    use miniextendr_api::altrep_traits::Altrep;
+
+    unsafe {
+        let source = (0..8).map(gc_list_element as fn(i32) -> SEXP);
+        let original = OwnedProtect::new(
+            GcRootedIteratorList(IterListData::from_exact_iter(source)).into_sexp(),
+        );
+        assert_eq!(original.get().vector_elt(3).integer_elt(0), 3);
+        let copy = OwnedProtect::new(<GcRootedIteratorList as Altrep>::duplicate(
+            original.get(),
+            true,
+        ));
+        assert_eq!(copy.get().vector_elt(7).integer_elt(0), 7);
+        let state = OwnedProtect::new(<GcRootedIteratorList as Altrep>::serialized_state(
+            original.get(),
+        ));
+        let restored = OwnedProtect::new(
+            <GcRootedIteratorList as AltrepSerialize>::unserialize(state.get())
+                .unwrap()
+                .into_sexp(),
+        );
+        for list in [original.get(), copy.get(), restored.get()] {
+            for i in 0..8 {
+                if i == 2 {
+                    assert!(list.vector_elt(i).is_nil());
+                } else {
+                    let value = list.vector_elt(i);
+                    assert_eq!(value.integer_elt(0), i32::try_from(i).unwrap());
+                    assert_eq!(value.integer_elt(1), i32::try_from(i).unwrap() + 10);
+                }
+            }
+        }
+        state.get()
+    }
+}
+// endregion

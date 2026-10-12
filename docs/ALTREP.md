@@ -2230,6 +2230,19 @@ After R writes into the vector, the bridge serializes R's values, not the
 iterator's cache. A source that ends before the declared length has no
 complete state to save: the adapter then declines, and R saves the values
 the element reads give. String adapters materialize on first access, to hand
-out stable borrowed strings. `IterListData` has neither policy: its cached
-elements are not rooted
-([#2054](https://github.com/A2-ai/miniextendr/issues/2054)).
+out stable borrowed strings.
+
+`IterListData` owns one `Preserved` R list for the cached prefix, allocated on
+its first in-bounds read. Each yielded SEXP is rooted before the iterator runs
+again, so a mapping closure may return freshly allocated R objects. The
+iterator must still root objects it retains between calls. Cache ownership also
+works before the adapter is placed in a registered ALTREP class. Access,
+cloning and dropping belong on R's main thread (`!Send + !Sync`).
+
+A list adapter's `Clone` copies its rooted cache and clones the remaining
+iterator without consuming it. Its `AltrepSerialize` saves a realized ordinary
+list; `unserialize` builds a rooted cache without constructing `I`. Unlike an
+atomic adapter's missing NA sentinel, a short list source already has the R
+list's default `NULL` values in its unfilled slots, so those values can be
+saved directly. A concrete list class delegates the same three data traits as
+above, using `AltrepList`, `AltListData` and `IterListData`.

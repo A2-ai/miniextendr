@@ -697,6 +697,23 @@ test_that("Preserved handles and REnv::define hold values under gctorture", {
 
 # endregion
 
+# region: rooted iterator list cache (#2054)
+
+test_that("list iterators root their caches through copy and restoration", {
+  expected <- lapply(0:7, function(i) if (i == 2L) NULL else c(i, i + 10L))
+  expect_identical(miniextendr:::gc_stress_altrep_list_iterator(), expected)
+})
+
+test_that("list iterator caches survive gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  expected <- lapply(0:7, function(i) if (i == 2L) NULL else c(i, i + 10L))
+  expect_identical(miniextendr:::gc_stress_altrep_list_iterator(), expected)
+})
+
+# endregion
+
 test_that("tuple container rows retain all children under gctorture", {
   skip_gc_stress_if_disabled()
   gctorture(TRUE)

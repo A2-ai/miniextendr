@@ -3,8 +3,8 @@
 //! Provides `IterState<I, T>` (the shared lazy-caching state machine) and
 //! data-adaptor types for the integer/real/logical/raw ALTREP families:
 //! `IterIntData`, `IterRealData`, `IterLogicalData`, `IterRawData`. The
-//! string/list/complex adaptors (`IterStringData`, `IterListData`,
-//! `IterComplexData`) live in `super::coerce`.
+//! string/complex adaptors live in `super::coerce`; the rooted list adaptor
+//! lives in `super::list`.
 //!
 //! See the iterator-adaptor section in the [`altrep_data`](crate::altrep_data)
 //! module docs for how to expose

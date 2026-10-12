@@ -46,18 +46,23 @@
 //! cache and never needs to construct `I`. Delegate that trait from a concrete
 //! registered class and select `#[altrep(manual, serialize, duplicate = "clone")]`.
 //! The bridge preserves authoritative R writes in data2 as well as that cache.
-//! List adapters need their own GC-root and serialization policy.
+//! The list adapter owns one preserved R list for its cache, rooting each
+//! yielded value before requesting another. Its clone copies that list and
+//! its remaining iterator; serialization saves a realized list. These
+//! operations, including dropping the adapter, belong on R's main thread.
 //!
 //! ## Submodules
 //!
 //! - [`state`]: Core `IterState<I, T>` + standard data adaptors (Int, Real, Logical, Raw)
 //! - [`coerce`]: Coerced variants (`IterIntCoerceData`, `IterRealCoerceData`, `IterIntFromBoolData`)
-//!   plus the String/List/Complex data adaptors (`IterStringData`, `IterListData`, `IterComplexData`)
+//!   plus the String/Complex data adaptors (`IterStringData`, `IterComplexData`)
+//! - [`list`]: GC-rooted `IterListData` for iterators yielding R objects
 //! - [`sparse`]: Sparse iterators using `nth()` for skip-ahead (`SparseIterState`)
 //! - [`windowed`]: Sliding-window iterators (`WindowedIterState`)
 
 mod coerce;
 mod extension;
+mod list;
 mod macros;
 mod sparse;
 mod state;
@@ -65,6 +70,7 @@ mod windowed;
 
 pub use coerce::*;
 pub use extension::*;
+pub use list::*;
 pub use sparse::*;
 pub use state::*;
 pub use windowed::*;
