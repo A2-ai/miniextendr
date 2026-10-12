@@ -249,6 +249,21 @@ pub fn gc_stress_vec_option_borrowed() {
     let _ = str_slice_opt.into_sexp();
 }
 
+#[derive(Clone, miniextendr_api::AltrepString)]
+#[altrep(manual, duplicate = "clone", class = "GcStressCloneCache")]
+struct GcStressCloneCache(Vec<Option<String>>);
+
+impl miniextendr_api::altrep_data::AltrepLen for GcStressCloneCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl miniextendr_api::altrep_data::AltStringData for GcStressCloneCache {
+    fn elt(&self, i: usize) -> Option<&str> {
+        self.0[i].as_deref()
+    }
+}
+
 /// Exercise the string ALTREP element cache (data2) under GC pressure.
 ///
 /// Fills the cache one slot at a time through `Elt`, writes a value and an NA
@@ -259,20 +274,23 @@ pub fn gc_stress_vec_option_borrowed() {
 #[miniextendr(noexport)]
 pub fn gc_stress_altrep_string_cache() -> SEXP {
     use miniextendr_api::altrep_traits::{AltString, AltVec};
-    type Data = Vec<Option<String>>;
+    type Data = GcStressCloneCache;
 
-    let values: Data = (0..24)
+    let values: Vec<Option<String>> = (0..24)
         .map(|i| (i % 5 != 0).then(|| format!("cache-{i}")))
         .collect();
-    let x = unsafe { OwnedProtect::new(miniextendr_api::Altrep(values).into_sexp()) };
+    let x = unsafe { OwnedProtect::new(GcStressCloneCache(values).into_sexp()) };
     for i in (0..24).step_by(3) {
         let _ = <Data as AltString>::elt(x.get(), i);
     }
+    // Clone a partial cache with still-empty C NULL slots.
+    let x = unsafe { OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get())) };
     let written = unsafe { OwnedProtect::new(SEXP::charsxp("written")) };
     <Data as AltString>::set_elt(x.get(), 0, written.get());
     <Data as AltString>::set_elt(x.get(), 1, SEXP::na_string());
     let _ = <Data as AltVec>::dataptr(x.get(), false);
-    x.get()
+    // Clone again after R writes: data2, not the original Rust values, wins.
+    unsafe { miniextendr_api::sys::Rf_duplicate(x.get()) }
 }
 
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.

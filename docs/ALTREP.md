@@ -276,6 +276,19 @@ A live-view class can deliberately preserve its owner, while a value class can
 duplicate its ALTREP state and detach the storage on write. The latter must keep
 an existing alias unchanged.
 
+The derives offer `#[altrep(duplicate = "clone")]` for value semantics and
+`#[altrep(duplicate = "shared")]` for deliberate reference semantics. The
+clone policy requires `Clone`, clones the ExternalPtr owner (including sidecar
+slots), and copies the authoritative data2 cache, including partial string
+caches. The shared policy returns the same ALTREP object: aliases observe its
+mutations. Neither option changes the default when omitted. Both compose with
+`dataptr`, `subset`, and `serialize`; `no_lowlevel` requires your own policy.
+
+A custom `Clone` must detach buffers exposed for R writes. `Vec` and owned
+`Cow` clones do this; simply sharing an `Rc` allocation is not sufficient.
+Returning the same object also does not make an exposed pointer survive Vec
+reallocation: choose storage that retains exposed allocations when it grows.
+
 Both duplication hooks are available today: implement `Altrep::duplicate` with
 `HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
 The bridge registers those callbacks conditionally. R's default `DuplicateEX`
