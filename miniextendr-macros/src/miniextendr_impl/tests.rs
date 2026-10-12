@@ -2622,6 +2622,97 @@ fn impl_label_option_is_an_unknown_key() {
         "{err}"
     );
 }
+
+/// The member names two blocks of one type bind under one R name: the wrapper
+/// writer refuses the second block when they meet (#1776), so both blocks
+/// must spell the name alike, whichever path (constructor, static, instance
+/// method) emits it.
+fn shared_member_names(first: &ClassWrapper, second: &ClassWrapper) -> Vec<String> {
+    first
+        .member_names
+        .iter()
+        .filter(|name| second.member_names.contains(name))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn member_names_match_across_impl_blocks() {
+    // Env, with a class override: the constructor binds `RCounter$new`, and so
+    // does a static renamed to `new` in a block without a constructor.
+    let ctor = parse_impl_with_class_name(
+        ClassSystem::Env,
+        "RCounter",
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> Self { unimplemented!() }
+            }
+        },
+    );
+    let renamed_static = parse_impl_with_class_name(
+        ClassSystem::Env,
+        "RCounter",
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r_name = "new")]
+                pub fn make() -> i32 { 0 }
+            }
+        },
+    );
+    assert_eq!(
+        shared_member_names(
+            &generate_env_class(&ctor),
+            &generate_env_class(&renamed_static)
+        ),
+        ["`RCounter$new`"]
+    );
+
+    // R6: an instance method and one renamed to its name.
+    let value = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn value(&self) -> i32 { 0 }
+            }
+        },
+    );
+    let renamed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r_name = "value")]
+                pub fn get(&self) -> i32 { 0 }
+            }
+        },
+    );
+    assert_eq!(
+        shared_member_names(&generate_r6_class(&value), &generate_r6_class(&renamed)),
+        ["the R6 member `value`"]
+    );
+
+    // S4: both methods dispatch through the generic `s4_x`.
+    let x = parse_impl(
+        ClassSystem::S4,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn x(&self) -> i32 { 0 }
+            }
+        },
+    );
+    let renamed = parse_impl(
+        ClassSystem::S4,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r_name = "x")]
+                pub fn peek(&self) -> i32 { 0 }
+            }
+        },
+    );
+    assert_eq!(
+        shared_member_names(&generate_s4_class(&x), &generate_s4_class(&renamed)),
+        ["the S4 method of `s4_x` for `Counter`"]
+    );
+}
 // endregion
 
 // region: Parameter defaults tests
