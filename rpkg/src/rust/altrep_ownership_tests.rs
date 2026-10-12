@@ -1,11 +1,11 @@
 //! ALTREP ownership-policy fixtures for `test-altrep-ownership.R`.
 
 use miniextendr_api::altrep_data::{
-    AltIntegerData, AltRealData, AltStringData, AltrepDataptr, AltrepLen, AltrepSerialize,
-    IterIntData, IterRealData,
+    AltIntegerData, AltListData, AltRealData, AltStringData, AltrepDataptr, AltrepLen,
+    AltrepSerialize, IterIntData, IterListData, IterRealData,
 };
 use miniextendr_api::altrep_registration::RegisterAltrep;
-use miniextendr_api::{Altrep, AltrepBuffer, RLogical, SEXP, SexpExt, miniextendr};
+use miniextendr_api::{Altrep, AltrepBuffer, IntoR, RLogical, SEXP, SexpExt, miniextendr};
 
 // region: duplicate = "clone"
 
@@ -218,5 +218,48 @@ pub fn altrep_range_cache(from: i32, to: i32) -> RangeCache {
 #[miniextendr(noexport)]
 pub fn altrep_short_real_cache(values: Vec<f64>, len: usize) -> ShortRealCache {
     ShortRealCache(IterRealData::from_iter(values.into_iter(), len))
+}
+// endregion
+
+// region: list iterator caches
+
+type ListSource = std::iter::Map<std::ops::Range<i32>, fn(i32) -> SEXP>;
+
+fn list_element(i: i32) -> SEXP {
+    vec![i, i + 10].into_sexp()
+}
+
+/// A lazily cached list that clones and serializes its cache.
+#[derive(Clone, miniextendr_api::AltrepList)]
+#[altrep(manual, serialize, duplicate = "clone", class = "OwnershipListCache")]
+pub struct ListCache(IterListData<ListSource>);
+
+impl AltrepLen for ListCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl AltListData for ListCache {
+    fn elt(&self, i: usize) -> SEXP {
+        self.0.elt(i)
+    }
+}
+
+impl AltrepSerialize for ListCache {
+    fn serialized_state(&self) -> SEXP {
+        self.0.serialized_state()
+    }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        IterListData::unserialize(state).map(Self)
+    }
+}
+
+/// `list(c(0L, 10L), c(1L, 11L), ...)` from a source of `values` elements,
+/// declared `len` long and read lazily.
+#[miniextendr(noexport)]
+pub fn altrep_list_cache(values: i32, len: usize) -> ListCache {
+    let source = (0..values).map(list_element as fn(i32) -> SEXP);
+    ListCache(IterListData::from_iter(source, len))
 }
 // endregion

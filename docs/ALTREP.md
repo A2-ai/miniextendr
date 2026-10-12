@@ -287,6 +287,14 @@ leaves the policy to your own `Altrep` impl.
 A custom `Clone` must detach buffers exposed for R writes. `Vec` and owned
 `Cow` clones do this; simply sharing an `Rc` allocation is not sufficient.
 
+Derive-generated string and list classes take R's element writes
+(`x[[i]] <- v`) without a `Dataptr`. The first write copies the values into a
+plain vector in data2; from then on element reads, `Duplicate` and
+serialization use it, and the Rust data stays as it was. So under
+`duplicate = "clone"` a copy that R writes to stays ALTREP and leaves the
+original unchanged, and a list or string saved after a write restores as an
+ordinary vector holding the written values.
+
 There is no derive option that returns the original object from `Duplicate`.
 R's `DuplicateEX` then leaves the attributes alone, so every copy R makes is
 the same SEXP: `y[1] <- 0L` writes into `x`, `names(y) <- ...` and
@@ -757,9 +765,11 @@ framework guarantees unique, so the collision is always in your own code.
 
 ## Mutable Vectors
 
-String and List vectors can be made mutable by implementing `set_elt` on the
-**low-level** `AltString`/`AltList` traits. This allows R code to modify
-elements in-place.
+Derive-generated string and list classes already take R's element writes:
+the first one copies the values into data2, as described under
+[Containers, ownership, and views](#containers-ownership-and-views). Write
+`set_elt` yourself, on the **low-level** `AltString`/`AltList` traits, only when
+R's writes should reach your Rust data instead.
 
 **Important**: Only String and List types support `set_elt`. Numeric vectors
 (Integer, Real, Logical, Raw, Complex) cannot be mutated through ALTREP.
@@ -767,7 +777,7 @@ elements in-place.
 `set_elt` is not a data-trait method and not an `impl_alt*_from_data!` macro
 option — `AltStringData`/`AltListData` (the high-level traits the family
 derives generate from) have no `set_elt` method at all, so there is no derive
-attribute key for it either. It lives one layer down, on the low-level
+attribute key for a custom one either. It lives one layer down, on the low-level
 `AltString`/`AltList` traits (`miniextendr_api::altrep_traits`) as an optional
 method gated by `const HAS_SET_ELT: bool`. Getting there means opting out of
 *both* derive conveniences with `#[altrep(manual, no_lowlevel)]`:
@@ -852,26 +862,27 @@ trick and no `dangerous_implicit_autorefs` risk.
 
 ### Mutable List Vectors
 
-Lists are easier to make mutable since they already store SEXPs:
+A list's elements are R objects, and R's garbage collector does not look
+inside Rust memory, data1 included. So keep them in an R list that the class
+roots, not in a `Vec<SEXP>`:
 
 ```rust
 use miniextendr_api::R_xlen_t;
 use miniextendr_api::altrep_traits::{Altrep as LowLevelAltrep, AltVec, AltList};
 use miniextendr_api::altrep_data::AltrepExtract;
 use miniextendr_api::prelude::*;
-use std::cell::RefCell;
 
 #[derive(AltrepList)]
 #[altrep(manual, no_lowlevel, class = "MutableList")]
 pub struct MutableListData {
-    // SEXPs need to be protected from GC
-    elements: RefCell<Vec<SEXP>>,
+    // An R list rooted for as long as the class holds it.
+    elements: Preserved,
 }
 
 impl LowLevelAltrep for MutableListData {
     fn length(x: SEXP) -> R_xlen_t {
         let data = unsafe { MutableListData::altrep_extract_ref(x) };
-        data.elements.borrow().len() as R_xlen_t
+        data.elements.xlength()
     }
 }
 
@@ -880,14 +891,14 @@ impl AltVec for MutableListData {}
 impl AltList for MutableListData {
     fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
         let data = unsafe { MutableListData::altrep_extract_ref(x) };
-        data.elements.borrow()[i as usize]
+        data.elements.vector_elt(i)
     }
 
     // Enable mutation
     const HAS_SET_ELT: bool = true;
     fn set_elt(x: SEXP, i: R_xlen_t, v: SEXP) {
-        let data = unsafe { MutableListData::altrep_extract_mut(x) };
-        data.elements.borrow_mut()[i as usize] = v;
+        let data = unsafe { MutableListData::altrep_extract_ref(x) };
+        data.elements.set_vector_elt(i, v);
     }
 }
 
@@ -899,7 +910,8 @@ miniextendr_api::impl_inferbase_list!(MutableListData);
 **1. R's Copy-on-Write**: R may copy your vector before calling `set_elt`, so mutations may not affect the original vector reference.
 
 **2. GC Protection**: When storing SEXPs in mutable lists:
-   - SEXPs in the ALTREP data slot are automatically protected
+   - A SEXP stored in Rust memory, data1 included, is not protected; store it
+     in an R list the class roots (a `Preserved`, or data2)
    - If you create new SEXPs, ensure they're returned to R immediately
    - Don't store raw SEXP pointers that outlive their protection
 
@@ -1234,8 +1246,8 @@ lst[[5]]     # 5L
 
 **Important**: List elements are SEXPs that must be properly protected from garbage collection. When implementing `AltListData::elt()`:
 
-1. **Return existing SEXPs**: If you store SEXPs in your data structure, they're already protected by being in the ALTREP object's data slot
-2. **Create new SEXPs**: If you create SEXPs on-the-fly (like `Rf_ScalarInteger`), R will protect them when they're added to the list
+1. **Return stored SEXPs only if they are rooted**: R's garbage collector does not see SEXPs kept in Rust memory, data1 included. Keep them in an R list the class roots (a `Preserved`), or use `IterListData`, which roots the elements its iterator yields
+2. **Create new SEXPs**: If you create SEXPs on-the-fly (like `Rf_ScalarInteger`), return them straight away; R protects the value `Elt` returns
 3. **Avoid raw pointers**: Don't store raw SEXP pointers that might become invalid
 
 ### Practical List Examples
@@ -2230,6 +2242,28 @@ After R writes into the vector, the bridge serializes R's values, not the
 iterator's cache. A source that ends before the declared length has no
 complete state to save: the adapter then declines, and R saves the values
 the element reads give. String adapters materialize on first access, to hand
-out stable borrowed strings. `IterListData` has neither policy: its cached
-elements are not rooted
-([#2054](https://github.com/A2-ai/miniextendr/issues/2054)).
+out stable borrowed strings.
+
+`IterListData` keeps the elements it has yielded in one R list, allocated on
+its first in-bounds read. Each yielded SEXP goes into that list before the
+iterator runs again, so a mapping closure may return freshly allocated R
+objects. The iterator must still root any objects it keeps between calls. The
+adapter roots the list itself, in the same pool as owning `ExternalPtr`
+handles, so it is safe before the adapter belongs to an ALTREP class, and
+releases it on drop. That pool releases in O(1) in any order. R's finalizers
+drop ALTREP owners newest first, and `R_ReleaseObject` scans its list from the
+newest root. So `R_PreserveObject` roots for caches read in another order
+would take quadratic time to release: 8 s instead of 0.03 s for 50,000 lists
+read in reverse. Build, read, clone and drop the adapter on R's main thread
+(`!Send + !Sync`).
+
+A list adapter's `Clone` copies its cache list and clones the remaining
+iterator without advancing it. The copies share their elements, as R's
+`shallow_duplicate()` does: R copies an element that two lists hold before
+changing it. Its `AltrepSerialize` saves the realized list; `unserialize`
+keeps R's restored list as the cache, without constructing `I`. Unlike an
+atomic adapter, which has no value to save for elements a short source never
+produced, a list leaves those slots `NULL`, which is also what its element
+reads return, so the list is saved as it is. A concrete list class delegates
+the same three data traits as above, using `AltrepList`, `AltListData` and
+`IterListData`.

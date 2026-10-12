@@ -2710,6 +2710,9 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Auto-implements `AltrepLen` and `AltListData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger),
 /// except `dataptr` and `subset` which are not supported for list ALTREP.
+///
+/// The generated class accepts R's writes (`x[[i]] <- v`): the first one copies
+/// the elements into a plain list in data2, which element reads use from then on.
 #[proc_macro_derive(AltrepList, attributes(altrep, r_data))]
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);

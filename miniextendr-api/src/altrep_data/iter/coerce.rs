@@ -2,8 +2,7 @@
 //!
 //! Provides `IterIntCoerceData`, `IterRealCoerceData`, and `IterIntFromBoolData`
 //! for iterators that produce values coercible to the target R type, plus the
-//! string/list/complex adaptors (`IterStringData`, `IterListData`,
-//! `IterComplexData`).
+//! string/complex adaptors (`IterStringData`, `IterComplexData`).
 //!
 //! See the iterator-adaptor section in the [`altrep_data`](crate::altrep_data)
 //! module docs for how to expose
@@ -12,10 +11,7 @@
 
 use super::IterState;
 use super::macros::define_iter_data;
-use crate::SEXP;
-use crate::altrep_data::{
-    AltComplexData, AltIntegerData, AltListData, AltRealData, AltStringData, AltrepLen,
-};
+use crate::altrep_data::{AltComplexData, AltIntegerData, AltRealData, AltStringData, AltrepLen};
 
 /// Iterator-backed integer vector data adaptor with coercion from any integer-like type.
 ///
@@ -228,85 +224,6 @@ where
         // This is necessary because we can't return &str from RefCell borrows
         let materialized = self.state.materialize_all();
         materialized.get(i).map(|s| s.as_str())
-    }
-}
-
-/// Iterator-backed list vector data adaptor.
-///
-/// Wraps an iterator producing R `SEXP` values and implements the data-level
-/// traits ([`AltrepLen`] + [`AltListData`]) for backing an ALTREP list. To
-/// expose it to R, wrap it in a `#[derive(AltrepList)]` + `#[altrep(manual)]`
-/// struct (see the iterator module documentation).
-///
-/// # Safety
-///
-/// The iterator must produce valid, protected SEXP values. Each SEXP must remain
-/// protected for the lifetime of the ALTREP object.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::altrep_data::IterListData;
-/// use miniextendr_api::IntoR;
-///
-/// let iter = (0..5).map(|x| vec![x, x+1, x+2].into_sexp());
-/// let data = IterListData::from_iter(iter, 5);
-/// ```
-pub struct IterListData<I>
-where
-    I: Iterator<Item = SEXP>,
-{
-    state: IterState<I, SEXP>,
-}
-
-impl<I> IterListData<I>
-where
-    I: Iterator<Item = SEXP>,
-{
-    /// Create from an iterator with explicit length.
-    ///
-    /// # Safety
-    ///
-    /// The iterator must produce valid, protected SEXP values.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I> IterListData<I>
-where
-    I: ExactSizeIterator<Item = SEXP>,
-{
-    /// Create from an ExactSizeIterator (length auto-detected).
-    ///
-    /// # Safety
-    ///
-    /// The iterator must produce valid, protected SEXP values.
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I> AltrepLen for IterListData<I>
-where
-    I: Iterator<Item = SEXP>,
-{
-    fn len(&self) -> usize {
-        self.state.len()
-    }
-}
-
-impl<I> AltListData for IterListData<I>
-where
-    I: Iterator<Item = SEXP>,
-{
-    fn elt(&self, i: usize) -> SEXP {
-        use crate::SEXP;
-        self.state.get_element(i).unwrap_or(SEXP::nil())
     }
 }
 

@@ -1006,6 +1006,52 @@ pub(crate) fn unroot_owned(key: ProtectKey) {
         }
     });
 }
+
+/// One R object rooted in the main-thread pool, released when dropped.
+///
+/// For roots that R's finalizers drop, such as the caches an ALTREP owner
+/// keeps in data1. GC finalizes the newest objects first, while
+/// `R_ReleaseObject` scans the precious list from its head, so precious-list
+/// roots taken in any other order release in quadratic time. The pool
+/// releases in O(1) whatever the order.
+///
+/// Raw-pointer marker: `!Send` and `!Sync`, so it is dropped on the thread
+/// that took it.
+pub(crate) struct PoolRoot {
+    sexp: SEXP,
+    key: ProtectKey,
+    _not_send: PhantomData<*mut ()>,
+}
+
+impl PoolRoot {
+    /// Root `sexp`, which needs no protection of its own.
+    ///
+    /// # Safety
+    ///
+    /// Must run on R's main thread.
+    pub(crate) unsafe fn new(sexp: SEXP) -> Self {
+        // The pool can allocate while it grows.
+        let guard = unsafe { crate::OwnedProtect::new(sexp) };
+        Self {
+            sexp,
+            key: root_owned(guard.get()),
+            _not_send: PhantomData,
+        }
+    }
+
+    /// The rooted object.
+    pub(crate) fn get(&self) -> SEXP {
+        self.sexp
+    }
+}
+
+impl Drop for PoolRoot {
+    fn drop(&mut self) {
+        // Releasing a slot neither allocates nor runs finalizers, so this is
+        // sound inside a finalizer too.
+        unroot_owned(self.key);
+    }
+}
 // endregion
 
 impl<T: TypedExternal> ExternalPtr<T> {
