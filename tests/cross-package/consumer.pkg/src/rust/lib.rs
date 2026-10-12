@@ -18,6 +18,9 @@ pub use shared_traits::{
     __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
 };
 
+// Import the View of the shared Tagged trait (owner receivers)
+pub use shared_traits::TaggedView;
+
 // region: Cross-package ExternalPtr pass-through utilities
 
 /// Pass an ExternalPtr through consumer without knowing its type.
@@ -279,6 +282,26 @@ pub fn view_value_after_gc(make_counter: SEXP) -> Option<i32> {
         }
         Some(view.value())
     }
+}
+// endregion
+
+// region: Owner receivers across packages
+
+/// Add a label through a `Tagged` View, collect, then read the labels back
+///
+/// The View passes the owner it roots to the implementing package's
+/// owner-receiver methods, which reach the labels in that owner's sidecar.
+/// @param obj An object implementing Tagged, from any package
+/// @param label The label to add
+/// @return The labels after the addition
+/// @export
+#[miniextendr]
+pub fn tagged_add_and_read(obj: SEXP, label: String) -> Vec<String> {
+    let mut view =
+        unsafe { TaggedView::try_from_sexp(obj) }.expect("object does not implement Tagged");
+    view.add_label(label);
+    unsafe { miniextendr_api::sys::R_gc() };
+    view.labels()
 }
 // endregion
 
