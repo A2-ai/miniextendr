@@ -48,6 +48,21 @@ pub fn strict_unit(x: i64) {
     let _ = x;
 }
 
+#[miniextendr(strict)]
+pub fn strict_array(x: u64) -> ::core::option::Option<[u64; 2]> {
+    ::core::option::Option::Some([x, x])
+}
+
+#[miniextendr(strict)]
+pub fn strict_rows(
+    x: i64,
+) -> ::std::vec::Vec<::core::option::Option<::std::boxed::Box<[i64]>>> {
+    let mut rows = ::std::vec::Vec::new();
+    rows.push(::core::option::Option::None);
+    rows.push(::core::option::Option::Some(::std::boxed::Box::from([x])));
+    rows
+}
+
 #[miniextendr(coerce, check_interrupt, rng)]
 pub fn coerced(x: u16, xs: ::std::vec::Vec<u8>) -> f64 {
     f64::from(x) + xs.len() as f64
