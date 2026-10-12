@@ -29,9 +29,9 @@
 //!    hand-roll those traits (custom `elt`, `no_na`, `sum`, …); the
 //!    `impl_alt*_from_data!` registration is still emitted.
 //!
-//! Both paths route trampolines through the same guard mode selected by
-//! [`Altrep::GUARD`](crate::altrep_traits::Altrep::GUARD); guard modes are
-//! documented on [`crate::altrep_traits`].
+//! Both paths use [`Altrep::GUARD`](crate::altrep_traits::Altrep::GUARD) for
+//! native reads. Allocating bridges always retain RUnwind protection;
+//! guard modes are documented on [`crate::altrep_traits`].
 //!
 //! ## Threading
 //!

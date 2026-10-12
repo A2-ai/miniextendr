@@ -2706,6 +2706,7 @@ fn test_derive_altrep_integer_unsafe_guard() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("Unsafe"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]
@@ -2747,6 +2748,7 @@ fn test_derive_altrep_integer_rust_unwind_guard_uses_expanded_path() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("RustUnwind"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]
@@ -2766,6 +2768,7 @@ fn test_derive_altrep_unsafe_guard_with_serialize() {
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("with_serialize"));
     assert!(output_str.contains("Unsafe"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]

@@ -2129,3 +2129,15 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - Vector is very large but you only need a few elements
 - You don't need skipped elements ever again
 - Memory is constrained
+
+
+### Guard modes and materialization
+
+A derive's `unsafe` or `rust_unwind` option changes the guard for native reads
+and inspection. It does not remove the default materializing Dataptr method.
+SEXP-returning callbacks (including duplication and serialization), Dataptr,
+and string/list setters always run under R_UnwindProtect because their bridges
+can allocate R objects. This also protects `duplicate = "clone"` independently
+of the native-read guard. Use the default `r_unwind` when the remaining callbacks
+can enter R or invoke user R code. `no_lowlevel` leaves method installation to
+the author's low-level implementation.
