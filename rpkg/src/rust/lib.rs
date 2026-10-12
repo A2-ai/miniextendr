@@ -226,6 +226,7 @@ mod feature_default_fixtures;
 mod ffi_guard_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
+mod glob_import_tests;
 #[cfg(feature = "globset")]
 mod globset_adapter_tests;
 #[cfg(feature = "growth-debug")]
