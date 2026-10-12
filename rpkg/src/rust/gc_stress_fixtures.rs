@@ -347,6 +347,55 @@ pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
     }
 }
 
+/// Root R values only through ALTREP data1 sidecar slots.
+///
+/// A writable `Dataptr` copies into data2, so a write through it leaves the
+/// source alone; then a second vector, whose source is unprotected once it
+/// is built, survives a collection; then a clone-policy copy, the only root
+/// of its sidecar once the original is unprotected, survives one too. No
+/// arguments, for the no-arg gctorture sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_sidecar() {
+    use crate::altrep_sidecar_tests::{
+        SidecarVector, altrep_cloned_sidecar_ints, altrep_cloned_sidecar_tag, make_sidecar_altrep,
+    };
+    use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep};
+    use miniextendr_api::{RNativeType, TryFromSexp};
+    unsafe {
+        let values = OwnedProtect::new(vec![3_i32, 5, 8].into_sexp());
+        let x = OwnedProtect::new(make_sidecar_altrep(values.get()).into_sexp());
+        assert!(SidecarVector::dataptr_or_null(x.get()).is_null());
+        assert_eq!(SidecarVector::length(x.get()), 3);
+        let pointer = SidecarVector::dataptr(x.get(), true).cast::<i32>();
+        *pointer.add(1) = 99;
+        assert_eq!(SidecarVector::elt(x.get(), 1), 99);
+        assert_eq!(i32::elt(values.get(), 1), 5);
+        drop(x);
+        // This owner now provides the only root for its newly allocated source.
+        let x = OwnedProtect::new({
+            let values = OwnedProtect::new(vec![11_i32, 13, 17].into_sexp());
+            // Pop the source guard before protecting the returned ALTREP;
+            // no allocation occurs between returning it and PROTECT.
+            make_sidecar_altrep(values.get()).into_sexp()
+        });
+        miniextendr_api::sys::R_gc();
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [11, 13, 17]);
+        drop(x);
+        drop(values);
+        let copy = OwnedProtect::new({
+            let original = OwnedProtect::new({
+                let tag = OwnedProtect::new(vec!["shared tag"].into_sexp());
+                altrep_cloned_sidecar_ints(vec![1, 2], tag.get()).into_sexp()
+            });
+            miniextendr_api::sys::Rf_duplicate(original.get())
+        });
+        miniextendr_api::sys::R_gc();
+        let tag = altrep_cloned_sidecar_tag(copy.get());
+        assert_eq!(Vec::<String>::try_from_sexp(tag).unwrap(), ["shared tag"]);
+        assert_eq!(Vec::<i32>::try_from_sexp(copy.get()).unwrap(), [1, 2]);
+    }
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both

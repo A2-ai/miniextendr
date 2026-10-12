@@ -835,6 +835,8 @@ pub struct RepeatedComplex {
 #[altrep(manual, dataptr, serialize, duplicate = "clone")]
 pub struct Ints {
     data: ::std::vec::Vec<i32>,
+    #[r_data(ref, mut)]
+    pub source: Sidecar<SEXP>,
 }
 
 impl AltrepLen for Ints {

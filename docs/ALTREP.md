@@ -341,11 +341,59 @@ R inputs [#1427](https://github.com/A2-ai/miniextendr/issues/1427), and access t
 sidecar handles from ALTREP callbacks
 [#1880](https://github.com/A2-ai/miniextendr/issues/1880).
 
+## Sidecars in callbacks
+
+An ALTREP struct can hold R values in `#[r_data] Sidecar<T>` fields, as an
+`ExternalPtr` struct can. The values live in the protection list of the data1
+owner, so the ALTREP vector keeps them alive. The derive emits only the Rust
+accessors: `T::field(&ptr)`, and `T::set_field(&mut ptr, value)` with `mut`.
+An ALTREP vector has no R field methods, so `#[r_data]` takes only `ref` and
+`mut`.
+
+The high-level data traits (`AltrepLen`, `Alt*Data`) receive `&self`, which
+has no way back to its handle, so they can't read sidecars (#1880). A
+callback that needs a sidecar uses `#[altrep(manual, no_lowlevel)]` and gets
+the handle from the ALTREP SEXP:
+
+```rust,ignore
+#[derive(AltrepInteger)]
+#[altrep(manual, no_lowlevel)]
+struct SidecarVector {
+    #[r_data(ref)]
+    values: Sidecar<SEXP>,
+}
+
+impl AltInteger for SidecarVector {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        // An existing data2 cache takes precedence after materialization.
+        if let Some(cache) = unsafe { materialized_altrep_data2(x) } {
+            return i32::elt(cache, i);
+        }
+        let owner = unsafe { altrep_data1_as_unchecked::<Self>(x) }.unwrap();
+        i32::elt(Self::values(&owner), i)
+    }
+}
+```
+
+`rpkg/src/rust/altrep_sidecar_tests.rs` has the complete class, with
+`Altrep::length`, `AltVec` and `impl_inferbase_integer!`. Its `Dataptr`
+copies into data2 instead of handing R a writable pointer into the sidecar
+vector, which other R code may also reference. Once data2 exists, `Elt` and
+`length` read it. With no serialize or duplicate method, R serializes and
+duplicates the vector as an ordinary one. The default `RUnwind` guard covers
+the sidecar conversions and allocations.
+
+A class whose callbacks read only Rust fields can still use a sidecar to keep
+an R value alive. A `duplicate = "clone"` copy clones the handle, so the copy
+holds the same R values. Serialization never includes sidecars: R saves the
+class's serialized state, or else the values.
+
 ## High-Level Data Traits
 
 ### Core Trait: `AltrepLen`
 
-Every ALTREP type must implement `AltrepLen`:
+Every type using the high-level bridge implements `AltrepLen`:
 
 ```rust
 impl AltrepLen for MyData {

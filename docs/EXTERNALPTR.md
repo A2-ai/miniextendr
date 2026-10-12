@@ -538,9 +538,11 @@ Any other Rust code with a handle makes the same calls: `MyType::keys(&ptr)`,
 The struct holds nothing that points back at its pointer, so a `&MyType`
 cannot reach the values. A method with a plain `&self` / `&mut self`
 receiver sees the other fields only; so do a trait impl (`impl Trait for
-MyType`, `RDisplay`, the cross-package trait ABI) and an ALTREP callback,
-which receive the struct, not the handle (#1880). Give such a
-method a handle receiver, or pass the value in.
+MyType`, `RDisplay`, the cross-package trait ABI) and the high-level ALTREP
+data traits (#1880). Give such a method a handle receiver, or pass the value
+in. ALTREP structs can have sidecars too: a low-level callback gets the
+handle with `altrep_data1_as_unchecked::<Self>(x)` and calls
+`Self::keys(&owner)`. See [Sidecars in callbacks](ALTREP.md#sidecars-in-callbacks).
 
 How the value moves:
 

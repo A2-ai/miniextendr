@@ -2131,13 +2131,16 @@ fn generate_typed_external(
     info: &SidecarInfo,
     restored: &RestoredOptions,
     field_error: &FieldErrorOptions,
+    display_name: Option<&str>,
 ) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, name.span());
-    let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+    let display_name = display_name.unwrap_or(&name_str);
+    let display_lit = syn::LitStr::new(display_name, name.span());
+    let name_cstr = syn::LitByteStr::new(format!("{display_name}\0").as_bytes(), name.span());
     // `#[externalptr(restored(class = ..., message = ...))]` (#1891): the
     // package's classes go in front of the `miniextendr_restored*` classes,
     // its message replaces miniextendr's, on every restored refusal of the
@@ -2199,7 +2202,7 @@ fn generate_typed_external(
     // but combined with the explicit crate@version prefix, this is unambiguous.
     quote::quote! {
         impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
-            const TYPE_NAME: &'static str = #name_lit;
+            const TYPE_NAME: &'static str = #display_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
             const TYPE_ID_CSTR: &'static [u8] =
                 ::core::concat!(
@@ -2213,6 +2216,46 @@ fn generate_typed_external(
             #field_error_message
         }
     }
+}
+
+/// ALTREP stores its owner in an ordinary ExternalPtr, so it needs the same
+/// slot visitor and handle accessors. Only storage is generated here: ALTREP
+/// has its own IntoR and registration, and isn't an R class with field methods.
+pub(crate) fn generate_altrep_storage(
+    input: &DeriveInput,
+    class_name: &str,
+) -> syn::Result<TokenStream> {
+    if let syn::Data::Struct(data) = &input.data {
+        for field in &data.fields {
+            for attr in field.attrs.iter().filter(|a| a.path().is_ident("r_data")) {
+                if sidecar_inner_type(&field.ty).is_none() {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "ALTREP #[r_data] fields must be Sidecar<T>; R field accessors belong to ExternalPtr classes",
+                    ));
+                }
+                if matches!(&attr.meta, syn::Meta::List(_)) {
+                    attr.parse_nested_meta(|meta| {
+                        if meta.path.is_ident("ref") || meta.path.is_ident("mut") {
+                            Ok(())
+                        } else {
+                            Err(meta.error("ALTREP sidecars support only `ref` and `mut` access; they have no R field wrappers"))
+                        }
+                    })?;
+                }
+            }
+        }
+    }
+    let info = parse_sidecar_info(input, ClassSystem::Env)?;
+    let storage = generate_typed_external(
+        input,
+        &info,
+        &RestoredOptions::default(),
+        &FieldErrorOptions::default(),
+        Some(class_name),
+    );
+    let accessors = generate_sidecar_rust_accessors(input, &info);
+    Ok(quote::quote! { #storage #accessors })
 }
 
 /// Generate the Rust accessors of each `Sidecar<T>` field, as associated
@@ -2355,7 +2398,8 @@ pub fn derive_external_ptr(
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external = generate_typed_external(&input, &sidecar_info, &restored, &field_error);
+    let typed_external =
+        generate_typed_external(&input, &sidecar_info, &restored, &field_error, None);
     let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (

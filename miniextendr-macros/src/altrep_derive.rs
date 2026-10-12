@@ -561,12 +561,8 @@ fn derive_altrep_generic(
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits
@@ -905,12 +901,8 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits
