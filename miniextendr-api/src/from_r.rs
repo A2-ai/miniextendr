@@ -1550,6 +1550,8 @@ where
 // endregion
 
 mod cow_and_paths;
+mod rooted;
+pub use rooted::TryFromRoot;
 
 // region: Option<Collection> conversions
 //

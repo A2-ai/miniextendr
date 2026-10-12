@@ -7,7 +7,7 @@
 //!
 //! # The `Cow<[T]>` hazard this replaces
 //!
-//! `Cow<[T]>` is zero-copy on the way *in* — `TryFromSexp` hands back
+//! `Cow<[T]>` is zero-copy on the way *in* through `TryFromRoot`, which returns
 //! `Cow::Borrowed(&[T])` pointing straight at R's vector data. But it cannot be
 //! returned to R zero-copy *safely*. A bare `&[T]` carries no provenance, so a
 //! borrowed **sub-slice** (`&cow[2..5]`) is byte-for-byte indistinguishable from

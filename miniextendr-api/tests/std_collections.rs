@@ -100,8 +100,8 @@ fn cow_slice_from_r() {
 
             let cow: Cow<'static, [i32]> = TryFromSexp::try_from_sexp(sexp).unwrap();
 
-            // Zero-copy: borrows directly from R's SEXP data
-            assert!(matches!(cow, Cow::Borrowed(_)));
+            // A raw SEXP does not supply a borrow lifetime.
+            assert!(matches!(cow, Cow::Owned(_)));
             assert_eq!(cow.as_ref(), &[100, 200, 300]);
 
             Rf_unprotect(1);
@@ -146,8 +146,8 @@ fn cow_str_from_r() {
 
             let cow: Cow<'static, str> = TryFromSexp::try_from_sexp(sexp).unwrap();
 
-            // Zero-copy: borrows directly from R's CHARSXP data
-            assert!(matches!(cow, Cow::Borrowed(_)));
+            // A raw SEXP does not supply a borrow lifetime.
+            assert!(matches!(cow, Cow::Owned(_)));
             assert_eq!(cow.as_ref(), "test string");
         }
     });

@@ -67,7 +67,8 @@ pub use crate::altrep::RegisterAltrep;
 // Round out the ALTREP surface so it matches the DataFrame/serde prelude precedent.
 pub use crate::{
     AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
-    AltStringData, AltrepExtract, AltrepLen, Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromSexp,
+    AltStringData, AltrepExtract, AltrepLen, Coerce, IntoR, IntoRAltrep, TryCoerce, TryFromRoot,
+    TryFromSexp,
 };
 // endregion
 

@@ -1,7 +1,7 @@
 //! Cow, PathBuf, OsString, and string collection conversions.
 //!
-//! - `Cow<'static, [T]>` — zero-copy borrow of R native vectors
-//! - `Cow<'static, str>` — zero-copy borrow of R character scalars
+//! - `Cow<'_, [T]>` — owned copy of R native vectors
+//! - `Cow<'_, str>` — owned copy of R character scalars
 //! - `PathBuf` / `OsString` — from STRSXP via `String` intermediary
 //! - `HashSet<String>` / `BTreeSet<String>` — string set conversions
 //!
@@ -9,10 +9,9 @@
 //!
 //! These [`TryFromSexp`] impls reject mismatched
 //! [`SEXPTYPE`](crate::SEXPTYPE)s — there is no looser coercion path for `Cow` / `PathBuf` /
-//! `OsString`. The `'static` lifetime on `Cow` borrows is valid only for the
-//! duration of the enclosing `.Call`; if you need an owned value that
-//! outlives R's GC, take `String` or `Vec<T>` instead (see
-//! [`strings`](crate::from_r::strings) and [`references`](crate::from_r::references)).
+//! `OsString`. Raw `Cow` conversions own their data and may outlive the source.
+//! [`super::TryFromRoot`] supplies the borrowing path with a root-bound lifetime;
+//! generated wrappers use it for explicit `Cow` parameters.
 
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashSet};
@@ -20,103 +19,64 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::SEXP;
-use crate::from_r::{
-    SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str, map_strsxp_with,
-};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, map_strsxp_with};
 
-/// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
+/// Convert an R native vector to an owned `Cow`.
 ///
-/// Returns `Cow::Borrowed` — the slice points directly into R's SEXP data with
-/// no copy. The `'static` lifetime is valid for the duration of the `.Call`
-/// invocation (R protects the SEXP from GC while Rust code is running).
-///
-/// **Important:** Do not send the borrowed `Cow` to another thread or store it
-/// past the `.Call` return — the underlying R memory is only valid while
-/// R's protection stack guards this SEXP.
-impl<T> TryFromSexp for Cow<'static, [T]>
-where
-    T: crate::RNativeType + Copy + Clone,
-{
-    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = <&[T] as TryFromSexp>::NATIVE_BORROW;
-
+/// A raw SEXP carries no borrow lifetime. Use [`super::TryFromRoot`] to borrow
+/// without copying; generated wrappers select that path for `Cow<'_, [T]>`.
+impl<T: crate::RNativeType> TryFromSexp for Cow<'_, [T]> {
     type Error = SexpTypeError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Borrowed(slice))
+        Ok(Cow::Owned(slice.to_vec()))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Borrowed(slice))
+        Ok(Cow::Owned(slice.to_vec()))
     }
 }
 
-/// Convert R character scalar to `Cow<'static, str>`.
+/// Convert an R character scalar to an owned `Cow`.
 ///
-/// Returns `Cow::Borrowed` — the `&str` points directly into R's CHARSXP data
-/// via `R_CHAR` + `LENGTH` (O(1), no strlen). No allocation or copy occurs.
-/// The `'static` lifetime is valid for the duration of the `.Call` invocation.
-///
-/// This delegates to the `&'static str` impl (which uses `charsxp_to_str`),
-/// giving the same zero-copy behavior. Use `Cow` when your code may need to
-/// mutate the string later — `to_mut()` will copy-on-write at that point.
-impl TryFromSexp for Cow<'static, str> {
+/// The same scalar/NA semantics as `String`. Borrowing requires
+/// [`super::TryFromRoot`], which generated wrappers use for `Cow<'_, str>`.
+impl TryFromSexp for Cow<'_, str> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: &'static str = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(Cow::Borrowed(s))
+        String::try_from_sexp(sexp).map(Cow::Owned)
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: &'static str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(Cow::Borrowed(s))
+        unsafe { String::try_from_sexp_unchecked(sexp) }.map(Cow::Owned)
     }
 }
 
-/// Convert R character vector to `Vec<Cow<'static, str>>` — zero-copy per element.
-///
-/// Each element borrows directly from R's CHARSXP data. UTF-8 validity is asserted
-/// at package init via `miniextendr_assert_utf8_locale()`, so no per-string
-/// encoding translation is needed.
-///
-/// # NA Handling
-///
-/// **Warning:** `NA_character_` is converted to `Cow::Borrowed("")`. This is lossy!
-/// Use `Vec<Option<Cow<'static, str>>>` to distinguish NA from empty strings.
-impl TryFromSexp for Vec<Cow<'static, str>> {
+/// Convert a character vector to owned strings; NA becomes an empty string.
+/// Generated wrappers borrow instead through [`super::TryFromRoot`].
+impl TryFromSexp for Vec<Cow<'_, str>> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        map_strsxp_with(sexp, |charsxp, _i| {
-            if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
-                Ok(Cow::Borrowed(""))
-            } else {
-                Ok(unsafe { charsxp_to_cow(charsxp) })
-            }
-        })
+        Vec::<String>::try_from_sexp(sexp)
+            .map(|values| values.into_iter().map(Cow::Owned).collect())
     }
 }
 
-/// Convert R character vector to `Vec<Option<Cow<'static, str>>>` — zero-copy, NA-aware.
-///
-/// `NA_character_` → `None`, valid strings → `Some(Cow::Borrowed(&str))`.
-impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
+/// Convert a character vector to owned strings, preserving NA as `None`.
+/// Generated wrappers borrow instead through [`super::TryFromRoot`].
+impl TryFromSexp for Vec<Option<Cow<'_, str>>> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        map_strsxp_with(sexp, |charsxp, _i| {
-            if charsxp == SEXP::na_string() {
-                Ok(None)
-            } else {
-                // charsxp_to_cow returns Cow::Borrowed("") for R_BlankString-equivalent
-                Ok(Some(unsafe { charsxp_to_cow(charsxp) }))
-            }
-        })
+        Vec::<Option<String>>::try_from_sexp(sexp)
+            .map(|values| values.into_iter().map(|v| v.map(Cow::Owned)).collect())
     }
 }
 

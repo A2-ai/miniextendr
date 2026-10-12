@@ -804,7 +804,8 @@ use std::borrow::Cow;
 /// removed from the Arrow path in #867 (see #880). The Arrow `Buffer` can prove
 /// it is R-backed (`ptr_offset`/`capacity`); a `&[T]` cannot, so the only sound
 /// choice is the always-correct copy. `Cow` remains zero-copy on the *input*
-/// side (`TryFromSexp` → `Cow::Borrowed`); only the `IntoR` direction copies.
+/// side through `TryFromRoot` and generated wrappers; raw `TryFromSexp`
+/// returns owned data. `IntoR` always copies.
 impl<T> IntoR for Cow<'_, [T]>
 where
     T: crate::RNativeType + Clone,
