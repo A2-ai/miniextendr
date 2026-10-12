@@ -928,8 +928,10 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
             }
         }
     }
+    // `split`, not `lines`: a blank last line separates the head from the
+    // members.
     let mut head_lines: Vec<&str> = Vec::new();
-    for line in class_part(definer.head).lines() {
+    for line in class_part(definer.head).split('\n') {
         if line == CLASS_DOC_LINES_MARKER {
             head_lines.extend(&class_doc_lines);
         } else {
@@ -954,6 +956,7 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
             continue;
         }
         if previous.is_some() {
+            content.truncate(content.trim_end_matches('\n').len());
             content.push_str("\n\n");
         }
         content.push_str(&format!(
@@ -5536,9 +5539,10 @@ mod tests {
 
     #[test]
     fn merge_keeps_one_block_as_written() {
+        // The head's blank last line separates it from the members.
         let mut block = widget_block(
             10,
-            "\n#' Widget\n.__MX_CLASS_DOC_LINES__\n#' @export\nWidget <- new.env()\n",
+            "\n#' Widget\n.__MX_CLASS_DOC_LINES__\n#' @export\nWidget <- new.env()\n\n",
             "\nWidget$get <- function() 1\n",
         );
         block.tail = "\nWidget$lock()\n";
@@ -5548,6 +5552,7 @@ mod tests {
              #' Widget\n\
              #' @export\n\
              Widget <- new.env()\n\
+             \n\
              Widget$get <- function() 1\n\
              Widget$lock()"
         );
