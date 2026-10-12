@@ -1,7 +1,44 @@
-//! Shared Self-reference lowering for trait declaration and concrete shims.
+//! Shared pre-conversion alias checks and Self-reference lowering for trait shims.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+
+/// Check native arguments before `extract_arg` can create references. Arity
+/// must already be checked, and the caller must be inside the shim's R unwind
+/// boundary. `&Self` uses ExternalPtr handles and its separate address check.
+pub(crate) fn native_borrow_checks<'a>(
+    args: impl IntoIterator<Item = (usize, String, &'a syn::Type)>,
+    argv: &syn::Ident,
+) -> TokenStream {
+    let mut values = Vec::new();
+    let mut metadata = Vec::new();
+    for (index, name, ty) in args {
+        if crate::type_inspect::self_ref_mutability(ty).is_some() {
+            continue;
+        }
+        values.push(quote! { (*#argv.add(#index), #name) });
+        metadata.push(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW });
+    }
+    if values.is_empty() {
+        return TokenStream::new();
+    }
+    let borrows = syn::Ident::new(
+        "__miniextendr_native_borrows",
+        proc_macro2::Span::mixed_site(),
+    );
+    quote! {{
+        let #borrows = [#(#metadata),*];
+        if ::miniextendr_api::from_r::borrow::needs_check(&#borrows) {
+            // SAFETY: arity was checked before reading argv; its arguments
+            // remain rooted on R's thread inside the shim's unwind boundary.
+            unsafe {
+                ::miniextendr_api::from_r::borrow::assert_no_aliases(
+                    [#(#values),*], #borrows,
+                );
+            }
+        }
+    }}
+}
 
 pub(crate) fn handle_ident(name: &syn::Ident) -> syn::Ident {
     format_ident!(
@@ -80,6 +117,31 @@ pub(crate) fn alias_checks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_preflight_preserves_argument_positions_around_self_references() {
+        let types: [syn::Type; 3] = [
+            syn::parse_quote!(&Self),
+            syn::parse_quote!((&mut i32, &i32)),
+            syn::parse_quote!(&mut Self),
+        ];
+        let argv = format_ident!("argv");
+        let output = native_borrow_checks(
+            types
+                .iter()
+                .enumerate()
+                .map(|(i, ty)| (i, format!("arg{i}"), ty)),
+            &argv,
+        );
+        let expected =
+            quote! { <(&mut i32, &i32) as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW };
+        let output = output.to_string();
+        assert!(output.contains(&expected.to_string()));
+        assert!(output.contains(&quote! { (*argv.add(1usize), "arg1") }.to_string()));
+        assert!(!output.contains("arg0"));
+        assert!(!output.contains("arg2"));
+        assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv).is_empty());
+    }
 
     #[test]
     fn shared_pairs_need_no_guard_but_every_mutable_pair_does() {

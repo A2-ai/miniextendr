@@ -360,9 +360,10 @@ pub(super) fn generate_vtable_static(
 ///
 /// Each instance method gets a concrete `unsafe extern "C"` shim named
 /// `__vtshim_{crate}_{Type}__{Trait}__{method}` (crate-prefixed for webR
-/// cross-package symbol uniqueness — #1273) that:
+/// cross-package symbol uniqueness — #1273) that, inside
+/// `with_r_unwind_protect_shim`, follows the declaration shim's steps:
 /// 1. Checks argument arity
-/// 2. Wraps everything in `with_r_unwind_protect`
+/// 2. Refuses aliased native borrows among the arguments
 /// 3. Extracts SEXP arguments to concrete Rust types
 /// 4. Calls the method via fully-qualified syntax `<Type as Trait>::method()`
 /// 5. Converts the result back to SEXP
@@ -448,6 +449,18 @@ fn generate_concrete_vtable_shims(
                 format_ident!("arg{}", i)
             })
             .collect();
+
+        let native_borrow_checks = crate::trait_self_ref::native_borrow_checks(
+            param_names
+                .iter()
+                .zip(method.sig.inputs.iter().filter_map(|arg| match arg {
+                    syn::FnArg::Typed(pt) => Some(pt.ty.as_ref()),
+                    syn::FnArg::Receiver(_) => None,
+                }))
+                .enumerate()
+                .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+            &argv,
+        );
 
         let self_refs: Vec<_> = method
             .sig
@@ -545,6 +558,7 @@ fn generate_concrete_vtable_shims(
                 // allowing rust_* class layering (issue #345).
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                     ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
+                    #native_borrow_checks
                     #(#arg_extractions)*
                     #alias_checks
                     #(#self_borrows)*

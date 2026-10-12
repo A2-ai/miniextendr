@@ -21,13 +21,13 @@
 //!
 //! ## When `Rf_error` still fires (framework-internal)
 //!
-//! `Rf_error` (longjmp via `r_stop`) survives only at FFI guard sites where
+//! `Rf_error` (longjmp via `r_stop`) survives only at the FFI guard site where
 //! there is no SEXP slot to return through:
+//! **`ffi_guard::guarded_ffi_call(GuardMode::CatchUnwind, …)`**, the worker
+//! thread panic conversion before the worker→main boundary returns a SEXP.
 //!
-//! 1. **`ffi_guard::guarded_ffi_call(GuardMode::CatchUnwind, …)`** — worker
-//!    thread panic conversion before the worker→main boundary returns a SEXP.
-//! 2. **`trait_abi::check_arity`** — pre-shim arity check that runs before the
-//!    vtable shim has a SEXP to return.
+//! Trait-ABI vtable shims panic on arity, borrow and conversion failures inside
+//! `with_r_unwind_protect_shim`, which returns a tagged condition SEXP.
 //!
 //! ALTREP `RUnwind` callbacks now route through
 //! `with_r_unwind_protect_sourced` → `raise_rust_condition_via_stop`, which
@@ -50,10 +50,9 @@
 
 /// Raise an R error via `Rf_error` (longjmp). **Crate-internal only.**
 ///
-/// Survives at two guard sites where there is no SEXP slot to return through:
-/// - [`crate::ffi_guard::guarded_ffi_call`] with `GuardMode::CatchUnwind`
-///   (worker thread panic conversion)
-/// - [`crate::trait_abi::check_arity`] (pre-shim arity check)
+/// Survives at the one guard site where there is no SEXP slot to return
+/// through: [`crate::ffi_guard::guarded_ffi_call`] with `GuardMode::CatchUnwind`
+/// (worker thread panic conversion).
 ///
 /// User code should use `panic!()` (caught by the framework and converted to a
 /// `rust_error` R condition) or the structured condition macros `error!()` /
