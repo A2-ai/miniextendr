@@ -90,6 +90,22 @@ pub struct ImplMethodEntry {
     pub has_constructor_attr: bool,
 }
 
+/// An inherent `#[miniextendr]` impl block, for the rules that look at a type
+/// across all its impl blocks (MXL121).
+#[derive(Clone, Debug)]
+pub struct InherentImpl {
+    pub type_name: String,
+    pub class_system: String,
+    /// 1-based line of the `impl` keyword.
+    pub line: usize,
+    /// 1-based line of the block's first attribute or doc comment (`line`
+    /// without any).
+    pub first_line: usize,
+    /// True when `// mxl::allow(MXL121)` is on the block's header: one of
+    /// its attribute and doc lines, the `impl` line, or the line above them.
+    pub allows_mxl121: bool,
+}
+
 // endregion
 
 // region: Lint item types
@@ -176,6 +192,13 @@ pub struct FileData {
     // Impl method details for per-method lint rules
     /// Methods per inherent impl type: type_name → `Vec<ImplMethodEntry>`.
     pub impl_methods: HashMap<String, Vec<ImplMethodEntry>>,
+    /// Every inherent `#[miniextendr]` impl block, in source order. (MXL121)
+    pub inherent_impls: Vec<InherentImpl>,
+    /// The type names a `#[miniextendr]` fn or method returns, bare, as
+    /// `Self` or `ExternalPtr<T>`, or inside `Result` / `Option`. A method
+    /// with a receiver doesn't count for its own type, whose object it needs
+    /// already. (MXL121)
+    pub returned_types: HashSet<String>,
 
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
@@ -517,6 +540,9 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     scan_ffi_unchecked_calls(&lines, &mut data);
     scan_vec_into_sexp_calls(&lines, &mut data);
     scan_nonapi_attrib_calls(&lines, &mut data);
+    for block in &mut data.inherent_impls {
+        block.allows_mxl121 = header_allows(&lines, block.first_line, block.line, "MXL121");
+    }
 
     Ok(data)
 }
@@ -626,6 +652,10 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if !params.is_empty() {
                     data.fn_param_names.insert(name.clone(), params);
                 }
+
+                if let syn::ReturnType::Type(_, ty) = &item_fn.sig.output {
+                    collect_returned_types(ty, None, &mut data.returned_types);
+                }
             }
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
@@ -696,6 +726,17 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     type_name.clone(),
                                     line,
                                 ));
+                                let impl_line = item_impl.impl_token.span.start().line;
+                                data.inherent_impls.push(InherentImpl {
+                                    type_name: type_name.clone(),
+                                    class_system: class_system.clone(),
+                                    line: impl_line,
+                                    first_line: item_impl
+                                        .attrs
+                                        .first()
+                                        .map_or(impl_line, |attr| attr.span().start().line),
+                                    allows_mxl121: false,
+                                });
 
                                 // Collect method names for per-method rules (e.g. MXL111, MXL120)
                                 let methods =
@@ -739,6 +780,22 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                         data.fn_param_names.insert(key, params);
                                     }
                                 }
+                            }
+
+                            // The types its methods return (MXL121)
+                            for impl_item in &item_impl.items {
+                                let syn::ImplItem::Fn(method) = impl_item else {
+                                    continue;
+                                };
+                                let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+                                    continue;
+                                };
+                                let mut returned = HashSet::new();
+                                collect_returned_types(ty, Some(&type_name), &mut returned);
+                                if detect_receiver_kind(&method.sig) != MethodReceiverKind::None {
+                                    returned.remove(&type_name);
+                                }
+                                data.returned_types.extend(returned);
                             }
                         }
                         None => { /* unsupported impl type, skip */ }
@@ -803,6 +860,44 @@ fn line_has_allow(line: &str, code: &str) -> bool {
         }
     }
     false
+}
+
+/// Whether `// mxl::allow(<code>)` is on an item's header: its lines
+/// `first_line..=line` (1-based: attributes, doc comments and the item's own
+/// first line) or the line above them.
+fn header_allows(lines: &[&str], first_line: usize, line: usize, code: &str) -> bool {
+    (first_line.saturating_sub(1).max(1)..=line).any(|n| {
+        lines
+            .get(n - 1)
+            .is_some_and(|text| line_has_allow(text, code))
+    })
+}
+
+/// Add to `out` the type `ty` hands to R as a class object: its last path
+/// segment, `self_type` for `Self`, through `Result`, `Option` and
+/// `ExternalPtr`. Other names (`i32`, `Vec`, ...) are added too; they match no
+/// class.
+fn collect_returned_types(ty: &syn::Type, self_type: Option<&str>, out: &mut HashSet<String>) {
+    let syn::Type::Path(path) = ty else {
+        return;
+    };
+    let Some(last) = path.path.segments.last() else {
+        return;
+    };
+    if last.ident == "Self" {
+        out.extend(self_type.map(str::to_string));
+    } else if ["Result", "Option", "ExternalPtr"]
+        .iter()
+        .any(|wrapper| last.ident == wrapper)
+    {
+        if let syn::PathArguments::AngleBracketed(args) = &last.arguments
+            && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+        {
+            collect_returned_types(inner, self_type, out);
+        }
+    } else {
+        out.insert(last.ident.to_string());
+    }
 }
 
 /// Scan raw source text for `sys::*_unchecked()` calls.

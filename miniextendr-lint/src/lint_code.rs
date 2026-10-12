@@ -26,6 +26,9 @@ pub enum LintCode {
     /// Mirror: `miniextendr-macros/src/miniextendr_impl.rs` (proc-macro hard error).
     /// Both checks must fire on the same source; keep them in sync.
     MXL120,
+    /// A class R code can never create: no constructor in any impl block of
+    /// the type, and no `#[miniextendr]` fn or method returns it.
+    MXL121,
     // endregion
 
     // region: P1: Important
@@ -73,6 +76,7 @@ impl LintCode {
             // Everything else is a warning.
             Self::MXL106
             | Self::MXL111
+            | Self::MXL121
             | Self::MXL203
             | Self::MXL204
             | Self::MXL300

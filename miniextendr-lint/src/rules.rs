@@ -9,6 +9,7 @@ pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
 pub mod impl_validation;
+pub mod no_constructor;
 pub mod nonapi_attrib;
 pub mod r_reserved_params;
 pub mod rf_error;
@@ -55,6 +56,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: vctrs ctor returns Self / instance receiver on vctrs impl (MXL120)
     vctrs_self_ctor::check(index, &mut diagnostics);
+
+    // Crate-wide: a class R code can never create (MXL121)
+    no_constructor::check(index, &mut diagnostics);
 
     // Sort by path and line for deterministic output
     diagnostics.sort_by(|a, b| {

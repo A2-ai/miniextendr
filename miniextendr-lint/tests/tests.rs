@@ -901,6 +901,177 @@ fn case_distinct_trait_impls_are_allowed() {
 
 // endregion
 
+// region: MXL121 — a class R code can never create
+
+/// The MXL121 diagnostics of a crate made of `files` (`(name, source)` under
+/// `src/`, `lib.rs` first).
+fn mxl121(files: &[(&str, &str)]) -> Vec<miniextendr_lint::Diagnostic> {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+    for (name, source) in files {
+        fs::write(src_dir.join(name), source).unwrap();
+    }
+    let report = run(dir.path()).expect("lint should succeed");
+    report
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code.to_string() == "MXL121")
+        .collect()
+}
+
+/// No constructor and no factory: an instance method returning `Self` needs
+/// a `Widget` already, and `id_of` returns no `Widget`.
+#[test]
+fn mxl121_fires_without_constructor_or_factory() {
+    let diags = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[derive(ExternalPtr)]
+        pub struct Widget { id: i32 }
+
+        /// Widgets.
+        #[miniextendr(r6)]
+        impl Widget {
+            pub fn id(&self) -> i32 { self.id }
+            pub fn copy(&self) -> Self { Widget { id: self.id } }
+            pub fn id_of(text: &str) -> i32 { text.len() as i32 }
+        }
+        "#,
+    )]);
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].line, 7, "{diags:?}");
+    assert!(
+        diags[0]
+            .message
+            .starts_with("R code can never create a `Widget`"),
+        "{diags:?}"
+    );
+    assert!(
+        diags[0]
+            .help
+            .as_deref()
+            .is_some_and(|help| help.contains("`// mxl::allow(MXL121)`")),
+        "{diags:?}"
+    );
+}
+
+/// The constructor the macro infers may be in another impl block of the
+/// type, in another file.
+#[test]
+fn mxl121_constructor_in_a_later_block() {
+    let diags = mxl121(&[
+        (
+            "lib.rs",
+            r#"
+            mod more;
+
+            #[miniextendr(s3)]
+            impl Widget {
+                pub fn id(&self) -> i32 { self.id }
+            }
+            "#,
+        ),
+        (
+            "more.rs",
+            r#"
+            #[miniextendr(s3)]
+            impl Widget {
+                pub fn from_id(id: i32) -> Self { Widget { id } }
+            }
+            "#,
+        ),
+    ]);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// A marked constructor, whatever it returns.
+#[test]
+fn mxl121_marked_constructor() {
+    let diags = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[miniextendr(env)]
+        impl Widget {
+            #[miniextendr(env(constructor))]
+            pub fn parse(text: &str) -> Result<Self, String> { todo!() }
+        }
+        "#,
+    )]);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// A `#[miniextendr]` function returning the type, here as an `ExternalPtr`
+/// inside a `Result`, or another class's method returning it.
+#[test]
+fn mxl121_factory_function() {
+    let free_fn = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[miniextendr(s4)]
+        impl Widget {
+            pub fn id(&self) -> i32 { self.id }
+        }
+
+        #[miniextendr]
+        pub fn widget_new(id: i32) -> Result<ExternalPtr<Widget>, String> { todo!() }
+        "#,
+    )]);
+    assert!(free_fn.is_empty(), "{free_fn:?}");
+
+    let other_class = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[miniextendr(s7)]
+        impl Widget {
+            pub fn id(&self) -> i32 { self.id }
+        }
+
+        #[miniextendr(s7)]
+        impl Factory {
+            pub fn new() -> Self { Factory }
+            pub fn widget(&self, id: i32) -> Option<Widget> { None }
+        }
+        "#,
+    )]);
+    assert!(other_class.is_empty(), "{other_class:?}");
+}
+
+/// `// mxl::allow(MXL121)` on the impl's header, here above its doc comments.
+#[test]
+fn mxl121_allow_on_the_impl() {
+    let diags = mxl121(&[(
+        "lib.rs",
+        r#"
+        // Objects come from a function returning them as a `SEXP`.
+        // mxl::allow(MXL121)
+        /// Widgets.
+        #[miniextendr(env)]
+        impl Widget {
+            pub fn id(&self) -> i32 { self.id }
+        }
+        "#,
+    )]);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// vctrs vectors are built in R from their payload, not from a `T`.
+#[test]
+fn mxl121_skips_vctrs() {
+    let diags = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[miniextendr(vctrs(kind = "vctr", base = "double"))]
+        impl Temp {
+            pub fn total(x: Vec<f64>) -> f64 { x.iter().sum() }
+        }
+        "#,
+    )]);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+// endregion
+
 // region: MXL302 — into_sexp() inside a vec!/array literal (use-after-free idiom)
 
 #[test]

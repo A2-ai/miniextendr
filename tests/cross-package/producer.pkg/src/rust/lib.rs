@@ -293,6 +293,9 @@ impl SimpleCounter {
     }
 }
 
+// `new_counter()` creates the objects, returning them wrapped for trait
+// dispatch as a `SEXP`, which the lint cannot trace to `SimpleCounter`.
+// mxl::allow(MXL121)
 #[miniextendr]
 impl SimpleCounter {
     /// Get current value (inherent method)
@@ -407,6 +410,9 @@ impl StatefulCounter {
     }
 }
 
+// `new_stateful_counter()` creates the objects, returning them wrapped for
+// trait dispatch as a `SEXP`, which the lint cannot trace to `StatefulCounter`.
+// mxl::allow(MXL121)
 #[miniextendr]
 impl StatefulCounter {
     /// Get current value (inherent method)
