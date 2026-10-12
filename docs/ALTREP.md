@@ -2141,3 +2141,39 @@ can allocate R objects. This also protects `duplicate = "clone"` independently
 of the native-read guard. Use the default `r_unwind` when the remaining callbacks
 can enter R or invoke user R code. `no_lowlevel` leaves method installation to
 the author's low-level implementation.
+
+
+### Serializing a concrete iterator cache
+
+The standard `Iter*Data<I>` atomic/string adapters implement `AltrepSerialize`.
+Saving realizes the finite declared sequence; restoring retains the concrete
+`I` type with no live iterator and serves the saved values from its cache. It
+does not require `I: Default` or erase `I` behind a trait object. With `I: Clone`,
+cloning an adapter copies both the cached prefix and remaining iterator without
+advancing either source.
+
+A registered wrapper selects its policy explicitly:
+
+```rust,ignore
+#[derive(Clone, miniextendr_api::AltrepInteger)]
+#[altrep(manual, serialize, duplicate = "clone", class = "RangeCache")]
+struct RangeCache(IterIntData<std::ops::Range<i32>>);
+
+impl AltrepLen for RangeCache {
+    fn len(&self) -> usize { self.0.len() }
+}
+impl AltIntegerData for RangeCache {
+    fn elt(&self, i: usize) -> i32 { self.0.elt(i) }
+}
+impl AltrepSerialize for RangeCache {
+    fn serialized_state(&self) -> SEXP { self.0.serialized_state() }
+    fn unserialize(state: SEXP) -> Option<Self> {
+        IterIntData::unserialize(state).map(Self)
+    }
+}
+```
+
+The existing bridge saves R's current materialized values after writes, so
+serializing cannot resurrect the iterator's older cache. String adapters still
+materialize on first access to provide stable borrowed strings; list adapters
+require an explicit GC-root policy and are not covered by these implementations.

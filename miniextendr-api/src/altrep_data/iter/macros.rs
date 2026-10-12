@@ -3,6 +3,7 @@
 macro_rules! define_iter_data {
     ($(#[$meta:meta])* $name:ident, $item:ty) => {
         $(#[$meta])*
+        #[derive(Clone)]
         pub struct $name<I: Iterator<Item = $item>> {
             state: super::IterState<I, $item>,
         }
@@ -15,6 +16,17 @@ macro_rules! define_iter_data {
                 Self {
                     state: super::IterState::new(iter, len),
                 }
+            }
+        }
+
+        impl<I: Iterator<Item = $item>> crate::altrep_data::AltrepSerialize for $name<I> {
+            fn serialized_state(&self) -> crate::SEXP {
+                crate::IntoR::into_sexp(self.state.materialize_all().to_vec())
+            }
+
+            fn unserialize(state: crate::SEXP) -> Option<Self> {
+                let values = <Vec<$item> as crate::TryFromSexp>::try_from_sexp(state).ok()?;
+                Some(Self { state: super::IterState::from_values(values) })
             }
         }
 
