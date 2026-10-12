@@ -1706,6 +1706,60 @@ pub fn conv_tuple3_sum(triple: (f64, bool, Vec<i32>)) -> f64 {
     let (x, flag, v) = triple;
     x + (flag as i32 as f64) + v.iter().map(|&i| i as f64).sum::<f64>()
 }
+
+/// The largest tuple arity: an integer, a string, a logical, a double, then
+/// eight integers. The parameter below spells the tuple out, so its argument
+/// error names the expected length.
+type Tuple12 = (
+    i32,
+    String,
+    bool,
+    f64,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+    i32,
+);
+
+/// Test 12-tuple argument round-trip: reads the largest tuple arity and returns it.
+/// @param wide Unnamed list of an integer, a string, a logical, a double, then
+///   eight integers.
+#[miniextendr]
+pub fn conv_tuple12_roundtrip(
+    wide: (
+        i32,
+        String,
+        bool,
+        f64,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+    ),
+) -> Tuple12 {
+    wide
+}
+
+/// Test `TryFromList` / `IntoList` for a tuple: reads `(i32, String)` from a
+/// list and returns `(n + 1, s)` through `into_list`.
+/// @param input Unnamed list of an integer and a string.
+#[miniextendr]
+pub fn conv_tuple_list_traits(
+    input: miniextendr_api::list::List,
+) -> Result<miniextendr_api::list::List, String> {
+    use miniextendr_api::list::{IntoList, TryFromList};
+    <(i32, String)>::try_from_list(input)
+        .map(|(n, s)| (n + 1, s).into_list())
+        .map_err(|e| e.to_string())
+}
 // endregion
 
 // region: Tuple containers

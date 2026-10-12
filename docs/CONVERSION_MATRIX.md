@@ -130,7 +130,7 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<u64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
 | `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
-| `(A, B, ...)` (arity 1–12) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
+| `(A, B, ...)` (arity 1–12) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error. Borrowed fields (`&mut i32`, `&[f64]`, ...) join the pre-conversion alias check, against each other and against other parameters; owned fields don't |
 | `Option<(A, B, ...)>` | VECSXP or NULL | `None` ↔ NULL; `Some` uses the same positional list. |
 | `Vec<(A, B, ...)>`, `Vec<Option<(A, B, ...)>>` | VECSXP only | A list of positional lists; optional missing rows are NULL. Field and row errors are batched. `Box<[(A, B, ...)]>` and enclosing collections reuse these conversions. |
 | `List` / `NamedList` / `ListMut` | VECSXP only | A view of the argument list, no copy. A pairlist (`formals(f)`, `pairlist(...)`) is refused with a type error, `got pairlist, convert it with as.list()`: R's `is.list()` is `TRUE` for it, but a coerced copy would be a new object nothing roots (#1866). Call `as.list()` on the R side |

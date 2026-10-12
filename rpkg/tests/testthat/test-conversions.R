@@ -962,6 +962,23 @@ test_that("tuple argument batches all element errors", {
   )
 })
 
+test_that("12-tuple argument round-trips the largest arity", {
+  wide <- list(1L, "two", TRUE, 4.5, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L)
+  expect_identical(conv_tuple12_roundtrip(wide), wide)
+  expect_error(
+    conv_tuple12_roundtrip(wide[-12]),
+    "'wide' must be a list of length 12: got length 11",
+    fixed = TRUE
+  )
+})
+
+test_that("tuple list traits keep positional semantics (#2015)", {
+  expect_identical(conv_tuple_list_traits(list(1L, "a")), list(2L, "a"))
+  # Names are ignored on the way in; the result is unnamed.
+  expect_identical(conv_tuple_list_traits(list(s = 1L, n = "a")), list(2L, "a"))
+  expect_error(conv_tuple_list_traits(list(1L)), "length")
+  expect_error(conv_tuple_list_traits(list("x", 2L)), "element 1.*element 2")
+})
 
 test_that("tuple containers keep positional rows and NULL values", {
   rows <- list(list(1L, "one"), NULL, list(3L, "three"))
