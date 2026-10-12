@@ -407,3 +407,100 @@ pub fn alias_worker_boxed_scalars(
     alias_boxed_scalars(a, b)
 }
 // endregion
+
+// region: Tuple fields (#2014)
+
+/// Reject a tuple whose mutable and shared fields borrow one R vector.
+/// @param pair List of a mutable integer scalar and a shared one.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_internal(pair: (&mut i32, &i32)) -> i32 {
+    *pair.0 += *pair.1;
+    *pair.0
+}
+
+/// Reject a tuple field that aliases another parameter.
+/// @param pair List of a mutable integer vector and a tag.
+/// @param other Shared integer vector.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_and_direct(pair: (&mut [i32], String), other: &[i32]) -> i32 {
+    let (values, _tag) = pair;
+    values.fill(other.iter().sum());
+    values[0]
+}
+
+/// Reject fields of two tuple parameters that borrow one R vector.
+/// @param left List of a mutable integer scalar and a tag.
+/// @param right List of a shared integer scalar and a tag.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_pairs(left: (&mut i32, String), right: (&i32, String)) -> i32 {
+    *left.0 = *right.0;
+    *left.0
+}
+
+/// Reject aliases between fields of nested tuples.
+/// @param nested List of two lists: an owned and a mutable integer scalar,
+///   then a shared integer scalar.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_nested(nested: ((i32, &mut i32), (&i32,))) -> i32 {
+    let ((owned, target), (source,)) = nested;
+    *target = owned + *source;
+    *target
+}
+
+/// A tuple parameter spelled through a type alias.
+type AliasTuplePair = (&'static mut i32, &'static i32);
+
+/// Reject tuple aliases through a type alias of the tuple.
+/// @param pair List of a mutable integer scalar and a shared one.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_type_alias(pair: AliasTuplePair) -> i32 {
+    *pair.0 += *pair.1;
+    *pair.0
+}
+
+/// Reject duplicate leaves inside a tuple's list field, and the tuple's
+/// shared field against another parameter.
+/// @param pair List of a list of mutable integer vectors and a shared integer
+///   vector.
+/// @param other Mutable integer vector.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_list_field(
+    pair: (Vec<&'static mut [i32]>, &'static [i32]),
+    other: &'static mut [i32],
+) -> i32 {
+    let (targets, source) = pair;
+    bump(targets) + read([source]) + bump([other])
+}
+
+/// Accept an owned field next to a mutable field from the same R vector.
+/// @param pair List of an owned integer and a mutable integer scalar.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_owned_mut(pair: (i32, &mut i32)) -> i32 {
+    *pair.1 += pair.0;
+    *pair.1
+}
+
+/// Accept shared fields that borrow the same R vector.
+/// @param pair List of two shared integer scalars.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_shared(pair: (&i32, &i32)) -> i32 {
+    *pair.0 + *pair.1
+}
+
+/// Accept shared double fields beside a mutable integer field.
+/// @param triple List of a mutable integer scalar and two shared doubles.
+#[miniextendr(no_worker)]
+pub fn alias_tuple_mixed_types(triple: (&mut i32, &f64, &f64)) -> f64 {
+    *triple.0 += 1;
+    f64::from(*triple.0) + *triple.1 + *triple.2
+}
+
+/// Check tuple field aliases before worker dispatch.
+/// @param pair List of a mutable integer scalar and a shared one.
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
+#[miniextendr(worker)]
+pub fn alias_worker_tuple_internal(pair: (&mut i32, &i32)) -> i32 {
+    *pair.0 += *pair.1;
+    *pair.0
+}
+// endregion

@@ -538,8 +538,8 @@ macro_rules! __mx_condition_pair {
 ///   is shorthand for `[("value", 42), ("code", 7)]`.
 ///
 /// Each `value` is converted via `RValue::from`, so any type with an `RValue`
-/// `From` impl (the scalar/vector/`Option`/wide-integer set) works without
-/// ceremony.
+/// `From` impl (the scalar/vector/`Option`/wide-integer set, and tuples of
+/// those as unnamed lists) works without ceremony.
 ///
 /// Field names are checked against the condition's own slots (`message` /
 /// `call` / `kind`): at compile time when the name is a literal or bare

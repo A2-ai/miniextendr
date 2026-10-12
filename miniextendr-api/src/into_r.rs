@@ -1943,52 +1943,122 @@ impl IntoR for Vec<Option<String>> {
 
 // region: Tuple to list conversions
 
-/// Macro to implement IntoR for tuples of various sizes.
-/// Converts Rust tuples to unnamed R lists (VECSXP).
-macro_rules! impl_tuple_into_r {
-    (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
-        impl<$($T: IntoR),+> IntoR for ($($T,)+) {
-            type Error = std::convert::Infallible;
+// Reuse the protected streaming list builder for both tuple-row shapes.
+// Failed rows leave NULL slots while later rows are checked; the partial list
+// never escapes on failure. Each successful row is rooted before the next runs.
+macro_rules! impl_tuple_vec_into_r {
+    (($($T:ident),+), $row:ty) => {
+        impl<$($T: IntoR),+> IntoR for Vec<$row> {
+            type Error = crate::into_r_error::IntoRError;
+
             fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-                Ok(self.into_sexp())
-            }
-            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-                Ok(unsafe { self.into_sexp_unchecked() })
-            }
-            fn into_sexp(self) -> crate::SEXP {
-                unsafe {
-                    let scope = ProtectScope::new();
-                    let builder = ListBuilder::new(&scope, $n);
-                    $(
-                        builder.set($idx as isize, self.$idx.into_sexp());
-                    )+
-                    builder.into_sexp()
+                let mut errors = crate::from_r::BatchedErrors::default();
+                let result = unsafe {
+                    vecsxp_from_iter(self.into_iter().enumerate().map(|(index, row)| {
+                        match row.try_into_sexp() {
+                            Ok(child) => child,
+                            Err(error) => {
+                                errors.push(index, || error.to_string());
+                                crate::SEXP::nil()
+                            }
+                        }
+                    }))
+                };
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
                 }
             }
 
-            unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
-                unsafe {
-                    let scope = ProtectScope::new();
-                    let builder = ListBuilder::new_unchecked(&scope, $n);
-                    $(
-                        builder.set_unchecked($idx as isize, self.$idx.into_sexp_unchecked());
-                    )+
-                    builder.into_sexp()
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+                let mut errors = crate::from_r::BatchedErrors::default();
+                let result = unsafe {
+                    vecsxp_from_iter_unchecked(self.into_iter().enumerate().map(|(index, row)| {
+                        match row.try_into_sexp_unchecked() {
+                            Ok(child) => child,
+                            Err(error) => {
+                                errors.push(index, || error.to_string());
+                                crate::SEXP::nil()
+                            }
+                        }
+                    }))
+                };
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
                 }
             }
         }
     };
 }
 
-// Implement for tuples of sizes 1-8
-impl_tuple_into_r!((A), (0), 1);
-impl_tuple_into_r!((A, B), (0, 1), 2);
-impl_tuple_into_r!((A, B, C), (0, 1, 2), 3);
-impl_tuple_into_r!((A, B, C, D), (0, 1, 2, 3), 4);
-impl_tuple_into_r!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
-impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
-impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
-impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+/// Convert Rust tuples to unnamed R lists, collecting every failing field.
+/// Field error types may differ; their messages share the existing batched
+/// conversion format with 1-based positions, wrapped in `IntoRError::Inner`.
+macro_rules! impl_tuple_into_r {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
+        impl<$($T: IntoR),+> IntoR for ($($T,)+) {
+            type Error = crate::into_r_error::IntoRError;
+
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+                unsafe {
+                    let scope = ProtectScope::new();
+                    let builder = ListBuilder::new(&scope, $n);
+                    let mut errors = crate::from_r::BatchedErrors::default();
+                    $(
+                        match self.$idx.try_into_sexp() {
+                            Ok(child) => builder.set($idx as isize, child),
+                            Err(error) => errors.push($idx, || error.to_string()),
+                        }
+                    )+
+                    if errors.is_empty() {
+                        Ok(builder.into_sexp())
+                    } else {
+                        Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                    }
+                }
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+                unsafe {
+                    let scope = ProtectScope::new();
+                    let builder = ListBuilder::new_unchecked(&scope, $n);
+                    let mut errors = crate::from_r::BatchedErrors::default();
+                    $(
+                        match self.$idx.try_into_sexp_unchecked() {
+                            Ok(child) => builder.set_unchecked($idx as isize, child),
+                            Err(error) => errors.push($idx, || error.to_string()),
+                        }
+                    )+
+                    if errors.is_empty() {
+                        Ok(builder.into_sexp())
+                    } else {
+                        Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                    }
+                }
+            }
+        }
+
+        impl<$($T: IntoR),+> IntoR for Option<($($T,)+)> {
+            type Error = <($($T,)+) as IntoR>::Error;
+
+            fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+                self.map_or_else(|| Ok(crate::SEXP::nil()), IntoR::try_into_sexp)
+            }
+
+            unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+                self.map_or_else(|| Ok(crate::SEXP::nil()), |value| unsafe { value.try_into_sexp_unchecked() })
+            }
+        }
+
+        impl_tuple_vec_into_r!(($($T),+), ($($T,)+));
+        impl_tuple_vec_into_r!(($($T),+), Option<($($T,)+)>);
+    };
+}
+
+crate::tuple_macros::for_each_tuple!(impl_tuple_into_r);
 // endregion
 
 // region: ALTREP zero-copy extension trait

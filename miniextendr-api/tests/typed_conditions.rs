@@ -195,3 +195,48 @@ fn borrowed_enum_with_variant_class_list_and_data_entries() {
     assert_eq!(names, ["source", "step"]);
     assert!(matches!(&data[1].1, RValue::Integer(values) if values == &[Some(2)]));
 }
+
+#[derive(RCondition)]
+#[condition(kind = warning, class = "tuple_payload", message = "tuple details")]
+struct TuplePayload {
+    details: (i32, String, (bool, Option<i32>)),
+}
+
+#[test]
+fn tuple_condition_fields_are_owned_unnamed_lists() {
+    let condition = RCondition::from(TuplePayload {
+        details: (7, "seven".into(), (true, None)),
+    });
+    let (_, parts) = condition.into_parts();
+    let data = parts.data.unwrap();
+    assert_eq!(data[0].0, "details");
+    let RValue::List(fields) = &data[0].1 else {
+        panic!("expected a positional list")
+    };
+    assert_eq!(fields.len(), 3);
+    assert!(fields.iter().all(|(name, _)| name.is_none()));
+    assert_eq!(fields[0].1.as_i32(), Some(7));
+    assert_eq!(fields[1].1.as_str(), Some("seven"));
+    let RValue::List(nested) = &fields[2].1 else {
+        panic!("expected a nested tuple")
+    };
+    assert_eq!(nested[0].1.as_bool(), Some(true));
+    assert!(matches!(&nested[1].1, RValue::Integer(values) if values == &[None]));
+}
+
+#[test]
+fn rvalue_tuple_arity_boundaries_keep_each_position() {
+    let RValue::List(one) = RValue::from((42i32,)) else {
+        panic!("expected a singleton list")
+    };
+    assert_eq!(one.len(), 1);
+    assert_eq!(one[0].1.as_i32(), Some(42));
+    let RValue::List(twelve) = RValue::from((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)) else {
+        panic!("expected twelve fields")
+    };
+    assert_eq!(twelve.len(), 12);
+    for (index, (name, value)) in twelve.iter().enumerate() {
+        assert!(name.is_none());
+        assert_eq!(value.as_i32(), Some(i32::try_from(index + 1).unwrap()));
+    }
+}

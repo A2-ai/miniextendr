@@ -522,7 +522,7 @@ impl<T: Copy> RCopy for T {
 /// # Methods
 ///
 /// - `next()` (`next_item()` in R) - Get the next element, or None if exhausted
-/// - `size_hint()` - Get estimated remaining elements (not exported to R)
+/// - `size_hint()` - Get estimated remaining elements as `list(lower, upper)`
 /// - `count()` - Consume and count remaining elements
 /// - `collect_n(n)` - Collect up to n elements into a vector
 /// - `skip(n)` - Skip n elements
@@ -545,7 +545,7 @@ impl<T: Copy> RCopy for T {
 /// }
 ///
 /// // An impl with a body lists every method the trait exports and repeats
-/// // the trait's `r_name` / `skip` attributes; each forwards to the cell.
+/// // the trait's `r_name` attribute; each forwards to the cell.
 /// #[miniextendr(env)]
 /// impl miniextendr_api::adapter_traits::RIterator for MyIter {
 ///     type Item = i32;
@@ -555,7 +555,6 @@ impl<T: Copy> RCopy for T {
 ///         self.0.next()
 ///     }
 ///
-///     #[miniextendr(skip)]
 ///     fn size_hint(&self) -> (i64, Option<i64>) {
 ///         self.0.size_hint()
 ///     }
@@ -583,6 +582,7 @@ impl<T: Copy> RCopy for T {
 /// it <- MyIter$new(c(1L, 2L, 3L))
 /// it$RIterator$next_item()   # 1L
 /// it$RIterator$next_item()   # 2L
+/// it$RIterator$size_hint()   # list(1L, 1L) - one element remaining
 /// it$RIterator$collect_n(5L) # 3L
 /// it$RIterator$next_item()   # error: returned no value (exhausted)
 /// ```
@@ -612,11 +612,7 @@ pub trait RIterator {
     /// Get the estimated number of remaining elements.
     ///
     /// Returns `(lower_bound, upper_bound)` where upper_bound is None if unknown.
-    /// In R, this becomes `c(lower, upper)` where upper is NA if unknown.
-    ///
-    /// Skipped from trait ABI because tuples don't have R conversions.
-    /// Expose via manual forwarding or custom wrapper methods.
-    #[miniextendr(skip)]
+    /// In R, this becomes `list(lower, upper)` where upper is NA if unknown.
     fn size_hint(&self) -> (i64, Option<i64>);
 
     /// Consume the iterator and count remaining elements.

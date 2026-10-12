@@ -7,6 +7,10 @@
 //! payloads, which travel through `panic_any` and may be raised on the worker
 //! thread where a live `SEXP` would be illegal.
 //!
+//! Tuples with 1–12 fields convert into unnamed [`RValue::List`] entries,
+//! recursively using each field's `Into<RValue>` implementation. This lets
+//! condition data carry a tuple without allocating in R or requiring `Debug`.
+//!
 //! The variants enumerate R's (finite, closed) data type system — vectors only,
 //! since R has no true scalars. NA is modelled with `Option` where R carries it
 //! out of band (logical/integer/character); `Double` carries NA in the `NA_REAL`
@@ -229,6 +233,22 @@ impl From<Vec<&str>> for RValue {
         RValue::Character(v.into_iter().map(|s| Some(s.to_string())).collect())
     }
 }
+
+// endregion
+
+// region: Tuples (owned positional lists, no R allocation)
+
+macro_rules! impl_tuple_rvalue {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
+        impl<$($T: Into<RValue>),+> From<($($T,)+)> for RValue {
+            fn from(value: ($($T,)+)) -> Self {
+                Self::List(vec![$((None, value.$idx.into()),)+])
+            }
+        }
+    };
+}
+
+crate::tuple_macros::for_each_tuple!(impl_tuple_rvalue);
 
 // endregion
 

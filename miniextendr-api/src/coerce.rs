@@ -1047,7 +1047,7 @@ where
 
 /// Macro to implement element-wise Coerce for tuples.
 macro_rules! impl_tuple_coerce {
-    (($($T:ident),+), ($($R:ident),+), ($($idx:tt),+)) => {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
         impl<$($T,)+ $($R,)+> Coerce<($($R,)+)> for ($($T,)+)
         where
             $($T: Coerce<$R>,)+
@@ -1060,26 +1060,7 @@ macro_rules! impl_tuple_coerce {
     };
 }
 
-// Implement for tuples of sizes 2-8
-impl_tuple_coerce!((A, B), (RA, RB), (0, 1));
-impl_tuple_coerce!((A, B, C), (RA, RB, RC), (0, 1, 2));
-impl_tuple_coerce!((A, B, C, D), (RA, RB, RC, RD), (0, 1, 2, 3));
-impl_tuple_coerce!((A, B, C, D, E), (RA, RB, RC, RD, RE), (0, 1, 2, 3, 4));
-impl_tuple_coerce!(
-    (A, B, C, D, E, F),
-    (RA, RB, RC, RD, RE, RF),
-    (0, 1, 2, 3, 4, 5)
-);
-impl_tuple_coerce!(
-    (A, B, C, D, E, F, G),
-    (RA, RB, RC, RD, RE, RF, RG),
-    (0, 1, 2, 3, 4, 5, 6)
-);
-impl_tuple_coerce!(
-    (A, B, C, D, E, F, G, H),
-    (RA, RB, RC, RD, RE, RF, RG, RH),
-    (0, 1, 2, 3, 4, 5, 6, 7)
-);
+crate::tuple_macros::for_each_tuple!(impl_tuple_coerce);
 // endregion
 
 // region: Tests

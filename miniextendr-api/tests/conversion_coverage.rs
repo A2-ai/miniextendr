@@ -1960,7 +1960,7 @@ fn tuple3_roundtrip_f64_bool_vec() {
     });
 }
 
-/// Arity-8 round-trip exercises the largest generated impl.
+/// Arity-8 round-trip exercises a heterogeneous tuple.
 #[test]
 fn tuple8_roundtrip() {
     r_test_utils::with_r_thread(|| {

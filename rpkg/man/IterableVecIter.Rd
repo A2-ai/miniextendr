@@ -6,6 +6,7 @@
 \alias{$.IterableVecIter}
 \alias{[[.IterableVecIter}
 \alias{IterableVecIter$RIterator$next_item}
+\alias{IterableVecIter$RIterator$size_hint}
 \alias{IterableVecIter$RIterator$count}
 \alias{IterableVecIter$RIterator$collect_n}
 \alias{IterableVecIter$RIterator$skip}

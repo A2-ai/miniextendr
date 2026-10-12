@@ -130,7 +130,9 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<u64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
 | `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
-| `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
+| `(A, B, ...)` (arity 1–12) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error. Borrowed fields (`&mut i32`, `&[f64]`, ...) join the pre-conversion alias check, against each other and against other parameters; owned fields don't |
+| `Option<(A, B, ...)>` | VECSXP or NULL | `None` ↔ NULL; `Some` uses the same positional list. |
+| `Vec<(A, B, ...)>`, `Vec<Option<(A, B, ...)>>` | VECSXP only | A list of positional lists; optional missing rows are NULL. Field and row errors are batched. `Box<[(A, B, ...)]>` and enclosing collections reuse these conversions. |
 | `List` / `NamedList` / `ListMut` | VECSXP only | A view of the argument list, no copy. A pairlist (`formals(f)`, `pairlist(...)`) is refused with a type error, `got pairlist, convert it with as.list()`: R's `is.list()` is `TRUE` for it, but a coerced copy would be a new object nothing roots (#1866). Call `as.list()` on the R side |
 | `Option<List>` / `Option<NamedList>` | VECSXP or NULL | NULL -> None; anything else as for `List` |
 | `Vec<List>` | VECSXP only | Each element must be a list (VECSXP; a pairlist is refused, not coerced); all failing elements reported in one batched error |
@@ -356,9 +358,25 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<Vec<T>>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP); each row is exactly what `Vec<T>` produces |
 | `Vec<Box<[T]>>` / `Vec<[T; N]>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP), as `Vec<Vec<T>>` |
 | `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
-| `(A, B, ...)` | Unnamed list (VECSXP), arity 1-8; round-trips via `TryFromSexp` (positional, names ignored) |
+| `(A, B, ...)` | Unnamed list (VECSXP), arity 1–12; round-trips via `TryFromSexp` (positional, names ignored) |
+| `Option<(A, B, ...)>` | The positional list for `Some`, NULL for `None` |
+| `Vec<(A, B, ...)>` / `Vec<Option<(A, B, ...)>>` | List of positional lists; missing optional rows are NULL |
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 | `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
+
+Tuple `try_into_sexp` conversions return `IntoRError::Inner` when fields fail,
+with all failing field positions collected in one diagnostic. `Option<Tuple>`,
+`Vec<Tuple>`, `Vec<Option<Tuple>>` and boxed tuple rows preserve these errors;
+row containers also collect failures across rows. Successful fields and rows
+enter the protected list before the next conversion runs.
+
+Tuples with 1–12 fields also implement `IntoList` and `TryFromList`, using
+these same positional conversions and batched field errors. Element-wise
+`Coerce` covers all twelve arities, including the singleton; the existing
+blanket supplies its infallible `TryCoerce`. `()` remains R NULL. Fields that
+implement `Into<RValue>` also give the tuple an owned unnamed-list conversion
+for condition data. Heterogeneous tuples have no single native atomic layout
+or missing-value sentinel, so they do not implement `RNativeType` or `IsNA`.
 
 #### `Vec<Option<C>>` for collection element types
 

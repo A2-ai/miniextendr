@@ -649,6 +649,10 @@ let payload = RValue::List(vec![
 ]);
 ```
 
+A tuple whose fields convert to `RValue` becomes an unnamed `RValue::List`,
+the same shape as the tuple's own `IntoR`: `RValue::from((1i32, "a"))` is
+`list(1L, "a")`.
+
 It implements `TryFromSexp` and `IntoR`, preserves NA in its typed vector
 variants, and is the representation used by structured condition `data =`
 payloads. It deliberately does not model closures, environments, language
@@ -875,7 +879,11 @@ slice leaves require a non-empty vector.
 The check follows the actual `TryFromSexp::NATIVE_BORROW` metadata, so type
 aliases retain the same checks. `Vec` and boxed-slice containers, nested lists,
 optional values, forwarding newtypes, `Result<T, ()>`, `Missing<T>`, maps, and
-borrowed `Cow` / `RCow` views forward the relevant metadata. Duplicate mutable
+borrowed `Cow` / `RCow` views forward the relevant metadata. Tuples describe
+each field by position (#2014): a borrowed field is checked against the
+tuple's other fields, the fields of nested tuples, and every other parameter,
+while owned fields such as `i32` in `(i32, &mut i32)` never take part. A list
+whose length differs from the tuple's keeps its length error. Duplicate mutable
 leaves within one argument are rejected too. Every conflicting parameter pair
 appears in one diagnostic before any reference conversion or user mutation.
 
