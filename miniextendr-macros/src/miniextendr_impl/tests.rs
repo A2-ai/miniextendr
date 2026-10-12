@@ -9489,4 +9489,41 @@ fn every_class_method_spelling_can_select_the_worker() {
     }
 }
 
+#[test]
+fn static_methods_keep_r_values_on_the_main_thread() {
+    // The standalone-function rule: worker selection never moves an R value
+    // or R's interrupt check off the main thread.
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Dispatch {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn sexp_in(x: SEXP) -> i32 { 1 }
+                #[miniextendr(env(worker))]
+                pub fn sexp_out() -> SEXP { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn frame_out() -> Result<BuiltDataFrame, String> { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn quoted_in(e: Missing<Quoted>) -> i32 { 1 }
+                #[miniextendr(env(worker, check_interrupt))]
+                pub fn interruptible() -> i32 { 1 }
+                #[miniextendr(env(worker))]
+                pub fn plain(x: i32) -> i32 { x }
+            }
+        },
+    );
+    for (name, worker) in [
+        ("sexp_in", false),
+        ("sexp_out", false),
+        ("frame_out", false),
+        ("quoted_in", false),
+        ("interruptible", false),
+        ("plain", true),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, name);
+        assert_eq!(tokens.contains("run_on_worker"), worker, "{name}: {tokens}");
+    }
+}
+
 // endregion

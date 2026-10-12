@@ -1193,7 +1193,13 @@ pub(super) fn generate_trait_method_c_wrapper(
 
     // Thread strategy: instance methods stay on main thread (self_ref can't cross threads);
     // static methods use worker thread only when worker=true (explicit or worker-default feature)
-    let thread_strategy = if method.has_self || method.unsafe_main_thread {
+    // and, as for standalone functions, no R value crosses the call and no
+    // `check_interrupt` asks for R's interrupt check.
+    let thread_strategy = if method.has_self
+        || method.unsafe_main_thread
+        || method.check_interrupt
+        || crate::type_inspect::signature_holds_r_values(&method.sig)
+    {
         ThreadStrategy::MainThread
     } else if method.worker {
         ThreadStrategy::WorkerThread

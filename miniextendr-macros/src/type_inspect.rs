@@ -256,6 +256,18 @@ pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
     }
 }
 
+/// Returns `true` if a method signature passes an R value across the call: a
+/// main-thread-bound input (an unevaluated `Quoted` / `Quosure` under
+/// `Missing<..>` too) or a main-thread-bound return. Such a static method stays
+/// on the main thread even when `worker` or `worker-default` selects the
+/// worker, the rule standalone functions follow.
+pub(crate) fn signature_holds_r_values(sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(pt)
+            if is_main_thread_bound_input(&pt.ty) || unevaluated_param(&pt.ty).is_some())
+    }) || matches!(&sig.output, syn::ReturnType::Type(_, ty) if is_main_thread_bound_return(ty))
+}
+
 // region: condition-call markers (#1566)
 
 /// Detect a condition-call marker parameter type: `Call` selects `wrapper`
