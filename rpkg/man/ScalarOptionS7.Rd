@@ -25,24 +25,24 @@
 \usage{
 ScalarOptionS7(.ptr = NULL)
 
-ScalarOptionS7_optional_integer(self, present, ...)
+ScalarOptionS7_optional_integer(.mx_self, present, ...)
 
-ScalarOptionS7_optional_real(self, present, ...)
+ScalarOptionS7_optional_real(.mx_self, present, ...)
 
-ScalarOptionS7_optional_logical(self, present, ...)
+ScalarOptionS7_optional_logical(.mx_self, present, ...)
 
-ScalarOptionS7_optional_string(self, present, ...)
+ScalarOptionS7_optional_string(.mx_self, present, ...)
 
-ScalarOptionS7_optional_str(self, present, ...)
+ScalarOptionS7_optional_str(.mx_self, present, ...)
 
-ScalarOptionS7_optional_unit(self, present, ...)
+ScalarOptionS7_optional_unit(.mx_self, present, ...)
 
 ScalarOptionS7_optional_self(present)
 }
 \arguments{
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{ScalarOptionS7} object.}
+\item{.mx_self}{A \code{ScalarOptionS7} object.}
 
 \item{present}{(undocumented)}
 
