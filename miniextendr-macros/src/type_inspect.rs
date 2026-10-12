@@ -180,7 +180,8 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
 /// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
 /// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`). Arbitrary user `!Send` types can't be detected
+/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`, `Preserved`,
+/// `REvalError`). Arbitrary user `!Send` types can't be detected
 /// syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
@@ -205,6 +206,10 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "NamedListBuilder",
     "BuiltList",
     "DataFrameShape",
+    // Precious-list roots: a `Preserved` handle, and the `REvalError` an R
+    // evaluation fails with, which keeps its condition in one.
+    "Preserved",
+    "REvalError",
 ];
 
 /// Returns `true` if `ty` is an input type bound to the R main thread.
@@ -956,6 +961,9 @@ mod tests {
         assert!(is_main_thread_bound_return(&ty("Option<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("Vec<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("(i32, BuiltDataFrame)")));
+        // Precious-list roots, in the error position too
+        assert!(is_main_thread_bound_input(&ty("Preserved")));
+        assert!(is_main_thread_bound_return(&ty("Result<bool, REvalError>")));
         // Send-safe returns stay worker-eligible
         assert!(!is_main_thread_bound_return(&ty("i32")));
         assert!(!is_main_thread_bound_return(&ty(

@@ -16,7 +16,8 @@ pub fn owned_str_box_scalar(x: Box<str>) -> Box<str> {
 
 /// A character vector read as `Vec<Option<Rc<str>>>` and returned.
 /// @param x A character vector.
-#[miniextendr(noexport)]
+// `Rc` is `!Send`: stay on R's main thread under `worker-default`.
+#[miniextendr(noexport, no_worker)]
 pub fn owned_str_rc_vec(x: Vec<Option<Rc<str>>>) -> Vec<Option<Rc<str>>> {
     x
 }
@@ -35,7 +36,8 @@ pub fn owned_str_arc_altrep() -> Altrep<Vec<Option<Arc<str>>>> {
 }
 
 /// A string ALTREP over `Vec<Rc<str>>` whose elements share one allocation.
-#[miniextendr(noexport)]
+// `Rc` is `!Send`: stay on R's main thread under `worker-default`.
+#[miniextendr(noexport, no_worker)]
 pub fn owned_str_rc_altrep() -> Altrep<Vec<Rc<str>>> {
     let shared: Rc<str> = Rc::from("same");
     Altrep(vec![Rc::clone(&shared), Rc::from("other"), shared])
