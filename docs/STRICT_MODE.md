@@ -15,9 +15,12 @@ integer range (`i32`, excluding `NA_integer_`) cannot represent all values:
 | `isize` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | `usize` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
-The last three columns are return types only. `Box<[T]>`, `&[T]`, and the
-list shapes `Vec<&[T]>`, `Vec<Option<&[T]>>`, `Vec<Box<[T]>>` and
-`Vec<[T; N]>` have no strict path yet and widen as in normal mode (#1684).
+The last three columns are return types only. Strict returns also support
+`Box<[T]>`, `&[T]`, `[T; N]`, their optional forms, and list rows held in
+slices, boxes or arrays (`Vec<&[T]>`, `Vec<Option<&[T]>>`, `Vec<Box<[T]>>`,
+`Vec<[T; N]>`, including optional boxed/array rows). They use the same integer
+range checks and batch every failing element across all rows. A missing
+container or row is `NULL`; an empty container or row is an empty integer vector.
 
 Types like `i32`, `f64`, `String`, `bool` are **not affected**. They have
 lossless R representations.

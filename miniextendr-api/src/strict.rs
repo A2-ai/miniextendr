@@ -61,7 +61,8 @@ fn panic_strict_vec_batched(container: &str, errors: BatchedErrors) -> ! {
 
 /// A lossy integer type for the strict outbound path: its R integer, if any,
 /// and the reason it has none.
-trait StrictRInt: Copy + std::fmt::Display {
+#[doc(hidden)]
+pub trait StrictRInt: Copy + std::fmt::Display {
     /// The Rust type name the panic message uses.
     const NAME: &'static str;
 
@@ -142,6 +143,13 @@ fn checked_elems_into_sexp<T: StrictRInt>(
     coerced.into_sexp()
 }
 
+/// Strict conversion shared by borrowed slices, boxed slices and arrays.
+/// Generated wrappers supply the written return type for the diagnostic.
+#[doc(hidden)]
+pub fn checked_slice_into_sexp<T: StrictRInt>(container: &str, values: &[T]) -> SEXP {
+    checked_elems_into_sexp(container, values.iter().copied().map(Some))
+}
+
 /// The list-of-vectors strict conversion (`Vec<Vec<T>>`, `Vec<Option<Vec<T>>>`):
 /// validate every element of every row, then build the list of integer vectors
 /// (`None` rows become `NULL`).
@@ -150,16 +158,18 @@ fn checked_elems_into_sexp<T: StrictRInt>(
 /// element: its row is the `(element N)` position, and its place inside the
 /// row is the `inner position`. Nothing is allocated in R until the whole
 /// input has passed, so the panic leaves no partial list behind.
-fn checked_rows_into_sexp<T: StrictRInt>(
+#[doc(hidden)]
+pub fn checked_rows_into_sexp<T: StrictRInt, R: AsRef<[T]>>(
     container: &str,
-    rows: impl ExactSizeIterator<Item = Option<Vec<T>>>,
+    rows: impl ExactSizeIterator<Item = Option<R>>,
 ) -> SEXP {
     let mut coerced: Vec<Option<Vec<i32>>> = Vec::with_capacity(rows.len());
     let mut errors = BatchedErrors::default();
     for (i, row) in rows.enumerate() {
         coerced.push(row.map(|row| {
+            let row = row.as_ref();
             let mut out = Vec::with_capacity(row.len());
-            for (j, x) in row.into_iter().enumerate() {
+            for (j, &x) in row.iter().enumerate() {
                 match x.to_r_int() {
                     Some(v) => out.push(v),
                     None => errors.push(i, || {
@@ -588,13 +598,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn i64_in_range_succeeds() {
-        // These should not panic (we can't check SEXP in unit tests without R,
-        // but we can verify no panic occurs)
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_i64(0));
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_i64(42));
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_i64(-1));
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_i64(i32::MAX as i64));
+    fn i64_in_range_has_an_r_integer() {
+        for value in [0, 42, -1, i64::from(i32::MAX)] {
+            assert_eq!(value.to_r_int(), i32::try_from(value).ok());
+        }
     }
 
     #[test]
@@ -610,9 +617,58 @@ mod tests {
     }
 
     #[test]
-    fn u64_in_range_succeeds() {
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_u64(0));
-        let _ = std::panic::catch_unwind(|| checked_into_sexp_u64(i32::MAX as u64));
+    fn u64_in_range_has_an_r_integer() {
+        assert_eq!(0_u64.to_r_int(), Some(0));
+        assert_eq!(u64::try_from(i32::MAX).unwrap().to_r_int(), Some(i32::MAX));
+    }
+
+    #[test]
+    fn borrowed_and_boxed_rows_report_every_invalid_position() {
+        let bad = [i64::MAX, 1, i64::MIN];
+        let message = panic_message(
+            std::panic::catch_unwind(|| checked_slice_into_sexp("&[i64]", &bad)).unwrap_err(),
+        );
+        assert!(message.contains("&[i64]"), "{message}");
+        assert!(message.contains("element 1"), "{message}");
+        assert!(message.contains("element 3"), "{message}");
+        for message in [
+            panic_message(
+                std::panic::catch_unwind(|| {
+                    checked_rows_into_sexp::<i64, _>(
+                        "Vec<Option<&[i64]>>",
+                        [Some(bad.as_slice()), None, Some(bad.as_slice())].into_iter(),
+                    )
+                })
+                .unwrap_err(),
+            ),
+            panic_message(
+                std::panic::catch_unwind(|| {
+                    checked_rows_into_sexp::<i64, _>(
+                        "Vec<Box<[i64]>>",
+                        [
+                            Some(Box::<[i64]>::from(bad)),
+                            None,
+                            Some(Box::<[i64]>::from(bad)),
+                        ]
+                        .into_iter(),
+                    )
+                })
+                .unwrap_err(),
+            ),
+            panic_message(
+                std::panic::catch_unwind(|| {
+                    checked_rows_into_sexp::<i64, _>(
+                        "Vec<[i64; 3]>",
+                        [Some(bad), None, Some(bad)].into_iter(),
+                    )
+                })
+                .unwrap_err(),
+            ),
+        ] {
+            assert!(message.contains("inner position 1"), "{message}");
+            assert!(message.contains("inner position 3"), "{message}");
+            assert!(message.contains("elements 1, 3"), "{message}");
+        }
     }
 
     #[test]
