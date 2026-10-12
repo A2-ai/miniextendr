@@ -218,11 +218,16 @@ pub fn peek_value(counter_sexp: SEXP) -> i32 {
 /// @export
 #[miniextendr]
 pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
-    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
-    // SAFETY: `n` is a `.Call()` argument, rooted for the whole call, and the
-    // vtable and data come from the View of a live Counter object.
+    // SAFETY: both inputs are `.Call()` arguments, rooted for the whole
+    // call. Query checks the erased-object tag and Counter implementation
+    // before we read the header and its alignment-correct data offset.
     unsafe {
-        let result = ((*counter.vtable).add)(counter.data, 1, &n);
+        let vtable = ccall::mx_query(counter_sexp, TAG_Counter).cast::<CounterVTable>();
+        assert!(!vtable.is_null(), "object does not implement Counter");
+        let erased = ccall::mx_get(counter_sexp);
+        let offset = (*(*erased).base).data_offset;
+        let data = erased.cast::<u8>().add(offset).cast();
+        let result = ((*vtable).add)(data, 1, &n);
         miniextendr_api::trait_abi::repanic_if_rust_error(result);
     }
 }
