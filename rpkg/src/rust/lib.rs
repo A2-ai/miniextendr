@@ -348,6 +348,7 @@ mod shadowed_formal_tests;
 mod shadowed_std_names_tests;
 mod shared_param_docs;
 mod shared_trait_test;
+mod split_impl_tests;
 mod stem_page_docs;
 mod str_parse_tests;
 mod streaming_altrep_tests;

@@ -19,13 +19,13 @@ new_rcoerceerrortest(is_empty)
 
 \method{as_character}{RCoerceErrorTest}(x, ...)
 
-RCoerceErrorTest
-
 \method{as.data.frame}{RCoerceErrorTest}(x, ...)
 
 \method{as.list}{RCoerceErrorTest}(x, ...)
 
 \method{as.character}{RCoerceErrorTest}(x, ...)
+
+RCoerceErrorTest
 }
 \arguments{
 \item{is_empty}{Logical; if TRUE, triggers error on as.data.frame.}
