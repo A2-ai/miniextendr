@@ -18,6 +18,33 @@
 //! - [`arrays`] — const-generic `[T; N]` ALTREP impls.
 //! - [`static_slices`] — hand-written `&'static [T]` ALTREP impls.
 
+/// Clone a derive-generated ALTREP owner while preserving its current R cache.
+/// R's default DuplicateEX copies attributes and object flags after this hook.
+///
+/// # Safety
+/// `x` must be a rooted ALTREP of `T` with ExternalPtr data1, on R's thread.
+/// `T::clone` must detach any allocation that this class exposes for R writes.
+#[doc(hidden)]
+pub unsafe fn duplicate_altrep_owner<T>(x: crate::SEXP) -> crate::SEXP
+where
+    T: crate::externalptr::TypedExternal + crate::altrep::RegisterAltrep + Clone,
+{
+    unsafe {
+        let original =
+            crate::altrep_data1_as_unchecked::<T>(x).expect("ALTREP owner type mismatch");
+        // Clone the handle as well as T so sidecar slots are preserved.
+        let owner = original.clone();
+        let data1 = crate::OwnedProtect::new(owner.as_sexp());
+        let class = T::get_or_init_class();
+        let out =
+            crate::OwnedProtect::new(class.new_altrep_unchecked(data1.get(), crate::SEXP::nil()));
+        if let Some(cache) = crate::altrep_data::materialized_altrep_data2(x) {
+            out.get().set_altrep_data2(duplicate_altrep_data2(cache));
+        }
+        out.get()
+    }
+}
+
 // region: Checked string-to-CHARSXP helper
 
 /// Create a CHARSXP from a Rust string, with checked length conversion.
@@ -293,6 +320,7 @@ pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] 
 pub mod macros;
 
 pub mod arrays;
+pub mod buffers;
 pub mod builtins;
 pub mod shared_slices;
 pub mod static_slices;

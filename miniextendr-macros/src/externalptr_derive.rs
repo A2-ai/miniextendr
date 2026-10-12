@@ -196,24 +196,17 @@
 //!
 //! ## Generated Types
 //!
-//! ### Wrapper Struct
-//!
-//! ```ignore
-//! #[repr(C)]
-//! struct __MxWrapperMyCounter {
-//!     erased: mx_erased,  // Must be first field
-//!     data: MyCounter,
-//! }
-//! ```
+//! The runtime's generic `ErasedObject<MyCounter>` owns the value and its
+//! `mx_erased` header; no per-type wrapper struct or drop function is emitted.
 //!
 //! ### Base Vtable
 //!
 //! ```ignore
 //! static __MX_BASE_VTABLE_MyCounter: mx_base_vtable = mx_base_vtable {
-//!     drop: __mx_drop_MyCounter,
+//!     drop: ErasedObject::<MyCounter>::drop_raw,
 //!     concrete_tag: __MX_TAG_MyCounter,
 //!     query: miniextendr_api::registry::universal_query,
-//!     data_offset: std::mem::offset_of!(__MxWrapperMyCounter, data),
+//!     data_offset: ErasedObject::<MyCounter>::DATA_OFFSET,
 //! };
 //! ```
 //!
@@ -2131,13 +2124,16 @@ fn generate_typed_external(
     info: &SidecarInfo,
     restored: &RestoredOptions,
     field_error: &FieldErrorOptions,
+    display_name: Option<&str>,
 ) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, name.span());
-    let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+    let display_name = display_name.unwrap_or(&name_str);
+    let display_lit = syn::LitStr::new(display_name, name.span());
+    let name_cstr = syn::LitByteStr::new(format!("{display_name}\0").as_bytes(), name.span());
     // `#[externalptr(restored(class = ..., message = ...))]` (#1891): the
     // package's classes go in front of the `miniextendr_restored*` classes,
     // its message replaces miniextendr's, on every restored refusal of the
@@ -2199,7 +2195,7 @@ fn generate_typed_external(
     // but combined with the explicit crate@version prefix, this is unambiguous.
     quote::quote! {
         impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
-            const TYPE_NAME: &'static str = #name_lit;
+            const TYPE_NAME: &'static str = #display_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
             const TYPE_ID_CSTR: &'static [u8] =
                 ::core::concat!(
@@ -2213,6 +2209,46 @@ fn generate_typed_external(
             #field_error_message
         }
     }
+}
+
+/// ALTREP stores its owner in an ordinary ExternalPtr, so it needs the same
+/// slot visitor and handle accessors. Only storage is generated here: ALTREP
+/// has its own IntoR and registration, and isn't an R class with field methods.
+pub(crate) fn generate_altrep_storage(
+    input: &DeriveInput,
+    class_name: &str,
+) -> syn::Result<TokenStream> {
+    if let syn::Data::Struct(data) = &input.data {
+        for field in &data.fields {
+            for attr in field.attrs.iter().filter(|a| a.path().is_ident("r_data")) {
+                if sidecar_inner_type(&field.ty).is_none() {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "ALTREP #[r_data] fields must be Sidecar<T>; R field accessors belong to ExternalPtr classes",
+                    ));
+                }
+                if matches!(&attr.meta, syn::Meta::List(_)) {
+                    attr.parse_nested_meta(|meta| {
+                        if meta.path.is_ident("ref") || meta.path.is_ident("mut") {
+                            Ok(())
+                        } else {
+                            Err(meta.error("ALTREP sidecars support only `ref` and `mut` access; they have no R field wrappers"))
+                        }
+                    })?;
+                }
+            }
+        }
+    }
+    let info = parse_sidecar_info(input, ClassSystem::Env)?;
+    let storage = generate_typed_external(
+        input,
+        &info,
+        &RestoredOptions::default(),
+        &FieldErrorOptions::default(),
+        Some(class_name),
+    );
+    let accessors = generate_sidecar_rust_accessors(input, &info);
+    Ok(quote::quote! { #storage #accessors })
 }
 
 /// Generate the Rust accessors of each `Sidecar<T>` field, as associated
@@ -2355,7 +2391,8 @@ pub fn derive_external_ptr(
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external = generate_typed_external(&input, &sidecar_info, &restored, &field_error);
+    let typed_external =
+        generate_typed_external(&input, &sidecar_info, &restored, &field_error, None);
     let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (
@@ -2385,9 +2422,7 @@ pub fn derive_external_ptr(
 /// Generate the type-erased wrapper infrastructure for trait ABI dispatch.
 ///
 /// For `#[derive(ExternalPtr)] struct MyCounter { ... }` generates:
-/// - `__MxWrapperMyCounter` - repr(C) wrapper with mx_erased header + data
 /// - `__MX_TAG_MyCounter` - concrete type tag (FNV-1a hash of module_path + type)
-/// - `__mx_drop_MyCounter` - destructor for R GC
 /// - `__MX_BASE_VTABLE_MyCounter` - base vtable with universal_query
 /// - `__mx_wrap_MyCounter` - constructor returning `*mut mx_erased`
 fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
@@ -2401,70 +2436,37 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     // Preserve case: distinct Rust types need distinct module-local helpers.
     let type_name = crate::naming::unraw(type_ident);
 
-    let wrapper_name = quote::format_ident!("__MxWrapper{}", type_name);
     let base_vtable_name = quote::format_ident!("__MX_BASE_VTABLE_{}", type_name);
     let concrete_tag_name = quote::format_ident!("__MX_TAG_{}", type_name);
-    let drop_fn_name = quote::format_ident!("__mx_drop_{}", type_name);
     let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_name);
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let tag_path = format!("::{}", type_ident);
 
     quote::quote! {
-        #[doc = ::core::concat!(
-            "Type-erased wrapper for `",
-            ::core::stringify!(#type_ident),
-            "` with trait dispatch support."
-        )]
-        #[doc = "Generated by `#[derive(ExternalPtr)]`."]
-        #[doc = #source_loc_doc]
-        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
-        #[repr(C)]
-        #[doc(hidden)]
-        #[allow(non_camel_case_types)]
-        struct #wrapper_name {
-            pub erased: ::miniextendr_api::abi::mx_erased,
-            pub data: #type_ident,
-        }
-
         #[doc(hidden)]
         #[allow(non_upper_case_globals)]
         const #concrete_tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(::core::concat!(::core::module_path!(), #tag_path));
 
         #[doc(hidden)]
-        #[allow(non_snake_case)]
-        unsafe extern "C" fn #drop_fn_name(ptr: *mut ::miniextendr_api::abi::mx_erased) {
-            if ptr.is_null() {
-                return;
-            }
-            let wrapper = ptr.cast::<#wrapper_name>();
-            // A panicking Drop impl must not unwind across the C-ABI boundary.
-            // `drop_catching_panic` catches any panic and aborts instead.
-            ::miniextendr_api::externalptr::drop_catching_panic(|| {
-                unsafe { ::core::mem::drop(::std::boxed::Box::from_raw(wrapper)); }
-            });
-        }
-
-        #[doc(hidden)]
         #[allow(non_upper_case_globals)]
         static #base_vtable_name: ::miniextendr_api::abi::mx_base_vtable =
             ::miniextendr_api::abi::mx_base_vtable {
-                drop: #drop_fn_name,
+                drop: ::miniextendr_api::abi::ErasedObject::<#type_ident>::drop_raw,
                 concrete_tag: #concrete_tag_name,
                 query: ::miniextendr_api::registry::universal_query,
-                data_offset: ::std::mem::offset_of!(#wrapper_name, data),
+                data_offset: ::miniextendr_api::abi::ErasedObject::<#type_ident>::DATA_OFFSET,
             };
 
         #[doc(hidden)]
+        #[doc = #source_loc_doc]
         #[allow(non_snake_case)]
         fn #wrap_fn_name(data: #type_ident) -> *mut ::miniextendr_api::abi::mx_erased {
-            let wrapper = ::std::boxed::Box::new(#wrapper_name {
-                erased: ::miniextendr_api::abi::mx_erased {
-                    base: &#base_vtable_name,
-                },
-                data,
-            });
-            ::std::boxed::Box::into_raw(wrapper).cast::<::miniextendr_api::abi::mx_erased>()
+            // SAFETY: the matching base vtable above uses this storage's
+            // destructor/offset and this concrete type's registry tag.
+            unsafe {
+                ::miniextendr_api::abi::ErasedObject::into_raw(data, &#base_vtable_name)
+            }
         }
     }
 }

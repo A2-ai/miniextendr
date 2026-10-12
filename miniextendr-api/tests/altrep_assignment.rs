@@ -10,12 +10,14 @@ use std::borrow::Cow;
 
 // The duplicate policy is essential: R can duplicate before entering a
 // replacement function. Its default would materialize an ordinary R vector.
+// The live view's hand-written Duplicate returns the same object; the derive
+// offers only the value-semantics `duplicate = "clone"` policy.
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(manual, no_lowlevel, class = "AssignmentLiveVec")]
-struct LiveVec(Vec<i32>);
+struct LiveVec(miniextendr_api::AltrepBuffer<i32>);
 
-#[derive(miniextendr_api::AltrepInteger)]
-#[altrep(manual, no_lowlevel, class = "AssignmentCowVec")]
+#[derive(Clone, miniextendr_api::AltrepInteger)]
+#[altrep(manual, dataptr, duplicate = "clone", class = "AssignmentCowVec")]
 struct CowVec(Cow<'static, [i32]>);
 
 macro_rules! direct_integer_view {
@@ -27,23 +29,23 @@ macro_rules! direct_integer_view {
         }
         impl miniextendr_api::altrep_data::AltIntegerData for $ty {
             fn elt(&self, i: usize) -> i32 {
-                self.0[i]
+                self.0.as_ref()[i]
             }
         }
-        miniextendr_api::__impl_altvec_dataptr!($ty, i32);
-        miniextendr_api::__impl_altinteger_methods!($ty);
-        miniextendr_api::impl_inferbase_integer!($ty);
     };
 }
 direct_integer_view!(LiveVec);
 direct_integer_view!(CowVec);
+miniextendr_api::__impl_altvec_dataptr!(LiveVec, i32);
+miniextendr_api::__impl_altinteger_methods!(LiveVec);
+miniextendr_api::impl_inferbase_integer!(LiveVec);
 
 impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LiveVec {
     fn dataptr(&mut self, _: bool) -> Option<*mut i32> {
-        Some(self.0.as_mut_ptr())
+        miniextendr_api::altrep_data::AltrepDataptr::dataptr(&mut self.0, true)
     }
     fn dataptr_or_null(&self) -> Option<*const i32> {
-        Some(self.0.as_ptr())
+        None
     }
 }
 impl miniextendr_api::altrep_data::AltrepDataptr<i32> for CowVec {
@@ -64,18 +66,6 @@ impl Altrep for LiveVec {
         x
     }
 }
-impl Altrep for CowVec {
-    fn length(x: SEXP) -> miniextendr_api::R_xlen_t {
-        unsafe { Self::altrep_extract_ref(x).0.len().try_into().unwrap() }
-    }
-    const HAS_DUPLICATE: bool = true;
-    fn duplicate(x: SEXP, _: bool) -> SEXP {
-        // Preserve ALTREP through R's copy-before-assignment path. A borrowed
-        // Cow stays borrowed until a materializing pointer or setter needs ownership.
-        let value = unsafe { Self::altrep_extract_ref(x).0.clone() };
-        CowVec(value).into_sexp()
-    }
-}
 
 // Test-only .Call callbacks. Typed accessors validate the object as generated
 // entry points do; a regression that materializes it must fail, not cast an
@@ -86,7 +76,7 @@ unsafe extern "C-unwind" fn grow_live_vec(x: SEXP, size: SEXP) -> SEXP {
         return SEXP::nil();
     };
     let data = &mut (*view).0;
-    data.resize(size, 99);
+    data.edit(|values| values.resize(size, 99));
     x
 }
 
@@ -135,7 +125,7 @@ unsafe fn assignment_env(
 #[test]
 fn replacement_function_refreshes_a_live_vec_after_capacity_growth() {
     r_test_utils::with_r_thread(|| unsafe {
-        let x = OwnedProtect::new(LiveVec(vec![10i32, 20]).into_sexp());
+        let x = OwnedProtect::new(LiveVec(vec![10i32, 20].into()).into_sexp());
         let old_capacity = <LiveVec as AltrepExtract>::altrep_extract_ref(x.get())
             .0
             .capacity();
@@ -155,11 +145,10 @@ fn replacement_function_refreshes_a_live_vec_after_capacity_growth() {
         assert_eq!(<LiveVec as Altrep>::length(x.get()), 4096);
         let data = <LiveVec as AltrepExtract>::altrep_extract_ref(x.get());
         assert!(data.0.capacity() > old_capacity);
-        assert_eq!(data.0.as_ptr().cast(), current_ptr.cast_const());
-        // The allocator may grow in place. The storage regression separately
-        // forces a changed allocation; both paths must reacquire the pointer.
-        // old_ptr is never dereferenced after the replacement boundary.
-        let _ = old_ptr;
+        assert_eq!(data.0.as_slice().as_ptr().cast(), current_ptr.cast_const());
+        // The old allocation survives the shared owner's edit boundary.
+        assert_ne!(old_ptr, current_ptr);
+        assert_eq!(*old_ptr.cast::<i32>(), 10);
     });
 }
 
@@ -221,5 +210,57 @@ fn ordinary_element_replacement_preserves_cow_altrep_and_the_old_pointer() {
         // on the old object: it can still be read after the replacement call.
         assert_eq!(*old_ptr.cast::<i32>(), 10);
         assert_eq!(<CowVec as AltVec>::dataptr(x.get(), false), old_ptr);
+    });
+}
+
+#[derive(Clone, miniextendr_api::AltrepString)]
+#[altrep(manual, duplicate = "clone", class = "AssignmentStringCache")]
+struct CachedStrings(Vec<String>);
+impl miniextendr_api::altrep_data::AltrepLen for CachedStrings {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl miniextendr_api::altrep_data::AltStringData for CachedStrings {
+    fn elt(&self, i: usize) -> Option<&str> {
+        Some(&self.0[i])
+    }
+}
+
+#[test]
+fn clone_policy_keeps_partial_and_written_string_caches_and_attributes() {
+    use miniextendr_api::altrep_traits::AltString;
+    r_test_utils::with_r_thread(|| unsafe {
+        let x = OwnedProtect::new(CachedStrings(vec!["a".into(), "b".into()]).into_sexp());
+        let names = OwnedProtect::new(vec!["first", "second"].into_sexp());
+        miniextendr_api::sys::Rf_setAttrib(
+            x.get(),
+            miniextendr_api::sys::R_NamesSymbol,
+            names.get(),
+        );
+        // Computing one element leaves a C NULL slot in data2. Duplication
+        // must copy it without sending that slot through SET_STRING_ELT.
+        <CachedStrings as AltString>::elt(x.get(), 0);
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
+        assert!(copy.get().is_altrep());
+        assert_eq!(
+            Vec::<String>::try_from_sexp(copy.get()).unwrap(),
+            ["a", "b"]
+        );
+        assert_eq!(
+            Vec::<String>::try_from_sexp(miniextendr_api::sys::Rf_getAttrib(
+                copy.get(),
+                miniextendr_api::sys::R_NamesSymbol
+            ))
+            .unwrap(),
+            ["first", "second"]
+        );
+        let changed = OwnedProtect::new(SEXP::charsxp("changed"));
+        <CachedStrings as AltString>::set_elt(x.get(), 0, changed.get());
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
+        assert_eq!(
+            Vec::<String>::try_from_sexp(copy.get()).unwrap(),
+            ["changed", "b"]
+        );
     });
 }

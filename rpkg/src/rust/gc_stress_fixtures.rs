@@ -275,6 +275,127 @@ pub fn gc_stress_altrep_string_cache() -> SEXP {
     x.get()
 }
 
+#[derive(Clone, miniextendr_api::AltrepString)]
+#[altrep(manual, duplicate = "clone", class = "GcStressCloneCache")]
+struct GcStressCloneCache(Vec<Option<String>>);
+
+impl miniextendr_api::altrep_data::AltrepLen for GcStressCloneCache {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl miniextendr_api::altrep_data::AltStringData for GcStressCloneCache {
+    fn elt(&self, i: usize) -> Option<&str> {
+        self.0[i].as_deref()
+    }
+}
+
+/// Exercise `duplicate = "clone"` over a string ALTREP cache under GC pressure.
+///
+/// Duplicates a partly filled cache (still-empty C NULL slots), writes a value
+/// and an NA into the copy through `Set_elt`, fills it through `Dataptr`, then
+/// duplicates again: the copy's data2, not the original Rust values, wins.
+/// Returns the second copy, which is still ALTREP: `"written"`, `NA`, then
+/// `cache-<i>` for `i` in `2..24`, with `NA` where `i % 5 == 0`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_clone_cache() -> SEXP {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    type Data = GcStressCloneCache;
+
+    let values: Vec<Option<String>> = (0..24)
+        .map(|i| (i % 5 != 0).then(|| format!("cache-{i}")))
+        .collect();
+    let x = unsafe { OwnedProtect::new(GcStressCloneCache(values).into_sexp()) };
+    for i in (0..24).step_by(3) {
+        let _ = <Data as AltString>::elt(x.get(), i);
+    }
+    let x = unsafe { OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get())) };
+    let written = unsafe { OwnedProtect::new(SEXP::charsxp("written")) };
+    <Data as AltString>::set_elt(x.get(), 0, written.get());
+    <Data as AltString>::set_elt(x.get(), 1, SEXP::na_string());
+    let _ = <Data as AltVec>::dataptr(x.get(), false);
+    unsafe { miniextendr_api::sys::Rf_duplicate(x.get()) }
+}
+
+/// Drive the allocating ALTREP bridges of classes with a non-default
+/// native-read guard under GC pressure, through R's own entry points: a
+/// materializing `Dataptr` (`rust_unwind`), then string `Elt`, `Set_elt` and
+/// `Duplicate` (`unsafe`). Returns `list(ints, strings)`: 64 sevens, and the
+/// duplicated strings `"written"`, `s1` ... `s31`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
+    use crate::altrep_ownership_tests::{RustUnwindInts, UnsafeStrings};
+    use miniextendr_api::sys;
+
+    unsafe {
+        let ints = OwnedProtect::new(RustUnwindInts { len: 64, value: 7 }.into_sexp());
+        let _ = sys::DATAPTR_RO(ints.get());
+        let strings: Vec<String> = (0..32).map(|i| format!("s{i}")).collect();
+        let strings = OwnedProtect::new(UnsafeStrings(strings).into_sexp());
+        for i in 0..32 {
+            let _ = sys::STRING_ELT(strings.get(), i);
+        }
+        let written = OwnedProtect::new(SEXP::charsxp("written"));
+        sys::SET_STRING_ELT(strings.get(), 0, written.get());
+        let copy = OwnedProtect::new(sys::Rf_duplicate(strings.get()));
+        let out = OwnedProtect::new(sys::Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        out.get().set_vector_elt(0, ints.get());
+        out.get().set_vector_elt(1, copy.get());
+        let names = OwnedProtect::new(vec!["ints", "strings"].into_sexp());
+        sys::Rf_setAttrib(out.get(), sys::R_NamesSymbol, names.get());
+        out.get()
+    }
+}
+
+/// Root R values only through ALTREP data1 sidecar slots.
+///
+/// A writable `Dataptr` copies into data2, so a write through it leaves the
+/// source alone; then a second vector, whose source is unprotected once it
+/// is built, survives a collection; then a clone-policy copy, the only root
+/// of its sidecar once the original is unprotected, survives one too. No
+/// arguments, for the no-arg gctorture sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_sidecar() {
+    use crate::altrep_sidecar_tests::{
+        SidecarVector, altrep_cloned_sidecar_ints, altrep_cloned_sidecar_tag, make_sidecar_altrep,
+    };
+    use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep};
+    use miniextendr_api::{RNativeType, TryFromSexp};
+    unsafe {
+        let values = OwnedProtect::new(vec![3_i32, 5, 8].into_sexp());
+        let x = OwnedProtect::new(make_sidecar_altrep(values.get()).into_sexp());
+        assert!(SidecarVector::dataptr_or_null(x.get()).is_null());
+        assert_eq!(SidecarVector::length(x.get()), 3);
+        let pointer = SidecarVector::dataptr(x.get(), true).cast::<i32>();
+        *pointer.add(1) = 99;
+        assert_eq!(SidecarVector::elt(x.get(), 1), 99);
+        assert_eq!(i32::elt(values.get(), 1), 5);
+        drop(x);
+        // This owner now provides the only root for its newly allocated source.
+        let x = OwnedProtect::new({
+            let values = OwnedProtect::new(vec![11_i32, 13, 17].into_sexp());
+            // Pop the source guard before protecting the returned ALTREP;
+            // no allocation occurs between returning it and PROTECT.
+            make_sidecar_altrep(values.get()).into_sexp()
+        });
+        miniextendr_api::sys::R_gc();
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [11, 13, 17]);
+        drop(x);
+        drop(values);
+        let copy = OwnedProtect::new({
+            let original = OwnedProtect::new({
+                let tag = OwnedProtect::new(vec!["shared tag"].into_sexp());
+                altrep_cloned_sidecar_ints(vec![1, 2], tag.get()).into_sexp()
+            });
+            miniextendr_api::sys::Rf_duplicate(original.get())
+        });
+        miniextendr_api::sys::R_gc();
+        let tag = altrep_cloned_sidecar_tag(copy.get());
+        assert_eq!(Vec::<String>::try_from_sexp(tag).unwrap(), ["shared tag"]);
+        assert_eq!(Vec::<i32>::try_from_sexp(copy.get()).unwrap(), [1, 2]);
+    }
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both

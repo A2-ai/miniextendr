@@ -111,9 +111,10 @@ struct AltrepFamilyConfig<'a> {
 /// | `no_lowlevel` | Flag | Suppress the automatic low-level trait impls. Use this when you want to provide your own `Altrep`, `AltVec`, and family-specific trait implementations. |
 /// | `dataptr` | Flag | Enable `Dataptr` method registration, allowing R to get a direct pointer to the underlying data. Mutually exclusive with `subset`. Not supported for List. |
 /// | `serialize` | Flag | Enable `Serialized_state` and `Unserialize` method registration for ALTREP serialization support. |
+/// | `duplicate = "clone"` | String | Keep ALTREP on duplication: clone the owner (requires `Clone`) and copy the R cache. Omission retains R's default, which materializes an ordinary vector. |
 /// | `subset` | Flag | Enable `Extract_subset` method registration. Mutually exclusive with `dataptr`. Supported on all atomic families. Not supported for List. |
-/// | `unsafe` | Flag | Set guard mode to `Unsafe` -- no panic protection on ALTREP callbacks. |
-/// | `rust_unwind` | Flag | Set guard mode to `RustUnwind` -- uses `catch_unwind` only (unsafe if callbacks call R APIs). |
+/// | `unsafe` | Flag | Set native-read guard to `Unsafe` -- no panic protection. Allocating bridges stay protected. |
+/// | `rust_unwind` | Flag | Set native-read guard to `RustUnwind` -- `catch_unwind` only; reads must not call fallible R APIs. |
 /// | `r_unwind` | Flag | Set guard mode to `RUnwind` (default) -- uses `with_r_unwind_protect` for safe R API calls. |
 /// | `class = "name"` | `String` | Override the ALTREP class name (default: struct name). |
 struct AltrepAttrs {
@@ -144,6 +145,8 @@ struct AltrepAttrs {
     /// Manual mode: skip `AltrepLen` and `Alt*Data` generation. User provides their own.
     /// Set by `#[altrep(manual)]`. Lowlevel traits + registration still generated.
     manual: bool,
+    /// Opt-in duplicate policy; absent retains R's materializing default.
+    duplicate: Option<syn::LitStr>,
 }
 
 impl AltrepAttrs {
@@ -165,6 +168,7 @@ impl AltrepAttrs {
         let mut guard = None;
         let mut class_name = None;
         let mut manual = false;
+        let mut duplicate = None;
 
         for attr in &input.attrs {
             if !attr.path().is_ident("altrep") {
@@ -184,6 +188,18 @@ impl AltrepAttrs {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let field: syn::LitStr = meta.input.parse()?;
                     elt_delegate = Some(syn::Ident::new(&field.value(), field.span()));
+                } else if meta.path.is_ident("duplicate") {
+                    if duplicate.is_some() {
+                        return Err(meta.error("duplicate `duplicate` policy"));
+                    }
+                    let policy: syn::LitStr = meta.value()?.parse()?;
+                    if policy.value() != "clone" {
+                        return Err(syn::Error::new(
+                            policy.span(),
+                            "duplicate policy must be `clone`",
+                        ));
+                    }
+                    duplicate = Some(policy);
                 } else if meta.path.is_ident("no_lowlevel") {
                     generate_lowlevel = false;
                 } else if meta.path.is_ident("manual") {
@@ -208,7 +224,7 @@ impl AltrepAttrs {
                     return Err(meta.error(
                         "unknown #[altrep(...)] attribute; expected one of: \
                          `len`, `elt`, `elt_delegate`, `manual`, `no_lowlevel`, `class`, \
-                         `dataptr`, `serialize`, `subset`, `unsafe`, \
+                         `dataptr`, `serialize`, `subset`, `duplicate`, `unsafe`, \
                          `rust_unwind`, `r_unwind`",
                     ));
                 }
@@ -216,6 +232,12 @@ impl AltrepAttrs {
             })?;
         }
 
+        if !generate_lowlevel && let Some(policy) = &duplicate {
+            return Err(syn::Error::new(
+                policy.span(),
+                "`duplicate` requires generated low-level traits; remove `no_lowlevel`",
+            ));
+        }
         Ok(Self {
             len_field,
             elt_field,
@@ -225,7 +247,24 @@ impl AltrepAttrs {
             guard,
             class_name,
             manual,
+            duplicate,
         })
+    }
+
+    /// Extra methods in the existing base impl; R's DuplicateEX still copies
+    /// attributes and object flags around this Duplicate hook.
+    fn duplicate_methods(&self) -> TokenStream {
+        if self.duplicate.is_none() {
+            return quote! {};
+        }
+        quote! {
+            , extra = {
+                const HAS_DUPLICATE: bool = true;
+                fn duplicate(x: ::miniextendr_api::SEXP, _deep: bool) -> ::miniextendr_api::SEXP {
+                    unsafe { ::miniextendr_api::altrep_impl::duplicate_altrep_owner::<Self>(x) }
+                }
+            }
+        }
     }
 
     /// Returns the length field identifier, either from the explicit `len = "..."` attribute
@@ -263,18 +302,6 @@ impl AltrepAttrs {
             input.span(),
             "no length field found; specify with #[altrep(len = \"field_name\")]",
         ))
-    }
-
-    /// Returns `true` if a non-default guard mode is set (i.e., `Unsafe` or `RustUnwind`).
-    ///
-    /// The default guard is `RUnwind`. Non-default guards (e.g., `RustUnwind`,
-    /// `Unsafe`) suppress the materializing-dataptr `AltVec` impl on the
-    /// no-option arm (behaviour preserved from the pre-#711 expanded path).
-    fn has_non_default_guard(&self) -> bool {
-        match &self.guard {
-            Some(g) => g != "RUnwind",
-            None => false,
-        }
     }
 
     /// Validates that the requested `#[altrep(...)]` option flags are compatible with
@@ -363,7 +390,7 @@ impl AltrepAttrs {
         generics: &syn::Generics,
         family: &AltrepFamilyConfig,
     ) -> syn::Result<TokenStream> {
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = generics.split_for_impl();
         let AltrepFamilyConfig {
             family_name,
             ref dataptr_macro,
@@ -396,10 +423,11 @@ impl AltrepAttrs {
         //    arms use `__impl_altrep_base!($ty, with_serialize)`. We additionally
         //    thread an explicit guard so non-default guards no longer need a
         //    separate code path.
+        let duplicate = self.duplicate_methods();
         let base_impl = if has_serialize {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize #duplicate); }
         } else {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard #duplicate); }
         };
 
         // 2. AltVec impl. Mirrors the per-arm choice in `impl_alt<family>_from_data!`:
@@ -427,15 +455,6 @@ impl AltrepAttrs {
             }
         } else if has_subset {
             quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name #ty_generics); }
-        } else if self.has_non_default_guard() {
-            // Behaviour-preservation: the pre-#711 expanded path (the only path
-            // that handled non-default guards) emitted a *bare* `impl AltVec`
-            // for the no-dataptr/no-subset case — NOT the materializing macro.
-            // Match that exactly so this migration is a pure de-indirection
-            // with no semantic drift. (No production fixture combines a
-            // non-default guard with an ALTREP derive, so this branch is
-            // exercised only by the proc-macro unit tests.)
-            quote! { impl #impl_generics ::miniextendr_api::altrep_traits::AltVec for #name #ty_generics #where_clause {} }
         } else {
             let mat_macro =
                 syn::Ident::new(materializing_dataptr_macro, proc_macro2::Span::call_site());
@@ -542,12 +561,8 @@ fn derive_altrep_generic(
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits
@@ -845,10 +860,11 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| syn::Ident::new("RUnwind", proc_macro2::Span::call_site()));
+        let duplicate = attrs.duplicate_methods();
         let base_impl = if has_serialize {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard, with_serialize #duplicate); }
         } else {
-            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard); }
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name #ty_generics, #guard #duplicate); }
         };
         let elt_impl = if has_serialize {
             quote! {
@@ -885,12 +901,8 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         .as_deref()
         .unwrap_or(&name.to_string())
         .to_string();
-    let registration_impl = crate::altrep::generate_direct_altrep_registration(
-        name,
-        &input.vis,
-        generics,
-        &class_name,
-    )?;
+    let registration_impl =
+        crate::altrep::generate_direct_altrep_registration(&input, &class_name)?;
 
     Ok(quote! {
         #data_traits

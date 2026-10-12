@@ -19,9 +19,10 @@
 //!
 //! ## Guard mode ([`Altrep::GUARD`])
 //!
-//! Every ALTREP callback installed by this crate is wrapped according to the
-//! `const GUARD: AltrepGuard` on the implementing type. The three modes are
-//! selected per-type (not per-callback) and resolved at compile time:
+//! Native reads and inspection use `const GUARD: AltrepGuard` on the type.
+//! Callbacks returning SEXP, Dataptr and string/list setters always use
+//! `RUnwind`: their framework bridges can allocate R objects. For the remaining
+//! callbacks, the three modes are resolved at compile time:
 //!
 //! | Mode | What it wraps | Use when |
 //! |---|---|---|
@@ -47,11 +48,10 @@ use core::ffi::c_void;
 ///   callbacks that cannot panic.
 ///
 /// - [`RustUnwind`](AltrepGuard::RustUnwind): Wraps in `catch_unwind`, converting
-///   Rust panics to R errors. This is the **default** and safe for all pure-Rust
-///   callbacks. Overhead: ~1-2ns per call.
+///   Rust panics to R errors. Suitable for pure-Rust callbacks.
 ///
 /// - [`RUnwind`](AltrepGuard::RUnwind): Wraps in `R_UnwindProtect`, catching both
-///   Rust panics and R `longjmp` errors. Use when ALTREP callbacks invoke R API
+///   Rust panics and R `longjmp` errors. This is the default. Use when ALTREP callbacks invoke R API
 ///   functions that might error (e.g., `Rf_allocVector`, `Rf_eval`).
 ///
 /// The guard is selected via the `const GUARD` associated constant on the [`Altrep`]
@@ -61,7 +61,7 @@ use core::ffi::c_void;
 pub enum AltrepGuard {
     /// No protection. Fastest, but if the callback panics, behavior is undefined.
     Unsafe,
-    /// `catch_unwind` — catches Rust panics, converts to R errors. Default.
+    /// `catch_unwind` — catches Rust panics, converts to R errors.
     RustUnwind,
     /// `with_r_unwind_protect` — catches both Rust panics and R longjmps.
     /// Use when ALTREP callbacks invoke R API functions that might error.
@@ -75,7 +75,7 @@ pub enum AltrepGuard {
 ///
 /// `length` is REQUIRED (no default). All other methods are optional with HAS_* gating.
 pub trait Altrep {
-    /// The guard mode for all ALTREP trampolines on this type.
+    /// The guard mode for native reads and inspection on this type.
     ///
     /// Defaults to [`AltrepGuard::RUnwind`] which catches both Rust panics and
     /// R longjmps via `R_UnwindProtect`. This is safe for all callbacks, including
@@ -83,8 +83,9 @@ pub trait Altrep {
     /// `into_sexp` in serialization).
     ///
     /// Override to [`AltrepGuard::RustUnwind`] if your callbacks never call R APIs
-    /// and you want to save ~2ns per call, or [`AltrepGuard::Unsafe`] for trivial
-    /// callbacks that cannot panic.
+    /// that can longjmp, or [`AltrepGuard::Unsafe`] for trivial callbacks that
+    /// cannot panic. SEXP-returning callbacks, Dataptr and string/list setters
+    /// always retain RUnwind protection, including when this selects another mode.
     const GUARD: AltrepGuard = AltrepGuard::RUnwind;
 
     // --- REQUIRED ---

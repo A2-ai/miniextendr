@@ -30,20 +30,17 @@
 /// The struct must already implement the low-level ALTREP traits (via `impl_alt*_from_data!`
 /// or `#[derive(AltrepInteger)]`) and `InferBase`.
 pub(crate) fn generate_direct_altrep_registration(
-    ident: &syn::Ident,
-    visibility: &syn::Visibility,
-    generics: &syn::Generics,
+    input: &syn::DeriveInput,
     class_name: &str,
 ) -> syn::Result<proc_macro2::TokenStream> {
+    let ident = &input.ident;
+    let visibility = &input.vis;
+    let generics = &input.generics;
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let storage = crate::externalptr_derive::generate_altrep_storage(input, class_name)?;
 
     // Class name as CStr literal
     let class_cstr = syn::LitCStr::new(&std::ffi::CString::new(class_name).unwrap(), ident.span());
-
-    // TypedExternal constants — needed for ExternalPtr<T> to work
-    let type_name_str = class_name;
-    let type_name_bytes = format!("{}\0", type_name_str);
-    let type_name_byte_lit = syn::LitByteStr::new(type_name_bytes.as_bytes(), ident.span());
 
     let ref_ident = quote::format_ident!("{}Ref", ident);
     let mut_ident = quote::format_ident!("{}Mut", ident);
@@ -100,15 +97,9 @@ pub(crate) fn generate_direct_altrep_registration(
     let source_loc_doc = crate::source_location_doc(ident.span());
 
     Ok(quote::quote! {
-        // TypedExternal — enables ExternalPtr<T> storage.
-        // NOTE: We intentionally do NOT implement IntoExternalPtr, because ALTREP types
-        // have their own IntoR impl that creates an ALTREP SEXP (not a plain ExternalPtr).
-        impl ::miniextendr_api::externalptr::TypedExternal for #ident #ty_generics #where_clause {
-            const TYPE_NAME: &'static str = #type_name_str;
-            const TYPE_NAME_CSTR: &'static [u8] = #type_name_byte_lit;
-            const TYPE_ID_CSTR: &'static [u8] =
-                ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#ident), "\0").as_bytes();
-        }
+        // Shared ExternalPtr storage, including sidecars. No IntoExternalPtr
+        // marker: conversion must produce the ALTREP, not its data1 pointer.
+        #storage
 
         // AltrepClass — class name and base type
         #[doc = ::core::concat!("ALTREP class descriptor for [`", ::core::stringify!(#ident), "`].")]
@@ -319,5 +310,5 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
 
     let class_name = class_name.unwrap_or_else(|| crate::naming::ident_name(ident));
 
-    generate_direct_altrep_registration(ident, &input.vis, &input.generics, &class_name)
+    generate_direct_altrep_registration(&input, &class_name)
 }

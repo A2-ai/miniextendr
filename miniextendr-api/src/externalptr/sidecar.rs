@@ -171,9 +171,12 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// write (`Deref` still gives the struct fields). The same holds for a
 /// struct moved out of its pointer through `&mut` (`mem::replace`,
 /// `mem::take`): it carries nothing to follow, so nothing can read a freed R
-/// object (#1856). A trait-impl method (`impl Trait for Type`) and an ALTREP
-/// callback receive only the struct, so they can't read sidecar values
-/// (#1880).
+/// object (#1856). A trait-impl method (`impl Trait for Type`) and the
+/// high-level ALTREP data traits receive only the struct (#1880).
+/// ALTREP derives also accept `#[r_data] Sidecar<T>` fields: with
+/// `#[altrep(manual, no_lowlevel)]`, low-level callbacks recover the handle
+/// through [`crate::altrep_data1_as_unchecked`] and call the associated
+/// accessors. Those derives emit no R class field wrappers.
 ///
 /// A plain `SEXP` field under `#[r_data]` is a compile error: nothing would
 /// root it. Use `Sidecar<SEXP>`.

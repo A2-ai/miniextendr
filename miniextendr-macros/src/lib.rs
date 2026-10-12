@@ -77,7 +77,7 @@
 //! │  1. Parse: syn::ItemImpl (trait impl)                                    │
 //! │  2. Generate:                                                            │
 //! │     ├── Vtable instance: static __VTABLE_<crate>_<Trait>_FOR_<Type>     │
-//! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
+//! │     ├── Shared runtime storage: ErasedObject<Type>                     │
 //! │     ├── Shared query: registry::universal_query                        │
 //! │     └── Base vtable: static __MX_BASE_VTABLE_<Type>: ...                 │
 //! │  3. Original impl preserved                                              │
@@ -113,7 +113,7 @@
 //!
 //! For a type `MyType` with trait `Counter` in a crate `mypkg`:
 //! - Vtable: `__VTABLE_mypkg_Counter_FOR_MyType`
-//! - Wrapper: `__MxWrapperMyType`
+//! - Storage: runtime `ErasedObject<MyType>`
 //! - Query: `__mx_query_mytype`
 //!
 //! ## Return Type Handling
@@ -2556,7 +2556,7 @@ pub fn derive_is_na(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 ///
 /// This generates additional infrastructure for type-erased trait dispatch:
-/// - `__MxWrapperMyCounter` - Type-erased wrapper struct
+/// - Shared runtime `ErasedObject<MyCounter>` storage and destructor
 /// - `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
 /// - `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 ///
@@ -2631,7 +2631,7 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///     }
 /// }
 /// ```
-#[proc_macro_derive(AltrepInteger, attributes(altrep))]
+#[proc_macro_derive(AltrepInteger, attributes(altrep, r_data))]
 pub fn derive_altrep_integer(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_integer(input)
@@ -2643,7 +2643,7 @@ pub fn derive_altrep_integer(input: proc_macro::TokenStream) -> proc_macro::Toke
 ///
 /// Auto-implements `AltrepLen` and `AltRealData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
-#[proc_macro_derive(AltrepReal, attributes(altrep))]
+#[proc_macro_derive(AltrepReal, attributes(altrep, r_data))]
 pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_real(input)
@@ -2655,7 +2655,7 @@ pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 ///
 /// Auto-implements `AltrepLen` and `AltLogicalData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
-#[proc_macro_derive(AltrepLogical, attributes(altrep))]
+#[proc_macro_derive(AltrepLogical, attributes(altrep, r_data))]
 pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_logical(input)
@@ -2667,7 +2667,7 @@ pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::Toke
 ///
 /// Auto-implements `AltrepLen` and `AltRawData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
-#[proc_macro_derive(AltrepRaw, attributes(altrep))]
+#[proc_macro_derive(AltrepRaw, attributes(altrep, r_data))]
 pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_raw(input)
@@ -2679,7 +2679,7 @@ pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 ///
 /// Auto-implements `AltrepLen` and `AltStringData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
-#[proc_macro_derive(AltrepString, attributes(altrep))]
+#[proc_macro_derive(AltrepString, attributes(altrep, r_data))]
 pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_string(input)
@@ -2691,7 +2691,7 @@ pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::Token
 ///
 /// Auto-implements `AltrepLen` and `AltComplexData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger).
-#[proc_macro_derive(AltrepComplex, attributes(altrep))]
+#[proc_macro_derive(AltrepComplex, attributes(altrep, r_data))]
 pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_complex(input)
@@ -2704,7 +2704,7 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Auto-implements `AltrepLen` and `AltListData` traits.
 /// Supports the same `#[altrep(...)]` attributes as [`AltrepInteger`](derive@AltrepInteger),
 /// except `dataptr` and `subset` which are not supported for list ALTREP.
-#[proc_macro_derive(AltrepList, attributes(altrep))]
+#[proc_macro_derive(AltrepList, attributes(altrep, r_data))]
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_list(input)
@@ -2738,7 +2738,7 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// impl AltrepLen for MyData { ... }
 /// impl AltIntegerData for MyData { ... }
 /// ```
-#[proc_macro_derive(Altrep, attributes(altrep))]
+#[proc_macro_derive(Altrep, attributes(altrep, r_data))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep::derive_altrep(input)

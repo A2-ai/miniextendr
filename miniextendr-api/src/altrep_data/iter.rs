@@ -21,7 +21,7 @@
 //! #[derive(miniextendr_api::AltrepInteger)]
 //! #[altrep(class = "MyLazyInts", manual)]
 //! struct MyLazyInts {
-//!     inner: IterIntData<Box<dyn Iterator<Item = i32>>>,
+//!     inner: IterIntData<std::ops::Range<i32>>,
 //! }
 //!
 //! impl AltrepLen for MyLazyInts {
@@ -36,6 +36,17 @@
 //!     }
 //! }
 //! ```
+//!
+//! ## Duplication and serialization
+//!
+//! The standard atomic and string adapters implement `Clone` when their
+//! concrete iterator does. Cloning preserves the cached prefix and remaining
+//! iterator without advancing it. They also implement `AltrepSerialize`:
+//! saving realizes the declared finite sequence; restoring uses a complete
+//! cache and never needs to construct `I`. Delegate that trait from a concrete
+//! registered class and select `#[altrep(manual, serialize, duplicate = "clone")]`.
+//! The bridge preserves authoritative R writes in data2 as well as that cache.
+//! List adapters need their own GC-root and serialization policy.
 //!
 //! ## Submodules
 //!

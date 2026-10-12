@@ -2706,6 +2706,7 @@ fn test_derive_altrep_integer_unsafe_guard() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("Unsafe"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]
@@ -2747,6 +2748,7 @@ fn test_derive_altrep_integer_rust_unwind_guard_uses_expanded_path() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("RustUnwind"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]
@@ -2766,6 +2768,7 @@ fn test_derive_altrep_unsafe_guard_with_serialize() {
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("with_serialize"));
     assert!(output_str.contains("Unsafe"));
+    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
 }
 
 #[test]
@@ -2931,6 +2934,97 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
     assert!(!s.contains("expected:SEXPTYPE::INTSXP"));
     // The data1-downcast branch legitimately expects an EXTPTRSXP.
     assert!(s.contains("expected:SEXPTYPE::EXTPTRSXP"));
+}
+
+#[test]
+fn test_derive_altrep_clone_duplicate_composes_and_is_opt_in() {
+    let input = |options: proc_macro2::TokenStream| {
+        syn::parse2::<syn::DeriveInput>(quote::quote! {
+            #[altrep(len = "len", elt = "value", #options)]
+            struct Value { len: usize, value: i32 }
+        })
+        .unwrap()
+    };
+    let plain = crate::altrep_derive::derive_altrep_integer(input(quote::quote! {}))
+        .unwrap()
+        .to_string();
+    assert!(!plain.contains("HAS_DUPLICATE"));
+    let cloned = crate::altrep_derive::derive_altrep_integer(input(
+        quote::quote! { duplicate = "clone", serialize },
+    ))
+    .unwrap()
+    .to_string();
+    assert!(cloned.contains("duplicate_altrep_owner"));
+    assert!(cloned.contains("with_serialize"));
+    assert!(cloned.contains("HAS_DUPLICATE"));
+    // Returning the same object from Duplicate would let an alias's element
+    // and attribute edits reach the original, so there is no "shared" policy.
+    for options in [
+        quote::quote! { duplicate = "shared" },
+        quote::quote! { duplicate = "unknown" },
+        quote::quote! { duplicate = "clone", no_lowlevel },
+        quote::quote! { duplicate = "clone", duplicate = "clone" },
+    ] {
+        assert!(crate::altrep_derive::derive_altrep_integer(input(options)).is_err());
+    }
+}
+// endregion
+
+// region: ALTREP sidecar storage
+
+/// Every ALTREP family emits the ExternalPtr slot storage and Rust handle
+/// accessors for `Sidecar<T>` fields, and none of the R class field wrappers.
+#[test]
+fn test_derive_altrep_sidecars_use_handle_storage_without_r_field_wrappers() {
+    let derives = [
+        crate::altrep_derive::derive_altrep_integer,
+        crate::altrep_derive::derive_altrep_real,
+        crate::altrep_derive::derive_altrep_logical,
+        crate::altrep_derive::derive_altrep_raw,
+        crate::altrep_derive::derive_altrep_string,
+        crate::altrep_derive::derive_altrep_complex,
+        crate::altrep_derive::derive_altrep_list,
+    ];
+    for derive in derives {
+        let input = syn::parse_quote! {
+            #[altrep(manual, no_lowlevel, class = "VisibleVector")]
+            struct Owner {
+                #[r_data(ref)]
+                pub values: Sidecar<SEXP>,
+                #[r_data(mut)]
+                label: Sidecar<String>,
+            }
+        };
+        let output = derive(input).unwrap().to_string();
+        syn::parse2::<syn::File>(output.parse().unwrap()).unwrap();
+        assert!(output.contains("R_SLOT_COUNT : usize = 2usize"), "{output}");
+        assert!(output.contains("pub fn values (ptr :"), "{output}");
+        assert!(!output.contains("fn set_values"), "{output}");
+        assert!(output.contains("fn set_label (ptr :"), "{output}");
+        assert!(output.contains("CARGO_PKG_VERSION"), "{output}");
+        assert!(output.contains("str = \"VisibleVector\""), "{output}");
+        assert!(!output.contains("IntoExternalPtr"), "{output}");
+        assert!(!output.contains("__MxWrapper"), "{output}");
+        assert!(!output.contains("__MX_CALL_DEF_RDATA"), "{output}");
+    }
+}
+
+/// A sidecar needs `#[r_data]` and a `Sidecar<T>` type, and ALTREP has no R
+/// field wrappers to name or configure.
+#[test]
+fn test_derive_altrep_rejects_unattached_sidecars_and_r_field_options() {
+    for field in [
+        quote::quote! { values: Sidecar<SEXP> },
+        quote::quote! { #[r_data] values: SEXP },
+        quote::quote! { #[r_data] selector: RSidecar },
+        quote::quote! { #[r_data(name = "x")] values: Sidecar<SEXP> },
+    ] {
+        let input = syn::parse_quote! {
+            #[altrep(manual, no_lowlevel)]
+            struct Owner { #field }
+        };
+        assert!(crate::altrep_derive::derive_altrep_integer(input).is_err());
+    }
 }
 // endregion
 
