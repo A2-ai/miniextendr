@@ -1,0 +1,11 @@
+error: a `StrVec` / `RCow` parameter borrows the call's argument and cannot be `'static`; write `'_`, or take `ProtectedStrVec` or an owned `Vec` to keep the data after the call
+ --> tests/ui/rooted_view_trait_static_param.rs:9:36
+  |
+9 |     fn keep(&self, strings: StrVec<'static>);
+  |                                    ^^^^^^^
+
+error: a `StrVec` / `RCow` parameter borrows the call's argument and cannot be `'static`; write `'_`, or take `ProtectedStrVec` or an owned `Vec` to keep the data after the call
+  --> tests/ui/rooted_view_trait_static_param.rs:24:36
+   |
+24 |     fn keep(&self, strings: StrVec<'static>) {
+   |                                    ^^^^^^^

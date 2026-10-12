@@ -1,0 +1,11 @@
+error: a `StrVec` / `RCow` parameter borrows the call's argument and cannot be `'static`; write `'_`, or take `ProtectedStrVec` or an owned `Vec` to keep the data after the call
+  --> tests/ui/rooted_view_static_param.rs:14:37
+   |
+14 | pub fn keep_strings(strings: StrVec<'static>) {
+   |                                     ^^^^^^^
+
+error: a `StrVec` / `RCow` parameter borrows the call's argument and cannot be `'static`; write `'_`, or take `ProtectedStrVec` or an owned `Vec` to keep the data after the call
+  --> tests/ui/rooted_view_static_param.rs:19:33
+   |
+19 | pub fn keep_values(values: RCow<'static, i32>) {
+   |                                 ^^^^^^^

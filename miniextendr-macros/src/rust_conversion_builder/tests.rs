@@ -1099,3 +1099,17 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
         assert!(metadata.unwrap().to_string().contains("NATIVE_BORROW"));
     }
 }
+
+#[test]
+fn static_borrowed_vector_views_are_refused_at_their_lifetime() {
+    let builder = RustConversionBuilder::new();
+    for src in [
+        "x: StrVec<'static>",
+        "x: miniextendr_api::RCow<'static, f64>",
+    ] {
+        let code = conversion_text(&builder, src);
+        assert!(code.contains("compile_error"), "{code}");
+        assert!(code.contains("cannot be `'static`"), "{code}");
+        assert!(!code.contains("try_from_root"), "{code}");
+    }
+}

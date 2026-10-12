@@ -55,6 +55,9 @@ pub(crate) fn rooted_view_arg(
     index: usize,
     argv: &syn::Ident,
 ) -> TokenStream {
+    if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(name, ty) {
+        return stmt;
+    }
     let slot = format_ident!(
         "__mx_root_{}",
         crate::naming::unraw(name),

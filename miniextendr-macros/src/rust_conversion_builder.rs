@@ -497,6 +497,9 @@ impl RustConversionBuilder {
         }
 
         if crate::type_inspect::is_rooted_view(ty) {
+            if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
+                return (vec![stmt], vec![]);
+            }
             let span = ty.span();
             let bound_ty = crate::type_inspect::erase_lifetimes(ty);
             // The unsafe boundary borrows a rooted .Call argument. Both the

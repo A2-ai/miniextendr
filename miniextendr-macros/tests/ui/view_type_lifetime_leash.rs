@@ -6,8 +6,8 @@
 //! that escaped to `'static` (stored in an `ExternalPtr`, a global, or sent to
 //! another thread) would be a use-after-GC once R collects the source. This file
 //! must FAIL to compile: if it ever builds, the leash is broken — most likely an
-//! accessor's `&'a` return type was reverted to `&'static`, or a view's
-//! `TryFromSexp` impl was re-pinned to `'static`. See the static-str soundness work.
+//! accessor's `&'a` return type was reverted to `&'static`. How a view gets its
+//! `'a` from a root is `rooted_view_*.rs`' concern (#1427).
 
 use miniextendr_api::{RCow, StrVec};
 
