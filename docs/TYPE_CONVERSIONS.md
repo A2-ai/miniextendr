@@ -26,6 +26,13 @@ This guide documents how miniextendr converts between R and Rust types, includin
 | `raw` | `Vec<u8>`, `&[u8]` | No NA |
 | `list` | Various | See Lists and Collections sections |
 
+For Rust-to-R returns, `[T; N]` uses the same conversion as `&[T]`, without
+an intermediate Rust allocation. This includes native values, smart integers
+(`i64`, `u64`, `isize`, `usize`, `u32`), coerced numbers, `String`, `&str`,
+`bool` and `Rboolean`. Arrays produce a vector, including typed empty vectors
+for `N = 0`; they do not add a `dim` attribute. Direct `IntoR` conversion of
+`Option<[T; N]>` maps `None` to `NULL` and `Some` through the array conversion.
+
 ### Nested Collection Types
 
 miniextendr supports converting nested collections to R lists:

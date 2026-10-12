@@ -328,6 +328,12 @@ vector rather than a `list(NULL, NULL, ...)`.
 
 `Vec<Option<scalar>>` lands as a typed R vector with NA sentinels. `Vec<Option<C>>` for collection element types lands as a list-column with `NULL` for `None` (see [Collection Types](#collection-types) below).
 
+Fixed-size array returns `[T; N]` delegate to `&[T]`: native, smart-integer,
+coerced numeric, `String`, `&str`, `bool` and `Rboolean` elements keep their
+slice representation. No intermediate `Vec` is allocated, and fallible
+conversions keep the slice's error type. `N = 0` produces a typed empty vector.
+Direct `IntoR` conversion of `Option<[T; N]>` maps `None` to `NULL`.
+
 ### Smart Vector Conversion (Vec of large integers)
 
 `Vec<i64>`, `Vec<u64>`, `Vec<u32>`, `Vec<isize>`, `Vec<usize>` (and the matching

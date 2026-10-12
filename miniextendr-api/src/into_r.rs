@@ -709,19 +709,23 @@ pub use result::*;
 
 // region: Fixed-size array conversions
 
-/// Blanket impl for `[T; N]` where T: RNativeType.
+/// Convert a fixed-size array through its borrowed slice conversion.
 ///
-/// Enables direct conversion of fixed-size arrays to R vectors.
-/// Useful for SHA hashes, fixed-size byte patterns, etc.
-impl<T: crate::RNativeType, const N: usize> IntoR for [T; N] {
-    type Error = std::convert::Infallible;
+/// Native values, smart integers, strings and logicals keep the slice's R
+/// representation and error type, without allocating an intermediate `Vec`.
+impl<T, E, const N: usize> IntoR for [T; N]
+where
+    for<'a> &'a [T]: IntoR<Error = E>,
+    E: std::fmt::Display,
+{
+    type Error = E;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.as_slice().into_sexp())
+        self.as_slice().try_into_sexp()
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
+        unsafe { self.as_slice().try_into_sexp_unchecked() }
     }
     #[inline]
     fn into_sexp(self) -> crate::SEXP {
@@ -730,6 +734,75 @@ impl<T: crate::RNativeType, const N: usize> IntoR for [T; N] {
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.as_slice().into_sexp_unchecked() }
+    }
+}
+
+/// Convert an optional array: `Some` uses the array conversion, `None` is NULL.
+impl<T, const N: usize> IntoR for Option<[T; N]>
+where
+    [T; N]: IntoR,
+{
+    type Error = <[T; N] as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(array) => array.try_into_sexp(),
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(array) => unsafe { array.try_into_sexp_unchecked() },
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        match self {
+            Some(array) => unsafe { array.into_sexp_unchecked() },
+            None => crate::SEXP::nil(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod array_error_tests {
+    use super::IntoR;
+
+    struct Fallible;
+
+    impl IntoR for &[Fallible] {
+        type Error = &'static str;
+
+        fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+            Err("checked slice error")
+        }
+
+        unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+            Err("unchecked slice error")
+        }
+    }
+
+    #[test]
+    fn array_forwards_slice_errors_without_panicking() {
+        assert_eq!(
+            [Fallible].try_into_sexp().unwrap_err(),
+            "checked slice error"
+        );
+        // The test slice conversion performs no R calls.
+        assert_eq!(
+            unsafe { [Fallible].try_into_sexp_unchecked() }.unwrap_err(),
+            "unchecked slice error"
+        );
+        assert_eq!(
+            Some([Fallible]).try_into_sexp().unwrap_err(),
+            "checked slice error"
+        );
+        assert_eq!(
+            unsafe { Some([Fallible]).try_into_sexp_unchecked() }.unwrap_err(),
+            "unchecked slice error"
+        );
     }
 }
 // endregion
