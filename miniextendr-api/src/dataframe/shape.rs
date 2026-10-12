@@ -13,9 +13,8 @@
 //! not serde-gated.
 
 use super::BuiltDataFrame;
-use crate::NamedListBuilder;
-use crate::SEXP;
 use crate::into_r::IntoR;
+use crate::{NamedListBuilder, Preserved, SEXP};
 
 /// Categorical return shape of the data.frame split verbs:
 /// [`IntoDataFrameSplit::into_dataframe_split`](super::IntoDataFrameSplit::into_dataframe_split)
@@ -32,7 +31,7 @@ use crate::into_r::IntoR;
 ///
 /// Every frame inside the shape is an owned, GC-rooted
 /// [`BuiltDataFrame`], and the
-/// [`SplitResults::None`] sentinel carries its own [`RootedSentinel`]
+/// [`SplitResults::None`] sentinel carries its own [`Preserved`]
 /// root — so holding a `DataFrameShape` across R allocations is safe by
 /// construction; there is no convert-immediately contract. The
 /// [`IntoR`] conversion consumes the handles, re-rooting each
@@ -84,61 +83,14 @@ pub enum SplitResults {
     /// At least one `Ok` row — partition has a concrete data.frame.
     Some(BuiltDataFrame),
     /// No `Ok` rows — sentinel value supplied by the caller via
-    /// `empty_ok_sentinel`, GC-rooted by its [`RootedSentinel`] handle.
+    /// `empty_ok_sentinel`, GC-rooted by its [`Preserved`] handle. The
+    /// sentinel is an arbitrary R value (`NULL`, `NA`, `FALSE`, a zero-row
+    /// data.frame, …), so it cannot ride in a [`BuiltDataFrame`].
     ///
     /// The handle is consumed by the [`IntoR`] impl on
     /// [`DataFrameShape`]; until then its own root keeps the sentinel
     /// reachable (#1265) — no immediate-conversion contract for this leg.
-    None(RootedSentinel),
-}
-
-/// GC-rooted holder for the empty-`Ok` sentinel in [`SplitResults::None`].
-///
-/// The sentinel is an arbitrary caller-supplied R value (`NULL`, `NA`,
-/// `FALSE`, a zero-row data.frame, …), so it cannot ride in a
-/// [`BuiltDataFrame`]; this is the same
-/// RAII pattern (`R_PreserveObject` on construction, `R_ReleaseObject` on
-/// drop, `!Send`) for one bare SEXP. It exists so every leg of
-/// [`DataFrameShape`] is rooted by construction (#1265).
-pub struct RootedSentinel {
-    sexp: SEXP,
-    /// `!Send + !Sync`: rooting/unrooting mutates R's global precious
-    /// list, which is R-main-thread state.
-    _not_send: std::marker::PhantomData<*mut ()>,
-}
-
-impl RootedSentinel {
-    /// Convert `value` to a SEXP and take ownership of a fresh root.
-    ///
-    /// Rooting is immediate: no allocation happens between the
-    /// `into_sexp` return and `R_PreserveObject`, and `R_PreserveObject`
-    /// keeps its argument reachable across its own cons-cell allocation.
-    pub fn new(value: impl IntoR) -> Self {
-        let sexp = value.into_sexp();
-        // SAFETY: `into_sexp` just ran on the R main thread and returned a
-        // valid SEXP; rooting is immediate (see above).
-        unsafe {
-            crate::sys::R_PreserveObject(sexp);
-        }
-        Self {
-            sexp,
-            _not_send: std::marker::PhantomData,
-        }
-    }
-
-    /// The rooted SEXP. Stays reachable for as long as this handle lives.
-    pub fn as_sexp(&self) -> SEXP {
-        self.sexp
-    }
-}
-
-impl Drop for RootedSentinel {
-    fn drop(&mut self) {
-        // SAFETY: `!Send` guarantees drop runs on the constructing (R main)
-        // thread; release the exact root added in `new`. `R_ReleaseObject`
-        // does not allocate.
-        unsafe { crate::sys::R_ReleaseObject(self.sexp) };
-    }
+    None(Preserved),
 }
 
 impl IntoR for DataFrameShape {
@@ -151,9 +103,7 @@ impl IntoR for DataFrameShape {
                 let mut builder = NamedListBuilder::with_capacity(2);
                 match results {
                     SplitResults::Some(df) => builder.push("results", df),
-                    SplitResults::None(sentinel) => {
-                        builder.push_sexp("results", sentinel.as_sexp());
-                    }
+                    SplitResults::None(sentinel) => builder.push("results", sentinel),
                 }
                 builder.push("error", error);
                 Ok(builder.into_sexp())

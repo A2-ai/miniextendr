@@ -1,11 +1,11 @@
 //! Owned construction of heterogeneous named lists and data frames.
 
-use crate::dataframe::{BuiltDataFrame, DataFrameError, RootedSentinel};
-use crate::{IntoR, SEXP, SexpExt, sys};
+use crate::dataframe::{BuiltDataFrame, DataFrameError};
+use crate::{IntoR, Preserved, SEXP, SexpExt};
 
 /// A safe, owned builder for a named R list of mixed [`IntoR`] values.
 ///
-/// One growing `VECSXP` holds the values and is rooted with `R_PreserveObject`.
+/// One growing `VECSXP` holds the values and is rooted by a [`Preserved`] handle.
 /// Moving or dropping builders in any order is safe: no protect-stack entries
 /// are held by the builder, regardless of the number of values pushed.
 /// Construction, use and drop must take place on R's main thread (`!Send + !Sync`).
@@ -26,9 +26,8 @@ use crate::{IntoR, SEXP, SexpExt, sys};
 /// let frame = columns.into_data_frame()?;
 /// ```
 pub struct NamedListBuilder {
-    values: SEXP,
+    values: Preserved,
     names: Vec<String>,
-    _not_send: std::marker::PhantomData<*mut ()>,
 }
 
 impl NamedListBuilder {
@@ -40,15 +39,11 @@ impl NamedListBuilder {
     /// Reserve space for `n` entries on R's main thread.
     pub fn with_capacity(n: usize) -> Self {
         let capacity = isize::try_from(n).expect("list capacity exceeds isize::MAX");
-        // SAFETY: constructor runs on R main thread.
-        let values = unsafe { SEXP::alloc_list(capacity) };
-        // SAFETY: R main thread. Preserve immediately; R_PreserveObject
-        // protects its argument across its own cons-cell allocation.
-        unsafe { sys::R_PreserveObject(values) };
         Self {
-            values,
+            // SAFETY: constructor runs on R main thread; the list is rooted
+            // before anything else allocates.
+            values: Preserved::new(unsafe { SEXP::alloc_list(capacity) }),
             names: Vec::new(),
-            _not_send: std::marker::PhantomData,
         }
     }
 
@@ -68,7 +63,7 @@ impl NamedListBuilder {
         if index == self.values.xlength() {
             // Growth allocates before the value can enter the container.
             // This temporary precious-list root uses no protect-stack slot.
-            let pending = RootedSentinel::new(sexp);
+            let pending = Preserved::new(sexp);
             let capacity = self.len().saturating_mul(2).max(4);
             self.resize(capacity);
             self.values.set_vector_elt(index, pending.as_sexp());
@@ -115,9 +110,8 @@ impl NamedListBuilder {
     /// returned.
     pub fn into_list(mut self) -> BuiltList {
         self.finish();
-        // SAFETY: R main thread (`!Send`); `self.values` is a VECSXP that
-        // `self` keeps rooted until BuiltList has added its own root.
-        unsafe { BuiltList::adopt_sexp(self.values) }
+        // SAFETY: `self.values` roots a VECSXP; the handle takes that root over.
+        unsafe { BuiltList::from_root(self.values) }
     }
 
     /// Finish as an owned, GC-rooted data frame with compact `row.names`.
@@ -129,7 +123,7 @@ impl NamedListBuilder {
         self.finish();
         // SAFETY: self keeps the list rooted throughout validation and all
         // attribute allocations, until BuiltDataFrame has its own root.
-        let list = unsafe { super::List::from_raw(self.values) };
+        let list = unsafe { super::List::from_raw(*self.values) };
         let named = super::NamedList::new(list).expect("builder always sets names");
         let nrow = crate::dataframe::validate_equal_lengths(&named)?;
         let nrow = i32::try_from(nrow)
@@ -139,12 +133,13 @@ impl NamedListBuilder {
         } else {
             vec![i32::MIN, -nrow]
         };
-        let row_names = RootedSentinel::new(row_names);
+        let row_names = Preserved::new(row_names);
         self.values.set_row_names(row_names.as_sexp());
-        let class = RootedSentinel::new("data.frame");
+        let class = Preserved::new("data.frame");
         self.values.set_class(class.as_sexp());
-        // SAFETY: equal lengths, names and valid row.names/class set above.
-        Ok(unsafe { BuiltDataFrame::adopt_sexp(self.values) })
+        // SAFETY: equal lengths, names and valid row.names/class set above;
+        // the frame takes the list's root over.
+        Ok(unsafe { BuiltDataFrame::from_root(self.values) })
     }
 
     /// Reallocate, keeping both containers rooted until copying is complete.
@@ -165,7 +160,7 @@ impl NamedListBuilder {
         if self.values.len() != self.len() {
             self.resize(self.len());
         }
-        let names = RootedSentinel::new(self.names.as_slice());
+        let names = Preserved::new(self.names.as_slice());
         self.values.set_names(names.as_sexp());
     }
 }
@@ -176,22 +171,14 @@ impl Default for NamedListBuilder {
     }
 }
 
-impl Drop for NamedListBuilder {
-    fn drop(&mut self) {
-        // SAFETY: !Send keeps drop on the constructing R thread. Release is
-        // allocation-free and removes precisely this builder's root.
-        unsafe { sys::R_ReleaseObject(self.values) };
-    }
-}
-
 impl IntoR for NamedListBuilder {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(mut self) -> Result<SEXP, Self::Error> {
         self.finish();
-        // Drop releases the root without allocating. As with BuiltDataFrame,
-        // the IntoR caller takes responsibility for the returned SEXP.
-        Ok(self.values)
+        // Releasing the root does not allocate. As with BuiltDataFrame, the
+        // IntoR caller takes responsibility for the returned SEXP.
+        Ok(self.values.into_sexp())
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
@@ -201,8 +188,8 @@ impl IntoR for NamedListBuilder {
 
 /// An owned, GC-rooted R list: the plain-list finish of [`NamedListBuilder`].
 ///
-/// The list analogue of [`BuiltDataFrame`]: it holds an `R_PreserveObject`
-/// root for as long as it lives (`!Send + !Sync`), dereferences to the
+/// The list analogue of [`BuiltDataFrame`]: it holds a [`Preserved`] root for
+/// as long as it lives (`!Send + !Sync`), dereferences to the
 /// [`List`](super::List) view for reads, and returns to R through [`IntoR`].
 /// [`set_class`](Self::set_class) and [`set_attr`](Self::set_attr) allocate
 /// while the list stays rooted, and return the handle, so a chain is rooted at
@@ -218,50 +205,38 @@ impl IntoR for NamedListBuilder {
 /// valid only while the handle lives.
 pub struct BuiltList {
     view: super::List,
-    _not_send: std::marker::PhantomData<*mut ()>,
+    /// Roots `view`'s list for as long as the handle lives.
+    root: Preserved,
 }
 
 impl BuiltList {
-    /// Root an existing list and take ownership of that root.
+    /// Take over an existing root of a list.
     ///
     /// # Safety
     ///
-    /// R main thread; `sexp` is a live VECSXP.
-    unsafe fn adopt_sexp(sexp: SEXP) -> Self {
-        // SAFETY: caller contract. R_PreserveObject keeps `sexp` reachable
-        // across its own allocation; precious-list entries stack, so a
-        // builder releasing its own root afterwards leaves this one.
-        unsafe { sys::R_PreserveObject(sexp) };
+    /// `root` holds a VECSXP.
+    unsafe fn from_root(root: Preserved) -> Self {
         Self {
             // SAFETY: caller guarantees a VECSXP.
-            view: unsafe { super::List::from_raw(sexp) },
-            _not_send: std::marker::PhantomData,
+            view: unsafe { super::List::from_raw(root.as_sexp()) },
+            root,
         }
     }
 
     /// Set the `class` attribute.
     pub fn set_class(self, classes: &[&str]) -> Self {
-        let class = RootedSentinel::new(classes);
+        let class = Preserved::new(classes);
         self.view.as_sexp().set_class(class.as_sexp());
         self
     }
 
     /// Set the attribute `name` to `value`.
     pub fn set_attr(self, name: &str, value: impl IntoR) -> Self {
-        let value = RootedSentinel::new(value);
+        let value = Preserved::new(value);
         // Symbols are never collected.
         let symbol = SEXP::symbol(name);
         self.view.as_sexp().set_attr(symbol, value.as_sexp());
         self
-    }
-
-    fn release_into_sexp(self) -> SEXP {
-        let sexp = self.view.as_sexp();
-        // SAFETY: `!Send` keeps us on the R main thread; release the root
-        // added in `adopt_sexp`, and skip Drop so it isn't released twice.
-        unsafe { sys::R_ReleaseObject(sexp) };
-        std::mem::forget(self);
-        sexp
     }
 }
 
@@ -273,30 +248,22 @@ impl std::ops::Deref for BuiltList {
     }
 }
 
-impl Drop for BuiltList {
-    fn drop(&mut self) {
-        // SAFETY: `!Send` keeps drop on the R main thread. Release is
-        // allocation-free and removes exactly the root added in `adopt_sexp`.
-        unsafe { sys::R_ReleaseObject(self.view.as_sexp()) };
-    }
-}
-
 impl IntoR for BuiltList {
     type Error = std::convert::Infallible;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         // As with BuiltDataFrame, the IntoR caller takes responsibility for
         // the returned SEXP.
-        Ok(self.release_into_sexp())
+        Ok(self.root.into_sexp())
     }
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        Ok(self.release_into_sexp())
+        Ok(self.root.into_sexp())
     }
 
     #[inline]
     fn into_sexp(self) -> SEXP {
-        self.release_into_sexp()
+        self.root.into_sexp()
     }
 }
 

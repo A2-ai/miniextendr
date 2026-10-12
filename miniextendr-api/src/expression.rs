@@ -37,7 +37,6 @@ use crate::sys::{
 };
 use crate::{SEXP, SexpExt};
 use std::ffi::{CStr, CString};
-use std::marker::PhantomData;
 use std::os::raw::c_void;
 
 // region: RSymbol
@@ -220,6 +219,188 @@ impl REnv {
     #[inline]
     pub fn as_sexp(&self) -> SEXP {
         self.sexp
+    }
+
+    /// The value bound to `name` in this environment's own frame, as R's
+    /// `get0(name, envir = env, inherits = FALSE)` reads it, or `None` when
+    /// the frame has no such binding. The enclosing environments are not
+    /// searched; [`get_inherits`](Self::get_inherits) searches them.
+    ///
+    /// A binding to `NULL` is `Some` of `NULL`. Reading a binding does what
+    /// `get0()` does:
+    ///
+    /// - A promise is forced, once, and its value is kept in the promise. A
+    ///   function in a lazy-loaded namespace, a `delayedAssign()` and an
+    ///   argument of an R function are promises. So this is not a check for
+    ///   whether a name is bound without running anything.
+    /// - An active binding (`makeActiveBinding()`) calls its function.
+    /// - A binding to the missing argument raises R's error.
+    ///
+    /// R 4.5 and later read the binding with `R_getVarEx`; R 4.4 evaluates
+    /// `base::get0()`. Both give the same results. An R error raised while
+    /// reading, such as a promise or an active binding that fails, unwinds the
+    /// Rust frames up to the miniextendr boundary, which hands it back to R,
+    /// as under [`eval_with_handlers`].
+    ///
+    /// # Safety
+    ///
+    /// R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
+    /// function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
+    /// closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard,
+    /// a connection callback, a [`with_r_thread`](crate::worker::with_r_thread)
+    /// closure.
+    ///
+    /// # Returns
+    ///
+    /// The value, **unprotected**. A plain binding, or a forced promise,
+    /// keeps it reachable while the name stays bound to it. An active
+    /// binding's value is new and held by nothing. Protect the value
+    /// ([`OwnedProtect`], [`Preserved`](crate::Preserved)) before the next
+    /// allocation unless the binding is known to be a plain value, and before
+    /// anything that may rebind the name: R code you evaluate, or
+    /// [`define`](Self::define).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    pub unsafe fn get(&self, name: &str) -> Option<SEXP> {
+        unsafe { self.lookup(name, false) }
+    }
+
+    /// The value bound to `name` in this environment or the nearest enclosing
+    /// environment that binds it, as R's `get0(name, envir = env,
+    /// inherits = TRUE)` reads it, or `None` when none does.
+    ///
+    /// Bindings are read as [`get`](Self::get) reads them: a promise is
+    /// forced, an active binding is called. The search stops at the first
+    /// binding of `name`, whatever its value.
+    ///
+    /// # Safety
+    ///
+    /// As [`get`](Self::get).
+    ///
+    /// # Returns
+    ///
+    /// The value, **unprotected**, as [`get`](Self::get) returns it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    pub unsafe fn get_inherits(&self, name: &str) -> Option<SEXP> {
+        unsafe { self.lookup(name, true) }
+    }
+
+    /// Bind `name` to `value` in this environment's own frame, as
+    /// `assign(name, value, envir = env)` does: a binding of `name` in the
+    /// frame is replaced, and the enclosing environments are not touched.
+    ///
+    /// R raises its error, which unwinds as under [`get`](Self::get), when
+    /// the binding cannot be made: the empty environment, a locked
+    /// environment that lacks the binding (a package namespace, once the
+    /// package is loaded), or a locked binding. Assigning to an active binding
+    /// calls its function with `value`.
+    ///
+    /// # Safety
+    ///
+    /// As [`get`](Self::get). `value` is a valid SEXP; it needs no root of
+    /// its own, and the binding keeps it reachable afterwards.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    pub unsafe fn define(&self, name: &str, value: SEXP) {
+        assert!(
+            !name.contains('\0'),
+            "a binding name must not contain null bytes"
+        );
+        unsafe { self.define_symbol(SEXP::symbol(name), value) }
+    }
+
+    /// [`define`](Self::define) for a name already interned as a symbol.
+    ///
+    /// # Safety
+    ///
+    /// As [`define`](Self::define); `symbol` is a SYMSXP.
+    pub(crate) unsafe fn define_symbol(&self, symbol: SEXP, value: SEXP) {
+        struct Define {
+            symbol: SEXP,
+            value: SEXP,
+            env: SEXP,
+        }
+
+        unsafe extern "C-unwind" fn define(data: *mut c_void) -> SEXP {
+            let data = unsafe { &*data.cast::<Define>() };
+            unsafe { sys::Rf_defineVar(data.symbol, data.value, data.env) };
+            SEXP::nil()
+        }
+
+        unsafe {
+            // Rooted ahead of the evaluation's own protect frame, so an R exit
+            // leaves the protect stack as the scope expects.
+            let scope = ProtectScope::new();
+            let env = scope.protect_raw(self.sexp);
+            let value = scope.protect_raw(value);
+            let mut data = Define { symbol, value, env };
+            crate::unwind_protect::call_unwinding(define, (&raw mut data).cast());
+        }
+    }
+
+    /// [`get`](Self::get) and [`get_inherits`](Self::get_inherits).
+    ///
+    /// # Safety
+    ///
+    /// As [`get`](Self::get).
+    unsafe fn lookup(&self, name: &str, inherits: bool) -> Option<SEXP> {
+        assert!(
+            !name.contains('\0'),
+            "a binding name must not contain null bytes"
+        );
+
+        // Each branch roots the environment ahead of the evaluation's own
+        // protect frame, so an R exit leaves the protect stack as the guards
+        // expect.
+        #[cfg(r_4_5)]
+        unsafe {
+            struct Lookup {
+                symbol: SEXP,
+                env: SEXP,
+                inherits: crate::Rboolean,
+            }
+
+            unsafe extern "C-unwind" fn lookup(data: *mut c_void) -> SEXP {
+                let data = unsafe { &*data.cast::<Lookup>() };
+                unsafe {
+                    sys::R_getVarEx(data.symbol, data.env, data.inherits, sys::R_UnboundValue)
+                }
+            }
+
+            let env = OwnedProtect::new(self.sexp);
+            let mut data = Lookup {
+                symbol: SEXP::symbol(name),
+                env: env.get(),
+                inherits: crate::Rboolean::from(inherits),
+            };
+            let value = crate::unwind_protect::call_unwinding(lookup, (&raw mut data).cast());
+            (value != sys::R_UnboundValue).then_some(value)
+        }
+
+        #[cfg(not(r_4_5))]
+        unsafe {
+            let env = OwnedProtect::new(self.sexp);
+            // A new object, so no binding holds it: `get0()` returns it only
+            // for an unbound name, which tells an unbound name from one bound
+            // to `NULL`.
+            let unbound = OwnedProtect::new(SEXP::alloc_list(0));
+            // Evaluated in the base environment, so `get0` is base's own.
+            let value = RCall::new("get0")
+                .arg_value(name)
+                .named_arg("envir", env.get())
+                .named_value("mode", "any")
+                .named_value("inherits", inherits)
+                .named_arg("ifnotfound", unbound.get())
+                .eval_with_handlers(R_BaseEnv);
+            (value != unbound.get()).then_some(value)
+        }
     }
 }
 // endregion
@@ -1027,9 +1208,8 @@ pub struct REvalError {
     classes: Vec<String>,
     /// `list(cond, call)`, on R's precious list while this value lives, where
     /// `call` is `conditionCall(cond)` or `NULL` (see [`REvalError::call`]).
-    roots: SEXP,
-    /// `!Send + !Sync`, see the type docs.
-    _not_send: PhantomData<*mut ()>,
+    /// Its handle makes the value `!Send + !Sync`, see the type docs.
+    roots: crate::Preserved,
 }
 
 impl REvalError {
@@ -1169,25 +1349,15 @@ impl REvalError {
     /// call.
     unsafe fn adopt(cond: SEXP, call: SEXP, message: String, classes: Vec<String>) -> Self {
         unsafe {
-            let roots = OwnedProtect::new(SEXP::alloc_list(2));
-            roots.get().set_vector_elt(0, cond);
-            roots.get().set_vector_elt(1, call);
-            sys::R_PreserveObject(roots.get());
+            let roots = crate::Preserved::new(SEXP::alloc_list(2));
+            roots.set_vector_elt(0, cond);
+            roots.set_vector_elt(1, call);
             REvalError {
                 message,
                 classes,
-                roots: roots.get(),
-                _not_send: PhantomData,
+                roots,
             }
         }
-    }
-}
-
-impl Drop for REvalError {
-    fn drop(&mut self) {
-        // SAFETY: the value never left the thread it was made on (`!Send`):
-        // R's main thread, or a worker whose checked calls route there.
-        unsafe { sys::R_ReleaseObject(self.roots) };
     }
 }
 

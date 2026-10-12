@@ -4,8 +4,8 @@ mod r_test_utils;
 
 use miniextendr_api::expression::r_eval_str_global;
 use miniextendr_api::{
-    DataFrame, DataFrameError, IntoList, IntoR, NamedListBuilder, OwnedProtect, RootedSentinel,
-    SEXP, SEXPTYPE, SexpExt, TryFromSexp, sys,
+    DataFrame, DataFrameError, IntoList, IntoR, NamedListBuilder, OwnedProtect, Preserved, SEXP,
+    SEXPTYPE, SexpExt, TryFromSexp, sys,
 };
 
 fn with_gctorture(f: impl FnOnce()) {
@@ -28,7 +28,7 @@ fn allocation_burst() {
 }
 
 fn assert_r_identical(value: SEXP, expected: &str) {
-    let reference = RootedSentinel::new(unsafe { r_eval_str_global(expected).unwrap() });
+    let reference = Preserved::new(unsafe { r_eval_str_global(expected).unwrap() });
     let identical = bool::from(unsafe { sys::R_compute_identical(value, reference.as_sexp(), 0) });
     if !identical {
         eprintln!(
@@ -65,7 +65,7 @@ fn mixed_values_raw_sexps_names_and_list_finish() {
             assert_eq!(list.len(), 8);
             assert_eq!(list.names()[0], "ids");
             allocation_burst();
-            let value = RootedSentinel::new(list);
+            let value = Preserved::new(list);
             assert_r_identical(
                 value.as_sexp(),
                 "list(ids = c(1L, 2L, 3L), double = 2.5, logical = TRUE, \
@@ -92,7 +92,7 @@ fn list_finish_stays_rooted_while_attributes_are_set() {
                 .set_attr("note", vec!["kept"; 3]);
             allocation_burst();
             assert_eq!(built.as_sexp().xlength(), 2);
-            let value = RootedSentinel::new(built);
+            let value = Preserved::new(built);
             assert_r_identical(
                 value.as_sexp(),
                 "structure(list(a = 1:2, b = list(x = 'y')), \
@@ -158,7 +158,7 @@ fn empty_lists_and_frames_keep_empty_names() {
     r_test_utils::with_r_thread(|| {
         with_gctorture(|| {
             for capacity in [0, 7] {
-                let list = RootedSentinel::new(NamedListBuilder::with_capacity(capacity));
+                let list = Preserved::new(NamedListBuilder::with_capacity(capacity));
                 assert_eq!(list.as_sexp().xlength(), 0);
                 assert_eq!(list.as_sexp().get_names().type_of(), SEXPTYPE::STRSXP);
                 assert_eq!(list.as_sexp().get_names().xlength(), 0);
@@ -201,7 +201,7 @@ fn moved_builder_survives_collections_and_arbitrary_drop_order() {
             drop(older);
             allocation_burst();
             assert_eq!(younger.integer_elt(7), 42);
-            let list = RootedSentinel::new(*held);
+            let list = Preserved::new(*held);
             allocation_burst();
             for i in 0..16 {
                 let value = list.as_sexp().vector_elt(i);
@@ -238,7 +238,7 @@ fn fifty_thousand_pushes_do_not_consume_the_protect_stack() {
         }
         assert_eq!(builder.len(), 50_000);
         assert_eq!(unsafe { R_PPStackTop }, baseline);
-        let list = RootedSentinel::new(builder);
+        let list = Preserved::new(builder);
         assert_eq!(unsafe { R_PPStackTop }, baseline);
         for i in 0..50_000 {
             assert_eq!(
@@ -278,13 +278,13 @@ fn into_list_derive_preserves_named_tuple_and_unit_shapes() {
                 ignored: (),
             };
             let () = named.ignored;
-            let list = RootedSentinel::new(named.into_list());
+            let list = Preserved::new(named.into_list());
             assert_r_identical(list.as_sexp(), "list(id = 1L, value = 'hello')");
-            let list = RootedSentinel::new(Tuple(2, "tuple".into(), ()).into_list());
+            let list = Preserved::new(Tuple(2, "tuple".into(), ()).into_list());
             assert_r_identical(list.as_sexp(), "list(2L, 'tuple')");
-            let list = RootedSentinel::new(Unit.into_list());
+            let list = Preserved::new(Unit.into_list());
             assert_r_identical(list.as_sexp(), "list()");
-            let list = RootedSentinel::new(Empty {}.into_list());
+            let list = Preserved::new(Empty {}.into_list());
             assert_r_identical(list.as_sexp(), "setNames(list(), character())");
         });
     });
@@ -309,7 +309,7 @@ fn serde_dispatch_result_can_be_held_before_into_r() {
             )
             .unwrap();
             allocation_burst();
-            let value = RootedSentinel::new(builder);
+            let value = Preserved::new(builder);
             assert_r_identical(
                 value.as_sexp(),
                 "list(ok = data.frame(id = c(1L, 3L)), err = data.frame(id = 2L))",

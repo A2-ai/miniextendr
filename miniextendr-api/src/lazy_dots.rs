@@ -122,10 +122,9 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// The expressions `substitute(list(...))` gives in the frame, read once.
 struct Exprs {
-    /// The `list(...)` call, rooted with `R_PreserveObject` until the
-    /// [`LazyDots`] drops.
-    root: SEXP,
-    /// Its arguments, one per element; rooted by `root`.
+    /// Roots the `list(...)` call until the [`LazyDots`] drops; only held.
+    _root: crate::Preserved,
+    /// Its arguments, one per element; rooted by `_root`.
     elts: Vec<SEXP>,
 }
 
@@ -342,27 +341,22 @@ impl<'a> LazyDots<'a> {
     /// until the value drops.
     fn exprs(&self) -> &Exprs {
         self.exprs.get_or_init(|| {
-            // SAFETY: as in `len`. The list is rooted before `R_PreserveObject`
-            // allocates, then by the preserve until `Drop`.
+            // SAFETY: as in `len`. The list is rooted until the value drops.
             unsafe {
                 let list_call = OwnedProtect::new(crate::sys::Rf_lang2(
                     crate::sys::Rf_install(c"list".as_ptr()),
                     crate::sys::Rf_install(c"...".as_ptr()),
                 ));
                 let list =
-                    OwnedProtect::new(self.call_in_frame(c"substitute", Some(list_call.get())));
-                crate::sys::R_PreserveObject(list.get());
+                    crate::Preserved::new(self.call_in_frame(c"substitute", Some(list_call.get())));
                 let mut elts = Vec::with_capacity(self.len());
-                let mut node = list.get().cdr();
+                let mut node = list.cdr();
                 while node.type_of() != SEXPTYPE::NILSXP {
                     elts.push(node.car());
                     node = node.cdr();
                 }
                 debug_assert_eq!(elts.len(), self.len());
-                Exprs {
-                    root: list.get(),
-                    elts,
-                }
+                Exprs { _root: list, elts }
             }
         })
     }
@@ -387,15 +381,6 @@ impl<'a> LazyDots<'a> {
                 Some(arg) => crate::sys::Rf_lang2(fun, arg),
             });
             eval_with_handlers(call.get(), self.env)
-        }
-    }
-}
-
-impl Drop for LazyDots<'_> {
-    fn drop(&mut self) {
-        if let Some(exprs) = self.exprs.get() {
-            // SAFETY: the value never left R's main thread (`!Send`).
-            unsafe { crate::sys::R_ReleaseObject(exprs.root) };
         }
     }
 }

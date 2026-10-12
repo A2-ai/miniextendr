@@ -14,8 +14,8 @@ use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::dataframe::{BuiltDataFrame, DataFrameShape, RootedSentinel, SplitResults};
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::dataframe::{BuiltDataFrame, DataFrameShape, SplitResults};
+use crate::{Preserved, SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
 /// Generate serde `Serializer` error stubs for methods that should reject non-struct input.
@@ -4318,7 +4318,7 @@ pub enum ResultShape<S> {
 /// The returned [`DataFrameShape`] is rooted by construction (#1265):
 /// every partition rides in an owned, GC-rooted
 /// [`BuiltDataFrame`] handle and the
-/// empty-`Ok` sentinel carries its own [`RootedSentinel`] root, so the
+/// empty-`Ok` sentinel carries its own [`Preserved`] root, so the
 /// shape is safe to hold across R allocations. The [`crate::IntoR`]
 /// conversion consumes the handles.
 ///
@@ -4400,10 +4400,10 @@ where
     // the root travels with the caller instead of releasing here.
     let error_df = vec_to_dataframe(&errs)?;
     let results = if oks.is_empty() {
-        // `RootedSentinel::new` converts and immediately roots the
+        // `Preserved::new` converts and immediately roots the
         // caller-supplied sentinel — every leg of the shape carries its own
         // root (#1265).
-        SplitResults::None(RootedSentinel::new(empty_ok_sentinel))
+        SplitResults::None(Preserved::new(empty_ok_sentinel))
     } else {
         SplitResults::Some(vec_to_dataframe(&oks)?)
     };

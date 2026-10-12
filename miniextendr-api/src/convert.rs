@@ -340,7 +340,8 @@ unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) 
 ///
 /// Column attributes (`class`, `levels`, `tzone`, element `names`, …) are **not**
 /// copied — the caller restores them after rooting the gathered column
-/// (`DataFrame::select_rows` uses `Rf_copyMostAttrib` plus a names gather).
+/// (`DataFrame::select_rows` uses [`SexpExt::copy_most_attrib`](crate::SexpExt::copy_most_attrib)
+/// plus a names gather).
 ///
 /// # Safety
 ///

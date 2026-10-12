@@ -79,3 +79,29 @@ test_that("is_identical() agrees with identical() on pairs", {
     )
   }
 })
+
+test_that("copy_most_attrib() copies class and levels but not names, dim or dimnames", {
+  f <- factor(c("x", "y", "x"))
+  names(f) <- c("a", "b", "c")
+  attr(f, "note") <- "kept"
+  to <- c(p = 2L, q = 1L, r = 2L)
+  out <- miniextendr:::sexp_copy_most_attrib(to, f)
+  expect_s3_class(out, "factor")
+  expect_identical(levels(out), c("x", "y"))
+  expect_identical(attr(out, "note"), "kept")
+  # The target's own names stay; the source's are not copied.
+  expect_identical(names(out), c("p", "q", "r"))
+  expect_identical(unname(as.character(out)), c("y", "x", "y"))
+  # The argument itself is untouched (the fixture copies it first).
+  expect_identical(to, c(p = 2L, q = 1L, r = 2L))
+
+  m <- structure(1:4, dim = c(2L, 2L), dimnames = list(c("a", "b"), NULL), class = "mx_grid")
+  out <- miniextendr:::sexp_copy_most_attrib(c(5L, 6L, 7L, 8L), m)
+  expect_identical(out, structure(c(5L, 6L, 7L, 8L), class = "mx_grid"))
+  expect_true(is.object(out))
+
+  # A POSIXct's class and tzone carry over to a double vector.
+  out <- miniextendr:::sexp_copy_most_attrib(c(0, 1), as.POSIXct("2026-10-12", tz = "UTC"))
+  expect_identical(attr(out, "tzone"), "UTC")
+  expect_s3_class(out, "POSIXct")
+})

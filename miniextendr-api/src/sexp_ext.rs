@@ -20,15 +20,16 @@ use crate::sys::{
     IDENT_USE_CLOENV, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, R_BaseEnv, R_CHAR, R_CHAR_unchecked,
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NaString, R_NamesSymbol,
     R_RowNamesSymbol, R_compute_identical, RAW_ELT, REAL_ELT, Rf_asChar, Rf_asInteger,
-    Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector, Rf_cons, Rf_cons_unchecked, Rf_dimgets,
-    Rf_dimnamesgets, Rf_duplicate, Rf_eval, Rf_getAttrib, Rf_getAttrib_unchecked, Rf_inherits,
-    Rf_install, Rf_isArray, Rf_isFactor, Rf_isFunction, Rf_isList, Rf_isMatrix, Rf_isObject,
-    Rf_isS4, Rf_lang2, Rf_lcons, Rf_namesgets, Rf_setAttrib, Rf_setAttrib_unchecked,
-    Rf_shallow_duplicate, Rf_xlength, Rf_xlength_unchecked, Rf_xlengthgets, SET_COMPLEX_ELT,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_STRING_ELT_unchecked, SET_TAG, SET_TAG_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked,
-    SETCAR, SETCAR_unchecked, SETCDR, SETCDR_unchecked, STRING_ELT, STRING_ELT_unchecked, TAG,
-    TYPEOF, VECTOR_ELT, VECTOR_ELT_unchecked,
+    Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector, Rf_cons, Rf_cons_unchecked,
+    Rf_copyMostAttrib, Rf_copyMostAttrib_unchecked, Rf_dimgets, Rf_dimnamesgets, Rf_duplicate,
+    Rf_eval, Rf_getAttrib, Rf_getAttrib_unchecked, Rf_inherits, Rf_install, Rf_isArray,
+    Rf_isFactor, Rf_isFunction, Rf_isList, Rf_isMatrix, Rf_isObject, Rf_isS4, Rf_lang2, Rf_lcons,
+    Rf_namesgets, Rf_setAttrib, Rf_setAttrib_unchecked, Rf_shallow_duplicate, Rf_xlength,
+    Rf_xlength_unchecked, Rf_xlengthgets, SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT,
+    SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_STRING_ELT_unchecked, SET_TAG,
+    SET_TAG_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SETCAR, SETCAR_unchecked, SETCDR,
+    SETCDR_unchecked, STRING_ELT, STRING_ELT_unchecked, TAG, TYPEOF, VECTOR_ELT,
+    VECTOR_ELT_unchecked,
 };
 
 /// Extension trait for SEXP providing safe(r) accessors and type checking.
@@ -338,6 +339,26 @@ pub trait SexpExt {
     /// Set the `row.names` attribute.
     fn set_row_names(&self, row_names: SEXP);
 
+    /// Copy every attribute of `from` except `names`, `dim` and `dimnames` onto
+    /// this object, as R's `Rf_copyMostAttrib(from, self)` does.
+    ///
+    /// The rule is R's, used where a result built from a vector should keep
+    /// its class but not its shape (subsetting, `rbind` of typed parts):
+    ///
+    /// - `class`, `levels`, `tzone`, `units` and every other attribute are
+    ///   copied. A copied attribute replaces one of the same name on `self`;
+    ///   the rest of `self`'s attributes, its `names` included, stay.
+    /// - The values are shared, not duplicated: `self` and `from` point at the
+    ///   same attribute objects.
+    /// - When `from` is an object (it has a `class` attribute), `self` is
+    ///   marked as one. An object bit `self` already has stays set.
+    /// - `self`'s S4 bit is set to `from`'s.
+    ///
+    /// The attributes are not checked against `self`'s type: copying
+    /// `factor`'s class and levels onto a double vector gives an object R
+    /// considers malformed. R raises its error when `self` is `NULL`.
+    fn copy_most_attrib(&self, from: SEXP);
+
     /// Check if this SEXP inherits from a class.
     ///
     /// Equivalent to R's `inherits(x, "class_name")`.
@@ -557,6 +578,13 @@ pub trait SexpExt {
     /// # Safety
     /// Must be called from R's main thread.
     unsafe fn set_attr_unchecked(&self, name: SEXP, val: SEXP);
+    /// Copy every attribute of `from` except `names`, `dim` and `dimnames`
+    /// onto this object, as [`copy_most_attrib`](Self::copy_most_attrib). No
+    /// thread check.
+    ///
+    /// # Safety
+    /// Must be called from R's main thread.
+    unsafe fn copy_most_attrib_unchecked(&self, from: SEXP);
 
     /// Get C string pointer from a CHARSXP. No thread check.
     ///
@@ -890,6 +918,11 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
+    fn copy_most_attrib(&self, from: SEXP) {
+        unsafe { Rf_copyMostAttrib(from, *self) }
+    }
+
+    #[inline]
     fn inherits_class(&self, class: &std::ffi::CStr) -> bool {
         unsafe { Rf_inherits(*self, class.as_ptr()) != Rboolean::FALSE }
     }
@@ -1098,6 +1131,11 @@ impl SexpExt for SEXP {
         unsafe {
             Rf_setAttrib_unchecked(*self, name, val);
         }
+    }
+
+    #[inline]
+    unsafe fn copy_most_attrib_unchecked(&self, from: SEXP) {
+        unsafe { Rf_copyMostAttrib_unchecked(from, *self) }
     }
 
     #[inline]

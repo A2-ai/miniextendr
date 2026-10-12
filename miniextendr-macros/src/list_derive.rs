@@ -191,7 +191,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::list::IntoList for #name #ty_generics #where_clause {
             fn into_list(self) -> ::miniextendr_api::list::List {
                 let Self #destructure_pat = self;
-                let __root = ::miniextendr_api::RootedSentinel::new({
+                let __root = ::miniextendr_api::Preserved::new({
                     #list_construction
                 });
                 let __sexp = __root.as_sexp();

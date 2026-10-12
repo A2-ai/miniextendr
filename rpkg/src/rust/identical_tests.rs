@@ -2,7 +2,7 @@
 //! `SexpExt::has_attributes` / `SexpExt::is_identical` helpers.
 
 use miniextendr_api::miniextendr;
-use miniextendr_api::prelude::{SEXP, SexpExt};
+use miniextendr_api::prelude::{OwnedProtect, SEXP, SexpExt};
 use miniextendr_api::sys::{IDENT_USE_CLOENV, R_compute_identical};
 
 /// Whether an object has attributes, computed by `SexpExt::has_attributes()`.
@@ -32,6 +32,22 @@ pub fn sexp_is_identical(x: SEXP, y: SEXP) -> bool {
 #[miniextendr]
 pub fn sexp_is_identical_false(x: SEXP) -> bool {
     x.is_identical(SEXP::scalar_logical(false))
+}
+
+/// A shallow copy of `to` with `from`'s attributes copied onto it by
+/// `SexpExt::copy_most_attrib()`: every attribute but `names`, `dim` and
+/// `dimnames`.
+/// @param to Any R vector.
+/// @param from Any R object.
+#[miniextendr(noexport)]
+pub fn sexp_copy_most_attrib(to: SEXP, from: SEXP) -> SEXP {
+    // SAFETY: R's main thread; the copy is protected while attributes are
+    // installed on it.
+    unsafe {
+        let out = OwnedProtect::new(to.shallow_duplicate());
+        out.copy_most_attrib(from);
+        out.get()
+    }
 }
 
 /// Test SEXP pointer equality vs R_compute_identical semantic equality.
