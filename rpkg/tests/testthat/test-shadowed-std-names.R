@@ -5,8 +5,7 @@ test_that("worker wrappers compile with the standard names shadowed (#1991)", {
   expect_equal(worker(21L), 42L)
   expect_error(worker(-1L), "negative: -1")
   expect_equal(get("shadowed_std_names_worker_str", envir = ns)("abc"), 3L)
-  counter <- get("ShadowedWorkerCounter", envir = ns)$new(1L)
-  expect_equal(counter$add_len("abcd"), 5L)
+  expect_equal(get("ShadowedWorkerCounter", envir = ns)$add_len(1L, "abcd"), 5L)
 })
 
 test_that("a serde-classed error compiles with the standard names shadowed", {

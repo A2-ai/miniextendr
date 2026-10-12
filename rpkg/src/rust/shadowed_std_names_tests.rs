@@ -245,7 +245,7 @@ pub fn shadowed_std_names_worker_str(x: &str) -> i32 {
     i32::try_from(x.len()).unwrap_or(i32::MAX)
 }
 
-/// A counter whose method runs on the worker thread.
+/// A counter with a method that runs on the worker thread.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ShadowedWorkerCounter {
     value: i32,
@@ -260,12 +260,15 @@ impl ShadowedWorkerCounter {
         ShadowedWorkerCounter { value }
     }
 
-    /// Add the byte length of `label` on the worker thread.
+    /// Add the byte length of `label` to `base` on the worker thread. Only a
+    /// static method can run there (an instance method borrows `self` on the
+    /// main thread), and only with `no_main_thread` as well as `worker`.
+    /// @param base An integer.
     /// @param label A string.
-    #[miniextendr(env(worker))]
-    pub fn add_len(&self, label: &str) -> ::core::result::Result<i32, ::std::string::String> {
+    #[miniextendr(env(worker, no_main_thread))]
+    pub fn add_len(base: i32, label: &str) -> ::core::result::Result<i32, ::std::string::String> {
         i32::try_from(label.len())
-            .map(|n| self.value + n)
+            .map(|n| base + n)
             .map_err(|_| ::std::string::String::from("too long"))
     }
 }
