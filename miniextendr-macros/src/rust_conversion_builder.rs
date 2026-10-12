@@ -518,15 +518,22 @@ impl RustConversionBuilder {
             }
             let span = ty.span();
             let bound_ty = crate::type_inspect::erase_lifetimes(ty);
-            // The unsafe boundary borrows a rooted .Call argument. Both the
-            // root and the resulting view are bounded by that local slot.
+            let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
+            // The call roots its argument. The scope also retains any transient
+            // children returned by an ALTREP accessor during conversion.
             let try_expr = quote_spanned! {span=>
                 <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                    ::miniextendr_api::Root::from_call_arg(&#sexp_ident)
+                    #roots.rooted(#sexp_ident)
                 })
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
-            return (vec![stmt], vec![]);
+            return (
+                vec![quote! {
+                    let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
+                    #stmt
+                }],
+                vec![],
+            );
         }
 
         // Main-thread &str normally returned above. Its existing special
@@ -562,14 +569,16 @@ impl RustConversionBuilder {
             let bound_ty = crate::type_inspect::erase_lifetimes(ty);
             // Check the borrowed representation before copying: scalar inputs
             // still require exactly one element, and optional NULLs stay None.
-            let try_expr = quote_spanned! {span=>
+            let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
+            let try_expr = quote_spanned! {span=> {
+                let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
                 ::core::result::Result::map(
                     <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                        ::miniextendr_api::Root::from_call_arg(&#sexp_ident)
+                        #roots.rooted(#sexp_ident)
                     }),
                     #copy,
                 )
-            };
+            }};
             let owned_stmt = self.conversion_stmt(try_expr, &ctx, &owned_ident, &owned_ty, span);
             let borrow_stmt = quote_spanned! {span=>
                 let #ident: #bound_ty = #borrow;

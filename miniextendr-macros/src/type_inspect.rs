@@ -346,11 +346,19 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         })
 }
 
-/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Explicit shared reference forms whose main-thread conversions borrow a root:
+/// the references, their `Option`s, and `Vec`s of either (nested `Vec`s too).
 /// Keep worker selection separate: `&str` uses owned storage on the worker,
 /// while mutable/custom references still need their existing conversion path.
 pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
     let ty = option_inner_type(ty).unwrap_or(ty);
+    if let syn::Type::Path(path) = ty
+        && path.qself.is_none()
+        && let Some(segment) = path.path.segments.last()
+        && segment.ident == "Vec"
+    {
+        return first_type_argument(segment).is_some_and(is_rooted_reference);
+    }
     let syn::Type::Reference(reference) = ty else {
         return false;
     };

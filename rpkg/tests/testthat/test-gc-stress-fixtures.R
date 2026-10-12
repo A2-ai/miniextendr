@@ -747,3 +747,10 @@ test_that("tuple container rows retain all children under gctorture", {
   })
   expect_identical(rows, expected)
 })
+
+test_that("rooted list borrows retain transient ALTREP elements", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  expect_null(miniextendr:::gc_stress_rooted_list_borrows())
+})

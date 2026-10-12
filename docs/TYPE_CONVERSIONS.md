@@ -517,8 +517,9 @@ pub fn sum(x: &[f64]) -> f64 {
 }
 ```
 
-Main-thread wrappers and trait shims convert explicit shared native slices
-through `TryFromRoot`, tying the borrow to the rooted call argument. Use the
+Main-thread wrappers and trait shims convert explicit shared native slices,
+and `Vec`s of them, through `TryFromRoot`, tying the borrow to the rooted call
+argument. Use the
 slice during that call; copy to `Vec` when the data must outlive it.
 
 Worker wrappers check the slice through `TryFromRoot` on R's main thread,
@@ -545,14 +546,15 @@ pub fn process_string(s: &str) -> String {
 }
 ```
 
-Main-thread wrappers and trait shims bind explicit `&str` and `Option<&str>`
-inputs to the call's root through `TryFromRoot`. Worker wrappers convert
+Main-thread wrappers and trait shims bind explicit `&str`, `Option<&str>`,
+`Vec<&str>` and `Vec<Option<&str>>` inputs to the call's root through
+`TryFromRoot`. Worker wrappers convert
 `&str`, `Option<&str>`, `Vec<&str>` and `Vec<Option<&str>>` to the corresponding
 owned `String` forms on R's main thread, move that storage into the worker,
 and create the borrows there. The worker's strings do not point into R memory.
 
-Raw `TryFromSexp` character references, including main-thread `Vec<&str>`
-conversions, still expose an unconstrained lifetime (#1427). R can collect a
+Raw `TryFromSexp` character references still expose an unconstrained
+lifetime (#1427). R can collect a
 `CHARSXP` once it becomes unreachable; copy to `String` before storing a raw
 borrow beyond its source's lifetime. `NA_character_` becomes `""` on the plain
 borrowed/owned string paths. Use optional strings when NA must remain
@@ -944,12 +946,16 @@ and alias metadata, and shortens the result to the root.
 
 A `#[miniextendr]` parameter of one of these types (bare or path-qualified;
 `Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>` too) is bound to the C
-wrapper's argument slot, so it and every string or slice read from it cannot
-outlive the call. Functions with a view or `Cow` parameter run on R's main
-thread. Shared references (`&[T]`, `&str`, `&i32`, `&f64`, `&u8`, `&RLogical`,
-`&Rcomplex` and their `Option` forms) are bound the same way when the function
-runs on the main thread. The trait-ABI shims bind all of them to a local copy
-of the argument slot, after the arity check. A parameter that names `'static`
+wrapper's argument slot through a `ProtectScope` that lasts until the result
+is converted, so it and every string or slice read from it cannot outlive the
+call. Functions with a view or `Cow` parameter run on R's main thread. Shared
+references (`&[T]`, `&str`, `&i32`, `&f64`, `&u8`, `&RLogical`, `&Rcomplex`),
+their `Option` forms and `Vec`s of them, nested `Vec`s included, are bound the
+same way when the function runs on the main thread. The trait-ABI shims bind
+all of them through a local scope, after the arity check. When the argument is
+an ALTREP list or character vector, the scope also keeps each element the
+conversion borrows ([Borrowing transient ALTREP
+elements](GC_PROTECT.md#borrowing-transient-altrep-elements)). A parameter that names `'static`
 anywhere in its type is a compile error naming the fix: write `'_` or elide
 the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to
 keep the data.
@@ -959,9 +965,9 @@ to take a `SEXP` and call `try_from_root` in the body; one of a reference
 converts through `TryFromSexp`. On the worker thread, shared references copy
 before dispatch: the character forms into `String` storage, the native
 references and slices into owned values or a `Vec`; the worker borrows the
-copy. Mutable references and reference containers (`Vec<&str>`,
-`Option<&mut [T]>`) on the main thread still convert through `TryFromSexp`
-with an unconstrained lifetime (#1427).
+copy. Mutable references (`&mut [T]`, `Option<&mut [T]>`) and reference
+containers other than `Vec` still convert through `TryFromSexp` with an
+unconstrained lifetime (#1427).
 `Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
 one, have no rooted conversion yet (#2038).
 

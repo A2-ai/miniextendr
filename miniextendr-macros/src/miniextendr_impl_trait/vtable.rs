@@ -532,7 +532,7 @@ fn generate_concrete_vtable_shims(
             quote::quote! {
                 let #self_ref = unsafe {
                     #handle::<#concrete_type>::from_raw_parts(
-                        ::miniextendr_api::Root::from_call_arg(&#owner),
+                        &#owner,
                         #cell,
                     )
                 };
