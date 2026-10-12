@@ -330,7 +330,8 @@ fn push_param_tags(lines: &mut Vec<String>, method: &TraitMethod) {
 
 /// Check the R formals of every trait method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)). Every
-/// dispatching class system names an instance method's receiver `x`. S7
+/// dispatching class system defaults an instance method's receiver to `x`.
+/// S3/S4 existing-generic overrides can select another receiver. S7
 /// shortcuts and Env/R6 trait methods use the injected receiver
 /// `.mx_self`, which cannot be spelled by a Rust parameter.
 fn check_trait_method_formals(
@@ -346,10 +347,24 @@ fn check_trait_method_formals(
         ClassSystem::Vctrs => "vctrs",
     };
     for method in methods {
+        if (method.generic.is_some() || method.receiver.is_some() || method.no_dispatch_dots)
+            && (!method.has_self || !matches!(class_system, ClassSystem::S3 | ClassSystem::S4))
+        {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                "`generic`, `receiver` and `no_dots` apply only to S3/S4 instance methods",
+            ));
+        }
+        if (method.receiver.is_some() || method.no_dispatch_dots) && method.generic.is_none() {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                "`receiver` and `no_dots` require an explicit S3/S4 `generic = \"...\"`",
+            ));
+        }
         let mut reserved = Vec::new();
         if method.has_self && !matches!(class_system, ClassSystem::Env | ClassSystem::R6) {
             reserved.push((
-                "x".to_string(),
+                method.receiver.as_deref().unwrap_or("x").to_string(),
                 format!("is the receiver of the generated {system} trait method"),
             ));
         }
@@ -591,72 +606,78 @@ fn generate_trait_s3_r_wrapper(
     // report the generic's call, resolved from the method frame on a raise
     // (#1851).
     for method in &instance_methods {
-        let generic_name = method.r_method_name();
+        let generic_name = method
+            .generic
+            .clone()
+            .unwrap_or_else(|| method.r_method_name());
+        let receiver = method.receiver.as_deref().unwrap_or("x");
         let s3_method_name = format!("{}.{}", generic_name, type_str);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions)
             .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
 
-        // S3 generic roxygen (only create if doesn't exist). The type-qualified
-        // @name avoids duplicate aliases across types, but it is also the S3
-        // method's own name, so the generic block must follow a method-level
-        // `@rdname` / `@describeIn` onto the method's page or R CMD check
-        // reports the alias as duplicated across two pages. The `@title` is
-        // inert on the type page (the type block's title comes first) and
-        // would beat the method's structural title on a split page, so it is
-        // only emitted when the block stays on the type page. The prose is a
-        // `@description`: a bare line here continues the tag before it
-        // (`@rdname` is single-line and roxygen2 skips the page; #1552
-        // surfaced this once `@source` stopped absorbing it).
-        let tags = &method.doc_tags;
-        let generic_roxygen = RoxygenBuilder::new();
-        let generic_roxygen =
-            if crate::roxygen::has_roxygen_tag(tags, "rdname") || describes_in(method) {
+        if method.generic.is_none() {
+            // S3 generic roxygen (only create if doesn't exist). The type-qualified
+            // @name avoids duplicate aliases across types, but it is also the S3
+            // method's own name, so the generic block must follow a method-level
+            // `@rdname` / `@describeIn` onto the method's page or R CMD check
+            // reports the alias as duplicated across two pages. The `@title` is
+            // inert on the type page (the type block's title comes first) and
+            // would beat the method's structural title on a split page, so it is
+            // only emitted when the block stays on the type page. The prose is a
+            // `@description`: a bare line here continues the tag before it
+            // (`@rdname` is single-line and roxygen2 skips the page; #1552
+            // surfaced this once `@source` stopped absorbing it).
+            let tags = &method.doc_tags;
+            let generic_roxygen = RoxygenBuilder::new();
+            let generic_roxygen =
+                if crate::roxygen::has_roxygen_tag(tags, "rdname") || describes_in(method) {
+                    generic_roxygen
+                } else {
+                    generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
+                };
+            let generic_roxygen = generic_roxygen
+                .name(format!("{}.{}", generic_name, type_str))
+                .rdname(method_page(method, &type_str));
+            // On an author topic its own block describes the method and documents
+            // `x` and `...` (#1590); the structural lines would only compete.
+            let generic_roxygen = if joins_author_topic(method, &type_str) {
                 generic_roxygen
             } else {
-                generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
+                generic_roxygen
+                    .description(format!("S3 generic for `{}`", generic_name))
+                    .custom("@param x An object")
+                    .custom("@param ... Additional arguments passed to methods")
             };
-        let generic_roxygen = generic_roxygen
-            .name(format!("{}.{}", generic_name, type_str))
-            .rdname(method_page(method, &type_str));
-        // On an author topic its own block describes the method and documents
-        // `x` and `...` (#1590); the structural lines would only compete.
-        let generic_roxygen = if joins_author_topic(method, &type_str) {
-            generic_roxygen
-        } else {
-            generic_roxygen
-                .description(format!("S3 generic for `{}`", generic_name))
-                .custom("@param x An object")
-                .custom("@param ... Additional arguments passed to methods")
-        };
-        let generic_roxygen = if crate::roxygen::orders_after_topic_blocks(tags, &type_str) {
-            generic_roxygen.custom(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
-        } else {
-            generic_roxygen
-        };
-        let generic_roxygen = generic_roxygen
-            .source(format!(
-                "Generated by miniextendr from `impl {} for {}`",
-                trait_name, type_ident
-            ))
-            // Explicit target: roxygen2 can't see the generic inside the
-            // `if (!exists(...))` guard and would attach a bare `@export` to
-            // the next function, exporting the method `generic.Type` as a plain
-            // function and leaving the generic unexported (see s3_class.rs).
-            .custom(format!("@export {}", generic_name))
-            .build();
-        lines.extend(generic_roxygen);
+            let generic_roxygen = if crate::roxygen::orders_after_topic_blocks(tags, &type_str) {
+                generic_roxygen.custom(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
+            } else {
+                generic_roxygen
+            };
+            let generic_roxygen = generic_roxygen
+                .source(format!(
+                    "Generated by miniextendr from `impl {} for {}`",
+                    trait_name, type_ident
+                ))
+                // Explicit target: roxygen2 can't see the generic inside the
+                // `if (!exists(...))` guard and would attach a bare `@export` to
+                // the next function, exporting the method `generic.Type` as a plain
+                // function and leaving the generic unexported (see s3_class.rs).
+                .custom(format!("@export {}", generic_name))
+                .build();
+            lines.extend(generic_roxygen);
 
-        // S3 generic definition
-        lines.push(emit_s3_generic_guard(generic_name.as_str()));
-        lines.push(String::new());
+            // S3 generic definition
+            lines.push(emit_s3_generic_guard(generic_name.as_str()));
+            lines.push(String::new());
+        }
 
         // S3 method: generic.class
-        let full_params = if ctx.params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", ctx.params)
-        };
+        let full_params = crate::r_class_formatter::instance_formals(
+            &ctx.params,
+            receiver,
+            !method.no_dispatch_dots,
+        );
 
         // S3 method roxygen: the method's own @param tags, then a filler for
         // every other formal in its `\usage` (`x` and `...` are documented by
@@ -675,13 +696,20 @@ fn generate_trait_s3_r_wrapper(
         let mut method_roxygen = RoxygenBuilder::new()
             .export()
             .method(&generic_name, &type_str);
+        if method.generic.is_some() && !joins_author_topic(method, &type_str) {
+            method_roxygen = method_roxygen.custom(format!("@param {receiver} An object"));
+            if !method.no_dispatch_dots {
+                method_roxygen =
+                    method_roxygen.custom("@param ... Additional arguments passed to methods");
+            }
+        }
         for tag in param_doc_tags(&ctx, &type_str) {
             method_roxygen = method_roxygen.custom(tag);
         }
         lines.extend(method_roxygen.build());
 
         // Build .Call() invocation
-        let call = ctx.instance_call("x");
+        let call = ctx.instance_call(receiver);
 
         // Always define the S3 method (roxygen expects it for NAMESPACE export)
         lines.push(format!(
@@ -691,7 +719,7 @@ fn generate_trait_s3_r_wrapper(
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &generic_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
-        finish_instance_body(&mut lines, method, "x");
+        finish_instance_body(&mut lines, method, receiver);
         lines.push("}".to_string());
 
         // Additionally register as S7 method if the generic is S7
@@ -825,47 +853,53 @@ fn generate_trait_s4_r_wrapper(
     // Generate S4 generics + methods for instance methods
     for method in &instance_methods {
         let method_name = &method.ident;
-        let generic_name = format!("s4_trait_{}_{}", trait_name, method.r_method_name());
+        let generic_name = method
+            .generic
+            .clone()
+            .unwrap_or_else(|| format!("s4_trait_{}_{}", trait_name, method.r_method_name()));
+        let receiver = method.receiver.as_deref().unwrap_or("x");
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions);
 
         // Build full parameter list (x first, then others, then ...)
-        let full_params = if ctx.params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", ctx.params)
-        };
+        let full_params = crate::r_class_formatter::instance_formals(
+            &ctx.params,
+            receiver,
+            !method.no_dispatch_dots,
+        );
 
-        // S4 generic roxygen (include @param tags from method doc comments)
-        // S4 generic names are already type-qualified (s4_trait_TypeName_method)
-        // so @name won't create duplicate aliases across types. The prose is a
-        // `@description`, not a bare line (see the S3 generic above).
-        let mut generic_roxygen = RoxygenBuilder::new()
-            .description(format!(
-                "S4 generic for trait method `{}::{}`",
-                trait_name, method_name
-            ))
-            .name(&generic_name)
-            .rdname(&type_str)
-            .source(format!(
-                "Generated by miniextendr from `impl {} for {}`",
-                trait_name, type_ident
-            ))
-            .custom(format!("@param x A `{}` object", type_str))
-            .custom("@param ... Additional arguments passed to methods");
-        for tag in param_tags(method) {
-            generic_roxygen = generic_roxygen.custom(tag.clone());
-        }
-        lines.extend(generic_roxygen.export().build());
+        if method.generic.is_none() {
+            // S4 generic roxygen (include @param tags from method doc comments)
+            // S4 generic names are already type-qualified (s4_trait_TypeName_method)
+            // so @name won't create duplicate aliases across types. The prose is a
+            // `@description`, not a bare line (see the S3 generic above).
+            let mut generic_roxygen = RoxygenBuilder::new()
+                .description(format!(
+                    "S4 generic for trait method `{}::{}`",
+                    trait_name, method_name
+                ))
+                .name(&generic_name)
+                .rdname(&type_str)
+                .source(format!(
+                    "Generated by miniextendr from `impl {} for {}`",
+                    trait_name, type_ident
+                ))
+                .custom(format!("@param x A `{}` object", type_str))
+                .custom("@param ... Additional arguments passed to methods");
+            for tag in param_tags(method) {
+                generic_roxygen = generic_roxygen.custom(tag.clone());
+            }
+            lines.extend(generic_roxygen.export().build());
 
-        // Define generic only if it doesn't already exist in THIS namespace
-        // (avoid clearing methods). Scoped to topenv(environment()) so an
-        // attached installed copy of the package can't satisfy the check and
-        // starve the setMethod below during load_all() (#1158).
-        lines.push(format!(
+            // Define generic only if it doesn't already exist in THIS namespace
+            // (avoid clearing methods). Scoped to topenv(environment()) so an
+            // attached installed copy of the package can't satisfy the check and
+            // starve the setMethod below during load_all() (#1158).
+            lines.push(format!(
             "if (!exists(\"{generic_name}\", where = topenv(environment()), inherits = FALSE)) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
         ));
-        lines.push(String::new());
+            lines.push(String::new());
+        }
 
         // S4 method roxygen + definition (include @param tags from method doc
         // comments). The block sits on `methods::setMethod()`: roxygen2 names
@@ -877,19 +911,29 @@ fn generate_trait_s4_r_wrapper(
             None,
             Some(&generic_name),
         ));
+        if method.generic.is_some() && !joins_author_topic(method, &type_str) {
+            lines.push(format!("#' @param {receiver} A `{type_str}` object"));
+            if !method.no_dispatch_dots {
+                lines.push("#' @param ... Additional arguments passed to methods".to_string());
+            }
+        }
         push_param_tags(&mut lines, method);
         lines.push(format!("#' @exportMethod {}", generic_name));
 
+        let signature = if method.receiver.is_some() {
+            format!("c({receiver} = \"{type_str}\")")
+        } else {
+            format!("\"{type_str}\"")
+        };
         lines.push(format!(
-            "methods::setMethod(\"{}\", \"{}\", function({}) {{",
-            generic_name, type_str, full_params
+            "methods::setMethod(\"{generic_name}\", {signature}, function({full_params}) {{"
         ));
         // S4 objects store the ExternalPtr in x@ptr — extract it for .Call()
-        lines.push("  .ptr <- x@ptr".to_string());
+        lines.push(format!("  .ptr <- {receiver}@ptr"));
         let s4_call = ctx.instance_call(".ptr");
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(ctx.method_body_lines(&s4_call, ClassSystem::S4));
-        finish_instance_body(&mut lines, method, "x");
+        finish_instance_body(&mut lines, method, receiver);
         lines.push("})".to_string());
         lines.push(String::new());
     }
@@ -1074,7 +1118,7 @@ fn generate_trait_s7_r_wrapper(
         // Mirror the inherent-impl S7 shortcut (#982, see
         // `miniextendr_impl::s7_class`): alongside the trait generic, emit a
         // plain `<ClassName>_<method>(self, ...)` function that calls `.Call`
-        // directly, bypassing `S7::S7_dispatch()`. The receiver is named `self`
+        // directly, bypassing `S7::S7_dispatch()`. The receiver is `.mx_self`
         // here (the generic names it `x`) and wired through `self@.ptr`.
         // `s7(no_shortcut)` opts a method out, and an operator `r_name` gets no
         // shortcut (see `s7_class::s7_shortcut_name`).

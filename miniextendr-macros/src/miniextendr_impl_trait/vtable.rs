@@ -677,6 +677,9 @@ pub(super) fn extract_methods(
                 r_post_checks: attrs.r_post_checks,
                 r_on_exit: attrs.r_on_exit,
                 no_shortcut: attrs.no_shortcut,
+                generic: attrs.generic,
+                receiver: attrs.receiver,
+                no_dispatch_dots: attrs.no_dispatch_dots,
                 per_param: attrs.per_param,
                 preconditions: attrs.preconditions,
             });
@@ -761,6 +764,9 @@ struct TraitMethodAttrs {
     r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
     /// Opt out of the S7 fast-dispatch shortcut (`#[miniextendr(s7(no_shortcut))]`).
     no_shortcut: bool,
+    generic: Option<String>,
+    receiver: Option<String>,
+    no_dispatch_dots: bool,
     /// The method's bare `preconditions` / `no_preconditions` (#1017); the
     /// last one written wins. See `TraitMethod::preconditions`.
     preconditions: Option<bool>,
@@ -805,6 +811,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut r_post_checks: Option<String> = None;
     let mut r_on_exit: Option<crate::miniextendr_fn::ROnExit> = None;
     let mut no_shortcut = false;
+    let mut generic = None;
+    let mut receiver = None;
+    let mut no_dispatch_dots = false;
     let mut preconditions: Option<bool> = None;
     let mut per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs> =
         std::collections::HashMap::new();
@@ -844,11 +853,29 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         serialize = true;
                     } else if inner.path.is_ident("no_shortcut") {
                         no_shortcut = true;
+                    } else if (meta.path.is_ident("s3") || meta.path.is_ident("s4"))
+                        && inner.path.is_ident("generic")
+                    {
+                        let value: syn::LitStr = inner.value()?.parse()?;
+                        if generic.replace(value.value()).is_some() {
+                            return Err(inner.error("generic may be specified only once"));
+                        }
+                    } else if (meta.path.is_ident("s3") || meta.path.is_ident("s4"))
+                        && inner.path.is_ident("receiver")
+                    {
+                        let value: syn::LitStr = inner.value()?.parse()?;
+                        if receiver.replace(crate::naming::parse_r_receiver(&value)?).is_some() {
+                            return Err(inner.error("receiver may be specified only once"));
+                        }
+                    } else if (meta.path.is_ident("s3") || meta.path.is_ident("s4"))
+                        && inner.path.is_ident("no_dots")
+                    {
+                        no_dispatch_dots = true;
                     } else {
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
                              `no_coerce`, `check_interrupt`, `unwrap_in_r`, `serialize`, or \
-                             `no_shortcut`",
+                             `no_shortcut` (S3/S4 also accept `generic`, `receiver`, `no_dots`)",
                         ));
                     }
                     Ok(())
@@ -1088,6 +1115,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_post_checks,
         r_on_exit,
         no_shortcut,
+        generic,
+        receiver,
+        no_dispatch_dots,
         preconditions,
         per_param,
         per_param_span,
