@@ -13,9 +13,9 @@
 \usage{
 SplitS7(value, .ptr = NULL)
 
-SplitS7_split7_value(self, ...)
+SplitS7_split7_value(.mx_self, ...)
 
-SplitS7_split7_doubled(self, ...)
+SplitS7_split7_doubled(.mx_self, ...)
 
 SplitS7_origin()
 }
@@ -24,7 +24,7 @@ SplitS7_origin()
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{SplitS7} object.}
+\item{.mx_self}{A \code{SplitS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
