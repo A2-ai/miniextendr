@@ -769,7 +769,7 @@ jobs:
       # static methods select the worker without an attribute (#2031).
       - name: Tests (miniextendr-api, worker features)
         run: |
-          cargo test -p miniextendr-api --locked --no-fail-fast --features worker-thread --test worker_shutdown --test worker_channel_stress --test inherent_worker_dispatch
+          cargo test -p miniextendr-api --locked --no-fail-fast --features worker-thread --test worker_shutdown --test worker_channel_stress --test inherent_worker_dispatch --test worker_string_inputs --test worker_native_inputs
           cargo test -p miniextendr-api --locked --no-fail-fast --features worker-default --test inherent_worker_dispatch
 
       # The blas-lapack suites are feature-gated the same way. The second
