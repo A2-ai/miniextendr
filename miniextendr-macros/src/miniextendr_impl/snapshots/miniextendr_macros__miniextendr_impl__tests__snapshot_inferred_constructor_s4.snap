@@ -1,0 +1,54 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 8933
+expression: "generate_s4_r_wrapper(&inferred_reading(ClassSystem::S4))"
+---
+#' @title Reading S4 Class
+#' @name Reading
+#' @rdname Reading
+#' @importFrom methods setClass setGeneric setMethod new
+#' @slot ptr External pointer to Rust `Reading` struct
+methods::setClass("Reading", slots = c(ptr = "externalptr"))
+
+# Reading::from_value (1:1)
+#' @description Read a value.
+#' @param value The value.
+#' @name Reading
+#' @rdname Reading
+#' @export
+Reading <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  methods::new("Reading", ptr = .val)
+}
+
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_value", class="Reading", export=true)
+# Reading::value (1:1)
+#' @name Reading-s4_value
+#' @rdname Reading
+#' @aliases s4_value,Reading-method
+if (!exists("s4_value", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_value", function(x, ...) standardGeneric("s4_value"))
+#' @exportMethod s4_value
+methods::setMethod("s4_value", "Reading", function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# Reading::from_value (1:1)
+#' @description `Reading_from_value()` is another name for the constructor `Reading()`.
+#' @param value The value.
+#' @name Reading_from_value
+#' @rdname Reading
+#' @export
+Reading_from_value <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  {
+    .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+    methods::new("Reading", ptr = .val)
+  }
+}

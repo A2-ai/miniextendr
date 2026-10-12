@@ -1,0 +1,79 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 8928
+expression: "generate_s3_r_wrapper(&inferred_reading(ClassSystem::S3))"
+---
+# Reading::from_value (1:1)
+#' @title Reading S3 Class
+#' @name Reading
+#' @rdname Reading
+#' @description Read a value.
+#' @param value The value.
+#' @export
+new_reading <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  structure(.val, class = "Reading")
+}
+
+# Reading::value (1:1)
+#' @title S3 generic for `value`
+#' @description S3 generic for `value`
+#' @name value.Reading
+#' @rdname Reading
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export value
+if (!base::exists("value", mode = "function")) {
+  value <- function(x, ...) UseMethod("value")
+} else if (local({ .mx_gen <- base::get("value", mode = "function"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("value") || inherits(.mx_gen, "S7_generic")) })) {
+  # `value` is a plain closure that UseMethod dispatch will never consult.
+  # Shadow it with a package-local generic. The default method delegating to
+  # the masked closure is registered via registerS3method() so it lives ONLY
+  # in the namespace's S3 methods table: a literal `value.default` binding
+  # would trip roxygen2's dynamic S3 scan (warn_missing_s3_exports), and a
+  # static NAMESPACE S3method(value, default) would break package load
+  # whenever this branch does not fire.
+  .mx_shadow_default <- local({
+    .mx_masked <- base::get("value", mode = "function")
+    function(x, ...) .mx_masked(x, ...)
+  })
+  value <- function(x, ...) UseMethod("value")
+  base::registerS3method("value", "default", .mx_shadow_default, envir = base::environment())
+  base::rm(.mx_shadow_default)
+}
+# else: existing usable generic (primitive/S3/S4/S7) — reuse as-is.
+
+#' @name value.Reading
+#' @rdname Reading
+#' @method value Reading
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+value.Reading <- function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = environment(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+# Reading::from_value (1:1)
+#' @description `reading_from_value()` is another name for the constructor `new_reading()`.
+#' @param value The value.
+#' @name reading_from_value
+#' @rdname Reading
+#' @export
+reading_from_value <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  structure(.val, class = "Reading")
+}
+
+#' @rdname Reading
+#' @export
+Reading <- new.env(parent = emptyenv())
+
+Reading$new <- new_reading

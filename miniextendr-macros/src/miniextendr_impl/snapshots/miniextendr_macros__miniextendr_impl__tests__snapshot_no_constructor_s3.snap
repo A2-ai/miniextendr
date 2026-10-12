@@ -1,0 +1,52 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: "generate_s3_r_wrapper(&constructorless_handle(ClassSystem::S3))"
+---
+#' @title Handle S3 Class
+#' @name Handle
+#' @rdname Handle
+NULL
+
+# Handle::id (1:1)
+#' @title S3 generic for `id`
+#' @description S3 generic for `id`
+#' @name id.Handle
+#' @rdname Handle
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export id
+if (!base::exists("id", mode = "function")) {
+  id <- function(x, ...) UseMethod("id")
+} else if (local({ .mx_gen <- base::get("id", mode = "function"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("id") || inherits(.mx_gen, "S7_generic")) })) {
+  # `id` is a plain closure that UseMethod dispatch will never consult.
+  # Shadow it with a package-local generic. The default method delegating to
+  # the masked closure is registered via registerS3method() so it lives ONLY
+  # in the namespace's S3 methods table: a literal `id.default` binding
+  # would trip roxygen2's dynamic S3 scan (warn_missing_s3_exports), and a
+  # static NAMESPACE S3method(id, default) would break package load
+  # whenever this branch does not fire.
+  .mx_shadow_default <- local({
+    .mx_masked <- base::get("id", mode = "function")
+    function(x, ...) .mx_masked(x, ...)
+  })
+  id <- function(x, ...) UseMethod("id")
+  base::registerS3method("id", "default", .mx_shadow_default, envir = base::environment())
+  base::rm(.mx_shadow_default)
+}
+# else: existing usable generic (primitive/S3/S4/S7) — reuse as-is.
+
+#' @name id.Handle
+#' @rdname Handle
+#' @method id Handle
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+id.Handle <- function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Handle__id, .call = environment(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+#' @rdname Handle
+#' @export
+Handle <- new.env(parent = emptyenv())

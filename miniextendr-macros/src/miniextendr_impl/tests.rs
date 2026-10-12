@@ -4683,7 +4683,9 @@ fn s7_dispatch_renames_the_receiver() {
         );
     }
     assert!(!wrapper.contains("x@.ptr"), "{wrapper}");
-    assert!(!wrapper.contains("stop("), "{wrapper}");
+    // The class has no constructor; only its guard calls `stop()`.
+    let methods = wrapper.replace(&super::no_constructor_guard("Dog"), "");
+    assert!(!methods.contains("stop("), "{wrapper}");
 }
 
 /// `no_dots` with multi-dispatch: the generic and the method share the exact
@@ -4749,7 +4751,9 @@ fn s7_generic_fallback() {
         "Expected the receiver check to raise the argument error, got:\n{}",
         wrapper
     );
-    assert!(!wrapper.contains("stop("), "{wrapper}");
+    // The class has no constructor; only its guard calls `stop()`.
+    let methods = wrapper.replace(&super::no_constructor_guard("Printer"), "");
+    assert!(!methods.contains("stop("), "{wrapper}");
 }
 
 #[test]
@@ -6803,8 +6807,11 @@ fn s3_method_describe_in_joins_the_destination_page() {
 /// lines would replace that text, so neither block emits them.
 #[test]
 fn s3_method_rdname_leaves_structural_params_to_the_topic() {
+    // A constructor without arguments, so the class page documents no `...`
+    // of a no-constructor `new_counter(...)`.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {
+            pub fn new() -> Self { unimplemented!() }
             /// @rdname counter_ops
             pub fn bump(&mut self) { unimplemented!() }
         }
@@ -8884,3 +8891,490 @@ fn handle_receiver_rewrite_keeps_mutability_and_module_paths() {
     };
     assert_eq!(quote!(#item).to_string(), quote!(#expected).to_string());
 }
+
+// region: the constructor, declared or inferred, and classes without one
+
+/// The R names of the block's static methods.
+fn static_names(parsed: &ParsedImpl) -> Vec<String> {
+    parsed.static_methods().map(|m| m.r_method_name()).collect()
+}
+
+/// The block's constructor, by Rust name.
+fn constructor_name(parsed: &ParsedImpl) -> Option<String> {
+    parsed.constructor().map(|m| m.ident.to_string())
+}
+
+#[test]
+fn constructor_new_only() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new(value: i32) -> Self { unimplemented!() }
+                pub fn get(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("new"));
+    assert!(parsed.inferred_constructor().is_none());
+    assert_eq!(parsed.constructor_candidates().count(), 0);
+    assert_eq!(parsed.class_definitions(), ["a constructor"]);
+}
+
+#[test]
+fn constructor_marked_wins_over_new() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(s7(constructor))]
+                pub fn make(value: i32) -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("make"));
+    // `new` is a static method, no longer silently dropped; `make` keeps its
+    // own name as a static next to the class constructor.
+    assert_eq!(static_names(&parsed), ["new", "make"]);
+    assert!(parsed.inferred_constructor().is_none());
+}
+
+#[test]
+fn constructor_inferred_from_the_one_self_fn() {
+    let mut parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Reading {
+                pub fn from_value(value: f64) -> Self { unimplemented!() }
+                pub fn try_parse(text: &str) -> Result<Self, String> { unimplemented!() }
+                pub fn find(id: i32) -> Option<Self> { unimplemented!() }
+                pub fn value(&self) -> f64 { unimplemented!() }
+            }
+        },
+    );
+    // `Result<Self, E>` / `Option<Self>` are no candidates: only bare `Self`.
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("from_value"));
+    assert!(parsed.declared_constructor().is_none());
+    // The constructor keeps its own name as a static method too.
+    assert_eq!(static_names(&parsed), ["from_value", "try_parse", "find"]);
+    assert_eq!(
+        parsed.class_definitions(),
+        ["the inferred constructor `from_value`"]
+    );
+    // The rendering for a type whose constructor another block declares.
+    parsed.constructor_demoted = true;
+    assert_eq!(constructor_name(&parsed), None);
+    assert_eq!(static_names(&parsed), ["from_value", "try_parse", "find"]);
+    assert!(parsed.class_definitions().is_empty());
+}
+
+#[test]
+fn constructor_not_inferred_from_several_self_fns() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Shape {
+                pub fn circle(r: f64) -> Self { unimplemented!() }
+                pub fn square(side: f64) -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed), None);
+    let candidates: Vec<_> = parsed
+        .constructor_candidates()
+        .map(|m| m.ident.to_string())
+        .collect();
+    assert_eq!(candidates, ["circle", "square"]);
+    assert_eq!(static_names(&parsed), ["circle", "square"]);
+}
+
+#[test]
+fn constructor_new_keeps_factories_static() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Doc {
+                pub fn new() -> Self { unimplemented!() }
+                pub fn from_file(path: &str) -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("new"));
+    assert_eq!(static_names(&parsed), ["from_file"]);
+    // A candidate still: it counts if another block of the type has none.
+    assert_eq!(parsed.constructor_candidates().count(), 1);
+}
+
+#[test]
+fn constructor_not_inferred_for_vctrs_or_s7_conversions() {
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs.base = Some("double".to_string());
+    let vctrs = ParsedImpl::parse(
+        attrs,
+        syn::parse_quote! {
+            impl Percent {
+                pub fn rescale(x: Vec<f64>) -> Vec<f64> { unimplemented!() }
+            }
+        },
+    )
+    .unwrap();
+    assert_eq!(vctrs.constructor_candidates().count(), 0);
+
+    let s7 = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Celsius {
+                #[miniextendr(s7(convert_from = "Fahrenheit"))]
+                pub fn from_fahrenheit(f: &Fahrenheit) -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&s7), None);
+}
+
+/// A constructor keeps its own R name as a static method, unless that name is
+/// `new`: env and R6 already call the constructor `Class$new`.
+#[test]
+fn constructor_keeps_its_own_name_unless_it_is_new() {
+    let plain_new = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert!(static_names(&plain_new).is_empty());
+
+    let renamed_to_new = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r_name = "new")]
+                pub fn make() -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&renamed_to_new).as_deref(), Some("make"));
+    assert!(static_names(&renamed_to_new).is_empty());
+
+    let renamed_from_new = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(r_name = "create")]
+                pub fn new() -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&renamed_from_new).as_deref(), Some("new"));
+    assert_eq!(static_names(&renamed_from_new), ["create"]);
+}
+
+/// An env class without a constructor whose own static method is named `new`
+/// keeps that method as `Class$new`.
+#[test]
+fn env_static_new_without_constructor_is_class_new() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Handle {
+                pub fn new() -> i32 { unimplemented!() }
+                pub fn id(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert_eq!(wrapper.matches("Handle$new <- ").count(), 1, "{wrapper}");
+}
+
+#[test]
+fn constructor_marked_twice_is_refused() {
+    let two = ParsedImpl::parse(
+        default_impl_attrs(ClassSystem::Env),
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(env(constructor))]
+                pub fn make() -> Self { unimplemented!() }
+                #[miniextendr(env(constructor))]
+                pub fn build() -> Self { unimplemented!() }
+            }
+        },
+    )
+    .expect_err("two marked constructors")
+    .to_string();
+    assert!(
+        two.starts_with("`make` and `build` are both marked `#[miniextendr(env(constructor))]`"),
+        "{two}"
+    );
+}
+
+/// `parse_quote!` an inherent impl of `Reading` whose only `-> Self` fn is
+/// `from_value`, for the given class system.
+fn inferred_reading(class_system: ClassSystem) -> ParsedImpl {
+    parse_impl(
+        class_system,
+        syn::parse_quote! {
+            impl Reading {
+                /// Read a value.
+                /// @param value The value.
+                pub fn from_value(value: f64) -> Self { unimplemented!() }
+                pub fn value(&self) -> f64 { unimplemented!() }
+            }
+        },
+    )
+}
+
+/// An impl of `Handle` without a constructor: its objects come from free
+/// functions.
+fn constructorless_handle(class_system: ClassSystem) -> ParsedImpl {
+    parse_impl(
+        class_system,
+        syn::parse_quote! {
+            impl Handle {
+                pub fn id(&self) -> i32 { unimplemented!() }
+            }
+        },
+    )
+}
+
+#[test]
+fn snapshot_inferred_constructor_env() {
+    insta::assert_snapshot!(generate_env_r_wrapper(&inferred_reading(ClassSystem::Env)));
+}
+
+#[test]
+fn snapshot_inferred_constructor_r6() {
+    insta::assert_snapshot!(generate_r6_r_wrapper(&inferred_reading(ClassSystem::R6)));
+}
+
+#[test]
+fn snapshot_inferred_constructor_s3() {
+    insta::assert_snapshot!(generate_s3_r_wrapper(&inferred_reading(ClassSystem::S3)));
+}
+
+#[test]
+fn snapshot_inferred_constructor_s4() {
+    insta::assert_snapshot!(generate_s4_r_wrapper(&inferred_reading(ClassSystem::S4)));
+}
+
+#[test]
+fn snapshot_inferred_constructor_s7() {
+    insta::assert_snapshot!(generate_s7_r_wrapper(&inferred_reading(ClassSystem::S7)));
+}
+
+#[test]
+fn snapshot_no_constructor_env() {
+    insta::assert_snapshot!(generate_env_r_wrapper(&constructorless_handle(
+        ClassSystem::Env
+    )));
+}
+
+#[test]
+fn snapshot_no_constructor_r6() {
+    insta::assert_snapshot!(generate_r6_r_wrapper(&constructorless_handle(
+        ClassSystem::R6
+    )));
+}
+
+#[test]
+fn snapshot_no_constructor_s3() {
+    insta::assert_snapshot!(generate_s3_r_wrapper(&constructorless_handle(
+        ClassSystem::S3
+    )));
+}
+
+#[test]
+fn snapshot_no_constructor_s4() {
+    insta::assert_snapshot!(generate_s4_r_wrapper(&constructorless_handle(
+        ClassSystem::S4
+    )));
+}
+
+#[test]
+fn snapshot_no_constructor_s7() {
+    insta::assert_snapshot!(generate_s7_r_wrapper(&constructorless_handle(
+        ClassSystem::S7
+    )));
+}
+
+/// An abstract S7 class keeps S7's own refusal to construct it.
+#[test]
+fn s7_abstract_class_without_constructor_keeps_s7_refusal() {
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.s7_abstract = true;
+    let parsed = ParsedImpl::parse(
+        attrs,
+        syn::parse_quote! {
+            impl Shape {
+                pub fn area(&self) -> f64 { unimplemented!() }
+            }
+        },
+    )
+    .unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(!wrapper.contains("has no constructor"), "{wrapper}");
+}
+
+/// A class without a constructor that the package names and builds itself
+/// (`class = "..."`) documents its impl docs on a page named after the class,
+/// titled by default, before its members' blocks.
+#[test]
+fn s3_no_constructor_class_docs_get_the_class_page() {
+    let wrapper = generate_s3_r_wrapper(&parse_impl_with_class_name(
+        ClassSystem::S3,
+        "engine_rec",
+        syn::parse_quote! {
+            /// Engine records the package builds itself.
+            impl Engine {
+                pub fn origin() -> Option<Self> { unimplemented!() }
+                pub fn size(&self) -> i32 { unimplemented!() }
+            }
+        },
+    ));
+    let class_block = "#' @title engine_rec S3 Class\n#' @name engine_rec\n\
+                       #' @description Engine records the package builds itself.\nNULL\n";
+    let at = wrapper
+        .find(class_block)
+        .unwrap_or_else(|| panic!("{wrapper}"));
+    assert!(
+        at < wrapper.find("#' @title S3 generic for `size`").unwrap(),
+        "{wrapper}"
+    );
+    // Still no constructor and no class environment (#1918).
+    assert!(!wrapper.contains("new_engine_rec"), "{wrapper}");
+    assert!(!wrapper.contains("engine_rec <- new.env("), "{wrapper}");
+}
+
+/// The impl docs' own `@title` replaces the default title.
+#[test]
+fn s3_no_constructor_class_docs_keep_their_title() {
+    let wrapper = generate_s3_r_wrapper(&parse_impl_with_class_name(
+        ClassSystem::S3,
+        "engine_rec",
+        syn::parse_quote! {
+            /// @title Engine records
+            /// @description Records the package builds itself.
+            impl Engine {
+                pub fn origin() -> Option<Self> { unimplemented!() }
+            }
+        },
+    ));
+    assert!(
+        wrapper.contains("#' @name engine_rec\n#' @title Engine records\n"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("S3 Class"), "{wrapper}");
+}
+
+/// On the impl's `@rdname` topic, a page the package documents itself, the
+/// impl docs add no alias and no title, and sort after the topic's blocks.
+#[test]
+fn s3_no_constructor_class_docs_join_the_impl_rdname_topic() {
+    let wrapper = generate_s3_r_wrapper(&parse_impl_with_class_name(
+        ClassSystem::S3,
+        "engine_rec",
+        syn::parse_quote! {
+            /// Engine records the package builds itself.
+            /// @rdname engine_methods
+            impl Engine {
+                pub fn origin() -> Option<Self> { unimplemented!() }
+            }
+        },
+    ));
+    assert!(
+        wrapper.contains(
+            "#' @name engine_methods\n#' @aliases NULL\n#' @order NaN\n\
+             #' @description Engine records the package builds itself.\n\
+             #' @rdname engine_methods\nNULL\n"
+        ),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("S3 Class"), "{wrapper}");
+}
+
+/// Without impl docs there is no class block: nothing to put on a page
+/// (#1918).
+#[test]
+fn s3_no_constructor_without_docs_has_no_class_block() {
+    for docs in [
+        syn::parse_quote! { impl Engine { pub fn origin() -> Option<Self> { unimplemented!() } } },
+        syn::parse_quote! {
+            /// @rdname engine_methods
+            impl Engine { pub fn origin() -> Option<Self> { unimplemented!() } }
+        },
+    ] {
+        let wrapper = generate_s3_r_wrapper(&parse_impl_with_class_name(
+            ClassSystem::S3,
+            "engine_rec",
+            docs,
+        ));
+        assert!(!wrapper.contains("@name engine_rec\n"), "{wrapper}");
+        assert!(!wrapper.contains("@name engine_methods"), "{wrapper}");
+        assert!(!wrapper.contains("\nNULL\n"), "{wrapper}");
+    }
+}
+
+/// An S3 class without a constructor named as its Rust type gets no
+/// `new_<class>()` (#2069) and no `Class$new`. Its class block is on `NULL`.
+#[test]
+fn s3_no_constructor_binds_no_new_function() {
+    let wrapper = generate_s3_r_wrapper(&constructorless_handle(ClassSystem::S3));
+    assert!(!wrapper.contains("new_handle"), "{wrapper}");
+    assert!(!wrapper.contains("Handle$new"), "{wrapper}");
+    let block = &wrapper[wrapper.find("#' @title Handle S3 Class\n").expect(&wrapper)..];
+    let block = &block[..block.find("\nNULL\n").expect(&wrapper)];
+    assert!(!block.contains("@export"), "{block}");
+}
+
+/// A vctrs class without a constructor gets no `new_<class>()`, which a
+/// package building its vectors in R may write itself (#2069). Named as its
+/// Rust type, its class block (with the vctrs imports) is on `NULL` and
+/// exports nothing; named by `class = "..."` it gets the imports in a block
+/// of their own and the docs-only class block.
+#[test]
+fn vctrs_no_constructor_class_docs() {
+    let vctrs_attrs = || VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: None,
+    };
+    let code: syn::ItemImpl = syn::parse_quote! {
+        /// Temperatures the package builds itself.
+        impl Temp {
+            pub fn freezing(x: Vec<f64>) -> Vec<bool> { unimplemented!() }
+        }
+    };
+    let named = generate_vctrs_r_wrapper(&parse_impl_vctrs(vctrs_attrs(), code.clone()));
+    assert!(!named.contains("new_temp"), "{named}");
+    let block = &named[named.find("#' @title Temp vctrs S3 Class\n").expect(&named)..];
+    let block = &block[..block.find("\nNULL\n").expect(&named)];
+    assert!(
+        block.contains("#' @description Temperatures the package builds itself.\n"),
+        "{block}"
+    );
+    assert!(block.contains("#' @importFrom vctrs new_vctr"), "{block}");
+    assert!(!block.contains("@export"), "{block}");
+
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = vctrs_attrs();
+    attrs.class_name = Some("temp_rec".to_string());
+    let renamed = generate_vctrs_r_wrapper(&ParsedImpl::parse(attrs, code).unwrap());
+    assert!(!renamed.contains("new_temp"), "{renamed}");
+    assert!(
+        renamed.contains("#' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr\nNULL\n"),
+        "{renamed}"
+    );
+    assert!(
+        renamed.contains(
+            "#' @title temp_rec vctrs S3 Class\n#' @name temp_rec\n\
+             #' @description Temperatures the package builds itself.\nNULL\n"
+        ),
+        "{renamed}"
+    );
+}
+
+// endregion

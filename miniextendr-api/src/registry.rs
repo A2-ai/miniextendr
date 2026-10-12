@@ -387,6 +387,16 @@ pub const CLASS_DOC_LINES_MARKER: &str = ".__MX_CLASS_DOC_LINES__";
 /// `miniextendr_macros`'s `CLASS_DOCS_MARKER`.
 pub const CLASS_DOCS_MARKER: &str = ".__MX_CLASS_DOCS__";
 
+/// Opens a class's roxygen block, in [`ClassBlockEntry::head`], that only
+/// carries the impl docs: the block of an S3 or vctrs class without a
+/// constructor that the package names and builds itself (`class = "..."`).
+/// The writer writes the block, up to its closing `NULL`, only when the
+/// type's [`class_docs`](ClassBlockEntry::class_docs) or
+/// [`class_doc_lines`](ClassBlockEntry::class_doc_lines) say something beyond
+/// the page and export tags, so a readers-only impl adds no page (#1918).
+/// Spelled the same as `miniextendr_macros`'s `CLASS_DOCS_ONLY_MARKER`.
+pub const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
+
 /// Opens a generated line of a class's roxygen block, in
 /// [`ClassBlockEntry::head`] or [`ClassBlockEntry::class_doc_lines`], that a
 /// doc tag on another impl block of the type replaces: `@title`, `@name`,
@@ -428,8 +438,27 @@ pub struct ClassBlockEntry {
     /// `@keywords internal` tags. They shape every block's members, so all
     /// blocks of a type must have the same.
     pub settings: &'static str,
+    /// The Rust name of the block's class constructor, `""` when it has
+    /// none: the method marked `#[miniextendr(<system>(constructor))]`, else a
+    /// receiver-less `new` returning `Self`, else
+    /// ([`constructor_inferred`](Self::constructor_inferred)) the block's one
+    /// [candidate](Self::constructor_candidates).
+    pub constructor: &'static str,
+    /// Whether [`constructor`](Self::constructor) was inferred: the block
+    /// declares none and has one candidate. The type's constructor is then
+    /// decided across its impl blocks when [`collect_r_wrappers`] merges them.
+    pub constructor_inferred: bool,
+    /// The Rust names of the block's receiver-less methods returning `Self`
+    /// other than a declared constructor: the methods that could be the
+    /// constructor of a type that declares none.
+    pub constructor_candidates: &'static [&'static str],
+    /// The block as it reads when another impl block of the type declares
+    /// the constructor: present when the block infers one, which there stays
+    /// a static method.
+    pub demoted: Option<&'static ClassBlockEntry>,
     /// What this block has that only the defining block may: `"a
-    /// constructor"`, `"S7 properties"`.
+    /// constructor"` (or `` "the inferred constructor `name`" ``), `"S7
+    /// properties"`.
     pub defines: &'static [&'static str],
     /// The class definition as this block would write it: the class's
     /// roxygen block (with the [`CLASS_DOCS_MARKER`] and
@@ -459,9 +488,33 @@ pub struct ClassBlockEntry {
     pub tail: &'static str,
 }
 
-// SAFETY: &'static str fields, a fn pointer and integers — immutable and valid
-// for program lifetime.
+// SAFETY: &'static str fields, a fn pointer, integers and a reference to
+// another such entry — immutable and valid for program lifetime.
 unsafe impl Sync for ClassBlockEntry {}
+
+/// Implemented by `#[miniextendr]` for each type with an impl block that
+/// declares its class constructor (`#[miniextendr(<system>(constructor))]`,
+/// or a receiver-less `new` returning `Self`). `Block` is a type private to that
+/// impl block, so two such blocks don't conflict here; the wrapper writer
+/// refuses them ([`merge_class_blocks`]).
+///
+/// An impl block with several methods that could be the constructor and
+/// none declared requires it ([`require_class_constructor`]): the type then
+/// compiles only when another of its impl blocks declares the constructor.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` has several methods that could be its constructor, and none is declared",
+    label = "this method returns `Self` and takes no receiver, like another method of `{Self}`",
+    note = "mark the constructor with the class system's `constructor` option, e.g. \
+            `#[miniextendr(r6(constructor))]`, or name it `new`; the other methods stay static \
+            factory methods"
+)]
+pub trait ClassConstructor<Block> {}
+
+/// Compiles only when `T` has an impl block that declares its class
+/// constructor ([`ClassConstructor`]). Never called.
+#[doc(hidden)]
+pub const fn require_class_constructor<T: ?Sized + ClassConstructor<Block>, Block>() {}
 
 /// The standalone R accessors `#[derive(ExternalPtr)]` generates for a
 /// type's public `#[r_data]` fields, `Type_get_f(x)` / `Type_set_f(x,
@@ -820,7 +873,10 @@ fn class_block_name(block: &ClassBlockEntry) -> String {
 /// - the doc comments of a type's blocks give the class two titles, or a
 ///   page other than the defining block's ([`class_doc_conflicts`]);
 /// - two blocks of a type bind the same member name
-///   ([`ClassBlockEntry::member_names`]), the later replacing the earlier.
+///   ([`ClassBlockEntry::member_names`]), the later replacing the earlier;
+/// - a type without a declared constructor has several methods that could be
+///   one ([`resolve_class_constructor`], which first picks each block's
+///   rendering).
 #[cfg(not(target_arch = "wasm32"))]
 fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>, String> {
     use std::collections::HashMap;
@@ -868,6 +924,13 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
 
     let mut fragments = Vec::with_capacity(types.len());
     for (_, type_blocks) in &types {
+        let type_blocks = match resolve_class_constructor(type_blocks) {
+            Ok(blocks) => blocks,
+            Err(error) => {
+                errors.push(error);
+                continue;
+            }
+        };
         let first = type_blocks[0];
         let type_errors = errors.len();
 
@@ -910,10 +973,10 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
         }
 
         let definer = defining.first().copied().unwrap_or(first);
-        errors.extend(class_doc_conflicts(definer, type_blocks));
+        errors.extend(class_doc_conflicts(definer, &type_blocks));
 
         let mut members: HashMap<&str, &ClassBlockEntry> = HashMap::new();
-        for &block in type_blocks {
+        for &block in &type_blocks {
             for &name in block.member_names {
                 match members.get(name) {
                     Some(&previous) if !std::ptr::eq(previous, block) => {
@@ -942,7 +1005,7 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
             priority: RWrapperPriority::Class,
             source_file: first.source_file,
             source_line: first.source_line,
-            content: std::borrow::Cow::Owned(merged_class_content(definer, type_blocks)),
+            content: std::borrow::Cow::Owned(merged_class_content(definer, &type_blocks)),
         });
     }
 
@@ -1127,6 +1190,65 @@ fn class_doc_conflicts(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -
     errors
 }
 
+/// Decide a type's class constructor across its impl blocks: the blocks to
+/// merge, each in the rendering that agrees with the decision.
+///
+/// - A block that declares the constructor
+///   (`#[miniextendr(<system>(constructor))]`, or a receiver-less `new`
+///   returning `Self`) has it. A block that would
+///   infer one takes its [`demoted`](ClassBlockEntry::demoted) rendering,
+///   where that method is a static method. Two declaring blocks are refused
+///   with the other two-definer cases ([`merge_class_blocks`]).
+/// - Without one, the type's one
+///   [candidate](ClassBlockEntry::constructor_candidates) is its constructor,
+///   whichever block has it. Several candidates are an error naming each
+///   with its block (the compiler already refuses several in one block).
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_class_constructor<'a>(
+    blocks: &[&'a ClassBlockEntry],
+) -> Result<Vec<&'a ClassBlockEntry>, String> {
+    let declared = blocks
+        .iter()
+        .any(|b| !b.constructor.is_empty() && !b.constructor_inferred);
+    if declared {
+        return Ok(blocks
+            .iter()
+            .map(|&b| match b.demoted {
+                Some(demoted) if b.constructor_inferred => demoted,
+                _ => b,
+            })
+            .collect());
+    }
+    let candidates: usize = blocks.iter().map(|b| b.constructor_candidates.len()).sum();
+    if candidates > 1 {
+        let listed: Vec<String> = blocks
+            .iter()
+            .filter(|b| !b.constructor_candidates.is_empty())
+            .map(|b| {
+                let names: Vec<String> = b
+                    .constructor_candidates
+                    .iter()
+                    .map(|name| format!("`{name}`"))
+                    .collect();
+                format!("{} in {}", names.join(", "), class_block_name(b))
+            })
+            .collect();
+        // The class system is the first word of the settings, `r6(...)`.
+        let settings = blocks[0].settings;
+        let system = &settings[..settings
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .unwrap_or(settings.len())];
+        return Err(format!(
+            "miniextendr: `{}` has several methods that could be its constructor, and none \
+             is declared: {}. Mark the constructor with `#[miniextendr({system}(constructor))]` \
+             (or name it `new`); the others stay static factory methods.",
+            blocks[0].rust_type,
+            listed.join("; "),
+        ));
+    }
+    Ok(blocks.to_vec())
+}
+
 /// The text of a type's merged class: see [`merge_class_blocks`].
 #[cfg(not(target_arch = "wasm32"))]
 fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> String {
@@ -1156,11 +1278,27 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
             }
         }
     }
+    // A docs-only block (`CLASS_DOCS_ONLY_MARKER`) is written when the docs
+    // say something beyond the page and export tags.
+    let says_something = !class_doc_lines.is_empty()
+        || class_docs.iter().any(|t| {
+            !matches!(
+                t.name(),
+                "rdname" | "noRd" | "keywords" | "order" | "export"
+            )
+        });
+    let mut skipping = false;
     // `split`, not `lines`: a blank last line separates the head from the
     // members.
     let mut head_lines: Vec<&str> = Vec::new();
     for line in class_part(definer.head).split('\n') {
-        if line == CLASS_DOCS_MARKER {
+        if skipping {
+            skipping = line != "NULL";
+            continue;
+        }
+        if line == CLASS_DOCS_ONLY_MARKER {
+            skipping = !says_something;
+        } else if line == CLASS_DOCS_MARKER {
             head_lines.extend(class_docs.iter().flat_map(|t| t.lines.iter().copied()));
         } else if line == CLASS_DOC_LINES_MARKER {
             head_lines.extend(class_doc_lines.iter().flat_map(|t| t.lines.iter().copied()));
@@ -5690,6 +5828,10 @@ mod tests {
             source_line: line,
             source_column: 6,
             settings: "env",
+            constructor: "",
+            constructor_inferred: false,
+            constructor_candidates: &[],
+            demoted: None,
             defines: &[],
             head,
             class_docs: "\n\n",
@@ -5706,6 +5848,51 @@ mod tests {
             .into_iter()
             .map(|f| f.content.into_owned())
             .collect()
+    }
+
+    /// The docs-only block of a class the package names and builds itself
+    /// is written when an impl block's docs say something, and dropped up
+    /// to its `NULL` when they name a page at most (#1918).
+    #[test]
+    fn docs_only_class_block_needs_something_to_say() {
+        const HEAD: &str = "\n.__MX_CLASS_DOCS_ONLY__\n\
+                            .__MX_CLASS_DEFAULT__#' @title widget_rec S3 Class\n\
+                            .__MX_CLASS_DEFAULT__#' @name widget_rec\n\
+                            .__MX_CLASS_DOCS__\n.__MX_CLASS_DOC_LINES__\nNULL\n\n";
+        let with_docs = |first_docs: &'static str, second_docs: &'static str| {
+            let mut first = widget_block(10, HEAD, "\n# first\n");
+            first.class_docs = first_docs;
+            let mut second = widget_block(20, "\n\n", "\n# second\n");
+            second.class_docs = second_docs;
+            merged(&[first, second]).remove(0)
+        };
+
+        let silent = with_docs("\n\n", "\n\n");
+        assert!(!silent.contains("widget_rec"), "{silent}");
+        assert!(!silent.contains("NULL"), "{silent}");
+        assert!(
+            silent.contains("# first") && silent.contains("# second"),
+            "{silent}"
+        );
+
+        let page_only = with_docs("\n#' @rdname widget_rec\n", "\n\n");
+        assert!(!page_only.contains("NULL"), "{page_only}");
+
+        let documented = with_docs("\n\n", "\n#' @description Records the package builds.\n");
+        assert!(
+            documented.contains(
+                "#' @title widget_rec S3 Class\n#' @name widget_rec\n\
+                 #' @description Records the package builds.\nNULL\n"
+            ),
+            "{documented}"
+        );
+
+        let titled = with_docs(
+            "\n\n",
+            "\n#' @title Package records\n#' @description Records.\n",
+        );
+        assert!(!titled.contains("S3 Class"), "{titled}");
+        assert!(titled.contains("#' @title Package records\n"), "{titled}");
     }
 
     #[test]
@@ -6021,6 +6208,85 @@ mod tests {
             .err()
             .expect("three problems");
         assert_eq!(msg.lines().count(), 3, "{msg}");
+    }
+
+    // endregion
+
+    // region: the constructor decided per type
+
+    /// A block of `Widget` that infers `from_value` as its constructor: its
+    /// own rendering defines the class with it, its `demoted` one keeps it a
+    /// static method.
+    fn inferring_block(line: u32) -> ClassBlockEntry {
+        let mut demoted = widget_block(
+            line,
+            "\nWidget <- new.env() # no constructor\n",
+            "\nWidget$from_value <- function(x) 1\n",
+        );
+        demoted.constructor_candidates = &["from_value"];
+        let mut block = widget_block(
+            line,
+            "\nWidget <- new.env() # from_value\nWidget$new <- function(x) 1\n",
+            "\n\n",
+        );
+        block.constructor = "from_value";
+        block.constructor_inferred = true;
+        block.constructor_candidates = &["from_value"];
+        block.defines = &["the inferred constructor `from_value`"];
+        block.demoted = Some(Box::leak(Box::new(demoted)));
+        block
+    }
+
+    #[test]
+    fn a_lone_candidate_is_the_constructor_whichever_block_has_it() {
+        let methods = widget_block(10, "\nWidget <- new.env() # first\n", "\nWidget$get <- 2\n");
+        let classes = merged(&[methods, inferring_block(40)]);
+        assert_eq!(
+            classes[0],
+            "# Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             Widget <- new.env() # from_value\n\
+             Widget$new <- function(x) 1\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             Widget$get <- 2"
+        );
+    }
+
+    #[test]
+    fn a_declared_constructor_keeps_the_candidate_a_static_method() {
+        let mut new = widget_block(10, "\nWidget <- new.env() # new\n", "\n\n");
+        new.constructor = "new";
+        new.constructor_candidates = &["from_file"];
+        new.defines = &["a constructor"];
+        let classes = merged(&[inferring_block(40), new]);
+        assert_eq!(
+            classes[0],
+            "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+             Widget <- new.env() # new\n\
+             \n\
+             # Generated from Rust impl `Widget` (lib.rs:40:6)\n\
+             Widget$from_value <- function(x) 1"
+        );
+    }
+
+    #[test]
+    fn candidates_in_two_blocks_without_a_declared_constructor_are_refused() {
+        let mut other = widget_block(10, "\n\n", "\n\n");
+        other.constructor_candidates = &["empty", "from_file"];
+        let msg = merge_class_blocks(&[other, inferring_block(40)])
+            .err()
+            .expect("three candidates");
+        assert!(
+            msg.contains(
+                "`Widget` has several methods that could be its constructor, and none is \
+                 declared: `empty`, `from_file` in `impl Widget` (lib.rs:10); `from_value` in \
+                 `impl Widget` (lib.rs:40)."
+            ),
+            "{msg}"
+        );
+        assert!(msg.contains("`#[miniextendr(env(constructor))]`"), "{msg}");
+        // The candidates are the only problem reported.
+        assert_eq!(msg.lines().count(), 1, "{msg}");
     }
 
     // endregion

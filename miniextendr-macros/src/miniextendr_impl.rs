@@ -847,6 +847,11 @@ pub struct ParsedImpl {
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
     pub noexport: bool,
+    /// Generate the block as it reads when another impl block of the type
+    /// has the constructor: the constructor this block would infer stays a
+    /// static method. `expand_impl` sets it for the second rendering of a
+    /// block that infers one ([`ParsedImpl::inferred_constructor`]).
+    pub constructor_demoted: bool,
     /// Deprecation warnings for `@param` tags found on the impl block.
     /// Appended to the final TokenStream output.
     pub param_warnings: proc_macro2::TokenStream,
@@ -3166,9 +3171,11 @@ impl ParsedImpl {
             preconditions: attrs.preconditions,
             internal: attrs.internal,
             noexport: attrs.noexport,
+            constructor_demoted: false,
             param_warnings,
             class_param_names,
         };
+        parsed.check_constructor_markers()?;
         parsed.reject_unsupported_describe_in()?;
         field_syntax::check_collisions(&parsed)?;
         Ok(parsed)
@@ -3338,10 +3345,12 @@ impl ParsedImpl {
     /// constructor and S7 properties. The wrapper writer defines the class
     /// from the block that has them (#1776); the impl docs of every block
     /// merge into the class's roxygen block ([`ClassWrapper::class_docs`]).
-    pub fn class_definitions(&self) -> Vec<&'static str> {
+    pub fn class_definitions(&self) -> Vec<String> {
         let mut definitions = Vec::new();
-        if self.constructor().is_some() {
-            definitions.push("a constructor");
+        if self.declared_constructor().is_some() {
+            definitions.push("a constructor".to_string());
+        } else if let Some(inferred) = self.inferred_constructor() {
+            definitions.push(format!("the inferred constructor `{}`", inferred.ident));
         }
         if self.class_system == ClassSystem::S7
             && self.included_methods().any(|m| {
@@ -3349,7 +3358,7 @@ impl ParsedImpl {
                 s7.getter || s7.setter || s7.validate
             })
         {
-            definitions.push("S7 properties");
+            definitions.push("S7 properties".to_string());
         }
         definitions
     }
@@ -3359,32 +3368,122 @@ impl ParsedImpl {
         self.methods.iter().filter(|m| m.should_include())
     }
 
-    /// Get the constructor method (fn new() -> Self), if included.
-    /// Respects `#[...(ignore)]` and visibility filters.
+    /// The class constructor of this impl block, if it has one: the
+    /// [declared](Self::declared_constructor) constructor, else the
+    /// [inferred](Self::inferred_constructor) one. Every other receiver-less
+    /// method is a static method.
     pub fn constructor(&self) -> Option<&ParsedMethod> {
-        self.methods
-            .iter()
-            .find(|m| m.should_include() && self.is_method_constructor(m))
+        self.declared_constructor()
+            .or_else(|| self.inferred_constructor())
     }
 
-    /// Class-system-aware constructor detection.
-    ///
-    /// The default `ParsedMethod::is_constructor` requires the method to return
-    /// `Self`. For vctrs impls that's too strict: the canonical vctrs
-    /// constructor pattern returns the underlying vector payload (e.g.
-    /// `Vec<f64>`) which `vctrs::new_vctr()` then wraps — returning `Self`
-    /// would produce an `ExternalPtr` that `new_vctr` can't accept as `.data`.
+    /// The constructor the block declares: the method marked
+    /// `#[miniextendr(<system>(constructor))]` (at most one,
+    /// [`check_constructor_markers`](Self::check_constructor_markers)), else
+    /// a receiver-less `new` returning `Self`. For vctrs, `new` may return
+    /// anything: the canonical vctrs constructor returns the vector payload
+    /// (e.g. `Vec<f64>`), which `vctrs::new_vctr()` then wraps; returning
+    /// `Self` would produce an `ExternalPtr` that `new_vctr` can't accept as
+    /// `.data`.
+    pub fn declared_constructor(&self) -> Option<&ParsedMethod> {
+        self.included_methods()
+            .find(|m| m.method_attrs.constructor)
+            .or_else(|| {
+                self.included_methods().find(|m| {
+                    m.env == ReceiverKind::None
+                        && m.ident == "new"
+                        && (self.class_system == ClassSystem::Vctrs || m.returns_self())
+                })
+            })
+    }
+
+    /// The methods that could be the class constructor: the receiver-less
+    /// methods returning `Self` (bare `Self`, as [`ParsedMethod::returns_self`]
+    /// reads it, so not `Result<Self, E>` or `Option<Self>`), other than the
+    /// declared constructor and an S7 `convert_from` method, in source order.
+    /// Without a declared constructor, the one candidate of a type is its
+    /// constructor; with several, the type needs a declared one. None for
+    /// vctrs, whose constructor returns the vector payload rather than `Self`.
+    pub fn constructor_candidates(&self) -> impl Iterator<Item = &ParsedMethod> {
+        let declared = self.declared_constructor();
+        self.included_methods().filter(move |m| {
+            self.class_system != ClassSystem::Vctrs
+                && m.env == ReceiverKind::None
+                && m.returns_self()
+                && m.method_attrs.s7.convert_from.is_none()
+                && !declared.is_some_and(|d| std::ptr::eq(d, *m))
+        })
+    }
+
+    /// The constructor this block infers: its one
+    /// [candidate](Self::constructor_candidates), whatever its name, when it
+    /// declares no constructor. None in the rendering for a type whose
+    /// constructor another impl block declares
+    /// ([`constructor_demoted`](Self::constructor_demoted)). The wrapper
+    /// writer decides per type which rendering it writes.
+    pub fn inferred_constructor(&self) -> Option<&ParsedMethod> {
+        if self.constructor_demoted || self.declared_constructor().is_some() {
+            return None;
+        }
+        let mut candidates = self.constructor_candidates();
+        let first = candidates.next()?;
+        candidates.next().is_none().then_some(first)
+    }
+
+    /// Whether `m` is the class [constructor](Self::constructor).
     fn is_method_constructor(&self, m: &ParsedMethod) -> bool {
-        if m.method_attrs.constructor {
-            return true;
+        self.constructor().is_some_and(|c| std::ptr::eq(c, m))
+    }
+
+    /// The roxygen tags of the static method `m`, called as `call` (e.g.
+    /// `Counter$from_value()`). The constructor under its own name
+    /// ([`constructor_keeps_own_name`](Self::constructor_keeps_own_name))
+    /// points at the class constructor `constructor` (e.g. `Counter$new()`)
+    /// instead of repeating its docs, keeping the method's `@noRd` /
+    /// `@keywords`, and its `@param` tags when `params` (roxygen2 merges them
+    /// with the class constructor's).
+    fn static_doc_tags<'a>(
+        &self,
+        m: &'a ParsedMethod,
+        call: &str,
+        constructor: &str,
+        params: bool,
+    ) -> std::borrow::Cow<'a, [String]> {
+        if !self.is_method_constructor(m) {
+            return std::borrow::Cow::Borrowed(&m.doc_tags);
         }
-        if m.env != ReceiverKind::None || m.ident != "new" {
-            return false;
+        let kept = |tag: &&String| {
+            let name = tag.split_whitespace().next().unwrap_or("");
+            name == "@noRd" || name == "@keywords" || (params && name == "@param")
+        };
+        let mut tags = vec![format!(
+            "@description `{call}` is another name for the constructor `{constructor}`."
+        )];
+        tags.extend(m.doc_tags.iter().filter(kept).cloned());
+        std::borrow::Cow::Owned(tags)
+    }
+
+    /// Refuse two methods marked `#[miniextendr(<system>(constructor))]`: a
+    /// class has one constructor.
+    fn check_constructor_markers(&self) -> syn::Result<()> {
+        let marker = format!(
+            "#[miniextendr({}(constructor))]",
+            self.class_system.to_ident()
+        );
+        let mut marked = self
+            .included_methods()
+            .filter(|m| m.method_attrs.constructor);
+        if let (Some(first), Some(second)) = (marked.next(), marked.next()) {
+            return Err(syn::Error::new_spanned(
+                &second.ident,
+                format!(
+                    "`{}` and `{}` are both marked `{marker}`; a class has one constructor. \
+                     Drop the marker from one: it becomes a static method.",
+                    first.ident, second.ident,
+                ),
+            ));
         }
-        match self.class_system {
-            ClassSystem::Vctrs => true,
-            _ => m.returns_self(),
-        }
+        Ok(())
     }
 
     /// Get public instance methods (have env, not private, not active, not an
@@ -3454,14 +3553,25 @@ impl ParsedImpl {
         })
     }
 
-    /// Get static methods (no env, not constructor, not finalizer).
+    /// Get static methods (no env, not finalizer): the receiver-less methods
+    /// other than the constructor, and the constructor too when its R name
+    /// isn't `new` ([`constructor_keeps_own_name`](Self::constructor_keeps_own_name)).
     pub fn static_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
                 && m.env == ReceiverKind::None
-                && !self.is_method_constructor(m)
+                && (!self.is_method_constructor(m) || self.constructor_keeps_own_name(m))
                 && !m.is_finalizer()
         })
+    }
+
+    /// Whether the constructor `m` is also a static method under its own
+    /// name: `Type$from_value()` next to `Type$new()`, `Type_from_value()`
+    /// next to `Type()`, `type_from_value()` next to `new_type()`. A
+    /// constructor named `new` has no second name, and a vctrs constructor
+    /// returns the vector payload, which only `new_<class>()` classes.
+    fn constructor_keeps_own_name(&self, m: &ParsedMethod) -> bool {
+        self.class_system != ClassSystem::Vctrs && m.r_method_name() != "new"
     }
 
     /// Get methods with `#[miniextendr(as = "...")]` attribute.
@@ -3998,6 +4108,17 @@ pub(crate) use vctrs_class::generate_vctrs_class;
 #[cfg(test)]
 pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
 
+/// The first line of R6's `initialize` and S7's `constructor` for a class
+/// without a constructor: called without a `.ptr`, they raise an error
+/// rather than build an object holding no pointer. The factories and other
+/// classes' methods always pass the `.ptr`.
+pub(crate) fn no_constructor_guard(class_name: &str) -> String {
+    format!(
+        "if (is.null(.ptr)) stop(\"`{class_name}` has no constructor: its objects come from \
+         the functions that return one.\", call. = FALSE)"
+    )
+}
+
 /// The line of [`ClassWrapper::head`] where the class's roxygen block takes
 /// the [`ClassWrapper::class_doc_lines`] of every impl block of the type.
 /// Spelled the same as `miniextendr_api::registry::CLASS_DOC_LINES_MARKER`,
@@ -4023,6 +4144,77 @@ pub(crate) const CLASS_DEFAULT_PREFIX: &str = ".__MX_CLASS_DEFAULT__";
 /// ([`CLASS_DEFAULT_PREFIX`]).
 pub(crate) fn class_default(line: impl std::fmt::Display) -> String {
     format!("{CLASS_DEFAULT_PREFIX}{line}")
+}
+
+/// Opens a class's roxygen block that only carries the impl docs
+/// ([`docs_only_class_block`]). The wrapper writer writes the block, up to its
+/// closing `NULL`, only when the type's impl docs or member-derived class docs
+/// say something, so a readers-only impl adds no page (#1918). Spelled the
+/// same as `miniextendr_api::registry::CLASS_DOCS_ONLY_MARKER`.
+pub(crate) const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
+
+/// The roxygen block of an S3 or vctrs class without a constructor that the
+/// package names and builds itself (`class = "..."`, #1918), documenting no
+/// object: it carries the impl docs.
+///
+/// - On the impl's `@rdname` topic, a page the package documents itself, it
+///   adds no alias and no title, and sorts after the topic's own blocks
+///   ([`crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS`]), so their name wins.
+/// - Otherwise its page is named for the class, aliased by it, and titled by
+///   default (`kind`, the class system in the title) unless the impl docs
+///   give a `@title`.
+///
+/// Ends with `NULL`, before which [`ClassWrapper::mark_class_doc_lines`]
+/// goes; the writer drops the block when there is nothing to say
+/// ([`CLASS_DOCS_ONLY_MARKER`]).
+pub(crate) fn docs_only_class_block(parsed_impl: &ParsedImpl, kind: &str) -> Vec<String> {
+    let class_name = parsed_impl.class_name();
+    let tags = &parsed_impl.doc_tags;
+    let mut lines = vec![CLASS_DOCS_ONLY_MARKER.to_string()];
+    let no_rd = crate::roxygen::has_roxygen_tag(tags, "noRd")
+        || (parsed_impl.noexport && !parsed_impl.internal);
+    if no_rd {
+        if !crate::roxygen::has_roxygen_tag(tags, "noRd") {
+            lines.push("#' @noRd".to_string());
+        }
+    } else {
+        if let Some(topic) = crate::roxygen::rdname_value(tags) {
+            lines.push(format!("#' @name {topic}"));
+            lines.push("#' @aliases NULL".to_string());
+            if !crate::roxygen::has_roxygen_tag(tags, "order") {
+                lines.push(format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS));
+            }
+        } else {
+            // The block's own `@title` / `@name` replace the defaults.
+            if !crate::roxygen::has_roxygen_tag(tags, "title") {
+                lines.push(class_default(format!(
+                    "#' @title {class_name} {kind} Class"
+                )));
+            }
+            if !crate::roxygen::has_roxygen_tag(tags, "name") {
+                lines.push(class_default(format!("#' @name {class_name}")));
+            }
+        }
+        if parsed_impl.internal && !crate::roxygen::has_roxygen_tag(tags, "keywords internal") {
+            lines.push("#' @keywords internal".to_string());
+        }
+    }
+    lines.push(CLASS_DOCS_MARKER.to_string());
+    lines.push("NULL".to_string());
+    lines
+}
+
+/// Whether a type's class docs say something, beyond the page and export
+/// tags: the wrapper writer keeps a [`CLASS_DOCS_ONLY_MARKER`] block then.
+#[cfg(test)]
+fn class_docs_say_something(class_docs: &[String], class_doc_lines: &[String]) -> bool {
+    const PAGE_TAGS: &[&str] = &["rdname", "noRd", "keywords", "order", "export"];
+    !class_doc_lines.is_empty()
+        || class_docs.iter().any(|line| {
+            line.strip_prefix("#' @")
+                .and_then(|rest| rest.split_whitespace().next())
+                .is_none_or(|tag| !PAGE_TAGS.contains(&tag))
+        })
 }
 
 /// One impl block's R wrapper, in the parts the wrapper writer merges per
@@ -4071,8 +4263,16 @@ impl ClassWrapper {
     #[cfg(test)]
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
+        let keep_docs_only = class_docs_say_something(&self.class_docs, &self.class_doc_lines);
+        let mut skipping = false;
         for line in &self.head {
-            if line == CLASS_DOCS_MARKER {
+            if skipping {
+                skipping = line != "NULL";
+                continue;
+            }
+            if line == CLASS_DOCS_ONLY_MARKER {
+                skipping = !keep_docs_only;
+            } else if line == CLASS_DOCS_MARKER {
                 lines.extend(self.class_docs.iter().cloned());
             } else if line == CLASS_DOC_LINES_MARKER {
                 lines.extend(self.class_doc_lines.iter().map(|l| strip_class_default(l)));
@@ -4827,46 +5027,33 @@ pub fn expand_impl(
         Err(e) => return e.into_compile_error().into(),
     };
 
-    let parsed = match ParsedImpl::parse(attrs, item_impl) {
+    let mut parsed = match ParsedImpl::parse(attrs, item_impl) {
         Ok(p) => p,
         Err(e) => return e.into_compile_error().into(),
     };
 
-    // Every R formal must parse, be distinct, and leave the names the class
-    // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
-    if let Err(e) = check_method_formals(&parsed) {
+    if let Err(e) = check_class_members(&parsed) {
         return e.into_compile_error().into();
     }
-    if let Err(e) = check_env_member_collisions(&parsed) {
-        return e.into_compile_error().into();
-    }
-    if let Err(e) = check_r6_initialize_collision(&parsed) {
-        return e.into_compile_error().into();
-    }
-    if let Err(e) = check_r6_static_collisions(&parsed) {
-        return e.into_compile_error().into();
-    }
-    if let Err(e) = check_s4_generic_collisions(&parsed) {
-        return e.into_compile_error().into();
-    }
-    // A replacement method (`s3(generic = "[[<-")`) takes `value` last.
-    if let Err(e) = check_s3_replacement_methods(&parsed) {
-        return e.into_compile_error().into();
-    }
-    // Detect S7 fast-path shortcut name collisions (#986). The shortcut
-    // `<ClassName>_<method>` shares a namespace with the standalone functions
-    // emitted for static methods — an `r_name` override (or a static method
-    // literally named like an instance method) can make two definitions clash,
-    // with the last one silently winning. Fail loudly at compile time instead.
-    if let Err(e) = check_s7_shortcut_collisions(&parsed) {
-        return e.into_compile_error().into();
-    }
-    // S7 only registers a method whose formals start with the generic's
-    // dispatch arguments (`s7(dispatch)`, the `e1, e2` of an Ops operator);
-    // anything else would stop the package from loading.
-    if let Err(e) = check_s7_dispatch(&parsed) {
-        return e.into_compile_error().into();
-    }
+    // A block that infers its constructor is written in one of two
+    // renderings, decided per type by the wrapper writer: with that
+    // constructor, or (when another block declares one) with it as a static
+    // method. Both must hold.
+    let infers_constructor = parsed.inferred_constructor().is_some();
+    let demoted_class = if infers_constructor {
+        parsed.constructor_demoted = true;
+        let demoted = parsed
+            .reject_unsupported_describe_in()
+            .and_then(|()| check_class_members(&parsed))
+            .map(|()| (generate_class_wrapper(&parsed), parsed.class_definitions()));
+        parsed.constructor_demoted = false;
+        match demoted {
+            Ok(class) => Some(class),
+            Err(e) => return e.into_compile_error().into(),
+        }
+    } else {
+        None
+    };
 
     let type_ident = &parsed.type_ident;
     let cfg_attrs = &parsed.cfg_attrs;
@@ -4878,21 +5065,7 @@ pub fn expand_impl(
         .collect();
 
     // The R wrapper, in the parts the wrapper writer merges per type (#1776).
-    let mut class = match parsed.class_system {
-        ClassSystem::Env => generate_env_class(&parsed),
-        ClassSystem::R6 => generate_r6_class(&parsed),
-        ClassSystem::S3 => generate_s3_class(&parsed),
-        ClassSystem::S7 => generate_s7_class(&parsed),
-        ClassSystem::S4 => generate_s4_class(&parsed),
-        ClassSystem::Vctrs => generate_vctrs_class(&parsed),
-    };
-
-    // Append as.<class>() coercion methods (works with all class systems)
-    let as_coercion_wrappers = generate_as_coercion_methods(&parsed);
-    if !as_coercion_wrappers.is_empty() {
-        class.members.push(String::new());
-        class.members.push(as_coercion_wrappers);
-    }
+    let class = generate_class_wrapper(&parsed);
 
     let original_impl = &parsed.original_impl;
 
@@ -4904,12 +5077,23 @@ pub fn expand_impl(
     let formals =
         crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs));
     let r_part = |lines: &[String]| crate::r_wrapper_raw_literal(&lines.join("\n"), &formals);
-    let head = r_part(&class.head);
-    let class_docs = r_part(&class.class_docs);
-    let class_doc_lines = r_part(&class.class_doc_lines);
-    let members = r_part(&class.members);
-    let tail = r_part(&class.tail);
-    let member_names = &class.member_names;
+    let class_parts = |class: &ClassWrapper, defines: &[String]| {
+        let head = r_part(&class.head);
+        let class_docs = r_part(&class.class_docs);
+        let class_doc_lines = r_part(&class.class_doc_lines);
+        let members = r_part(&class.members);
+        let tail = r_part(&class.tail);
+        let member_names = &class.member_names;
+        quote! {
+            defines: &[#(#defines),*],
+            head: #head,
+            class_docs: #class_docs,
+            class_doc_lines: #class_doc_lines,
+            members: #members,
+            member_names: &[#(#member_names),*],
+            tail: #tail,
+        }
+    };
 
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
@@ -4932,7 +5116,54 @@ pub fn expand_impl(
             ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env
         );
     let settings = parsed.class_settings();
-    let defines = parsed.class_definitions();
+    let parts = class_parts(&class, &parsed.class_definitions());
+    let constructor = parsed
+        .constructor()
+        .map(|m| crate::naming::ident_name(&m.ident))
+        .unwrap_or_default();
+    let candidates: Vec<String> = parsed
+        .constructor_candidates()
+        .map(|m| crate::naming::ident_name(&m.ident))
+        .collect();
+    let block_entry = |constructor: &str, inferred: bool, demoted, parts| {
+        quote! {
+            ::miniextendr_api::registry::ClassBlockEntry {
+                rust_type: ::core::stringify!(#type_ident),
+                type_path: || ::core::any::type_name::<#type_ident>(),
+                r_class_name: #r_class_name_str,
+                source_file: ::core::file!(),
+                source_line: #source_line_lit,
+                source_column: #source_col_lit,
+                settings: #settings,
+                constructor: #constructor,
+                constructor_inferred: #inferred,
+                constructor_candidates: &[#(#candidates),*],
+                demoted: #demoted,
+                #parts
+            }
+        }
+    };
+    // A block that infers its constructor also registers the rendering in
+    // which that method is a static method (`demoted`).
+    let (demoted_static, demoted_ref) = match &demoted_class {
+        Some((demoted, definitions)) => {
+            let entry = block_entry(
+                "",
+                false,
+                quote!(::core::option::Option::None),
+                class_parts(demoted, definitions),
+            );
+            (
+                quote! {
+                    static DEMOTED: ::miniextendr_api::registry::ClassBlockEntry = #entry;
+                },
+                quote!(::core::option::Option::Some(&DEMOTED)),
+            )
+        }
+        None => (quote!(), quote!(::core::option::Option::None)),
+    };
+    let class_block = block_entry(&constructor, infers_constructor, demoted_ref, parts);
+    let constructor_check = constructor_check(&parsed);
 
     // The registrations sit in an anonymous `const _` so that any number of
     // impl blocks of one type can register theirs; the wrapper writer merges
@@ -4951,28 +5182,16 @@ pub fn expand_impl(
         // Forwarding trait impls for as.<class>() coercion methods
         #trait_impls
 
+        #constructor_check
+
         #(#cfg_attrs)*
         const _: () = {
+            #demoted_static
+
             // The impl block's share of the R class, merged with the type's
             // other impl blocks by the wrapper writer.
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_BLOCKS), linkme(crate = ::miniextendr_api::linkme))]
-            static CLASS_BLOCK: ::miniextendr_api::registry::ClassBlockEntry =
-                ::miniextendr_api::registry::ClassBlockEntry {
-                    rust_type: ::core::stringify!(#type_ident),
-                    type_path: || ::core::any::type_name::<#type_ident>(),
-                    r_class_name: #r_class_name_str,
-                    source_file: ::core::file!(),
-                    source_line: #source_line_lit,
-                    source_column: #source_col_lit,
-                    settings: #settings,
-                    defines: &[#(#defines),*],
-                    head: #head,
-                    class_docs: #class_docs,
-                    class_doc_lines: #class_doc_lines,
-                    members: #members,
-                    member_names: &[#(#member_names),*],
-                    tail: #tail,
-                };
+            static CLASS_BLOCK: ::miniextendr_api::registry::ClassBlockEntry = #class_block;
 
             // Class name registration for cross-reference placeholder resolution.
             // Maps the Rust type name to the R-visible class name at link time.
@@ -4988,6 +5207,95 @@ pub fn expand_impl(
     };
 
     expanded.into()
+}
+
+/// The checks of the members a block generates, which `expand_impl` runs on
+/// each rendering of the block.
+fn check_class_members(parsed: &ParsedImpl) -> syn::Result<()> {
+    // Every R formal must parse, be distinct, and leave the names the class
+    // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
+    check_method_formals(parsed)?;
+    check_env_member_collisions(parsed)?;
+    check_r6_initialize_collision(parsed)?;
+    check_r6_static_collisions(parsed)?;
+    check_s4_generic_collisions(parsed)?;
+    // A replacement method (`s3(generic = "[[<-")`) takes `value` last.
+    check_s3_replacement_methods(parsed)?;
+    // Detect S7 fast-path shortcut name collisions (#986). The shortcut
+    // `<ClassName>_<method>` shares a namespace with the standalone functions
+    // emitted for static methods — an `r_name` override (or a static method
+    // literally named like an instance method) can make two definitions clash,
+    // with the last one silently winning. Fail loudly at compile time instead.
+    check_s7_shortcut_collisions(parsed)?;
+    // S7 only registers a method whose formals start with the generic's
+    // dispatch arguments (`s7(dispatch)`, the `e1, e2` of an Ops operator);
+    // anything else would stop the package from loading.
+    check_s7_dispatch(parsed)
+}
+
+/// The block's R wrapper, in the parts the wrapper writer merges per type
+/// (#1776), with the `as.<class>()` coercion methods (any class system).
+fn generate_class_wrapper(parsed: &ParsedImpl) -> ClassWrapper {
+    let mut class = match parsed.class_system {
+        ClassSystem::Env => generate_env_class(parsed),
+        ClassSystem::R6 => generate_r6_class(parsed),
+        ClassSystem::S3 => generate_s3_class(parsed),
+        ClassSystem::S7 => generate_s7_class(parsed),
+        ClassSystem::S4 => generate_s4_class(parsed),
+        ClassSystem::Vctrs => generate_vctrs_class(parsed),
+    };
+    let as_coercion_wrappers = generate_as_coercion_methods(parsed);
+    if !as_coercion_wrappers.is_empty() {
+        class.members.push(String::new());
+        class.members.push(as_coercion_wrappers);
+    }
+    class
+}
+
+/// The compile-time half of the constructor decision. A block that declares
+/// the constructor implements the hidden
+/// `miniextendr_api::registry::ClassConstructor` for its type, under a
+/// type private to the block. A block with several constructor candidates
+/// and none declared requires that impl, once per candidate and spanned at
+/// it, so the type compiles only when another of its impl blocks declares
+/// the constructor; the error names each candidate. Two candidates in two
+/// blocks are the wrapper writer's to refuse.
+fn constructor_check(parsed: &ParsedImpl) -> TokenStream {
+    let cfg_attrs = &parsed.cfg_attrs;
+    let (impl_generics, _, where_clause) = parsed.original_impl.generics.split_for_impl();
+    let self_ty = &parsed.original_impl.self_ty;
+    if parsed.declared_constructor().is_some() {
+        return quote! {
+            #(#cfg_attrs)*
+            const _: () = {
+                // Named so that no user type spelled in `#self_ty` is shadowed.
+                struct __MxConstructorBlock;
+                impl #impl_generics
+                    ::miniextendr_api::registry::ClassConstructor<__MxConstructorBlock>
+                    for #self_ty #where_clause {}
+            };
+        };
+    }
+    if parsed.constructor_candidates().nth(1).is_none() {
+        return TokenStream::new();
+    }
+    // The type spanned at each candidate, so the error points there.
+    let requirements = parsed.constructor_candidates().map(|m| {
+        let mut ty = parsed.type_ident.clone();
+        ty.set_span(m.ident.span());
+        quote::quote_spanned! {m.ident.span()=>
+            ::miniextendr_api::registry::require_class_constructor::<#ty, _>();
+        }
+    });
+    quote! {
+        #(#cfg_attrs)*
+        const _: () = {
+            #[allow(dead_code)]
+            fn constructor_check() {
+                #(#requirements)*
+            }
+        };
+    }
 }
 
 #[cfg(test)]
