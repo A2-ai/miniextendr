@@ -114,7 +114,7 @@ test_that("normal counter_get_value still works (no regression)", {
 #     .call = sys.call()), not the producer-side vtable shim or R_NilValue.
 #
 # These migrated to the error_in_r tagged-SEXP transport in PR #349 (#345); the
-# direct Rf_error at miniextendr_trait.rs:808 is gone, so cross-package raises
+# direct Rf_error in the trait shim is gone, so cross-package raises
 # now layer rust_* classes identically to a same-package call.
 
 # error!() — bare, no user class

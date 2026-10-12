@@ -123,6 +123,18 @@ Parameter checks such as `no_na`, `inherits` and `not_inherits` run in the imple
 method's R-facing wrappers: they check R arguments, not the typed values a
 View caller passes.
 
+### Failures
+
+The shim is the only check a caller that skips the View gets, so it checks
+its arguments itself. It first checks the argument count. Then, like a
+generated C wrapper, it refuses arguments that borrow the same R vector when
+at least one borrow is mutable, before it converts any of them. A wrong
+count, an aliased borrow, a failed conversion and a panic in the method all
+come back from the shim as a tagged condition. The View re-panics with it, so
+a `#[miniextendr]` caller raises it as an R condition with its `rust_*`
+classes. None of them raises a bare R error, so Rust values on either side of
+the call are dropped normally.
+
 ## Multiple Traits Per Type
 
 A single type can implement multiple traits. All are automatically registered via `#[miniextendr]`:

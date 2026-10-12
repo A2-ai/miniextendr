@@ -104,11 +104,16 @@
 //!
 //! ## Error Handling
 //!
-//! Method shims handle errors as follows:
+//! A method shim runs inside `with_r_unwind_protect_shim`, which turns a Rust
+//! panic into a tagged condition SEXP; the View re-panics with it in the
+//! caller's guard. These panic:
 //!
-//! - **Arity mismatch**: Raises R error ("expected N arguments, got M")
-//! - **Type conversion failure**: Raises R error with the error message
-//! - **Panic**: Caught via `with_r_unwind_protect`, converted to R error
+//! - **Arity mismatch**: "expected N arguments, got M"
+//! - **Aliased native borrows**: two arguments (or two elements of one) that
+//!   borrow the same R vector, at least one mutably, checked before any
+//!   argument is converted
+//! - **Type conversion failure**: the converter's error message
+//! - **The method itself**
 //!
 //! ## GC Protection
 //!
@@ -726,13 +731,16 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
 
 /// Generate a method shim function for a trait method.
 ///
-/// The shim is an `extern "C"` function that:
+/// The shim is an `extern "C"` function that, inside `with_r_unwind_protect_shim`:
 /// 1. Checks argument arity
-/// 2. Wraps everything in `with_r_unwind_protect` to prevent unwinding across FFI
+/// 2. Refuses aliased native borrows among the arguments
 /// 3. Converts SEXP arguments to Rust types
 /// 4. Calls the actual method on the concrete type
 /// 5. Converts the result back to SEXP
-/// 6. On panic, converts to R error via `with_r_unwind_protect`
+///
+/// A panic in any step comes back as a tagged condition SEXP, which the View
+/// re-panics with. `generate_concrete_vtable_shims` emits the same steps for
+/// a generic trait's impls.
 ///
 /// For generic traits, the shim carries the trait's type parameters plus `__ImplT`.
 fn generate_method_shim(

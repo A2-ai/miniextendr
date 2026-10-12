@@ -360,9 +360,10 @@ pub(super) fn generate_vtable_static(
 ///
 /// Each instance method gets a concrete `unsafe extern "C"` shim named
 /// `__vtshim_{crate}_{Type}__{Trait}__{method}` (crate-prefixed for webR
-/// cross-package symbol uniqueness — #1273) that:
+/// cross-package symbol uniqueness — #1273) that, inside
+/// `with_r_unwind_protect_shim`, follows the declaration shim's steps:
 /// 1. Checks argument arity
-/// 2. Wraps everything in `with_r_unwind_protect`
+/// 2. Refuses aliased native borrows among the arguments
 /// 3. Extracts SEXP arguments to concrete Rust types
 /// 4. Calls the method via fully-qualified syntax `<Type as Trait>::method()`
 /// 5. Converts the result back to SEXP
