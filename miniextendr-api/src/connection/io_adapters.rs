@@ -9,6 +9,7 @@
 //! R decides when the connection is destroyed.
 
 use crate::SEXP;
+use crate::coerce::TryCoerce;
 
 use super::{RConnectionImpl, RCustomConnection};
 
@@ -75,31 +76,109 @@ macro_rules! define_io_adapter {
     };
 }
 
-// Helper macro for seek implementation (shared across all seekable adapters)
+/// Raise the original I/O error through the callback's R-unwind guard.
+/// A failed read must never look like EOF, nor a failed write like success.
+fn raise_io_error(operation: &str, error: std::io::Error) -> ! {
+    crate::error!(
+        class = "miniextendr_connection_io_error",
+        data = {
+            operation = operation,
+            io_kind = format!("{:?}", error.kind()),
+            os_error = error.raw_os_error()
+        },
+        "connection {operation} failed: {error}"
+    )
+}
+
+fn io_result<T>(operation: &str, result: std::io::Result<T>) -> T {
+    result.unwrap_or_else(|error| raise_io_error(operation, error))
+}
+
+/// Repeat an I/O call that reports `Interrupted`: a signal arrived before it
+/// finished, which is not a failure (`read_exact` and `write_all` retry too).
+fn retry<T>(mut call: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    loop {
+        match call() {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            result => return result,
+        }
+    }
+}
+
+/// Fill `buf`. R reads a short count from the read callback as the end of the
+/// stream (it is `fread`), but `Read::read` may return fewer bytes at any time.
+/// Stop early only at EOF or when a non-blocking stream has nothing more now
+/// (`WouldBlock`), as R's own socket connections do.
+fn read_full(reader: &mut impl std::io::Read, buf: &mut [u8]) -> usize {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(error) => match error.kind() {
+                std::io::ErrorKind::Interrupted => {}
+                std::io::ErrorKind::WouldBlock => break,
+                _ => raise_io_error("read", error),
+            },
+        }
+    }
+    filled
+}
+
+/// Write all of `buf`, as R's write callback is expected to (`fwrite`).
+fn write_full(writer: &mut impl std::io::Write, buf: &[u8]) -> usize {
+    io_result("write", writer.write_all(buf));
+    buf.len()
+}
+
+fn flush_writer(writer: &mut impl std::io::Write) -> i32 {
+    io_result("flush", retry(|| writer.flush()));
+    0
+}
+
+/// R's seek callback returns the position before the move, and a query
+/// (`where_` is NA) returns it without moving. The std::io adapters share one
+/// cursor for reading and writing, so `rw` selects nothing.
+fn seek_previous(stream: &mut impl std::io::Seek, where_: f64, origin: i32) -> f64 {
+    use std::io::{Error, ErrorKind, SeekFrom};
+
+    let previous = io_result("seek", retry(|| stream.stream_position()));
+    let previous: f64 = io_result("seek", previous.try_coerce().map_err(Error::other));
+    if where_.is_nan() {
+        return previous;
+    }
+    if where_.is_infinite() {
+        let error = Error::new(ErrorKind::InvalidInput, "seek offset must be finite");
+        raise_io_error("seek", error);
+    }
+    let invalid = |error| Error::new(ErrorKind::InvalidInput, error);
+    // R truncates a fractional offset (`?seek`).
+    let offset = where_.trunc();
+    let target = match origin {
+        // Before the start: stay put, as R's file connections do. To see input
+        // that arrived since, `readLines()` and `scan()` re-position an open
+        // non-blocking connection with `seek(con, seek(con, -1, 1, 1), 1, 1)`
+        // (R's `do_readLines`, utils' `readTableHead`).
+        1 if offset < 0.0 => return previous,
+        1 => SeekFrom::Start(io_result("seek", offset.try_coerce().map_err(invalid))),
+        2 => SeekFrom::Current(io_result("seek", offset.try_coerce().map_err(invalid))),
+        3 => SeekFrom::End(io_result("seek", offset.try_coerce().map_err(invalid))),
+        _ => raise_io_error(
+            "seek",
+            Error::new(
+                ErrorKind::InvalidInput,
+                "seek origin must be start, current, or end",
+            ),
+        ),
+    };
+    io_result("seek", retry(|| stream.seek(target)));
+    previous
+}
+
 macro_rules! impl_seek {
     () => {
         fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-            // Handle position query (where_ is NA/NaN)
-            if where_.is_nan() {
-                return self
-                    .inner
-                    .stream_position()
-                    .map(|pos| pos as f64)
-                    .unwrap_or(-1.0);
-            }
-
-            // Map R's origin to SeekFrom
-            let seek_from = match origin {
-                1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
-                2 => std::io::SeekFrom::Current(where_ as i64),
-                3 => std::io::SeekFrom::End(where_ as i64),
-                _ => return -1.0,
-            };
-
-            self.inner
-                .seek(seek_from)
-                .map(|pos| pos as f64)
-                .unwrap_or(-1.0)
+            seek_previous(&mut self.inner, where_, origin)
         }
     };
 }
@@ -126,7 +205,7 @@ define_io_adapter! {
         caps: { HAS_READ = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                read_full(&mut self.inner, buf)
             }
         }
     }
@@ -154,11 +233,11 @@ define_io_adapter! {
         caps: { HAS_WRITE = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                write_full(&mut self.inner, buf)
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                flush_writer(&mut self.inner)
             }
         }
     }
@@ -172,15 +251,15 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                read_full(&mut self.inner, buf)
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                write_full(&mut self.inner, buf)
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                flush_writer(&mut self.inner)
             }
         }
     }
@@ -194,7 +273,7 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                read_full(&mut self.inner, buf)
             }
 
             impl_seek!();
@@ -210,11 +289,11 @@ define_io_adapter! {
         caps: { HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                write_full(&mut self.inner, buf)
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                flush_writer(&mut self.inner)
             }
 
             impl_seek!();
@@ -246,15 +325,15 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                read_full(&mut self.inner, buf)
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                self.inner.write(buf).unwrap_or(0)
+                write_full(&mut self.inner, buf)
             }
 
             fn flush(&mut self) -> i32 {
-                if self.inner.flush().is_ok() { 0 } else { -1 }
+                flush_writer(&mut self.inner)
             }
 
             impl_seek!();
@@ -270,18 +349,25 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_BUFREAD = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                self.inner.read(buf).unwrap_or(0)
+                read_full(&mut self.inner, buf)
             }
 
             fn fgetc(&mut self) -> i32 {
                 // Use fill_buf for optimized buffered reading
-                match self.inner.fill_buf() {
-                    Ok(buffer) if !buffer.is_empty() => {
-                        let byte = buffer[0];
-                        self.inner.consume(1);
-                        byte as i32
+                loop {
+                    match self.inner.fill_buf() {
+                        Ok(&[byte, ..]) => {
+                            self.inner.consume(1);
+                            return i32::from(byte);
+                        }
+                        Ok([]) => return -1, // EOF
+                        Err(error) => match error.kind() {
+                            std::io::ErrorKind::Interrupted => {}
+                            // A non-blocking stream with nothing more now.
+                            std::io::ErrorKind::WouldBlock => return -1,
+                            _ => raise_io_error("read", error),
+                        },
                     }
-                    _ => -1, // EOF or error
                 }
             }
         }

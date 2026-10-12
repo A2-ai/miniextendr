@@ -93,12 +93,14 @@ impl RConnectionImpl for MemoryBuffer {
                     (self.data.len() as isize + offset) as usize
                 }
             }
-            _ => return -1.0,
+            _ => panic!("unknown seek origin {origin}"),
         };
 
-        // Clamp to valid range
+        // R returns the previous position, unlike std::io::Seek.
+        let previous = miniextendr_api::coerce::TryCoerce::<f64>::try_coerce(self.position)
+            .expect("connection position is representable in R");
         self.position = new_pos.min(self.data.len());
-        self.position as f64
+        previous
     }
 
     fn flush(&mut self) -> i32 {
@@ -388,6 +390,69 @@ pub fn rot13_connection(text: &str) -> SEXP {
         .can_seek(false)
         .text(true)
         .build(TransformConnection::new(data, transform))
+}
+// endregion
+
+// region: Example 5: A stream whose I/O fails (#1923)
+
+/// A stream that refuses every read, write, flush and seek.
+#[cfg(feature = "connections")]
+struct RefusingStream;
+
+#[cfg(feature = "connections")]
+fn refused(operation: &str) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        format!("{operation} refused"),
+    )
+}
+
+#[cfg(feature = "connections")]
+impl std::io::Read for RefusingStream {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(refused("read"))
+    }
+}
+
+#[cfg(feature = "connections")]
+impl std::io::Write for RefusingStream {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(refused("write"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(refused("flush"))
+    }
+}
+
+#[cfg(feature = "connections")]
+impl std::io::Seek for RefusingStream {
+    fn seek(&mut self, _pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        Err(refused("seek"))
+    }
+}
+
+/// Create a connection whose every read, write, flush and seek fails.
+///
+/// Each failure raises an R error of class `miniextendr_connection_io_error`
+/// with the fields `operation`, `io_kind` and `os_error`.
+///
+/// @return A read-write-seekable connection backed by a failing stream
+/// @examples
+/// \dontrun{
+/// conn <- failing_io_connection()
+/// tryCatch(
+///   readBin(conn, "raw", 1L),
+///   miniextendr_connection_io_error = function(e) e$operation
+/// )  # "read"
+/// close(conn)
+/// }
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn failing_io_connection() -> SEXP {
+    RConnectionIo::new(RefusingStream)
+        .description("failing stream")
+        .build_read_write_seek()
 }
 // endregion
 

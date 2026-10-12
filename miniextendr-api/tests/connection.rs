@@ -205,3 +205,396 @@ fn distribution_iterator_is_readable_as_r_doubles() {
     });
 }
 // endregion
+
+// region: I/O failures and R's seek return contract
+
+struct BrokenIo;
+impl Read for BrokenIo {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("read refused"))
+    }
+}
+impl Write for BrokenIo {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("write refused"))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::other("flush refused"))
+    }
+}
+impl BufRead for BrokenIo {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        Err(std::io::Error::other("read refused"))
+    }
+    fn consume(&mut self, _: usize) {}
+}
+impl std::io::Seek for BrokenIo {
+    fn seek(&mut self, _: std::io::SeekFrom) -> std::io::Result<u64> {
+        Err(std::io::Error::other("seek refused"))
+    }
+}
+
+fn expect_io_error<T>(operation: &str, f: impl FnOnce() -> T) {
+    use miniextendr_api::condition::{RCondition, catch_condition};
+    use miniextendr_api::rvalue::RValue;
+    let condition = match catch_condition(f) {
+        Err(condition) => condition,
+        Ok(_) => panic!("I/O failure was swallowed"),
+    };
+    let RCondition::Error {
+        message,
+        class,
+        data,
+        ..
+    } = condition
+    else {
+        panic!("expected error condition")
+    };
+    assert_eq!(class, ["miniextendr_connection_io_error"]);
+    assert!(message.contains(operation), "{message}");
+    let data = data.unwrap();
+    assert!(data.iter().any(|(name, value)| name == "operation"
+        && matches!(value, RValue::Character(v) if v == &[Some(operation.to_string())])));
+    assert!(data.iter().any(|(name, _)| name == "io_kind"));
+    assert!(data.iter().any(|(name, _)| name == "os_error"));
+}
+
+#[test]
+fn every_io_adapter_preserves_failures() {
+    use miniextendr_api::connection::*;
+    macro_rules! read_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("read", || adapter.read(&mut [0; 1]));
+            expect_io_error("read", || adapter.fgetc());
+        )*};
+    }
+    read_failure!(IoRead, IoReadWrite, IoReadSeek, IoReadWriteSeek, IoBufRead);
+    macro_rules! write_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("write", || adapter.write(&[0]));
+            expect_io_error("flush", || adapter.flush());
+        )*};
+    }
+    write_failure!(IoWrite, IoReadWrite, IoWriteSeek, IoReadWriteSeek);
+    macro_rules! seek_failure {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(BrokenIo);
+            expect_io_error("seek", || adapter.seek(0.0, 1, 0));
+        )*};
+    }
+    seek_failure!(IoReadSeek, IoWriteSeek, IoReadWriteSeek);
+}
+
+#[test]
+fn seek_adapters_return_old_positions_and_reject_invalid_offsets() {
+    use miniextendr_api::connection::*;
+    macro_rules! check {
+        ($($adapter:ident),*) => {$(
+            let mut adapter = $adapter::new(Cursor::new(vec![0_u8; 8]));
+            assert_eq!(adapter.seek(3.0, 1, 0), 0.0);
+            assert_eq!(adapter.seek(f64::NAN, 1, 0), 3.0);
+            assert_eq!(adapter.seek(2.0, 2, 0), 3.0);
+            assert_eq!(adapter.seek(-1.0, 3, 0), 5.0);
+            // R truncates a fractional offset.
+            assert_eq!(adapter.seek(2.9, 1, 0), 7.0);
+            assert_eq!(adapter.seek(-1.5, 2, 0), 2.0);
+            // A position before the start stays put, as in R's file connections.
+            assert_eq!(adapter.seek(-1.0, 1, 0), 1.0);
+            assert_eq!(adapter.seek(f64::NAN, 1, 0), 1.0);
+            for offset in [f64::INFINITY, f64::NEG_INFINITY, f64::MAX] {
+                expect_io_error("seek", || adapter.seek(offset, 1, 0));
+                assert_eq!(adapter.seek(f64::NAN, 1, 0), 1.0);
+            }
+            // The stream's own refusal.
+            expect_io_error("seek", || adapter.seek(-5.0, 2, 0));
+            expect_io_error("seek", || adapter.seek(0.0, 99, 0));
+        )*};
+    }
+    check!(IoReadSeek, IoWriteSeek, IoReadWriteSeek);
+}
+
+/// A stream that moves one byte per call and reports `Interrupted` before
+/// each one, as `Read` / `Write` may.
+#[derive(Default)]
+struct Trickle {
+    data: Rc<RefCell<Vec<u8>>>,
+    position: usize,
+    interrupted: bool,
+}
+impl Trickle {
+    fn interrupt(&mut self) -> std::io::Result<()> {
+        self.interrupted = !self.interrupted;
+        if self.interrupted {
+            Err(std::io::ErrorKind::Interrupted.into())
+        } else {
+            Ok(())
+        }
+    }
+}
+impl Read for Trickle {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.interrupt()?;
+        let Some(&byte) = self.data.borrow().get(self.position) else {
+            return Ok(0);
+        };
+        buf[0] = byte;
+        self.position += 1;
+        Ok(1)
+    }
+}
+impl Write for Trickle {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.interrupt()?;
+        self.data.borrow_mut().push(buf[0]);
+        Ok(1)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.interrupt()
+    }
+}
+
+#[test]
+fn short_and_interrupted_transfers_move_every_byte() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let data = Rc::new(RefCell::new(Vec::new()));
+        let writer = Trickle {
+            data: data.clone(),
+            ..Trickle::default()
+        };
+        let conn = OwnedProtect::new(RConnectionIo::new(writer).build_write());
+        RCall::new("writeBin")
+            .arg_value(vec![1_i32, 2])
+            .arg(conn.get())
+            .eval_base()
+            .unwrap();
+        RCall::new("flush").arg(conn.get()).eval_base().unwrap();
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        assert_eq!(data.borrow().len(), 8);
+
+        let reader = Trickle {
+            data,
+            ..Trickle::default()
+        };
+        let conn = OwnedProtect::new(RConnectionIo::new(reader).build_read());
+        let value = OwnedProtect::new(
+            RCall::new("readBin")
+                .arg(conn.get())
+                .arg_value("integer")
+                .arg_value(3_i32)
+                .eval_base()
+                .unwrap(),
+        );
+        assert_eq!(Vec::<i32>::try_from_sexp(value.get()).unwrap(), [1, 2]);
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+/// Hands out its chunks one read at a time; between them it has nothing yet,
+/// like a non-blocking stream.
+struct Pending(Vec<&'static [u8]>);
+impl Read for Pending {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.0.pop() {
+            Some([]) => Err(std::io::ErrorKind::WouldBlock.into()),
+            Some(chunk) => {
+                buf[..chunk.len()].copy_from_slice(chunk);
+                Ok(chunk.len())
+            }
+            None => Ok(0),
+        }
+    }
+}
+impl BufRead for Pending {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        match self.0.last() {
+            Some([]) => {
+                self.0.pop();
+                Err(std::io::ErrorKind::WouldBlock.into())
+            }
+            Some(chunk) => Ok(chunk),
+            None => Ok(&[]),
+        }
+    }
+    fn consume(&mut self, amount: usize) {
+        let chunk = self.0.pop().unwrap();
+        if amount < chunk.len() {
+            self.0.push(&chunk[amount..]);
+        }
+    }
+}
+
+#[test]
+fn a_stream_with_nothing_more_now_returns_what_it_has() {
+    use miniextendr_api::connection::*;
+    let mut adapter = IoRead::new(Pending(vec![b"cd", b"", b"ab"]));
+    let mut buf = [0; 4];
+    assert_eq!(adapter.read(&mut buf), 2);
+    assert_eq!(&buf[..2], b"ab");
+    assert_eq!(adapter.read(&mut buf), 2);
+    assert_eq!(&buf[..2], b"cd");
+    assert_eq!(adapter.read(&mut buf), 0);
+
+    let mut adapter = IoBufRead::new(Pending(vec![b"b", b"", b"a"]));
+    assert_eq!(adapter.fgetc(), i32::from(b'a'));
+    assert_eq!(adapter.fgetc(), -1);
+    assert_eq!(adapter.fgetc(), i32::from(b'b'));
+    assert_eq!(adapter.fgetc(), -1);
+}
+
+#[test]
+fn r_receives_io_conditions_and_can_close_after_failure() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(RConnectionIo::new(BrokenIo).build_read_write_seek());
+        for error in [
+            RCall::new("readBin")
+                .arg(conn.get())
+                .arg_value("raw")
+                .arg_value(1_i32)
+                .eval_base()
+                .unwrap_err(),
+            RCall::new("writeBin")
+                .arg_value(vec![1_u8])
+                .arg(conn.get())
+                .eval_base()
+                .unwrap_err(),
+            RCall::new("flush").arg(conn.get()).eval_base().unwrap_err(),
+            RCall::new("seek")
+                .arg(conn.get())
+                .arg_value(0_f64)
+                .eval_base()
+                .unwrap_err(),
+        ] {
+            assert!(error.inherits("miniextendr_connection_io_error"), "{error}");
+            assert!(error.message().contains("refused"), "{error}");
+        }
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        let conn = OwnedProtect::new(RConnectionIo::new(BrokenIo).mode("r").build_bufread());
+        let error = RCall::new("readLines")
+            .arg(conn.get())
+            .eval_base()
+            .unwrap_err();
+        assert!(error.inherits("miniextendr_connection_io_error"), "{error}");
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+#[test]
+fn r_seek_returns_the_position_before_the_move() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(
+            RConnectionIo::new(Cursor::new(vec![0_u8; 8])).build_read_write_seek(),
+        );
+        for (where_, previous) in [(3.0, 0.0), (5.0, 3.0), (f64::NAN, 5.0)] {
+            let value = OwnedProtect::new(
+                RCall::new("seek")
+                    .arg(conn.get())
+                    .arg_value(where_)
+                    .eval_base()
+                    .unwrap(),
+            );
+            assert_eq!(f64::try_from_sexp(value.get()).unwrap(), previous);
+        }
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+#[test]
+fn r_rereads_a_non_blocking_seekable_connection() {
+    // readLines() re-positions an open non-blocking connection with
+    // seek(con, seek(con, -1, 1, 1), 1, 1) before reading on.
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(
+            RConnectionIo::new(Cursor::new(b"a\nb\nc\n".to_vec()))
+                .mode("r")
+                .blocking(false)
+                .build_read_seek(),
+        );
+        let read_lines = |n: i32| {
+            let lines = OwnedProtect::new(
+                RCall::new("readLines")
+                    .arg(conn.get())
+                    .arg_value(n)
+                    .eval_base()
+                    .unwrap(),
+            );
+            Vec::<String>::try_from_sexp(lines.get()).unwrap()
+        };
+        assert_eq!(read_lines(1), ["a"]);
+        assert_eq!(read_lines(-1), ["b", "c"]);
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+#[test]
+fn r_refuses_seek_and_truncate_where_the_stream_has_none() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(RConnectionIo::new(Vec::<u8>::new()).build_write());
+        let error = RCall::new("seek").arg(conn.get()).eval_base().unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("'seek' not enabled for this connection"),
+            "{error}"
+        );
+        let error = RCall::new("truncate")
+            .arg(conn.get())
+            .eval_base()
+            .unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("truncation not enabled for this connection"),
+            "{error}"
+        );
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+
+/// Queues a warning on every read; warning!() would end the callback.
+struct DeferringSource;
+impl miniextendr_api::connection::RConnectionImpl for DeferringSource {
+    fn read(&mut self, buf: &mut [u8]) -> usize {
+        miniextendr_api::defer_warning!("deferred from read");
+        buf[0] = 7;
+        1
+    }
+}
+
+#[test]
+fn a_warning_deferred_in_a_callback_reaches_r_handlers() {
+    use miniextendr_api::sys::R_GlobalEnv;
+    r_test_utils::with_r_thread(|| unsafe {
+        let conn = OwnedProtect::new(RCustomConnection::new().mode("rb").build(DeferringSource));
+        RCall::new("assign")
+            .arg_value("con")
+            .arg(conn.get())
+            .arg(R_GlobalEnv)
+            .eval_base()
+            .unwrap();
+        let seen = OwnedProtect::new(
+            miniextendr_api::r_eval_str_global(
+                r#"local({
+                    seen <- NULL
+                    value <- withCallingHandlers(
+                        readBin(con, "raw", 1L),
+                        warning = function(w) {
+                            seen <<- conditionMessage(w)
+                            invokeRestart("muffleWarning")
+                        }
+                    )
+                    c(seen, as.character(value))
+                })"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            Vec::<String>::try_from_sexp(seen.get()).unwrap(),
+            ["deferred from read", "07"]
+        );
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        miniextendr_api::r_eval_str_global("rm(con)").unwrap();
+    });
+}
+// endregion

@@ -136,6 +136,86 @@ test_that("cursor_connection reads pre-filled data", {
 })
 
 # =============================================================================
+# I/O failures and seek positions — issue #1923
+# =============================================================================
+
+test_that("a failing read, write, flush or seek raises a classed condition", {
+  con <- failing_io_connection()
+  on.exit(close(con))
+  catch <- function(expr) {
+    tryCatch(expr, miniextendr_connection_io_error = function(e) e)
+  }
+  read <- catch(readBin(con, "raw", 1L))
+  expect_s3_class(read, "miniextendr_connection_io_error")
+  expect_s3_class(read, "rust_error")
+  expect_identical(read$operation, "read")
+  expect_identical(read$io_kind, "PermissionDenied")
+  expect_identical(read$os_error, NA_integer_)
+  expect_match(conditionMessage(read), "read refused", fixed = TRUE)
+  expect_identical(catch(writeBin(as.raw(1L), con))$operation, "write")
+  expect_identical(catch(flush(con))$operation, "flush")
+  expect_identical(catch(seek(con, 0))$operation, "seek")
+  expect_error(
+    tryCatch(readBin(con, "raw", 1L), rust_error = function(e) stop("caught")),
+    "caught"
+  )
+})
+
+test_that("seek() returns the position before the move, as rawConnection's does", {
+  x <- cursor_connection(charToRaw("abcde"))
+  y <- rawConnection(charToRaw("abcde"), "rb")
+  on.exit({
+    close(x)
+    close(y)
+  })
+  positions <- function(con) {
+    c(
+      seek(con, 2L), seek(con), seek(con, 1L, "current"),
+      seek(con, -1L, "end"), seek(con, 2.7), seek(con)
+    )
+  }
+  expect_identical(positions(y), c(0, 2, 2, 3, 4, 2))
+  expect_identical(positions(x), c(0, 2, 2, 3, 4, 2))
+
+  mem <- memory_connection()
+  on.exit(close(mem), add = TRUE)
+  writeBin(charToRaw("abcde"), mem)
+  expect_identical(seek(mem, 0), 5)
+  expect_identical(seek(mem), 0)
+})
+
+test_that("seek() before the start stays put, as file()'s does", {
+  positions <- function(con) c(seek(con, 3L), seek(con, -1L), seek(con))
+  x <- cursor_connection(charToRaw("abcde"))
+  on.exit(close(x))
+  expect_identical(positions(x), c(0, 3, 3))
+
+  # ?seek: file positioning on Windows is unreliable.
+  skip_on_os("windows")
+  path <- tempfile()
+  writeBin(charToRaw("abcde"), path)
+  f <- file(path, "rb")
+  on.exit({
+    close(f)
+    unlink(path)
+  }, add = TRUE)
+  expect_identical(positions(f), c(0, 3, 3))
+})
+
+test_that("seek() and truncate() refuse a connection that supports neither", {
+  con <- counter_connection(1L, 3L)
+  on.exit(close(con))
+  expect_error(seek(con), "'seek' not enabled for this connection", fixed = TRUE)
+  mem <- memory_connection()
+  on.exit(close(mem), add = TRUE)
+  expect_error(
+    truncate(mem),
+    "truncation not enabled for this connection",
+    fixed = TRUE
+  )
+})
+
+# =============================================================================
 # Standard stream connections — issue #175
 # =============================================================================
 

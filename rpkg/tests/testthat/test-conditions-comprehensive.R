@@ -633,7 +633,7 @@ test_that("ALTREP warning! degrades to rust_error (issue #366)", {
   x <- altrep_warn_on_elt(5L, "ignored")
   e <- tryCatch(x[1L], error = function(e) e)
   expect_true(inherits(e, "rust_error"))
-  expect_true(grepl("ALTREP callback context", conditionMessage(e)))
+  expect_true(grepl("ALTREP or connection callback context", conditionMessage(e)))
 })
 
 test_that("ALTREP warning! degraded error matches tryCatch(rust_error = h)", {

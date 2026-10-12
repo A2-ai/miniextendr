@@ -1117,11 +1117,12 @@ to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
 Two narrow cases still degrade:
 
 - `warning!()` / `message!()` / `condition!()` from an ALTREP `r_unwind`
-  callback. There is no mechanism to suspend execution to deliver a
-  non-fatal signal from inside R's vector-dispatch machinery. These produce
-  an R error (`kind = "panic"`, no user classes or data) with the message:
-  *"warning!/message!/condition! from ALTREP callback context cannot be raised
-  as non-fatal signals; use error!() instead"*.
+  callback or a custom connection's I/O callback. There is no mechanism to
+  suspend execution to deliver a non-fatal signal from inside R's
+  vector-dispatch or connection machinery. These produce an R error
+  (`kind = "panic"`, no user classes or data) with the message:
+  *"warning!/message!/condition! from an ALTREP or connection callback context
+  cannot be raised as non-fatal signals; use error!() instead"*.
 
 - A trait View method (`view.method()`) called from Rust code that is not
   wrapped in `with_r_unwind_protect` (e.g., a manual call from a test harness
