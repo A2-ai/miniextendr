@@ -338,9 +338,10 @@ fn strict_slice_conversion(
     result: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
     let elem = lossy_slice_element(ty)?;
+    let container = crate::type_inspect::type_display(ty);
     Some(quote::quote! {
         ::miniextendr_api::strict::checked_slice_into_sexp::<#elem>(
-            ::core::stringify!(#ty), ::core::convert::AsRef::as_ref(&#result)
+            #container, ::core::convert::AsRef::as_ref(&#result)
         )
     })
 }
@@ -426,9 +427,10 @@ pub(crate) fn strict_conversion_for_type(
                     )
                 }
             };
+            let container = crate::type_inspect::type_display(ty);
             return Some(quote::quote! {
                 ::miniextendr_api::strict::checked_rows_into_sexp::<#elem, _>(
-                    ::core::stringify!(#ty), #rows
+                    #container, #rows
                 )
             });
         }
@@ -617,6 +619,19 @@ mod tests {
         ));
         assert!(calls("&'static [u64]", "checked_slice_into_sexp"));
         assert!(calls("&mut [i64]", "checked_slice_into_sexp"));
+    }
+
+    #[test]
+    fn slice_box_and_array_errors_name_the_type_as_written() {
+        for (ty, name) in [
+            ("Box<[i64]>", "Box<[i64]>"),
+            ("&'static [u64]", "&'static [u64]"),
+            ("Option<[usize; 2]>", "[usize; 2]"),
+            ("Vec<Option<Box<[isize]>>>", "Vec<Option<Box<[isize]>>>"),
+        ] {
+            let expr = strict_expr(ty).expect("a strict conversion");
+            assert!(expr.contains(&format!("{name:?}")), "{ty}: {expr}");
+        }
     }
 
     #[test]
