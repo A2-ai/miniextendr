@@ -3494,11 +3494,12 @@ pub fn generate_method_c_wrapper(
     // Generate self extraction for instance methods
     // SEXP is now Send+Sync, so this works for both main and worker threads
     let pre_call = if method.env.is_instance() {
+        let borrow = syn::Ident::new("__mx_receiver_borrow", proc_macro2::Span::mixed_site());
         let self_extraction = match method.env {
             ReceiverKind::RefMut => {
                 quote! {
                     let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#borrow.owner())
                     };
                     let #self_ref = match #self_ptr.downcast_mut::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
@@ -3509,7 +3510,7 @@ pub fn generate_method_c_wrapper(
             ReceiverKind::Ref => {
                 quote! {
                     let #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#borrow.owner())
                     };
                     let #self_ref = match #self_ptr.downcast_ref::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
@@ -3523,7 +3524,7 @@ pub fn generate_method_c_wrapper(
                 // only on success (`T: Clone`, see `ConsumingFallible`).
                 ValueMode::Fallible => quote! {
                     let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#borrow.owner())
                     };
                     let #self_slot = match #self_ptr.downcast_mut::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
@@ -3535,7 +3536,7 @@ pub fn generate_method_c_wrapper(
                 // result is written back.
                 ValueMode::WriteBack | ValueMode::Terminal => quote! {
                     let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#borrow.owner())
                     };
                     let #taken = match #self_ptr.take_for_consuming::<#type_ident>() {
                         ::core::option::Option::Some(v) => v,
@@ -3549,24 +3550,35 @@ pub fn generate_method_c_wrapper(
             ReceiverKind::ExternalPtrRef => {
                 quote! {
                     let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#borrow.owner());
                 }
             }
             ReceiverKind::ExternalPtrRefMut => {
                 quote! {
                     let mut #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#borrow.owner());
                 }
             }
             ReceiverKind::ExternalPtrValue => {
                 quote! {
                     let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#borrow.owner());
                 }
             }
             _ => unreachable!(),
         };
-        vec![self_extraction]
+        // Handle receivers can manufacture mutable views internally; reserve
+        // exclusive access for them even when the handle itself is shared.
+        let mutable = !matches!(method.env, ReceiverKind::Ref);
+        vec![quote! {
+            let #borrow = unsafe {
+                ::miniextendr_api::externalptr::ExternalBorrow::acquire(
+                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp),
+                    #mutable,
+                )
+            };
+            #self_extraction
+        }]
     } else {
         vec![]
     };

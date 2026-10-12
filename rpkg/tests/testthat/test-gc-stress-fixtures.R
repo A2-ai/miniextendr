@@ -665,3 +665,10 @@ test_that("tuple container rows retain all children under gctorture", {
   })
   expect_identical(rows, expected)
 })
+
+test_that("external-pointer borrow counters stay rooted under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  expect_null(miniextendr:::gc_stress_externalptr_borrow())
+})

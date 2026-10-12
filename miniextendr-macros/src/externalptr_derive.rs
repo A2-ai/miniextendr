@@ -1049,9 +1049,11 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
     // error) on a non-pointer, a wrong type, or a pointer without an address
     // (a restored object: the classed errors) instead of silently returning
     // R_NilValue.
+    let borrow = syn::Ident::new("__mx_field_borrow", proc_macro2::Span::mixed_site());
     let extract_ref = quote::quote! {
+        let #borrow = ::miniextendr_api::externalptr::sidecar_r_borrow::<#struct_name>(x, false);
         let data: &#struct_name =
-            ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
+            ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(#borrow.owner(), x);
     };
 
     match &slot.kind {
@@ -1167,9 +1169,11 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
     // Helper: the live struct behind the pointer, mutably. Failure modes
     // panic like the getter's (`sidecar_r_struct_mut`) instead of silently
     // no-op'ing.
+    let borrow = syn::Ident::new("__mx_field_borrow", proc_macro2::Span::mixed_site());
     let extract_mut = quote::quote! {
+        let #borrow = ::miniextendr_api::externalptr::sidecar_r_borrow::<#struct_name>(x, true);
         let data: &mut #struct_name =
-            ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(x);
+            ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(#borrow.owner(), x);
     };
 
     // Conversion-failure condition, the argument error of #1594 on the
@@ -2774,7 +2778,7 @@ mod tests {
         let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
         let getter = super::generate_getter_body(&name, &info.slots[0]).to_string();
         assert!(
-            getter.contains("sidecar_r_struct :: < Engine > (x)"),
+            getter.contains("sidecar_r_struct :: < Engine > (__mx_field_borrow . owner () , x)"),
             "{getter}"
         );
         assert!(

@@ -723,15 +723,31 @@ EXTPTRSXP
   addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
             └→ Box<T> (the actual Rust value)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
-  prot  → VECSXP[2 + T::R_SLOT_COUNT]
+  prot  → VECSXP[3 + T::R_SLOT_COUNT]
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
             [1] → user-protected SEXP (set via set_protected)
-            [2..] → one value per Sidecar<T> field
+            [2] → integer borrow counter
+            [3..] → one value per Sidecar<T> field
 ```
 
 Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
 
-The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
+The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. Slot 2 holds the receiver borrow counter. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
+
+## Reentrant receiver calls
+
+Generated methods and field accessors resolve the receiver once, root that
+object, and acquire a shared or exclusive borrow before forming a Rust reference. Nested shared reads are allowed. A conflicting
+call raises `miniextendr_borrow_conflict`, and the guard releases on normal return
+or unwind. Handle receivers reserve exclusive access because they can create
+mutable typed views. Trait views use the same counter on their R owner, including
+views created in another package. A guard roots its counter independently so that
+consuming a value can clear the external pointer safely.
+
+These guards cover generated receivers and field accessors. They do not make
+arbitrary `ExternalPtr` handles or free-function arguments exclusive. Unsafe raw
+pointer access and ownerless trait views must still obey Rust's borrowing rules;
+GC rooting alone does not establish exclusive access.
 
 ## Thread Safety
 

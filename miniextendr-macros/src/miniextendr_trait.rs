@@ -694,14 +694,23 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
             self.__mx_view.owner().expect("this trait method requires an R-owned receiver"),
         }
     });
+    let borrow = syn::Ident::new("__mx_receiver_borrow", proc_macro2::Span::mixed_site());
+    let mutable = method.is_mut || method.owner_receiver.is_some();
+    let borrow_receiver = quote::quote! {
+        let #borrow = self.__mx_view.owner().map(|owner| {
+            ::miniextendr_api::externalptr::ExternalBorrow::acquire(owner, #mutable)
+        });
+    };
     let vtable_call = if argc > 0 {
         quote::quote! {
             let args: [::miniextendr_api::SEXP; #argc as usize] =
                 [#(__mx_roots.protect_raw(#arg_conversions)),*];
+            #borrow_receiver
             ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument #argc, args.as_ptr())
         }
     } else {
         quote::quote! {
+            #borrow_receiver
             ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument 0, ::std::ptr::null())
         }
     };

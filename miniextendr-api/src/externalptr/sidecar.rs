@@ -5,7 +5,7 @@
 //! a `SEXP` stored in a struct field is freed as soon as R drops its own
 //! references. A `Sidecar<T>` field holds no data of its own once the struct
 //! is wrapped. Its value lives in the external pointer's protection list,
-//! after the type ID and the user slot, so the pointer roots it for as long as
+//! after the type ID, user slot and borrow counter, so the pointer roots it for as long as
 //! the pointer is reachable, and `saveRDS()` writes it with the pointer. The
 //! struct holds nothing that points back at its pointer: the value is read
 //! and written through the `ExternalPtr<T>` handle, which keeps the pointer
@@ -375,6 +375,7 @@ pub(crate) unsafe fn init_erased_sidecars<T: TypedExternal>(value: &T, owner: SE
         // reachable through the already-rooted owner.
         crate::sys::R_SetExternalPtrProtected_unchecked(owner, prot);
         prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id);
+        super::borrow_check::init_borrow_state(owner);
         flush_sidecars(value, prot);
     }
 }
@@ -629,8 +630,8 @@ pub fn sidecar_require_live(flag: SEXP) -> bool {
 
 /// The `prot` list of the external pointer `x` carries
 /// ([`sidecar_receiver`]), after checking that it points to a `T`, and the
-/// live `T` when it still has an address. Allocates nothing for a pointer, a
-/// list or an environment receiver.
+/// live `T` when it still has an address. The returned guard must outlive
+/// that reference; acquiring it can allocate when the root pool grows.
 ///
 /// A live pointer is checked by `Any::downcast`. A pointer whose address is
 /// NULL (restored from a saved session by `readRDS()` / `unserialize()`)
@@ -653,8 +654,10 @@ pub fn sidecar_require_live(flag: SEXP) -> bool {
 unsafe fn checked_prot<'a, T: TypedExternal>(
     receiver: SEXP,
     require_live: bool,
-) -> (SEXP, Option<&'a T>) {
+    mutable: bool,
+) -> (SEXP, Option<&'a T>, super::ExternalBorrow) {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
+    let borrow = unsafe { super::ExternalBorrow::acquire(x, mutable) };
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
@@ -681,7 +684,20 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
             T::TYPE_NAME
         );
     }
-    (prot, live)
+    (prot, live, borrow)
+}
+
+/// Acquire the access mode of a generated field accessor before it extracts
+/// the struct or performs a user-defined conversion.
+///
+/// # Safety
+/// R's main thread; `receiver` and its pointer must stay rooted for the guard.
+#[doc(hidden)]
+pub unsafe fn sidecar_r_borrow<T: TypedExternal>(
+    receiver: SEXP,
+    mutable: bool,
+) -> super::ExternalBorrow {
+    unsafe { super::ExternalBorrow::acquire(sidecar_receiver::<T>(receiver), mutable) }
 }
 
 /// The live `T` of the external pointer `x` carries ([`sidecar_receiver`]),
@@ -696,13 +712,22 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread with a valid `x`; the reference is
-/// valid while `x` keeps its value.
+/// Must be called from R's main thread with a valid, rooted `x` and a live
+/// shared or exclusive [`super::ExternalBorrow`] for its value. The reference
+/// must not outlive the guard or the value.
 #[doc(hidden)]
-pub unsafe fn sidecar_r_struct<'a, T: TypedExternal>(x: SEXP) -> &'a T {
-    // SAFETY: the caller's contract; `downcast_ref` reads through a shared
-    // reference.
-    unsafe { &*sidecar_r_struct_ptr::<T>(x) }
+pub unsafe fn sidecar_r_struct<'a, T: TypedExternal>(x: SEXP, receiver: SEXP) -> &'a T {
+    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    if any_raw.is_null() {
+        unsafe { refuse_restored::<T>(x, receiver) };
+        refuse_other_type::<T>(receiver, Refused::NullPointer);
+    }
+    // A getter must never create a temporary &mut T while another shared
+    // getter is active. The generated wrapper holds a shared borrow guard.
+    match unsafe { &*any_raw }.downcast_ref::<T>() {
+        Some(value) => value,
+        None => refuse_other_type::<T>(receiver, Refused::OtherType),
+    }
 }
 
 /// The live `T` of the external pointer `x` carries, mutably, for the R
@@ -714,22 +739,21 @@ pub unsafe fn sidecar_r_struct<'a, T: TypedExternal>(x: SEXP) -> &'a T {
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread with a valid `x`; the reference is
-/// valid while `x` keeps its value, and nothing else may read or write the
-/// struct meanwhile.
+/// Must be called from R's main thread with a valid, rooted `x` and a live
+/// exclusive [`super::ExternalBorrow`] for its value. The reference must not
+/// outlive the guard or the value; nothing else may access the struct meanwhile.
 #[doc(hidden)]
 #[allow(clippy::mut_from_ref)]
-pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> &'a mut T {
+pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP, receiver: SEXP) -> &'a mut T {
     // SAFETY: the caller's contract; the pointer has mutable provenance
     // (`downcast_mut`).
-    unsafe { &mut *sidecar_r_struct_ptr::<T>(x) }
+    unsafe { &mut *sidecar_r_struct_ptr::<T>(x, receiver) }
 }
 
-/// The body of [`sidecar_r_struct`] and [`sidecar_r_struct_mut`]: the
+/// The body of [`sidecar_r_struct_mut`]: the
 /// address of the struct behind the pointer `x` carries
 /// ([`sidecar_receiver`]), with mutable provenance.
-unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(receiver: SEXP) -> *mut T {
-    let x = unsafe { sidecar_receiver::<T>(receiver) };
+unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP, receiver: SEXP) -> *mut T {
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
@@ -756,7 +780,7 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(receiver: SEXP) -> *mut T {
 /// Must be called from R's main thread with a valid `x`.
 #[doc(hidden)]
 pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
-    let _ = unsafe { checked_prot::<T>(x, require_live) };
+    let _ = unsafe { checked_prot::<T>(x, require_live, true) };
 }
 
 /// Whether the receiver `x` (a pointer, or an object carrying one) still has
@@ -779,7 +803,7 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
 #[doc(hidden)]
 pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
     if raise {
-        let _ = unsafe { checked_prot::<T>(x, true) };
+        let _ = unsafe { checked_prot::<T>(x, true, false) };
         return true;
     }
     let ptr = if x.type_of() == SEXPTYPE::EXTPTRSXP {
@@ -807,7 +831,7 @@ pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
 /// Must be called from R's main thread with a valid `x`.
 #[doc(hidden)]
 pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize, require_live: bool) -> SEXP {
-    let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
+    let (prot, live, _borrow) = unsafe { checked_prot::<T>(x, require_live, false) };
     if let Some(value) = live {
         value.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {
@@ -842,7 +866,7 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
     value: SEXP,
     require_live: bool,
 ) {
-    let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
+    let (prot, live, _borrow) = unsafe { checked_prot::<T>(x, require_live, true) };
     if let Some(data) = live {
         data.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {

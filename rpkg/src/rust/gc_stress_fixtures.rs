@@ -5586,3 +5586,33 @@ pub fn gc_stress_protected_strvec() {
         drop(transient);
     }
 }
+
+/// Keep per-object borrow counters rooted while ordinary and erased owners
+/// allocate, then release nested reads and reacquire an exclusive borrow.
+#[miniextendr(noexport)]
+pub fn gc_stress_externalptr_borrow() {
+    use miniextendr_api::externalptr::{ExternalBorrow, ExternalPtr};
+    for i in 0..12_i32 {
+        let owner = ExternalPtr::new(SharedData {
+            x: f64::from(i),
+            y: 0.0,
+            label: format!("borrow-{i}"),
+        });
+        unsafe {
+            let first = ExternalBorrow::acquire(owner.as_sexp(), false);
+            let second = ExternalBorrow::acquire(owner.as_sexp(), false);
+            let erased = OwnedProtect::new(miniextendr_api::mx_abi::mx_wrap(__mx_wrap_SharedData(
+                SharedData {
+                    x: 0.0,
+                    y: 0.0,
+                    label: String::new(),
+                },
+            )));
+            let _other = ExternalBorrow::acquire(erased.get(), true);
+            drop((first, second));
+            let _write = ExternalBorrow::acquire(owner.as_sexp(), true);
+            let _moved = ExternalPtr::into_inner(owner);
+            let _allocation = OwnedProtect::new(vec![i; 8].into_sexp());
+        }
+    }
+}

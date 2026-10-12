@@ -98,10 +98,11 @@
 //! once at construction.
 //!
 //! The `tag` slot holds a symbol (type name, for display).
-//! The `prot` slot holds a VECSXP (list) of `2 + T::R_SLOT_COUNT` elements:
+//! The `prot` slot holds a VECSXP (list) of `3 + T::R_SLOT_COUNT` elements:
 //!   - Index 0: SYMSXP (interned type ID symbol, for error messages)
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
-//!   - Index 2..: one value per [`Sidecar<T>`] field of `T`
+//!   - Index 2: INTSXP borrow counter shared by generated receiver guards
+//!   - Index 3..: one value per [`Sidecar<T>`] field of `T`
 //!
 //! ## `TYPE_NAME_CSTR` vs `TYPE_ID_CSTR`
 //!
@@ -209,11 +210,13 @@ fn sendable_any_ptr_into_ptr(ptr: SendableAnyPtr) -> *mut Box<dyn Any> {
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
+/// Index of the private call-borrow counter shared by every alias.
+const PROT_BORROW_INDEX: isize = 2;
 /// Length of the `prot` list (`VECSXP`) before the [`Sidecar<T>`] entries,
 /// which start at this index
-const PROT_VEC_LEN: isize = 2;
+const PROT_VEC_LEN: isize = 3;
 
-/// Length of `T`'s `prot` list: the type ID, the user slot and one entry per
+/// Length of `T`'s `prot` list: type ID, user slot, borrow counter and one entry per
 /// [`Sidecar<T>`] field.
 #[inline]
 fn prot_vec_len<T: TypedExternal>() -> R_xlen_t {
@@ -591,7 +594,7 @@ pub trait TypedExternal: 'static {
     const TYPE_ID_CSTR: &'static [u8];
 
     /// Number of [`Sidecar<T>`] fields: values the external pointer's
-    /// protection list keeps after the type ID and the user slot.
+    /// protection list keeps after the type ID, user slot and borrow counter.
     ///
     /// `#[derive(ExternalPtr)]` counts the type's `#[r_data]` fields of type
     /// `Sidecar<_>`.
@@ -985,7 +988,7 @@ thread_local! {
     static EXTPTR_ROOTS: RefCell<Option<ManuallyDrop<ProtectPool>>> = const { RefCell::new(None) };
 }
 
-/// Root an owning handle's `EXTPTRSXP` in the main-thread pool.
+/// Root an owning handle or its borrow counter in the main-thread pool.
 ///
 /// Must run on R's main thread with `sexp` already protected by the caller (the
 /// pool may allocate while growing). Both hold inside
@@ -1003,7 +1006,7 @@ fn root_owned(sexp: SEXP) -> ProtectKey {
     })
 }
 
-/// Release an owning handle's pool root. Stale keys are a safe no-op.
+/// Release an owning handle or borrow counter's pool root. Stale keys are a safe no-op.
 ///
 /// Must run on R's main thread (callers route through `with_r_thread`).
 #[inline]
@@ -1165,6 +1168,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
 
+        unsafe { borrow_check::init_borrow_state(sexp) };
+
         // Move the value's pending `Sidecar` values into `prot`, which is
         // protected.
         if T::R_SLOT_COUNT > 0 {
@@ -1212,6 +1217,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe {
             R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE);
         };
+
+        unsafe { borrow_check::init_borrow_state(sexp) };
 
         // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
@@ -1333,6 +1340,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
         unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE) };
+
+        unsafe { borrow_check::init_borrow_state(sexp) };
 
         // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
@@ -2777,6 +2786,9 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 
 mod altrep_helpers;
 pub use altrep_helpers::*;
+
+pub(crate) mod borrow_check;
+pub use borrow_check::ExternalBorrow;
 
 mod borrowed;
 pub use borrowed::{ExternalPtrMut, ExternalPtrRef, SidecarOwner, SidecarOwnerMut};

@@ -1302,6 +1302,7 @@ pub(super) fn generate_trait_method_c_wrapper(
 
     if method.has_self {
         let self_sexp = crate::naming::self_sexp_ident();
+        let borrow = syn::Ident::new("__mx_receiver_borrow", proc_macro2::Span::mixed_site());
         let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
         let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
         let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
@@ -1320,7 +1321,7 @@ pub(super) fn generate_trait_method_c_wrapper(
             });
             quote::quote! {
                 let #receiver_mutability #self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp)
+                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#borrow.owner())
                 };
                 #address
             }
@@ -1357,7 +1358,7 @@ pub(super) fn generate_trait_method_c_wrapper(
             quote::quote! {
                 let #receiver_mutability #self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
-                        ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp)
+                        #borrow.owner()
                     )
                 };
                 #self_setup
@@ -1381,6 +1382,16 @@ pub(super) fn generate_trait_method_c_wrapper(
             None => call_expr,
         };
 
+        let mutable = method.is_mut || crate::trait_receiver::owner_receiver(&method.sig).is_some();
+        let self_extraction = quote::quote! {
+            let #borrow = unsafe {
+                ::miniextendr_api::externalptr::ExternalBorrow::acquire(
+                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp),
+                    #mutable,
+                )
+            };
+            #self_extraction
+        };
         builder = builder
             .pre_call(vec![self_extraction])
             .call_expr(call_expr)
