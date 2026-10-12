@@ -167,9 +167,9 @@ macro_rules! __impl_altrep_base {
             fn unserialize(class: $crate::SEXP, state: $crate::SEXP) -> $crate::SEXP {
                 let ::core::option::Option::Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state)
                 else {
-                    panic!(
+                    ::core::panic!(
                         "ALTREP unserialize failed for {}",
-                        core::any::type_name::<$ty>()
+                        ::core::any::type_name::<$ty>()
                     );
                 };
 
@@ -225,7 +225,7 @@ macro_rules! __impl_altvec_dataptr {
         impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
-            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
+            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut ::core::ffi::c_void {
                 // Check data2 cache first (materialized by a prior call).
                 unsafe {
                     if let ::core::option::Option::Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
@@ -239,7 +239,7 @@ macro_rules! __impl_altvec_dataptr {
                         <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
                     };
                     <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, true)
-                        .map(|p| p.cast::<core::ffi::c_void>())
+                        .map(|p| p.cast::<::core::ffi::c_void>())
                 } else {
                     // Read-only: try immutable access first to avoid &mut borrows
                     // and unnecessary copy-on-write for Cow types.
@@ -252,14 +252,14 @@ macro_rules! __impl_altvec_dataptr {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d)
                     };
                     if let ::core::option::Option::Some(p) = ro {
-                        return p.cast_mut().cast::<core::ffi::c_void>();
+                        return p.cast_mut().cast::<::core::ffi::c_void>();
                     }
                     // dataptr_or_null returned None — try mutable path.
                     let d = unsafe {
                         <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
                     };
                     <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, false)
-                        .map(|p| p.cast::<core::ffi::c_void>())
+                        .map(|p| p.cast::<::core::ffi::c_void>())
                 };
 
                 if let ::core::option::Option::Some(p) = direct {
@@ -274,7 +274,7 @@ macro_rules! __impl_altvec_dataptr {
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
-            fn dataptr_or_null(x: $crate::SEXP) -> *const core::ffi::c_void {
+            fn dataptr_or_null(x: $crate::SEXP) -> *const ::core::ffi::c_void {
                 // Check data2 cache first (may have been materialized by a prior dataptr call)
                 unsafe {
                     if let ::core::option::Option::Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
@@ -284,8 +284,8 @@ macro_rules! __impl_altvec_dataptr {
                 let d =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d)
-                    .map(|p| p.cast::<core::ffi::c_void>())
-                    .unwrap_or(core::ptr::null())
+                    .map(|p| p.cast::<::core::ffi::c_void>())
+                    .unwrap_or(::core::ptr::null())
             }
         }
     };
@@ -308,18 +308,18 @@ macro_rules! __impl_altvec_string_dataptr {
         impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
-            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
+            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut ::core::ffi::c_void {
                 unsafe { $crate::altrep_impl::altstring_dataptr::<$ty>(x, writable) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
-            fn dataptr_or_null(x: $crate::SEXP) -> *const core::ffi::c_void {
+            fn dataptr_or_null(x: $crate::SEXP) -> *const ::core::ffi::c_void {
                 // Always return null. The data2 cache may still hold unfilled
                 // (C NULL) slots, which R must never read; null makes R go
                 // through Elt. Dataptr fills every slot before exposing it.
                 let _ = x;
-                core::ptr::null()
+                ::core::ptr::null()
             }
         }
     };

@@ -631,7 +631,7 @@ impl RustConversionBuilder {
                         let owned_ident =
                             quote::format_ident!("__owned_{}", plain, span = binding_span);
                         // Owned conversion: SEXP -> String
-                        let string_ty: syn::Type = syn::parse_quote!(String);
+                        let string_ty: syn::Type = syn::parse_quote!(::std::string::String);
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };

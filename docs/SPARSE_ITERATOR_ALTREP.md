@@ -309,6 +309,7 @@ Each R type has a different representation for "no value":
 | Real (`SparseIterRealData`) | Ordinary `NaN` | `NaN` |
 | Logical (`SparseIterLogicalData`) | `Logical::Na` | `NA` |
 | Raw (`SparseIterRawData`) | `0` | `00` |
+| Complex (`SparseIterComplexData`) | Ordinary `NaN` in both parts | `NaN+NaNi` |
 
 Note that raw vectors have no NA concept in R, so skipped raw elements return `0x00`. This means you cannot distinguish a skipped element from a legitimately-zero element in a raw sparse iterator.
 
@@ -318,9 +319,9 @@ Note that raw vectors have no NA concept in R, so skipped raw elements return `0
 
 1. **Skipped values cannot be recovered**: Backward reads of cached elements work. An element discarded by a skip returns NA/default forever; there is no way to rewind the iterator.
 
-2. **No `as_slice()`**: Sparse storage uses `BTreeMap`, not a contiguous array. Operations requiring a contiguous slice (like `DATAPTR` materialization) will trigger R's default materialization path.
+2. **No `as_slice()`**: Sparse storage uses `BTreeMap`, not a contiguous array. When R needs a data pointer (`DATAPTR`, for example to duplicate or save the vector), the vector is copied into an ordinary R vector by reading every element in increasing order: cached values, the NA/default for skipped elements, and newly computed values for elements the iterator has not reached yet. Later reads come from that copy.
 
-3. **Serialization loses the iterator**: Without custom serialization hooks, R saves the visible values as an ordinary vector and `readRDS()` restores that vector. Cached values survive and skipped positions retain their NA/default values. Preserving the ALTREP class requires an explicit serialization and reconstruction policy on the concrete class.
+3. **Serialization loses the iterator**: Without custom serialization hooks, saving materializes the vector (see above) and R writes it as an ordinary vector; `readRDS()` restores that vector. Cached values survive, skipped positions keep their NA/default values, and elements the iterator had not reached are computed when the vector is saved. Preserving the ALTREP class requires an explicit serialization and reconstruction policy on the concrete class.
 
 4. **Aggregates see the skipped-position defaults**: `sum()` and `mean()` include integer/logical NA or real/complex NaN for skipped elements. `na.rm = TRUE` ignores these, but cannot recover the discarded values. Use prefix-caching iterators when an aggregate must include every source value.
 

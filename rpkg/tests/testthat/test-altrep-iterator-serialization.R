@@ -297,6 +297,48 @@ test_that("sparse raw iterator ALTREP data survives saveRDS/readRDS", {
   expect_equal(restored[10], as.raw(9))
 })
 
+test_that("saving a sparse vector computes the elements it has not reached yet", {
+  v <- sparse_iter_int(1L, 11L)
+  expect_identical(v[5], 5L)
+
+  restored <- unserialize(serialize(v, NULL))
+  expect_identical(restored, c(rep(NA, 4L), 5:10))
+  # Saving materialized v, which now reads the same values
+  expect_identical(v[seq_along(v)], restored)
+})
+
+test_that("sparse real skipped elements stay NaN through saveRDS/readRDS", {
+  v <- sparse_iter_real(0, 1, 5L)
+  expect_identical(v[3], 2)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(v, tmp)
+  restored <- readRDS(tmp)
+
+  expect_true(all(is.nan(restored[1:2])))
+  expect_identical(restored[3:5], c(2, 3, 4))
+})
+
+test_that("sparse vector saved after its source ended reloads the same values", {
+  # The source yields 1, ends once, then would yield 100, 101, ...
+  v <- sparse_iter_int_resuming(1L, 4L)
+  expect_identical(v[1], 1L)
+  expect_identical(v[3], NA_integer_)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+  saveRDS(v, tmp)
+  expect_identical(readRDS(tmp), c(1L, NA, NA, NA))
+  expect_identical(unserialize(serialize(v, NULL)), c(1L, NA, NA, NA))
+  expect_identical(v[seq_along(v)], c(1L, NA, NA, NA))
+})
+
+test_that("saving a fresh sparse vector stops at its source's end", {
+  v <- sparse_iter_int_resuming(2L, 5L)
+  expect_identical(unserialize(serialize(v, NULL)), c(1L, 2L, NA, NA, NA))
+})
+
 # =============================================================================
 # Edge cases
 # =============================================================================

@@ -427,7 +427,7 @@ fn derive_interaction_factor(
             const EXPECTED: &[&str] = &[#(#inner_level_strs),*];
 
             // Check level count
-            assert!(
+            ::core::assert!(
                 ACTUAL.len() == EXPECTED.len(),
                 "interaction factor: inner type level count mismatch"
             );
@@ -437,13 +437,13 @@ fn derive_interaction_factor(
             while i < ACTUAL.len() {
                 let actual_bytes = ACTUAL[i].as_bytes();
                 let expected_bytes = EXPECTED[i].as_bytes();
-                assert!(
+                ::core::assert!(
                     actual_bytes.len() == expected_bytes.len(),
                     "interaction factor: inner type level string length mismatch"
                 );
                 let mut j = 0;
                 while j < actual_bytes.len() {
-                    assert!(
+                    ::core::assert!(
                         actual_bytes[j] == expected_bytes[j],
                         "interaction factor: inner type level string content mismatch"
                     );

@@ -92,9 +92,9 @@ test_that("sparse real iterator skips elements correctly", {
   # Access element 50 first (value = 0 + 49 * 0.5 = 24.5)
   expect_equal(x[50], 24.5)
 
-  # Elements 1-49 were skipped and should return NaN (NA for reals)
-  expect_true(is.na(x[1]))
-  expect_true(is.na(x[25]))
+  # Elements 1-49 were skipped and return an ordinary NaN, not NA_real_
+  expect_true(is.nan(x[1]))
+  expect_true(is.nan(x[25]))
 
   # Element 50 was cached
   expect_equal(x[50], 24.5)
@@ -210,6 +210,56 @@ test_that("sparse iterators work with large vectors", {
 
   # First element was skipped
   expect_true(is.na(big[1]))
+})
+
+# =============================================================================
+# Sources that end before the declared length
+# =============================================================================
+
+test_that("sparse elements past the source's end read as NA every time", {
+  x <- sparse_iter_int_short(3L, 6L)
+  expect_identical(length(x), 6L)
+
+  expect_identical(x[2], 2L)
+  # The skip to element 5 consumes 3, then the source ends
+  expect_identical(x[5], NA_integer_)
+  expect_identical(x[5], NA_integer_)
+  expect_identical(x[3], NA_integer_)
+  expect_identical(x[6], NA_integer_)
+  # The cached element survives the end
+  expect_identical(x[2], 2L)
+})
+
+test_that("sparse vectors never read a source again after it ends", {
+  # The source yields 1, ends once, then would yield 100, 101, ...
+  x <- sparse_iter_int_resuming(1L, 4L)
+
+  expect_identical(x[1], 1L)
+  # The source ends while skipping element 2
+  expect_identical(x[3], NA_integer_)
+  expect_identical(x[2], NA_integer_)
+  expect_identical(x[3], NA_integer_)
+  expect_identical(x[4], NA_integer_)
+  expect_identical(x[1], 1L)
+  expect_identical(x[seq_along(x)], c(1L, NA, NA, NA))
+})
+
+test_that("region reads of a sparse vector stop at the source's end", {
+  # sum() reads through Get_region
+  x <- sparse_iter_int_resuming(2L, 5L)
+  expect_identical(sum(x, na.rm = TRUE), 3L)
+  expect_identical(x[seq_along(x)], c(1L, 2L, NA, NA, NA))
+})
+
+test_that("duplicating a sparse vector after its source ended copies NAs", {
+  x <- sparse_iter_int_resuming(1L, 4L)
+  expect_identical(x[1], 1L)
+
+  # Modifying a shared copy duplicates x, which materializes it through Dataptr
+  y <- x
+  y[1] <- 0L
+  expect_identical(y, c(0L, NA, NA, NA))
+  expect_identical(x[seq_along(x)], c(1L, NA, NA, NA))
 })
 
 # =============================================================================

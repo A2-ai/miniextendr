@@ -62,9 +62,9 @@ pub fn impl_typed_external(input: TokenStream) -> syn::Result<TokenStream> {
             const TYPE_NAME: &'static str = #name_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
             const TYPE_ID_CSTR: &'static [u8] =
-                concat!(
-                    env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION"),
-                    "::", module_path!(), "::", #name_lit, "\0"
+                ::core::concat!(
+                    ::core::env!("CARGO_PKG_NAME"), "@", ::core::env!("CARGO_PKG_VERSION"),
+                    "::", ::core::module_path!(), "::", #name_lit, "\0"
                 ).as_bytes();
         }
 

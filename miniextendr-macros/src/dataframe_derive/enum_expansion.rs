@@ -525,7 +525,7 @@ pub(super) fn derive_enum_dataframe(
     // Collect all unique column names, check type consistency.
     // Expanded fields contribute multiple columns to the schema.
     let coerce_to_string = attrs.conflicts.as_deref() == Some("string");
-    let string_ty: syn::Type = syn::parse_quote!(String);
+    let string_ty: syn::Type = syn::parse_quote!(::std::string::String);
     let mut registry = ColumnRegistry::new(coerce_to_string, &string_ty);
 
     for (variant_idx, vi) in variant_infos.iter().enumerate() {
@@ -574,8 +574,8 @@ pub(super) fn derive_enum_dataframe(
                     let vals_name = format!("{}_values", data.base_name);
                     // Column types are Vec<K> and Vec<V> respectively (used as Vec<Option<Vec<K>>>
                     // / Vec<Option<Vec<V>>> in companion struct via ColumnRegistry wrapping).
-                    let key_vec_ty: syn::Type = syn::parse_quote!(Vec<#key_ty>);
-                    let val_vec_ty: syn::Type = syn::parse_quote!(Vec<#val_ty>);
+                    let key_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#key_ty>);
+                    let val_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#val_ty>);
                     registry.register(&keys_name, &key_vec_ty, variant_idx, &vi.name, err_span)?;
                     registry.register(&vals_name, &val_vec_ty, variant_idx, &vi.name, err_span)?;
                 }
@@ -731,7 +731,7 @@ pub(super) fn derive_enum_dataframe(
     let has_tag = attrs.tag.is_some();
 
     let tag_field = if has_tag {
-        quote! { pub _tag: Vec<String>, }
+        quote! { pub _tag: ::std::vec::Vec<::std::string::String>, }
     } else {
         TokenStream::new()
     };
@@ -741,14 +741,14 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let ty = &col.ty;
-            quote! { pub #name: Vec<::core::option::Option<#ty>> }
+            quote! { pub #name: ::std::vec::Vec<::core::option::Option<#ty>> }
         })
         .collect();
     // Auto-expand fields: Vec<Option<ContainerType>>
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
-        df_fields.push(quote! { pub #name: Vec<::core::option::Option<#cty>> });
+        df_fields.push(quote! { pub #name: ::std::vec::Vec<::core::option::Option<#cty>> });
     }
 
     // When the companion struct would otherwise have no fields (unit-only enum,
@@ -820,10 +820,10 @@ pub(super) fn derive_enum_dataframe(
             let name = &col.col_name;
             let name_str = name.to_string();
             quote! {
-                assert!(
+                ::core::assert!(
                     self.#name.len() == _n_rows,
                     "column length mismatch in {}: column `{}` has length {} but expected {}",
-                    stringify!(#df_name),
+                    ::core::stringify!(#df_name),
                     #name_str,
                     self.#name.len(),
                     _n_rows,
@@ -931,8 +931,8 @@ pub(super) fn derive_enum_dataframe(
                             .map(|v| v.len())
                             .max()
                             .unwrap_or(0);
-                        let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                            .map(|_| Vec::with_capacity(_n_rows))
+                        let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
+                            .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
                             .collect();
                         for __opt_vec in &__auto {
                             for (__i, __col) in __cols.iter_mut().enumerate() {
@@ -943,7 +943,7 @@ pub(super) fn derive_enum_dataframe(
                         }
                         for (__i, __col) in __cols.into_iter().enumerate() {
                             __df_pairs.push((
-                                format!("{}_{}", #base_name_str, __i + 1),
+                                ::std::format!("{}_{}", #base_name_str, __i + 1),
                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                             ));
                         }
@@ -966,8 +966,8 @@ pub(super) fn derive_enum_dataframe(
                     {
                         // Separate the Some/None rows — collect present rows densely
                         // (no Clone needed: we consume the Vec<Option<Inner>>).
-                        let mut __present_idx: Vec<usize> = Vec::new();
-                        let mut __inner_rows: Vec<#inner_ty> = Vec::new();
+                        let mut __present_idx: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
+                        let mut __inner_rows: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
                         for (__row_i, __opt) in self.#df_field.into_iter().enumerate() {
                             if let ::core::option::Option::Some(__inner) = __opt {
                                 __present_idx.push(__row_i);
@@ -985,7 +985,7 @@ pub(super) fn derive_enum_dataframe(
                         // Scatter each column back to full _n_rows with NA/NULL-fill,
                         // preserving the source column's SEXPTYPE.
                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                            let __prefixed = format!("{}_{}", #base_name_str, __inner_col_name);
+                            let __prefixed = ::std::format!("{}_{}", #base_name_str, __inner_col_name);
                             let __scattered = __scope.protect_raw(
                                 ::miniextendr_api::convert::scatter_column(
                                     __inner_col_sexp,
@@ -1011,10 +1011,10 @@ pub(super) fn derive_enum_dataframe(
                     // into the parent VECSXP before we drop the scope.
                     unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        let mut __df_pairs: Vec<(
-                            String,
+                        let mut __df_pairs: ::std::vec::Vec<(
+                            ::std::string::String,
                             ::miniextendr_api::SEXP,
-                        )> = Vec::new();
+                        )> = ::std::vec::Vec::new();
                         #tag_push_pair
                         #(#static_pair_pushes)*
                         #(#factor_pair_pushes)*
@@ -1039,7 +1039,7 @@ pub(super) fn derive_enum_dataframe(
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         // Explicit type annotation so the vec![] case (unit-only enum
                         // with no columns and no tag) doesn't hit E0282 inference failure.
-                        let __pairs: Vec<(&str, ::miniextendr_api::SEXP)> = vec![
+                        let __pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
                             #tag_pair
                             #(#col_pairs),*
                         ];
@@ -1145,19 +1145,19 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let ty = &col.ty;
-            quote! { let mut #name: Vec<::core::option::Option<#ty>> = Vec::with_capacity(len); }
+            quote! { let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> = ::std::vec::Vec::with_capacity(len); }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
         col_vec_inits.push(
-            quote! { let mut #name: Vec<::core::option::Option<#cty>> = Vec::with_capacity(len); },
+            quote! { let mut #name: ::std::vec::Vec<::core::option::Option<#cty>> = ::std::vec::Vec::with_capacity(len); },
         );
     }
 
     let tag_init = if has_tag {
-        quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
+        quote! { let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(len); }
     } else {
         TokenStream::new()
     };
@@ -1195,7 +1195,7 @@ pub(super) fn derive_enum_dataframe(
                                 {
                                     let binding = &data.binding;
                                     if col.string_coerced {
-                                        return quote! { #col_name.push(::core::option::Option::Some(ToString::to_string(&#binding))); };
+                                        return quote! { #col_name.push(::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
                                     } else {
                                         return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
                                     }
@@ -1230,7 +1230,7 @@ pub(super) fn derive_enum_dataframe(
                                     if col_name_str == keys_name {
                                         let vals_col = format_ident!("{}", vals_name);
                                         return quote! {
-                                            let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                            let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
                                             #col_name.push(::core::option::Option::Some(__mx_keys));
                                             #vals_col.push(::core::option::Option::Some(__mx_vals));
                                         };
@@ -1365,8 +1365,8 @@ pub(super) fn derive_enum_dataframe(
     };
 
     let from_vec_impl = quote! {
-        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
-            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
+        impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
                 let len = rows.len();
                 #tag_init
                 #(#col_vec_inits)*
@@ -1391,21 +1391,21 @@ pub(super) fn derive_enum_dataframe(
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: Vec<String> = vec![String::new(); len];
+                let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
             });
         }
         for col in &columns {
             let name = &col.col_name;
             let ty = &col.ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<::core::option::Option<#ty>> = vec![::core::option::Option::None; len];
+                let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> = ::std::vec![::core::option::Option::None; len];
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
             let cty = &ac.container_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<::core::option::Option<#cty>> = vec![::core::option::Option::None; len];
+                let mut #name: ::std::vec::Vec<::core::option::Option<#cty>> = ::std::vec![::core::option::Option::None; len];
             });
         }
 
@@ -1466,7 +1466,7 @@ pub(super) fn derive_enum_dataframe(
                                     {
                                         let binding = &data.binding;
                                         if col.string_coerced {
-                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(ToString::to_string(&#binding))); };
+                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
                                         } else {
                                             return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
                                         }
@@ -1501,7 +1501,7 @@ pub(super) fn derive_enum_dataframe(
                                             let vals_col = format_ident!("{}", vals_name);
                                             let w_vals = format_ident!("__w_{}", vals_col);
                                             return quote! {
-                                                let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                                let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
                                                 #w_name.write(__i, ::core::option::Option::Some(__mx_keys));
                                                 #w_vals.write(__i, ::core::option::Option::Some(__mx_vals));
                                             };
@@ -1683,7 +1683,7 @@ pub(super) fn derive_enum_dataframe(
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             #[doc(hidden)]
-            pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
+            pub fn to_dataframe(rows: ::std::vec::Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
 
@@ -1930,7 +1930,7 @@ pub(super) fn derive_enum_dataframe(
         quote! {
             fn rows_from_dataframe(
                 __df: &::miniextendr_api::dataframe::DataFrame,
-            ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
+            ) -> ::core::option::Option<::core::result::Result<::std::vec::Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
                 ::core::option::Option::Some(
                     <#row_name #ty_generics>::try_from_dataframe(__df.as_sexp())
                         .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
@@ -1940,7 +1940,7 @@ pub(super) fn derive_enum_dataframe(
             ::miniextendr_api::__dataframe_row_when_rayon! {
                 fn rows_from_dataframe_par(
                     __df: &::miniextendr_api::dataframe::DataFrame,
-                ) -> ::core::option::Option<::core::result::Result<Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
+                ) -> ::core::option::Option<::core::result::Result<::std::vec::Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
                     ::core::option::Option::Some(
                         #par_reader_body
                             .map_err(::miniextendr_api::dataframe::DataFrameError::Conversion)
@@ -1957,7 +1957,7 @@ pub(super) fn derive_enum_dataframe(
             for #row_name #ty_generics #where_clause
         {
             fn rows_into_dataframe(
-                rows: Vec<Self>,
+                rows: ::std::vec::Vec<Self>,
             ) -> ::core::result::Result<
                 ::miniextendr_api::dataframe::DataFrame,
                 ::miniextendr_api::dataframe::DataFrameError,
@@ -1969,7 +1969,7 @@ pub(super) fn derive_enum_dataframe(
 
             ::miniextendr_api::__dataframe_row_when_rayon! {
                 fn rows_into_dataframe_par(
-                    rows: Vec<Self>,
+                    rows: ::std::vec::Vec<Self>,
                 ) -> ::core::result::Result<
                     ::miniextendr_api::dataframe::DataFrame,
                     ::miniextendr_api::dataframe::DataFrameError,
@@ -2100,7 +2100,7 @@ fn generate_split_method(
                             // For needs_into_list fields this is the raw struct type; the
                             // list-column is built from it when the partition is assembled.
                             buf_decls.push(quote! {
-                                let mut #buf: Vec<#ty> = Vec::new();
+                                let mut #buf: ::std::vec::Vec<#ty> = ::std::vec::Vec::new();
                             });
                         }
                         EnumResolvedField::ExpandedFixed(data) => {
@@ -2108,7 +2108,7 @@ fn generate_split_method(
                                 let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                 let elem_ty = &data.elem_ty;
                                 buf_decls.push(quote! {
-                                    let mut #buf: Vec<#elem_ty> = Vec::new();
+                                    let mut #buf: ::std::vec::Vec<#elem_ty> = ::std::vec::Vec::new();
                                 });
                             }
                         }
@@ -2117,7 +2117,7 @@ fn generate_split_method(
                                 let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                 let elem_ty = &data.elem_ty;
                                 buf_decls.push(quote! {
-                                    let mut #buf: Vec<::core::option::Option<#elem_ty>> = Vec::new();
+                                    let mut #buf: ::std::vec::Vec<::core::option::Option<#elem_ty>> = ::std::vec::Vec::new();
                                 });
                             }
                         }
@@ -2125,7 +2125,7 @@ fn generate_split_method(
                             let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                             let container_ty = &data.container_ty;
                             buf_decls.push(quote! {
-                                let mut #buf: Vec<#container_ty> = Vec::new();
+                                let mut #buf: ::std::vec::Vec<#container_ty> = ::std::vec::Vec::new();
                             });
                         }
                         EnumResolvedField::Map(data) => {
@@ -2134,8 +2134,8 @@ fn generate_split_method(
                             let key_ty = &data.key_ty;
                             let val_ty = &data.val_ty;
                             buf_decls.push(quote! {
-                                let mut #keys_buf: Vec<Vec<#key_ty>> = Vec::new();
-                                let mut #vals_buf: Vec<Vec<#val_ty>> = Vec::new();
+                                let mut #keys_buf: ::std::vec::Vec<::std::vec::Vec<#key_ty>> = ::std::vec::Vec::new();
+                                let mut #vals_buf: ::std::vec::Vec<::std::vec::Vec<#val_ty>> = ::std::vec::Vec::new();
                             });
                         }
                         // Struct field: buffer holds Vec<Inner> (no Option — split only sees
@@ -2144,7 +2144,7 @@ fn generate_split_method(
                             let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                             let inner_ty = &data.inner_ty;
                             buf_decls.push(quote! {
-                                let mut #buf: Vec<#inner_ty> = Vec::new();
+                                let mut #buf: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
                             });
                         }
                     }
@@ -2187,7 +2187,7 @@ fn generate_split_method(
                                     format_ident!("__s_{}_{}_values", snake, data.base_name);
                                 // unzip() guarantees pairwise alignment of keys and values.
                                 vec![quote! {
-                                    let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+                                    let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
                                     #keys_buf.push(__mx_keys);
                                     #vals_buf.push(__mx_vals);
                                 }]
@@ -2390,8 +2390,8 @@ fn generate_split_method(
                                     {
                                         let __auto = #buf;
                                         let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                                        let mut __auto_cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                                            .map(|_| Vec::with_capacity(#n_var))
+                                        let mut __auto_cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
+                                            .map(|_| ::std::vec::Vec::with_capacity(#n_var))
                                             .collect();
                                         for __row_vec in &__auto {
                                             for (__ai, __acol) in __auto_cols.iter_mut().enumerate() {
@@ -2400,7 +2400,7 @@ fn generate_split_method(
                                         }
                                         for (__ai, __acol) in __auto_cols.into_iter().enumerate() {
                                             #pairs_var.push((
-                                                format!("{}_{}", #base_str, __ai + 1),
+                                                ::std::format!("{}_{}", #base_str, __ai + 1),
                                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__acol)),
                                             ));
                                         }
@@ -2446,7 +2446,7 @@ fn generate_split_method(
                                             &__scope,
                                         );
                                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                                            let __prefixed = format!("{}_{}", #base_str, __inner_col_name);
+                                            let __prefixed = ::std::format!("{}_{}", #base_str, __inner_col_name);
                                             #pairs_var.push((__prefixed, __inner_col_sexp));
                                         }
                                     }
@@ -2462,7 +2462,7 @@ fn generate_split_method(
                         // them; the multi-variant body roots the finished partition.
                         let #df_var = unsafe {
                             let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                            let mut #pairs_var: Vec<(String, ::miniextendr_api::SEXP)> = Vec::new();
+                            let mut #pairs_var: ::std::vec::Vec<(::std::string::String, ::miniextendr_api::SEXP)> = ::std::vec::Vec::new();
                             #(#static_pushes)*
                             ::miniextendr_api::list::List::from_raw_pairs(#pairs_var)
                                 .set_class_str(&["data.frame"])
@@ -2590,7 +2590,7 @@ fn generate_split_method(
                         // SAFETY: see has_auto branch.
                         let #df_var = unsafe {
                             let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                            ::miniextendr_api::list::List::from_raw_pairs(vec![
+                            ::miniextendr_api::list::List::from_raw_pairs(::std::vec![
                                 #(#pairs),*
                             ])
                             .set_class_str(&["data.frame"])
@@ -2640,7 +2640,7 @@ fn generate_split_method(
             .map(|(name, var)| quote! { (::std::string::String::from(#name), #var) })
             .collect();
         quote! {
-            ::miniextendr_api::dataframe::DataFrameShape::PerVariantList(vec![
+            ::miniextendr_api::dataframe::DataFrameShape::PerVariantList(::std::vec![
                 #(#outer_pairs),*
             ])
         }
@@ -2665,7 +2665,7 @@ fn generate_split_method(
             // `to_dataframe(rows)` companion helper.
             #[doc(hidden)]
             pub fn to_dataframe_split(
-                rows: Vec<Self>,
+                rows: ::std::vec::Vec<Self>,
             ) -> ::miniextendr_api::dataframe::DataFrameShape {
                 #body
             }
@@ -2772,11 +2772,11 @@ fn build_enum_reader(
     // Tag column: pull as Vec<String>.
     let tag_var = format_ident!("__tag");
     extracts.push(quote! {
-        let #tag_var: Vec<::std::string::String> = {
+        let #tag_var: ::std::vec::Vec<::std::string::String> = {
             let __tag_sexp = __view.column_raw(#tag_col_name).ok_or_else(|| {
                 ::std::format!("tag column `{}` is missing from the data.frame", #tag_col_name)
             })?;
-            <Vec<::std::string::String> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__tag_sexp)
+            <::std::vec::Vec<::std::string::String> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__tag_sexp)
                 .map_err(|e| ::std::format!(
                     "tag column `{}` could not be read as strings: {}",
                     #tag_col_name, e
@@ -2831,7 +2831,7 @@ fn build_enum_reader(
         if col.is_factor {
             // as_factor column: use unit_factor_option_vec_from_sexp.
             extracts.push(quote! {
-                let #col_var: Vec<::core::option::Option<#ty>> = {
+                let #col_var: ::std::vec::Vec<::core::option::Option<#ty>> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
@@ -2852,11 +2852,11 @@ fn build_enum_reader(
             // Regular column: pull as Vec<Option<ty>> via TryFromSexp.
             let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#ty>);
             extracts.push(quote! {
-                let #col_var: Vec<#opt_ty> = {
+                let #col_var: ::std::vec::Vec<#opt_ty> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
-                    <Vec<#opt_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                    <::std::vec::Vec<#opt_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
                         .map_err(|e| ::std::format!(
                             "column `{}` could not be converted to the expected type: {}",
                             #col_name_str, e
@@ -2890,15 +2890,15 @@ fn build_enum_reader(
         let cols_var = format_ident!("__aev_{}", base_name.replace('-', "_"));
         let opt_elem_ty: syn::Type = syn::parse_quote!(::core::option::Option<#elem_ty>);
         extracts.push(quote! {
-            let #cols_var: Vec<Vec<#opt_elem_ty>> = {
-                let mut __cols: Vec<Vec<#opt_elem_ty>> = ::std::vec::Vec::new();
+            let #cols_var: ::std::vec::Vec<::std::vec::Vec<#opt_elem_ty>> = {
+                let mut __cols: ::std::vec::Vec<::std::vec::Vec<#opt_elem_ty>> = ::std::vec::Vec::new();
                 let mut __k: usize = 1;
                 loop {
                     let __cn = ::std::format!("{}_{}", #base_name, __k);
                     match __view.column_raw(&__cn) {
                         ::core::option::Option::Some(__s) => {
-                            let __c: Vec<#opt_elem_ty> =
-                                <Vec<#opt_elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
+                            let __c: ::std::vec::Vec<#opt_elem_ty> =
+                                <::std::vec::Vec<#opt_elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
                                     .map_err(|e| ::std::format!(
                                         "column `{}` could not be converted: {}",
                                         __cn, e
@@ -2948,22 +2948,22 @@ fn build_enum_reader(
                     .collect();
 
                 extracts.push(quote! {
-                    let #vec_var: Vec<::core::option::Option<#inner_ty>> = {
+                    let #vec_var: ::std::vec::Vec<::core::option::Option<#inner_ty>> = {
                         // Build presence mask: row i is present iff its tag is one of the
                         // variants that contribute this Struct field.
                         let __contributing: &[&str] = &[#(#contributing_variant_names),*];
-                        let __present_indices: Vec<usize> = (0..__nrow)
+                        let __present_indices: ::std::vec::Vec<usize> = (0..__nrow)
                             .filter(|&__i| __contributing.contains(&__tag[__i].as_str()))
                             .collect();
 
-                        let __inner_result: Vec<#inner_ty> = if __present_indices.is_empty() {
+                        let __inner_result: ::std::vec::Vec<#inner_ty> = if __present_indices.is_empty() {
                             ::std::vec::Vec::new()
                         } else {
                             // Select the prefixed columns into a sub-frame, strip prefix,
                             // densify to present rows only, then recurse via inner reader.
                             let __prefix: &str = #prefix_lit;
                             let __names = __view.names();
-                            let __sel: Vec<&str> = __names
+                            let __sel: ::std::vec::Vec<&str> = __names
                                 .iter()
                                 .filter(|__n| __n.starts_with(__prefix))
                                 .map(|__n| __n.as_str())
@@ -3002,7 +3002,7 @@ fn build_enum_reader(
                         };
 
                         // Scatter dense Vec<Inner> back to Vec<Option<Inner>> of length __nrow.
-                        let mut __result: Vec<::core::option::Option<#inner_ty>> =
+                        let mut __result: ::std::vec::Vec<::core::option::Option<#inner_ty>> =
                             (0..__nrow).map(|_| ::core::option::Option::None).collect();
                         let mut __dense_iter = __inner_result.into_iter();
                         for &__i in &__present_indices {
@@ -3025,7 +3025,7 @@ fn build_enum_reader(
     // per-row dispatch zips `keys[i]` and `values[i]` back into the map type.
     let emit_map_col_extract = |col_var: &syn::Ident, col_name: &str, elem_ty: &syn::Type| {
         quote! {
-            let #col_var: Vec<::core::option::Option<Vec<#elem_ty>>> = {
+            let #col_var: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> = {
                 let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
                     ::std::format!("column `{}` is missing from the data.frame", #col_name)
                 })?;
@@ -3036,7 +3036,7 @@ fn build_enum_reader(
                         ::miniextendr_api::list::List::from_raw(__col_sexp)
                     };
                     let __len = __list.len();
-                    let mut __v: Vec<::core::option::Option<Vec<#elem_ty>>> =
+                    let mut __v: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> =
                         ::std::vec::Vec::with_capacity(__len as usize);
                     for __j in 0..__len {
                         // in-bounds by construction (0..len)
@@ -3044,8 +3044,8 @@ fn build_enum_reader(
                         if __elt == ::miniextendr_api::SEXP::nil() {
                             __v.push(::core::option::Option::None);
                         } else {
-                            let __inner: Vec<#elem_ty> =
-                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                            let __inner: ::std::vec::Vec<#elem_ty> =
+                                <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
                                     .map_err(|e| ::std::format!(
                                         "column `{}` element {} could not be converted to the expected type: {}",
                                         #col_name, __j, e
@@ -3152,7 +3152,7 @@ fn build_enum_reader(
                         .collect();
                     quote! {
                         #rust_name: [ #(#slots),* ]
-                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
                     }
                 }
                 EnumResolvedField::AutoExpandVec(data) => {
@@ -3162,7 +3162,7 @@ fn build_enum_reader(
                         #rust_name: #cols_var
                             .iter()
                             .filter_map(|__c| __c[__i].clone())
-                            .collect::<Vec<#elem_ty>>()
+                            .collect::<::std::vec::Vec<#elem_ty>>()
                             .into()
                     }
                 }
@@ -3265,13 +3265,13 @@ fn build_enum_reader(
                                     quote! { #col_var[__i].clone() }
                                 })
                                 .collect();
-                            quote! { [ #(#slots),* ].into_iter().flatten().collect::<Vec<#elem_ty>>().into() }
+                            quote! { [ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into() }
                         }
                         EnumResolvedField::AutoExpandVec(data) => {
                             let elem_ty = &data.elem_ty;
                             let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
                             quote! {
-                                #cols_var.iter().filter_map(|__c| __c[__i].clone()).collect::<Vec<#elem_ty>>().into()
+                                #cols_var.iter().filter_map(|__c| __c[__i].clone()).collect::<::std::vec::Vec<#elem_ty>>().into()
                             }
                         }
                         EnumResolvedField::Map(data) => {
@@ -3341,7 +3341,7 @@ fn build_enum_reader(
             .map_err(|e| e.to_string())?;
         let __nrow = __view.nrow();
         #(#extracts)*
-        let mut __rows: Vec<Self> = Vec::with_capacity(__nrow);
+        let mut __rows: ::std::vec::Vec<Self> = ::std::vec::Vec::with_capacity(__nrow);
         for __i in 0..__nrow {
             match #tag_var[__i].as_str() {
                 #(#match_arms)*
@@ -3372,7 +3372,7 @@ fn build_enum_reader(
                 .map_err(|e| e.to_string())?;
             let __nrow = __view.nrow();
             #(#extracts)*
-            let __rows: Vec<Self> = (0..__nrow)
+            let __rows: ::std::vec::Vec<Self> = (0..__nrow)
                 .into_par_iter()
                 .map(|__i| -> ::core::result::Result<Self, ::std::string::String> {
                     match #tag_var[__i].as_str() {
@@ -3385,7 +3385,7 @@ fn build_enum_reader(
                         }
                     }
                 })
-                .collect::<::core::result::Result<Vec<Self>, _>>()?;
+                .collect::<::core::result::Result<::std::vec::Vec<Self>, _>>()?;
             ::core::result::Result::Ok(__rows)
         }
     };
@@ -3406,7 +3406,7 @@ fn build_enum_reader(
         /// [`FromDataFrame`]: ::miniextendr_api::dataframe::FromDataFrame
         pub fn try_from_dataframe(
             sexp: ::miniextendr_api::SEXP,
-        ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+        ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {
             #seq_body
         }
 
@@ -3420,7 +3420,7 @@ fn build_enum_reader(
             /// struct-flatten/nested-enum fields delegate to the sequential reader instead.
             pub fn try_from_dataframe_par(
                 sexp: ::miniextendr_api::SEXP,
-            ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+            ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {
                 #par_body
             }
         }

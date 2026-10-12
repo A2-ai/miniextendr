@@ -595,7 +595,7 @@ impl CWrapperContext {
         quote! {
             #[doc = #doc]
             #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
@@ -680,7 +680,7 @@ impl CWrapperContext {
         );
         let worker_feature_check = quote! {
             #[cfg(not(any(feature = "worker-thread", feature = "worker-default")))]
-            compile_error!(#feature_msg);
+            ::core::compile_error!(#feature_msg);
         };
 
         let pre_call_checks = if self.check_interrupt {
@@ -735,7 +735,7 @@ impl CWrapperContext {
 
             #[doc = #doc]
             #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
@@ -1377,7 +1377,7 @@ impl CWrapperContext {
             #[doc = #doc]
             #[doc = #doc_example]
             #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             #registration
         }
     }

@@ -3,6 +3,8 @@
 \name{sparse_iter_int}
 \alias{sparse_iter_int}
 \alias{sparse_iter_int_squares}
+\alias{sparse_iter_int_short}
+\alias{sparse_iter_int_resuming}
 \alias{sparse_iter_real}
 \alias{sparse_iter_logical}
 \alias{sparse_iter_raw}
@@ -11,6 +13,10 @@
 sparse_iter_int(from, to)
 
 sparse_iter_int_squares(n)
+
+sparse_iter_int_short(produced, len)
+
+sparse_iter_int_resuming(produced, len)
 
 sparse_iter_real(from, step, length_out)
 
@@ -25,11 +31,19 @@ sparse_iter_raw(n)
 
 \item{n}{Number of elements.}
 
+\item{produced}{Number of values the source yields before it ends.}
+
+\item{len}{Declared vector length.}
+
 \item{step}{Step between consecutive elements (\code{by} in base R's \code{seq()}).}
 
 \item{length_out}{Number of elements (\code{length.out} in base R's \code{seq()}).}
 }
 \value{
+An ALTREP integer vector.
+
+An ALTREP integer vector.
+
 An ALTREP integer vector.
 
 An ALTREP integer vector.
@@ -48,6 +62,17 @@ is skipped (a higher index is accessed first), it cannot be retrieved
 and will return NA.
 
 Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...).
+
+Create a sparse integer iterator ALTREP whose source ends early.
+
+The source yields \verb{1..=produced} but the vector declares \code{len} elements,
+so the elements past the source's end read as NA.
+
+Create a sparse integer iterator ALTREP over a source that is not fused.
+
+The source yields \verb{1..=produced}, then ends once, then yields 100, 101, ...
+forever. The vector treats the first end as final, so it never reads the
+values after it.
 
 Create a sparse real iterator ALTREP with arithmetic progression.
 

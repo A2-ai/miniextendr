@@ -256,7 +256,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, ::miniextendr_api::SexpError> {
-                ::miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
+                ::miniextendr_api::match_arg_from_sexp(sexp).map_err(::core::convert::Into::into)
             }
         }
 

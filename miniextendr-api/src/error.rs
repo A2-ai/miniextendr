@@ -145,7 +145,7 @@ pub fn _r_print_newline() {
 macro_rules! r_print {
     () => {};
     ($($arg:tt)*) => {
-        $crate::error::_r_print_str(&format!($($arg)*))
+        $crate::error::_r_print_str(&::std::format!($($arg)*))
     };
 }
 
@@ -166,7 +166,7 @@ macro_rules! r_println {
         $crate::error::_r_print_newline()
     };
     ($($arg:tt)*) => {{
-        $crate::error::_r_print_str(&format!($($arg)*));
+        $crate::error::_r_print_str(&::std::format!($($arg)*));
         $crate::error::_r_print_newline();
     }};
 }
