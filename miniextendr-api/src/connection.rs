@@ -464,6 +464,16 @@ pub struct Rconn {
 /// All methods have default implementations, but you'll typically want to
 /// implement at least `open`, `close`, and either `read` or `write`.
 ///
+/// # Errors
+///
+/// Ordinary I/O callbacks (`read`, `write`, `fgetc`, `seek`, `truncate`,
+/// `flush`, `vfprintf`) run under R unwind protection. Panics and
+/// [`crate::error!`] become R errors after Rust destructors run. The std::io
+/// adapters preserve failures as `miniextendr_connection_io_error`, including
+/// the operation, I/O error kind and optional OS error number.
+/// Close and destroy may run during garbage collection: their failures remain
+/// suppressed. Opening failures return `false` so the builder can tear down.
+///
 /// # Memory Management
 ///
 /// Your type will be boxed and stored in the connection's `private` field.
@@ -564,7 +574,9 @@ pub trait RConnectionImpl: Sized + 'static {
     /// - `origin`: 1 = start, 2 = current, 3 = end
     /// - `rw`: 1 = read, 2 = write
     ///
-    /// Return the new position, or -1 on failure, or current position if `where_` is NA.
+    /// Return the previous position, or -1 on failure. A query returns the
+    /// current position without moving. This is R's contract, unlike
+    /// `std::io::Seek`, which returns the new position.
     ///
     /// The default returns -1 (seek not supported).
     fn seek(&mut self, _where: f64, _origin: i32, _rw: i32) -> f64 {
@@ -638,26 +650,27 @@ where
     )
 }
 
-/// Macro to generate simple trampolines that delegate to the trait method,
-/// wrapped in `catch_connection_panic` for panic safety.
+/// Protect ordinary I/O callbacks against both Rust panics and R longjmps.
+/// Raise the original structured condition after Rust locals have unwound;
+/// EOF and short writes are successful results, not error substitutes.
+fn connection_callback<F: FnOnce() -> R, R>(f: F) -> R {
+    crate::ffi_guard::guarded_ffi_call(
+        f,
+        crate::ffi_guard::GuardMode::RUnwind,
+        crate::panic_telemetry::PanicSource::Connection,
+    )
+}
+
+/// Generate simple I/O trampolines with the shared R-unwind guard.
 macro_rules! simple_trampoline {
-    ($name:ident, $ret:ty, fallback = $fallback:expr, $($arg:ident: $arg_ty:ty),* => $method:ident($($call_arg:expr),*)) => {
+    ($name:ident, $ret:ty $(, $arg:ident: $arg_ty:ty)* => $method:ident($($call_arg:expr),*)) => {
         unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(
             conn: *mut Rconn,
             $($arg: $arg_ty),*
         ) -> $ret {
-            catch_connection_panic($fallback, || {
+            connection_callback(|| {
                 let state = unsafe { get_state::<T>(conn) };
                 state.$method($($call_arg),*)
-            })
-        }
-    };
-    // Variant for no additional arguments
-    ($name:ident, $ret:ty, fallback = $fallback:expr => $method:ident()) => {
-        unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(conn: *mut Rconn) -> $ret {
-            catch_connection_panic($fallback, || {
-                let state = unsafe { get_state::<T>(conn) };
-                state.$method()
             })
         }
     };
@@ -710,7 +723,7 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
     nitems: usize,
     conn: *mut Rconn,
 ) -> usize {
-    catch_connection_panic(0, || {
+    connection_callback(|| {
         let total_bytes = match size.checked_mul(nitems) {
             Some(n) => n,
             None => return 0, // overflow
@@ -733,7 +746,7 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
     nitems: usize,
     conn: *mut Rconn,
 ) -> usize {
-    catch_connection_panic(0, || {
+    connection_callback(|| {
         let total_bytes = match size.checked_mul(nitems) {
             Some(n) => n,
             None => return 0, // overflow
@@ -750,10 +763,10 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
 }
 
 // Generate simple trampolines using macro
-simple_trampoline!(fgetc_trampoline, c_int, fallback = -1 => fgetc());
-simple_trampoline!(seek_trampoline, f64, fallback = -1.0, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
-simple_trampoline!(truncate_trampoline, (), fallback = () => truncate());
-simple_trampoline!(flush_trampoline, c_int, fallback = -1 => flush());
+simple_trampoline!(fgetc_trampoline, c_int => fgetc());
+simple_trampoline!(seek_trampoline, f64, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
+simple_trampoline!(truncate_trampoline, () => truncate());
+simple_trampoline!(flush_trampoline, c_int => flush());
 
 // libc::vsnprintf — the host C library's printf-into-buffer entry point.
 // Used by the default `vfprintf_trampoline` to format R's printf-style
@@ -784,7 +797,7 @@ unsafe extern "C-unwind" fn vfprintf_trampoline<T: RConnectionImpl>(
     fmt: *const c_char,
     ap: *mut c_void,
 ) -> c_int {
-    catch_connection_panic(-1, || {
+    connection_callback(|| {
         // Give user impls first crack — if they return >= 0 we honor that.
         // The default impl returns -1, which we interpret as "fall back to
         // the standard format-and-write path below."

@@ -96,9 +96,11 @@ impl RConnectionImpl for MemoryBuffer {
             _ => return -1.0,
         };
 
-        // Clamp to valid range
+        // R returns the previous position, unlike std::io::Seek.
+        let previous = miniextendr_api::coerce::TryCoerce::<f64>::try_coerce(self.position)
+            .expect("connection position is representable in R");
         self.position = new_pos.min(self.data.len());
-        self.position as f64
+        previous
     }
 
     fn flush(&mut self) -> i32 {
