@@ -351,6 +351,7 @@ mod shared_trait_test;
 mod stem_page_docs;
 mod str_parse_tests;
 mod streaming_altrep_tests;
+mod strict_container_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;
 #[cfg(feature = "rayon")]

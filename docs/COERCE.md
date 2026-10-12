@@ -374,6 +374,36 @@ struct Score(f64);
 struct Temperature { celsius: f64 }
 ```
 
+### Returning owned containers
+
+`RNativeType` describes native storage and enables borrowed slices. Derive
+`IntoR` as well to return owned values and containers:
+
+<!-- docs-examples-check -->
+```rust
+use miniextendr_api::{IntoR, RNativeType, miniextendr};
+
+#[repr(transparent)]
+#[derive(Clone, Copy, RNativeType, IntoR)]
+pub struct UserId(i32);
+
+#[miniextendr]
+pub fn ids() -> Vec<UserId> {
+    vec![UserId(1), UserId(2)]
+}
+// R: c(1L, 2L)
+```
+
+This composition enables `UserId`, `Vec<UserId>`, `Box<[UserId]>`,
+`Option<Vec<UserId>>`, `Vec<Vec<UserId>>`, `Vec<Box<[UserId]>>`, and
+`Vec<[UserId; N]>`. The inner type determines the R vector type. Deriving only
+`RNativeType` still supports `&[UserId]`, `[UserId; N]`, and borrowed slice rows.
+
+`IntoR` owns the scalar and vector conversion implementations. Do not combine
+it with a derive that already selects another output representation, such as
+`ExternalPtr` or `MatchArg`. `RNativeType` deliberately does not emit a competing
+`IntoRVecElement` implementation.
+
 ### Using with Coerce
 
 The derive forwards the inner type's `SEXP_TYPE` and `dataptr_mut`. The newtype can then participate in coercion as a target type:

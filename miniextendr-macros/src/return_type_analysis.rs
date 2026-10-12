@@ -315,16 +315,51 @@ fn lossy_vec_element(ty: &syn::Type) -> Option<String> {
     LOSSY_SCALARS.contains(&elem.as_str()).then_some(elem)
 }
 
+/// A contiguous return shape whose conversion can borrow its elements.
+/// Vec has existing named helpers; these are the other owned/borrowed shapes.
+fn lossy_slice_element(ty: &syn::Type) -> Option<&syn::Type> {
+    let elem = match ty {
+        syn::Type::Reference(reference) => return lossy_slice_element(&reference.elem),
+        syn::Type::Slice(slice) => slice.elem.as_ref(),
+        syn::Type::Array(array) => array.elem.as_ref(),
+        syn::Type::Paren(paren) => return lossy_slice_element(&paren.elem),
+        syn::Type::Group(group) => return lossy_slice_element(&group.elem),
+        _ if last_segment_ident(ty).is_some_and(|name| name == "Box") => {
+            return lossy_slice_element(first_type_arg_from_type(ty)?);
+        }
+        _ => return None,
+    };
+    let name = last_segment_ident(elem)?.to_string();
+    LOSSY_SCALARS.contains(&name.as_str()).then_some(elem)
+}
+
+fn strict_slice_conversion(
+    ty: &syn::Type,
+    result: &syn::Ident,
+) -> Option<proc_macro2::TokenStream> {
+    let elem = lossy_slice_element(ty)?;
+    let container = crate::type_inspect::type_display(ty);
+    Some(quote::quote! {
+        ::miniextendr_api::strict::checked_slice_into_sexp::<#elem>(
+            #container, ::core::convert::AsRef::as_ref(&#result)
+        )
+    })
+}
+
 /// Try to generate a strict conversion expression for a lossy return type.
 ///
 /// Returns `Some(TokenStream)` if the type is a lossy scalar, `Option<lossy>`,
 /// `Vec<lossy>`, `Vec<Option<lossy>>`, or one of the list-of-vectors shapes
-/// `Option<Vec<lossy>>`, `Vec<Vec<lossy>>`, `Vec<Option<Vec<lossy>>>`;
-/// otherwise `None` (falls through to standard `IntoR::into_sexp`).
+/// `Option<Vec<lossy>>`, `Vec<Vec<lossy>>`, `Vec<Option<Vec<lossy>>>`.
+/// Slices, boxed slices and arrays use the same checks, including optional
+/// containers and rows. Otherwise `None` (falls through to standard `IntoR::into_sexp`).
 pub(crate) fn strict_conversion_for_type(
     ty: &syn::Type,
     result_ident: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
+    if let Some(conversion) = strict_slice_conversion(ty, result_ident) {
+        return Some(conversion);
+    }
     let type_name = last_segment_ident(ty)?;
     let name = type_name.to_string();
 
@@ -340,6 +375,15 @@ pub(crate) fn strict_conversion_for_type(
     if name == "Option"
         && let Some(inner) = first_type_arg_from_type(ty)
     {
+        let value = syn::Ident::new("__mx_strict_slice", proc_macro2::Span::mixed_site());
+        if let Some(conversion) = strict_slice_conversion(inner, &value) {
+            return Some(quote::quote! {
+                match #result_ident {
+                    ::core::option::Option::Some(#value) => #conversion,
+                    ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
+                }
+            });
+        }
         // Option<Vec<lossy>>: `Some` is the checked vector, `None` is NULL
         // (what the lax `Option<Vec<T>>` impl gives `None`).
         if let Some(elem) = lossy_vec_element(inner) {
@@ -366,6 +410,30 @@ pub(crate) fn strict_conversion_for_type(
     if name == "Vec"
         && let Some(inner) = first_type_arg_from_type(ty)
     {
+        let optional = last_segment_ident(inner).is_some_and(|name| name == "Option");
+        let row = if optional {
+            first_type_arg_from_type(inner)?
+        } else {
+            inner
+        };
+        if let Some(elem) = lossy_slice_element(row) {
+            let rows = if optional {
+                quote::quote! { ::core::iter::IntoIterator::into_iter(#result_ident) }
+            } else {
+                quote::quote! {
+                    ::core::iter::Iterator::map(
+                        ::core::iter::IntoIterator::into_iter(#result_ident),
+                        ::core::option::Option::Some,
+                    )
+                }
+            };
+            let container = crate::type_inspect::type_display(ty);
+            return Some(quote::quote! {
+                ::miniextendr_api::strict::checked_rows_into_sexp::<#elem, _>(
+                    #container, #rows
+                )
+            });
+        }
         if let Some(elem) = lossy_vec_element(inner) {
             let helper = quote::format_ident!("checked_vec_vec_{}_into_sexp", elem);
             return Some(quote::quote! {
@@ -523,6 +591,47 @@ mod tests {
             "Vec<Option<isize>>",
             "checked_vec_option_isize_into_sexp"
         ));
+    }
+
+    #[test]
+    fn slice_box_and_array_shapes_use_shared_checked_helpers() {
+        for scalar in ["i64", "u64", "isize", "usize"] {
+            for shape in [
+                format!("&[{scalar}]"),
+                format!("Box<[{scalar}]>"),
+                format!("[{scalar}; 3]"),
+            ] {
+                assert!(calls(&shape, "checked_slice_into_sexp"), "{shape}");
+                assert!(calls(
+                    &format!("Option<{shape}>"),
+                    "checked_slice_into_sexp"
+                ));
+                assert!(calls(&format!("Vec<{shape}>"), "checked_rows_into_sexp"));
+                assert!(calls(
+                    &format!("Vec<Option<{shape}>>"),
+                    "checked_rows_into_sexp"
+                ));
+            }
+        }
+        assert!(calls(
+            "std::vec::Vec<std::boxed::Box<[usize]>>",
+            "checked_rows_into_sexp"
+        ));
+        assert!(calls("&'static [u64]", "checked_slice_into_sexp"));
+        assert!(calls("&mut [i64]", "checked_slice_into_sexp"));
+    }
+
+    #[test]
+    fn slice_box_and_array_errors_name_the_type_as_written() {
+        for (ty, name) in [
+            ("Box<[i64]>", "Box<[i64]>"),
+            ("&'static [u64]", "&'static [u64]"),
+            ("Option<[usize; 2]>", "[usize; 2]"),
+            ("Vec<Option<Box<[isize]>>>", "Vec<Option<Box<[isize]>>>"),
+        ] {
+            let expr = strict_expr(ty).expect("a strict conversion");
+            assert!(expr.contains(&format!("{name:?}")), "{ty}: {expr}");
+        }
     }
 
     #[test]
