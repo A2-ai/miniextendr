@@ -243,6 +243,17 @@ pub struct mx_erased {
 
 // region: Shared erased storage
 
+/// Optional interface queried by `mx_wrap` after it roots the new owner.
+/// Keeping initialization behind `query` leaves the base-vtable layout alone.
+/// This tag identifies this exact interface layout and calling convention.
+pub(crate) const SIDECAR_INIT_TAG: mx_tag = mx_tag_from_path("miniextendr::sidecar_init/v1");
+
+#[repr(C)]
+pub(crate) struct SidecarInitVTable {
+    /// `ptr` belongs to the caller-rooted `owner`; attach its sidecar slots.
+    pub init: unsafe extern "C-unwind" fn(ptr: *mut mx_erased, owner: SEXP),
+}
+
 /// Storage used by generated trait-ABI constructors.
 ///
 /// The C header and concrete value retain their repr(C) layout. Keeping the
@@ -286,6 +297,38 @@ impl<T> ErasedObject<T> {
             // A panicking user Drop must not cross this C-ABI boundary.
             unsafe { drop(Box::from_raw(ptr.cast::<Self>())) };
         });
+    }
+}
+
+impl<T: crate::externalptr::TypedExternal> ErasedObject<T> {
+    const SIDECAR_INIT: SidecarInitVTable = SidecarInitVTable {
+        init: Self::init_sidecars,
+    };
+
+    /// Query the concrete type's traits and its optional sidecar initializer.
+    ///
+    /// # Safety
+    /// `ptr` must be a live `ErasedObject<T>` with its matching base vtable.
+    /// The returned pointer is valid for the program's lifetime and must be
+    /// cast to the interface identified by `tag`.
+    pub unsafe extern "C" fn query(ptr: *mut mx_erased, tag: mx_tag) -> *const c_void {
+        if tag == SIDECAR_INIT_TAG {
+            return if T::R_SLOT_COUNT == 0 {
+                core::ptr::null()
+            } else {
+                core::ptr::from_ref(&Self::SIDECAR_INIT).cast()
+            };
+        }
+        unsafe { crate::registry::universal_query(ptr, tag) }
+    }
+
+    unsafe extern "C-unwind" fn init_sidecars(ptr: *mut mx_erased, owner: SEXP) {
+        // SAFETY: mx_wrap calls the interface for this concrete allocation
+        // after registering its finalizer and while the owner is rooted.
+        unsafe {
+            let value = &(*ptr.cast::<Self>()).data;
+            crate::externalptr::init_erased_sidecars(value, owner);
+        }
     }
 }
 // endregion

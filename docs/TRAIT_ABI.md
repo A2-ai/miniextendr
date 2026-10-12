@@ -89,6 +89,18 @@ let wrapper = Box::new(__MxWrapperMyCounter {
 let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
 ```
 
+A derived type with `Sidecar<T>` fields also exposes an internal sidecar
+initialization interface through its base `query`. After `mx_wrap` roots the
+external pointer and registers its finalizer, it calls this interface to attach
+a `VECSXP` protection list and flush pending fields into it. The layout matches
+ordinary `ExternalPtr` slots: type ID, user slot, then sidecars in field order.
+Types without sidecars allocate no protection list. Keep pending R-backed
+values rooted until `mx_wrap` returns, and root its result before allocating.
+
+This storage remains `ErasedObject<T>`, not ordinary `ExternalPtr<T>`/`Any`
+storage. Rooting the fields does not give a plain `&T` trait receiver access to
+them; explicit receiver-handle access is still tracked in #1880.
+
 ### 4. Dispatch with `mx_query`
 
 When you want to call a trait method, `mx_query(sexp, TAG_<Trait>)` asks the object for the trait vtable:

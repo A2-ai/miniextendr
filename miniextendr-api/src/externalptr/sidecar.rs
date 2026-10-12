@@ -101,7 +101,7 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///   roots only until the next write to that field; don't hold it across one.
 /// - A pending `SEXP` (one passed to [`Sidecar::new`]) is not rooted until
 ///   the struct is wrapped: keep it protected until `ExternalPtr::new`
-///   returns.
+///   returns (or until `trait_abi::ccall::mx_wrap` returns for erased storage).
 ///
 /// # Lifecycle
 ///
@@ -109,9 +109,9 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///   (`Sidecar::new(T::default())`) hold `v` as a pending value in the
 ///   struct. That is the only state a `Sidecar` has: before the struct is
 ///   wrapped, after `*ptr = Engine::new(..)`, after `ExternalPtr::into_inner`.
-/// - **Flushed when wrapped.** `ExternalPtr::new` moves every pending value
-///   into the pointer's protection list. From then on the value lives in R
-///   only, and the field is empty.
+/// - **Flushed when wrapped.** `ExternalPtr::new` and the trait ABI's `mx_wrap`
+///   move every pending value into the pointer's protection list. From then
+///   on the value lives in R only, and the field is empty.
 /// - **Flushed on every access to the field.** The handle getter and setter,
 ///   and the R getter and setter, first move that field's pending value into
 ///   its slot (the setters drop it: the write supersedes it). So
@@ -350,6 +350,27 @@ pub(super) unsafe fn init_sidecars<T: TypedExternal>(any_raw: *mut Box<dyn Any>,
         .expect("ExternalPtr stores a T at construction");
     let prot = unsafe { R_ExternalPtrProtected(owner) };
     flush_sidecars(value, prot);
+}
+
+/// Initializes the slots of a trait-ABI owner using the ordinary sidecar
+/// layout and visitation hook. The Rust allocation remains erased storage;
+/// it must never be wrapped as `ExternalPtr<T>` (which expects `Any` storage).
+///
+/// # Safety
+/// On R's main thread inside an R unwind boundary. `owner` must be the
+/// caller-rooted external pointer owning `value`, with its finalizer already
+/// registered. Pending R-backed values must remain rooted until this returns.
+pub(crate) unsafe fn init_erased_sidecars<T: TypedExternal>(value: &T, owner: SEXP) {
+    unsafe {
+        let type_id = super::type_id_symbol_unchecked::<T>();
+        let prot =
+            crate::sys::Rf_allocVector_unchecked(SEXPTYPE::VECSXP, super::prot_vec_len::<T>());
+        // Attach before conversions allocate: each flushed slot is then
+        // reachable through the already-rooted owner.
+        crate::sys::R_SetExternalPtrProtected_unchecked(owner, prot);
+        prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id);
+        flush_sidecars(value, prot);
+    }
 }
 
 /// Copies every `Sidecar` slot of the pointer `source` into the pointer

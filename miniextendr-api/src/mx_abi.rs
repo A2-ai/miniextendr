@@ -5,7 +5,7 @@
 //!
 //! This module replaces the C implementation that was previously in `mx_abi.c.in`.
 
-use crate::abi::{mx_erased, mx_tag};
+use crate::abi::{SIDECAR_INIT_TAG, SidecarInitVTable, mx_erased, mx_tag};
 use crate::gc_protect::OwnedProtect;
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrTag, R_MakeExternalPtr, R_PreserveObject,
@@ -57,13 +57,21 @@ unsafe extern "C-unwind" fn mx_externalptr_finalizer(ptr: SEXP) {
 /// # Safety
 ///
 /// `ptr` must point to a valid `mx_erased` allocated by a miniextendr constructor.
-/// Must be called on R's main thread.
+/// Must be called on R's main thread inside an R unwind boundary. R-backed
+/// pending sidecar values must stay rooted until this returns. The returned
+/// external pointer is unprotected; root it before the next allocation.
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
     unsafe {
         let tag = get_tag();
         let guard = OwnedProtect::new(R_MakeExternalPtr(ptr.cast(), tag, SEXP::nil()));
         R_RegisterCFinalizerEx(guard.get(), Some(mx_externalptr_finalizer), Rboolean::TRUE);
+        // Query the concrete allocation's initializer, without interpreting
+        // its Rust fields or changing the shared base-vtable layout.
+        let init = ((*(*ptr).base).query)(ptr, SIDECAR_INIT_TAG).cast::<SidecarInitVTable>();
+        if !init.is_null() {
+            ((*init).init)(ptr, guard.get());
+        }
         guard.get()
     }
 }
