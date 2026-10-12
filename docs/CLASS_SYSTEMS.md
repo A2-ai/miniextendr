@@ -109,15 +109,15 @@ Counter$new <- function(initial) {
 }
 
 Counter$value <- function() {
-  .val <- .Call(C_mypkg_Counter__value, .call = sys.call(), self)
+  .val <- .Call(C_mypkg_Counter__value, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
 Counter$inc <- function() {
-  .val <- .Call(C_mypkg_Counter__inc, .call = sys.call(), self)
+  .val <- .Call(C_mypkg_Counter__inc, .call = sys.call(), .mx_self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  self
+  .mx_self
 }
 
 `$.Counter` <- function(self, name) {
@@ -129,16 +129,16 @@ Counter$inc <- function() {
 The object *is* the external pointer: the constructor takes the `EXTPTRSXP`
 returned by `.Call()`, sets its class attribute, and returns it. There is no
 list and no `.ptr` field. The methods live in the `Counter` environment and
-take no receiver formal; each body refers to a bare `self`. That name resolves
+take no receiver formal; each body refers to `.mx_self`. That name resolves
 through the `$.Counter` dispatcher: `c$value()` calls `$.Counter(c, "value")`,
 which calls `.miniextendr_env_method`, a helper the wrapper file defines (its
 source is in `miniextendr-api/src/registry.rs`). The helper fetches
 `Counter$value` and returns it with a new enclosing environment that holds
-only `self`. That environment's parent is the method's original environment,
+only `.mx_self`. That environment's parent is the method's original environment,
 the package namespace, so package objects used by method bodies and parameter
 defaults keep resolving there. The method stored in `Counter` is unchanged, and each
 returned closure keeps its own receiver alive. `[[` is aliased to the same
-dispatcher. A `&mut self` method returns `self`, so calls
+dispatcher. A `&mut self` method returns `.mx_self`, so calls
 chain. Errors raised from Rust come back as a tagged value and are re-raised by
 `.miniextendr_raise_condition` with the call attributed to the user's frame
 (see `docs/CALL_ATTRIBUTION.md`).
@@ -150,6 +150,9 @@ the matching trait names in `condition$traits`, reporting the call as written
 (`obj$method`). Select the trait explicitly
 with `obj$Trait$method()`. An inherent method of that name takes precedence.
 The same rule applies to trait static methods and associated constants.
+Env and R6 trait namespace functions take `.mx_self` as their receiver formal;
+`x`, `self`, and `private` remain available to user arguments. R6 methods inside
+the class still use R6's own `self` and `private` bindings.
 
 ### Usage
 

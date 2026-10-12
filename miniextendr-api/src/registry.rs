@@ -2215,7 +2215,7 @@ const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class'
       m
     }
   } else {
-    environment(obj) <- list2env(list(self = self), parent = environment(obj))
+    environment(obj) <- list2env(list(.mx_self = self), parent = environment(obj))
     obj
   }
 }

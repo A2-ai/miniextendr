@@ -42,7 +42,7 @@ test_that("env method bodies and defaults keep their lexical environment", {
   )
   methods <- new.env(parent = emptyenv())
   methods$read <- eval(quote(function(value = name) {
-    list(receiver = self, value = value, obj = obj, methods = methods)
+    list(receiver = .mx_self, value = value, obj = obj, methods = methods)
   }), lexical)
   receiver <- new.env(parent = emptyenv())
 
@@ -95,11 +95,11 @@ test_that("flat env trait lookup refuses ambiguity and preserves explicit lookup
   expect_null(receiver$missing)
 })
 
-test_that("generated env methods close over the namespace and bind only self", {
+test_that("generated env methods close over the namespace and bind only .mx_self", {
   a <- SimpleCounter$new_counter(10L)
   bound <- a$get_value
-  expect_identical(ls(environment(bound), all.names = TRUE), "self")
-  expect_identical(environment(bound)$self, a)
+  expect_identical(ls(environment(bound), all.names = TRUE), ".mx_self")
+  expect_identical(environment(bound)$.mx_self, a)
   expect_identical(parent.env(environment(bound)), asNamespace("miniextendr"))
   expect_identical(bound(), 10L)
 })
@@ -137,4 +137,14 @@ test_that("generated env trait members shared by two traits need the trait named
   expect_identical(h$left_only(), 6L)
   expect_identical(h[["left_only"]](), 6L)
   expect_null(h$no_such_member)
+})
+
+
+test_that("env receiver binding leaves self and x available to user formals", {
+  lookup <- getFromNamespace(".miniextendr_env_method", "miniextendr")
+  methods <- new.env(parent = emptyenv())
+  methods$read <- function(self, x) list(.mx_self, self, x)
+  receiver <- new.env(parent = emptyenv())
+  expect_identical(lookup(receiver, "read", methods)(self = 1L, x = 2L),
+                   list(receiver, 1L, 2L))
 })

@@ -24,7 +24,7 @@ use super::ParsedImpl;
 ///   which `$` dispatch binds in a fresh environment over the method's own
 /// - Static methods: `ClassName$method(...)` that call Rust directly
 /// - `$.ClassName` S3 method: dispatches `obj$method(...)` by looking up the method
-///   in the class environment, binding `self` for instance methods, and supporting
+///   in the class environment, binding `.mx_self` for instance methods, and supporting
 ///   trait namespace environments (nested envs with `.__mx_instance__` attributes),
 ///   through the package's shared `.miniextendr_env_method` helper
 /// - `[[.ClassName` alias: delegates to `$.ClassName`
@@ -128,11 +128,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}${}", class_name, method_name);
         ctx.emit_method_prelude(&mut lines, "  ", &what);
 
-        let call = ctx.instance_call("self");
+        let call = ctx.instance_call(".mx_self");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
+            .with_chain_var(".mx_self".to_string())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method, &type_ident.to_string());
         lines.extend(return_builder.build());

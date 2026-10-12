@@ -4351,7 +4351,7 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
 /// the names each class system's wrapper binds itself:
 ///
-/// - the receiver of an instance method: `self` for Env, `x` for S3 and S4,
+/// - the receiver of an instance method: `x` for S3 and S4,
 ///   the first dispatch argument (`x` unless `s7(dispatch)` or an operator
 ///   says otherwise) for S7, plus `self` when S7 also emits the
 ///   `<Class>_<method>` fast-path shortcut;
@@ -4375,7 +4375,6 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
         let instance = m.env.is_instance() && !is_ctor && !m.is_finalizer();
         let s7 = &m.method_attrs.s7;
         let reserved = match parsed.class_system {
-            ClassSystem::Env if instance => vec![receiver("self", "Env-class method")],
             ClassSystem::R6 if instance || is_ctor => vec![
                 (
                     "self".to_string(),

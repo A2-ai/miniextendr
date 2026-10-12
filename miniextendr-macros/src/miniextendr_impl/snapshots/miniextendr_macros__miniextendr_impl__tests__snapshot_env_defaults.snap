@@ -27,9 +27,9 @@ Widget$update <- function(step = 1L, verbose = FALSE) {
   if (!isTRUE(length(step) == 1L)) .miniextendr_arg_error("step", "must have length 1")
   if (!isTRUE(is.logical(verbose))) .miniextendr_arg_error("verbose", "must be logical")
   if (!isTRUE(length(verbose) == 1L)) .miniextendr_arg_error("verbose", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Widget__update, .call = sys.call(), self, step, verbose)
+  .val <- .Call(C_miniextendr_macros_Widget__update, .call = sys.call(), .mx_self, step, verbose)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  self
+  .mx_self
 }
 
 #' @rdname Widget

@@ -259,7 +259,7 @@ fn env_user_dots_emit_variadic_in_constructor_and_method() {
     assert!(wrapper.contains("EnvDotsThing$new <- function(...)"));
     assert!(wrapper.contains("EnvDotsThing$collect <- function(...)"));
     assert!(wrapper.contains(
-        ".Call(C_miniextendr_macros_EnvDotsThing__collect, .call = sys.call(), self, list(...))"
+        ".Call(C_miniextendr_macros_EnvDotsThing__collect, .call = sys.call(), .mx_self, list(...))"
     ));
     assert!(!wrapper.contains("function(..., ...)"));
 }
@@ -550,13 +550,17 @@ fn env_wrapper_full_snapshot() {
     assert!(wrapper.contains("Counter$get <- function()"));
     assert!(wrapper.contains("Counter$increment <- function()"));
     assert!(wrapper.contains("Counter$add <- function(n)"));
-    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), self)"));
     assert!(
-        wrapper
-            .contains(".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), self)")
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), .mx_self)")
     );
     assert!(
-        wrapper.contains(".Call(C_miniextendr_macros_Counter__add, .call = sys.call(), self, n)")
+        wrapper.contains(
+            ".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), .mx_self)"
+        )
+    );
+    assert!(
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__add, .call = sys.call(), .mx_self, n)")
     );
 
     // Verify static methods
@@ -7349,7 +7353,7 @@ fn env_member_collisions_only_reserve_members_that_are_emitted() {
 // region: R formal names (receivers, R6 bindings, reserved words)
 
 /// A method parameter must not take the R argument name the class system's
-/// wrapper binds itself: the receiver (`self` for Env, `x` for S3 / S4 / S7,
+/// wrapper binds itself: the receiver (`x` for S3 / S4 / S7,
 /// `self` for the S7 fast-path shortcut) or R6's `self` / `private` inside the
 /// class. Static methods and non-R6 constructors are plain functions.
 #[test]
@@ -7360,12 +7364,6 @@ fn method_formals_reject_receiver_and_class_bindings() {
             .to_string();
         assert!(msg.contains(expected), "{class_system:?}: {msg}");
     };
-    rejected(
-        ClassSystem::Env,
-        syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32) -> i32 { 0 } }),
-        "parameter `_self` becomes the R argument `self`, which is the receiver of the \
-         generated Env-class method. Rename the parameter.",
-    );
     for params in [quote::quote!(_self: i32), quote::quote!(__private: i32)] {
         let item: syn::ItemImpl =
             syn::parse_quote!(impl Coll { pub fn m(&self, #params) -> i32 { 0 } });
@@ -7449,7 +7447,7 @@ fn method_formals_reject_receiver_and_class_bindings() {
     // `self` and `private` on S3.
     accepted(
         ClassSystem::Env,
-        syn::parse_quote!(impl Coll { pub fn m(&self, x: i32, _private: i32) -> i32 { 0 } }),
+        syn::parse_quote!(impl Coll { pub fn m(&self, x: i32, _self: i32, _private: i32) -> i32 { 0 } }),
     );
     accepted(
         ClassSystem::R6,
