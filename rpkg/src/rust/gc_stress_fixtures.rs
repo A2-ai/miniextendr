@@ -5333,6 +5333,70 @@ pub fn gc_stress_slice_alias_guard() {
 
 // endregion
 
+// region: tuple field alias preflight (#2014)
+
+/// Check tuple-field alias rejection while R allocations run under gctorture.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_tuple_alias_guard() {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::{IntoR, SexpExt};
+
+    unsafe {
+        let scope = ProtectScope::new();
+        // Each access to the ALTREP list field allocates a fresh vector, so the
+        // field walks allocate. The shared field aliases `other`, which rejects
+        // the call before any slice is constructed from those temporaries.
+        let vector = scope.protect(vec![1_i32, 2, 3].into_sexp()).get();
+        let allocating = scope.protect(super::integer_sequence_list(3)).get();
+        let pair = scope.alloc_vecsxp(2).get();
+        pair.set_vector_elt(0, allocating);
+        pair.set_vector_elt(1, vector);
+        let result = scope
+            .protect(super::alias_fixtures::C_miniextendr_alias_tuple_list_field(
+                SEXP::nil(),
+                pair,
+                vector,
+            ))
+            .get();
+        assert!(
+            result
+                .vector_elt(0)
+                .string_elt_str(0)
+                .unwrap()
+                .contains("parameters `pair` and `other`")
+        );
+        assert_eq!(vector.integer_elt(0), 1);
+
+        // Nested tuples: the inner tuples' fields share one scalar.
+        let scalar = scope.protect(7_i32.into_sexp()).get();
+        let owned = scope.protect(1_i32.into_sexp()).get();
+        let first = scope.alloc_vecsxp(2).get();
+        first.set_vector_elt(0, owned);
+        first.set_vector_elt(1, scalar);
+        let second = scope.alloc_vecsxp(1).get();
+        second.set_vector_elt(0, scalar);
+        let nested = scope.alloc_vecsxp(2).get();
+        nested.set_vector_elt(0, first);
+        nested.set_vector_elt(1, second);
+        let result = scope
+            .protect(super::alias_fixtures::C_miniextendr_alias_tuple_nested(
+                SEXP::nil(),
+                nested,
+            ))
+            .get();
+        assert!(
+            result
+                .vector_elt(0)
+                .string_elt_str(0)
+                .unwrap()
+                .contains("duplicate elements")
+        );
+        assert_eq!(scalar.integer_elt(0), 7);
+    }
+}
+
+// endregion
+
 // region: Factor constructor roots (#1408)
 
 /// Build factors through the raw-levels, one-shot, and cached-levels paths.
@@ -5640,6 +5704,7 @@ pub fn gc_stress_env_bindings() -> SEXP {
 }
 
 // endregion
+
 /// Exercise tuple rows, optional NULL rows, and nested allocations under GC.
 #[miniextendr(noexport)]
 pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
