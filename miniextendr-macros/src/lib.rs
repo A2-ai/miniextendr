@@ -162,6 +162,7 @@ mod call_method_def;
 mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
+mod receiver_body;
 mod return_wrap;
 mod s7_conversion;
 mod trait_receiver;
