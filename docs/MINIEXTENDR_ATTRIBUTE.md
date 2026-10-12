@@ -1466,7 +1466,7 @@ impl<T: AsRef<str>> Display for T { /* ... */ }
 ### ALTREP via `#[miniextendr]` Is Removed
 
 `#[miniextendr]` no longer generates ALTREP classes. Applying the old ALTREP
-attributes (`class`, `base`) to a 1-field struct is a compile error with
+attributes (`class`, `base`) to a struct of any shape is a compile error with
 migration guidance. Use the per-family ALTREP derives instead:
 
 ```rust
