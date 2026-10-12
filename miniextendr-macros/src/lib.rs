@@ -2003,22 +2003,22 @@ pub fn miniextendr(
         // R wrapper (self-registers via distributed_slice)
         #(#cfg_attrs)*
         #[doc = #r_wrapper_doc]
-        #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+        #[doc = ::core::concat!("Wraps Rust function `", ::core::stringify!(#rust_ident), "`.")]
         #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         static #r_wrapper_generator: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Function,
-                source_file: file!(),
+                source_file: ::core::file!(),
                 source_line: #source_line_lit,
-                content: concat!(
+                content: ::core::concat!(
                     "# Generated from Rust fn `",
-                    stringify!(#rust_ident),
+                    ::core::stringify!(#rust_ident),
                     "` (",
-                    file!(),
+                    ::core::file!(),
                     ":",
                     #source_line_lit,
                     ":",
@@ -2253,9 +2253,9 @@ pub fn r_ffi_checked(
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
                     let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
                         #(#attrs)*
-                        #[doc = concat!("Unchecked FFI binding for `", stringify!(#fn_name), "`.")]
+                        #[doc = ::core::concat!("Unchecked FFI binding for `", ::core::stringify!(#fn_name), "`.")]
                         #[doc = #source_loc_doc_lit]
-                        #[doc = concat!("Generated from source file `", file!(), "`.")]
+                        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
                         #[link_name = #link_name]
                         #vis fn #unchecked_name(#inputs) #output;
                     };
@@ -2283,7 +2283,7 @@ pub fn r_ffi_checked(
                             #(#attrs)*
                             #[doc = #checked_doc_lit]
                             #[doc = #source_loc_doc_lit]
-                            #[doc = concat!("Generated from source file `", file!(), "`.")]
+                            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2298,7 +2298,7 @@ pub fn r_ffi_checked(
                             #(#attrs)*
                             #[doc = #checked_doc_lit]
                             #[doc = #source_loc_doc_lit]
-                            #[doc = concat!("Generated from source file `", file!(), "`.")]
+                            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {

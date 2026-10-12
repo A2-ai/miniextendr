@@ -1120,7 +1120,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             // SAFETY: into_vctrs runs on the R main thread.
                             unsafe {
                                 let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                                let pairs: Vec<(&str, ::miniextendr_api::SEXP)> = vec![
+                                let pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
                                     #( (#field_names, __scope.protect_raw(self.#field_idents.into_sexp())), )*
                                 ];
                                 ::miniextendr_api::vctrs::new_rcrd(
@@ -1274,20 +1274,20 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
         /// Generated R wrapper code for vctrs S3 methods (distributed slice).
         #[doc = #source_location_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals, non_snake_case)]
         static #r_wrappers_const_ident: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Vctrs,
-                source_file: file!(),
+                source_file: ::core::file!(),
                 source_line: #source_line_lit,
-                content: concat!(
+                content: ::core::concat!(
                     "# Generated from Rust derive(Vctrs) on `",
-                    stringify!(#name),
+                    ::core::stringify!(#name),
                     "` (",
-                    file!(),
+                    ::core::file!(),
                     ":",
                     #source_line_lit,
                     ":",

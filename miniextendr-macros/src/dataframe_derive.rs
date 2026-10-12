@@ -1327,7 +1327,7 @@ fn derive_struct_dataframe(
                 for i in 1..=data.width {
                     let name = format!("{}_{}", data.base_name, i);
                     let elem_ty = &data.elem_ty;
-                    let opt_ty: syn::Type = syn::parse_quote!(Option<#elem_ty>);
+                    let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#elem_ty>);
                     flat_cols.push(FlatCol {
                         df_field: format_ident!("{}_{}", data.base_name, i),
                         col_name_str: name,
@@ -1345,8 +1345,8 @@ fn derive_struct_dataframe(
                 let vals_col_name = format!("{}_values", data.base_name);
                 let key_ty = &data.key_ty;
                 let val_ty = &data.val_ty;
-                let keys_vec_ty: syn::Type = syn::parse_quote!(Vec<#key_ty>);
-                let vals_vec_ty: syn::Type = syn::parse_quote!(Vec<#val_ty>);
+                let keys_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#key_ty>);
+                let vals_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#val_ty>);
                 flat_cols.push(FlatCol {
                     df_field: format_ident!("{}_keys", data.base_name),
                     col_name_str: keys_col_name,
@@ -1426,7 +1426,7 @@ fn derive_struct_dataframe(
 
     // region: Companion struct
     let tag_field_decl = if has_tag {
-        quote! { pub _tag: Vec<String>, }
+        quote! { pub _tag: ::std::vec::Vec<::std::string::String>, }
     } else {
         TokenStream::new()
     };
@@ -1436,18 +1436,18 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
-            quote! { pub #name: Vec<#ty> }
+            quote! { pub #name: ::std::vec::Vec<#ty> }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
-        df_fields_tokens.push(quote! { pub #name: Vec<#cty> });
+        df_fields_tokens.push(quote! { pub #name: ::std::vec::Vec<#cty> });
     }
     for sc in &struct_cols {
         let name = &sc.df_field;
         let ity = &sc.inner_ty;
-        df_fields_tokens.push(quote! { pub #name: Vec<#ity> });
+        df_fields_tokens.push(quote! { pub #name: ::std::vec::Vec<#ity> });
     }
 
     let len_field_decl = if flat_cols.is_empty()
@@ -1512,10 +1512,10 @@ fn derive_struct_dataframe(
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
             quote! {
-                assert!(
+                ::core::assert!(
                     self.#name.len() == _n_rows,
                     "column length mismatch in {}: column `{}` has length {} but expected {}",
-                    stringify!(#df_name),
+                    ::core::stringify!(#df_name),
                     #name_str,
                     self.#name.len(),
                     _n_rows,
@@ -1527,10 +1527,10 @@ fn derive_struct_dataframe(
         let name = &sc.df_field;
         let name_str = &sc.col_name_str;
         length_checks.push(quote! {
-            assert!(
+            ::core::assert!(
                 self.#name.len() == _n_rows,
                 "column length mismatch in {}: struct column `{}` has length {} but expected {}",
-                stringify!(#df_name),
+                ::core::stringify!(#df_name),
                 #name_str,
                 self.#name.len(),
                 _n_rows,
@@ -1602,8 +1602,8 @@ fn derive_struct_dataframe(
                         {
                             let __auto = self.#col_name;
                             let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                            let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                                .map(|_| Vec::with_capacity(_n_rows))
+                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
+                                .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
                                 .collect();
                             for __row_vec in &__auto {
                                 for (__i, __col) in __cols.iter_mut().enumerate() {
@@ -1612,7 +1612,7 @@ fn derive_struct_dataframe(
                             }
                             for (__i, __col) in __cols.into_iter().enumerate() {
                                 __df_pairs.push((
-                                    format!("{}_{}", #col_name_str, __i + 1),
+                                    ::std::format!("{}_{}", #col_name_str, __i + 1),
                                     __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                                 ));
                             }
@@ -1636,7 +1636,7 @@ fn derive_struct_dataframe(
                             );
                             for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                                 __df_pairs.push((
-                                    format!("{}_{}", #base_name_str, __inner_col_name),
+                                    ::std::format!("{}_{}", #base_name_str, __inner_col_name),
                                     __inner_col_sexp,
                                 ));
                             }
@@ -1674,10 +1674,10 @@ fn derive_struct_dataframe(
                     // into the parent VECSXP before we drop the scope.
                     unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        let mut __df_pairs: Vec<(
-                            String,
+                        let mut __df_pairs: ::std::vec::Vec<(
+                            ::std::string::String,
                             ::miniextendr_api::SEXP,
-                        )> = Vec::new();
+                        )> = ::std::vec::Vec::new();
                         #tag_push_pair
                         #(#pair_pushes)*
                         ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
@@ -1696,7 +1696,7 @@ fn derive_struct_dataframe(
                     // SAFETY: see auto-expand branch.
                     unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        ::miniextendr_api::list::List::from_raw_pairs(vec![
+                        ::miniextendr_api::list::List::from_raw_pairs(::std::vec![
                             #tag_pair
                             #(#df_pairs),*
                         ])
@@ -1715,22 +1715,26 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
-            quote! { let mut #name: Vec<#ty> = Vec::with_capacity(len); }
+            quote! { let mut #name: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(len); }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
-        col_vec_inits.push(quote! { let mut #name: Vec<#cty> = Vec::with_capacity(len); });
+        col_vec_inits.push(
+            quote! { let mut #name: ::std::vec::Vec<#cty> = ::std::vec::Vec::with_capacity(len); },
+        );
     }
     for sc in &struct_cols {
         let name = &sc.df_field;
         let ity = &sc.inner_ty;
-        col_vec_inits.push(quote! { let mut #name: Vec<#ity> = Vec::with_capacity(len); });
+        col_vec_inits.push(
+            quote! { let mut #name: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(len); },
+        );
     }
 
     let tag_init = if has_tag {
-        quote! { let mut _tag: Vec<String> = Vec::with_capacity(len); }
+        quote! { let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(len); }
     } else {
         TokenStream::new()
     };
@@ -1827,7 +1831,7 @@ fn derive_struct_dataframe(
                 quote! {
                     let (__mx_keys, __mx_vals) = #access
                         .into_iter()
-                        .unzip::<_, _, Vec<_>, Vec<_>>();
+                        .unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
                     #keys_col.push(__mx_keys);
                     #vals_col.push(__mx_vals);
                 }
@@ -1874,8 +1878,8 @@ fn derive_struct_dataframe(
         .collect();
 
     let from_vec_impl = quote! {
-        impl #impl_generics From<Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
-            fn from(rows: Vec<#row_name #ty_generics>) -> Self {
+        impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
+            fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
                 let len = rows.len();
                 #tag_init
                 #(#col_vec_inits)*
@@ -1919,7 +1923,7 @@ fn derive_struct_dataframe(
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: Vec<String> = vec![String::new(); len];
+                let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
             });
         }
         // Sequential pre-pass: struct fields (Inner: Clone required).
@@ -1935,7 +1939,7 @@ fn derive_struct_dataframe(
                     quote! { __prerow.#rust_name }
                 };
                 par_col_decls.push(quote! {
-                    let mut #col_name: Vec<#ity> = Vec::with_capacity(len);
+                    let mut #col_name: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(len);
                     for __prerow in &rows {
                         #col_name.push(::core::clone::Clone::clone(&#access));
                     }
@@ -1957,7 +1961,7 @@ fn derive_struct_dataframe(
                     quote! { __prerow.#rust_name }
                 };
                 par_col_decls.push(quote! {
-                    let mut #col_name: Vec<#ty> = Vec::with_capacity(len);
+                    let mut #col_name: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(len);
                     for __prerow in &rows {
                         #col_name.push(::core::clone::Clone::clone(&#access));
                     }
@@ -1973,14 +1977,14 @@ fn derive_struct_dataframe(
             let name = &fc.df_field;
             let ty = &fc.vec_elem_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<#ty> = vec![<#ty as ::core::default::Default>::default(); len];
+                let mut #name: ::std::vec::Vec<#ty> = ::std::vec![<#ty as ::core::default::Default>::default(); len];
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
             let cty = &ac.container_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<#cty> = vec![<#cty as ::core::default::Default>::default(); len];
+                let mut #name: ::std::vec::Vec<#cty> = ::std::vec![<#cty as ::core::default::Default>::default(); len];
             });
         }
 
@@ -2105,7 +2109,7 @@ fn derive_struct_dataframe(
                     quote! {
                         let (__mx_keys, __mx_vals) = #access
                             .into_iter()
-                            .unzip::<_, _, Vec<_>, Vec<_>>();
+                            .unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
                         #w_keys.write(__i, __mx_keys);
                         #w_vals.write(__i, __mx_vals);
                     }
@@ -2220,7 +2224,7 @@ fn derive_struct_dataframe(
             .map(|fc| {
                 let name = &fc.df_field;
                 let ty = &fc.vec_elem_ty;
-                quote! { #name: std::vec::IntoIter<#ty> }
+                quote! { #name: ::std::vec::IntoIter<#ty> }
             })
             .collect();
 
@@ -2239,7 +2243,7 @@ fn derive_struct_dataframe(
             if i > 0 {
                 iter_init_tokens.extend(quote! { , });
             }
-            iter_init_tokens.extend(quote! { #name: <Vec<#ty>>::into_iter(#name) });
+            iter_init_tokens.extend(quote! { #name: <::std::vec::Vec<#ty>>::into_iter(#name) });
         }
 
         // For next(): reconstruct original field names (col_name == rust_name for Single)
@@ -2266,7 +2270,7 @@ fn derive_struct_dataframe(
         // `#[dataframe(skip)]` must implement `Default`.
         let skip_defaults: Vec<TokenStream> = skipped_fields
             .iter()
-            .map(|name| quote! { , #name: Default::default() })
+            .map(|name| quote! { , #name: ::core::default::Default::default() })
             .collect();
 
         quote! {
@@ -2274,7 +2278,7 @@ fn derive_struct_dataframe(
                 #(#iter_field_decls),*
             }
 
-            impl #impl_generics IntoIterator for #df_name #ty_generics #where_clause {
+            impl #impl_generics ::core::iter::IntoIterator for #df_name #ty_generics #where_clause {
                 type Item = #row_name #ty_generics;
                 type IntoIter = #iterator_name #ty_generics;
 
@@ -2286,7 +2290,7 @@ fn derive_struct_dataframe(
                 }
             }
 
-            impl #impl_generics Iterator for #iterator_name #ty_generics #where_clause {
+            impl #impl_generics ::core::iter::Iterator for #iterator_name #ty_generics #where_clause {
                 type Item = #row_name #ty_generics;
 
                 fn next(&mut self) -> ::core::option::Option<Self::Item> {
@@ -2367,11 +2371,11 @@ fn derive_struct_dataframe(
         // tighter than the scalar element types' `TryFromSexp::Error`.
         let pull_col = |col_var: &syn::Ident, col_name_str: &str, elem_ty: &syn::Type| {
             quote! {
-                let #col_var: Vec<#elem_ty> = {
+                let #col_var: ::std::vec::Vec<#elem_ty> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
-                    <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                    <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
                         .map_err(|e| ::std::format!(
                             "column `{}` could not be converted to the expected type: {}",
                             #col_name_str, e
@@ -2403,7 +2407,7 @@ fn derive_struct_dataframe(
                             let field_ty = &data.ty;
                             let col_name_str = &data.col_name_str;
                             extracts.push(quote! {
-                                let #col_var: Vec<#field_ty> = {
+                                let #col_var: ::std::vec::Vec<#field_ty> = {
                                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                                     })?;
@@ -2414,12 +2418,12 @@ fn derive_struct_dataframe(
                                             ::miniextendr_api::list::List::from_raw(__col_sexp)
                                         };
                                         let __len = __list.len();
-                                        let mut __v: Vec<#field_ty> = ::std::vec::Vec::with_capacity(__len as usize);
+                                        let mut __v: ::std::vec::Vec<#field_ty> = ::std::vec::Vec::with_capacity(__len as usize);
                                         for __j in 0..__len {
                                             // in-bounds by construction (0..len)
                                             let __elt = __list.get(__j).unwrap();
-                                            let __inner: Vec<#elem_ty> =
-                                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                            let __inner: ::std::vec::Vec<#elem_ty> =
+                                                <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
                                                     .map_err(|e| ::std::format!(
                                                         "column `{}` element {} could not be converted to the expected type: {}",
                                                         #col_name_str, __j, e
@@ -2501,11 +2505,11 @@ fn derive_struct_dataframe(
                     // own container type (`Vec<T>` identity or `Box<[T]>`).
                     seq_builds.push(quote! {
                         #rust_name: [ #(#it_nexts),* ]
-                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
                     });
                     par_builds.push(quote! {
                         #rust_name: [ #(#idx_clones),* ]
-                            .into_iter().flatten().collect::<Vec<#elem_ty>>().into()
+                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
                     });
                 }
                 // `Vec<T>`/`Box<[T]>` + `expand` → a runtime-determined number of
@@ -2517,16 +2521,16 @@ fn derive_struct_dataframe(
                     let cols_var = format_ident!("__aev_{}", crate::naming::unraw(rust_name));
                     let col_name_str = &data.col_name_str;
                     extracts.push(quote! {
-                        let #cols_var: Vec<Vec<::core::option::Option<#elem_ty>>> = {
-                            let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> =
+                        let #cols_var: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = {
+                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> =
                                 ::std::vec::Vec::new();
                             let mut __k: usize = 1;
                             loop {
                                 let __cn = ::std::format!("{}_{}", #col_name_str, __k);
                                 match __view.column_raw(&__cn) {
                                     ::core::option::Option::Some(__s) => {
-                                        let __c: Vec<::core::option::Option<#elem_ty>> =
-                                            <Vec<::core::option::Option<#elem_ty>> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
+                                        let __c: ::std::vec::Vec<::core::option::Option<#elem_ty>> =
+                                            <::std::vec::Vec<::core::option::Option<#elem_ty>> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
                                                 .map_err(|e| ::std::format!(
                                                     "column `{}` could not be converted to the expected type: {}",
                                                     __cn, e
@@ -2552,7 +2556,7 @@ fn derive_struct_dataframe(
                         #rust_name: #cols_var
                             .iter()
                             .filter_map(|__c| __c[__i].clone())
-                            .collect::<Vec<#elem_ty>>()
+                            .collect::<::std::vec::Vec<#elem_ty>>()
                             .into()
                     };
                     seq_builds.push(build.clone());
@@ -2573,10 +2577,10 @@ fn derive_struct_dataframe(
                     let base = &data.col_name_str;
                     let prefix_lit = format!("{}_", data.col_name_str);
                     extracts.push(quote! {
-                        let #vec_var: Vec<#inner_ty> = {
+                        let #vec_var: ::std::vec::Vec<#inner_ty> = {
                             let __prefix: &str = #prefix_lit;
                             let __names = __view.names();
-                            let __sel: Vec<&str> = __names
+                            let __sel: ::std::vec::Vec<&str> = __names
                                 .iter()
                                 .filter(|__n| __n.starts_with(__prefix))
                                 .map(|__n| __n.as_str())
@@ -2644,7 +2648,7 @@ fn derive_struct_dataframe(
                                        col_name: &str,
                                        elem_ty: &syn::Type| {
                         quote! {
-                            let #col_var: Vec<Vec<#elem_ty>> = {
+                            let #col_var: ::std::vec::Vec<::std::vec::Vec<#elem_ty>> = {
                                 let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
                                     ::std::format!("column `{}` is missing from the data.frame", #col_name)
                                 })?;
@@ -2653,15 +2657,15 @@ fn derive_struct_dataframe(
                                         ::miniextendr_api::list::List::from_raw(__col_sexp)
                                     };
                                     let __len = __list.len();
-                                    let mut __v: Vec<Vec<#elem_ty>> =
+                                    let mut __v: ::std::vec::Vec<::std::vec::Vec<#elem_ty>> =
                                         ::std::vec::Vec::with_capacity(__len as usize);
                                     for __j in 0..__len {
                                         let __elt = __list.get(__j).unwrap();
                                         if __elt == ::miniextendr_api::SEXP::nil() {
                                             __v.push(::std::vec::Vec::new());
                                         } else {
-                                            let __inner: Vec<#elem_ty> =
-                                                <Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
+                                            let __inner: ::std::vec::Vec<#elem_ty> =
+                                                <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
                                                     .map_err(|e| ::std::format!(
                                                         "column `{}` element {} could not be converted: {}",
                                                         #col_name, __j, e
@@ -2726,7 +2730,7 @@ fn derive_struct_dataframe(
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
                 #(#extracts)*
-                let __rows: Vec<Self> = (0..__nrow)
+                let __rows: ::std::vec::Vec<Self> = (0..__nrow)
                     .into_par_iter()
                     .map(|__i| Self { #(#par_builds),* })
                     .collect();
@@ -2750,13 +2754,13 @@ fn derive_struct_dataframe(
             /// [`FromDataFrame`]: ::miniextendr_api::dataframe::FromDataFrame
             pub fn try_from_dataframe(
                 sexp: ::miniextendr_api::SEXP,
-            ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+            ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
                 #(#extracts)*
                 #(#seq_decls)*
-                let mut __rows: Vec<Self> = Vec::with_capacity(__nrow);
+                let mut __rows: ::std::vec::Vec<Self> = ::std::vec::Vec::with_capacity(__nrow);
                 for #seq_counter in 0..__nrow {
                     __rows.push(Self { #(#seq_builds),* });
                 }
@@ -2774,7 +2778,7 @@ fn derive_struct_dataframe(
                 /// pre-extracted owned data and makes no R API calls.
                 pub fn try_from_dataframe_par(
                     sexp: ::miniextendr_api::SEXP,
-                ) -> ::core::result::Result<Vec<Self>, ::std::string::String> {
+                ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {
                     #par_body
                 }
             }
@@ -2835,7 +2839,7 @@ fn derive_struct_dataframe(
     let row_methods = quote! {
         impl #impl_generics #row_name #ty_generics #where_clause {
             #[doc(hidden)]
-            pub fn to_dataframe(rows: Vec<Self>) -> #df_name #ty_generics {
+            pub fn to_dataframe(rows: ::std::vec::Vec<Self>) -> #df_name #ty_generics {
                 rows.into()
             }
 
@@ -2926,7 +2930,7 @@ fn derive_struct_dataframe(
             fn rows_from_dataframe(
                 df: &::miniextendr_api::dataframe::DataFrame,
             ) -> ::core::option::Option<::core::result::Result<
-                Vec<Self>,
+                ::std::vec::Vec<Self>,
                 ::miniextendr_api::dataframe::DataFrameError,
             >> {
                 ::core::option::Option::Some(
@@ -2939,7 +2943,7 @@ fn derive_struct_dataframe(
                 fn rows_from_dataframe_par(
                     df: &::miniextendr_api::dataframe::DataFrame,
                 ) -> ::core::option::Option<::core::result::Result<
-                    Vec<Self>,
+                    ::std::vec::Vec<Self>,
                     ::miniextendr_api::dataframe::DataFrameError,
                 >> {
                     ::core::option::Option::Some(
@@ -2958,7 +2962,7 @@ fn derive_struct_dataframe(
             for #row_name #ty_generics #where_clause
         {
             fn rows_into_dataframe(
-                rows: Vec<Self>,
+                rows: ::std::vec::Vec<Self>,
             ) -> ::core::result::Result<
                 ::miniextendr_api::dataframe::DataFrame,
                 ::miniextendr_api::dataframe::DataFrameError,
@@ -2972,7 +2976,7 @@ fn derive_struct_dataframe(
 
             ::miniextendr_api::__dataframe_row_when_rayon! {
                 fn rows_into_dataframe_par(
-                    rows: Vec<Self>,
+                    rows: ::std::vec::Vec<Self>,
                 ) -> ::core::result::Result<
                     ::miniextendr_api::dataframe::DataFrame,
                     ::miniextendr_api::dataframe::DataFrameError,

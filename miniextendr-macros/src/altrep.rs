@@ -90,7 +90,7 @@ pub(crate) fn generate_direct_altrep_registration(
             static #entry_ident: ::miniextendr_api::registry::AltrepRegistration =
                 ::miniextendr_api::registry::AltrepRegistration {
                     register: #reg_fn_name,
-                    symbol: stringify!(#reg_fn_name),
+                    symbol: ::core::stringify!(#reg_fn_name),
                 };
         }
     } else {
@@ -107,11 +107,11 @@ pub(crate) fn generate_direct_altrep_registration(
             const TYPE_NAME: &'static str = #type_name_str;
             const TYPE_NAME_CSTR: &'static [u8] = #type_name_byte_lit;
             const TYPE_ID_CSTR: &'static [u8] =
-                concat!(module_path!(), "::", stringify!(#ident), "\0").as_bytes();
+                ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#ident), "\0").as_bytes();
         }
 
         // AltrepClass — class name and base type
-        #[doc = concat!("ALTREP class descriptor for [`", stringify!(#ident), "`].")]
+        #[doc = ::core::concat!("ALTREP class descriptor for [`", ::core::stringify!(#ident), "`].")]
         #[doc = #source_loc_doc]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static ::core::ffi::CStr = #class_cstr;
@@ -120,7 +120,7 @@ pub(crate) fn generate_direct_altrep_registration(
         }
 
         // RegisterAltrep — OnceLock class registration via InferBase
-        #[doc = concat!("Registration entry point for [`", stringify!(#ident), "`] ALTREP class.")]
+        #[doc = ::core::concat!("Registration entry point for [`", ::core::stringify!(#ident), "`] ALTREP class.")]
         #[doc = #source_loc_doc]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
             fn get_or_init_class() -> ::miniextendr_api::sys::altrep::R_altrep_class_t {

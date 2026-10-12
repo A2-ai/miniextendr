@@ -955,15 +955,15 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
-                source_file: file!(),
+                source_file: ::core::file!(),
                 source_line: #source_line_lit,
-                content: concat!(
+                content: ::core::concat!(
                     "# Generated from Rust impl `",
-                    stringify!(#trait_name),
+                    ::core::stringify!(#trait_name),
                     "` for `",
-                    stringify!(#type_ident),
+                    ::core::stringify!(#type_ident),
                     "` (",
-                    file!(),
+                    ::core::file!(),
                     ":",
                     #source_line_lit,
                     ":",
@@ -980,13 +980,13 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
             ::miniextendr_api::registry::TraitDispatchEntry {
                 concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
-                    concat!(module_path!(), "::", stringify!(#type_ident))
+                    ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#type_ident))
                 ),
                 trait_tag: #trait_tag_path,
                 vtable: unsafe {
                     ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
                 },
-                vtable_symbol: stringify!(#vtable_static_name),
+                vtable_symbol: ::core::stringify!(#vtable_static_name),
             };
     };
 

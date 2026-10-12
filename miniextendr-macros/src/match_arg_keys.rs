@@ -158,8 +158,8 @@ pub(crate) fn param_doc_entry_tokens(
                 choices_str: || {
                     <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                         .iter()
-                        .map(|c| format!("\"{}\"", c))
-                        .collect::<Vec<_>>()
+                        .map(|c| ::std::format!("\"{}\"", c))
+                        .collect::<::std::vec::Vec<_>>()
                         .join(", ")
                 },
             };
