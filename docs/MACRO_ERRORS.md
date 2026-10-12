@@ -198,16 +198,19 @@ blocks of a type into one class (#1776). Remove `label = "..."`.
 blocks of a type break a rule of
 [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks):
 
-- `two impl blocks of `MyType` each define the class`: only one block may have
-  the constructor, the impl doc comment and S7 properties. Move them into one
-  block.
-- `the impl blocks of `MyType` disagree on the class settings`: spell the same
+- ``two impl blocks of `MyType` each define the class``: only one block may have
+  the constructor, a doc comment on the impl and S7 properties. The message
+  names what each block has; move the later block's into the earlier one. A doc
+  comment on every block, common in code written for the old `label = "..."`
+  blocks, trips this: keep the class doc on the block with the constructor and
+  document the other blocks' methods on the methods.
+- ``the impl blocks of `MyType` disagree on the class settings``: spell the same
   class system and options, `class = "..."`, `internal` / `noexport` and
   `@noRd` / `@keywords internal` on every block. The message shows both sides.
-- `two impl blocks of `MyType` define ...`: two methods get one R member name
+- ``two impl blocks of `MyType` define ...``: two methods get one R member name
   (an env or R6 member, an R6 static method, an S4 or S7 method). Rename one
   with `r_name = "..."`.
-- `R class `MyType` is claimed by two Rust types`: two types (for example two
+- ``R class `MyType` is claimed by two Rust types``: two types (for example two
   `MyType`s in different modules) get one R class name. Give one a distinct
   `class = "..."`.
 
