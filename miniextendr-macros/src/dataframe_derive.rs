@@ -2742,7 +2742,9 @@ fn derive_struct_dataframe(
                             });
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                            par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                            par_builds.push(
+                                quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
+                            );
                         }
                         // Scalar Single — and reader-capable map Single (#764):
                         // `pull_col`'s `Vec<#ty>: TryFromSexp` covers both
@@ -2751,7 +2753,9 @@ fn derive_struct_dataframe(
                             extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                            par_builds.push(quote! { #rust_name: #col_var[__i].clone() });
+                            par_builds.push(
+                                quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
+                            );
                         }
                     }
                 }
@@ -2771,7 +2775,7 @@ fn derive_struct_dataframe(
                         extracts.push(pull_col(&col_var, &col_name_str, elem_ty));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                         it_nexts.push(quote! { #it_var.next().unwrap() });
-                        idx_clones.push(quote! { #col_var[__i].clone() });
+                        idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
                     }
                     seq_builds.push(quote! { #rust_name: [ #(#it_nexts),* ] });
                     par_builds.push(quote! { #rust_name: [ #(#idx_clones),* ] });
@@ -2794,7 +2798,7 @@ fn derive_struct_dataframe(
                         extracts.push(pull_col(&col_var, &col_name_str, &opt_ty));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                         it_nexts.push(quote! { #it_var.next().unwrap() });
-                        idx_clones.push(quote! { #col_var[__i].clone() });
+                        idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
                     }
                     // `.into()` converts the collected `Vec<elem>` to the field's
                     // own container type (`Vec<T>` identity or `Box<[T]>`).
@@ -2850,7 +2854,7 @@ fn derive_struct_dataframe(
                     let build = quote! {
                         #rust_name: #cols_var
                             .iter()
-                            .filter_map(|__c| __c[__i].clone())
+                            .filter_map(|__c| ::core::clone::Clone::clone(&__c[__i]))
                             .collect::<::std::vec::Vec<#elem_ty>>()
                             .into()
                     };
@@ -2916,7 +2920,8 @@ fn derive_struct_dataframe(
                     });
                     seq_decls.push(quote! { let mut #it_var = #vec_var.into_iter(); });
                     seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
-                    par_builds.push(quote! { #rust_name: #vec_var[__i].clone() });
+                    par_builds
+                        .push(quote! { #rust_name: ::core::clone::Clone::clone(&#vec_var[__i]) });
                 }
                 // Non-String-keyed map (#919): read two parallel list-columns
                 // `<base>_keys` / `<base>_values` (VECSXP of typed vectors), then
@@ -2995,9 +3000,9 @@ fn derive_struct_dataframe(
                         }
                     });
                     par_builds.push(quote! {
-                        #rust_name: #keys_var[__i].clone()
+                        #rust_name: ::core::clone::Clone::clone(&#keys_var[__i])
                             .into_iter()
-                            .zip(#vals_var[__i].clone())
+                            .zip(::core::clone::Clone::clone(&#vals_var[__i]))
                             .collect::<#map_ty>()
                     });
                 }
