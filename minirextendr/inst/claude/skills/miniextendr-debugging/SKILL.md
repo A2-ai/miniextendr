@@ -142,7 +142,8 @@ protect/unprotect), never a raw unprotected SEXP across allocations.
 
 ## MXL lint failures (from `build.rs`)
 
-The framework lints your crate during `cargo build`. The rules you will
+The framework lints your crate during `cargo build`. Each finding is a cargo
+`warning:` line naming the rule; the build still succeeds. The rules you will
 actually meet:
 
 - **MXL300** — direct `Rf_error`/`Rf_errorcall` call. Use `panic!()`; the

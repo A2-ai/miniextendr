@@ -18,7 +18,13 @@ A source file the lint cannot parse gets a `<file>: failed to parse: <error>` wa
 
 ## Lint Codes Reference
 
-### Errors (CI-blocking)
+The build script prints every diagnostic as a cargo warning
+(`warning: <crate>@<version>: [MXL008] <file>:<line>: ...`) and never fails the build;
+`just lint` lists them without failing either. The groups below are the
+rules' severities: an error-severity rule flags code that will not work as
+written.
+
+### Errors
 
 | Code | Description | Fix |
 |------|-------------|-----|
@@ -209,7 +215,7 @@ inherit the inherent impl's system: a bare `#[miniextendr]` counts as `env`.
 #[miniextendr(s7)]
 impl MyType { /* ... */ }
 
-#[miniextendr]  // error: env-style trait impl on an s7 type; write #[miniextendr(s7)] or (s3)
+#[miniextendr]  // MXL008: env-style trait impl on an s7 type; write #[miniextendr(s7)] or (s3)
 impl Display for MyType { /* ... */ }
 ```
 
