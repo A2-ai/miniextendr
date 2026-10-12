@@ -513,3 +513,22 @@ Need GC protection?
 └─ Many values (100+) / hot loop with many SEXPs?
    └─ ThreadLocalArena (or RefCountedArena for a non-thread-local instance)
 ```
+
+## Borrowing transient ALTREP elements
+
+`Root<'a>` retains a reference to its `ProtectScope`. Rooted shared-reference
+conversions protect every list element and borrowed character value in that
+scope before the next accessor can allocate. Children use a lazily created
+root pool, so a large list does not consume one R protection-stack entry per
+element. This matters for ALTREP accessors
+that return fresh objects without retaining them in their parent.
+
+For example, `Vec<&[i32]>`, `Vec<Option<&i32>>`, and nested `Vec` forms can use
+`TryFromRoot::try_from_root(scope.protect(value))`. The returned references
+cannot outlive the scope. Generated main-thread wrappers and trait shims create
+that scope automatically and retain it through return conversion. Native list
+conversion reports all invalid elements together.
+
+This supplies GC liveness, not exclusive access. Mutable references still need
+an independent borrowing contract; do not derive them safely from a copyable
+`Root`.

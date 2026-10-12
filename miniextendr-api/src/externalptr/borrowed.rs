@@ -1,7 +1,8 @@
 //! Borrowed receiver handles over ordinary or erased external-pointer storage.
 
 use super::{ExternalPtr, TypedExternal};
-use crate::{Root, SEXP};
+use crate::SEXP;
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
 mod sealed {
@@ -38,7 +39,8 @@ pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut
 /// ```
 pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
     value: &'a T,
-    owner: Root<'a>,
+    owner: &'a SEXP,
+    _main_thread: PhantomData<*mut ()>,
 }
 
 /// An exclusive borrow of a Rust value together with its R sidecar owner.
@@ -58,7 +60,8 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// ```
 pub struct ExternalPtrMut<'a, T: TypedExternal + ?Sized> {
     value: &'a mut T,
-    owner: Root<'a>,
+    owner: &'a SEXP,
+    _main_thread: PhantomData<*mut ()>,
 }
 
 impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
@@ -66,13 +69,15 @@ impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
     ///
     /// # Safety
     /// R's main thread; `data` must point to a live `T` owned by `owner`, whose
-    /// initialized sidecar slots use `T`'s layout. The value must remain valid
+    /// initialized sidecar slots use `T`'s layout. Its SEXP must stay rooted for
+    /// `'a`; the slot reference alone does not root it. The value must remain valid
     /// and shared-borrowable for `'a`, including during reentrant R calls.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, data: *const T) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, data: *const T) -> Self {
         Self {
             value: unsafe { &*data },
             owner,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -83,13 +88,15 @@ impl<'a, T: TypedExternal> ExternalPtrMut<'a, T> {
     /// # Safety
     /// R's main thread; `data` must have mutable provenance and point to a live
     /// `T` owned by `owner`, whose initialized sidecar slots use `T`'s layout.
-    /// The value must remain exclusively borrowed for `'a`, including during
+    /// Its SEXP must stay rooted for `'a`; the slot reference alone does not
+    /// root it. The value must remain exclusively borrowed for `'a`, including during
     /// reentrant R calls. A GC root alone does not establish exclusivity.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, data: *mut T) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, data: *mut T) -> Self {
         Self {
             value: unsafe { &mut *data },
             owner,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -103,7 +110,8 @@ impl<'a, T: TypedExternal> From<&'a ExternalPtr<T>> for ExternalPtrRef<'a, T> {
         // The original handle retains the owner throughout this shared borrow.
         Self {
             value: ptr,
-            owner: unsafe { Root::from_call_arg(&ptr.sexp) },
+            owner: &ptr.sexp,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -118,7 +126,8 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
         // pointer's original mutable provenance for the exclusive data borrow.
         Self {
             value: unsafe { ptr.cached_ptr.as_mut() },
-            owner: unsafe { Root::from_call_arg(&ptr.sexp) },
+            owner: &ptr.sexp,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -152,12 +161,12 @@ impl<T: TypedExternal> SidecarOwner<T> for ExternalPtr<T> {
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrRef<'_, T> {
     fn __mx_owner(&self) -> SEXP {
-        self.owner.get()
+        *self.owner
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrMut<'_, T> {
     fn __mx_owner(&self) -> SEXP {
-        self.owner.get()
+        *self.owner
     }
 }
 impl<T: TypedExternal> SidecarOwnerMut<T> for ExternalPtr<T> {}

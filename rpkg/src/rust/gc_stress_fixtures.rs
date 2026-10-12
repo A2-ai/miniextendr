@@ -5616,3 +5616,33 @@ pub fn gc_stress_externalptr_borrow() {
         }
     }
 }
+
+#[derive(miniextendr_api::AltrepList)]
+#[altrep(manual, class = "GcTransientBorrowList")]
+struct GcTransientBorrowList;
+
+impl miniextendr_api::altrep_data::AltrepLen for GcTransientBorrowList {
+    fn len(&self) -> usize {
+        8
+    }
+}
+
+impl miniextendr_api::altrep_data::AltListData for GcTransientBorrowList {
+    fn elt(&self, index: usize) -> SEXP {
+        let index = i32::try_from(index).unwrap();
+        vec![index; 3].into_sexp()
+    }
+}
+
+/// Retain ALTREP list elements before a later element allocation can collect them.
+#[miniextendr(noexport)]
+pub fn gc_stress_rooted_list_borrows() {
+    use miniextendr_api::{ProtectScope, TryFromRoot};
+    let scope = unsafe { ProtectScope::new() };
+    let root = unsafe { scope.protect(GcTransientBorrowList.into_sexp()) };
+    let values: Vec<&[i32]> = Vec::try_from_root(root).unwrap();
+    let _allocation = unsafe { OwnedProtect::new(vec![0_i32; 32].into_sexp()) };
+    for (index, value) in values.iter().enumerate() {
+        assert_eq!(*value, [i32::try_from(index).unwrap(); 3]);
+    }
+}

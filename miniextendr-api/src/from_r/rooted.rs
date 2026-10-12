@@ -2,7 +2,7 @@
 
 use super::{
     NativeBorrow, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_cow,
-    map_strsxp_with,
+    charsxp_to_str, map_strsxp_with, map_vecsxp_batched, scalar_charsxp,
 };
 use crate::{RCow, RNativeType, Root, SEXP, SEXPTYPE, SexpExt, StrVec};
 use std::borrow::Cow;
@@ -16,6 +16,8 @@ use std::borrow::Cow;
 /// wrappers and trait shims also use it for explicit shared native references
 /// and optional shared references. Worker shared references copy to Rust-owned
 /// scalars, vectors or strings before dispatch, then borrow inside the worker.
+/// Nested shared-reference `Vec` inputs retain every list element in the root's
+/// protection scope, even when an ALTREP accessor does not cache that element.
 /// A type alias can use this trait explicitly in the function body.
 ///
 /// A root proves liveness, not exclusive access: this trait does not provide
@@ -46,6 +48,12 @@ use std::borrow::Cow;
 /// use miniextendr_api::{Root, TryFromRoot};
 /// fn escape<'a>(root: Root<'a>) -> Option<&'static str> {
 ///     <Option<&str>>::try_from_root(root).unwrap()
+/// }
+/// ```
+/// ```compile_fail
+/// use miniextendr_api::{Root, TryFromRoot};
+/// fn escape<'a>(root: Root<'a>) -> Vec<Vec<&'static [i32]>> {
+///     Vec::try_from_root(root).unwrap()
 /// }
 /// ```
 pub trait TryFromRoot<'a>: Sized {
@@ -129,9 +137,13 @@ impl<'a> TryFromRoot<'a> for &'a str {
     type Error = SexpError;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        // R's character vector retains the CHARSXP; expose only the root's
-        // lifetime, even though the raw conversion still permits 'static.
-        unsafe { <&'static str as TryFromSexp>::try_from_sexp_unchecked(root.get()) }
+        let value = scalar_charsxp(root.get())?;
+        if value == SEXP::na_string() || value == SEXP::blank_string() {
+            return Ok("");
+        }
+        // An ALTSTRING accessor need not retain its returned CHARSXP.
+        let value = unsafe { root.protect_child(value) };
+        Ok(unsafe { charsxp_to_str(value.get()) })
     }
 }
 
@@ -139,8 +151,15 @@ impl<'a> TryFromRoot<'a> for Option<&'a str> {
     type Error = SexpError;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        // Preserve NULL/NA handling while shortening the raw result's lifetime.
-        unsafe { <Option<&'static str> as TryFromSexp>::try_from_sexp_unchecked(root.get()) }
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let value = scalar_charsxp(root.get())?;
+        if value == SEXP::na_string() {
+            return Ok(None);
+        }
+        let value = unsafe { root.protect_child(value) };
+        Ok(Some(unsafe { charsxp_to_str(value.get()) }))
     }
 }
 
@@ -186,8 +205,8 @@ impl<'a> TryFromRoot<'a> for Vec<Cow<'a, str>> {
             if value == SEXP::na_string() || value == SEXP::blank_string() {
                 Ok(Cow::Borrowed(""))
             } else {
-                // SAFETY: the parent STRSXP is rooted for 'a.
-                Ok(unsafe { charsxp_to_cow(value) })
+                let value = unsafe { root.protect_child(value) };
+                Ok(unsafe { charsxp_to_cow(value.get()) })
             }
         })
     }
@@ -201,8 +220,109 @@ impl<'a> TryFromRoot<'a> for Vec<Option<Cow<'a, str>>> {
             if value == SEXP::na_string() {
                 Ok(None)
             } else {
-                // SAFETY: the parent STRSXP is rooted for 'a.
-                Ok(Some(unsafe { charsxp_to_cow(value) }))
+                let value = unsafe { root.protect_child(value) };
+                Ok(Some(unsafe { charsxp_to_cow(value.get()) }))
+            }
+        })
+    }
+}
+
+/// Each element gets its own root before conversion or the next Elt callback.
+/// Merely rooting an ALTREP list does not retain transient Elt results.
+fn rooted_list<'a, T: TryFromRoot<'a>>(root: Root<'a>) -> Result<Vec<T>, SexpError>
+where
+    T::Error: Into<SexpError>,
+{
+    map_vecsxp_batched(root.get(), |value| {
+        T::try_from_root(unsafe { root.protect_child(value) }).map_err(Into::into)
+    })
+}
+
+macro_rules! native_lists {
+    ($life:lifetime, $native:ident; $($element:ty),* $(,)?) => {$(
+        impl<$life, $native: RNativeType> TryFromRoot<$life> for Vec<$element> {
+            type Error = SexpError;
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<$element as TryFromRoot<$life>>::NATIVE_BORROW);
+
+            fn try_from_root(root: Root<$life>) -> Result<Self, Self::Error> {
+                rooted_list(root)
+            }
+        }
+    )*};
+}
+
+native_lists!('a, T; &'a T, Option<&'a T>, &'a [T], Option<&'a [T]>);
+
+impl<'a, T> TryFromRoot<'a> for Vec<Vec<T>>
+where
+    Vec<T>: TryFromRoot<'a>,
+    <Vec<T> as TryFromRoot<'a>>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+    const NATIVE_BORROW: Option<NativeBorrow> =
+        NativeBorrow::in_list(<Vec<T> as TryFromRoot<'a>>::NATIVE_BORROW);
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        rooted_list(root)
+    }
+}
+
+impl<'a, T> TryFromRoot<'a> for Option<Vec<T>>
+where
+    Vec<T>: TryFromRoot<'a>,
+{
+    type Error = <Vec<T> as TryFromRoot<'a>>::Error;
+    const NATIVE_BORROW: Option<NativeBorrow> = <Vec<T> as TryFromRoot<'a>>::NATIVE_BORROW;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            Vec::<T>::try_from_root(root).map(Some)
+        }
+    }
+}
+
+impl<'a, T> TryFromRoot<'a> for Vec<Option<Vec<T>>>
+where
+    Vec<T>: TryFromRoot<'a>,
+    <Vec<T> as TryFromRoot<'a>>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+    const NATIVE_BORROW: Option<NativeBorrow> =
+        NativeBorrow::in_list(<Vec<T> as TryFromRoot<'a>>::NATIVE_BORROW);
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        rooted_list(root)
+    }
+}
+
+impl<'a> TryFromRoot<'a> for Vec<&'a str> {
+    type Error = SexpError;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        map_strsxp_with(root.get(), |value, _| {
+            if value == SEXP::na_string() || value == SEXP::blank_string() {
+                Ok("")
+            } else {
+                let value = unsafe { root.protect_child(value) };
+                Ok(unsafe { charsxp_to_str(value.get()) })
+            }
+        })
+    }
+}
+
+impl<'a> TryFromRoot<'a> for Vec<Option<&'a str>> {
+    type Error = SexpError;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        map_strsxp_with(root.get(), |value, _| {
+            if value == SEXP::na_string() {
+                Ok(None)
+            } else {
+                let value = unsafe { root.protect_child(value) };
+                Ok(Some(unsafe { charsxp_to_str(value.get()) }))
             }
         })
     }
