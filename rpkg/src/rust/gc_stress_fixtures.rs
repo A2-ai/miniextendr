@@ -4141,30 +4141,29 @@ pub fn gc_stress_arrow_registry_roundtrip() {
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
 pub fn gc_stress_cow_subslice_roundtrip() {
-    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::{ProtectScope, TryFromRoot};
     use std::borrow::Cow;
 
     // R-backed source vectors. Keep them rooted across the allocations that
     // `.into_sexp()` performs (mirrors a rooted call argument in real usage).
-    let f_sexp = vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp();
-    let _f_guard = unsafe { miniextendr_api::OwnedProtect::new(f_sexp) };
-    let i_sexp = vec![10i32, 20, 30, 40, 50].into_sexp();
-    let _i_guard = unsafe { miniextendr_api::OwnedProtect::new(i_sexp) };
+    let scope = unsafe { ProtectScope::new() };
+    let f_root = unsafe { scope.protect(vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp()) };
+    let i_root = unsafe { scope.protect(vec![10i32, 20, 30, 40, 50].into_sexp()) };
 
-    // Borrow as 'static slices (offset 0), then sub-slice into the middle so
+    // Borrow as root-bound slices (offset 0), then sub-slice into the middle so
     // `as_ptr()` no longer points at the R vector's data start — the exact
     // shape that defeated the old speculative recovery.
-    let f_cow: Cow<'static, [f64]> = TryFromSexp::try_from_sexp(f_sexp).unwrap();
+    let f_cow: Cow<'_, [f64]> = TryFromRoot::try_from_root(f_root).unwrap();
     let Cow::Borrowed(f_full) = f_cow else {
-        unreachable!("Cow<[f64]> from R is always Borrowed");
+        unreachable!("rooted Cow<[f64]> conversion must borrow");
     };
-    let i_cow: Cow<'static, [i32]> = TryFromSexp::try_from_sexp(i_sexp).unwrap();
+    let i_cow: Cow<'_, [i32]> = TryFromRoot::try_from_root(i_root).unwrap();
     let Cow::Borrowed(i_full) = i_cow else {
-        unreachable!("Cow<[i32]> from R is always Borrowed");
+        unreachable!("rooted Cow<[i32]> conversion must borrow");
     };
 
-    let f_sub: Cow<'static, [f64]> = Cow::Borrowed(&f_full[2..5]); // c(3, 4, 5)
-    let i_sub: Cow<'static, [i32]> = Cow::Borrowed(&i_full[1..4]); // c(20L, 30L, 40L)
+    let f_sub: Cow<'_, [f64]> = Cow::Borrowed(&f_full[2..5]); // c(3, 4, 5)
+    let i_sub: Cow<'_, [i32]> = Cow::Borrowed(&i_full[1..4]); // c(20L, 30L, 40L)
 
     let f_out = f_sub.into_sexp();
     let _f_out_guard = unsafe { miniextendr_api::OwnedProtect::new(f_out) };
@@ -4196,19 +4195,20 @@ pub fn gc_stress_cow_subslice_roundtrip() {
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
 pub fn gc_stress_rcow_roundtrip() {
+    use miniextendr_api::ProtectScope;
     use miniextendr_api::RCow;
-    use miniextendr_api::from_r::TryFromSexp;
 
     let src = vec![1.0f64, 2.0, 3.0, 4.0, 5.0].into_sexp();
-    let _src_guard = unsafe { miniextendr_api::OwnedProtect::new(src) };
+    let scope = unsafe { ProtectScope::new() };
+    let source = unsafe { scope.protect(src) };
 
     // Borrowed round-trip must return the *same* SEXP (true zero-copy).
-    let borrowed: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    let borrowed: RCow<'_, f64> = RCow::try_from_root(source).unwrap();
     let back = borrowed.into_sexp();
     assert_eq!(back, src, "borrowed RCow round-trip must be identity");
 
     // Copy-on-write: mutating forces a fresh, value-correct R vector.
-    let mut owned: RCow<'static, f64> = TryFromSexp::try_from_sexp(src).unwrap();
+    let mut owned: RCow<'_, f64> = RCow::try_from_root(source).unwrap();
     for v in owned.to_mut() {
         *v += 100.0;
     }
@@ -5718,3 +5718,29 @@ pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
         })
         .collect()
 }
+
+// region: owned character views (#1427)
+
+/// Rooted string owners survive local source guards and arbitrary drop order.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_protected_strvec() {
+    use miniextendr_api::{OwnedProtect, ProtectedStrVec, TryFromSexp};
+    let make = |text: String| {
+        let source = unsafe { OwnedProtect::new(vec![text].into_sexp()) };
+        ProtectedStrVec::try_from_sexp(source.get()).unwrap()
+    };
+    let first = make("first".into());
+    let second = make("surviving character owner".into());
+    drop(first);
+    for i in 0..32 {
+        let transient = make(format!("transient {i}"));
+        assert_eq!(
+            second.as_strvec().get_str(0),
+            Some("surviving character owner")
+        );
+        drop(transient);
+    }
+}
+
+// endregion

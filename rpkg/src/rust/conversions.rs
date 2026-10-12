@@ -382,35 +382,35 @@ pub fn conv_opt_rlog_is_some(x: Option<RLogical>) -> i32 {
 /// Test `&[i32]` slice argument: returns the length of the slice.
 /// @param x Input integer vector.
 #[miniextendr]
-pub fn conv_slice_i32_len(x: &'static [i32]) -> i32 {
+pub fn conv_slice_i32_len(x: &[i32]) -> i32 {
     x.len() as i32
 }
 
 /// Test `&[f64]` slice argument: returns the length of the slice.
 /// @param x Input double vector.
 #[miniextendr]
-pub fn conv_slice_f64_len(x: &'static [f64]) -> i32 {
+pub fn conv_slice_f64_len(x: &[f64]) -> i32 {
     x.len() as i32
 }
 
 /// Test `&[u8]` slice argument: returns the length of the slice.
 /// @param x Input raw vector.
 #[miniextendr]
-pub fn conv_slice_u8_len(x: &'static [u8]) -> i32 {
+pub fn conv_slice_u8_len(x: &[u8]) -> i32 {
     x.len() as i32
 }
 
 /// Test `&[RLogical]` slice argument: returns the length of the slice.
 /// @param x Input logical vector.
 #[miniextendr]
-pub fn conv_slice_rlog_len(x: &'static [RLogical]) -> i32 {
+pub fn conv_slice_rlog_len(x: &[RLogical]) -> i32 {
     x.len() as i32
 }
 
 /// Test `&i32` reference argument: dereferences and returns the value.
 /// @param x Input integer reference.
 #[miniextendr]
-pub fn conv_ref_i32_arg(x: &'static i32) -> i32 {
+pub fn conv_ref_i32_arg(x: &i32) -> i32 {
     *x
 }
 
@@ -445,7 +445,7 @@ pub fn conv_slice_mut_u8_add_one(x: &'static mut [u8]) -> i32 {
 /// Test `Option<&i32>` argument: returns 1 if Some, 0 if None.
 /// @param x Input integer reference or NULL.
 #[miniextendr]
-pub fn conv_opt_ref_i32_is_some(x: Option<&'static i32>) -> i32 {
+pub fn conv_opt_ref_i32_is_some(x: Option<&i32>) -> i32 {
     if x.is_some() { 1 } else { 0 }
 }
 

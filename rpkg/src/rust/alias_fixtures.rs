@@ -2,7 +2,7 @@
 
 use miniextendr_api::miniextendr;
 
-fn bump(slices: impl IntoIterator<Item = &'static mut [i32]>) -> i32 {
+fn bump<'a>(slices: impl IntoIterator<Item = &'a mut [i32]>) -> i32 {
     let mut total = 0;
     for slice in slices {
         for value in slice {
@@ -13,7 +13,7 @@ fn bump(slices: impl IntoIterator<Item = &'static mut [i32]>) -> i32 {
     total
 }
 
-fn read(slices: impl IntoIterator<Item = &'static [i32]>) -> i32 {
+fn read<'a>(slices: impl IntoIterator<Item = &'a [i32]>) -> i32 {
     slices.into_iter().flatten().copied().sum()
 }
 
@@ -29,7 +29,7 @@ pub fn alias_list_mut_direct_mut(a: Vec<&'static mut [i32]>, b: &'static mut [i3
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
 #[miniextendr(no_worker)]
-pub fn alias_list_mut_direct_shared(a: Vec<&'static mut [i32]>, b: &'static [i32]) -> i32 {
+pub fn alias_list_mut_direct_shared(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
     bump(a) + read([b])
 }
 
@@ -77,10 +77,7 @@ pub fn alias_list_shared_list_shared(a: Vec<&'static [i32]>, b: Vec<&'static [i3
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
 #[miniextendr(no_worker)]
-pub fn alias_optional_lists(
-    a: Option<Vec<Option<&'static mut [i32]>>>,
-    b: Option<&'static [i32]>,
-) -> i32 {
+pub fn alias_optional_lists(a: Option<Vec<Option<&'static mut [i32]>>>, b: Option<&[i32]>) -> i32 {
     bump(a.into_iter().flatten().flatten()) + read(b)
 }
 
@@ -122,7 +119,7 @@ pub fn alias_worker_rng_lists(a: Vec<&'static mut [i32]>, b: &'static [i32]) -> 
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
 #[miniextendr(no_worker, rng)]
-pub fn alias_rng_lists(a: Vec<&'static mut [i32]>, b: &'static [i32]) -> i32 {
+pub fn alias_rng_lists(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
     bump(a) + read([b])
 }
 
@@ -133,7 +130,7 @@ pub fn alias_rng_lists(a: Vec<&'static mut [i32]>, b: &'static [i32]) -> i32 {
 #[miniextendr(no_worker)]
 pub fn alias_three_arguments(
     a: Vec<&'static mut [i32]>,
-    b: &'static [i32],
+    b: &[i32],
     c: Vec<&'static mut [i32]>,
 ) -> i32 {
     bump(a) + read([b]) + bump(c)
@@ -153,7 +150,7 @@ impl AliasGuardProbe {
     /// Check list and direct-slice arguments through an instance method.
     /// @param a List of integer vectors.
     /// @param b Shared integer vector.
-    pub fn check(&self, a: Vec<&'static mut [i32]>, b: &'static [i32]) -> i32 {
+    pub fn check(&self, a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
         bump(a) + read([b])
     }
 }

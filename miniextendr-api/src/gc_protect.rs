@@ -1052,6 +1052,23 @@ pub struct Root<'a> {
 }
 
 impl<'a> Root<'a> {
+    /// Borrow a root from a live FFI argument slot without another PROTECT.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; the value and everything borrowed from it must remain
+    /// GC-reachable for `'a`. Generated `.Call` wrappers satisfy this because
+    /// R roots the argument until the wrapper returns. A reference to an
+    /// arbitrary local SEXP does not by itself establish that guarantee.
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn from_call_arg(sexp: &'a SEXP) -> Self {
+        Self {
+            sexp: *sexp,
+            _scope: PhantomData,
+        }
+    }
+
     /// Get the underlying SEXP.
     #[inline]
     pub fn get(&self) -> SEXP {
@@ -1178,15 +1195,16 @@ impl std::ops::Deref for OwnedProtect {
 /// |---------|-----|-----|
 /// | [`OwnedProtect`] | raw SEXP, no Rust view | one-shot protect/unprotect on a single SEXP |
 /// | [`ProtectScope`] + [`Root`] | several SEXPs in one function body | batched UNPROTECT, no Rust view |
-/// | `Protected<'a, T>` | SEXP + Rust view of its data | hand the bundle to callers; borrows in `T` tied to `&self` |
+/// | `Protected<'a, T>` | SEXP + Rust view of its data | pairs a root with `T`; does not constrain references inside `T` |
 ///
-/// # Notes on Send/Sync
+/// # Lifetimes and thread affinity
 ///
-/// When constructed via [`Protected::new`], the inner [`OwnedProtect`] carries
-/// `!Send + !Sync` (via `NoSendSync`). When constructed via
-/// [`Protected::from_trusted`], the `_protect` field is `None` and the type
-/// becomes auto-`Send`/`Sync` — the same behaviour as
-/// [`ProtectedStrVec`](crate::strvec::ProtectedStrVec) today.
+/// This generic bundle does not shorten lifetimes inside `T`. Its callers must
+/// avoid exposing an inner borrowed view after the root is released; use a
+/// concrete owner with accessors tied to `&self` (such as
+/// [`ProtectedStrVec`](crate::ProtectedStrVec)) for that guarantee.
+/// `Option<OwnedProtect>` is `!Send + !Sync` even when its value is `None`;
+/// the trusted constructor does not change those auto-trait properties.
 pub struct Protected<'a, T> {
     inner: T,
     _protect: Option<OwnedProtect>,
@@ -1196,16 +1214,17 @@ pub struct Protected<'a, T> {
 impl<'a, T> Protected<'a, T> {
     /// Create a protected bundle. Calls `Rf_protect` on `sexp`.
     ///
-    /// `inner` may borrow from `sexp`; the lifetime `'a` is tied to
-    /// `&self` thereafter, so any borrow inside `inner` cannot outlive
-    /// this `Protected`.
+    /// `inner` may borrow from `sexp`, but this bundle does not rewrite those
+    /// lifetimes. The caller must ensure any references copied from `inner`
+    /// remain valid, including after this root is dropped.
     ///
     /// # Safety
     ///
     /// - Must be called from the R main thread.
     /// - `sexp` must be a valid SEXP.
-    /// - If `inner` borrows from `sexp`, its lifetime parameter must
-    ///   match `'a`.
+    /// - Borrowed data in `inner` must remain valid for its declared lifetime;
+    ///   this guard alone cannot guarantee that when `T` exposes a longer
+    ///   reference (for example, `T = &'static str`).
     ///
     /// # Example
     ///
@@ -1215,7 +1234,7 @@ impl<'a, T> Protected<'a, T> {
     ///
     /// unsafe fn wrap_view(sexp: SEXP, view: MyView<'_>) -> Protected<'_, MyView<'_>> {
     ///     // Protect the SEXP and bundle it with the view.
-    ///     // The view's borrow is tied to the returned Protected.
+    ///     // The caller must keep any references exposed by MyView valid.
     ///     Protected::new(sexp, view)
     /// }
     /// ```
@@ -1233,8 +1252,8 @@ impl<'a, T> Protected<'a, T> {
     ///
     /// Use when `sexp` is already protected by R (a `.Call` argument,
     /// a [`ProtectScope`] slot, an enclosing [`OwnedProtect`]) to avoid
-    /// double-protecting. The lifetime contract is unchanged — `'a`
-    /// still ties any borrows inside `inner` to `&self`.
+    /// double-protecting. As with `new`, `'a` does not narrow references
+    /// contained in `T`.
     ///
     /// # Safety
     ///

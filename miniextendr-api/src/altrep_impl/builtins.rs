@@ -490,7 +490,7 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Box_Rcomplex
 );
 
-// Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
+// Cow<'static, [T]> — static Rust borrows or owned data, with copy-on-write dataptr.
 // Borrowed variants expose R's data directly; Owned behaves like Vec.
 impl_builtin_altrep_family!(
     std::borrow::Cow<'static, [crate::RLogical]>,

@@ -1,0 +1,23 @@
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_reference_static_param.rs:13:28
+   |
+13 | pub fn keep_slice(values: &'static [i32]) {
+   |                            ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_reference_static_param.rs:18:32
+   |
+18 | pub fn keep_text(text: Option<&'static str>) {
+   |                                ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_reference_static_param.rs:23:27
+   |
+23 | pub fn keep_cow(text: Cow<'static, str>) {
+   |                           ^^^^^^^
+
+error: this parameter borrows the call's argument and cannot be `'static`; write `'_` or elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to keep the data after the call
+  --> tests/ui/rooted_reference_static_param.rs:28:41
+   |
+28 | pub fn keep_words(words: Vec<Option<Cow<'static, str>>>) {
+   |                                         ^^^^^^^

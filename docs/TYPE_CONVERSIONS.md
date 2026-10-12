@@ -876,8 +876,9 @@ mutable. This includes `&T` / `&mut T` for `i32`, `f64`, `u8`, `RLogical`, and
 `Rcomplex`, and scalar/slice combinations. Scalar leaves require length one;
 slice leaves require a non-empty vector.
 
-The check follows the actual `TryFromSexp::NATIVE_BORROW` metadata, so type
-aliases retain the same checks. `Vec` and boxed-slice containers, nested lists,
+The check follows the selected conversion trait's `NATIVE_BORROW` metadata
+(`TryFromSexp` or `TryFromRoot`), so type aliases retain the same checks.
+`Vec` and boxed-slice containers, nested lists,
 optional values, forwarding newtypes, `Result<T, ()>`, `Missing<T>`, maps, and
 borrowed `Cow` / `RCow` views forward the relevant metadata. Tuples describe
 each field by position (#2014): a borrowed field is checked against the
@@ -897,15 +898,60 @@ a native reference must describe it, and forwarding converters must preserve
 the delegated conversion's metadata. Branch-dependent `Either<L, R>` conversions
 need separate handling, tracked in [#1504](https://github.com/A2-ai/miniextendr/issues/1504).
 
-The guard compares R object identities. Code using `TryFromSexp` directly must
-ensure its mutable and shared views satisfy Rust's borrowing rules. Accept
+The wrapper guard compares R object identities. Mutable list conversions
+(`Vec<&mut T>`, `Vec<&mut [T]>`, and their optional-element forms) also collect
+and check every raw buffer range before constructing references. This rejects
+distinct ALTREP objects exposing identical or partially overlapping storage.
+Type, length, and overlap failures are reported together with element positions.
+Direct callers must still keep the sources rooted and exclude borrows held
+outside that conversion; the list check does not supply a lifetime. Accept
 `Vec<T>` for copy-in/copy-out semantics when an input's ownership is uncertain.
+
+---
+
+## Borrowed vector roots
+
+`StrVec<'a>`, `RCow<'a, T>`, `Cow<'a, [T]>`, `Cow<'a, str>` and the shared
+references `&'a [T]` and `&'a str` borrow R storage, so their lifetime has to
+come from whatever keeps that storage reachable. A `SEXP` is `Copy` and carries
+no lifetime, so a `TryFromSexp` impl lets safe code pick any lifetime,
+`'static` included (#1427). These types convert through `TryFromRoot<'a>`
+instead, which takes a root:
+
+- `T::try_from_root(root)` with a `Root<'a>` from a `ProtectScope`;
+- `ProtectedStrVec::as_strvec()`, which borrows an owned character vector.
+
+`StrVec` and `RCow` have no `TryFromSexp` impl, and raw `TryFromSexp` for the
+`Cow` types returns owned data. The shared references keep their raw impls:
+`TryFromRoot` for a reference runs that conversion, with its checks, errors
+and alias metadata, and shortens the result to the root.
+
+A `#[miniextendr]` parameter of one of these types (bare or path-qualified;
+`Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>` too) is bound to the C
+wrapper's argument slot, so it and every string or slice read from it cannot
+outlive the call. Functions with a view or `Cow` parameter run on R's main
+thread. Shared references (`&[T]`, `&str`, `&i32`, `&f64`, `&u8`, `&RLogical`,
+`&Rcomplex` and their `Option` forms) are bound the same way when the function
+runs on the main thread. The trait-ABI shims bind all of them to a local copy
+of the argument slot, after the arity check. A parameter that names `'static`
+anywhere in its type is a compile error naming the fix: write `'_` or elide
+the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to
+keep the data.
+
+The macro recognizes these types by name. An alias or a newtype of a view has
+to take a `SEXP` and call `try_from_root` in the body; one of a reference
+converts through `TryFromSexp`. On the worker thread, `&str` copies into a
+`String` and the native references convert through `TryFromSexp`. Mutable
+references and reference containers (`Vec<&str>`, `Option<&mut [T]>`) also
+still convert through `TryFromSexp` with an unconstrained lifetime (#1427).
+`Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
+one, have no rooted conversion yet (#2038).
 
 ---
 
 ## Known Limitations
 
-- **SEXP slice lifetimes** use `'static` for convenience, but actual lifetime is tied to GC protection scope.
+- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. Generated parameters bind views, `Cow` and main-thread shared references to their root ([Borrowed vector roots](#borrowed-vector-roots)); the rest of the migration is tracked in #1427.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
 

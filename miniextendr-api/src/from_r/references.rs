@@ -17,18 +17,96 @@
 //!
 //! For NA-aware reads use [`crate::from_r::na_vectors`] (`Vec<Option<T>>`) —
 //! borrowed slices cannot express NA without losing the sentinel encoding.
-//! Outbound: borrowed slices have no `IntoR` impl (R owns return-value
-//! storage); see [`crate::into_r`] for the owned equivalents.
+//! Outbound borrowed slices copy into R-owned storage through [`crate::IntoR`].
+//! Mutable list inputs preflight all raw ranges before creating any references;
+//! this does not establish the root lifetime or exclude borrows held elsewhere
+//! by a direct caller (the remaining lifetime-boundary work is #1427).
 
 use crate::from_r::{
-    NativeBorrow, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_with,
+    NativeBorrow, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_batched,
+    map_vecsxp_with, r_slice_mut,
 };
 use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+
+/// An unborrowed native buffer. No Rust reference exists during list preflight.
+#[derive(Clone, Copy)]
+struct MutableRange<T> {
+    data: *mut T,
+    len: usize,
+}
+
+impl<T> MutableRange<T> {
+    fn overlaps(&self, other: &Self) -> bool {
+        if self.len == 0 || other.len == 0 {
+            return false;
+        }
+        let a = self.data.addr();
+        let b = other.data.addr();
+        // Each range describes an existing R allocation. Compare integer
+        // addresses only; retain the original mutable pointer for borrowing.
+        if a <= b {
+            b - a < self.len * core::mem::size_of::<T>()
+        } else {
+            a - b < other.len * core::mem::size_of::<T>()
+        }
+    }
+}
+
+/// Validate every element and every raw buffer before creating any references.
+/// Different ALTREP objects can expose identical or partially overlapping
+/// storage, so comparing SEXP identities (or just starting pointers) is not
+/// enough here. NULL is a missing element only for the optional forms.
+fn map_mutable_list<T: RNativeType, U>(
+    sexp: SEXP,
+    scalar: bool,
+    optional: bool,
+    map: impl FnMut(Option<MutableRange<T>>) -> U,
+) -> Result<Vec<U>, SexpError> {
+    let mut ranges: Vec<MutableRange<T>> = Vec::new();
+    let raw = map_vecsxp_batched(sexp, |element| {
+        let actual = element.type_of();
+        if optional && actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let len = element.len();
+        if scalar && len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+        let range = MutableRange {
+            data: unsafe { T::dataptr_mut(element) },
+            len,
+        };
+        let overlaps = ranges.iter().any(|previous| range.overlaps(previous));
+        ranges.push(range);
+        if overlaps {
+            Err(SexpError::InvalidValue(
+                "list contains overlapping native buffers; cannot create multiple mutable references"
+                    .to_string(),
+            ))
+        } else {
+            Ok(Some(range))
+        }
+    })?;
+    // Only Rust allocations remain; a failed preflight never constructs &mut.
+    Ok(raw.into_iter().map(map).collect())
+}
 
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {
         impl<'a> TryFromSexp for &'a $t {
-            const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, false));
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, false));
 
             type Error = SexpError;
 
@@ -50,9 +128,13 @@ macro_rules! impl_ref_conversions_for {
                     }
                     .into());
                 }
-                unsafe { sexp.as_slice::<$t>() }
-                    .first()
-                    .ok_or_else(|| SexpLengthError { expected: 1, actual: 0 }.into())
+                unsafe { sexp.as_slice::<$t>() }.first().ok_or_else(|| {
+                    SexpLengthError {
+                        expected: 1,
+                        actual: 0,
+                    }
+                    .into()
+                })
             }
 
             #[inline]
@@ -75,7 +157,13 @@ macro_rules! impl_ref_conversions_for {
                 }
                 unsafe { sexp.as_slice_unchecked::<$t>() }
                     .first()
-                    .ok_or_else(|| SexpLengthError { expected: 1, actual: 0 }.into())
+                    .ok_or_else(|| {
+                        SexpLengthError {
+                            expected: 1,
+                            actual: 0,
+                        }
+                        .into()
+                    })
             }
         }
 
@@ -86,7 +174,8 @@ macro_rules! impl_ref_conversions_for {
         /// rejects overlapping native mutable/shared borrows before conversion.
         /// Direct conversion callers must enforce this borrowing contract themselves.
         impl<'a> TryFromSexp for &'a mut $t {
-            const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, true));
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                Some(NativeBorrow::scalar(<$t as RNativeType>::SEXP_TYPE, true));
 
             type Error = SexpError;
 
@@ -178,8 +267,7 @@ macro_rules! impl_ref_conversions_for {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
                     return Ok(None);
                 }
-                let value: &'a mut $t =
-                    unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                let value: &'a mut $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
                 Ok(Some(value))
             }
         }
@@ -187,7 +275,8 @@ macro_rules! impl_ref_conversions_for {
         // Option<&[T]> and Option<&mut [T]> impls removed - now use blanket impls
 
         impl<'a> TryFromSexp for Vec<&'a $t> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a $t as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<&'a $t as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
@@ -197,7 +286,8 @@ macro_rules! impl_ref_conversions_for {
         }
 
         impl<'a> TryFromSexp for Vec<Option<&'a $t>> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a $t> as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<Option<&'a $t> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
@@ -214,54 +304,35 @@ macro_rules! impl_ref_conversions_for {
         }
 
         impl<'a> TryFromSexp for Vec<&'a mut $t> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a mut $t as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<&'a mut $t as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let mut ptrs: Vec<*mut $t> = Vec::new();
-                map_vecsxp_with(sexp, |_i, elem| {
-                    let value: &'a mut $t = TryFromSexp::try_from_sexp(elem)?;
-                    let ptr = std::ptr::from_mut(value);
-                    if ptrs.iter().any(|&p| p == ptr) {
-                        return Err(SexpError::InvalidValue(
-                            "list contains duplicate elements; cannot create multiple mutable references"
-                                .to_string(),
-                        ));
-                    }
-                    ptrs.push(ptr);
-                    Ok(value)
+                map_mutable_list::<$t, _>(sexp, true, false, |range| {
+                    // Non-optional scalar ranges were checked above.
+                    unsafe { &mut *range.unwrap().data }
                 })
             }
         }
 
         impl<'a> TryFromSexp for Vec<Option<&'a mut $t>> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a mut $t> as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<Option<&'a mut $t> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let mut ptrs: Vec<*mut $t> = Vec::new();
-                map_vecsxp_with(sexp, |_i, elem| {
-                    if elem.type_of() == SEXPTYPE::NILSXP {
-                        return Ok(None);
-                    }
-                    let value: &'a mut $t = TryFromSexp::try_from_sexp(elem)?;
-                    let ptr = std::ptr::from_mut(value);
-                    if ptrs.iter().any(|&p| p == ptr) {
-                        return Err(SexpError::InvalidValue(
-                            "list contains duplicate elements; cannot create multiple mutable references"
-                                .to_string(),
-                        ));
-                    }
-                    ptrs.push(ptr);
-                    Ok(Some(value))
+                map_mutable_list::<$t, _>(sexp, true, true, |range| {
+                    range.map(|range| unsafe { &mut *range.data })
                 })
             }
         }
 
         impl<'a> TryFromSexp for Vec<&'a [$t]> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a [$t] as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<&'a [$t] as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
@@ -273,7 +344,8 @@ macro_rules! impl_ref_conversions_for {
         }
 
         impl<'a> TryFromSexp for Vec<Option<&'a [$t]>> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a [$t]> as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<Option<&'a [$t]> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
@@ -291,54 +363,28 @@ macro_rules! impl_ref_conversions_for {
         }
 
         impl<'a> TryFromSexp for Vec<&'a mut [$t]> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<&'a mut [$t] as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<&'a mut [$t] as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let mut ptrs: Vec<*mut $t> = Vec::new();
-                map_vecsxp_with(sexp, |_i, elem| {
-                    let slice: &'a mut [$t] =
-                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
-                    if !slice.is_empty() {
-                        let ptr = slice.as_mut_ptr();
-                        if ptrs.iter().any(|&p| p == ptr) {
-                            return Err(SexpError::InvalidValue(
-                                "list contains duplicate elements; cannot create multiple mutable references"
-                                    .to_string(),
-                            ));
-                        }
-                        ptrs.push(ptr);
-                    }
-                    Ok(slice)
+                map_mutable_list::<$t, _>(sexp, false, false, |range| {
+                    let range = range.unwrap();
+                    unsafe { r_slice_mut(range.data, range.len) }
                 })
             }
         }
 
         impl<'a> TryFromSexp for Vec<Option<&'a mut [$t]>> {
-            const NATIVE_BORROW: Option<NativeBorrow> = NativeBorrow::in_list(<Option<&'a mut [$t]> as TryFromSexp>::NATIVE_BORROW);
+            const NATIVE_BORROW: Option<NativeBorrow> =
+                NativeBorrow::in_list(<Option<&'a mut [$t]> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let mut ptrs: Vec<*mut $t> = Vec::new();
-                map_vecsxp_with(sexp, |_i, elem| {
-                    if elem.type_of() == SEXPTYPE::NILSXP {
-                        return Ok(None);
-                    }
-                    let slice: &'a mut [$t] =
-                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
-                    if !slice.is_empty() {
-                        let ptr = slice.as_mut_ptr();
-                        if ptrs.iter().any(|&p| p == ptr) {
-                            return Err(SexpError::InvalidValue(
-                                "list contains duplicate elements; cannot create multiple mutable references"
-                                    .to_string(),
-                            ));
-                        }
-                        ptrs.push(ptr);
-                    }
-                    Ok(Some(slice))
+                map_mutable_list::<$t, _>(sexp, false, true, |range| {
+                    range.map(|range| unsafe { r_slice_mut(range.data, range.len) })
                 })
             }
         }
