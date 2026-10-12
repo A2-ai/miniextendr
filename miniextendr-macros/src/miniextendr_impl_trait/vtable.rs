@@ -9,7 +9,7 @@ use quote::format_ident;
 use syn::ItemImpl;
 
 use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
-use super::{TraitConst, TraitMethod, type_to_symbol_name};
+use super::{TraitAbiMetadata, TraitConst, TraitMethod, type_to_symbol_name};
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
 /// Generate the vtable static, C wrappers, R wrappers, and call defs for a trait implementation.
@@ -18,7 +18,7 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// `impl Trait for Type { ... }` block, it produces:
 ///
 /// - The cleaned original impl block (with `#[miniextendr]` attrs stripped from methods)
-/// - A `static __VTABLE_{crate}_{Trait}_FOR_{Type}: {Trait}VTable` constant
+/// - A `static __VTABLE_{crate}_{Trait}_FOR_{Type}` with the declared repr(C) layout
 /// - C wrapper functions and `R_CallMethodDef` entries for each method and const
 /// - R wrapper code string (class-system specific)
 /// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
@@ -33,42 +33,15 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 ///   already provides it); `internal` / `noexport` control the roxygen export
 ///   tags; `no_preconditions` drops the R-side type checks, as on an inherent
 ///   impl.
+/// - `abi`: The canonical trait name, fingerprint and callback layout from the declaration.
 pub(super) fn generate_vtable_static(
     impl_item: &ItemImpl,
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
     impl_attrs: &ImplAttrs,
+    abi: &TraitAbiMetadata,
 ) -> TokenStream {
-    // Extract trait name for naming
-    let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
-        return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
-            .into_compile_error();
-    };
-
-    // Extract type args from trait path's last segment
-    // e.g., for `RExtend<i32>`, extract `[i32]`; for `RMakeIter<i32, IterableVecIter>`, extract `[i32, IterableVecIter]`
-    let trait_type_args: Vec<syn::Type> = trait_path
-        .segments
-        .last()
-        .and_then(|seg| {
-            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                Some(
-                    args.args
-                        .iter()
-                        .filter_map(|arg| {
-                            if let syn::GenericArgument::Type(ty) = arg {
-                                Some(ty.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                )
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
+    let trait_name = &abi.name;
 
     // Extract type identifier (for simple types)
     let type_ident = match concrete_type {
@@ -92,24 +65,6 @@ pub(super) fn generate_vtable_static(
     // shared naming.rs helper so this can't drift from the other two
     // reconstruction sites in `miniextendr_impl_trait.rs`)
     let vtable_static_name = crate::naming::vtable_static_ident(trait_name, &type_name_str);
-    let vtable_type_name = format_ident!("{}VTable", trait_name);
-
-    // Build path to vtable builder function
-    // If trait is `foo::Counter`, builder is `foo::__Counter_build_vtable`
-    // Strip type args from the path (builder uses turbofish instead)
-    let mut builder_path = trait_path.clone();
-    if let Some(last) = builder_path.segments.last_mut() {
-        last.ident = crate::naming::trait_vtable_builder_ident(trait_name);
-        last.arguments = syn::PathArguments::None;
-    }
-
-    // Build the vtable type path (same module as trait)
-    // Strip type args (vtable type is not generic)
-    let mut vtable_type_path = trait_path.clone();
-    if let Some(last) = vtable_type_path.segments.last_mut() {
-        last.ident = vtable_type_name.clone();
-        last.arguments = syn::PathArguments::None;
-    }
 
     // The impl block renders no page under `@noRd` or a plain `noexport`
     // (`generate_trait_r_wrapper`'s `suppress_all_rd`); its methods' docs, of
@@ -127,7 +82,8 @@ pub(super) fn generate_vtable_static(
     let consts = extract_consts(impl_item);
 
     // Separate skipped methods: skipped methods are kept in the emitted impl block
-    // but excluded from C wrappers, R wrappers, call defs, and vtable shims.
+    // but excluded from C wrappers, R wrappers and call defs. The declaration
+    // alone determines vtable membership, including when an impl hides a wrapper.
     let methods: Vec<&TraitMethod> = all_methods.iter().filter(|m| !m.skip).collect();
 
     // Generate C wrappers and call defs for each non-skipped method
@@ -182,12 +138,7 @@ pub(super) fn generate_vtable_static(
     // Generate trait dispatch entry name
     let dispatch_entry_name = crate::naming::trait_dispatch_ident(trait_name, &type_name_str);
 
-    // Build TAG path for the trait (same module as trait, e.g. counter::TAG_Counter)
-    let mut trait_tag_path = trait_path.clone();
-    if let Some(last) = trait_tag_path.segments.last_mut() {
-        last.ident = crate::naming::trait_tag_ident(trait_name);
-        last.arguments = syn::PathArguments::None;
-    }
+    let trait_tag = &abi.tag;
 
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(
@@ -223,48 +174,11 @@ pub(super) fn generate_vtable_static(
         quote::quote! {}
     };
 
-    // For generic traits (with type args like <i32>), generate concrete vtable shims
-    // and inline vtable construction. For non-generic traits, use the builder function.
-    //
-    // Both paths emit the static as `pub` with `#[unsafe(no_mangle)]` so that a separate
-    // compilation unit (e.g. a WASM codegen path) can reference it by name.
-    let vtable_static_tokens = if trait_type_args.is_empty() {
-        // Non-generic: use the builder function generated at the trait definition site
-        quote::quote! {
-            #[unsafe(no_mangle)]
-            #[allow(non_upper_case_globals)]
-            pub static #vtable_static_name: #vtable_type_path =
-                #builder_path::<#concrete_type>();
-        }
-    } else {
-        // Generic: generate concrete vtable shims and inline construction
-        // Only non-skipped methods go into vtable shims
-        let methods_for_vtable: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
-        let concrete_shims = generate_concrete_vtable_shims(
-            &methods_for_vtable,
-            &type_ident,
-            trait_name,
-            trait_path,
-            concrete_type,
-        );
-        let vtable_inits: Vec<TokenStream> = methods
-            .iter()
-            .filter(|m| m.has_self)
-            .map(|m| {
-                let name = &m.ident;
-                let shim_name = crate::naming::vtshim_ident(&type_ident, trait_name, &m.ident);
-                quote::quote! { #name: #shim_name }
-            })
-            .collect();
-        quote::quote! {
-            #concrete_shims
-            #[unsafe(no_mangle)]
-            #[allow(non_upper_case_globals)]
-            pub static #vtable_static_name: #vtable_type_path = #vtable_type_path {
-                #(#vtable_inits),*
-            };
-        }
-    };
+    let vtable_static_tokens =
+        match generate_impl_vtable(abi, concrete_type, trait_path, &all_methods) {
+            Ok(tokens) => tokens,
+            Err(error) => return error.into_compile_error(),
+        };
 
     quote::quote! {
         // Pass through the original impl block (with method attrs stripped)
@@ -342,7 +256,7 @@ pub(super) fn generate_vtable_static(
                 concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
                     ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#type_ident))
                 ),
-                trait_tag: #trait_tag_path,
+                trait_tag: ::miniextendr_api::abi::mx_tag_from_path(#trait_tag),
                 vtable: unsafe {
                     // SAFETY: vtable is a static reference valid for program lifetime
                     ::std::ptr::from_ref(&#vtable_static_name).cast::<::std::os::raw::c_void>()
@@ -350,6 +264,74 @@ pub(super) fn generate_vtable_static(
                 vtable_symbol: ::core::stringify!(#vtable_static_name),
             };
     }
+}
+
+/// Reproduce the declaration's repr(C) layout locally, with its exact field
+/// order and callback types. The versioned declaration tag guards the cast to
+/// the consumer's nominal vtable type. The exported static's name and byte
+/// representation stay the same for native and wasm registration.
+///
+/// Non-generic callbacks belong to the trait, keeping default methods and
+/// declaration-local argument types in their original scope. Generic traits
+/// retain the existing concrete-shim path to avoid recursive conversion bounds.
+pub(super) fn generate_impl_vtable(
+    abi: &TraitAbiMetadata,
+    concrete_type: &syn::Type,
+    trait_path: &syn::Path,
+    methods: &[TraitMethod],
+) -> syn::Result<TokenStream> {
+    let trait_name = &abi.name;
+    let type_name = type_to_symbol_name(concrete_type);
+    let static_name = crate::naming::vtable_static_ident(trait_name, &type_name);
+    let layout_name = crate::naming::vtable_layout_ident(trait_name, &type_name);
+    let fields = &abi.fields;
+    let type_ident = match concrete_type {
+        syn::Type::Path(path) => path.path.segments.last().unwrap().ident.clone(),
+        _ => format_ident!("Unknown"),
+    };
+    let mut concrete_methods = Vec::new();
+    let mut initializers = Vec::new();
+    for field in &fields.named {
+        let name = field.ident.as_ref().unwrap();
+        let callback = if abi.generic {
+            let Some(method) = methods.iter().find(|method| method.ident == *name) else {
+                let message = format!(
+                    "this impl must define `{name}`, even if the trait gives it a default: \
+                     a generic `#[miniextendr]` trait's shims are generated from the impl's \
+                     method signatures"
+                );
+                return Err(syn::Error::new_spanned(trait_path, message));
+            };
+            concrete_methods.push(method.clone());
+            let shim = crate::naming::vtshim_ident(&type_ident, trait_name, name);
+            quote::quote!(#shim)
+        } else {
+            let shim = crate::naming::trait_method_shim_ident(trait_name, name);
+            quote::quote!(<#concrete_type as #trait_path>::#shim)
+        };
+        initializers.push(quote::quote!(#name: #callback));
+    }
+    let shims = generate_concrete_vtable_shims(
+        &concrete_methods,
+        &type_ident,
+        trait_name,
+        trait_path,
+        concrete_type,
+    );
+    Ok(quote::quote! {
+        #[doc(hidden)]
+        #[repr(C)]
+        #[allow(non_camel_case_types)]
+        pub struct #layout_name #fields
+
+        #shims
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        #[allow(non_upper_case_globals)]
+        pub static #static_name: #layout_name = #layout_name {
+            #(#initializers),*
+        };
+    })
 }
 
 /// Generate concrete vtable shims for a generic trait impl.

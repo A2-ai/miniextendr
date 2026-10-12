@@ -72,42 +72,29 @@ fn test_type_to_symbol_name_generic_distinct() {
     );
 }
 
-/// Both impl paths must refer to the declaration's case-preserving builder.
+/// Metadata resolution follows the trait path and preserves its spelling.
 #[test]
-fn tpie_invocations_preserve_trait_case() {
-    let concrete_type: syn::Type = syn::parse_quote!(Host);
-    let mut vtables = Vec::new();
-    for spelling in ["Counter", "counter"] {
-        let trait_name = format_ident!("{spelling}");
-        let path: syn::Path = syn::parse_quote!(traits::#trait_name);
+fn tpie_invocations_accept_bare_and_qualified_trait_names() {
+    for path in ["Counter", "counter", "traits::Counter", "facade::Alias"] {
         let output = generate_tpie_invocation(
-            &path,
-            &concrete_type,
+            &syn::parse_str(path).unwrap(),
+            &syn::parse_quote!(Host),
             ClassSystem::Env,
             false,
             false,
             false,
             false,
         );
-        let output_str = output.to_string();
-        assert!(output_str.contains(&format!("__{spelling}_build_vtable")));
-        assert!(output_str.contains(&format!("traits :: {spelling} !")));
-        let file: syn::File = syn::parse2(output).expect("valid generated items");
-        let table = file
-            .items
-            .into_iter()
-            .find_map(|item| match item {
-                syn::Item::Static(item) => Some(item.ident),
-                _ => None,
-            })
-            .expect("vtable static");
+        let file: syn::File = syn::parse2(output).unwrap();
+        assert_eq!(file.items.len(), 1);
+        let syn::Item::Macro(invocation) = &file.items[0] else {
+            panic!("metadata invocation")
+        };
         assert_eq!(
-            table,
-            crate::naming::vtable_static_ident(&trait_name, "Host")
+            invocation.mac.path,
+            syn::parse_str::<syn::Path>(path).unwrap()
         );
-        vtables.push(table);
     }
-    assert_ne!(vtables[0], vtables[1]);
 }
 
 /// Helper to build a simple TraitMethod for testing R wrapper generation.
@@ -1855,6 +1842,7 @@ fn test_tpie_self_return_rewrapped() {
         internal = false;
         noexport = false;
         no_preconditions = false;
+        abi Bar false "test-only-tpie-tag" {}
         method { r_name = dup; fn dup(&self) -> Self; }
         method { r_name = parse; fn parse(s: &str) -> Option<Self>; }
         method { r_name = merge; fn merge(&self, other: Self) -> i32; }
@@ -2569,6 +2557,7 @@ fn scale_impl_expansion(attrs: proc_macro2::TokenStream) -> String {
         &syn::parse_quote!(Scale),
         &syn::parse_quote!(Meter),
         &impl_attrs,
+        &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
     )
     .to_string()
 }
@@ -2616,6 +2605,7 @@ fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImp
         &syn::parse_quote!(Scale),
         &syn::parse_quote!(Meter),
         &impl_attrs,
+        &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
     )
     .to_string()
 }
@@ -2722,6 +2712,7 @@ fn tpie_carries_no_preconditions() {
         internal = false;
         noexport = false;
         no_preconditions = true;
+        abi RFromStr false "test-only-tpie-tag" {}
         method { r_name = from_str; fn r_from_str(s: &str) -> Option<Self>; }
     };
     assert!(input.no_preconditions);
@@ -2956,6 +2947,10 @@ fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() 
             #[miniextendr(skip)]
             fn hidden();
         }
+        abi Collection true "test-only-metadata-tag" {
+            pub r_take: ::miniextendr_api::abi::mx_meth,
+            pub r_len: ::miniextendr_api::abi::mx_meth,
+        }
     };
     let original = input.implementation.items.clone();
     vtable::inherit_method_metadata(&mut input.implementation, &input.methods).unwrap();
@@ -2988,6 +2983,7 @@ fn inherited_skip_never_becomes_a_wrapper_even_with_an_impl_rename() {
             }
         }
         { #[miniextendr(skip)] fn rust_only(); }
+        abi Hidden false "test-only-metadata-tag" {}
     };
     let output = input.expand().unwrap();
     let file: syn::File = syn::parse2(output).unwrap();
@@ -3005,3 +3001,63 @@ fn inherited_skip_never_becomes_a_wrapper_even_with_an_impl_rename() {
 }
 
 // endregion
+
+#[test]
+fn impl_vtable_uses_declaration_layout_and_associated_callbacks_through_aliases() {
+    let abi: TraitAbiMetadata = syn::parse_quote! {
+        abi Original false "miniextendr::trait-abi/v2;test" {
+            pub last: ::miniextendr_api::abi::mx_meth,
+            pub owner: ::miniextendr_api::abi::mx_owner_meth,
+            pub first: ::miniextendr_api::abi::mx_meth,
+        }
+    };
+    let output = vtable::generate_impl_vtable(
+        &abi,
+        &syn::parse_quote!(Host),
+        &syn::parse_quote!(facade::Renamed),
+        &[],
+    )
+    .unwrap();
+    let file: syn::File = syn::parse2(output.clone()).unwrap();
+    let layout = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Struct(layout) => Some(layout),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(layout.fields, syn::Fields::Named(abi.fields));
+    assert!(layout.attrs.iter().any(|attr| attr.path().is_ident("repr")));
+    let output = output.to_string();
+    for name in ["last", "owner", "first"] {
+        assert!(
+            output.contains(&format!(
+                "< Host as facade :: Renamed > :: __Original_{name}_shim"
+            )),
+            "{output}"
+        );
+    }
+    for guessed in ["RenamedVTable", "TAG_Renamed", "__Renamed_build_vtable"] {
+        assert!(!output.contains(guessed));
+    }
+}
+
+#[test]
+fn generic_impl_vtable_keeps_declared_slots_when_an_impl_hides_an_r_wrapper() {
+    let abi = syn::parse_quote! {
+        abi Generic true "test-only-tag" { pub read: ::miniextendr_api::abi::mx_meth }
+    };
+    let mut method = make_test_method("read", true);
+    method.skip = true; // Local wrapper policy must not alter the declaration's ABI.
+    let output = vtable::generate_impl_vtable(
+        &abi,
+        &syn::parse_quote!(Host),
+        &syn::parse_quote!(Imported<i32>),
+        &[method],
+    )
+    .unwrap()
+    .to_string();
+    assert!(output.contains("as Imported < i32 > > :: read"), "{output}");
+    assert!(output.contains("read : __vtshim_"), "{output}");
+}

@@ -283,8 +283,8 @@ impl Slots {
 
 // Empty impls expand from the trait's metadata, which carries the R names
 // (`clone`, `default`, `hash`, `cmp`, `partial_cmp`, `from_str`) of the
-// `r_`-prefixed Rust methods. The impls name the trait by its module path,
-// where its vtable items live; the glob brings in only the traits.
+// `r_`-prefixed Rust methods. The impls name each trait as the glob brought it
+// in (#2065).
 #[derive(
     ::core::clone::Clone,
     ::core::fmt::Debug,
@@ -316,17 +316,17 @@ impl Adapted {
 }
 
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RClone for Adapted {}
+impl RClone for Adapted {}
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RDefault for Adapted {}
+impl RDefault for Adapted {}
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RHash for Adapted {}
+impl RHash for Adapted {}
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::ROrd for Adapted {}
+impl ROrd for Adapted {}
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RPartialOrd for Adapted {}
+impl RPartialOrd for Adapted {}
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RFromStr for Adapted {}
+impl RFromStr for Adapted {}
 
 // The generic traits take an impl with a body, which inherits the R names
 // (#2062).
@@ -341,7 +341,7 @@ impl Bag {
 }
 
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RToVec<i32> for Bag {
+impl RToVec<i32> for Bag {
     fn r_to_vec(&self) -> ::std::vec::Vec<i32> {
         self.0.borrow().r_to_vec()
     }
@@ -354,7 +354,7 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for Bag {
 }
 
 #[miniextendr(env)]
-impl miniextendr_api::adapter_traits::RExtend<i32> for Bag {
+impl RExtend<i32> for Bag {
     fn extend_from_vec(&self, items: ::std::vec::Vec<i32>) {
         self.0.borrow_mut().extend(items);
     }

@@ -40,6 +40,13 @@ pub(crate) fn name_ident(name: &str) -> syn::Ident {
 }
 // endregion
 
+/// Local repr(C) type for a concrete trait vtable. Only the static beside it
+/// is exported to C; this type reproduces the declaration's supplied layout.
+pub(crate) fn vtable_layout_ident(trait_name: &syn::Ident, type_name: &str) -> syn::Ident {
+    let table = vtable_static_ident(trait_name, type_name);
+    quote::format_ident!("{table}_Layout")
+}
+
 /// Identifier for the registration entry holding the R wrapper source.
 ///
 /// Returns `R_WRAPPER_{rust_ident}`, preserving case.

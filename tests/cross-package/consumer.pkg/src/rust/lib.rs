@@ -10,13 +10,11 @@ use miniextendr_api::{ExternalPtr, SEXP, SexpExt, miniextendr, trait_abi::ccall}
 
 miniextendr_api::miniextendr_init!();
 
-// Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
-
-// Import the shared Resettable trait and its generated ABI types
-pub use shared_traits::{
-    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
-};
+// The shared traits, their Views and tags. Implementing a trait needs only the
+// trait itself: its vtable type, tag and builder come with it (#2065).
+// `CounterVTable` is for the raw `mx_query` probe below.
+pub use shared_traits::{Counter, CounterVTable, CounterView, TAG_Counter};
+pub use shared_traits::{Resettable, ResettableView, TAG_Resettable};
 
 // Import the View of the shared Tagged trait (owner receivers)
 pub use shared_traits::TaggedView;

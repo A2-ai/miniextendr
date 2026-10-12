@@ -535,19 +535,19 @@ impl AdapterNamesS3 {
 
 /// RHash trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RHash for AdapterNamesS3 {}
+impl miniextendr_api::RHash for AdapterNamesS3 {}
 
 /// RClone trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RClone for AdapterNamesS3 {}
+impl miniextendr_api::RClone for AdapterNamesS3 {}
 
 /// RDefault trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RDefault for AdapterNamesS3 {}
+impl miniextendr_api::RDefault for AdapterNamesS3 {}
 
 /// RFromStr trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesS3 {}
+impl miniextendr_api::RFromStr for AdapterNamesS3 {}
 
 #[derive(Clone, Debug, Default, Hash, ExternalPtr)]
 pub struct AdapterNamesS4 {

@@ -13,7 +13,26 @@ parameter attributes belong to the implementation.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
-to import or invoke that macro separately.
+to import or invoke that macro separately. The defining module path, a
+crate-root re-export and an imported or renamed trait all work. Renaming an
+import keeps the original trait's R namespace and ABI tag. The trait's name
+is taken in the macro namespace as well, so a macro or derive of the same name
+can't sit in the trait's module. `#[miniextendr]` on an impl of a trait without
+`#[miniextendr]` fails with "cannot find macro" at the trait's name. An empty
+impl, `#[miniextendr] impl Trait for T {}`, registers the type's own Rust impl
+of the trait, default methods included. It works for any non-generic trait
+without associated types, one defined in the implementing crate as well.
+
+The declaration supplies the exact `repr(C)` vtable field order and callback
+types. An impl emits its own layout with those fields and registers it under
+the declaration's fingerprint, so it never guesses paths to `TAG_*`, a
+vtable type or a builder next to the imported name. Non-generic shims are
+hidden associated methods with `Self: Sized`: they retain declaration-local
+type resolution and default methods without preventing `dyn Trait`. Generic
+traits retain concrete shims generated from the impl's method signatures, so
+an impl of a generic trait defines every method in the vtable, defaulted ones
+included.
+The exported vtable static symbols used by webR remain unchanged.
 
 ## Key Concepts
 
