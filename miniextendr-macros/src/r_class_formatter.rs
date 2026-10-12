@@ -484,14 +484,6 @@ impl<'a> MethodContext<'a> {
             .build()
     }
 
-    /// Build full R formals for instance methods (prefixing x/self parameter).
-    ///
-    /// For S3/S4/S7: `"x, <params>, ..."`
-    /// For Env/R6: `"<params>"` (self is implicit)
-    pub fn instance_formals(&self, add_self_param: bool) -> String {
-        self.instance_formals_with_dots(add_self_param, true)
-    }
-
     /// Full R formals of a `<generic>.<Class>` S3 method: `"x, <params>, ..."`,
     /// except that for a replacement generic (a name ending in `<-`, such as
     /// `[[<-` or `names<-`) the dispatch `...` goes before the last formal,
@@ -513,18 +505,6 @@ impl<'a> MethodContext<'a> {
         out.push("...");
         out.extend(last);
         out.join(", ")
-    }
-
-    /// Build full R formals for instance methods with optional dots.
-    ///
-    /// When `include_dots` is false, omits `...` from the signature.
-    /// This is used for strict generics that don't accept extra args.
-    pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
-        if add_self_param {
-            self.instance_formals_with_receiver("x", include_dots)
-        } else {
-            self.params.clone()
-        }
     }
 
     /// Build instance formals with a custom receiver name (default is `x`).
