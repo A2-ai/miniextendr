@@ -307,7 +307,7 @@ test_that("saving a sparse vector computes the elements it has not reached yet",
   expect_identical(v[seq_along(v)], restored)
 })
 
-test_that("sparse real skipped elements stay NaN through saveRDS/readRDS", {
+test_that("sparse real skipped elements stay NA through saveRDS/readRDS", {
   v <- sparse_iter_real(0, 1, 5L)
   expect_identical(v[3], 2)
 
@@ -316,7 +316,7 @@ test_that("sparse real skipped elements stay NaN through saveRDS/readRDS", {
   saveRDS(v, tmp)
   restored <- readRDS(tmp)
 
-  expect_true(all(is.nan(restored[1:2])))
+  expect_true(all(is.na(restored[1:2]) & !is.nan(restored[1:2])))
   expect_identical(restored[3:5], c(2, 3, 4))
 })
 

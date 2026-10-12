@@ -248,7 +248,9 @@ IterRealData, f64
 
 impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
     fn elt(&self, i: usize) -> f64 {
-        self.state.get_element(i).unwrap_or(f64::NAN)
+        self.state
+            .get_element(i)
+            .unwrap_or(crate::altrep_traits::NA_REAL)
     }
 
     fn as_slice(&self) -> Option<&[f64]> {

@@ -27,6 +27,7 @@ use super::{AltIntegerData, AltRealData, AltrepLen};
 ///
 /// The reader `F(start, buf) -> count` fills `buf` with elements starting
 /// at index `start` and returns the number of elements actually written.
+/// Elements it does not write read as NA.
 ///
 /// # Example
 ///
@@ -90,7 +91,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize> AltrepLen for StreamingRealData<F> {
 impl<F: Fn(usize, &mut [f64]) -> usize> AltRealData for StreamingRealData<F> {
     fn elt(&self, i: usize) -> f64 {
         if i >= self.len {
-            return f64::NAN;
+            return crate::altrep_traits::NA_REAL;
         }
         let chunk_idx = i / self.chunk_size;
         self.ensure_chunk(chunk_idx);
@@ -99,7 +100,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize> AltRealData for StreamingRealData<F> {
         cache
             .get(&chunk_idx)
             .and_then(|chunk| chunk.get(offset).copied())
-            .unwrap_or(f64::NAN)
+            .unwrap_or(crate::altrep_traits::NA_REAL)
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
@@ -107,7 +108,11 @@ impl<F: Fn(usize, &mut [f64]) -> usize> AltRealData for StreamingRealData<F> {
         if count == 0 {
             return 0;
         }
-        (self.reader)(start, &mut buf[..count])
+        // R's ITERATE_BY_REGION reads all `count` slots whatever we return, so
+        // the elements the reader did not write read as NA, as through `elt`.
+        let written = (self.reader)(start, &mut buf[..count]).min(count);
+        buf[written..count].fill(crate::altrep_traits::NA_REAL);
+        count
     }
 }
 
@@ -124,6 +129,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize> AltRealData for StreamingRealData<F> {
 ///
 /// The reader `F(start, buf) -> count` fills `buf` with elements starting
 /// at index `start` and returns the number of elements actually written.
+/// Elements it does not write read as NA.
 ///
 /// # Example
 ///
@@ -204,7 +210,11 @@ impl<F: Fn(usize, &mut [i32]) -> usize> AltIntegerData for StreamingIntData<F> {
         if count == 0 {
             return 0;
         }
-        (self.reader)(start, &mut buf[..count])
+        // R's ITERATE_BY_REGION reads all `count` slots whatever we return, so
+        // the elements the reader did not write read as NA, as through `elt`.
+        let written = (self.reader)(start, &mut buf[..count]).min(count);
+        buf[written..count].fill(crate::altrep_traits::NA_INTEGER);
+        count
     }
 }
 

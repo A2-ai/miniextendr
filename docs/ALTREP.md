@@ -1992,8 +1992,12 @@ Coverage follows capabilities rather than a list of iterator type names:
 `DoubleEndedIterator` does not imply cheap random access, and `Clone` does
 not promise an independently replayable source. Construction does not infer
 either property. The standard full-cache adapter treats the first `None` as
-permanent exhaustion. A prefix longer than the source retains the documented
-missing-element/full-materialization error behavior.
+permanent exhaustion. When the declared length is longer than the source, the
+numeric and logical iterator and stream adaptors read the elements the source
+never produced as R's `NA` for the type (`NA_integer_`, `NA_real_`,
+`NA_complex_`, logical `NA`), never as an ordinary `NaN`; raw elements read
+`00`. Full materialization (`materialize_all()`, and so every string adaptor
+read) panics instead.
 
 String data still materializes all strings on the first element lookup to
 provide stable borrowed `&str` storage. Native numeric/logical data caches

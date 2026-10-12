@@ -67,10 +67,10 @@ miniextendr provides five sparse iterator data types:
 | Type | Element | NA/Default Value | Trait |
 |------|---------|-----------------|-------|
 | `SparseIterIntData<I>` | `i32` | `NA_INTEGER` (`i32::MIN`) | `AltIntegerData` |
-| `SparseIterRealData<I>` | `f64` | Ordinary `NaN` | `AltRealData` |
+| `SparseIterRealData<I>` | `f64` | `NA_REAL` (R's `NA_real_`) | `AltRealData` |
 | `SparseIterLogicalData<I>` | `bool` | `Logical::Na` (NA_logical) | `AltLogicalData` |
 | `SparseIterRawData<I>` | `u8` | `0` (raw has no NA concept) | `AltRawData` |
-| `SparseIterComplexData<I>` | `Rcomplex` | Ordinary `NaN` in both components | `AltComplexData` |
+| `SparseIterComplexData<I>` | `Rcomplex` | `NA_REAL` in both parts (R's `NA_complex_`) | `AltComplexData` |
 
 All types share the same behavior:
 
@@ -233,7 +233,7 @@ sparse[1]    #> NA  (skipped, gone forever)
 
 ## Sparse Real Iterator Example
 
-Real-valued sparse iterators return ordinary `NaN` for skipped elements. R displays it as `NaN`; it is not the `NA_real_` sentinel recognized by Rust's `IsNA`. R's `is.na()` and `is.nan()` both return `TRUE` for it:
+Real-valued sparse iterators return R's `NA_real_` for skipped elements, not an ordinary `NaN`: `is.na()` is `TRUE` and `is.nan()` is `FALSE`, and Rust's `IsNA` recognizes it:
 
 ```rust
 type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
@@ -262,7 +262,7 @@ pub fn sparse_iter_real(from: f64, step: f64, length_out: i32) -> SEXP {
 ```r
 x <- sparse_iter_real(0, 0.5, 100L)
 x[50]   #> 24.5  (0 + 49 * 0.5)
-x[1]    #> NaN   (skipped)
+x[1]    #> NA    (skipped)
 x[51]   #> 25.0  (still available)
 ```
 
@@ -306,10 +306,10 @@ Each R type has a different representation for "no value":
 | Type | Skipped Element Value | R Display |
 |------|----------------------|-----------|
 | Integer (`SparseIterIntData`) | `NA_INTEGER` (`i32::MIN`) | `NA` |
-| Real (`SparseIterRealData`) | Ordinary `NaN` | `NaN` |
+| Real (`SparseIterRealData`) | `NA_REAL` | `NA` |
 | Logical (`SparseIterLogicalData`) | `Logical::Na` | `NA` |
 | Raw (`SparseIterRawData`) | `0` | `00` |
-| Complex (`SparseIterComplexData`) | Ordinary `NaN` in both parts | `NaN+NaNi` |
+| Complex (`SparseIterComplexData`) | `NA_REAL` in both parts | `NA` |
 
 Note that raw vectors have no NA concept in R, so skipped raw elements return `0x00`. This means you cannot distinguish a skipped element from a legitimately-zero element in a raw sparse iterator.
 
@@ -323,7 +323,7 @@ Note that raw vectors have no NA concept in R, so skipped raw elements return `0
 
 3. **Serialization loses the iterator**: Without custom serialization hooks, saving materializes the vector (see above) and R writes it as an ordinary vector; `readRDS()` restores that vector. Cached values survive, skipped positions keep their NA/default values, and elements the iterator had not reached are computed when the vector is saved. Preserving the ALTREP class requires an explicit serialization and reconstruction policy on the concrete class.
 
-4. **Aggregates see the skipped-position defaults**: `sum()` and `mean()` include integer/logical NA or real/complex NaN for skipped elements. `na.rm = TRUE` ignores these, but cannot recover the discarded values. Use prefix-caching iterators when an aggregate must include every source value.
+4. **Aggregates see the skipped-position defaults**: `sum()` and `mean()` include the NA of each skipped element. `na.rm = TRUE` ignores these, but cannot recover the discarded values. Use prefix-caching iterators when an aggregate must include every source value.
 
 5. **Raw vectors cannot signal "missing"**: Since `u8` has no NA concept, `SparseIterRawData` returns `0` for skipped elements. This is indistinguishable from a real `0` value.
 

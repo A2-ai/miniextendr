@@ -137,6 +137,7 @@ mod altrep_manual_fixture;
 mod altrep_no_lowlevel_fixture;
 mod altrep_sexp_tests;
 mod altrep_shared_slice_tests;
+mod altrep_short_source_tests;
 mod argument_error_tests;
 mod argument_message_tests;
 #[cfg(feature = "arrow")]
