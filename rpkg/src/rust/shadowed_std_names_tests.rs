@@ -222,6 +222,11 @@ mod alloc {}
 
 // endregion
 
+#[cfg(any(
+    feature = "worker-thread",
+    feature = "worker-default",
+    feature = "serde"
+))]
 use miniextendr_api::miniextendr;
 
 /// Double `x` on the worker thread.
