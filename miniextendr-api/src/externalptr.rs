@@ -989,9 +989,10 @@ thread_local! {
 ///
 /// Must run on R's main thread with `sexp` already protected by the caller (the
 /// pool may allocate while growing). Both hold inside
-/// `create_extptr_sexp[_unchecked]`.
+/// `create_extptr_sexp[_unchecked]` and `TraitViewData::new`, whose trait views
+/// root their receiver here too.
 #[inline]
-fn root_owned(sexp: SEXP) -> ProtectKey {
+pub(crate) fn root_owned(sexp: SEXP) -> ProtectKey {
     EXTPTR_ROOTS.with_borrow_mut(|slot| {
         let pool = slot.get_or_insert_with(|| {
             // SAFETY: on R's main thread (caller contract); R is initialized
@@ -1005,9 +1006,10 @@ fn root_owned(sexp: SEXP) -> ProtectKey {
 
 /// Release an owning handle's pool root. Stale keys are a safe no-op.
 ///
-/// Must run on R's main thread (callers route through `with_r_thread`).
+/// Must run on R's main thread (callers route through `with_r_thread`, or are
+/// `!Send` like `TraitViewData`).
 #[inline]
-fn unroot_owned(key: ProtectKey) {
+pub(crate) fn unroot_owned(key: ProtectKey) {
     EXTPTR_ROOTS.with_borrow_mut(|slot| {
         if let Some(pool) = slot.as_mut() {
             // SAFETY: on R's main thread.

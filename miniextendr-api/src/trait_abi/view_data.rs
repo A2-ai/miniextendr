@@ -1,21 +1,24 @@
 //! Shared storage for the pointers and optional R owner of a generated view.
 
 use crate::SEXP;
+use crate::externalptr::{root_owned, unroot_owned};
 use crate::gc_protect::OwnedProtect;
+use crate::protect_pool::ProtectKey;
 use std::ffi::c_void;
 
 /// The checked construction boundary of a generated trait view.
 ///
 /// Pointer fields live here, rather than in the expansion's module: even
 /// code beside the generated view cannot construct or overwrite them safely.
-/// An R owner is preserved independently of the PROTECT stack, allowing views
-/// to outlive their creating scope and to be dropped in arbitrary order.
+/// An R owner is rooted in the same pool as owning `ExternalPtr` handles,
+/// independently of the PROTECT stack, so views can outlive their creating
+/// scope and be dropped in any order.
 /// Raw pointers keep this type (and every generated view) `!Send` and `!Sync`.
 #[doc(hidden)]
 pub struct TraitViewData<V> {
     data: *mut c_void,
     vtable: *const V,
-    owner: Option<SEXP>,
+    root: Option<ProtectKey>,
 }
 
 impl<V> TraitViewData<V> {
@@ -29,16 +32,16 @@ impl<V> TraitViewData<V> {
     /// Calls must respect Rust's aliasing rules. Construction, use and drop
     /// must run on R's main thread, inside an R unwind boundary when allocating.
     pub unsafe fn new(data: *mut c_void, vtable: *const c_void, owner: Option<SEXP>) -> Self {
-        if let Some(owner) = owner {
-            // Preserve can allocate. Protect before creating the independent
-            // root, then leave the caller's stack unchanged.
-            let root = unsafe { OwnedProtect::new(owner) };
-            unsafe { crate::sys::R_PreserveObject(root.get()) };
-        }
+        let root = owner.map(|owner| {
+            // The pool can allocate while it grows. Protect the owner until
+            // it holds its own root, then leave the caller's stack unchanged.
+            let guard = unsafe { OwnedProtect::new(owner) };
+            root_owned(guard.get())
+        });
         Self {
             data,
             vtable: vtable.cast(),
-            owner,
+            root,
         }
     }
 
@@ -51,19 +54,14 @@ impl<V> TraitViewData<V> {
     pub fn vtable(&self) -> *const V {
         self.vtable
     }
-
-    /// The rooted R receiver, absent for a raw Rust-owned view.
-    pub fn owner(&self) -> Option<SEXP> {
-        self.owner
-    }
 }
 
 impl<V> Drop for TraitViewData<V> {
     fn drop(&mut self) {
-        if let Some(owner) = self.owner {
-            // SAFETY: construction preserved it, and this type cannot move
-            // to another thread. Release does not allocate or call finalizers.
-            unsafe { crate::sys::R_ReleaseObject(owner) };
+        if let Some(key) = self.root.take() {
+            // This type cannot leave the main thread it was built on, and
+            // releasing a pool slot neither allocates nor runs finalizers.
+            unroot_owned(key);
         }
     }
 }
