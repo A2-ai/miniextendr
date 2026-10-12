@@ -554,6 +554,29 @@ impl RustConversionBuilder {
             return (vec![owned_stmt], vec![borrow_stmt]);
         }
 
+        if !root_shared_inputs
+            && !self.match_arg_several_ok_params.contains(&param_name)
+            && let Some((owned_ty, copy, borrow)) = worker_native_storage(ty, &owned_ident)
+        {
+            let span = ty.span();
+            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+            // Check the borrowed representation before copying: scalar inputs
+            // still require exactly one element, and optional NULLs stay None.
+            let try_expr = quote_spanned! {span=>
+                ::core::result::Result::map(
+                    <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
+                        ::miniextendr_api::Root::from_call_arg(&#sexp_ident)
+                    }),
+                    #copy,
+                )
+            };
+            let owned_stmt = self.conversion_stmt(try_expr, &ctx, &owned_ident, &owned_ty, span);
+            let borrow_stmt = quote_spanned! {span=>
+                let #ident: #bound_ty = #borrow;
+            };
+            return (vec![owned_stmt], vec![borrow_stmt]);
+        }
+
         // `LazyDots` (#1892): the R wrapper passes its own frame,
         // `environment()`, at the position of `...`; the marker reads the
         // dots from it and never goes through `TryFromSexp`. Bound in every
@@ -1051,6 +1074,56 @@ fn worker_string_storage(ty: &syn::Type, storage: &syn::Ident) -> Option<(syn::T
             ),
         },
     )
+}
+
+/// Shared native worker inputs are snapshots of their R-thread conversion.
+/// Copy before dispatch, then form every reference inside the worker closure.
+/// Mutable inputs keep their separate write-through conversion path.
+fn worker_native_storage(
+    ty: &syn::Type,
+    storage: &syn::Ident,
+) -> Option<(syn::Type, TokenStream, TokenStream)> {
+    if !crate::type_inspect::is_rooted_reference(ty) || worker_string_storage(ty, storage).is_some()
+    {
+        return None;
+    }
+    let optional = crate::type_inspect::option_inner_type(ty);
+    let syn::Type::Reference(reference) = optional.unwrap_or(ty) else {
+        return None;
+    };
+    let element = &reference.elem;
+    let (owned, copy, borrow) = match element.as_ref() {
+        syn::Type::Slice(slice) => {
+            let element = &slice.elem;
+            (
+                syn::parse_quote!(::std::vec::Vec<#element>),
+                quote!(::std::vec::Vec::from),
+                if optional.is_some() {
+                    quote!(::core::option::Option::as_deref(&#storage))
+                } else {
+                    quote!(::std::vec::Vec::as_slice(&#storage))
+                },
+            )
+        }
+        _ => (
+            element.as_ref().clone(),
+            quote!(|value| *value),
+            if optional.is_some() {
+                quote!(::core::option::Option::as_ref(&#storage))
+            } else {
+                quote!(&#storage)
+            },
+        ),
+    };
+    if optional.is_some() {
+        Some((
+            syn::parse_quote!(::core::option::Option<#owned>),
+            quote!(|value| ::core::option::Option::map(value, #copy)),
+            borrow,
+        ))
+    } else {
+        Some((owned, copy, borrow))
+    }
 }
 
 /// One compile-time assertion per leaf of the `R` arm of an `Either` choice

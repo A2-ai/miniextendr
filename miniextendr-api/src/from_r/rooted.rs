@@ -11,7 +11,8 @@ use std::borrow::Cow;
 /// Generated wrappers use the rooted `.Call` argument for `StrVec`, `RCow`,
 /// and `Cow` inputs (including the character-vector Cow containers). Main-thread
 /// wrappers and trait shims also use it for explicit shared native references
-/// and optional shared references. Worker `&str` inputs still copy to `String`.
+/// and optional shared references. Worker shared references copy to Rust-owned
+/// scalars, vectors or strings before dispatch, then borrow inside the worker.
 /// A type alias can use this trait explicitly in the function body.
 ///
 /// A root proves liveness, not exclusive access: this trait does not provide

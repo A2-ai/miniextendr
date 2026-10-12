@@ -521,10 +521,14 @@ Main-thread wrappers and trait shims convert explicit shared native slices
 through `TryFromRoot`, tying the borrow to the rooted call argument. Use the
 slice during that call; copy to `Vec` when the data must outlive it.
 
-Raw `TryFromSexp` reference conversions and worker native references still
-have unconstrained lifetimes (#1427). Their callers must keep the source
-rooted and enforce borrowing rules themselves. A root supplies liveness;
-it does not grant exclusive access for a mutable slice.
+Worker wrappers check the slice through `TryFromRoot` on R's main thread,
+copy it into a `Vec`, and borrow that copy inside the worker, so the worker
+never reads R memory.
+
+Raw `TryFromSexp` reference conversions and mutable slices still have
+unconstrained lifetimes (#1427). Their callers must keep the source rooted and
+enforce borrowing rules themselves. A root supplies liveness; it does not
+grant exclusive access for a mutable slice.
 
 ---
 
@@ -952,10 +956,12 @@ keep the data.
 
 The macro recognizes these types by name. An alias or a newtype of a view has
 to take a `SEXP` and call `try_from_root` in the body; one of a reference
-converts through `TryFromSexp`. On the worker thread, `&str` copies into a
-`String` and the native references convert through `TryFromSexp`. Mutable
-references and reference containers (`Vec<&str>`, `Option<&mut [T]>`) also
-still convert through `TryFromSexp` with an unconstrained lifetime (#1427).
+converts through `TryFromSexp`. On the worker thread, shared references copy
+before dispatch: the character forms into `String` storage, the native
+references and slices into owned values or a `Vec`; the worker borrows the
+copy. Mutable references and reference containers (`Vec<&str>`,
+`Option<&mut [T]>`) on the main thread still convert through `TryFromSexp`
+with an unconstrained lifetime (#1427).
 `Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
 one, have no rooted conversion yet (#2038).
 

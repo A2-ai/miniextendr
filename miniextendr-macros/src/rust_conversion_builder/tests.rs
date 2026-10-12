@@ -1291,3 +1291,57 @@ fn worker_optional_string_choices_keep_the_null_decoder_and_argument_type() {
     assert_eq!(borrowed.len(), 1);
     assert!(borrowed[0].to_string().contains("as_deref"));
 }
+
+#[test]
+fn worker_native_references_copy_before_dispatch_and_borrow_inside_it() {
+    let builder = RustConversionBuilder::new();
+    for (ty, owned_ty, borrow) in [
+        ("&'a i32", "i32", "& __owned_value"),
+        ("&f64", "f64", "& __owned_value"),
+        ("&u8", "u8", "& __owned_value"),
+        ("&RLogical", "RLogical", "& __owned_value"),
+        ("&Rcomplex", "Rcomplex", "& __owned_value"),
+        ("&'a [i32]", ":: std :: vec :: Vec < i32 >", "as_slice"),
+        (
+            "&[NativeNewtype]",
+            ":: std :: vec :: Vec < NativeNewtype >",
+            "as_slice",
+        ),
+        (
+            "Option<&i32>",
+            ":: core :: option :: Option < i32 >",
+            "as_ref",
+        ),
+        (
+            "Option<&[f64]>",
+            ":: core :: option :: Option < :: std :: vec :: Vec < f64 > >",
+            "as_deref",
+        ),
+    ] {
+        let syn::FnArg::Typed(param) = parse_param(&format!("value: {ty}")) else {
+            unreachable!()
+        };
+        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+        assert_eq!(owned.len(), 1, "{ty}");
+        assert_eq!(borrowed.len(), 1, "{ty}");
+        let owned = owned[0].to_string();
+        let borrowed = borrowed[0].to_string();
+        assert!(
+            owned.contains(&format!("let __owned_value : {owned_ty} =")),
+            "{owned}"
+        );
+        assert!(owned.contains("TryFromRoot"), "{owned}");
+        assert!(owned.contains("Result :: map ("), "{owned}");
+        assert!(borrowed.contains(borrow), "{borrowed}");
+        assert!(!borrowed.contains("miniextendr_api"), "{borrowed}");
+    }
+    for ty in [
+        "&mut [i32]",
+        "Option<&mut i32>",
+        "&CustomObject",
+        "Vec<&i32>",
+    ] {
+        let ty = syn::parse_str(ty).unwrap();
+        assert!(worker_native_storage(&ty, &syn::parse_quote!(__owned_value)).is_none());
+    }
+}
