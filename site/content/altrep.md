@@ -43,7 +43,7 @@ pub struct ConstantIntData {
 
 // 2. Implement the required data traits.
 impl AltrepLen for ConstantIntData {
-    fn len(&self) -> usize { self.len }
+    fn altrep_len(&self) -> usize { self.len }
 }
 
 impl AltIntegerData for ConstantIntData {

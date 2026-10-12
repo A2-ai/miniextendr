@@ -168,7 +168,7 @@ impl AltrepExtract for MyNativeSexpAltrep {
     }
 }
 
-impl AltrepLen for MyNativeSexpAltrep { fn len(&self) -> usize { 0 } }
+impl AltrepLen for MyNativeSexpAltrep { fn altrep_len(&self) -> usize { 0 } }
 impl AltIntegerData for MyNativeSexpAltrep { fn elt(&self, _i: usize) -> i32 { 0 } }
 impl AltrepDataptr<i32> for MyNativeSexpAltrep {
     fn dataptr(&mut self, _w: bool) -> Option<*mut i32> { None }

@@ -103,7 +103,7 @@ fn element(i: i32) -> SEXP {
 struct ListIterator(IterListData<Source>);
 
 impl AltrepLen for ListIterator {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

@@ -35,7 +35,7 @@ pub trait AltrepIteratorItem: Sized {
 /// ```
 /// use miniextendr_api::{AltrepIteratorExt, AltIntegerData, AltrepLen};
 /// let data = (0..6i32).map(|x| x * 2).into_altrep_data_exact();
-/// assert_eq!(data.len(), 6);
+/// assert_eq!(data.altrep_len(), 6);
 /// assert_eq!(data.elt(2), 4);
 /// ```
 pub trait AltrepIteratorExt: Iterator + Sized {

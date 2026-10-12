@@ -41,8 +41,8 @@ pub struct ShortIterReal {
 }
 
 impl AltrepLen for ShortIterReal {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -63,8 +63,8 @@ pub struct ShortIterRealCoerce {
 }
 
 impl AltrepLen for ShortIterRealCoerce {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -85,8 +85,8 @@ pub struct ShortWindowedReal {
 }
 
 impl AltrepLen for ShortWindowedReal {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -107,8 +107,8 @@ pub struct ShortSparseReal {
 }
 
 impl AltrepLen for ShortSparseReal {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -129,8 +129,8 @@ pub struct ShortStreamReal {
 }
 
 impl AltrepLen for ShortStreamReal {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -155,8 +155,8 @@ pub struct ShortIterComplex {
 }
 
 impl AltrepLen for ShortIterComplex {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -177,8 +177,8 @@ pub struct ShortSparseComplex {
 }
 
 impl AltrepLen for ShortSparseComplex {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 

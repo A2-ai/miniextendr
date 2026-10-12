@@ -14,8 +14,8 @@ pub struct BenchIterIntData {
 }
 
 impl AltrepLen for BenchIterIntData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 

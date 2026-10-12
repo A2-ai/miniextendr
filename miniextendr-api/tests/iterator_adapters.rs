@@ -64,7 +64,7 @@ fn native_altrep_construction_is_lazy_and_reads_only_a_finite_prefix() {
     })
     .into_altrep_data(3);
     assert_eq!(draws.get(), 0);
-    assert_eq!(data.len(), 3);
+    assert_eq!(data.altrep_len(), 3);
     assert_eq!(data.elt(1), 1);
     assert_eq!(data.elt(0), 0);
     assert_eq!(draws.get(), 2);
@@ -79,7 +79,7 @@ fn native_altrep_accepts_composed_and_unknown_length_iterators() {
 
     let exact = [1i32, 2, 3, 4].into_iter().rev().map(|x| x * 2).take(3);
     let data = exact.into_altrep_data_exact();
-    assert_eq!(data.len(), 3);
+    assert_eq!(data.altrep_len(), 3);
     assert_eq!(data.elt(2), 4);
 
     let filtered = (0..10i32).filter(|x| x % 2 == 0).into_altrep_data(5);

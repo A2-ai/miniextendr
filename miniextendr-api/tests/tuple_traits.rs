@@ -249,7 +249,7 @@ static TUPLE_INPUT_LENGTH_CALLS: std::sync::atomic::AtomicUsize =
 pub struct TupleInputLengthProbe(i32);
 
 impl miniextendr_api::altrep_data::AltrepLen for TupleInputLengthProbe {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         TUPLE_INPUT_LENGTH_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         1
     }

@@ -168,7 +168,7 @@ pub struct FibonacciVector {
 }
 
 impl AltrepLen for FibonacciVector {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }

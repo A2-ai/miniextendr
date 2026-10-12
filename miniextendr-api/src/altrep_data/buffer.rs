@@ -86,7 +86,7 @@ impl<T: RNativeType> Clone for AltrepBuffer<T> {
     }
 }
 impl<T: RNativeType> AltrepLen for AltrepBuffer<T> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len()
     }
 }

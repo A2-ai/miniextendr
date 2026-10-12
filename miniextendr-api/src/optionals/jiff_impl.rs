@@ -899,7 +899,7 @@ impl JiffTimestampVec {
 }
 
 impl AltrepLen for JiffTimestampVec {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -962,7 +962,7 @@ impl JiffZonedVec {
 }
 
 impl AltrepLen for JiffZonedVec {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }

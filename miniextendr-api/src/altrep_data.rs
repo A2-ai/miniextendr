@@ -19,7 +19,7 @@
 //! struct Fibonacci { len: usize }
 //!
 //! impl AltrepLen for Fibonacci {
-//!     fn len(&self) -> usize { self.len }
+//!     fn altrep_len(&self) -> usize { self.len }
 //! }
 //!
 //! impl AltIntegerData for Fibonacci {

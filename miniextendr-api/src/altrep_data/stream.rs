@@ -83,7 +83,7 @@ impl<F: Fn(usize, &mut [f64]) -> usize> StreamingRealData<F> {
 }
 
 impl<F: Fn(usize, &mut [f64]) -> usize> AltrepLen for StreamingRealData<F> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -185,7 +185,7 @@ impl<F: Fn(usize, &mut [i32]) -> usize> StreamingIntData<F> {
 }
 
 impl<F: Fn(usize, &mut [i32]) -> usize> AltrepLen for StreamingIntData<F> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }

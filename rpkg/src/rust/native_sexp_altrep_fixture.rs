@@ -97,7 +97,7 @@ impl AltrepExtract for NativeSexpIntAltrep {
 // `impl_inferbase_integer!`.
 
 impl AltrepLen for NativeSexpIntAltrep {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         // Stub — the low-level `Altrep::length` reads directly from `data1`.
         0
     }

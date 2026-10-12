@@ -3770,13 +3770,13 @@ use crate::altrep_data::{AltIntegerData, AltRealData, AltrepDataptr, AltrepLen};
 // TypedExternal already impl'd via impl_te_ndarray! macro above.
 
 impl AltrepLen for Array1<f64> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         ndarray::ArrayBase::len(self)
     }
 }
 
 impl AltrepLen for Array1<i32> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         ndarray::ArrayBase::len(self)
     }
 }

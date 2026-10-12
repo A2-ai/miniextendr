@@ -1611,13 +1611,13 @@ use crate::altrep_data::{AltIntegerData, AltRealData, AltrepDataptr, AltrepLen};
 // TypedExternal already impl'd via impl_te_nalgebra! macro above.
 
 impl AltrepLen for DVector<f64> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.nrows()
     }
 }
 
 impl AltrepLen for DVector<i32> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.nrows()
     }
 }

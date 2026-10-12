@@ -26,7 +26,7 @@ pub struct NoLowlevelAltrep {
 }
 
 impl AltrepLen for NoLowlevelAltrep {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.length.max(0) as usize
     }
 }

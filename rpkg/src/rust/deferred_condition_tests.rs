@@ -322,7 +322,7 @@ pub struct DeferredGuardAltrep {
 }
 
 impl miniextendr_api::altrep_data::AltrepLen for DeferredGuardAltrep {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         3
     }
 }

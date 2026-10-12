@@ -18,8 +18,8 @@ pub struct StreamingIntRangeData {
 }
 
 impl AltrepLen for StreamingIntRangeData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -71,8 +71,8 @@ pub struct StreamingRealSquaresData {
 }
 
 impl AltrepLen for StreamingRealSquaresData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 

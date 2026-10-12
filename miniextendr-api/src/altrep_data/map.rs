@@ -63,7 +63,7 @@ impl<T: RNativeType> AltrepMap<T> {
     }
 }
 impl<T: RNativeType> AltrepLen for AltrepMap<T> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len()
     }
 }

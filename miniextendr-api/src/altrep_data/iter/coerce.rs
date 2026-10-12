@@ -69,7 +69,7 @@ where
     I: Iterator<Item = T>,
     T: crate::coerce::Coerce<i32> + Copy,
 {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -140,7 +140,7 @@ where
     I: Iterator<Item = T>,
     T: crate::coerce::Coerce<f64> + Copy,
 {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }

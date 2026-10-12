@@ -855,7 +855,7 @@ pub struct Ints {
 }
 
 impl AltrepLen for Ints {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -888,7 +888,7 @@ pub struct Reals {
 }
 
 impl AltrepLen for Reals {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -912,7 +912,7 @@ pub struct Strings {
 }
 
 impl AltrepLen for Strings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -939,7 +939,7 @@ pub struct Logicals {
 }
 
 impl AltrepLen for Logicals {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -966,7 +966,7 @@ pub struct Raws {
 }
 
 impl AltrepLen for Raws {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -984,7 +984,7 @@ pub struct Complexes {
 }
 
 impl AltrepLen for Complexes {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1000,7 +1000,7 @@ impl AltComplexData for Complexes {
 pub struct Lists;
 
 impl AltrepLen for Lists {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         0
     }
 }
@@ -1016,7 +1016,7 @@ impl AltListData for Lists {
 pub struct SavedLists;
 
 impl AltrepLen for SavedLists {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         0
     }
 }
@@ -1044,7 +1044,7 @@ pub struct Registered {
 }
 
 impl AltrepLen for Registered {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1073,7 +1073,7 @@ pub struct RegisteredStrings {
 }
 
 impl AltrepLen for RegisteredStrings {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }

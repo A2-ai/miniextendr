@@ -538,7 +538,7 @@ pub struct JiffTimestampVecCounted {
 }
 
 impl AltrepLen for JiffTimestampVecCounted {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }

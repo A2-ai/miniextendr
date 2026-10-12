@@ -9,30 +9,17 @@
 //! These traits have blanket implementations, so any type implementing the underlying
 //! `num-traits` trait automatically gets the adapter methods.
 //!
+//! The `r_` prefix keeps these blanket methods separate from ordinary numeric
+//! methods and the source crate's traits. These are Rust helpers; trait-ABI
+//! registration is tracked in #1120.
+//!
 //! # Example
 //!
-//! ```ignore
-//! use miniextendr_api::prelude::*;
-//! use miniextendr_api::num_traits_impl::{RNum, RFloat};
-//!
-//! #[derive(ExternalPtr)]
-//! struct MyNumber(f64);
-//!
-//! // RNum and RFloat are automatically available via blanket impls
-//! #[miniextendr]
-//! impl RNum for MyNumber {}
-//!
-//! #[miniextendr]
-//! impl RFloat for MyNumber {}
 //! ```
+//! use miniextendr_api::{RFloat, RNum};
 //!
-//! In R:
-//! ```r
-//! x <- MyNumber$new(3.14)
-//! x$r_is_zero()      # FALSE
-//! x$r_floor()        # 3.0
-//! x$r_ceil()         # 4.0
-//! x$r_is_finite()    # TRUE
+//! assert!(0i32.r_is_zero());
+//! assert_eq!(3.5f64.r_floor(), 3.0);
 //! ```
 
 use num_traits::{Float, Num, Signed, Zero};
@@ -51,47 +38,41 @@ use num_traits::{Float, Num, Signed, Zero};
 ///
 /// # Example
 ///
-/// ```ignore
-/// use num_traits::Num;
-///
-/// #[derive(ExternalPtr)]
-/// struct BigNum(i128);
-///
-/// // Blanket impl provides all methods automatically
-/// #[miniextendr]
-/// impl RNum for BigNum {}
+/// ```
+/// use miniextendr_api::RNum;
+/// assert_eq!(<i128 as RNum>::r_zero(), 0);
 /// ```
 pub trait RNum: Clone {
     /// Get the additive identity (zero).
-    fn zero() -> Self;
+    fn r_zero() -> Self;
 
     /// Get the multiplicative identity (one).
-    fn one() -> Self;
+    fn r_one() -> Self;
 
     /// Check if this value is zero.
-    fn is_zero(&self) -> bool;
+    fn r_is_zero(&self) -> bool;
 
     /// Check if this value equals one.
-    fn is_one(&self) -> bool;
+    fn r_is_one(&self) -> bool;
 }
 
 impl<T> RNum for T
 where
     T: Num + Clone,
 {
-    fn zero() -> Self {
+    fn r_zero() -> Self {
         T::zero()
     }
 
-    fn one() -> Self {
+    fn r_one() -> Self {
         T::one()
     }
 
-    fn is_zero(&self) -> bool {
+    fn r_is_zero(&self) -> bool {
         Zero::is_zero(self)
     }
 
-    fn is_one(&self) -> bool {
+    fn r_is_one(&self) -> bool {
         self.clone() == T::one()
     }
 }
@@ -110,16 +91,13 @@ where
 ///
 /// # Example
 ///
-/// ```ignore
-/// #[derive(ExternalPtr)]
-/// struct SignedInt(i64);
-///
-/// #[miniextendr]
-/// impl RSigned for SignedInt {}
+/// ```
+/// use miniextendr_api::RSigned;
+/// assert_eq!(RSigned::r_abs(&-5i64), 5);
 /// ```
 pub trait RSigned: Clone {
     /// Get the absolute value.
-    fn abs(&self) -> Self;
+    fn r_abs(&self) -> Self;
 
     /// Get the sign of the number.
     ///
@@ -127,32 +105,32 @@ pub trait RSigned: Clone {
     /// - `-1` if negative
     /// - `0` if zero
     /// - `1` if positive
-    fn signum(&self) -> Self;
+    fn r_signum(&self) -> Self;
 
     /// Check if the value is positive.
-    fn is_positive(&self) -> bool;
+    fn r_is_positive(&self) -> bool;
 
     /// Check if the value is negative.
-    fn is_negative(&self) -> bool;
+    fn r_is_negative(&self) -> bool;
 }
 
 impl<T> RSigned for T
 where
     T: Signed + Clone,
 {
-    fn abs(&self) -> Self {
+    fn r_abs(&self) -> Self {
         Signed::abs(self)
     }
 
-    fn signum(&self) -> Self {
+    fn r_signum(&self) -> Self {
         Signed::signum(self)
     }
 
-    fn is_positive(&self) -> bool {
+    fn r_is_positive(&self) -> bool {
         Signed::is_positive(self)
     }
 
-    fn is_negative(&self) -> bool {
+    fn r_is_negative(&self) -> bool {
         Signed::is_negative(self)
     }
 }
@@ -202,320 +180,308 @@ where
 ///
 /// # Example
 ///
-/// ```ignore
-/// #[derive(ExternalPtr)]
-/// struct MyFloat(f64);
-///
-/// #[miniextendr]
-/// impl RFloat for MyFloat {}
 /// ```
-///
-/// In R:
-/// ```r
-/// x <- MyFloat$new(3.7)
-/// x$r_floor()        # 3.0
-/// x$r_ceil()         # 4.0
-/// x$r_is_finite()    # TRUE
-/// x$r_sqrt()         # 1.923538
+/// use miniextendr_api::RFloat;
+/// assert_eq!(RFloat::r_sqrt(&4.0f64), 2.0);
 /// ```
 pub trait RFloat: Clone {
     // Classification
     /// Check if the value is NaN.
-    fn is_nan(&self) -> bool;
+    fn r_is_nan(&self) -> bool;
 
     /// Check if the value is infinite.
-    fn is_infinite(&self) -> bool;
+    fn r_is_infinite(&self) -> bool;
 
     /// Check if the value is finite (not NaN or infinite).
-    fn is_finite(&self) -> bool;
+    fn r_is_finite(&self) -> bool;
 
     /// Check if the value is normal (not zero, subnormal, infinite, or NaN).
-    fn is_normal(&self) -> bool;
+    fn r_is_normal(&self) -> bool;
 
     /// Check if the sign bit is positive.
-    fn is_sign_positive(&self) -> bool;
+    fn r_is_sign_positive(&self) -> bool;
 
     /// Check if the sign bit is negative.
-    fn is_sign_negative(&self) -> bool;
+    fn r_is_sign_negative(&self) -> bool;
 
     // Rounding
     /// Round towards negative infinity.
-    fn floor(&self) -> Self;
+    fn r_floor(&self) -> Self;
 
     /// Round towards positive infinity.
-    fn ceil(&self) -> Self;
+    fn r_ceil(&self) -> Self;
 
     /// Round to nearest integer.
-    fn round(&self) -> Self;
+    fn r_round(&self) -> Self;
 
     /// Round towards zero (truncate).
-    fn trunc(&self) -> Self;
+    fn r_trunc(&self) -> Self;
 
     /// Get the fractional part.
-    fn fract(&self) -> Self;
+    fn r_fract(&self) -> Self;
 
     // Basic math
     /// Get the absolute value.
-    fn abs(&self) -> Self;
+    fn r_abs(&self) -> Self;
 
     /// Get the sign of the number (1.0, -1.0, or NaN).
-    fn signum(&self) -> Self;
+    fn r_signum(&self) -> Self;
 
     /// Compute the square root.
-    fn sqrt(&self) -> Self;
+    fn r_sqrt(&self) -> Self;
 
     /// Compute the cube root.
-    fn cbrt(&self) -> Self;
+    fn r_cbrt(&self) -> Self;
 
     // Exponentials and logarithms
     /// Compute e^x.
-    fn exp(&self) -> Self;
+    fn r_exp(&self) -> Self;
 
     /// Compute 2^x.
-    fn exp2(&self) -> Self;
+    fn r_exp2(&self) -> Self;
 
     /// Compute the natural logarithm.
-    fn ln(&self) -> Self;
+    fn r_ln(&self) -> Self;
 
     /// Compute the base-2 logarithm.
-    fn log2(&self) -> Self;
+    fn r_log2(&self) -> Self;
 
     /// Compute the base-10 logarithm.
-    fn log10(&self) -> Self;
+    fn r_log10(&self) -> Self;
 
     // Trigonometric
     /// Compute sine.
-    fn sin(&self) -> Self;
+    fn r_sin(&self) -> Self;
 
     /// Compute cosine.
-    fn cos(&self) -> Self;
+    fn r_cos(&self) -> Self;
 
     /// Compute tangent.
-    fn tan(&self) -> Self;
+    fn r_tan(&self) -> Self;
 
     /// Compute arcsine.
-    fn asin(&self) -> Self;
+    fn r_asin(&self) -> Self;
 
     /// Compute arccosine.
-    fn acos(&self) -> Self;
+    fn r_acos(&self) -> Self;
 
     /// Compute arctangent.
-    fn atan(&self) -> Self;
+    fn r_atan(&self) -> Self;
 
     // Hyperbolic
     /// Compute hyperbolic sine.
-    fn sinh(&self) -> Self;
+    fn r_sinh(&self) -> Self;
 
     /// Compute hyperbolic cosine.
-    fn cosh(&self) -> Self;
+    fn r_cosh(&self) -> Self;
 
     /// Compute hyperbolic tangent.
-    fn tanh(&self) -> Self;
+    fn r_tanh(&self) -> Self;
 
     /// Compute inverse hyperbolic sine.
-    fn asinh(&self) -> Self;
+    fn r_asinh(&self) -> Self;
 
     /// Compute inverse hyperbolic cosine.
-    fn acosh(&self) -> Self;
+    fn r_acosh(&self) -> Self;
 
     /// Compute inverse hyperbolic tangent.
-    fn atanh(&self) -> Self;
+    fn r_atanh(&self) -> Self;
 
     // Special values
     /// Get positive infinity.
-    fn infinity() -> Self;
+    fn r_infinity() -> Self;
 
     /// Get negative infinity.
-    fn neg_infinity() -> Self;
+    fn r_neg_infinity() -> Self;
 
     /// Get NaN.
-    fn nan() -> Self;
+    fn r_nan() -> Self;
 
     /// Get the smallest finite value.
-    fn min_value() -> Self;
+    fn r_min_value() -> Self;
 
     /// Get the largest finite value.
-    fn max_value() -> Self;
+    fn r_max_value() -> Self;
 
     /// Get the machine epsilon.
-    fn epsilon() -> Self;
+    fn r_epsilon() -> Self;
 
     // Power and other operations
     /// Compute x^n for integer n.
-    fn powi(&self, n: i32) -> Self;
+    fn r_powi(&self, n: i32) -> Self;
 
     /// Compute x^y for float y.
-    fn powf(&self, y: &Self) -> Self;
+    fn r_powf(&self, y: &Self) -> Self;
 
     /// Compute the reciprocal (1/x).
-    fn recip(&self) -> Self;
+    fn r_recip(&self) -> Self;
 }
 
 impl<T> RFloat for T
 where
     T: Float,
 {
-    fn is_nan(&self) -> bool {
+    fn r_is_nan(&self) -> bool {
         Float::is_nan(*self)
     }
 
-    fn is_infinite(&self) -> bool {
+    fn r_is_infinite(&self) -> bool {
         Float::is_infinite(*self)
     }
 
-    fn is_finite(&self) -> bool {
+    fn r_is_finite(&self) -> bool {
         Float::is_finite(*self)
     }
 
-    fn is_normal(&self) -> bool {
+    fn r_is_normal(&self) -> bool {
         Float::is_normal(*self)
     }
 
-    fn is_sign_positive(&self) -> bool {
+    fn r_is_sign_positive(&self) -> bool {
         Float::is_sign_positive(*self)
     }
 
-    fn is_sign_negative(&self) -> bool {
+    fn r_is_sign_negative(&self) -> bool {
         Float::is_sign_negative(*self)
     }
 
-    fn floor(&self) -> Self {
+    fn r_floor(&self) -> Self {
         Float::floor(*self)
     }
 
-    fn ceil(&self) -> Self {
+    fn r_ceil(&self) -> Self {
         Float::ceil(*self)
     }
 
-    fn round(&self) -> Self {
+    fn r_round(&self) -> Self {
         Float::round(*self)
     }
 
-    fn trunc(&self) -> Self {
+    fn r_trunc(&self) -> Self {
         Float::trunc(*self)
     }
 
-    fn fract(&self) -> Self {
+    fn r_fract(&self) -> Self {
         Float::fract(*self)
     }
 
-    fn abs(&self) -> Self {
+    fn r_abs(&self) -> Self {
         Float::abs(*self)
     }
 
-    fn signum(&self) -> Self {
+    fn r_signum(&self) -> Self {
         Float::signum(*self)
     }
 
-    fn sqrt(&self) -> Self {
+    fn r_sqrt(&self) -> Self {
         Float::sqrt(*self)
     }
 
-    fn cbrt(&self) -> Self {
+    fn r_cbrt(&self) -> Self {
         Float::cbrt(*self)
     }
 
-    fn exp(&self) -> Self {
+    fn r_exp(&self) -> Self {
         Float::exp(*self)
     }
 
-    fn exp2(&self) -> Self {
+    fn r_exp2(&self) -> Self {
         Float::exp2(*self)
     }
 
-    fn ln(&self) -> Self {
+    fn r_ln(&self) -> Self {
         Float::ln(*self)
     }
 
-    fn log2(&self) -> Self {
+    fn r_log2(&self) -> Self {
         Float::log2(*self)
     }
 
-    fn log10(&self) -> Self {
+    fn r_log10(&self) -> Self {
         Float::log10(*self)
     }
 
-    fn sin(&self) -> Self {
+    fn r_sin(&self) -> Self {
         Float::sin(*self)
     }
 
-    fn cos(&self) -> Self {
+    fn r_cos(&self) -> Self {
         Float::cos(*self)
     }
 
-    fn tan(&self) -> Self {
+    fn r_tan(&self) -> Self {
         Float::tan(*self)
     }
 
-    fn asin(&self) -> Self {
+    fn r_asin(&self) -> Self {
         Float::asin(*self)
     }
 
-    fn acos(&self) -> Self {
+    fn r_acos(&self) -> Self {
         Float::acos(*self)
     }
 
-    fn atan(&self) -> Self {
+    fn r_atan(&self) -> Self {
         Float::atan(*self)
     }
 
-    fn sinh(&self) -> Self {
+    fn r_sinh(&self) -> Self {
         Float::sinh(*self)
     }
 
-    fn cosh(&self) -> Self {
+    fn r_cosh(&self) -> Self {
         Float::cosh(*self)
     }
 
-    fn tanh(&self) -> Self {
+    fn r_tanh(&self) -> Self {
         Float::tanh(*self)
     }
 
-    fn asinh(&self) -> Self {
+    fn r_asinh(&self) -> Self {
         Float::asinh(*self)
     }
 
-    fn acosh(&self) -> Self {
+    fn r_acosh(&self) -> Self {
         Float::acosh(*self)
     }
 
-    fn atanh(&self) -> Self {
+    fn r_atanh(&self) -> Self {
         Float::atanh(*self)
     }
 
-    fn infinity() -> Self {
+    fn r_infinity() -> Self {
         Float::infinity()
     }
 
-    fn neg_infinity() -> Self {
+    fn r_neg_infinity() -> Self {
         Float::neg_infinity()
     }
 
-    fn nan() -> Self {
+    fn r_nan() -> Self {
         Float::nan()
     }
 
-    fn min_value() -> Self {
+    fn r_min_value() -> Self {
         Float::min_value()
     }
 
-    fn max_value() -> Self {
+    fn r_max_value() -> Self {
         Float::max_value()
     }
 
-    fn epsilon() -> Self {
+    fn r_epsilon() -> Self {
         Float::epsilon()
     }
 
-    fn powi(&self, n: i32) -> Self {
+    fn r_powi(&self, n: i32) -> Self {
         Float::powi(*self, n)
     }
 
-    fn powf(&self, y: &Self) -> Self {
+    fn r_powf(&self, y: &Self) -> Self {
         Float::powf(*self, *y)
     }
 
-    fn recip(&self) -> Self {
+    fn r_recip(&self) -> Self {
         Float::recip(*self)
     }
 }
@@ -526,147 +492,147 @@ mod tests {
 
     #[test]
     fn test_rnum_i32() {
-        assert_eq!(<i32 as RNum>::zero(), 0);
-        assert_eq!(<i32 as RNum>::one(), 1);
-        assert!(RNum::is_zero(&0i32));
-        assert!(!RNum::is_zero(&1i32));
-        assert!(RNum::is_one(&1i32));
-        assert!(!RNum::is_one(&2i32));
+        assert_eq!(<i32 as RNum>::r_zero(), 0);
+        assert_eq!(<i32 as RNum>::r_one(), 1);
+        assert!(RNum::r_is_zero(&0i32));
+        assert!(!RNum::r_is_zero(&1i32));
+        assert!(RNum::r_is_one(&1i32));
+        assert!(!RNum::r_is_one(&2i32));
     }
 
     #[test]
     fn test_rnum_f64() {
-        assert_eq!(<f64 as RNum>::zero(), 0.0);
-        assert_eq!(<f64 as RNum>::one(), 1.0);
-        assert!(RNum::is_zero(&0.0f64));
-        assert!(!RNum::is_zero(&0.1f64));
+        assert_eq!(<f64 as RNum>::r_zero(), 0.0);
+        assert_eq!(<f64 as RNum>::r_one(), 1.0);
+        assert!(RNum::r_is_zero(&0.0f64));
+        assert!(!RNum::r_is_zero(&0.1f64));
     }
 
     #[test]
     fn test_rsigned_i32() {
-        assert_eq!((-5i32).abs(), 5);
-        assert_eq!(5i32.abs(), 5);
-        assert_eq!((-5i32).signum(), -1);
-        assert_eq!(0i32.signum(), 0);
-        assert_eq!(5i32.signum(), 1);
-        assert!(5i32.is_positive());
-        assert!(!(-5i32).is_positive());
-        assert!((-5i32).is_negative());
-        assert!(!5i32.is_negative());
+        assert_eq!((-5i32).r_abs(), 5);
+        assert_eq!(5i32.r_abs(), 5);
+        assert_eq!((-5i32).r_signum(), -1);
+        assert_eq!(0i32.r_signum(), 0);
+        assert_eq!(5i32.r_signum(), 1);
+        assert!(5i32.r_is_positive());
+        assert!(!(-5i32).r_is_positive());
+        assert!((-5i32).r_is_negative());
+        assert!(!5i32.r_is_negative());
     }
 
     #[test]
     fn test_rsigned_f64() {
         // Use explicit trait qualification since f64 implements both RSigned and RFloat
-        assert_eq!(RSigned::abs(&-std::f64::consts::PI), std::f64::consts::PI);
-        assert_eq!(RSigned::signum(&-std::f64::consts::PI), -1.0);
-        assert_eq!(RSigned::signum(&std::f64::consts::PI), 1.0);
+        assert_eq!(RSigned::r_abs(&-std::f64::consts::PI), std::f64::consts::PI);
+        assert_eq!(RSigned::r_signum(&-std::f64::consts::PI), -1.0);
+        assert_eq!(RSigned::r_signum(&std::f64::consts::PI), 1.0);
     }
 
     #[test]
     fn test_rfloat_classification() {
-        assert!(f64::NAN.is_nan());
-        assert!(!1.0f64.is_nan());
-        assert!(f64::INFINITY.is_infinite());
-        assert!(f64::NEG_INFINITY.is_infinite());
-        assert!(!1.0f64.is_infinite());
-        assert!(1.0f64.is_finite());
-        assert!(!f64::INFINITY.is_finite());
-        assert!(!f64::NAN.is_finite());
-        assert!(1.0f64.is_normal());
-        assert!(!0.0f64.is_normal());
+        assert!(f64::NAN.r_is_nan());
+        assert!(!1.0f64.r_is_nan());
+        assert!(f64::INFINITY.r_is_infinite());
+        assert!(f64::NEG_INFINITY.r_is_infinite());
+        assert!(!1.0f64.r_is_infinite());
+        assert!(1.0f64.r_is_finite());
+        assert!(!f64::INFINITY.r_is_finite());
+        assert!(!f64::NAN.r_is_finite());
+        assert!(1.0f64.r_is_normal());
+        assert!(!0.0f64.r_is_normal());
     }
 
     #[test]
     fn test_rfloat_sign() {
-        assert!(1.0f64.is_sign_positive());
-        assert!(!(-1.0f64).is_sign_positive());
-        assert!((-1.0f64).is_sign_negative());
-        assert!(!1.0f64.is_sign_negative());
+        assert!(1.0f64.r_is_sign_positive());
+        assert!(!(-1.0f64).r_is_sign_positive());
+        assert!((-1.0f64).r_is_sign_negative());
+        assert!(!1.0f64.r_is_sign_negative());
     }
 
     #[test]
     fn test_rfloat_rounding() {
-        assert_eq!(3.7f64.floor(), 3.0);
-        assert_eq!((-3.7f64).floor(), -4.0);
-        assert_eq!(3.2f64.ceil(), 4.0);
-        assert_eq!((-3.2f64).ceil(), -3.0);
-        assert_eq!(3.5f64.round(), 4.0);
-        assert_eq!(3.4f64.round(), 3.0);
-        assert_eq!(3.7f64.trunc(), 3.0);
-        assert_eq!((-3.7f64).trunc(), -3.0);
-        let fract = 3.7f64.fract();
+        assert_eq!(3.7f64.r_floor(), 3.0);
+        assert_eq!((-3.7f64).r_floor(), -4.0);
+        assert_eq!(3.2f64.r_ceil(), 4.0);
+        assert_eq!((-3.2f64).r_ceil(), -3.0);
+        assert_eq!(3.5f64.r_round(), 4.0);
+        assert_eq!(3.4f64.r_round(), 3.0);
+        assert_eq!(3.7f64.r_trunc(), 3.0);
+        assert_eq!((-3.7f64).r_trunc(), -3.0);
+        let fract = 3.7f64.r_fract();
         assert!((fract - 0.7).abs() < 1e-10);
     }
 
     #[test]
     fn test_rfloat_math() {
         // Use explicit trait qualification for abs/signum since f64 implements both RSigned and RFloat
-        assert_eq!(RFloat::abs(&-3.0f64), 3.0);
-        assert_eq!(RFloat::signum(&-1.0f64), -1.0);
-        assert_eq!(RFloat::signum(&1.0f64), 1.0);
-        assert_eq!(4.0f64.sqrt(), 2.0);
-        assert_eq!(8.0f64.cbrt(), 2.0);
+        assert_eq!(RFloat::r_abs(&-3.0f64), 3.0);
+        assert_eq!(RFloat::r_signum(&-1.0f64), -1.0);
+        assert_eq!(RFloat::r_signum(&1.0f64), 1.0);
+        assert_eq!(4.0f64.r_sqrt(), 2.0);
+        assert_eq!(8.0f64.r_cbrt(), 2.0);
     }
 
     #[test]
     fn test_rfloat_exp_log() {
-        assert!((1.0f64.exp() - std::f64::consts::E).abs() < 1e-10);
-        assert_eq!(3.0f64.exp2(), 8.0);
-        assert!((std::f64::consts::E.ln() - 1.0).abs() < 1e-10);
-        assert_eq!(8.0f64.log2(), 3.0);
-        assert_eq!(100.0f64.log10(), 2.0);
+        assert!((1.0f64.r_exp() - std::f64::consts::E).abs() < 1e-10);
+        assert_eq!(3.0f64.r_exp2(), 8.0);
+        assert!((std::f64::consts::E.r_ln() - 1.0).abs() < 1e-10);
+        assert_eq!(8.0f64.r_log2(), 3.0);
+        assert_eq!(100.0f64.r_log10(), 2.0);
     }
 
     #[test]
     fn test_rfloat_trig() {
         let pi = std::f64::consts::PI;
-        assert!(0.0f64.sin().abs() < 1e-10);
-        assert!((1.0f64 - 0.0f64.cos()).abs() < 1e-10);
-        assert!(0.0f64.tan().abs() < 1e-10);
-        assert!((0.0f64.asin()).abs() < 1e-10);
-        assert!((1.0f64.acos()).abs() < 1e-10);
-        assert!((pi / 4.0 - 1.0f64.atan()).abs() < 1e-10);
+        assert!(0.0f64.r_sin().abs() < 1e-10);
+        assert!((1.0f64 - 0.0f64.r_cos()).abs() < 1e-10);
+        assert!(0.0f64.r_tan().abs() < 1e-10);
+        assert!((0.0f64.r_asin()).abs() < 1e-10);
+        assert!((1.0f64.r_acos()).abs() < 1e-10);
+        assert!((pi / 4.0 - 1.0f64.r_atan()).abs() < 1e-10);
     }
 
     #[test]
     fn test_rfloat_hyperbolic() {
-        assert!(0.0f64.sinh().abs() < 1e-10);
-        assert!((1.0 - 0.0f64.cosh()).abs() < 1e-10);
-        assert!(0.0f64.tanh().abs() < 1e-10);
-        assert!(0.0f64.asinh().abs() < 1e-10);
-        assert!(1.0f64.acosh().abs() < 1e-10);
-        assert!(0.0f64.atanh().abs() < 1e-10);
+        assert!(0.0f64.r_sinh().abs() < 1e-10);
+        assert!((1.0 - 0.0f64.r_cosh()).abs() < 1e-10);
+        assert!(0.0f64.r_tanh().abs() < 1e-10);
+        assert!(0.0f64.r_asinh().abs() < 1e-10);
+        assert!(1.0f64.r_acosh().abs() < 1e-10);
+        assert!(0.0f64.r_atanh().abs() < 1e-10);
     }
 
     #[test]
     fn test_rfloat_special_values() {
-        assert!(<f64 as RFloat>::infinity().is_infinite());
-        assert!(<f64 as RFloat>::infinity() > 0.0);
-        assert!(<f64 as RFloat>::neg_infinity().is_infinite());
-        assert!(<f64 as RFloat>::neg_infinity() < 0.0);
-        assert!(<f64 as RFloat>::nan().is_nan());
-        assert!(<f64 as RFloat>::min_value() < 0.0);
-        assert!(<f64 as RFloat>::max_value() > 0.0);
-        assert!(<f64 as RFloat>::epsilon() > 0.0);
-        assert!(<f64 as RFloat>::epsilon() < 1e-10);
+        assert!(<f64 as RFloat>::r_infinity().r_is_infinite());
+        assert!(<f64 as RFloat>::r_infinity() > 0.0);
+        assert!(<f64 as RFloat>::r_neg_infinity().r_is_infinite());
+        assert!(<f64 as RFloat>::r_neg_infinity() < 0.0);
+        assert!(<f64 as RFloat>::r_nan().r_is_nan());
+        assert!(<f64 as RFloat>::r_min_value() < 0.0);
+        assert!(<f64 as RFloat>::r_max_value() > 0.0);
+        assert!(<f64 as RFloat>::r_epsilon() > 0.0);
+        assert!(<f64 as RFloat>::r_epsilon() < 1e-10);
     }
 
     #[test]
     fn test_rfloat_power() {
-        assert_eq!(2.0f64.powi(3), 8.0);
-        assert_eq!(2.0f64.powi(-1), 0.5);
-        assert_eq!(<f64 as RFloat>::powf(&2.0f64, &3.0), 8.0);
-        assert_eq!(<f64 as RFloat>::powf(&4.0f64, &0.5), 2.0);
-        assert_eq!(<f64 as RFloat>::recip(&2.0f64), 0.5);
+        assert_eq!(2.0f64.r_powi(3), 8.0);
+        assert_eq!(2.0f64.r_powi(-1), 0.5);
+        assert_eq!(<f64 as RFloat>::r_powf(&2.0f64, &3.0), 8.0);
+        assert_eq!(<f64 as RFloat>::r_powf(&4.0f64, &0.5), 2.0);
+        assert_eq!(<f64 as RFloat>::r_recip(&2.0f64), 0.5);
     }
 
     #[test]
     fn test_rfloat_f32() {
         // Verify f32 also works
-        assert_eq!(<f32 as RNum>::zero(), 0.0f32);
-        assert_eq!(<f32 as RNum>::one(), 1.0f32);
-        assert!(f32::NAN.is_nan());
-        assert_eq!(4.0f32.sqrt(), 2.0f32);
+        assert_eq!(<f32 as RNum>::r_zero(), 0.0f32);
+        assert_eq!(<f32 as RNum>::r_one(), 1.0f32);
+        assert!(f32::NAN.r_is_nan());
+        assert_eq!(4.0f32.r_sqrt(), 2.0f32);
     }
 }

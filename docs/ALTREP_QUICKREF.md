@@ -90,7 +90,7 @@ pub struct MyData { value: i32, len: usize }
 
 // 2. Implement required traits
 impl AltrepLen for MyData {
-    fn len(&self) -> usize { self.len }
+    fn altrep_len(&self) -> usize { self.len }
 }
 
 impl AltIntegerData for MyData {

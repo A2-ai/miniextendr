@@ -10,7 +10,7 @@ use miniextendr_api::{AltIntegerData, AltrepLen, IntoR};
 struct PureIntegers;
 
 impl AltrepLen for PureIntegers {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         3
     }
 }
@@ -25,7 +25,7 @@ impl AltIntegerData for PureIntegers {
 struct TrivialIntegers;
 
 impl AltrepLen for TrivialIntegers {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         3
     }
 }

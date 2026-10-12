@@ -2132,7 +2132,7 @@ fn test_derive_altrep_integer_basic() {
 
     // Should generate AltrepLen impl
     assert!(output_str.contains("AltrepLen"));
-    assert!(output_str.contains("fn len"));
+    assert!(output_str.contains("fn altrep_len"));
 
     // Should generate AltIntegerData impl
     assert!(output_str.contains("AltIntegerData"));
@@ -2245,7 +2245,7 @@ fn test_derive_altrep_logical_basic() {
 
     // Should generate AltrepLen impl
     assert!(output_str.contains("AltrepLen"));
-    assert!(output_str.contains("fn len"));
+    assert!(output_str.contains("fn altrep_len"));
 
     // Should generate AltLogicalData impl with default NA
     assert!(output_str.contains("AltLogicalData"));

@@ -10,7 +10,7 @@ use miniextendr_api::{IntoR, ProtectScope, SEXP, SexpExt, TryFromRoot};
 pub struct TransientList;
 
 impl AltrepLen for TransientList {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         4
     }
 }

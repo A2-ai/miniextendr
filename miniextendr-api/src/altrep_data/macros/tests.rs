@@ -53,12 +53,12 @@ pub(crate) fn test_sortedness_from_r_int() {
 #[test]
 pub(crate) fn test_vec_i32_len() {
     let v: Vec<i32> = vec![1, 2, 3, 4, 5];
-    assert_eq!(AltrepLen::len(&v), 5);
-    assert!(!AltrepLen::is_empty(&v));
+    assert_eq!(AltrepLen::altrep_len(&v), 5);
+    assert!(!AltrepLen::altrep_is_empty(&v));
 
     let empty: Vec<i32> = vec![];
-    assert_eq!(AltrepLen::len(&empty), 0);
-    assert!(AltrepLen::is_empty(&empty));
+    assert_eq!(AltrepLen::altrep_len(&empty), 0);
+    assert!(AltrepLen::altrep_is_empty(&empty));
 }
 
 #[test]
@@ -150,7 +150,7 @@ pub(crate) fn test_vec_f64_min_max() {
 #[test]
 pub(crate) fn test_box_slice_i32() {
     let b: Box<[i32]> = vec![1, 2, 3, 4, 5].into_boxed_slice();
-    assert_eq!(AltrepLen::len(&b), 5);
+    assert_eq!(AltrepLen::altrep_len(&b), 5);
     assert_eq!(AltIntegerData::elt(&b, 2), 3);
     assert_eq!(AltIntegerData::sum(&b, false), Some(15));
     assert_eq!(AltIntegerData::min(&b, false), Some(1));
@@ -160,7 +160,7 @@ pub(crate) fn test_box_slice_i32() {
 #[test]
 pub(crate) fn test_box_slice_f64() {
     let b: Box<[f64]> = vec![1.0, 2.0, 3.0].into_boxed_slice();
-    assert_eq!(AltrepLen::len(&b), 3);
+    assert_eq!(AltrepLen::altrep_len(&b), 3);
     assert_eq!(AltRealData::elt(&b, 1), 2.0);
     assert_eq!(AltRealData::sum(&b, false), Some(6.0));
 }
@@ -169,10 +169,10 @@ pub(crate) fn test_box_slice_f64() {
 #[allow(clippy::reversed_empty_ranges)] // Intentionally testing empty range handling
 pub(crate) fn test_range_i32_len() {
     let r = 1..10;
-    assert_eq!(AltrepLen::len(&r), 9);
+    assert_eq!(AltrepLen::altrep_len(&r), 9);
 
     let empty = 10..5;
-    assert_eq!(AltrepLen::len(&empty), 0);
+    assert_eq!(AltrepLen::altrep_len(&empty), 0);
 }
 
 #[test]
@@ -211,7 +211,7 @@ pub(crate) fn test_static_slice_i32() {
     static DATA: [i32; 5] = [10, 20, 30, 40, 50];
     let s: &[i32] = &DATA;
 
-    assert_eq!(AltrepLen::len(&s), 5);
+    assert_eq!(AltrepLen::altrep_len(&s), 5);
     assert_eq!(AltIntegerData::elt(&s, 0), 10);
     assert_eq!(AltIntegerData::elt(&s, 4), 50);
     assert_eq!(AltIntegerData::sum(&s, false), Some(150));
@@ -232,7 +232,7 @@ pub(crate) fn test_static_slice_f64() {
     static DATA: [f64; 4] = [1.5, 2.5, 3.5, 4.5];
     let s: &[f64] = &DATA;
 
-    assert_eq!(AltrepLen::len(&s), 4);
+    assert_eq!(AltrepLen::altrep_len(&s), 4);
     assert_eq!(AltRealData::sum(&s, false), Some(12.0));
     assert_eq!(AltRealData::min(&s, false), Some(1.5));
     assert_eq!(AltRealData::max(&s, false), Some(4.5));
@@ -241,7 +241,7 @@ pub(crate) fn test_static_slice_f64() {
 #[test]
 pub(crate) fn test_array_i32() {
     let arr: [i32; 3] = [100, 200, 300];
-    assert_eq!(AltrepLen::len(&arr), 3);
+    assert_eq!(AltrepLen::altrep_len(&arr), 3);
     assert_eq!(AltIntegerData::elt(&arr, 1), 200);
     assert_eq!(AltIntegerData::as_slice(&arr), Some(&[100, 200, 300][..]));
 }
@@ -249,14 +249,14 @@ pub(crate) fn test_array_i32() {
 #[test]
 pub(crate) fn test_array_f64() {
     let arr: [f64; 2] = [1.1, 2.2];
-    assert_eq!(AltrepLen::len(&arr), 2);
+    assert_eq!(AltrepLen::altrep_len(&arr), 2);
     assert_eq!(AltRealData::elt(&arr, 0), 1.1);
 }
 
 #[test]
 pub(crate) fn test_vec_bool_logical() {
     let v = vec![true, false, true, true];
-    assert_eq!(AltrepLen::len(&v), 4);
+    assert_eq!(AltrepLen::altrep_len(&v), 4);
     assert_eq!(AltLogicalData::elt(&v, 0), Logical::True);
     assert_eq!(AltLogicalData::elt(&v, 1), Logical::False);
     assert_eq!(AltLogicalData::no_na(&v), Some(true));
@@ -266,7 +266,7 @@ pub(crate) fn test_vec_bool_logical() {
 #[test]
 pub(crate) fn test_vec_string() {
     let v = vec!["hello".to_string(), "world".to_string()];
-    assert_eq!(AltrepLen::len(&v), 2);
+    assert_eq!(AltrepLen::altrep_len(&v), 2);
     assert_eq!(AltStringData::elt(&v, 0), Some("hello"));
     assert_eq!(AltStringData::elt(&v, 1), Some("world"));
     assert_eq!(AltStringData::no_na(&v), Some(true));
@@ -275,7 +275,7 @@ pub(crate) fn test_vec_string() {
 #[test]
 pub(crate) fn test_vec_option_string() {
     let v: Vec<Option<String>> = vec![Some("a".to_string()), None, Some("b".to_string())];
-    assert_eq!(AltrepLen::len(&v), 3);
+    assert_eq!(AltrepLen::altrep_len(&v), 3);
     assert_eq!(AltStringData::elt(&v, 0), Some("a"));
     assert_eq!(AltStringData::elt(&v, 1), None); // NA
     assert_eq!(AltStringData::elt(&v, 2), Some("b"));
@@ -285,7 +285,7 @@ pub(crate) fn test_vec_option_string() {
 #[test]
 pub(crate) fn test_vec_u8() {
     let v: Vec<u8> = vec![0x01, 0x02, 0xFF];
-    assert_eq!(AltrepLen::len(&v), 3);
+    assert_eq!(AltrepLen::altrep_len(&v), 3);
     assert_eq!(AltRawData::elt(&v, 0), 0x01);
     assert_eq!(AltRawData::elt(&v, 2), 0xFF);
     assert_eq!(AltRawData::as_slice(&v), Some(&[0x01, 0x02, 0xFF][..]));
@@ -294,8 +294,8 @@ pub(crate) fn test_vec_u8() {
 #[test]
 pub(crate) fn test_empty_vec() {
     let v: Vec<i32> = vec![];
-    assert_eq!(AltrepLen::len(&v), 0);
-    assert!(AltrepLen::is_empty(&v));
+    assert_eq!(AltrepLen::altrep_len(&v), 0);
+    assert!(AltrepLen::altrep_is_empty(&v));
     assert_eq!(AltIntegerData::sum(&v, false), Some(0));
     assert_eq!(AltIntegerData::min(&v, false), None);
     assert_eq!(AltIntegerData::max(&v, false), None);
@@ -323,7 +323,7 @@ pub(crate) fn test_iter_int_basic() {
     let iter = (1..=5).map(|x| x * 2);
     let data = IterIntData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltIntegerData::elt(&data, 0), 2);
     assert_eq!(AltIntegerData::elt(&data, 4), 10);
 
@@ -351,7 +351,7 @@ pub(crate) fn test_iter_real_basic() {
     let iter = (1..=5).map(|x| x as f64 * 1.5);
     let data = IterRealData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltRealData::elt(&data, 0), 1.5);
     assert_eq!(AltRealData::elt(&data, 4), 7.5);
 }
@@ -361,7 +361,7 @@ pub(crate) fn test_iter_logical_basic() {
     let iter = (0..5).map(|x| x % 2 == 0);
     let data = IterLogicalData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltLogicalData::elt(&data, 0), Logical::True);
     assert_eq!(AltLogicalData::elt(&data, 1), Logical::False);
     assert_eq!(AltLogicalData::elt(&data, 2), Logical::True);
@@ -372,7 +372,7 @@ pub(crate) fn test_iter_raw_basic() {
     let iter = (0..5u8).map(|x| x * 10);
     let data = IterRawData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltRawData::elt(&data, 0), 0);
     assert_eq!(AltRawData::elt(&data, 2), 20);
     assert_eq!(AltRawData::elt(&data, 4), 40);
@@ -408,7 +408,7 @@ pub(crate) fn test_iter_explicit_length() {
     let iter = vec![10, 20, 30].into_iter();
     let data = IterIntData::from_iter(iter, 3);
 
-    assert_eq!(AltrepLen::len(&data), 3);
+    assert_eq!(AltrepLen::altrep_len(&data), 3);
     assert_eq!(AltIntegerData::elt(&data, 1), 20);
 }
 
@@ -418,7 +418,7 @@ pub(crate) fn test_iter_int_coerce_u16() {
     let iter = (0..5u16).map(|x| x * 1000);
     let data = IterIntCoerceData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltIntegerData::elt(&data, 0), 0);
     assert_eq!(AltIntegerData::elt(&data, 2), 2000);
     assert_eq!(AltIntegerData::elt(&data, 4), 4000);
@@ -430,7 +430,7 @@ pub(crate) fn test_iter_int_coerce_i8() {
     let iter = -5i8..5i8;
     let data = IterIntCoerceData::from_exact_iter(iter);
 
-    assert_eq!(AltrepLen::len(&data), 10);
+    assert_eq!(AltrepLen::altrep_len(&data), 10);
     assert_eq!(AltIntegerData::elt(&data, 0), -5);
     assert_eq!(AltIntegerData::elt(&data, 5), 0);
     assert_eq!(AltIntegerData::elt(&data, 9), 4);
@@ -442,7 +442,7 @@ pub(crate) fn test_iter_real_coerce_f32() {
     let iter = (0..5).map(|x| x as f32 * 1.5);
     let data = IterRealCoerceData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert!((AltRealData::elt(&data, 0) - 0.0).abs() < 0.001);
     assert!((AltRealData::elt(&data, 2) - 3.0).abs() < 0.001);
     assert!((AltRealData::elt(&data, 4) - 6.0).abs() < 0.001);
@@ -454,7 +454,7 @@ pub(crate) fn test_iter_real_coerce_i32() {
     let iter = 1..=5;
     let data = IterRealCoerceData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltRealData::elt(&data, 0), 1.0);
     assert_eq!(AltRealData::elt(&data, 4), 5.0);
 }
@@ -465,7 +465,7 @@ pub(crate) fn test_iter_int_from_bool() {
     let iter = (0..10).map(|x| x % 3 == 0);
     let data = IterIntFromBoolData::from_iter(iter, 10);
 
-    assert_eq!(AltrepLen::len(&data), 10);
+    assert_eq!(AltrepLen::altrep_len(&data), 10);
     assert_eq!(AltIntegerData::elt(&data, 0), 1); // TRUE
     assert_eq!(AltIntegerData::elt(&data, 1), 0); // FALSE
     assert_eq!(AltIntegerData::elt(&data, 3), 1); // TRUE
@@ -490,7 +490,7 @@ pub(crate) fn test_iter_real_coerce_option() {
     let iter = (0..5).map(|x| if x % 2 == 0 { Some(x as f64) } else { None });
     let data = IterRealCoerceData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltRealData::elt(&data, 0), 0.0); // Some(0.0)
     assert!(AltRealData::elt(&data, 1).is_na()); // None → NA_real_
     assert_eq!(AltRealData::elt(&data, 2), 2.0); // Some(2.0)
@@ -504,7 +504,7 @@ pub(crate) fn test_iter_int_coerce_option() {
     let iter = (0..5).map(|x| if x % 2 == 0 { Some(x) } else { None });
     let data = IterIntCoerceData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
     assert_eq!(AltIntegerData::elt(&data, 0), 0); // Some(0)
     assert_eq!(AltIntegerData::elt(&data, 1), i32::MIN); // None → NA
     assert_eq!(AltIntegerData::elt(&data, 2), 2); // Some(2)
@@ -517,7 +517,7 @@ pub(crate) fn test_iter_string_basic() {
     let iter = (0..3).map(|x| format!("item_{}", x));
     let data = IterStringData::from_iter(iter, 3);
 
-    assert_eq!(AltrepLen::len(&data), 3);
+    assert_eq!(AltrepLen::altrep_len(&data), 3);
     assert_eq!(AltStringData::elt(&data, 0), Some("item_0"));
     assert_eq!(AltStringData::elt(&data, 1), Some("item_1"));
     assert_eq!(AltStringData::elt(&data, 2), Some("item_2"));
@@ -531,7 +531,7 @@ pub(crate) fn test_iter_complex_basic() {
     });
     let data = IterComplexData::from_iter(iter, 5);
 
-    assert_eq!(AltrepLen::len(&data), 5);
+    assert_eq!(AltrepLen::altrep_len(&data), 5);
 
     let z0 = AltComplexData::elt(&data, 0);
     assert_eq!(z0.r, 0.0);

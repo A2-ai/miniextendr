@@ -25,7 +25,7 @@ use super::{
 macro_rules! impl_len_vec {
     ($elem:ty) => {
         impl AltrepLen for Vec<$elem> {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 Vec::len(self)
             }
         }
@@ -36,7 +36,7 @@ macro_rules! impl_len_vec {
 macro_rules! impl_len_boxed {
     ($elem:ty) => {
         impl AltrepLen for Box<[$elem]> {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 <[$elem]>::len(self)
             }
         }
@@ -47,7 +47,7 @@ macro_rules! impl_len_boxed {
 macro_rules! impl_len_array {
     ($elem:ty) => {
         impl<const N: usize> AltrepLen for [$elem; N] {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 N
             }
         }
@@ -58,7 +58,7 @@ macro_rules! impl_len_array {
 macro_rules! impl_len_slice {
     ($elem:ty) => {
         impl AltrepLen for &[$elem] {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 <[$elem]>::len(self)
             }
         }
@@ -146,8 +146,7 @@ macro_rules! impl_serialize {
 /// `AltIntegerData` for any container that derefs to `[i32]`.
 ///
 /// `s` binds the underlying `&[i32]` uniformly across `Vec` / `Box<[T]>` /
-/// `&[T]` / `Cow`, sidestepping the `self.len()` ambiguity between
-/// `AltrepLen::len` and the inherent slice/`Vec` `len`.
+/// `&[T]` / `Cow`, using the same slice access for every owner.
 macro_rules! impl_altinteger_slice {
     ($ty:ty) => {
         impl AltIntegerData for $ty {
@@ -514,7 +513,7 @@ impl AltStringData for Vec<Option<String>> {
 }
 
 impl AltrepLen for Vec<std::borrow::Cow<'static, str>> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len()
     }
 }
@@ -530,7 +529,7 @@ impl AltStringData for Vec<std::borrow::Cow<'static, str>> {
 }
 
 impl AltrepLen for Vec<Option<std::borrow::Cow<'static, str>>> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len()
     }
 }
@@ -654,7 +653,7 @@ impl AltrepSerialize for Range<f64> {
 // region: Built-in implementations for Range types
 
 impl AltrepLen for Range<i32> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         if self.end > self.start {
             (self.end - self.start) as usize
         } else {
@@ -681,7 +680,7 @@ impl AltIntegerData for Range<i32> {
     }
 
     fn sum(&self, na_rm: bool) -> Option<i64> {
-        let n = AltrepLen::len(self) as i64;
+        let n = AltrepLen::altrep_len(self) as i64;
         if n == 0 {
             return Some(0);
         }
@@ -711,7 +710,7 @@ impl AltIntegerData for Range<i32> {
     }
 
     fn min(&self, na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) == 0 {
+        if AltrepLen::altrep_len(self) == 0 {
             return None;
         }
 
@@ -733,7 +732,7 @@ impl AltIntegerData for Range<i32> {
     }
 
     fn max(&self, na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) == 0 {
+        if AltrepLen::altrep_len(self) == 0 {
             return None;
         }
 
@@ -751,7 +750,7 @@ impl AltIntegerData for Range<i32> {
 }
 
 impl AltrepLen for Range<i64> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         if self.end > self.start {
             (self.end - self.start) as usize
         } else {
@@ -801,7 +800,7 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn sum(&self, na_rm: bool) -> Option<i64> {
-        let n = AltrepLen::len(self) as i64;
+        let n = AltrepLen::altrep_len(self) as i64;
         if n == 0 {
             return Some(0);
         }
@@ -835,7 +834,7 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn min(&self, na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) == 0 {
+        if AltrepLen::altrep_len(self) == 0 {
             return None;
         }
 
@@ -863,7 +862,7 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn max(&self, na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) == 0 {
+        if AltrepLen::altrep_len(self) == 0 {
             return None;
         }
 
@@ -892,7 +891,7 @@ impl AltIntegerData for Range<i64> {
 }
 
 impl AltrepLen for Range<f64> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         // For f64 ranges, assume step of 1.0
         if self.end > self.start {
             (self.end - self.start).ceil() as usize
@@ -916,7 +915,7 @@ impl AltRealData for Range<f64> {
     }
 
     fn sum(&self, _na_rm: bool) -> Option<f64> {
-        let n = AltrepLen::len(self) as f64;
+        let n = AltrepLen::altrep_len(self) as f64;
         if n == 0.0 {
             return Some(0.0);
         }
@@ -926,7 +925,7 @@ impl AltRealData for Range<f64> {
     }
 
     fn min(&self, _na_rm: bool) -> Option<f64> {
-        if AltrepLen::len(self) > 0 {
+        if AltrepLen::altrep_len(self) > 0 {
             Some(self.start)
         } else {
             None
@@ -934,8 +933,8 @@ impl AltRealData for Range<f64> {
     }
 
     fn max(&self, _na_rm: bool) -> Option<f64> {
-        if AltrepLen::len(self) > 0 {
-            Some(self.start + (AltrepLen::len(self) - 1) as f64)
+        if AltrepLen::altrep_len(self) > 0 {
+            Some(self.start + (AltrepLen::altrep_len(self) - 1) as f64)
         } else {
             None
         }
@@ -1182,7 +1181,7 @@ impl_owned_str_altrep_data!(Arc);
 macro_rules! impl_shared_slice_data {
     ($owner:ident) => {
         impl<T> AltrepLen for $owner<[T]> {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 <[T]>::len(self)
             }
         }
@@ -1243,7 +1242,7 @@ impl_shared_slice_dataptr!(Arc, RLogical, i32);
 macro_rules! impl_len_cow {
     ($elem:ty) => {
         impl AltrepLen for Cow<'static, [$elem]> {
-            fn len(&self) -> usize {
+            fn altrep_len(&self) -> usize {
                 <[$elem]>::len(self)
             }
         }

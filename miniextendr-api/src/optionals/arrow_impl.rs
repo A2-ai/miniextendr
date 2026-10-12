@@ -1597,25 +1597,25 @@ impl TypedExternal for StringArray {
 // region: AltrepLen impls
 
 impl AltrepLen for Float64Array {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         Array::len(self)
     }
 }
 
 impl AltrepLen for Int32Array {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         Array::len(self)
     }
 }
 
 impl AltrepLen for UInt8Array {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         Array::len(self)
     }
 }
 
 impl AltrepLen for BooleanArray {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         Array::len(self)
     }
 }
@@ -1945,7 +1945,7 @@ impl RegisterAltrep for BooleanArray {
 // StringArray ALTREP — Elt creates CHARSXP on demand, no Dataptr (not contiguous).
 
 impl AltrepLen for StringArray {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         Array::len(self)
     }
 }

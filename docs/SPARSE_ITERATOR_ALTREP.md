@@ -116,8 +116,8 @@ pub struct SparseIntIterData {
 
 ```rust
 impl AltrepLen for SparseIntIterData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 

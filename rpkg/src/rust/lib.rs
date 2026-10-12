@@ -412,7 +412,7 @@ pub struct ConstantIntData {
 
 // Implement high-level data traits
 impl AltrepLen for ConstantIntData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -494,7 +494,7 @@ pub struct ConstantRealData {
 }
 
 impl AltrepLen for ConstantRealData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -532,7 +532,7 @@ pub struct ArithSeqData {
 }
 
 impl AltrepLen for ArithSeqData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -583,7 +583,7 @@ pub struct LazyIntSeqData {
 }
 
 impl AltrepLen for LazyIntSeqData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1055,7 +1055,7 @@ pub struct LogicalVecData {
 }
 
 impl AltrepLen for LogicalVecData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1143,7 +1143,7 @@ pub struct LazyStringData {
 }
 
 impl AltrepLen for LazyStringData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1186,7 +1186,7 @@ pub struct RepeatingRawData {
 }
 
 impl AltrepLen for RepeatingRawData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.total_len
     }
 }
@@ -1232,7 +1232,7 @@ pub struct UnitCircleData {
 }
 
 impl AltrepLen for UnitCircleData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.n
     }
 }
@@ -1280,7 +1280,7 @@ pub struct IntegerSequenceListData {
 }
 
 impl AltrepLen for IntegerSequenceListData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.n
     }
 }
@@ -1323,7 +1323,7 @@ pub struct SimpleVecIntData {
 }
 
 impl AltrepLen for SimpleVecIntData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1367,7 +1367,7 @@ pub struct StringVecData {
 }
 
 impl AltrepLen for StringVecData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1405,7 +1405,7 @@ pub struct SimpleVecRawData {
 }
 
 impl AltrepLen for SimpleVecRawData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1450,7 +1450,7 @@ pub struct InferredVecRealData {
 }
 
 impl AltrepLen for InferredVecRealData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1495,7 +1495,7 @@ pub struct BoxedIntsData {
 }
 
 impl AltrepLen for BoxedIntsData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1555,7 +1555,7 @@ pub struct StaticIntsData {
 }
 
 impl AltrepLen for StaticIntsData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1621,7 +1621,7 @@ pub struct StaticStringsData {
 }
 
 impl AltrepLen for StaticStringsData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -1670,7 +1670,7 @@ impl Drop for ListData {
 }
 
 impl AltrepLen for ListData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1977,8 +1977,8 @@ pub struct SparseIntIterData {
 }
 
 impl AltrepLen for SparseIntIterData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -2091,8 +2091,8 @@ pub struct SparseRealIterData {
 }
 
 impl AltrepLen for SparseRealIterData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -2138,8 +2138,8 @@ pub struct SparseLogicalIterData {
 }
 
 impl AltrepLen for SparseLogicalIterData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 
@@ -2179,8 +2179,8 @@ pub struct SparseRawIterData {
 }
 
 impl AltrepLen for SparseRawIterData {
-    fn len(&self) -> usize {
-        self.inner.len()
+    fn altrep_len(&self) -> usize {
+        self.inner.altrep_len()
     }
 }
 

@@ -125,7 +125,7 @@ R guarantees `buf` holds at least `n` elements, and the trampoline hands your
 data trait a `&mut [T]` of exactly that length. Your job:
 
 1. Clamp the request: fill
-   `n_filled = len.min(buf.len()).min(self.len().saturating_sub(start))`
+   `n_filled = len.min(buf.len()).min(self.altrep_len().saturating_sub(start))`
    elements.
 2. Return `n_filled` — the number of elements actually written. A `start` at or
    past the end returns `0`.
@@ -149,7 +149,7 @@ use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
 struct LazySeq { start: i32, step: i32, len: usize }
 
 impl AltrepLen for LazySeq {
-    fn len(&self) -> usize { self.len }
+    fn altrep_len(&self) -> usize { self.len }
 }
 
 impl AltIntegerData for LazySeq {
@@ -276,7 +276,7 @@ Fallback behavior around the table:
 
 ## Checklist
 
-- [ ] Custom `get_region` clamps to `len.min(buf.len()).min(self.len() - start)`
+- [ ] Custom `get_region` clamps to `len.min(buf.len()).min(self.altrep_len() - start)`
       and returns the count written.
 - [ ] No chunk-size assumptions (requests can be full-length).
 - [ ] Per-block invariants hoisted out of the fill loop;

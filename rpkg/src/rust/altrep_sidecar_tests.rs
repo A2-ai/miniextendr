@@ -88,7 +88,7 @@ pub struct ClonedSidecarInts {
 }
 
 impl AltrepLen for ClonedSidecarInts {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.values.len()
     }
 }
