@@ -60,7 +60,8 @@ pub(crate) fn s4_generic_guard(generic: &str, explicit: bool, receiver: &str) ->
     )
 }
 
-/// Generates the complete R wrapper string for an S4-style class.
+/// Generates the R wrapper of an S4-style class, in the parts the wrapper
+/// writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces the following R code:
 /// - Class definition: `methods::setClass("<class>", slots = c(ptr = "externalptr"))`
@@ -75,7 +76,10 @@ pub(crate) fn s4_generic_guard(generic: &str, explicit: bool, receiver: &str) ->
 ///
 /// Roxygen2 `@exportMethod`, `@importFrom methods`, and `@slot` tags are generated
 /// as appropriate.
-pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The class, its constructor and the field methods are the head; the S4
+/// methods and the static methods are the members.
+pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
@@ -92,6 +96,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let should_export =
         should_export_from_tags(class_doc_tags, parsed_impl.noexport || parsed_impl.internal);
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
 
     // Class definition with documentation (S4 uses setClass, no @export on class definition)
@@ -102,16 +107,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
-    // Inject lifecycle imports from methods into class-level roxygen block
-    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl
-            .methods
-            .iter()
-            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-    ) {
-        let insert_pos = lines.len().saturating_sub(1);
-        lines.insert(insert_pos, format!("#' {}", lc_import));
-    }
+    w.mark_class_doc_lines(&mut lines, parsed_impl);
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class
     // definition). Only pop when the last line actually IS the auto-added
     // @export — with internal/noexport the builder emits no @export, and a
@@ -175,12 +171,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             should_export,
         ));
     }
+    w.head = std::mem::take(&mut lines);
 
     // Instance methods as S4 methods
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
         let start = method.ident.span().start();
         let method_name = s4_generic_name(method);
+        w.member_names.push(format!(
+            "the S4 method of `{method_name}` for `{class_name}`"
+        ));
 
         // Emit the generic-doc marker BEFORE the source comment so the write-time
         // pass can place the standalone Rd page before the method block.  This
@@ -204,7 +204,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // `params`/`instance_formals` carry the `c("a", "b")` default for
         // match_arg'd params, and `match_arg_prelude()` emits the
         // `base::match.arg()` validation block injected below.
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+        let ctx = MethodContext::new(method, type_ident)
             .with_impl_preconditions(parsed_impl.preconditions);
         let receiver = method.method_attrs.receiver.as_deref().unwrap_or("x");
         let call = ctx.instance_call(&format!("{receiver}@ptr"));
@@ -308,5 +308,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    lines.join("\n")
+    w.members = lines;
+    w
+}
+
+/// The S4 class as one string: [`generate_s4_class`], rendered.
+#[cfg(test)]
+pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_s4_class(parsed_impl).render()
 }

@@ -6,7 +6,6 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
     ImplAttrs {
         class_system,
         class_name: None,
-        label: None,
         vctrs_attrs: VctrsAttrs::default(),
         r6_inherit: None,
         r6_portable: None,
@@ -39,16 +38,6 @@ fn parse_impl_with_class_name(
 ) -> ParsedImpl {
     let mut attrs = default_impl_attrs(class_system);
     attrs.class_name = Some(class_name.to_string());
-    ParsedImpl::parse(attrs, code).expect("failed to parse impl")
-}
-
-fn parse_impl_with_label(
-    class_system: ClassSystem,
-    label: &str,
-    code: syn::ItemImpl,
-) -> ParsedImpl {
-    let mut attrs = default_impl_attrs(class_system);
-    attrs.label = Some(label.to_string());
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
 // endregion
@@ -776,8 +765,9 @@ fn r6_wrapper_private_methods() {
     // Public method migrates to a top-level `$set("public", ...)` block (#369)
     assert!(wrapper.contains("Counter$set(\"public\", \"get\", function()"));
 
-    // Private method stays inline in the private list
-    assert!(wrapper.contains("internal_compute = function()"));
+    // So does the private method, to a `$set("private", ...)` block (#1776)
+    assert!(wrapper.contains("Counter$set(\"private\", \"internal_compute\", function()"));
+    assert!(!wrapper.contains("internal_compute = function()"));
 }
 
 #[test]
@@ -796,10 +786,10 @@ fn r6_private_method_keeps_argument_checks() {
     // A private method gets the same prelude as a public one: the explicit
     // class check, then the type-derived checks.
     let body = wrapper
-        .split("scale = function(factor) {")
+        .split("Scaler$set(\"private\", \"scale\", function(factor) {")
         .nth(1)
-        .expect("private method in the private list")
-        .split("\n    },")
+        .expect("private method's `$set` block")
+        .split("\n})")
         .next()
         .unwrap();
     assert!(body.contains("!inherits(factor, \"difftime\")"), "{body}");
@@ -1304,8 +1294,7 @@ fn method_param_marker_converts_the_inner_type() {
         }),
         "i32"
     );
-    let c_wrapper =
-        generate_method_c_wrapper(&parsed, method, &syn::parse_quote!(R_WRAPPERS_TEST)).to_string();
+    let c_wrapper = generate_method_c_wrapper(&parsed, method).to_string();
     assert!(
         c_wrapper.contains("let seed = :: miniextendr_api :: Checked :: from_inner (seed) ;"),
         "{c_wrapper}"
@@ -2195,8 +2184,8 @@ fn operator_r_names_quote_static_and_member_definitions() {
     let wrapper = generate_vctrs_r_wrapper(&parsed);
     assert!(wrapper.contains("`foo_[[` <- function(i) {"), "{wrapper}");
 
-    // Instance members are R symbols too: an R6 private list element and an
-    // env-class `$` member.
+    // An R6 private member is named by a string; an env-class `$` member is
+    // an R symbol.
     let wrapper = generate_r6_r_wrapper(&parse_impl(
         ClassSystem::R6,
         syn::parse_quote! {
@@ -2207,7 +2196,7 @@ fn operator_r_names_quote_static_and_member_definitions() {
         },
     ));
     assert!(
-        wrapper.contains("    `%custom%` = function() {"),
+        wrapper.contains("Foo$set(\"private\", \"%custom%\", function() {"),
         "{wrapper}"
     );
     let wrapper = generate_env_r_wrapper(&parse_impl(
@@ -2619,23 +2608,19 @@ fn s7_dispatch_names_are_validated() {
 }
 // endregion
 
-// region: Label support tests
+// region: Several impl blocks of one type (#1776)
 
+/// The impl blocks of one type need no names: their C wrappers are named by
+/// the type and the method, and the wrapper writer merges the blocks. The old
+/// `label = "..."` option is an unknown key.
 #[test]
-fn label_affects_c_wrapper_names() {
-    let item_impl: syn::ItemImpl = syn::parse_quote! {
-        impl Counter {
-            pub fn new() -> Self { unimplemented!() }
-            pub fn get(&self) -> i32 { unimplemented!() }
-        }
-    };
-
-    let parsed = parse_impl_with_label(ClassSystem::Env, "basic", item_impl);
-    let wrapper = generate_env_r_wrapper(&parsed);
-
-    // C wrapper names should include label
-    assert!(wrapper.contains("C_miniextendr_macros_Counter_basic_new"));
-    assert!(wrapper.contains("C_miniextendr_macros_Counter_basic_get"));
+fn impl_label_option_is_an_unknown_key() {
+    let err = syn::parse_str::<ImplAttrs>(r#"env, label = "core""#).unwrap_err();
+    assert!(
+        err.to_string()
+            .starts_with("unknown impl block option `label`"),
+        "{err}"
+    );
 }
 // endregion
 
@@ -2787,10 +2772,7 @@ fn self_ref_builder_uses_self_handle_return() {
     assert!(method.returns_self_ref());
     assert!(!method.returns_self());
 
-    let r_wrappers_const = syn::parse_quote! { R_WRAPPERS_TEST };
-    let tokens =
-        crate::miniextendr_impl::generate_method_c_wrapper(&parsed, method, &r_wrappers_const)
-            .to_string();
+    let tokens = crate::miniextendr_impl::generate_method_c_wrapper(&parsed, method).to_string();
     // The C wrapper hands the same SEXP handle back (no clone / rewrap).
     assert!(tokens.contains("self_sexp"));
 
@@ -5288,9 +5270,7 @@ fn method_choice_params_emit_in_signature_order() {
             .iter()
             .find(|m| m.sig.ident == "pick")
             .unwrap();
-        let c_ident = method
-            .c_wrapper_ident(&parsed.type_ident, parsed.label())
-            .to_string();
+        let c_ident = method.c_wrapper_ident(&parsed.type_ident).to_string();
         let entries: Vec<usize> = ["zeta", "alpha", "mid"]
             .iter()
             .map(|name| {
@@ -5964,9 +5944,7 @@ fn method_serde_error_validation() {
 
 fn c_wrapper_tokens(parsed: &ParsedImpl, name: &str) -> String {
     let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
-    let r_wrappers_const = syn::parse_quote! { R_WRAPPERS_TEST };
-    crate::miniextendr_impl::generate_method_c_wrapper(parsed, method, &r_wrappers_const)
-        .to_string()
+    crate::miniextendr_impl::generate_method_c_wrapper(parsed, method).to_string()
 }
 
 /// Every consuming receiver is an instance method (has `self_sexp`), none is

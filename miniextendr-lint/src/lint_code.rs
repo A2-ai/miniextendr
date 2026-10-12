@@ -12,10 +12,6 @@ pub enum LintCode {
     // region: Source-side validation
     /// Trait impl class system incompatible with inherent impl class system.
     MXL008,
-    /// Multiple impl blocks for one type without labels.
-    MXL009,
-    /// Duplicate labels on impl blocks for one type.
-    MXL010,
     // endregion
 
     // region: P0: High Impact
@@ -65,7 +61,7 @@ impl LintCode {
         use super::diagnostic::Severity;
         match self {
             // Source-side checks are errors (CI-blocking).
-            Self::MXL008 | Self::MXL009 | Self::MXL010 => Severity::Error,
+            Self::MXL008 => Severity::Error,
 
             // Codegen-breaking: reserved words produce syntactically invalid R wrappers.
             Self::MXL110 => Severity::Error,

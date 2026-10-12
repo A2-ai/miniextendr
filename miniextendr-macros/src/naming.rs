@@ -119,20 +119,14 @@ pub(crate) fn bare_fn_c_wrapper_ident(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("C_{prefix}_{rust_ident}")
 }
 
-/// `C_<crate>_<Type>__<method>`, or `C_<crate>_<Type>_<label>_<method>` when
-/// the impl block carries a label — impl-method C wrapper identifier.
+/// `C_<crate>_<Type>__<method>` — impl-method C wrapper identifier.
 pub(crate) fn impl_method_c_wrapper_ident(
     type_ident: &syn::Ident,
-    label: Option<&str>,
     method_ident: &syn::Ident,
 ) -> syn::Ident {
     let prefix = crate_prefix();
     let method_ident = unraw(method_ident);
-    if let Some(label) = label {
-        quote::format_ident!("C_{prefix}_{type_ident}_{label}_{method_ident}")
-    } else {
-        quote::format_ident!("C_{prefix}_{type_ident}__{method_ident}")
-    }
+    quote::format_ident!("C_{prefix}_{type_ident}__{method_ident}")
 }
 
 /// `C_<crate>_<Type>__<Trait>__<member>` as a `String` — shared by
@@ -483,12 +477,8 @@ mod tests {
             "C_miniextendr_macros_reset"
         );
         assert_eq!(
-            impl_method_c_wrapper_ident(&ty, None, &m).to_string(),
+            impl_method_c_wrapper_ident(&ty, &m).to_string(),
             "C_miniextendr_macros_Counter__reset"
-        );
-        assert_eq!(
-            impl_method_c_wrapper_ident(&ty, Some("basic"), &m).to_string(),
-            "C_miniextendr_macros_Counter_basic_reset"
         );
         assert_eq!(
             trait_member_c_wrapper_string(&ty, &tr, &m),
@@ -582,7 +572,7 @@ mod tests {
         );
         let ty: syn::Ident = syn::parse_quote!(Row);
         assert_eq!(
-            impl_method_c_wrapper_ident(&ty, None, &syn::parse_quote!(r#type)).to_string(),
+            impl_method_c_wrapper_ident(&ty, &syn::parse_quote!(r#type)).to_string(),
             "C_miniextendr_macros_Row__type"
         );
     }

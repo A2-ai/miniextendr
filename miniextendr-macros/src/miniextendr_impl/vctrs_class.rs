@@ -10,7 +10,8 @@
 
 use super::{ParsedImpl, VctrsKind};
 
-/// Generates the complete R wrapper string for a vctrs-compatible S3 class.
+/// Generates the R wrapper of a vctrs-compatible S3 class, in the parts the
+/// wrapper writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// This is used when an `impl` block is annotated with `#[miniextendr(vctrs)]`.
 /// Unlike the `#[derive(Vctrs)]` macro (which generates standalone S3 methods from
@@ -36,7 +37,10 @@ use super::{ParsedImpl, VctrsKind};
 /// `@export`) is kept unconditionally: vctrs generics dispatch from the vctrs
 /// namespace, so an unregistered method would leave even a gated class non-functional
 /// (and roxygen2 warns on any recognized-but-unregistered S3 method).
-pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The constructor, `vec_ptype_abbr` and the self-coercion methods are the
+/// head; the S3 methods and the static methods are the members.
+pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
         should_export_from_tags,
@@ -69,6 +73,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor name follows vctrs convention: new_<class>
     let ctor_name = format!("new_{}", class_name.to_lowercase());
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
 
     // Constructor with combined class and constructor documentation
@@ -86,16 +91,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_export_control(parsed_impl.internal, parsed_impl.noexport)
                 .build(),
         );
-        // Inject lifecycle imports from methods into class-level roxygen block
-        if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-            parsed_impl
-                .methods
-                .iter()
-                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-        ) {
-            let insert_pos = lines.len().saturating_sub(1);
-            lines.insert(insert_pos, format!("#' {}", lc_import));
-        }
+        w.mark_class_doc_lines(&mut lines, parsed_impl);
 
         // Generate constructor body based on vctrs kind
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
@@ -242,6 +238,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         c = class_name
     ));
     lines.push(String::new());
+    w.head = std::mem::take(&mut lines);
 
     // Instance methods as S3 generics + methods. Their conditions report the
     // generic's call, resolved from the method frame on a raise (#1851).
@@ -409,5 +406,12 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    lines.join("\n")
+    w.members = lines;
+    w
+}
+
+/// The vctrs class as one string: [`generate_vctrs_class`], rendered.
+#[cfg(test)]
+pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_vctrs_class(parsed_impl).render()
 }

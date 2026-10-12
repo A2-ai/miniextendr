@@ -113,7 +113,7 @@
 //! - Registration entries for R's `.Call()` interface
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, format_ident, quote};
+use quote::{ToTokens, quote};
 
 /// Check if a type is `ExternalPtr<...>` (possibly fully qualified).
 fn is_external_ptr_type(ty: &syn::Type) -> bool {
@@ -820,8 +820,6 @@ pub struct ParsedImpl {
     pub class_system: ClassSystem,
     /// Optional override for the R class name. When `None`, uses `type_ident` as the class name.
     pub class_name: Option<String>,
-    /// Optional label for distinguishing multiple impl blocks of the same type.
-    pub label: Option<String>,
     /// Roxygen tag lines extracted from `///` doc comments on the impl block.
     /// Used for class-level documentation (e.g., the R6 class docstring or S3 type description).
     pub doc_tags: Vec<String>,
@@ -889,11 +887,11 @@ pub struct ParsedImpl {
 
 /// Attributes parsed from `#[miniextendr(...)]` on an impl block.
 ///
-/// These control which R class system to use, class naming, multi-impl labeling,
-/// and class-system-specific options (R6 inheritance, S7 parent, vctrs kind, etc.).
+/// These control which R class system to use, class naming, and
+/// class-system-specific options (R6 inheritance, S7 parent, vctrs kind, etc.).
 ///
 /// Parsed by the [`syn::parse::Parse`] implementation which handles all supported
-/// attribute formats like `#[miniextendr(r6, class = "Custom", label = "ops")]`.
+/// attribute formats like `#[miniextendr(r6, class = "Custom")]`.
 #[derive(Debug)]
 pub struct ImplAttrs {
     /// Which R class system to generate wrappers for.
@@ -901,15 +899,6 @@ pub struct ImplAttrs {
     pub class_system: ClassSystem,
     /// Optional override for the R class name. When `None`, the Rust type name is used.
     pub class_name: Option<String>,
-    /// Optional label for distinguishing multiple impl blocks of the same type.
-    ///
-    /// When a type has multiple `#[miniextendr]` impl blocks, each must have a
-    /// distinct label. The label is used in:
-    /// - Generated wrapper names (e.g., `C_<crate>_Type_label_method`)
-    /// - Module registration (e.g., `impl Type as "label"`)
-    ///
-    /// Single impl blocks don't require labels.
-    pub label: Option<String>,
     /// vctrs-specific attributes (only used when class_system is Vctrs)
     pub vctrs_attrs: VctrsAttrs,
     // endregion
@@ -972,10 +961,15 @@ pub struct ImplAttrs {
     pub blanket: bool,
 }
 
+/// The impl doc tags that are class settings rather than class documentation:
+/// they decide whether every block's members are documented and exported, so
+/// each impl block of a type repeats them ([`ParsedImpl::class_settings`]).
+const CLASS_SETTING_TAGS: [&str; 2] = ["noRd", "keywords internal"];
+
 /// Every impl-block option, for the "unknown impl block option" errors of the
 /// bare and the `key = value` forms.
 const IMPL_OPTIONS_HELP: &str = "env, env(...), r6, r6(...), s3, s3(...), s4, s4(...), s7, \
-     s7(...), vctrs, vctrs(...) (class system), class = \"...\" (R class name), label = \"...\" (multi-impl label), \
+     s7(...), vctrs, vctrs(...) (class system), class = \"...\" (R class name), \
      blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport";
 
 impl syn::parse::Parse for ImplAttrs {
@@ -990,7 +984,6 @@ impl syn::parse::Parse for ImplAttrs {
         };
         let mut class_system_span: Option<(&str, proc_macro2::Span)> = None;
         let mut class_name = None;
-        let mut label = None;
         let mut vctrs_attrs = VctrsAttrs::default();
         let mut r6_inherit = None;
         let mut r6_portable = None;
@@ -1009,14 +1002,12 @@ impl syn::parse::Parse for ImplAttrs {
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
-        // - A key in a key=value pair (class, label)
+        // - A key in a key=value pair (class)
         //
         // Valid formats:
         // - #[miniextendr]
         // - #[miniextendr(r6)]
-        // - #[miniextendr(label = "foo")]
-        // - #[miniextendr(r6, label = "foo")]
-        // - #[miniextendr(r6, class = "CustomName", label = "foo")]
+        // - #[miniextendr(r6, class = "CustomName")]
         // - #[miniextendr(vctrs)]
         // - #[miniextendr(vctrs(kind = "rcrd", base = "double", abbr = "my_abbr"))]
         while !input.is_empty() {
@@ -1030,10 +1021,6 @@ impl syn::parse::Parse for ImplAttrs {
                     "class" => {
                         let value: syn::LitStr = input.parse()?;
                         class_name = Some(value.value());
-                    }
-                    "label" => {
-                        let value: syn::LitStr = input.parse()?;
-                        label = Some(value.value());
                     }
                     _ => {
                         return Err(syn::Error::new(
@@ -1384,7 +1371,6 @@ impl syn::parse::Parse for ImplAttrs {
         Ok(ImplAttrs {
             class_system,
             class_name,
-            label,
             vctrs_attrs,
             r6_inherit,
             r6_portable,
@@ -2510,10 +2496,11 @@ impl ParsedMethod {
 
     /// C wrapper identifier for this method.
     ///
-    /// Format: `C_{crate}_{Type}__{method}` or `C_{crate}_{Type}_{label}_{method}`
-    /// if labeled — crate-prefixed for webR cross-package symbol uniqueness (#1273).
-    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
-        crate::naming::impl_method_c_wrapper_ident(type_ident, label, &self.ident)
+    /// Format: `C_{crate}_{Type}__{method}` — crate-prefixed for webR
+    /// cross-package symbol uniqueness (#1273). Unique per type: two impl
+    /// blocks of one type can't both define a method (E0592).
+    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
+        crate::naming::impl_method_c_wrapper_ident(type_ident, &self.ident)
     }
 
     /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
@@ -3182,7 +3169,6 @@ impl ParsedImpl {
             type_ident,
             class_system: attrs.class_system,
             class_name: attrs.class_name,
-            label: attrs.label,
             doc_tags,
             methods,
             // Strip miniextendr attributes (and roxygen tags) before re-emitting,
@@ -3284,6 +3270,121 @@ impl ParsedImpl {
         self.class_name
             .clone()
             .unwrap_or_else(|| self.type_ident.to_string())
+    }
+
+    /// The class-level settings, written like the attribute, which every impl
+    /// block of a type must spell the same (#1776): the class system with its
+    /// options, `class = "..."`, `internal` / `noexport`, and the `@noRd` /
+    /// `@keywords internal` tags. They shape the members each block
+    /// generates, so the wrapper writer refuses blocks that differ. The
+    /// per-method defaults (`strict`, `preconditions`) may differ.
+    pub fn class_settings(&self) -> String {
+        let mut options: Vec<String> = Vec::new();
+        match self.class_system {
+            ClassSystem::Vctrs => {
+                let vctrs = &self.vctrs_attrs;
+                let kind = match vctrs.kind {
+                    VctrsKind::Vctr => "vctr",
+                    VctrsKind::Rcrd => "rcrd",
+                    VctrsKind::ListOf => "list_of",
+                };
+                options.push(format!("kind = {kind:?}"));
+                if let Some(base) = &vctrs.base {
+                    options.push(format!("base = {base:?}"));
+                }
+                if let Some(inherit) = vctrs.inherit_base_type {
+                    options.push(format!("inherit_base_type = {inherit}"));
+                }
+                if let Some(ptype) = &vctrs.ptype {
+                    options.push(format!("ptype = {ptype:?}"));
+                }
+                if let Some(abbr) = &vctrs.abbr {
+                    options.push(format!("abbr = {abbr:?}"));
+                }
+            }
+            ClassSystem::R6 => {
+                if let Some(inherit) = &self.r6_inherit {
+                    options.push(format!("inherit = {inherit:?}"));
+                }
+                for (name, value) in [
+                    ("portable", self.r6_portable),
+                    ("cloneable", self.r6_cloneable),
+                    ("lock_objects", self.r6_lock_objects),
+                    ("lock_class", self.r6_lock_class),
+                ] {
+                    if let Some(value) = value {
+                        options.push(format!("{name} = {value}"));
+                    }
+                }
+            }
+            ClassSystem::S7 => {
+                if let Some(parent) = &self.s7_parent {
+                    options.push(format!("parent = {parent:?}"));
+                }
+                if self.s7_abstract {
+                    options.push("abstract".to_string());
+                }
+            }
+            ClassSystem::Env | ClassSystem::S3 | ClassSystem::S4 => {}
+        }
+        match self.r_data_accessors {
+            RDataAccessors::Off => {}
+            RDataAccessors::GetSet => options.push("r_data_accessors".to_string()),
+            RDataAccessors::GetOnly => options.push("r_data_accessors = \"get\"".to_string()),
+        }
+        if self.field_lookup == FieldLookup::List {
+            options.push("lookup = \"list\"".to_string());
+        }
+
+        let system = self.class_system.to_ident().to_string();
+        let mut settings = vec![if options.is_empty() {
+            system
+        } else {
+            format!("{system}({})", options.join(", "))
+        }];
+        if let Some(class_name) = &self.class_name {
+            settings.push(format!("class = {class_name:?}"));
+        }
+        if self.internal {
+            settings.push("internal".to_string());
+        }
+        if self.noexport {
+            settings.push("noexport".to_string());
+        }
+        for tag in CLASS_SETTING_TAGS {
+            if crate::roxygen::has_roxygen_tag(&self.doc_tags, tag) {
+                settings.push(format!("@{tag}"));
+            }
+        }
+        settings.join(", ")
+    }
+
+    /// What this impl block has that only one block of a type may: the
+    /// constructor, the class documentation (any impl doc beyond the
+    /// [`CLASS_SETTING_TAGS`]) and S7 properties. The wrapper writer defines
+    /// the class from the block that has them (#1776).
+    pub fn class_definitions(&self) -> Vec<&'static str> {
+        let mut definitions = Vec::new();
+        if self.constructor().is_some() {
+            definitions.push("a constructor");
+        }
+        let settings_only = |tag: &String| {
+            CLASS_SETTING_TAGS
+                .iter()
+                .any(|setting| crate::roxygen::has_roxygen_tag(std::slice::from_ref(tag), setting))
+        };
+        if !self.doc_tags.iter().all(settings_only) {
+            definitions.push("class documentation");
+        }
+        if self.class_system == ClassSystem::S7
+            && self.included_methods().any(|m| {
+                let s7 = &m.method_attrs.s7;
+                s7.getter || s7.setter || s7.validate
+            })
+        {
+            definitions.push("S7 properties");
+        }
+        definitions
     }
 
     /// Get methods that should be included.
@@ -3410,24 +3511,6 @@ impl ParsedImpl {
             .iter()
             .find(|m| m.should_include() && m.is_finalizer())
     }
-
-    /// Module-local registration identifier for R wrapper parts.
-    ///
-    /// Format: `R_WRAPPERS_IMPL_{Type}` or `R_WRAPPERS_IMPL_{Type}_{label}`,
-    /// preserving both the type's and the label's case.
-    pub fn r_wrappers_const_ident(&self) -> syn::Ident {
-        let type_name = crate::naming::unraw(&self.type_ident);
-        if let Some(ref label) = self.label {
-            format_ident!("R_WRAPPERS_IMPL_{}_{}", type_name, label)
-        } else {
-            format_ident!("R_WRAPPERS_IMPL_{}", type_name)
-        }
-    }
-
-    /// Returns the label if present.
-    pub fn label(&self) -> Option<&str> {
-        self.label.as_deref()
-    }
 }
 
 /// Generate a C-callable wrapper function for a single method in an impl block.
@@ -3444,24 +3527,18 @@ impl ParsedImpl {
 /// static methods use the main thread unless `worker` or `worker-default` selects
 /// worker dispatch; `unsafe(main_thread)` keeps one on main regardless.
 ///
-/// Also emits an `R_CallMethodDef` constant for R routine registration, and appends
-/// generated R wrapper code fragments to the `r_wrappers_const` string constant.
+/// Also emits an `R_CallMethodDef` constant for R routine registration.
 ///
 /// # Arguments
 ///
 /// * `parsed_impl` - The parsed impl block providing type identity, cfg attrs, and options
 /// * `method` - The parsed method to generate a wrapper for
-/// * `r_wrappers_const` - Identifier of the const that accumulates R wrapper code fragments
-pub fn generate_method_c_wrapper(
-    parsed_impl: &ParsedImpl,
-    method: &ParsedMethod,
-    r_wrappers_const: &syn::Ident,
-) -> TokenStream {
+pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod) -> TokenStream {
     use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
 
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
-    let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
+    let c_ident = method.c_wrapper_ident(type_ident);
     let self_sexp = crate::naming::self_sexp_ident();
     let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
     let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
@@ -3694,7 +3771,6 @@ pub fn generate_method_c_wrapper(
 
     // Build the context using the builder
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
-        .r_wrapper_const(r_wrappers_const.clone())
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
         .pre_call(pre_call)
@@ -3773,7 +3849,7 @@ fn generate_method_match_arg_entries(
     }
 
     let type_ident = &parsed_impl.type_ident;
-    let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
+    let c_ident = method.c_wrapper_ident(type_ident);
     let c_ident_str = c_ident.to_string();
     let cfg_attrs = &parsed_impl.cfg_attrs;
 
@@ -3932,14 +4008,87 @@ pub(crate) mod s7_class;
 /// vctrs-compatible class wrapper generator (`new_vctr` / `new_rcrd` / `new_list_of`).
 mod vctrs_class;
 
+pub(crate) use env_class::generate_env_class;
+#[cfg(test)]
 pub(crate) use env_class::generate_env_r_wrapper;
+pub(crate) use r6_class::generate_r6_class;
+#[cfg(test)]
 pub(crate) use r6_class::generate_r6_r_wrapper;
+pub(crate) use s3_class::generate_s3_class;
+#[cfg(test)]
 pub(crate) use s3_class::generate_s3_r_wrapper;
+pub(crate) use s4_class::generate_s4_class;
+#[cfg(test)]
 pub(crate) use s4_class::generate_s4_r_wrapper;
+pub(crate) use s7_class::generate_s7_class;
+#[cfg(test)]
 pub(crate) use s7_class::generate_s7_r_wrapper;
 #[cfg(test)]
 use s7_class::rust_type_to_s7_class;
+pub(crate) use vctrs_class::generate_vctrs_class;
+#[cfg(test)]
 pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
+
+/// The line of [`ClassWrapper::head`] where the class's roxygen block takes
+/// the [`ClassWrapper::class_doc_lines`] of every impl block of the type.
+/// Spelled the same as `miniextendr_api::registry::CLASS_DOC_LINES_MARKER`,
+/// which the wrapper writer replaces.
+pub(crate) const CLASS_DOC_LINES_MARKER: &str = ".__MX_CLASS_DOC_LINES__";
+
+/// One impl block's R wrapper, in the parts the wrapper writer merges per
+/// Rust type (#1776): the class is defined once, from the defining block's
+/// `head` and `tail`, and every block's `members` attach to it. See
+/// `miniextendr_api::registry::ClassBlockEntry`.
+#[derive(Debug, Default)]
+pub struct ClassWrapper {
+    /// The class definition: the class's roxygen block, with the
+    /// [`CLASS_DOC_LINES_MARKER`] line where member-derived class docs go,
+    /// the class object, the constructor and the class-level helpers.
+    pub head: Vec<String>,
+    /// Roxygen lines the block's members add to the class's roxygen block.
+    pub class_doc_lines: Vec<String>,
+    /// The block's methods and static methods.
+    pub members: Vec<String>,
+    /// What follows the members of every block, such as R6's `$lock()`.
+    pub tail: Vec<String>,
+    /// The names the members bind in the class's own namespaces, worded for
+    /// the writer's message when two blocks bind the same one.
+    pub member_names: Vec<String>,
+}
+
+impl ClassWrapper {
+    /// Put the [`CLASS_DOC_LINES_MARKER`] before the last line of `head`, the
+    /// tag that closes the class's roxygen block, and add the lifecycle
+    /// imports of the block's methods to the class docs.
+    fn mark_class_doc_lines(&mut self, head: &mut Vec<String>, parsed_impl: &ParsedImpl) {
+        let pos = head.len().saturating_sub(1);
+        head.insert(pos, CLASS_DOC_LINES_MARKER.to_string());
+        if let Some(import) = crate::lifecycle::collect_lifecycle_imports(
+            parsed_impl
+                .methods
+                .iter()
+                .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
+        ) {
+            self.class_doc_lines.push(format!("#' {import}"));
+        }
+    }
+
+    /// The wrapper as the writer writes a type with this one impl block.
+    #[cfg(test)]
+    pub fn render(&self) -> String {
+        let mut lines = Vec::new();
+        for line in &self.head {
+            if line == CLASS_DOC_LINES_MARKER {
+                lines.extend(self.class_doc_lines.iter().cloned());
+            } else {
+                lines.push(line.clone());
+            }
+        }
+        lines.extend(self.members.iter().cloned());
+        lines.extend(self.tail.iter().cloned());
+        lines.join("\n")
+    }
+}
 
 /// Generate R S3 method wrappers for `as.<class>()` coercion methods.
 ///
@@ -3978,7 +4127,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Build method context for .Call generation
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+        let ctx = MethodContext::new(method, type_ident)
             .with_impl_preconditions(parsed_impl.preconditions);
 
         // Normalize coercion target for R generic name.
@@ -4484,8 +4633,7 @@ fn check_s7_dispatch(parsed: &ParsedImpl) -> syn::Result<()> {
         if m.method_attrs.s7.getter || m.method_attrs.s7.setter || m.method_attrs.s7.validate {
             continue;
         }
-        let ctx =
-            crate::r_class_formatter::MethodContext::new(m, &parsed.type_ident, parsed.label());
+        let ctx = crate::r_class_formatter::MethodContext::new(m, &parsed.type_ident);
         check_s7_method_dispatch(m, &ctx.params)
             .map_err(|message| syn::Error::new(m.ident.span(), message))?;
     }
@@ -4715,32 +4863,30 @@ pub fn expand_impl(
         return e.into_compile_error().into();
     }
 
-    // Generate constants for module registration (needed for doc links)
     let type_ident = &parsed.type_ident;
     let cfg_attrs = &parsed.cfg_attrs;
-    let r_wrappers_const = parsed.r_wrappers_const_ident();
 
     // Generate C wrappers for all included methods
     let c_wrappers: Vec<TokenStream> = parsed
         .included_methods()
-        .map(|m| generate_method_c_wrapper(&parsed, m, &r_wrappers_const))
+        .map(|m| generate_method_c_wrapper(&parsed, m))
         .collect();
 
-    // Generate R wrapper string based on class system
-    let mut r_wrapper_string = match parsed.class_system {
-        ClassSystem::Env => generate_env_r_wrapper(&parsed),
-        ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
-        ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
-        ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
-        ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
-        ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+    // The R wrapper, in the parts the wrapper writer merges per type (#1776).
+    let mut class = match parsed.class_system {
+        ClassSystem::Env => generate_env_class(&parsed),
+        ClassSystem::R6 => generate_r6_class(&parsed),
+        ClassSystem::S3 => generate_s3_class(&parsed),
+        ClassSystem::S7 => generate_s7_class(&parsed),
+        ClassSystem::S4 => generate_s4_class(&parsed),
+        ClassSystem::Vctrs => generate_vctrs_class(&parsed),
     };
 
     // Append as.<class>() coercion methods (works with all class systems)
     let as_coercion_wrappers = generate_as_coercion_methods(&parsed);
     if !as_coercion_wrappers.is_empty() {
-        r_wrapper_string.push_str("\n\n");
-        r_wrapper_string.push_str(&as_coercion_wrappers);
+        class.members.push(String::new());
+        class.members.push(as_coercion_wrappers);
     }
 
     let original_impl = &parsed.original_impl;
@@ -4748,18 +4894,17 @@ pub fn expand_impl(
     // Generate forwarding trait impls for as.<class>() coercion methods
     let trait_impls = generate_as_coercion_trait_impls(&parsed);
 
-    // One text for the whole block, so the formals are pooled over its methods
+    // Every part is qualified against the formals pooled over the whole block
     // (the constructor included).
-    let r_wrapper_str = crate::r_wrapper_raw_literal(
-        &r_wrapper_string,
-        &crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs)),
-    );
+    let formals =
+        crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs));
+    let r_part = |lines: &[String]| crate::r_wrapper_raw_literal(&lines.join("\n"), &formals);
+    let head = r_part(&class.head);
+    let class_doc_lines = r_part(&class.class_doc_lines);
+    let members = r_part(&class.members);
+    let tail = r_part(&class.tail);
+    let member_names = &class.member_names;
 
-    // Generate doc comment linking to R wrapper constant
-    let r_wrapper_doc = format!(
-        "See [`{}`] for the generated R wrapper code.",
-        r_wrappers_const
-    );
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
     let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
@@ -4768,18 +4913,8 @@ pub fn expand_impl(
 
     let param_warnings = &parsed.param_warnings;
 
-    // Build MX_CLASS_NAMES entry for cross-reference resolution.
     // r_class_name is the R-visible name (may differ from type_ident when
     // `class = "Override"` was set on the impl block).
-    //
-    // The static name folds the impl label in when present, mirroring
-    // `r_wrappers_const_ident`: keying on the type alone made two labeled
-    // impl blocks on one type collide with E0428 (#1242) — exactly the
-    // multi-block pattern MXL009 directs users toward. The duplicate entries
-    // this registers for one type are collapsed (identical) or rejected
-    // (conflicting `class = "..."` overrides) by `build_class_name_index` in
-    // miniextendr-api's registry. Unlabeled multi-blocks still collide — on
-    // `R_WRAPPERS_IMPL_<Type>` too — so no per-block counter is needed here.
     let r_class_name_str = parsed.class_name();
     let class_system_str = parsed.class_system.to_ident().to_string();
     // `$` / `[[` field syntax (`s3/s4/env(r_data_accessors)`): the wrapper
@@ -4790,18 +4925,13 @@ pub fn expand_impl(
             parsed.class_system,
             ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env
         );
-    let class_names_const = {
-        let type_name = crate::naming::ident_name(type_ident);
-        let name = match parsed.label() {
-            Some(label) => format!("__mx_class_name_entry_{type_name}_{label}"),
-            None => format!("__mx_class_name_entry_{type_name}"),
-        };
-        syn::Ident::new(&name, type_ident.span())
-    };
+    let settings = parsed.class_settings();
+    let defines = parsed.class_definitions();
 
+    // The registrations sit in an anonymous `const _` so that any number of
+    // impl blocks of one type can register theirs; the wrapper writer merges
+    // them per type (#1776).
     let expanded = quote! {
-        // Original impl block with doc link to R wrapper
-        #[doc = #r_wrapper_doc]
         #[doc = #source_loc_doc]
         #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #original_impl
@@ -4815,49 +4945,39 @@ pub fn expand_impl(
         // Forwarding trait impls for as.<class>() coercion methods
         #trait_impls
 
-        // R wrapper registration via distributed slice
         #(#cfg_attrs)*
-        #[doc = ::core::concat!(
-            "R wrapper code for impl block on `",
-            ::core::stringify!(#type_ident),
-            "`."
-        )]
-        #[doc = #source_loc_doc]
-        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
-        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
-        #[allow(non_upper_case_globals, non_snake_case)]
-        static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
-            ::miniextendr_api::registry::RWrapperEntry {
-                priority: ::miniextendr_api::registry::RWrapperPriority::Class,
-                source_file: ::core::file!(),
-                source_line: #source_line_lit,
-                content: ::core::concat!(
-                    "# Generated from Rust impl `",
-                    ::core::stringify!(#type_ident),
-                    "` (",
-                    ::core::file!(),
-                    ":",
-                    #source_line_lit,
-                    ":",
-                    #source_col_lit,
-                    ")",
-                    #r_wrapper_str
-                ),
-            };
+        const _: () = {
+            // The impl block's share of the R class, merged with the type's
+            // other impl blocks by the wrapper writer.
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_BLOCKS), linkme(crate = ::miniextendr_api::linkme))]
+            static CLASS_BLOCK: ::miniextendr_api::registry::ClassBlockEntry =
+                ::miniextendr_api::registry::ClassBlockEntry {
+                    rust_type: ::core::stringify!(#type_ident),
+                    type_path: || ::core::any::type_name::<#type_ident>(),
+                    r_class_name: #r_class_name_str,
+                    source_file: ::core::file!(),
+                    source_line: #source_line_lit,
+                    source_column: #source_col_lit,
+                    settings: #settings,
+                    defines: &[#(#defines),*],
+                    head: #head,
+                    class_doc_lines: #class_doc_lines,
+                    members: #members,
+                    member_names: &[#(#member_names),*],
+                    tail: #tail,
+                };
 
-        // Class name registration for cross-reference placeholder resolution.
-        // Maps the Rust type name to the R-visible class name at link time.
-        #(#cfg_attrs)*
-        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_NAMES), linkme(crate = ::miniextendr_api::linkme))]
-        #[allow(non_upper_case_globals)]
-        #[allow(non_snake_case)]
-        static #class_names_const: ::miniextendr_api::registry::ClassNameEntry =
-            ::miniextendr_api::registry::ClassNameEntry {
-                rust_type: ::core::stringify!(#type_ident),
-                r_class_name: #r_class_name_str,
-                class_system: #class_system_str,
-                field_syntax: #field_syntax,
-            };
+            // Class name registration for cross-reference placeholder resolution.
+            // Maps the Rust type name to the R-visible class name at link time.
+            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CLASS_NAMES), linkme(crate = ::miniextendr_api::linkme))]
+            static CLASS_NAME: ::miniextendr_api::registry::ClassNameEntry =
+                ::miniextendr_api::registry::ClassNameEntry {
+                    rust_type: ::core::stringify!(#type_ident),
+                    r_class_name: #r_class_name_str,
+                    class_system: #class_system_str,
+                    field_syntax: #field_syntax,
+                };
+        };
     };
 
     expanded.into()

@@ -10,7 +10,8 @@
 
 use super::ParsedImpl;
 
-/// Generates the complete R wrapper string for an environment-based class.
+/// Generates the R wrapper of an environment-based class, in the parts the
+/// wrapper writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces an R environment object (`new.env(parent = emptyenv())`) that serves as a
 /// class namespace, with methods attached as `ClassName$method_name`. This pattern
@@ -36,7 +37,10 @@ use super::ParsedImpl;
 ///
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
-pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+///
+/// The class environment and constructor are the head; the instance and
+/// static methods are the members; the dispatch methods are the tail.
+pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
@@ -49,6 +53,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd")
         || (parsed_impl.noexport && !parsed_impl.internal);
 
+    let mut w = super::ClassWrapper::default();
     let mut lines = Vec::new();
 
     // Class environment documentation and definition
@@ -57,21 +62,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
-    // Inject lifecycle imports from methods into class-level roxygen block
-    if let Some(lc_import) = crate::lifecycle::collect_lifecycle_imports(
-        parsed_impl
-            .methods
-            .iter()
-            .filter_map(|m| m.method_attrs.lifecycle.as_ref()),
-    ) {
-        let insert_pos = lines.len().saturating_sub(1);
-        lines.insert(insert_pos, format!("#' {}", lc_import));
-    }
+    w.mark_class_doc_lines(&mut lines, parsed_impl);
     lines.push(format!("{} <- new.env(parent = emptyenv())", class_name));
     lines.push(String::new());
 
     // Constructor
     if let Some(ctx) = parsed_impl.constructor_context() {
+        w.member_names.push(format!("`{class_name}$new`"));
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
@@ -100,10 +97,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("}".to_string());
         lines.push(String::new());
     }
+    w.head = std::mem::take(&mut lines);
 
     // Instance methods
     for ctx in parsed_impl.instance_method_contexts() {
         let method_name = ctx.method.r_method_name();
+        w.member_names.push(format!("`{class_name}${method_name}`"));
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
@@ -145,6 +144,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.r_method_name();
+        w.member_names.push(format!("`{class_name}${method_name}`"));
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
@@ -179,6 +179,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("}".to_string());
         lines.push(String::new());
     }
+    w.members = std::mem::take(&mut lines);
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
@@ -266,5 +267,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         ));
     }
 
-    lines.join("\n")
+    w.tail = lines;
+    w
+}
+
+/// The env class as one string: [`generate_env_class`], rendered.
+#[cfg(test)]
+pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    generate_env_class(parsed_impl).render()
 }

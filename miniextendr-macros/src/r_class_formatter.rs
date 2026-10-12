@@ -381,14 +381,14 @@ pub struct MethodContext<'a> {
 impl<'a> MethodContext<'a> {
     /// Create a new MethodContext for a method.
     ///
-    /// Computes the C wrapper identifier from the method name, type name, and optional
-    /// label (for multi-impl-block disambiguation), then formats the R formals and
-    /// call arguments from the method's signature and default values. The
+    /// Computes the C wrapper identifier from the method name and type name,
+    /// then formats the R formals and call arguments from the method's
+    /// signature and default values. The
     /// impl block says nothing about the R-side checks; use
     /// [`MethodContext::with_impl_preconditions`] to inherit its
     /// `preconditions` / `no_preconditions`.
-    pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident, label: Option<&str>) -> Self {
-        let c_ident = method.c_wrapper_ident(type_ident, label).to_string();
+    pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident) -> Self {
+        let c_ident = method.c_wrapper_ident(type_ident).to_string();
         let effective_defaults = effective_r_defaults(
             &method.param_defaults,
             &method.method_attrs.per_param,
@@ -1250,54 +1250,43 @@ pub trait ParsedImplExt {
 impl ParsedImplExt for ParsedImpl {
     fn constructor_context(&self) -> Option<MethodContext<'_>> {
         let impl_prec = self.preconditions;
-        self.constructor().map(|m| {
-            MethodContext::new(m, &self.type_ident, self.label()).with_impl_preconditions(impl_prec)
-        })
+        self.constructor()
+            .map(|m| MethodContext::new(m, &self.type_ident).with_impl_preconditions(impl_prec))
     }
 
     fn instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
-        let label = self.label();
         let impl_prec = self.preconditions;
-        self.instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
-        })
+        self.instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident).with_impl_preconditions(impl_prec))
     }
 
     fn static_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
-        let label = self.label();
         let impl_prec = self.preconditions;
-        self.static_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
-        })
+        self.static_methods()
+            .map(move |m| MethodContext::new(m, type_ident).with_impl_preconditions(impl_prec))
     }
 
     fn public_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
-        let label = self.label();
         let impl_prec = self.preconditions;
-        self.public_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
-        })
+        self.public_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident).with_impl_preconditions(impl_prec))
     }
 
     fn private_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
-        let label = self.label();
         let impl_prec = self.preconditions;
-        self.private_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
-        })
+        self.private_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident).with_impl_preconditions(impl_prec))
     }
 
     fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
-        let label = self.label();
         let impl_prec = self.preconditions;
-        self.active_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
-        })
+        self.active_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident).with_impl_preconditions(impl_prec))
     }
 }
 

@@ -505,8 +505,9 @@ pub(crate) fn build_dots_validation_stmt(
 /// # Impl blocks (class systems)
 ///
 /// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block.
-/// Use `#[miniextendr(label = "...")]` to disambiguate multiple impl blocks
-/// on the same type.
+/// A type's methods can be split over several impl blocks: they are merged into
+/// one class. One block has the constructor and the class doc comment, and
+/// every block repeats the class options.
 /// Registration is automatic.
 ///
 /// ## R6 Active Bindings
