@@ -2,7 +2,9 @@
 //! evaluating R code from Rust in the caller's R context
 //! (`eval_with_handlers`, `RCall::eval_with_handlers`) (#1835), with an R
 //! error returned as `Err` (`try_eval_with_handlers`,
-//! `RCall::try_eval_with_handlers`) (#1893).
+//! `RCall::try_eval_with_handlers`) (#1893). Pairlist arguments
+//! (`PairListExt::args`) and quosures read from or built for a call
+//! (`Quosure::from_sexp`, `Quosure::new`, `Quosure::args`) (#1903).
 //!
 //! Each evaluating fixture holds a [`DropSentinel`] across the evaluation, so
 //! the tests can tell that an R exit (an error, a `tryCatch()` handler) ran
@@ -11,8 +13,11 @@
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use miniextendr_api::expression::{RCall, try_eval_with_handlers};
-use miniextendr_api::prelude::{Call, List, OwnedProtect, SEXP, SexpExt};
-use miniextendr_api::{Missing, Quosure, Quoted, SEXPTYPE, miniextendr, rust_error};
+use miniextendr_api::gc_protect::ProtectScope;
+use miniextendr_api::prelude::{Call, List, OwnedProtect, PairListExt, SEXP, SexpExt};
+use miniextendr_api::{
+    Missing, NamedListBuilder, Quosure, Quoted, SEXPTYPE, miniextendr, rust_error,
+};
 
 use crate::expression_tests::caught_parts;
 
@@ -390,6 +395,117 @@ pub fn quoted_resume_stashed() -> bool {
 
 // endregion
 
+// region: pairlists and quosures in a call (#1903)
+
+/// The arguments of `x`, a call, a pairlist or `NULL`, as a list named by
+/// their tags (`""` for an unnamed one).
+#[miniextendr(noexport)]
+pub fn pairlist_args(x: SEXP) -> NamedListBuilder {
+    let mut out = NamedListBuilder::new();
+    for (name, value) in x.args() {
+        out.push_sexp(name.unwrap_or_default(), value);
+    }
+    out
+}
+
+/// A copy of `call` whose first argument is `value`: `set_car` on a node of
+/// a `shallow_duplicate()`, which leaves `call` as it was.
+#[miniextendr(noexport)]
+pub fn pairlist_replace_first_arg(call: SEXP, value: SEXP) -> SEXP {
+    assert!(call.is_language(), "`call` must be a call");
+    // SAFETY: R's main thread; the copy is rooted until it is returned.
+    unsafe {
+        let scope = ProtectScope::new();
+        let copy = scope.protect_raw(call.shallow_duplicate());
+        let first = copy.cdr();
+        assert!(!first.is_nil(), "`call` has no argument");
+        first.set_car(value);
+        copy
+    }
+}
+
+/// The quosure `x` holds (the innermost of nested ones), or `NULL` when `x`
+/// is not a quosure.
+#[miniextendr(noexport)]
+pub fn quosure_from_sexp(x: SEXP) -> SEXP {
+    // SAFETY: inside the `.Call()`, which roots `x`.
+    unsafe { Quosure::from_sexp(&x) }.map_or(SEXP::nil(), |quosure| quosure.sexp())
+}
+
+/// `Quosure::new(expr, env)`: a quosure of a bare `expr`, or `expr` itself
+/// when it is a quosure.
+#[miniextendr(noexport)]
+pub fn quosure_new(expr: SEXP, env: SEXP) -> SEXP {
+    // SAFETY: inside the `.Call()`, which roots `expr` and `env`; the result
+    // is returned before anything else allocates.
+    unsafe {
+        let scope = ProtectScope::new();
+        Quosure::new(expr, env, &scope).sexp()
+    }
+}
+
+/// The arguments of the call `x` captures, each as a quosure, in a list
+/// named by their names (`""` for an unnamed one); `NULL` when `x` is not a
+/// call.
+#[miniextendr(noexport)]
+pub fn quosure_args(x: Quosure) -> SEXP {
+    // SAFETY: inside the `.Call()`.
+    let scope = unsafe { ProtectScope::new() };
+    match x.args(&scope) {
+        Some(args) => {
+            let mut out = NamedListBuilder::with_capacity(args.len());
+            for (name, quosure) in args {
+                out.push_sexp(name.unwrap_or_default(), quosure.sexp());
+            }
+            miniextendr_api::IntoR::into_sexp(out)
+        }
+        None => SEXP::nil(),
+    }
+}
+
+/// A role map read entry by entry: `cols` is `c(role = <selection>, ...)`.
+/// An `NA` or `NULL` entry is kept as written (tidyselect refuses both);
+/// every other one is selected in `data` with `tidyselect::eval_select()`,
+/// its named positions. An omitted `cols` gives an empty list.
+#[miniextendr(noexport)]
+pub fn quosure_roles(data: SEXP, cols: Missing<Quosure>, call: Call) -> NamedListBuilder {
+    let mut out = NamedListBuilder::new();
+    let Missing::Present(cols) = cols else {
+        return out;
+    };
+    // SAFETY: inside the `.Call()`.
+    let scope = unsafe { ProtectScope::new() };
+    let roles = cols
+        .args(&scope)
+        .unwrap_or_else(|| panic!("`cols` must be a call, `c(role = column, ...)`"));
+    for (role, quosure) in roles {
+        let expr = quosure.expr();
+        let kept = expr.is_nil()
+            || (expr.type_of() == SEXPTYPE::LGLSXP
+                && expr.len() == 1
+                && expr.as_logical().is_none());
+        let value = if kept {
+            expr
+        } else {
+            // SAFETY: R's main thread; `RCall` roots every argument, and the
+            // builder roots the selection as it is pushed.
+            unsafe {
+                RCall::namespaced("tidyselect", "eval_select")
+                    .unwrap_or_else(|e| panic!("{e}"))
+                    .quoted_arg(quosure.sexp())
+                    .quoted_arg(data)
+                    .named_arg("allow_rename", SEXP::scalar_logical(false))
+                    .named_quoted_arg("error_call", call.sexp())
+                    .eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+            }
+        };
+        out.push_sexp(role.unwrap_or_default(), value);
+    }
+    out
+}
+
+// endregion
+
 // region: gc stress
 
 /// Drive `Quoted` and `Quosure` through their conversions, evaluators and
@@ -437,6 +553,45 @@ pub fn gc_stress_quoted() -> i32 {
         assert_eq!(named.as_name(), Some("col"));
 
         total
+    }
+}
+
+/// Drive `Quosure::new`, `Quosure::from_sexp` and `Quosure::args` with a call
+/// built here, `c(time = <quosure>, dose = NA, wt = WT, NULL)`, under
+/// whatever GC pressure the caller set (#430): the number of arguments read.
+/// Needs rlang.
+#[miniextendr(noexport)]
+pub fn gc_stress_quosure_args() -> i32 {
+    // SAFETY: R's main thread; `scope` roots every quosure and the call, and
+    // `RCall` roots each argument it is given.
+    unsafe {
+        use miniextendr_api::sys::{R_GlobalEnv, Rf_install};
+
+        let scope = ProtectScope::new();
+        let tad = Quosure::new(Rf_install(c"TAD".as_ptr()), R_GlobalEnv, &scope);
+        let call = scope.protect_raw(
+            RCall::new("c")
+                .named_arg("time", tad.sexp())
+                .named_value("dose", None::<bool>)
+                .named_arg("wt", Rf_install(c"WT".as_ptr()))
+                .arg(SEXP::nil())
+                .build(),
+        );
+        let roles = Quosure::new(call, R_GlobalEnv, &scope);
+        let roles_sexp = roles.sexp();
+        let roles = Quosure::from_sexp(&roles_sexp).expect("a quosure");
+        let args = roles.args(&scope).expect("a call");
+        let names: Vec<_> = args.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, [Some("time"), Some("dose"), Some("wt"), None]);
+        assert_eq!(args[0].1.sexp(), tad.sexp());
+        assert_eq!(args[1].1.expr().type_of(), SEXPTYPE::LGLSXP);
+        assert_eq!(args[2].1.as_name(), Some("WT"));
+        assert!(args[3].1.expr().is_nil());
+        assert!(
+            args.iter()
+                .all(|(_, quosure)| quosure.sexp().inherits_class(c"quosure"))
+        );
+        i32::try_from(args.len()).expect("a handful of arguments")
     }
 }
 

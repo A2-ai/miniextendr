@@ -286,7 +286,7 @@ pub mod sexp_types;
 /// The `SEXP` newtype and inherent methods.
 pub mod sexp;
 
-/// `SexpExt` — the ergonomic extension trait on `SEXP`.
+/// `SexpExt` and `PairListExt` — the ergonomic extension traits on `SEXP`.
 pub mod sexp_ext;
 
 /// Raw R FFI bindings — `extern "C-unwind"` blocks for `Rf_*` / `R_*` /
@@ -306,7 +306,7 @@ pub mod sys;
 
 // Crate-root re-exports for the ergonomic API surface.
 pub use sexp::{SEXP, SEXPREC};
-pub use sexp_ext::SexpExt;
+pub use sexp_ext::{PairListArgs, PairListExt, SexpExt};
 pub use sexp_types::{
     IsNA, R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE,
     cetype_t,
@@ -436,7 +436,6 @@ pub fn set_altrep_dll_info(dll: *mut sys::DllInfo) {
     ALTREP_DLL_INFO.store(dll.cast(), Ordering::Release);
 }
 
-// Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
 pub mod into_r_error;

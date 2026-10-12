@@ -14,7 +14,9 @@ Safe wrappers for building and evaluating R function calls from Rust.
 Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
 string of R source), `dollar_extract` (the R `$` operator), and
 `eval_with_handlers` / `try_eval_with_handlers` (evaluate in the caller's R
-context, see [Handler-keeping evaluation](#handler-keeping-evaluation)).
+context, see [Handler-keeping evaluation](#handler-keeping-evaluation)). A
+call's arguments read with `PairListExt` ([Reading a
+call](#reading-a-call-pairlistext)).
 
 ## Quick Example
 
@@ -233,6 +235,47 @@ unsafe {
     let value = dollar_extract(list_sexp, "field_name")?;
 }
 ```
+
+## Reading a call: `PairListExt`
+
+A call (`LANGSXP`) and a pairlist (`LISTSXP`, such as `formals(f)`) are chains
+of nodes, each with a value (CAR), the rest (CDR) and a name (TAG).
+`PairListExt`, at the crate root and in the prelude, reads and writes them on
+a `SEXP`:
+
+| Method | Returns |
+|---|---|
+| `car()` / `cdr()` / `tag()` | the node's value (on a call, the function), the rest (`NULL` after the last node), its name (a symbol, or `NULL`) |
+| `args()` | an iterator over a call's arguments (the function left out) or a pairlist's elements, as `(Option<&str>, SEXP)`; `NULL` gives none, anything else panics |
+| `set_car(v)` / `set_cdr(v)` / `set_tag(sym)` | change the node |
+| `cons(cdr)` / `lcons(cdr)` | a new pairlist / call node, unprotected |
+
+```rust
+use miniextendr_api::{PairListExt, SEXP, miniextendr};
+
+/// The names of a call's arguments: `quote(f(a, b = 2))` gives `NA`, `"b"`.
+#[miniextendr]
+pub fn arg_names(call: SEXP) -> Vec<Option<String>> {
+    call.args().map(|(name, _)| name.map(str::to_owned)).collect()
+}
+```
+
+The values are reachable from the pairlist, so they stay rooted while it does;
+the names borrow it. An empty argument (`f(a = )`) is `SEXP::missing_arg()`,
+and a `NULL` argument does not end the walk.
+
+A call R hands you is shared (with the caller's code, a quosure, a promise), so
+change only a copy you own: `shallow_duplicate()` copies the nodes and keeps
+the values, so `set_car` on a node of the copy leaves the original as it was.
+
+```rust
+// `subset(x, cond)` with its first argument replaced; `call` is unchanged
+let copy = scope.protect_raw(call.shallow_duplicate());
+copy.cdr().set_car(data_symbol);
+```
+
+The arguments of a `Quosure` parameter's call read as quosures with
+`Quosure::args()` ([QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#quosures-in-a-call)).
 
 ## Handler-keeping evaluation
 

@@ -51,14 +51,20 @@
 //!
 //! Both markers borrow from the `.Call()` arguments, which R keeps rooted for
 //! the call; the lifetime keeps them from outliving it. They are `!Send`.
+//!
+//! A `Quosure` can also be read from a quosure found in an R object
+//! ([`Quosure::from_sexp`]), such as one a wrapper wrote into a call with
+//! `c(time = {{ t }})`, or built from an expression and an environment
+//! ([`Quosure::new`], [`Quosure::args`]). It then borrows the root the caller
+//! holds: the SEXP it was read from, or a [`ProtectScope`].
 
 use std::marker::PhantomData;
 
+use crate::expression::RCall;
 use crate::from_r::charsxp_to_str;
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::missing::Missing;
-use crate::sexp_ext::PairListExt;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{PairListExt, SEXP, SEXPTYPE, SexpExt};
 
 /// The name an argument expression stands for: a symbol's name, or the value
 /// of a length-1 character literal. `None` for anything else, and for `NA`.
@@ -261,6 +267,68 @@ unsafe fn data_mask(data: SEXP, enclos: SEXP) -> SEXP {
 
 // region: Quosure
 
+/// Whether `x` is an rlang quosure: a one-sided formula, `~expr`, of class
+/// `quosure`.
+fn is_quosure(x: SEXP) -> bool {
+    x.is_language() && x.inherits_class(c"quosure")
+}
+
+/// The quosure `x` stands for: `x` itself, or, when its expression is a
+/// quosure too (`rlang::new_quosure(<quosure>)`), the innermost one. `None`
+/// when `x` is not a quosure.
+fn innermost_quosure(x: SEXP) -> Option<SEXP> {
+    if !is_quosure(x) {
+        return None;
+    }
+    let mut quo = x;
+    while is_quosure(quo.cdr().car()) {
+        quo = quo.cdr().car();
+    }
+    Some(quo)
+}
+
+/// The function `rlang::new_quosure`, unprotected.
+///
+/// # Panics
+///
+/// When rlang cannot be loaded.
+///
+/// # Safety
+///
+/// R's main thread.
+unsafe fn rlang_new_quosure() -> SEXP {
+    use crate::sys::{R_BaseEnv, Rf_install};
+    unsafe {
+        // `rlang::new_quosure`; `::` takes both names unevaluated.
+        RCall::new("::")
+            .arg(Rf_install(c"rlang".as_ptr()))
+            .arg(Rf_install(c"new_quosure".as_ptr()))
+            .eval(R_BaseEnv)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "a `Quosure` of a bare expression is built with `rlang::new_quosure()`, \
+                     which needs the rlang package: {e}"
+                )
+            })
+    }
+}
+
+/// `new_quosure(quote(<expr>), env)`, unprotected.
+///
+/// # Safety
+///
+/// R's main thread; `new_quosure` (from [`rlang_new_quosure`]), `expr` and
+/// `env` rooted, `env` an environment.
+unsafe fn wrap_in_quosure(new_quosure: SEXP, expr: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        RCall::from_sexp(new_quosure)
+            .quoted_arg(expr)
+            .arg(env)
+            .eval(crate::sys::R_BaseEnv)
+            .unwrap_or_else(|e| panic!("`rlang::new_quosure()` failed: {e}"))
+    }
+}
+
 /// An argument captured as an rlang quosure, `rlang::enquo(x)`: its expression
 /// and environment, with rlang's argument forwarding and injection resolved.
 ///
@@ -282,17 +350,41 @@ unsafe fn data_mask(data: SEXP, enclos: SEXP) -> SEXP {
 /// nested quosures and the `.data` / `.env` pronouns. Hand [`Self::sexp`] to
 /// other quosure-aware R functions (`tidyselect::eval_select()`) with
 /// [`RCall::eval_with_handlers`](crate::expression::RCall::eval_with_handlers).
+///
+/// An argument holding several selections, a role map such as
+/// `cols = c(time = TAD, dose = NA)`, reads entry by entry with
+/// [`Self::args`]: each argument of the call as a quosure of its own. A
+/// quosure found in an R object reads with [`Self::from_sexp`], and
+/// [`Self::new`] makes one from an expression and an environment.
 pub struct Quosure<'a> {
     quo: SEXP,
     expr: SEXP,
     env: SEXP,
-    /// Borrows the `.Call()` argument that roots the quosure.
+    /// Borrows the root that keeps the quosure alive: the `.Call()` argument,
+    /// the SEXP it was read from, or a [`ProtectScope`].
     _arg: PhantomData<&'a SEXP>,
     /// R objects stay on R's main thread.
     _not_send: PhantomData<*const ()>,
 }
 
 impl<'a> Quosure<'a> {
+    /// Read a quosure's expression and environment.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; `quo` is a quosure, rooted for `'a`.
+    unsafe fn read(quo: SEXP) -> Self {
+        let expr = quo.cdr().car();
+        let env = quo.get_attr(unsafe { crate::sys::Rf_install(c".Environment".as_ptr()) });
+        Quosure {
+            quo,
+            expr,
+            env,
+            _arg: PhantomData,
+            _not_send: PhantomData,
+        }
+    }
+
     /// Read the argument a generated wrapper passed for a `Quosure` parameter:
     /// `None` when the argument is missing (`quote(expr=)`, or a quosure of
     /// the missing argument, which `{{ x }}` gives for a missing `x`).
@@ -312,22 +404,12 @@ impl<'a> Quosure<'a> {
             return None;
         }
         assert!(
-            quo.is_language() && quo.inherits_class(c"quosure"),
+            is_quosure(quo),
             "a `Quosure` argument is passed as `rlang::enquo(x)`, got {}",
             quo.type_of().type_name(),
         );
-        let expr = quo.cdr().car();
-        if expr == SEXP::missing_arg() {
-            return None;
-        }
-        let env = quo.get_attr(unsafe { crate::sys::Rf_install(c".Environment".as_ptr()) });
-        Some(Quosure {
-            quo,
-            expr,
-            env,
-            _arg: PhantomData,
-            _not_send: PhantomData,
-        })
+        let quosure = unsafe { Self::read(quo) };
+        (quosure.expr != SEXP::missing_arg()).then_some(quosure)
     }
 
     /// [`Self::from_wrapper_arg`] for a `Missing<Quosure>` parameter.
@@ -340,6 +422,142 @@ impl<'a> Quosure<'a> {
         match unsafe { Self::from_wrapper_arg(arg) } {
             Some(quosure) => Missing::Present(quosure),
             None => Missing::Absent,
+        }
+    }
+
+    /// Read a quosure the caller holds: `None` when `sexp` is not one.
+    ///
+    /// A quosure whose expression is a quosure too, which
+    /// `rlang::new_quosure(<quosure>)` makes, is looked through: the result is
+    /// the innermost one, which is what the outer one evaluates to and what
+    /// `tidyselect::eval_select()` accepts (it refuses the outer one). A
+    /// quosure of the missing argument is read as it is: [`Self::expr`] is
+    /// [`SEXP::missing_arg()`].
+    ///
+    /// ```ignore
+    /// // `call` is the expression of a `Quosure` argument,
+    /// // `c(time = {{ t }})` written by a forwarding wrapper.
+    /// for (name, arg) in call.args() {
+    ///     if let Some(quosure) = unsafe { Quosure::from_sexp(&arg) } {
+    ///         // the quosure `{{ t }}` left in the call, as it is
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// R's main thread, inside a miniextendr boundary (a `#[miniextendr]`
+    /// body, a `with_r_unwind_protect` closure; [`Self::eval_tidy`] needs
+    /// one); `sexp` stays rooted for `'a`.
+    pub unsafe fn from_sexp(sexp: &'a SEXP) -> Option<Self> {
+        innermost_quosure(*sexp).map(|quo| unsafe { Self::read(quo) })
+    }
+
+    /// A quosure of `expr` in `env`, rooted by `scope`.
+    ///
+    /// A bare expression is wrapped with `rlang::new_quosure(expr, env)`. A
+    /// quosure is returned as it is, through [`Self::from_sexp`] (`env` is
+    /// not used): wrapping a quosure again makes a formula that
+    /// `tidyselect::eval_select()` refuses. So an argument read from a call
+    /// can go through `new()` whether or not a wrapper wrote a quosure there.
+    /// The missing argument (an empty argument, `c(a = )`) is wrapped too:
+    /// [`Self::expr`] is then [`SEXP::missing_arg()`].
+    ///
+    /// Each call protects one value in `scope`.
+    ///
+    /// # Panics
+    ///
+    /// When `env` is not an environment, or when `expr` is not a quosure and
+    /// rlang cannot be loaded (a package taking a [`Quosure`] lists rlang in
+    /// `Imports`).
+    ///
+    /// # Safety
+    ///
+    /// As [`Self::from_sexp`]; `expr` and `env` are rooted by the caller for
+    /// the call.
+    pub unsafe fn new(expr: SEXP, env: SEXP, scope: &'a ProtectScope) -> Self {
+        assert!(
+            env.is_environment(),
+            "`Quosure::new()` takes an environment as `env`, not {}",
+            env.type_of().type_name(),
+        );
+        let quo = match innermost_quosure(expr) {
+            Some(quo) => quo,
+            // The function's guard drops before `scope` protects the quosure,
+            // so the protect stack unwinds in order; nothing allocates between.
+            None => unsafe {
+                let new_quosure = OwnedProtect::new(rlang_new_quosure());
+                wrap_in_quosure(new_quosure.get(), expr, env)
+            },
+        };
+        unsafe { Self::read(scope.protect_raw(quo)) }
+    }
+
+    /// The arguments of the quosure's call, each as a quosure with its name,
+    /// rooted by `scope`; `None` when the expression is not a call.
+    ///
+    /// `c(time = TAD, dose = NA)` gives `(Some("time"), TAD)` and
+    /// `(Some("dose"), NA)`, each in this quosure's environment. An argument
+    /// a wrapper wrote as a quosure (`c(time = {{ t }})`) comes back as it is,
+    /// in its own environment, as [`Self::new`] returns it; any other is
+    /// wrapped in this quosure's environment with `rlang::new_quosure()`. The
+    /// name is `None` for an unnamed argument; the function (`c`) is not one
+    /// of the arguments.
+    ///
+    /// ```ignore
+    /// #[miniextendr]
+    /// pub fn roles(data: SEXP, cols: Quosure) -> Vec<String> {
+    ///     let scope = unsafe { ProtectScope::new() };
+    ///     let Some(args) = cols.args(&scope) else {
+    ///         panic!("`cols` must be a call, `c(role = column, ...)`");
+    ///     };
+    ///     for (role, quosure) in args {
+    ///         // `quosure.expr()` is `NA` / `NULL` as written; hand the others
+    ///         // to `tidyselect::eval_select()`.
+    ///     }
+    /// #   vec![]
+    /// }
+    /// ```
+    ///
+    /// All the quosures are held in one list, which `scope` protects.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`]: when an argument is not a quosure and rlang cannot
+    /// be loaded.
+    pub fn args<'s>(
+        &'s self,
+        scope: &'s ProtectScope,
+    ) -> Option<Vec<(Option<&'s str>, Quosure<'s>)>> {
+        if !self.expr.is_language() {
+            return None;
+        }
+        let args: Vec<(Option<&'s str>, SEXP)> = self.expr.args().collect();
+        // SAFETY: a `Quosure` exists only on R's main thread, rooted for
+        // `'a`: so are its call and the arguments in it. Each quosure is
+        // stored in `held` as it is made, and `held` is protected by `scope`
+        // before the function's guard, which drops first.
+        unsafe {
+            let held = scope.alloc_vecsxp(args.len()).into_raw();
+            let mut new_quosure: Option<OwnedProtect> = None;
+            for (i, &(_, arg)) in args.iter().enumerate() {
+                let quo = match innermost_quosure(arg) {
+                    Some(quo) => quo,
+                    None => {
+                        let new_quosure = new_quosure
+                            .get_or_insert_with(|| OwnedProtect::new(rlang_new_quosure()));
+                        wrap_in_quosure(new_quosure.get(), arg, self.env)
+                    }
+                };
+                held.set_vector_elt(r_index(i), quo);
+            }
+            drop(new_quosure);
+            Some(
+                args.into_iter()
+                    .enumerate()
+                    .map(|(i, (name, _))| (name, Quosure::read(held.vector_elt(r_index(i)))))
+                    .collect(),
+            )
         }
     }
 
@@ -369,7 +587,7 @@ impl<'a> Quosure<'a> {
     /// expression.
     pub fn as_name(&self) -> Option<&'a str> {
         let mut expr = self.expr;
-        while expr.is_language() && expr.inherits_class(c"quosure") {
+        while is_quosure(expr) {
             expr = expr.cdr().car();
         }
         expr_name(expr)
@@ -387,8 +605,9 @@ impl<'a> Quosure<'a> {
     /// The value is unprotected: protect it before the next allocation.
     pub fn eval_tidy(&self, data: SEXP) -> SEXP {
         use crate::sys::{R_BaseEnv, Rf_install, Rf_lang2, Rf_lang3};
-        // SAFETY: a `Quosure` exists only inside the `#[miniextendr]` call
-        // that received it, on R's main thread; `data` is rooted by the caller.
+        // SAFETY: a `Quosure` exists only inside a miniextendr boundary on
+        // R's main thread (the `#[miniextendr]` call that received it, or
+        // the caller of `from_sexp` / `new`); `data` is rooted by the caller.
         unsafe {
             let scope = ProtectScope::new();
             // `rlang::eval_tidy(quote(<quo>), quote(<data>))`; a missing rlang raises
@@ -407,6 +626,11 @@ impl<'a> Quosure<'a> {
             crate::expression::eval_with_handlers(call, R_BaseEnv)
         }
     }
+}
+
+/// An R vector index.
+fn r_index(i: usize) -> isize {
+    isize::try_from(i).expect("an R vector index fits in isize")
 }
 
 // endregion
