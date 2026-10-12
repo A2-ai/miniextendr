@@ -37,7 +37,8 @@ written.
 | Code | Description | Fix |
 |------|-------------|-----|
 | **MXL106** | Non-`pub` function carries a `/// @export` tag | Make it `pub fn`, or drop the tag to keep it private |
-| **MXL111** | `s4_*` method on `#[miniextendr(s4)]` impl | Drop the `s4_` prefix — codegen auto-prepends it (you'd get `s4_s4_*`) |
+| **MXL111** | `s4_*` instance method on `#[miniextendr(s4)]` impl | Drop the `s4_` prefix — codegen auto-prepends it (you'd get `s4_s4_*`) |
+| **MXL121** | R code can never create the type: no impl block of it has a constructor, and no `#[miniextendr]` function or method returns it (`T`, `Self`, `ExternalPtr<T>`, bare or in `Result` / `Option`); vctrs classes are skipped | Mark a constructor with `#[miniextendr(<system>(constructor))]`, or add a `#[miniextendr]` function returning the type. A factory the lint cannot see (one returning a bare `SEXP`) is the case for `// mxl::allow(MXL121)` on the impl |
 
 ### Warnings (P1: important)
 
@@ -199,9 +200,13 @@ blocks of a type break a rule of
 [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks):
 
 - ``two impl blocks of `MyType` each define the class``: only one block may have
-  the constructor and S7 properties. The message names what each block has;
-  move the later block's into the earlier one. Doc comments don't count: every
-  block's doc comment documents the class.
+  the constructor (declared, or inferred from the block's one method returning
+  `Self`) and S7 properties. The message names what each block has; move the
+  later block's into the earlier one. Doc comments don't count: every block's
+  doc comment documents the class.
+- ``` `MyType` has several methods that could be its constructor ```: no block
+  declares a constructor, and the blocks have more than one receiver-less method
+  returning `Self` between them. See the compile-time form of this error below.
 - ``the impl blocks of `MyType` give the class two titles``: two blocks' doc
   comments have different `@title`s. The message shows both; keep one.
 - ``the impl blocks of `MyType` put the class on two help pages``: a block that
@@ -267,11 +272,52 @@ writes its result back into the same R object, `-> Result<Self, E>` /
 `Clone`). Drop the attribute. See
 [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#consuming-receivers-self).
 
+### "`MyType` has several methods that could be its constructor, and none is declared"
+
+Without a declared constructor (`#[miniextendr(<system>(constructor))]`, or a
+receiver-less `new` returning `Self`), a type's one receiver-less method
+returning `Self` is its constructor
+([Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)). With several,
+which one is meant is a guess, so the impl is refused: E0277 at compile time
+when they are in one impl block, pointing at each candidate, and an install
+error naming each with its block when they are in several.
+
+```rust
+#[miniextendr(r6)]
+impl Shape {
+    #[miniextendr(r6(constructor))]   // Shape$new(radius), and Shape$circle(radius); `square` stays Shape$square(side)
+    pub fn circle(radius: f64) -> Self { /* ... */ }
+    pub fn square(side: f64) -> Self { /* ... */ }
+}
+```
+
+Mark one, or name it `new`: the others stay static methods. A marked method
+keeps its own name as a static method too.
+
+### "`a` and `b` are both marked `#[miniextendr(<system>(constructor))]`; a class has one constructor"
+
+Drop the marker from one; it becomes a static method.
+
+### R error: "`MyType` has no constructor: its objects come from the functions that return one."
+
+A type without a constructor (no marked method, no `new`, and no
+receiver-less method returning bare `Self`) has none to call. An R6 class's
+`MyType$new()` and an S7 class's `MyType()` raise this error when called
+without a `.ptr`, rather than build an object holding no pointer. Env and S3
+leave `MyType$new` `NULL` (R's "attempt to apply non-function"), and S4 and
+vctrs define no `MyType()` or `new_mytype()` (#2069). Call a factory instead:
+a static method returning `Result<Self, E>` or `Option<Self>`, or another
+function returning the type. To give the type a constructor, name one method
+`new` or mark it `#[miniextendr(<system>(constructor))]`
+([Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)). When nothing
+returns the type at all, the build warns with MXL121.
+
 ### "Env member `Class$method` is defined by both ..."
 
 Env constructors, instance methods and static methods share the class
-namespace. A constructor always defines `Class$new`, even when its Rust name
-is `create`. Rename the other method with `#[miniextendr(r_name = "...")]`.
+namespace. A constructor always defines `Class$new`, and when its Rust name
+is `create`, `Class$create` as well. Rename the other method with
+`#[miniextendr(r_name = "...")]`.
 A non-constructor `new` is allowed when the class has no constructor. The
 check sees one impl block; a member bound by two impl blocks of a type is
 reported when the package installs (see "Impl blocks of one type that don't
@@ -292,7 +338,10 @@ R6 static methods are assigned onto the generator object that
 `classname`, `public_methods`, ...). The assignment replaces R6's binding
 without a warning, so `Class$new()` would stop creating objects. Rename the
 static method with `#[miniextendr(r_name = "...")]`. A constructor named
-`new`, and instance methods or active bindings under these names, are fine.
+`new`, and instance methods or active bindings under these names, are fine. A
+constructor under another name is also a static method under that name, so a
+constructor named `set` is refused too: rename it, or give it
+`r_name = "new"`, which leaves it only `Class$new()`.
 
 ### "S4 generic `s4_x` gets a method for `Class` from both `a` and `b`"
 

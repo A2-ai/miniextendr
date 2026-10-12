@@ -984,6 +984,81 @@ r@length         # 10 (length preserved)
 | S4 | `TypeName()` | S4 object |
 | S7 | `TypeName()` | S7 object |
 
+The constructor is decided for the Rust type, across all its impl blocks:
+
+1. The method marked `#[miniextendr(<system>(constructor))]`
+   (`r6(constructor)`, `s7(constructor)`, ...).
+2. Otherwise a receiver-less method named `new` that returns `Self`. A vctrs
+   `new` is the constructor whatever it returns, since it returns the payload.
+3. Otherwise the type's one receiver-less method returning `Self`, whatever its
+   name. `Result<Self, E>` and `Option<Self>` don't make a method a candidate:
+   a fallible constructor is marked with rule 1. An S7 `convert_from` method
+   isn't a candidate either, and a vctrs class never infers its constructor.
+
+```rust
+#[miniextendr(r6)]
+impl Reading {
+    pub fn from_value(value: f64) -> Self { Reading { value } }   // the constructor: Reading$new(value), and Reading$from_value(value)
+    pub fn parse(text: &str) -> Result<Self, String> { /* ... */ } // a static method: Reading$parse(text)
+    pub fn value(&self) -> f64 { self.value }
+}
+```
+
+A constructor whose R name isn't `new`, marked (rule 1) or inferred (rule 3),
+keeps that name too: it is also a static method under it, which builds the
+same object (`Reading$from_value()` above, `typename_from_value()` for S3,
+`TypeName_from_value()` for S4 and S7). A vctrs class has only its `new`.
+
+Every other receiver-less method returning `Self`, such as a `from_file`
+factory next to a `new`, is a static method. A type that has several such
+methods and no declared constructor is refused, at compile time when they are
+in one impl block and when the wrapper writer runs when they are in several.
+The error lists them: mark one with `<system>(constructor)` or name it `new`,
+and the others stay static methods.
+
+#### A class without a constructor
+
+A type with no constructor by these rules (no marked method, no `new`, and no
+receiver-less method returning bare `Self`) is defined without one. Its
+objects come from its factories: static methods returning `Result<Self, E>` or
+`Option<Self>`, which wrap the pointer they return in the class directly
+(`Class$new(.ptr = ...)` for R6, `Class(.ptr = ...)` for S7,
+`methods::new("Class", ptr = ...)` for S4), or functions of other classes that
+return one. A type with factories returning bare `Self` has candidates, so it
+has a constructor: the one candidate, or the one marked among several.
+
+Nothing is generated in place of the constructor. R6's `TypeName$new()` and
+S7's `TypeName()`, which exist anyway to wrap the factories' pointers, raise
+an error naming the type when called without a `.ptr`, rather than build an
+object holding a `NULL` pointer. Env and S3 leave `TypeName$new` `NULL`, and
+S4 and vctrs define no `TypeName()` or `new_typename()`: a package that builds
+its objects in R may define its own under that name (#2069). An abstract S7
+class (`s7(abstract)`) keeps S7's own refusal to construct it. A vctrs class
+without a constructor gets its vectors from `vctrs::new_vctr()`
+(`new_rcrd()`, `new_list_of()`) with `class = "TypeName"`.
+When nothing creates the type, neither a constructor nor a `#[miniextendr]`
+function or method returning it, the build warns (lint MXL121, see
+[Macro Errors](MACRO_ERRORS.md)).
+An S7 property whose class is a class without a constructor needs a
+`default`, since S7 builds a property's default object by calling the class's
+constructor.
+
+The class keeps the doc comments of its impl blocks in every system. A class
+named as its Rust type has its class page, `TypeName.Rd`, titled by default.
+An S3 or vctrs class the package names itself (`class = "..."`) has no class
+environment either (#1918), so its impl docs go in a roxygen block of their
+own:
+
+- Without `@rdname` in the impl docs, the block is on a page named after the
+  class (`engine.Rd`, aliased `engine`), titled `engine S3 Class` (`engine
+  vctrs S3 Class`) unless the impl docs give a `@title`.
+- With `@rdname topic`, the block joins `topic` and adds no alias and no
+  title: the topic's own blocks name and title the page. A package that
+  documents the class on a topic of its own, even one named after the class,
+  puts `@rdname <that topic>` on the impl docs. Without it, the generated
+  page and the package's own would both title the page.
+- Without impl docs there is no block.
+
 ### Method Access
 
 | System | Instance Method | Static Method |
@@ -992,7 +1067,7 @@ r@length         # 10 (length preserved)
 | R6 | `obj$method()` | `TypeName$method()` |
 | S3 | `method(obj)` | `typename_method()` |
 | S4 | `method(obj)` | `TypeName_method()` |
-| S7 | `method(obj)` | `TypeName$method()` |
+| S7 | `method(obj)` | `TypeName_method()` |
 
 ### Mutable Receivers (`&mut self`)
 
@@ -1132,7 +1207,12 @@ install with an error naming the blocks:
 
 - **One block defines the class.** Only one block may have the constructor and
   S7 properties (`s7(getter)`, `s7(setter)`, `s7(validate)`). That block
-  defines the class; without one, the first block in source order does.
+  defines the class; without one, the first block in source order does. The
+  constructor is decided for the type
+  ([Constructor Patterns](#constructor-patterns)): a block's one method
+  returning `Self` is the constructor when no block declares one, and a static
+  method when another block has a `new` or a marked constructor. Methods
+  returning `Self` in two blocks, with none declared, are refused.
 - **The doc comments agree on the title and page**: one `@title` value, and a
   `@name` / `@rdname` only as the defining block has it (see above).
 - **The blocks agree on the class settings**: the class system with its options
