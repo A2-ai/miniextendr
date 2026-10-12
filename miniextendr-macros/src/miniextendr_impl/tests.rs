@@ -8687,3 +8687,40 @@ fn handle_receiver_rewrite_keeps_mutability_and_module_paths() {
     };
     assert_eq!(quote!(#item).to_string(), quote!(#expected).to_string());
 }
+
+#[test]
+fn none_errors_use_the_resolved_inherent_method_name() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Lookup {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r_name = "find_value")]
+                pub fn rust_lookup(&self) -> Option<i32> { None }
+                #[miniextendr(postfix = "_public")]
+                pub fn find(&self) -> Option<()> { None }
+                #[miniextendr(worker, r_name = "load_value")]
+                pub fn rust_load() -> Option<i32> { None }
+                #[miniextendr(worker, postfix = "_public")]
+                pub fn load() -> Option<()> { None }
+            }
+        },
+    );
+    for (rust, r) in [
+        ("rust_lookup", "find_value"),
+        ("find", "find_public"),
+        ("rust_load", "load_value"),
+        ("load", "load_public"),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, rust);
+        assert!(
+            tokens.contains(&format!("`{r}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(
+            !tokens.contains(&format!("`{rust}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(tokens.contains(&format!("Lookup__{rust}")), "{tokens}");
+    }
+}

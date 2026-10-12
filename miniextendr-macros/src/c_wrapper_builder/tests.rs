@@ -262,3 +262,40 @@ fn no_na_check_renders_in_main_thread_and_worker_wrappers() {
     let dispatch = worker.find("run_on_worker").expect("the worker dispatch");
     assert!(at < dispatch, "{worker}");
 }
+
+#[test]
+fn every_none_error_path_uses_the_r_name_on_both_threads() {
+    for handling in [
+        ReturnHandling::OptionUnit,
+        ReturnHandling::OptionSexp,
+        ReturnHandling::OptionIntoRUnwrap,
+        ReturnHandling::OptionExternalPtr,
+        ReturnHandling::SelfHandleOption,
+    ] {
+        let context =
+            CWrapperContext::builder(syn::parse_quote!(rust_name), syn::parse_quote!(C_test))
+                .r_name("visible.name".to_owned())
+                .r_wrapper_const(syn::parse_quote!(R_WRAPPER_test))
+                .call_expr(quote::quote!(rust_name()))
+                .return_handling(handling)
+                .build();
+        let call = quote::quote!(rust_name());
+        let main = context.generate_return_handling(&call).to_string();
+        let mut outputs = vec![main];
+        // Self-handle returns belong to instance methods, which cannot run on workers.
+        if !matches!(context.return_handling, ReturnHandling::SelfHandleOption) {
+            let (_, worker) = context.generate_worker_return_handling(&call);
+            outputs.push(worker.to_string());
+        }
+        for tokens in outputs {
+            assert!(
+                tokens.contains("`visible.name()` returned no value"),
+                "{tokens}"
+            );
+            assert!(
+                !tokens.contains("`rust_name()` returned no value"),
+                "{tokens}"
+            );
+        }
+    }
+}

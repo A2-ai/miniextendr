@@ -3681,6 +3681,7 @@ pub fn generate_method_c_wrapper(
 
     // Build the context using the builder
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_name(method.r_method_name())
         .r_wrapper_const(r_wrappers_const.clone())
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
