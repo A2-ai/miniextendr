@@ -5718,3 +5718,29 @@ pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
         })
         .collect()
 }
+
+// region: owned character views (#1427)
+
+/// Rooted string owners survive local source guards and arbitrary drop order.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_protected_strvec() {
+    use miniextendr_api::{OwnedProtect, ProtectedStrVec, TryFromSexp};
+    let make = |text: String| {
+        let source = unsafe { OwnedProtect::new(vec![text].into_sexp()) };
+        ProtectedStrVec::try_from_sexp(source.get()).unwrap()
+    };
+    let first = make("first".into());
+    let second = make("surviving character owner".into());
+    drop(first);
+    for i in 0..32 {
+        let transient = make(format!("transient {i}"));
+        assert_eq!(
+            second.as_strvec().get_str(0),
+            Some("surviving character owner")
+        );
+        drop(transient);
+    }
+}
+
+// endregion

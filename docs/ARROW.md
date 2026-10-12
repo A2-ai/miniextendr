@@ -130,36 +130,28 @@ sound. Slice it via `Deref` to get a plain `&[T]`; use `to_mut()` /
 
 | | `StrVec` | `ProtectedStrVec` |
 |---|---|---|
-| Size | 1 word (just the SEXP) | 3 words (SEXP + len + OwnedProtect) |
-| Copy | `Copy` | `!Copy` (owns protection guard) |
-| GC protection | None (caller's responsibility) | `OwnedProtect` keeps STRSXP alive |
-| Borrow lifetime | `&'static str` (lie) | `&'a str` tied to `&'a self` |
-| Iterator | `StrVecIter` (`Option<&'static str>`) | `ProtectedStrVecIter<'a>` (`Option<&'a str>`) |
+| Storage | SEXP and lifetime marker | SEXP, length and owned-root state |
+| Copy | `Copy` | `!Copy` |
+| GC protection | Caller roots the source | Preserved until drop |
+| Borrow lifetime | The view's `'a` | Borrow of `&self` |
+| Iterator | `StrVecIter<'a>` | `ProtectedStrVecIter<'a>` |
 
-**The key difference is lifetime safety.** `ProtectedStrVec` ties all borrows
-to the struct's lifetime. The compiler catches use-after-free:
+`ProtectedStrVec` keeps its source alive across `.Call` boundaries and supports
+arbitrary drop order. Its accessors tie strings and views to `&self`:
 
 ```rust
 let dangling: &str;
 {
     let sv = unsafe { ProtectedStrVec::new(sexp) };
-    dangling = sv.get_str(0).unwrap(); // borrows &sv
-} // sv dropped → SEXP unprotected
-// dangling is now invalid - COMPILER ERROR: sv doesn't live long enough
+    dangling = sv.get_str(0).unwrap();
+}
+// Using dangling here fails to compile: sv does not live long enough.
 ```
 
-With `StrVec` or `Vec<&'static str>`, the same code **compiles silently** and
-produces a dangling pointer. The `'static` lifetime is a lie: the data is only
-valid while R protects the SEXP).
-
-**When to use which:**
-
-- **`StrVec`** / **`Vec<&'static str>`**: inside a `#[miniextendr]` function
-  where R protects the `.Call` argument. Lightweight, fine. The SEXP won't be
-  GC'd during the call.
-- **`ProtectedStrVec`**: when you store the string vector beyond the immediate
-  scope, pass it to a closure, or want the compiler to catch lifetime bugs.
-  The `OwnedProtect` guard keeps the STRSXP alive until the struct is dropped.
+`StrVec<'a>` is a lightweight view for an already-rooted character vector.
+`owner.as_strvec()` binds its lifetime to a `ProtectedStrVec` owner. The raw
+`TryFromSexp` conversion still has an unconstrained lifetime (#1427); a wrapper
+argument root alone does not stop such a view escaping the call.
 
 **Usage examples:**
 
