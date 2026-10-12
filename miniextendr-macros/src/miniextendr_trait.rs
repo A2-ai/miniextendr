@@ -712,9 +712,12 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         quote::quote! {}
     };
 
+    // The view keeps the trait's parameter names, so a `_self` parameter (R
+    // formal `self`) sits beside the `self` receiver here too.
     Some(quote::quote! {
         #[doc = ::core::concat!("Call `", ::core::stringify!(#method_name), "` through the vtable.")]
         #[inline]
+        #[allow(clippy::duplicate_underscore_argument)]
         pub fn #method_name(#self_param #(, #params)*) #return_sig {
             unsafe {
                 #roots
