@@ -1445,12 +1445,21 @@ jobs:
   # run it unconditionally, and gctorture-nightly.yml does the deep sweep.
   # Stays in ci-success.needs: a skipped job passes the gate, a labeled-and-
   # failing one blocks it.
+  #
+  # DISABLED (#2070): the shards outgrew timeout-minutes (35-44 min of tests
+  # each, because the explicit gctorture blocks in test-gc-stress-fixtures.R
+  # run in every shard), so the job ended "cancelled" and failed CI Success
+  # with no failing test. gctorture runs locally (`just devtools-test-stress`)
+  # until #2070 shards those blocks. The job runs only while the repository
+  # variable MX_GC_STRESS_CI is "true" (unset = off); once #2070 lands, drop
+  # that clause.
   r-stress-tests:
     name: R GC-stress tests / shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: changes
     if: >-
+      vars.MX_GC_STRESS_CI == 'true' &&
       needs.changes.outputs.r == 'true' &&
       (github.event_name != 'pull_request' ||
        contains(github.event.pull_request.labels.*.name, 'gc-stress'))
