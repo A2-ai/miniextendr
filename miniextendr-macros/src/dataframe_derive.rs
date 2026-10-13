@@ -519,6 +519,40 @@ fn is_known_scalar_ty(ty: &syn::Type, names: &[&str]) -> bool {
     false
 }
 
+/// True if `ty` is `u8`, bare or qualified. R stores it in a raw vector, which
+/// has no NA, so a `u8` column cannot pad or omit cells (`Vec<Option<u8>>` has
+/// no `IntoR`).
+pub(super) fn is_raw_scalar_ty(ty: &syn::Type) -> bool {
+    is_known_scalar_ty(ty, &["u8"])
+}
+
+/// The payload of `Option<T>` (possibly qualified), if `ty` is one.
+pub(super) fn option_payload(ty: &syn::Type) -> Option<&syn::Type> {
+    if let syn::Type::Path(tp) = ty
+        && tp.qself.is_none()
+        && let Some(seg) = tp.path.segments.last()
+        && seg.ident == "Option"
+        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+    {
+        return Some(inner);
+    }
+    None
+}
+
+/// A `u8` in a column whose cells can be NA. `why` names the source of the NA
+/// cells and `fix` the alternative, so the error points at the field instead of
+/// the missing `IntoR` impl inside the generated code (#2025).
+pub(super) fn raw_na_column_error(ty: &syn::Type, why: &str, fix: &str) -> syn::Error {
+    syn::Error::new_spanned(
+        ty,
+        format!(
+            "DataFrameRow cannot store `u8` here: {why}, and R raw vectors have no NA \
+             value. {fix}"
+        ),
+    )
+}
+
 /// True if `ty` names a type from [`OPTION_SCALAR_NAMES`] (possibly qualified,
 /// without generic args), a valid payload for a single NA-able column.
 pub(super) fn is_option_scalar_inner(ty: &syn::Type) -> bool {
@@ -889,6 +923,21 @@ fn resolve_struct_field(
         FieldTypeKind::VariableVec(elem_ty)
         | FieldTypeKind::BoxedSlice(elem_ty)
         | FieldTypeKind::BorrowedSlice(elem_ty) => {
+            if (field_attrs.width.is_some() || field_attrs.expand) && is_raw_scalar_ty(elem_ty) {
+                let attr = if field_attrs.width.is_some() {
+                    "width"
+                } else {
+                    "expand"
+                };
+                return Err(raw_na_column_error(
+                    elem_ty,
+                    &format!("`{attr}` pads shorter rows with NA"),
+                    &format!(
+                        "Use `u16` or `i32` elements for integer columns, or drop `{attr}` \
+                         to keep each value as one raw-vector cell of a list-column."
+                    ),
+                ));
+            }
             if let Some(width) = field_attrs.width {
                 Ok(Some(ResolvedField::ExpandedVec(Box::new(
                     ExpandedVecData {
@@ -3697,6 +3746,50 @@ mod tests {
             quote! { Option<i32> },
         ] {
             let input = syn::parse_quote! { struct Row { bytes: #ty } };
+            assert!(derive_dataframe_row(input).is_ok());
+        }
+    }
+
+    /// Every shape that pads a `u8` column with NA is rejected at the field;
+    /// shapes that never need NA cells still derive (#2025).
+    #[test]
+    fn padded_raw_columns_name_the_field() {
+        for field in [
+            quote! { #[dataframe(width = 2)] bytes: Vec<u8> },
+            quote! { #[dataframe(expand)] bytes: Vec<u8> },
+            quote! { #[dataframe(expand)] bytes: Box<[::core::primitive::u8]> },
+        ] {
+            let input = syn::parse_quote! { struct Row { #field } };
+            let error = derive_dataframe_row(input).unwrap_err().to_string();
+            assert!(error.contains("pads shorter rows with NA"), "{error}");
+            assert!(error.contains("raw vectors have no NA value"), "{error}");
+        }
+        for variant in [
+            quote! { Bytes { byte: u8 } },
+            quote! { Bytes(::core::primitive::u8) },
+            quote! { Bytes { byte: Option<u8> } },
+            quote! { Bytes([u8; 2]) },
+            quote! { Bytes { #[dataframe(width = 2)] bytes: Vec<u8> } },
+            quote! { Bytes(#[dataframe(expand)] Vec<u8>) },
+        ] {
+            let input = syn::parse_quote! {
+                #[dataframe(tag = "kind")]
+                enum Row { #variant, Empty }
+            };
+            let error = derive_dataframe_row(input).unwrap_err().to_string();
+            assert!(
+                error.contains("NA in rows of the other variants"),
+                "{error}"
+            );
+            assert!(!error.contains("Use `u8`"), "{error}");
+        }
+        for input in [
+            syn::parse_quote! { struct Row { byte: u8, pair: [u8; 2], bytes: Vec<u8> } },
+            syn::parse_quote! {
+                #[dataframe(tag = "kind")]
+                enum Row { Bytes { bytes: Vec<u8> }, Empty }
+            },
+        ] {
             assert!(derive_dataframe_row(input).is_ok());
         }
     }
