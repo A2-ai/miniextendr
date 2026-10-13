@@ -32,8 +32,9 @@
 #[diagnostic::on_unimplemented(
     message = "the trait `DataFrameRow` is not implemented for `{Self}`",
     label = "add `#[derive(DataFrameRow)]` to `{Self}`, annotate the field \
-             with `#[dataframe(as_list)]` to keep it as an opaque list-column, \
-             or annotate with `#[dataframe(as_factor)]` for unit-only enums",
+             with `#[dataframe(as_list)]` to keep it as an opaque list-column \
+             if `{Self}` implements `IntoList`, or annotate with \
+             `#[dataframe(as_factor)]` for unit-only enums",
     note = "struct- and enum-typed variant fields are flattened by default into prefixed \
             columns; the inner type must implement `DataFrameRow` for this to work"
 )]
