@@ -1468,8 +1468,8 @@ impl ParsedMethod {
             ));
         }
 
-        // Worker attribute is now supported on methods
-        // (validation happens during wrapper generation based on return type)
+        // Static methods can select worker dispatch. Receiver and dots borrows
+        // keep their wrappers on the main thread (see generate_method_c_wrapper).
 
         Ok(())
     }
@@ -2048,7 +2048,9 @@ impl ParsedMethod {
 
         // Resolve feature defaults for fields not explicitly set
         method_attrs.worker = worker.unwrap_or(cfg!(feature = "worker-default"));
-        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(true);
+        // Main-thread execution is already the fallback when worker is false.
+        // Only an explicit override may take precedence over worker selection.
+        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(false);
         method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "coerce-default"));
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
@@ -3604,7 +3606,9 @@ impl ParsedImpl {
 /// Thread strategy is determined automatically: instance methods always run on the main
 /// thread (because `self_ref` is a non-Send borrow), as do methods taking `...`. Other
 /// static methods use the main thread unless `worker` or `worker-default` selects
-/// worker dispatch; `unsafe(main_thread)` keeps one on main regardless.
+/// worker dispatch; `unsafe(main_thread)` keeps one on main regardless, and so do the
+/// requirements that keep a standalone function there (R values in or out,
+/// `check_interrupt`).
 ///
 /// Also emits an `R_CallMethodDef` constant for R routine registration.
 ///
@@ -3627,16 +3631,22 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
-    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(worker)]
-    // or by the worker-default feature flag)
-    let thread_strategy =
-        if method.method_attrs.unsafe_main_thread || method.env.is_instance() || method.has_dots {
-            ThreadStrategy::MainThread
-        } else if method.method_attrs.worker {
-            ThreadStrategy::WorkerThread
-        } else {
-            ThreadStrategy::MainThread
-        };
+    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(env(worker))]
+    // or by the worker-default feature flag), and, as for standalone functions, only when
+    // no R value crosses the call (a main-thread-bound input or return) and no
+    // `check_interrupt` asks for R's interrupt check.
+    let thread_strategy = if method.method_attrs.unsafe_main_thread
+        || method.env.is_instance()
+        || method.has_dots
+        || method.method_attrs.check_interrupt
+        || crate::type_inspect::signature_holds_r_values(&method.sig)
+    {
+        ThreadStrategy::MainThread
+    } else if method.method_attrs.worker {
+        ThreadStrategy::WorkerThread
+    } else {
+        ThreadStrategy::MainThread
+    };
 
     // Build rust argument names from the signature
     let rust_args: Vec<syn::Ident> = method
@@ -3850,6 +3860,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     // Build the context using the builder
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_name(method.r_method_name())
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
         .pre_call(pre_call)

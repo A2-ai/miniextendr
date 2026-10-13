@@ -68,7 +68,7 @@ pub(crate) fn output_is_result(output: &syn::ReturnType) -> bool {
 /// # Parameters
 /// - `output`: The function's return type from `syn::Signature`
 /// - `rust_result_ident`: Identifier for the variable holding the Rust function result
-/// - `rust_ident`: Function name (used in error messages for `Option::None`)
+/// - `r_name`: Resolved R function name (used in errors for `Option::None`)
 /// - `unwrap_in_r`: When `true`, `Result<T, E>` is passed to R as-is via `IntoR` (list with error field)
 ///   rather than unwrapped in Rust (which raises an R error)
 /// - `strict`: When `true`, lossy integer types (i64, u64, isize, usize) use checked
@@ -76,7 +76,7 @@ pub(crate) fn output_is_result(output: &syn::ReturnType) -> bool {
 pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
-    rust_ident: &syn::Ident,
+    r_name: &str,
     unwrap_in_r: bool,
     strict: bool,
     err_parts: &crate::c_wrapper_builder::ErrPartsMode,
@@ -85,8 +85,7 @@ pub(crate) fn analyze_return_type(
     let mut is_invisible = false;
     let mut post_call_statements = Vec::new();
 
-    let fn_name_str = rust_ident.to_string();
-    let option_none_error_msg = format!("`{fn_name_str}()` returned no value");
+    let option_none_error_msg = format!("`{r_name}()` returned no value");
 
     match output {
         // No return type (no arrow)

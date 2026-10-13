@@ -1122,10 +1122,74 @@ pub fn miniextendr(
     }
     let err_parts = c_wrapper_builder::ErrPartsMode::from_spec(serde_error.as_ref());
 
+    // Crate-level defaults (#1454, #1566): `[package.metadata.miniextendr]` in
+    // the crate's Cargo.toml. Read once per expansion; a malformed table is
+    // reported here, on the first `#[miniextendr]` function, for every key it
+    // may carry.
+    let crate_config = match crate::crate_config::crate_config() {
+        Ok(config) => config,
+        Err(err) => {
+            return syn::Error::new(proc_macro2::Span::call_site(), err.to_string())
+                .into_compile_error()
+                .into();
+        }
+    };
+
+    // Resolve the R name once for both wrapper definitions and Rust-side errors.
+    let is_s3_method = s3_generic.is_some() || s3_class.is_some();
+    // Crate-level default for internal entry points (#1454):
+    // `[package.metadata.miniextendr] noexport_postfix = "..."` applies to
+    // every `noexport` / `internal` free function that names itself neither
+    // via `r_name` nor via its own `postfix`. Exported functions and S3
+    // methods keep their names. Precedence:
+    // `r_name` > `postfix` > crate default > Rust name.
+    let effective_postfix = match &fn_postfix {
+        Some(postfix) => Some(postfix.clone()),
+        None if (noexport || internal) && fn_r_name.is_none() && !is_s3_method => {
+            crate_config.noexport_postfix.clone()
+        }
+        None => None,
+    };
+    let r_wrapper_ident_str: String;
+    let s3_method_comment: String;
+
+    if is_s3_method {
+        // For S3 methods, function name is generic.class
+        // generic defaults to Rust function name if not specified
+        let generic = s3_generic
+            .clone()
+            .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
+        // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
+        // validates that s3(...) always has class specified
+        let class = s3_class.as_ref().expect("s3_class validated at parse time");
+        r_wrapper_ident_str = format!("{}.{}", generic, class);
+        // Add @importFrom for vctrs generics so roxygen registers the dependency
+        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
+            format!("#' @importFrom vctrs {}\n", generic)
+        } else {
+            String::new()
+        };
+        s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
+    } else if let Some(ref custom_name) = fn_r_name {
+        r_wrapper_ident_str = custom_name.clone();
+        s3_method_comment = String::new();
+    } else if let Some(ref postfix) = effective_postfix {
+        // `postfix = "_impl"` (or the crate default): the R wrapper is
+        // `<rust_name><postfix>`; the C symbol keeps the Rust name.
+        r_wrapper_ident_str = format!("{}{postfix}", crate::naming::ident_name(rust_ident));
+        s3_method_comment = String::new();
+    } else if abi.is_some() {
+        r_wrapper_ident_str = format!("unsafe_{}", crate::naming::ident_name(rust_ident));
+        s3_method_comment = String::new();
+    } else {
+        r_wrapper_ident_str = crate::naming::ident_name(rust_ident);
+        s3_method_comment = String::new();
+    };
+
     let return_analysis = return_type_analysis::analyze_return_type(
         output,
         &rust_result_ident,
-        rust_ident,
+        &r_wrapper_ident_str,
         unwrap_in_r,
         strict,
         &err_parts,
@@ -1312,6 +1376,7 @@ pub fn miniextendr(
     // Build CWrapperContext for the standalone fn
     let mut c_wrapper_builder =
         c_wrapper_builder::CWrapperContext::builder(rust_ident.clone(), c_ident.clone())
+            .r_name(r_wrapper_ident_str.clone())
             .r_wrapper_const(r_wrapper_generator.clone())
             .inputs(inputs.iter().cloned().collect())
             .output(output.clone())
@@ -1423,19 +1488,6 @@ pub fn miniextendr(
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
 
-    // Crate-level defaults (#1454, #1566): `[package.metadata.miniextendr]` in
-    // the crate's Cargo.toml. Read once per expansion; a malformed table is
-    // reported here, on the first `#[miniextendr]` function, for every key it
-    // may carry.
-    let crate_config = match crate::crate_config::crate_config() {
-        Ok(config) => config,
-        Err(err) => {
-            return syn::Error::new(proc_macro2::Span::call_site(), err.to_string())
-                .into_compile_error()
-                .into();
-        }
-    };
-
     // Prepend the `.call` parameter if using the internal C wrapper. Marker
     // (`Call` / `CallerCall`) > attribute (`call = wrapper | caller | none`)
     // > crate default (`call_attribution = "..."`, where `caller` applies to
@@ -1458,7 +1510,6 @@ pub fn miniextendr(
     // assignment for a replacement method) only when a condition is raised.
     // With a `Call` parameter the frame is resolved up front instead
     // (`GenericEager`), since the body receives the slot.
-    let is_s3_method = s3_generic.is_some() || s3_class.is_some();
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
@@ -1527,7 +1578,6 @@ pub fn miniextendr(
             call_attribution.raise_default(),
         )
     };
-    // Determine R function name and S3-specific comments.
     // The trailing `.call = NULL` formal of a `caller` wrapper (#1613) or a
     // `call_arg` one (#1834): a hand-written helper between the public
     // function and the entry point, or an R function composing the function,
@@ -1538,55 +1588,6 @@ pub fn miniextendr(
     // precondition builder, the marker peels and the parameter fillers never
     // see it as a Rust parameter.
     let call_formal = call_attribution.formal().filter(|_| !is_s3_method);
-    // Crate-level default for internal entry points (#1454):
-    // `[package.metadata.miniextendr] noexport_postfix = "..."` applies to
-    // every `noexport` / `internal` free function that names itself neither
-    // via `r_name` nor via its own `postfix`. Exported functions and S3
-    // methods keep their names. Precedence:
-    // `r_name` > `postfix` > crate default > Rust name.
-    let effective_postfix = match &fn_postfix {
-        Some(postfix) => Some(postfix.clone()),
-        None if (noexport || internal) && fn_r_name.is_none() && !is_s3_method => {
-            crate_config.noexport_postfix.clone()
-        }
-        None => None,
-    };
-    let r_wrapper_ident_str: String;
-    let s3_method_comment: String;
-
-    if is_s3_method {
-        // For S3 methods, function name is generic.class
-        // generic defaults to Rust function name if not specified
-        let generic = s3_generic
-            .clone()
-            .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
-        // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
-        // validates that s3(...) always has class specified
-        let class = s3_class.as_ref().expect("s3_class validated at parse time");
-        r_wrapper_ident_str = format!("{}.{}", generic, class);
-        // Add @importFrom for vctrs generics so roxygen registers the dependency
-        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
-            format!("#' @importFrom vctrs {}\n", generic)
-        } else {
-            String::new()
-        };
-        s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
-    } else if let Some(ref custom_name) = fn_r_name {
-        r_wrapper_ident_str = custom_name.clone();
-        s3_method_comment = String::new();
-    } else if let Some(ref postfix) = effective_postfix {
-        // `postfix = "_impl"` (or the crate default): the R wrapper is
-        // `<rust_name><postfix>`; the C symbol keeps the Rust name.
-        r_wrapper_ident_str = format!("{}{postfix}", crate::naming::ident_name(rust_ident));
-        s3_method_comment = String::new();
-    } else if abi.is_some() {
-        r_wrapper_ident_str = format!("unsafe_{}", crate::naming::ident_name(rust_ident));
-        s3_method_comment = String::new();
-    } else {
-        r_wrapper_ident_str = crate::naming::ident_name(rust_ident);
-        s3_method_comment = String::new();
-    };
-
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
     let formals_joined = r_wrapper_builder::with_call_formal(&r_formals, call_formal);

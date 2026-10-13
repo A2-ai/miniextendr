@@ -34,7 +34,8 @@ pub fn drop_on_panic() {
 }
 
 /// Test that MsgOnDrop runs its destructor when an Rf_error (R longjmp) occurs.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: raises an R error with `Rf_error`.
+#[miniextendr(no_worker)]
 pub fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
     unsafe {
@@ -136,7 +137,8 @@ pub fn add_panic(_left: i32, _right: i32) -> i32 {
 /// Test that Rf_error triggers an R error with a stack-allocated MsgOnDrop.
 /// @param left Ignored integer input.
 /// @param right Ignored integer input.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: raises an R error with `Rf_error`.
+#[miniextendr(no_worker)]
 pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     unsafe {
@@ -157,7 +159,8 @@ pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
 /// Test that Rf_error triggers an R error with a heap-allocated (Box) MsgOnDrop.
 /// @param left Ignored integer input.
 /// @param right Ignored integer input.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: raises an R error with `Rf_error`.
+#[miniextendr(no_worker)]
 pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
     unsafe {

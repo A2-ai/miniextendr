@@ -180,8 +180,9 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
 /// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
 /// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`). Arbitrary user `!Send` types can't be detected
-/// syntactically — those need an explicit `no_worker`.
+/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`, `Preserved`,
+/// `REvalError`, `RTxtProgressBar`). Arbitrary user `!Send` types can't be
+/// detected syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
     // Condition-call markers wrap the `.call` slot's SEXP (#1566).
@@ -205,6 +206,12 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "NamedListBuilder",
     "BuiltList",
     "DataFrameShape",
+    // Precious-list roots: a `Preserved` handle, the `REvalError` an R
+    // evaluation fails with, which keeps its condition in one, and an
+    // `RTxtProgressBar`.
+    "Preserved",
+    "REvalError",
+    "RTxtProgressBar",
 ];
 
 /// Returns `true` if `ty` is an input type bound to the R main thread.
@@ -254,6 +261,18 @@ pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
         syn::Type::Slice(s) => is_main_thread_bound_return(&s.elem),
         _ => false,
     }
+}
+
+/// Returns `true` if a method signature passes an R value across the call: a
+/// main-thread-bound input (an unevaluated `Quoted` / `Quosure` under
+/// `Missing<..>` too) or a main-thread-bound return. Such a static method stays
+/// on the main thread even when `worker` or `worker-default` selects the
+/// worker, the rule standalone functions follow.
+pub(crate) fn signature_holds_r_values(sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(pt)
+            if is_main_thread_bound_input(&pt.ty) || unevaluated_param(&pt.ty).is_some())
+    }) || matches!(&sig.output, syn::ReturnType::Type(_, ty) if is_main_thread_bound_return(ty))
 }
 
 // region: condition-call markers (#1566)
@@ -944,6 +963,12 @@ mod tests {
         assert!(is_main_thread_bound_return(&ty("Option<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("Vec<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("(i32, BuiltDataFrame)")));
+        // Precious-list roots, in the error position too
+        assert!(is_main_thread_bound_input(&ty("Preserved")));
+        assert!(is_main_thread_bound_return(&ty("Result<bool, REvalError>")));
+        assert!(is_main_thread_bound_input(&ty(
+            "miniextendr_api::txt_progress_bar::RTxtProgressBar"
+        )));
         // Send-safe returns stay worker-eligible
         assert!(!is_main_thread_bound_return(&ty("i32")));
         assert!(!is_main_thread_bound_return(&ty(

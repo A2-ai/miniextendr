@@ -9378,3 +9378,152 @@ fn vctrs_no_constructor_class_docs() {
 }
 
 // endregion
+
+#[test]
+fn none_errors_use_the_resolved_inherent_method_name() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Lookup {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r_name = "find_value")]
+                pub fn rust_lookup(&self) -> Option<()> { None }
+                #[miniextendr(postfix = "_public")]
+                pub fn find(&self) -> Option<()> { None }
+                #[miniextendr(env(worker), r_name = "load_value")]
+                pub fn rust_load() -> Option<()> { None }
+                #[miniextendr(env(worker), postfix = "_public")]
+                pub fn load() -> Option<()> { None }
+            }
+        },
+    );
+    for (rust, r) in [
+        ("rust_lookup", "find_value"),
+        ("find", "find_public"),
+        ("rust_load", "load_value"),
+        ("load", "load_public"),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, rust);
+        assert!(
+            tokens.contains(&format!("`{r}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(
+            !tokens.contains(&format!("`{rust}()` returned no value")),
+            "{tokens}"
+        );
+        assert!(tokens.contains(&format!("Lookup__{rust}")), "{tokens}");
+        assert_eq!(
+            tokens.contains("run_on_worker"),
+            matches!(rust, "rust_load" | "load"),
+            "{tokens}"
+        );
+    }
+}
+
+// region: Inherent static worker selection (#2031)
+
+#[test]
+fn static_methods_resolve_worker_defaults_without_an_implicit_main_override() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Dispatch {
+                pub fn new() -> Self { unimplemented!() }
+                pub fn default_static() -> i32 { 1 }
+                #[miniextendr(env(worker))]
+                pub fn worker_static() -> i32 { 2 }
+                #[miniextendr(env(no_worker))]
+                pub fn local_static() -> i32 { 3 }
+                #[miniextendr(env(worker, main_thread))]
+                pub fn forced_main() -> i32 { 4 }
+                #[miniextendr(env(worker), unsafe(main_thread))]
+                pub fn unsafe_main() -> i32 { 5 }
+                #[miniextendr(env(worker))]
+                pub fn instance(&self) -> i32 { 6 }
+                #[miniextendr(env(worker))]
+                pub fn dots(rest: &Dots) -> i32 { 7 }
+                #[miniextendr(env(worker))]
+                pub fn lazy_dots(rest: LazyDots) -> i32 { 8 }
+            }
+        },
+    );
+    for (name, worker) in [
+        ("new", cfg!(feature = "worker-default")),
+        ("default_static", cfg!(feature = "worker-default")),
+        ("worker_static", true),
+        ("local_static", false),
+        ("forced_main", false),
+        ("unsafe_main", false),
+        ("instance", false),
+        ("dots", false),
+        ("lazy_dots", false),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, name);
+        assert_eq!(tokens.contains("run_on_worker"), worker, "{name}: {tokens}");
+    }
+}
+
+#[test]
+fn every_class_method_spelling_can_select_the_worker() {
+    for (class, option) in [
+        (ClassSystem::Env, "env"),
+        (ClassSystem::R6, "r6"),
+        (ClassSystem::S3, "s3"),
+        (ClassSystem::S4, "s4"),
+        (ClassSystem::S7, "s7"),
+    ] {
+        let option = syn::Ident::new(option, proc_macro2::Span::call_site());
+        let parsed = parse_impl(
+            class,
+            syn::parse_quote! {
+                impl Dispatch {
+                    pub fn new() -> Self { unimplemented!() }
+                    #[miniextendr(#option(worker))]
+                    pub fn compute() -> i32 { 1 }
+                }
+            },
+        );
+        let tokens = c_wrapper_tokens(&parsed, "compute");
+        assert!(tokens.contains("run_on_worker"), "{option}: {tokens}");
+    }
+}
+
+#[test]
+fn static_methods_keep_r_values_on_the_main_thread() {
+    // The standalone-function rule: worker selection never moves an R value
+    // or R's interrupt check off the main thread.
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Dispatch {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn sexp_in(x: SEXP) -> i32 { 1 }
+                #[miniextendr(env(worker))]
+                pub fn sexp_out() -> SEXP { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn frame_out() -> Result<BuiltDataFrame, String> { unimplemented!() }
+                #[miniextendr(env(worker))]
+                pub fn quoted_in(e: Missing<Quoted>) -> i32 { 1 }
+                #[miniextendr(env(worker, check_interrupt))]
+                pub fn interruptible() -> i32 { 1 }
+                #[miniextendr(env(worker))]
+                pub fn plain(x: i32) -> i32 { x }
+            }
+        },
+    );
+    for (name, worker) in [
+        ("sexp_in", false),
+        ("sexp_out", false),
+        ("frame_out", false),
+        ("quoted_in", false),
+        ("interruptible", false),
+        ("plain", true),
+    ] {
+        let tokens = c_wrapper_tokens(&parsed, name);
+        assert_eq!(tokens.contains("run_on_worker"), worker, "{name}: {tokens}");
+    }
+}
+
+// endregion
