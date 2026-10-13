@@ -2,6 +2,7 @@
 % Please edit documentation in R/consumer.pkg-wrappers.R
 \name{DoubleCounter}
 \alias{DoubleCounter}
+\alias{DoubleCounter$new}
 \alias{DoubleCounter$get_value}
 \alias{DoubleCounter$create}
 \alias{$.DoubleCounter}
@@ -33,4 +34,6 @@ DoubleCounter
 }
 \description{
 Get the current value (inherent method)
+
+\code{DoubleCounter$create()} is another name for the constructor \code{DoubleCounter$new()}.
 }

@@ -444,3 +444,36 @@ NULL
 #' @param ... Additional arguments.
 #' @name clone
 NULL
+
+# Constructor fixture generics (src/rust/constructor_tests.rs), exported by
+# the auto-generated wrappers under the classes' pages.
+
+#' Get the value of an object with an inferred constructor
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name infer3_value
+NULL
+
+#' Get the value of an object with a marked constructor
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name marked3_value
+NULL
+
+#' Get the value of an object of a class without a constructor
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name noctor3_value
+NULL
+
+#' Get the value of a record the package builds with its factories
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name noctor_rec_value
+NULL
+
+#' Get the value of an object whose constructor is in a second impl block
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name splitinfer3_value
+NULL

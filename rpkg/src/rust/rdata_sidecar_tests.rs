@@ -394,8 +394,11 @@ impl SidecarHandmade {
     }
 }
 
+// The package documents the class on its own page (R/sidecar_handmade.R), so
+// the impl docs join it with `@rdname`, adding no alias or title.
 /// The readers of `handmade_rec` (`$`, `[[`, `names()`, `as.list()` and
 /// `.DollarNames()`), for a pointer the package classes by hand.
+/// @rdname handmade_rec
 #[miniextendr(s3(r_data_accessors = "get"), class = "handmade_rec")]
 impl SidecarHandmade {}
 

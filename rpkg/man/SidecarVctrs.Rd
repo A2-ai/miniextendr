@@ -44,4 +44,6 @@ The SidecarVctrs pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarVctrs}.
+
+Vctrs class registration for SidecarVctrs.
 }

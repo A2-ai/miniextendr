@@ -276,6 +276,11 @@ test_that("Maps struct serializes multiple map types", {
 # 6. Enums (Unit and Data Variants)
 # =============================================================================
 
+test_that("a marked factory is the constructor under both names", {
+  expect_identical(WithEnums$new(5.0)$to_r(), WithEnums$new_circle(5.0)$to_r())
+  expect_identical(WithOptionals$new()$to_r(), WithOptionals$all_present()$to_r())
+})
+
 test_that("WithEnums serializes unit enum variant to string", {
   e <- WithEnums$new_circle(5.0)
   data <- e$to_r()

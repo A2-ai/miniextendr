@@ -934,7 +934,15 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("    }".to_string());
         lines.push("  }".to_string());
     } else {
+        // No constructor: the factories and cross-class returns wrap their
+        // pointer with `Class(.ptr = val)`, and `Class()` raises an error
+        // rather than build an object without a pointer. An abstract class
+        // keeps S7's own refusal ("Can't construct an object from abstract
+        // class"). S7 requires `new_object()` in the body.
         lines.push("  constructor = function(.ptr = NULL) {".to_string());
+        if !parsed_impl.s7_abstract {
+            lines.push(format!("    {}", super::no_constructor_guard(&class_name)));
+        }
         lines.push("    S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
         lines.push("  }".to_string());
     }
@@ -1017,6 +1025,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let qualified_name = format!("{}-{}", class_name, generic_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_suppress_params()
                     .with_r_name(qualified_name);
             let mut doc_lines = method_doc.build();
@@ -1152,6 +1161,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     .collect();
                 let method_doc =
                     MethodDocBuilder::new(&class_name, &method_name, type_ident, &param_tags)
+                        .with_source_method(&ctx.method.ident)
                         .with_r_params(&shortcut_formals)
                         .with_choice_param_docs(&mx_doc)
                         .with_r_name(shortcut_name.clone());
@@ -1191,8 +1201,15 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
             let mx_doc = ctx.choice_param_docs();
+            let doc_tags = parsed_impl.static_doc_tags(
+                ctx.method,
+                &format!("{fn_name}()"),
+                &format!("{class_name}()"),
+                true,
+            );
             let method_doc =
-                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(fn_name.clone());

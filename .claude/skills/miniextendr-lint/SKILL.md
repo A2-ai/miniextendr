@@ -105,13 +105,16 @@ Mirrors the hard error in `miniextendr-macros`.
 Fix: change the return type to `SEXP` and ensure no instance methods are on the
 vctrs impl.
 
-**MXL303** — Trait-impl vtable symbol collision.
-Two `#[miniextendr]` trait impls collapse to the same
-`__VTABLE_{TRAIT}_FOR_{TYPE}` symbol after the macro's case-folding, producing
-duplicate `#[no_mangle]` statics and a cryptic linker error divorced from the
-source. Error severity (build-breaking).
-Fix: rename one of the colliding trait or type identifiers so the folded
-symbols differ.
+**MXL121** — A class R code can never create.
+None of the type's inherent impl blocks has a constructor (a
+`<system>(constructor)` marker, or the receiver-less `-> Self` the macro
+infers), and no `#[miniextendr]` fn or method in the crate returns the type
+(`T`, `Self`, `ExternalPtr<T>`, bare or inside `Result` / `Option`). The type's
+own methods taking `self` don't count; vctrs classes are skipped. Warning.
+Fix: mark a constructor or add a `#[miniextendr]` function returning the type.
+A factory the lint cannot see (one returning a bare `SEXP`) is the case for
+`// mxl::allow(MXL121)` on the impl (its `impl` line, attributes, doc comments,
+or the line above them).
 
 ### FFI safety rules (most-commonly-tripped)
 
@@ -192,9 +195,9 @@ exploration escape hatch only; committed code must be clean.
 - `miniextendr-lint/src/rules/r_reserved_params.rs` — MXL110
 - `miniextendr-lint/src/rules/s4_method_prefix.rs` — MXL111
 - `miniextendr-lint/src/rules/vctrs_self_ctor.rs` — MXL120
+- `miniextendr-lint/src/rules/no_constructor.rs` — MXL121
 - `miniextendr-lint/src/rules/export_attrs.rs` — MXL203
 - `miniextendr-lint/src/rules/vec_into_sexp.rs` — MXL302
-- `miniextendr-lint/src/rules/trait_tag_collision.rs` — MXL303
 - `miniextendr-lint/src/rules/nonapi_attrib.rs` — MXL304
 - `miniextendr-lint/src/lint_code.rs` — MXL code registry
 - `miniextendr-lint/src/helpers.rs` — shared AST predicates

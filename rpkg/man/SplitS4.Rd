@@ -8,14 +8,19 @@
 \alias{SplitS4-s4_split4_doubled}
 \alias{s4_split4_doubled,SplitS4-method}
 \alias{SplitS4_origin}
+\alias{SplitS4_from_half}
 \title{SplitS4 S4 Class}
 \usage{
 SplitS4(value)
 
 SplitS4_origin()
+
+SplitS4_from_half(half)
 }
 \arguments{
 \item{value}{Starting value.}
+
+\item{half}{Half the value.}
 }
 \description{
 S4 class with methods in two impl blocks.
@@ -29,6 +34,9 @@ The current value.
 Twice the value.
 
 The value a new object starts from by default.
+
+An object holding twice \code{half}. The first block's \code{new} is the
+constructor, so this stays a static method.
 }
 \section{Slots}{
 

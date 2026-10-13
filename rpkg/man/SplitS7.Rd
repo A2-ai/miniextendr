@@ -9,6 +9,7 @@
 \alias{SplitS7$split7_doubled}
 \alias{SplitS7_split7_doubled}
 \alias{SplitS7_origin}
+\alias{SplitS7_from_half}
 \title{SplitS7 S7 Class}
 \usage{
 SplitS7(value, .ptr = NULL)
@@ -18,6 +19,8 @@ SplitS7_split7_value(.mx_self, ...)
 SplitS7_split7_doubled(.mx_self, ...)
 
 SplitS7_origin()
+
+SplitS7_from_half(half)
 }
 \arguments{
 \item{value}{Starting value.}
@@ -27,6 +30,8 @@ SplitS7_origin()
 \item{.mx_self}{A \code{SplitS7} object.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
+\item{half}{Half the value.}
 }
 \description{
 S7 class with methods in two impl blocks.
@@ -50,4 +55,7 @@ perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 The value a new object starts from by default.
+
+An object holding twice \code{half}. The first block's \code{new} is the
+constructor, so this stays a static method.
 }

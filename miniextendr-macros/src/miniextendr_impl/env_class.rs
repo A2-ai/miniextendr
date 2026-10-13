@@ -74,6 +74,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let choice_docs = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
                     .with_params_as_details()
                     .with_r_params(&ctx.params)
@@ -108,6 +109,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let choice_docs = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
                     .with_params_as_details()
                     .with_r_params(&ctx.params)
@@ -148,8 +150,17 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
             let choice_docs = ctx.choice_param_docs();
+            // The constructor's arguments are details of `$new`; its alias
+            // doesn't repeat them.
+            let doc_tags = parsed_impl.static_doc_tags(
+                ctx.method,
+                &format!("{class_name}${method_name}()"),
+                &format!("{class_name}$new()"),
+                false,
+            );
             let method_doc =
-                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
                     .with_params_as_details()
                     .with_r_params(&ctx.params)
