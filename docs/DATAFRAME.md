@@ -247,7 +247,13 @@ struct Measured {
 
 `Box<[T]>` and `&[T]` work identically to `Vec<T>` for all expansion modes. Without `width` or `expand`/`unnest`, `Vec<T>`, `Box<[T]>`, and `&[T]` stay as opaque single columns (list columns in R).
 
-**Note:** using `&[T]` introduces a lifetime parameter on both the row struct and the generated companion struct (e.g., `FooDataFrame<'a>`). This is zero-cost: `&[T]` is `Copy` (just a fat pointer), so pushing into the companion struct copies only the pointer, not the data.
+Borrowed fields keep their lifetime parameters on the companion (for example,
+`FooDataFrame<'a>`). A borrowed fixed array (`&[T; N]`) or a slice with `width`
+clones its elements into owned columns, so `T: Clone` is required. A zero-sized
+marker preserves any lifetime no longer present in those columns. A slice with
+`expand` stays borrowed in the companion and clones elements when the R columns
+are built. This applies to struct and enum rows; borrowed fields have no from-R
+reader.
 
 ### Field-level attributes
 
@@ -281,7 +287,7 @@ struct Row {
 
 **Round-tripping:** fixed-width and auto-expanded fields are read by regrouping
 their suffixed columns. Trailing `NA` padding is removed, so a ragged `Vec<T>`
-round-trips to its original length. Borrowed fields (`&[T]`) and explicitly
+round-trips to its original length. Borrowed fields (`&[T]`, `&[T; N]`) and explicitly
 opaque `as_list` fields have no reader because owned R data cannot recreate the
 borrow or infer the opaque element shape.
 
