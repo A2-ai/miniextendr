@@ -27,6 +27,11 @@ pub use shared_traits::{
 // Import the shared Tagged trait (owner receivers) and its generated ABI types
 pub use shared_traits::{__Tagged_build_vtable, TAG_Tagged, Tagged, TaggedVTable, TaggedView};
 
+// Import the shared CallsBack trait (a method that calls back into R)
+pub use shared_traits::{
+    __CallsBack_build_vtable, CallsBack, CallsBackVTable, CallsBackView, TAG_CallsBack,
+};
+
 // region: Env-style types (default class system)
 
 /// A simple data container for testing cross-package ExternalPtr dispatch.
@@ -378,6 +383,19 @@ impl Counter for SimpleCounter {
     /// arg_error!() — consumer verifies kind, param and its own crate classes.
     fn raise_arg_error(&self, mode: String) {
         miniextendr_api::arg_error!(param = "mode", "'mode' is not a counter mode: {mode:?}");
+    }
+}
+
+#[miniextendr]
+impl CallsBack for SimpleCounter {
+    fn add_around(&mut self, f: SEXP) -> i32 {
+        // An R error in `f` unwinds through this frame, which ends the borrow.
+        unsafe {
+            miniextendr_api::expression::RCall::from_sexp(f)
+                .eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
+        }
+        self.value += 1;
+        self.value
     }
 }
 

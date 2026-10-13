@@ -235,6 +235,21 @@ pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
     }
 }
 
+/// Call `CallsBack::add_around` through the View
+///
+/// The implementing package calls `f()` while it holds the object mutably, so
+/// a callback that reaches the same object gets a
+/// `miniextendr_borrow_conflict` error.
+/// @param obj An ExternalPtr to any type implementing CallsBack
+/// @param f An R function of no arguments
+/// @return The object's value after the call
+/// @export
+#[miniextendr]
+pub fn add_around(obj: SEXP, f: SEXP) -> i32 {
+    let mut view = unsafe { shared_traits::CallsBackView::from_sexp(obj) };
+    view.add_around(f)
+}
+
 /// Check if an object implements the Counter trait
 /// @param sexp Any R object
 /// @return TRUE if the object implements Counter trait

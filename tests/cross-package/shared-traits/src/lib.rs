@@ -100,3 +100,15 @@ pub trait Tagged: miniextendr_api::TypedExternal {
     /// Append a label to the sidecar.
     fn add_label(self: miniextendr_api::ExternalPtrMut<'_, Self>, label: String);
 }
+
+/// A trait whose method calls back into R while it holds the object.
+///
+/// Implemented by `SimpleCounter` in producer.pkg and called by consumer.pkg
+/// through `CallsBackView`. A callback that reaches the same object through a
+/// View meets the borrow the producer's shim holds (#1965).
+#[miniextendr]
+pub trait CallsBack {
+    /// Call the R function `f` with no arguments while holding the object
+    /// mutably, then add 1 to it and return the new value.
+    fn add_around(&mut self, f: miniextendr_api::SEXP) -> i32;
+}
