@@ -10,5 +10,5 @@ re_scalar_roundtrip_par(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Parallel REScalar round-trip. @export
+Parallel REScalar round-trip.
 }

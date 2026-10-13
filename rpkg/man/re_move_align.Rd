@@ -7,5 +7,5 @@
 re_move_align()
 }
 \description{
-Produce the writer output for a mixed REMove frame. @export
+Produce the writer output for a mixed REMove frame.
 }

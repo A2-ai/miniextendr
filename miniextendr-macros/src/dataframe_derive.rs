@@ -496,22 +496,27 @@ pub(super) const OPTION_SCALAR_NAMES: &[&str] = &[
     "String",
 ];
 
-/// True if `ty` is a bare ident from [`OPTION_SCALAR_NAMES`] (no path prefix,
-/// no generic args), i.e. a valid `Option<…>` payload for a single NA-able column.
-pub(super) fn is_option_scalar_inner(ty: &syn::Type) -> bool {
+/// Match the final scalar name, as field classification does. Absolute and
+/// relative paths have the same conversion support; associated types and
+/// generic payloads still need their own classification.
+fn is_known_scalar_ty(ty: &syn::Type, names: &[&str]) -> bool {
     if let syn::Type::Path(tp) = ty
         && tp.qself.is_none()
-        && tp.path.leading_colon.is_none()
-        && tp.path.segments.len() == 1
         && let Some(seg) = tp.path.segments.last()
         && matches!(seg.arguments, syn::PathArguments::None)
     {
-        return OPTION_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
+        return names.contains(&seg.ident.to_string().as_str());
     }
     false
 }
 
-/// True if `ty` is a bare known-scalar ident (no `Option`, no generic args).
+/// True if `ty` names a type from [`OPTION_SCALAR_NAMES`] (possibly qualified,
+/// without generic args), a valid payload for a single NA-able column.
+pub(super) fn is_option_scalar_inner(ty: &syn::Type) -> bool {
+    is_known_scalar_ty(ty, OPTION_SCALAR_NAMES)
+}
+
+/// True if `ty` names a known scalar, qualified or bare (no `Option` or generics).
 ///
 /// These are the element types whose `Vec<Option<ty>>` round-trips through
 /// `TryFromSexp` — required for the *column-expansion* readers, which read each
@@ -521,18 +526,10 @@ pub(super) fn is_option_scalar_inner(ty: &syn::Type) -> bool {
 ///
 /// `pub(super)` so `enum_expansion.rs` can reuse it.
 pub(super) fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(tp) = ty
-        && tp.qself.is_none()
-        && tp.path.leading_colon.is_none()
-        && let Some(seg) = tp.path.segments.last()
-        && matches!(seg.arguments, syn::PathArguments::None)
-    {
-        return READER_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
-    }
-    false
+    is_known_scalar_ty(ty, READER_SCALAR_NAMES)
 }
 
-/// True if `ty` is a bare known-scalar ident, or `Option<bare-known-scalar>`.
+/// True if `ty` is a known scalar path, or `Option<known-scalar>`.
 ///
 /// These are exactly the field types for which the from-R reader can pull a
 /// column out as `Vec<ty>` via `TryFromSexp` (scalar `Single` fields and
@@ -3640,7 +3637,6 @@ mod tests {
             quote::quote!(Option<HashMap<String, i32>>),
             quote::quote!(Option<Inner>),
             quote::quote!(Option<Vec<f64>>),
-            quote::quote!(Option<std::string::String>),
         ] {
             let input: DeriveInput = syn::parse_quote! {
                 #[derive(DataFrameRow)]
@@ -3663,23 +3659,63 @@ mod tests {
     /// Enum variant fields already become `Option<T>` columns (absent for the
     /// other variants), so an `Option<scalar>` field there is rejected with a
     /// pointer to the bare scalar instead of failing on `Vec<Option<Option<T>>>`.
+    /// A qualified payload gets the same message, not the generic wrapper one.
     #[test]
     fn option_scalar_enum_variant_field_rejected() {
-        let input: DeriveInput = syn::parse_quote! {
+        for note_ty in [
+            quote::quote!(Option<String>),
+            quote::quote!(::core::option::Option<::std::string::String>),
+        ] {
+            let input: DeriveInput = syn::parse_quote! {
+                #[derive(DataFrameRow)]
+                #[dataframe(tag = "kind")]
+                enum Event {
+                    Click { x: f64, note: #note_ty },
+                    Key { code: i32 },
+                }
+            };
+            let err = derive_dataframe_row(input)
+                .expect_err("Option<scalar> in enum variant must be rejected")
+                .to_string();
+            assert!(
+                err.contains("already become `Option<T>` columns"),
+                "got: {err}"
+            );
+        }
+    }
+
+    /// A qualified scalar classifies like its bare name (#2036): a leading `::`
+    /// or a path prefix keeps the field a reader scalar and an `Option<…>`
+    /// payload, so struct and enum rows keep both readers.
+    #[test]
+    fn qualified_scalar_fields_keep_readers() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Obs {
+                id: ::core::primitive::i32,
+                label: ::std::string::String,
+                note: ::core::option::Option<::alloc::string::String>,
+                weight: Option<std::primitive::f64>,
+                relative: Option<std::string::String>,
+                #[dataframe(width = 2)]
+                pinned: Vec<::std::string::String>,
+                keyed: BTreeMap<::core::primitive::i32, ::std::string::String>,
+            }
+        });
+        assert!(code.contains("fn try_from_dataframe ("), "got:\n{code}");
+        assert!(code.contains("fn try_from_dataframe_par ("), "got:\n{code}");
+
+        let code = expand(syn::parse_quote! {
             #[derive(DataFrameRow)]
             #[dataframe(tag = "kind")]
             enum Event {
-                Click { x: f64, note: Option<String> },
-                Key { code: i32 },
+                Named { label: ::std::string::String, pair: [::core::primitive::f64; 2] },
+                Keyed { keyed: BTreeMap<::std::string::String, std::primitive::i32> },
+                Empty,
             }
-        };
-        let err = derive_dataframe_row(input)
-            .expect_err("Option<scalar> in enum variant must be rejected")
-            .to_string();
-        assert!(
-            err.contains("already become `Option<T>` columns"),
-            "got: {err}"
-        );
+        });
+        assert!(code.contains("fn try_from_dataframe ("), "got:\n{code}");
+        assert!(code.contains("fn try_from_dataframe_par ("), "got:\n{code}");
     }
 
     /// Scalar named struct: the baseline `try_from_dataframe_par` shape (#765).

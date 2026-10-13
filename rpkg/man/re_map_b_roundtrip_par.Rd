@@ -10,5 +10,5 @@ re_map_b_roundtrip_par(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Parallel REMapB round-trip. @export
+Parallel REMapB round-trip.
 }

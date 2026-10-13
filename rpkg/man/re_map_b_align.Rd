@@ -9,5 +9,5 @@ re_map_b_align()
 \description{
 Produce the writer output for a mixed REMapB frame. Includes an empty-map row
 (\code{tally_keys}/\code{tally_values} are \code{character(0)}/\code{integer(0)}) and an absent-variant
-row (both list cells NULL). @export
+row (both list cells NULL).
 }
