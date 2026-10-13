@@ -140,10 +140,10 @@ mod tests {
             wrapped
                 .cast::<u8>()
                 .add(data_offset)
-                .cast::<CovEnv>()
+                .cast::<std::cell::RefCell<CovEnv>>()
                 .cast_const()
         };
-        let value = unsafe { (*data_ptr).v };
+        let value = unsafe { (*data_ptr).borrow().v };
         assert_eq!(value, 42);
 
         // Clean up

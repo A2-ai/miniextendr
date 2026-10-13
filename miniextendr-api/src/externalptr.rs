@@ -93,9 +93,12 @@
 //!
 //! Internally, data is stored as `Box<Box<dyn Any>>` — a thin pointer (fits
 //! in R's `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any`
-//! vtable for runtime downcasting). The outer `Box` keeps the heap address
-//! stable so [`ExternalPtr::cached_ptr`](struct@ExternalPtr) can be cached
-//! once at construction.
+//! vtable for runtime downcasting). The `Any` value is a [`RefCell<T>`], whose
+//! borrow flag is what generated method wrappers, field accessors and trait
+//! shims check before they make a `&T` / `&mut T` (see "Reentrant calls"
+//! below). The outer `Box` keeps the heap address stable so
+//! [`ExternalPtr::cached_ptr`](struct@ExternalPtr) can be cached once at
+//! construction.
 //!
 //! The `tag` slot holds a symbol (type name, for display).
 //! The `prot` slot holds a VECSXP (list) of `2 + T::R_SLOT_COUNT` elements:
@@ -119,20 +122,34 @@
 //!
 //! # Pointer provenance for `cached_ptr`
 //!
-//! `ExternalPtr` caches the data pointer at construction so `as_ref` /
-//! `as_mut` avoid an FFI call on every access. The cached `*mut T` **must**
-//! be derived from a mutable path so writes through `as_mut` are sound under
-//! Stacked Borrows:
+//! `ExternalPtr` caches the address of the value's [`RefCell<T>`] at
+//! construction so `as_ref` / `as_mut` avoid an FFI call on every access.
+//! They reach the value through [`RefCell::as_ptr`], which hands out a
+//! `*mut T` from a shared reference to the cell, so a pointer cached from
+//! `downcast_ref::<RefCell<T>>()` is as good for writes as one from
+//! `Box::into_raw`.
 //!
-//! - `Box::into_raw(Box::new(value))` — preferred (the constructor path).
-//! - `&mut T` — when you already hold an exclusive reference.
-//! - `<Box<dyn Any>>::downcast_mut::<T>()` — when extracting from the inner box.
-//! - [`std::ptr::from_mut`] — when promoting a `&mut T` to a raw pointer.
+//! # Reentrant calls
 //!
-//! Caching a pointer derived from `&T` or `downcast_ref::<T>()` is **UB**
-//! the moment anything writes through it. Internal sites that touch
-//! `cached_ptr` are audited; the rule matters for the (rare) hand-rolled
-//! `TypedExternal` impl that bypasses [`ExternalPtr::new`].
+//! A method can call back into R (an R function argument, `RCall`), and R code
+//! can call methods of the same object meanwhile. The generated wrappers take
+//! the value's [`RefCell`] borrow before they make a reference: shared for
+//! `&self` methods and field getters, exclusive for `&mut self`, `self` and
+//! handle receivers and for field setters. A conflicting call raises an R
+//! error of class `miniextendr_borrow_conflict` instead of making a second
+//! reference. A borrow taken through a trait view lives in the producer's
+//! shim, so views in other packages see it too.
+//!
+//! [`ExternalPtr`]'s own `Deref` / `DerefMut` / `as_ref` / `as_mut` take no
+//! borrow: they are [`RefCell::as_ptr`] accesses, like any `&T` you hold
+//! across a call into R. Keep a handle's references out of code that calls
+//! back into R, or keep that state in a `RefCell` of its own.
+//!
+//! The borrow is released when the wrapper returns, panics, or unwinds an R
+//! error raised through [`RCall::eval_with_handlers`](crate::expression::RCall::eval_with_handlers)
+//! (or any API that turns an R error into a Rust unwind). A bare `Rf_eval`
+//! that raises an R error jumps over the wrapper's frames, so the object
+//! stays borrowed for the rest of the session.
 //!
 //! # See also
 //!
@@ -158,7 +175,7 @@
 
 use std::any::Any;
 use std::any::TypeId;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -875,6 +892,68 @@ fn receiver_not_a_handle<T: TypedExternal>(sexp: SEXP) -> ! {
 }
 // endregion
 
+// region: Receiver borrows
+
+/// A generated method's receiver: the `EXTPTRSXP` [`resolve_receiver`] finds
+/// in the `.Call` argument, rooted for the call when a class handle carried
+/// it. R code the method calls back into can drop the handle's reference, and
+/// the finalizer would then free the value under the method's borrow. A bare
+/// pointer is the `.Call` argument itself, which R keeps alive.
+#[doc(hidden)]
+pub struct ReceiverOwner {
+    sexp: SEXP,
+    _root: Option<PoolRoot>,
+}
+
+impl ReceiverOwner {
+    /// Resolve `sexp` like [`resolve_receiver`]. Runs on R's main thread (the
+    /// generated prelude).
+    #[inline]
+    pub fn resolve<T: TypedExternal>(sexp: SEXP) -> Self {
+        let owner = resolve_receiver::<T>(sexp);
+        // SAFETY: on R's main thread; `owner` is reachable through `sexp`,
+        // which the call's frame roots.
+        let root = (owner != sexp).then(|| unsafe { PoolRoot::new(owner) });
+        Self {
+            sexp: owner,
+            _root: root,
+        }
+    }
+
+    /// The resolved `EXTPTRSXP`.
+    #[inline]
+    pub fn get(&self) -> SEXP {
+        self.sexp
+    }
+}
+
+/// Borrow a stored value shared for a generated wrapper: the R error of
+/// class `miniextendr_borrow_conflict` while a running call holds it mutably.
+#[doc(hidden)]
+#[inline]
+pub fn borrow_value<T>(cell: &RefCell<T>) -> Ref<'_, T> {
+    cell.try_borrow().unwrap_or_else(|_| borrow_conflict::<T>())
+}
+
+/// Borrow a stored value exclusively for a generated wrapper: the R error of
+/// class `miniextendr_borrow_conflict` while a running call holds it.
+#[doc(hidden)]
+#[inline]
+pub fn borrow_value_mut<T>(cell: &RefCell<T>) -> RefMut<'_, T> {
+    cell.try_borrow_mut()
+        .unwrap_or_else(|_| borrow_conflict::<T>())
+}
+
+#[cold]
+fn borrow_conflict<T>() -> ! {
+    crate::error!(
+        class = "miniextendr_borrow_conflict",
+        "this `{}` object is in use by a method call that is still running",
+        core::any::type_name::<T>()
+    )
+}
+// endregion
+
 // region: ExternalPtr<T>
 
 /// An owned pointer stored in R's external pointer SEXP.
@@ -913,7 +992,7 @@ fn receiver_not_a_handle<T: TypedExternal>(sexp: SEXP) -> ! {
 #[repr(C)]
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
-    /// Cached data pointer, set once at construction time.
+    /// Cached address of the value's `RefCell`, set once at construction time.
     ///
     /// This avoids the `R_ExternalPtrAddr` FFI call on every `as_ref()`/`as_mut()`.
     /// The pointer remains valid for the lifetime of the `ExternalPtr` because:
@@ -921,7 +1000,7 @@ pub struct ExternalPtr<T: TypedExternal> {
     ///   happen while a Rust `ExternalPtr` value exists).
     /// - `R_ClearExternalPtr` is only called in methods that consume or finalize
     ///   (`into_raw`, `into_inner`, `release_any`).
-    cached_ptr: NonNull<T>,
+    cached_ptr: NonNull<RefCell<T>>,
     /// The [`ProtectPool`] key rooting this handle's `EXTPTRSXP`, or `None` for
     /// borrowed views.
     ///
@@ -1066,7 +1145,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// [`create_extptr_sexp`]: Self::create_extptr_sexp
     /// [`create_extptr_sexp_unchecked`]: Self::create_extptr_sexp_unchecked
     #[inline]
-    fn from_owned_parts(sexp: SEXP, cached_ptr: NonNull<T>, root: ProtectKey) -> Self {
+    fn from_owned_parts(sexp: SEXP, cached_ptr: NonNull<RefCell<T>>, root: ProtectKey) -> Self {
         Self {
             sexp,
             cached_ptr,
@@ -1081,7 +1160,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// alive by the R-side reference that handed it to us. Used by every
     /// `wrap_sexp*` / `from_sexp*` / `reborrow` path.
     #[inline]
-    fn from_borrowed_parts(sexp: SEXP, cached_ptr: NonNull<T>) -> Self {
+    fn from_borrowed_parts(sexp: SEXP, cached_ptr: NonNull<RefCell<T>>) -> Self {
         Self {
             sexp,
             cached_ptr,
@@ -1108,11 +1187,24 @@ impl<T: TypedExternal> ExternalPtr<T> {
         crate::worker::with_r_thread(move || unroot_owned(key));
     }
 
+    /// Box `x` in its [`RefCell`] and erase that to the `Box<Box<dyn Any>>` R
+    /// stores, returning the cell's address for `cached_ptr` as well.
+    #[inline]
+    fn erase(x: T) -> (NonNull<RefCell<T>>, *mut Box<dyn Any>) {
+        let cell: *mut RefCell<T> = Box::into_raw(Box::new(RefCell::new(x)));
+        // SAFETY: `cell` is the allocation `Box::into_raw` just released, so
+        // `Box::from_raw` takes it back; the value stays at `cell`.
+        let inner: Box<dyn Any> = unsafe { Box::from_raw(cell) };
+        // SAFETY: `Box::into_raw` never returns null.
+        let cell = unsafe { NonNull::new_unchecked(cell) };
+        (cell, Box::into_raw(Box::new(inner)))
+    }
+
     /// Allocates memory on the heap and places `x` into it.
     ///
     /// Internally stores a `Box<Box<dyn Any>>` — a thin pointer (fits in R's
     /// `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any` vtable
-    /// for runtime type checking via `downcast`).
+    /// for runtime type checking via `downcast`) to a `RefCell<T>`.
     ///
     /// This function can be called from the two supported R contexts:
     /// - If called from R's main thread, creates the ExternalPtr directly
@@ -1128,18 +1220,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// [`with_r_thread`]: crate::worker::with_r_thread
     #[inline]
     pub fn new(x: T) -> Self {
-        // Get concrete pointer with full write provenance from Box::into_raw,
-        // BEFORE erasing to dyn Any. This preserves mutable provenance for
-        // cached_ptr (downcast_ref would give shared-reference provenance,
-        // which is UB for later writes through as_mut()).
-        let raw: *mut T = Box::into_raw(Box::new(x));
-        // SAFETY: Box::into_raw never returns null
-        let cached_ptr = unsafe { NonNull::new_unchecked(raw) };
-
-        // Re-wrap: Box::from_raw(raw) → Box<dyn Any> → Box<Box<dyn Any>>
-        // The data stays at `raw`; we're just adding the Any vtable wrapper.
-        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
-        let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
+        let (cached_ptr, any_raw) = Self::erase(x);
 
         // Wrap in Sendable so it can be sent across thread boundary
         let sendable = unsafe { sendable_any_ptr_new(any_raw) };
@@ -1163,12 +1244,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// is undefined behavior (R APIs are not thread-safe).
     #[inline]
     pub unsafe fn new_unchecked(x: T) -> Self {
-        let raw: *mut T = Box::into_raw(Box::new(x));
-        let cached_ptr = unsafe { NonNull::new_unchecked(raw) };
-
-        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
-        let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
-
+        let (cached_ptr, any_raw) = Self::erase(x);
         let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
         Self::from_owned_parts(sexp, cached_ptr, root)
     }
@@ -1299,7 +1375,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let raws: Vec<*mut Box<dyn Any>> = items
             .into_iter()
             .map(|x| {
-                let inner: Box<dyn Any> = Box::new(x);
+                let inner: Box<dyn Any> = Box::new(RefCell::new(x));
                 Box::into_raw(Box::new(inner))
             })
             .collect();
@@ -1408,7 +1484,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Constructs an ExternalPtr from a raw pointer.
     ///
-    /// Re-wraps the `*mut T` in `Box<dyn Any>` for the new storage format.
+    /// Moves the value out of the `Box<T>` allocation into the pointer's own
+    /// `RefCell<T>` storage and frees that allocation, so the value's address
+    /// changes: `from_raw(into_raw(p))` round-trips the value, not the address.
     ///
     /// # Safety
     ///
@@ -1417,16 +1495,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - Caller transfers ownership to the ExternalPtr
     /// - Must be called from R's main thread
     ///
-    /// Equivalent to `Box::from_raw`.
+    /// Like `Box::from_raw`, except for the address.
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        // Re-wrap in Box<dyn Any> → Box<Box<dyn Any>>
-        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
-        let outer: Box<Box<dyn Any>> = Box::new(inner);
-        let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
-
+        let (cached_ptr, any_raw) = Self::erase(*unsafe { Box::from_raw(raw) });
         let (sexp, root) = unsafe { Self::create_extptr_sexp(any_raw) };
-        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Constructs an ExternalPtr from a raw pointer, without thread checks.
@@ -1439,12 +1513,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - Must be called from R's main thread (no debug assertions)
     #[inline]
     pub unsafe fn from_raw_unchecked(raw: *mut T) -> Self {
-        let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
-        let outer: Box<Box<dyn Any>> = Box::new(inner);
-        let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
-
+        let (cached_ptr, any_raw) = Self::erase(*unsafe { Box::from_raw(raw) });
         let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
-        Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
+        Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
     /// Consumes the ExternalPtr, returning a raw pointer.
@@ -1456,45 +1527,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// first, so the values travel with the struct), so its accessors report
     /// a null external pointer, not an object restored from a saved session.
     ///
-    /// Equivalent to `Box::into_raw`.
+    /// The value moves out of the pointer's `RefCell<T>` storage into a new
+    /// `Box<T>`, so its address changes. Like [`into_inner`](Self::into_inner),
+    /// this raises the `miniextendr_borrow_conflict` error while a running call
+    /// holds the value.
+    ///
+    /// Like `Box::into_raw`, except for the address.
     #[inline]
     pub fn into_raw(this: Self) -> *mut T {
-        let ptr = this.cached_ptr.as_ptr();
-
-        // The value leaves its pointer: read its slots back into the struct
-        // as pending values, slot `i` into field `i`.
-        if T::R_SLOT_COUNT > 0 {
-            // SAFETY: `cached_ptr` is valid for the handle's lifetime; `sexp`
-            // is the live pointer this handle holds (`into_raw` is
-            // main-thread-contract, see below).
-            let prot = unsafe { R_ExternalPtrProtected(this.sexp) };
-            load_sidecars(unsafe { this.cached_ptr.as_ref() }, prot);
-        }
-
-        // Ownership of the R object leaves this handle: drop our GC root before
-        // `mem::forget` skips `Drop`. (`into_raw` already calls R API directly,
-        // so it is main-thread-contract — release directly, no thread hop.)
-        this.release_root_if_owned();
-
-        // Recover and disassemble the Box<Box<dyn Any>> wrapper.
-        // We need to free the wrapper allocations without dropping the T data.
-        let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
-
-        // Clear the external pointer so the finalizer becomes a no-op
-        unsafe { clear_moved_out(this.sexp) };
-
-        if !any_raw.is_null() {
-            // Reconstruct outer box → extract inner → leak inner (prevents T drop)
-            let outer: Box<Box<dyn Any>> = unsafe { Box::from_raw(any_raw) };
-            let inner: Box<dyn Any> = *outer;
-            // Box::into_raw leaks the inner allocation — caller owns T via `ptr`
-            let _ = Box::into_raw(inner);
-        }
-
-        // Don't run our Drop
-        mem::forget(this);
-
-        ptr
+        Box::into_raw(Box::new(Self::into_inner(this)))
     }
 
     /// Consumes the ExternalPtr, returning a `NonNull` pointer.
@@ -1521,41 +1562,52 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Consumes the ExternalPtr, returning the wrapped value.
     ///
-    /// Uses `Box<dyn Any>::downcast` to recover the concrete `Box<T>`,
-    /// then moves the value out. The R object is emptied like by
-    /// [`into_raw`](Self::into_raw): its accessors report a null external
-    /// pointer afterwards, and each [`Sidecar<T>`] slot is read back into its
-    /// field as a pending value, so wrapping the value again keeps the
-    /// values.
+    /// Uses `Box<dyn Any>::downcast` to recover the concrete
+    /// `Box<RefCell<T>>`, then moves the value out. The R object is emptied
+    /// like by [`into_raw`](Self::into_raw): its accessors report a null
+    /// external pointer afterwards, and each [`Sidecar<T>`] slot is read back
+    /// into its field as a pending value, so wrapping the value again keeps
+    /// the values.
+    ///
+    /// # Panics
+    ///
+    /// With the `miniextendr_borrow_conflict` R error while a running call
+    /// (a generated method of the same object, further up the stack) holds the
+    /// value: the call's borrow points into the storage this frees.
     ///
     /// Equivalent to `*boxed` (deref move) or `Box::into_inner`.
     #[inline]
     pub fn into_inner(this: Self) -> T {
+        let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
+        assert!(!any_raw.is_null(), "ExternalPtr is null or cleared");
+        if let Some(cell) = unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
+            drop(borrow_value_mut(cell));
+        }
+
         // The value leaves its pointer: read its slots back into the struct
         // as pending values, slot `i` into field `i`, so wrapping it again
         // keeps them.
         if T::R_SLOT_COUNT > 0 {
-            // SAFETY: `cached_ptr` is valid for the handle's lifetime; `sexp`
-            // is the live pointer this handle holds.
+            // SAFETY: `cached_ptr` is valid for the handle's lifetime and no
+            // call holds the value; `sexp` is the live pointer this handle
+            // holds.
             let prot = unsafe { R_ExternalPtrProtected(this.sexp) };
-            load_sidecars(unsafe { this.cached_ptr.as_ref() }, prot);
+            load_sidecars(unsafe { &*this.value_ptr() }, prot);
         }
 
         // Ownership leaves this handle: drop our GC root before `mem::forget`.
         this.release_root_if_owned();
 
-        let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
-
         // Clear so finalizer is no-op
         unsafe { clear_moved_out(this.sexp) };
         mem::forget(this);
 
-        assert!(!any_raw.is_null(), "ExternalPtr is null or cleared");
         let outer: Box<Box<dyn Any>> = unsafe { Box::from_raw(any_raw) };
         let inner: Box<dyn Any> = *outer;
-        *inner
-            .downcast::<T>()
+        inner
+            .downcast::<RefCell<T>>()
             .expect("ExternalPtr type mismatch in into_inner")
+            .into_inner()
     }
 
     // region: Pin support (Box-equivalent)
@@ -1608,36 +1660,54 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     // region: Accessors
 
+    /// The value's `RefCell`.
+    #[inline]
+    fn cell(&self) -> &RefCell<T> {
+        // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr,
+        // and a shared reference to the cell is always sound.
+        unsafe { self.cached_ptr.as_ref() }
+    }
+
+    /// The value's address, through its `RefCell`.
+    #[inline]
+    fn value_ptr(&self) -> *mut T {
+        // `as_ptr` gives a pointer that may be written through.
+        self.cell().as_ptr()
+    }
+
     /// Returns a reference to the underlying value.
     ///
     /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access.
+    /// `R_ExternalPtrAddr` FFI call on every access. Takes no `RefCell`
+    /// borrow (see "Reentrant calls" in the [module docs](self)): don't hold
+    /// the reference across a call back into R that can reach this object.
     #[inline]
     pub fn as_ref(&self) -> Option<&T> {
-        // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
-        Some(unsafe { self.cached_ptr.as_ref() })
+        // SAFETY: the value lives as long as the handle.
+        Some(unsafe { &*self.value_ptr() })
     }
 
     /// Returns a mutable reference to the underlying value.
     ///
     /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access.
+    /// `R_ExternalPtrAddr` FFI call on every access. Takes no `RefCell`
+    /// borrow, like [`as_ref`](Self::as_ref).
     #[inline]
     pub fn as_mut(&mut self) -> Option<&mut T> {
-        // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
-        Some(unsafe { self.cached_ptr.as_mut() })
+        // SAFETY: the value lives as long as the handle.
+        Some(unsafe { &mut *self.value_ptr() })
     }
 
     /// Returns the raw pointer without consuming the ExternalPtr.
     #[inline]
     pub fn as_ptr(&self) -> *const T {
-        self.cached_ptr.as_ptr().cast_const()
+        self.value_ptr().cast_const()
     }
 
     /// Returns the raw mutable pointer without consuming the ExternalPtr.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.cached_ptr.as_ptr()
+        self.value_ptr()
     }
 
     /// Checks whether two `ExternalPtr`s refer to the same allocation (pointer identity).
@@ -1646,10 +1716,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
     #[inline]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
-        ptr::eq(
-            this.cached_ptr.as_ptr().cast_const(),
-            other.cached_ptr.as_ptr().cast_const(),
-        )
+        ptr::eq(this.cached_ptr.as_ptr(), other.cached_ptr.as_ptr())
     }
     // endregion
 
@@ -1813,7 +1880,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
-    /// - The stored `Box<dyn Any>` does not contain a `T`
+    /// - The stored `Box<dyn Any>` does not contain a `RefCell<T>`
     ///
     /// # Safety
     ///
@@ -1835,19 +1902,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
             // Type-erased path: skip downcast, just use the raw pointer
             // (ExternalPtr<()> doesn't care about the concrete type)
             return Some(Self::from_borrowed_parts(sexp, unsafe {
-                NonNull::new_unchecked(any_raw.cast::<T>())
+                NonNull::new_unchecked(any_raw.cast())
             }));
         }
 
-        // Use downcast_mut (not downcast_ref) so cached_ptr gets mutable
-        // provenance — shared-reference provenance from downcast_ref would
-        // make later writes through as_mut() UB under Stacked Borrows.
-        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        let concrete: &mut T = any_box.downcast_mut::<T>()?;
-
-        Some(Self::from_borrowed_parts(sexp, unsafe {
-            NonNull::new_unchecked(ptr::from_mut(concrete))
-        }))
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        let cell: &RefCell<T> = any_box.downcast_ref::<RefCell<T>>()?;
+        Some(Self::from_borrowed_parts(sexp, NonNull::from(cell)))
     }
 
     /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
@@ -1875,16 +1936,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         if is_type_erased::<T>() {
             return Some(Self::from_borrowed_parts(sexp, unsafe {
-                NonNull::new_unchecked(any_raw.cast::<T>())
+                NonNull::new_unchecked(any_raw.cast())
             }));
         }
 
-        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        let concrete: &mut T = any_box.downcast_mut::<T>()?;
-
-        Some(Self::from_borrowed_parts(sexp, unsafe {
-            NonNull::new_unchecked(ptr::from_mut(concrete))
-        }))
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        let cell: &RefCell<T> = any_box.downcast_ref::<RefCell<T>>()?;
+        Some(Self::from_borrowed_parts(sexp, NonNull::from(cell)))
     }
 
     /// Attempt to wrap a SEXP as an ExternalPtr, returning an error with type info on mismatch.
@@ -1934,15 +1992,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         if is_type_erased::<T>() {
             return Ok(Self::from_borrowed_parts(sexp, unsafe {
-                NonNull::new_unchecked(any_raw.cast::<T>())
+                NonNull::new_unchecked(any_raw.cast())
             }));
         }
 
-        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        match any_box.downcast_mut::<T>() {
-            Some(concrete) => Ok(Self::from_borrowed_parts(sexp, unsafe {
-                NonNull::new_unchecked(ptr::from_mut(concrete))
-            })),
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        match any_box.downcast_ref::<RefCell<T>>() {
+            Some(cell) => Ok(Self::from_borrowed_parts(sexp, NonNull::from(cell))),
             None => {
                 // The stored type ID, for the diagnostic.
                 let found = unsafe { stored_type_id_symbol(sexp) }.map_or("<unknown>", symbol_name);
@@ -1959,7 +2015,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP containing a `*mut Box<dyn Any>`
-    ///   wrapping a value of type `T`
+    ///   wrapping a `RefCell<T>`
     /// - The caller must ensure exclusive ownership
     #[inline]
     pub unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
@@ -1976,12 +2032,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
             // methods read the address afresh), so a pointer without an
             // address (restored from a saved session, or cleared) is accepted
             // here: the downcast that follows refuses it with a clear error.
-            NonNull::new(any_raw.cast::<T>()).unwrap_or(NonNull::dangling())
+            NonNull::new(any_raw.cast()).unwrap_or(NonNull::dangling())
         } else {
             debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
-            let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-            let concrete: &mut T = unsafe { any_box.downcast_mut::<T>().unwrap_unchecked() };
-            unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) }
+            let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+            NonNull::from(unsafe { any_box.downcast_ref::<RefCell<T>>().unwrap_unchecked() })
         };
 
         Self::from_borrowed_parts(sexp, cached_ptr)
@@ -2025,40 +2080,46 @@ impl ExternalPtr<()> {
     /// Uses `Any::is` for authoritative runtime type checking.
     #[inline]
     pub fn is<T: TypedExternal>(&self) -> bool {
+        self.downcast_cell::<T>().is_some()
+    }
+
+    /// The `RefCell` holding the stored value if it is a `T`.
+    ///
+    /// Uses `Any::downcast_ref` for authoritative runtime type checking. This
+    /// is where every generated method receiver (inherent and trait-impl) gets
+    /// the struct: it borrows the cell for the call.
+    #[doc(hidden)]
+    #[inline]
+    pub fn downcast_cell<T: TypedExternal>(&self) -> Option<&RefCell<T>> {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
-            return false;
+            return None;
         }
         let any_box: &Box<dyn Any> = unsafe { &*any_raw };
-        any_box.is::<T>()
+        any_box.downcast_ref::<RefCell<T>>()
     }
 
     /// Downcast to an immutable reference of the stored type if it matches `T`.
     ///
-    /// Uses `Any::downcast_ref` for authoritative runtime type checking. This
-    /// is where every generated method receiver (inherent and trait-impl) and
-    /// the ALTREP `data1` helpers get the struct.
+    /// Uses `Any::downcast_ref` for authoritative runtime type checking. The
+    /// ALTREP `data1` helpers get the struct here. Takes no `RefCell` borrow,
+    /// like [`ExternalPtr::as_ref`].
     #[inline]
     pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
-        if any_raw.is_null() {
-            return None;
-        }
-        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
-        any_box.downcast_ref::<T>()
+        // SAFETY: the value lives as long as the pointer's address.
+        self.downcast_cell::<T>()
+            .map(|cell| unsafe { &*cell.as_ptr() })
     }
 
     /// Downcast to a mutable reference of the stored type if it matches `T`.
     ///
-    /// Uses `Any::downcast_mut` for authoritative runtime type checking.
+    /// Uses `Any::downcast_ref` for authoritative runtime type checking. Takes
+    /// no `RefCell` borrow, like [`ExternalPtr::as_mut`].
     #[inline]
     pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
-        if any_raw.is_null() {
-            return None;
-        }
-        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        any_box.downcast_mut::<T>()
+        // SAFETY: the value lives as long as the pointer's address.
+        self.downcast_cell::<T>()
+            .map(|cell| unsafe { &mut *cell.as_ptr() })
     }
 }
 
@@ -2176,19 +2237,21 @@ impl ExternalPtr<()> {
     /// `self -> Self` result that keeps the fields (`Self { n, ..self }`)
     /// keeps the values, one built afresh (`Self::new(..)`) replaces them at
     /// the write-back. Runs on R's main thread (the generated receiver
-    /// prelude).
+    /// prelude). Raises the `miniextendr_borrow_conflict` error while a
+    /// running call holds the value.
     pub fn take_for_consuming<T: TypedExternal>(&mut self) -> Option<T> {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
         }
+        // A running call's borrow points into the storage this replaces.
+        drop(borrow_value_mut(self.downcast_cell::<T>()?));
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        if !any_box.is::<T>() {
-            return None;
-        }
         let taken = std::mem::replace(any_box, Box::new(ConsumedSlot));
-        let boxed: Box<T> = taken.downcast::<T>().expect("checked `is` above");
-        Some(*boxed)
+        let cell = taken
+            .downcast::<RefCell<T>>()
+            .expect("checked by `downcast_cell` above");
+        Some(cell.into_inner())
     }
 
     /// Put a value back into a slot emptied by [`Self::take_for_consuming`]
@@ -2199,15 +2262,20 @@ impl ExternalPtr<()> {
     /// flushed into `prot`, on R's main thread (a `worker` method's
     /// write-back runs on the worker, so the flush is routed through
     /// [`with_r_thread`](crate::worker::with_r_thread)); the other slots keep
-    /// their values.
+    /// their values. Raises the `miniextendr_borrow_conflict` error while a
+    /// running call holds the value the slot holds.
     pub fn restore_after_consuming<T: TypedExternal>(&mut self, value: T) {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
         assert!(
             !any_raw.is_null(),
             "restore_after_consuming on a null external pointer"
         );
+        // A running call's borrow points into the storage this replaces.
+        if let Some(cell) = self.downcast_cell::<T>() {
+            drop(borrow_value_mut(cell));
+        }
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        *any_box = Box::new(value);
+        *any_box = Box::new(RefCell::new(value));
         if T::R_SLOT_COUNT > 0 {
             let sexp = self.sexp;
             let any_raw = crate::worker::Sendable(any_raw);

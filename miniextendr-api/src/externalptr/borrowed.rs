@@ -1,7 +1,8 @@
 //! Borrowed receiver handles over ordinary or erased external-pointer storage.
 
-use super::{ExternalPtr, TypedExternal};
+use super::{ExternalPtr, TypedExternal, borrow_value, borrow_value_mut};
 use crate::{Root, SEXP};
+use core::cell::{Ref, RefCell, RefMut};
 use core::ops::{Deref, DerefMut};
 
 mod sealed {
@@ -29,6 +30,10 @@ pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut
 /// Use `ExternalPtrRef::from(&ptr)` when calling a handle-receiver trait from
 /// Rust. The generated trait ABI constructs the same borrow from its receiver.
 ///
+/// The handle holds a shared borrow of the value's `RefCell` for its whole
+/// lifetime. Making one while a running call holds the value mutably raises
+/// the `miniextendr_borrow_conflict` R error.
+///
 /// A borrowed handle cannot outlive its owner:
 /// ```compile_fail,E0597
 /// use miniextendr_api::{ExternalPtr, ExternalPtrRef, TypedExternal};
@@ -37,7 +42,7 @@ pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut
 /// }
 /// ```
 pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
-    value: &'a T,
+    value: Ref<'a, T>,
     owner: Root<'a>,
 }
 
@@ -46,6 +51,10 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// Use `ExternalPtrMut::from(&mut ptr)` when calling a handle-receiver trait
 /// from Rust. Dereferencing gives mutable access to the Rust fields; generated
 /// sidecar accessors use the accompanying owner. There is no consuming API.
+///
+/// The handle holds an exclusive borrow of the value's `RefCell` for its whole
+/// lifetime. Making one while a running call holds the value raises the
+/// `miniextendr_borrow_conflict` R error.
 ///
 /// A mutable borrow excludes a second borrow of the same handle:
 /// ```compile_fail,E0502
@@ -57,7 +66,7 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// }
 /// ```
 pub struct ExternalPtrMut<'a, T: TypedExternal + ?Sized> {
-    value: &'a mut T,
+    value: RefMut<'a, T>,
     owner: Root<'a>,
 }
 
@@ -65,13 +74,13 @@ impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
     /// Borrow a receiver after its type and argument aliases have been checked.
     ///
     /// # Safety
-    /// R's main thread; `data` must point to a live `T` owned by `owner`, whose
-    /// initialized sidecar slots use `T`'s layout. The value must remain valid
-    /// and shared-borrowable for `'a`, including during reentrant R calls.
+    /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. The cell must
+    /// remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, data: *const T) -> Self {
+    pub unsafe fn from_raw_parts(owner: Root<'a>, cell: *const RefCell<T>) -> Self {
         Self {
-            value: unsafe { &*data },
+            value: borrow_value(unsafe { &*cell }),
             owner,
         }
     }
@@ -81,14 +90,13 @@ impl<'a, T: TypedExternal> ExternalPtrMut<'a, T> {
     /// Borrow a receiver after its type and argument aliases have been checked.
     ///
     /// # Safety
-    /// R's main thread; `data` must have mutable provenance and point to a live
-    /// `T` owned by `owner`, whose initialized sidecar slots use `T`'s layout.
-    /// The value must remain exclusively borrowed for `'a`, including during
-    /// reentrant R calls. A GC root alone does not establish exclusivity.
+    /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. The cell must
+    /// remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, data: *mut T) -> Self {
+    pub unsafe fn from_raw_parts(owner: Root<'a>, cell: *const RefCell<T>) -> Self {
         Self {
-            value: unsafe { &mut *data },
+            value: borrow_value_mut(unsafe { &*cell }),
             owner,
         }
     }
@@ -102,7 +110,7 @@ impl<'a, T: TypedExternal> From<&'a ExternalPtr<T>> for ExternalPtrRef<'a, T> {
         );
         // The original handle retains the owner throughout this shared borrow.
         Self {
-            value: ptr,
+            value: borrow_value(ptr.cell()),
             owner: unsafe { Root::from_call_arg(&ptr.sexp) },
         }
     }
@@ -114,10 +122,9 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
             crate::worker::is_r_main_thread(),
             "ExternalPtrMut requires R's main thread"
         );
-        // Borrow disjoint handle fields: retain the owner and use the cached
-        // pointer's original mutable provenance for the exclusive data borrow.
+        // The original handle retains the owner throughout this borrow.
         Self {
-            value: unsafe { ptr.cached_ptr.as_mut() },
+            value: borrow_value_mut(ptr.cell()),
             owner: unsafe { Root::from_call_arg(&ptr.sexp) },
         }
     }
@@ -126,18 +133,18 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrRef<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.value
+        &self.value
     }
 }
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrMut<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.value
+        &self.value
     }
 }
 impl<T: TypedExternal + ?Sized> DerefMut for ExternalPtrMut<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.value
+        &mut self.value
     }
 }
 

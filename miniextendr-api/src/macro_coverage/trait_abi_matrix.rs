@@ -93,10 +93,10 @@ mod tests {
             wrapped
                 .cast::<u8>()
                 .add(data_offset)
-                .cast::<Aligned32Counter>()
+                .cast::<std::cell::RefCell<Aligned32Counter>>()
                 .cast_const()
         };
-        let value = unsafe { (*data_ptr).value };
+        let value = unsafe { (*data_ptr).borrow().value };
         assert_eq!(value, 99);
 
         // Verify vtable query succeeds (non-null = trait is implemented)
@@ -125,10 +125,10 @@ mod tests {
             wrapped
                 .cast::<u8>()
                 .add(data_offset)
-                .cast::<Aligned64Counter>()
+                .cast::<std::cell::RefCell<Aligned64Counter>>()
                 .cast_const()
         };
-        let value = unsafe { (*data_ptr).value };
+        let value = unsafe { (*data_ptr).borrow().value };
         assert_eq!(value, 77);
 
         unsafe {

@@ -189,7 +189,8 @@ use std::os::raw::c_void;
 /// # Safety
 ///
 /// The `from_raw_parts` method is unsafe because:
-/// - `data` must be a valid pointer to the concrete object
+/// - `data` must be a valid pointer to the `RefCell` holding the concrete
+///   object (the vtable's shims borrow it for each call)
 /// - `vtable` must be a valid pointer to the trait's vtable
 /// - The vtable must remain valid for the lifetime of the view
 /// - The owner, when supplied, must keep `data` alive; otherwise the caller must
@@ -204,13 +205,15 @@ pub trait TraitView: Sized {
     ///
     /// # Safety
     ///
-    /// - `data` must be a valid, non-null pointer to the concrete object
+    /// - `data` must be a valid, non-null pointer to the `RefCell` holding the
+    ///   concrete object
     /// - `vtable` must be a valid, non-null pointer to the trait's vtable
     /// - `vtable` must remain valid for the lifetime of the view
     /// - `owner`, when present, must be a live R object owning `data`; the
     ///   implementation must root it for the lifetime of the view
     /// - Without an owner, the caller must keep `data` alive for that lifetime
-    /// - Calls must respect the concrete object's Rust borrowing rules
+    /// - A call that conflicts with one still running on the same object raises
+    ///   the `miniextendr_borrow_conflict` error (the shims borrow its `RefCell`)
     /// - Construction, use and drop must all run on R's main thread
     unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void, owner: Option<SEXP>)
     -> Self;
@@ -224,7 +227,8 @@ pub trait TraitView: Sized {
     ///
     /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
     /// - The object must stay live through construction; the view then roots it
-    /// - Calls must respect the concrete object's Rust borrowing rules
+    /// - A call that conflicts with one still running on the same object raises
+    ///   the `miniextendr_borrow_conflict` error (the shims borrow its `RefCell`)
     /// - Construction, use and drop must all run on R's main thread
     ///
     /// # Returns
@@ -259,10 +263,11 @@ pub trait TraitView: Sized {
             //   #[repr(C)]
             //   struct ErasedObject<T> {
             //       erased: mx_erased,  // offset 0
-            //       data: T,            // offset = size_of::<mx_erased>() rounded up to align_of::<T>()
+            //       data: RefCell<T>,   // offset = size_of::<mx_erased>() rounded up to its alignment
             //   }
             // When T has stricter alignment than mx_erased, padding exists between
             // erased and data. The correct offset is stored in the base vtable.
+            // The view never looks behind it: the producer's shims borrow the cell.
             let base = (*erased_ptr).base;
             let data_offset = (*base).data_offset;
             let data = erased_ptr.cast::<u8>().add(data_offset).cast::<c_void>();

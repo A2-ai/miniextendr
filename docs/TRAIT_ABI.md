@@ -86,9 +86,12 @@ When you create an object for trait dispatch, a wrapper struct is allocated with
 #[repr(C)]
 struct __MxWrapperMyCounter {
     erased: mx_erased,  // Must be first
-    data: MyCounter,
+    data: RefCell<MyCounter>,
 }
 ```
+
+The data pointer a View carries points at that `RefCell`. Only the producer's
+shims look behind it; a View passes it through unread.
 
 ### 3. Packaging with `mx_wrap`
 
@@ -98,7 +101,7 @@ struct __MxWrapperMyCounter {
 // In a constructor
 let wrapper = Box::new(__MxWrapperMyCounter {
     erased: mx_erased { base: &__MX_BASE_VTABLE_MyCounter },
-    data: my_counter,
+    data: RefCell::new(my_counter),
 });
 let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
 ```
@@ -159,9 +162,13 @@ at it. Views drop in any order. The pointers live in the runtime's private
 `TraitView::from_raw_parts`. `from_raw_parts(data, vtable, None)` roots
 nothing; its caller must keep `data` alive while the View exists.
 
-Rooting keeps the receiver alive; it does not track borrows. Calling a `&mut
-self` method through a View while another call into the same object is still
-running is not caught (#1965).
+Rooting keeps the receiver alive. Borrows are the producer's: each shim
+borrows the object's `RefCell` before it makes a reference, shared for `&self`
+and exclusive for `&mut self` or an `ExternalPtrMut` receiver, and holds the
+borrow until the result is converted. A call that conflicts with one still
+running on the same object, whether it comes through a View, a generated
+method or a field accessor, raises a `miniextendr_borrow_conflict` error. A
+View never reads the data, so a consumer needs no part in this.
 
 ### Argument types
 

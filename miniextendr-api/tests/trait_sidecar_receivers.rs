@@ -1,7 +1,7 @@
 //! Explicit owner receivers work for ordinary pointers and erased trait views.
 mod r_test_utils;
 
-use miniextendr_api::externalptr::Sidecar;
+use miniextendr_api::externalptr::{ErasedExternalPtr, Sidecar};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope};
 use miniextendr_api::trait_abi::{TraitView, ccall};
 use miniextendr_api::{
@@ -134,8 +134,8 @@ fn concrete_generic_shims_receive_the_same_owner() {
 fn owner_receivers_keep_self_argument_alias_preflight() {
     r_test_utils::with_r_thread(|| unsafe {
         let scope = ProtectScope::new();
-        let mut ptr = ExternalPtr::new(host());
-        let data = ptr.as_mut_ptr().cast();
+        let ptr = ExternalPtr::new(host());
+        let data = cell_data(&ptr);
         let args = [ptr.as_sexp()];
         let table = __SlotProbe_build_vtable::<SlotHost>();
         let result = scope.protect((table.compare)(data, ptr.as_sexp(), 1, args.as_ptr()));
@@ -153,10 +153,10 @@ fn owner_receivers_keep_self_argument_alias_preflight() {
 #[test]
 fn raw_views_without_an_owner_refuse_owner_methods() {
     r_test_utils::with_r_thread(|| unsafe {
-        let mut ptr = ExternalPtr::new(host());
+        let ptr = ExternalPtr::new(host());
         let table = __SlotProbe_build_vtable::<SlotHost>();
         let view = <SlotProbeView as TraitView>::from_raw_parts(
-            ptr.as_mut_ptr().cast(),
+            cell_data(&ptr),
             core::ptr::from_ref(&table).cast(),
             None,
         );
@@ -164,6 +164,16 @@ fn raw_views_without_an_owner_refuse_owner_methods() {
         assert!(result.is_err());
         assert_eq!(view.plain(), 0);
     });
+}
+
+/// The `RefCell` inside an ordinary `ExternalPtr`, which the vtable shims
+/// borrow like the one in trait-ABI storage.
+unsafe fn cell_data(ptr: &ExternalPtr<SlotHost>) -> *mut core::ffi::c_void {
+    let erased = unsafe { ErasedExternalPtr::from_sexp(ptr.as_sexp()) };
+    let cell = erased
+        .downcast_cell::<SlotHost>()
+        .expect("an ExternalPtr<SlotHost>");
+    core::ptr::from_ref(cell).cast_mut().cast()
 }
 
 // Find by the semantic suffix; the registration prefix uses this test crate's

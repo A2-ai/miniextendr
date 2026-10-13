@@ -57,6 +57,7 @@
 //! and method shims do not route through `with_r_thread`.
 
 use crate::SEXP;
+use std::cell::RefCell;
 use std::os::raw::c_void;
 
 /// Type tag for runtime type identification.
@@ -206,7 +207,11 @@ pub struct mx_base_vtable {
 
     /// Byte offset from the start of the wrapper struct to the `data` field.
     ///
-    /// The generated wrapper struct is `#[repr(C)] struct { erased: mx_erased, data: T }`.
+    /// The generated wrapper struct is
+    /// `#[repr(C)] struct { erased: mx_erased, data: RefCell<T> }`. Only the
+    /// producer's method shims, compiled with `T` known, look behind this
+    /// offset: they borrow the `RefCell` for the call, so a view in another
+    /// package passes the pointer on and never sees the borrow flag.
     /// When `T` has stricter alignment than `mx_erased`, padding exists between
     /// `erased` and `data`. This field records the correct offset so that
     /// `TraitView::try_from_sexp` can compute the data pointer without
@@ -227,8 +232,7 @@ pub struct mx_base_vtable {
 /// │   base: *const mx_base_vtable ──────┼──► static vtable
 /// ├─────────────────────────────────────┤
 /// │ (type-specific data follows...)     │
-/// │   data: T                           │
-/// │   interface_views: [...]            │
+/// │   data: RefCell<T>                  │
 /// └─────────────────────────────────────┘
 /// ```
 ///
@@ -267,16 +271,19 @@ pub(crate) struct SidecarInitVTable {
 ///
 /// The C header and concrete value retain their repr(C) layout. Keeping the
 /// allocation and destructor here avoids emitting identical helper items for
-/// every ExternalPtr derive. This is not ordinary ExternalPtr/Any storage.
+/// every ExternalPtr derive. This is not ordinary ExternalPtr/Any storage, but
+/// it keeps the value in a `RefCell` the same way: the method shims borrow it
+/// for each call.
 #[doc(hidden)]
 #[repr(C)]
 pub struct ErasedObject<T> {
     erased: mx_erased,
-    data: T,
+    data: RefCell<T>,
 }
 
 impl<T> ErasedObject<T> {
-    /// Offset used by trait views, including over-aligned concrete types.
+    /// Offset of the value's `RefCell`, used by trait views, including
+    /// over-aligned concrete types.
     pub const DATA_OFFSET: usize = core::mem::offset_of!(Self, data);
 
     /// Allocate an erased object with the generated type's base vtable.
@@ -288,7 +295,7 @@ impl<T> ErasedObject<T> {
     pub unsafe fn into_raw(data: T, base: &'static mx_base_vtable) -> *mut mx_erased {
         Box::into_raw(Box::new(Self {
             erased: mx_erased { base },
-            data,
+            data: RefCell::new(data),
         }))
         .cast()
     }
@@ -335,8 +342,8 @@ impl<T: crate::externalptr::TypedExternal> ErasedObject<T> {
         // SAFETY: mx_wrap calls the interface for this concrete allocation
         // after registering its finalizer and while the owner is rooted.
         unsafe {
-            let value = &(*ptr.cast::<Self>()).data;
-            crate::externalptr::init_erased_sidecars(value, owner);
+            let value = (*ptr.cast::<Self>()).data.borrow();
+            crate::externalptr::init_erased_sidecars(&*value, owner);
         }
     }
 }

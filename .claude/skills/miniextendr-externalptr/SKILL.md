@@ -29,8 +29,11 @@ any work that exposes Rust structs to R code.
 
 `ExternalPtr<T>` stores `Box<Box<dyn Any>>` in two levels:
 
-1. **Inner box** (`Box<T>` cast to `Box<dyn Any>`): owns the Rust value.
-   The `Any` vtable carries `T`'s `drop` and `TypeId`. This is the fat pointer.
+1. **Inner box** (`Box<RefCell<T>>` cast to `Box<dyn Any>`): owns the Rust
+   value. The `Any` vtable carries `RefCell<T>`'s `drop` and `TypeId`. This is
+   the fat pointer. The generated code borrows the `RefCell` for each call, so
+   a callback into R that reaches the same object gets a
+   `miniextendr_borrow_conflict` error instead of a second reference (#1965).
 2. **Outer box** (`Box<Box<dyn Any>>`): wraps the fat pointer in a second
    allocation. Its raw pointer (`*mut Box<dyn Any>`) is a thin pointer that
    fits in R's `R_ExternalPtrAddr` field.
@@ -46,26 +49,19 @@ parameter on `release_any` is needed because the vtable carries it.
 
 ### cached_ptr and pointer provenance
 
-`ExternalPtr<T>` caches a `NonNull<T>` in its `cached_ptr` field. This allows
-`as_ref()` / `as_mut()` to skip the `R_ExternalPtrAddr` FFI call on every
-access.
+`ExternalPtr<T>` caches a `NonNull<RefCell<T>>` in its `cached_ptr` field.
+This allows `as_ref()` / `as_mut()` to skip the `R_ExternalPtrAddr` FFI call on
+every access. They read the value through `RefCell::as_ptr` and take no borrow
+(#2092); the generated wrappers borrow through `borrow_value` /
+`borrow_value_mut`.
 
-The critical constraint: **`cached_ptr` must have mutable provenance**.
+Writes go through the `RefCell`'s `UnsafeCell`, so a `cached_ptr` derived from
+`&RefCell<T>` (`downcast_ref`, `NonNull::from`) may be written through. Never
+cache a pointer to the `T` itself from a `&T`; that has shared-reference
+provenance, and writing through it is undefined behavior under Stacked Borrows.
 
-When constructing `ExternalPtr::new(x)`:
-1. The value is placed in a `Box<T>` via `Box::new(x)`.
-2. `Box::into_raw(box_t)` yields a `*mut T` with mutable provenance.
-   This raw pointer is stored as `cached_ptr`.
-3. The same allocation is then re-wrapped as `Box<dyn Any>` and placed in the
-   outer `Box<Box<dyn Any>>`.
-
-The mutable-provenance constraint means you must never derive `cached_ptr` from
-a `&T` reference or from `downcast_ref`. Those yield shared-reference provenance;
-writing through them later is undefined behavior under the Stacked Borrows model.
-The correct paths are `Box::into_raw`, `downcast_mut`, or `ptr::from_mut`.
-
-See `miniextendr-api/src/externalptr.rs` (the `ExternalPtr::new` implementation
-around line 353) for the concrete construction sequence that preserves provenance.
+See `ExternalPtr::erase` in `miniextendr-api/src/externalptr.rs` for the
+construction sequence.
 
 ### TypedExternal trait
 
