@@ -1221,6 +1221,46 @@ pub(super) fn conditional_where(
     }
 }
 
+/// Keep lifetimes erased by column expansion or skipped fields in the companion.
+/// Columns that still borrow already carry their lifetimes; only missing ones
+/// need a marker. This adds no data column or element-type trait requirements.
+pub(super) fn companion_lifetime_marker(
+    generics: &syn::Generics,
+    fields: &mut Vec<(syn::Ident, TokenStream)>,
+) -> (TokenStream, TokenStream) {
+    use syn::visit_mut::VisitMut;
+
+    struct MissingLifetimes(Vec<syn::Lifetime>);
+    impl VisitMut for MissingLifetimes {
+        fn visit_lifetime_mut(&mut self, lifetime: &mut syn::Lifetime) {
+            self.0.retain(|candidate| candidate.ident != lifetime.ident);
+        }
+    }
+    let mut missing = MissingLifetimes(
+        generics
+            .lifetimes()
+            .map(|param| param.lifetime.clone())
+            .collect(),
+    );
+    for (_, ty) in fields.iter() {
+        missing.visit_type_mut(&mut syn::parse2::<syn::Type>(ty.clone()).unwrap());
+    }
+    if missing.0.is_empty() {
+        return (TokenStream::new(), TokenStream::new());
+    }
+    let lifetimes = missing.0;
+    let mut name = format_ident!("__mx_lifetimes");
+    while fields.iter().any(|(field, _)| field == &name) {
+        name = format_ident!("{}_", name);
+    }
+    let ty = quote! { ::core::marker::PhantomData<(#(&#lifetimes (),)*)> };
+    fields.push((name.clone(), ty.clone()));
+    (
+        quote! { #name: #ty, },
+        quote! { #name: ::core::marker::PhantomData, },
+    )
+}
+
 /// `Debug` and `Clone` for a companion, each implemented only when every field
 /// type has it. `#[derive(Debug, Clone)]` would demand both of every column's
 /// element type (#2013). `fields` are the companion's fields with their types.
@@ -1698,12 +1738,15 @@ fn derive_struct_dataframe(
         companion_fields.push((format_ident!("_len"), quote! { usize }));
     }
     companion_fields.extend(column_fields);
+    let (phantom_field, phantom_init) =
+        companion_lifetime_marker(&input.generics, &mut companion_fields);
     let companion_debug_clone = companion_debug_clone(df_name, &input.generics, &companion_fields);
 
     let dataframe_struct = quote! {
         #vis struct #df_name #impl_generics #where_clause {
             #tag_field_decl
             #len_field_decl
+            #phantom_field
             #(#df_fields_tokens),*
         }
 
@@ -2153,6 +2196,7 @@ fn derive_struct_dataframe(
                 #df_name {
                     #tag_struct_field
                     #len_struct_field
+                    #phantom_init
                     #(#col_struct_fields),*
                 }
             }
@@ -2487,7 +2531,7 @@ fn derive_struct_dataframe(
                 let len = rows.len();
                 #(#par_col_decls)*
                 #par_loop
-                #df_name { #par_tag_field #(#par_struct_fields),* }
+                #df_name { #par_tag_field #phantom_init #(#par_struct_fields),* }
             },
         );
         (
@@ -2498,7 +2542,7 @@ fn derive_struct_dataframe(
         (TokenStream::new(), TokenStream::new())
     };
 
-    // ── IntoIterator (only for named non-empty structs without expansion) ─
+    // region: IntoIterator (only for named non-empty structs without expansion)
     let can_iterate = !flat_cols.is_empty()
         && !is_tuple_struct
         && !is_unit_struct
@@ -2547,12 +2591,6 @@ fn derive_struct_dataframe(
             }
         }
 
-        let ignore_tag = if has_tag {
-            quote! { _tag: _, }
-        } else {
-            TokenStream::new()
-        };
-
         // Skipped fields are reconstructed via `Default::default()` each time
         // `next()` yields a row, so the companion iterates rows only where every
         // `#[dataframe(skip)]` field type implements `Default`.
@@ -2568,6 +2606,7 @@ fn derive_struct_dataframe(
 
         quote! {
             #vis struct #iterator_name #impl_generics #where_clause {
+                #phantom_field
                 #(#iter_field_decls),*
             }
 
@@ -2577,8 +2616,9 @@ fn derive_struct_dataframe(
                 type IntoIter = #iterator_name #ty_generics;
 
                 fn into_iter(self) -> Self::IntoIter {
-                    let #df_name { #ignore_tag #(#destruct_pattern),* } = self;
+                    let #df_name { #(#destruct_pattern,)* .. } = self;
                     #iterator_name {
+                        #phantom_init
                         #iter_init_tokens
                     }
                 }
@@ -3680,6 +3720,32 @@ mod tests {
             err.contains("already become `Option<T>` columns"),
             "got: {err}"
         );
+    }
+
+    /// Borrowed expansions write columns, but owned R columns cannot recreate
+    /// their borrows. Check each shape independently so one unsupported field
+    /// cannot mask another shape's accidentally generated reader (#2028).
+    #[test]
+    fn borrowed_expansions_have_no_struct_or_enum_reader() {
+        for field in [
+            quote! { values: &'a [f64; 2] },
+            quote! { #[dataframe(width = 2)] values: &'a [f64] },
+            quote! { #[dataframe(expand)] values: &'a [f64] },
+        ] {
+            for input in [
+                syn::parse_quote! { struct Row<'a> { #field } },
+                syn::parse_quote! {
+                    #[dataframe(tag = "kind")]
+                    enum Row<'a> { Values { #field }, Empty }
+                },
+            ] {
+                let tokens = derive_dataframe_row(input).unwrap();
+                syn::parse2::<syn::File>(tokens.clone()).unwrap();
+                let code = tokens.to_string();
+                assert!(!code.contains("fn try_from_dataframe"), "{code}");
+                assert!(!code.contains("fn from_dataframe_rows"), "{code}");
+            }
+        }
     }
 
     /// Scalar named struct: the baseline `try_from_dataframe_par` shape (#765).

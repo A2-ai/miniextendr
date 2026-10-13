@@ -11,9 +11,10 @@ use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
-    classify_field_type, companion_debug_clone, expanded_elem_idents, field_is_borrowed_ref,
-    fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty, is_reader_scalar_ty,
-    list_column_fn, owned_elems_iter, parallel_columns_impl, parse_field_attrs, width_elems,
+    classify_field_type, companion_debug_clone, companion_lifetime_marker, expanded_elem_idents,
+    field_is_borrowed_ref, fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty,
+    is_reader_scalar_ty, list_column_fn, owned_elems_iter, parallel_columns_impl,
+    parse_field_attrs, width_elems,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -776,33 +777,16 @@ pub(super) fn derive_enum_dataframe(
         ));
     }
 
-    // When the companion struct would otherwise have no fields (unit-only enum,
-    // no tag) but has generic type parameters, emit a PhantomData field to keep
-    // the type parameter in scope — without it the struct is E0392 (unused param).
-    let has_any_field = has_tag || !df_fields.is_empty();
-    let phantom_field = if !has_any_field && !impl_generics.to_token_stream().is_empty() {
-        let type_params: Vec<_> = input.generics.type_params().map(|tp| &tp.ident).collect();
-        if !type_params.is_empty() {
-            let phantom_ty = quote! { ::std::marker::PhantomData<(#(#type_params,)*)> };
-            companion_fields.push((format_ident!("_phantom"), phantom_ty.clone()));
-            quote! {
-                #[allow(dead_code)]
-                _phantom: #phantom_ty,
-            }
-        } else {
-            TokenStream::new()
-        }
-    } else {
-        TokenStream::new()
-    };
     companion_fields.extend(column_fields);
+    let (phantom_field, phantom_init) =
+        companion_lifetime_marker(&input.generics, &mut companion_fields);
     let companion_debug_clone = companion_debug_clone(df_name, &input.generics, &companion_fields);
 
     let dataframe_struct = quote! {
         pub struct #df_name #impl_generics #where_clause {
             #tag_field
-            #(#df_fields),*
             #phantom_field
+            #(#df_fields),*
         }
 
         #companion_debug_clone
@@ -1388,25 +1372,6 @@ pub(super) fn derive_enum_dataframe(
         col_struct_fields.push(quote! { #name });
     }
 
-    // Struct literal initializer for the PhantomData field, when emitted.
-    //
-    // `phantom_field` is:
-    //   - Empty when the companion struct has at least one real field (tag or
-    //     column), or when there are no generic type parameters (const-param
-    //     enums don't need PhantomData — Rust allows unused const params).
-    //   - Non-empty only when the struct would otherwise have *zero* fields AND
-    //     the enum carries at least one type parameter `T`, where the generated
-    //     `PhantomData<T>` field prevents E0392 ("unused type parameter") on the
-    //     companion struct.  In practice this path is only reachable if the user
-    //     somehow has a type-generic unit-only enum; Rust's own E0392 rule blocks
-    //     such enums at the user-definition level, so this branch is a defensive
-    //     guard for hypothetical macro-generated enum inputs.
-    let phantom_struct_field_init = if phantom_field.is_empty() {
-        TokenStream::new()
-    } else {
-        quote! { _phantom: ::std::marker::PhantomData, }
-    };
-
     let from_vec_impl = quote! {
         impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
             fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
@@ -1420,8 +1385,8 @@ pub(super) fn derive_enum_dataframe(
                 }
                 #df_name {
                     #tag_struct_field
+                    #phantom_init
                     #(#col_struct_fields),*
-                    #phantom_struct_field_init
                 }
             }
         }
@@ -1696,7 +1661,7 @@ pub(super) fn derive_enum_dataframe(
                         }
                     });
                 }
-                #df_name { #par_tag_field #(#par_struct_fields),* }
+                #df_name { #par_tag_field #phantom_init #(#par_struct_fields),* }
             },
         );
         (
@@ -2845,9 +2810,15 @@ fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
         EnumResolvedField::Single(data) => {
             !data.needs_into_list && (data.is_factor || is_reader_scalar_ty(&data.ty))
         }
-        EnumResolvedField::ExpandedFixed(data) => is_reader_scalar_ty(&data.elem_ty),
-        EnumResolvedField::ExpandedVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
-        EnumResolvedField::AutoExpandVec(data) => is_bare_reader_scalar_ty(&data.elem_ty),
+        EnumResolvedField::ExpandedFixed(data) => {
+            !data.borrowed && is_reader_scalar_ty(&data.elem_ty)
+        }
+        EnumResolvedField::ExpandedVec(data) => {
+            !data.borrowed && is_bare_reader_scalar_ty(&data.elem_ty)
+        }
+        EnumResolvedField::AutoExpandVec(data) => {
+            !data.borrowed && is_bare_reader_scalar_ty(&data.elem_ty)
+        }
         EnumResolvedField::Map(data) => {
             is_bare_reader_scalar_ty(&data.key_ty) && is_bare_reader_scalar_ty(&data.val_ty)
         }

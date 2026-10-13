@@ -16,10 +16,8 @@
 //! Const parameters are exempt from E0392 (Rust permits unused const params)
 //! and exercise the identical generated code path: `impl_generics` is
 //! non-empty in both cases, `ty_generics` carries the param, and `where_clause`
-//! propagates correctly.  The companion struct `PhantomData<T>` emission path
-//! (lines 722-729 of `enum_expansion.rs`) is only reachable when `type_params`
-//! is non-empty, which requires a non-unit variant — this is documented
-//! in the `phantom_field` comment in `enum_expansion.rs`.
+//! propagates correctly. Const parameters need no companion marker; unused
+//! type or lifetime parameters on a unit-only enum are already rejected by Rust.
 
 use miniextendr_api::ColumnarFrame;
 use miniextendr_macros::DataFrameRow;
