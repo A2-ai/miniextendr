@@ -370,9 +370,18 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
         // name in `OPTION_SCALAR_NAMES`, so it is a plain single column (#1437).
         if name == "Option"
             && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
-            && is_option_scalar_inner(inner)
         {
-            return Ok(FieldTypeKind::OptionScalar);
+            if is_known_scalar_ty(inner, &["u8"]) {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "DataFrameRow cannot represent `Option<u8>` as a column: R raw vectors \
+                     have no NA value. Use `u8` for a non-missing raw column, or \
+                     `Option<u16>` / `Option<i32>` for a nullable integer column.",
+                ));
+            }
+            if is_option_scalar_inner(inner) {
+                return Ok(FieldTypeKind::OptionScalar);
+            }
         }
         if REJECTED_WRAPPERS.contains(&name.as_str()) {
             let hint = if name == "Option" {
@@ -492,7 +501,7 @@ pub(super) const READER_SCALAR_NAMES: &[&str] = &[
 /// [`is_reader_scalar_ty`], so `Option<u64>` / `Option<usize>` fields are
 /// write-only, like their bare counterparts.
 pub(super) const OPTION_SCALAR_NAMES: &[&str] = &[
-    "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "isize", "usize",
+    "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u16", "u32", "u64", "isize", "usize",
     "String",
 ];
 
@@ -3667,6 +3676,29 @@ mod tests {
         );
         assert!(code.contains("fn try_from_dataframe"));
         assert!(code.contains("fn try_from_dataframe_par"));
+    }
+
+    #[test]
+    fn nullable_raw_columns_explain_the_missing_na_representation() {
+        for ty in [
+            quote! { Option<u8> },
+            quote! { ::core::option::Option<::core::primitive::u8> },
+            quote! { std::option::Option<std::primitive::u8> },
+        ] {
+            let input = syn::parse_quote! { struct Row { bytes: #ty } };
+            let error = derive_dataframe_row(input).unwrap_err().to_string();
+            assert!(error.contains("raw vectors have no NA value"), "{error}");
+            assert!(error.contains("Option<u16>"), "{error}");
+            assert!(error.contains("Option<i32>"), "{error}");
+        }
+        for ty in [
+            quote! { u8 },
+            quote! { Option<u16> },
+            quote! { Option<i32> },
+        ] {
+            let input = syn::parse_quote! { struct Row { bytes: #ty } };
+            assert!(derive_dataframe_row(input).is_ok());
+        }
     }
 
     /// The #484 footgun stays closed: `Option` around a map / struct / collection
