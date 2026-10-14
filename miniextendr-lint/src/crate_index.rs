@@ -918,7 +918,9 @@ fn path_type_name(path: &syn::Path, self_type: Option<&str>) -> Option<String> {
 /// The types a file builds `ExternalPtr`s of itself (MXL121), in any item:
 ///
 /// - the struct in `ExternalPtr::new(T { .. })` / `ExternalPtr::new(T(..))`
-///   (or `new_unchecked`), with `Self` inside `impl T`;
+///   (or `new_unchecked`), with `Self` inside `impl T`, or in
+///   `ExternalPtr::new(x)` after `let x = T { .. }` / `let x = T(..)` /
+///   `let x: T = ..` in the same function body (the last `let x` wins);
 /// - `T` in an `ExternalPtr<T>` written as a type or a turbofish
 ///   (`ExternalPtr::<T>::new(..)`): return types, `let` annotations, fields,
 ///   generic arguments.
@@ -926,8 +928,9 @@ fn path_type_name(path: &syn::Path, self_type: Option<&str>) -> Option<String> {
 /// A function's parameters, its receiver among them, are objects the caller
 /// has already, and are skipped. So is the impl's own type in a method of a
 /// `#[miniextendr]` impl block that takes `self`, as for
-/// [`FileData::returned_types`]. `ExternalPtr::new(value)` where the value's
-/// type is written nowhere, and code inside macro calls (`vec![..]`), stay
+/// [`FileData::returned_types`]. A value from a call whose type isn't written
+/// (`let record = make_record(inner); ExternalPtr::new(record)`), a value
+/// from another function, and code inside macro calls (`vec![..]`) stay
 /// invisible.
 #[derive(Default)]
 struct HandBuilt {
@@ -936,6 +939,31 @@ struct HandBuilt {
     self_type: Option<String>,
     /// Inside a `#[miniextendr]` impl block.
     miniextendr_impl: bool,
+    /// The type of each `let` binding of the current function body whose
+    /// value is a struct literal or whose annotation names it.
+    locals: HashMap<String, String>,
+}
+
+impl HandBuilt {
+    /// Visit a function with bindings of its own.
+    fn in_fn(&mut self, visit_fn: impl FnOnce(&mut Self)) {
+        let locals = std::mem::take(&mut self.locals);
+        visit_fn(self);
+        self.locals = locals;
+    }
+
+    /// The type a struct literal `T { .. }` or tuple-struct call `T(..)` builds.
+    fn literal_type(&self, expr: &syn::Expr) -> Option<String> {
+        let path = match expr {
+            syn::Expr::Struct(literal) => &literal.path,
+            syn::Expr::Call(call) => match &*call.func {
+                syn::Expr::Path(ctor) => &ctor.path,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        path_type_name(path, self.self_type.as_deref())
+    }
 }
 
 impl<'ast> Visit<'ast> for HandBuilt {
@@ -950,18 +978,54 @@ impl<'ast> Visit<'ast> for HandBuilt {
         self.miniextendr_impl = miniextendr_impl;
     }
 
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        self.in_fn(|this| visit::visit_item_fn(this, item));
+    }
+
+    fn visit_trait_item_fn(&mut self, method: &'ast syn::TraitItemFn) {
+        self.in_fn(|this| visit::visit_trait_item_fn(this, method));
+    }
+
     fn visit_impl_item_fn(&mut self, method: &'ast syn::ImplItemFn) {
         if !self.miniextendr_impl || detect_receiver_kind(&method.sig) == MethodReceiverKind::None {
-            visit::visit_impl_item_fn(self, method);
+            self.in_fn(|this| visit::visit_impl_item_fn(this, method));
             return;
         }
         let outer = std::mem::take(&mut self.types);
-        visit::visit_impl_item_fn(self, method);
+        self.in_fn(|this| visit::visit_impl_item_fn(this, method));
         let mut built = std::mem::replace(&mut self.types, outer);
         if let Some(self_type) = &self.self_type {
             built.remove(self_type);
         }
         self.types.extend(built);
+    }
+
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        visit::visit_local(self, local);
+        let (pat, annotated) = match &local.pat {
+            syn::Pat::Type(typed) => {
+                let annotated = match &*typed.ty {
+                    syn::Type::Path(ty) => path_type_name(&ty.path, self.self_type.as_deref()),
+                    _ => None,
+                };
+                (&*typed.pat, annotated)
+            }
+            pat => (pat, None),
+        };
+        let syn::Pat::Ident(binding) = pat else {
+            return;
+        };
+        let name = binding.ident.to_string();
+        let ty = annotated.or_else(|| {
+            local
+                .init
+                .as_ref()
+                .and_then(|init| self.literal_type(&init.expr))
+        });
+        match ty {
+            Some(ty) => self.locals.insert(name, ty),
+            None => self.locals.remove(&name),
+        };
     }
 
     fn visit_fn_arg(&mut self, _: &'ast syn::FnArg) {}
@@ -972,17 +1036,13 @@ impl<'ast> Visit<'ast> for HandBuilt {
             && let Some(arg) = call.args.first()
         {
             let built = match arg {
-                syn::Expr::Struct(literal) => Some(&literal.path),
-                syn::Expr::Call(tuple) => match &*tuple.func {
-                    syn::Expr::Path(ctor) => Some(&ctor.path),
-                    _ => None,
-                },
-                _ => None,
+                syn::Expr::Path(local) => local
+                    .path
+                    .get_ident()
+                    .and_then(|ident| self.locals.get(&ident.to_string()).cloned()),
+                literal => self.literal_type(literal),
             };
-            if let Some(path) = built {
-                self.types
-                    .extend(path_type_name(path, self.self_type.as_deref()));
-            }
+            self.types.extend(built);
         }
         visit::visit_expr_call(self, call);
     }

@@ -1211,8 +1211,81 @@ fn mxl121_struct_literal_alone_still_fires() {
     assert_record_flagged(&diags);
 }
 
-/// The documented limit: `ExternalPtr::new(local)` with the local's type
-/// written nowhere.
+/// A struct literal bound by `let` and put in an `ExternalPtr` later in the
+/// same function body, as an argument to another call.
+#[test]
+fn mxl121_hand_built_let_bound_literal() {
+    let diags = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[derive(ExternalPtr)]
+        #[externalptr(s3)]
+        pub struct StoredRecord {
+            engine: Engine,
+            #[r_data]
+            _r: RSidecar,
+            #[r_data(name = "steps")]
+            pub r_steps: Sidecar<SEXP>,
+        }
+
+        /// @rdname my_class_methods
+        #[miniextendr(s3(r_data_accessors = "get"), class = "my_class")]
+        impl StoredRecord {}
+
+        impl StoredRecord {
+            const CLASS: &str = "my_class";
+        }
+
+        pub struct RecordObject(pub(crate) Engine, SEXP);
+
+        impl RecordObject {
+            fn build(self, steps: SEXP) -> SEXP {
+                let stored = StoredRecord {
+                    engine: self.0,
+                    _r: RSidecar,
+                    r_steps: Sidecar::new(steps),
+                };
+                classed(ExternalPtr::new(stored), StoredRecord::CLASS)
+            }
+        }
+
+        impl IntoR for RecordObject {
+            type Error = std::convert::Infallible;
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                let steps = self.1;
+                Ok(self.build(steps))
+            }
+        }
+
+        #[miniextendr]
+        pub fn make_one(n: i32) -> RecordObject { todo!() }
+        "#,
+    )]);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// A `let` whose annotation names the type, whatever its value, here in a
+/// trait-impl method.
+#[test]
+fn mxl121_hand_built_from_annotated_let() {
+    let diags = mxl121_record(
+        r#"
+        pub struct RecordObject(Inner);
+
+        impl IntoR for RecordObject {
+            type Error = std::convert::Infallible;
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                let s: Record = make_record(self.0);
+                Ok(ExternalPtr::new(s).into_sexp())
+            }
+        }
+        "#,
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// The documented limit: `ExternalPtr::new(local)` where the local is a value
+/// from a call whose type isn't written.
 #[test]
 fn mxl121_unnamed_local_still_fires() {
     let diags = mxl121_record(
@@ -1224,6 +1297,36 @@ fn mxl121_unnamed_local_still_fires() {
         "#,
     );
     assert_record_flagged(&diags);
+}
+
+/// A `let` binding is known only in its own function body, and the last
+/// `let` of a name wins.
+#[test]
+fn mxl121_let_elsewhere_still_fires() {
+    let other_fn = mxl121_record(
+        r#"
+        fn stored(inner: Inner) -> Inner {
+            let s = Record { inner, _r: RSidecar::default() };
+            s.inner
+        }
+
+        fn build(s: Wrapped) -> SEXP {
+            ExternalPtr::new(s).into_sexp()
+        }
+        "#,
+    );
+    assert_record_flagged(&other_fn);
+
+    let shadowed = mxl121_record(
+        r#"
+        fn build(inner: Inner) -> SEXP {
+            let s = Record { inner, _r: RSidecar::default() };
+            let s = wrap(s);
+            ExternalPtr::new(s).into_sexp()
+        }
+        "#,
+    );
+    assert_record_flagged(&shadowed);
 }
 
 /// An `ExternalPtr` of another type.

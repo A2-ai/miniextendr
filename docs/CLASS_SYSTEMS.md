@@ -1039,7 +1039,11 @@ without a constructor gets its vectors from `vctrs::new_vctr()`
 When nothing creates the type, neither a constructor nor a `#[miniextendr]`
 function or method returning it, nor code of the crate building an
 `ExternalPtr<TypeName>` itself (e.g. a wrapper's hand-written `IntoR`), the
-build warns (lint MXL121, see [Macro Errors](MACRO_ERRORS.md)).
+build warns (lint MXL121, see [Macro Errors](MACRO_ERRORS.md)). The lint sees
+`ExternalPtr::new` of a `TypeName { .. }` literal, directly or through a `let`
+in the same function, or of a local written `let x: TypeName = ..`, and any
+`ExternalPtr<TypeName>` written as a type; it misses a pointer built from a
+value from a call whose type isn't written.
 An S7 property whose class is a class without a constructor needs a
 `default`, since S7 builds a property's default object by calling the class's
 constructor.
