@@ -1022,6 +1022,21 @@ test_that("strict_rec: an unknown name refuses on read as on assignment, with no
   }
 })
 
+test_that("strict_rec: the type's hint follows the field list, with the name asked for (#2112)", {
+  s <- new_strict_rec(3L)
+  classes <- c("strict_error_field", "strict_error", "miniextendr_no_field")
+  expected <- paste0(
+    "`nope` is not a field of `strict_rec`; its fields are `id`, `steps`. ",
+    "`x$nope` and `x[[\"nope\"]]` read fields only; the steps are `x$steps`."
+  )
+  for (read in alist(s$nope, s[["nope"]])) {
+    e <- caught(eval(read))
+    expect_identical(conditionMessage(e), expected, label = deparse(read))
+    expect_identical(class(e)[1:3], classes, label = deparse(read))
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+})
+
 test_that("strict_rec: any other index is refused, not read as a list would", {
   s <- new_strict_rec(3L)
   bad <- c("strict_error_field", "strict_error", "notSubsettableError")

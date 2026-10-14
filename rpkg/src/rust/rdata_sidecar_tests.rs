@@ -542,14 +542,16 @@ pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
 /// whole-number positions only, so `x$st` is an error rather than
 /// `x$steps`, and an unknown name raises `miniextendr_no_field` as it does
 /// on assignment. Its receiver refusals carry the package's own message
-/// (`field_error(message)`, #1920), and a saved copy is refused on every
-/// read.
+/// (`field_error(message)`, #1920), its unknown-name error adds the
+/// package's hint after the field list (`field_error(no_field_hint)`,
+/// #2112), and a saved copy is refused on every read.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(
     s3,
     field_error(
         class = ["strict_error_field", "strict_error"],
-        message = "not a strict_rec; build one with new_strict_rec()"
+        message = "not a strict_rec; build one with new_strict_rec()",
+        no_field_hint = "`x$%s` and `x[[\"%s\"]]` read fields only; the steps are `x$steps`."
     ),
     restored(class = ["strict_error_saved", "strict_error"], refuse = "every_read")
 )]

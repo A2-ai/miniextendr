@@ -149,7 +149,9 @@
 //! of another type, and a receiver of the class that carries no pointer
 //! (`miniextendr_no_handle`, which also gets the `restored(class)` classes).
 //! They reach R as `.rdata_error_class_<Type>` and Rust as
-//! `TypedExternal::FIELD_ERROR_CLASS`.
+//! `TypedExternal::FIELD_ERROR_CLASS`. `field_error(no_field_hint = "...")`
+//! (#2112) adds the package's sentence after the field list of the
+//! `miniextendr_no_field` error, each `%s` in it the name asked for.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
@@ -248,7 +250,7 @@ struct ExternalPtrAttrs {
     field_error: FieldErrorOptions,
 }
 
-/// `#[externalptr(field_error(class = ..., message = ...))]`.
+/// `#[externalptr(field_error(class = ..., message = ..., no_field_hint = ...))]`.
 #[derive(Default)]
 struct FieldErrorOptions {
     /// The classes put in front of the errors the R field readers raise
@@ -257,6 +259,9 @@ struct FieldErrorOptions {
     /// The package's message for a receiver of the class whose pointer is no
     /// `T` or that carries none (#1920), `TypedExternal::FIELD_ERROR_MESSAGE`.
     message: Option<String>,
+    /// A sentence the `miniextendr_no_field` error adds after its field list,
+    /// each `%s` replaced by the name asked for (#2112).
+    no_field_hint: Option<String>,
 }
 
 /// Parse `#[externalptr(...)]` attributes: the class system, the restored
@@ -272,7 +277,7 @@ struct FieldErrorOptions {
 /// - `#[externalptr(restored(class = "pkg_saved", message = "...", refuse = "every_read"))]`,
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
-/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "..."))]`
+/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "..."))]`
 fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
     let mut restored: Option<RestoredOptions> = None;
@@ -408,10 +413,11 @@ fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Rest
 }
 
 /// The arguments of `field_error(...)`: `class = "..."` or `class = ["...",
-/// ...]`, and `message = "..."`, each once.
+/// ...]`, `message = "..."` and `no_field_hint = "..."`, each once.
 fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<FieldErrorOptions> {
     let mut class: Option<Vec<String>> = None;
     let mut message: Option<String> = None;
+    let mut no_field_hint: Option<String> = None;
     meta.parse_nested_meta(|inner| {
         if inner.path.is_ident("class") {
             if class.is_some() {
@@ -429,15 +435,26 @@ fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<F
             }
             message = Some(value.value());
             Ok(())
+        } else if inner.path.is_ident("no_field_hint") {
+            if no_field_hint.is_some() {
+                return Err(inner.error("`no_field_hint` is given twice"));
+            }
+            let value: syn::LitStr = inner.value()?.parse()?;
+            if value.value().is_empty() {
+                return Err(syn::Error::new_spanned(value, "`no_field_hint` is empty"));
+            }
+            no_field_hint = Some(value.value());
+            Ok(())
         } else {
             Err(inner.error(
-                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`) and `message = \"...\"`",
+                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`), `message = \"...\"` and `no_field_hint = \"...\"`",
             ))
         }
     })?;
     Ok(FieldErrorOptions {
         class: class.unwrap_or_default(),
         message,
+        no_field_hint,
     })
 }
 
@@ -1611,10 +1628,16 @@ fn generate_class_integration_r_code(
 /// field's setter arm raises `miniextendr_read_only_field` itself, with the
 /// calling method's frame (`parent.frame()`) resolved the same way. The
 /// liveness check returns the same kind of value, which the method raises.
+///
+/// `field_error(no_field_hint = "...")` adds a sentence after the field list
+/// of the `miniextendr_no_field` message, each `%s` in it replaced by the
+/// name asked for (#2112). The hint is split on `%s` here and pasted around
+/// the name, so any other `%` or `\` in it, or in the name, stays as written.
 fn generate_field_syntax_helpers(
     type_name: &str,
     pub_slots: &[&SidecarSlot],
     field_error: &[String],
+    no_field_hint: Option<&str>,
     every_read: bool,
 ) -> String {
     use crate::naming::{RDataHelper, rdata_helper_name};
@@ -1686,6 +1709,19 @@ fn generate_field_syntax_helpers(
         "function(x, raise) TRUE".to_string()
     };
     let every_read = if every_read { "TRUE" } else { "FALSE" };
+    let no_field_message =
+        format!("sprintf(\"`%s` is not a field of `%s`; its fields are {listed}\", name, cls)");
+    let no_field_message = match no_field_hint {
+        None => no_field_message,
+        Some(hint) => {
+            let hint = hint
+                .split("%s")
+                .map(|part| format!("\"{}\"", crate::naming::r_string_escape(part)))
+                .collect::<Vec<_>>()
+                .join(", name, ");
+            format!("paste0({no_field_message}, \". \", {hint})")
+        }
+    };
     format!(
         "\n# Field syntax helpers for {type_name} sidecar fields, shared by the `$` / `[[`\n\
          # methods `r_data_accessors` generates on S3, S4 and env classes. The `TRUE`\n\
@@ -1695,7 +1731,7 @@ fn generate_field_syntax_helpers(
          {set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n\
          {error_class_var} <- {error_class}\n\
          {no_field_fn} <- function(name, env, cls) stop(errorCondition(\n\
-         \x20 sprintf(\"`%s` is not a field of `%s`; its fields are {listed}\", name, cls),\n\
+         \x20 {no_field_message},\n\
          \x20 class = c({error_class_var}, \"miniextendr_no_field\"), call = .miniextendr_frame_call(env)))\n\
          {every_read_var} <- {every_read}\n\
          {live_fn} <- {live}\n",
@@ -1738,7 +1774,7 @@ fn generate_sidecar_accessors(
     input: &DeriveInput,
     info: &SidecarInfo,
     restored: &RestoredOptions,
-    field_error: &[String],
+    field_error: &FieldErrorOptions,
 ) -> syn::Result<TokenStream> {
     // Reject generic structs — .Call entrypoints cannot be generic
     if !input.generics.params.is_empty() {
@@ -2004,7 +2040,8 @@ fn generate_sidecar_accessors(
     internal.push_str(&generate_field_syntax_helpers(
         &name_str,
         &pub_slots,
-        field_error,
+        &field_error.class,
+        field_error.no_field_hint.as_deref(),
         restored.every_read,
     ));
 
@@ -2409,7 +2446,7 @@ pub fn derive_external_ptr(
         )
     };
     let sidecar_accessors =
-        generate_sidecar_accessors(&input, &sidecar_info, &restored, &field_error.class)?;
+        generate_sidecar_accessors(&input, &sidecar_info, &restored, &field_error)?;
     let erased_wrapper = generate_erased_wrapper(&input);
 
     Ok(quote::quote! {
@@ -2662,7 +2699,7 @@ mod tests {
         assert_eq!(info.slots[1].r_name, "n.rows");
         let pub_slots: Vec<_> = info.slots.iter().collect();
 
-        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], false);
+        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], None, false);
         assert!(
             helpers.contains(".rdata_fields_Engine <- c(\"keys\", \"n.rows\")\n"),
             "{helpers}"
@@ -2790,7 +2827,7 @@ mod tests {
         );
 
         let pub_slots: Vec<_> = info.slots.iter().collect();
-        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], false);
+        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], None, false);
         assert!(
             helpers.contains(
                 ".rdata_fields_Engine <- c(\"group_by\", \"keys\", \"n_rows\", \"base\")\n"
@@ -3027,6 +3064,14 @@ mod tests {
         assert!(parsed.field_error.class.is_empty());
         assert_eq!(parsed.field_error.message.as_deref(), Some("not a rec"));
         assert!(!parsed.restored.every_read);
+        // The no-field hint (#2112).
+        let parsed =
+            attrs("#[externalptr(field_error(no_field_hint = \"try `y$%s`\"))] struct E;").unwrap();
+        assert_eq!(
+            parsed.field_error.no_field_hint.as_deref(),
+            Some("try `y$%s`")
+        );
+        assert_eq!(parsed.field_error.message, None);
 
         let refused = |source: &str, expected: &str| {
             let message = attrs(source)
@@ -3057,6 +3102,14 @@ mod tests {
         );
         refused(
             "#[externalptr(field_error(message = \"a\", message = \"b\"))] struct E;",
+            "given twice",
+        );
+        refused(
+            "#[externalptr(field_error(no_field_hint = \"\"))] struct E;",
+            "`no_field_hint` is empty",
+        );
+        refused(
+            "#[externalptr(field_error(no_field_hint = \"a\", no_field_hint = \"b\"))] struct E;",
             "given twice",
         );
         refused(
@@ -3407,7 +3460,8 @@ mod tests {
             setter_invisible: None,
         };
         let (keys, reserved) = (slot("keys"), slot("r#for"));
-        let out = super::generate_field_syntax_helpers("Engine", &[&keys, &reserved], &[], false);
+        let out =
+            super::generate_field_syntax_helpers("Engine", &[&keys, &reserved], &[], None, false);
         assert!(
             out.contains(".rdata_fields_Engine <- c(\"keys\", \"for\")\n"),
             "{out}"
@@ -3432,6 +3486,24 @@ mod tests {
         );
         assert!(
             out.contains("class = c(.rdata_error_class_Engine, \"miniextendr_no_field\"), call = .miniextendr_frame_call(env)"),
+            "{out}"
+        );
+
+        // `no_field_hint` (#2112): the hint follows the field list, each `%s`
+        // the name asked for; any other `%`, a quote or a backslash in it is
+        // written as given.
+        let out = super::generate_field_syntax_helpers(
+            "Engine",
+            &[&keys],
+            &[],
+            Some("See `t$%s` or \"u\\%s\" (50% off)."),
+            false,
+        );
+        assert!(
+            out.contains(
+                "  paste0(sprintf(\"`%s` is not a field of `%s`; its fields are `keys`\", name, cls), \". \", \
+                 \"See `t$\", name, \"` or \\\"u\\\\\", name, \"\\\" (50% off).\"),\n"
+            ),
             "{out}"
         );
     }
