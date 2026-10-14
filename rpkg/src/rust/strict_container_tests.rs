@@ -87,14 +87,22 @@ pub fn lax_boxed_rows_i64(big: bool) -> Vec<Box<[i64]>> {
 /// @noRd
 #[miniextendr(noexport, strict)]
 pub fn strict_array_rows_isize(big: bool) -> Vec<[isize; 2]> {
-    let last = if big { 3_000_000_000 } else { 4 };
+    let last = if big {
+        isize::try_from(BIG).expect("large test value requires a 64-bit target")
+    } else {
+        4
+    };
     vec![[1, 2], [3, last]]
 }
 
 /// @noRd
 #[miniextendr(noexport)]
 pub fn lax_array_rows_isize(big: bool) -> Vec<[isize; 2]> {
-    let last = if big { 3_000_000_000 } else { 4 };
+    let last = if big {
+        isize::try_from(BIG).expect("large test value requires a 64-bit target")
+    } else {
+        4
+    };
     vec![[1, 2], [3, last]]
 }
 

@@ -48,10 +48,6 @@ test_that("strict rows report the row and the position inside it", {
   expect_match(msg, "at inner position 2 (element 2)", fixed = TRUE)
   expect_match(msg, "at inner position 3 (element 2)", fixed = TRUE)
 
-  msg <- strict_message(miniextendr:::strict_array_rows_isize(TRUE))
-  expect_match(msg, "strict conversion failed for Vec<[isize; 2]>:", fixed = TRUE)
-  expect_match(msg, "at inner position 2 (element 2)", fixed = TRUE)
-
   msg <- strict_message(miniextendr:::strict_optional_slice_rows_u64(TRUE))
   expect_match(msg, "strict conversion failed for Vec<Option<&'static [u64]>>:", fixed = TRUE)
   expect_match(msg, "at inner position 1 (element 3)", fixed = TRUE)
@@ -67,5 +63,17 @@ test_that("without strict the same shapes still widen to doubles", {
   expect_identical(miniextendr:::lax_optional_boxed_i64(TRUE), big)
   expect_null(miniextendr:::lax_optional_boxed_i64(NULL))
   expect_identical(miniextendr:::lax_boxed_rows_i64(TRUE), list(1:3, big))
+  expect_identical(miniextendr:::lax_array_rows_isize(FALSE), list(1:2, 3:4))
+})
+
+test_that("wide isize rows report strict errors or widen without strict", {
+  skip_if(
+    .Machine$sizeof.pointer < 8L,
+    "isize cannot exceed R's integer max on a 32-bit target"
+  )
+
+  msg <- strict_message(miniextendr:::strict_array_rows_isize(TRUE))
+  expect_match(msg, "strict conversion failed for Vec<[isize; 2]>:", fixed = TRUE)
+  expect_match(msg, "at inner position 2 (element 2)", fixed = TRUE)
   expect_identical(miniextendr:::lax_array_rows_isize(TRUE), list(1:2, c(3, 3e9)))
 })
