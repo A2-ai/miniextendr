@@ -388,8 +388,9 @@ freed Rust memory. The registry reads no memory the buffer does not own.
 
 ### String conversion (`charsxp_to_str`)
 
-`charsxp_to_str()` uses `R_CHAR` + `LENGTH` (O(1)) when R reports that the
-CHARSXP is UTF-8/ASCII. Explicitly tagged Latin-1 strings are translated with
+`charsxp_to_str()` reads `R_CHAR` + `LENGTH` without copying for UTF-8 and
+native strings in the required UTF-8 locale, then validates the bytes in O(n)
+time. Explicitly tagged Latin-1 strings are translated with
 `Rf_translateCharUTF8`, and `bytes` strings are rejected. `charsxp_to_cow()`
 returns `Cow::Borrowed` for the fast path and `Cow::Owned` when translation is
 required.
