@@ -346,11 +346,19 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         })
 }
 
-/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Explicit shared reference forms whose main-thread conversions borrow a root:
+/// the references, their `Option`s, and `Vec`s of either (nested `Vec`s too).
 /// Keep worker selection separate: `&str` uses owned storage on the worker,
 /// while mutable/custom references still need their existing conversion path.
 pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
     let ty = option_inner_type(ty).unwrap_or(ty);
+    if let syn::Type::Path(path) = ty
+        && path.qself.is_none()
+        && let Some(segment) = path.path.segments.last()
+        && segment.ident == "Vec"
+    {
+        return first_type_argument(segment).is_some_and(is_rooted_reference);
+    }
     let syn::Type::Reference(reference) = ty else {
         return false;
     };
@@ -374,7 +382,7 @@ pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
 
 /// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
 /// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
-/// call's argument slot. Returns the statement that binds `ident` with a
+/// call's argument slot, or on the worker a copy that ends with the call. Returns the statement that binds `ident` with a
 /// `compile_error!` naming the fix, spanned at the lifetime, in place of a
 /// borrow-checker error about a generated temporary. The binding keeps the code
 /// that uses `ident` free of follow-on errors; it does not diverge, so that

@@ -86,6 +86,14 @@ main thread. A function or static method that takes or returns an R value
 `Preserved` or `REvalError`) or sets `check_interrupt` also stays on the main
 thread, whatever selects the worker.
 
+Shared native arguments (`&T`, `&[T]`, and their `Option` forms) are validated
+and copied on the R thread. The worker borrows those Rust-owned snapshots;
+reentrant R callbacks cannot invalidate their storage. Character references
+likewise borrow owned strings on the worker. Native scalar references still
+require exactly one element; optional native references map only `NULL` to
+`None`, preserving NA sentinels as values. Mutable native references retain
+their write-through behavior and still need the lifetime migration in #1427.
+
 `with_r_thread` is not a general cross-thread executor. From an arbitrary
 spawned thread outside an active `run_on_worker` call, it panics instead of
 silently running R on the wrong thread.

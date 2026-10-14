@@ -49,8 +49,8 @@ pub(crate) fn native_borrow_checks<'a>(
     }}
 }
 
-/// Bind a borrowed view to a local copy of an argv slot. A borrow directly
-/// from the raw argv pointer would itself have an unconstrained lifetime.
+/// Bind a borrowed view to a local root scope. A borrow directly from the
+/// raw argv pointer would itself have an unconstrained lifetime.
 /// Arity and native alias checks must run before this code. A conversion
 /// failure panics, as `trait_abi::extract_arg` does.
 pub(crate) fn rooted_view_arg(
@@ -69,9 +69,9 @@ pub(crate) fn rooted_view_arg(
     );
     let ty = crate::type_inspect::erase_lifetimes(ty);
     quote! {
-        let #slot = unsafe { *#argv.add(#index) };
+        let #slot = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
         let #name: #ty = match <#ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-            ::miniextendr_api::Root::from_call_arg(&#slot)
+            #slot.rooted(*#argv.add(#index))
         }) {
             ::core::result::Result::Ok(value) => value,
             ::core::result::Result::Err(error) => ::core::panic!("{error}"),

@@ -521,3 +521,30 @@ Need GC protection?
 └─ Many values (100+) / hot loop with many SEXPs?
    └─ ThreadLocalArena (or RefCountedArena for a non-thread-local instance)
 ```
+
+## Borrowing transient ALTREP elements
+
+An ordinary list or character vector holds its elements, so rooting the vector
+keeps every element alive. An ALTREP accessor can instead return a fresh object
+that nothing else keeps, and the next accessor call can allocate and collect it.
+
+`Root<'a>` holds a reference to its `ProtectScope`. When a rooted conversion
+borrows an element of an ALTREP list or character vector, it retains that
+element in the scope before reading the next one. The elements go into a pool
+the scope creates on first use, so a large list does not take one PROTECT stack
+entry per element. Elements of ordinary vectors skip the pool.
+
+`Vec<&[i32]>`, `Vec<Option<&i32>>`, `Vec<&str>` and the nested `Vec` forms
+convert this way with `TryFromRoot::try_from_root(scope.protect(value))`. The
+references they return cannot outlive the scope. Generated main-thread wrappers
+and trait shims create one scope per borrowed parameter and keep it through the
+return conversion. A native list conversion reports every invalid element
+together.
+
+A scalar `&str`, `Option<&str>` or `Cow<str>` and the `StrVec` accessors still
+read a CHARSXP that only the ALTREP class keeps (#2086). R's deferred strings
+and miniextendr's string ALTREP classes cache their elements, so they are safe.
+
+A root keeps values alive; it does not make access exclusive. Mutable
+references still need their own borrowing contract, so don't derive them from a
+copyable `Root`.

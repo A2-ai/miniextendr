@@ -2,8 +2,9 @@ error[E0716]: temporary value dropped while borrowed
   --> tests/ui/rooted_view_outlives_static.rs:12:1
    |
 12 | #[miniextendr]
-   | ^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
-   | |
+   | ^^^^^^^^^^^^^-
+   | |            |
+   | |            temporary value is freed at the end of this statement
    | creates a temporary value which is freed while still in use
    | argument requires that borrow lasts for `'a`
 13 | pub fn keep_strings<'a: 'static>(strings: StrVec<'a>) {
@@ -20,8 +21,9 @@ error[E0716]: temporary value dropped while borrowed
   --> tests/ui/rooted_view_outlives_static.rs:17:1
    |
 17 | #[miniextendr]
-   | ^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
-   | |
+   | ^^^^^^^^^^^^^-
+   | |            |
+   | |            temporary value is freed at the end of this statement
    | creates a temporary value which is freed while still in use
    | argument requires that borrow lasts for `'a`
 18 | pub fn keep_values<'a: 'static>(values: RCow<'a, i32>) {

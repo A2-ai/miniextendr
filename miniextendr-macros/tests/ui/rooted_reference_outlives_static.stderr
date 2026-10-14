@@ -2,8 +2,9 @@ error[E0716]: temporary value dropped while borrowed
   --> tests/ui/rooted_reference_outlives_static.rs:13:1
    |
 13 | #[miniextendr]
-   | ^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
-   | |
+   | ^^^^^^^^^^^^^-
+   | |            |
+   | |            temporary value is freed at the end of this statement
    | creates a temporary value which is freed while still in use
    | argument requires that borrow lasts for `'a`
 14 | pub fn keep_slice<'a: 'static>(values: &'a [i32]) {
@@ -20,8 +21,9 @@ error[E0716]: temporary value dropped while borrowed
   --> tests/ui/rooted_reference_outlives_static.rs:18:1
    |
 18 | #[miniextendr]
-   | ^^^^^^^^^^^^^^- temporary value is freed at the end of this statement
-   | |
+   | ^^^^^^^^^^^^^-
+   | |            |
+   | |            temporary value is freed at the end of this statement
    | creates a temporary value which is freed while still in use
    | argument requires that borrow lasts for `'a`
 19 | pub fn keep_text<'a: 'static>(text: Cow<'a, str>) {

@@ -171,7 +171,7 @@ use crate::sys::{
     Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect, Rf_unprotect, Rf_xlengthgets,
 };
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use core::marker::PhantomData;
 use std::rc::Rc;
 
@@ -278,6 +278,9 @@ impl Protector for crate::protect_pool::ProtectPool {
 pub struct ProtectScope {
     n: Cell<i32>,
     armed: Cell<bool>,
+    // Created only by rooted child conversions. A pool avoids one PROTECT
+    // stack entry per list/string element, and supports later child additions.
+    children: RefCell<Option<Box<crate::protect_pool::ProtectPool>>>,
     _nosend: NoSendSync,
 }
 
@@ -292,6 +295,7 @@ impl ProtectScope {
         Self {
             n: Cell::new(0),
             armed: Cell::new(true),
+            children: RefCell::new(None),
             _nosend: PhantomData,
         }
     }
@@ -311,7 +315,7 @@ impl ProtectScope {
         self.n.set(self.n.get() + 1);
         Root {
             sexp: y,
-            _scope: PhantomData,
+            scope: self,
         }
     }
 
@@ -941,8 +945,9 @@ impl ProtectScope {
     /// Create a `Root<'a>` for an already-protected SEXP without adding protection.
     ///
     /// This is useful when you have a SEXP that is already protected by some other
-    /// mechanism (e.g., a `ReprotectSlot`) and want to return it as a `Root` tied
-    /// to this scope's lifetime for API consistency.
+    /// mechanism (e.g., a `ReprotectSlot`, or a `.Call` argument, which R roots
+    /// until the call returns) and want to return it as a `Root` tied to this
+    /// scope's lifetime. Generated wrappers bind borrowed parameters this way.
     ///
     /// # Safety
     ///
@@ -951,10 +956,7 @@ impl ProtectScope {
     /// - Must be called from the R main thread
     #[inline]
     pub unsafe fn rooted<'a>(&'a self, sexp: SEXP) -> Root<'a> {
-        Root {
-            sexp,
-            _scope: PhantomData,
-        }
+        Root { sexp, scope: self }
     }
     // endregion
 
@@ -1039,7 +1041,7 @@ impl Drop for ProtectScope {
 /// A rooted SEXP tied to the lifetime of a [`ProtectScope`].
 ///
 /// This type has **no `Drop`**. The scope owns unprotection responsibility.
-/// This makes `Root` cheap to move and copy (it's just a pointer + lifetime).
+/// This makes `Root` cheap to move and copy (the SEXP and its scope reference).
 ///
 /// # Lifetime
 ///
@@ -1048,24 +1050,40 @@ impl Drop for ProtectScope {
 #[derive(Clone, Copy)]
 pub struct Root<'a> {
     sexp: SEXP,
-    _scope: PhantomData<&'a ProtectScope>,
+    scope: &'a ProtectScope,
 }
 
 impl<'a> Root<'a> {
-    /// Borrow a root from a live FFI argument slot without another PROTECT.
+    /// Root `child`, an element read from this root, for this root's lifetime.
+    ///
+    /// An ordinary vector holds its elements, so its root already covers them.
+    /// An ALTREP accessor may return a fresh object that its parent does not
+    /// keep; the scope then retains it in a lazily allocated pool until the
+    /// scope drops, without a PROTECT stack entry per element.
     ///
     /// # Safety
-    ///
-    /// R's main thread; the value and everything borrowed from it must remain
-    /// GC-reachable for `'a`. Generated `.Call` wrappers satisfy this because
-    /// R roots the argument until the wrapper returns. A reference to an
-    /// arbitrary local SEXP does not by itself establish that guarantee.
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn from_call_arg(sexp: &'a SEXP) -> Self {
-        Self {
-            sexp: *sexp,
-            _scope: PhantomData,
+    /// R's main thread; `child` must be live on entry.
+    pub(crate) unsafe fn protect_child(self, child: SEXP) -> Self {
+        if !self.sexp.is_altrep() {
+            return Root {
+                sexp: child,
+                scope: self.scope,
+            };
+        }
+        // A new pool or pool growth can allocate before it retains the child.
+        let child = unsafe { OwnedProtect::new(child) };
+        let mut children = self.scope.children.borrow_mut();
+        let pool = children.get_or_insert_with(|| {
+            Box::new(unsafe {
+                crate::protect_pool::ProtectPool::new(
+                    crate::protect_pool::ProtectPool::DEFAULT_CAPACITY,
+                )
+            })
+        });
+        unsafe { pool.insert(child.get()) };
+        Root {
+            sexp: child.get(),
+            scope: self.scope,
         }
     }
 

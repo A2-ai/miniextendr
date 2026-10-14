@@ -1,8 +1,9 @@
 //! Borrowed receiver handles over ordinary or erased external-pointer storage.
 
 use super::{ExternalPtr, TypedExternal, borrow_value, borrow_value_mut};
-use crate::{Root, SEXP};
+use crate::SEXP;
 use core::cell::{Ref, RefCell, RefMut};
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
 mod sealed {
@@ -43,7 +44,8 @@ pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut
 /// ```
 pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
     value: Ref<'a, T>,
-    owner: Root<'a>,
+    owner: &'a SEXP,
+    _main_thread: PhantomData<*mut ()>,
 }
 
 /// An exclusive borrow of a Rust value together with its R sidecar owner.
@@ -67,7 +69,8 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// ```
 pub struct ExternalPtrMut<'a, T: TypedExternal + ?Sized> {
     value: RefMut<'a, T>,
-    owner: Root<'a>,
+    owner: &'a SEXP,
+    _main_thread: PhantomData<*mut ()>,
 }
 
 impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
@@ -75,13 +78,15 @@ impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
     ///
     /// # Safety
     /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
-    /// `owner`, whose initialized sidecar slots use `T`'s layout. The cell must
-    /// remain valid for `'a`.
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. Its SEXP must
+    /// stay rooted for `'a`; the slot reference alone does not root it. The cell
+    /// must remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, cell: *const RefCell<T>) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
         Self {
             value: borrow_value(unsafe { &*cell }),
             owner,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -91,13 +96,15 @@ impl<'a, T: TypedExternal> ExternalPtrMut<'a, T> {
     ///
     /// # Safety
     /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
-    /// `owner`, whose initialized sidecar slots use `T`'s layout. The cell must
-    /// remain valid for `'a`.
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. Its SEXP must
+    /// stay rooted for `'a`; the slot reference alone does not root it. The cell
+    /// must remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: Root<'a>, cell: *const RefCell<T>) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
         Self {
             value: borrow_value_mut(unsafe { &*cell }),
             owner,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -111,7 +118,8 @@ impl<'a, T: TypedExternal> From<&'a ExternalPtr<T>> for ExternalPtrRef<'a, T> {
         // The original handle retains the owner throughout this shared borrow.
         Self {
             value: borrow_value(ptr.cell()),
-            owner: unsafe { Root::from_call_arg(&ptr.sexp) },
+            owner: &ptr.sexp,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -125,7 +133,8 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
         // The original handle retains the owner throughout this borrow.
         Self {
             value: borrow_value_mut(ptr.cell()),
-            owner: unsafe { Root::from_call_arg(&ptr.sexp) },
+            owner: &ptr.sexp,
+            _main_thread: PhantomData,
         }
     }
 }
@@ -159,12 +168,12 @@ impl<T: TypedExternal> SidecarOwner<T> for ExternalPtr<T> {
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrRef<'_, T> {
     fn __mx_owner(&self) -> SEXP {
-        self.owner.get()
+        *self.owner
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrMut<'_, T> {
     fn __mx_owner(&self) -> SEXP {
-        self.owner.get()
+        *self.owner
     }
 }
 impl<T: TypedExternal> SidecarOwnerMut<T> for ExternalPtr<T> {}

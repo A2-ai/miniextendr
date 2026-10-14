@@ -900,7 +900,7 @@ fn generate_method_shim(
             quote::quote! {
                 let #self_ref = unsafe {
                     #handle::<#impl_t>::from_raw_parts(
-                        ::miniextendr_api::Root::from_call_arg(&#owner),
+                        &#owner,
                         #cell,
                     )
                 };

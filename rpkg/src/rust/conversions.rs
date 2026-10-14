@@ -459,14 +459,14 @@ pub fn conv_opt_mut_slice_i32_is_some(x: Option<&'static mut [i32]>) -> i32 {
 /// Test `Vec<&i32>` argument: returns the length of the vector.
 /// @param x Input list of integer references.
 #[miniextendr]
-pub fn conv_vec_ref_i32_len(x: Vec<&'static i32>) -> i32 {
+pub fn conv_vec_ref_i32_len(x: Vec<&i32>) -> i32 {
     x.len() as i32
 }
 
 /// Test `Vec<&[i32]>` argument: returns the total length across all slices.
 /// @param x Input list of integer vectors.
 #[miniextendr]
-pub fn conv_vec_slice_i32_total_len(x: Vec<&'static [i32]>) -> i32 {
+pub fn conv_vec_slice_i32_total_len(x: Vec<&[i32]>) -> i32 {
     x.iter().map(|s| s.len() as i32).sum()
 }
 
