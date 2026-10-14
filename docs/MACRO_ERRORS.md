@@ -38,7 +38,7 @@ written.
 |------|-------------|-----|
 | **MXL106** | Non-`pub` function carries a `/// @export` tag | Make it `pub fn`, or drop the tag to keep it private |
 | **MXL111** | `s4_*` instance method on `#[miniextendr(s4)]` impl | Drop the `s4_` prefix — codegen auto-prepends it (you'd get `s4_s4_*`) |
-| **MXL121** | R code can never create the type: no impl block of it has a constructor, and no `#[miniextendr]` function or method returns it (`T`, `Self`, `ExternalPtr<T>`, bare or in `Result` / `Option`); vctrs classes are skipped | Mark a constructor with `#[miniextendr(<system>(constructor))]`, or add a `#[miniextendr]` function returning the type. A factory the lint cannot see (one returning a bare `SEXP`) is the case for `// mxl::allow(MXL121)` on the impl |
+| **MXL121** | R code can never create the type: no impl block of it has a constructor, no `#[miniextendr]` function or method returns it (`T`, `Self`, `ExternalPtr<T>`, bare or in `Result` / `Option`), and the crate builds no `ExternalPtr<T>` itself (`ExternalPtr::new(T { .. })` / `ExternalPtr::new(T(..))`, or `ExternalPtr<T>` written as a type or turbofish anywhere outside a parameter, as in a wrapper whose hand-written `IntoR` builds the pointer); vctrs classes are skipped | Mark a constructor with `#[miniextendr(<system>(constructor))]`, or add a `#[miniextendr]` function returning the type. A factory the lint cannot see (one returning a bare `SEXP` without naming `ExternalPtr<T>`, or `ExternalPtr::new(value)` where the value's type is written nowhere) is the case for `let ptr: ExternalPtr<T> = ...` or `// mxl::allow(MXL121)` on the impl |
 
 ### Warnings (P1: important)
 
@@ -310,7 +310,8 @@ a static method returning `Result<Self, E>` or `Option<Self>`, or another
 function returning the type. To give the type a constructor, name one method
 `new` or mark it `#[miniextendr(<system>(constructor))]`
 ([Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)). When nothing
-returns the type at all, the build warns with MXL121.
+returns the type at all and the crate builds no `ExternalPtr` of it, the build
+warns with MXL121.
 
 ### "Env member `Class$method` is defined by both ..."
 

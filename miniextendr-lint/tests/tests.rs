@@ -1070,6 +1070,213 @@ fn mxl121_skips_vctrs() {
     assert!(diags.is_empty(), "{diags:?}");
 }
 
+/// The MXL121 diagnostics of a crate holding `Record`, an S3 class with an
+/// accessor-only impl block, and `rest`.
+fn mxl121_record(rest: &str) -> Vec<miniextendr_lint::Diagnostic> {
+    let source = format!(
+        r#"
+        #[derive(ExternalPtr)]
+        #[externalptr(s3)]
+        pub struct Record {{
+            inner: Inner,
+            #[r_data]
+            _r: RSidecar,
+        }}
+
+        /// @rdname my_class_methods
+        #[miniextendr(s3(r_data_accessors = "get"), class = "my_class")]
+        impl Record {{}}
+        {rest}
+        "#
+    );
+    mxl121(&[("lib.rs", &source)])
+}
+
+/// Asserts `diags` is the one MXL121 on `Record`.
+fn assert_record_flagged(diags: &[miniextendr_lint::Diagnostic]) {
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(
+        diags[0]
+            .message
+            .starts_with("R code can never create a `Record`"),
+        "{diags:?}"
+    );
+}
+
+/// Every entry point returns a wrapper whose hand-written `IntoR` builds the
+/// pointer from a struct literal.
+#[test]
+fn mxl121_hand_built_by_into_r_wrapper() {
+    let diags = mxl121_record(
+        r#"
+        pub struct RecordObject(pub(crate) Inner);
+
+        impl RecordObject {
+            fn build(self) -> SEXP {
+                let ptr = ExternalPtr::new(Record { inner: self.0, _r: RSidecar::default() });
+                set_class(ptr.into_sexp(), "my_class")
+            }
+        }
+
+        impl IntoR for RecordObject {
+            type Error = std::convert::Infallible;
+            fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+                Ok(self.build())
+            }
+        }
+
+        #[miniextendr]
+        pub fn make_one(n: i32) -> RecordObject { RecordObject(Inner::new(n)) }
+        "#,
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// `ExternalPtr::<T>::new`, whatever its argument.
+#[test]
+fn mxl121_hand_built_turbofish() {
+    let diags = mxl121_record(
+        r#"
+        fn build(x: Inner) -> SEXP {
+            miniextendr_api::ExternalPtr::<Record>::new(record_from(x)).into_sexp()
+        }
+        "#,
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// A function the crate keeps to itself returning `ExternalPtr<T>`.
+#[test]
+fn mxl121_hand_built_by_plain_fn() {
+    let diags = mxl121_record(
+        r#"
+        fn build(x: Inner) -> Result<ExternalPtr<crate::Record>, String> { todo!() }
+        "#,
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// A `let` annotated `ExternalPtr<T>`.
+#[test]
+fn mxl121_hand_built_let_annotation() {
+    let diags = mxl121_record(
+        r#"
+        fn build(x: Inner) -> SEXP {
+            let ptr: ExternalPtr<Record> = make(x);
+            ptr.into_sexp()
+        }
+        "#,
+    );
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// `Self { .. }` and `Self(..)` inside `impl T`.
+#[test]
+fn mxl121_hand_built_from_self() {
+    let named = mxl121_record(
+        r#"
+        impl Record {
+            fn into_sexp(inner: Inner) -> SEXP {
+                ExternalPtr::new(Self { inner, _r: RSidecar::default() }).into_sexp()
+            }
+        }
+        "#,
+    );
+    assert!(named.is_empty(), "{named:?}");
+
+    let tuple = mxl121(&[(
+        "lib.rs",
+        r#"
+        #[miniextendr(s3, class = "my_class")]
+        impl Tagged {}
+
+        impl Tagged {
+            fn into_sexp(inner: Inner) -> SEXP { ExternalPtr::new(Self(inner)).into_sexp() }
+        }
+        "#,
+    )]);
+    assert!(tuple.is_empty(), "{tuple:?}");
+}
+
+/// A struct literal of `T` that never goes into an `ExternalPtr`.
+#[test]
+fn mxl121_struct_literal_alone_still_fires() {
+    let diags = mxl121_record(
+        r#"
+        fn build(inner: Inner) -> Box<Record> {
+            Box::new(Record { inner, _r: RSidecar::default() })
+        }
+        "#,
+    );
+    assert_record_flagged(&diags);
+}
+
+/// The documented limit: `ExternalPtr::new(local)` with the local's type
+/// written nowhere.
+#[test]
+fn mxl121_unnamed_local_still_fires() {
+    let diags = mxl121_record(
+        r#"
+        fn build(inner: Inner) -> SEXP {
+            let record = make_record(inner);
+            ExternalPtr::new(record).into_sexp()
+        }
+        "#,
+    );
+    assert_record_flagged(&diags);
+}
+
+/// An `ExternalPtr` of another type.
+#[test]
+fn mxl121_other_type_still_fires() {
+    let diags = mxl121_record(
+        r#"
+        fn build(inner: Inner) -> ExternalPtr<Other> {
+            let ptr: ExternalPtr<Other> = ExternalPtr::new(Other { inner });
+            ptr
+        }
+        "#,
+    );
+    assert_record_flagged(&diags);
+}
+
+/// Receivers and parameters are objects the caller has already.
+#[test]
+fn mxl121_inputs_still_fire() {
+    let diags = mxl121_record(
+        r#"
+        #[miniextendr(s3, class = "my_class")]
+        impl Record {
+            pub fn id(self: &ExternalPtr<Self>) -> i32 { 1 }
+            pub fn same(&self, other: &ExternalPtr<Self>) -> bool { true }
+        }
+
+        #[miniextendr]
+        pub fn record_id(x: &ExternalPtr<Record>) -> i32 { 1 }
+
+        fn helper(x: ExternalPtr<Record>) -> i32 { 1 }
+        "#,
+    );
+    assert_record_flagged(&diags);
+}
+
+/// A method of the type's own `#[miniextendr]` impl taking `self` needs an
+/// object already, whatever it builds.
+#[test]
+fn mxl121_own_method_with_receiver_still_fires() {
+    let diags = mxl121_record(
+        r#"
+        #[miniextendr(s3, class = "my_class")]
+        impl Record {
+            pub fn copy(&self) -> ExternalPtr<Self> {
+                ExternalPtr::new(Self { inner: self.inner.clone(), _r: RSidecar::default() })
+            }
+        }
+        "#,
+    );
+    assert_record_flagged(&diags);
+}
+
 // endregion
 
 // region: MXL302 — into_sexp() inside a vec!/array literal (use-after-free idiom)

@@ -1037,8 +1037,9 @@ class (`s7(abstract)`) keeps S7's own refusal to construct it. A vctrs class
 without a constructor gets its vectors from `vctrs::new_vctr()`
 (`new_rcrd()`, `new_list_of()`) with `class = "TypeName"`.
 When nothing creates the type, neither a constructor nor a `#[miniextendr]`
-function or method returning it, the build warns (lint MXL121, see
-[Macro Errors](MACRO_ERRORS.md)).
+function or method returning it, nor code of the crate building an
+`ExternalPtr<TypeName>` itself (e.g. a wrapper's hand-written `IntoR`), the
+build warns (lint MXL121, see [Macro Errors](MACRO_ERRORS.md)).
 An S7 property whose class is a class without a constructor needs a
 `default`, since S7 builds a property's default object by calling the class's
 constructor.

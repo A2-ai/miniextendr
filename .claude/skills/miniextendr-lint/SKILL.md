@@ -108,13 +108,19 @@ vctrs impl.
 **MXL121** — A class R code can never create.
 None of the type's inherent impl blocks has a constructor (a
 `<system>(constructor)` marker, or the receiver-less `-> Self` the macro
-infers), and no `#[miniextendr]` fn or method in the crate returns the type
-(`T`, `Self`, `ExternalPtr<T>`, bare or inside `Result` / `Option`). The type's
-own methods taking `self` don't count; vctrs classes are skipped. Warning.
-Fix: mark a constructor or add a `#[miniextendr]` function returning the type.
-A factory the lint cannot see (one returning a bare `SEXP`) is the case for
-`// mxl::allow(MXL121)` on the impl (its `impl` line, attributes, doc comments,
-or the line above them).
+infers), no `#[miniextendr]` fn or method in the crate returns the type
+(`T`, `Self`, `ExternalPtr<T>`, bare or inside `Result` / `Option`), and the
+crate builds no `ExternalPtr<T>` itself: anywhere, `#[miniextendr]` or not, an
+`ExternalPtr::new(T { .. })` / `ExternalPtr::new(T(..))` (`Self` inside
+`impl T`), or `ExternalPtr<T>` written as a type or turbofish (return type,
+`let` annotation, field, generic argument). A wrapper whose hand-written
+`IntoR` builds the pointer therefore counts. Parameters, receivers and the
+type's own methods taking `self` don't count; vctrs classes are skipped.
+Warning. Fix: mark a constructor or add a `#[miniextendr]` function returning
+the type. A factory the lint cannot see (one returning a bare `SEXP` without
+naming `ExternalPtr<T>`, or `ExternalPtr::new(value)` where the value's type is
+written nowhere) is the case for `// mxl::allow(MXL121)` on the impl (its
+`impl` line, attributes, doc comments, or the line above them).
 
 ### FFI safety rules (most-commonly-tripped)
 
