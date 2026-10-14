@@ -4,11 +4,25 @@
 //! and every trait impl, which expands through its trait's metadata macro.
 //! Plain and coercing conversions, `no_na` checks and an `Either` choice each
 //! read the call slot or the error from a template spanned at the argument's
-//! type.
+//! type. So do vectors, strings, strict integers, a mutable `match_arg` slice
+//! and an `Either` arm whose failure asks the type what it declares. Worker
+//! methods aren't covered: they need the `worker-thread` feature, which this
+//! suite doesn't enable.
 #![allow(dead_code)]
 
 use miniextendr_api::either_impl::Either;
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::{AsNumericVec, DataFrame, ExternalPtr, MatchArg, miniextendr};
+
+#[derive(Clone, Copy, MatchArg)]
+pub enum Mode {
+    Fast,
+    Safe,
+}
+
+// An `Either` arm the macro can't word: the failure path asks the type what it
+// declares, which reads the error binding.
+#[derive(miniextendr_api::TryFromSexp)]
+pub struct OpaqueNumbers(pub AsNumericVec);
 
 macro_rules! define_class {
     ($name:ident, { $($extra:tt)* }) => {
@@ -43,6 +57,27 @@ define_class!(SplicedHost, {
             Either::Left(name) => name,
             Either::Right(n) => n.to_string(),
         }
+    }
+    pub fn owned(&self, values: Vec<i32>) -> Vec<i32> {
+        values
+    }
+    pub fn text(&self, text: &str) -> String {
+        text.to_owned()
+    }
+    pub fn strict(&self, value: i64) -> i64 {
+        value
+    }
+    #[miniextendr(coerce)]
+    pub fn coerce_vector(&self, values: Vec<u32>) -> Vec<u32> {
+        values
+    }
+    #[miniextendr(match_arg_several_ok(values))]
+    pub fn mutable_choices(&self, values: &mut [Mode]) -> i32 {
+        values.reverse();
+        i32::try_from(values.len()).unwrap()
+    }
+    pub fn opaque_or_frame(&self, x: Either<OpaqueNumbers, DataFrame>) -> bool {
+        x.is_left()
     }
 });
 
