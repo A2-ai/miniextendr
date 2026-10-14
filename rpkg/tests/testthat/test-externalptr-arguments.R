@@ -1,13 +1,14 @@
-# `ExternalPtr<T>` arguments of a function hold the object's value (#2092).
+# Borrowed arguments of a function hold the object's value (#2092, #2106).
 #
-# The C wrapper borrows the value's `RefCell` for each `ExternalPtr<T>` and
-# `Option<ExternalPtr<T>>` argument, as a method's wrapper does for its
-# receiver: exclusively for a `mut` binding, shared otherwise, through the
-# conversion of the result. A body that moves the value out of its pointer
-# (`ExternalPtr::into_inner` and co.) takes no borrow. Fixtures:
-# `sidecar_env_*()` in `src/rust/rdata_sidecar_tests.rs`.
+# The C wrapper borrows the value's `RefCell` for each `&T` / `&mut T`,
+# `ExternalPtrRef` / `ExternalPtrMut` and `Option` of those arguments, as a
+# method's wrapper does for its receiver: exclusively for `&mut T` /
+# `ExternalPtrMut`, shared otherwise, through the conversion of the result.
+# An `ExternalPtr<T>` argument is a handle the wrapper doesn't borrow; its
+# `borrow()` / `borrow_mut()` check the value where the body reads it.
+# Fixtures: `sidecar_env_*()` in `src/rust/rdata_sidecar_tests.rs`.
 
-test_that("one object passed for a mut argument and another argument conflicts", {
+test_that("one object passed for a &mut argument and another argument conflicts", {
   a <- SidecarEnv$new(1L, 0, TRUE, "a")
   b <- SidecarEnv$new(2L, 0, TRUE, "b")
   expect_error(miniextendr:::sidecar_env_pair(a, a), class = "miniextendr_borrow_conflict")
@@ -18,7 +19,7 @@ test_that("one object passed for a mut argument and another argument conflicts",
   expect_identical(miniextendr:::sidecar_env_sum(a, a), 6L)
 })
 
-test_that("a callback can't touch an object a function holds as a mut argument", {
+test_that("a callback can't touch an object a function holds as a &mut argument", {
   obj <- SidecarEnv$new(1L, 0, TRUE, "a")
   callbacks <- list(
     read = function() obj$count,
@@ -67,7 +68,7 @@ test_that("a method's receiver and an argument of the same object conflict", {
   )
 })
 
-test_that("an Option<ExternalPtr<T>> argument borrows its object, and NULL is none", {
+test_that("an Option<&mut T> argument borrows its object, and NULL is none", {
   obj <- SidecarEnv$new(1L, 0, TRUE, "a")
   expect_error(
     miniextendr:::sidecar_env_bump_opt(obj, function() obj$count),
@@ -77,19 +78,39 @@ test_that("an Option<ExternalPtr<T>> argument borrows its object, and NULL is no
   expect_identical(miniextendr:::sidecar_env_bump_opt(NULL, function() NULL), NA_integer_)
 })
 
-test_that("a function that moves the value out of its argument takes no borrow", {
+test_that("an ExternalPtrMut argument borrows its object and reaches the R object", {
+  obj <- SidecarEnv$new(1L, 0, TRUE, "a")
+  expect_error(
+    miniextendr:::sidecar_env_bump_view(obj, function() obj$count),
+    class = "miniextendr_borrow_conflict"
+  )
+  f <- function() NULL
+  back <- miniextendr:::sidecar_env_bump_view(obj, f)
+  expect_identical(typeof(back), "externalptr")
+  expect_identical(obj$count, 2L)
+  expect_identical(SidecarEnv_get_count(back), 2L)
+  expect_identical(SidecarEnv_get_raw_slot(obj), f)
+})
+
+test_that("an ExternalPtr<T> argument takes no borrow", {
   obj <- SidecarEnv$new(4L, 0, TRUE, "a")
+  # A running call holds the value, so it can't move out.
+  expect_error(
+    obj$read_around(function() miniextendr:::sidecar_env_take(obj)),
+    class = "miniextendr_borrow_conflict"
+  )
+  expect_identical(obj$count, 4L)
   expect_identical(miniextendr:::sidecar_env_take(obj), 4L)
 })
 
-test_that("try_borrow() / try_borrow_mut() check the value of a handle a function keeps", {
+test_that("borrow() / borrow_mut() check the value of a handle a function keeps", {
   a <- SidecarEnv$new(1L, 0, TRUE, "a")
   b <- SidecarEnv$new(2L, 0, TRUE, "b")
-  expect_identical(miniextendr:::sidecar_env_try_borrow(list(a, b), TRUE), 3L)
+  expect_identical(miniextendr:::sidecar_env_borrow_handles(list(a, b), TRUE), 3L)
   expect_identical(a$count, 3L)
-  expect_identical(miniextendr:::sidecar_env_try_borrow(list(a, a), FALSE), 6L)
+  expect_identical(miniextendr:::sidecar_env_borrow_handles(list(a, a), FALSE), 6L)
   expect_error(
-    miniextendr:::sidecar_env_try_borrow(list(a, a), TRUE),
+    miniextendr:::sidecar_env_borrow_handles(list(a, a), TRUE),
     class = "miniextendr_borrow_conflict"
   )
   expect_identical(a$count, 3L)

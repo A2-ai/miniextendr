@@ -2397,9 +2397,56 @@ fn not_a_handle_error(actual: SEXPTYPE) -> SexpError {
     ))
 }
 
+/// An `ExternalPtr<T>` from a bare `EXTPTRSXP`, or from a class handle
+/// carrying one (R6 `private$.ptr`, S4 `ptr` slot, S7 `.ptr` attribute, a
+/// list or environment with `.ptr`; generated Env/S3 handles are already bare
+/// `EXTPTRSXP`s). A pointer unwrapped from a class handle is rooted for the
+/// handle's lifetime: R code can drop the class handle's reference while Rust
+/// holds the pointer, and the finalizer would then free the value.
+fn external_ptr_from_sexp<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::EXTPTRSXP {
+        return match unsafe { crate::externalptr::unwrap_class_handle(sexp) } {
+            // SAFETY: on R's main thread, like every conversion from R.
+            Some(inner) => unsafe { ExternalPtr::wrap_sexp_with_error(inner) }
+                .map(|ptr| unsafe { ptr.rooted() })
+                .map_err(type_mismatch_to_sexp_error),
+            None => Err(not_a_handle_error(actual)),
+        };
+    }
+
+    // Use ExternalPtr's type-checked constructor
+    unsafe { ExternalPtr::wrap_sexp_with_error(sexp) }.map_err(type_mismatch_to_sexp_error)
+}
+
+/// The handle a generated wrapper borrows for a `&T` / `&mut T` /
+/// [`ExternalPtrRef`](crate::ExternalPtrRef) /
+/// [`ExternalPtrMut`](crate::ExternalPtrMut) argument: converted like an
+/// `ExternalPtr<T>` argument, without its `T: Send` bound, since a borrowed
+/// argument keeps the call on R's main thread.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+    external_ptr_from_sexp(sexp)
+}
+
+/// [`__mx_external_arg`] for an `Option` argument: `NULL` is `None`.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_optional_external_arg<T: TypedExternal>(
+    sexp: SEXP,
+) -> Result<Option<ExternalPtr<T>>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return Ok(None);
+    }
+    external_ptr_from_sexp(sexp).map(Some)
+}
+
 /// Convert R EXTPTRSXP to `ExternalPtr<T>`.
 ///
-/// This enables using `ExternalPtr<T>` as parameter types in `#[miniextendr]` functions.
+/// This enables using `ExternalPtr<T>` as parameter types in `#[miniextendr]`
+/// functions, for a body that keeps or consumes the handle; a body that only
+/// reads the value takes `&T`.
 ///
 /// # Example
 ///
@@ -2409,42 +2456,29 @@ fn not_a_handle_error(actual: SEXPTYPE) -> SexpError {
 ///
 /// #[miniextendr]
 /// fn process(data: ExternalPtr<MyData>) -> i32 {
-///     data.value
+///     data.borrow().value
 /// }
 /// ```
 impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::EXTPTRSXP {
-            // Not a bare pointer — try unwrapping a class-wrapped handle
-            // (R6 `private$.ptr`, S4 `ptr` slot, S7 `.ptr` attribute, a list
-            // or environment with `.ptr`; generated Env/S3 handles are
-            // already bare EXTPTRSXPs and never reach here).
-            return match unsafe { crate::externalptr::unwrap_class_handle(sexp) } {
-                Some(inner) => unsafe { ExternalPtr::wrap_sexp_with_error(inner) }
-                    .map_err(type_mismatch_to_sexp_error),
-                None => Err(not_a_handle_error(actual)),
-            };
-        }
-
-        // Use ExternalPtr's type-checked constructor
-        unsafe { ExternalPtr::wrap_sexp_with_error(sexp) }.map_err(type_mismatch_to_sexp_error)
+        external_ptr_from_sexp(sexp)
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
         if actual != SEXPTYPE::EXTPTRSXP {
             return match unsafe { crate::externalptr::unwrap_class_handle(sexp) } {
-                Some(inner) => {
-                    unsafe { ExternalPtr::wrap_sexp_unchecked(inner) }.ok_or_else(|| {
+                Some(inner) => unsafe { ExternalPtr::wrap_sexp_unchecked(inner) }
+                    // SAFETY: on R's main thread (caller contract).
+                    .map(|ptr| unsafe { ptr.rooted() })
+                    .ok_or_else(|| {
                         SexpError::InvalidValue(
                             "failed to convert external pointer: type mismatch or null pointer"
                                 .to_string(),
                         )
-                    })
-                }
+                    }),
                 None => Err(not_a_handle_error(actual)),
             };
         }

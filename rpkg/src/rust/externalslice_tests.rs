@@ -12,7 +12,7 @@ pub struct F64Slice(ExternalSlice<f64>);
 pub fn external_slice_len(data: Vec<f64>) -> i32 {
     let slice = F64Slice(ExternalSlice::new(data));
     let ptr = ExternalPtr::new(slice);
-    ptr.0.len() as i32
+    ptr.borrow().0.len() as i32
 }
 
 /// Create an ExternalSlice, access elements via as_slice.

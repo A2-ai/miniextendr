@@ -85,13 +85,14 @@
 //! 1. **Rooted values** (`Sidecar<T>`) - kept in the external pointer's
 //!    protection list, which roots them and serializes them with the
 //!    pointer. The derive generates typed accessors as associated functions
-//!    of the struct, with the field's visibility, taking the `ExternalPtr`
-//!    handle (the struct holds nothing that points back at its pointer):
-//!    `#[r_data(ref)]` a getter `fn f(ptr: &ExternalPtr<Self>) -> T`,
-//!    `#[r_data(mut)]` a setter `fn set_f(ptr: &mut ExternalPtr<Self>, value: T)`,
+//!    of the struct, with the field's visibility, taking a view or the
+//!    `ExternalPtr` handle (the struct holds nothing that points back at its
+//!    pointer): `#[r_data(ref)]` a getter
+//!    `fn f(ptr: &impl SidecarOwner<Self>) -> T`, `#[r_data(mut)]` a setter
+//!    `fn set_f(ptr: &mut impl SidecarOwnerMut<Self>, value: T)`,
 //!    `#[r_data(ref, mut)]` or a bare `#[r_data]` both. A method that needs
-//!    the values takes the handle as its receiver (`self: &ExternalPtr<Self>`
-//!    / `self: &mut ExternalPtr<Self>`) and calls `Self::f(self)`; see
+//!    the values takes a view as its receiver (`self: ExternalPtrRef<'_, Self>`
+//!    / `mut self: ExternalPtrMut<'_, Self>`) and calls `Self::f(&self)`; see
 //!    `miniextendr_api::externalptr::Sidecar`. A bare `SEXP` field is
 //!    refused: the struct can't root it.
 //! 2. **Scalars** (`i32`, `f64`, `bool`, `u8`) - struct fields, returned as a
@@ -175,8 +176,8 @@
 //!     pub fn new(n: i32) -> Self {
 //!         MyType { x: 0, r: RSidecar, keys: Sidecar::new((1..=n).collect()), count: n, name: String::new() }
 //!     }
-//!     pub fn key_count(self: &ExternalPtr<Self>) -> usize {
-//!         Self::keys(self).len()
+//!     pub fn key_count(self: ExternalPtrRef<'_, Self>) -> usize {
+//!         Self::keys(&self).len()
 //!     }
 //! }
 //! // Generates: active bindings `keys`, `count`, `name` in the R6Class

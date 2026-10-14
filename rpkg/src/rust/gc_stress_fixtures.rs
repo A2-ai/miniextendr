@@ -98,8 +98,8 @@ pub fn gc_stress_externalptr_vec() {
     for (i, h) in handles.iter().enumerate() {
         let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(h.as_sexp()) }
             .expect("ExternalPtr handle was collected (R_ExternalPtrAddr is null)");
-        assert_eq!(reread.get_x(), i as f64);
-        assert_eq!(reread.get_label(), format!("bag-{i}"));
+        assert_eq!(reread.borrow().get_x(), i as f64);
+        assert_eq!(reread.borrow().get_label(), format!("bag-{i}"));
     }
 }
 
@@ -142,26 +142,27 @@ pub fn gc_stress_externalptr_collect_list() {
         let elt = list.vector_elt(i as isize);
         let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(elt) }
             .expect("collect_into_r_list element was collected (R_ExternalPtrAddr is null)");
-        assert_eq!(reread.get_x(), i as f64);
-        assert_eq!(reread.get_label(), format!("item-{i}"));
+        assert_eq!(reread.borrow().get_x(), i as f64);
+        assert_eq!(reread.borrow().get_label(), format!("item-{i}"));
     }
 }
 
-/// Hold the borrow of a class-wrapped `ExternalPtr<T>` argument through its
-/// `ArgumentCell` (#2092) while the pointer's only other reference, an
-/// environment's `.ptr` binding, is cleared and the GC runs.
+/// Hold a borrow of a class-wrapped `ExternalPtr<T>` argument, as a
+/// generated wrapper does for a `&T` argument (#2106), while the pointer's
+/// only other reference, an environment's `.ptr` binding, is cleared and the
+/// GC runs.
 ///
-/// The cell roots a pointer that conversion unwrapped from a class handle, as
-/// a generated wrapper's argument does; without the root the finalizer would
-/// free the value under the borrow, and the honest readback through
-/// `R_ExternalPtrAddr` would see a null address.
+/// Conversion roots a pointer it unwrapped from a class handle for as long as
+/// the handle lives; without the root the finalizer would free the value
+/// under the borrow, and the honest readback through `R_ExternalPtrAddr`
+/// would see a null address.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
 pub fn gc_stress_externalptr_argument_root() {
     use miniextendr_api::TryFromSexp;
     use miniextendr_api::expression::r_eval_str_global;
-    use miniextendr_api::externalptr::{ArgumentCell, ExternalPtr};
+    use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::sys::{R_gc, Rf_defineVar, Rf_install};
 
     unsafe {
@@ -176,8 +177,7 @@ pub fn gc_stress_externalptr_argument_root() {
         drop(ptr);
 
         let arg = ExternalPtr::<SharedData>::try_from_sexp(handle.get()).unwrap();
-        let cell = ArgumentCell::new(Some(&arg), handle.get());
-        let value = cell.shared().expect("a typed argument has a cell");
+        let value = arg.borrow();
         Rf_defineVar(ptr_symbol, SEXP::nil(), handle.get());
         R_gc();
         for i in 0..8 {
@@ -185,8 +185,8 @@ pub fn gc_stress_externalptr_argument_root() {
         }
         let reread = ExternalPtr::<SharedData>::wrap_sexp(arg.as_sexp())
             .expect("the argument was collected (R_ExternalPtrAddr is null)");
-        assert_eq!(reread.get_label(), "argument");
-        assert_eq!(value.get_x(), 1.0);
+        assert_eq!(reread.borrow().label, "argument");
+        assert_eq!(value.x, 1.0);
     }
 }
 
@@ -228,8 +228,8 @@ pub fn gc_stress_vec_class_return() {
         let elt = list.vector_elt(i as isize);
         let reread = unsafe { ExternalPtr::<SharedData>::wrap_sexp(elt) }
             .expect("Vec<Class> list element was collected (R_ExternalPtrAddr is null)");
-        assert_eq!(reread.get_x(), i as f64);
-        assert_eq!(reread.get_label(), format!("vec-{i}"));
+        assert_eq!(reread.borrow().get_x(), i as f64);
+        assert_eq!(reread.borrow().get_label(), format!("vec-{i}"));
     }
 }
 
@@ -5718,13 +5718,16 @@ pub fn gc_stress_preserved() -> miniextendr_api::NamedListBuilder {
     let kept = ExternalPtr::new(kept);
     churn();
 
-    let sums: Vec<i32> = kept
+    let value = kept.borrow();
+    let sums: Vec<i32> = value
         .columns
         .iter()
         .map(|column| unsafe { column.as_slice::<i32>() }.iter().sum())
         .collect();
+    let frame = value.frame.clone();
+    drop(value);
     let mut out = NamedListBuilder::new();
-    out.push("frame", kept.frame.clone());
+    out.push("frame", frame);
     out.push("sums", sums);
     out.push("kept", kept);
     churn();

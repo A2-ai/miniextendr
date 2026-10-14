@@ -122,13 +122,13 @@ pub fn rdata_sidecar_env_new(
     ExternalPtr::new(SidecarEnv::new(count, score, flag, name))
 }
 
-/// Calls `f()` while this function holds `obj` as a `mut` argument, then adds
-/// 1 to `count` and returns it. A callback that reaches `obj` gets a
+/// Calls `f()` while this function holds `obj` as a `&mut` argument, then
+/// adds 1 to `count` and returns it. A callback that reaches `obj` gets a
 /// `miniextendr_borrow_conflict` error (#2092).
 /// @param obj A `SidecarEnv`.
 /// @param f An R function of no arguments.
 #[miniextendr(noexport)]
-pub fn sidecar_env_bump_arg(mut obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
+pub fn sidecar_env_bump_arg(obj: &mut SidecarEnv, f: SEXP) -> i32 {
     call_back(f);
     obj.count += 1;
     obj.count
@@ -139,7 +139,7 @@ pub fn sidecar_env_bump_arg(mut obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
 /// @param obj A `SidecarEnv`.
 /// @param f An R function of no arguments.
 #[miniextendr(noexport)]
-pub fn sidecar_env_read_arg(obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
+pub fn sidecar_env_read_arg(obj: &SidecarEnv, f: SEXP) -> i32 {
     let count = obj.count;
     call_back(f);
     assert_eq!(obj.count, count);
@@ -150,15 +150,15 @@ pub fn sidecar_env_read_arg(obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
 /// `miniextendr_borrow_conflict` error (#2092).
 /// @param a,b Two `SidecarEnv`s.
 #[miniextendr(noexport)]
-pub fn sidecar_env_pair(mut a: ExternalPtr<SidecarEnv>, b: ExternalPtr<SidecarEnv>) -> i32 {
+pub fn sidecar_env_pair(a: &mut SidecarEnv, b: &SidecarEnv) -> i32 {
     a.count += b.count;
     a.count
 }
 
-/// [`sidecar_env_pair`] with the `mut` argument second.
+/// [`sidecar_env_pair`] with the `&mut` argument second.
 /// @param a,b Two `SidecarEnv`s.
 #[miniextendr(noexport)]
-pub fn sidecar_env_pair_rev(a: ExternalPtr<SidecarEnv>, mut b: ExternalPtr<SidecarEnv>) -> i32 {
+pub fn sidecar_env_pair_rev(a: &SidecarEnv, b: &mut SidecarEnv) -> i32 {
     b.count += a.count;
     b.count
 }
@@ -166,7 +166,7 @@ pub fn sidecar_env_pair_rev(a: ExternalPtr<SidecarEnv>, mut b: ExternalPtr<Sidec
 /// The sum of two objects' `count`: shared arguments may be one object.
 /// @param a,b Two `SidecarEnv`s.
 #[miniextendr(noexport)]
-pub fn sidecar_env_sum(a: ExternalPtr<SidecarEnv>, b: ExternalPtr<SidecarEnv>) -> i32 {
+pub fn sidecar_env_sum(a: &SidecarEnv, b: &SidecarEnv) -> i32 {
     a.count + b.count
 }
 
@@ -175,37 +175,53 @@ pub fn sidecar_env_sum(a: ExternalPtr<SidecarEnv>, b: ExternalPtr<SidecarEnv>) -
 /// @param obj A `SidecarEnv` or `NULL`.
 /// @param f An R function of no arguments.
 #[miniextendr(noexport)]
-pub fn sidecar_env_bump_opt(mut obj: Option<ExternalPtr<SidecarEnv>>, f: SEXP) -> Option<i32> {
+pub fn sidecar_env_bump_opt(obj: Option<&mut SidecarEnv>, f: SEXP) -> Option<i32> {
     call_back(f);
-    let obj = obj.as_mut()?;
+    let obj = obj?;
     obj.count += 1;
     Some(obj.count)
 }
 
-/// Moves the value out of `obj` and returns its `count`: a function that
-/// does takes no borrow of its arguments.
+/// [`sidecar_env_bump_arg`] through the R object: also keeps `f` in
+/// `raw_slot` (a sidecar field the struct doesn't hold) and returns the
+/// object itself.
+/// @param obj A `SidecarEnv`.
+/// @param f An R function of no arguments.
+#[miniextendr(noexport)]
+pub fn sidecar_env_bump_view(mut obj: ExternalPtrMut<'_, SidecarEnv>, f: SEXP) -> SEXP {
+    call_back(f);
+    obj.count += 1;
+    SidecarEnv::set_raw_slot(&mut obj, f);
+    ExternalPtrMut::as_sexp(&obj)
+}
+
+/// Moves the value out of `obj` and returns its `count`. An `ExternalPtr<T>`
+/// argument takes no borrow, so this fails only while a running call holds
+/// the object.
 /// @param obj A `SidecarEnv`.
 #[miniextendr(noexport)]
 pub fn sidecar_env_take(obj: ExternalPtr<SidecarEnv>) -> i32 {
     ExternalPtr::into_inner(obj).count
 }
 
-/// Borrows the two objects of `objs` with `try_borrow()` /
-/// `try_borrow_mut()`, which the wrapper does not do for a vector's elements.
-/// With `exclusive_first`, adds the second's `count` to the first's and
-/// returns it; otherwise returns their sum.
+/// Borrows the two objects of `objs` with `borrow()` / `borrow_mut()`. With
+/// `exclusive_first`, adds the second's `count` to the first's and returns
+/// it; otherwise returns their sum.
 /// @param objs A list of two `SidecarEnv`s.
 /// @param exclusive_first Whether to borrow the first object mutably.
 #[miniextendr(noexport)]
-pub fn sidecar_env_try_borrow(objs: Vec<ExternalPtr<SidecarEnv>>, exclusive_first: bool) -> i32 {
+pub fn sidecar_env_borrow_handles(
+    objs: Vec<ExternalPtr<SidecarEnv>>,
+    exclusive_first: bool,
+) -> i32 {
     let [mut first, second] =
         <[_; 2]>::try_from(objs).unwrap_or_else(|_| panic!("expected two objects"));
     if exclusive_first {
-        let mut first = first.try_borrow_mut();
-        first.count += second.try_borrow().count;
+        let mut first = first.borrow_mut();
+        first.count += second.borrow().count;
         first.count
     } else {
-        first.try_borrow().count + second.try_borrow().count
+        first.borrow().count + second.borrow().count
     }
 }
 // endregion
@@ -298,16 +314,16 @@ impl SidecarS3 {
     }
 
     /// Number of `tags`, read through the handle.
-    pub fn tag_count(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::tags(self).len()).expect("tag count exceeds i32")
+    pub fn tag_count(self: ExternalPtrRef<'_, Self>) -> i32 {
+        i32::try_from(Self::tags(&self).len()).expect("tag count exceeds i32")
     }
 
     /// Appends `tag` to `tags` through the handle.
     /// @param tag The tag to append.
-    pub fn add_tag(self: &mut ExternalPtr<Self>, tag: String) {
-        let mut tags = Self::tags(self);
+    pub fn add_tag(mut self: ExternalPtrMut<'_, Self>, tag: String) {
+        let mut tags = Self::tags(&self);
         tags.push(tag);
-        Self::set_tags(self, tags);
+        Self::set_tags(&mut self, tags);
     }
 }
 
@@ -359,12 +375,12 @@ impl SidecarS3Get {
     /// @param name A field name; `$<-` sets only `level`.
     /// @param value The new value of the field.
     #[miniextendr(s3(generic = "$<-"))]
-    pub fn with_level(self: &ExternalPtr<Self>, name: &str, value: i32) -> Self {
+    pub fn with_level(self: ExternalPtrRef<'_, Self>, name: &str, value: i32) -> Self {
         assert!(name == "level", "only `level` can be set, not `{name}`");
         SidecarS3Get {
             _r: RSidecar,
             level: value,
-            notes: Sidecar::new(Self::notes(self)),
+            notes: Sidecar::new(Self::notes(&self)),
         }
     }
 }
@@ -450,8 +466,8 @@ impl SidecarComputed {
     }
 
     /// Number of `keys`, read through the handle.
-    pub fn key_count(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::r_keys(self).len()).expect("key count exceeds i32")
+    pub fn key_count(self: ExternalPtrRef<'_, Self>) -> i32 {
+        i32::try_from(Self::r_keys(&self).len()).expect("key count exceeds i32")
     }
 }
 
@@ -627,16 +643,16 @@ impl SidecarS4 {
     }
 
     /// Number of values `record()` kept, read through the handle.
-    pub fn history_len(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::history(self).len()).expect("history length exceeds i32")
+    pub fn history_len(self: ExternalPtrRef<'_, Self>) -> i32 {
+        i32::try_from(Self::history(&self).len()).expect("history length exceeds i32")
     }
 
     /// Appends `value` to `history` through the handle.
     /// @param value The value to keep.
-    pub fn record(self: &mut ExternalPtr<Self>, value: f64) {
-        let mut history = Self::history(self);
+    pub fn record(mut self: ExternalPtrMut<'_, Self>, value: f64) {
+        let mut history = Self::history(&self);
         history.push(value);
-        Self::set_history(self, history);
+        Self::set_history(&mut self, history);
     }
 }
 
@@ -701,16 +717,16 @@ impl SidecarS7 {
     }
 
     /// Sum of `scores`, read through the handle.
-    pub fn score_total(self: &ExternalPtr<Self>) -> f64 {
-        Self::r_scores(self).iter().sum()
+    pub fn score_total(self: ExternalPtrRef<'_, Self>) -> f64 {
+        Self::r_scores(&self).iter().sum()
     }
 
     /// Appends `score` to `scores` through the handle.
     /// @param score The score to append.
-    pub fn add_score(self: &mut ExternalPtr<Self>, score: f64) {
-        let mut scores = Self::r_scores(self);
+    pub fn add_score(mut self: ExternalPtrMut<'_, Self>, score: f64) {
+        let mut scores = Self::r_scores(&self);
         scores.push(score);
-        Self::set_r_scores(self, scores);
+        Self::set_r_scores(&mut self, scores);
     }
 }
 
@@ -904,8 +920,8 @@ pub fn rdata_sidecar_panicky_new() -> ExternalPtr<SidecarPanicky> {
 /// `keys` gets both Rust accessors, `label` only the getter, `note` only
 /// the setter; `cache` is private, so only Rust reaches it. R gets its
 /// accessors for every `pub` field whatever the Rust option. A method that
-/// needs a sidecar value takes the handle (`self: &ExternalPtr<Self>` /
-/// `self: &mut ExternalPtr<Self>`), since the struct holds nothing that
+/// needs a sidecar value takes the object (`self: ExternalPtrRef<'_, Self>` /
+/// `self: ExternalPtrMut<'_, Self>`), since the struct holds nothing that
 /// points back at its pointer (#1856).
 #[derive(miniextendr_api::ExternalPtr, Debug, Clone)]
 #[externalptr(r6)]
@@ -965,54 +981,57 @@ impl SidecarSlotR6 {
     }
 
     /// Length of `keys`, read from Rust through the handle.
-    pub fn key_count(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::keys(self).len()).expect("keys length exceeds i32")
+    pub fn key_count(self: ExternalPtrRef<'_, Self>) -> i32 {
+        i32::try_from(Self::keys(&self).len()).expect("keys length exceeds i32")
     }
 
     /// Length of `label`, read from Rust (a `ref`-only field, named
     /// `r_label` in Rust).
-    pub fn label_len(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::r_label(self).len()).expect("label length exceeds i32")
+    pub fn label_len(self: ExternalPtrRef<'_, Self>) -> i32 {
+        i32::try_from(Self::r_label(&self).len()).expect("label length exceeds i32")
     }
 
     /// Writes `note` from Rust (a `mut`-only field).
     /// @param note The new note.
-    pub fn write_note(self: &mut ExternalPtr<Self>, note: String) {
-        Self::set_note(self, note);
+    pub fn write_note(mut self: ExternalPtrMut<'_, Self>, note: String) {
+        Self::set_note(&mut self, note);
     }
 
     /// Appends `key` to `keys` from Rust, through the mutable handle.
     /// @param key The key to append.
-    pub fn push_key(self: &mut ExternalPtr<Self>, key: i32) {
-        let mut keys = Self::keys(self);
+    pub fn push_key(mut self: ExternalPtrMut<'_, Self>, key: i32) {
+        let mut keys = Self::keys(&self);
         keys.push(key);
-        Self::set_keys(self, keys);
+        Self::set_keys(&mut self, keys);
     }
 
     /// Keep `value` in the private `cache`.
     /// @param value Any R list.
-    pub fn remember(self: &mut ExternalPtr<Self>, value: List) {
-        Self::set_cache(self, Some(value));
+    pub fn remember(mut self: ExternalPtrMut<'_, Self>, value: List) {
+        Self::set_cache(&mut self, Some(value));
     }
 
     /// The list `remember()` kept; `NULL` before.
-    pub fn recall(self: &ExternalPtr<Self>) -> SEXP {
-        Self::cache(self).into_sexp()
+    pub fn recall(self: ExternalPtrRef<'_, Self>) -> SEXP {
+        Self::cache(&self).into_sexp()
     }
 
     /// Reads `keys` from another thread: an error, since sidecar accessors
     /// run on R's main thread only. Returns the panic message.
-    pub fn keys_off_thread(self: &ExternalPtr<Self>) -> String {
-        struct SendPtr(*const ExternalPtr<SidecarSlotR6>);
-        // SAFETY: the pointee outlives the joined thread, and the accessor
+    pub fn keys_off_thread(self: ExternalPtrRef<'_, Self>) -> String {
+        struct SendRef<'a>(&'a ExternalPtrRef<'a, SidecarSlotR6>);
+        // SAFETY: the referent outlives the scoped thread, and the accessor
         // panics on the thread check before it touches R.
-        unsafe impl Send for SendPtr {}
-        let ptr = SendPtr(std::ptr::from_ref(self));
-        let outcome = std::thread::spawn(move || {
-            let ptr = ptr;
-            let _ = SidecarSlotR6::keys(unsafe { &*ptr.0 });
-        })
-        .join();
+        unsafe impl Send for SendRef<'_> {}
+        let this = SendRef(&self);
+        let outcome = std::thread::scope(|scope| {
+            scope
+                .spawn(move || {
+                    let this = this;
+                    let _ = SidecarSlotR6::keys(this.0);
+                })
+                .join()
+        });
         match outcome {
             Ok(()) => String::from("no error"),
             Err(payload) => {
@@ -1023,16 +1042,17 @@ impl SidecarSlotR6 {
 
     /// A copy of this object in a new external pointer: `ExternalPtr::clone`
     /// copies the struct and shares the sidecar values as R objects, so a
-    /// write to a field on either side replaces that side's slot only.
-    pub fn duplicate(self: &ExternalPtr<Self>) -> ExternalPtr<Self> {
+    /// write to a field on either side replaces that side's slot only. The
+    /// handle receiver takes no borrow; `clone` takes a shared one.
+    pub fn duplicate(self: ExternalPtr<Self>) -> ExternalPtr<Self> {
         self.clone()
     }
 
     /// Replaces the whole value through `DerefMut`: `n` keys again, no cache.
     /// Both sides see the new values at their next access.
     /// @param n Number of keys.
-    pub fn reset(self: &mut ExternalPtr<Self>, n: i32) {
-        **self = Self::new(n);
+    pub fn reset(mut self: ExternalPtrMut<'_, Self>, n: i32) {
+        *self = Self::new(n);
     }
 
     /// Rebuilds the value by value (`self -> Self`): `n` grows by `extra` and
@@ -1080,8 +1100,8 @@ impl SidecarKeys for SidecarSlotR6 {
 /// pointer: they live in its protection list.
 /// @param a,b Two `SidecarSlotR6` pointers.
 #[miniextendr]
-pub fn sidecar_swap(mut a: ExternalPtr<SidecarSlotR6>, mut b: ExternalPtr<SidecarSlotR6>) {
-    std::mem::swap(&mut *a, &mut *b);
+pub fn sidecar_swap(a: &mut SidecarSlotR6, b: &mut SidecarSlotR6) {
+    std::mem::swap(a, b);
 }
 
 /// Moves the value out of `ptr` (whose R object is cleared) and wraps it
@@ -1206,7 +1226,7 @@ pub fn gc_stress_sidecar_fields() {
         .collect();
     for (i, handle) in (0i32..).zip(handles.iter_mut()) {
         SidecarSlotR6::set_cache(handle, Some(List::from_values(vec![i; 16])));
-        SidecarSlotR6::push_key(handle, 100 + i);
+        SidecarSlotR6::push_key(handle.borrow_mut(), 100 + i);
     }
     churn();
     for (i, handle) in (0i32..).zip(&handles) {
@@ -1230,30 +1250,30 @@ pub fn gc_stress_sidecar_fields() {
     let mut target = ExternalPtr::new(SidecarSlotR6::new(1));
     target.clone_from(&handles[4]);
     churn();
-    assert_eq!(target.n, 5);
+    assert_eq!(target.borrow().n, 5);
     assert_eq!(SidecarSlotR6::keys(&target), vec![1, 2, 3, 4, 5, 104]);
     SidecarSlotR6::set_keys(&mut target, vec![0]);
     assert_eq!(SidecarSlotR6::keys(&handles[4]), vec![1, 2, 3, 4, 5, 104]);
 
     // Swap the Rust values of two pointers: the sidecar values stay put.
     let (first, rest) = handles.split_at_mut(1);
-    std::mem::swap(&mut *first[0], &mut *rest[0]);
+    std::mem::swap(&mut *first[0].borrow_mut(), &mut *rest[0].borrow_mut());
     churn();
-    assert_eq!(first[0].n, 2);
+    assert_eq!(first[0].borrow().n, 2);
     assert_eq!(SidecarSlotR6::keys(&first[0]), vec![1, 100]);
-    assert_eq!(rest[0].n, 1);
+    assert_eq!(rest[0].borrow().n, 1);
     assert_eq!(SidecarSlotR6::keys(&rest[0]), vec![1, 2, 101]);
 
     // Swap, then `into_inner` with nothing in between, then wrap again: the
     // values of the pointer being consumed travel with the struct it held
     // (the swap bug of #1856).
     let (front, back) = handles.split_at_mut(7);
-    std::mem::swap(&mut *front[6], &mut *back[0]);
+    std::mem::swap(&mut *front[6].borrow_mut(), &mut *back[0].borrow_mut());
     let value = ExternalPtr::into_inner(handles.pop().expect("eight handles"));
     assert_eq!(value.n, 7);
     let back = ExternalPtr::new(value);
     churn();
-    assert_eq!(back.n, 7);
+    assert_eq!(back.borrow().n, 7);
     assert_eq!(
         SidecarSlotR6::keys(&back),
         vec![1, 2, 3, 4, 5, 6, 7, 8, 107]
@@ -1277,18 +1297,19 @@ pub fn gc_stress_sidecar_fields() {
     assert_eq!(taken.n, 3);
     erased.restore_after_consuming::<SidecarSlotR6>(taken.rebuilt(9));
     churn();
-    // `keep`'s cached pointer predates the write-back, so read through a view.
-    let view = unsafe { ExternalPtr::<SidecarSlotR6>::wrap_sexp(sexp) }.expect("live pointer");
-    assert_eq!(view.n, 12);
-    assert_eq!(SidecarSlotR6::keys(&view), vec![1, 2, 3]);
-    assert_eq!(SidecarSlotR6::r_label(&view), "fresh");
+    // `keep`'s cached pointer predates the write-back, so read through a
+    // fresh handle.
+    let fresh = unsafe { ExternalPtr::<SidecarSlotR6>::wrap_sexp(sexp) }.expect("live pointer");
+    assert_eq!(fresh.borrow().n, 12);
+    assert_eq!(SidecarSlotR6::keys(&fresh), vec![1, 2, 3]);
+    assert_eq!(SidecarSlotR6::r_label(&fresh), "fresh");
     assert_eq!(
-        SidecarSlotR6::cache(&view)
+        SidecarSlotR6::cache(&fresh)
             .expect("the write-back flushed the cache")
             .get_index::<i32>(0),
         Some(9)
     );
-    drop(view);
+    drop(fresh);
     drop(keep);
 
     // A `Sidecar<SEXP>` read back from the R side of the fence.

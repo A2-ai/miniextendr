@@ -41,7 +41,7 @@ impl TypedConversion {
     }
     /// Infer the source class from the static method's parameter.
     /// @param source Conversion input.
-    pub fn from_source(source: ExternalPtr<ConversionSource>) -> Result<ConvertFrom<Self>, String> {
+    pub fn from_source(source: &ConversionSource) -> Result<ConvertFrom<Self>, String> {
         if source.value < 0 {
             return Err("negative conversion input".into());
         }
@@ -85,7 +85,7 @@ impl AttributeConversion {
     /// Register the source class explicitly.
     /// @param source Conversion input.
     #[miniextendr(s7(convert_from = "ConversionSource"))]
-    pub fn from_source(source: ExternalPtr<ConversionSource>) -> Result<Self, String> {
+    pub fn from_source(source: &ConversionSource) -> Result<Self, String> {
         if source.value < 0 {
             return Err("negative conversion input".into());
         }

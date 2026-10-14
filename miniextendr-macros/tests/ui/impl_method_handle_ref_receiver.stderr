@@ -1,0 +1,11 @@
+error: a method takes its object as `self: ExternalPtrRef<'_, Self>`: the wrapper borrows the value for the call, and the view carries the R object for the sidecar accessors (`Self::field(&self)`); use `&self` / `&mut self` when the body needs only the value, or `self: ExternalPtr<Self>` for the unborrowed handle
+  --> tests/ui/impl_method_handle_ref_receiver.rs:13:23
+   |
+13 |     pub fn read(self: &ExternalPtr<Self>) -> i32 {
+   |                       ^^^^^^^^^^^^^^^^^^
+
+error: a method takes its object as `mut self: ExternalPtrMut<'_, Self>`: the wrapper borrows the value for the call, and the view carries the R object for the sidecar accessors (`Self::field(&self)`); use `&self` / `&mut self` when the body needs only the value, or `self: ExternalPtr<Self>` for the unborrowed handle
+  --> tests/ui/impl_method_handle_ref_receiver.rs:25:24
+   |
+25 |     pub fn write(self: &mut ExternalPtr<Self>, value: i32) {}
+   |                        ^^^^^^^^^^^^^^^^^^^^^^

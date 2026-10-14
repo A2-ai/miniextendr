@@ -605,7 +605,7 @@ impl Point {
         self.y
     }
 
-    pub fn distance(&self, other: ExternalPtr<Point>) -> f64 {
+    pub fn distance(&self, other: &Point) -> f64 {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
@@ -757,8 +757,8 @@ S7::method(pair, list(Left, S7::class_any)) <- function(x, other, sep, ...) {
 The receiver is registered for the class, and every other dispatch argument for
 `S7::class_any`. The method's own argument checks and Rust conversions are the
 type check, and their errors name the parameter. No single S7 class matches
-what a parameter accepts in general (an `ExternalPtr<T>` takes the class
-object, a bare external pointer or a list with `.ptr`; `coerce` widens numeric
+what a parameter accepts in general (a `&T` takes the class object, a bare
+external pointer or a list with `.ptr`; `coerce` widens numeric
 parameters), so a narrower class would turn accepted values into "Can't find
 method" errors. A more specific method registered in R,
 such as `S7::method(pair, list(Left, Right))`, still takes precedence over the
@@ -816,7 +816,7 @@ operand, which must be named `e2` (`y`):
 impl Money {
     /// `a + b`
     #[miniextendr(s7(generic = "+"))]
-    pub fn add(&self, e2: ExternalPtr<Money>) -> Self { ... }
+    pub fn add(&self, e2: &Money) -> Self { ... }
 
     /// `a * k`
     #[miniextendr(r_name = "*")]
@@ -1559,8 +1559,8 @@ impl MyConfig {
         }
     }
 
-    pub fn has_table(self: &ExternalPtr<Self>) -> bool {
-        !Self::r_table(self).is_nil()
+    pub fn has_table(self: ExternalPtrRef<'_, Self>) -> bool {
+        !Self::r_table(&self).is_nil()
     }
 }
 ```
@@ -1570,8 +1570,8 @@ to R, and each write converts into Rust or raises an error. `r_table` is a
 `Sidecar<T>`: its value lives in the external pointer's protection list, which
 roots it, and Rust reads and writes it through the `MyConfig::r_table(&ptr)` /
 `MyConfig::set_r_table(&mut ptr, v)` accessors the derive generates, so a
-method that needs it takes the handle as its receiver (`self:
-&ExternalPtr<Self>`, as `has_table` does). The field types, the `Sidecar<T>`
+method that needs it takes a view as its receiver (`self:
+ExternalPtrRef<'_, Self>`, as `has_table` does). The field types, the `Sidecar<T>`
 lifecycle and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R
 Data Fields)".
 

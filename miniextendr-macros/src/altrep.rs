@@ -209,11 +209,13 @@ pub(crate) fn generate_direct_altrep_registration(
             }
         }
 
+        // ALTREP data1 reads take no `RefCell` borrow until #2103 measures
+        // the checked read.
         impl ::core::ops::Deref for #ref_ident {
             type Target = #ident #ty_generics;
 
             fn deref(&self) -> &Self::Target {
-                &*self.0
+                unsafe { self.0.as_ref_unchecked() }
             }
         }
 
@@ -247,13 +249,13 @@ pub(crate) fn generate_direct_altrep_registration(
             type Target = #ident #ty_generics;
 
             fn deref(&self) -> &Self::Target {
-                &*self.0
+                unsafe { self.0.as_ref_unchecked() }
             }
         }
 
         impl ::core::ops::DerefMut for #mut_ident {
             fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut *self.0
+                unsafe { self.0.as_mut_unchecked() }
             }
         }
 

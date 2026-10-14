@@ -300,68 +300,57 @@ fn every_none_error_path_uses_the_r_name_on_both_threads() {
     }
 }
 
-/// `ExternalPtr<T>` arguments are borrowed after every conversion and
-/// post-conversion statement (#2092), on the main thread in both wrappers;
-/// a consumed handle and a marked parameter are not.
+/// Borrowed external arguments (`&T` / `&mut T` / views, #2106) convert to
+/// their handles with the other arguments and are borrowed after every
+/// conversion and post-conversion statement; an `ExternalPtr<T>` handle is
+/// not borrowed, and a method's `Self` names the impl's type.
 #[test]
-fn argument_borrows_follow_conversion_on_both_threads() {
+fn argument_borrows_follow_conversion() {
     let sig: syn::ItemFn = syn::parse_quote!(
         fn pair(
-            mut a: ExternalPtr<Counter>,
-            b: Option<ExternalPtr<Counter>>,
+            a: &mut Self,
+            b: Option<&Counter>,
             c: ExternalPtr<Counter>,
+            d: ExternalPtrRef<'_, Counter>,
         ) {
         }
     );
-    let ctx = |strategy: ThreadStrategy, consumed: Vec<String>| {
-        CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_pair))
-            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_pair))
-            .call_expr(quote::quote!(pair(a, b, c)))
-            .inputs(sig.sig.inputs.clone())
-            .thread_strategy(strategy)
-            .post_conversion(vec![quote::quote!(post_conversion_marker();)])
-            .consumed_handles(consumed)
-            .preserve_param_names()
-            .build()
-            .generate()
-            .to_string()
-    };
+    let main = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_pair))
+        .r_wrapper_const(syn::parse_quote!(R_WRAPPER_pair))
+        .call_expr(quote::quote!(pair(a, b, c, d)))
+        .inputs(sig.sig.inputs.clone())
+        .thread_strategy(ThreadStrategy::MainThread)
+        .post_conversion(vec![quote::quote!(post_conversion_marker();)])
+        .type_context(syn::parse_quote!(Counter))
+        .preserve_param_names()
+        .build()
+        .generate()
+        .to_string();
 
-    let main = ctx(ThreadStrategy::MainThread, Vec::new());
-    let capture = main
-        .find("let __mx_handle_sexp_a = a")
-        .expect("captured slot");
-    let conversion = main.find("let a :").expect("conversion");
+    let conversion = main
+        .find("let mut __mx_ptr_a = match :: miniextendr_api :: from_r :: __mx_external_arg :: < Counter >")
+        .expect("handle conversion");
+    let handle = main.find("let c :").expect("handle argument");
     let post = main
         .find("post_conversion_marker")
         .expect("post conversion");
     let exclusive = main
-        .find("ArgumentCell :: exclusive")
+        .find("__mx_borrow_mut :: < Counter > (& mut __mx_ptr_a)")
         .expect("exclusive borrow");
-    let call = main.find("pair (a , b , c)").expect("call");
+    let call = main.find("pair (a , b , c , d)").expect("call");
     assert!(
-        capture < conversion && post < exclusive && exclusive < call,
+        conversion < handle && handle < post && post < exclusive && exclusive < call,
         "{main}"
     );
-    assert_eq!(main.matches("ArgumentCell :: shared").count(), 2, "{main}");
     assert!(
-        main.contains(":: core :: option :: Option :: as_ref (& b)"),
+        main.contains("__mx_optional_external_arg :: < Counter > (b)"),
         "{main}"
     );
-
-    let worker = ctx(ThreadStrategy::WorkerThread, Vec::new());
-    let post = worker
-        .find("post_conversion_marker")
-        .expect("post conversion");
-    let exclusive = worker
-        .find("ArgumentCell :: exclusive")
-        .expect("exclusive borrow");
-    let dispatch = worker.find("run_on_worker").expect("the worker dispatch");
-    assert!(post < exclusive && exclusive < dispatch, "{worker}");
-
-    let consumed = ctx(
-        ThreadStrategy::MainThread,
-        vec!["a".into(), "b".into(), "c".into()],
+    assert!(
+        main.contains(
+            "let d = :: miniextendr_api :: externalptr :: __mx_borrow :: < Counter > (& __mx_ptr_d)"
+        ),
+        "{main}"
     );
-    assert!(!consumed.contains("ArgumentCell"), "{consumed}");
+    assert!(!main.contains("__mx_ptr_c"), "{main}");
 }

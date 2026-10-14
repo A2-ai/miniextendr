@@ -22,7 +22,7 @@ impl Gauge {
 
     #[miniextendr(s3(generic = "$<-"))]
     pub fn with_level(
-        self: &miniextendr_api::externalptr::ExternalPtr<Self>,
+        self: miniextendr_api::ExternalPtrRef<'_, Self>,
         name: &str,
         value: i32,
     ) -> Self {

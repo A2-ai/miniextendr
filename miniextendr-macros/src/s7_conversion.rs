@@ -124,7 +124,7 @@ pub(crate) fn configure(
                 ));
             }
             if marker.is_some() {
-                let source = source_class(&params[0].ty).ok_or_else(|| error("ConvertFrom needs a named source class parameter, such as ExternalPtr<Source> or &Source"))?;
+                let source = source_class(&params[0].ty).ok_or_else(|| error("ConvertFrom needs a named source class parameter, such as `&Source` or `ExternalPtr<Source>`"))?;
                 let source = if source == "Self" {
                     crate::naming::ident_name(implementing_type)
                 } else {
@@ -155,13 +155,17 @@ fn source_class(ty: &Type) -> Option<String> {
     }
     let Type::Path(path) = ty else { return None };
     let segment = path.path.segments.last()?;
-    if segment.ident == "ExternalPtr" {
+    if segment.ident == "ExternalPtr"
+        || segment.ident == "ExternalPtrRef"
+        || segment.ident == "ExternalPtrMut"
+    {
         let PathArguments::AngleBracketed(args) = &segment.arguments else {
             return None;
         };
-        let GenericArgument::Type(inner) = args.args.first()? else {
-            return None;
-        };
+        let inner = args.args.iter().find_map(|arg| match arg {
+            GenericArgument::Type(inner) => Some(inner),
+            _ => None,
+        })?;
         return source_class(inner);
     }
     if !matches!(segment.arguments, PathArguments::None) {
