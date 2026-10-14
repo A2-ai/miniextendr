@@ -18,6 +18,13 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
 - **Context-checked construction** -- `new()` runs on R's main thread or routes
   from an active miniextendr worker context
 
+Checked conversions and erased-handle accessors reject foreign pointers before
+reading their address as Rust storage. They require a symbol tag and an ordinary
+protection list with a type-ID symbol, and exclude the reserved trait-ABI tag
+(which identifies a different allocation layout). This is a metadata boundary,
+not authentication: a foreign address deliberately forged with miniextendr
+metadata is unsupported. `Any::downcast` remains the concrete-type check.
+
 ## When to Use ExternalPtr
 
 | Strategy | Lifetime | Use Case |

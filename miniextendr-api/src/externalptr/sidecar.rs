@@ -670,9 +670,7 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
         if require_live
-            || !(prot.type_of() == SEXPTYPE::VECSXP
-                && prot.len() > 0
-                && is_type_id_symbol::<T>(prot.vector_elt(PROT_TYPE_ID_INDEX)))
+            || !unsafe { super::stored_type_id_symbol(x) }.is_some_and(is_type_id_symbol::<T>)
         {
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
@@ -681,6 +679,9 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
         }
         None
     } else {
+        if unsafe { super::stored_type_id_symbol(x) }.is_none() {
+            refuse_other_type::<T>(receiver, Refused::OtherType);
+        }
         match unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
             Some(cell) => Some(cell),
             None => refuse_other_type::<T>(receiver, Refused::OtherType),
@@ -743,6 +744,9 @@ unsafe fn sidecar_r_cell<'a, T: TypedExternal>(receiver: SEXP) -> &'a RefCell<T>
         // A save by this or another version raises its own error here.
         unsafe { refuse_restored::<T>(x, receiver) };
         refuse_other_type::<T>(receiver, Refused::NullPointer);
+    }
+    if unsafe { super::stored_type_id_symbol(x) }.is_none() {
+        refuse_other_type::<T>(receiver, Refused::OtherType);
     }
     match unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
         Some(cell) => cell,

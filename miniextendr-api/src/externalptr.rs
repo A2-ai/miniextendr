@@ -105,6 +105,13 @@
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
 //!   - Index 2..: one value per [`Sidecar<T>`] field of `T`
 //!
+//! Before reading the address as Rust storage, checked conversions and erased
+//! handle accessors require this metadata shape (including a non-ALTREP list).
+//! Trait-ABI pointers carry a reserved tag and a different allocation layout;
+//! they are rejected here. These checks reject ordinary foreign pointers, not
+//! foreign addresses deliberately forged with miniextendr metadata. Symbol
+//! names never establish the concrete Rust type; `Any::downcast` still does.
+//!
 //! ## `TYPE_NAME_CSTR` vs `TYPE_ID_CSTR`
 //!
 //! [`TypedExternal`] exposes two associated constants with distinct roles —
@@ -312,19 +319,27 @@ fn symbol_name(sym: SEXP) -> &'static str {
 }
 
 /// The type-ID symbol an `ExternalPtr`-built pointer keeps in `prot[0]`, or
-/// `None` when `sexp`'s `prot` is not the list `ExternalPtr` builds (R's
-/// `new("externalptr")`, a pointer `into_inner` cleared, another library's).
+/// `None` when its metadata is not the shape ordinary `ExternalPtr` builds.
+/// This also excludes trait-ABI storage, which has a different Rust layout.
+///
+/// Only inspect non-ALTREP metadata: checking ownership must not invoke a
+/// foreign callback. A foreign address forged with this metadata is outside
+/// the trust boundary; after this check `Any` still decides the concrete type.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `EXTPTRSXP`.
 #[inline]
 unsafe fn stored_type_id_symbol(sexp: SEXP) -> Option<SEXP> {
-    let prot = unsafe { R_ExternalPtrProtected(sexp) };
-    if prot.is_null_or_nil()
-        || prot.type_of() != SEXPTYPE::VECSXP
-        || prot.len() < PROT_VEC_LEN as usize
+    let tag = unsafe { R_ExternalPtrTag(sexp) };
+    if tag.type_of() != SEXPTYPE::SYMSXP
+        || unsafe { std::ffi::CStr::from_ptr(tag.printname().r_char()) }
+            == crate::mx_abi::MX_TAG_NAME
     {
+        return None;
+    }
+    let prot = unsafe { R_ExternalPtrProtected(sexp) };
+    if prot.type_of() != SEXPTYPE::VECSXP || prot.is_altrep() || prot.xlength() < PROT_VEC_LEN {
         return None;
     }
     let sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
@@ -1654,6 +1669,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn into_inner(this: Self) -> T {
         let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
         assert!(!any_raw.is_null(), "ExternalPtr is null or cleared");
+        assert!(
+            unsafe { stored_type_id_symbol(this.sexp) }.is_some(),
+            "ExternalPtr has no valid storage metadata"
+        );
         if let Some(cell) = unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
             drop(borrow_value_mut(cell));
         }
@@ -1944,11 +1963,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
+    /// - The metadata does not identify ordinary miniextendr storage
     /// - The stored `Box<dyn Any>` does not contain a `RefCell<T>`
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP created by this library
+    /// - `sexp` must be a valid EXTPTRSXP; foreign pointers must not carry
+    ///   forged miniextendr metadata
     /// - The caller must ensure no other ExternalPtr owns this SEXP
     pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         debug_assert_eq!(
@@ -1961,6 +1982,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if any_raw.is_null() {
             return None;
         }
+        unsafe { stored_type_id_symbol(sexp) }?;
 
         if is_type_erased::<T>() {
             // Type-erased path: skip downcast, just use the raw pointer
@@ -1981,7 +2003,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP created by this library
+    /// - `sexp` must be a valid EXTPTRSXP; foreign pointers must not carry
+    ///   forged miniextendr metadata
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
     pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
@@ -1997,6 +2020,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if any_raw.is_null() {
             return None;
         }
+        unsafe { stored_type_id_symbol(sexp) }?;
 
         if is_type_erased::<T>() {
             return Some(Self::from_borrowed_parts(sexp, unsafe {
@@ -2054,6 +2078,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
             });
         }
 
+        let stored =
+            unsafe { stored_type_id_symbol(sexp) }.ok_or(TypeMismatchError::InvalidTypeId)?;
+
         if is_type_erased::<T>() {
             return Ok(Self::from_borrowed_parts(sexp, unsafe {
                 NonNull::new_unchecked(any_raw.cast())
@@ -2065,7 +2092,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             Some(cell) => Ok(Self::from_borrowed_parts(sexp, NonNull::from(cell))),
             None => {
                 // The stored type ID, for the diagnostic.
-                let found = unsafe { stored_type_id_symbol(sexp) }.map_or("<unknown>", symbol_name);
+                let found = symbol_name(stored);
                 Err(TypeMismatchError::Mismatch {
                     expected: T::TYPE_NAME,
                     found,
@@ -2159,6 +2186,7 @@ impl ExternalPtr<()> {
         if any_raw.is_null() {
             return None;
         }
+        unsafe { stored_type_id_symbol(self.sexp) }?;
         let any_box: &Box<dyn Any> = unsafe { &*any_raw };
         any_box.downcast_ref::<RefCell<T>>()
     }
@@ -2281,7 +2309,7 @@ impl ExternalPtr<()> {
     /// Whether the slot holds the [`ConsumedSlot`] marker.
     pub fn is_consumed(&self) -> bool {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
-        if any_raw.is_null() {
+        if any_raw.is_null() || unsafe { stored_type_id_symbol(self.sexp) }.is_none() {
             return false;
         }
         let any_box: &Box<dyn Any> = unsafe { &*any_raw };
@@ -2337,6 +2365,10 @@ impl ExternalPtr<()> {
         assert!(
             !any_raw.is_null(),
             "restore_after_consuming on a null external pointer"
+        );
+        assert!(
+            unsafe { stored_type_id_symbol(self.sexp) }.is_some(),
+            "restore_after_consuming on a foreign external pointer"
         );
         // A running call's borrow points into the storage this replaces.
         if let Some(cell) = self.downcast_cell::<T>() {
