@@ -146,27 +146,28 @@ Explicit access methods:
 |--------|---------|-------|
 | `as_ref()` | `Option<&T>` | Always `Some` for valid ptrs |
 | `as_mut()` | `Option<&mut T>` | Always `Some` for valid ptrs |
+| `try_borrow()` | `Ref<'_, T>` | Borrows the value's `RefCell` shared; see [Reentrant Calls](#reentrant-calls) |
+| `try_borrow_mut()` | `RefMut<'_, T>` | Borrows it exclusively |
 | `as_ptr()` | `*const T` | Raw pointer, no ownership transfer |
 | `as_sexp()` | `SEXP` | The underlying R object |
 | `reborrow()` | `ExternalPtr<T>` | Owned alias sharing the same SEXP; no allocation, no R object copy |
 
 ### `reborrow()`: identity-preserving returns
 
-When a `#[miniextendr]` method receives one or more `ExternalPtr<T>` values
-and returns one of them to R, `reborrow()` lets you build an owned
-`ExternalPtr<T>` that points at the same `EXTPTRSXP` without allocating a
-new R object:
+When a `#[miniextendr]` method receives its object as a handle and returns
+it to R, `reborrow()` lets you build an owned `ExternalPtr<T>` that points
+at the same `EXTPTRSXP` without allocating a new R object:
 
 ```rust
 #[miniextendr(env)]
 impl Counter {
-    // R will see `identical(a, pick_larger(a, b))` == TRUE when `a` wins,
+    // R will see `identical(a, a$pick_larger(b))` == TRUE when `a` wins,
     // because reborrow() returns the same SEXP rather than a fresh copy.
     pub fn pick_larger(
         self: &ExternalPtr<Self>,
-        other: &ExternalPtr<Self>,
+        other: ExternalPtr<Self>,
     ) -> ExternalPtr<Self> {
-        if self.value >= other.value { self.reborrow() } else { other.reborrow() }
+        if self.value >= other.value { self.reborrow() } else { other }
     }
 }
 ```
@@ -176,7 +177,8 @@ impl Counter {
 same R object they passed in.
 
 `Deref`, `DerefMut`, `as_ref()` and `as_mut()` take no borrow of the value's
-`RefCell`; see [Reentrant Calls](#reentrant-calls) for what does.
+`RefCell`; `try_borrow()` and `try_borrow_mut()` do. See
+[Reentrant Calls](#reentrant-calls).
 
 ## Consuming and Dropping
 
@@ -249,9 +251,10 @@ handle (`Self::keys(self)`, `Self::set_keys(self, v)`), since the struct
 holds nothing that points back at its pointer. See "`Sidecar<T>`: values the
 pointer roots" below.
 
-Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
-Consuming receivers (`self: ExternalPtr<Self>`) are not supported. R owns
-the pointer.
+Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`
+and `self: ExternalPtr<Self>`. The by-value handle borrows the value
+exclusively for the call, so it can't move the value out: R owns the
+pointer.
 
 ## Reentrant Calls
 
@@ -262,42 +265,118 @@ sits in a `RefCell<T>`, and the generated code borrows that cell for the whole
 call, through the conversion of its result:
 
 - `&self` methods, `self: &ExternalPtr<Self>` receivers, `ExternalPtrRef`
-  handles and field reads borrow it shared;
-- `&mut self` and by-value methods, `self: &mut ExternalPtr<Self>` receivers,
-  `ExternalPtrMut` handles and field writes borrow it exclusively.
+  handles, field reads and arguments (below) not declared `mut` borrow it
+  shared;
+- `&mut self` and by-value methods, `self: &mut ExternalPtr<Self>` and
+  `self: ExternalPtr<Self>` receivers, `ExternalPtrMut` handles, field writes
+  and `mut` arguments borrow it exclusively.
 
 Shared borrows nest. A call that conflicts with one still running raises an R
 error of class `miniextendr_borrow_conflict` instead of making a second
 reference, and leaves the object as it was. A trait method called through a
 View, from this package or another, borrows the same cell (see `TRAIT_ABI.md`).
 
-The borrow ends when the method returns or unwinds. An R error that jumps over
-the method's frames never ends it: a bare `Rf_eval`, `R_forceAndCall` or
-`Rf_applyClosure` of R code that raises, or a direct `R_CheckUserInterrupt()`
-with an interrupt pending, longjmps from inside the method straight to the
-generated wrapper's `R_UnwindProtect`. No destructor in between runs, and the object stays
-borrowed: every later call on it raises `miniextendr_borrow_conflict` for the
-rest of the session (#2093). Wrapping the call in `with_r_unwind_protect` does
-not change that, since it resumes the R error with `R_ContinueUnwind`.
+### Arguments
 
-A method that calls back into R should go through the `expression` evaluators,
-which stop an R error before it crosses a Rust frame:
+An argument typed `ExternalPtr<T>` or `Option<ExternalPtr<T>>`, of a
+function or of a method, holds its object's value for the whole call like a
+receiver does: exclusively when the parameter is declared `mut`, shared
+otherwise. `NULL` for an `Option` holds nothing. The borrow is taken after
+every argument is converted (and after a trait method's alias checks), so an
+error that the argument conversion raises leaves no object borrowed.
+
+```rust
+#[miniextendr]
+pub fn absorb(mut target: ExternalPtr<Counter>, source: ExternalPtr<Counter>) -> i32 {
+    target.value += source.value;
+    target.value
+}
+```
+
+```r
+absorb(a, b)  # fine
+absorb(a, a)  # error of class miniextendr_borrow_conflict, `a` unchanged
+```
+
+The same error meets a callback into R that reaches an argument's object
+while the function still holds it: reading a field of a `mut` argument,
+writing one of a shared argument, calling a method that conflicts, or
+passing the object to another function that does. A trait method's `&Self` /
+`&mut Self` arguments borrow the same way, after the check that rejects their
+aliasing each other or the receiver. A `worker` function holds the borrows on
+R's main thread while the worker runs.
+
+The borrow follows the parameter as declared: a body that rebinds a shared
+argument mutably (`let mut a = a;`) writes under a shared borrow the check
+can't see. Declare the parameter `mut` instead.
+
+`ExternalPtr::into_inner`, `into_raw`, `into_non_null` and `leak` refuse a
+borrowed value, so a function whose body names any of them takes no borrow
+for its `ExternalPtr` arguments. The match is on the name alone: a body that
+calls `Box::leak` or `Cell::into_inner` loses its argument borrows too. A
+function that hands an argument to a helper that consumes it gets the
+`miniextendr_borrow_conflict` error: the generated code sees only the body's
+own tokens, so call the consuming function in the body.
+
+No borrow is taken for an element of a `Vec<ExternalPtr<T>>` or
+`Vec<Option<ExternalPtr<T>>>` argument, a parameter whose type is an alias
+of `ExternalPtr<T>`, a `Checked` / `Unchecked` parameter, or an
+`ExternalPtr<T>` argument of a trait method called through a View: use
+`try_borrow()` / `try_borrow_mut()` (below) there (#2104).
+
+### Unwinding
+
+The borrows end when the call returns or unwinds. An R error that jumps over
+the call's frames never ends them: a bare `Rf_eval`, `R_forceAndCall` or
+`Rf_applyClosure` of R code that raises, or a direct `R_CheckUserInterrupt()`
+with an interrupt pending, longjmps from inside the method or function
+straight to the generated wrapper's `R_UnwindProtect`. No destructor in
+between runs, and the objects stay borrowed: every later call on them raises
+`miniextendr_borrow_conflict` for the rest of the session (#2093). Wrapping
+the call in `with_r_unwind_protect` does not change that, since it resumes
+the R error with `R_ContinueUnwind`.
+
+A method or function that calls back into R should go through the
+`expression` evaluators, which stop an R error before it crosses a Rust frame:
 
 - `eval_with_handlers` (or `RCall::eval_with_handlers`) keeps the caller's
-  condition handlers and carries an R error through the method's frames as an
-  unwind, so the borrow is released before R carries on;
+  condition handlers and carries an R error through the call's frames as an
+  unwind, so the borrows are released before R carries on;
 - `RCall::eval` and `try_eval_with_handlers` return it as `Err(REvalError)`;
 - `Quoted::eval()` evaluates an unevaluated argument.
 
-`#[miniextendr(check_interrupt)]` checks for an interrupt once, before the
-receiver is borrowed; a safe check inside a long loop is #2101. The lint MXL305
+`#[miniextendr(check_interrupt)]` checks for an interrupt once, before any
+borrow is taken; a safe check inside a long loop is #2101. The lint MXL305
 flags `Rf_eval`, `R_forceAndCall`, `Rf_applyClosure` and `R_CheckUserInterrupt`
 in `#[miniextendr]` bodies.
 
+### Handles Rust code keeps
+
 `Deref`, `DerefMut`, `as_ref()` and `as_mut()` read the value through
-`RefCell::as_ptr` and take no borrow. A function that takes an `ExternalPtr<T>`
-argument, or Rust code that keeps a handle, must not hold such a reference
-across a callback that can reach the same object (#2092).
+`RefCell::as_ptr` and take no borrow. Rust code that keeps a handle of its
+own (a vector's element, a handle stored in a struct, one built from a
+`SEXP`) and uses its value across a call that can reach the same object
+borrows it with `try_borrow()` / `try_borrow_mut()`, which check the cell as
+the generated code does:
+
+```rust
+#[miniextendr]
+pub fn absorb_all(mut items: Vec<ExternalPtr<Counter>>) -> i32 {
+    let (first, rest) = items.split_first_mut().expect("at least one counter");
+    let mut first = first.try_borrow_mut();
+    for other in rest {
+        // The same counter twice raises `miniextendr_borrow_conflict`.
+        first.value += other.try_borrow().value;
+    }
+    first.value
+}
+```
+
+Inside a function that holds an argument, `try_borrow_mut()` (and, for a `mut`
+argument, `try_borrow()`) on that argument, or on another handle of its
+object, conflicts with the call's own borrow, as `ExternalPtrRef::from` and
+`ExternalPtrMut::from` do: use `Deref` there. `try_borrow()` of a
+type-erased `ExternalPtr<()>` panics; downcast it first.
 
 ## Display and Diagnostic Metadata with TypedExternal
 
@@ -474,6 +553,10 @@ fn length(x: SEXP) -> R_xlen_t {
 | `altrep_data1_mut_unchecked::<T>(x)` | Same, skips thread safety assertions |
 
 The `_unchecked` variants are for performance-critical ALTREP callbacks where you are guaranteed to be on the main thread.
+
+These helpers, and the ALTREP derives' data extraction, read the value
+without borrowing its `RefCell`, so a class method or argument holding the
+same object exclusively doesn't stop them (#2103).
 
 ## RSidecar (R Data Fields)
 

@@ -134,6 +134,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         no_dispatch_dots: false,
         per_param: Default::default(),
         preconditions: None,
+        consumed_handles: Vec::new(),
     }
 }
 

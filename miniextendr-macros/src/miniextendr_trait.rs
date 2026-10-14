@@ -891,13 +891,14 @@ fn generate_method_shim(
         .param_names
         .iter()
         .zip(&method.param_types)
-        .filter_map(|(name, ty)| {
-            crate::type_inspect::self_ref_mutability(ty).map(|mutable| (name, mutable))
+        .enumerate()
+        .filter_map(|(index, (name, ty))| {
+            crate::type_inspect::self_ref_mutability(ty).map(|mutable| (name, mutable, index))
         })
         .collect();
     let handles: Vec<_> = self_refs
         .iter()
-        .map(|(name, mutable)| {
+        .map(|(name, mutable, _)| {
             (
                 crate::trait_self_ref::handle_ident(name),
                 *mutable,
@@ -912,7 +913,7 @@ fn generate_method_shim(
     );
     let self_borrows = self_refs
         .iter()
-        .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
+        .map(|(name, mutable, index)| crate::trait_self_ref::borrow(name, *mutable, *index, &argv));
 
     // Generate method call (uses __ImplT). The receiver borrows the value's
     // RefCell for the rest of the shim, through the result conversion.
