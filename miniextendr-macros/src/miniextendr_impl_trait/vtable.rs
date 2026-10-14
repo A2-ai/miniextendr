@@ -460,12 +460,14 @@ fn generate_concrete_vtable_shims(
             .sig
             .inputs
             .iter()
-            .filter_map(|arg| {
+            .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+            .enumerate()
+            .filter_map(|(index, arg)| {
                 if let syn::FnArg::Typed(pt) = arg
                     && let syn::Pat::Ident(pat) = pt.pat.as_ref()
                     && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
                 {
-                    Some((&pat.ident, mutable))
+                    Some((&pat.ident, mutable, index))
                 } else {
                     None
                 }
@@ -473,7 +475,7 @@ fn generate_concrete_vtable_shims(
             .collect();
         let handles: Vec<_> = self_refs
             .iter()
-            .map(|(name, mutable)| {
+            .map(|(name, mutable, _)| {
                 (
                     crate::trait_self_ref::handle_ident(name),
                     *mutable,
@@ -486,9 +488,9 @@ fn generate_concrete_vtable_shims(
             &handles,
             Some((crate::trait_self_ref::cell_address(&cell), method.is_mut)),
         );
-        let self_borrows = self_refs
-            .iter()
-            .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
+        let self_borrows = self_refs.iter().map(|(name, mutable, index)| {
+            crate::trait_self_ref::borrow(name, *mutable, *index, &argv)
+        });
 
         // Generate method call using fully-qualified syntax to avoid ambiguity
         // with generic trait paths like `RExtend<i32>::method()` where `<` would
@@ -715,6 +717,10 @@ pub(super) fn extract_methods(
                 no_dispatch_dots: attrs.no_dispatch_dots,
                 per_param: attrs.per_param,
                 preconditions: attrs.preconditions,
+                consumed_handles: crate::externalptr_args::consumed_handles(
+                    &method.sig.inputs,
+                    quote::ToTokens::to_token_stream(&method.block),
+                ),
             });
         }
     }
@@ -1240,6 +1246,8 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Filter inputs to exclude the receiver (builder handles self separately with has_self())
     // Also handle &Self params: replace with ExternalPtr<ConcreteType> so the builder
     // can auto-extract them, and track which params need dereferencing in the call.
+    // A `&mut Self` parameter becomes a `mut` binding, which the wrapper
+    // borrows exclusively for the call (`&Self` shared, #2092).
     let mut self_ref_params = Vec::new();
     let filtered_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = method
         .sig
@@ -1255,7 +1263,10 @@ pub(super) fn generate_trait_method_c_wrapper(
                     self_ref_params.push((pat_ident.ident.clone(), mutable));
                 }
                 // Replace &Self with ExternalPtr<ConcreteType>
-                let pat = &pt.pat;
+                let mut pat = pt.pat.as_ref().clone();
+                if let syn::Pat::Ident(pat_ident) = &mut pat {
+                    pat_ident.mutability = mutable.then(Default::default);
+                }
                 return syn::parse_quote!(#pat: ::miniextendr_api::ExternalPtr<#type_ident>);
             }
             arg.clone()
@@ -1301,7 +1312,8 @@ pub(super) fn generate_trait_method_c_wrapper(
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
         .type_context(type_ident.clone())
-        .call_method_def_ident(call_method_def_ident);
+        .call_method_def_ident(call_method_def_ident)
+        .consumed_handles(method.consumed_handles.clone());
 
     let mut post_conversion = Vec::new();
     for (name, mutable) in &self_ref_params {

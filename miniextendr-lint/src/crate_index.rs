@@ -221,6 +221,15 @@ pub struct FileData {
     /// Calls to, or declarations of, R's non-API `ATTRIB` / `SET_ATTRIB` (or their
     /// `_unchecked` forms): (function_name, line_number). (MXL304)
     pub nonapi_attrib_calls: Vec<(String, usize)>,
+    /// The bodies the generated `#[miniextendr]` boundary runs: of `#[miniextendr]`
+    /// fns, of the methods of `#[miniextendr]` impl blocks (inherent and trait), and
+    /// the default methods of `#[miniextendr]` traits, as 1-based `(open, close)`
+    /// brace lines. (MXL305)
+    pub miniextendr_bodies: Vec<(usize, usize)>,
+    /// Calls to `Rf_eval` / `R_forceAndCall` / `Rf_applyClosure` / `R_CheckUserInterrupt`
+    /// (or their `_unchecked` forms) inside [`miniextendr_bodies`](Self::miniextendr_bodies):
+    /// (function_name, line_number). (MXL305)
+    pub raw_r_eval_calls: Vec<(String, usize)>,
 
     /// `pkg::topic` links in the roxygen-bound doc text of `#[miniextendr]`
     /// items. (MXL204)
@@ -547,6 +556,7 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     scan_ffi_unchecked_calls(&lines, &mut data);
     scan_vec_into_sexp_calls(&lines, &mut data);
     scan_nonapi_attrib_calls(&lines, &mut data);
+    scan_raw_r_eval_calls(&lines, &mut data);
     for block in &mut data.inherent_impls {
         block.allows_mxl121 = header_allows(&lines, block.first_line, block.line, "MXL121");
     }
@@ -663,6 +673,18 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if let syn::ReturnType::Type(_, ty) = &item_fn.sig.output {
                     collect_returned_types(ty, None, &mut data.returned_types);
                 }
+
+                data.miniextendr_bodies.push(block_lines(&item_fn.block));
+            }
+            Item::Trait(item_trait) if has_miniextendr_attr(&item_trait.attrs) => {
+                // A default method runs when an impl doesn't override it (MXL305)
+                for trait_item in &item_trait.items {
+                    if let syn::TraitItem::Fn(method) = trait_item
+                        && let Some(block) = &method.default
+                    {
+                        data.miniextendr_bodies.push(block_lines(block));
+                    }
+                }
             }
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
@@ -702,6 +724,13 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
                     let impl_attrs = parse_miniextendr_impl_attrs(&item_impl.attrs);
+
+                    // Method bodies, inherent and trait (MXL305)
+                    for impl_item in &item_impl.items {
+                        if let syn::ImplItem::Fn(method) = impl_item {
+                            data.miniextendr_bodies.push(block_lines(&method.block));
+                        }
+                    }
 
                     match impl_type_name(&item_impl.self_ty) {
                         Some(type_name) => {
@@ -1261,7 +1290,6 @@ const NONAPI_ATTRIB_FNS: &[&str] = &["ATTRIB", "SET_ATTRIB"];
 /// (`fn ATTRIB(x: SEXP) -> SEXP;`) is flagged too, because that is how the symbol
 /// reaches the package's shared object.
 fn scan_nonapi_attrib_calls(lines: &[&str], data: &mut FileData) {
-    let is_ident_char = |c: char| c.is_alphanumeric() || c == '_';
     for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("//") {
@@ -1272,26 +1300,103 @@ fn scan_nonapi_attrib_calls(lines: &[&str], data: &mut FileData) {
             Some(pos) => &trimmed[..pos],
             None => trimmed,
         };
-        let mut chars = code_part.char_indices().peekable();
-        while let Some((start, c)) = chars.next() {
-            if !is_ident_char(c) {
-                continue;
-            }
-            let mut end = start + c.len_utf8();
-            while let Some(&(idx, next)) = chars.peek() {
-                if !is_ident_char(next) {
-                    break;
-                }
-                end = idx + next.len_utf8();
-                chars.next();
-            }
-            let ident = &code_part[start..end];
+        for ident in called_idents(code_part) {
             let base = ident.strip_suffix("_unchecked").unwrap_or(ident);
-            if NONAPI_ATTRIB_FNS.contains(&base)
-                && code_part[end..].trim_start().starts_with('(')
-                && !is_suppressed(lines, line_idx, "MXL304")
-            {
+            if NONAPI_ATTRIB_FNS.contains(&base) && !is_suppressed(lines, line_idx, "MXL304") {
                 data.nonapi_attrib_calls
+                    .push((ident.to_string(), line_idx + 1));
+            }
+        }
+    }
+}
+
+/// The whole identifiers in `code` that a `(` follows (after optional whitespace):
+/// the names of the functions it calls or declares. `DUPLICATE_ATTRIB(` yields
+/// `DUPLICATE_ATTRIB`, never `ATTRIB`.
+fn called_idents(code: &str) -> Vec<&str> {
+    let is_ident_char = |c: char| c.is_alphanumeric() || c == '_';
+    let mut idents = Vec::new();
+    let mut chars = code.char_indices().peekable();
+    while let Some((start, c)) = chars.next() {
+        if !is_ident_char(c) {
+            continue;
+        }
+        let mut end = start + c.len_utf8();
+        while let Some(&(idx, next)) = chars.peek() {
+            if !is_ident_char(next) {
+                break;
+            }
+            end = idx + next.len_utf8();
+            chars.next();
+        }
+        if code[end..].trim_start().starts_with('(') {
+            idents.push(&code[start..end]);
+        }
+    }
+    idents
+}
+
+// endregion
+
+// region: MXL305 — raw R evaluation in a `#[miniextendr]` body
+
+/// R entry points that run R code, or R's interrupt handling, and longjmp out on an
+/// R error or a pending interrupt.
+const RAW_R_EVAL_FNS: &[&str] = &[
+    "Rf_eval",
+    "R_forceAndCall",
+    "Rf_applyClosure",
+    "R_CheckUserInterrupt",
+];
+
+/// The 1-based lines of `block`'s `{` and `}`.
+fn block_lines(block: &syn::Block) -> (usize, usize) {
+    let span = &block.brace_token.span;
+    (span.open().start().line, span.close().end().line)
+}
+
+/// Scan the [`FileData::miniextendr_bodies`] for calls to `Rf_eval`,
+/// `R_forceAndCall`, `Rf_applyClosure` and `R_CheckUserInterrupt`, and their
+/// `_unchecked` forms,
+/// through any path (`sys::Rf_eval(`, `miniextendr_api::sys::Rf_eval(`, an
+/// imported `Rf_eval(`).
+///
+/// The generated wrapper runs such a body inside one `R_UnwindProtect`, holding
+/// the receiver's borrow guard. An R error or interrupt raised by one of these
+/// calls jumps to that `R_UnwindProtect` over every Rust frame of the body: no
+/// destructor runs, and the receiver stays borrowed for the rest of the session
+/// (#2093). Wrapping the call in `with_r_unwind_protect` (or its `_or_raise`
+/// form) doesn't help: it resumes the R exit with `R_ContinueUnwind`, which jumps
+/// over the body's frames all the same. So no context inside a body is exempt;
+/// the `expression` evaluators (`RCall::eval`, `eval_with_handlers`, ...) are the
+/// way to run R code there.
+///
+/// Raw text, like MXL304: a call inside a macro invocation is seen, a helper fn
+/// the body calls is not (only the bodies themselves are scanned).
+fn scan_raw_r_eval_calls(lines: &[&str], data: &mut FileData) {
+    let mut in_body = vec![false; lines.len()];
+    for &(open, close) in &data.miniextendr_bodies {
+        for flag in in_body.iter_mut().take(close).skip(open - 1) {
+            *flag = true;
+        }
+    }
+    for (line_idx, line) in lines.iter().enumerate() {
+        if !in_body[line_idx] {
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        // Strip inline comments to avoid false positives
+        let code_part = match trimmed.find("//") {
+            Some(pos) => &trimmed[..pos],
+            None => trimmed,
+        };
+        for ident in called_idents(code_part) {
+            let base = ident.strip_suffix("_unchecked").unwrap_or(ident);
+            if RAW_R_EVAL_FNS.contains(&base) && !is_suppressed(lines, line_idx, "MXL305") {
+                data.raw_r_eval_calls
                     .push((ident.to_string(), line_idx + 1));
             }
         }

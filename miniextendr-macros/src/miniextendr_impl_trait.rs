@@ -203,6 +203,10 @@ struct TraitMethod {
     /// for themselves (`preconditions(p)` / `no_preconditions(p)` land in
     /// [`Self::per_param`]). `None` defers to the impl block.
     preconditions: Option<bool>,
+    /// `ExternalPtr<T>` parameters the body may consume, which the C wrapper
+    /// leaves unborrowed (`externalptr_args::consumed_handles`). Empty for a
+    /// provided method, whose body the impl doesn't see.
+    consumed_handles: Vec<String>,
 }
 
 impl TraitMethod {
@@ -985,6 +989,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 no_dispatch_dots: false,
                 per_param: Default::default(),
                 preconditions: None,
+                consumed_handles: Vec::new(),
                 r_name: if tm.sig.ident == tm.r_name {
                     None // r_name matches ident → no override
                 } else {

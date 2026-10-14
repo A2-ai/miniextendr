@@ -1768,6 +1768,270 @@ pub fn has_any(x: SEXP) -> bool {
 
 // endregion
 
+// region: MXL305 — raw R evaluation in a #[miniextendr] body
+
+/// Lint `src` as a one-file crate and return the MXL305 diagnostics.
+fn mxl305(src: &str) -> Vec<miniextendr_lint::Diagnostic> {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+    fs::write(src_dir.join("lib.rs"), src).unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    report
+        .diagnostics
+        .into_iter()
+        .filter(|d| format!("{}", d.code) == "MXL305")
+        .collect()
+}
+
+/// The 1-based lines MXL305 flags in `src`.
+fn mxl305_lines(src: &str) -> Vec<usize> {
+    mxl305(src).iter().map(|d| d.line).collect()
+}
+
+#[test]
+fn mxl305_rf_eval_in_free_fn_fires() {
+    let diags = mxl305(
+        r#"
+#[miniextendr]
+pub fn call_back(f: SEXP) -> SEXP {
+    unsafe { sys::Rf_eval(f, sys::R_GlobalEnv) }
+}
+"#,
+    );
+    assert_eq!(diags.iter().map(|d| d.line).collect::<Vec<_>>(), vec![4]);
+    assert!(
+        diags[0].message.contains("`Rf_eval()`") && diags[0].message.contains("stays borrowed"),
+        "got: {}",
+        diags[0].message
+    );
+    let help = diags[0].help.as_deref().unwrap_or_default();
+    assert!(
+        help.contains("eval_with_handlers") && help.contains("RCall::eval"),
+        "help should name the evaluators, got: {help}"
+    );
+}
+
+#[test]
+fn mxl305_any_path_fires() {
+    let lines = mxl305_lines(
+        r#"
+use miniextendr_api::sys::Rf_eval;
+
+#[miniextendr]
+pub fn paths(call: SEXP, env: SEXP) {
+    unsafe { miniextendr_api::sys::Rf_eval(call, env) };
+    unsafe { Rf_eval (call, env) };
+    unsafe { ::miniextendr_api::sys::R_forceAndCall(call, 1, env) };
+    let _ = vec![unsafe { sys::Rf_eval(call, env) }];
+    unsafe { sys::Rf_applyClosure(call, call, R_NilValue, env, R_NilValue, Rboolean::TRUE) };
+}
+"#,
+    );
+    assert_eq!(lines, vec![6, 7, 8, 9, 10]);
+}
+
+#[test]
+fn mxl305_check_user_interrupt_fires() {
+    let diags = mxl305(
+        r#"
+#[miniextendr]
+pub fn long_loop(n: i32) -> i32 {
+    for _ in 0..n {
+        unsafe { R_CheckUserInterrupt() };
+    }
+    n
+}
+"#,
+    );
+    assert_eq!(diags.iter().map(|d| d.line).collect::<Vec<_>>(), vec![5]);
+    assert!(
+        diags[0].message.contains("a pending interrupt"),
+        "got: {}",
+        diags[0].message
+    );
+    let help = diags[0].help.as_deref().unwrap_or_default();
+    assert!(
+        help.contains("#[miniextendr(check_interrupt)]") && help.contains("#2101"),
+        "help should name check_interrupt and the helper issue, got: {help}"
+    );
+}
+
+#[test]
+fn mxl305_unchecked_forms_fire() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+pub fn unchecked(call: SEXP, env: SEXP) {
+    unsafe { sys::Rf_eval_unchecked(call, env) };
+    unsafe { sys::R_forceAndCall_unchecked(call, 1, env) };
+    unsafe { sys::R_CheckUserInterrupt_unchecked() };
+}
+"#,
+    );
+    assert_eq!(lines, vec![4, 5, 6]);
+}
+
+#[test]
+fn mxl305_one_line_body_fires() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+pub fn f(x: SEXP) -> SEXP { unsafe { Rf_eval(x, R_GlobalEnv) } }
+"#,
+    );
+    assert_eq!(lines, vec![3]);
+}
+
+#[test]
+fn mxl305_inherent_method_fires() {
+    let lines = mxl305_lines(
+        r#"
+#[derive(ExternalPtr)]
+pub struct Counter { n: i32 }
+
+#[miniextendr]
+impl Counter {
+    pub fn new() -> Self { Counter { n: 0 } }
+
+    pub fn each(&mut self, f: SEXP) {
+        self.n += 1;
+        unsafe { sys::Rf_eval(f, sys::R_GlobalEnv) };
+    }
+}
+"#,
+    );
+    assert_eq!(lines, vec![11]);
+}
+
+#[test]
+fn mxl305_trait_impl_method_fires() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+impl Runner for Counter {
+    fn run(&self) {
+        unsafe { R_CheckUserInterrupt() };
+    }
+}
+"#,
+    );
+    assert_eq!(lines, vec![5]);
+}
+
+#[test]
+fn mxl305_trait_default_method_fires() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+pub trait Runner {
+    fn step(&mut self);
+    fn run(&mut self) {
+        self.step();
+        unsafe { R_CheckUserInterrupt() };
+    }
+}
+"#,
+    );
+    assert_eq!(lines, vec![7]);
+}
+
+/// `with_r_unwind_protect` resumes an R exit with `R_ContinueUnwind`, which
+/// jumps over the method's frames all the same: no exemption.
+#[test]
+fn mxl305_inside_with_r_unwind_protect_still_fires() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+impl Counter {
+    pub fn each(&mut self, f: SEXP) -> SEXP {
+        with_r_unwind_protect(|| unsafe { sys::Rf_eval(f, sys::R_GlobalEnv) }, None)
+    }
+}
+"#,
+    );
+    assert_eq!(lines, vec![5]);
+}
+
+#[test]
+fn mxl305_outside_miniextendr_bodies_does_not_fire() {
+    let lines = mxl305_lines(
+        r#"
+pub fn helper(f: SEXP) -> SEXP {
+    unsafe { sys::Rf_eval(f, sys::R_GlobalEnv) }
+}
+
+impl Plain {
+    pub fn each(&self, f: SEXP) {
+        unsafe { R_CheckUserInterrupt() };
+    }
+}
+
+pub trait PlainTrait {
+    fn run(&self) {
+        unsafe { R_CheckUserInterrupt() };
+    }
+}
+
+/// Calls `Rf_eval(f, env)` through a helper the lint doesn't follow.
+#[miniextendr]
+pub fn via_helper(f: SEXP) -> SEXP {
+    helper(f)
+}
+"#,
+    );
+    assert!(
+        lines.is_empty(),
+        "only #[miniextendr] bodies are scanned, got lines {lines:?}"
+    );
+}
+
+#[test]
+fn mxl305_safe_evaluators_and_mentions_do_not_fire() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+pub fn safe(f: SEXP, expr: Quoted) -> SEXP {
+    use miniextendr_api::sys::R_CheckUserInterrupt;
+    // Rf_eval(f, env) here would jump over this frame.
+    let _ = unsafe { RCall::from_sexp(f).eval_with_handlers(R_GlobalEnv) };
+    let _ = unsafe { eval_with_handlers(f, R_GlobalEnv) };
+    let _ = unsafe { try_eval_with_handlers(f, R_GlobalEnv) };
+    let _ = unsafe { RCall::from_sexp(f).eval_base() };
+    let mut err = 0;
+    let _ = unsafe { R_tryEval(f, R_GlobalEnv, &mut err) };
+    let _ = R_CheckUserInterrupt;
+    expr.eval()
+}
+"#,
+    );
+    assert!(
+        lines.is_empty(),
+        "safe evaluators, imports and comments must not trip MXL305, got lines {lines:?}"
+    );
+}
+
+#[test]
+fn mxl305_suppressed_by_allow_comment() {
+    let lines = mxl305_lines(
+        r#"
+#[miniextendr]
+pub fn fixture(f: SEXP) {
+    // mxl::allow(MXL305): deliberately raises over this frame
+    unsafe { sys::Rf_eval(f, sys::R_GlobalEnv) };
+    unsafe { R_CheckUserInterrupt() }; // mxl::allow(MXL305)
+}
+"#,
+    );
+    assert!(
+        lines.is_empty(),
+        "MXL305 must honour `// mxl::allow(MXL305)`, got {lines:?}"
+    );
+}
+
+// endregion
+
 // region: parse failures — `&Dots` hint (#1737) and rerun directives (#1738)
 
 /// Writes each `(relative path, source)` of `files` into `dir`, creating the

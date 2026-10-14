@@ -14,6 +14,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     unsafe {
+        // mxl::allow(MXL305): fixture for R's own interrupt jump; this raw entry point holds nothing to drop
         R_CheckUserInterrupt();
         SEXP::nil()
     }
@@ -31,6 +32,7 @@ pub extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
     unsafe {
         with_r_unwind_protect_or_raise(
             || {
+                // mxl::allow(MXL305): fixture for the interrupt jump through with_r_unwind_protect_or_raise
                 R_CheckUserInterrupt();
                 SEXP::nil()
             },

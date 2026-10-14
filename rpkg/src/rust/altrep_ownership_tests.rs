@@ -257,7 +257,9 @@ impl AltrepSerialize for ListCache {
 
 /// `list(c(0L, 10L), c(1L, 11L), ...)` from a source of `values` elements,
 /// declared `len` long and read lazily.
-#[miniextendr(noexport)]
+// The cache roots the elements it reads, so it isn't `Send`: build it on R's
+// thread under `worker-default` too.
+#[miniextendr(noexport, no_worker)]
 pub fn altrep_list_cache(values: i32, len: usize) -> ListCache {
     let source = (0..values).map(list_element as fn(i32) -> SEXP);
     ListCache(IterListData::from_iter(source, len))

@@ -299,3 +299,69 @@ fn every_none_error_path_uses_the_r_name_on_both_threads() {
         }
     }
 }
+
+/// `ExternalPtr<T>` arguments are borrowed after every conversion and
+/// post-conversion statement (#2092), on the main thread in both wrappers;
+/// a consumed handle and a marked parameter are not.
+#[test]
+fn argument_borrows_follow_conversion_on_both_threads() {
+    let sig: syn::ItemFn = syn::parse_quote!(
+        fn pair(
+            mut a: ExternalPtr<Counter>,
+            b: Option<ExternalPtr<Counter>>,
+            c: ExternalPtr<Counter>,
+        ) {
+        }
+    );
+    let ctx = |strategy: ThreadStrategy, consumed: Vec<String>| {
+        CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_pair))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_pair))
+            .call_expr(quote::quote!(pair(a, b, c)))
+            .inputs(sig.sig.inputs.clone())
+            .thread_strategy(strategy)
+            .post_conversion(vec![quote::quote!(post_conversion_marker();)])
+            .consumed_handles(consumed)
+            .preserve_param_names()
+            .build()
+            .generate()
+            .to_string()
+    };
+
+    let main = ctx(ThreadStrategy::MainThread, Vec::new());
+    let capture = main
+        .find("let __mx_handle_sexp_a = a")
+        .expect("captured slot");
+    let conversion = main.find("let a :").expect("conversion");
+    let post = main
+        .find("post_conversion_marker")
+        .expect("post conversion");
+    let exclusive = main
+        .find("ArgumentCell :: exclusive")
+        .expect("exclusive borrow");
+    let call = main.find("pair (a , b , c)").expect("call");
+    assert!(
+        capture < conversion && post < exclusive && exclusive < call,
+        "{main}"
+    );
+    assert_eq!(main.matches("ArgumentCell :: shared").count(), 2, "{main}");
+    assert!(
+        main.contains(":: core :: option :: Option :: as_ref (& b)"),
+        "{main}"
+    );
+
+    let worker = ctx(ThreadStrategy::WorkerThread, Vec::new());
+    let post = worker
+        .find("post_conversion_marker")
+        .expect("post conversion");
+    let exclusive = worker
+        .find("ArgumentCell :: exclusive")
+        .expect("exclusive borrow");
+    let dispatch = worker.find("run_on_worker").expect("the worker dispatch");
+    assert!(post < exclusive && exclusive < dispatch, "{worker}");
+
+    let consumed = ctx(
+        ThreadStrategy::MainThread,
+        vec!["a".into(), "b".into(), "c".into()],
+    );
+    assert!(!consumed.contains("ArgumentCell"), "{consumed}");
+}

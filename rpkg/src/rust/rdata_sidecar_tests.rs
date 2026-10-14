@@ -121,6 +121,93 @@ pub fn rdata_sidecar_env_new(
 ) -> ExternalPtr<SidecarEnv> {
     ExternalPtr::new(SidecarEnv::new(count, score, flag, name))
 }
+
+/// Calls `f()` while this function holds `obj` as a `mut` argument, then adds
+/// 1 to `count` and returns it. A callback that reaches `obj` gets a
+/// `miniextendr_borrow_conflict` error (#2092).
+/// @param obj A `SidecarEnv`.
+/// @param f An R function of no arguments.
+#[miniextendr(noexport)]
+pub fn sidecar_env_bump_arg(mut obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
+    call_back(f);
+    obj.count += 1;
+    obj.count
+}
+
+/// Calls `f()` while this function holds `obj` shared, then returns `count`.
+/// A callback may read `obj` but not write it (#2092).
+/// @param obj A `SidecarEnv`.
+/// @param f An R function of no arguments.
+#[miniextendr(noexport)]
+pub fn sidecar_env_read_arg(obj: ExternalPtr<SidecarEnv>, f: SEXP) -> i32 {
+    let count = obj.count;
+    call_back(f);
+    assert_eq!(obj.count, count);
+    count
+}
+
+/// Adds `b`'s `count` to `a`'s and returns it: one object for both is a
+/// `miniextendr_borrow_conflict` error (#2092).
+/// @param a,b Two `SidecarEnv`s.
+#[miniextendr(noexport)]
+pub fn sidecar_env_pair(mut a: ExternalPtr<SidecarEnv>, b: ExternalPtr<SidecarEnv>) -> i32 {
+    a.count += b.count;
+    a.count
+}
+
+/// [`sidecar_env_pair`] with the `mut` argument second.
+/// @param a,b Two `SidecarEnv`s.
+#[miniextendr(noexport)]
+pub fn sidecar_env_pair_rev(a: ExternalPtr<SidecarEnv>, mut b: ExternalPtr<SidecarEnv>) -> i32 {
+    b.count += a.count;
+    b.count
+}
+
+/// The sum of two objects' `count`: shared arguments may be one object.
+/// @param a,b Two `SidecarEnv`s.
+#[miniextendr(noexport)]
+pub fn sidecar_env_sum(a: ExternalPtr<SidecarEnv>, b: ExternalPtr<SidecarEnv>) -> i32 {
+    a.count + b.count
+}
+
+/// [`sidecar_env_bump_arg`] for an optional object: `NULL` holds nothing and
+/// returns `NA`.
+/// @param obj A `SidecarEnv` or `NULL`.
+/// @param f An R function of no arguments.
+#[miniextendr(noexport)]
+pub fn sidecar_env_bump_opt(mut obj: Option<ExternalPtr<SidecarEnv>>, f: SEXP) -> Option<i32> {
+    call_back(f);
+    let obj = obj.as_mut()?;
+    obj.count += 1;
+    Some(obj.count)
+}
+
+/// Moves the value out of `obj` and returns its `count`: a function that
+/// does takes no borrow of its arguments.
+/// @param obj A `SidecarEnv`.
+#[miniextendr(noexport)]
+pub fn sidecar_env_take(obj: ExternalPtr<SidecarEnv>) -> i32 {
+    ExternalPtr::into_inner(obj).count
+}
+
+/// Borrows the two objects of `objs` with `try_borrow()` /
+/// `try_borrow_mut()`, which the wrapper does not do for a vector's elements.
+/// With `exclusive_first`, adds the second's `count` to the first's and
+/// returns it; otherwise returns their sum.
+/// @param objs A list of two `SidecarEnv`s.
+/// @param exclusive_first Whether to borrow the first object mutably.
+#[miniextendr(noexport)]
+pub fn sidecar_env_try_borrow(objs: Vec<ExternalPtr<SidecarEnv>>, exclusive_first: bool) -> i32 {
+    let [mut first, second] =
+        <[_; 2]>::try_from(objs).unwrap_or_else(|_| panic!("expected two objects"));
+    if exclusive_first {
+        let mut first = first.try_borrow_mut();
+        first.count += second.try_borrow().count;
+        first.count
+    } else {
+        first.try_borrow().count + second.try_borrow().count
+    }
+}
 // endregion
 
 // region: R6 - active bindings: obj$field, obj$field <- value

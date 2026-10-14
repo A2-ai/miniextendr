@@ -48,6 +48,9 @@ pub enum LintCode {
     MXL302,
     /// Call to, or declaration of, R's non-API `ATTRIB` / `SET_ATTRIB`.
     MXL304,
+    /// `Rf_eval` / `R_forceAndCall` / `Rf_applyClosure` / `R_CheckUserInterrupt` in a
+    /// `#[miniextendr]` body: an R error or interrupt there longjmps over the body's Rust frames.
+    MXL305,
     // endregion
 }
 
@@ -82,7 +85,8 @@ impl LintCode {
             | Self::MXL300
             | Self::MXL301
             | Self::MXL302
-            | Self::MXL304 => Severity::Warning,
+            | Self::MXL304
+            | Self::MXL305 => Severity::Warning,
         }
     }
 }

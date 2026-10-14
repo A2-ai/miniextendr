@@ -16,6 +16,7 @@ violations are always bugs to fix, never to silence.
 
 - "I'm getting an MXL### error — what does it mean?"
 - "Why does the build say MXL300 when I call Rf_error?"
+- "Why does MXL305 flag my `Rf_eval` / `R_CheckUserInterrupt` call?"
 - "How do I add a new lint rule?"
 - "How does the lint walk feature-gated modules?"
 - "Can I turn the lint off temporarily?"
@@ -166,6 +167,31 @@ Fix: `SexpExt::has_attributes()` to test for attributes,
 `SexpExt::is_identical()` for R's `identical()`, `get_attr()` / `set_attr()`
 for one attribute, `DUPLICATE_ATTRIB` to copy all of them.
 
+**MXL305** — Raw R evaluation in a `#[miniextendr]` body.
+A call to `Rf_eval`, `R_forceAndCall`, `Rf_applyClosure` or
+`R_CheckUserInterrupt` (or their
+`_unchecked` forms, through any path) inside a `#[miniextendr]` fn, a method of
+a `#[miniextendr]` impl block (inherent or trait), or a default method of a
+`#[miniextendr]` trait. The generated wrapper runs the body inside one
+`R_UnwindProtect` and holds the receiver's borrow guard across it. An R error
+from the evaluated code, or a pending interrupt, jumps to that
+`R_UnwindProtect` over every Rust frame of the body: no destructor runs, and
+the receiver stays borrowed (`miniextendr_borrow_conflict`) for the rest of the
+session (#2093). Wrapping the call in `with_r_unwind_protect` does not help (it
+resumes the R exit with `R_ContinueUnwind`, over the same frames), so no
+context inside a body is exempt.
+Fix: run R code through `miniextendr_api::expression`. `RCall::eval` /
+`eval_as` / `r_eval_str` return an R error as `Err` and hide the evaluation
+from the caller's handlers; `eval_with_handlers` keeps the caller's handlers and
+carries the R exit through the Rust frames as an unwind;
+`try_eval_with_handlers` keeps the handlers and returns the error as `Err`;
+`Quoted::eval()` evaluates an unevaluated argument. For `R_forceAndCall` / `Rf_applyClosure`, build
+the call with `RCall::from_sexp(f).arg(..)`. For interrupts,
+`#[miniextendr(check_interrupt)]` checks once before the arguments are
+converted and the receiver is borrowed; a safe check inside a long loop is
+#2101. A fixture that raises over the frame on purpose takes
+`// mxl::allow(MXL305)`.
+
 ## How it works
 
 ### Adding a new rule
@@ -209,6 +235,7 @@ exploration escape hatch only; committed code must be clean.
 - `miniextendr-lint/src/rules/export_attrs.rs` — MXL203
 - `miniextendr-lint/src/rules/vec_into_sexp.rs` — MXL302
 - `miniextendr-lint/src/rules/nonapi_attrib.rs` — MXL304
+- `miniextendr-lint/src/rules/raw_r_eval.rs` — MXL305
 - `miniextendr-lint/src/lint_code.rs` — MXL code registry
 - `miniextendr-lint/src/helpers.rs` — shared AST predicates
 - `miniextendr-lint/CLAUDE.md` — authoritative rule catalogue
