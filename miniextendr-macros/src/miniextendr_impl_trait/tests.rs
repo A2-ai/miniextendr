@@ -2621,7 +2621,8 @@ fn trait_method_messages_use_the_r_name() {
             #[miniextendr(r_name = "parse")]
             fn r_parse(s: &str) -> Option<Self> { unimplemented!() }
             #[miniextendr(r_name = "clone")]
-            fn r_clone(&self) -> Option<i32> { unimplemented!() }
+            // Class Options still raise on None; scalar Options convert to NA.
+            fn r_clone(&self) -> Option<Self> { unimplemented!() }
         }
     };
     let out = trait_impl_expansion(quote::quote!(env), impl_item);
