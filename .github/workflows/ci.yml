@@ -1664,7 +1664,7 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: rpkg
-          extra-packages: any::testthat
+          extra-packages: any::testthat, any::roxygen2
           needs: check
 
       - name: Install Rust toolchain
@@ -1705,9 +1705,22 @@ jobs:
           echo "CARGO_FEATURES=${base},${{ matrix.features }}" >> "$GITHUB_ENV"
           echo "CARGO_FEATURES = ${base},${{ matrix.features }}"
 
+      # Class-default features change the generated methods and registrations.
+      # Generate wrappers without loading the default NAMESPACE, then document
+      # and install with the same CARGO_FEATURES throughout.
+      - name: Generate feature-specific wrappers
+        run: R CMD INSTALL --no-R --no-test-load rpkg
+
+      - name: Generate feature-specific NAMESPACE and documentation
+        # Start from an empty generated namespace so pkgload cannot register
+        # obsolete S3 methods while roxygen loads the new class definitions.
+        run: |
+          Rscript -e '
+            roxygen2::roclet_output(roxygen2::namespace_roclet(), character(), "rpkg")
+            roxygen2::roxygenise("rpkg")
+          '
+
       - name: Install package (source mode)
-        # Same source-mode install as r-tests: no vendor tarball, configure
-        # picks up CARGO_FEATURES from the environment.
         run: R CMD INSTALL rpkg
 
       - name: Run tests
@@ -1732,7 +1745,10 @@ jobs:
             echo "denylisted features. Reproduce locally with:"
             echo ""
             echo '```'
-            echo "CARGO_FEATURES=\"$CARGO_FEATURES\" R CMD INSTALL rpkg"
+            echo "export CARGO_FEATURES=\"$CARGO_FEATURES\""
+            echo "R CMD INSTALL --no-R --no-test-load rpkg"
+            echo "Rscript -e 'roxygen2::roclet_output(roxygen2::namespace_roclet(), character(), \"rpkg\"); roxygen2::roxygenise(\"rpkg\")'"
+            echo "R CMD INSTALL rpkg"
             echo "cd rpkg && Rscript -e 'testthat::test_local(filter = \"${{ matrix.filter }}\")'  # empty filter = full suite"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
