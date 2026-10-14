@@ -158,7 +158,7 @@ pub struct RangeCache(IterIntData<std::ops::Range<i32>>);
 
 impl AltrepLen for RangeCache {
     fn altrep_len(&self) -> usize {
-        self.0.len()
+        self.0.altrep_len()
     }
 }
 
@@ -189,7 +189,7 @@ pub struct ShortRealCache(IterRealData<std::vec::IntoIter<f64>>);
 
 impl AltrepLen for ShortRealCache {
     fn altrep_len(&self) -> usize {
-        self.0.len()
+        self.0.altrep_len()
     }
 }
 
@@ -235,8 +235,8 @@ fn list_element(i: i32) -> SEXP {
 pub struct ListCache(IterListData<ListSource>);
 
 impl AltrepLen for ListCache {
-    fn len(&self) -> usize {
-        self.0.len()
+    fn altrep_len(&self) -> usize {
+        self.0.altrep_len()
     }
 }
 

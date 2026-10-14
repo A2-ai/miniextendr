@@ -2225,7 +2225,7 @@ A registered class picks its policies with the derive options:
 struct RangeCache(IterIntData<std::ops::Range<i32>>);
 
 impl AltrepLen for RangeCache {
-    fn altrep_len(&self) -> usize { self.0.len() }
+    fn altrep_len(&self) -> usize { self.0.altrep_len() }
 }
 impl AltIntegerData for RangeCache {
     fn elt(&self, i: usize) -> i32 { self.0.elt(i) }

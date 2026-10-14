@@ -117,7 +117,7 @@ fn short_nonfused_source_saves_nulls_and_never_resumes() {
         let restored = Restored::unserialize(state.get()).unwrap();
         drop(data);
         miniextendr_api::sys::R_gc();
-        assert_eq!(restored.len(), 3);
+        assert_eq!(restored.altrep_len(), 3);
         assert_eq!(restored.elt(0).integer_elt(0), 7);
         assert!(restored.elt(1).is_nil());
         assert_eq!(restored.elt(2).integer_elt(0), 8);
@@ -153,7 +153,7 @@ struct ListIterator(IterListData<Source>);
 
 impl AltrepLen for ListIterator {
     fn altrep_len(&self) -> usize {
-        self.0.len()
+        self.0.altrep_len()
     }
 }
 impl AltListData for ListIterator {
