@@ -543,12 +543,10 @@ impl_builtin_altrep_family!(
 // Each type uses a static OnceLock to cache the ALTREP class handle, which is
 // registered on first use with the current package's name (from ALTREP_PKG_NAME).
 
-use crate::altrep::RegisterAltrep;
-
 /// Helper macro to implement RegisterAltrep for a builtin type.
 macro_rules! impl_register_altrep_builtin {
     ($ty:ty, $class_name:expr) => {
-        impl RegisterAltrep for $ty {
+        impl $crate::altrep::RegisterAltrep for $ty {
             fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
                 use std::sync::OnceLock;
                 static CLASS: OnceLock<crate::sys::altrep::R_altrep_class_t> = OnceLock::new();
