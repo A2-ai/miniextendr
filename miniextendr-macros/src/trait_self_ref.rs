@@ -135,10 +135,39 @@ pub(crate) fn extract(
     }
 }
 
-pub(crate) fn borrow(name: &syn::Ident, mutable: bool) -> TokenStream {
+/// Borrow a `&Self` argument's value for the rest of the shim, exclusively
+/// for `&mut Self`, as a C wrapper borrows an `ExternalPtr<T>` argument
+/// (#2092): a call still running on the object makes the borrow raise the
+/// `miniextendr_borrow_conflict` error. The cell also roots the pointer of a
+/// class-wrapped argument. Runs after [`alias_checks`].
+pub(crate) fn borrow(
+    name: &syn::Ident,
+    mutable: bool,
+    index: usize,
+    argv: &syn::Ident,
+) -> TokenStream {
     let handle = handle_ident(name);
-    let mutability = mutable.then(|| quote!(mut));
-    quote! { let #name = &#mutability *#handle; }
+    let plain = crate::naming::unraw(name);
+    let span = proc_macro2::Span::mixed_site();
+    let cell = format_ident!("__mx_handle_{}", plain, span = span);
+    let guard = format_ident!("__mx_handle_guard_{}", plain, span = span);
+    let (mutability, kind) = if mutable {
+        (Some(quote!(mut)), quote!(exclusive))
+    } else {
+        (None, quote!(shared))
+    };
+    quote! {
+        // SAFETY: on R's thread inside the shim's unwind boundary, where the
+        // argv arguments stay rooted.
+        let #cell = unsafe {
+            ::miniextendr_api::externalptr::ArgumentCell::new(
+                ::core::option::Option::Some(&#handle),
+                *#argv.add(#index),
+            )
+        };
+        let #guard = ::miniextendr_api::externalptr::ArgumentCell::#kind(&#cell);
+        let #name = &#mutability *#handle;
+    }
 }
 
 /// Reject overlapping Self arguments before any of their references exist.
@@ -244,5 +273,23 @@ mod tests {
         .to_string();
         assert_eq!(output.matches(":: core :: assert !").count(), 3);
         assert!(output.contains("'left' and 'type'"));
+    }
+
+    #[test]
+    fn self_arguments_hold_their_borrow_for_the_shim() {
+        let argv = format_ident!("argv");
+        let output = borrow(&format_ident!("r#type"), true, 2, &argv).to_string();
+        assert!(output.contains("ArgumentCell :: exclusive"), "{output}");
+        assert!(output.contains("* argv . add (2usize)"), "{output}");
+        assert!(
+            output.contains("let r#type = & mut * __extptr_type"),
+            "{output}"
+        );
+        let output = borrow(&format_ident!("other"), false, 0, &argv).to_string();
+        assert!(output.contains("ArgumentCell :: shared"), "{output}");
+        assert!(
+            output.contains("let other = & * __extptr_other"),
+            "{output}"
+        );
     }
 }

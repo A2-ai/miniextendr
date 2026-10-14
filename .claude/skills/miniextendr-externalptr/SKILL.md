@@ -51,9 +51,12 @@ parameter on `release_any` is needed because the vtable carries it.
 
 `ExternalPtr<T>` caches a `NonNull<RefCell<T>>` in its `cached_ptr` field.
 This allows `as_ref()` / `as_mut()` to skip the `R_ExternalPtrAddr` FFI call on
-every access. They read the value through `RefCell::as_ptr` and take no borrow
-(#2092); the generated wrappers borrow through `borrow_value` /
-`borrow_value_mut`.
+every access. They read the value through `RefCell::as_ptr` and take no borrow;
+the generated wrappers borrow through `borrow_value` / `borrow_value_mut`, and
+`ExternalPtr<T>` / `Option<ExternalPtr<T>>` arguments through `ArgumentCell`
+(exclusive for a `mut` parameter, shared otherwise, none when the body names
+`into_inner` / `into_raw` / `into_non_null` / `leak`; #2092). Rust code that
+keeps a handle across a call into R uses `try_borrow()` / `try_borrow_mut()`.
 
 Writes go through the `RefCell`'s `UnsafeCell`, so a `cached_ptr` derived from
 `&RefCell<T>` (`downcast_ref`, `NonNull::from`) may be written through. Never

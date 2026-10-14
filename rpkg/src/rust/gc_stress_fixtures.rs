@@ -147,6 +147,49 @@ pub fn gc_stress_externalptr_collect_list() {
     }
 }
 
+/// Hold the borrow of a class-wrapped `ExternalPtr<T>` argument through its
+/// `ArgumentCell` (#2092) while the pointer's only other reference, an
+/// environment's `.ptr` binding, is cleared and the GC runs.
+///
+/// The cell roots a pointer that conversion unwrapped from a class handle, as
+/// a generated wrapper's argument does; without the root the finalizer would
+/// free the value under the borrow, and the honest readback through
+/// `R_ExternalPtrAddr` would see a null address.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_externalptr_argument_root() {
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::expression::r_eval_str_global;
+    use miniextendr_api::externalptr::{ArgumentCell, ExternalPtr};
+    use miniextendr_api::sys::{R_gc, Rf_defineVar, Rf_install};
+
+    unsafe {
+        let handle = OwnedProtect::new(r_eval_str_global("new.env(parent = emptyenv())").unwrap());
+        let ptr_symbol = Rf_install(c".ptr".as_ptr());
+        let ptr = ExternalPtr::new(SharedData {
+            x: 1.0,
+            y: 2.0,
+            label: String::from("argument"),
+        });
+        Rf_defineVar(ptr_symbol, ptr.as_sexp(), handle.get());
+        drop(ptr);
+
+        let arg = ExternalPtr::<SharedData>::try_from_sexp(handle.get()).unwrap();
+        let cell = ArgumentCell::new(Some(&arg), handle.get());
+        let value = cell.shared().expect("a typed argument has a cell");
+        Rf_defineVar(ptr_symbol, SEXP::nil(), handle.get());
+        R_gc();
+        for i in 0..8 {
+            let _churn = OwnedProtect::new(vec![i; 64].into_sexp());
+        }
+        let reread = ExternalPtr::<SharedData>::wrap_sexp(arg.as_sexp())
+            .expect("the argument was collected (R_ExternalPtrAddr is null)");
+        assert_eq!(reread.get_label(), "argument");
+        assert_eq!(value.get_x(), 1.0);
+    }
+}
+
 /// Convert a `Vec<SharedData>` to an R `list()` of external pointers through
 /// the production `-> Vec<Class>` return path under GC pressure (#1284).
 ///

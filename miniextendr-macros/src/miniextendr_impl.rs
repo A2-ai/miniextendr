@@ -518,6 +518,9 @@ pub struct ParsedMethod {
     /// Whether this method accepts dots, either from raw `...` rewritten to
     /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
     pub has_dots: bool,
+    /// `ExternalPtr<T>` parameters the body may consume, which the C wrapper
+    /// leaves unborrowed (`externalptr_args::consumed_handles`).
+    pub consumed_handles: Vec<String>,
 }
 
 /// R6-specific per-method markers, separated from [`MethodAttrs`] so the
@@ -2406,6 +2409,10 @@ impl ParsedMethod {
             ));
         }
         sig.output = crate::type_inspect::serialize_return_type(&output, method_attrs.serialize);
+        let consumed_handles = crate::externalptr_args::consumed_handles(
+            &sig.inputs,
+            quote::ToTokens::to_token_stream(&item.block),
+        );
 
         Ok(ParsedMethod {
             visibility_marker,
@@ -2419,6 +2426,7 @@ impl ParsedMethod {
             method_attrs,
             param_defaults,
             has_dots,
+            consumed_handles,
         })
     }
 
@@ -3941,6 +3949,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
             builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
         }
     }
+    builder = builder.consumed_handles(method.consumed_handles.clone());
     // `Checked<T>` / `Unchecked<T>` parameters (#1566) convert as `T` and are
     // wrapped back before the call.
     for (rust_name, markers) in &method.param_markers {

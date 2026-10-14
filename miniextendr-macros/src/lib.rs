@@ -159,6 +159,7 @@
 mod altrep;
 mod c_wrapper_builder;
 mod call_method_def;
+mod externalptr_args;
 mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
@@ -1388,6 +1389,10 @@ pub fn miniextendr(
             .cfg_attrs(cfg_attrs.clone())
             .vis(vis.clone())
             .generics(generics.clone())
+            .consumed_handles(externalptr_args::consumed_handles(
+                inputs,
+                quote::ToTokens::to_token_stream(&parsed.item().block),
+            ))
             .preserve_param_names();
 
     if uses_internal_c_wrapper {
