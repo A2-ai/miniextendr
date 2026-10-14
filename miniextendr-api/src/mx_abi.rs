@@ -15,6 +15,9 @@ use crate::{Rboolean, SEXP, SEXPTYPE, SexpExt};
 use std::ffi::CStr;
 use std::sync::OnceLock;
 
+/// Reserved tag for trait-ABI storage, distinct from ordinary `ExternalPtr` boxes.
+pub(crate) const MX_TAG_NAME: &CStr = c"miniextendr::mx_erased";
+
 /// The tag symbol used to identify miniextendr external pointers.
 /// SEXP is Send+Sync so `OnceLock<SEXP>` works directly.
 static MX_TAG: OnceLock<SEXP> = OnceLock::new();
@@ -26,7 +29,7 @@ static MX_TAG: OnceLock<SEXP> = OnceLock::new();
 #[inline]
 unsafe fn get_tag() -> SEXP {
     *MX_TAG.get_or_init(|| unsafe {
-        let tag = Rf_install(c"miniextendr::mx_erased".as_ptr());
+        let tag = Rf_install(MX_TAG_NAME.as_ptr());
         R_PreserveObject(tag);
         tag
     })
