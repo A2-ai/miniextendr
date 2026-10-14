@@ -171,17 +171,21 @@ has no value of its own: downcast it first ("Type-Erased Pointers" below).
 
 ### Why there is no `Deref`
 
-A `RefCell` counts its value as borrowed only while the guard `borrow()`
-returns is alive. `Deref::deref` must return a bare `&T`, so a guard taken
-inside it would drop when `deref` returns, and the `&T` would outlive the
-check: a callback could then take `&mut T` to the same value. Leaking the guard
-would leave the value borrowed for good, and skipping the check is the
-unchecked read this model exists to remove. The compiler can't stand in for
-the check either: it tracks borrows of a handle, and two handles to one R
-object (`f(a, a)`, two `Vec` elements, a stored copy) are separate Rust
-values. So, as with `RefCell<T>` itself, the guard is what dereferences:
-`ExternalPtrRef` / `ExternalPtrMut` are the guard plus the R object. Take one
-per scope, not one per field:
+`RefCell::borrow()` returns a guard, and the value counts as borrowed only
+while that guard lives. `Deref::deref(&self) -> &T` must return a bare
+reference, so a guard made inside it drops when it returns (returning a
+reference into it is E0515). That leaves `deref` three options, none of them
+workable: check, then release, so the `&T` outlives the check and a callback can
+`borrow_mut()` the same object alongside it; leak the guard, so the object
+stays borrowed for good and every later `&mut` call fails; or skip the check
+(`RefCell::as_ptr`), the unchecked read this model removes. The compiler can't
+stand in for the check either: it tracks borrows of a handle, not of the
+object, and two handles to one R object (`f(a, a)`, two `Vec` elements, a
+stored copy) are separate Rust values, so `&*a` and `&mut *b` would alias
+without an error. That's why std's `RefCell<T>` has no `Deref` either: you
+hold the guard, and the guard dereferences. `ExternalPtrRef` /
+`ExternalPtrMut` are that guard plus the R object. Take one per scope, not one
+per field:
 
 ```rust
 let c = ptr.borrow();   // one check, held until `c` drops
@@ -960,5 +964,5 @@ value take a checked borrow for the call, like `borrow()` / `borrow_mut()`:
 - `From<T>` / `From<Box<T>>`
 
 It has no `Deref` / `DerefMut`, `AsRef` / `AsMut` or `Borrow` / `BorrowMut`:
-each would hand out a reference with no borrow behind it. There's no `Pin`
-support either.
+each would hand out a reference with no borrow behind it ("Why there is no
+`Deref`" above). There's no `Pin` support either.
