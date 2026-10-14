@@ -60,7 +60,7 @@ just doc-all            # nightly: rustdoc + crate index + the R manual → site
 Renders every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R
 4.4+, a few seconds, nothing installed or loaded) after `tools::checkRd()` has
 passed over the sources — a finding aborts the build (`MINIEXTENDR_HTML_STRICT=0`
-renders anyway). Run `just force-document`
+renders anyway). Run `just devtools-document`
 first when `man/` may be stale. `just doc-all` needs a nightly toolchain: it
 documents the workspace crates and the rpkg bridge crate into one tree with
 rustdoc's crate index page (`--enable-index-page`), copies it to the site
@@ -73,13 +73,13 @@ same script as `tools/build-html-reference.R`, callable from R through
 ### After changing proc macros or `#[miniextendr]` attributes
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
-Use `just force-document` (not `just devtools-document`) here — it bypasses
-`roxygen2::needs_roxygenize()`'s mtime cache, which may not catch macro-layer
-output changes made via `rcmdinstall`. Use `just devtools-document` only for
-pure R/roxygen changes where no proc-macro output changed.
+`rcmdinstall` regenerates `R/miniextendr-wrappers.R` from the new macro
+output; `just devtools-document` then runs roxygen2 over it to regenerate
+`NAMESPACE` and `man/`. For pure R/roxygen changes, `just devtools-document`
+alone is enough.
 
 ### Adding a new `#[miniextendr]` function
 
@@ -148,12 +148,12 @@ The function exists in Rust but isn't callable from R. Check:
 
 1. Function is `pub`
 2. Function has the `#[miniextendr]` attribute
-3. Run [`just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate NAMESPACE
+3. Run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) to regenerate NAMESPACE
 
 Quick fix:
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
 ### Stale R wrappers after macro changes
@@ -161,7 +161,7 @@ just configure && just rcmdinstall && just force-document
 Same fix:
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
 ### Permission errors during install

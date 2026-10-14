@@ -322,9 +322,9 @@ Live fixtures: `rpkg/src/rust/match_arg_tests.rs`,
 1. Is the function `pub`? Functions without `pub` are silently excluded.
 2. Is the module reachable via `mod` from `lib.rs`? A `#[cfg(feature = "foo")]`
    gate on the `mod` declaration is sufficient if the feature is enabled.
-3. Did you run `just configure && just rcmdinstall && just force-document`? The R
-   wrapper is generated during `rcmdinstall`, not before. If you skipped
-   `force-document`, roxygen2 may not have regenerated `NAMESPACE`.
+3. Did you run `just configure && just rcmdinstall && just devtools-document`? The R
+   wrapper is generated during `rcmdinstall`, not before, and `NAMESPACE` gains
+   the export only when `devtools-document` runs roxygen2 over it.
 4. Is there a vendor tarball leak? If `inst/vendor.tar.xz` is present, edits to
    workspace crates are silently ignored. Run `just clean-vendor-leak`.
 

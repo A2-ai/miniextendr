@@ -155,7 +155,7 @@ drift the lock runs under `scripts/with-rpkg-lock.sh` (the
 `[script("bash", "scripts/with-rpkg-lock.sh", "bash")]` interpreter).
 `grep -A1 with-rpkg-lock justfile` lists them: the cargo recipes (`check`,
 `clippy`, `test`, `doc`, …) and the R-side ones (`rcmdinstall`, the
-`devtools-*` recipes, `force-document`, `r-cmd-build`, `r-cmd-check`, …). The
+`devtools-*` recipes, `r-cmd-build`, `r-cmd-check`, …). The
 script copies the lock before the recipe body runs and puts
 that exact file back on exit, whether the recipe passes or fails. Unstaged lock
 edits made before the recipe survive it. `just cargo-lock-restore` is the

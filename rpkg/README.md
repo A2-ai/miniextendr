@@ -79,7 +79,7 @@ When you change the exported Rust API (add/remove/rename exported functions or
 methods), regenerate the wrappers:
 
 ```sh
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
 The install rewrites the gitignored wrapper and wasm registry; the documentation

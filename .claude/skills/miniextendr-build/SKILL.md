@@ -226,7 +226,7 @@ stay tracked and must be committed in sync with the `#[miniextendr]` Rust
 source. `just wrappers-sync-check` installs rpkg, runs `devtools::document`,
 fails on any git diff in `NAMESPACE` / `man/`, and asserts the regenerated
 `wasm_registry.rs` is a real (non-stub) snapshot. Regenerate with
-`just rcmdinstall && just force-document`.
+`just rcmdinstall && just devtools-document`.
 
 ### configure → cargo feature flags
 

@@ -65,12 +65,11 @@ apt-get install autoconf automake
 When changing proc-macros, the full sequence is:
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
-Use `just force-document` (not `just devtools-document`) after macro changes —
-it bypasses `roxygen2::needs_roxygenize()`'s mtime cache, which may not catch
-macro-layer output changes. `just devtools-document` is for pure R/roxygen changes.
+`just devtools-document` always runs roxygen2; run it after `rcmdinstall` so it
+sees the regenerated wrappers. For pure R/roxygen changes it can run on its own.
 
 ### Quick Iteration
 
