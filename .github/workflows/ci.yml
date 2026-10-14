@@ -9,7 +9,8 @@ on:
     # and `next` (an extra r-check-linux leg; see the `changes` job). `full-ci`
     # turns on every gate in this file: those labels, the path filter, the
     # main / cron / dispatch-only jobs and matrix legs, and the nightly
-    # gctorture and Miri workflows (called as jobs below). Any label change
+    # gctorture and Miri workflows (called as jobs below). GC-stress jobs
+    # still require MX_GC_STRESS_CI=true pending #2070. Any label change
     # starts a new run, which cancels the in-progress one (see `concurrency`);
     # removing `full-ci` is how to stop a full run. The default activity types
     # (opened/synchronize/reopened) cover everything else.
@@ -1468,9 +1469,9 @@ jobs:
   # the `gc-stress` label to a PR that adds or changes SEXP-storage paths
   # (`Vec<SEXP>` / sidecars / list buffers / new gc_stress_* fixtures, see
   # CLAUDE.md "Stress-test GC discipline") and the job runs on that PR like
-  # heap-check does (`full-ci` turns it on too). Push-to-main, the weekly cron
-  # and workflow_dispatch still run it unconditionally, and
-  # gctorture-nightly.yml does the deep sweep.
+  # heap-check does (`full-ci` selects it too). All events still require
+  # MX_GC_STRESS_CI=true while #2070 is unresolved; matching R paths are
+  # required unless full-ci, cron, dispatch or a tag bypasses the filter.
   # Stays in ci-success.needs: a skipped job passes the gate, a labeled-and-
   # failing one blocks it.
   #
@@ -2202,16 +2203,18 @@ jobs:
   # Nightly workflows on a `full-ci` PR
   # ===========================================================================
   # gctorture-nightly.yml and miri-nightly.yml have no PR trigger of their
-  # own. A PR carrying `full-ci` runs them here as called workflows, so they
+  # own. A PR carrying `full-ci` selects them here as called workflows, so they
   # share this run's concurrency group: a new push or label change cancels an
   # in-progress sweep instead of stacking another one. The gctorture sweep is
-  # six shards of ~2 hours each (300-minute cap), ~11 runner-hours in total,
-  # so the label is for risky changes, not routine PRs. Neither is
+  # six shards with a 300-minute cap; some hit it (#2070). The call below
+  # honors MX_GC_STRESS_CI, preserving main's temporary suspension. Neither is
   # in ci-success.needs: a failure shows red on the PR without blocking it,
   # as it does for the scheduled runs.
   gctorture-nightly:
     name: gctorture nightly
-    if: contains(github.event.pull_request.labels.*.name, 'full-ci')
+    if: >-
+      vars.MX_GC_STRESS_CI == 'true' &&
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     uses: ./.github/workflows/gctorture-nightly.yml
 
   miri-nightly:
