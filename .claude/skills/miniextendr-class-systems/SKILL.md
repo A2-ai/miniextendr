@@ -395,7 +395,7 @@ Start with the intended R API surface:
    `new` is also a static method under its own name). Without any, the class
    has no constructor and its objects come from static factories returning
    `Result<Self, E>` or `Option<Self>`.
-4. Run `just configure && just rcmdinstall && just force-document`.
+4. Run `just configure && just rcmdinstall && just devtools-document`.
 5. In R: `obj <- MyStruct$new(...)`.
 
 The generated class is named after the Rust type by default. Override with

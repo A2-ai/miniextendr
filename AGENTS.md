@@ -81,8 +81,7 @@ just check / test / clippy / fmt / lint
 # rpkg (R package)
 just configure           # REQUIRED before any R CMD operation (dev mode)
 just rcmdinstall         # Build + install (compiles Rust, auto-generates R wrappers)
-just devtools-document   # roxygen2 → NAMESPACE + man/ (short-circuits if nothing changed)
-just force-document      # like devtools-document but always runs — use after macro changes
+just devtools-document   # roxygen2 → NAMESPACE + man/ (always runs; after rcmdinstall for macro changes)
 just devtools-test       # R tests
 just r-cmd-build         # Build tarball
 just r-cmd-check         # Check built tarball (save to log — see Capturing Output)
@@ -140,14 +139,12 @@ That's the entire decision. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`,
 ### After Rust changes (especially macro changes)
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
-Use `just force-document` (not `just devtools-document`) after **anything** that affects R wrapper output: proc-macro roxygen changes, `r_wrappers.rs` / class-system codegen changes, adding/removing `#[miniextendr]` functions. `force-document` bypasses `roxygen2::needs_roxygenize()` — required when macro output has changed but the mtime cache has not caught up.
+`just devtools-document` always runs roxygen2. After **anything** that affects R wrapper output (proc-macro roxygen changes, `r_wrappers.rs` / class-system codegen changes, adding/removing `#[miniextendr]` functions), run it after `rcmdinstall`, which regenerates the `R/miniextendr-wrappers.R` it reads. Pure R/roxygen edits need only `just devtools-document`.
 
-`just devtools-document` (short-circuiting variant) is safe for **pure R/roxygen changes** — skips roxygenize when `needs_roxygenize()` returns `FALSE`.
-
-**A new export needs a *second* install to be runtime-callable.** `just rcmdinstall` regenerates `wrappers.R` but installs against the *existing* `NAMESPACE`; `just force-document` then writes the new export into `NAMESPACE` on disk but does **not** reinstall — so a freshly added `#[miniextendr]` fn is absent from the *installed* package until you install again. To gctorture / testthat a new export, run the loop twice: `rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated `NAMESPACE` / `man` only needs the single pass.)
+**A new export needs a *second* install to be runtime-callable.** `just rcmdinstall` regenerates `wrappers.R` but installs against the *existing* `NAMESPACE`; `just devtools-document` then writes the new export into `NAMESPACE` on disk but does **not** reinstall — so a freshly added `#[miniextendr]` fn is absent from the *installed* package until you install again. To gctorture / testthat a new export, run the loop twice: `rcmdinstall && devtools-document && rcmdinstall`. (Committing the regenerated `NAMESPACE` / `man` only needs the single pass.)
 
 Generated documentation (`NAMESPACE`, `man/*.Rd`) must be committed in sync
 with the Rust changes that produced it. `rpkg/R/miniextendr-wrappers.R` and
@@ -164,7 +161,7 @@ Enable once per clone: `git config core.hooksPath .githooks`.
 
 1. `pub fn` with `#[miniextendr]` — registration is automatic via linkme `#[distributed_slice]`, no module macro needed
 2. Module must be reachable via `mod` from `lib.rs` (`#[cfg(feature = "foo")]` on `mod` declaration is sufficient for feature-gated modules)
-3. `just configure && just rcmdinstall && just force-document`
+3. `just configure && just rcmdinstall && just devtools-document`
 
 Build sequence: `Makevars` → `cargo build --lib` (staticlib) → R links `$(SHLIB)` → `Rscript ../tools/write-wrappers.R $(SHLIB)` (only when `$(SHLIB)` was relinked) → `dyn.load` + `miniextendr_write_wrappers` → `R/miniextendr-wrappers.R` + `src/rust/wasm_registry.rs` (rewritten only on content change; the stamp `rust-target/.miniextendr-wrappers` records the pass).
 
@@ -218,7 +215,7 @@ Never commit it or any other build artifact: CI's Generated Files Check (`just c
   `just r-cmd-build` ships it for wasm. Regenerate locally with `just rcmdinstall`.
 - `NAMESPACE` + `man/*.Rd` — derived (by roxygen2) from the regenerated
   wrappers.R + hand-written R. **Still tracked** (small, low-conflict). Run
-  `just configure && just rcmdinstall && just force-document` after macro changes
+  `just configure && just rcmdinstall && just devtools-document` after macro changes
   and commit them. CI's `just wrappers-sync-check` regenerates wrappers.R then
   git-diffs NAMESPACE + man to catch drift.
 
@@ -278,7 +275,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 
 ## Common Issues
 
-- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
+- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just devtools-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R CMD INSTALL --library=/tmp/codex/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/codex/` is writable in Codex sandboxes.
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
@@ -296,7 +293,7 @@ Common: `devtools-doc.log`, `rcmdinstall.log`, `rcmdcheck.log`, `devtools-test.l
 
 ## Sandbox Restrictions
 
-Some agent sandboxes block compilation. For any compiling command (`just force-document`, `rcmdinstall`, `cargo build`, `R CMD INSTALL/check`), run with the agent's full-access or unsandboxed mode.
+Some agent sandboxes block compilation. For any compiling command (`just devtools-document`, `rcmdinstall`, `cargo build`, `R CMD INSTALL/check`), run with the agent's full-access or unsandboxed mode.
 
 ## File Deletion Safety
 
@@ -310,7 +307,7 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 - **Worktree R library: `rv sync` per worktree, then install** (never symlink to main). `rv/library/` is gitignored, so a fresh worktree's library is empty. Populate it from rv's shared global cache (`~/.cache/rv`, warm from main — same `rproject.toml`), then install the dev packages:
   ```bash
   just worktree-sync   # = RV_LINK_MODE=symlink rv sync — symlinks the ~110 cached deps into this worktree's OWN rv/library (~8s)
-  just configure && just rcmdinstall && just force-document
+  just configure && just rcmdinstall && just devtools-document
   ```
   `RV_LINK_MODE=symlink` (in `just worktree-sync`) links deps as symlinks into `~/.cache/rv` (zero-copy, no recompile/download) instead of the macOS copy-on-write default. Each worktree gets its own real `rv/library` (deps = symlinks to the shared read-only cache; dev packages = real installed dirs), so parallel worktrees never race and main is untouched. rv's native cross-project cache model: https://a2-ai.github.io/rv-docs/concepts/cache/ . **Order matters**: `rv sync` prunes anything not in the lockfile — including `miniextendr`/`minirextendr` (`dependencies_only`) — so sync first, install second; a later `rv sync` wipes the dev packages (re-install). **Never `ln -s rv/library`** to main (the old fix; reintroduces the shared-install race).
 - **Merge**: rebase worktree onto current main, *then* merge. Rebase must happen immediately before the merge, not when the agent finishes.
@@ -321,7 +318,7 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 - **Clean up after push**: `git worktree remove -f -f <agent-worktree-path>` + `git worktree prune`. Each worktree holds a full `target/` (2–3 GB/agent).
 - **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Resolve everything by hand **except regenerated artifacts** — never hand-merge their hunks; take either side (`git checkout --theirs` / `git add`) then regenerate:
   - `patches/templates.patch` (rpkg→templates delta, a generated diff) → `just templates-approve`, then verify with `just templates-check`.
-  - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just force-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
+  - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just devtools-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
   - `tests/cross-package/{producer,consumer}.pkg/` `NAMESPACE`, `R/*-wrappers.R`, `man/*.Rd`, `configure` (tracked there, marked `-merge` in each package's `.gitattributes` the same way) → `just cross-install && just cross-document` (or `autoconf` in that package's directory for `configure`), then `git add`.
   - `rpkg/src/rust/Cargo.lock` pin-only (`#<sha>`) churn → `cargo revendor --manifest-path rpkg/src/rust/Cargo.toml --stamp-lock` after `just configure`.
   - A branch from before `rust-llm-docs/generated/` was untracked hits a modify/delete conflict on those files: `git rm -r --cached rust-llm-docs/generated`, then continue (regenerate locally with `just llm-docs` if you want them).
@@ -453,7 +450,7 @@ plan file — see the Reviews rule above). To execute one in isolation, the rule
    #   read the feature lists from .github/workflows/ci.yml — never guess them
    ```
    A **new `#[miniextendr]` export** is not runtime-callable until a *double*
-   install: `just rcmdinstall && just force-document && just rcmdinstall`, then a
+   install: `just rcmdinstall && just devtools-document && just rcmdinstall`, then a
    **targeted** `testthat::test_file(...)` (full `just devtools-test` can OOM via
    callr fan-out). Commit regenerated `NAMESPACE`/`man` in sync
    (`git config core.hooksPath .githooks` first). Known non-issue: the
