@@ -49,7 +49,7 @@ fn materialized_serialization_uses_r_fallback() {
 pub struct MaterializingRaw(Vec<u8>);
 
 impl miniextendr_api::altrep_data::AltrepLen for MaterializingRaw {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }
@@ -65,7 +65,7 @@ impl miniextendr_api::altrep_data::AltRawData for MaterializingRaw {
 pub struct MaterializingComplex(Vec<Rcomplex>);
 
 impl miniextendr_api::altrep_data::AltrepLen for MaterializingComplex {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

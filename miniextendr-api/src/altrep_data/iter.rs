@@ -25,8 +25,8 @@
 //! }
 //!
 //! impl AltrepLen for MyLazyInts {
-//!     fn len(&self) -> usize {
-//!         self.inner.len()
+//!     fn altrep_len(&self) -> usize {
+//!         self.inner.altrep_len()
 //!     }
 //! }
 //!

@@ -405,7 +405,7 @@ Every type using the high-level bridge implements `AltrepLen`:
 
 ```rust
 impl AltrepLen for MyData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         // Return the vector length
     }
 }
@@ -463,7 +463,7 @@ impl AltIntegerData for MyData {
         // loop (shown here); override when a block can be filled cheaper
         // than n independent elt() calls. Clamp, fill, and return the count
         // written — see ALTREP_GET_REGION.md for the contract and patterns.
-        let n = len.min(buf.len()).min(self.len().saturating_sub(start));
+        let n = len.min(buf.len()).min(self.altrep_len().saturating_sub(start));
         for (k, slot) in buf[..n].iter_mut().enumerate() {
             *slot = self.elt(start + k);
         }
@@ -488,7 +488,7 @@ pub struct ArithSeqData {
 }
 
 impl AltrepLen for ArithSeqData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -548,7 +548,7 @@ pub struct LazyIntSeqData {
 }
 
 impl AltrepLen for LazyIntSeqData {
-    fn len(&self) -> usize { self.len }
+    fn altrep_len(&self) -> usize { self.len }
 }
 
 impl AltIntegerData for LazyIntSeqData {
@@ -1082,7 +1082,7 @@ pub struct UnitCircleData {
 }
 
 impl AltrepLen for UnitCircleData {
-    fn len(&self) -> usize { self.n }
+    fn altrep_len(&self) -> usize { self.n }
 }
 
 impl AltComplexData for UnitCircleData {
@@ -1115,7 +1115,7 @@ pub struct LogicalVecData {
 }
 
 impl AltrepLen for LogicalVecData {
-    fn len(&self) -> usize { self.data.len() }
+    fn altrep_len(&self) -> usize { self.data.len() }
 }
 
 impl AltLogicalData for LogicalVecData {
@@ -1158,7 +1158,7 @@ pub struct StringVecData {
 }
 
 impl AltrepLen for StringVecData {
-    fn len(&self) -> usize { self.data.len() }
+    fn altrep_len(&self) -> usize { self.data.len() }
 }
 
 impl AltStringData for StringVecData {
@@ -1187,7 +1187,7 @@ pub struct RepeatingRawData {
 }
 
 impl AltrepLen for RepeatingRawData {
-    fn len(&self) -> usize { self.total_len }
+    fn altrep_len(&self) -> usize { self.total_len }
 }
 
 impl AltRawData for RepeatingRawData {
@@ -1214,7 +1214,7 @@ pub struct IntegerSequenceListData {
 }
 
 impl AltrepLen for IntegerSequenceListData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.n
     }
 }
@@ -1262,7 +1262,7 @@ pub struct RepeatedListData {
 }
 
 impl AltrepLen for RepeatedListData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.n
     }
 }
@@ -1423,7 +1423,7 @@ pub struct RangeIntData {
 }
 
 impl AltrepLen for RangeIntData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1737,7 +1737,7 @@ pub struct LazySequence {
 }
 
 impl AltrepLen for LazySequence {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1780,7 +1780,7 @@ pub struct LazyWithCache {
 }
 
 impl AltrepLen for LazyWithCache {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -1837,7 +1837,7 @@ pub struct VecWrapper {
 }
 
 impl AltrepLen for VecWrapper {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -2225,7 +2225,7 @@ A registered class picks its policies with the derive options:
 struct RangeCache(IterIntData<std::ops::Range<i32>>);
 
 impl AltrepLen for RangeCache {
-    fn len(&self) -> usize { self.0.len() }
+    fn altrep_len(&self) -> usize { self.0.altrep_len() }
 }
 impl AltIntegerData for RangeCache {
     fn elt(&self, i: usize) -> i32 { self.0.elt(i) }

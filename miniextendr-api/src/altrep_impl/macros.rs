@@ -133,7 +133,7 @@ macro_rules! __impl_altrep_base {
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::R_xlen_t
+                <$ty as $crate::altrep_data::AltrepLen>::altrep_len(data) as $crate::R_xlen_t
             }
         }
     };
@@ -150,7 +150,7 @@ macro_rules! __impl_altrep_base {
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::R_xlen_t
+                <$ty as $crate::altrep_data::AltrepLen>::altrep_len(data) as $crate::R_xlen_t
             }
 
             const HAS_SERIALIZED_STATE: bool = true;
@@ -1154,7 +1154,7 @@ macro_rules! impl_altlist_from_data_generic {
             fn length(x: $crate::SEXP) -> $crate::R_xlen_t {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                <$ty as $crate::altrep_data::AltrepLen>::len(data) as $crate::R_xlen_t
+                <$ty as $crate::altrep_data::AltrepLen>::altrep_len(data) as $crate::R_xlen_t
             }
         }
 

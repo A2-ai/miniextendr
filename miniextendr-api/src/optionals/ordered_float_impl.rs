@@ -260,154 +260,146 @@ use ordered_float::FloatCore;
 
 /// Adapter trait for [`OrderedFloat`] operations.
 ///
-/// Provides NaN-safe numeric operations from R.
-/// Automatically implemented for `OrderedFloat<T>` where T: FloatCore.
+/// Provides NaN-safe numeric operations returning R-compatible `f64` values.
+/// Automatically implemented for `OrderedFloat<T>` where `T: FloatCore + Into<f64>`.
+/// Methods use `r_` names so importing the trait preserves calls to the inner
+/// float's methods, including the `f32` result of `OrderedFloat<f32>::round()`.
+/// These are Rust helpers; exposing them through the trait ABI is tracked in #1120.
 ///
 /// # Why OrderedFloat?
 ///
 /// Standard floats in Rust don't implement `Ord` because NaN breaks ordering.
-/// `OrderedFloat` wraps floats to provide total ordering where NaN < all values.
-/// This is useful for sorting, using floats as map keys, etc.
+/// `OrderedFloat` provides total ordering where NaN is greater than all other values.
+/// This is useful for sorting and using floats as map keys.
 ///
 /// # Example
 ///
-/// ```rust,ignore
-/// use ordered_float::OrderedFloat;
-/// use miniextendr_api::ordered_float_impl::ROrderedFloatOps;
-///
-/// #[derive(ExternalPtr)]
-/// struct MyFloat(OrderedFloat<f64>);
-///
-/// #[miniextendr]
-/// impl ROrderedFloatOps for MyFloat {}
 /// ```
+/// use miniextendr_api::{OrderedFloat, ROrderedFloatOps};
 ///
-/// In R:
-/// ```r
-/// x <- MyFloat$new(3.14)
-/// x$is_nan()       # FALSE
-/// x$is_infinite()  # FALSE
-/// x$is_finite()    # TRUE
-/// x$floor()        # 3.0
-/// x$ceil()         # 4.0
+/// let x = OrderedFloat(3.5f32);
+/// let rounded: f32 = x.round();
+/// let for_r: f64 = x.r_round();
+/// assert_eq!(rounded, 4.0f32);
+/// assert_eq!(for_r, 4.0f64);
 /// ```
 pub trait ROrderedFloatOps {
     /// Get the inner float value.
-    fn inner(&self) -> f64;
+    fn r_inner(&self) -> f64;
 
     /// Check if the value is NaN.
-    fn is_nan(&self) -> bool;
+    fn r_is_nan(&self) -> bool;
 
     /// Check if the value is infinite (positive or negative).
-    fn is_infinite(&self) -> bool;
+    fn r_is_infinite(&self) -> bool;
 
     /// Check if the value is finite (not NaN or infinite).
-    fn is_finite(&self) -> bool;
+    fn r_is_finite(&self) -> bool;
 
     /// Check if the value is positive.
-    fn is_positive(&self) -> bool;
+    fn r_is_positive(&self) -> bool;
 
     /// Check if the value is negative.
-    fn is_negative(&self) -> bool;
+    fn r_is_negative(&self) -> bool;
 
     /// Get the floor (largest integer <= self).
-    fn floor(&self) -> f64;
+    fn r_floor(&self) -> f64;
 
     /// Get the ceiling (smallest integer >= self).
-    fn ceil(&self) -> f64;
+    fn r_ceil(&self) -> f64;
 
     /// Round to nearest integer.
-    fn round(&self) -> f64;
+    fn r_round(&self) -> f64;
 
     /// Truncate toward zero.
-    fn trunc(&self) -> f64;
+    fn r_trunc(&self) -> f64;
 
     /// Get the fractional part.
-    fn fract(&self) -> f64;
+    fn r_fract(&self) -> f64;
 
     /// Get the absolute value.
-    fn abs(&self) -> f64;
+    fn r_abs(&self) -> f64;
 
     /// Get the sign: -1.0, 0.0, or 1.0.
-    fn signum(&self) -> f64;
+    fn r_signum(&self) -> f64;
 
     /// Return the minimum of self and other (NaN-safe).
-    fn min_with(&self, other: f64) -> f64;
+    fn r_min_with(&self, other: f64) -> f64;
 
     /// Return the maximum of self and other (NaN-safe).
-    fn max_with(&self, other: f64) -> f64;
+    fn r_max_with(&self, other: f64) -> f64;
 
     /// Clamp the value to a range.
-    fn clamp_to(&self, min: f64, max: f64) -> f64;
+    fn r_clamp_to(&self, min: f64, max: f64) -> f64;
 }
 
 impl<T: FloatCore + Into<f64> + Copy> ROrderedFloatOps for OrderedFloat<T>
 where
     f64: From<T>,
 {
-    fn inner(&self) -> f64 {
+    fn r_inner(&self) -> f64 {
         f64::from(self.0)
     }
 
-    fn is_nan(&self) -> bool {
+    fn r_is_nan(&self) -> bool {
         self.0.is_nan()
     }
 
-    fn is_infinite(&self) -> bool {
+    fn r_is_infinite(&self) -> bool {
         self.0.is_infinite()
     }
 
-    fn is_finite(&self) -> bool {
+    fn r_is_finite(&self) -> bool {
         self.0.is_finite()
     }
 
-    fn is_positive(&self) -> bool {
+    fn r_is_positive(&self) -> bool {
         self.0.is_sign_positive() && !self.0.is_nan()
     }
 
-    fn is_negative(&self) -> bool {
+    fn r_is_negative(&self) -> bool {
         self.0.is_sign_negative() && !self.0.is_nan()
     }
 
-    fn floor(&self) -> f64 {
+    fn r_floor(&self) -> f64 {
         f64::from(self.0).floor()
     }
 
-    fn ceil(&self) -> f64 {
+    fn r_ceil(&self) -> f64 {
         f64::from(self.0).ceil()
     }
 
-    fn round(&self) -> f64 {
+    fn r_round(&self) -> f64 {
         f64::from(self.0).round()
     }
 
-    fn trunc(&self) -> f64 {
+    fn r_trunc(&self) -> f64 {
         f64::from(self.0).trunc()
     }
 
-    fn fract(&self) -> f64 {
+    fn r_fract(&self) -> f64 {
         f64::from(self.0).fract()
     }
 
-    fn abs(&self) -> f64 {
+    fn r_abs(&self) -> f64 {
         f64::from(self.0).abs()
     }
 
-    fn signum(&self) -> f64 {
+    fn r_signum(&self) -> f64 {
         f64::from(self.0).signum()
     }
 
-    fn min_with(&self, other: f64) -> f64 {
+    fn r_min_with(&self, other: f64) -> f64 {
         let s = f64::from(self.0);
         Ord::min(OrderedFloat(s), OrderedFloat(other)).0
     }
 
-    fn max_with(&self, other: f64) -> f64 {
+    fn r_max_with(&self, other: f64) -> f64 {
         let s = f64::from(self.0);
         Ord::max(OrderedFloat(s), OrderedFloat(other)).0
     }
 
-    fn clamp_to(&self, min: f64, max: f64) -> f64 {
+    fn r_clamp_to(&self, min: f64, max: f64) -> f64 {
         let s = f64::from(self.0);
         Ord::clamp(OrderedFloat(s), OrderedFloat(min), OrderedFloat(max)).0
     }
@@ -432,51 +424,51 @@ mod tests {
         let nan = OrderedFloat(f64::NAN);
         let inf = OrderedFloat(f64::INFINITY);
 
-        assert!(ROrderedFloatOps::is_positive(&positive));
-        assert!(!ROrderedFloatOps::is_negative(&positive));
-        assert!(ROrderedFloatOps::is_negative(&negative));
-        assert!(!ROrderedFloatOps::is_positive(&negative));
+        assert!(ROrderedFloatOps::r_is_positive(&positive));
+        assert!(!ROrderedFloatOps::r_is_negative(&positive));
+        assert!(ROrderedFloatOps::r_is_negative(&negative));
+        assert!(!ROrderedFloatOps::r_is_positive(&negative));
 
-        assert!(ROrderedFloatOps::is_nan(&nan));
-        assert!(!ROrderedFloatOps::is_finite(&nan));
+        assert!(ROrderedFloatOps::r_is_nan(&nan));
+        assert!(!ROrderedFloatOps::r_is_finite(&nan));
 
-        assert!(ROrderedFloatOps::is_infinite(&inf));
-        assert!(!ROrderedFloatOps::is_finite(&inf));
+        assert!(ROrderedFloatOps::r_is_infinite(&inf));
+        assert!(!ROrderedFloatOps::r_is_finite(&inf));
     }
 
     #[test]
     fn rorderedfloatops_rounding() {
         let of = OrderedFloat(3.7f64);
-        assert_eq!(ROrderedFloatOps::floor(&of), 3.0);
-        assert_eq!(ROrderedFloatOps::ceil(&of), 4.0);
-        assert_eq!(ROrderedFloatOps::round(&of), 4.0);
-        assert_eq!(ROrderedFloatOps::trunc(&of), 3.0);
-        assert!((ROrderedFloatOps::fract(&of) - 0.7).abs() < 0.001);
+        assert_eq!(ROrderedFloatOps::r_floor(&of), 3.0);
+        assert_eq!(ROrderedFloatOps::r_ceil(&of), 4.0);
+        assert_eq!(ROrderedFloatOps::r_round(&of), 4.0);
+        assert_eq!(ROrderedFloatOps::r_trunc(&of), 3.0);
+        assert!((ROrderedFloatOps::r_fract(&of) - 0.7).abs() < 0.001);
     }
 
     #[test]
     fn rorderedfloatops_abs_signum() {
         let neg = OrderedFloat(-5.0f64);
-        assert_eq!(ROrderedFloatOps::abs(&neg), 5.0);
-        assert_eq!(ROrderedFloatOps::signum(&neg), -1.0);
+        assert_eq!(ROrderedFloatOps::r_abs(&neg), 5.0);
+        assert_eq!(ROrderedFloatOps::r_signum(&neg), -1.0);
 
         let pos = OrderedFloat(5.0f64);
-        assert_eq!(ROrderedFloatOps::signum(&pos), 1.0);
+        assert_eq!(ROrderedFloatOps::r_signum(&pos), 1.0);
     }
 
     #[test]
     fn rorderedfloatops_min_max_clamp() {
         let of = OrderedFloat(5.0f64);
 
-        assert_eq!(ROrderedFloatOps::min_with(&of, 3.0), 3.0);
-        assert_eq!(ROrderedFloatOps::min_with(&of, 7.0), 5.0);
+        assert_eq!(ROrderedFloatOps::r_min_with(&of, 3.0), 3.0);
+        assert_eq!(ROrderedFloatOps::r_min_with(&of, 7.0), 5.0);
 
-        assert_eq!(ROrderedFloatOps::max_with(&of, 3.0), 5.0);
-        assert_eq!(ROrderedFloatOps::max_with(&of, 7.0), 7.0);
+        assert_eq!(ROrderedFloatOps::r_max_with(&of, 3.0), 5.0);
+        assert_eq!(ROrderedFloatOps::r_max_with(&of, 7.0), 7.0);
 
-        assert_eq!(ROrderedFloatOps::clamp_to(&of, 0.0, 10.0), 5.0);
-        assert_eq!(ROrderedFloatOps::clamp_to(&of, 6.0, 10.0), 6.0);
-        assert_eq!(ROrderedFloatOps::clamp_to(&of, 0.0, 3.0), 3.0);
+        assert_eq!(ROrderedFloatOps::r_clamp_to(&of, 0.0, 10.0), 5.0);
+        assert_eq!(ROrderedFloatOps::r_clamp_to(&of, 6.0, 10.0), 6.0);
+        assert_eq!(ROrderedFloatOps::r_clamp_to(&of, 0.0, 3.0), 3.0);
     }
 
     #[test]
@@ -486,16 +478,16 @@ mod tests {
 
         // In OrderedFloat's Ord impl, NaN is greater than all other values
         // So min(5.0, NaN) = 5.0, and max(NaN, 5.0) = NaN
-        assert_eq!(ROrderedFloatOps::min_with(&val, f64::NAN), 5.0);
-        assert!(ROrderedFloatOps::max_with(&nan, 5.0).is_nan());
+        assert_eq!(ROrderedFloatOps::r_min_with(&val, f64::NAN), 5.0);
+        assert!(ROrderedFloatOps::r_max_with(&nan, 5.0).is_nan());
     }
 
     #[test]
     fn rorderedfloatops_f32() {
         let of = OrderedFloat(std::f32::consts::PI);
-        assert!(!ROrderedFloatOps::is_nan(&of));
-        assert!(ROrderedFloatOps::is_finite(&of));
-        assert!((ROrderedFloatOps::floor(&of) - 3.0).abs() < 0.001);
+        assert!(!ROrderedFloatOps::r_is_nan(&of));
+        assert!(ROrderedFloatOps::r_is_finite(&of));
+        assert!((ROrderedFloatOps::r_floor(&of) - 3.0).abs() < 0.001);
     }
 }
 // endregion

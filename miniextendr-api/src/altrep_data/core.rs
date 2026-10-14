@@ -38,13 +38,16 @@ pub(crate) fn fill_region<T>(
 }
 
 /// Base trait for ALTREP data types. All ALTREP types must provide length.
+///
+/// The `altrep_` prefix keeps importing this trait from changing ordinary
+/// `len()` / `is_empty()` calls on arrays, slices and their owners.
 pub trait AltrepLen {
     /// Returns the length of this ALTREP vector.
-    fn len(&self) -> usize;
+    fn altrep_len(&self) -> usize;
 
     /// Returns true if the vector is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+    fn altrep_is_empty(&self) -> bool {
+        self.altrep_len() == 0
     }
 }
 

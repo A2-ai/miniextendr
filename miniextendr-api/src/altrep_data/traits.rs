@@ -49,7 +49,7 @@ pub trait AltIntegerData: AltrepLen {
     ///
     /// # Contract
     ///
-    /// Fill at most `len.min(buf.len()).min(self.len() - start)` elements
+    /// Fill at most `len.min(buf.len()).min(self.altrep_len() - start)` elements
     /// starting at `start`, and return the count actually written. A `start`
     /// at or past the end returns `0`.
     ///
@@ -65,7 +65,7 @@ pub trait AltIntegerData: AltrepLen {
     /// struct LazySeq { start: i32, step: i32, len: usize }
     ///
     /// impl AltrepLen for LazySeq {
-    ///     fn len(&self) -> usize { self.len }
+    ///     fn altrep_len(&self) -> usize { self.len }
     /// }
     ///
     /// impl AltIntegerData for LazySeq {
@@ -101,7 +101,7 @@ pub trait AltIntegerData: AltrepLen {
     /// assert_eq!(seq.get_region(100, 8, &mut buf), 0);
     /// ```
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 
     /// Optional: sortedness hint. Default is unknown.
@@ -147,10 +147,10 @@ pub trait AltRealData: AltrepLen {
     ///
     /// Same contract and override guidance as
     /// [`AltIntegerData::get_region`]: fill at most
-    /// `len.min(buf.len()).min(self.len() - start)` elements and return the
+    /// `len.min(buf.len()).min(self.altrep_len() - start)` elements and return the
     /// count written.
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 
     /// Optional: sortedness hint.
@@ -205,7 +205,9 @@ pub trait AltLogicalData: AltrepLen {
     /// `NA_LOGICAL`). Same contract and override guidance as
     /// [`AltIntegerData::get_region`].
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx).to_r_int())
+        fill_region(start, len, self.altrep_len(), buf, |idx| {
+            self.elt(idx).to_r_int()
+        })
     }
 
     /// Optional: sortedness hint.
@@ -243,7 +245,7 @@ pub trait AltRawData: AltrepLen {
     /// Same contract and override guidance as
     /// [`AltIntegerData::get_region`].
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 // endregion
@@ -265,7 +267,7 @@ pub trait AltComplexData: AltrepLen {
     /// Same contract and override guidance as
     /// [`AltIntegerData::get_region`].
     fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 // endregion

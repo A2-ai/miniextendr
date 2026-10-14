@@ -10,9 +10,9 @@
 //! `RToVec::{len, is_empty, to_vec}`), any `x.clone()` named two applicable
 //! methods (E0034), and on an array or a `Box<[T]>`, `x.len()` found
 //! `RToVec::len` (an `i64`) before the slice's. Those methods are now
-//! `r_`-prefixed in Rust (`r_clone`, ...) and keep the std names in R. On an
-//! array or a `Box<[T]>` of an R-native element type, `AltrepLen::len` (a
-//! `usize`) still resolves before the slice's.
+//! `r_`-prefixed in Rust (`r_clone`, ...) and keep the std names in R.
+//! `AltrepLen` uses `altrep_len` / `altrep_is_empty` so arrays and boxed
+//! slices retain their inherent slice methods too (#2064).
 //!
 //! This module glob-imports the crate, then invokes every derive, attribute
 //! and function-like macro (`common/every_macro.rs`), trait and inherent
@@ -371,8 +371,7 @@ impl RExtend<i32> for Bag {
 // region: user code calling std methods next to the glob
 
 // Each call names its std method only, and the annotations pin std's result
-// types. `Word` has no `AltrepLen` impl, so its arrays and boxed slices reach
-// the slice's inherent `len` / `is_empty` / `to_vec`.
+// types, with and without an `AltrepLen` implementation.
 
 #[derive(
     ::core::clone::Clone,
@@ -428,7 +427,10 @@ macro_rules! std_method_calls {
             ::core::assert_eq!(parsed, ::core::result::Result::Ok(Version(3, 4)));
             ::core::assert_eq!(n, ::core::result::Result::Ok(7));
 
-            // `AltrepLen` covers `i32`: its `len` comes first, also a `usize`.
+            // The slice methods stay const even with `AltrepLen` in scope.
+            const ARRAY_LEN: usize = [1i32, 2, 3].len();
+            const ARRAY_EMPTY: bool = [0i32; 0].is_empty();
+            ::core::assert_eq!((ARRAY_LEN, ARRAY_EMPTY), (3, true));
             let ints = [1i32, 2, 3];
             let ints_len: usize = ints.len();
             let ints_empty: bool = ints.is_empty();
@@ -460,15 +462,14 @@ std_method_calls!();
 mod named {
     use super::{Version, Word};
     #[allow(unused_imports)]
-    use miniextendr_api::{RClone, RDefault, RExtend, RFromStr, RHash, ROrd, RPartialOrd, RToVec};
+    use miniextendr_api::{AltrepLen, RClone, RDefault, RExtend, RFromStr, RHash, ROrd, RPartialOrd, RToVec};
 
     std_method_calls!();
 }
 
 // endregion
 
-// region: arrays and boxed slices, whose `len` is `AltrepLen`'s and `RToVec`'s
-// before it is the slice's
+// region: arrays and boxed slices with ALTREP and collection adapters in scope
 
 // No `tag`: a tagged struct has no reader.
 #[derive(::core::clone::Clone, DataFrameRow)]

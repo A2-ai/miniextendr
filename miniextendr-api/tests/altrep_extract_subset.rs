@@ -10,7 +10,7 @@ use miniextendr_api::gc_protect::OwnedProtect;
 pub struct DecliningSubset(Vec<i32>);
 
 impl miniextendr_api::altrep_data::AltrepLen for DecliningSubset {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.0.len()
     }
 }

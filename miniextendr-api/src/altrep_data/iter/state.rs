@@ -341,7 +341,7 @@ impl<I: Iterator<Item = crate::RLogical>> AltLogicalData for IterRLogicalData<I>
     }
 
     fn get_region(&self, start: usize, len: usize, out: &mut [i32]) -> usize {
-        crate::altrep_data::fill_region(start, len, self.len(), out, |i| {
+        crate::altrep_data::fill_region(start, len, self.altrep_len(), out, |i| {
             self.state
                 .get_element(i)
                 .unwrap_or(crate::RLogical::NA)

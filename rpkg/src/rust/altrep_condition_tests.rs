@@ -25,7 +25,7 @@ pub struct PanickingAltrepData {
 }
 
 impl AltrepLen for PanickingAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -72,7 +72,7 @@ pub struct ClassedErrorAltrepData {
 }
 
 impl AltrepLen for ClassedErrorAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -120,7 +120,7 @@ pub struct LoopStressAltrepData {
 }
 
 impl AltrepLen for LoopStressAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -170,7 +170,7 @@ pub struct WarnAltrepData {
 }
 
 impl AltrepLen for WarnAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -207,7 +207,7 @@ pub struct MessageAltrepData {
 }
 
 impl AltrepLen for MessageAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -243,7 +243,7 @@ pub struct ConditionAltrepData {
 }
 
 impl AltrepLen for ConditionAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -292,7 +292,7 @@ pub struct DataErrorAltrepData {
 }
 
 impl AltrepLen for DataErrorAltrepData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }

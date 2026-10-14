@@ -31,7 +31,7 @@ pub struct DatabaseResultSet {
 }
 
 impl AltrepLen for DatabaseResultSet {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.row_count
     }
 }
@@ -90,7 +90,7 @@ pub struct MappedFile {
 }
 
 impl AltrepLen for MappedFile {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.mmap.len()
     }
 }
@@ -150,7 +150,7 @@ pub struct SinewaveTimeSeries {
 }
 
 impl AltrepLen for SinewaveTimeSeries {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.n_samples
     }
 }
@@ -203,7 +203,7 @@ pub struct SparseVector {
 }
 
 impl AltrepLen for SparseVector {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.length
     }
 }
@@ -270,7 +270,7 @@ pub struct ApiStringCache {
 }
 
 impl AltrepLen for ApiStringCache {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.item_ids.len()
     }
 }

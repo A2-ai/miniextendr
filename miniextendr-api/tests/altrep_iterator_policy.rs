@@ -11,8 +11,8 @@ use miniextendr_api::{IntoR, SEXP, SexpExt};
 struct RangeCache(IterIntData<std::ops::Range<i32>>);
 
 impl AltrepLen for RangeCache {
-    fn len(&self) -> usize {
-        self.0.len()
+    fn altrep_len(&self) -> usize {
+        self.0.altrep_len()
     }
 }
 impl AltIntegerData for RangeCache {

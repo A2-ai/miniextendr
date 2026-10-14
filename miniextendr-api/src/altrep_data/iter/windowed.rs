@@ -252,7 +252,7 @@ impl<I: ExactSizeIterator<Item = i32>> WindowedIterIntData<I> {
 }
 
 impl<I: Iterator<Item = i32>> AltrepLen for WindowedIterIntData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -269,7 +269,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for WindowedIterIntData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -301,7 +301,7 @@ impl<I: ExactSizeIterator<Item = f64>> WindowedIterRealData<I> {
 }
 
 impl<I: Iterator<Item = f64>> AltrepLen for WindowedIterRealData<I> {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.state.len()
     }
 }
@@ -318,7 +318,7 @@ impl<I: Iterator<Item = f64>> AltRealData for WindowedIterRealData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+        fill_region(start, len, self.altrep_len(), buf, |idx| self.elt(idx))
     }
 }
 

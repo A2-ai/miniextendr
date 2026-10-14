@@ -25,7 +25,7 @@ pub struct DoublingAltrep {
 }
 
 impl AltrepLen for DoublingAltrep {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.length.max(0) as usize
     }
 }

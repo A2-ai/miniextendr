@@ -58,7 +58,7 @@ pub struct BenchIntVec {
 }
 
 impl AltrepLen for BenchIntVec {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -90,7 +90,7 @@ pub struct BenchRealVec {
 }
 
 impl AltrepLen for BenchRealVec {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -122,7 +122,7 @@ pub struct BenchString {
 }
 
 impl AltrepLen for BenchString {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
@@ -140,7 +140,7 @@ pub struct BenchComplex {
 }
 
 impl AltrepLen for BenchComplex {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.data.len()
     }
 }
