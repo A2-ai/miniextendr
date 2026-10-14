@@ -55,6 +55,7 @@ written.
 | **MXL301** | `_unchecked` FFI call outside guard context | Use the checked wrapper, or ensure you're inside `with_r_unwind_protect` |
 | **MXL302** | `into_sexp()` inside a `vec!`/array literal (unprotected SEXPs across allocations) | Protect each element through a `ProtectScope`, or use the `IntoList` / `DataFrameRow` derives |
 | **MXL304** | Call to, or declaration of, R's non-API `ATTRIB` / `SET_ATTRIB` | `SexpExt::has_attributes()`, `is_identical()`, `get_attr()` / `set_attr()`, or `DUPLICATE_ATTRIB` |
+| **MXL305** | `Rf_eval` / `R_forceAndCall` / `Rf_applyClosure` / `R_CheckUserInterrupt` in a `#[miniextendr]` fn or method body: an R error or interrupt there jumps over the body's Rust frames and leaves the receiver borrowed | Evaluate through `RCall::eval` / `eval_with_handlers` / `try_eval_with_handlers` (or `Quoted::eval`); check interrupts with `#[miniextendr(check_interrupt)]` |
 
 #### MXL300: Direct Rf_error calls
 
@@ -75,9 +76,27 @@ Functions like `Rf_ScalarInteger_unchecked()` bypass miniextendr's main-thread r
 
 **When unchecked is intentional**, suppress with `// mxl::allow(MXL301)`.
 
+#### MXL305: Raw R evaluation in a `#[miniextendr]` body
+
+The generated wrapper runs a `#[miniextendr]` fn or method body inside one `R_UnwindProtect`, and for a method it holds the receiver's borrow (see [Reentrant Calls](EXTERNALPTR.md#reentrant-calls)) until the body returns. `Rf_eval`, `R_forceAndCall` and `Rf_applyClosure` run R code; if that code raises an R error, R jumps straight to the wrapper's `R_UnwindProtect`, over every Rust frame of the body. No destructor in those frames runs, and the receiver stays borrowed: every later call on the object raises `miniextendr_borrow_conflict` for the rest of the session. `R_CheckUserInterrupt()` does the same with a pending interrupt. The lint flags these calls (and their `_unchecked` forms) in `#[miniextendr]` fns, in the methods of `#[miniextendr]` impl blocks, and in the default methods of `#[miniextendr]` traits.
+
+Wrapping the call in `with_r_unwind_protect` does not help: it resumes the R error with `R_ContinueUnwind`, which jumps over the body's frames all the same.
+
+**Preferred alternatives** (`miniextendr_api::expression`):
+
+- `RCall::eval` / `eval_as` / `r_eval_str`: an R error comes back as `Err(REvalError)`; the caller's condition handlers don't see the evaluation.
+- `eval_with_handlers` (or `RCall::eval_with_handlers`): the caller's handlers see every condition, and an R error or other exit leaves as a Rust unwind, so the borrow is released before R carries on.
+- `try_eval_with_handlers`: the caller's handlers see warnings and messages, and an R error comes back as `Err`.
+- `Quoted::eval()` for an unevaluated argument.
+- For `R_forceAndCall` / `Rf_applyClosure`, build the call with `RCall::from_sexp(f).arg(..)` and evaluate it with one of the above.
+
+For interrupts, `#[miniextendr(check_interrupt)]` checks once, before the arguments are converted and the receiver is borrowed. There is no safe check for inside a long loop yet ([#2101](https://github.com/A2-ai/miniextendr/issues/2101)).
+
+**When the jump is intentional** (a fixture that tests R's own longjmp), suppress with `// mxl::allow(MXL305)`.
+
 ## Inline Suppression
 
-MXL300, MXL301, MXL302 and MXL304 support inline suppression via `// mxl::allow(...)` comments. The suppression comment can appear:
+MXL300, MXL301, MXL302, MXL304 and MXL305 support inline suppression via `// mxl::allow(...)` comments. The suppression comment can appear:
 
 1. **On the same line** (trailing comment):
 
@@ -127,7 +146,7 @@ unsafe {
 
 - Prefix: `// mxl::allow(`
 - Codes: comma-separated, whitespace around commas is ignored
-- Only `MXL300`, `MXL301`, `MXL302` and `MXL304` are currently suppressible
+- Only `MXL300`, `MXL301`, `MXL302`, `MXL304` and `MXL305` are suppressible this way; `MXL121` takes the comment on the impl block's header instead (see its row above)
 
 ## Common Proc-Macro Errors
 

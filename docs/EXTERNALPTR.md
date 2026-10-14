@@ -271,11 +271,28 @@ error of class `miniextendr_borrow_conflict` instead of making a second
 reference, and leaves the object as it was. A trait method called through a
 View, from this package or another, borrows the same cell (see `TRAIT_ABI.md`).
 
-The borrow ends when the method returns or unwinds. A method that calls back
-into R should do so through an `RCall` evaluator such as `eval_with_handlers`,
-which carries an R error through the method's Rust frames as an unwind. A bare
-`Rf_eval` that raises jumps over those frames, so the borrow is never released
-and the object stays borrowed (#2093).
+The borrow ends when the method returns or unwinds. An R error that jumps over
+the method's frames never ends it: a bare `Rf_eval`, `R_forceAndCall` or
+`Rf_applyClosure` of R code that raises, or a direct `R_CheckUserInterrupt()`
+with an interrupt pending, longjmps from inside the method straight to the
+generated wrapper's `R_UnwindProtect`. No destructor in between runs, and the object stays
+borrowed: every later call on it raises `miniextendr_borrow_conflict` for the
+rest of the session (#2093). Wrapping the call in `with_r_unwind_protect` does
+not change that, since it resumes the R error with `R_ContinueUnwind`.
+
+A method that calls back into R should go through the `expression` evaluators,
+which stop an R error before it crosses a Rust frame:
+
+- `eval_with_handlers` (or `RCall::eval_with_handlers`) keeps the caller's
+  condition handlers and carries an R error through the method's frames as an
+  unwind, so the borrow is released before R carries on;
+- `RCall::eval` and `try_eval_with_handlers` return it as `Err(REvalError)`;
+- `Quoted::eval()` evaluates an unevaluated argument.
+
+`#[miniextendr(check_interrupt)]` checks for an interrupt once, before the
+receiver is borrowed; a safe check inside a long loop is #2101. The lint MXL305
+flags `Rf_eval`, `R_forceAndCall`, `Rf_applyClosure` and `R_CheckUserInterrupt`
+in `#[miniextendr]` bodies.
 
 `Deref`, `DerefMut`, `as_ref()` and `as_mut()` read the value through
 `RefCell::as_ptr` and take no borrow. A function that takes an `ExternalPtr<T>`

@@ -491,7 +491,8 @@ pub(crate) fn build_dots_validation_stmt(
 ///   (identical to an `Invisible<T>` / `Visible<T>` return type; the two must agree).
 ///   Only unit-`NULL` returns are invisible by default; receiver-returning
 ///   method tails are visible unless marked (#1213).
-/// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
+/// - `#[miniextendr(check_interrupt)]` — check for a user interrupt once, before the
+///   arguments are converted and the body runs
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 /// - `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
 ///   (requires the API `serde` feature); composes with return visibility markers
