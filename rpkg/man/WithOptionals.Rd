@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{WithOptionals}
 \alias{WithOptionals}
+\alias{WithOptionals$new}
 \alias{WithOptionals$to_r}
 \alias{WithOptionals$all_present}
 \alias{WithOptionals$all_none}
@@ -23,5 +24,5 @@ WithOptionals
 \item{name}{Method name for dispatch.}
 }
 \description{
-WithOptionals Class
+\code{WithOptionals$all_present()} is another name for the constructor \code{WithOptionals$new()}.
 }

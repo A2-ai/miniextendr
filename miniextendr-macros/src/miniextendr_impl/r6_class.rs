@@ -179,8 +179,10 @@ pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
 ///
 /// Produces an `R6::R6Class(...)` core definition followed by per-method
 /// `$set()` blocks (see the module docs for the full `$set`-form shape, #369):
-/// - `initialize` method (inline in `public`): calls the Rust `new` constructor,
-///   or accepts a pre-made `.ptr` when static methods return `Self` (factory pattern)
+/// - `initialize` method (inline in `public`): calls the Rust constructor, or
+///   accepts a pre-made `.ptr` when a factory returns `Self`; a class without
+///   a constructor accepts only the `.ptr` and raises the no-constructor error
+///   without one
 /// - Public methods: one `ClassName$set("public", "name", function(...) {...})`
 ///   block per `&self`/`&mut self` instance method, each with its own roxygen
 /// - Private methods: one `ClassName$set("private", "name", function(...) {...})`
@@ -270,8 +272,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     let class_param_names = &parsed_impl.class_param_names;
 
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr.
-    // If there's no explicit `new()`, generate a minimal initialize(.ptr) so
-    // other class methods can call $new(.ptr = val).
+    // Without a constructor, `initialize` takes only the `.ptr` the factories
+    // and other classes' methods wrap with `$new(.ptr = val)`.
     if let Some(ctx) = parsed_impl.constructor_context() {
         lines.push(format!("    {}", ctx.source_comment(type_ident)));
         // Add inline roxygen documentation for initialize method
@@ -362,16 +364,19 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // method migrated to a `$set("public", ...)` block below — so no trailing comma.
         lines.push("    }".to_string());
     } else {
-        // No explicit new() constructor, but cross-class returns need
-        // $new(.ptr = val). Generate a minimal initialize that only accepts .ptr.
+        // No constructor. The factories and cross-class returns still wrap
+        // their pointer with `$new(.ptr = val)`; without one, `$new()` raises
+        // an error rather than hand out an object without a pointer.
         lines.push(format!(
-            "    #' @description Create a new `{}`.",
-            class_name
+            "    #' @description `{class_name}` has no constructor: `$new()` only wraps \
+             the `.ptr` its factory functions pass."
         ));
         lines.push("    initialize = function(.ptr = NULL) {".to_string());
-        lines.push("      if (!is.null(.ptr)) {".to_string());
-        lines.push("        private$.ptr <- .ptr".to_string());
-        lines.push("      }".to_string());
+        lines.push(format!(
+            "      {}",
+            super::no_constructor_guard(&class_name)
+        ));
+        lines.push("      private$.ptr <- .ptr".to_string());
         lines.push("    }".to_string());
     }
 
@@ -682,10 +687,16 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(String::new());
 
         lines.push(ctx.source_comment(type_ident));
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_name_prefix("$")
-                .with_class_no_rd(class_has_no_rd);
+        let doc_tags = parsed_impl.static_doc_tags(
+            ctx.method,
+            &format!("{class_name}${method_name}()"),
+            &format!("{class_name}$new()"),
+            true,
+        );
+        let method_doc = MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
+            .with_source_method(&ctx.method.ident)
+            .with_name_prefix("$")
+            .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());
 
         lines.push(format!(

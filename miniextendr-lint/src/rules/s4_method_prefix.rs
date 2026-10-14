@@ -5,7 +5,7 @@
 //! produces an R generic `s4_s4_foo`, making it unreachable via the expected
 //! `s4_foo(obj, ...)` call.
 
-use crate::crate_index::CrateIndex;
+use crate::crate_index::{CrateIndex, MethodReceiverKind};
 use crate::diagnostic::Diagnostic;
 use crate::lint_code::LintCode;
 
@@ -16,9 +16,10 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
                 if entry.class_system != "s4" {
                     continue;
                 }
-                // Constructors (`new`) are not auto-prefixed — they become the
-                // class constructor function, named after the type, not `s4_new`.
-                if entry.method_name == "new" {
+                // Only instance methods are auto-prefixed. A receiver-less
+                // method is the class constructor, named after the type, or a
+                // static method, `Class_method()`.
+                if entry.receiver_kind == MethodReceiverKind::None {
                     continue;
                 }
                 if let Some(rest) = entry.method_name.strip_prefix("s4_") {

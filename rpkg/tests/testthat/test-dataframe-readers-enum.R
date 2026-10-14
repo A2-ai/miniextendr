@@ -103,6 +103,10 @@ test_that("re_map_h: HashMap map-column round-trips (order-independent)", {
   expect_true(re_map_h_roundtrip_ok())
 })
 
+test_that("re_qualified: qualified scalar spellings keep the enum reader (#2036)", {
+  expect_true(re_qualified_roundtrip_ok())
+})
+
 test_that("gc stress: enum flatten reader runs clean", {
   expect_no_error(miniextendr:::gc_stress_reader_enum_flatten())
 })

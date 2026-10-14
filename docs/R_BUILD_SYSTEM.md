@@ -352,7 +352,7 @@ R CMD INSTALL:
 ```
 
 The wrapper and wasm registry writers are registered routines in
-`miniextendr-api`. Roxygen2 runs separately (`just force-document` after
+`miniextendr-api`. Roxygen2 runs separately (`just devtools-document` after
 macro/wrapper changes) and derives the tracked `NAMESPACE` and `man/*.Rd` files
 from the generated R wrapper.
 

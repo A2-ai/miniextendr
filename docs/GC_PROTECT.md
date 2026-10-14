@@ -524,19 +524,27 @@ Need GC protection?
 
 ## Borrowing transient ALTREP elements
 
-`Root<'a>` retains a reference to its `ProtectScope`. Rooted shared-reference
-conversions protect every list element and borrowed character value in that
-scope before the next accessor can allocate. Children use a lazily created
-root pool, so a large list does not consume one R protection-stack entry per
-element. This matters for ALTREP accessors
-that return fresh objects without retaining them in their parent.
+An ordinary list or character vector holds its elements, so rooting the vector
+keeps every element alive. An ALTREP accessor can instead return a fresh object
+that nothing else keeps, and the next accessor call can allocate and collect it.
 
-For example, `Vec<&[i32]>`, `Vec<Option<&i32>>`, and nested `Vec` forms can use
-`TryFromRoot::try_from_root(scope.protect(value))`. The returned references
-cannot outlive the scope. Generated main-thread wrappers and trait shims create
-that scope automatically and retain it through return conversion. Native list
-conversion reports all invalid elements together.
+`Root<'a>` holds a reference to its `ProtectScope`. When a rooted conversion
+borrows an element of an ALTREP list or character vector, it retains that
+element in the scope before reading the next one. The elements go into a pool
+the scope creates on first use, so a large list does not take one PROTECT stack
+entry per element. Elements of ordinary vectors skip the pool.
 
-This supplies GC liveness, not exclusive access. Mutable references still need
-an independent borrowing contract; do not derive them safely from a copyable
-`Root`.
+`Vec<&[i32]>`, `Vec<Option<&i32>>`, `Vec<&str>` and the nested `Vec` forms
+convert this way with `TryFromRoot::try_from_root(scope.protect(value))`. The
+references they return cannot outlive the scope. Generated main-thread wrappers
+and trait shims create one scope per borrowed parameter and keep it through the
+return conversion. A native list conversion reports every invalid element
+together.
+
+A scalar `&str`, `Option<&str>` or `Cow<str>` and the `StrVec` accessors still
+read a CHARSXP that only the ALTREP class keeps (#2086). R's deferred strings
+and miniextendr's string ALTREP classes cache their elements, so they are safe.
+
+A root keeps values alive; it does not make access exclusive. Mutable
+references still need their own borrowing contract, so don't derive them from a
+copyable `Root`.

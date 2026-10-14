@@ -169,7 +169,11 @@ return values crossing the thread boundary must be `Send`. An explicit
 
 Instance methods always stay on R's main thread because they borrow their
 receiver. Methods taking `Dots` or `LazyDots` stay there too. A `worker`
-option on either does not move the borrowed R state across threads.
+option on either does not move the borrowed R state across threads. Static
+methods follow the rule standalone functions do: one that takes or returns an
+R value (`SEXP`, `Quoted`, an R-backed view such as `BuiltDataFrame`, also
+nested in the return type) or sets `check_interrupt` stays on the main thread
+whatever selects the worker.
 
 ```rust
 // With worker-default + coerce-default features enabled:

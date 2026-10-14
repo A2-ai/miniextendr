@@ -1,0 +1,29 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: "generate_env_r_wrapper(&constructorless_handle(ClassSystem::Env))"
+---
+#' @title Handle Class
+#' @name Handle
+#' @rdname Handle
+#' @export
+Handle <- new.env(parent = emptyenv())
+
+# Handle::id (1:1)
+#' @name Handle$id
+#' @rdname Handle
+Handle$id <- function() {
+  .val <- .Call(C_miniextendr_macros_Handle__id, .call = sys.call(), .mx_self)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+#' @rdname Handle
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.Handle` <- function(self, name) {
+  .miniextendr_env_method(self, name, Handle)
+}
+#' @rdname Handle
+#' @export
+`[[.Handle` <- `$.Handle`

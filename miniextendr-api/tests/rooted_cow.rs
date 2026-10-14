@@ -49,7 +49,8 @@ fn rooted_and_owned_character_cows_keep_the_same_na_semantics() {
         let optional: Vec<Option<Cow<'_, str>>> = Vec::try_from_root(source).unwrap();
         assert!(optional[1].is_none());
         assert!(matches!(optional[0], Some(Cow::Borrowed("hello"))));
-        let owned: Vec<Option<Cow<'static, str>>> = Vec::try_from_sexp(source.get()).unwrap();
+        let owned: Vec<Option<Cow<'static, str>>> =
+            TryFromSexp::try_from_sexp(source.get()).unwrap();
         assert_eq!(owned, optional);
         assert!(owned.iter().flatten().all(|v| matches!(v, Cow::Owned(_))));
 

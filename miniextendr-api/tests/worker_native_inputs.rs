@@ -4,10 +4,13 @@
 mod r_test_utils;
 
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::{IntoR, RCondition, SEXP, SexpExt, TryFromSexp, miniextendr};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use miniextendr_api::{IntoR, RCondition, SEXP, SEXPREC, SexpExt, TryFromSexp, miniextendr};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 static R_DATA_ADDRESS: AtomicUsize = AtomicUsize::new(0);
+// A `SEXP` parameter would pin the function to the main thread, so the vector
+// the worker mutates travels through a static instead.
+static R_VALUES: AtomicPtr<SEXPREC> = AtomicPtr::new(std::ptr::null_mut());
 
 #[miniextendr(worker, noexport)]
 pub fn worker_native_inputs<'a>(
@@ -15,7 +18,6 @@ pub fn worker_native_inputs<'a>(
     optional: Option<&'a i32>,
     values: &'a [i32],
     optional_values: Option<&'a [i32]>,
-    original: SEXP,
     __owned_values: i32,
 ) -> Vec<i32> {
     assert!(!miniextendr_api::worker::is_r_main_thread());
@@ -24,9 +26,9 @@ pub fn worker_native_inputs<'a>(
             values.as_ptr().addr(),
             R_DATA_ADDRESS.load(Ordering::Relaxed)
         );
-        miniextendr_api::worker::with_r_thread(move || unsafe {
+        miniextendr_api::worker::with_r_thread(|| unsafe {
             // This mutation is disjoint from the worker's owned snapshot.
-            original.as_mut_slice::<i32>()[0] = 999;
+            SEXP(R_VALUES.load(Ordering::Relaxed)).as_mut_slice::<i32>()[0] = 999;
             miniextendr_api::sys::R_gc();
         });
     }
@@ -39,7 +41,7 @@ pub fn worker_native_inputs<'a>(
     ]
 }
 
-type Wrapper = unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP;
+type Wrapper = unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP) -> SEXP;
 
 unsafe fn wrapper() -> Wrapper {
     let entry = miniextendr_api::registry::MX_CALL_DEFS
@@ -51,7 +53,7 @@ unsafe fn wrapper() -> Wrapper {
                     .ends_with(b"_worker_native_inputs")
         })
         .expect("worker wrapper must be registered");
-    assert_eq!(entry.numArgs, 7);
+    assert_eq!(entry.numArgs, 6);
     unsafe {
         std::mem::transmute::<unsafe extern "C-unwind" fn() -> *mut core::ffi::c_void, Wrapper>(
             entry.fun.unwrap(),
@@ -71,11 +73,11 @@ fn native_worker_inputs_are_owned_snapshots_with_exact_borrowed_shape_checks() {
             values.get().as_slice::<i32>().as_ptr().addr(),
             Ordering::Relaxed,
         );
+        R_VALUES.store(values.get().0, Ordering::Relaxed);
         let result = scope.protect(call(
             SEXP::nil(),
             scalar.get(),
             scalar.get(),
-            values.get(),
             values.get(),
             values.get(),
             scalar.get(),
@@ -92,7 +94,6 @@ fn native_worker_inputs_are_owned_snapshots_with_exact_borrowed_shape_checks() {
             SEXP::nil(),
             empty.get(),
             SEXP::nil(),
-            empty.get(),
             scalar.get(),
         ));
         assert_eq!(
@@ -106,7 +107,6 @@ fn native_worker_inputs_are_owned_snapshots_with_exact_borrowed_shape_checks() {
             SEXP::nil(),
             scalar.get(),
             na.get(),
-            empty.get(),
             empty.get(),
             empty.get(),
             scalar.get(),
@@ -124,7 +124,6 @@ fn native_worker_inputs_are_owned_snapshots_with_exact_borrowed_shape_checks() {
                 SEXP::nil(),
                 empty.get(),
                 SEXP::nil(),
-                empty.get(),
                 scalar.get(),
             ));
             let (_, parts) = RCondition::from_tagged_sexp(refused.get())

@@ -13,7 +13,9 @@ A read-write-seekable connection backed by a failing stream
 Create a connection whose every read, write, flush and seek fails.
 
 Each failure raises an R error of class \code{miniextendr_connection_io_error}
-with the fields \code{operation}, \code{io_kind} and \code{os_error}.
+with the fields \code{operation}, \code{io_kind} and \code{os_error}. Closing it flushes
+the stream, which fails too: \code{close()} warns "Problem closing connection"
+and returns \code{-1L}.
 }
 \examples{
 \dontrun{
@@ -22,6 +24,6 @@ tryCatch(
   readBin(conn, "raw", 1L),
   miniextendr_connection_io_error = function(e) e$operation
 )  # "read"
-close(conn)
+suppressWarnings(close(conn))  # -1L
 }
 }

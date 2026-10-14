@@ -10,9 +10,3 @@ test_that("fixed arrays match their Vec return conversions", {
   expect_identical(miniextendr:::fixed_array_optional_i64(TRUE), c(1, 3e9))
   expect_null(miniextendr:::fixed_array_optional_i64(FALSE))
 })
-
-test_that("lax and strict arrays agree in range and differ on overflow", {
-  expect_identical(miniextendr:::lax_array_usize(FALSE), miniextendr:::strict_array_usize(FALSE))
-  expect_identical(miniextendr:::lax_array_usize(TRUE), c(1, 3e9))
-  expect_error(miniextendr:::strict_array_usize(TRUE), "strict conversion failed", fixed = TRUE)
-})

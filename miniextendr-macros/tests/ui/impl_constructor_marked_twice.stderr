@@ -1,0 +1,5 @@
+error: `circle` and `square` are both marked `#[miniextendr(s7(constructor))]`; a class has one constructor. Drop the marker from one: it becomes a static method.
+  --> tests/ui/impl_constructor_marked_twice.rs:20:12
+   |
+20 |     pub fn square(side: f64) -> Self {
+   |            ^^^^^^

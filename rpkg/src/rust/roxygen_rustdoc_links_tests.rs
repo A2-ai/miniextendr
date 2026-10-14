@@ -5,7 +5,7 @@
 //! `Self::` root, or a `pkg::` part that cannot be an R package name) loses its
 //! brackets in tag text too, not only in the default `"strip"` leading prose.
 //! Left in, roxygen2 would warn "refers to un-installed package" during
-//! `just force-document`. An inline link to such a Rust path keeps its text
+//! `just devtools-document`. An inline link to such a Rust path keeps its text
 //! alone, in leading prose and tag text: left in, roxygen2 renders it as the
 //! dead web link `\href{crate::x}{text}` without a warning.
 //! `man/roxygen_rustdoc_links_tests.Rd` pins the result, and

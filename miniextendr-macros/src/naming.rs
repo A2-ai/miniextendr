@@ -74,6 +74,22 @@ pub(crate) fn self_sexp_ident() -> syn::Ident {
     syn::Ident::new("self_sexp", proc_macro2::Span::mixed_site())
 }
 
+/// The C wrapper's call slot, declared by `CWrapperContext` with `quote!`.
+/// A reference inside a `quote_spanned!` template would take the user type's
+/// span instead. That only resolves while the macro's call site is the
+/// user's, not when the wrapper is generated inside a `macro_rules!`
+/// expansion, as a trait impl's is (#1489). So references interpolate this.
+pub(crate) fn call_slot_ident() -> syn::Ident {
+    syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site())
+}
+
+/// The error a failed argument conversion binds, for the same reason as
+/// [`call_slot_ident`]: the binding and the expressions that read it are
+/// built in different templates.
+pub(crate) fn conversion_error_ident() -> syn::Ident {
+    syn::Ident::new("e", proc_macro2::Span::call_site())
+}
+
 /// A private export name for a trait's metadata macro. The public macro is
 /// re-exported beside the trait under the trait's own name, in Rust's separate
 /// macro namespace, so imports carry both. An expansion-local suffix prevents

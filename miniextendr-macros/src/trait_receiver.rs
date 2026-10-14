@@ -20,9 +20,8 @@ impl OwnerReceiver {
 
 pub(crate) fn owner_receiver(sig: &syn::Signature) -> Option<OwnerReceiver> {
     let receiver = sig.receiver()?;
-    if receiver.colon_token.is_none() {
-        return None;
-    }
+    // Only an explicit `self: Type` receiver can name a handle.
+    receiver.colon_token?;
     let syn::Type::Path(path) = receiver.ty.as_ref() else {
         return None;
     };

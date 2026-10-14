@@ -190,6 +190,28 @@ pub enum REMapH {
 
 // endregion
 
+// region: REQualified — qualified scalar spellings (#2036)
+
+/// Qualified scalar spellings keep the enum reader. Columns: `_type`, `id`,
+/// `label` (Named only), `pair_1..pair_2` (Named only), `keyed_keys` / `keyed_values`
+/// (Keyed only).
+#[derive(Clone, Debug, PartialEq, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum REQualified {
+    Named {
+        id: ::core::primitive::i32,
+        label: ::std::string::String,
+        pair: [::core::primitive::f64; 2],
+    },
+    Keyed {
+        id: ::core::primitive::i32,
+        keyed: BTreeMap<::std::string::String, std::primitive::i32>,
+    },
+    Empty,
+}
+
+// endregion
+
 // endregion
 
 // region: round-trip entrypoints
@@ -224,7 +246,8 @@ pub fn re_scalar_align() -> SEXP {
     .into_sexp()
 }
 
-/// Zero-row REScalar round-trip (empty frame). @export
+/// Zero-row REScalar round-trip (empty frame).
+/// @export
 #[miniextendr]
 pub fn re_scalar_roundtrip_zero(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
@@ -232,7 +255,8 @@ pub fn re_scalar_roundtrip_zero(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// Parallel REScalar round-trip. @export
+/// Parallel REScalar round-trip.
+/// @export
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn re_scalar_roundtrip_par(df: SEXP) -> SEXP {
@@ -255,7 +279,8 @@ pub fn re_expand_roundtrip(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// Produce the writer output for a mixed REExpand frame. @export
+/// Produce the writer output for a mixed REExpand frame.
+/// @export
 #[miniextendr]
 pub fn re_expand_align() -> SEXP {
     vec![
@@ -274,7 +299,8 @@ pub fn re_expand_align() -> SEXP {
     .into_sexp()
 }
 
-/// Parallel REExpand round-trip. @export
+/// Parallel REExpand round-trip.
+/// @export
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn re_expand_roundtrip_par(df: SEXP) -> SEXP {
@@ -297,7 +323,8 @@ pub fn re_move_roundtrip(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// Produce the writer output for a mixed REMove frame. @export
+/// Produce the writer output for a mixed REMove frame.
+/// @export
 #[miniextendr]
 pub fn re_move_align() -> SEXP {
     vec![
@@ -331,7 +358,8 @@ pub fn re_tracked_roundtrip(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// Produce the writer output for a mixed RETracked frame. @export
+/// Produce the writer output for a mixed RETracked frame.
+/// @export
 #[miniextendr]
 pub fn re_tracked_align() -> SEXP {
     vec![
@@ -350,7 +378,8 @@ pub fn re_tracked_align() -> SEXP {
     .into_sexp()
 }
 
-/// Parallel RETracked round-trip (delegates to sequential due to Struct field). @export
+/// Parallel RETracked round-trip (delegates to sequential due to Struct field).
+/// @export
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn re_tracked_roundtrip_par(df: SEXP) -> SEXP {
@@ -373,7 +402,8 @@ pub fn re_loc_roundtrip(df: SEXP) -> SEXP {
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// Produce the writer output for a mixed RELoc frame. @export
+/// Produce the writer output for a mixed RELoc frame.
+/// @export
 #[miniextendr]
 pub fn re_loc_align() -> SEXP {
     vec![
@@ -392,7 +422,8 @@ pub fn re_loc_align() -> SEXP {
     .into_sexp()
 }
 
-/// Parallel RELoc round-trip (delegates to sequential due to Struct field). @export
+/// Parallel RELoc round-trip (delegates to sequential due to Struct field).
+/// @export
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn re_loc_roundtrip_par(df: SEXP) -> SEXP {
@@ -417,7 +448,8 @@ pub fn re_map_b_roundtrip(df: SEXP) -> SEXP {
 
 /// Produce the writer output for a mixed REMapB frame. Includes an empty-map row
 /// (`tally_keys`/`tally_values` are `character(0)`/`integer(0)`) and an absent-variant
-/// row (both list cells NULL). @export
+/// row (both list cells NULL).
+/// @export
 #[miniextendr]
 pub fn re_map_b_align() -> SEXP {
     vec![
@@ -442,7 +474,8 @@ pub fn re_map_b_align() -> SEXP {
     .into_sexp()
 }
 
-/// Parallel REMapB round-trip. @export
+/// Parallel REMapB round-trip.
+/// @export
 #[cfg(feature = "rayon")]
 #[miniextendr]
 pub fn re_map_b_roundtrip_par(df: SEXP) -> SEXP {
@@ -461,7 +494,8 @@ pub fn re_map_b_roundtrip_par(df: SEXP) -> SEXP {
 /// it, reads it back with the reader, and compares the reconstructed rows to the
 /// originals. `HashMap` equality is order-independent, so this proves the `_keys` /
 /// `_values` list-columns regroup back into the correct key→value associations
-/// regardless of iteration order. Returns `TRUE` on success. @export
+/// regardless of iteration order. Returns `TRUE` on success.
+/// @export
 #[miniextendr]
 pub fn re_map_h_roundtrip_ok() -> bool {
     let rows = vec![
@@ -483,6 +517,40 @@ pub fn re_map_h_roundtrip_ok() -> bool {
     ];
     let df = rows.clone().into_dataframe().unwrap();
     let back: Vec<REMapH> = <Vec<REMapH>>::from_dataframe(&df).unwrap();
+    back == rows
+}
+
+// endregion
+
+// region: REQualified round-trip (#2036)
+
+/// Qualified scalar spellings round-trip, asserted internally.
+///
+/// Writes a mixed `REQualified` frame (payload, map and unit rows), reads it back
+/// with the reader, and compares the reconstructed rows to the originals. Returns
+/// `TRUE` on success.
+/// @export
+#[miniextendr]
+pub fn re_qualified_roundtrip_ok() -> bool {
+    let rows = vec![
+        REQualified::Named {
+            id: 1,
+            label: "a".to_string(),
+            pair: [1.5, -2.5],
+        },
+        REQualified::Keyed {
+            id: 2,
+            keyed: BTreeMap::from([("x".to_string(), 1), ("y".to_string(), 2)]),
+        },
+        REQualified::Empty,
+        REQualified::Named {
+            id: 4,
+            label: "d".to_string(),
+            pair: [0.0, 4.0],
+        },
+    ];
+    let df = rows.clone().into_dataframe().unwrap();
+    let back: Vec<REQualified> = <Vec<REQualified>>::from_dataframe(&df).unwrap();
     back == rows
 }
 

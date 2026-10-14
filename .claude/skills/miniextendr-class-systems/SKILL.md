@@ -389,9 +389,13 @@ Start with the intended R API surface:
 
 1. Write `#[miniextendr(r6)] impl MyStruct { ... }` in your Rust crate.
 2. Ensure the impl block is in a module reachable from `lib.rs`.
-3. Include a `pub fn new(...) -> Self` method (or mark a method with
-   `#[miniextendr(constructor)]`).
-4. Run `just configure && just rcmdinstall && just force-document`.
+3. Include a `pub fn new(...) -> Self` method, mark one with
+   `#[miniextendr(r6(constructor))]`, or have exactly one receiver-less method
+   returning `Self` (it is inferred as the constructor; a constructor not named
+   `new` is also a static method under its own name). Without any, the class
+   has no constructor and its objects come from static factories returning
+   `Result<Self, E>` or `Option<Self>`.
+4. Run `just configure && just rcmdinstall && just devtools-document`.
 5. In R: `obj <- MyStruct$new(...)`.
 
 The generated class is named after the Rust type by default. Override with

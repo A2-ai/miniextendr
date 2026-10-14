@@ -15,8 +15,9 @@ use super::ParsedImpl;
 /// writer merges per type ([`super::ClassWrapper`], #1776).
 ///
 /// Produces the following R code:
-/// - Constructor: `new_<class>(...)` function that calls the Rust `new` constructor
-///   and wraps the result with `structure(.val, class = "<class>")`
+/// - Constructor: `new_<class>(...)` function that calls the Rust constructor
+///   and wraps the result with `structure(.val, class = "<class>")`; none for
+///   a class without a constructor (see [`no_constructor_head`])
 /// - S3 generics: for each instance method, a `UseMethod()` generic is created
 ///   (unless overriding an existing generic via `#[miniextendr(generic = "...")]`)
 /// - S3 methods: `<generic>.<class>` functions dispatching to the Rust `.Call()` wrapper,
@@ -93,6 +94,8 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(format!("  structure(.val, class = \"{}\")", class_name));
         lines.push("}".to_string());
         lines.push(String::new());
+    } else {
+        no_constructor_head(parsed_impl, &mut w, &mut lines, "S3", None);
     }
 
     // The field methods of `s3(r_data_accessors)` (`$` / `[[` / `names` /
@@ -197,6 +200,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(qualified_name);
@@ -249,12 +253,18 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         let fn_name = format!("{}_{}", class_name.to_lowercase(), method_name);
 
         let mx_doc = ctx.choice_param_docs();
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_r_params(&ctx.params)
-                .with_choice_param_docs(&mx_doc)
-                .with_r_name(fn_name.clone())
-                .with_class_no_rd(class_has_no_rd);
+        let doc_tags = parsed_impl.static_doc_tags(
+            ctx.method,
+            &format!("{fn_name}()"),
+            &format!("{ctor_name}()"),
+            true,
+        );
+        let method_doc = MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
+            .with_source_method(&ctx.method.ident)
+            .with_r_params(&ctx.params)
+            .with_choice_param_docs(&mx_doc)
+            .with_r_name(fn_name.clone())
+            .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());
         // Export static methods so users can call them
         if !class_has_no_rd {
@@ -328,4 +338,58 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 #[cfg(test)]
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     generate_s3_class(parsed_impl).render()
+}
+
+/// The head of an S3 or vctrs class without a constructor: `kind` is the
+/// class system in its title, `imports` its roxygen imports. Neither gets a
+/// `new_<class>()`: a package that builds its objects in R may write its own
+/// (#2069).
+///
+/// - A class named as its Rust type has its class block on `NULL`, without
+///   an `@export` of the class name: S3's class environment exports it, and
+///   vctrs has no object of that name.
+/// - A class the package names and builds itself (`class = "..."`) has no
+///   class environment either (#1918). Its roxygen block only carries the
+///   impl docs ([`super::docs_only_class_block`]).
+pub(super) fn no_constructor_head(
+    parsed_impl: &ParsedImpl,
+    w: &mut super::ClassWrapper,
+    lines: &mut Vec<String>,
+    kind: &'static str,
+    imports: Option<&str>,
+) {
+    let class_name = parsed_impl.class_name();
+    let type_ident = &parsed_impl.type_ident;
+    if *type_ident != class_name {
+        if let Some(imports) = imports {
+            lines.push(format!("#' {imports}"));
+            lines.push("NULL".to_string());
+            lines.push(String::new());
+        }
+        lines.extend(super::docs_only_class_block(parsed_impl, kind));
+        w.mark_class_doc_lines(lines, parsed_impl);
+        lines.push(String::new());
+        return;
+    }
+    let mut class_docs = crate::r_class_formatter::ClassDocBuilder::new(
+        &class_name,
+        type_ident,
+        &parsed_impl.doc_tags,
+        kind,
+    )
+    .with_export_control(parsed_impl.internal, parsed_impl.noexport);
+    if let Some(imports) = imports {
+        class_docs = class_docs.with_imports(imports);
+    }
+    let export = super::class_default("#' @export");
+    lines.extend(
+        class_docs
+            .build()
+            .into_iter()
+            .filter(|line| *line != export),
+    );
+    w.class_docs = class_docs.docs();
+    lines.push("NULL".to_string());
+    w.mark_class_doc_lines(lines, parsed_impl);
+    lines.push(String::new());
 }

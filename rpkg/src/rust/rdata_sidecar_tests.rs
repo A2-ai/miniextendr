@@ -10,7 +10,7 @@ use miniextendr_api::externalptr::{Computed, ErasedExternalPtr, ExternalPtr, RSi
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{List, SEXPTYPE, SexpExt, TryFromSexp};
+use miniextendr_api::{ExternalPtrMut, ExternalPtrRef, List, SEXPTYPE, SexpExt, TryFromSexp};
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 
@@ -73,6 +73,37 @@ impl SidecarEnv {
     /// Doubles `count` (a method next to the fields).
     pub fn double_count(&mut self) {
         self.count *= 2;
+    }
+
+    /// Calls `f()` while this method holds the object mutably, then adds 1 to
+    /// `count` and returns it. A callback that reads, writes or calls a method
+    /// of the same object gets a `miniextendr_borrow_conflict` error (#1965).
+    /// @param f An R function of no arguments.
+    pub fn bump_around(&mut self, f: SEXP) -> i32 {
+        call_back(f);
+        self.count += 1;
+        self.count
+    }
+
+    /// Calls `f()` while this method holds the object shared, then returns
+    /// `count`. A callback may read the object but not write it (#1965).
+    /// @param f An R function of no arguments.
+    pub fn read_around(&self, f: SEXP) -> i32 {
+        let count = self.count;
+        call_back(f);
+        assert_eq!(self.count, count);
+        count
+    }
+}
+
+/// Evaluates the R function `f` with no arguments. An R error unwinds through
+/// the calling method's Rust frames, which drops its borrow, and reaches the
+/// caller's `tryCatch()` as raised. (A bare `Rf_eval` would jump over the
+/// borrow and leave the object borrowed.)
+fn call_back(f: SEXP) {
+    use miniextendr_api::expression::RCall;
+    unsafe {
+        RCall::from_sexp(f).eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
     }
 }
 
@@ -339,7 +370,8 @@ impl SidecarComputed {
 
 /// The `keys` of a `SidecarComputed`, through an `ExternalPtr<T>` argument.
 /// @param ptr A `SidecarComputed` pointer.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
+#[miniextendr(no_worker)]
 pub fn sidecar_computed_keys(ptr: ExternalPtr<SidecarComputed>) -> Vec<i32> {
     SidecarComputed::r_keys(&ptr)
 }
@@ -394,8 +426,11 @@ impl SidecarHandmade {
     }
 }
 
+// The package documents the class on its own page (R/sidecar_handmade.R), so
+// the impl docs join it with `@rdname`, adding no alias or title.
 /// The readers of `handmade_rec` (`$`, `[[`, `names()`, `as.list()` and
 /// `.DollarNames()`), for a pointer the package classes by hand.
+/// @rdname handmade_rec
 #[miniextendr(s3(r_data_accessors = "get"), class = "handmade_rec")]
 impl SidecarHandmade {}
 
@@ -931,6 +966,29 @@ impl SidecarSlotR6 {
 #[miniextendr(r6)]
 impl miniextendr_api::adapter_traits::RDisplay for SidecarSlotR6 {}
 
+/// A trait whose methods take the owner (`ExternalPtrRef` /
+/// `ExternalPtrMut`), so they reach the `Sidecar` values that a `&self`
+/// trait method such as `RDisplay` above cannot (#1880).
+#[miniextendr]
+pub trait SidecarKeys: miniextendr_api::TypedExternal {
+    fn owner_keys(self: ExternalPtrRef<'_, Self>) -> Vec<i32>;
+    fn set_owner_keys(self: ExternalPtrMut<'_, Self>, x: Vec<i32>);
+}
+
+/// SidecarKeys for SidecarSlotR6: both methods use `keys` through the owner.
+/// The argument is named `x`, a name the generated wrappers must leave to the
+/// user rather than bind to the receiver.
+#[miniextendr(r6)]
+impl SidecarKeys for SidecarSlotR6 {
+    fn owner_keys(self: ExternalPtrRef<'_, Self>) -> Vec<i32> {
+        Self::keys(&self)
+    }
+    /// @param x The new keys.
+    fn set_owner_keys(mut self: ExternalPtrMut<'_, Self>, x: Vec<i32>) {
+        Self::set_keys(&mut self, x);
+    }
+}
+
 /// Swaps the Rust values of two pointers. The sidecar values stay with each
 /// pointer: they live in its protection list.
 /// @param a,b Two `SidecarSlotR6` pointers.
@@ -949,7 +1007,9 @@ pub fn sidecar_rewrap(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlo
 
 /// Clones the handle: a new pointer sharing the sidecar values as R objects.
 /// @param ptr A `SidecarSlotR6` pointer.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: cloning copies sidecar
+// slots, on the main thread only.
+#[miniextendr(no_worker)]
 pub fn sidecar_clone_handle(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlotR6> {
     ptr.clone()
 }
@@ -957,7 +1017,9 @@ pub fn sidecar_clone_handle(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<Side
 /// Clones `source`'s value into `target` in place (`ExternalPtr::clone_from`):
 /// `target` reads `source`'s struct fields and sidecar values afterwards.
 /// @param target,source Two `SidecarSlotR6` pointers.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: cloning copies sidecar
+// slots, on the main thread only.
+#[miniextendr(no_worker)]
 pub fn sidecar_clone_from(
     mut target: ExternalPtr<SidecarSlotR6>,
     source: ExternalPtr<SidecarSlotR6>,
@@ -968,7 +1030,8 @@ pub fn sidecar_clone_from(
 /// The `keys` of a pointer, read through the handle accessor
 /// `SidecarSlotR6::keys(&ptr)`.
 /// @param ptr A `SidecarSlotR6` pointer.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
+#[miniextendr(no_worker)]
 pub fn sidecar_keys_via_handle(ptr: ExternalPtr<SidecarSlotR6>) -> Vec<i32> {
     SidecarSlotR6::keys(&ptr)
 }
@@ -1047,7 +1110,8 @@ fn churn() {
 /// Regression fixture for #1846: a sidecar field used to hold a bare `SEXP`
 /// that nothing rooted. Here every value is referenced only by its slot. No
 /// arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_sidecar_fields() {
     // Flush at creation; writes through the handle.
     let mut handles: Vec<ExternalPtr<SidecarSlotR6>> = (1..=8)

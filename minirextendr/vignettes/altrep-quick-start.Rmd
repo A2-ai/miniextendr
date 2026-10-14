@@ -82,7 +82,7 @@ vector's element type -- `AltRealData` for `numeric`, `AltIntegerData` for
 
 ```rust
 impl AltrepLen for ArithSeqData {
-    fn len(&self) -> usize {
+    fn altrep_len(&self) -> usize {
         self.len
     }
 }
@@ -288,7 +288,7 @@ pub struct ConstantIntData {
 }
 
 impl AltrepLen for ConstantIntData {
-    fn len(&self) -> usize { self.len }
+    fn altrep_len(&self) -> usize { self.len }
 }
 
 impl AltIntegerData for ConstantIntData {

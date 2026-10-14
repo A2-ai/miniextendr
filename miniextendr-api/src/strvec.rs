@@ -9,7 +9,7 @@ use crate::SEXPTYPE::STRSXP;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::{SEXP, SexpExt};
+use crate::{Preserved, SEXP, SexpExt};
 
 /// Borrowed view over an R character vector (`STRSXP`).
 ///
@@ -534,8 +534,9 @@ impl<'a> StrVec<'a> {
 /// GC-protected view over an R character vector (`STRSXP`).
 ///
 /// Unlike [`StrVec`] (which is `Copy` and trusts the caller for GC protection),
-/// `ProtectedStrVec` preserves the STRSXP for its Rust lifetime. It can outlive
-/// a `.Call` frame and be dropped in any order relative to other handles.
+/// `ProtectedStrVec` holds a [`Preserved`] root on the STRSXP for its Rust
+/// lifetime. It can outlive a `.Call` frame and be dropped in any order
+/// relative to other handles.
 /// Borrowed strings and iterators are tied to `&self`. It is `!Send + !Sync`:
 /// reading and releasing the R object must happen on R's main thread.
 ///
@@ -559,15 +560,16 @@ impl<'a> StrVec<'a> {
 /// ```
 pub struct ProtectedStrVec {
     sexp: SEXP,
-    owns_root: bool,
+    /// `None` for [`from_sexp_trusted`](Self::from_sexp_trusted), whose caller
+    /// roots `sexp`. The field also makes the handle `!Send + !Sync`.
+    _root: Option<Preserved>,
     len: isize,
-    _not_send: PhantomData<*mut ()>,
 }
 
 impl ProtectedStrVec {
     /// Create a protected view over an STRSXP.
     ///
-    /// Calls `R_PreserveObject` on the SEXP. The root is released on drop,
+    /// Roots the SEXP with a [`Preserved`] handle, released on drop,
     /// independently of R's protection stack. Use
     /// [`from_sexp_trusted`](Self::from_sexp_trusted) only when another owner
     /// guarantees reachability for this handle's entire lifetime.
@@ -578,17 +580,12 @@ impl ProtectedStrVec {
     /// - Must be called from the R main thread.
     #[inline]
     pub unsafe fn new(sexp: SEXP) -> Self {
-        // Cover length inspection (an ALTREP callback) and the preserve-list
-        // allocation. The stack guard is local; the returned owner uses the
-        // precious list, so it can be moved and dropped in any order.
-        let root = unsafe { OwnedProtect::new(sexp) };
-        let len = sexp.xlength();
-        unsafe { crate::sys::R_PreserveObject(root.get()) };
+        // Root before the length read, which can run an ALTREP callback.
+        let root = Preserved::new(sexp);
         Self {
             sexp,
-            owns_root: true,
-            len,
-            _not_send: PhantomData,
+            len: sexp.xlength(),
+            _root: Some(root),
         }
     }
 
@@ -610,9 +607,8 @@ impl ProtectedStrVec {
     pub unsafe fn from_sexp_trusted(sexp: SEXP) -> Self {
         Self {
             sexp,
-            owns_root: false,
+            _root: None,
             len: sexp.xlength(),
-            _not_send: PhantomData,
         }
     }
 
@@ -674,16 +670,6 @@ impl ProtectedStrVec {
         // SAFETY: the owned root (or from_sexp_trusted's caller) keeps sexp
         // reachable. The returned view cannot outlive this borrow.
         unsafe { StrVec::from_raw(self.sexp) }
-    }
-}
-
-impl Drop for ProtectedStrVec {
-    fn drop(&mut self) {
-        if self.owns_root {
-            // SAFETY: !Send keeps us on the R thread. Release removes exactly
-            // the entry created by new and does not allocate.
-            unsafe { crate::sys::R_ReleaseObject(self.sexp) };
-        }
     }
 }
 

@@ -78,6 +78,14 @@ return value moves back for conversion, so their types must be `Send`. A
 function over a `!Send` type, such as an `ExternalPtr<T>` whose `T` is not
 `Send`, needs `#[miniextendr(no_worker)]` under `worker-default`.
 
+Static methods of an impl block, constructors included, select the worker the
+same way, through their class option (`env(worker)`, `r6(worker)`, ...) or
+`worker-default`. Instance methods and methods taking dots always run on the
+main thread. A function or static method that takes or returns an R value
+(`SEXP`, `Quoted`, an R-backed view or root such as `BuiltDataFrame`,
+`Preserved` or `REvalError`) or sets `check_interrupt` also stays on the main
+thread, whatever selects the worker.
+
 Shared native arguments (`&T`, `&[T]`, and their `Option` forms) are validated
 and copied on the R thread. The worker borrows those Rust-owned snapshots;
 reentrant R callbacks cannot invalidate their storage. Character references

@@ -16,12 +16,16 @@ use miniextendr_api::{
 
 miniextendr_api::miniextendr_init!();
 
-// Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
+// The shared traits, their Views and tags. Implementing a trait needs only the
+// trait itself: its vtable type, tag and builder come with it (#2065).
+pub use shared_traits::{Counter, CounterView, TAG_Counter};
+pub use shared_traits::{Resettable, ResettableView, TAG_Resettable};
+// Tagged has owner receivers.
+pub use shared_traits::{Tagged, TaggedView};
 
-// Import the shared Resettable trait and its generated ABI types
+// Import the shared CallsBack trait (a method that calls back into R)
 pub use shared_traits::{
-    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
+    __CallsBack_build_vtable, CallsBack, CallsBackVTable, CallsBackView, TAG_CallsBack,
 };
 
 // region: Env-style types (default class system)
@@ -290,6 +294,9 @@ impl SimpleCounter {
     }
 }
 
+// `new_counter()` creates the objects, returning them wrapped for trait
+// dispatch as a `SEXP`, which the lint cannot trace to `SimpleCounter`.
+// mxl::allow(MXL121)
 #[miniextendr]
 impl SimpleCounter {
     /// Get current value (inherent method)
@@ -376,6 +383,19 @@ impl Counter for SimpleCounter {
 }
 
 #[miniextendr]
+impl CallsBack for SimpleCounter {
+    fn add_around(&mut self, f: SEXP) -> i32 {
+        // An R error in `f` unwinds through this frame, which ends the borrow.
+        unsafe {
+            miniextendr_api::expression::RCall::from_sexp(f)
+                .eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
+        }
+        self.value += 1;
+        self.value
+    }
+}
+
+#[miniextendr]
 impl Resettable for SimpleCounter {
     fn reset(&mut self) {
         self.value = 0;
@@ -404,6 +424,9 @@ impl StatefulCounter {
     }
 }
 
+// `new_stateful_counter()` creates the objects, returning them wrapped for
+// trait dispatch as a `SEXP`, which the lint cannot trace to `StatefulCounter`.
+// mxl::allow(MXL121)
 #[miniextendr]
 impl StatefulCounter {
     /// Get current value (inherent method)
@@ -531,6 +554,60 @@ pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
     let view = unsafe { CounterView::try_from_sexp(counter_sexp) }
         .expect("Object does not implement Counter trait");
     view.value()
+}
+// endregion
+
+// region: LabelledValue: the shared Tagged trait's owner receivers over a sidecar
+
+/// Labels kept in a sidecar. The shared `Tagged` trait reads and writes them
+/// through its owner receivers.
+#[derive(ExternalPtr)]
+pub struct LabelledValue {
+    #[r_data]
+    tags: miniextendr_api::externalptr::Sidecar<Vec<String>>,
+}
+
+/// @title LabelledValue (Env-style)
+/// @name LabelledValue
+/// @description Labels kept in a sidecar, reached through the `Tagged` trait.
+#[miniextendr]
+impl LabelledValue {
+    /// Create a LabelledValue with one label
+    /// @param first The first label
+    fn new(first: String) -> Self {
+        Self {
+            tags: miniextendr_api::externalptr::Sidecar::new(vec![first]),
+        }
+    }
+}
+
+#[miniextendr]
+impl Tagged for LabelledValue {
+    fn labels(self: miniextendr_api::ExternalPtrRef<'_, Self>) -> Vec<String> {
+        Self::tags(&self)
+    }
+
+    /// @param label The label to append
+    fn add_label(mut self: miniextendr_api::ExternalPtrMut<'_, Self>, label: String) {
+        let mut tags = Self::tags(&self);
+        tags.push(label);
+        Self::set_tags(&mut self, tags);
+    }
+}
+
+/// Create a LabelledValue for cross-package trait dispatch
+///
+/// The label starts as a pending sidecar value, which wrapping moves into the
+/// object's protection list.
+/// @param first The first label
+/// @return An external pointer to the wrapped value
+/// @export
+#[miniextendr]
+pub fn new_labelled(first: String) -> SEXP {
+    let value = LabelledValue {
+        tags: miniextendr_api::externalptr::Sidecar::new(vec![first]),
+    };
+    unsafe { ccall::mx_wrap(__mx_wrap_LabelledValue(value)) }
 }
 // endregion
 

@@ -44,4 +44,7 @@ Rust impl block of \code{SidecarHandmade} has no constructor, so
 returns. \code{s3(r_data_accessors = "get")} generates the readers of its
 \verb{#[r_data]} fields (\code{$}, \code{[[}, \code{names()}, \code{as.list()} and
 \code{.DollarNames()}), which look the fields up as a list's do.
+
+The readers of \code{handmade_rec} (\code{$}, \code{[[}, \code{names()}, \code{as.list()} and
+\code{.DollarNames()}), for a pointer the package classes by hand.
 }

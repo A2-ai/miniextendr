@@ -162,8 +162,6 @@ pub fn indicatif_to_null_connection() -> String {
     "ok".to_string()
 }
 
-// endregion
-
 /// Failed draws return I/O errors without poisoning this bar or a second bar.
 /// @noRd
 #[miniextendr(noexport)]
@@ -195,3 +193,14 @@ pub fn indicatif_connection_error_recovery(
     second.finish();
     error.to_string()
 }
+
+/// Draw one finished bar rendering `template` to `conn`.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn indicatif_draw_template(conn: SEXP, template: &str) {
+    let bar = ProgressBar::with_draw_target(Some(1), term_like_connection(conn, 40));
+    bar.set_style(ProgressStyle::with_template(template).unwrap());
+    bar.finish();
+}
+
+// endregion

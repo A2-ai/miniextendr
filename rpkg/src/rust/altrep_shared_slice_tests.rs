@@ -14,7 +14,9 @@ thread_local! {
 
 /// An `Rc<[i32]>` ALTREP whose allocation Rust shares too: a clone stays in
 /// a thread-local, read back by `shared_slice_held()`.
-#[miniextendr(noexport)]
+// `Rc` is `!Send` and `HELD` is per thread: stay on R's main thread under
+// `worker-default`.
+#[miniextendr(noexport, no_worker)]
 pub fn shared_slice_int() -> Altrep<Rc<[i32]>> {
     let owner: Rc<[i32]> = Rc::from([1, 2, 3]);
     HELD.with_borrow_mut(|held| *held = Some(Rc::clone(&owner)));
@@ -22,7 +24,8 @@ pub fn shared_slice_int() -> Altrep<Rc<[i32]>> {
 }
 
 /// The values of the clone `shared_slice_int()` kept.
-#[miniextendr(noexport)]
+// `HELD` is per thread: read it on the thread `shared_slice_int()` wrote it.
+#[miniextendr(noexport, no_worker)]
 pub fn shared_slice_held() -> Vec<i32> {
     HELD.with_borrow(|held| held.as_deref().expect("shared_slice_int() ran").to_vec())
 }

@@ -7,5 +7,5 @@
 re_loc_align()
 }
 \description{
-Produce the writer output for a mixed RELoc frame. @export
+Produce the writer output for a mixed RELoc frame.
 }

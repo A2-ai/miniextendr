@@ -10,5 +10,5 @@ re_expand_roundtrip_par(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Parallel REExpand round-trip. @export
+Parallel REExpand round-trip.
 }

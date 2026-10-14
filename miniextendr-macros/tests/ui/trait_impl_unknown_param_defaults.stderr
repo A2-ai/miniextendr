@@ -1,5 +1,5 @@
 error: defaults(...) references non-existent parameter(s): y
-  --> tests/ui/trait_impl_unknown_param_defaults.rs:15:19
+  --> tests/ui/trait_impl_unknown_param_defaults.rs:16:19
    |
-15 |     #[miniextendr(defaults(y = "1"))]
+16 |     #[miniextendr(defaults(y = "1"))]
    |                   ^^^^^^^^

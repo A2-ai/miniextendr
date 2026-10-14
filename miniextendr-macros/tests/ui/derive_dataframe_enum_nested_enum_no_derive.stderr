@@ -31,7 +31,7 @@ error[E0277]: the trait `DataFrameRow` is not implemented for `Status`
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:15:32
    |
 15 |     Tracked { id: i32, status: Status },
-   |                                ^^^^^^ add `#[derive(DataFrameRow)]` to `Status`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column, or annotate with `#[dataframe(as_factor)]` for unit-only enums
+   |                                ^^^^^^ add `#[derive(DataFrameRow)]` to `Status`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column if `Status` implements `IntoList`, or annotate with `#[dataframe(as_factor)]` for unit-only enums
    |
 help: the trait `DataFrameRow` is not implemented for `Status`
   --> tests/ui/derive_dataframe_enum_nested_enum_no_derive.rs:7:1

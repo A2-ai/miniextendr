@@ -66,8 +66,8 @@ jiff = ["dep:jiff"]
 ## Enable indicatif progress bar integration. Routes bar output through R
 ## connections — terminal connections (`stdout()`/`stderr()`) use the console
 ## hook (`ptr_R_WriteConsoleEx` / `Rprintf` / `REprintf`); all other R
-## connections (`sink()`, `textConnection`, `file()`, custom) use
-## `R_WriteConnection`. Requires `connections` (for `R_GetConnection` and
+## connections (`file()`, `rawConnection()`, custom) use `R_WriteConnection`
+## with R errors caught. Requires `connections` (for `R_GetConnection` and
 ## `R_WriteConnection`) and `nonapi` (still needed for the console-hook
 ## fallback used by the terminal branch — dropping `nonapi` would require R
 ## to grow a `write` callback on terminal connections upstream).

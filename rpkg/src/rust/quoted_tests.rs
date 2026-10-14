@@ -385,7 +385,9 @@ pub fn quoted_eval_stash(expr: Quoted) -> bool {
 
 /// Resume the unwind `quoted_eval_stash()` kept, in this later call. Its R
 /// exit cannot continue (its target is gone), so the boundary raises an error.
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: reads the stash
+// `quoted_eval_stash()` left on the main thread.
+#[miniextendr(noexport, no_worker)]
 pub fn quoted_resume_stashed() -> bool {
     match STASHED.with(|stashed| stashed.borrow_mut().take()) {
         Some(payload) => std::panic::resume_unwind(payload),

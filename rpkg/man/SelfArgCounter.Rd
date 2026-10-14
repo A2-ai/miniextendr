@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SelfArgCounter}
 \alias{SelfArgCounter}
+\alias{SelfArgCounter$new}
 \alias{SelfArgCounter$get_value}
 \alias{SelfArgCounter$new_self_arg}
 \alias{$.SelfArgCounter}
@@ -26,13 +27,15 @@ SelfArgCounter
 \description{
 SelfArgCounter inherent methods (constructor and getter).
 
-The counter's value.
-
 Create a counter holding \code{value}.
 
 \describe{
 \item{\code{value}}{The initial value.}
 }
+
+The counter's value.
+
+\code{SelfArgCounter$new_self_arg()} is another name for the constructor \code{SelfArgCounter$new()}.
 
 Arguments of \code{SelfArgCounter$SelfArgs$copy_to()}:
 

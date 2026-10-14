@@ -1162,9 +1162,18 @@ macro_rules! impl_altlist_from_data_generic {
 
         impl<$($gen)*> $crate::altrep_traits::AltList for $ty where $($whr)* {
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $crate::SEXP {
+                if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+                    return $crate::SexpExt::vector_elt(&data2, i);
+                }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 <$ty as $crate::altrep_data::AltListData>::elt(data, i.max(0) as usize)
+            }
+
+            const HAS_SET_ELT: bool = true;
+
+            fn set_elt(x: $crate::SEXP, i: $crate::R_xlen_t, v: $crate::SEXP) {
+                unsafe { $crate::altrep_impl::altlist_set_elt::<$ty>(x, i, v) }
             }
         }
 

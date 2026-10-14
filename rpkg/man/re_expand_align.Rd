@@ -7,5 +7,5 @@
 re_expand_align()
 }
 \description{
-Produce the writer output for a mixed REExpand frame. @export
+Produce the writer output for a mixed REExpand frame.
 }

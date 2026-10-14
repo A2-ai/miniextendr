@@ -10,13 +10,14 @@ use miniextendr_api::{ExternalPtr, SEXP, SexpExt, miniextendr, trait_abi::ccall}
 
 miniextendr_api::miniextendr_init!();
 
-// Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
+// The shared traits, their Views and tags. Implementing a trait needs only the
+// trait itself: its vtable type, tag and builder come with it (#2065).
+// `CounterVTable` is for the raw `mx_query` probe below.
+pub use shared_traits::{Counter, CounterVTable, CounterView, TAG_Counter};
+pub use shared_traits::{Resettable, ResettableView, TAG_Resettable};
 
-// Import the shared Resettable trait and its generated ABI types
-pub use shared_traits::{
-    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
-};
+// Import the View of the shared Tagged trait (owner receivers)
+pub use shared_traits::TaggedView;
 
 // region: Cross-package ExternalPtr pass-through utilities
 
@@ -232,6 +233,21 @@ pub fn counter_add_raw(counter_sexp: SEXP, n: SEXP) {
     }
 }
 
+/// Call `CallsBack::add_around` through the View
+///
+/// The implementing package calls `f()` while it holds the object mutably, so
+/// a callback that reaches the same object gets a
+/// `miniextendr_borrow_conflict` error.
+/// @param obj An ExternalPtr to any type implementing CallsBack
+/// @param f An R function of no arguments
+/// @return The object's value after the call
+/// @export
+#[miniextendr]
+pub fn add_around(obj: SEXP, f: SEXP) -> i32 {
+    let mut view = unsafe { shared_traits::CallsBackView::from_sexp(obj) };
+    view.add_around(f)
+}
+
 /// Check if an object implements the Counter trait
 /// @param sexp Any R object
 /// @return TRUE if the object implements Counter trait
@@ -279,6 +295,26 @@ pub fn view_value_after_gc(make_counter: SEXP) -> Option<i32> {
         }
         Some(view.value())
     }
+}
+// endregion
+
+// region: Owner receivers across packages
+
+/// Add a label through a `Tagged` View, collect, then read the labels back
+///
+/// The View passes the owner it roots to the implementing package's
+/// owner-receiver methods, which reach the labels in that owner's sidecar.
+/// @param obj An object implementing Tagged, from any package
+/// @param label The label to add
+/// @return The labels after the addition
+/// @export
+#[miniextendr]
+pub fn tagged_add_and_read(obj: SEXP, label: String) -> Vec<String> {
+    let mut view =
+        unsafe { TaggedView::try_from_sexp(obj) }.expect("object does not implement Tagged");
+    view.add_label(label);
+    unsafe { miniextendr_api::sys::R_gc() };
+    view.labels()
 }
 // endregion
 

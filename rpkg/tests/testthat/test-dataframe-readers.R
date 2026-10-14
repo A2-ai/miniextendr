@@ -113,6 +113,22 @@ test_that("struct-flatten reader recurses three levels", {
   expect_equal(out$mid_leaf_z, df$mid_leaf_z)
 })
 
+test_that("qualified scalar spellings keep the reader and NA columns (#2036)", {
+  df <- data.frame(
+    id = c(1L, 2L, 3L),
+    label = c("a", "b", "c"),
+    note = c("x", NA, "z"),
+    weight = c(1.5, 2.5, NA),
+    stringsAsFactors = FALSE
+  )
+  out <- reader_qualified_roundtrip(df)
+  expect_equal(names(out), names(df))
+  expect_identical(out$id, df$id)
+  expect_identical(out$label, df$label)
+  expect_identical(out$note, c("x", NA, "z"))
+  expect_identical(out$weight, c(1.5, 2.5, NA))
+})
+
 test_that("readers handle a zero-row data.frame", {
   df <- data.frame(
     id = integer(0),

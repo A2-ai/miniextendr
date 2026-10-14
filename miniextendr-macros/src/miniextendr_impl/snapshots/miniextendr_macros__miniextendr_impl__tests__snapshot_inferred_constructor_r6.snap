@@ -1,0 +1,58 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 8923
+expression: "generate_r6_r_wrapper(&inferred_reading(ClassSystem::R6))"
+---
+#' @title Reading R6 Class
+#' @name Reading
+#' @rdname Reading
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+Reading <- R6::R6Class("Reading",
+  public = list(
+    # Reading::from_value (1:1)
+    #' @description Read a value.
+    #' @param value The value.
+    initialize = function(value, .ptr = NULL) {
+      if (is.null(.ptr)) {
+        if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+        if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+      }
+      if (!is.null(.ptr)) {
+        private$.ptr <- .ptr
+      } else {
+        .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+        private$.ptr <- .val
+      }
+    }
+  ),
+  private = list(
+    .ptr = NULL
+  ),
+  lock_objects = TRUE,
+  lock_class = FALSE,
+  cloneable = FALSE
+)
+
+# Reading::value (1:1)
+#' @description Method `value`.
+Reading$set("public", "value", function() {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})
+
+# Reading::from_value (1:1)
+#' @description `Reading$from_value()` is another name for the constructor `Reading$new()`.
+#' @param value The value.
+#' @name Reading$from_value
+#' @rdname Reading
+Reading$from_value <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  Reading$new(.ptr = .val)
+}

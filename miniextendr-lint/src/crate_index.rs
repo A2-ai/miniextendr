@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use syn::Item;
 use syn::ext::IdentExt;
 use syn::spanned::Spanned;
+use syn::visit::{self, Visit};
 
 use crate::crate_root::CrateRoot;
 use crate::description::{self, Description};
@@ -88,6 +89,22 @@ pub struct ImplMethodEntry {
     pub receiver_kind: MethodReceiverKind,
     /// True when the method carries `#[miniextendr(constructor)]`.
     pub has_constructor_attr: bool,
+}
+
+/// An inherent `#[miniextendr]` impl block, for the rules that look at a type
+/// across all its impl blocks (MXL121).
+#[derive(Clone, Debug)]
+pub struct InherentImpl {
+    pub type_name: String,
+    pub class_system: String,
+    /// 1-based line of the `impl` keyword.
+    pub line: usize,
+    /// 1-based line of the block's first attribute or doc comment (`line`
+    /// without any).
+    pub first_line: usize,
+    /// True when `// mxl::allow(MXL121)` is on the block's header: one of
+    /// its attribute and doc lines, the `impl` line, or the line above them.
+    pub allows_mxl121: bool,
 }
 
 // endregion
@@ -176,6 +193,16 @@ pub struct FileData {
     // Impl method details for per-method lint rules
     /// Methods per inherent impl type: type_name → `Vec<ImplMethodEntry>`.
     pub impl_methods: HashMap<String, Vec<ImplMethodEntry>>,
+    /// Every inherent `#[miniextendr]` impl block, in source order. (MXL121)
+    pub inherent_impls: Vec<InherentImpl>,
+    /// The type names a `#[miniextendr]` fn or method returns, bare, as
+    /// `Self` or `ExternalPtr<T>`, or inside `Result` / `Option`. A method
+    /// with a receiver doesn't count for its own type, whose object it needs
+    /// already. (MXL121)
+    pub returned_types: HashSet<String>,
+    /// The type names the file builds `ExternalPtr`s of itself, in any item,
+    /// `#[miniextendr]` or not (`HandBuilt`). (MXL121)
+    pub hand_built_types: HashSet<String>,
 
     // Doc-comment roxygen tags per function/impl name
     /// Known roxygen tags: "@noRd", "@export", "@keywords internal"
@@ -510,6 +537,9 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
 
     let mut data = FileData::default();
     collect_items_recursive(&parsed.items, &mut data);
+    let mut hand_built = HandBuilt::default();
+    hand_built.visit_file(&parsed);
+    data.hand_built_types = hand_built.types;
 
     // Both raw-source scanners need the line-split for is_suppressed look-behind.
     let lines: Vec<&str> = src.lines().collect();
@@ -517,6 +547,9 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     scan_ffi_unchecked_calls(&lines, &mut data);
     scan_vec_into_sexp_calls(&lines, &mut data);
     scan_nonapi_attrib_calls(&lines, &mut data);
+    for block in &mut data.inherent_impls {
+        block.allows_mxl121 = header_allows(&lines, block.first_line, block.line, "MXL121");
+    }
 
     Ok(data)
 }
@@ -626,6 +659,10 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                 if !params.is_empty() {
                     data.fn_param_names.insert(name.clone(), params);
                 }
+
+                if let syn::ReturnType::Type(_, ty) = &item_fn.sig.output {
+                    collect_returned_types(ty, None, &mut data.returned_types);
+                }
             }
             Item::Struct(item_struct) => {
                 let is_miniextendr_altrep =
@@ -696,6 +733,17 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                     type_name.clone(),
                                     line,
                                 ));
+                                let impl_line = item_impl.impl_token.span.start().line;
+                                data.inherent_impls.push(InherentImpl {
+                                    type_name: type_name.clone(),
+                                    class_system: class_system.clone(),
+                                    line: impl_line,
+                                    first_line: item_impl
+                                        .attrs
+                                        .first()
+                                        .map_or(impl_line, |attr| attr.span().start().line),
+                                    allows_mxl121: false,
+                                });
 
                                 // Collect method names for per-method rules (e.g. MXL111, MXL120)
                                 let methods =
@@ -739,6 +787,22 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                         data.fn_param_names.insert(key, params);
                                     }
                                 }
+                            }
+
+                            // The types its methods return (MXL121)
+                            for impl_item in &item_impl.items {
+                                let syn::ImplItem::Fn(method) = impl_item else {
+                                    continue;
+                                };
+                                let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+                                    continue;
+                                };
+                                let mut returned = HashSet::new();
+                                collect_returned_types(ty, Some(&type_name), &mut returned);
+                                if detect_receiver_kind(&method.sig) != MethodReceiverKind::None {
+                                    returned.remove(&type_name);
+                                }
+                                data.returned_types.extend(returned);
                             }
                         }
                         None => { /* unsupported impl type, skip */ }
@@ -803,6 +867,209 @@ fn line_has_allow(line: &str, code: &str) -> bool {
         }
     }
     false
+}
+
+/// Whether `// mxl::allow(<code>)` is on an item's header: its lines
+/// `first_line..=line` (1-based: attributes, doc comments and the item's own
+/// first line) or the line above them.
+fn header_allows(lines: &[&str], first_line: usize, line: usize, code: &str) -> bool {
+    (first_line.saturating_sub(1).max(1)..=line).any(|n| {
+        lines
+            .get(n - 1)
+            .is_some_and(|text| line_has_allow(text, code))
+    })
+}
+
+/// Add to `out` the type `ty` hands to R as a class object: its last path
+/// segment, `self_type` for `Self`, through `Result`, `Option` and
+/// `ExternalPtr`. Other names (`i32`, `Vec`, ...) are added too; they match no
+/// class.
+fn collect_returned_types(ty: &syn::Type, self_type: Option<&str>, out: &mut HashSet<String>) {
+    let syn::Type::Path(path) = ty else {
+        return;
+    };
+    let Some(last) = path.path.segments.last() else {
+        return;
+    };
+    if ["Result", "Option", "ExternalPtr"]
+        .iter()
+        .any(|wrapper| last.ident == wrapper)
+    {
+        if let syn::PathArguments::AngleBracketed(args) = &last.arguments
+            && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+        {
+            collect_returned_types(inner, self_type, out);
+        }
+    } else {
+        out.extend(path_type_name(&path.path, self_type));
+    }
+}
+
+/// The type `path` names: its last segment, `self_type` for `Self`.
+fn path_type_name(path: &syn::Path, self_type: Option<&str>) -> Option<String> {
+    let last = path.segments.last()?;
+    if last.ident == "Self" {
+        self_type.map(str::to_string)
+    } else {
+        Some(last.ident.to_string())
+    }
+}
+
+/// The types a file builds `ExternalPtr`s of itself (MXL121), in any item:
+///
+/// - the struct in `ExternalPtr::new(T { .. })` / `ExternalPtr::new(T(..))`
+///   (or `new_unchecked`), with `Self` inside `impl T`, or in
+///   `ExternalPtr::new(x)` after `let x = T { .. }` / `let x = T(..)` /
+///   `let x: T = ..` in the same function body (the last `let x` wins);
+/// - `T` in an `ExternalPtr<T>` written as a type or a turbofish
+///   (`ExternalPtr::<T>::new(..)`): return types, `let` annotations, fields,
+///   generic arguments.
+///
+/// A function's parameters, its receiver among them, are objects the caller
+/// has already, and are skipped. So is the impl's own type in a method of a
+/// `#[miniextendr]` impl block that takes `self`, as for
+/// [`FileData::returned_types`]. A value from a call whose type isn't written
+/// (`let record = make_record(inner); ExternalPtr::new(record)`), a value
+/// from another function, and code inside macro calls (`vec![..]`) stay
+/// invisible.
+#[derive(Default)]
+struct HandBuilt {
+    types: HashSet<String>,
+    /// The type `Self` names here: the enclosing impl's.
+    self_type: Option<String>,
+    /// Inside a `#[miniextendr]` impl block.
+    miniextendr_impl: bool,
+    /// The type of each `let` binding of the current function body whose
+    /// value is a struct literal or whose annotation names it.
+    locals: HashMap<String, String>,
+}
+
+impl HandBuilt {
+    /// Visit a function with bindings of its own.
+    fn in_fn(&mut self, visit_fn: impl FnOnce(&mut Self)) {
+        let locals = std::mem::take(&mut self.locals);
+        visit_fn(self);
+        self.locals = locals;
+    }
+
+    /// The type a struct literal `T { .. }` or tuple-struct call `T(..)` builds.
+    fn literal_type(&self, expr: &syn::Expr) -> Option<String> {
+        let path = match expr {
+            syn::Expr::Struct(literal) => &literal.path,
+            syn::Expr::Call(call) => match &*call.func {
+                syn::Expr::Path(ctor) => &ctor.path,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        path_type_name(path, self.self_type.as_deref())
+    }
+}
+
+impl<'ast> Visit<'ast> for HandBuilt {
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        let self_type = std::mem::replace(&mut self.self_type, impl_type_name(&item.self_ty));
+        let miniextendr_impl = std::mem::replace(
+            &mut self.miniextendr_impl,
+            has_miniextendr_attr(&item.attrs),
+        );
+        visit::visit_item_impl(self, item);
+        self.self_type = self_type;
+        self.miniextendr_impl = miniextendr_impl;
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        self.in_fn(|this| visit::visit_item_fn(this, item));
+    }
+
+    fn visit_trait_item_fn(&mut self, method: &'ast syn::TraitItemFn) {
+        self.in_fn(|this| visit::visit_trait_item_fn(this, method));
+    }
+
+    fn visit_impl_item_fn(&mut self, method: &'ast syn::ImplItemFn) {
+        if !self.miniextendr_impl || detect_receiver_kind(&method.sig) == MethodReceiverKind::None {
+            self.in_fn(|this| visit::visit_impl_item_fn(this, method));
+            return;
+        }
+        let outer = std::mem::take(&mut self.types);
+        self.in_fn(|this| visit::visit_impl_item_fn(this, method));
+        let mut built = std::mem::replace(&mut self.types, outer);
+        if let Some(self_type) = &self.self_type {
+            built.remove(self_type);
+        }
+        self.types.extend(built);
+    }
+
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        visit::visit_local(self, local);
+        let (pat, annotated) = match &local.pat {
+            syn::Pat::Type(typed) => {
+                let annotated = match &*typed.ty {
+                    syn::Type::Path(ty) => path_type_name(&ty.path, self.self_type.as_deref()),
+                    _ => None,
+                };
+                (&*typed.pat, annotated)
+            }
+            pat => (pat, None),
+        };
+        let syn::Pat::Ident(binding) = pat else {
+            return;
+        };
+        let name = binding.ident.to_string();
+        let ty = annotated.or_else(|| {
+            local
+                .init
+                .as_ref()
+                .and_then(|init| self.literal_type(&init.expr))
+        });
+        match ty {
+            Some(ty) => self.locals.insert(name, ty),
+            None => self.locals.remove(&name),
+        };
+    }
+
+    fn visit_fn_arg(&mut self, _: &'ast syn::FnArg) {}
+
+    fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+        if let syn::Expr::Path(func) = &*call.func
+            && is_external_ptr_new(&func.path)
+            && let Some(arg) = call.args.first()
+        {
+            let built = match arg {
+                syn::Expr::Path(local) => local
+                    .path
+                    .get_ident()
+                    .and_then(|ident| self.locals.get(&ident.to_string()).cloned()),
+                literal => self.literal_type(literal),
+            };
+            self.types.extend(built);
+        }
+        visit::visit_expr_call(self, call);
+    }
+
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        for segment in &path.segments {
+            if segment.ident == "ExternalPtr"
+                && let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+                && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+            {
+                collect_returned_types(inner, self.self_type.as_deref(), &mut self.types);
+            }
+        }
+        visit::visit_path(self, path);
+    }
+}
+
+/// Whether `path` ends in `ExternalPtr::new` or `ExternalPtr::new_unchecked`,
+/// with or without a turbofish.
+fn is_external_ptr_new(path: &syn::Path) -> bool {
+    let mut segments = path.segments.iter().rev();
+    segments
+        .next()
+        .is_some_and(|last| last.ident == "new" || last.ident == "new_unchecked")
+        && segments
+            .next()
+            .is_some_and(|segment| segment.ident == "ExternalPtr")
 }
 
 /// Scan raw source text for `sys::*_unchecked()` calls.

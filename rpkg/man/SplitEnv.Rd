@@ -7,6 +7,7 @@
 \alias{SplitEnv$add}
 \alias{SplitEnv$doubled}
 \alias{SplitEnv$origin}
+\alias{SplitEnv$from_half}
 \alias{$.SplitEnv}
 \alias{[[.SplitEnv}
 \title{Env Class Split Over Two Impl Blocks}
@@ -42,4 +43,11 @@ Add \code{by} to the value.
 Twice the value.
 
 The value a new object starts from by default.
+
+An object holding twice \code{half}. The first block's \code{new} is the
+constructor, so this stays a static method.
+
+\describe{
+\item{\code{half}}{Half the value.}
+}
 }

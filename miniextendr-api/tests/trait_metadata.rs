@@ -29,9 +29,7 @@ impl declarations::Collection<i32> for Bag {
     fn r_values(&self) -> Vec<i32> {
         self.0.clone()
     }
-    fn rust_only(&self, action: std::sync::Mutex<()>) {
-        drop(action);
-    }
+    fn rust_only(&self, _action: std::sync::Mutex<()>) {}
 }
 
 #[miniextendr(env, noexport)]

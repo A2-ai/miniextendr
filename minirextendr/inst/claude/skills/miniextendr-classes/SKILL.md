@@ -82,6 +82,17 @@ c$get()
 | no receiver, returns `Self` | constructor (`new`) or static factory |
 | no receiver, other return | static method: `Type$method()` / `Type_method()` |
 
+The constructor is the method marked `#[miniextendr(r6(constructor))]` (spelled
+with the class system), else `new`, else the type's one no-receiver method
+returning `Self` whatever its name; the others are static factories. Several
+such methods and no `new` or marker is an error: mark one. A constructor not
+named `new` keeps its own name as a static method too (`Type$from_value()`
+next to `Type$new()`). A type with no such method (its factories return
+`Result<Self, E>` or `Option<Self>`) has no constructor: R6's `Type$new()` and
+S7's `Type()` raise an error without a `.ptr`, and env, S3, S4 and vctrs
+define none (no `Type$new`, `new_type()` or `Type()`), so a package can write
+its own. The build warns (MXL121) when nothing returns the type at all.
+
 A type's methods can be split over several `impl` blocks: they are merged into
 one class. Keep the constructor in one block, and repeat the class options
 (`#[miniextendr(r6)]`, `class = "..."`, `internal`, `@noRd`, ...) on every

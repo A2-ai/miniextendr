@@ -1,0 +1,61 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 9120
+expression: "generate_env_r_wrapper(&inferred_reading(ClassSystem::Env))"
+---
+#' @title Reading Class
+#' @name Reading
+#' @rdname Reading
+#' @export
+Reading <- new.env(parent = emptyenv())
+
+# Reading::from_value (1:1)
+#' @description Read a value.
+#'
+#' \describe{
+#'   \item{\code{value}}{The value.}
+#' }
+#' @name Reading$new
+#' @rdname Reading
+Reading$new <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  self <- .val
+  class(self) <- "Reading"
+  self
+}
+
+# Reading::value (1:1)
+#' @name Reading$value
+#' @rdname Reading
+Reading$value <- function() {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), .mx_self)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Reading::from_value (1:1)
+#' @description `Reading$from_value()` is another name for the constructor `Reading$new()`.
+#' @name Reading$from_value
+#' @rdname Reading
+Reading$from_value <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  class(.val) <- "Reading"
+  .val
+}
+
+#' @rdname Reading
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.Reading` <- function(self, name) {
+  .miniextendr_env_method(self, name, Reading)
+}
+#' @rdname Reading
+#' @export
+`[[.Reading` <- `$.Reading`

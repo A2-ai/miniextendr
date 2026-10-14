@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{AtomicCounter}
 \alias{AtomicCounter}
+\alias{AtomicCounter$new}
 \alias{AtomicCounter$new_atomic}
 \alias{$.AtomicCounter}
 \alias{[[.AtomicCounter}
@@ -23,5 +24,11 @@ AtomicCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-AtomicCounter Class
+Create an atomic counter holding \code{initial}.
+
+\describe{
+\item{\code{initial}}{Starting value.}
+}
+
+\code{AtomicCounter$new_atomic()} is another name for the constructor \code{AtomicCounter$new()}.
 }

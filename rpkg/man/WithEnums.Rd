@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{WithEnums}
 \alias{WithEnums}
+\alias{WithEnums$new}
 \alias{WithEnums$to_r}
 \alias{WithEnums$new_circle}
 \alias{WithEnums$new_rectangle}
@@ -22,5 +23,5 @@ WithEnums
 \item{name}{Method name for dispatch.}
 }
 \description{
-WithEnums Class
+\code{WithEnums$new_circle()} is another name for the constructor \code{WithEnums$new()}.
 }

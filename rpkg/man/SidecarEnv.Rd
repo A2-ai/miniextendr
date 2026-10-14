@@ -4,6 +4,8 @@
 \alias{SidecarEnv}
 \alias{SidecarEnv$new}
 \alias{SidecarEnv$double_count}
+\alias{SidecarEnv$bump_around}
+\alias{SidecarEnv$read_around}
 \alias{$.SidecarEnv}
 \alias{[[.SidecarEnv}
 \alias{.DollarNames.SidecarEnv}
@@ -49,4 +51,19 @@ Create a SidecarEnv with a \code{NULL} \code{raw_slot}.
 }
 
 Doubles \code{count} (a method next to the fields).
+
+Calls \code{f()} while this method holds the object mutably, then adds 1 to
+\code{count} and returns it. A callback that reads, writes or calls a method
+of the same object gets a \code{miniextendr_borrow_conflict} error (#1965).
+
+\describe{
+\item{\code{f}}{An R function of no arguments.}
+}
+
+Calls \code{f()} while this method holds the object shared, then returns
+\code{count}. A callback may read the object but not write it (#1965).
+
+\describe{
+\item{\code{f}}{An R function of no arguments.}
+}
 }

@@ -71,7 +71,8 @@ pub fn rng_guard_test(n: i32) -> Vec<f64> {
 
 /// Test manual RNG management using the with_rng closure API.
 /// @param n Integer number of uniform values to generate.
-#[miniextendr]
+// Stays on R's main thread under `worker-default`: `with_rng` runs on the main thread only.
+#[miniextendr(no_worker)]
 pub fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
 }

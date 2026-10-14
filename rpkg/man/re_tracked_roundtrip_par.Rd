@@ -10,5 +10,5 @@ re_tracked_roundtrip_par(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Parallel RETracked round-trip (delegates to sequential due to Struct field). @export
+Parallel RETracked round-trip (delegates to sequential due to Struct field).
 }

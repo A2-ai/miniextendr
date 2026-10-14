@@ -656,32 +656,6 @@ test_that("gc_stress_trait_view_args keeps View arguments rooted under gctorture
 
 # endregion
 
-
-test_that("tuple container rows retain all children under gctorture", {
-  skip_gc_stress_if_disabled()
-  gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  rows <- miniextendr:::gc_stress_tuple_containers()
-  expected <- lapply(0:15, function(i) {
-    if (i %% 4L == 0L) NULL else list(i, paste0("row-", i), c(i, i + 1L))
-  })
-  expect_identical(rows, expected)
-})
-
-test_that("external-pointer borrow counters stay rooted under gctorture", {
-  skip_gc_stress_if_disabled()
-  gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  expect_null(miniextendr:::gc_stress_externalptr_borrow())
-})
-
-test_that("rooted list borrows retain transient ALTREP elements", {
-  skip_gc_stress_if_disabled()
-  gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  expect_null(miniextendr:::gc_stress_rooted_list_borrows())
-})
-
 # region: Preserved (#1999) and REnv bindings (#1997) -------------------------
 
 check_preserved <- function(result) {
@@ -723,6 +697,7 @@ test_that("Preserved handles and REnv::define hold values under gctorture", {
 
 # endregion
 
+# region: rooted iterator list cache (#2054)
 
 test_that("list iterators root their caches through copy and restoration", {
   expected <- lapply(0:7, function(i) if (i == 2L) NULL else c(i, i + 10L))
@@ -737,6 +712,31 @@ test_that("list iterator caches survive gctorture", {
   expect_identical(miniextendr:::gc_stress_altrep_list_iterator(), expected)
 })
 
+check_altrep_list_writes <- function() {
+  lists <- miniextendr:::gc_stress_altrep_list_writes()
+  sequence <- lapply(1:6, seq_len)
+  sequence[[3L]] <- 99L
+  sequence[[5L]] <- "four"
+  cache <- lapply(0:7, function(i) if (i == 2L) NULL else c(i, i + 10L))
+  cache[[2L]] <- "written"
+  copy <- cache
+  copy[[1L]] <- -1L
+  expect_identical(lists, list(sequence, cache, copy))
+}
+
+test_that("derive lists keep R's writes", {
+  check_altrep_list_writes()
+})
+
+test_that("derive list writes survive gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  check_altrep_list_writes()
+})
+
+# endregion
+
 test_that("tuple container rows retain all children under gctorture", {
   skip_gc_stress_if_disabled()
   gctorture(TRUE)
@@ -746,4 +746,11 @@ test_that("tuple container rows retain all children under gctorture", {
     if (i %% 4L == 0L) NULL else list(i, paste0("row-", i), c(i, i + 1L))
   })
   expect_identical(rows, expected)
+})
+
+test_that("rooted list borrows retain transient ALTREP elements", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  expect_null(miniextendr:::gc_stress_rooted_list_borrows())
 })

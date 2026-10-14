@@ -4,7 +4,9 @@
 //! once, attaches the methods of both blocks, and documents the class with the
 //! doc comments of both, the first block's first. `SplitEnv`'s first block has
 //! none, so its second gives the class its title; `SplitS3`'s first block
-//! titles the class itself.
+//! titles the class itself. The second block's `from_half` returns `Self` and
+//! would be the constructor of a block on its own: with the first block's
+//! `new`, it is a static method.
 
 use miniextendr_api::{ExternalPtr, IntoR, SEXP, miniextendr};
 
@@ -48,6 +50,13 @@ impl SplitEnv {
     /// The value a new object starts from by default.
     pub fn origin() -> i32 {
         0
+    }
+
+    /// An object holding twice `half`. The first block's `new` is the
+    /// constructor, so this stays a static method.
+    /// @param half Half the value.
+    pub fn from_half(half: i32) -> Self {
+        Self { value: half * 2 }
     }
 }
 // endregion
@@ -106,6 +115,13 @@ impl SplitR6 {
     /// The value a new object starts from by default.
     pub fn origin() -> i32 {
         0
+    }
+
+    /// An object holding twice `half`. The first block's `new` is the
+    /// constructor, so this stays a static method.
+    /// @param half Half the value.
+    pub fn from_half(half: i32) -> Self {
+        Self { value: half * 2 }
     }
 }
 
@@ -188,6 +204,13 @@ impl SplitS3 {
     pub fn origin() -> i32 {
         0
     }
+
+    /// An object holding twice `half`. The first block's `new` is the
+    /// constructor, so this stays a static method.
+    /// @param half Half the value.
+    pub fn from_half(half: i32) -> Self {
+        Self { value: half * 2 }
+    }
 }
 // endregion
 
@@ -226,6 +249,13 @@ impl SplitS4 {
     pub fn origin() -> i32 {
         0
     }
+
+    /// An object holding twice `half`. The first block's `new` is the
+    /// constructor, so this stays a static method.
+    /// @param half Half the value.
+    pub fn from_half(half: i32) -> Self {
+        Self { value: half * 2 }
+    }
 }
 // endregion
 
@@ -263,6 +293,13 @@ impl SplitS7 {
     /// The value a new object starts from by default.
     pub fn origin() -> i32 {
         0
+    }
+
+    /// An object holding twice `half`. The first block's `new` is the
+    /// constructor, so this stays a static method.
+    /// @param half Half the value.
+    pub fn from_half(half: i32) -> Self {
+        Self { value: half * 2 }
     }
 }
 // endregion

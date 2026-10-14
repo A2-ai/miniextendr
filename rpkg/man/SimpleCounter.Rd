@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SimpleCounter}
 \alias{SimpleCounter}
+\alias{SimpleCounter$new}
 \alias{SimpleCounter$get_value}
 \alias{SimpleCounter$trait_add}
 \alias{SimpleCounter$new_counter}
@@ -26,9 +27,15 @@ SimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+Create a new counter with given initial value.
+
+\describe{
+\item{\code{initial}}{Starting value.}
+}
+
 Get the counter's value.
 
 Add to the counter using the trait method.
 
-Create a new counter with given initial value.
+\code{SimpleCounter$new_counter()} is another name for the constructor \code{SimpleCounter$new()}.
 }

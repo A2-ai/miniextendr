@@ -945,8 +945,9 @@ impl ProtectScope {
     /// Create a `Root<'a>` for an already-protected SEXP without adding protection.
     ///
     /// This is useful when you have a SEXP that is already protected by some other
-    /// mechanism (e.g., a `ReprotectSlot`) and want to return it as a `Root` tied
-    /// to this scope's lifetime for API consistency.
+    /// mechanism (e.g., a `ReprotectSlot`, or a `.Call` argument, which R roots
+    /// until the call returns) and want to return it as a `Root` tied to this
+    /// scope's lifetime. Generated wrappers bind borrowed parameters this way.
     ///
     /// # Safety
     ///
@@ -1053,14 +1054,22 @@ pub struct Root<'a> {
 }
 
 impl<'a> Root<'a> {
-    /// Retain a child returned by an ALTREP accessor for this root's lifetime.
-    /// The parent need not cache the child. A lazily allocated pool retains
-    /// children until the scope drops, without consuming a PROTECT stack entry
-    /// per element of a large list or character vector.
+    /// Root `child`, an element read from this root, for this root's lifetime.
+    ///
+    /// An ordinary vector holds its elements, so its root already covers them.
+    /// An ALTREP accessor may return a fresh object that its parent does not
+    /// keep; the scope then retains it in a lazily allocated pool until the
+    /// scope drops, without a PROTECT stack entry per element.
     ///
     /// # Safety
     /// R's main thread; `child` must be live on entry.
     pub(crate) unsafe fn protect_child(self, child: SEXP) -> Self {
+        if !self.sexp.is_altrep() {
+            return Root {
+                sexp: child,
+                scope: self.scope,
+            };
+        }
         // A new pool or pool growth can allocate before it retains the child.
         let child = unsafe { OwnedProtect::new(child) };
         let mut children = self.scope.children.borrow_mut();

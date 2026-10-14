@@ -354,7 +354,9 @@ pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
 /// is built, survives a collection; then a clone-policy copy, the only root
 /// of its sidecar once the original is unprotected, survives one too. No
 /// arguments, for the no-arg gctorture sweep (#430).
-#[miniextendr(noexport)]
+// Sidecar accessors run on R's main thread only: stay there under
+// `worker-default`.
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_altrep_sidecar() {
     use crate::altrep_sidecar_tests::{
         SidecarVector, altrep_cloned_sidecar_ints, altrep_cloned_sidecar_tag, make_sidecar_altrep,
@@ -4326,7 +4328,8 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 /// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
 /// (#430): it holds no SEXPs across allocations itself, but exercising the worker
 /// dispatch under GC pressure is cheap insurance.
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: it calls `run_on_worker` itself.
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_worker_roundtrip() -> i32 {
     use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
@@ -5243,19 +5246,23 @@ impl ViewArgProbe for ViewArgHost {
 /// of `gctorture(TRUE)` do not; without that root it would drop the host,
 /// and a weak reference reports this before the View reads the freed host.
 ///
+/// The host's `keepalive` sidecar starts as a pending value that only a
+/// temporary root protects. `mx_wrap` must move it into the receiver's
+/// protection list, so it survives the collection through the View's root.
+///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_trait_view_args() -> String {
     use miniextendr_api::gc_protect::ProtectScope;
     use miniextendr_api::{Rboolean, sys};
 
-    // The constructor's temporary root ends before argument conversion. The
-    // View itself must retain the receiver through every subsequent allocation.
+    // The constructor's temporary roots end before argument conversion. The
+    // View must retain its receiver, which in turn must retain its sidecar.
     let (view, weak) = unsafe {
         let scope = ProtectScope::new();
-        let source = scope.protect(vec![13_i32, 21, 34].into_sexp());
+        let source = scope.protect(vec![13_i32, 21, 34].into_sexp()).get();
         let mut host = ViewArgHost::new("host".to_string());
-        host.keepalive = miniextendr_api::externalptr::Sidecar::new(source.get());
+        host.keepalive = miniextendr_api::externalptr::Sidecar::new(source);
         let handle = scope
             .protect(miniextendr_api::trait_abi::ccall::mx_wrap(
                 __mx_wrap_ViewArgHost(host),
@@ -5272,6 +5279,7 @@ pub fn gc_stress_trait_view_args() -> String {
         !unsafe { sys::R_WeakRefKey(weak.get()) }.is_nil(),
         "the trait View lost its receiver root"
     );
+    // `join_args` reads the `keepalive` sidecar through its owner receiver.
     let joined = view.join_args(
         "first".to_string(),
         "second".to_string(),
@@ -5614,123 +5622,6 @@ pub fn gc_stress_list_accumulator() -> SEXP {
 
 // endregion
 
-/// Exercise tuple rows, optional NULL rows, and nested allocations under GC.
-#[miniextendr(noexport)]
-pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
-    (0..16)
-        .map(|index| {
-            if index % 4 == 0 {
-                None
-            } else {
-                Some((index, format!("row-{index}"), vec![index, index + 1]))
-            }
-        })
-        .collect()
-}
-
-/// @noRd
-#[miniextendr(noexport)]
-pub fn gc_stress_altrep_map() {
-    use miniextendr_api::altrep_traits::AltVec;
-    use miniextendr_api::{AltrepMap, TryFromSexp};
-    use std::collections::HashMap;
-    unsafe {
-        let map = AltrepMap::from(HashMap::from([("z".into(), 30i32), ("a".into(), 10)]));
-        let x = OwnedProtect::new(map.into_sexp());
-        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
-        *<AltrepMap<i32> as AltVec>::dataptr(x.get(), true).cast::<i32>() = 99;
-        assert_eq!(Vec::<i32>::try_from_sexp(copy.get()).unwrap(), [10, 30]);
-        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [99, 30]);
-        let names = miniextendr_api::sys::Rf_getAttrib_unchecked(
-            x.get(),
-            miniextendr_api::sys::R_NamesSymbol,
-        );
-        assert_eq!(Vec::<String>::try_from_sexp(names).unwrap(), ["a", "z"]);
-    }
-}
-
-/// Rooted string owners survive local source guards and arbitrary drop order.
-/// @noRd
-#[miniextendr(noexport)]
-pub fn gc_stress_protected_strvec() {
-    use miniextendr_api::{OwnedProtect, ProtectedStrVec, TryFromSexp};
-    let make = |text: String| {
-        let source = unsafe { OwnedProtect::new(vec![text].into_sexp()) };
-        ProtectedStrVec::try_from_sexp(source.get()).unwrap()
-    };
-    let first = make("first".into());
-    let second = make("surviving character owner".into());
-    drop(first);
-    for i in 0..32 {
-        let transient = make(format!("transient {i}"));
-        assert_eq!(
-            second.as_strvec().get_str(0),
-            Some("surviving character owner")
-        );
-        drop(transient);
-    }
-}
-
-/// Keep per-object borrow counters rooted while ordinary and erased owners
-/// allocate, then release nested reads and reacquire an exclusive borrow.
-#[miniextendr(noexport)]
-pub fn gc_stress_externalptr_borrow() {
-    use miniextendr_api::externalptr::{ExternalBorrow, ExternalPtr};
-    for i in 0..12_i32 {
-        let owner = ExternalPtr::new(SharedData {
-            x: f64::from(i),
-            y: 0.0,
-            label: format!("borrow-{i}"),
-        });
-        unsafe {
-            let first = ExternalBorrow::acquire(owner.as_sexp(), false);
-            let second = ExternalBorrow::acquire(owner.as_sexp(), false);
-            let erased = OwnedProtect::new(miniextendr_api::mx_abi::mx_wrap(__mx_wrap_SharedData(
-                SharedData {
-                    x: 0.0,
-                    y: 0.0,
-                    label: String::new(),
-                },
-            )));
-            let _other = ExternalBorrow::acquire(erased.get(), true);
-            drop((first, second));
-            let _write = ExternalBorrow::acquire(owner.as_sexp(), true);
-            let _moved = ExternalPtr::into_inner(owner);
-            let _allocation = OwnedProtect::new(vec![i; 8].into_sexp());
-        }
-    }
-}
-
-#[derive(miniextendr_api::AltrepList)]
-#[altrep(manual, class = "GcTransientBorrowList")]
-struct GcTransientBorrowList;
-
-impl miniextendr_api::altrep_data::AltrepLen for GcTransientBorrowList {
-    fn altrep_len(&self) -> usize {
-        8
-    }
-}
-
-impl miniextendr_api::altrep_data::AltListData for GcTransientBorrowList {
-    fn elt(&self, index: usize) -> SEXP {
-        let index = i32::try_from(index).unwrap();
-        vec![index; 3].into_sexp()
-    }
-}
-
-/// Retain ALTREP list elements before a later element allocation can collect them.
-#[miniextendr(noexport)]
-pub fn gc_stress_rooted_list_borrows() {
-    use miniextendr_api::{ProtectScope, TryFromRoot};
-    let scope = unsafe { ProtectScope::new() };
-    let root = unsafe { scope.protect(GcTransientBorrowList.into_sexp()) };
-    let values: Vec<&[i32]> = Vec::try_from_root(root).unwrap();
-    let _allocation = unsafe { OwnedProtect::new(vec![0_i32; 32].into_sexp()) };
-    for (index, value) in values.iter().enumerate() {
-        assert_eq!(*value, [i32::try_from(index).unwrap(); 3]);
-    }
-}
-
 // region: Preserved (#1999) and REnv bindings (#1997)
 
 /// A Rust value that keeps R objects the way a fitted model keeps its data:
@@ -5834,6 +5725,46 @@ pub fn gc_stress_env_bindings() -> SEXP {
 
 // endregion
 
+/// Exercise tuple rows, optional NULL rows, and nested allocations under GC.
+#[miniextendr(noexport)]
+pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
+    (0..16)
+        .map(|index| {
+            if index % 4 == 0 {
+                None
+            } else {
+                Some((index, format!("row-{index}"), vec![index, index + 1]))
+            }
+        })
+        .collect()
+}
+
+// region: owned character views (#1427)
+
+/// Rooted string owners survive local source guards and arbitrary drop order.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_protected_strvec() {
+    use miniextendr_api::{OwnedProtect, ProtectedStrVec, TryFromSexp};
+    let make = |text: String| {
+        let source = unsafe { OwnedProtect::new(vec![text].into_sexp()) };
+        ProtectedStrVec::try_from_sexp(source.get()).unwrap()
+    };
+    let first = make("first".into());
+    let second = make("surviving character owner".into());
+    drop(first);
+    for i in 0..32 {
+        let transient = make(format!("transient {i}"));
+        assert_eq!(
+            second.as_strvec().get_str(0),
+            Some("surviving character owner")
+        );
+        drop(transient);
+    }
+}
+
+// endregion
+
 // region: rooted iterator list cache (#2054)
 
 type GcListSource = std::iter::Map<std::ops::Range<i32>, fn(i32) -> SEXP>;
@@ -5911,18 +5842,79 @@ pub fn gc_stress_altrep_list_iterator() -> SEXP {
         state.get()
     }
 }
+
+/// Write into derive lists, through R's `SET_VECTOR_ELT` (GC off) and through
+/// the class's own `set_elt` (GC on): an allocating list, an iterator cache,
+/// and a clone of the cache taken after its first write.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_list_writes() -> SEXP {
+    use miniextendr_api::altrep_data::IterListData;
+    use miniextendr_api::altrep_traits::{AltList, Altrep};
+
+    unsafe {
+        // Each element of this list is a new vector on every read, so its
+        // first write allocates all of them while it fills data2.
+        let sequence = OwnedProtect::new(crate::integer_sequence_list(6));
+        <crate::IntegerSequenceListData as AltList>::set_elt(
+            sequence.get(),
+            2,
+            vec![99_i32].into_sexp(),
+        );
+        sequence.get().set_vector_elt(4, "four".into_sexp());
+
+        let source = (0..8).map(gc_list_element as fn(i32) -> SEXP);
+        let cache = OwnedProtect::new(
+            GcRootedIteratorList(IterListData::from_exact_iter(source)).into_sexp(),
+        );
+        <GcRootedIteratorList as AltList>::set_elt(cache.get(), 1, "written".into_sexp());
+        let copy = OwnedProtect::new(<GcRootedIteratorList as Altrep>::duplicate(
+            cache.get(),
+            true,
+        ));
+        copy.get().set_vector_elt(0, vec![-1_i32].into_sexp());
+
+        let out = OwnedProtect::new(SEXP::alloc_list(3));
+        out.get().set_vector_elt(0, sequence.get());
+        out.get().set_vector_elt(1, cache.get());
+        out.get().set_vector_elt(2, copy.get());
+        out.get()
+    }
+}
+
 // endregion
 
-/// Exercise tuple rows, optional NULL rows, and nested allocations under GC.
-#[miniextendr(noexport)]
-pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
-    (0..16)
-        .map(|index| {
-            if index % 4 == 0 {
-                None
-            } else {
-                Some((index, format!("row-{index}"), vec![index, index + 1]))
-            }
-        })
-        .collect()
+// region: rooted borrows of transient ALTREP elements (#1427)
+
+/// An ALTREP list whose `Elt` builds a fresh vector on every call and keeps none.
+#[derive(miniextendr_api::AltrepList)]
+#[altrep(manual, class = "GcTransientBorrowList")]
+struct GcTransientBorrowList;
+
+impl miniextendr_api::altrep_data::AltrepLen for GcTransientBorrowList {
+    fn altrep_len(&self) -> usize {
+        8
+    }
 }
+
+impl miniextendr_api::altrep_data::AltListData for GcTransientBorrowList {
+    fn elt(&self, index: usize) -> SEXP {
+        let index = i32::try_from(index).unwrap();
+        vec![index; 3].into_sexp()
+    }
+}
+
+/// Retain ALTREP list elements before a later element allocation can collect them.
+#[miniextendr(noexport)]
+pub fn gc_stress_rooted_list_borrows() {
+    use miniextendr_api::{ProtectScope, TryFromRoot};
+    let scope = unsafe { ProtectScope::new() };
+    let root = unsafe { scope.protect(GcTransientBorrowList.into_sexp()) };
+    let values: Vec<&[i32]> = Vec::try_from_root(root).unwrap();
+    let _allocation = unsafe { OwnedProtect::new(vec![0_i32; 32].into_sexp()) };
+    for (index, value) in values.iter().enumerate() {
+        assert_eq!(*value, [i32::try_from(index).unwrap(); 3]);
+    }
+}
+
+// endregion

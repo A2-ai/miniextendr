@@ -11,8 +11,8 @@
 //! and contains the actual implementation.
 //!
 //! Adapter methods named like a std method are `r_`-prefixed in Rust and keep
-//! the std name in R (#2020): an empty impl takes the R name from the trait,
-//! an impl with a body repeats `#[miniextendr(r_name = "...")]`.
+//! the std name in R (#2020). Every impl, empty or with a body, takes the R
+//! names from the trait (#2062), so the impls below carry no `r_name`.
 
 // The impls here are env pinned, except the class-system cells at the end,
 // which pin their own system: several adapter traits have multiple impls in
@@ -232,7 +232,6 @@ pub struct IntVecIter(RefCell<std::vec::IntoIter<i32>>);
 impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     type Item = i32;
 
-    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item> {
         self.0.borrow_mut().next()
     }
@@ -305,12 +304,10 @@ impl miniextendr_api::adapter_traits::RExtend<i32> for GrowableVec {
         self.0.borrow_mut().extend(items);
     }
 
-    #[miniextendr(r_name = "len")]
     fn r_len(&self) -> i64 {
         i64::try_from(self.0.borrow().len()).expect("length fits i64")
     }
 
-    #[miniextendr(r_name = "is_empty")]
     fn r_is_empty(&self) -> bool {
         self.0.borrow().is_empty()
     }
@@ -358,19 +355,16 @@ impl miniextendr_api::adapter_traits::RFromIter<i32> for IntSet {
 /// RToVec trait implementation for IntSet (extract sorted integer vector).
 #[miniextendr(env)]
 impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
-    #[miniextendr(r_name = "to_vec")]
     fn r_to_vec(&self) -> Vec<i32> {
         let mut v: Vec<_> = self.0.iter().cloned().collect();
         v.sort();
         v
     }
 
-    #[miniextendr(r_name = "len")]
     fn r_len(&self) -> i64 {
         i64::try_from(self.0.len()).expect("length fits i64")
     }
 
-    #[miniextendr(r_name = "is_empty")]
     fn r_is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -436,7 +430,6 @@ impl IterableVec {
 impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     type Item = i32;
 
-    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item> {
         unreachable!()
     }
@@ -542,19 +535,19 @@ impl AdapterNamesS3 {
 
 /// RHash trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RHash for AdapterNamesS3 {}
+impl miniextendr_api::RHash for AdapterNamesS3 {}
 
 /// RClone trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RClone for AdapterNamesS3 {}
+impl miniextendr_api::RClone for AdapterNamesS3 {}
 
 /// RDefault trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RDefault for AdapterNamesS3 {}
+impl miniextendr_api::RDefault for AdapterNamesS3 {}
 
 /// RFromStr trait ABI registration for AdapterNamesS3.
 #[miniextendr(s3)]
-impl miniextendr_api::adapter_traits::RFromStr for AdapterNamesS3 {}
+impl miniextendr_api::RFromStr for AdapterNamesS3 {}
 
 #[derive(Clone, Debug, Default, Hash, ExternalPtr)]
 pub struct AdapterNamesS4 {

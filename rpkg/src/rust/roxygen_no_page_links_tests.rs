@@ -5,7 +5,7 @@
 //! leading prose and in the text of an explicit tag alike, whatever the
 //! crate's `roxygen_prose_links` setting. Left in, the plain rustdoc link
 //! `` [`no_page_takes_scope`] `` below would make roxygen2 warn "Could not
-//! resolve link to topic" on every `just force-document`.
+//! resolve link to topic" on every `just devtools-document`.
 //! `tests/testthat/test-roxygen-carry.R` reads the wrapper block back.
 
 use miniextendr_api::miniextendr;

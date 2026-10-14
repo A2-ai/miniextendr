@@ -370,7 +370,8 @@ pub fn test_main_thread_r_api() -> i32 {
 }
 
 /// Test that Rf_error from a main_thread function propagates as an R error.
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: it tests an R error raised on the main thread.
+#[miniextendr(noexport, no_worker)]
 pub fn test_main_thread_r_error() -> i32 {
     unsafe {
         miniextendr_api::sys::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr()) // mxl::allow(MXL300)
@@ -378,7 +379,8 @@ pub fn test_main_thread_r_error() -> i32 {
 }
 
 /// Test that RAII destructors run when Rf_error occurs in a main_thread function.
-#[miniextendr(noexport)]
+// Stays on R's main thread under `worker-default`: it tests an R error raised on the main thread.
+#[miniextendr(noexport, no_worker)]
 pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
     unsafe {

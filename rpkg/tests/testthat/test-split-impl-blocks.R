@@ -1,7 +1,8 @@
 # A type's methods split across two `#[miniextendr]` impl blocks: the class is
 # defined once and the methods of both blocks attach to it (#1776). Fixtures in
 # src/rust/split_impl_tests.rs; the first block of each type has the
-# constructor, the second adds methods, and both have doc comments.
+# constructor, the second adds methods, among them `from_half`, which returns
+# `Self` and stays a static method; both blocks have doc comments.
 
 test_that("an env class keeps the methods of both impl blocks", {
   obj <- SplitEnv$new(5L)
@@ -10,6 +11,8 @@ test_that("an env class keeps the methods of both impl blocks", {
   expect_identical(obj$value(), 7L)
   expect_identical(obj$doubled(), 14L)
   expect_identical(SplitEnv$origin(), 0L)
+  # `new` is the constructor, so the second block's `from_half` is static.
+  expect_identical(SplitEnv$from_half(3L)$value(), 6L)
 })
 
 test_that("an R6 class keeps the members of both impl blocks", {
@@ -21,6 +24,7 @@ test_that("an R6 class keeps the members of both impl blocks", {
   expect_identical(obj$.__enclos_env__$private$predecessor(), 6L)
   expect_true(is.function(obj$.__enclos_env__$private$finalize))
   expect_identical(SplitR6$origin(), 0L)
+  expect_identical(SplitR6$from_half(3L)$value(), 6L)
 })
 
 test_that("an R6 deep_clone from a second impl block runs on a deep clone", {
@@ -42,6 +46,7 @@ test_that("an S3 class keeps the methods of both impl blocks", {
   expect_identical(split3_value(obj), 5L)
   expect_identical(split3_doubled(obj), 10L)
   expect_identical(splits3_origin(), 0L)
+  expect_identical(split3_value(splits3_from_half(3L)), 6L)
 })
 
 test_that("an S4 class keeps the methods of both impl blocks", {
@@ -50,6 +55,7 @@ test_that("an S4 class keeps the methods of both impl blocks", {
   expect_identical(s4_split4_value(obj), 5L)
   expect_identical(s4_split4_doubled(obj), 10L)
   expect_identical(SplitS4_origin(), 0L)
+  expect_identical(s4_split4_value(SplitS4_from_half(3L)), 6L)
 })
 
 test_that("an S7 class keeps the methods of both impl blocks", {
@@ -59,6 +65,7 @@ test_that("an S7 class keeps the methods of both impl blocks", {
   expect_identical(split7_doubled(obj), 10L)
   expect_identical(SplitS7_split7_doubled(obj), 10L)
   expect_identical(SplitS7_origin(), 0L)
+  expect_identical(split7_value(SplitS7_from_half(3L)), 6L)
 })
 
 test_that("a vctrs class keeps the functions of both impl blocks", {

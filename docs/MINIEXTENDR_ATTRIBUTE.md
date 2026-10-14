@@ -670,7 +670,8 @@ overflow-checked conversion, nor the thread-checked FFI variants.
 Functions taking or returning `!Send` framework types automatically run on the
 main thread — the generated wrapper can only execute there. No attribute is
 needed. This covers `SEXP` (parameters and returns), the R-backed views
-(`AltrepSexp`, `RDVector`, `RDMatrix`, `RndVec`, `RndMat`, `ProtectedStrVec`),
+(`AltrepSexp`, `RDVector`, `RDMatrix`, `RndVec`, `RndMat`, `ProtectedStrVec`,
+and the borrowed `StrVec` / `RCow` parameters),
 and the GC-rooted owned handles (`BuiltDataFrame`, `DataFrameShape`) anywhere
 in the return type, including nested inside `Result`, `Option`, or containers.
 Arbitrary user `!Send` types can't be detected syntactically — mark those
@@ -1295,7 +1296,7 @@ impl Person {
 | Attribute | Effect |
 |-----------|--------|
 | `ignore` | Don't generate R wrapper for this method |
-| `constructor` | Mark as constructor (factory method) |
+| `constructor` | Mark as the constructor, spelled `<system>(constructor)` (`r6(constructor)`). Without a mark, a receiver-less `new` returning `Self` is the constructor, else the type's one receiver-less method returning `Self`. A constructor not named `new` is also a static method under its own name (see [Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)) |
 | `generic = "..."` | Override S3/S4/S7 generic name |
 | `receiver = "..."` | S3/S4 with `generic`: the receiver formal, for a generic whose first argument is not `x` (`summary(object, ...)`); see [Methods on an existing generic](CLASS_SYSTEMS.md#methods-on-an-existing-generic-s3-and-s4) |
 | `no_dots` | S3/S4 with `generic`: no `...` after the parameters (`show(object)`, `length(x)`); S7: see below |
@@ -1466,7 +1467,7 @@ impl<T: AsRef<str>> Display for T { /* ... */ }
 ### ALTREP via `#[miniextendr]` Is Removed
 
 `#[miniextendr]` no longer generates ALTREP classes. Applying the old ALTREP
-attributes (`class`, `base`) to a 1-field struct is a compile error with
+attributes (`class`, `base`) to a struct of any shape is a compile error with
 migration guidance. Use the per-family ALTREP derives instead:
 
 ```rust

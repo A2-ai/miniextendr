@@ -84,3 +84,31 @@ pub trait Resettable {
     /// Check if the object is in its default state.
     fn is_default(&self) -> bool;
 }
+
+/// A trait whose methods take the owner, so they reach the implementing type's
+/// `Sidecar` values.
+///
+/// `ExternalPtrRef` / `ExternalPtrMut` receivers make each vtable slot an
+/// `mx_owner_meth` and add the receiver shapes to the trait's tag. It is
+/// implemented by `LabelledValue` in producer.pkg and called by consumer.pkg
+/// through `TaggedView`, which passes the owner it roots.
+#[miniextendr]
+pub trait Tagged: miniextendr_api::TypedExternal {
+    /// The labels kept in the implementor's sidecar.
+    fn labels(self: miniextendr_api::ExternalPtrRef<'_, Self>) -> Vec<String>;
+
+    /// Append a label to the sidecar.
+    fn add_label(self: miniextendr_api::ExternalPtrMut<'_, Self>, label: String);
+}
+
+/// A trait whose method calls back into R while it holds the object.
+///
+/// Implemented by `SimpleCounter` in producer.pkg and called by consumer.pkg
+/// through `CallsBackView`. A callback that reaches the same object through a
+/// View meets the borrow the producer's shim holds (#1965).
+#[miniextendr]
+pub trait CallsBack {
+    /// Call the R function `f` with no arguments while holding the object
+    /// mutably, then add 1 to it and return the new value.
+    fn add_around(&mut self, f: miniextendr_api::SEXP) -> i32;
+}

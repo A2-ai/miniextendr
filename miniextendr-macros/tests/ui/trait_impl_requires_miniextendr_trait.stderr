@@ -1,0 +1,7 @@
+error: cannot find macro `Plain` in this scope
+  --> tests/ui/trait_impl_requires_miniextendr_trait.rs:14:6
+   |
+14 | impl Plain for Dummy {
+   |      ^^^^^
+   |
+   = note: `Plain` is in scope, but it is a trait, not a macro

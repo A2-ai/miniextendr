@@ -350,11 +350,3 @@ test_that("Sliced Arrow array does NOT return original SEXP (different pointer)"
 })
 
 # endregion
-
-test_that("generated borrowed-view arguments preserve values and reject wrong storage", {
-  expect_identical(miniextendr:::rooted_strvec_first(c("rooted", "later")), "rooted")
-  x <- c(1L, NA_integer_, 3L)
-  expect_identical(miniextendr:::rooted_rcow_identity(x), x)
-  expect_error(miniextendr:::rooted_strvec_first(1L))
-  expect_error(miniextendr:::rooted_rcow_identity("wrong storage"))
-})

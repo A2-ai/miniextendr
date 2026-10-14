@@ -1,0 +1,38 @@
+error[E0599]: no associated function or constant named `try_from_sexp` found for struct `StrVec<'a>` in the current scope
+ --> tests/ui/rooted_view_no_raw_conversion.rs:8:13
+  |
+8 |     StrVec::try_from_sexp(sexp).unwrap()
+  |             ^^^^^^^^^^^^^ associated function or constant not found in `StrVec<'_>`
+  |
+note: if you're trying to build a new `StrVec<'_>` consider using one of the following associated functions:
+      StrVec::<'a>::from_raw
+      StrVec::<'a>::try_from_root
+ --> $WORKSPACE/miniextendr-api/src/strvec.rs
+  |
+  |     pub const unsafe fn from_raw(sexp: SEXP) -> Self {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+  |     pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpError> {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `try_from` with a similar name
+  |
+8 -     StrVec::try_from_sexp(sexp).unwrap()
+8 +     StrVec::try_from(sexp).unwrap()
+  |
+
+error[E0599]: no variant, associated function, or constant named `try_from_sexp` found for enum `RCow<'_, _>` in the current scope
+  --> tests/ui/rooted_view_no_raw_conversion.rs:12:11
+   |
+12 |     RCow::try_from_sexp(sexp).unwrap()
+   |           ^^^^^^^^^^^^^ variant, associated function, or constant not found in `RCow<'_, _>`
+   |
+note: if you're trying to build a new `RCow<'_, _>`, consider using `RCow::<'a, T>::try_from_root` which returns `Result<RCow<'_, _>, SexpTypeError>`
+  --> $WORKSPACE/miniextendr-api/src/rcow.rs
+   |
+   |     pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpTypeError> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `try_from` with a similar name
+   |
+12 -     RCow::try_from_sexp(sexp).unwrap()
+12 +     RCow::try_from(sexp).unwrap()
+   |

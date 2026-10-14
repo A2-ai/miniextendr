@@ -72,7 +72,6 @@ pub unsafe extern "C-unwind" fn mx_wrap(ptr: *mut mx_erased) -> SEXP {
         if !init.is_null() {
             ((*init).init)(ptr, guard.get());
         }
-        crate::externalptr::borrow_check::init_borrow_state(guard.get());
         guard.get()
     }
 }

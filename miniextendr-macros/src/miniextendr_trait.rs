@@ -374,21 +374,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::quote! { where #(#all_where_predicates),* }
     };
 
-    // Generate shim functions
-    let shim_fns: Vec<_> = methods
-        .iter()
-        .map(|m| {
-            associated_method_shim(generate_method_shim(
-                trait_name,
-                m,
-                &extra_bounds,
-                &trait_param_idents,
-                &trait_type_params,
-                trait_where_clause,
-            ))
-        })
-        .collect();
-
     // Declaration-side builders select the same associated callbacks as impls.
     let vtable_inits: Vec<_> = methods
         .iter()
@@ -420,9 +405,19 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         }
     }
 
+    // Non-generic shims are hidden trait methods, so an impl reaches them
+    // through any path to the trait. A generic trait's impls generate their
+    // own concrete shims from their signatures.
     if !has_generics {
-        clean_trait.items.extend(shim_fns.iter().map(|tokens| {
-            syn::TraitItem::Fn(syn::parse2(tokens.clone()).expect("generated associated shim"))
+        clean_trait.items.extend(methods.iter().map(|m| {
+            syn::TraitItem::Fn(associated_method_shim(generate_method_shim(
+                trait_name,
+                m,
+                &extra_bounds,
+                &trait_param_idents,
+                &trait_type_params,
+                trait_where_clause,
+            )))
         }));
     }
 
@@ -481,7 +476,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ///
                 /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
                 /// - The object must stay live through construction; the view then roots it
-                /// - Calls must respect the concrete object's Rust borrowing rules
+                /// - A call that conflicts with one still running on the same object
+                ///   raises the `miniextendr_borrow_conflict` error
                 /// - Construction, use and drop must all run on R's main thread
                 #[inline]
                 pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::option::Option<Self> {
@@ -750,23 +746,14 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
             self.__mx_view.owner().expect("this trait method requires an R-owned receiver"),
         }
     });
-    let borrow = syn::Ident::new("__mx_receiver_borrow", proc_macro2::Span::mixed_site());
-    let mutable = method.is_mut || method.owner_receiver.is_some();
-    let borrow_receiver = quote::quote! {
-        let #borrow = self.__mx_view.owner().map(|owner| {
-            ::miniextendr_api::externalptr::ExternalBorrow::acquire(owner, #mutable)
-        });
-    };
     let vtable_call = if argc > 0 {
         quote::quote! {
             let args: [::miniextendr_api::SEXP; #argc as usize] =
                 [#(__mx_roots.protect_raw(#arg_conversions)),*];
-            #borrow_receiver
             ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument #argc, args.as_ptr())
         }
     } else {
         quote::quote! {
-            #borrow_receiver
             ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument 0, ::std::ptr::null())
         }
     };
@@ -853,6 +840,8 @@ fn generate_method_shim(
     let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
     let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
     let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
+    let cell = syn::Ident::new("__mx_cell", proc_macro2::Span::mixed_site());
+    let guard = syn::Ident::new("__mx_guard", proc_macro2::Span::mixed_site());
     let owner = syn::Ident::new("owner", proc_macro2::Span::mixed_site());
     let owner_parameter = method.owner_receiver.map(|_| {
         quote::quote! {
@@ -919,37 +908,37 @@ fn generate_method_shim(
     let alias_checks = crate::trait_self_ref::alias_checks(
         &impl_t,
         &handles,
-        Some((quote::quote!(#data.cast_const()), method.is_mut)),
+        Some((crate::trait_self_ref::cell_address(&cell), method.is_mut)),
     );
     let self_borrows = self_refs
         .iter()
         .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
 
-    // Generate method call (uses __ImplT)
+    // Generate method call (uses __ImplT). The receiver borrows the value's
+    // RefCell for the rest of the shim, through the result conversion.
     let param_names = &method.param_names;
-    let method_call = if let Some(kind) = method.owner_receiver {
+    let (receiver, method_call) = if let Some(kind) = method.owner_receiver {
         let handle = kind.type_path();
         let trait_args =
             (!trait_param_idents.is_empty()).then(|| quote::quote!(<#(#trait_param_idents),*>));
-        quote::quote! {
-            let #self_ref = unsafe {
-                #handle::<#impl_t>::from_raw_parts(
-                    &#owner,
-                    #data.cast::<#impl_t>(),
-                )
-            };
-            <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
-        }
-    } else if method.is_mut {
-        quote::quote! {
-            let #self_ref = unsafe { &mut *#data.cast::<#impl_t>() };
-            #self_ref.#method_name(#(#param_names),*)
-        }
+        (
+            quote::quote! {
+                let #self_ref = unsafe {
+                    #handle::<#impl_t>::from_raw_parts(
+                        &#owner,
+                        #cell,
+                    )
+                };
+            },
+            quote::quote! {
+                <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
+            },
+        )
     } else {
-        quote::quote! {
-            let #self_ref = unsafe { &*#data.cast::<#impl_t>().cast_const() };
-            #self_ref.#method_name(#(#param_names),*)
-        }
+        (
+            crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut),
+            quote::quote! { #self_ref.#method_name(#(#param_names),*) },
+        )
     };
 
     // Generate result conversion
@@ -1010,6 +999,7 @@ fn generate_method_shim(
             // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                 ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
+                let #cell = unsafe { &*#data.cast::<::core::cell::RefCell<#impl_t>>() };
                 #native_borrow_checks
                 // Extract arguments
                 #(#arg_extractions)*
@@ -1017,7 +1007,8 @@ fn generate_method_shim(
                 #(#self_borrows)*
 
                 // Call method
-                let result = { #method_call };
+                #receiver
+                let result = #method_call;
 
                 // Convert result
                 #result_conversion
@@ -1029,8 +1020,7 @@ fn generate_method_shim(
 /// Move the declaration shim into the trait so an impl can name it through
 /// any path to that trait. `Self: Sized` keeps these static ABI callbacks out
 /// of Rust trait objects. Types in the body still resolve at the declaration.
-fn associated_method_shim(tokens: TokenStream) -> TokenStream {
-    use quote::ToTokens;
+fn associated_method_shim(tokens: TokenStream) -> syn::TraitItemFn {
     use syn::visit_mut::VisitMut;
 
     struct ImplTypeToSelf;
@@ -1058,7 +1048,7 @@ fn associated_method_shim(tokens: TokenStream) -> TokenStream {
         .predicates
         .push(syn::parse_quote!(Self: ::core::marker::Sized + #bounds));
     ImplTypeToSelf.visit_trait_item_fn_mut(&mut shim);
-    shim.into_token_stream()
+    shim
 }
 
 /// Information extracted from a trait method for code generation.

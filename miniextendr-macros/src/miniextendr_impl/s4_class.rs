@@ -66,8 +66,10 @@ pub(crate) fn s4_generic_guard(generic: &str, explicit: bool, receiver: &str) ->
 /// Produces the following R code:
 /// - Class definition: `methods::setClass("<class>", slots = c(ptr = "externalptr"))`
 ///   with a single `ptr` slot holding the `ExternalPtr` to the Rust struct
-/// - Constructor function: `ClassName(...)` that calls the Rust `new` constructor
-///   and wraps the result with `methods::new("<class>", ptr = .val)`
+/// - Constructor function: `ClassName(...)` that calls the Rust constructor
+///   and wraps the result with `methods::new("<class>", ptr = .val)`. A class
+///   without a constructor has no `ClassName()`: its factories call
+///   `methods::new()`, and a package may define its own (#2069).
 /// - S4 generics: `methods::setGeneric(...)` for each instance method, guarded by
 ///   [`s4_generic_guard`]
 /// - S4 methods: `methods::setMethod("<generic>", "<class>", function(x, ...) ...)`
@@ -139,6 +141,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(class_name.clone());
@@ -223,6 +226,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let qualified_name = format!("{}-{}", class_name, method_name);
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags)
+                    .with_source_method(&method.ident)
                     .with_suppress_params()
                     .with_r_name(qualified_name);
             let mut doc_lines = method_doc.build();
@@ -278,8 +282,15 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
             let mx_doc = ctx.choice_param_docs();
+            let doc_tags = parsed_impl.static_doc_tags(
+                ctx.method,
+                &format!("{fn_name}()"),
+                &format!("{class_name}()"),
+                true,
+            );
             let method_doc =
-                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(fn_name.clone());

@@ -517,14 +517,19 @@ pub fn sum(x: &[f64]) -> f64 {
 }
 ```
 
-Main-thread wrappers and trait shims convert explicit shared native slices
-through `TryFromRoot`, tying the borrow to the rooted call argument. Use the
+Main-thread wrappers and trait shims convert explicit shared native slices,
+and `Vec`s of them, through `TryFromRoot`, tying the borrow to the rooted call
+argument. Use the
 slice during that call; copy to `Vec` when the data must outlive it.
 
-Raw `TryFromSexp` reference conversions and worker native references still
-have unconstrained lifetimes (#1427). Their callers must keep the source
-rooted and enforce borrowing rules themselves. A root supplies liveness;
-it does not grant exclusive access for a mutable slice.
+Worker wrappers check the slice through `TryFromRoot` on R's main thread,
+copy it into a `Vec`, and borrow that copy inside the worker, so the worker
+never reads R memory.
+
+Raw `TryFromSexp` reference conversions and mutable slices still have
+unconstrained lifetimes (#1427). Their callers must keep the source rooted and
+enforce borrowing rules themselves. A root supplies liveness; it does not
+grant exclusive access for a mutable slice.
 
 ---
 
@@ -541,14 +546,15 @@ pub fn process_string(s: &str) -> String {
 }
 ```
 
-Main-thread wrappers and trait shims bind explicit `&str` and `Option<&str>`
-inputs to the call's root through `TryFromRoot`. Worker wrappers convert
+Main-thread wrappers and trait shims bind explicit `&str`, `Option<&str>`,
+`Vec<&str>` and `Vec<Option<&str>>` inputs to the call's root through
+`TryFromRoot`. Worker wrappers convert
 `&str`, `Option<&str>`, `Vec<&str>` and `Vec<Option<&str>>` to the corresponding
 owned `String` forms on R's main thread, move that storage into the worker,
 and create the borrows there. The worker's strings do not point into R memory.
 
-Raw `TryFromSexp` character references, including main-thread `Vec<&str>`
-conversions, still expose an unconstrained lifetime (#1427). R can collect a
+Raw `TryFromSexp` character references still expose an unconstrained
+lifetime (#1427). R can collect a
 `CHARSXP` once it becomes unreachable; copy to `String` before storing a raw
 borrow beyond its source's lifetime. `NA_character_` becomes `""` on the plain
 borrowed/owned string paths. Use optional strings when NA must remain
@@ -921,9 +927,55 @@ outside that conversion; the list check does not supply a lifetime. Accept
 
 ---
 
+## Borrowed vector roots
+
+`StrVec<'a>`, `RCow<'a, T>`, `Cow<'a, [T]>`, `Cow<'a, str>` and the shared
+references `&'a [T]` and `&'a str` borrow R storage, so their lifetime has to
+come from whatever keeps that storage reachable. A `SEXP` is `Copy` and carries
+no lifetime, so a `TryFromSexp` impl lets safe code pick any lifetime,
+`'static` included (#1427). These types convert through `TryFromRoot<'a>`
+instead, which takes a root:
+
+- `T::try_from_root(root)` with a `Root<'a>` from a `ProtectScope`;
+- `ProtectedStrVec::as_strvec()`, which borrows an owned character vector.
+
+`StrVec` and `RCow` have no `TryFromSexp` impl, and raw `TryFromSexp` for the
+`Cow` types returns owned data. The shared references keep their raw impls:
+`TryFromRoot` for a reference runs that conversion, with its checks, errors
+and alias metadata, and shortens the result to the root.
+
+A `#[miniextendr]` parameter of one of these types (bare or path-qualified;
+`Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>` too) is bound to the C
+wrapper's argument slot through a `ProtectScope` that lasts until the result
+is converted, so it and every string or slice read from it cannot outlive the
+call. Functions with a view or `Cow` parameter run on R's main thread. Shared
+references (`&[T]`, `&str`, `&i32`, `&f64`, `&u8`, `&RLogical`, `&Rcomplex`),
+their `Option` forms and `Vec`s of them, nested `Vec`s included, are bound the
+same way when the function runs on the main thread. The trait-ABI shims bind
+all of them through a local scope, after the arity check. When the argument is
+an ALTREP list or character vector, the scope also keeps each element the
+conversion borrows ([Borrowing transient ALTREP
+elements](GC_PROTECT.md#borrowing-transient-altrep-elements)). A parameter that names `'static`
+anywhere in its type is a compile error naming the fix: write `'_` or elide
+the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to
+keep the data.
+
+The macro recognizes these types by name. An alias or a newtype of a view has
+to take a `SEXP` and call `try_from_root` in the body; one of a reference
+converts through `TryFromSexp`. On the worker thread, shared references copy
+before dispatch: the character forms into `String` storage, the native
+references and slices into owned values or a `Vec`; the worker borrows the
+copy. Mutable references (`&mut [T]`, `Option<&mut [T]>`) and reference
+containers other than `Vec` still convert through `TryFromSexp` with an
+unconstrained lifetime (#1427).
+`Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
+one, have no rooted conversion yet (#2038).
+
+---
+
 ## Known Limitations
 
-- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. The root-bound migration is tracked in #1427.
+- **Raw reference lifetimes** remain unconstrained by `TryFromSexp`; callers must keep the source rooted and enforce borrowing rules. Generated parameters bind views, `Cow` and main-thread shared references to their root ([Borrowed vector roots](#borrowed-vector-roots)); the rest of the migration is tracked in #1427.
 
 See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds.
 
@@ -937,35 +989,3 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations and workarounds
 - [FEATURES.md](FEATURES.md) -- Feature-gated types (ndarray, nalgebra, uuid, time, etc.)
 - [GC_PROTECT.md](GC_PROTECT.md) -- RAII-based GC protection for SEXP lifetimes
 - [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) -- Type conversion error messages
-
-### Borrowed vector roots
-
-`StrVec<'a>::try_from_root(Root<'a>)` and `RCow<'a, T>::try_from_root(Root<'a>)`
-bind the returned view to the input root. Obtain one from a `ProtectScope`, or
-use `ProtectedStrVec::as_strvec()` to borrow an owned character vector.
-These views do not implement raw `TryFromSexp`.
-
-The macro recognizes `StrVec<'_>` and `RCow<'_, T>` parameters (including
-qualified names), binds a root to the `.Call` slot, and converts the result
-before that slot goes out of scope. These inputs stay on R's thread. Trait
-shims bind the root to a local argv slot after arity/alias checks. Use the
-framework type name at the boundary; an alias or a newtype needs an explicit
-root conversion in the body. Trait return conversions need owned values such
-as `ProtectedStrVec` or `Vec<T>`.
-
-Main-thread wrappers and trait shims also use `TryFromRoot` for explicit
-shared native slices, scalar references (`&i32`, `&f64`, `&u8`, `&RLogical`,
-`&Rcomplex`), `&str`, and their `Option` forms. Their borrows are bounded by
-the local argument slot. Native scalar references still require length one;
-optional native references accept NULL, and optional strings preserve NA as
-`None`. Worker `&str` arguments keep their owned `String` conversion; this
-change does not move worker functions onto R's main thread.
-
-`Cow` inputs use `TryFromRoot` when spelled explicitly at the wrapper
-boundary; raw `TryFromSexp` conversions of `Cow` return owned data. Mutable
-references, worker native references, and containers of references still use
-the raw trait and remain part of the lifetime-boundary migration (#1427).
-A root proves liveness, not exclusive access, so `TryFromRoot` does not
-implement mutable references. A reference hidden behind an alias or a custom
-type also needs an explicit root conversion in the body to gain this lifetime
-bound.

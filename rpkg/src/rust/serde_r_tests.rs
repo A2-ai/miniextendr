@@ -283,8 +283,11 @@ pub struct WithEnums {
     pub optional_status: Option<Status>,
 }
 
+// Several factories return `Self`: `new_circle` is marked as the constructor
+// (`WithEnums$new()`), and keeps its own name as a static method.
 #[miniextendr(env)]
 impl WithEnums {
+    #[miniextendr(env(constructor))]
     pub fn new_circle(radius: f64) -> Self {
         WithEnums {
             status: Status::Active,
@@ -324,8 +327,11 @@ pub struct WithOptionals {
     pub optional_bool: Option<bool>,
 }
 
+// Several factories return `Self`: `all_present` is marked as the constructor
+// (`WithOptionals$new()`), and keeps its own name as a static method.
 #[miniextendr(env)]
 impl WithOptionals {
+    #[miniextendr(env(constructor))]
     pub fn all_present() -> Self {
         WithOptionals {
             required_int: 42,

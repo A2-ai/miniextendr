@@ -1044,16 +1044,15 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: the live struct behind the pointer. `sidecar_r_struct` panics
-    // (caught by the surrounding with_r_unwind_protect and raised as an R
-    // error) on a non-pointer, a wrong type, or a pointer without an address
-    // (a restored object: the classed errors) instead of silently returning
-    // R_NilValue.
-    let borrow = syn::Ident::new("__mx_field_borrow", proc_macro2::Span::mixed_site());
+    // Helper: the live struct behind the pointer, borrowed shared for the
+    // getter. `sidecar_r_struct` panics (caught by the surrounding
+    // with_r_unwind_protect and raised as an R error) on a non-pointer, a
+    // wrong type, or a pointer without an address (a restored object: the
+    // classed errors) instead of silently returning R_NilValue, and while a
+    // running method holds the struct mutably (`miniextendr_borrow_conflict`).
     let extract_ref = quote::quote! {
-        let #borrow = ::miniextendr_api::externalptr::sidecar_r_borrow::<#struct_name>(x, false);
-        let data: &#struct_name =
-            ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(#borrow.owner(), x);
+        let __mx_data = ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
+        let data: &#struct_name = &__mx_data;
     };
 
     match &slot.kind {
@@ -1166,14 +1165,14 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: the live struct behind the pointer, mutably. Failure modes
-    // panic like the getter's (`sidecar_r_struct_mut`) instead of silently
-    // no-op'ing.
-    let borrow = syn::Ident::new("__mx_field_borrow", proc_macro2::Span::mixed_site());
+    // Helper: the live struct behind the pointer, borrowed exclusively for
+    // the setter. Failure modes panic like the getter's
+    // (`sidecar_r_struct_mut`) instead of silently no-op'ing, and a running
+    // method holding the struct makes it raise `miniextendr_borrow_conflict`.
     let extract_mut = quote::quote! {
-        let #borrow = ::miniextendr_api::externalptr::sidecar_r_borrow::<#struct_name>(x, true);
-        let data: &mut #struct_name =
-            ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(#borrow.owner(), x);
+        let mut __mx_data =
+            ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(x);
+        let data: &mut #struct_name = &mut __mx_data;
     };
 
     // Conversion-failure condition, the argument error of #1594 on the
@@ -2778,7 +2777,7 @@ mod tests {
         let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
         let getter = super::generate_getter_body(&name, &info.slots[0]).to_string();
         assert!(
-            getter.contains("sidecar_r_struct :: < Engine > (__mx_field_borrow . owner () , x)"),
+            getter.contains("sidecar_r_struct :: < Engine > (x)"),
             "{getter}"
         );
         assert!(

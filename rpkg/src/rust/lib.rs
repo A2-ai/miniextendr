@@ -28,6 +28,7 @@
 //! - [`s4_tests`]: S4 class system tests
 //! - [`s7_tests`]: S7 class system tests
 //! - [`class_system_matrix`]: Cross-class-system compatibility matrix
+//! - [`constructor_tests`]: inferred constructors, classes without one, the decision across impl blocks
 //! - [`receiver_tests`]: Receiver-style impl block tests
 //! - [`env_method_lookup_tests`]: `obj$name` on an env class whose traits share member names (#1677)
 //!
@@ -185,6 +186,7 @@ mod condition_tests;
 #[cfg(feature = "connections")]
 mod connection_tests;
 mod console_output_tests;
+mod constructor_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
@@ -320,6 +322,7 @@ mod refcount_protect_tests;
 mod regex_adapter_tests;
 mod rmath_tests;
 mod rng_tests;
+mod rooted_view_tests;
 mod roxygen_carry_tests;
 mod roxygen_no_page_links_tests;
 mod roxygen_prose_links_tests;

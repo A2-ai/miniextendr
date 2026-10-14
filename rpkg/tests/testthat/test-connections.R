@@ -215,6 +215,16 @@ test_that("seek() and truncate() refuse a connection that supports neither", {
   )
 })
 
+test_that("close() flushes a buffered writer before dropping it (#2043)", {
+  expect_identical(miniextendr:::buffered_connection_close_bytes(), charToRaw("buffered"))
+})
+
+test_that("a failed final flush warns and returns a negative close status (#2043)", {
+  con <- failing_io_connection()
+  expect_warning(status <- close(con), "Problem closing connection")
+  expect_identical(status, -1L)
+})
+
 # =============================================================================
 # Standard stream connections — issue #175
 # =============================================================================
@@ -386,6 +396,12 @@ test_that("a connection passed in as RNullConnection stays open after the call (
   expect_equal(readLines(tmp), c("from-rust", "after"))
 })
 
+test_that("a refused write through a borrowed RNullConnection is an error", {
+  con <- failing_io_connection()
+  on.exit(suppressWarnings(close(con)))
+  expect_error(rust_null_conn_write(con, "x"), "write refused", fixed = TRUE)
+})
+
 test_that("close() on a borrowed RNullConnection leaves the R connection open (#1917)", {
   tmp <- tempfile()
   con <- file(tmp, "w")
@@ -458,13 +474,3 @@ test_that("close() on a borrowed RTxtProgressBar leaves the bar open (#1917)", {
   close(pb)
 })
 
-
-test_that("writer close flushes its buffered output explicitly", {
-  expect_identical(miniextendr:::buffered_connection_close_bytes(), charToRaw("buffered"))
-})
-
-test_that("a failed final flush warns and returns a negative close status", {
-  con <- failing_io_connection()
-  expect_warning(status <- close(con), "Problem closing connection")
-  expect_identical(status, -1L)
-})

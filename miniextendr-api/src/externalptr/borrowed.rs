@@ -1,7 +1,8 @@
 //! Borrowed receiver handles over ordinary or erased external-pointer storage.
 
-use super::{ExternalPtr, TypedExternal};
+use super::{ExternalPtr, TypedExternal, borrow_value, borrow_value_mut};
 use crate::SEXP;
+use core::cell::{Ref, RefCell, RefMut};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
@@ -30,15 +31,19 @@ pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut
 /// Use `ExternalPtrRef::from(&ptr)` when calling a handle-receiver trait from
 /// Rust. The generated trait ABI constructs the same borrow from its receiver.
 ///
+/// The handle holds a shared borrow of the value's `RefCell` for its whole
+/// lifetime. Making one while a running call holds the value mutably raises
+/// the `miniextendr_borrow_conflict` R error.
+///
 /// A borrowed handle cannot outlive its owner:
-/// ```compile_fail
+/// ```compile_fail,E0597
 /// use miniextendr_api::{ExternalPtr, ExternalPtrRef, TypedExternal};
 /// fn escape<T: TypedExternal>(owner: ExternalPtr<T>) -> ExternalPtrRef<'static, T> {
 ///     ExternalPtrRef::from(&owner)
 /// }
 /// ```
 pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
-    value: &'a T,
+    value: Ref<'a, T>,
     owner: &'a SEXP,
     _main_thread: PhantomData<*mut ()>,
 }
@@ -49,8 +54,12 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// from Rust. Dereferencing gives mutable access to the Rust fields; generated
 /// sidecar accessors use the accompanying owner. There is no consuming API.
 ///
+/// The handle holds an exclusive borrow of the value's `RefCell` for its whole
+/// lifetime. Making one while a running call holds the value raises the
+/// `miniextendr_borrow_conflict` R error.
+///
 /// A mutable borrow excludes a second borrow of the same handle:
-/// ```compile_fail
+/// ```compile_fail,E0502
 /// use miniextendr_api::{ExternalPtr, ExternalPtrMut, ExternalPtrRef, TypedExternal};
 /// fn overlap<T: TypedExternal>(owner: &mut ExternalPtr<T>) {
 ///     let mut first = ExternalPtrMut::from(&mut *owner);
@@ -59,7 +68,7 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// }
 /// ```
 pub struct ExternalPtrMut<'a, T: TypedExternal + ?Sized> {
-    value: &'a mut T,
+    value: RefMut<'a, T>,
     owner: &'a SEXP,
     _main_thread: PhantomData<*mut ()>,
 }
@@ -68,14 +77,14 @@ impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
     /// Borrow a receiver after its type and argument aliases have been checked.
     ///
     /// # Safety
-    /// R's main thread; `data` must point to a live `T` owned by `owner`, whose
-    /// initialized sidecar slots use `T`'s layout. Its SEXP must stay rooted for
-    /// `'a`; the slot reference alone does not root it. The value must remain valid
-    /// and shared-borrowable for `'a`, including during reentrant R calls.
+    /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. Its SEXP must
+    /// stay rooted for `'a`; the slot reference alone does not root it. The cell
+    /// must remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: &'a SEXP, data: *const T) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
         Self {
-            value: unsafe { &*data },
+            value: borrow_value(unsafe { &*cell }),
             owner,
             _main_thread: PhantomData,
         }
@@ -86,15 +95,14 @@ impl<'a, T: TypedExternal> ExternalPtrMut<'a, T> {
     /// Borrow a receiver after its type and argument aliases have been checked.
     ///
     /// # Safety
-    /// R's main thread; `data` must have mutable provenance and point to a live
-    /// `T` owned by `owner`, whose initialized sidecar slots use `T`'s layout.
-    /// Its SEXP must stay rooted for `'a`; the slot reference alone does not
-    /// root it. The value must remain exclusively borrowed for `'a`, including during
-    /// reentrant R calls. A GC root alone does not establish exclusivity.
+    /// R's main thread; `cell` must point to the live `RefCell<T>` owned by
+    /// `owner`, whose initialized sidecar slots use `T`'s layout. Its SEXP must
+    /// stay rooted for `'a`; the slot reference alone does not root it. The cell
+    /// must remain valid for `'a`.
     #[doc(hidden)]
-    pub unsafe fn from_raw_parts(owner: &'a SEXP, data: *mut T) -> Self {
+    pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
         Self {
-            value: unsafe { &mut *data },
+            value: borrow_value_mut(unsafe { &*cell }),
             owner,
             _main_thread: PhantomData,
         }
@@ -109,7 +117,7 @@ impl<'a, T: TypedExternal> From<&'a ExternalPtr<T>> for ExternalPtrRef<'a, T> {
         );
         // The original handle retains the owner throughout this shared borrow.
         Self {
-            value: ptr,
+            value: borrow_value(ptr.cell()),
             owner: &ptr.sexp,
             _main_thread: PhantomData,
         }
@@ -122,10 +130,9 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
             crate::worker::is_r_main_thread(),
             "ExternalPtrMut requires R's main thread"
         );
-        // Borrow disjoint handle fields: retain the owner and use the cached
-        // pointer's original mutable provenance for the exclusive data borrow.
+        // The original handle retains the owner throughout this borrow.
         Self {
-            value: unsafe { ptr.cached_ptr.as_mut() },
+            value: borrow_value_mut(ptr.cell()),
             owner: &ptr.sexp,
             _main_thread: PhantomData,
         }
@@ -135,18 +142,18 @@ impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrRef<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.value
+        &self.value
     }
 }
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrMut<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.value
+        &self.value
     }
 }
 impl<T: TypedExternal + ?Sized> DerefMut for ExternalPtrMut<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.value
+        &mut self.value
     }
 }
 

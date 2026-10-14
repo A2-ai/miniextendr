@@ -1,5 +1,5 @@
 error: match_arg/choices/no_default/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `mod`
-  --> tests/ui/trait_impl_unknown_param_choices.rs:15:19
+  --> tests/ui/trait_impl_unknown_param_choices.rs:16:19
    |
-15 |     #[miniextendr(choices(mod = "fast, slow"))]
+16 |     #[miniextendr(choices(mod = "fast, slow"))]
    |                   ^^^^^^^

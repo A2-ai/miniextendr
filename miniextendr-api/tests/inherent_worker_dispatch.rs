@@ -14,6 +14,7 @@ pub struct StaticDispatch {
 
 #[miniextendr(env, noexport)]
 impl StaticDispatch {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             constructed_on_main: is_r_main_thread(),
@@ -58,6 +59,7 @@ pub struct MainOnly(std::rc::Rc<i32>);
 #[miniextendr(env, noexport)]
 impl MainOnly {
     #[miniextendr(env(no_worker))]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         assert!(is_r_main_thread());
         Self(std::rc::Rc::new(23))

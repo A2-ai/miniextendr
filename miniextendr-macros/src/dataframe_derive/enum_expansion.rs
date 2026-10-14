@@ -13,8 +13,8 @@ use super::{
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
     classify_field_type, companion_debug_clone, companion_lifetime_marker, expanded_elem_idents,
     field_is_borrowed_ref, fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty,
-    is_reader_scalar_ty, list_column_fn, owned_elems_iter, parallel_columns_impl,
-    parse_field_attrs, width_elems,
+    is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn, option_payload, owned_elems_iter,
+    parallel_columns_impl, parse_field_attrs, raw_na_column_error, width_elems,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -144,6 +144,11 @@ pub(super) fn derive_enum_dataframe(
                             }
                         }
                     } else {
+                        if let Some(error) =
+                            raw_variant_column_error(&f.ty, fa.width.is_some() || fa.expand)
+                        {
+                            return Err(error);
+                        }
                         match classify_field_type(&f.ty)? {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
                                 resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
@@ -395,6 +400,11 @@ pub(super) fn derive_enum_dataframe(
                             }
                         }
                     } else {
+                        if let Some(error) =
+                            raw_variant_column_error(&f.ty, fa.width.is_some() || fa.expand)
+                        {
+                            return Err(error);
+                        }
                         match classify_field_type(&f.ty)? {
                             FieldTypeKind::FixedArray(elem_ty, len) => {
                                 resolved.push(EnumResolvedField::ExpandedFixed(Box::new(
@@ -2097,6 +2107,35 @@ fn option_scalar_in_variant_error(ty: &syn::Type) -> syn::Error {
          Use the bare scalar (`f64`, `String`, …) and express absence by omitting the \
          field from the variant, or `#[dataframe(as_list)]` for an opaque list-column.",
     )
+}
+
+/// Reject `u8` in every variant-field shape that reaches a column: a scalar or
+/// `Option<u8>`, a fixed array, or a `width` / `expand` (`padded`) slice. Variant columns
+/// are NA in rows of the other variants, and R raw vectors have no NA. A plain
+/// `Vec<u8>` stays an opaque list-column and is accepted.
+fn raw_variant_column_error(ty: &syn::Type, padded: bool) -> Option<syn::Error> {
+    let raw = if option_payload(ty).is_some_and(is_raw_scalar_ty) {
+        ty
+    } else {
+        match classify_field_type(ty).ok()? {
+            FieldTypeKind::Scalar if is_raw_scalar_ty(ty) => ty,
+            FieldTypeKind::FixedArray(elem, _) if is_raw_scalar_ty(elem) => elem,
+            FieldTypeKind::VariableVec(elem)
+            | FieldTypeKind::BoxedSlice(elem)
+            | FieldTypeKind::BorrowedSlice(elem)
+                if padded && is_raw_scalar_ty(elem) =>
+            {
+                elem
+            }
+            _ => return None,
+        }
+    };
+    Some(raw_na_column_error(
+        raw,
+        "enum variant columns are NA in rows of the other variants",
+        "Use `u16` or `i32` for an integer column; a plain `Vec<u8>` field stays a \
+         list-column of raw vectors.",
+    ))
 }
 
 /// Generate the split representation for an enum `DataFrameRow`: the hidden

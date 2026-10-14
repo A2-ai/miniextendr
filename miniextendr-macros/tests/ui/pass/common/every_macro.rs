@@ -15,7 +15,8 @@ use miniextendr_api::either_impl::Either;
 use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 use miniextendr_api::{
     Call, CallerCall, Checked, DataFrame, ExternalPtr, IntoR, LazyDots, List, MatchArg, Missing,
-    NArgs, Quoted, RCondition, Rcomplex, SEXP, TryFromSexp, Unchecked, miniextendr, typed_list,
+    NArgs, Quoted, RCondition, RCow, Rcomplex, SEXP, StrVec, TryFromSexp, Unchecked, miniextendr,
+    typed_list,
 };
 
 // region: standalone functions
@@ -41,6 +42,24 @@ pub fn shapes(
 ) -> ::std::vec::Vec<f64> {
     let _ = (text, owned, list, maybe, missing.is_missing());
     values.to_vec()
+}
+
+#[miniextendr]
+pub fn rooted_views<'a>(strings: StrVec<'_>, values: RCow<'a, i32>) -> RCow<'a, i32> {
+    let _ = strings.len();
+    values
+}
+
+#[miniextendr]
+pub fn rooted_references(
+    values: &[i32],
+    scale: &f64,
+    label: ::core::option::Option<&str>,
+    text: ::std::borrow::Cow<'_, str>,
+    words: ::std::vec::Vec<::core::option::Option<::std::borrow::Cow<'_, str>>>,
+) -> i32 {
+    let _ = (values, scale, label, text, words);
+    0
 }
 
 #[miniextendr(strict, invisible)]
@@ -262,6 +281,15 @@ impl Counter {
         self.value += by;
         ::core::option::Option::Some(self)
     }
+    pub fn references(
+        &self,
+        values: &[i32],
+        scale: &f64,
+        words: ::std::vec::Vec<::core::option::Option<::std::borrow::Cow<'_, str>>>,
+    ) -> i32 {
+        let _ = (values, scale, words);
+        self.value
+    }
     pub fn finish(self) -> i32 {
         self.value
     }
@@ -283,6 +311,13 @@ pub trait ReadValue {
     fn bump(&mut self, by: i32);
     fn merge(&mut self, other: &Self) -> i32;
     fn made() -> i32;
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32;
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32;
 }
 
 #[miniextendr(env)]
@@ -298,6 +333,19 @@ impl ReadValue for Counter {
         self.value + other.value
     }
     fn made() -> i32 {
+        0
+    }
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
+        let _ = strings.len();
+        values[0]
+    }
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32 {
+        let _ = (values, label, text);
         0
     }
 }
@@ -378,6 +426,19 @@ impl ReadValue for Engine {
     fn made() -> i32 {
         1
     }
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
+        let _ = strings.len();
+        values[0]
+    }
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32 {
+        let _ = (values, label, text);
+        0
+    }
 }
 
 #[derive(ExternalPtr)]
@@ -423,6 +484,19 @@ impl ReadValue for Gauge {
     fn made() -> i32 {
         2
     }
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
+        let _ = strings.len();
+        values[0]
+    }
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32 {
+        let _ = (values, label, text);
+        0
+    }
 }
 
 #[derive(ExternalPtr)]
@@ -458,6 +532,19 @@ impl ReadValue for Shape4 {
     }
     fn made() -> i32 {
         4
+    }
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
+        let _ = strings.len();
+        values[0]
+    }
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32 {
+        let _ = (values, label, text);
+        0
     }
 }
 
@@ -513,6 +600,19 @@ impl ReadValue for Range7 {
     }
     fn made() -> i32 {
         7
+    }
+    fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
+        let _ = strings.len();
+        values[0]
+    }
+    fn read_refs(
+        &self,
+        values: &[i32],
+        label: ::core::option::Option<&str>,
+        text: ::std::borrow::Cow<'_, str>,
+    ) -> i32 {
+        let _ = (values, label, text);
+        0
     }
 }
 

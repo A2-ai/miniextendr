@@ -10,6 +10,10 @@
 
 use super::{ParsedImpl, VctrsKind};
 
+/// The roxygen imports of a vctrs class's roxygen block.
+const VCTRS_IMPORTS: &str =
+    "@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr";
+
 /// Generates the R wrapper of a vctrs-compatible S3 class, in the parts the
 /// wrapper writer merges per type ([`super::ClassWrapper`], #1776).
 ///
@@ -89,7 +93,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
         let class_docs = ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
             .with_ctor_params(&ctx.params, &ctor_choice_docs)
-            .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
+            .with_imports(VCTRS_IMPORTS)
             .with_export_control(parsed_impl.internal, parsed_impl.noexport);
         lines.extend(class_docs.build());
         w.class_docs = class_docs.docs();
@@ -143,6 +147,14 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
         lines.push("}".to_string());
         lines.push(String::new());
+    } else {
+        super::s3_class::no_constructor_head(
+            parsed_impl,
+            &mut w,
+            &mut lines,
+            "vctrs S3",
+            Some(VCTRS_IMPORTS),
+        );
     }
 
     // vec_ptype_abbr for compact printing (if abbr is specified)
@@ -298,6 +310,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         let mx_doc = ctx.choice_param_docs();
         let method_doc =
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                .with_source_method(&ctx.method.ident)
                 .with_r_params(&ctx.params)
                 .with_choice_param_docs(&mx_doc)
                 .with_r_name(qualified_name)
@@ -353,6 +366,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let proto = ctx.method.method_attrs.vctrs_protocol.as_ref().unwrap();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(r_name.clone())
@@ -363,6 +377,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         } else {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(r_name.clone())

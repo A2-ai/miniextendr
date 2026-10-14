@@ -9,10 +9,13 @@
 \alias{R6TraitCounter$Counter$default_initial}
 \alias{R6TraitCounter$Counter$MAX_VALUE}
 \title{R6TraitCounter R6 Class}
+\arguments{
+\item{initial}{Starting value.}
+}
 \description{
 R6TraitCounter inherent methods (constructor and getters).
 
-Create a new R6 trait counter.
+\code{R6TraitCounter$new_r6trait()} is another name for the constructor \code{R6TraitCounter$new()}.
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -25,15 +28,16 @@ Create a new R6 trait counter.
 \if{html}{\out{<a id="method-R6TraitCounter-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-R6TraitCounter-initialize}{}}}
 \subsection{\code{R6TraitCounter$new()}}{
-  Create a new \code{R6TraitCounter}.
+  Create a new R6 trait counter.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{R6TraitCounter$new(.ptr = NULL)}
+    \preformatted{R6TraitCounter$new(initial, .ptr = NULL)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
+      \item{\code{initial}}{Starting value.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}

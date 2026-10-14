@@ -1,0 +1,93 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 9140
+expression: "generate_s7_r_wrapper(&inferred_reading(ClassSystem::S7))"
+---
+#' @title Reading S7 Class
+#' @name Reading
+#' @rdname Reading
+#' @importFrom S7 new_class class_any new_object S7_object new_generic method
+#' @export
+#' @param value The value.
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+Reading <- S7::new_class("Reading",
+  properties = list(
+    .ptr = S7::class_any
+  ),
+  constructor = function(value, .ptr = NULL) {
+    if (is.null(.ptr)) {
+      if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+      if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+    }
+    if (!is.null(.ptr)) {
+      S7::new_object(S7::S7_object(), .ptr = .ptr)
+    } else {
+      .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      S7::new_object(S7::S7_object(), .ptr = .val)
+    }
+  }
+)
+
+.__MX_GENERIC_DOC__(kind="S7", generic="value", class="Reading", export=true, dispatch="x", no_dots=false)
+# Reading::value (1:1)
+#' @name Reading-value
+#' @rdname Reading
+#' @aliases Reading$value
+#' @rawNamespace export(value)
+if (!base::exists("value", mode = "function")) {
+  # No existing binding; define a plain package-local S7 generic.
+  value <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
+} else if (local({ .mx_gen <- base::get("value", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("value")) })) {
+  # `value` resolves to a plain (non-generic) function S7 cannot
+  # attach a method to. Define a package-local S7 generic that shadows it,
+  # with a class_any fallback delegating to the masked function so ordinary
+  # (non-S7) calls (e.g. var(1:10)) keep working. S4 generics also take this
+  # path; the fallback preserves their dispatch.
+  value <- local({
+    .mx_masked <- base::get("value", mode = "function")
+    .mx_g <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
+    S7::method(.mx_g, S7::class_any) <- function(x, ...) .mx_masked(x, ...)
+    .mx_g
+  })
+}
+# else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.
+S7::method(value, Reading) <- function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), x@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+#' Fast-path shortcut for the `value` S7 method on `Reading`.
+#'
+#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`
+#' (the class walk + method-table lookup). Use in hot loops where the
+#' per-call dispatch overhead matters. **Footgun:** this shortcut does not
+#' perform subclass dispatch: a method override defined on a child class
+#' will *not* be honoured. Use the generic when subclassing is possible.
+#' @param .mx_self A `Reading` object.
+#' @param ... Additional arguments; ignored by the fast-path shortcut.
+#' @name Reading_value
+#' @rdname Reading
+#' @export Reading_value
+Reading_value <- function(.mx_self, ...) {
+  .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), .mx_self@.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Reading::from_value (1:1)
+#' @description `Reading_from_value()` is another name for the constructor `Reading()`.
+#' @param value The value.
+#' @name Reading_from_value
+#' @rdname Reading
+#' @export
+Reading_from_value <- function(value) {
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
+  {
+    .val <- .Call(C_miniextendr_macros_Reading__from_value, .call = sys.call(), value)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+    Reading(.ptr = .val)
+  }
+}

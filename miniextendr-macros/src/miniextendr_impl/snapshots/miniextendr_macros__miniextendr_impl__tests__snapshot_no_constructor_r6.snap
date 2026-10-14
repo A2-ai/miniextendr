@@ -1,0 +1,33 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: "generate_r6_r_wrapper(&constructorless_handle(ClassSystem::R6))"
+---
+#' @title Handle R6 Class
+#' @name Handle
+#' @rdname Handle
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+Handle <- R6::R6Class("Handle",
+  public = list(
+    #' @description `Handle` has no constructor: `$new()` only wraps the `.ptr` its factory functions pass.
+    initialize = function(.ptr = NULL) {
+      if (is.null(.ptr)) stop("`Handle` has no constructor: its objects come from the functions that return one.", call. = FALSE)
+      private$.ptr <- .ptr
+    }
+  ),
+  private = list(
+    .ptr = NULL
+  ),
+  lock_objects = TRUE,
+  lock_class = FALSE,
+  cloneable = FALSE
+)
+
+# Handle::id (1:1)
+#' @description Method `id`.
+Handle$set("public", "id", function() {
+  .val <- .Call(C_miniextendr_macros_Handle__id, .call = sys.call(), private$.ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

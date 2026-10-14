@@ -435,7 +435,9 @@ impl std::io::Seek for RefusingStream {
 /// Create a connection whose every read, write, flush and seek fails.
 ///
 /// Each failure raises an R error of class `miniextendr_connection_io_error`
-/// with the fields `operation`, `io_kind` and `os_error`.
+/// with the fields `operation`, `io_kind` and `os_error`. Closing it flushes
+/// the stream, which fails too: `close()` warns "Problem closing connection"
+/// and returns `-1L`.
 ///
 /// @return A read-write-seekable connection backed by a failing stream
 /// @examples
@@ -445,7 +447,7 @@ impl std::io::Seek for RefusingStream {
 ///   readBin(conn, "raw", 1L),
 ///   miniextendr_connection_io_error = function(e) e$operation
 /// )  # "read"
-/// close(conn)
+/// suppressWarnings(close(conn))  # -1L
 /// }
 #[cfg(feature = "connections")]
 #[miniextendr]
@@ -483,7 +485,9 @@ pub fn rust_get_stderr() -> miniextendr_api::connection::RStderr {
 /// Useful for capturing stderr output from Rust code via `capture.output()`.
 /// @param message Character string to emit on stderr.
 #[cfg(feature = "connections")]
-#[miniextendr]
+// R's connections are written on R's main thread: stay there under
+// `worker-default`.
+#[miniextendr(no_worker)]
 pub fn rust_write_to_stderr(message: String) {
     use miniextendr_api::connection::RStderr;
     use std::io::Write;
@@ -726,6 +730,8 @@ pub fn rust_txt_progress_bar_close(pb: miniextendr_api::txt_progress_bar::RTxtPr
 
 // endregion
 
+// region: Close flushes a buffered writer (#2043)
+
 /// Buffered writers flush explicitly during close, before their Drop runs.
 /// @noRd
 #[cfg(feature = "connections")]
@@ -776,3 +782,5 @@ pub fn buffered_connection_close_bytes() -> Vec<u8> {
         .expect("closed connection released its sink")
         .into_inner()
 }
+
+// endregion

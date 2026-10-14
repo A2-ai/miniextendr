@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{CaseGauge}
 \alias{CaseGauge}
+\alias{CaseGauge$new}
 \alias{CaseGauge$new_case_gauge}
 \alias{$.CaseGauge}
 \alias{[[.CaseGauge}
@@ -28,4 +29,6 @@ Create a gauge holding \code{value}.
 \describe{
 \item{\code{value}}{The reading.}
 }
+
+\code{CaseGauge$new_case_gauge()} is another name for the constructor \code{CaseGauge$new()}.
 }

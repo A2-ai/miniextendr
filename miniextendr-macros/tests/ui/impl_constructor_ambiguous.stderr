@@ -1,0 +1,35 @@
+error[E0277]: `Shape` has several methods that could be its constructor, and none is declared
+  --> tests/ui/impl_constructor_ambiguous.rs:17:12
+   |
+17 |     pub fn circle(radius: f64) -> Self {
+   |            ^^^^^^ this method returns `Self` and takes no receiver, like another method of `Shape`
+   |
+help: the trait `miniextendr_api::registry::ClassConstructor<_>` is not implemented for `Shape`
+  --> tests/ui/impl_constructor_ambiguous.rs:11:1
+   |
+11 | pub struct Shape {
+   | ^^^^^^^^^^^^^^^^
+   = note: mark the constructor with the class system's `constructor` option, e.g. `#[miniextendr(r6(constructor))]`, or name it `new`; the other methods stay static factory methods
+note: required by a bound in `miniextendr_api::registry::require_class_constructor`
+  --> $WORKSPACE/miniextendr-api/src/registry.rs
+   |
+   | pub const fn require_class_constructor<T: ?Sized + ClassConstructor<Block>, Block>() {}
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `require_class_constructor`
+
+error[E0277]: `Shape` has several methods that could be its constructor, and none is declared
+  --> tests/ui/impl_constructor_ambiguous.rs:23:12
+   |
+23 |     pub fn square(side: f64) -> Self {
+   |            ^^^^^^ this method returns `Self` and takes no receiver, like another method of `Shape`
+   |
+help: the trait `miniextendr_api::registry::ClassConstructor<_>` is not implemented for `Shape`
+  --> tests/ui/impl_constructor_ambiguous.rs:11:1
+   |
+11 | pub struct Shape {
+   | ^^^^^^^^^^^^^^^^
+   = note: mark the constructor with the class system's `constructor` option, e.g. `#[miniextendr(r6(constructor))]`, or name it `new`; the other methods stay static factory methods
+note: required by a bound in `miniextendr_api::registry::require_class_constructor`
+  --> $WORKSPACE/miniextendr-api/src/registry.rs
+   |
+   | pub const fn require_class_constructor<T: ?Sized + ClassConstructor<Block>, Block>() {}
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `require_class_constructor`

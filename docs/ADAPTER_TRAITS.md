@@ -136,12 +136,11 @@ use miniextendr_api::{RClone, RDebug};
 struct MyData { value: i32 }
 
 // Expose Debug and Clone to R: `x$RDebug$debug_str()`, `x$RClone$clone()`.
-// An empty impl names the trait by its module path.
 #[miniextendr]
-impl miniextendr_api::adapter_traits::RDebug for MyData {}
+impl RDebug for MyData {}
 
 #[miniextendr]
-impl miniextendr_api::adapter_traits::RClone for MyData {}
+impl RClone for MyData {}
 
 // With the traits imported, `.clone()` is still `Clone::clone`; the adapter
 // method is `r_clone()`.

@@ -163,21 +163,33 @@ fn boxed_writer_receives_bytes_flush_and_one_drop() {
 }
 
 #[test]
-fn buffered_adapter_flushes_before_it_is_dropped() {
-    use miniextendr_api::connection::{IoWrite, RConnectionImpl};
-
-    let bytes = Rc::new(RefCell::new(Vec::new()));
-    let flushes = Rc::new(Cell::new(0));
-    let sink = SharedSink {
-        bytes: bytes.clone(),
-        flushes: flushes.clone(),
-    };
-    let mut writer = IoWrite::new(std::io::BufWriter::with_capacity(32, sink));
-    assert_eq!(writer.write(b"buffered"), 8);
-    assert!(bytes.borrow().is_empty());
-    writer.close();
-    assert_eq!(&*bytes.borrow(), b"buffered");
-    assert_eq!(flushes.get(), 1);
+fn r_close_flushes_a_buffered_writer_before_dropping_it() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let bytes = Rc::new(RefCell::new(Vec::new()));
+        let flushes = Rc::new(Cell::new(0));
+        let drops = Rc::new(Cell::new(0));
+        let sink = SharedSink {
+            bytes: bytes.clone(),
+            flushes: flushes.clone(),
+        };
+        let writer = Tracked {
+            inner: std::io::BufWriter::with_capacity(32, sink),
+            drops: drops.clone(),
+        };
+        let conn = OwnedProtect::new(RConnectionIo::new(writer).mode("wb").build_write());
+        RCall::new("writeBin")
+            .arg_value(b"buffered".to_vec())
+            .arg(conn.get())
+            .eval_base()
+            .unwrap();
+        assert!(bytes.borrow().is_empty());
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+        // `BufWriter`'s `Drop` writes what it holds but never flushes the
+        // sink, so the one flush is close's.
+        assert_eq!(&*bytes.borrow(), b"buffered");
+        assert_eq!(flushes.get(), 1);
+        assert_eq!(drops.get(), 1);
+    });
 }
 // endregion
 
@@ -624,6 +636,41 @@ fn a_warning_deferred_in_a_callback_reaches_r_handlers() {
 }
 // endregion
 
+// region: Writes that return R's error
+
+#[test]
+fn null_connection_writes_return_r_errors() {
+    use miniextendr_api::connection::RNullConnection;
+    use miniextendr_api::expression::r_eval_str_global;
+
+    r_test_utils::with_r_thread(|| unsafe {
+        // A connection whose write callback raises: every write is an `Err`,
+        // and the handle keeps working.
+        let failing = OwnedProtect::new(RConnectionIo::new(BrokenIo).build_write());
+        let mut con = RNullConnection::try_from_sexp(failing.get()).unwrap();
+        for _ in 0..2 {
+            let error = con.write_all(b"x").unwrap_err();
+            assert!(error.to_string().contains("write refused"), "{error}");
+        }
+        drop(con);
+        RCall::new("suppressWarnings")
+            .arg(RCall::new("close").arg(failing.get()).build())
+            .eval_base()
+            .unwrap();
+
+        // A connection R closed while the handle borrowed it.
+        let file = OwnedProtect::new(r_eval_str_global("file(nullfile(), \"w\")").unwrap());
+        let mut con = RNullConnection::try_from_sexp(file.get()).unwrap();
+        con.write_all(b"open\n").unwrap();
+        RCall::new("close").arg(file.get()).eval_base().unwrap();
+        let error = con.write_all(b"closed\n").unwrap_err();
+        assert!(error.to_string().contains("invalid connection"), "{error}");
+    });
+}
+// endregion
+
+// region: Close failures
+
 #[test]
 fn close_failures_warn_and_still_destroy_the_rust_owner() {
     use miniextendr_api::connection::RConnectionImpl;
@@ -683,3 +730,4 @@ fn close_failures_warn_and_still_destroy_the_rust_owner() {
         assert_eq!(drops.get(), 2);
     });
 }
+// endregion

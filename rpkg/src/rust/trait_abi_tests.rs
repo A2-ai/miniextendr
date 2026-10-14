@@ -72,6 +72,7 @@ impl Counter for SimpleCounter {
 #[miniextendr(env)]
 impl SimpleCounter {
     /// Create a new counter with given initial value.
+    /// @param initial Starting value.
     fn new_counter(initial: i32) -> Self {
         Self::new(initial)
     }
@@ -136,6 +137,7 @@ impl Counter for PanickyCounter {
 #[miniextendr(env)]
 impl PanickyCounter {
     /// Create a new panicky counter.
+    /// @param initial Starting value.
     fn new_panicky(initial: i32) -> Self {
         Self::new(initial)
     }
@@ -192,6 +194,7 @@ impl Counter for S3TraitCounter {
 #[miniextendr(s3)]
 impl S3TraitCounter {
     /// Create a new S3 trait counter.
+    /// @param initial Starting value.
     fn new_s3trait(initial: i32) -> Self {
         Self::new(initial)
     }
@@ -244,6 +247,7 @@ impl Counter for S4TraitCounter {
 #[miniextendr(s4, internal)]
 impl S4TraitCounter {
     /// Create a new S4 trait counter.
+    /// @param initial Starting value.
     fn new_s4trait(initial: i32) -> Self {
         Self::new(initial)
     }
@@ -296,6 +300,7 @@ impl Counter for S7TraitCounter {
 #[miniextendr(s7, internal)]
 impl S7TraitCounter {
     /// Create a new S7 trait counter.
+    /// @param initial Starting value.
     fn new_s7trait(initial: i32) -> Self {
         Self::new(initial)
     }
@@ -348,6 +353,7 @@ impl Counter for R6TraitCounter {
 #[miniextendr(r6)]
 impl R6TraitCounter {
     /// Create a new R6 trait counter.
+    /// @param initial Starting value.
     pub fn new_r6trait(initial: i32) -> Self {
         Self::new(initial)
     }

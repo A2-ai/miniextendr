@@ -180,8 +180,9 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
 /// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
 /// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`). Arbitrary user `!Send` types can't be detected
-/// syntactically — those need an explicit `no_worker`.
+/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`, `Preserved`,
+/// `REvalError`, `RTxtProgressBar`). Arbitrary user `!Send` types can't be
+/// detected syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
     // Condition-call markers wrap the `.call` slot's SEXP (#1566).
@@ -205,6 +206,12 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "NamedListBuilder",
     "BuiltList",
     "DataFrameShape",
+    // Precious-list roots: a `Preserved` handle, the `REvalError` an R
+    // evaluation fails with, which keeps its condition in one, and an
+    // `RTxtProgressBar`.
+    "Preserved",
+    "REvalError",
+    "RTxtProgressBar",
 ];
 
 /// Returns `true` if `ty` is an input type bound to the R main thread.
@@ -256,6 +263,18 @@ pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
     }
 }
 
+/// Returns `true` if a method signature passes an R value across the call: a
+/// main-thread-bound input (an unevaluated `Quoted` / `Quosure` under
+/// `Missing<..>` too) or a main-thread-bound return. Such a static method stays
+/// on the main thread even when `worker` or `worker-default` selects the
+/// worker, the rule standalone functions follow.
+pub(crate) fn signature_holds_r_values(sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(pt)
+            if is_main_thread_bound_input(&pt.ty) || unevaluated_param(&pt.ty).is_some())
+    }) || matches!(&sig.output, syn::ReturnType::Type(_, ty) if is_main_thread_bound_return(ty))
+}
+
 // region: condition-call markers (#1566)
 
 /// Detect a condition-call marker parameter type: `Call` selects `wrapper`
@@ -302,7 +321,7 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
 
 // endregion
 
-// region: unforced dots (#1892)
+// region: borrowed vector views (#1427)
 
 /// Conversions selected from the rooted call argument rather than a raw SEXP.
 /// The Cow vector cases are character vectors, not arbitrary lists of views.
@@ -327,7 +346,8 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         })
 }
 
-/// Explicit shared reference forms whose main-thread conversions borrow a root.
+/// Explicit shared reference forms whose main-thread conversions borrow a root:
+/// the references, their `Option`s, and `Vec`s of either (nested `Vec`s too).
 /// Keep worker selection separate: `&str` uses owned storage on the worker,
 /// while mutable/custom references still need their existing conversion path.
 pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
@@ -359,6 +379,60 @@ pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
         _ => false,
     }
 }
+
+/// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
+/// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
+/// call's argument slot, or on the worker a copy that ends with the call. Returns the statement that binds `ident` with a
+/// `compile_error!` naming the fix, spanned at the lifetime, in place of a
+/// borrow-checker error about a generated temporary. The binding keeps the code
+/// that uses `ident` free of follow-on errors; it does not diverge, so that
+/// code draws no unreachable warning.
+pub(crate) fn static_rooted_view_binding(
+    ident: &syn::Ident,
+    ty: &syn::Type,
+) -> Option<proc_macro2::TokenStream> {
+    let lifetime = static_lifetime(ty)?;
+    Some(quote::quote_spanned! {lifetime.span()=>
+        ::core::compile_error!(
+            "this parameter borrows the call's argument and cannot be `'static`; write `'_` or \
+             elide the lifetime, or take an owned type (`ProtectedStrVec`, `Vec`, `String`) to \
+             keep the data after the call"
+        );
+        let #ident: #ty = ::core::option::Option::<#ty>::None.unwrap();
+    })
+}
+
+/// The first `'static` lifetime written anywhere in `ty`.
+fn static_lifetime(ty: &syn::Type) -> Option<&syn::Lifetime> {
+    let is_static = |lt: &&syn::Lifetime| lt.ident == "static";
+    match ty {
+        syn::Type::Reference(r) => r
+            .lifetime
+            .as_ref()
+            .filter(is_static)
+            .or_else(|| static_lifetime(&r.elem)),
+        syn::Type::Path(p) => p.path.segments.iter().find_map(|seg| {
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|arg| match arg {
+                syn::GenericArgument::Lifetime(lt) => Some(lt).filter(is_static),
+                syn::GenericArgument::Type(ty) => static_lifetime(ty),
+                _ => None,
+            })
+        }),
+        syn::Type::Slice(s) => static_lifetime(&s.elem),
+        syn::Type::Array(a) => static_lifetime(&a.elem),
+        syn::Type::Paren(p) => static_lifetime(&p.elem),
+        syn::Type::Group(g) => static_lifetime(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().find_map(static_lifetime),
+        _ => None,
+    }
+}
+
+// endregion
+
+// region: unforced dots (#1892)
 
 /// Detect the unforced-dots parameter type, `LazyDots`: matched on the last
 /// path segment like the other markers, bare or with lifetime arguments only
@@ -897,6 +971,12 @@ mod tests {
         assert!(is_main_thread_bound_return(&ty("Option<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("Vec<BuiltDataFrame>")));
         assert!(is_main_thread_bound_return(&ty("(i32, BuiltDataFrame)")));
+        // Precious-list roots, in the error position too
+        assert!(is_main_thread_bound_input(&ty("Preserved")));
+        assert!(is_main_thread_bound_return(&ty("Result<bool, REvalError>")));
+        assert!(is_main_thread_bound_input(&ty(
+            "miniextendr_api::txt_progress_bar::RTxtProgressBar"
+        )));
         // Send-safe returns stay worker-eligible
         assert!(!is_main_thread_bound_return(&ty("i32")));
         assert!(!is_main_thread_bound_return(&ty(

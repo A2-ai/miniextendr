@@ -11,14 +11,12 @@
 //!
 //! | Syntax | Result |
 //! |---|---|
-//! | `#[miniextendr]` on struct | ExternalPtr |
-//! | `#[miniextendr(externalptr)]` on 1-field struct | ExternalPtr |
-//! | `#[miniextendr(list)]` on 1-field struct | List conversion |
-//! | `#[miniextendr(class = "...", base = "...")]` on 1-field struct | Error: use an ALTREP derive |
-//! | `#[miniextendr]` on multi-field struct | ExternalPtr |
-//! | `#[miniextendr(list)]` on multi-field struct | IntoList + TryFromList + PreferList |
+//! | `#[miniextendr]` / `#[miniextendr(externalptr)]` on struct | ExternalPtr |
+//! | `#[miniextendr(list)]` on struct | IntoList + TryFromList + PreferList |
 //! | `#[miniextendr(dataframe)]` on struct | DataFrameRow (companion has IntoR) |
-//! | `#[miniextendr(prefer = "...")]` on struct | Prefer* marker |
+//! | `#[miniextendr(prefer = "list" / "dataframe" / "externalptr")]` on struct | Same as the explicit mode |
+//! | `#[miniextendr(prefer = "native")]` on struct | ExternalPtr without its IntoR + PreferRNativeType |
+//! | `#[miniextendr(class = "...", base = "...")]` on struct | Error: use an ALTREP derive |
 //! | `#[miniextendr]` on fieldless enum | RFactor |
 //! | `#[miniextendr(match_arg)]` on fieldless enum | MatchArg |
 
@@ -27,9 +25,9 @@
 /// These attributes control which derive path is taken when `#[miniextendr]`
 /// is applied to a struct or enum.
 struct StructEnumAttrs {
-    /// ALTREP class name override (forwarded to the ALTREP derive path).
+    /// Removed ALTREP class option; parsed only to reject it with migration guidance.
     class: Option<String>,
-    /// ALTREP base type override (forwarded to the ALTREP derive path).
+    /// Removed ALTREP base option; parsed only to reject it with migration guidance.
     base: Option<String>,
     /// Derive `IntoList` + `TryFromList` + `PreferList` for struct-to-list round-tripping.
     list: bool,
@@ -134,15 +132,6 @@ fn parse_attrs(attr: proc_macro::TokenStream) -> syn::Result<StructEnumAttrs> {
     Ok(attrs)
 }
 
-/// Returns the number of fields on a struct (named, unnamed, or unit).
-fn field_count(item: &syn::ItemStruct) -> usize {
-    match &item.fields {
-        syn::Fields::Named(f) => f.named.len(),
-        syn::Fields::Unnamed(f) => f.unnamed.len(),
-        syn::Fields::Unit => 0,
-    }
-}
-
 /// Returns `true` if every variant of the enum is a unit variant (no fields).
 fn is_fieldless_enum(item: &syn::ItemEnum) -> bool {
     item.variants
@@ -193,12 +182,12 @@ pub fn expand_struct_or_enum(
 /// Dispatches `#[miniextendr]` on a struct to the correct derive path.
 ///
 /// Decision logic:
-/// - 1-field struct with ALTREP attrs (`class`/`base`): compile error with
-///   migration guidance (ALTREP via `#[miniextendr]` is removed — use the
-///   `#[derive(Altrep*)]` family)
-/// - Explicit `list` mode: `IntoList` + `TryFromList` + `PreferList`
-/// - Explicit `dataframe` mode: `DataFrameRow` + companion `IntoR`
-/// - Default multi-field or explicit `externalptr`: `ExternalPtr`
+/// - ALTREP attrs (`class`/`base`): compile error with migration guidance
+///   (ALTREP via `#[miniextendr]` is removed — use the `#[derive(Altrep*)]`
+///   family)
+/// - `list` mode: `#[derive(IntoList, TryFromList, PreferList)]`
+/// - `dataframe` mode: `#[derive(DataFrameRow)]` (the companion gets `IntoR`)
+/// - Default or explicit `externalptr`: `ExternalPtr`
 /// - `prefer = "native"`: `ExternalPtr` (without the `IntoExternalPtr` marker,
 ///   #1283) + `PreferRNativeType` marker
 fn expand_struct(
@@ -211,7 +200,6 @@ fn expand_struct(
         Err(e) => return e.into_compile_error().into(),
     };
 
-    let n_fields = field_count(item_struct);
     let has_altrep_attrs = attrs.class.is_some() || attrs.base.is_some();
     let has_mode_attr = attrs.list || attrs.dataframe || attrs.externalptr;
 
@@ -223,9 +211,9 @@ fn expand_struct(
         attrs.externalptr || (!has_mode_attr && attrs.prefer.as_deref() == Some("externalptr"));
     let effective_mode = effective_list || effective_dataframe || effective_externalptr;
 
-    // 1-field struct with explicit ALTREP attrs: error with migration guidance.
+    // ALTREP attrs without a mode: error with migration guidance.
     // ALTREP via #[miniextendr] is removed — use #[derive(Altrep)] instead.
-    if n_fields == 1 && has_altrep_attrs && !effective_mode {
+    if has_altrep_attrs && !effective_mode {
         return syn::Error::new(
             item_struct.ident.span(),
             "#[miniextendr] no longer supports ALTREP (class/base attributes). \

@@ -132,7 +132,7 @@ sound. Slice it via `Deref` to get a plain `&[T]`; use `to_mut()` /
 |---|---|---|
 | Storage | SEXP and lifetime marker | SEXP, length and owned-root state |
 | Copy | `Copy` | `!Copy` |
-| GC protection | Caller roots the source | Preserved until drop |
+| GC protection | Borrows a root (call argument, `ProtectScope`, owner) | Preserved until drop |
 | Borrow lifetime | The view's `'a` | Borrow of `&self` |
 | Iterator | `StrVecIter<'a>` | `ProtectedStrVecIter<'a>` |
 
@@ -155,7 +155,9 @@ let dangling: &str;
 view to the live argument slot. `TryFromRoot` also supplies zero-copy `Cow`
 inputs, including `Vec<Cow<'_, str>>` and `Vec<Option<Cow<'_, str>>>`.
 Raw `TryFromSexp` for those Cow types returns owned data, so it may safely
-outlive the source. Native references and their containers remain #1427.
+outlive the source. Main-thread wrappers bind shared `&[T]` and `&str`
+parameters to the argument slot the same way; mutable references and
+reference containers remain #1427.
 
 **Usage examples:**
 
@@ -188,8 +190,8 @@ use miniextendr_api::StrVec;
 
 #[miniextendr]
 pub fn has_empty(strings: StrVec<'_>) -> bool {
-    // StrVec is Copy - just a SEXP wrapper. R protects .Call arguments,
-    // so this is safe within the function body.
+    // The wrapper binds the view to the call's argument, so neither it nor
+    // a &str read from it can outlive the call.
     strings.iter().any(|opt| opt == Some(""))
 }
 ```
@@ -395,25 +397,25 @@ the result in `Cow::Borrowed` (always borrowed, never owned).
 
 ```text
 Need strings from R?
-├── Scalar → Cow<'_, str>          (zero-copy)
-├── Vector, need ownership → Vec<String> (copies, lossy NA→"")
-├── Vector, read-only → Vec<Cow<'_, str>>  (zero-copy per element)
+├── Scalar → Cow<'_, str>                     (zero-copy)
+├── Vector, need ownership → Vec<String>      (copies, lossy NA→"")
+├── Vector, read-only → Vec<Cow<'_, str>>     (zero-copy per element)
 ├── Vector, NA-aware → Vec<Option<Cow<'_, str>>>
 ├── View with GC safety → ProtectedStrVec
-└── Lightweight view → StrVec           (Copy, caller manages GC)
+└── Lightweight view → StrVec<'_>             (Copy, borrows the call's argument)
 
 Need numerics from R?
-├── As Rust slice → &[f64] / &[i32]    (zero-copy, 'static lifetime)
-├── Copy-on-write → Cow<'_, [f64]> (zero-copy, copies on .to_mut())
-├── As Arrow array → Float64Array       (zero-copy both directions)
-└── Owned copy → Vec<f64>              (copies)
+├── As Rust slice → &[f64] / &[i32]           (zero-copy, borrows the call's argument)
+├── Copy-on-write → Cow<'_, [f64]>            (zero-copy, copies on .to_mut())
+├── As Arrow array → Float64Array             (zero-copy both directions)
+└── Owned copy → Vec<f64>                     (copies)
 
 Need data frames?
-├── As Arrow → RecordBatch             (primitive cols zero-copy both ways)
+├── As Arrow → RecordBatch                    (primitive cols zero-copy both ways)
 └── As Arrow (string cols too) → use RStringArray per column
 ```
 
-The Cow paths above borrow through `TryFromRoot`; their lifetimes end with
-the root. A raw `TryFromSexp` conversion returns owned Cow data instead.
-Native-reference conversions still require the source to remain reachable;
-that remaining lifetime migration is tracked in #1427.
+The Cow and slice parameters above borrow through `TryFromRoot`; their
+lifetimes end with the call. A raw `TryFromSexp` conversion returns owned Cow
+data instead, and a raw slice conversion still requires the source to remain
+reachable (#1427).

@@ -952,6 +952,14 @@ Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 variant fields are already `Option` columns (absent for other variants), so
 write the bare scalar there.
 
+`u8` has no `NA`: R stores it in a raw vector. A column that would need an
+`NA` cell can't hold `u8`, and the derive rejects it at the field, suggesting
+`u16` or `i32`. That covers `Option<u8>`, any `u8` in an enum variant (scalar,
+fixed array, `width` or `expand`), and `width` / `expand` over a `u8` slice
+in a struct, all of which pad with `NA`. Struct fields of type `u8`,
+`[u8; N]` and `Vec<u8>` still work, and so does a plain `Vec<u8>` variant
+field, which stays a list-column of raw vectors.
+
 ## `DataFrameError`
 
 A single error type covers every failure mode of both verbs:

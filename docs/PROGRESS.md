@@ -13,7 +13,7 @@ miniextendr-api = { version = "0.1", features = ["indicatif"] }
 
 - [Why a Custom Terminal Adapter](#why-a-custom-terminal-adapter)
 - [Quick Start](#quick-start)
-- [RTerm and RStream](#rterm-and-rstream)
+- [RTerm](#rterm)
 - [Convenience Constructors](#convenience-constructors)
 - [Refresh Rate Tuning](#refresh-rate-tuning)
 - [Main Thread Safety](#main-thread-safety)
@@ -36,7 +36,7 @@ use miniextendr_api::miniextendr;
 
 #[miniextendr]
 pub fn process_data(x: &[f64]) -> Vec<f64> {
-    let pb = ProgressBar::with_draw_target(x.len() as u64, term_like_stderr(80));
+    let pb = ProgressBar::with_draw_target(Some(x.len() as u64), term_like_stderr(80));
     pb.set_style(
         ProgressStyle::with_template("{bar:40} {pos}/{len} [{elapsed_precise}]").unwrap()
     );
@@ -58,43 +58,44 @@ result <- process_data(runif(100000))
 #> ======================================== 100000/100000 [00:00:01]
 ```
 
-## RTerm and RStream
+## RTerm
 
-### RStream
-
-`RStream` selects the output target:
-
-```rust
-pub enum RStream {
-    Stdout,  // R's standard output (otype = 0)
-    Stderr,  // R's standard error (otype = 1)
-}
-```
-
-Use `Stderr` for progress bars (the conventional choice), so they don't interfere with data piped to stdout.
-
-### RTerm
-
-`RTerm` is the `TermLike` implementation. It takes a stream and a fixed column width:
+`RTerm` is the `TermLike` implementation. It takes an R connection and a fixed
+column width: `RStdout` or `RStderr` for R's console, or any other connection
+object passed in from R.
 
 ```rust
-use miniextendr_api::progress::{RTerm, RStream};
+use miniextendr_api::connection::RStderr;
+use miniextendr_api::progress::RTerm;
 use indicatif::ProgressDrawTarget;
 
-let term = RTerm::new(RStream::Stderr, 80);
+let term = RTerm::new(RStderr, 80);
 let target = ProgressDrawTarget::term_like(Box::new(term));
 ```
 
-The `width` parameter controls how indicatif formats the progress bar. Use 80 as a safe default. If you need dynamic width detection, query `getOption("width")` from R and pass it in.
+Use `stderr()` for progress bars (the conventional choice), so they don't
+interfere with data piped to stdout. The `width` parameter controls how
+indicatif formats the progress bar. Use 80 as a safe default. If you need
+dynamic width detection, query `getOption("width")` from R and pass it in.
 
 ### Output Routing
 
-`RTerm` uses the following strategy:
+R's terminal connections (`stdout()`, `stderr()`) go through R's console:
 
 1. **Primary:** `ptr_R_WriteConsoleEx` -- the hook used by R frontends (RStudio, Jupyter, etc.)
 2. **Fallback:** `Rprintf` / `REprintf` -- standard R output functions (used when the hook is unavailable)
 
-All output is chunked to respect `i32::MAX` byte limits per call, and NUL bytes are stripped from the fallback path.
+All console output is chunked to respect `i32::MAX` byte limits per call, and
+NUL bytes are stripped from the fallback path. The console does not consult
+`sink()`, so a bar drawn to `stderr()` stays on the console.
+
+Any other connection (`file()`, `rawConnection()`, a custom Rust connection)
+gets the bytes through its `write` callback: `R_WriteConnection`, or before
+R 4.6 `writeBin()` / `writeChar()` (see [CONNECTIONS.md](CONNECTIONS.md), "R
+versions before 4.6"). R's errors are caught there: when the connection has
+been closed, or its write fails, the draw returns an `io::Error` and indicatif
+skips it. The bar, and any other bar, keeps working. `textConnection()` has no
+`write` callback, so drawing to one fails the same way.
 
 ## Convenience Constructors
 
@@ -106,13 +107,12 @@ use miniextendr_api::progress::*;
 // Basic targets (default refresh rate)
 let target = term_like_stdout(80);
 let target = term_like_stderr(80);
+let target = term_like_connection(conn, 80); // `conn`: a connection from R
 
 // With custom refresh rate
 let target = term_like_stdout_with_hz(80, 10);
 let target = term_like_stderr_with_hz(80, 10);
-
-// Full control
-let target = term_like_with_hz_and_stream(RStream::Stderr, 120, 5);
+let target = term_like_connection_with_hz(conn, 80, 10);
 ```
 
 All return `ProgressDrawTarget`, ready to pass to `ProgressBar::with_draw_target()`.
@@ -189,7 +189,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 #[miniextendr]
 pub fn compute_with_progress(n: i32) -> Vec<f64> {
     let n = n as usize;
-    let pb = ProgressBar::with_draw_target(n as u64, term_like_stderr(80));
+    let pb = ProgressBar::with_draw_target(Some(n as u64), term_like_stderr(80));
     pb.set_style(
         ProgressStyle::with_template(
             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})"
@@ -224,11 +224,12 @@ indicatif's `MultiProgress` works too:
 
 ```rust
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use miniextendr_api::progress::{RTerm, RStream};
+use miniextendr_api::connection::RStderr;
+use miniextendr_api::progress::RTerm;
 
 #[miniextendr]
 pub fn parallel_progress() {
-    let term = RTerm::new(RStream::Stderr, 80);
+    let term = RTerm::new(RStderr, 80);
     let mp = MultiProgress::with_draw_target(
         indicatif::ProgressDrawTarget::term_like(Box::new(term))
     );

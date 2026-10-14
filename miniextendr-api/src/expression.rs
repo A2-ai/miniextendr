@@ -1483,10 +1483,15 @@ enum Caught {
     Exit,
 }
 
+/// A C callback run with R errors caught, given the caller's data. An R error
+/// jumps out of it, so it holds nothing to drop.
+type TryBody = unsafe extern "C-unwind" fn(*mut c_void) -> SEXP;
+
 /// What [`catch_error`] shares with its callbacks.
 struct TryEvalData {
-    expr: SEXP,
-    env: SEXP,
+    /// `R_tryCatchError`'s body: [`eval_body`] for an R expression.
+    body: TryBody,
+    body_data: *mut c_void,
     /// A protected list of one, which receives the value or the caught
     /// condition. The callbacks store into it without allocating, so what
     /// they hand back is rooted before R runs again.
@@ -1496,11 +1501,11 @@ struct TryEvalData {
 }
 
 impl TryEvalData {
-    /// The evaluation of `expr` in `env`; `slot` is a protected list of one.
-    fn new(expr: SEXP, env: SEXP, slot: SEXP) -> Self {
+    /// The call of `body(body_data)`; `slot` is a protected list of one.
+    fn new(body: TryBody, body_data: *mut c_void, slot: SEXP) -> Self {
         TryEvalData {
-            expr,
-            env,
+            body,
+            body_data,
             slot,
             caught: false,
         }
@@ -1518,23 +1523,30 @@ impl TryEvalData {
     }
 }
 
-/// Evaluate a [`TryEvalData`]'s `expr` in its `env` with `error` conditions
-/// caught (`R_tryCatchError`), and store the value, or the caught condition,
-/// in its slot. Returns `R_tryCatchError`'s value: the expression's, or
-/// `NULL` after an error ([`TryEvalData::outcome`] tells them apart).
+/// An R expression and the environment to evaluate it in: [`eval_body`]'s
+/// data.
+struct EvalArgs {
+    expr: SEXP,
+    env: SEXP,
+}
+
+/// Evaluate an [`EvalArgs`]. An R error jumps from here to the `tryCatch()`
+/// frame, over no Rust frame holding anything to drop.
+unsafe extern "C-unwind" fn eval_body(data: *mut c_void) -> SEXP {
+    let data = data.cast::<EvalArgs>();
+    unsafe { sys::Rf_eval((*data).expr, (*data).env) }
+}
+
+/// Run a [`TryEvalData`]'s body with `error` conditions caught
+/// (`R_tryCatchError`), and store its value, or the caught condition, in its
+/// slot. Returns `R_tryCatchError`'s value: the body's, or `NULL` after an
+/// error ([`TryEvalData::outcome`] tells them apart).
 ///
 /// `R_tryCatchError` runs R's `tryCatch()`, so the caller's calling handlers
 /// see the evaluation's other conditions, and any jump that is not an error
 /// (an exiting handler or restart of the caller's) passes through. A jump out
 /// of here crosses no Rust frame holding anything to drop.
 unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
-    /// `R_tryCatchError`'s body. An R error jumps from here to the
-    /// `tryCatch()` frame, over no Rust frame holding anything to drop.
-    unsafe extern "C-unwind" fn body(data: *mut c_void) -> SEXP {
-        let data = data.cast::<TryEvalData>();
-        unsafe { sys::Rf_eval((*data).expr, (*data).env) }
-    }
-
     /// `R_tryCatchError`'s handler, run once R has unwound to the
     /// `tryCatch()` frame: keep the condition.
     unsafe extern "C-unwind" fn handler(cond: SEXP, data: *mut c_void) -> SEXP {
@@ -1548,7 +1560,12 @@ unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
 
     let data = data.cast::<TryEvalData>();
     unsafe {
-        let value = sys::R_tryCatchError(Some(body), data.cast(), Some(handler), data.cast());
+        let value = sys::R_tryCatchError(
+            Some((*data).body),
+            (*data).body_data,
+            Some(handler),
+            data.cast(),
+        );
         if !(*data).caught {
             (*data).slot.set_vector_elt(0, value);
         }
@@ -1556,7 +1573,7 @@ unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
     }
 }
 
-/// Evaluate `expr` in `env`, hidden from the caller's handlers and restarts
+/// Call `body(body_data)`, hidden from the caller's handlers and restarts
 /// (a new top-level context, `R_ToplevelExec`), with `error` conditions
 /// caught ([`catch_error`]).
 ///
@@ -1567,9 +1584,9 @@ unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
 ///
 /// # Safety
 ///
-/// R's main thread (the checked FFI routes a worker's call there); `expr`
-/// and `env` rooted.
-unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
+/// R's main thread (the checked FFI routes a worker's call there);
+/// `body(body_data)` is sound to call, and what it reads is rooted.
+unsafe fn try_call_raw(body: TryBody, body_data: *mut c_void) -> Caught {
     /// `R_ToplevelExec`'s callback. A jump out of it crosses no Rust frame
     /// holding anything to drop.
     unsafe extern "C-unwind" fn toplevel(data: *mut c_void) {
@@ -1578,13 +1595,40 @@ unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
 
     unsafe {
         let slot = OwnedProtect::new(SEXP::alloc_list(1));
-        let mut data = TryEvalData::new(expr, env, slot.get());
+        let mut data = TryEvalData::new(body, body_data, slot.get());
         let completed = sys::R_ToplevelExec(Some(toplevel), (&raw mut data).cast());
         if completed == crate::sexp_types::Rboolean::FALSE {
             return Caught::Exit;
         }
         data.outcome()
     }
+}
+
+/// Evaluate `expr` in `env` as [`try_call_raw`] calls a body.
+///
+/// # Safety
+///
+/// R's main thread (the checked FFI routes a worker's call there); `expr`
+/// and `env` rooted.
+unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
+    let mut args = EvalArgs { expr, env };
+    unsafe { try_call_raw(eval_body, (&raw mut args).cast()) }
+}
+
+/// Call `body(body_data)`, a C callback that may raise an R error, as
+/// [`RCall::eval`] evaluates a call: hidden from the caller's handlers and
+/// restarts, with an R error returned as `Err`. The value is unprotected.
+///
+/// For a C entry point that raises R errors, such as `R_WriteConnection`
+/// (`connection/access.rs`); an R call needs no body of its own.
+///
+/// # Safety
+///
+/// As [`try_call_raw`]. An R error jumps out of `body`, so it must hold
+/// nothing to drop.
+#[cfg(all(feature = "connections", r_4_6))]
+pub(crate) unsafe fn try_call(body: TryBody, body_data: *mut c_void) -> Result<SEXP, REvalError> {
+    unsafe { into_result(try_call_raw(body, body_data)) }
 }
 
 /// Evaluate `expr` in `env` in the caller's R context, with `error`
@@ -1604,7 +1648,8 @@ unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
 unsafe fn try_eval_unwinding(expr: SEXP, env: SEXP) -> Caught {
     unsafe {
         let slot = OwnedProtect::new(SEXP::alloc_list(1));
-        let mut data = TryEvalData::new(expr, env, slot.get());
+        let mut args = EvalArgs { expr, env };
+        let mut data = TryEvalData::new(eval_body, (&raw mut args).cast(), slot.get());
         crate::unwind_protect::call_unwinding(catch_error, (&raw mut data).cast());
         data.outcome()
     }

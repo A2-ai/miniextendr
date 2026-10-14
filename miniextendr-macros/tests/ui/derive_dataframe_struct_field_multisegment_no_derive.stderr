@@ -31,7 +31,7 @@ error[E0277]: the trait `DataFrameRow` is not implemented for `NotADataFrameRow`
   --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:23:12
    |
 23 |     label: local::NotADataFrameRow,
-   |            ^^^^^^^^^^^^^^^^^^^^^^^ add `#[derive(DataFrameRow)]` to `NotADataFrameRow`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column, or annotate with `#[dataframe(as_factor)]` for unit-only enums
+   |            ^^^^^^^^^^^^^^^^^^^^^^^ add `#[derive(DataFrameRow)]` to `NotADataFrameRow`, annotate the field with `#[dataframe(as_list)]` to keep it as an opaque list-column if `NotADataFrameRow` implements `IntoList`, or annotate with `#[dataframe(as_factor)]` for unit-only enums
    |
 help: the trait `DataFrameRow` is not implemented for `NotADataFrameRow`
   --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:17:5

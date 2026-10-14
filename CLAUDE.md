@@ -136,7 +136,7 @@ in `miniextendr-api/src/init.rs` consolidates the init steps.
   `just r-cmd-build` ships it for wasm. Regenerate locally with `just rcmdinstall`.
 - `NAMESPACE` + `man/*.Rd` — derived (by roxygen2) from the regenerated
   wrappers.R + hand-written R. **Still tracked** (small, low-conflict). Run
-  `just configure && just rcmdinstall && just force-document` after macro changes
+  `just configure && just rcmdinstall && just devtools-document` after macro changes
   and commit them. CI's `just wrappers-sync-check` regenerates wrappers.R then
   git-diffs NAMESPACE + man to catch drift (the former git-diff on the now-untracked
   wrappers.R / wasm_registry.rs is replaced by a non-stub assertion).
@@ -205,8 +205,8 @@ shortcuts.
 
 `just --list` prints every recipe with its description. The three you need
 most: `just configure` (required before any R CMD operation), `just rcmdinstall`
-(build + install, regenerates the R wrappers), `just force-document` (roxygen2
-after macro changes). `just vendor` is the only CRAN release-prep step.
+(build + install, regenerates the R wrappers), `just devtools-document` (roxygen2
+→ `NAMESPACE` + `man/`). `just vendor` is the only CRAN release-prep step.
 
 Development recipes that can rewrite `rpkg/src/rust/Cargo.lock` use
 `[script("bash", "scripts/with-rpkg-lock.sh", "bash")]` to restore their exact
@@ -256,28 +256,22 @@ canary rationale: the `miniextendr-build` skill and
 ### After Rust changes (especially macro changes)
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
-Use `just force-document` (not `just devtools-document`) after **anything** that
-affects R wrapper output: proc-macro roxygen, `r_wrappers.rs` / class-system
-codegen, adding/removing `#[miniextendr]` functions. The `force-document` recipe
-bypasses `roxygen2::needs_roxygenize()` — required here because the macro's
-contributions to `R/miniextendr-wrappers.R` live outside roxygen's view until
-`rcmdinstall` has re-run and bumped the wrappers.R mtime.
-
-`just devtools-document` (short-circuiting variant) is safe for **pure R/roxygen
-changes** — it skips the full roxygenize pass when `needs_roxygenize()` returns
-`FALSE`. Use this in tight iteration loops when you're only editing `///` doc
-comments or `rpkg/R/*.R` sources.
+`just devtools-document` always runs roxygen2. After **anything** that affects
+R wrapper output (proc-macro roxygen, `r_wrappers.rs` / class-system codegen,
+adding/removing `#[miniextendr]` functions), run it after `rcmdinstall`, which
+regenerates the `R/miniextendr-wrappers.R` it reads. Pure R/roxygen edits need
+only `just devtools-document`.
 
 **A new export needs a *second* install to be runtime-callable.** `just
 rcmdinstall` regenerates `wrappers.R` but installs against the *existing*
-`NAMESPACE`; `just force-document` then writes the new export into `NAMESPACE`
+`NAMESPACE`; `just devtools-document` then writes the new export into `NAMESPACE`
 on disk but does **not** reinstall. So a freshly added `#[miniextendr]` fn is
 absent from the *installed* package until you install again. To gctorture /
 testthat a new export, run the loop twice:
-`rcmdinstall && force-document && rcmdinstall`. (Committing the regenerated
+`rcmdinstall && devtools-document && rcmdinstall`. (Committing the regenerated
 `NAMESPACE` / `man` only needs the single pass.)
 
 Generated documentation (`NAMESPACE`, `man/*.Rd`) must be committed in sync
@@ -295,7 +289,7 @@ Enable once per clone: `git config core.hooksPath .githooks`.
 
 1. `pub fn` with `#[miniextendr]` — registration is automatic via linkme `#[distributed_slice]`, no module macro needed.
 2. Module must be reachable via `mod` from `lib.rs` (`#[cfg(feature = "foo")]` on `mod` declaration is sufficient for feature-gated modules).
-3. `just configure && just rcmdinstall && just force-document`.
+3. `just configure && just rcmdinstall && just devtools-document`.
 
 ### Adding a new conversion type
 
@@ -464,6 +458,7 @@ unchanged. `^nonapi^` variants require `#[cfg(feature = "nonapi")]`.
 - **`HashMap`/`BTreeMap` enum DataFrameRow expansion**: derive emits `unzip()` to produce parallel `_keys` / `_values` vectors in lock-step. Never call `.keys()` then `.values()` separately on the same map binding — use `.into_iter().unzip()` to guarantee pairwise alignment.
 - **Nested `DataFrameRow` enums**: inner enum must `#[derive(DataFrameRow)]` to satisfy the marker trait for flatten path. `as_factor` opts out of `DataFrameRow` — only `UnitEnumFactor` (auto-emitted by derive for unit-only enums) is needed. The inner enum's `#[dataframe(tag = "variant")]` column appears as `<outer_field>_variant` after prefixing. Split partition names use lowercase snake_case of the variant ident (e.g. `Move` → `move`); the `_type` column uses original PascalCase. `as_factor` on a payload-bearing enum is a compile error (missing `UnitEnumFactor`); `as_factor` on `Vec<T>` / slices / scalars is a compile error (requires bare-ident type).
 - **Several impl blocks per type (#1776)**: each `#[miniextendr]` impl block registers its R wrapper in parts (`ClassBlockEntry` in `MX_CLASS_BLOCKS`, inside an anonymous `const _`), and `registry::merge_class_blocks` merges the blocks of a type (keyed by `core::any::type_name`) into one class at write time: the defining block (constructor, S7 properties) gives the class definition, every block its members, and every block's impl docs (`class_docs`) the class's roxygen block, the defining block's first: exact duplicate tags collapse, a generated `CLASS_DEFAULT_PREFIX` line (`@title`, `@name`, `@rdname`, `@export`, ctor `@param`, R6 `@field`) gives way to the same tag on another block, and two `@title`s or a page tag differing from the defining block's are errors. Blocks must agree on the class settings (`ParsedImpl::class_settings`) and bind no member twice. There is no `label`.
+- **Constructor inference**: the constructor is the method marked `<system>(constructor)`, else a receiver-less `new -> Self`, else the type's one receiver-less `-> Self` method (`ParsedImpl::constructor`; `Result`/`Option<Self>` are not candidates). It is decided per type at write time (`registry::resolve_class_constructor`): a block that infers one also registers a `demoted` `ClassBlockEntry` (the method as a static), used when another block declares a constructor; several candidates are E0277 within a block (`ClassConstructor` + `#[diagnostic::on_unimplemented]`) and an install error across blocks. A constructor whose R name isn't `new` is also emitted as a static under its own name (`ParsedImpl::static_methods`, `constructor_keeps_own_name`; not vctrs). A type with no candidate has no constructor and gets none generated: only R6's `initialize` and S7's `constructor`, which exist anyway, refuse a missing `.ptr` (`no_constructor_guard`). Lint MXL121 warns when nothing returns the type either.
 - **Lifetime parameters in `#[miniextendr]`**: `&[T]` / `&str` arguments work without explicit annotations — the macro converts internally via `TryFromSexp`. Explicit lifetime params on `#[miniextendr]` fns/impl blocks are **allowed** — lifetimes are erased at codegen, so `#[no_mangle] extern "C-unwind" fn f<'a>(...)` produces a single monomorphic symbol and is FFI-safe. Only **type/const** generic params are rejected (they require monomorphization → multiple symbols → incompatible with `#[no_mangle]`). For `#[derive(DataFrameRow)]` structs and enums, lifetime params propagate correctly; borrowed fields produce `Vec<Option<&str>>` / `Vec<Option<&[T]>>` columns (both have `IntoR` impls as of PR #465).
 
 ## Lint rules
@@ -509,7 +504,7 @@ but don't `git add` the output. See `site/CLAUDE.md` for the full pipeline.
 
 ## Common issues
 
-- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
+- **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just devtools-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R CMD INSTALL --library=/tmp/claude/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
@@ -535,7 +530,7 @@ Common: `devtools-doc.log`, `rcmdinstall.log`, `rcmdcheck.log`,
 ### Sandbox restrictions
 
 Claude Code sandbox blocks compilation. For any compiling command
-(`just force-document`, `rcmdinstall`, `cargo build`,
+(`just devtools-document`, `rcmdinstall`, `cargo build`,
 `R CMD INSTALL/check`), pass `dangerouslyDisableSandbox: true`.
 
 ### File deletion safety
@@ -551,7 +546,7 @@ Claude Code sandbox blocks compilation. For any compiling command
 - **Worktree R library: `rv sync` per worktree, then install** (never symlink to main). `rv/library/` is gitignored, so a fresh worktree's library is empty. Populate it from rv's shared global cache (`~/.cache/rv`, already warm from main — same `rproject.toml` → same cache), then install the dev packages:
   ```bash
   just worktree-sync   # = RV_LINK_MODE=symlink rv sync — symlinks the ~110 cached deps into this worktree's OWN rv/library (~8s)
-  just configure && just rcmdinstall && just force-document
+  just configure && just rcmdinstall && just devtools-document
   ```
   `RV_LINK_MODE=symlink` (baked into `just worktree-sync`) links each dependency as a symlink into `~/.cache/rv` (zero-copy, no recompile or download) rather than the macOS copy-on-write default — either works, symlink is cheapest across many worktrees. Each worktree then gets its **own real `rv/library`** (deps = symlinks to the shared read-only cache; `miniextendr`/`minirextendr` = real dirs installed into it), so parallel worktrees **never race** on a shared install and main's library is untouched. This is rv's native cross-project cache model — see [rv-docs: cache](https://a2-ai.github.io/rv-docs/concepts/cache/) and [env vars](https://a2-ai.github.io/rv-docs/reference/env_vars/).
   - **Order matters**: `rv sync` "replaces the library with exactly the lockfile", so it *prunes* anything not listed — including `miniextendr`/`minirextendr` (they're `dependencies_only` in `rproject.toml`). Sync **first**, install the dev packages **second**. Re-running `rv sync` wipes the installed dev packages → re-install after.
@@ -564,7 +559,7 @@ Claude Code sandbox blocks compilation. For any compiling command
 - **Clean up after push**: `git worktree remove -f -f .claude/worktrees/<name>` + `git worktree prune`. Each worktree holds a full `target/` (2–3 GB/agent).
 - **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Resolve everything by hand **except regenerated artifacts** — never hand-merge their hunks; take either side (`git checkout --theirs` / `git add`) then regenerate:
   - `patches/templates.patch` (rpkg→templates delta, a generated diff) → `just templates-approve`, then verify with `just templates-check`.
-  - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just force-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
+  - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just devtools-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
   - `tests/cross-package/{producer,consumer}.pkg/` `NAMESPACE`, `R/*-wrappers.R`, `man/*.Rd`, `configure` (tracked there, marked `-merge` in each package's `.gitattributes` the same way) → `just cross-install && just cross-document` (or `autoconf` in that package's directory for `configure`), then `git add`.
   - `rpkg/src/rust/Cargo.lock` pin-only (`#<sha>`) churn → `cargo revendor --manifest-path rpkg/src/rust/Cargo.toml --stamp-lock` after `just configure`.
   - A branch from before `rust-llm-docs/generated/` was untracked hits a modify/delete conflict on those files: `git rm -r --cached rust-llm-docs/generated`, then continue (regenerate locally with `just llm-docs` if you want them).

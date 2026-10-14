@@ -144,7 +144,7 @@ The wrappers are generated from the Rust impl block and Rust doc comments. The R
 **Regenerating wrappers.** Whenever you change a `#[miniextendr]` function, add a parameter, or edit a doc comment, regenerate the wrappers:
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
 The wrapper and wasm registry are generated build inputs: current scaffolds

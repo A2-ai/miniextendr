@@ -1372,9 +1372,8 @@ impl std::fmt::Debug for BuiltDataFrame {
 
 /// Rust data → R `data.frame`. The data-frame analogue of [`IntoR`].
 ///
-/// Implemented by `#[derive(DataFrameRow)]` on a row struct/enum (for `Vec<Row>`), by the
-/// blanket impl for any [`ColumnSource`] (`IntoList`-derived rows), and by the serde column
-/// path. Call it on your data: `rows.into_dataframe()?`.
+/// Implemented for `Vec<Row>` when `Row` derives `DataFrameRow` (struct or enum), and by the
+/// serde column path. Call it on your data: `rows.into_dataframe()?`.
 ///
 /// # Parallel fast path
 ///

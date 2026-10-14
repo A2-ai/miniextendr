@@ -324,7 +324,7 @@ doc *cargo_flags: configure-all
       echo "doc: open not found; docs at rpkg/rust-target/doc/rpkg/index.html"; \
     fi
 
-# Single-page HTML reference manual of rpkg from man/*.Rd (base R, seconds; run force-document first if man/ is stale)
+# Single-page HTML reference manual of rpkg from man/*.Rd (base R, seconds; run devtools-document first if man/ is stale)
 doc-r out="rpkg/rust-target/doc/r":
     Rscript rpkg/tools/build-html-reference.R "{{out}}"
 
@@ -972,29 +972,9 @@ devtools-check: _assert-no-vendor-leak devtools-document
     set -euo pipefail
     Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
-# Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages).
-# R wrappers are generated automatically by Makevars during R CMD INSTALL.
-#
-# Short-circuits via roxygen2::needs_roxygenize() — skips the full roxygenize
-# pass when no R source, NAMESPACE, or man/* mtime changes are detected.
-#
-# CAVEAT — macro-layer cache misses: needs_roxygenize() tracks R-source mtimes
-# only. When the proc-macro changes how it serialises a tag (e.g. a new wrapper
-# attribute), those changes flow through rcmdinstall → wrappers.R mtime update,
-# which roxygen2 does detect. However, if you change miniextendr-macros/** and
-# then run devtools-document WITHOUT first running rcmdinstall, the skip fires
-# incorrectly. Rule: after any Rust/macro change, always run:
-#   just rcmdinstall && just force-document
+# Regenerate rpkg's NAMESPACE + man/ with roxygen2 (run after rcmdinstall so wrappers.R is current)
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-document: configure-fast
-    set -euo pipefail
-    Rscript -e 'if (roxygen2::needs_roxygenize("rpkg")) { devtools::document("rpkg") } else { cat("devtools-document: man/ up to date — skipping (use `just force-document` to override)\n") }'
-
-# Force-document rpkg unconditionally — bypasses the needs_roxygenize() check.
-# Use after Rust/macro changes where the mtime cache may not have caught up:
-#   just rcmdinstall && just force-document
-[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
-force-document: configure-fast
     set -euo pipefail
     Rscript -e 'devtools::document("rpkg")'
 
@@ -1527,7 +1507,7 @@ regenerate-merged:
       # `just configure` also runs autoconf, which covers rpkg/configure.
       just configure
       just rcmdinstall
-      just force-document
+      just devtools-document
     elif [ "$configure" = 1 ]; then
       (cd rpkg && autoconf)
     fi
@@ -1680,7 +1660,7 @@ wrappers-sync-check: _assert-no-vendor-leak configure
     if ! git diff --exit-code -- rpkg/NAMESPACE rpkg/man; then
       echo ""
       echo "Committed NAMESPACE / man drift from #[miniextendr] Rust source."
-      echo "Run 'just rcmdinstall && just force-document' and commit the regenerated NAMESPACE + man/."
+      echo "Run 'just rcmdinstall && just devtools-document' and commit the regenerated NAMESPACE + man/."
       exit 1
     fi
 

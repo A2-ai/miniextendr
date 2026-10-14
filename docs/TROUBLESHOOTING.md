@@ -45,13 +45,11 @@ just rcmdinstall        # Compile and install
 If you changed **macros** specifically:
 
 ```bash
-just configure && just rcmdinstall && just force-document
+just configure && just rcmdinstall && just devtools-document
 ```
 
 `rcmdinstall` regenerates `R/miniextendr-wrappers.R` from the new macro output;
-`force-document` then runs roxygen2 over the updated wrappers. Use
-`force-document` (not `devtools-document`) here — it bypasses
-`needs_roxygenize()`'s mtime cache, which may not catch macro-layer changes.
+`devtools-document` then runs roxygen2 over the updated wrappers.
 
 ### Stale R wrappers after macro changes
 
@@ -59,7 +57,7 @@ Symptoms: R wrappers don't reflect your new `#[miniextendr]` functions.
 
 ```bash
 just rcmdinstall        # Regenerate R/miniextendr-wrappers.R from macro output
-just force-document     # Re-run roxygen2 over the updated wrappers
+just devtools-document  # Re-run roxygen2 over the updated wrappers
 ```
 
 ---
@@ -72,11 +70,11 @@ Functions exist in Rust but aren't callable from R. Check in order:
 
 1. **Function is `pub`** -- non-pub functions don't get `@export` in R wrappers
 2. **Function has `#[miniextendr]`** -- check the attribute is present
-3. **NAMESPACE is stale** -- run [`just force-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) (after `rcmdinstall`) to regenerate
+3. **NAMESPACE is stale** -- run [`just devtools-document`](https://github.com/A2-ai/miniextendr/blob/main/justfile) (after `rcmdinstall`) to regenerate
 
 Quick fix:
 ```bash
-just rcmdinstall && just force-document
+just rcmdinstall && just devtools-document
 ```
 
 **Note:** The lint tool ([`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)) catches issues #1 and #2 at build time.
@@ -195,7 +193,7 @@ Add `#[miniextendr]` to the function or impl block. Registration is automatic vi
 ### Lint passes but functions are still invisible to R
 
 Ensure the function is `pub` and has `#[miniextendr]`, then run
-`just rcmdinstall && just force-document` to regenerate the R wrapper followed
+`just rcmdinstall && just devtools-document` to regenerate the R wrapper followed
 by `NAMESPACE` and `man/*.Rd`.
 
 ---

@@ -15,7 +15,13 @@ The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
 to import or invoke that macro separately. The defining module path, a
 crate-root re-export and an imported or renamed trait all work. Renaming an
-import keeps the original trait's R namespace and ABI tag.
+import keeps the original trait's R namespace and ABI tag. The trait's name
+is taken in the macro namespace as well, so a macro or derive of the same name
+can't sit in the trait's module. `#[miniextendr]` on an impl of a trait without
+`#[miniextendr]` fails with "cannot find macro" at the trait's name. An empty
+impl, `#[miniextendr] impl Trait for T {}`, registers the type's own Rust impl
+of the trait, default methods included. It works for any non-generic trait
+without associated types, one defined in the implementing crate as well.
 
 The declaration supplies the exact `repr(C)` vtable field order and callback
 types. An impl emits its own layout with those fields and registers it under
@@ -23,7 +29,9 @@ the declaration's fingerprint, so it never guesses paths to `TAG_*`, a
 vtable type or a builder next to the imported name. Non-generic shims are
 hidden associated methods with `Self: Sized`: they retain declaration-local
 type resolution and default methods without preventing `dyn Trait`. Generic
-traits retain concrete shims generated from the impl's method signatures.
+traits retain concrete shims generated from the impl's method signatures, so
+an impl of a generic trait defines every method in the vtable, defaulted ones
+included.
 The exported vtable static symbols used by webR remain unchanged.
 
 ## Key Concepts
@@ -110,9 +118,12 @@ When you create an object for trait dispatch, a wrapper struct is allocated with
 #[repr(C)]
 struct __MxWrapperMyCounter {
     erased: mx_erased,  // Must be first
-    data: MyCounter,
+    data: RefCell<MyCounter>,
 }
 ```
+
+The data pointer a View carries points at that `RefCell`. Only the producer's
+shims look behind it; a View passes it through unread.
 
 ### 3. Packaging with `mx_wrap`
 
@@ -122,7 +133,7 @@ struct __MxWrapperMyCounter {
 // In a constructor
 let wrapper = Box::new(__MxWrapperMyCounter {
     erased: mx_erased { base: &__MX_BASE_VTABLE_MyCounter },
-    data: my_counter,
+    data: RefCell::new(my_counter),
 });
 let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
 ```
@@ -183,9 +194,13 @@ at it. Views drop in any order. The pointers live in the runtime's private
 `TraitView::from_raw_parts`. `from_raw_parts(data, vtable, None)` roots
 nothing; its caller must keep `data` alive while the View exists.
 
-Rooting keeps the receiver alive; it does not track borrows. Calling a `&mut
-self` method through a View while another call into the same object is still
-running is not caught (#1965).
+Rooting keeps the receiver alive. Borrows are the producer's: each shim
+borrows the object's `RefCell` before it makes a reference, shared for `&self`
+and exclusive for `&mut self` or an `ExternalPtrMut` receiver, and holds the
+borrow until the result is converted. A call that conflicts with one still
+running on the same object, whether it comes through a View, a generated
+method or a field accessor, raises a `miniextendr_borrow_conflict` error. A
+View never reads the data, so a consumer needs no part in this.
 
 ### Argument types
 
@@ -194,6 +209,9 @@ with `TryFromSexp`, so a trait-method parameter type needs both. `Missing<T>`
 crosses as R's missing-argument sentinel when absent. The reading markers
 (`AsNumeric`, `AsNumericVec`, `AsCharacter`, `AsCharacterVec`) cross as their
 inner value, and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text.
+The borrowed views `StrVec<'_>` and `RCow<'_, T>` have no `TryFromSexp`: the
+shim binds each to a local copy of its argument slot, so the implementation
+sees it for the call only, and a trait method cannot return one (#1427).
 Parameter checks such as `no_na`, `inherits` and `not_inherits` run in the implementing
 method's R-facing wrappers: they check R arguments, not the typed values a
 View caller passes.

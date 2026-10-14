@@ -73,7 +73,7 @@ miniextendr_pre_commit() {
     STAGED_NAMESPACE=$(echo "$STAGED" | grep -E "^${PREFIX}NAMESPACE$" || true)
     if [ -n "$STAGED_WRAPPERS" ] && [ -z "$STAGED_NAMESPACE" ]; then
         echo "BLOCKED: R/*-wrappers.R changed but NAMESPACE was not updated."
-        echo "  Run: devtools::document()  (or: just devtools-document)"
+        echo "  Run: devtools::document()"
         echo "  Then stage the updated NAMESPACE and man/ pages."
         return 1
     fi

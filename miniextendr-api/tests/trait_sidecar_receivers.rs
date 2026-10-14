@@ -1,7 +1,7 @@
 //! Explicit owner receivers work for ordinary pointers and erased trait views.
 mod r_test_utils;
 
-use miniextendr_api::externalptr::Sidecar;
+use miniextendr_api::externalptr::{ErasedExternalPtr, Sidecar};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope};
 use miniextendr_api::trait_abi::{TraitView, ccall};
 use miniextendr_api::{
@@ -60,6 +60,12 @@ impl SlotProbe for SlotHost {
         }
         let read = || self.generation;
         assert_eq!(read(), self.generation);
+        macro_rules! generation {
+            () => {
+                self.generation
+            };
+        }
+        assert_eq!(generation!(), self.generation);
         assert_eq!(self::receiver_bonus(), 3);
         self.generation + __miniextendr_self + self::receiver_bonus() + Local(2).read()
     }
@@ -80,20 +86,6 @@ impl GenericSlots<i32> for SlotHost {
     }
 }
 
-// An empty impl expansion must retain receiver metadata from the trait even
-// though the compiled Rust method is an ordinary associated function.
-#[miniextendr]
-pub trait ForwardSlots: TypedExternal {
-    fn forwarded(self: ExternalPtrRef<'_, Self>) -> Vec<i32>;
-}
-impl ForwardSlots for SlotHost {
-    fn forwarded(owner: ExternalPtrRef<'_, Self>) -> Vec<i32> {
-        Self::keys(&owner)
-    }
-}
-#[miniextendr(env, noexport)]
-impl ForwardSlots for SlotHost {}
-
 #[test]
 fn ordinary_handles_can_call_the_same_trait_functions() {
     r_test_utils::with_r_thread(|| {
@@ -108,19 +100,15 @@ fn ordinary_handles_can_call_the_same_trait_functions() {
 #[test]
 fn erased_views_read_write_and_keep_sidecars_after_temporary_roots_drop() {
     r_test_utils::with_r_thread(|| unsafe {
-        let (mut view, forwarded) = {
+        let mut view = {
             let owner = OwnedProtect::new(ccall::mx_wrap(__mx_wrap_SlotHost(host())));
-            (
-                SlotProbeView::from_sexp(owner.get()),
-                ForwardSlotsView::from_sexp(owner.get()),
-            )
+            SlotProbeView::from_sexp(owner.get())
         };
         miniextendr_api::sys::R_gc();
         assert_eq!(view.read_default(), [3, 5, 8]);
         view.write(vec![34, 55]);
         miniextendr_api::sys::R_gc();
         assert_eq!(view.read(), [34, 55]);
-        assert_eq!(forwarded.forwarded(), [34, 55]);
         assert_eq!(view.plain(), 1);
         assert_eq!(view.binding(7), 13);
     });
@@ -146,8 +134,8 @@ fn concrete_generic_shims_receive_the_same_owner() {
 fn owner_receivers_keep_self_argument_alias_preflight() {
     r_test_utils::with_r_thread(|| unsafe {
         let scope = ProtectScope::new();
-        let mut ptr = ExternalPtr::new(host());
-        let data = ptr.as_mut_ptr().cast();
+        let ptr = ExternalPtr::new(host());
+        let data = cell_data(&ptr);
         let args = [ptr.as_sexp()];
         let table = __SlotProbe_build_vtable::<SlotHost>();
         let result = scope.protect((table.compare)(data, ptr.as_sexp(), 1, args.as_ptr()));
@@ -165,10 +153,10 @@ fn owner_receivers_keep_self_argument_alias_preflight() {
 #[test]
 fn raw_views_without_an_owner_refuse_owner_methods() {
     r_test_utils::with_r_thread(|| unsafe {
-        let mut ptr = ExternalPtr::new(host());
+        let ptr = ExternalPtr::new(host());
         let table = __SlotProbe_build_vtable::<SlotHost>();
         let view = <SlotProbeView as TraitView>::from_raw_parts(
-            ptr.as_mut_ptr().cast(),
+            cell_data(&ptr),
             core::ptr::from_ref(&table).cast(),
             None,
         );
@@ -176,6 +164,16 @@ fn raw_views_without_an_owner_refuse_owner_methods() {
         assert!(result.is_err());
         assert_eq!(view.plain(), 0);
     });
+}
+
+/// The `RefCell` inside an ordinary `ExternalPtr`, which the vtable shims
+/// borrow like the one in trait-ABI storage.
+unsafe fn cell_data(ptr: &ExternalPtr<SlotHost>) -> *mut core::ffi::c_void {
+    let erased = unsafe { ErasedExternalPtr::from_sexp(ptr.as_sexp()) };
+    let cell = erased
+        .downcast_cell::<SlotHost>()
+        .expect("an ExternalPtr<SlotHost>");
+    core::ptr::from_ref(cell).cast_mut().cast()
 }
 
 // Find by the semantic suffix; the registration prefix uses this test crate's
@@ -206,11 +204,7 @@ fn call_wrappers_create_owner_receivers_and_refuse_aliases() {
         let read = std::mem::transmute::<
             unsafe extern "C-unwind" fn() -> *mut core::ffi::c_void,
             unsafe extern "C-unwind" fn(SEXP, SEXP) -> SEXP,
-        >(
-            registration("SlotHost__ForwardSlots__forwarded", 2)
-                .fun
-                .unwrap(),
-        );
+        >(registration("SlotHost__SlotProbe__read", 2).fun.unwrap());
         let compare = std::mem::transmute::<
             unsafe extern "C-unwind" fn() -> *mut core::ffi::c_void,
             unsafe extern "C-unwind" fn(SEXP, SEXP, SEXP) -> SEXP,

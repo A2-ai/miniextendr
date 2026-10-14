@@ -1111,6 +1111,43 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
 }
 
 #[test]
+fn static_borrowed_parameters_are_refused_at_their_lifetime() {
+    let builder = RustConversionBuilder::new();
+    for src in [
+        "x: StrVec<'static>",
+        "x: miniextendr_api::RCow<'static, f64>",
+        "x: Cow<'static, str>",
+        "x: Vec<Option<Cow<'static, str>>>",
+        "x: &'static [i32]",
+        "x: Option<&'static str>",
+    ] {
+        let code = conversion_text(&builder, src);
+        assert!(code.contains("compile_error"), "{code}");
+        assert!(code.contains("cannot be `'static`"), "{code}");
+        assert!(!code.contains("try_from_root"), "{code}");
+    }
+    for src in ["x: Cow<'_, str>", "x: &'a [i32]", "x: Option<&str>"] {
+        let code = conversion_text(&builder, src);
+        assert!(!code.contains("compile_error"), "{code}");
+    }
+    // A worker borrows a local copy, which can't be `'static` either.
+    for src in [
+        "x: &'static [i32]",
+        "x: Option<&'static i32>",
+        "x: &'static str",
+        "x: Vec<Option<&'static str>>",
+    ] {
+        let syn::FnArg::Typed(param) = parse_param(src) else {
+            unreachable!()
+        };
+        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
+        let code = quote::quote!(#(#owned)*).to_string();
+        assert!(code.contains("cannot be `'static`"), "{code}");
+        assert!(borrowed.is_empty(), "{src}");
+    }
+}
+
+#[test]
 fn main_thread_shared_references_bind_the_argument_root() {
     let builder = RustConversionBuilder::new();
     for ty in [
@@ -1313,7 +1350,7 @@ fn worker_native_references_copy_before_dispatch_and_borrow_inside_it() {
             "{owned}"
         );
         assert!(owned.contains("TryFromRoot"), "{owned}");
-        assert!(owned.contains(". map ("), "{owned}");
+        assert!(owned.contains("Result :: map ("), "{owned}");
         assert!(borrowed.contains(borrow), "{borrowed}");
         assert!(!borrowed.contains("miniextendr_api"), "{borrowed}");
     }

@@ -10,5 +10,5 @@ re_scalar_roundtrip_zero(df)
 \item{df}{(no documentation available)}
 }
 \description{
-Zero-row REScalar round-trip (empty frame). @export
+Zero-row REScalar round-trip (empty frame).
 }

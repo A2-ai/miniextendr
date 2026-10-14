@@ -162,7 +162,7 @@ recipes:
 ```bash
 just configure          # wraps bash ./configure with workspace settings
 just rcmdinstall        # R CMD INSTALL with correct flags
-just force-document     # run roxygen2 to regenerate NAMESPACE and man/
+just devtools-document  # run roxygen2 to regenerate NAMESPACE and man/
 ```
 
 The manual equivalent (useful for understanding what's happening, or when
@@ -192,7 +192,7 @@ The iteration loop for Rust changes is:
 
 1. Edit `.rs` source files.
 2. `minirextendr::miniextendr_build()` (or `just configure && just rcmdinstall
-   && just force-document` in the monorepo).
+   && just devtools-document` in the monorepo).
 3. **Adding, removing, or renaming a `#[miniextendr]` item** (function, class,
    trait impl — anything that changes the *set* of exported names) hits a
    chicken-and-egg ordering: the package is installed *before* roxygen2 rewrites
@@ -204,7 +204,7 @@ The iteration loop for Rust changes is:
      and, if the export set changed, reinstalls once so the installed image
      matches. No second pass needed.
    - The monorepo raw recipes do *not* self-heal — after `just rcmdinstall &&
-     just force-document` you must run `just rcmdinstall` once more so the new
+     just devtools-document` you must run `just rcmdinstall` once more so the new
      export becomes runtime-callable.
    - **Removing or renaming an export fails harder**
      (A2-ai/miniextendr#1288): the first install validates the stale
@@ -310,7 +310,7 @@ For CRAN submission:
 - **Generated docs must be committed**: `R/miniextendr-wrappers.R` is
   regenerated during every `R CMD INSTALL` and is gitignored, but the
   `NAMESPACE` and `man/*.Rd` roxygen2 derives from it are tracked. If you add
-  or remove `#[miniextendr]` functions, run `just force-document` and commit
+  or remove `#[miniextendr]` functions, run `just devtools-document` and commit
   those in the same PR.
 
 - **Install-mode latch leak**: if `inst/vendor.tar.xz` is present during local

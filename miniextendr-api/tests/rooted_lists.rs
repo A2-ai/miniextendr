@@ -32,6 +32,10 @@ fn native_list_children_survive_later_uncached_elt_calls_and_gc() {
         let root = scope.protect(TransientList.into_sexp());
         let values: Vec<&[i32]> = Vec::try_from_root(root).unwrap();
         miniextendr_api::sys::R_gc();
+        // Reuse any freed node of this size, so a collected element shows.
+        for _ in 0..10_000 {
+            let _ = vec![-1_i32, -1].into_sexp();
+        }
         assert_eq!(values, [&[0, 10][..], &[1, 11], &[2, 12], &[3, 13]]);
     });
 }

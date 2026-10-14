@@ -10,12 +10,13 @@
 //!   required because R's terminal connections do **not** wire a `write`
 //!   callback — calling `R_WriteConnection` on them raises an R error.
 //! - For any other connection (`file()`, `rawConnection()`, custom connections),
-//!   `writeBin` / `writeChar` run through caught R
-//!   evaluation. Connection errors become `io::Error`s returned to indicatif,
-//!   so a failed draw does not unwind through its locks. Text writes use bytes
-//!   without a terminator; an embedded NUL reports an error instead of success.
-//!   The connection needs a byte-write callback (`textConnection()` has only
-//!   formatted output, so it returns a write error).
+//!   the bytes go to the connection's `write` callback: `R_WriteConnection`,
+//!   or before R 4.6 `writeBin()` / `writeChar()` (see
+//!   [`write_connection`](crate::connection::write_connection)). R's errors
+//!   are caught: a closed connection or a failing write becomes an
+//!   `io::Error` returned to indicatif, which skips that draw, so no error
+//!   unwinds through its locks. `textConnection()` has no `write` callback,
+//!   so drawing to it fails the same way.
 //!
 //! # `Send` / `Sync`
 //!
@@ -72,7 +73,8 @@ enum TermKind {
     TerminalStdout,
     /// `stderr()` terminal — write via the console hook with otype 1.
     TerminalStderr,
-    /// Any other R connection — write via caught R evaluation.
+    /// Any other R connection — write via its `write` callback, R errors
+    /// caught.
     Connection,
 }
 
@@ -84,12 +86,13 @@ enum TermKind {
 /// connection SEXP.
 ///
 /// See the [module docs](self) for the dispatch rules (terminal connections
-/// go through the console hook, other writes catch R errors as `io::Error`s)
+/// go through the console hook, others through their `write` callback, with
+/// R errors returned as `io::Error`s)
 /// and the `Send` / `Sync` story.
 ///
 /// Construct via [`RTerm::new`] from any R connection SEXP (e.g. the SEXP
 /// produced by [`RStdout`] / [`RStderr`] via [`IntoR::into_sexp`], or a
-/// user-supplied `textConnection` / `file()` / custom connection). The
+/// user-supplied `rawConnection()` / `file()` / custom connection). The
 /// connection is pinned on R's precious list for the lifetime of the struct
 /// and released on `Drop`.
 ///
@@ -142,7 +145,7 @@ impl RTerm {
     /// most commonly [`RStdout`] or
     /// [`RStderr`] (which evaluate `base::stdout()`
     /// / `base::stderr()`), or a raw SEXP obtained from an R-side
-    /// `textConnection()` / `file()` / custom connection.
+    /// `rawConnection()` / `file()` / custom connection.
     ///
     /// # Panics
     ///
@@ -206,7 +209,8 @@ impl RTerm {
     fn write_connection(&self, mut buf: &[u8]) -> io::Result<()> {
         while !buf.is_empty() {
             // write_bytes already checked R's main thread. Catch R errors as
-            // values here: unwinding would poison indicatif's drawing lock.
+            // values: a jump or unwind would leave indicatif's draw lock
+            // held or poisoned.
             let written = unsafe { crate::connection::access::write_caught(self.sexp, buf) }?;
             if written == 0 {
                 return Err(io::Error::new(

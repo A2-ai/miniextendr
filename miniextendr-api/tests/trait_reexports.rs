@@ -86,6 +86,31 @@ impl facade::RenamedAssociated for AssociatedHost {
 #[miniextendr(env, noexport)]
 impl facade::DebugAlias for AssociatedHost {}
 
+// An empty impl of a trait this crate defines, by the crate path and by the
+// bare name (#2072).
+#[miniextendr]
+pub trait Greet {
+    fn hello(&self) -> String {
+        "hi".to_string()
+    }
+}
+
+#[derive(ExternalPtr)]
+pub struct CratePathGreeter;
+
+impl Greet for CratePathGreeter {}
+
+#[miniextendr(env, noexport)]
+impl crate::Greet for CratePathGreeter {}
+
+#[derive(ExternalPtr)]
+pub struct BareGreeter;
+
+impl Greet for BareGreeter {}
+
+#[miniextendr(env, noexport)]
+impl Greet for BareGreeter {}
+
 #[test]
 fn import_spelling_does_not_change_r_names_or_trait_object_compatibility() {
     assert!(
@@ -118,6 +143,16 @@ fn import_spelling_does_not_change_r_names_or_trait_object_compatibility() {
             .content
             .contains("CounterHost$Counter$read")
     );
+    assert!(
+        R_WRAPPERS_CratePathGreeter_Greet_IMPL
+            .content
+            .contains("CratePathGreeter$Greet$hello")
+    );
+    assert!(
+        R_WRAPPERS_BareGreeter_Greet_IMPL
+            .content
+            .contains("BareGreeter$Greet$hello")
+    );
     let concrete = CounterHost(40);
     let object: &dyn RenamedCounter = &concrete;
     assert_eq!(object.plus(2), 42);
@@ -132,6 +167,15 @@ fn a_consumer_view_dispatches_default_methods_through_the_reexported_impl() {
         let view = defining::CounterView::try_from_sexp(owner.get()).expect("canonical trait tag");
         assert_eq!(view.read(), 40);
         assert_eq!(view.plus(2), 42);
+
+        for greeter in [
+            miniextendr_api::mx_abi::mx_wrap(__mx_wrap_CratePathGreeter(CratePathGreeter)),
+            miniextendr_api::mx_abi::mx_wrap(__mx_wrap_BareGreeter(BareGreeter)),
+        ] {
+            let greeter = OwnedProtect::new(greeter);
+            let view = GreetView::try_from_sexp(greeter.get()).expect("empty impl registers");
+            assert_eq!(view.hello(), "hi");
+        }
 
         // Also check the public declaration-side builder: it must select the
         // same associated callbacks, and preserve its nominal vtable type.

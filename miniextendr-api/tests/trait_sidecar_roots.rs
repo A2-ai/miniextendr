@@ -38,8 +38,8 @@ fn wrapping_erased_storage_roots_every_pending_slot() {
             let slots = R_ExternalPtrProtected(owner);
             // Fail before collecting if the GC edge was never installed.
             assert_eq!(slots.type_of(), SEXPTYPE::VECSXP);
-            assert_eq!(slots.len(), 6);
-            assert_eq!(slots.vector_elt(3), source.get());
+            assert_eq!(slots.len(), 5);
+            assert_eq!(slots.vector_elt(2), source.get());
             owner
         };
         // No allocation in the gap between the constructor's temporary roots
@@ -50,28 +50,26 @@ fn wrapping_erased_storage_roots_every_pending_slot() {
         assert_eq!(slots.vector_elt(0).type_of(), SEXPTYPE::SYMSXP);
         assert_eq!(slots.vector_elt(1), SEXP::nil());
         assert_eq!(
-            Vec::<i32>::try_from_sexp(slots.vector_elt(3)).unwrap(),
+            Vec::<i32>::try_from_sexp(slots.vector_elt(2)).unwrap(),
             [13, 21, 34]
         );
         assert_eq!(
-            Vec::<i32>::try_from_sexp(slots.vector_elt(4)).unwrap(),
+            Vec::<i32>::try_from_sexp(slots.vector_elt(3)).unwrap(),
             [55, 89]
         );
         assert_eq!(
-            String::try_from_sexp(slots.vector_elt(5)).unwrap(),
+            String::try_from_sexp(slots.vector_elt(4)).unwrap(),
             "retained"
         );
     });
 }
 
 #[test]
-fn erased_types_without_sidecars_still_have_shared_borrow_state() {
+fn erased_types_without_sidecars_allocate_no_slot_list() {
     r_test_utils::with_r_thread(|| unsafe {
         let owner = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
             __mx_wrap_PlainHost(PlainHost),
         ));
-        let prot = R_ExternalPtrProtected(owner.get());
-        assert_eq!(prot.len(), 3);
-        assert_eq!(i32::try_from_sexp(prot.vector_elt(2)).unwrap(), 0);
+        assert_eq!(R_ExternalPtrProtected(owner.get()), SEXP::nil());
     });
 }

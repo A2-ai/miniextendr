@@ -51,13 +51,17 @@ pub(crate) fn native_borrow_checks<'a>(
 
 /// Bind a borrowed view to a local root scope. A borrow directly from the
 /// raw argv pointer would itself have an unconstrained lifetime.
-/// Arity and native alias checks must run before this code.
+/// Arity and native alias checks must run before this code. A conversion
+/// failure panics, as `trait_abi::extract_arg` does.
 pub(crate) fn rooted_view_arg(
     name: &syn::Ident,
     ty: &syn::Type,
     index: usize,
     argv: &syn::Ident,
 ) -> TokenStream {
+    if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(name, ty) {
+        return stmt;
+    }
     let slot = format_ident!(
         "__mx_root_{}",
         crate::naming::unraw(name),
@@ -72,6 +76,35 @@ pub(crate) fn rooted_view_arg(
             ::core::result::Result::Ok(value) => value,
             ::core::result::Result::Err(error) => ::core::panic!("{error}"),
         };
+    }
+}
+
+/// A shim's receiver address for [`alias_checks`]: the value inside the
+/// receiver's `RefCell`, comparable with `ExternalPtr::as_ptr` of a `&Self`
+/// argument.
+pub(crate) fn cell_address(cell: &syn::Ident) -> TokenStream {
+    quote! { #cell.as_ptr().cast_const().cast::<::core::ffi::c_void>() }
+}
+
+/// Borrow a shim's receiver from its `RefCell` for the rest of the shim:
+/// shared for `&self`, exclusive for `&mut self`. A call still running on the
+/// same object makes this raise the `miniextendr_borrow_conflict` error.
+pub(crate) fn receiver_borrow(
+    cell: &syn::Ident,
+    guard: &syn::Ident,
+    self_ref: &syn::Ident,
+    mutable: bool,
+) -> TokenStream {
+    if mutable {
+        quote! {
+            let mut #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+            let #self_ref = &mut *#guard;
+        }
+    } else {
+        quote! {
+            let #guard = ::miniextendr_api::externalptr::borrow_value(#cell);
+            let #self_ref = &*#guard;
+        }
     }
 }
 

@@ -58,9 +58,11 @@ fn shared_character_roots_preserve_na_and_null_semantics() {
     });
 }
 
+// A trait parameter also needs `IntoR` for the View, which `&i32` lacks, so
+// the shim's references are the slice and string forms.
 #[miniextendr]
 pub trait RootedReader {
-    fn read(&self, scalar: &i32, values: &[i32], label: &str, extra: Option<&i32>) -> String;
+    fn read(&self, values: &[i32], label: &str) -> String;
 }
 
 #[derive(ExternalPtr)]
@@ -68,11 +70,8 @@ pub struct Reader;
 
 #[miniextendr(env, noexport)]
 impl RootedReader for Reader {
-    fn read(&self, scalar: &i32, values: &[i32], label: &str, extra: Option<&i32>) -> String {
-        format!(
-            "{label}:{}",
-            scalar + values.iter().sum::<i32>() + extra.copied().unwrap_or(0)
-        )
+    fn read(&self, values: &[i32], label: &str) -> String {
+        format!("{label}:{}", values.iter().sum::<i32>())
     }
 }
 
@@ -82,7 +81,7 @@ fn trait_shim_shared_references_keep_call_scoped_roots() {
         let scope = ProtectScope::new();
         let owner = scope.protect(miniextendr_api::mx_abi::mx_wrap(__mx_wrap_Reader(Reader)));
         let view = RootedReaderView::from_sexp(owner.get());
-        assert_eq!(view.read(&3, &[5, 8], "sum", Some(&13)), "sum:29");
+        assert_eq!(view.read(&[5, 8], "sum"), "sum:13");
     });
 }
 
@@ -109,9 +108,10 @@ fn concrete_generic_shim_uses_shared_native_roots() {
         let scope = ProtectScope::new();
         let source = scope.protect(vec![3_i32, 5, 8].into_sexp());
         let args = [source.get()];
-        let mut reader = Reader;
+        // The data pointer of a trait object points at its value's `RefCell`.
+        let reader = std::cell::RefCell::new(Reader);
         let result = scope.protect((vtable.total)(
-            std::ptr::from_mut(&mut reader).cast(),
+            std::ptr::from_ref(&reader).cast_mut().cast(),
             1,
             args.as_ptr(),
         ));
