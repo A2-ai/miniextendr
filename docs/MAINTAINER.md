@@ -110,7 +110,7 @@ RUSTFLAGS='-Wmissing-docs' cargo check -p miniextendr-api --lib
 
 "Blocking" below is maintainer policy: don't merge or tag while an applicable
 check is failing or still running. GitHub enforces none of it. As of
-2026-10-11, `main` has no branch protection and no ruleset, so no status check
+2026-10-14, `main` has no branch protection and no ruleset, so no status check
 is required and an enabled merge button proves nothing (#1391).
 
 ### What `CI Success` covers
@@ -118,8 +118,8 @@ is required and an enabled merge button proves nothing (#1391).
 `.github/workflows/ci.yml` runs on pull requests, pushes to `main`, `v*` tag
 pushes, a weekly schedule (Saturday 06:00 UTC) and `workflow_dispatch`. Its
 `CI Success` job is the one check to require. It needs Generated Files Check,
-Version Check, Detect changes, Sync Checks, Docs Link Check, Rust lint, Rust
-tests, R CMD check / Linux, R tests / Linux, the R GC-stress shards,
+Version Check, Detect changes, Sync Checks, Docs Link Check, Docs Examples
+Check, Rust lint, Rust tests, R CMD check / Linux, R tests / Linux, the R GC-stress shards,
 Cross-Package Trait ABI, minirextendr, CRAN-like check and Bootstrap Vendor
 Test. A skipped job passes; a failed or cancelled one fails the aggregate. A
 green `CI Success` therefore means only that nothing which ran failed:
@@ -135,12 +135,13 @@ green `CI Success` therefore means only that nothing which ran failed:
   devel. On a pull request, a label named after an R version alias (`oldrel` or
   `oldrel/N`, `devel`, `next`) adds that leg, and `full-ci` adds oldrel and
   devel. The devel and next legs may fail without failing the run.
-- **Label-gated jobs.** On a pull request, the GC-stress shards run only with
-  the `gc-stress` label (see
-  [GCTORTURE_TESTING.md](GCTORTURE_TESTING.md#how-ci-runs-the-gctorture-tests-opt-in-per-pr)),
-  and the three `MALLOC_CHECK_` rounds in R tests / Linux only with
-  `heap-check`. Every other event runs both. A labeled job that fails blocks
-  `CI Success`.
+- **Label-gated jobs.** On a pull request, the three `MALLOC_CHECK_` rounds
+  in R tests / Linux need `heap-check`; other events run them. The GC-stress
+  shards need `MX_GC_STRESS_CI=true` on every event, plus `gc-stress` on a
+  PR and matching R paths. The variable is currently unset, so the shards
+  skip even on main, tags and dispatch (#2070). A label alone cannot enable
+  them. See [GCTORTURE_TESTING.md](GCTORTURE_TESTING.md#how-ci-runs-the-gctorture-tests-opt-in-per-pr).
+  A job that runs and fails blocks `CI Success`.
 - **Cancellation.** A new push to a pull request cancels the superseded run. A
   run for a push to `main` is never cancelled once it starts, but while it
   runs only the newest waiting run is kept, so a burst of merges does not get
@@ -150,15 +151,16 @@ green `CI Success` therefore means only that nothing which ran failed:
 
 | Check | Merge | Release |
 |---|---|---|
-| `CI Success` | Blocking on every pull request. | Blocking on the commit to be tagged, from the dispatched release run. That run checks R 4.4, release, oldrel and devel, runs the GC-stress shards and the heap-check rounds, and runs every other job except Feature combos and the Windows check. |
+| `CI Success` | Blocking on every pull request. | Blocking on the commit to be tagged, from the dispatched release run. That run checks R 4.4, release, oldrel and devel and the heap-check rounds. Feature combos and Windows skip; the GC-stress shards also skip unless `MX_GC_STRESS_CI=true`. |
 | CRAN-like check (inside `CI Success`) | Blocking when R inputs change. | Blocking for every `rpkg` release. It builds the vendored source tarball and checks the tarball with `--as-cran`. |
 | Docs Link Check (inside `CI Success`) | Blocking when docs inputs change. | Blocking when the release changes docs. `just site-check` runs it locally. |
+| Docs Examples Check (inside `CI Success`) | Blocking when docs/rustdoc inputs change. Compiles the marked examples in docs and end-user skills. | Blocking on the dispatched release run. |
 | webR (`webr.yml`, not in `CI Success`) | Triggers only on pull requests and pushes that touch its paths (framework crates, `rpkg`, `minirextendr`, the cross-package and webR test fixtures, the webR Dockerfiles, Cargo manifests). On a pull request, every job except `pin-lockstep` also needs the `webr` label; apply it when the PR touches wasm-specific code (see [WEBR.md](WEBR.md#ci)). A labeled run must pass. Pushes to `main` run it in full. | Blocking when the release changes webR-covered paths: dispatch it and require every job, including the tier-2 install and the tier-3 session. |
 | macOS R CMD check, arm64 and x86_64 (`ci.yml`, not in `CI Success`) | Never runs on pull requests or pushes; schedule and dispatch only. | Blocking for every `rpkg` release: both rows of the dispatched release run. |
 | Feature runtime legs (`ci.yml`, not in `CI Success`) | Schedule and dispatch only. | Conditional: blocking when feature selection or code generation changed. They run in the dispatched release run. |
 | Feature combos (`ci.yml`, not in `CI Success`) | Schedule only; dispatch does not run it. | Conditional, on the same changes: run `just check-features` locally. |
 | Standalone round-trip e2e (`ci.yml`, not in `CI Success`) | Schedule, dispatch, or the `run-e2e` label on a pull request. | Conditional: blocking when scaffolding or build plumbing changed. It runs in the dispatched release run. |
-| gctorture nightly (`gctorture-nightly.yml`) | Nightly schedule and dispatch only. | Conditional: blocking for FFI, allocation, GC-rooting, conversion or runtime changes. Dispatch it on the release branch. |
+| gctorture nightly (`gctorture-nightly.yml`) | Manual dispatch only: the nightly schedule is disabled pending #2070. | Conditional: blocking for FFI, allocation, GC-rooting, conversion or runtime changes. Dispatch it on the release branch; a skipped CI stress job is not stress-test evidence. |
 | Miri nightly (`miri-nightly.yml`) | Informational: the test step is `continue-on-error`. | Informational: review the latest report. |
 | Windows R CMD check (`ci.yml`, not in `CI Success`) | Runs only on pull requests with the `windows` label, and never blocks. | No gate: Windows support is deferred (#1654, which collects #94, #104 and #594). Say so in the release notes. |
 | Pages deployment, webR image mirror | Operational, not gates. | Not gates: a failure affects publishing infrastructure, not the release artifacts. |
@@ -182,10 +184,11 @@ older green `main`.
    ```
 
 2. **Dispatch the release runs on that branch.** A dispatched `ci.yml` run
-   skips the path filter and runs every job except Feature combos and the
-   Windows check: the oldrel and devel legs, the GC-stress shards, the
-   heap-check rounds, both macOS architectures, the feature runtime legs and
-   the standalone round-trip included.
+   skips the path filter and includes the oldrel and devel legs, heap-check
+   rounds, both macOS architectures, feature runtime legs and standalone
+   round-trip. Feature combos and Windows skip. The GC-stress shards also
+   skip while `MX_GC_STRESS_CI` is unset; run `just devtools-test-stress` at
+   the release SHA to cover them during the #2070 CI suspension.
 
    ```bash
    gh workflow run ci.yml --ref release/vX.Y.Z
@@ -195,8 +198,9 @@ older green `main`.
 
 3. **Check that every run tested `$sha` and passed.** `CI Success` must be
    green, and so must the jobs it leaves out: both macOS rows, the feature
-   runtime legs and the round-trip. The gctorture sweep is six shards of about
-   two hours each.
+   runtime legs and the round-trip. The gctorture sweep has six shards with
+   a 300-minute timeout; some have hit that limit (#2070). A timeout is
+   missing validation, not a passing release gate.
 
    ```bash
    gh run list --commit "$sha" --event workflow_dispatch --json workflowName,status,conclusion,url

@@ -128,9 +128,10 @@ just cross-test
 merge gate. That is maintainer policy: GitHub does not require the check on
 `main` yet ([#1391](https://github.com/A2-ai/miniextendr/issues/1391)), so an
 enabled merge button proves nothing. A green `CI Success` also does not mean
-every check ran: on pull requests, webR, the GC-stress shards, heap checking
-and the extra R versions run only under a label, and the macOS check, the
-feature-runtime legs and the full gctorture sweep do not run on them at all.
+every check ran: on pull requests, webR, heap checking and the extra R
+versions run only under a label. The GC-stress shards additionally require
+`MX_GC_STRESS_CI=true` and are currently disabled pending #2070. The macOS
+check, feature-runtime legs and full gctorture sweep do not run on PRs.
 Windows has no gate ([#1654](https://github.com/A2-ai/miniextendr/issues/1654)).
 The [Maintainer Guide](docs/MAINTAINER.md#ci-and-release-gates) classifies
 every workflow as merge-blocking, release-blocking or informational and lists
