@@ -79,6 +79,35 @@ pub(crate) fn rooted_view_arg(
     }
 }
 
+/// A shim's receiver address for [`alias_checks`]: the value inside the
+/// receiver's `RefCell`, comparable with `ExternalPtr::as_ptr` of a `&Self`
+/// argument.
+pub(crate) fn cell_address(cell: &syn::Ident) -> TokenStream {
+    quote! { #cell.as_ptr().cast_const().cast::<::core::ffi::c_void>() }
+}
+
+/// Borrow a shim's receiver from its `RefCell` for the rest of the shim:
+/// shared for `&self`, exclusive for `&mut self`. A call still running on the
+/// same object makes this raise the `miniextendr_borrow_conflict` error.
+pub(crate) fn receiver_borrow(
+    cell: &syn::Ident,
+    guard: &syn::Ident,
+    self_ref: &syn::Ident,
+    mutable: bool,
+) -> TokenStream {
+    if mutable {
+        quote! {
+            let mut #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+            let #self_ref = &mut *#guard;
+        }
+    } else {
+        quote! {
+            let #guard = ::miniextendr_api::externalptr::borrow_value(#cell);
+            let #self_ref = &*#guard;
+        }
+    }
+}
+
 pub(crate) fn handle_ident(name: &syn::Ident) -> syn::Ident {
     format_ident!(
         "__extptr_{}",

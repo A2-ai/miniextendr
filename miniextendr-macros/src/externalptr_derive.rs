@@ -1044,14 +1044,15 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: the live struct behind the pointer. `sidecar_r_struct` panics
-    // (caught by the surrounding with_r_unwind_protect and raised as an R
-    // error) on a non-pointer, a wrong type, or a pointer without an address
-    // (a restored object: the classed errors) instead of silently returning
-    // R_NilValue.
+    // Helper: the live struct behind the pointer, borrowed shared for the
+    // getter. `sidecar_r_struct` panics (caught by the surrounding
+    // with_r_unwind_protect and raised as an R error) on a non-pointer, a
+    // wrong type, or a pointer without an address (a restored object: the
+    // classed errors) instead of silently returning R_NilValue, and while a
+    // running method holds the struct mutably (`miniextendr_borrow_conflict`).
     let extract_ref = quote::quote! {
-        let data: &#struct_name =
-            ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
+        let __mx_data = ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
+        let data: &#struct_name = &__mx_data;
     };
 
     match &slot.kind {
@@ -1164,12 +1165,14 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: the live struct behind the pointer, mutably. Failure modes
-    // panic like the getter's (`sidecar_r_struct_mut`) instead of silently
-    // no-op'ing.
+    // Helper: the live struct behind the pointer, borrowed exclusively for
+    // the setter. Failure modes panic like the getter's
+    // (`sidecar_r_struct_mut`) instead of silently no-op'ing, and a running
+    // method holding the struct makes it raise `miniextendr_borrow_conflict`.
     let extract_mut = quote::quote! {
-        let data: &mut #struct_name =
+        let mut __mx_data =
             ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(x);
+        let data: &mut #struct_name = &mut __mx_data;
     };
 
     // Conversion-failure condition, the argument error of #1594 on the

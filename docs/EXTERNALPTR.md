@@ -175,15 +175,22 @@ impl Counter {
 `reborrow()` is the correct choice when the caller expects to get back the
 same R object they passed in.
 
+`Deref`, `DerefMut`, `as_ref()` and `as_mut()` take no borrow of the value's
+`RefCell`; see [Reentrant Calls](#reentrant-calls) for what does.
+
 ## Consuming and Dropping
 
 | Method | Effect |
 |--------|--------|
 | `into_inner(this)` | Moves value out, deallocates, neutralizes finalizer |
-| `into_raw(this)` | Returns `*mut T`, neutralizes finalizer, caller owns memory |
+| `into_raw(this)` | Moves the value into a new `Box<T>` and returns its `*mut T` (not the stored address), neutralizes finalizer, caller owns memory |
 | `leak(this)` | Returns `&'a mut T`, memory is never freed |
 
 R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rust without being explicitly consumed. The Rust `Drop` impl is a no-op to avoid double-free.
+
+`into_inner` and `into_raw` raise the `miniextendr_borrow_conflict` error while
+a running call holds the value. `from_raw` boxes the value again, so its
+address changes too.
 
 ### Panicking destructors are not recoverable
 
@@ -245,6 +252,35 @@ pointer roots" below.
 Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
 Consuming receivers (`self: ExternalPtr<Self>`) are not supported. R owns
 the pointer.
+
+## Reentrant Calls
+
+A method that calls back into R can meet its own object again: the callback
+may read or set a field of it, or call another of its methods, while the first
+method still holds `&self` or `&mut self`. So the value an `ExternalPtr` stores
+sits in a `RefCell<T>`, and the generated code borrows that cell for the whole
+call, through the conversion of its result:
+
+- `&self` methods, `self: &ExternalPtr<Self>` receivers, `ExternalPtrRef`
+  handles and field reads borrow it shared;
+- `&mut self` and by-value methods, `self: &mut ExternalPtr<Self>` receivers,
+  `ExternalPtrMut` handles and field writes borrow it exclusively.
+
+Shared borrows nest. A call that conflicts with one still running raises an R
+error of class `miniextendr_borrow_conflict` instead of making a second
+reference, and leaves the object as it was. A trait method called through a
+View, from this package or another, borrows the same cell (see `TRAIT_ABI.md`).
+
+The borrow ends when the method returns or unwinds. A method that calls back
+into R should do so through an `RCall` evaluator such as `eval_with_handlers`,
+which carries an R error through the method's Rust frames as an unwind. A bare
+`Rf_eval` that raises jumps over those frames, so the borrow is never released
+and the object stays borrowed (#2093).
+
+`Deref`, `DerefMut`, `as_ref()` and `as_mut()` read the value through
+`RefCell::as_ptr` and take no borrow. A function that takes an `ExternalPtr<T>`
+argument, or Rust code that keeps a handle, must not hold such a reference
+across a callback that can reach the same object (#2092).
 
 ## Display and Diagnostic Metadata with TypedExternal
 
@@ -721,7 +757,7 @@ The internal layout of an `ExternalPtr`-created `EXTPTRSXP`:
 ```text
 EXTPTRSXP
   addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
-            └→ Box<T> (the actual Rust value)
+            └→ RefCell<T> (the Rust value and its borrow flag)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
   prot  → VECSXP[2 + T::R_SLOT_COUNT]
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
@@ -729,7 +765,7 @@ EXTPTRSXP
             [2..] → one value per Sidecar<T> field
 ```
 
-Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
+Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols. The `Any` value is a `RefCell<T>`, which the generated code borrows (see [Reentrant Calls](#reentrant-calls)).
 
 The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
 

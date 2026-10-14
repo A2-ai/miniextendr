@@ -3682,84 +3682,112 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         ValueMode::Terminal
     };
 
-    // Generate self extraction for instance methods
-    // SEXP is now Send+Sync, so this works for both main and worker threads
-    let pre_call = if method.env.is_instance() {
-        let self_extraction = match method.env {
-            ReceiverKind::RefMut => {
+    // Generate self extraction for instance methods. Each receiver borrows
+    // the value's RefCell for the whole call (shared for `&self`, exclusive
+    // otherwise), so a callback into R that reaches the same object gets the
+    // `miniextendr_borrow_conflict` error instead of a second reference. The
+    // receiver is resolved before the arguments are converted and borrowed
+    // (or moved out) after: an R error that longjmps out of an argument
+    // conversion would skip the borrow's release and leave the object borrowed.
+    let (pre_call, post_conversion) = if method.env.is_instance() {
+        let owner = syn::Ident::new("__mx_owner", proc_macro2::Span::mixed_site());
+        let cell = syn::Ident::new("__mx_cell", proc_macro2::Span::mixed_site());
+        let guard = syn::Ident::new("__mx_guard", proc_macro2::Span::mixed_site());
+        let resolve = quote! {
+            let #owner =
+                ::miniextendr_api::externalptr::ReceiverOwner::resolve::<#type_ident>(#self_sexp);
+        };
+        // The receiver's RefCell; `handle_downcast_failed` refuses a consumed
+        // value, a pointer restored from a saved session, or another type.
+        let cell_lookup = quote! {
+            #resolve
+            let #self_ptr = unsafe {
+                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#owner.get())
+            };
+            let #cell = match #self_ptr.downcast_cell::<#type_ident>() {
+                ::core::option::Option::Some(cell) => cell,
+                ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
+            };
+        };
+        let hold_mut = quote! {
+            let #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+        };
+        let (lookup, borrow) = match method.env {
+            ReceiverKind::RefMut => (
+                cell_lookup,
                 quote! {
-                    let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
-                    };
-                    let #self_ref = match #self_ptr.downcast_mut::<#type_ident>() {
-                        ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
-                    };
-                }
-            }
-            ReceiverKind::Ref => {
+                    let mut #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+                    let #self_ref = &mut *#guard;
+                },
+            ),
+            ReceiverKind::Ref => (
+                cell_lookup,
                 quote! {
-                    let #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
-                    };
-                    let #self_ref = match #self_ptr.downcast_ref::<#type_ident>() {
-                        ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
-                    };
-                }
-            }
+                    let #guard = ::miniextendr_api::externalptr::borrow_value(#cell);
+                    let #self_ref = &*#guard;
+                },
+            ),
             ReceiverKind::Value => match value_mode {
                 // `self -> Result<Self, E>` / `Option<Self>`: keep the stored
                 // value; the call runs on a clone and the slot is overwritten
                 // only on success (`T: Clone`, see `ConsumingFallible`).
-                ValueMode::Fallible => quote! {
-                    let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
-                    };
-                    let #self_slot = match #self_ptr.downcast_mut::<#type_ident>() {
-                        ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
-                    };
-                },
+                ValueMode::Fallible => (
+                    cell_lookup,
+                    quote! {
+                        let mut #self_slot = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+                    },
+                ),
                 // `self -> Self` and terminal `self -> T`: move the value out,
                 // leaving the `ConsumedSlot` marker until (and unless) the
-                // result is written back.
-                ValueMode::WriteBack | ValueMode::Terminal => quote! {
-                    let mut #self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
-                    };
-                    let #taken = match #self_ptr.take_for_consuming::<#type_ident>() {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
-                    };
-                },
+                // result is written back. A call that reaches the object
+                // meanwhile finds it consumed.
+                ValueMode::WriteBack | ValueMode::Terminal => (
+                    quote! {
+                        #resolve
+                        let mut #self_ptr = unsafe {
+                            ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#owner.get())
+                        };
+                    },
+                    quote! {
+                        let #taken = match #self_ptr.take_for_consuming::<#type_ident>() {
+                            ::core::option::Option::Some(v) => v,
+                            ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
+                        };
+                    },
+                ),
             },
-            // `wrap_receiver` resolves the handle and fails like the erased
-            // receivers above (consumed, restored from a saved session, or a
-            // type mismatch, #1872).
-            ReceiverKind::ExternalPtrRef => {
+            // A handle receiver can make its own references through the handle,
+            // so the wrapper holds the borrow for it: shared for `&ExternalPtr`,
+            // exclusive for `&mut ExternalPtr` and `ExternalPtr`.
+            ReceiverKind::ExternalPtrRef => (
+                cell_lookup,
                 quote! {
+                    let #guard = ::miniextendr_api::externalptr::borrow_value(#cell);
                     let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
-                }
-            }
-            ReceiverKind::ExternalPtrRefMut => {
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                },
+            ),
+            ReceiverKind::ExternalPtrRefMut => (
+                cell_lookup,
                 quote! {
+                    #hold_mut
                     let mut #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
-                }
-            }
-            ReceiverKind::ExternalPtrValue => {
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                },
+            ),
+            ReceiverKind::ExternalPtrValue => (
+                cell_lookup,
                 quote! {
+                    #hold_mut
                     let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
-                }
-            }
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                },
+            ),
             _ => unreachable!(),
         };
-        vec![self_extraction]
+        (vec![lookup], vec![borrow])
     } else {
-        vec![]
+        (vec![], vec![])
     };
 
     // Fallible in-place builders (#1433): `&mut self -> Result<&mut Self, E>` /
@@ -3864,6 +3892,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
         .pre_call(pre_call)
+        .post_conversion(post_conversion)
         .call_expr(call_expr)
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)

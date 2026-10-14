@@ -406,7 +406,7 @@ pub trait AltrepExtract {
 /// Blanket implementation for types stored in ExternalPtr (the common case).
 ///
 /// This is the default storage strategy: data1 is an EXTPTRSXP wrapping a
-/// `Box<Box<dyn Any>>` that downcasts to `&T`.
+/// `Box<Box<dyn Any>>` holding a `RefCell<T>`, read without a borrow.
 impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
     unsafe fn altrep_extract_ref(x: crate::SEXP) -> &'static Self {
         // SAFETY: ALTREP callbacks are always on R's main thread, so unchecked is safe.

@@ -475,7 +475,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ///
                 /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
                 /// - The object must stay live through construction; the view then roots it
-                /// - Calls must respect the concrete object's Rust borrowing rules
+                /// - A call that conflicts with one still running on the same object
+                ///   raises the `miniextendr_borrow_conflict` error
                 /// - Construction, use and drop must all run on R's main thread
                 #[inline]
                 pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::option::Option<Self> {
@@ -814,6 +815,8 @@ fn generate_method_shim(
     let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
     let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
     let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
+    let cell = syn::Ident::new("__mx_cell", proc_macro2::Span::mixed_site());
+    let guard = syn::Ident::new("__mx_guard", proc_macro2::Span::mixed_site());
     let owner = syn::Ident::new("owner", proc_macro2::Span::mixed_site());
     let owner_parameter = method.owner_receiver.map(|_| {
         quote::quote! {
@@ -880,37 +883,37 @@ fn generate_method_shim(
     let alias_checks = crate::trait_self_ref::alias_checks(
         &impl_t,
         &handles,
-        Some((quote::quote!(#data.cast_const()), method.is_mut)),
+        Some((crate::trait_self_ref::cell_address(&cell), method.is_mut)),
     );
     let self_borrows = self_refs
         .iter()
         .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
 
-    // Generate method call (uses __ImplT)
+    // Generate method call (uses __ImplT). The receiver borrows the value's
+    // RefCell for the rest of the shim, through the result conversion.
     let param_names = &method.param_names;
-    let method_call = if let Some(kind) = method.owner_receiver {
+    let (receiver, method_call) = if let Some(kind) = method.owner_receiver {
         let handle = kind.type_path();
         let trait_args =
             (!trait_param_idents.is_empty()).then(|| quote::quote!(<#(#trait_param_idents),*>));
-        quote::quote! {
-            let #self_ref = unsafe {
-                #handle::<#impl_t>::from_raw_parts(
-                    ::miniextendr_api::Root::from_call_arg(&#owner),
-                    #data.cast::<#impl_t>(),
-                )
-            };
-            <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
-        }
-    } else if method.is_mut {
-        quote::quote! {
-            let #self_ref = unsafe { &mut *#data.cast::<#impl_t>() };
-            #self_ref.#method_name(#(#param_names),*)
-        }
+        (
+            quote::quote! {
+                let #self_ref = unsafe {
+                    #handle::<#impl_t>::from_raw_parts(
+                        ::miniextendr_api::Root::from_call_arg(&#owner),
+                        #cell,
+                    )
+                };
+            },
+            quote::quote! {
+                <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
+            },
+        )
     } else {
-        quote::quote! {
-            let #self_ref = unsafe { &*#data.cast::<#impl_t>().cast_const() };
-            #self_ref.#method_name(#(#param_names),*)
-        }
+        (
+            crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut),
+            quote::quote! { #self_ref.#method_name(#(#param_names),*) },
+        )
     };
 
     // Generate result conversion
@@ -971,6 +974,7 @@ fn generate_method_shim(
             // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                 ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
+                let #cell = unsafe { &*#data.cast::<::core::cell::RefCell<#impl_t>>() };
                 #native_borrow_checks
                 // Extract arguments
                 #(#arg_extractions)*
@@ -978,7 +982,8 @@ fn generate_method_shim(
                 #(#self_borrows)*
 
                 // Call method
-                let result = { #method_call };
+                #receiver
+                let result = #method_call;
 
                 // Convert result
                 #result_conversion

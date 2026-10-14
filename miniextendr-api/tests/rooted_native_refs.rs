@@ -108,9 +108,10 @@ fn concrete_generic_shim_uses_shared_native_roots() {
         let scope = ProtectScope::new();
         let source = scope.protect(vec![3_i32, 5, 8].into_sexp());
         let args = [source.get()];
-        let mut reader = Reader;
+        // The data pointer of a trait object points at its value's `RefCell`.
+        let reader = std::cell::RefCell::new(Reader);
         let result = scope.protect((vtable.total)(
-            std::ptr::from_mut(&mut reader).cast(),
+            std::ptr::from_ref(&reader).cast_mut().cast(),
             1,
             args.as_ptr(),
         ));

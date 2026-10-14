@@ -165,15 +165,18 @@ fn test_erased_object_offset_and_single_drop() {
 
     assert_eq!(
         ErasedObject::<Counted>::DATA_OFFSET,
-        size_of::<mx_erased>().next_multiple_of(align_of::<Counted>())
+        size_of::<mx_erased>().next_multiple_of(align_of::<std::cell::RefCell<Counted>>())
     );
     unsafe {
         let ptr = ErasedObject::into_raw(Counted { value: 42 }, &BASE);
         assert!(std::ptr::eq((*ptr).base, &BASE));
         let base = &*(*ptr).base;
-        let data = ptr.cast::<u8>().add(base.data_offset).cast::<Counted>();
+        let data = ptr
+            .cast::<u8>()
+            .add(base.data_offset)
+            .cast::<std::cell::RefCell<Counted>>();
         assert!(data.is_aligned());
-        assert_eq!((*data).value, 42);
+        assert_eq!((*data).borrow().value, 42);
         assert_eq!(DROPS.load(Ordering::SeqCst), 0);
         (base.drop)(ptr);
         assert_eq!(DROPS.load(Ordering::SeqCst), 1);

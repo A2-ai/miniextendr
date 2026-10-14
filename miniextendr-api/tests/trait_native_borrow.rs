@@ -7,6 +7,7 @@ use miniextendr_api::from_r::{NativeBorrow, SexpError, TryFromSexp};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::list::ListBuilder;
 use miniextendr_api::{ExternalPtr, IntoR, RCow, SEXP, miniextendr};
+use std::cell::RefCell;
 
 /// Advertise a native borrow, but stop before creating any reference. A
 /// regression must fail an assertion without itself exercising aliased &mut.
@@ -108,7 +109,12 @@ fn list(scope: &ProtectScope, left: SEXP, right: SEXP) -> SEXP {
 }
 
 /// Call a shim and return the message of the tagged condition it must return.
-fn shim_message(scope: &ProtectScope, shim: mx_meth, data: *mut Sink, args: &[SEXP]) -> String {
+fn shim_message(
+    scope: &ProtectScope,
+    shim: mx_meth,
+    data: *const RefCell<Sink>,
+    args: &[SEXP],
+) -> String {
     unsafe {
         let argc = i32::try_from(args.len()).unwrap();
         let argv = if args.is_empty() {
@@ -116,7 +122,9 @@ fn shim_message(scope: &ProtectScope, shim: mx_meth, data: *mut Sink, args: &[SE
         } else {
             args.as_ptr()
         };
-        let result = scope.protect(shim(data.cast(), argc, argv)).get();
+        let result = scope
+            .protect(shim(data.cast_mut().cast(), argc, argv))
+            .get();
         let (_, parts) = RCondition::from_tagged_sexp(result)
             .expect("shim must return a tagged condition")
             .into_parts();
@@ -135,8 +143,9 @@ fn check_shims(
         let v = scope.protect(7i32.into_sexp()).get();
         let w = scope.protect(8i32.into_sexp()).get();
         let other = ExternalPtr::new(Sink);
-        let mut sink = Sink;
-        let data = std::ptr::from_mut(&mut sink);
+        // The shims borrow the receiver's RefCell, as in trait-ABI storage.
+        let sink = RefCell::new(Sink);
+        let data = std::ptr::from_ref(&sink);
 
         let message = shim_message(&scope, inspect, data, &[v, other.as_sexp(), v]);
         assert!(

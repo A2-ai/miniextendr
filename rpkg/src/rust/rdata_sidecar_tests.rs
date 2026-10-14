@@ -74,6 +74,37 @@ impl SidecarEnv {
     pub fn double_count(&mut self) {
         self.count *= 2;
     }
+
+    /// Calls `f()` while this method holds the object mutably, then adds 1 to
+    /// `count` and returns it. A callback that reads, writes or calls a method
+    /// of the same object gets a `miniextendr_borrow_conflict` error (#1965).
+    /// @param f An R function of no arguments.
+    pub fn bump_around(&mut self, f: SEXP) -> i32 {
+        call_back(f);
+        self.count += 1;
+        self.count
+    }
+
+    /// Calls `f()` while this method holds the object shared, then returns
+    /// `count`. A callback may read the object but not write it (#1965).
+    /// @param f An R function of no arguments.
+    pub fn read_around(&self, f: SEXP) -> i32 {
+        let count = self.count;
+        call_back(f);
+        assert_eq!(self.count, count);
+        count
+    }
+}
+
+/// Evaluates the R function `f` with no arguments. An R error unwinds through
+/// the calling method's Rust frames, which drops its borrow, and reaches the
+/// caller's `tryCatch()` as raised. (A bare `Rf_eval` would jump over the
+/// borrow and leave the object borrowed.)
+fn call_back(f: SEXP) {
+    use miniextendr_api::expression::RCall;
+    unsafe {
+        RCall::from_sexp(f).eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
+    }
 }
 
 /// Test creating a SidecarEnv with all sidecar field types.
