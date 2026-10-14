@@ -169,6 +169,28 @@ ptr.borrow_mut().value = 2.71;
 `borrow()` / `borrow_mut()` panic for a type-erased `ExternalPtr<()>`, which
 has no value of its own: downcast it first ("Type-Erased Pointers" below).
 
+### Why there is no `Deref`
+
+A `RefCell` counts its value as borrowed only while the guard `borrow()`
+returns is alive. `Deref::deref` must return a bare `&T`, so a guard taken
+inside it would drop when `deref` returns, and the `&T` would outlive the
+check: a callback could then take `&mut T` to the same value. Leaking the guard
+would leave the value borrowed for good, and skipping the check is the
+unchecked read this model exists to remove. The compiler can't stand in for
+the check either: it tracks borrows of a handle, and two handles to one R
+object (`f(a, a)`, two `Vec` elements, a stored copy) are separate Rust
+values. So, as with `RefCell<T>` itself, the guard is what dereferences:
+`ExternalPtrRef` / `ExternalPtrMut` are the guard plus the R object. Take one
+per scope, not one per field:
+
+```rust
+let c = ptr.borrow();   // one check, held until `c` drops
+c.value + c.other       // plain field access through the view
+```
+
+`#[miniextendr]` signatures need none of this: for `&T` / `&mut T`
+parameters, the generated wrapper holds the guard for the call.
+
 ### Views: `ExternalPtrRef` / `ExternalPtrMut`
 
 `ExternalPtrRef<'a, T>` and `ExternalPtrMut<'a, T>` are a borrow of the value
