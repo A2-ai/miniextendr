@@ -12,6 +12,7 @@ pub mod impl_validation;
 pub mod no_constructor;
 pub mod nonapi_attrib;
 pub mod r_reserved_params;
+pub mod raw_r_eval;
 pub mod rf_error;
 pub mod s4_method_prefix;
 pub mod vctrs_self_ctor;
@@ -50,6 +51,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: non-API ATTRIB / SET_ATTRIB usage (MXL304)
     nonapi_attrib::check(index, &mut diagnostics);
+
+    // Per-file: raw R evaluation (Rf_eval, R_CheckUserInterrupt, ...) in a #[miniextendr] body (MXL305)
+    raw_r_eval::check(index, &mut diagnostics);
 
     // Per-file: s4_* method name on #[miniextendr(s4)] impl (MXL111)
     s4_method_prefix::check(index, &mut diagnostics);

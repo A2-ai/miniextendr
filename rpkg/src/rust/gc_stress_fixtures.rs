@@ -5110,8 +5110,9 @@ pub fn gc_stress_deferred_guard_result() -> miniextendr_api::SEXP {
     use miniextendr_api::{OwnedProtect, sys};
     unsafe {
         let vector = OwnedProtect::new(crate::deferred_condition_tests::deferred_guard_altrep(0));
-        let expr = OwnedProtect::new(RCall::new("sum").arg(vector.get()).build());
-        sys::Rf_eval(expr.get(), sys::R_BaseEnv)
+        RCall::new("sum")
+            .arg(vector.get())
+            .eval_with_handlers(sys::R_BaseEnv)
     }
 }
 
@@ -5128,8 +5129,9 @@ pub fn gc_stress_deferred_connection_open() {
     unsafe {
         let connection =
             OwnedProtect::new(crate::deferred_condition_tests::deferred_guard_connection());
-        let expr = OwnedProtect::new(RCall::new("close").arg(connection.get()).build());
-        sys::Rf_eval(expr.get(), sys::R_BaseEnv);
+        RCall::new("close")
+            .arg(connection.get())
+            .eval_with_handlers(sys::R_BaseEnv);
     }
 }
 
