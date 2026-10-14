@@ -131,6 +131,8 @@ r6-default = ["miniextendr-macros/r6-default"]
 s7-default = ["miniextendr-macros/s7-default"]
 ## Enable worker thread infrastructure (run_on_worker, with_r_thread bidirectional dispatch).
 ## Without this feature, worker APIs are lightweight inline stubs.
+## Deprecated (#2117), as is `worker-default`: the worker thread won't be
+## developed further, and its known problems are not planned.
 worker-thread = []
 worker-default = ["miniextendr-macros/worker-default", "worker-thread"]
 ## Drop the R-side type checks by default crate-wide. Forwards to

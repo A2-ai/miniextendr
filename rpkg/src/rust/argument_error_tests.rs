@@ -10,6 +10,9 @@
 //! fixtures raise the same condition from a function body with `arg_error!`
 //! (#1740).
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use crate::match_arg_tests::{FillMode, Mode};
 use miniextendr_api::{
     AsNumeric, AsNumericVec, DataFrame, MatchArg, arg_error, defer_warning, miniextendr,

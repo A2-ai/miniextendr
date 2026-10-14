@@ -1,0 +1,11 @@
+error: use of deprecated constant `miniextendr_api::worker::WORKER_OPTION`: the worker thread (`#[miniextendr(worker)]`, the `worker-thread` / `worker-default` features) is deprecated and won't be developed further; its known problems are not planned: #989, #1425, #2076, #2109 (https://github.com/A2-ai/miniextendr/issues/2117)
+  --> tests/ui/worker_option_deprecated_deny.rs:11:15
+   |
+11 | #[miniextendr(worker)]
+   |               ^^^^^^
+   |
+note: the lint level is defined here
+  --> tests/ui/worker_option_deprecated_deny.rs:7:9
+   |
+ 7 | #![deny(deprecated)]
+   |         ^^^^^^^^^^

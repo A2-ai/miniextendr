@@ -1,6 +1,8 @@
 //! A worker function's `ExternalPtr<T>` arguments stay borrowed on R's main
 //! thread while the worker runs (#2092).
 #![cfg(feature = "worker-thread")]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 mod r_test_utils;
 

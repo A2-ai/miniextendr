@@ -1533,6 +1533,7 @@ impl ParsedMethod {
                             method_attrs.s7.setter = true;
                         } else if inner.path.is_ident("worker") {
                             worker = Some(true);
+                            crate::deprecation::worker_option(inner.path.span());
                         } else if inner.path.is_ident("no_worker") {
                             worker = Some(false);
                         } else if inner.path.is_ident("main_thread") {

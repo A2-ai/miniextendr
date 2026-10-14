@@ -5,6 +5,9 @@
 //! - `#[miniextendr(rng)]` attribute on impl methods
 //! - Manual RNG management with `RngGuard` and `with_rng`
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::miniextendr;
 use miniextendr_api::rng::{RngGuard, with_rng};
 use miniextendr_api::sys::{R_unif_index, exp_rand, norm_rand, unif_rand};

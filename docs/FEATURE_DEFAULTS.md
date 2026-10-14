@@ -47,7 +47,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks (below the crate's `preconditions` key) | `preconditions`, `Checked<T>` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
-| `worker-default` | Select worker execution (implies `worker-thread`) | fns + static methods | `no_worker` |
+| `worker-default` | Select worker execution (implies `worker-thread`; deprecated, #2117) | fns + static methods | `no_worker` |
 
 All six `*-default` features above are denylisted from rpkg's auto-detected
 default build (`rpkg/tools/detect-features.R`) — enabling any of them flips

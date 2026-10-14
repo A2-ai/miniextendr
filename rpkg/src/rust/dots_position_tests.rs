@@ -4,6 +4,9 @@
 //! and the `.Call()` arguments follow the Rust signature order, and every
 //! formal after the dots is matched by exact name only.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::dots::Dots;
 use miniextendr_api::{miniextendr, typed_list};
 

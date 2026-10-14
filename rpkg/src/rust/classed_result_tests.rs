@@ -12,6 +12,9 @@
 //!   `compile_fail` doctest on
 //!   `miniextendr_api::condition::is_reserved_condition_field`).
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::condition::{ConditionData, RCondition, RConditionData, RError};
 use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 

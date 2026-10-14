@@ -3285,6 +3285,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             return Err(syn::Error::new_spanned(&path, SERDE_ERROR_BARE_HELP));
                         } else if ident == "worker" {
                             force_worker = Some(true);
+                            crate::deprecation::worker_option(ident.span());
                         } else if ident == "no_worker" {
                             force_worker = Some(false);
                         } else if ident == "strict" {
@@ -3338,6 +3339,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 check_interrupt = val;
                             } else if ident == "worker" {
                                 force_worker = Some(val);
+                                if val {
+                                    crate::deprecation::worker_option(ident.span());
+                                }
                             } else if ident == "no_worker" {
                                 force_worker = Some(!val);
                             } else if ident == "coerce" {

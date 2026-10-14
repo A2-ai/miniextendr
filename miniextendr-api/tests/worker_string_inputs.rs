@@ -1,5 +1,7 @@
 //! Worker character borrows use Rust-owned storage, including container forms.
 #![cfg(feature = "worker-thread")]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 mod r_test_utils;
 

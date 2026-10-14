@@ -1,5 +1,8 @@
 //! Explicit cross-class return wrapping and trait factory regressions (#1521).
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use crate::s3_tests::S3Counter;
 use crate::s4_tests::S4Counter;
 use crate::s7_tests::S7Counter;

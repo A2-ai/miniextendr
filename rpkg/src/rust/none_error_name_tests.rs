@@ -7,6 +7,9 @@
 //! The worker fixtures need a worker feature, which rpkg's default build
 //! (`just test-rpkg`) leaves off; the R install enables `worker-thread`.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::{ExternalPtr, miniextendr};
 
 /// @noRd

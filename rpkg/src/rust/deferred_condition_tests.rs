@@ -9,6 +9,9 @@
 //! - The rng, worker-thread and s3-method fixtures exercise the other C
 //!   wrapper templates and the class-wrapping R side.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
     TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr, rust_error,
