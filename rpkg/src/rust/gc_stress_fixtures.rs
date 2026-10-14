@@ -150,7 +150,7 @@ pub fn gc_stress_externalptr_collect_list() {
 /// Hold a borrow of a class-wrapped `ExternalPtr<T>` argument, as a
 /// generated wrapper does for a `&T` argument (#2106), while the pointer's
 /// only other reference, an environment's `.ptr` binding, is cleared and the
-/// GC runs.
+/// GC runs; then the same for the elements of a `Vec<ExternalPtr<T>>`.
 ///
 /// Conversion roots a pointer it unwrapped from a class handle for as long as
 /// the handle lives; without the root the finalizer would free the value
@@ -187,6 +187,36 @@ pub fn gc_stress_externalptr_argument_root() {
             .expect("the argument was collected (R_ExternalPtrAddr is null)");
         assert_eq!(reread.borrow().label, "argument");
         assert_eq!(value.x, 1.0);
+
+        // The same for the elements of a `Vec` argument: each one converted
+        // from a class handle carries its own root.
+        let list = OwnedProtect::new(
+            r_eval_str_global("list(new.env(parent = emptyenv()), new.env(parent = emptyenv()))")
+                .unwrap(),
+        );
+        for i in 0..2 {
+            let ptr = ExternalPtr::new(SharedData {
+                x: i as f64,
+                y: 0.0,
+                label: format!("element-{i}"),
+            });
+            Rf_defineVar(ptr_symbol, ptr.as_sexp(), list.get().vector_elt(i));
+        }
+        let elements = Vec::<ExternalPtr<SharedData>>::try_from_sexp(list.get()).unwrap();
+        let values: Vec<_> = elements.iter().map(ExternalPtr::borrow).collect();
+        for i in 0..2 {
+            Rf_defineVar(ptr_symbol, SEXP::nil(), list.get().vector_elt(i));
+        }
+        R_gc();
+        for i in 0..8 {
+            let _churn = OwnedProtect::new(vec![i; 64].into_sexp());
+        }
+        for (i, element) in elements.iter().enumerate() {
+            let reread = ExternalPtr::<SharedData>::wrap_sexp(element.as_sexp())
+                .expect("a Vec element was collected (R_ExternalPtrAddr is null)");
+            assert_eq!(reread.borrow().label, format!("element-{i}"));
+            assert_eq!(values[i].x, i as f64);
+        }
     }
 }
 
