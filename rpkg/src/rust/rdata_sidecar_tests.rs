@@ -1251,7 +1251,12 @@ pub fn gc_stress_sidecar_fields() {
     std::mem::swap(&mut *front[6], &mut *back[0]);
     let value = ExternalPtr::into_inner(handles.pop().expect("eight handles"));
     assert_eq!(value.n, 7);
-    let back = ExternalPtr::new(value);
+    // Only the pending fields root their R views here (#1961, #1971).
+    // A clone must retain those roots even after the extracted value drops.
+    let copy = value.clone();
+    drop(value);
+    churn();
+    let back = ExternalPtr::new(copy);
     churn();
     assert_eq!(back.n, 7);
     assert_eq!(
