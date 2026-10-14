@@ -58,10 +58,14 @@ test_that("borrowed str conversion translates Latin-1 in a UTF-8 session", {
   expect_equal(miniextendr:::str_borrow_len(value), 6L)
 })
 
-test_that("Cow strings own only elements that require translation", {
+test_that("scalar Cow conversion borrows translated text", {
   value <- latin1_facade()
   expect_true(zero_copy_cow_str_is_borrowed("façade"))
-  expect_false(zero_copy_cow_str_is_borrowed(value))
+  expect_true(zero_copy_cow_str_is_borrowed(value))
+})
+
+test_that("vector Cow strings own elements that require translation", {
+  value <- latin1_facade()
   expect_false(zero_copy_vec_cow_str_all_borrowed(c("ascii", value)))
 })
 
