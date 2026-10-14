@@ -16,16 +16,12 @@ use miniextendr_api::{
 
 miniextendr_api::miniextendr_init!();
 
-// Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
-
-// Import the shared Resettable trait and its generated ABI types
-pub use shared_traits::{
-    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
-};
-
-// Import the shared Tagged trait (owner receivers) and its generated ABI types
-pub use shared_traits::{__Tagged_build_vtable, TAG_Tagged, Tagged, TaggedVTable, TaggedView};
+// The shared traits, their Views and tags. Implementing a trait needs only the
+// trait itself: its vtable type, tag and builder come with it (#2065).
+pub use shared_traits::{Counter, CounterView, TAG_Counter};
+pub use shared_traits::{Resettable, ResettableView, TAG_Resettable};
+// Tagged has owner receivers.
+pub use shared_traits::{Tagged, TaggedView};
 
 // Import the shared CallsBack trait (a method that calls back into R)
 pub use shared_traits::{

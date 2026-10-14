@@ -1,5 +1,5 @@
 error: match_arg/choices/no_default/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `x_factr`
-  --> tests/ui/trait_impl_unknown_param_no_na.rs:15:19
+  --> tests/ui/trait_impl_unknown_param_no_na.rs:16:19
    |
-15 |     #[miniextendr(no_na(x_factr))]
+16 |     #[miniextendr(no_na(x_factr))]
    |                   ^^^^^

@@ -4,8 +4,8 @@ mod r_test_utils;
 use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::{ExternalPtr, miniextendr};
 
-// The unused associated type keeps these declarations independent of TPIE's
-// crate-root macro names. It does not appear in their exported signatures.
+// The associated type does not appear in the exported signatures. The
+// same-named declarations also exercise distinct metadata macro exports.
 #[allow(dead_code)]
 mod producer {
     #[miniextendr_api::miniextendr]

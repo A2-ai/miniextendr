@@ -103,11 +103,10 @@ the module's own `v.clone()`, `String::default()` or `a.cmp(&b)` ambiguous
 (E0034), and `[T; N]::len()` would return `i64`. With the prefix, an import
 never shadows a std method.
 
-An empty `#[miniextendr] impl` takes the R names from the trait definition. An
-impl with a body, which the generic and associated-type traits below always
-need, repeats the `r_name` on each renamed method, as `RIterator` does for
-`next`. Either way the impl names the trait by its
-`miniextendr_api::adapter_traits` path, where the trait's vtable items live.
+Both empty and populated `#[miniextendr] impl` blocks inherit R names and
+skipped methods from the trait definition. An explicit impl-level `r_name`
+overrides the inherited name. The trait can be named by its defining module,
+its crate-root re-export, or an imported name, including a renamed import.
 
 ### Generic / Associated-Type Adapter Traits
 
@@ -137,12 +136,11 @@ use miniextendr_api::{RClone, RDebug};
 struct MyData { value: i32 }
 
 // Expose Debug and Clone to R: `x$RDebug$debug_str()`, `x$RClone$clone()`.
-// An empty impl names the trait by its module path.
 #[miniextendr]
-impl miniextendr_api::adapter_traits::RDebug for MyData {}
+impl RDebug for MyData {}
 
 #[miniextendr]
-impl miniextendr_api::adapter_traits::RClone for MyData {}
+impl RClone for MyData {}
 
 // With the traits imported, `.clone()` is still `Clone::clone`; the adapter
 // method is `r_clone()`.
@@ -189,13 +187,12 @@ struct CountUp {
     max: i32,
 }
 
-// RIterator has an associated type Item, resolved to i32 here. An impl with
-// a body repeats the trait's `r_name` attribute.
+// RIterator has an associated type Item, resolved to i32 here.
+// Its declaration supplies the R name `next_item` for Rust's `next`.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RIterator for CountUp {
     type Item = i32;
 
-    #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<i32> { /* ... */ }
     fn size_hint(&self) -> (i64, Option<i64>) { /* ... */ }
     fn count(&self) -> i64 { /* ... */ }
@@ -328,11 +325,11 @@ impl miniextendr_api::adapter_traits::RDebug for MyData {}
 impl miniextendr_api::adapter_traits::RClone for MyData {}
 ```
 
-The empty body is expanded by a helper macro the trait definition exports, and
-the impl refers to the trait's vtable items next to it, so the impl names the
-trait by its module path (`miniextendr_api::adapter_traits::RClone`). Neither a
-bare imported name nor the crate-root re-export (`miniextendr_api::RClone`)
-works there.
+The empty body is expanded using metadata exported with the trait. A bare
+imported name such as `RClone` and the crate-root path
+`miniextendr_api::RClone` work too; companion vtable items need no imports.
+User-defined traits can be re-exported or renamed in the same way. The
+original declaration's name still determines the R trait namespace.
 
 This generates all the R wrappers, vtable registration, and C-callable shims
 without requiring you to re-implement the methods.

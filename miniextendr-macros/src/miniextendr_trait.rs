@@ -374,29 +374,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::quote! { where #(#all_where_predicates),* }
     };
 
-    // Generate shim functions
-    let shim_fns: Vec<_> = methods
-        .iter()
-        .map(|m| {
-            generate_method_shim(
-                trait_name,
-                m,
-                &extra_bounds,
-                &trait_param_idents,
-                &trait_type_params,
-                trait_where_clause,
-            )
-        })
-        .collect();
-
-    // Generate vtable field initializers (turbofish includes trait type params)
+    // Declaration-side builders select the same associated callbacks as impls.
     let vtable_inits: Vec<_> = methods
         .iter()
         .map(|m| {
             let name = &m.name;
             let shim_name = crate::naming::trait_method_shim_ident(trait_name, name);
             quote::quote! {
-                #name: #shim_name::<#(#trait_param_idents,)* #impl_t>
+                #name: <#impl_t as #trait_bound>::#shim_name
             }
         })
         .collect();
@@ -418,6 +403,22 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .retain(|attr| !attr.path().is_ident("miniextendr"));
             crate::trait_receiver::rewrite(&mut method.sig, method.default.as_mut());
         }
+    }
+
+    // Non-generic shims are hidden trait methods, so an impl reaches them
+    // through any path to the trait. A generic trait's impls generate their
+    // own concrete shims from their signatures.
+    if !has_generics {
+        clean_trait.items.extend(methods.iter().map(|m| {
+            syn::TraitItem::Fn(associated_method_shim(generate_method_shim(
+                trait_name,
+                m,
+                &extra_bounds,
+                &trait_param_idents,
+                &trait_type_params,
+                trait_where_clause,
+            )))
+        }));
     }
 
     let trait_name_str = trait_name.to_string();
@@ -507,9 +508,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::quote! {}
     } else {
         quote::quote! {
-            // Method shims
-            #(#shim_fns)*
-
             #[doc = ::core::concat!(
                 "Build a vtable for a concrete type implementing `",
                 ::core::stringify!(#trait_name),
@@ -528,55 +526,82 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         }
     };
 
-    // TPIE: Generate macro_rules! for non-generic traits without associated types.
-    // This enables `#[miniextendr] impl Trait for Type {}` (empty body) to auto-expand wrappers.
-    let tpie_macro = if !has_generics && assoc_types.is_empty() {
-        // Collect ALL non-skipped methods (including static) for TPIE metadata
-        let tpie_method_metadata: Vec<TokenStream> = {
-            let mut collected = Vec::new();
-            for item in &trait_item.items {
-                if let syn::TraitItem::Fn(method) = item {
-                    let info = match extract_method_info(method) {
-                        Ok(info) => info,
-                        Err(e) => return e.into_compile_error(),
-                    };
-                    if !info.skip {
-                        let r_name_ident = if let Some(ref rn) = info.r_name {
-                            quote::format_ident!("{}", rn)
-                        } else {
-                            method.sig.ident.clone()
-                        };
-                        let sig = &method.sig;
-                        collected.push(quote::quote! {
-                            method { r_name = #r_name_ident; #sig; }
-                        });
-                    }
-                }
+    // All impls receive the declaration's R metadata, including generic traits
+    // and traits with associated types. Signatures for empty impls still use
+    // the established non-generic TPIE path.
+    let mut method_metadata = Vec::new();
+    let mut tpie_method_metadata = Vec::new();
+    for item in &trait_item.items {
+        if let syn::TraitItem::Fn(method) = item {
+            let info = match extract_method_info(method) {
+                Ok(info) => info,
+                Err(e) => return e.into_compile_error(),
+            };
+            let name = &method.sig.ident;
+            let r_name_attr = info
+                .r_name
+                .as_ref()
+                .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
+            let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
+            // Only metadata crosses this path; impl signatures, bodies and
+            // parameter attributes keep their original spans and type scope.
+            method_metadata.push(quote::quote! {
+                #r_name_attr #skip_attr fn #name();
+            });
+            if !has_generics && assoc_types.is_empty() && !info.skip {
+                let r_name = info
+                    .r_name
+                    .as_deref()
+                    .map(crate::naming::name_ident)
+                    .unwrap_or_else(|| name.clone());
+                let sig = &method.sig;
+                tpie_method_metadata.push(quote::quote! {
+                    method { r_name = #r_name; #sig; }
+                });
             }
-            collected
-        };
-
-        let tpie_macro_name = quote::format_ident!("__mx_impl_{}", trait_name);
+        }
+    }
+    // The impl receives the exact declaration layout and fingerprint, never
+    // a guessed path to companion items. No caller-scope types occur here.
+    let abi_metadata = quote::quote! {
+        abi #trait_name #has_generics #tag_path { #(#vtable_fields),* }
+    };
+    let empty_impl_arm = if !has_generics && assoc_types.is_empty() {
         quote::quote! {
-            #[macro_export]
-            #[doc(hidden)]
-            macro_rules! #tpie_macro_name {
-                ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
-                    $crate::__mx_trait_impl_expand! {
-                        concrete_type = $concrete_type;
-                        trait_path = $trait_path;
-                        class_system = $class_system;
-                        no_rd = $no_rd;
-                        internal = $internal;
-                        noexport = $noexport;
-                        no_preconditions = $no_preconditions;
-                        #(#tpie_method_metadata)*
-                    }
-                };
-            }
+            ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
+                ::miniextendr_api::__mx_trait_impl_expand! {
+                    concrete_type = $concrete_type;
+                    trait_path = $trait_path;
+                    class_system = $class_system;
+                    no_rd = $no_rd;
+                    internal = $internal;
+                    noexport = $noexport;
+                    no_preconditions = $no_preconditions;
+                    #abi_metadata
+                    #(#tpie_method_metadata)*
+                }
+            };
         }
     } else {
         quote::quote! {}
+    };
+    let metadata_macro_name = crate::naming::trait_metadata_macro_ident(trait_name);
+    let metadata_macro = quote::quote! {
+        #[macro_export]
+        #[doc(hidden)]
+        macro_rules! #metadata_macro_name {
+            (@impl { $($attrs:tt)* } { $($implementation:tt)* }) => {
+                ::miniextendr_api::__mx_trait_impl_expand! {
+                    @impl { $($attrs)* } { $($implementation)* }
+                    { #(#method_metadata)* }
+                    #abi_metadata
+                }
+            };
+            #empty_impl_arm
+        }
+        #[doc(hidden)]
+        #[allow(unused_imports)]
+        #vis use #metadata_macro_name as #trait_name;
     };
 
     quote::quote! {
@@ -610,7 +635,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 
         #shim_and_builder
 
-        #tpie_macro
+        #metadata_macro
     }
 }
 
@@ -990,6 +1015,40 @@ fn generate_method_shim(
             })
         }
     }
+}
+
+/// Move the declaration shim into the trait so an impl can name it through
+/// any path to that trait. `Self: Sized` keeps these static ABI callbacks out
+/// of Rust trait objects. Types in the body still resolve at the declaration.
+fn associated_method_shim(tokens: TokenStream) -> syn::TraitItemFn {
+    use syn::visit_mut::VisitMut;
+
+    struct ImplTypeToSelf;
+    impl VisitMut for ImplTypeToSelf {
+        fn visit_path_mut(&mut self, path: &mut syn::Path) {
+            syn::visit_mut::visit_path_mut(self, path);
+            if let Some(first) = path.segments.first_mut()
+                && first.ident == "__ImplT"
+            {
+                first.ident = syn::Ident::new("Self", first.ident.span());
+            }
+        }
+    }
+
+    let mut shim: syn::TraitItemFn = syn::parse2(tokens).expect("generated method shim");
+    let syn::GenericParam::Type(implementation) =
+        shim.sig.generics.params.pop().unwrap().into_value()
+    else {
+        unreachable!("the final generated parameter is __ImplT")
+    };
+    let bounds = implementation.bounds;
+    shim.sig
+        .generics
+        .make_where_clause()
+        .predicates
+        .push(syn::parse_quote!(Self: ::core::marker::Sized + #bounds));
+    ImplTypeToSelf.visit_trait_item_fn_mut(&mut shim);
+    shim
 }
 
 /// Information extracted from a trait method for code generation.

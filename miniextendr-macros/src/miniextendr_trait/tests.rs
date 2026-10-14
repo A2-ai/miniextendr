@@ -596,3 +596,97 @@ fn interface_tags_track_exported_signatures() {
         assert_eq!(original, tag(unchanged), "{unchanged}");
     }
 }
+
+#[test]
+fn every_trait_exports_its_metadata_under_the_traits_name() {
+    for trait_item in [
+        syn::parse_quote! { pub trait Collection<T> {
+            #[miniextendr(r_name = "len")]
+            fn r_len(&self) -> i32;
+            #[miniextendr(skip)]
+            fn hidden(&self, value: T);
+        } },
+        syn::parse_quote! { pub trait Collection {
+            type Item;
+            #[miniextendr(r_name = "len")]
+            fn r_len(&self) -> i32;
+            #[miniextendr(skip)]
+            fn hidden(&self, value: Self::Item);
+        } },
+    ] {
+        let output = generate_trait_abi(&trait_item);
+        let file: syn::File = syn::parse2(output.clone()).unwrap();
+        let exports: Vec<_> = file
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                syn::Item::Use(item) => Some(quote::ToTokens::to_token_stream(item).to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(exports.len(), 1);
+        assert!(exports[0].contains("as Collection"));
+        let text = output.to_string();
+        assert!(text.contains("@ impl"));
+        assert!(text.contains("r_name = \"len\""));
+        assert!(text.contains("miniextendr (skip)"));
+    }
+}
+
+#[test]
+fn metadata_macros_do_not_collide_for_same_named_traits_in_separate_modules() {
+    let trait_item = syn::parse_quote! { pub trait Repeated { fn value(&self) -> i32; } };
+    let export = || {
+        let file: syn::File = syn::parse2(generate_trait_abi(&trait_item)).unwrap();
+        file.items
+            .into_iter()
+            .find_map(|item| match item {
+                syn::Item::Macro(item) if item.mac.path.is_ident("macro_rules") => item.ident,
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_ne!(export(), export());
+}
+
+#[test]
+fn declaration_shims_live_on_the_trait_and_are_excluded_from_trait_objects() {
+    let declaration: ItemTrait = syn::parse_quote! {
+        pub trait Local {
+            type Item;
+            fn read(&self) -> Self::Item;
+            fn default_value(&self, value: LocalType) -> i32 { value.0 }
+        }
+    };
+    let file: syn::File = syn::parse2(generate_trait_abi(&declaration)).unwrap();
+    let declared = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Trait(item) => Some(item),
+            _ => None,
+        })
+        .unwrap();
+    let callbacks: Vec<_> = declared
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            syn::TraitItem::Fn(method) if method.sig.ident.to_string().ends_with("_shim") => {
+                Some(method)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(callbacks.len(), 2);
+    for callback in callbacks {
+        assert!(callback.sig.generics.params.is_empty());
+        assert!(callback.default.is_some());
+        let text = quote::ToTokens::to_token_stream(callback).to_string();
+        assert!(text.contains("Self : :: core :: marker :: Sized"), "{text}");
+        assert!(!text.contains("__ImplT"), "{text}");
+        assert!(text.contains("with_r_unwind_protect_shim"));
+    }
+    assert!(!file.items.iter().any(|item| {
+        matches!(item, syn::Item::Fn(function) if function.sig.ident.to_string().ends_with("_shim"))
+    }));
+}

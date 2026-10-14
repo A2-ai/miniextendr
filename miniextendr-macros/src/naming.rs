@@ -40,6 +40,13 @@ pub(crate) fn name_ident(name: &str) -> syn::Ident {
 }
 // endregion
 
+/// Local repr(C) type for a concrete trait vtable. Only the static beside it
+/// is exported to C; this type reproduces the declaration's supplied layout.
+pub(crate) fn vtable_layout_ident(trait_name: &syn::Ident, type_name: &str) -> syn::Ident {
+    let table = vtable_static_ident(trait_name, type_name);
+    quote::format_ident!("{table}_Layout")
+}
+
 /// Identifier for the registration entry holding the R wrapper source.
 ///
 /// Returns `R_WRAPPER_{rust_ident}`, preserving case.
@@ -65,6 +72,35 @@ pub(crate) fn conditional_bound_lifetime() -> syn::Lifetime {
 /// from replacing the original R handle after conversion.
 pub(crate) fn self_sexp_ident() -> syn::Ident {
     syn::Ident::new("self_sexp", proc_macro2::Span::mixed_site())
+}
+
+/// The C wrapper's call slot, declared by `CWrapperContext` with `quote!`.
+/// A reference inside a `quote_spanned!` template would take the user type's
+/// span instead. That only resolves while the macro's call site is the
+/// user's, not when the wrapper is generated inside a `macro_rules!`
+/// expansion, as a trait impl's is (#1489). So references interpolate this.
+pub(crate) fn call_slot_ident() -> syn::Ident {
+    syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site())
+}
+
+/// The error a failed argument conversion binds, for the same reason as
+/// [`call_slot_ident`]: the binding and the expressions that read it are
+/// built in different templates.
+pub(crate) fn conversion_error_ident() -> syn::Ident {
+    syn::Ident::new("e", proc_macro2::Span::call_site())
+}
+
+/// A private export name for a trait's metadata macro. The public macro is
+/// re-exported beside the trait under the trait's own name, in Rust's separate
+/// macro namespace, so imports carry both. An expansion-local suffix prevents
+/// same-named traits in different modules from colliding at the crate root.
+/// This name never enters the trait tag or any C/wasm registration symbol.
+pub(crate) fn trait_metadata_macro_ident(trait_name: &syn::Ident) -> syn::Ident {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let suffix = NEXT.fetch_add(1, Ordering::Relaxed);
+    let name = unraw(trait_name);
+    quote::format_ident!("__mx_trait_metadata_{name}_{suffix}")
 }
 
 // region: crate-prefixed C symbol naming (#1273)
