@@ -94,3 +94,22 @@ test_that("try_borrow() / try_borrow_mut() check the value of a handle a functio
   )
   expect_identical(a$count, 3L)
 })
+
+test_that("a class-wrapped argument stays rooted for the call", {
+  expect_null(miniextendr:::gc_stress_externalptr_argument_root())
+})
+
+test_that("class-wrapped arguments survive gctorture", {
+  skip_gc_stress_if_disabled()
+  a <- SidecarSlotR6$new(2L)
+  b <- SidecarSlotR6$new(4L)
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  for (i in seq_len(3)) {
+    sidecar_swap(a, b)
+    expect_null(miniextendr:::gc_stress_externalptr_argument_root())
+  }
+  gctorture(FALSE)
+  expect_identical(a$n, 4L)
+  expect_identical(b$n, 2L)
+})
