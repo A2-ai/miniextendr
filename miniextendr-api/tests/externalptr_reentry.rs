@@ -500,9 +500,8 @@ impl Drop for RootedArgument {
 #[miniextendr(noexport)]
 pub fn rooted_argument_survives(obj: ExternalPtr<RootedArgument>, callback: SEXP) -> bool {
     unsafe {
-        use miniextendr_api::sys::{R_GlobalEnv, Rf_eval, Rf_lang1};
-        let call = OwnedProtect::new(Rf_lang1(callback));
-        Rf_eval(call.get(), R_GlobalEnv);
+        use miniextendr_api::expression::RCall;
+        RCall::from_sexp(callback).eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
     }
     ARGUMENT_DROPS.load(Ordering::SeqCst) == 0 && obj.value == 3
 }
