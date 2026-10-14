@@ -16,6 +16,15 @@ just r-cmd-build / r-cmd-check  # tarball + check
 ```
 After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just rcmdinstall && just devtools-document`, then commit `NAMESPACE` + `man/*.Rd` in the same PR. `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are **gitignored** (regenerated on every install, like `inst/vendor.tar.xz`) — nothing to commit there. CI's `just wrappers-sync-check` regenerates wrappers.R and git-diffs NAMESPACE + man to catch drift.
 
+## Worker fixture feature gates
+
+Gate worker-only fixture modules or whole impl blocks with
+`#[cfg(any(feature = "worker-thread", feature = "worker-default"))]`.
+Method-level cfg does not yet gate all generated wrappers (#2107).
+Check the disabled configuration with `just test-rpkg --lib --no-run`;
+native installation auto-enables worker support and cannot catch that gap.
+Keep ordinary R assertions outside worker-specific test blocks.
+
 ## Where installs land (main vs worktree)
 `just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,
 which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.

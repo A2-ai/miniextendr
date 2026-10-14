@@ -55,17 +55,28 @@ test_that("coerced, R-native, and path scalar Options retain their NA type", {
   }
 })
 
-test_that("strict and worker scalar Option methods preserve conversion checks", {
+test_that("strict scalar Option methods preserve conversion checks", {
+  class <- miniextendr:::ScalarOptionEnv
+  call <- class$optional_strict
+  expect_identical(call(TRUE, FALSE), 42L)
+  expect_identical(call(FALSE, FALSE), NA_integer_)
+  expect_identical(call(FALSE, TRUE), NA_integer_)
+  expect_error(call(TRUE, TRUE))
+  expect_s3_class(class$optional_self(TRUE), "ScalarOptionEnv")
+  expect_error(class$optional_self(FALSE), "returned no value")
+})
+
+test_that("worker scalar Option methods preserve conversion checks", {
+  skip_if_not(
+    any(c("worker-thread", "worker-default") %in% miniextendr_enabled_features()),
+    "worker feature is disabled"
+  )
   class <- miniextendr:::ScalarOptionEnv
   expect_identical(class$optional_worker(TRUE), 42L)
   expect_identical(class$optional_worker(FALSE), NA_integer_)
-  for (name in c("optional_strict", "optional_worker_strict")) {
-    call <- do.call("$", list(class, name))
-    expect_identical(call(TRUE, FALSE), 42L)
-    expect_identical(call(FALSE, FALSE), NA_integer_)
-    expect_identical(call(FALSE, TRUE), NA_integer_)
-    expect_error(call(TRUE, TRUE))
-  }
-  expect_s3_class(class$optional_self(TRUE), "ScalarOptionEnv")
-  expect_error(class$optional_self(FALSE), "returned no value")
+  call <- class$optional_worker_strict
+  expect_identical(call(TRUE, FALSE), 42L)
+  expect_identical(call(FALSE, FALSE), NA_integer_)
+  expect_identical(call(FALSE, TRUE), NA_integer_)
+  expect_error(call(TRUE, TRUE))
 })

@@ -77,6 +77,11 @@ impl ScalarOptionEnv {
     pub fn optional_strict(present: bool, large: bool) -> Option<i64> {
         present.then_some(if large { i64::MAX } else { 42 })
     }
+}
+
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
+#[miniextendr(env, internal, strict)]
+impl ScalarOptionEnv {
     #[miniextendr(env(worker))]
     pub fn optional_worker(present: bool) -> Option<i32> {
         present.then_some(42)
