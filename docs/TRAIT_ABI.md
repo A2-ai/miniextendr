@@ -34,6 +34,15 @@ an impl of a generic trait defines every method in the vtable, defaulted ones
 included.
 The exported vtable static symbols used by webR remain unchanged.
 
+Argument conversion failures from either shim path carry `kind = "conversion"`,
+`param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
+bindings in a generic implementation do not change those parameter names or
+native-alias diagnostics. Custom `RConditionData` messages, classes and fields
+survive the View round trip; the outer wrapper supplies the consumer's call.
+The shim uses the `conversion_error_class` configuration of the crate where it
+is generated (the declaration crate for non-generic traits, the implementation
+crate for generic traits).
+
 ## Key Concepts
 
 ### Type Tags (`mx_tag`)

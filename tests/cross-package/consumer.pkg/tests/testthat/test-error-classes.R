@@ -411,9 +411,10 @@ test_that("structured data round-trip works for consumer DoubleCounter (no packa
 # region: conversion failures at the trait-ABI boundary
 #
 # A shim converts its arguments with TryFromSexp, and a View converts the
-# shim's result back. A failure on either side panics inside an unwind
-# boundary: the shim returns a tagged condition that the View re-panics with,
-# and the consumer's wrapper raises it. Before, both sides called Rf_error,
+# shim's result back. A failed argument conversion returns a structured
+# conversion condition; a failed result conversion panics inside the consumer's
+# unwind boundary. The View re-panics with a tagged condition, and the consumer's
+# wrapper raises it. Before, both sides called Rf_error,
 # which raised a plain error and skipped the Rust destructors on the way.
 
 test_that("a shim's failed argument conversion reaches the caller as rust_error", {
@@ -424,13 +425,16 @@ test_that("a shim's failed argument conversion reaches the caller as rust_error"
   # skips the View does, so the producer's shim converts it.
   counters <- list(new_counter(5L), new_stateful_counter(5L), new_double_counter(5L))
   cases <- list(
-    list(n = "five", message = "type mismatch: expected INTSXP, got STRSXP"),
-    list(n = NA_integer_, message = "unexpected NA value in INTSXP"),
-    list(n = 1:2, message = "length mismatch: expected 1, got 2")
+    list(n = "five", message = "'n' must be a single integer: got character"),
+    list(n = NA_integer_, message = "'n' must be a single integer: NA is not allowed"),
+    list(n = 1:2, message = "'n' must be a single integer: got length 2")
   )
   for (counter in counters) {
     for (case in cases) {
       e <- tryCatch(counter_add_raw(counter, case$n), error = function(e) e)
+      expect_identical(e$kind, "conversion")
+      expect_identical(e$param, "n")
+      expect_identical(e$rust_type, "i32")
       expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
       expect_true(startsWith(conditionMessage(e), case$message),
         info = conditionMessage(e))

@@ -621,6 +621,7 @@ impl ImplWithMetadata {
             &concrete_type,
             &self.attrs,
             &self.abi,
+            &self.methods,
         ))
     }
 }
@@ -1031,11 +1032,16 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // the shared naming.rs helper so the three reconstruction sites can't drift, #1273)
     let vtable_static_name = crate::naming::vtable_static_ident(trait_name, &type_name_str);
 
-    let vtable =
-        match vtable::generate_impl_vtable(&tpie_input.abi, &concrete_type, trait_path, &methods) {
-            Ok(tokens) => tokens,
-            Err(error) => return error.into_compile_error().into(),
-        };
+    let vtable = match vtable::generate_impl_vtable(
+        &tpie_input.abi,
+        &concrete_type,
+        trait_path,
+        &methods,
+        &[],
+    ) {
+        Ok(tokens) => tokens,
+        Err(error) => return error.into_compile_error().into(),
+    };
 
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(

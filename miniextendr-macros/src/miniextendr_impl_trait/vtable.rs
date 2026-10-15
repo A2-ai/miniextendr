@@ -40,6 +40,7 @@ pub(super) fn generate_vtable_static(
     concrete_type: &syn::Type,
     impl_attrs: &ImplAttrs,
     abi: &TraitAbiMetadata,
+    declaration: &[syn::TraitItemFn],
 ) -> TokenStream {
     let trait_name = &abi.name;
 
@@ -175,7 +176,7 @@ pub(super) fn generate_vtable_static(
     };
 
     let vtable_static_tokens =
-        match generate_impl_vtable(abi, concrete_type, trait_path, &all_methods) {
+        match generate_impl_vtable(abi, concrete_type, trait_path, &all_methods, declaration) {
             Ok(tokens) => tokens,
             Err(error) => return error.into_compile_error(),
         };
@@ -279,6 +280,7 @@ pub(super) fn generate_impl_vtable(
     concrete_type: &syn::Type,
     trait_path: &syn::Path,
     methods: &[TraitMethod],
+    declaration: &[syn::TraitItemFn],
 ) -> syn::Result<TokenStream> {
     let trait_name = &abi.name;
     let type_name = type_to_symbol_name(concrete_type);
@@ -317,6 +319,7 @@ pub(super) fn generate_impl_vtable(
         trait_name,
         trait_path,
         concrete_type,
+        declaration,
     );
     Ok(quote::quote! {
         #[doc(hidden)]
@@ -358,6 +361,7 @@ fn generate_concrete_vtable_shims(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
+    declaration: &[syn::TraitItemFn],
 ) -> TokenStream {
     let mut shims = Vec::new();
 
@@ -393,6 +397,25 @@ fn generate_concrete_vtable_shims(
             .count();
         let expected_argc = param_count as i32;
 
+        let declared = declaration
+            .iter()
+            .find(|declared| declared.sig.ident == *method_ident)
+            .expect("trait metadata includes each callback's argument names");
+        let diagnostic_names: Vec<_> = declared
+            .sig
+            .inputs
+            .iter()
+            .map(|arg| {
+                let syn::FnArg::Typed(arg) = arg else {
+                    unreachable!("metadata has no receiver")
+                };
+                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                    unreachable!("metadata has named arguments")
+                };
+                crate::naming::ident_name(&name.ident)
+            })
+            .collect();
+
         // Generate argument extraction (concrete types, no generics)
         let arg_extractions: Vec<TokenStream> = method
             .sig
@@ -407,20 +430,14 @@ fn generate_concrete_vtable_shims(
                     } else {
                         format_ident!("arg{}", i)
                     };
-                    let name_str = crate::naming::ident_name(&name);
-
-                    if let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty) {
-                        crate::trait_self_ref::extract(&name, concrete_type, i, mutable, &argc, &argv)
-                    } else if crate::type_inspect::is_rooted_view(&pt.ty) || crate::type_inspect::is_rooted_reference(&pt.ty) {
-                        crate::trait_self_ref::rooted_view_arg(&name, &pt.ty, i, &argv)
-                    } else {
-                        let ty = &pt.ty;
-                        quote::quote! {
-                            let #name: #ty = unsafe {
-                                ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
-                            };
-                        }
-                    }
+                    crate::trait_self_ref::argument(
+                        &name,
+                        &diagnostic_names[i],
+                        &pt.ty,
+                        concrete_type,
+                        i,
+                        &argv,
+                    )
                 } else {
                     quote::quote! {}
                 }
@@ -452,34 +469,28 @@ fn generate_concrete_vtable_shims(
                     syn::FnArg::Receiver(_) => None,
                 }))
                 .enumerate()
-                .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+                .map(|(index, (_, ty))| (index, diagnostic_names[index].clone(), ty)),
             &argv,
         );
 
-        let self_refs: Vec<_> = method
-            .sig
-            .inputs
+        let self_refs: Vec<_> = param_names
             .iter()
-            .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+            .zip(method.sig.inputs.iter().filter_map(|arg| match arg {
+                syn::FnArg::Typed(pt) => Some(pt.ty.as_ref()),
+                syn::FnArg::Receiver(_) => None,
+            }))
             .enumerate()
-            .filter_map(|(index, arg)| {
-                if let syn::FnArg::Typed(pt) = arg
-                    && let syn::Pat::Ident(pat) = pt.pat.as_ref()
-                    && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
-                {
-                    Some((&pat.ident, mutable, index))
-                } else {
-                    None
-                }
+            .filter_map(|(index, (name, ty))| {
+                crate::type_inspect::self_ref_mutability(ty).map(|mutable| (name, mutable, index))
             })
             .collect();
         let handles: Vec<_> = self_refs
             .iter()
-            .map(|(name, mutable, _)| {
+            .map(|(name, mutable, index)| {
                 (
                     crate::trait_self_ref::handle_ident(name),
                     *mutable,
-                    crate::naming::ident_name(name),
+                    diagnostic_names[*index].clone(),
                 )
             })
             .collect();
@@ -670,6 +681,38 @@ pub(super) fn extract_methods(
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
             let mut sig = method.sig.clone();
+            // Wrappers call the method positionally; patterns belong only to
+            // the original impl body. Give every wrapper argument a binding,
+            // including ignored and destructured parameters (#2029).
+            let mut used_names: std::collections::HashSet<_> = sig
+                .inputs
+                .iter()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => match arg.pat.as_ref() {
+                        syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            for (index, arg) in sig
+                .inputs
+                .iter_mut()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => Some(arg),
+                    _ => None,
+                })
+                .enumerate()
+            {
+                if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
+                    let mut name = format!("arg{index}");
+                    while !used_names.insert(name.clone()) {
+                        name.push('_');
+                    }
+                    let name = format_ident!("{name}");
+                    arg.pat = syn::parse_quote!(#name);
+                }
+            }
             let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
             if return_wrap
                 .as_ref()

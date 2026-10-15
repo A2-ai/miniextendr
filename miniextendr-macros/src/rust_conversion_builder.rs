@@ -1482,6 +1482,40 @@ fn conversion_err_arm(
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
+    let call = crate::naming::call_slot_ident();
+    conversion_err_arm_with_call(
+        ctx,
+        crate_class,
+        &quote! { ::core::option::Option::Some(#call) },
+        span,
+    )
+}
+
+/// Trait shims have no R call slot. They return the same structured argument
+/// error as C wrappers; a View re-panic attributes it to the consumer's call.
+/// `read_ty` supplies TryFromSexp expectations when the conversion uses that
+/// trait; rooted views instead derive their expectation from the error.
+pub(crate) fn shim_conversion_err_arm(
+    name: &str,
+    ty: &syn::Type,
+    read_ty: Option<&syn::Type>,
+) -> TokenStream {
+    let ctx = ArgContext::new(name, ty, false);
+    let ctx = read_ty.map_or_else(|| ctx.clone(), |ty| ctx.with_declared(ty));
+    conversion_err_arm_with_call(
+        &ctx,
+        &crate::crate_config::conversion_error_class(),
+        &quote! { ::core::option::Option::None },
+        ty.span(),
+    )
+}
+
+fn conversion_err_arm_with_call(
+    ctx: &ArgContext,
+    crate_class: &[String],
+    call: &TokenStream,
+    span: proc_macro2::Span,
+) -> TokenStream {
     let ArgContext {
         prefix,
         expected_known,
@@ -1496,7 +1530,6 @@ fn conversion_err_arm(
         None if *expected_known => Expected::Literal(prefix),
         None => Expected::FromError(declared.as_ref()),
     };
-    let call = crate::naming::call_slot_ident();
     let value = conversion_value_tokens(
         &ConversionSubject {
             expected,
@@ -1506,7 +1539,7 @@ fn conversion_err_arm(
             rust_type,
         },
         crate_class,
-        &quote! { ::core::option::Option::Some(#call) },
+        call,
         span,
     );
     let err = crate::naming::conversion_error_ident();
