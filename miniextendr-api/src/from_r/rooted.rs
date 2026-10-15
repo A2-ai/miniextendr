@@ -80,8 +80,9 @@ where
     const NATIVE_BORROW: Option<NativeBorrow> = <&'static T as TryFromSexp>::NATIVE_BORROW;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        // The root retains the vector, and so the data it holds, for 'a.
-        <&'static T as TryFromSexp>::try_from_sexp(root.get())
+        // Narrow the raw reference to 'a. String converters also retain the
+        // CHARSXP, which an ALTREP parent need not keep after Elt returns.
+        unsafe { <&'static T as TryFromSexp>::__mx_try_from_rooted(root) }
     }
 }
 
@@ -94,7 +95,8 @@ where
     const NATIVE_BORROW: Option<NativeBorrow> = <Option<&'static T> as TryFromSexp>::NATIVE_BORROW;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
-        <Option<&'static T> as TryFromSexp>::try_from_sexp(root.get())
+        // The result is narrowed to the lifetime of this root.
+        unsafe { <Option<&'static T> as TryFromSexp>::__mx_try_from_rooted(root) }
     }
 }
 
