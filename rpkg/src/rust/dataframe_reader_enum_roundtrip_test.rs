@@ -204,7 +204,7 @@ pub enum REQualified {
         pair: [::core::primitive::f64; 2],
     },
     Keyed {
-        id: ::core::primitive::i32,
+        id: i32,
         keyed: BTreeMap<::std::string::String, std::primitive::i32>,
     },
     Empty,

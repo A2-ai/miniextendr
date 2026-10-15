@@ -603,9 +603,12 @@ pub(super) fn derive_enum_dataframe(
         for erf in &vi.fields {
             if let EnumResolvedField::AutoExpandVec(auto_data) = erf {
                 if let Some(&idx) = auto_expand_index.get(&auto_data.base_name) {
-                    let elem_match = auto_expand_cols[idx].elem_ty == auto_data.elem_ty;
-                    let container_match =
-                        auto_expand_cols[idx].container_ty == auto_data.container_ty;
+                    let elem_match =
+                        super::same_column_type(&auto_expand_cols[idx].elem_ty, &auto_data.elem_ty);
+                    let container_match = super::same_column_type(
+                        &auto_expand_cols[idx].container_ty,
+                        &auto_data.container_ty,
+                    );
                     if !elem_match {
                         if coerce_to_string {
                             auto_expand_cols[idx].elem_ty = string_ty.clone();
