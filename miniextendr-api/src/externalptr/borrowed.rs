@@ -1,8 +1,9 @@
-//! Borrowed receiver handles over ordinary or erased external-pointer storage.
+//! Borrowed handles over ordinary or erased external-pointer storage.
 
-use super::{ExternalPtr, TypedExternal, borrow_value, borrow_value_mut};
+use super::{TypedExternal, borrow_value, borrow_value_mut};
 use crate::SEXP;
 use core::cell::{Ref, RefCell, RefMut};
+use core::fmt;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
@@ -10,67 +11,142 @@ mod sealed {
     pub trait Owner {}
 }
 
-/// A handle that borrows a concrete value and keeps its sidecar owner reachable.
+/// A handle that reaches a concrete value together with its R object, for
+/// the sidecar accessors.
 ///
-/// Implemented by [`ExternalPtr`], [`ExternalPtrRef`] and [`ExternalPtrMut`].
-/// Generated sidecar getters accept any of these handles. Implementations are
-/// sealed because the owner and data must describe the same allocation.
-pub trait SidecarOwner<T: TypedExternal + ?Sized>: sealed::Owner + Deref<Target = T> {
+/// Implemented by [`ExternalPtr`](super::ExternalPtr), [`ExternalPtrRef`]
+/// and [`ExternalPtrMut`]. Generated sidecar getters accept any of these
+/// handles: an `ExternalPtr` borrows its value for the read, a view already
+/// holds the borrow. Implementations are sealed because the owner and data
+/// must describe the same allocation.
+pub trait SidecarOwner<T: TypedExternal + ?Sized>: sealed::Owner {
+    /// The value, borrowed shared, with its R object.
     #[doc(hidden)]
-    fn __mx_owner(&self) -> SEXP;
+    fn __mx_read(&self) -> ExternalPtrRef<'_, T>;
 }
 
-/// An exclusive receiver handle accepted by generated sidecar setters.
-pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> + DerefMut {}
+/// A handle accepted by generated sidecar setters: an
+/// [`ExternalPtr`](super::ExternalPtr), which borrows its value exclusively
+/// for the write, or an [`ExternalPtrMut`].
+pub trait SidecarOwnerMut<T: TypedExternal + ?Sized>: SidecarOwner<T> {
+    /// The value, borrowed exclusively, with its R object.
+    #[doc(hidden)]
+    fn __mx_write(&mut self) -> ExternalPtrMut<'_, T>;
+}
 
-/// A shared borrow of a Rust value together with its R sidecar owner.
+/// Where a shared view gets its value: the `RefCell` borrow it holds, or a
+/// view it was reborrowed from.
+enum Shared<'a, T: ?Sized> {
+    Guard(Ref<'a, T>),
+    Reborrow(&'a T),
+}
+
+/// Where an exclusive view gets its value, like [`Shared`].
+enum Exclusive<'a, T: ?Sized> {
+    Guard(RefMut<'a, T>),
+    Reborrow(&'a mut T),
+}
+
+/// A shared borrow of a Rust value together with its R object.
 ///
-/// Unlike [`ExternalPtr`], this handle never owns or consumes the Rust
-/// allocation. It can represent ordinary `Any` storage or erased trait-ABI
-/// storage. Its lifetime comes from a live owner, and it cannot cross threads.
-/// Use `ExternalPtrRef::from(&ptr)` when calling a handle-receiver trait from
-/// Rust. The generated trait ABI constructs the same borrow from its receiver.
+/// [`ExternalPtr::borrow`](super::ExternalPtr::borrow) makes one, and a
+/// `#[miniextendr]` function or method takes one as a parameter (or as
+/// `self: ExternalPtrRef<'_, Self>`) when it needs the R object as well as
+/// the value: the sidecar accessors, the object's identity
+/// ([`ExternalPtrRef::as_sexp`]). A body that needs only the value takes
+/// `&T`.
 ///
-/// The handle holds a shared borrow of the value's `RefCell` for its whole
-/// lifetime. Making one while a running call holds the value mutably raises
-/// the `miniextendr_borrow_conflict` R error.
+/// The view holds a shared borrow of the value's `RefCell` for its whole
+/// lifetime: a method of the same object that needs it mutably, a `&mut T`
+/// argument holding it, or [`ExternalPtr::borrow_mut`](super::ExternalPtr::borrow_mut)
+/// meanwhile raises the R error of class `miniextendr_borrow_conflict`. It
+/// never owns or consumes the value, can represent ordinary `Any` storage or
+/// erased trait-ABI storage, and cannot cross threads. Pass it on without
+/// moving it with [`rb`](Self::rb).
 ///
 /// A borrowed handle cannot outlive its owner:
-/// ```compile_fail,E0597
+/// ```compile_fail,E0515
 /// use miniextendr_api::{ExternalPtr, ExternalPtrRef, TypedExternal};
 /// fn escape<T: TypedExternal>(owner: ExternalPtr<T>) -> ExternalPtrRef<'static, T> {
-///     ExternalPtrRef::from(&owner)
+///     owner.borrow()
 /// }
 /// ```
 pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
-    value: Ref<'a, T>,
+    value: Shared<'a, T>,
     owner: &'a SEXP,
     _main_thread: PhantomData<*mut ()>,
 }
 
-/// An exclusive borrow of a Rust value together with its R sidecar owner.
+/// An exclusive borrow of a Rust value together with its R object.
 ///
-/// Use `ExternalPtrMut::from(&mut ptr)` when calling a handle-receiver trait
-/// from Rust. Dereferencing gives mutable access to the Rust fields; generated
-/// sidecar accessors use the accompanying owner. There is no consuming API.
+/// [`ExternalPtr::borrow_mut`](super::ExternalPtr::borrow_mut) makes one, and
+/// a `#[miniextendr]` function or method takes one as a parameter (or as
+/// `self: ExternalPtrMut<'_, Self>`) when it needs the R object as well as
+/// the value, like [`ExternalPtrRef`]. Dereferencing gives mutable access to
+/// the Rust fields; the sidecar setters use the R object. There is no
+/// consuming API.
 ///
-/// The handle holds an exclusive borrow of the value's `RefCell` for its whole
-/// lifetime. Making one while a running call holds the value raises the
-/// `miniextendr_borrow_conflict` R error.
+/// The view holds an exclusive borrow of the value's `RefCell` for its whole
+/// lifetime: any other borrow of the value meanwhile raises the R error of
+/// class `miniextendr_borrow_conflict`. Pass it on without moving it with
+/// [`rb_mut`](Self::rb_mut), or as a shared view with [`rb`](Self::rb).
 ///
-/// A mutable borrow excludes a second borrow of the same handle:
+/// A view borrows its handle for as long as it lives:
 /// ```compile_fail,E0502
 /// use miniextendr_api::{ExternalPtr, ExternalPtrMut, ExternalPtrRef, TypedExternal};
 /// fn overlap<T: TypedExternal>(owner: &mut ExternalPtr<T>) {
-///     let mut first = ExternalPtrMut::from(&mut *owner);
-///     let second = ExternalPtrRef::from(&*owner);
+///     let mut first = owner.borrow_mut();
+///     let second = owner.borrow();
 ///     let _ = (&mut *first, second);
 /// }
 /// ```
+///
+/// A reborrow ends before the view is used again:
+/// ```compile_fail,E0499
+/// use miniextendr_api::{ExternalPtrMut, TypedExternal};
+/// fn twice<T: TypedExternal>(view: &mut ExternalPtrMut<'_, T>) {
+///     let first = view.rb_mut();
+///     let second = view.rb_mut();
+///     let _ = (first, second);
+/// }
+/// ```
 pub struct ExternalPtrMut<'a, T: TypedExternal + ?Sized> {
-    value: RefMut<'a, T>,
+    value: Exclusive<'a, T>,
     owner: &'a SEXP,
     _main_thread: PhantomData<*mut ()>,
+}
+
+impl<'a, T: TypedExternal + ?Sized> ExternalPtrRef<'a, T> {
+    /// Hold `guard`, a borrow of the value of the R object `owner`.
+    #[inline]
+    pub(super) fn from_guard(owner: &'a SEXP, guard: Ref<'a, T>) -> Self {
+        Self {
+            value: Shared::Guard(guard),
+            owner,
+            _main_thread: PhantomData,
+        }
+    }
+
+    /// A shared view of the same value for a shorter lifetime, to pass on
+    /// without moving this one. The value stays borrowed until this view
+    /// drops.
+    #[inline]
+    pub fn rb(&self) -> ExternalPtrRef<'_, T> {
+        ExternalPtrRef {
+            value: Shared::Reborrow(&**self),
+            owner: self.owner,
+            _main_thread: PhantomData,
+        }
+    }
+
+    /// The R object (`EXTPTRSXP`) holding the value.
+    ///
+    /// An associated function, `ExternalPtrRef::as_sexp(&view)`, so that it
+    /// doesn't hide a method of `T` of the same name.
+    #[inline]
+    pub fn as_sexp(this: &Self) -> SEXP {
+        *this.owner
+    }
 }
 
 impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
@@ -83,11 +159,51 @@ impl<'a, T: TypedExternal> ExternalPtrRef<'a, T> {
     /// must remain valid for `'a`.
     #[doc(hidden)]
     pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
+        Self::from_guard(owner, borrow_value(unsafe { &*cell }))
+    }
+}
+
+impl<'a, T: TypedExternal + ?Sized> ExternalPtrMut<'a, T> {
+    /// Hold `guard`, an exclusive borrow of the value of the R object `owner`.
+    #[inline]
+    pub(super) fn from_guard(owner: &'a SEXP, guard: RefMut<'a, T>) -> Self {
         Self {
-            value: borrow_value(unsafe { &*cell }),
+            value: Exclusive::Guard(guard),
             owner,
             _main_thread: PhantomData,
         }
+    }
+
+    /// A shared view of the same value, for as long as this view isn't used
+    /// mutably.
+    #[inline]
+    pub fn rb(&self) -> ExternalPtrRef<'_, T> {
+        ExternalPtrRef {
+            value: Shared::Reborrow(&**self),
+            owner: self.owner,
+            _main_thread: PhantomData,
+        }
+    }
+
+    /// An exclusive view of the same value for a shorter lifetime, to pass on
+    /// without moving this one.
+    #[inline]
+    pub fn rb_mut(&mut self) -> ExternalPtrMut<'_, T> {
+        let owner = self.owner;
+        ExternalPtrMut {
+            value: Exclusive::Reborrow(&mut **self),
+            owner,
+            _main_thread: PhantomData,
+        }
+    }
+
+    /// The R object (`EXTPTRSXP`) holding the value.
+    ///
+    /// An associated function, `ExternalPtrMut::as_sexp(&view)`, so that it
+    /// doesn't hide a method of `T` of the same name.
+    #[inline]
+    pub fn as_sexp(this: &Self) -> SEXP {
+        *this.owner
     }
 }
 
@@ -101,80 +217,87 @@ impl<'a, T: TypedExternal> ExternalPtrMut<'a, T> {
     /// must remain valid for `'a`.
     #[doc(hidden)]
     pub unsafe fn from_raw_parts(owner: &'a SEXP, cell: *const RefCell<T>) -> Self {
-        Self {
-            value: borrow_value_mut(unsafe { &*cell }),
-            owner,
-            _main_thread: PhantomData,
-        }
-    }
-}
-
-impl<'a, T: TypedExternal> From<&'a ExternalPtr<T>> for ExternalPtrRef<'a, T> {
-    fn from(ptr: &'a ExternalPtr<T>) -> Self {
-        assert!(
-            crate::worker::is_r_main_thread(),
-            "ExternalPtrRef requires R's main thread"
-        );
-        // The original handle retains the owner throughout this shared borrow.
-        Self {
-            value: borrow_value(ptr.cell()),
-            owner: &ptr.sexp,
-            _main_thread: PhantomData,
-        }
-    }
-}
-
-impl<'a, T: TypedExternal> From<&'a mut ExternalPtr<T>> for ExternalPtrMut<'a, T> {
-    fn from(ptr: &'a mut ExternalPtr<T>) -> Self {
-        assert!(
-            crate::worker::is_r_main_thread(),
-            "ExternalPtrMut requires R's main thread"
-        );
-        // The original handle retains the owner throughout this borrow.
-        Self {
-            value: borrow_value_mut(ptr.cell()),
-            owner: &ptr.sexp,
-            _main_thread: PhantomData,
-        }
+        Self::from_guard(owner, borrow_value_mut(unsafe { &*cell }))
     }
 }
 
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrRef<'_, T> {
     type Target = T;
+    #[inline]
     fn deref(&self) -> &T {
-        &self.value
+        match &self.value {
+            Shared::Guard(guard) => guard,
+            Shared::Reborrow(value) => value,
+        }
     }
 }
 impl<T: TypedExternal + ?Sized> Deref for ExternalPtrMut<'_, T> {
     type Target = T;
+    #[inline]
     fn deref(&self) -> &T {
-        &self.value
+        match &self.value {
+            Exclusive::Guard(guard) => guard,
+            Exclusive::Reborrow(value) => value,
+        }
     }
 }
 impl<T: TypedExternal + ?Sized> DerefMut for ExternalPtrMut<'_, T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        &mut self.value
+        match &mut self.value {
+            Exclusive::Guard(guard) => guard,
+            Exclusive::Reborrow(value) => value,
+        }
     }
 }
 
-impl<T: TypedExternal> sealed::Owner for ExternalPtr<T> {}
+impl<T: TypedExternal + ?Sized + fmt::Debug> fmt::Debug for ExternalPtrRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+impl<T: TypedExternal + ?Sized + fmt::Debug> fmt::Debug for ExternalPtrMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+impl<T: TypedExternal + ?Sized + fmt::Display> fmt::Display for ExternalPtrRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+impl<T: TypedExternal + ?Sized + fmt::Display> fmt::Display for ExternalPtrMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<T: TypedExternal> sealed::Owner for super::ExternalPtr<T> {}
 impl<T: TypedExternal + ?Sized> sealed::Owner for ExternalPtrRef<'_, T> {}
 impl<T: TypedExternal + ?Sized> sealed::Owner for ExternalPtrMut<'_, T> {}
 
-impl<T: TypedExternal> SidecarOwner<T> for ExternalPtr<T> {
-    fn __mx_owner(&self) -> SEXP {
-        self.as_sexp()
+impl<T: TypedExternal> SidecarOwner<T> for super::ExternalPtr<T> {
+    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
+        self.borrow()
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrRef<'_, T> {
-    fn __mx_owner(&self) -> SEXP {
-        *self.owner
+    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
+        self.rb()
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrMut<'_, T> {
-    fn __mx_owner(&self) -> SEXP {
-        *self.owner
+    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
+        self.rb()
     }
 }
-impl<T: TypedExternal> SidecarOwnerMut<T> for ExternalPtr<T> {}
-impl<T: TypedExternal + ?Sized> SidecarOwnerMut<T> for ExternalPtrMut<'_, T> {}
+impl<T: TypedExternal> SidecarOwnerMut<T> for super::ExternalPtr<T> {
+    fn __mx_write(&mut self) -> ExternalPtrMut<'_, T> {
+        self.borrow_mut()
+    }
+}
+impl<T: TypedExternal + ?Sized> SidecarOwnerMut<T> for ExternalPtrMut<'_, T> {
+    fn __mx_write(&mut self) -> ExternalPtrMut<'_, T> {
+        self.rb_mut()
+    }
+}

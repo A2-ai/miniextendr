@@ -46,7 +46,7 @@
 //! }
 //!
 //! #[miniextendr]
-//! fn match_with_cached(re: ExternalPtr<Regex>, text: String) -> bool {
+//! fn match_with_cached(re: &Regex, text: String) -> bool {
 //!     re.is_match(&text)
 //! }
 //! ```

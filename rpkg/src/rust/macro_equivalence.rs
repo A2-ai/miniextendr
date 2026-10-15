@@ -22,10 +22,10 @@ pub fn mx_point_new(x: f64, y: f64) -> MxPoint {
     MxPoint { x, y }
 }
 
-/// Test summing fields of an MxPoint ExternalPtr.
-/// @param p An ExternalPtr wrapping an MxPoint.
+/// Test summing fields of an MxPoint, borrowed for the call.
+/// @param p An MxPoint.
 #[miniextendr]
-pub fn mx_point_sum(p: miniextendr_api::externalptr::ExternalPtr<MxPoint>) -> f64 {
+pub fn mx_point_sum(p: &MxPoint) -> f64 {
     p.x + p.y
 }
 // endregion

@@ -488,9 +488,9 @@ fn generate_concrete_vtable_shims(
             &handles,
             Some((crate::trait_self_ref::cell_address(&cell), method.is_mut)),
         );
-        let self_borrows = self_refs.iter().map(|(name, mutable, index)| {
-            crate::trait_self_ref::borrow(name, *mutable, *index, &argv)
-        });
+        let self_borrows = self_refs
+            .iter()
+            .map(|(name, mutable, _)| crate::trait_self_ref::borrow(name, *mutable));
 
         // Generate method call using fully-qualified syntax to avoid ambiguity
         // with generic trait paths like `RExtend<i32>::method()` where `<` would
@@ -717,10 +717,6 @@ pub(super) fn extract_methods(
                 no_dispatch_dots: attrs.no_dispatch_dots,
                 per_param: attrs.per_param,
                 preconditions: attrs.preconditions,
-                consumed_handles: crate::externalptr_args::consumed_handles(
-                    &method.sig.inputs,
-                    quote::ToTokens::to_token_stream(&method.block),
-                ),
             });
         }
     }
@@ -1195,8 +1191,9 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
 /// and call with fully-qualified trait syntax `<Type as Trait>::method(self_ref, ...)`.
 /// Static methods run on the worker thread when the `worker` flag is set.
 ///
-/// `&Self` / `&mut Self` parameters are rewritten to `ExternalPtr<Type>` for the C wrapper,
-/// then borrowed with their declared mutability when calling the trait method.
+/// `&Self` / `&mut Self` parameters are borrowed external arguments (#2106): the C wrapper
+/// converts each to its `ExternalPtr<Type>` handle and borrows it with the declared
+/// mutability for the call, after checking that no two of them alias while one is mutable.
 pub(super) fn generate_trait_method_c_wrapper(
     method: &TraitMethod,
     type_ident: &syn::Ident,
@@ -1243,48 +1240,26 @@ pub(super) fn generate_trait_method_c_wrapper(
         })
         .collect();
 
-    // Filter inputs to exclude the receiver (builder handles self separately with has_self())
-    // Also handle &Self params: replace with ExternalPtr<ConcreteType> so the builder
-    // can auto-extract them, and track which params need dereferencing in the call.
-    // A `&mut Self` parameter becomes a `mut` binding, which the wrapper
-    // borrows exclusively for the call (`&Self` shared, #2092).
+    // Filter inputs to exclude the receiver (builder handles self separately with has_self()).
+    // `&Self` / `&mut Self` parameters stay: the builder converts them to their handles and
+    // borrows them for the call (#2106). Track them for the alias checks.
     let mut self_ref_params = Vec::new();
     let filtered_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = method
         .sig
         .inputs
         .iter()
         .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
-        .map(|arg| {
+        .inspect(|arg| {
             if let syn::FnArg::Typed(pt) = arg
                 && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
-                // Track this param for dereferencing in the call expression
-                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    self_ref_params.push((pat_ident.ident.clone(), mutable));
-                }
-                // Replace &Self with ExternalPtr<ConcreteType>
-                let mut pat = pt.pat.as_ref().clone();
-                if let syn::Pat::Ident(pat_ident) = &mut pat {
-                    pat_ident.mutability = mutable.then(Default::default);
-                }
-                return syn::parse_quote!(#pat: ::miniextendr_api::ExternalPtr<#type_ident>);
-            }
-            arg.clone()
-        })
-        .collect();
-
-    // Build call args: &Self params use `&*param` (deref ExternalPtr), others use `param`
-    let call_args: Vec<proc_macro2::TokenStream> = rust_args
-        .iter()
-        .map(|arg| {
-            if let Some((_, mutable)) = self_ref_params.iter().find(|(name, _)| name == arg) {
-                let mutability = mutable.then(|| quote::quote!(mut));
-                quote::quote! { &#mutability *#arg }
-            } else {
-                quote::quote! { #arg }
+                self_ref_params.push((pat_ident.ident.clone(), mutable));
             }
         })
+        .cloned()
         .collect();
+    let call_args = &rust_args;
 
     // Determine return handling
     let return_handling = if method.unwrap_in_r
@@ -1312,18 +1287,18 @@ pub(super) fn generate_trait_method_c_wrapper(
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
         .type_context(type_ident.clone())
-        .call_method_def_ident(call_method_def_ident)
-        .consumed_handles(method.consumed_handles.clone());
+        .call_method_def_ident(call_method_def_ident);
 
     let mut post_conversion = Vec::new();
-    for (name, mutable) in &self_ref_params {
-        if *mutable {
-            post_conversion.push(quote::quote! { let mut #name = #name; });
-        }
-    }
     let handles: Vec<_> = self_ref_params
         .iter()
-        .map(|(name, mutable)| (name.clone(), *mutable, crate::naming::ident_name(name)))
+        .map(|(name, mutable)| {
+            (
+                crate::externalptr_args::handle_ident(name),
+                *mutable,
+                crate::naming::ident_name(name),
+            )
+        })
         .collect();
     let receiver = method
         .has_self
@@ -1345,18 +1320,19 @@ pub(super) fn generate_trait_method_c_wrapper(
         };
         let self_extraction = if let Some(kind) = crate::trait_receiver::owner_receiver(&method.sig)
         {
-            let handle = kind.type_path();
             let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
+            let borrow = match kind {
+                crate::trait_receiver::OwnerReceiver::Shared => quote::quote!(borrow),
+                crate::trait_receiver::OwnerReceiver::Mutable => quote::quote!(borrow_mut),
+            };
             let address = (!self_ref_params.is_empty()).then(|| quote::quote! {
                 let __miniextendr_receiver_addr = #self_ptr.as_ptr().cast::<::core::ffi::c_void>();
             });
             // The alias preflight above runs before constructing either an
-            // exclusive handle or any &Self argument reference. The handle
-            // holds the value's RefCell borrow for the rest of the call.
+            // exclusive view or any &Self argument reference. The view holds
+            // the value's RefCell borrow for the rest of the call.
             post_conversion.push(quote::quote! {
-                let #self_ref = <#handle<'_, #type_ident> as ::core::convert::From<_>>::from(
-                    &#receiver_mutability #self_ptr,
-                );
+                let #self_ref = #self_ptr.#borrow();
             });
             quote::quote! {
                 #resolve

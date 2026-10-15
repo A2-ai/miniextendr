@@ -33,11 +33,15 @@ Create a new PtrSelfTest.
 
 Regular &self method — returns the stored value.
 
-ExternalPtr self — can check pointer state.
+Handle self — checks the pointer state.
 
-ExternalPtr self — access inner value via Deref.
+Shared view self — reads the value through \code{Deref}.
 
-Mutable ExternalPtr self — modify inner value via DerefMut.
+Exclusive view self — writes the value through \code{DerefMut}.
 
-By-value ExternalPtr self — access inner value via Deref on owned ptr.
+\describe{
+\item{\code{new_val}}{The new value.}
+}
+
+Handle self — reads the value through a checked \code{borrow()}.
 }

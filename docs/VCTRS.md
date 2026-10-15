@@ -409,7 +409,7 @@ A `#[miniextendr(vctrs(...))]` impl may only contain:
 - **vctrs protocol overrides** — static methods annotated with `#[miniextendr(vctrs(format))]`
   (or other protocol names). These are emitted as `format.<Class>` S3 methods.
 
-`&self`, `&mut self`, `self`, and `self: ExternalPtr<Self>` receivers are **rejected at
+`&self`, `&mut self`, `self`, and the `ExternalPtrRef` / `ExternalPtrMut` / `ExternalPtr<Self>` receivers are **rejected at
 compile time** (MXL120). A vctrs object is an S3-classed base vector — there is no Rust
 `Self` stored in the SEXP. The C wrapper would call `ErasedExternalPtr::from_sexp` on a
 REALSXP/INTSXP and then panic when the downcast fails. Static methods with explicit

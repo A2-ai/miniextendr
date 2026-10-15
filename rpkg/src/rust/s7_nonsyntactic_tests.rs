@@ -10,7 +10,7 @@
 //! does not parse and the package does not install.
 
 use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame};
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::miniextendr;
 
 /// Handle-backed bag of numbers whose element access goes through R operators.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -72,7 +72,7 @@ impl MxS7Bag {
     /// `y`, which the Rust conversion reads as another `MxS7Bag`.
     /// @param y Another `MxS7Bag` with the same number of values.
     #[miniextendr(s7(generic = "%*%"))]
-    pub fn dot(&self, y: ExternalPtr<MxS7Bag>) -> Result<f64, String> {
+    pub fn dot(&self, y: &MxS7Bag) -> Result<f64, String> {
         if self.values.len() != y.values.len() {
             return Err(format!(
                 "cannot multiply bags of {} and {} values",

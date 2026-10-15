@@ -11,7 +11,10 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
 - **Type-safe access** via authoritative `Any::downcast` checks; the
   `TypedExternal` symbols are display and diagnostic metadata
 - **Automatic cleanup** via R GC finalizer that calls `Drop`
-- **Box-like API** (`Deref`, `DerefMut`, `Clone`, `into_inner`, `into_raw`, `pin`, etc.)
+- **Box-like ownership** (`Clone`, `into_inner`, `into_raw`, `leak`), with
+  every read of the value checked: a `#[miniextendr]` function borrows it at
+  the call (`&T` / `&mut T` parameters), and Rust code holding a handle
+  borrows it with `borrow()` / `borrow_mut()`
 - **Context-checked construction** -- `new()` runs on R's main thread or routes
   from an active miniextendr worker context
 
@@ -74,10 +77,13 @@ let ptr = unsafe { ExternalPtr::from_raw(raw) };
 
 ## Passing Class Objects to Standalone Functions
 
-A `#[miniextendr]` argument typed as `ExternalPtr<T>` accepts either the bare
-pointer a low-level constructor returns, **or** the ergonomic class handle
-that wraps it — `MyData$new(...)`, `S4Foo(...)`, etc. Conversion unwraps the
-handle transparently, per class system:
+A `#[miniextendr]` argument of an external type (`&T`, `&mut T`,
+`ExternalPtrRef<'_, T>`, `ExternalPtrMut<'_, T>`, `ExternalPtr<T>`, or an
+`Option` / `Vec` of them) accepts either the bare pointer a low-level
+constructor returns, **or** the ergonomic class handle that wraps it —
+`MyData$new(...)`, `S4Foo(...)`, etc. Conversion unwraps the handle
+transparently, per class system, and keeps the pointer it unwrapped rooted
+for as long as the Rust handle lives:
 
 | Class system | Where the pointer lives | Shape |
 |---|---|---|
@@ -89,8 +95,9 @@ handle transparently, per class system:
 | hand-built environment | a `.ptr` binding | any environment binding `.ptr` directly |
 
 The same resolution applies to the receiver of every class-system instance
-method (`&self`, `&mut self`, `self`, and the `ExternalPtr<Self>` receiver
-forms): the generated prelude calls `resolve_receiver` on the object R
+method (`&self`, `&mut self`, `self`, and the receivers
+`ExternalPtrRef<'_, Self>` / `ExternalPtrMut<'_, Self>` / `ExternalPtr<Self>`):
+the generated prelude calls `resolve_receiver` on the object R
 dispatched with, so an S3 class whose object is a list with R-side state next
 to the handle dispatches into `#[miniextendr(s3)] impl` methods unchanged
 (#1469; `S3_METHODS.md`, "Handles with R-visible state"). That shape is for
@@ -113,7 +120,7 @@ impl MyData {
 
 #[miniextendr]
 pub fn total(items: Vec<ExternalPtr<MyData>>) -> f64 {
-    items.iter().map(|d| d.value).sum()
+    items.iter().map(|d| d.borrow().value).sum()
 }
 ```
 
@@ -133,52 +140,109 @@ place.
 
 ## Accessing the Value
 
-`ExternalPtr<T>` implements `Deref<Target = T>` and `DerefMut`, so you can use it like a reference:
+The value an `ExternalPtr` stores sits in a `RefCell<T>` ("Reentrant Calls"
+below), and every read of it is checked. There are two places it happens:
+
+- **At the entry point.** A `#[miniextendr]` function or method takes the
+  value as `&T` / `&mut T` (or `&self` / `&mut self`), and the generated
+  wrapper borrows the cell for the call. The body works with plain
+  references, and Rust's borrow checker covers everything after that.
+- **Through a handle.** An `ExternalPtr<T>` that Rust code holds (one it built
+  with `new`, a struct field, a `Vec` element, an `ExternalPtr<T>` argument)
+  has no `Deref`. Its value is read with `borrow()` / `borrow_mut()`, which
+  check the cell the way the wrapper does:
 
 ```rust
-let ptr = ExternalPtr::new(MyData { value: 3.14 });
-println!("{}", ptr.value);  // Deref to &MyData
+let mut ptr = ExternalPtr::new(MyData { value: 3.14 });
+println!("{}", ptr.borrow().value);
+ptr.borrow_mut().value = 2.71;
 ```
-
-Explicit access methods:
 
 | Method | Returns | Notes |
 |--------|---------|-------|
-| `as_ref()` | `Option<&T>` | Always `Some` for valid ptrs |
-| `as_mut()` | `Option<&mut T>` | Always `Some` for valid ptrs |
-| `try_borrow()` | `Ref<'_, T>` | Borrows the value's `RefCell` shared; see [Reentrant Calls](#reentrant-calls) |
-| `try_borrow_mut()` | `RefMut<'_, T>` | Borrows it exclusively |
-| `as_ptr()` | `*const T` | Raw pointer, no ownership transfer |
+| `borrow()` | `ExternalPtrRef<'_, T>` | Shared borrow; raises `miniextendr_borrow_conflict` while the value is borrowed mutably |
+| `borrow_mut()` | `ExternalPtrMut<'_, T>` | Exclusive borrow; raises it while the value is borrowed at all |
+| `as_ptr()` | `*const T` | Raw pointer, no borrow, no ownership transfer |
 | `as_sexp()` | `SEXP` | The underlying R object |
-| `reborrow()` | `ExternalPtr<T>` | Owned alias sharing the same SEXP; no allocation, no R object copy |
+| `same_object()` | `ExternalPtr<T>` | A second handle to the same R object; no allocation, no copy |
 
-### `reborrow()`: identity-preserving returns
+`borrow()` / `borrow_mut()` panic for a type-erased `ExternalPtr<()>`, which
+has no value of its own: downcast it first ("Type-Erased Pointers" below).
 
-When a `#[miniextendr]` method receives its object as a handle and returns
-it to R, `reborrow()` lets you build an owned `ExternalPtr<T>` that points
-at the same `EXTPTRSXP` without allocating a new R object:
+### Why there is no `Deref`
+
+`RefCell::borrow()` returns a guard, and the value counts as borrowed only
+while that guard lives. `Deref::deref(&self) -> &T` must return a bare
+reference, so a guard made inside it drops when it returns (returning a
+reference into it is E0515). That leaves `deref` three options, none of them
+workable: check, then release, so the `&T` outlives the check and a callback can
+`borrow_mut()` the same object alongside it; leak the guard, so the object
+stays borrowed for good and every later `&mut` call fails; or skip the check
+(`RefCell::as_ptr`), the unchecked read this model removes. The compiler can't
+stand in for the check either: it tracks borrows of a handle, not of the
+object, and two handles to one R object (`f(a, a)`, two `Vec` elements, a
+stored copy) are separate Rust values, so `&*a` and `&mut *b` would alias
+without an error. That's why std's `RefCell<T>` has no `Deref` either: you
+hold the guard, and the guard dereferences. `ExternalPtrRef` /
+`ExternalPtrMut` are that guard plus the R object. Take one per scope, not one
+per field:
 
 ```rust
-#[miniextendr(env)]
-impl Counter {
-    // R will see `identical(a, a$pick_larger(b))` == TRUE when `a` wins,
-    // because reborrow() returns the same SEXP rather than a fresh copy.
-    pub fn pick_larger(
-        self: &ExternalPtr<Self>,
-        other: ExternalPtr<Self>,
-    ) -> ExternalPtr<Self> {
-        if self.value >= other.value { self.reborrow() } else { other }
+let c = ptr.borrow();   // one check, held until `c` drops
+c.value + c.other       // plain field access through the view
+```
+
+`#[miniextendr]` signatures need none of this: for `&T` / `&mut T`
+parameters, the generated wrapper holds the guard for the call.
+
+### Views: `ExternalPtrRef` / `ExternalPtrMut`
+
+`ExternalPtrRef<'a, T>` and `ExternalPtrMut<'a, T>` are a borrow of the value
+together with the R object that owns it. They `Deref` (and `ExternalPtrMut`
+`DerefMut`s) to `T`, can't outlive the borrow, can't consume the value, and
+are `!Send`. A view is the form for code that needs the R object as well as
+the value:
+
+- `ExternalPtrRef::as_sexp(&view)` / `ExternalPtrMut::as_sexp(&view)` return
+  the object (an associated function, so it never shadows a method of `T`);
+- the `Sidecar<T>` accessors take a view ("`Sidecar<T>`: values the pointer
+  roots" below).
+
+`view.rb()` / `view.rb_mut()` reborrow a view for a helper that takes one,
+without moving it:
+
+```rust
+fn bump(mut counter: ExternalPtrMut<'_, Counter>) {
+    counter.value += 1;
+}
+
+let mut view = ptr.borrow_mut();
+bump(view.rb_mut());
+bump(view.rb_mut());
+```
+
+A view is also a parameter and receiver type, borrowed by the wrapper like
+`&T` ("Receivers that reach the R object", "Arguments" below).
+
+### `same_object()`: identity-preserving returns
+
+`same_object()` makes a second owned handle to the R object a handle points
+at, without allocating, so a function can return the object it was given or
+one it stores:
+
+```rust
+#[miniextendr(r6)]
+impl Holder {
+    // `identical(h$inner(), h$inner())` is TRUE: the same R object each time.
+    pub fn inner(&self) -> ExternalPtr<Counter> {
+        self.inner.same_object()
     }
 }
 ```
 
-`clone()` would allocate a fresh SEXP with a deep copy of the inner `T`;
-`reborrow()` is the correct choice when the caller expects to get back the
-same R object they passed in.
-
-`Deref`, `DerefMut`, `as_ref()` and `as_mut()` take no borrow of the value's
-`RefCell`; `try_borrow()` and `try_borrow_mut()` do. See
-[Reentrant Calls](#reentrant-calls).
+`clone()` would allocate a fresh R object with a copy of the `T`.
+`same_object()` takes no borrow and gives no access to the value: reads
+through the new handle are checked like any other.
 
 ## Consuming and Dropping
 
@@ -191,8 +255,8 @@ same R object they passed in.
 R's GC finalizer handles cleanup when the `ExternalPtr` goes out of scope in Rust without being explicitly consumed. The Rust `Drop` impl is a no-op to avoid double-free.
 
 `into_inner` and `into_raw` raise the `miniextendr_borrow_conflict` error while
-a running call holds the value. `from_raw` boxes the value again, so its
-address changes too.
+a running call (or a view of another handle) holds the value. `from_raw` boxes
+the value again, so its address changes too.
 
 ### Panicking destructors are not recoverable
 
@@ -209,52 +273,57 @@ writes, network, mutex takedown) behind an explicit `close()` /
 `finalize()` method that the user calls, and keep `Drop` limited to
 plain memory release.
 
-## ExternalPtr as a Self Receiver
+## Receivers that reach the R object
 
-Inside a `#[miniextendr]` impl block, methods can take the wrapping
-`ExternalPtr` as the receiver instead of a plain reference:
+`&self` / `&mut self` give a method the value. A method that also needs the
+R object takes a view as its receiver, which the wrapper borrows for the call
+like `&self` / `&mut self`:
 
 ```rust
 #[miniextendr(env)]
 impl MyType {
-    // Plain receiver - gets &MyType via Deref
     pub fn value(&self) -> i32 { self.value }
 
-    // ExternalPtr receivers - access ExternalPtr methods directly;
-    // Deref/DerefMut still expose the inner T transparently.
-    pub fn is_null_ptr(self: &ExternalPtr<Self>) -> bool {
-        self.is_null()
-    }
-
-    pub fn set_via_ptr(self: &mut ExternalPtr<Self>, v: i32) {
-        self.value = v;  // DerefMut to &mut MyType
+    // The object itself, for identity
+    pub fn object(self: ExternalPtrRef<'_, Self>) -> SEXP {
+        ExternalPtrRef::as_sexp(&self)
     }
 
     // A Sidecar<T> field (`#[r_data] keys: Sidecar<Vec<i32>>`) is read
-    // and written through the handle
-    pub fn key_count(self: &ExternalPtr<Self>) -> usize {
-        Self::keys(self).len()
+    // and written through the view
+    pub fn key_count(self: ExternalPtrRef<'_, Self>) -> usize {
+        Self::keys(&self).len()
+    }
+
+    pub fn push_key(mut self: ExternalPtrMut<'_, Self>, key: i32) {
+        let mut keys = Self::keys(&self);
+        keys.push(key);
+        Self::set_keys(&mut self, keys);
+    }
+
+    // The handle, which the wrapper does not borrow
+    pub fn is_null_ptr(self: ExternalPtr<Self>) -> bool {
+        self.is_null()
     }
 }
 ```
 
-This is the form to use when a method needs `ExternalPtr` identity or tag
-metadata: `as_sexp()`, `tag()`, `protected()`, `ptr_eq()`, `reborrow()`,
-etc. The macro rewrites `self` to an internal binding so the pattern
-compiles on stable Rust (no `arbitrary_self_types` required), and the
-generated C wrapper uses typed `ExternalPtr::<T>::wrap_sexp()` rather than
-an erased downcast.
+The macro rewrites `self` to an internal binding so the pattern compiles on
+stable Rust (no `arbitrary_self_types` required).
 
-It is also the form for a method that needs a `Sidecar<T>` field's value:
-the accessors the derive generates are associated functions that take the
-handle (`Self::keys(self)`, `Self::set_keys(self, v)`), since the struct
-holds nothing that points back at its pointer. See "`Sidecar<T>`: values the
-pointer roots" below.
+The view receivers are the form for a method that needs a `Sidecar<T>`
+field's value: the accessors the derive generates are associated functions
+that take the view (`Self::keys(&self)`, `Self::set_keys(&mut self, v)`),
+since the struct holds nothing that points back at its pointer. See
+"`Sidecar<T>`: values the pointer roots" below.
 
-Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`
-and `self: ExternalPtr<Self>`. The by-value handle borrows the value
-exclusively for the call, so it can't move the value out: R owns the
-pointer.
+`self: ExternalPtr<Self>` is the handle: the wrapper takes no borrow, so the
+body reads through `borrow()` / `borrow_mut()`, and may store the handle,
+return it, or move the value out with `ExternalPtr::into_inner`, which
+leaves the R object without a value.
+
+`self: &ExternalPtr<Self>` and `self: &mut ExternalPtr<Self>` are compile
+errors that name the view to use instead.
 
 ## Reentrant Calls
 
@@ -264,30 +333,36 @@ method still holds `&self` or `&mut self`. So the value an `ExternalPtr` stores
 sits in a `RefCell<T>`, and the generated code borrows that cell for the whole
 call, through the conversion of its result:
 
-- `&self` methods, `self: &ExternalPtr<Self>` receivers, `ExternalPtrRef`
-  handles, field reads and arguments (below) not declared `mut` borrow it
-  shared;
-- `&mut self` and by-value methods, `self: &mut ExternalPtr<Self>` and
-  `self: ExternalPtr<Self>` receivers, `ExternalPtrMut` handles, field writes
-  and `mut` arguments borrow it exclusively.
+- `&self` methods, `ExternalPtrRef` receivers, `&T` and `ExternalPtrRef`
+  arguments (below) and field reads borrow it shared;
+- `&mut self` and by-value methods, `ExternalPtrMut` receivers, `&mut T` and
+  `ExternalPtrMut` arguments and field writes borrow it exclusively.
 
 Shared borrows nest. A call that conflicts with one still running raises an R
 error of class `miniextendr_borrow_conflict` instead of making a second
 reference, and leaves the object as it was. A trait method called through a
 View, from this package or another, borrows the same cell (see `TRAIT_ABI.md`).
 
+That borrow is the only run-time check a call's own arguments need: the R
+object reaches Rust only through a generated wrapper, on R's main thread, so
+the wrapper sees every argument and the receiver, and a callback meets its
+borrow. Everything after the entry point is ordinary borrowck. The remaining
+run-time checks are on handles Rust keeps ("Handles Rust code keeps" below).
+
 ### Arguments
 
-An argument typed `ExternalPtr<T>` or `Option<ExternalPtr<T>>`, of a
-function or of a method, holds its object's value for the whole call like a
-receiver does: exclusively when the parameter is declared `mut`, shared
-otherwise. `NULL` for an `Option` holds nothing. The borrow is taken after
-every argument is converted (and after a trait method's alias checks), so an
-error that the argument conversion raises leaves no object borrowed.
+A parameter typed `&T` or `&mut T` for an external type `T` (one that
+implements `TypedExternal`, as `#[derive(ExternalPtr)]` does), or the view
+`ExternalPtrRef<'_, T>` / `ExternalPtrMut<'_, T>`, or an `Option` of either,
+holds its object's value for the whole call like a receiver does:
+exclusively for `&mut T` / `ExternalPtrMut`, shared otherwise. `NULL` for an
+`Option` holds nothing. The borrow is taken after every argument is converted
+(and after a trait method's alias checks), so an error that the argument
+conversion raises leaves no object borrowed.
 
 ```rust
 #[miniextendr]
-pub fn absorb(mut target: ExternalPtr<Counter>, source: ExternalPtr<Counter>) -> i32 {
+pub fn absorb(target: &mut Counter, source: &Counter) -> i32 {
     target.value += source.value;
     target.value
 }
@@ -299,30 +374,32 @@ absorb(a, a)  # error of class miniextendr_borrow_conflict, `a` unchanged
 ```
 
 The same error meets a callback into R that reaches an argument's object
-while the function still holds it: reading a field of a `mut` argument,
-writing one of a shared argument, calling a method that conflicts, or
-passing the object to another function that does. A trait method's `&Self` /
+while the function still holds it: reading a field of a `&mut T` argument,
+writing one of a `&T` argument, calling a method that conflicts, or passing
+the object to another function that does. A trait method's `&Self` /
 `&mut Self` arguments borrow the same way, after the check that rejects their
-aliasing each other or the receiver. A `worker` function holds the borrows on
-R's main thread while the worker runs.
+aliasing each other or the receiver.
 
-The borrow follows the parameter as declared: a body that rebinds a shared
-argument mutably (`let mut a = a;`) writes under a shared borrow the check
-can't see. Declare the parameter `mut` instead.
+A borrowed argument keeps the call on R's main thread, like a `&self` method:
+under `#[miniextendr(worker)]` or the `worker-default` feature such a function
+still runs on the main thread.
 
-`ExternalPtr::into_inner`, `into_raw`, `into_non_null` and `leak` refuse a
-borrowed value, so a function whose body names any of them takes no borrow
-for its `ExternalPtr` arguments. The match is on the name alone: a body that
-calls `Box::leak` or `Cell::into_inner` loses its argument borrows too. A
-function that hands an argument to a helper that consumes it gets the
-`miniextendr_borrow_conflict` error: the generated code sees only the body's
-own tokens, so call the consuming function in the body.
+A `&T` whose `T` isn't `TypedExternal` fails to compile at the parameter
+(`` `T` is not a type an `ExternalPtr` stores ``). The reference parameters
+the macro converts from R vectors keep their meaning: `&str`, `&[T]` /
+`&mut [T]`, `&i32` / `&f64` / `&u8` / `&RLogical` / `&Rcomplex` (a length-one
+vector's element), dots, and types with a `TryFromSexp` precondition. A
+`'static` lifetime on a borrowed parameter is a compile error: the borrow
+ends with the call.
 
-No borrow is taken for an element of a `Vec<ExternalPtr<T>>` or
-`Vec<Option<ExternalPtr<T>>>` argument, a parameter whose type is an alias
-of `ExternalPtr<T>`, a `Checked` / `Unchecked` parameter, or an
-`ExternalPtr<T>` argument of a trait method called through a View: use
-`try_borrow()` / `try_borrow_mut()` (below) there (#2104).
+An `ExternalPtr<T>` parameter is a handle: the wrapper takes no borrow, and
+the body reads the value with `borrow()` / `borrow_mut()`, keeps the handle,
+returns it, or moves the value out with `ExternalPtr::into_inner` (which
+fails only while another running call holds the value, and leaves the R
+object without one). Elements of a
+`Vec<ExternalPtr<T>>` and the `ExternalPtr<T>` arguments of a trait method
+called through a View are handles too. An `ExternalPtr<T>` argument moves to
+the worker under `worker`, and is read there with `borrow()`.
 
 ### Unwinding
 
@@ -352,31 +429,27 @@ in `#[miniextendr]` bodies.
 
 ### Handles Rust code keeps
 
-`Deref`, `DerefMut`, `as_ref()` and `as_mut()` read the value through
-`RefCell::as_ptr` and take no borrow. Rust code that keeps a handle of its
-own (a vector's element, a handle stored in a struct, one built from a
-`SEXP`) and uses its value across a call that can reach the same object
-borrows it with `try_borrow()` / `try_borrow_mut()`, which check the cell as
-the generated code does:
+A handle Rust code keeps (a vector's element, a handle stored in a struct,
+one built from a `SEXP`) is read with `borrow()` / `borrow_mut()`. They check
+the cell as the generated code does, so they meet a running call's borrow,
+or another view of the same object:
 
 ```rust
 #[miniextendr]
 pub fn absorb_all(mut items: Vec<ExternalPtr<Counter>>) -> i32 {
     let (first, rest) = items.split_first_mut().expect("at least one counter");
-    let mut first = first.try_borrow_mut();
+    let mut first = first.borrow_mut();
     for other in rest {
         // The same counter twice raises `miniextendr_borrow_conflict`.
-        first.value += other.try_borrow().value;
+        first.value += other.borrow().value;
     }
     first.value
 }
 ```
 
-Inside a function that holds an argument, `try_borrow_mut()` (and, for a `mut`
-argument, `try_borrow()`) on that argument, or on another handle of its
-object, conflicts with the call's own borrow, as `ExternalPtrRef::from` and
-`ExternalPtrMut::from` do: use `Deref` there. `try_borrow()` of a
-type-erased `ExternalPtr<()>` panics; downcast it first.
+A view lasts as long as the Rust scope that holds it, so a function keeps
+one across a call into R only by holding it there; drop it first to let the
+callback use the object.
 
 ## Display and Diagnostic Metadata with TypedExternal
 
@@ -489,7 +562,7 @@ let erased = unsafe { ErasedExternalPtr::from_sexp(some_sexp) };
 
 // Check what type is stored
 if erased.is::<MyData>() {
-    let data: &MyData = erased.downcast_ref::<MyData>().unwrap();
+    let data: ExternalPtrRef<'_, MyData> = erased.downcast_ref::<MyData>().unwrap();
 }
 
 // Or read the stored type name
@@ -503,8 +576,8 @@ Methods on `ErasedExternalPtr`:
 | Method | Returns |
 |--------|---------|
 | `is::<T>()` | `bool` -- does the stored type match `T`? |
-| `downcast_ref::<T>()` | `Option<&T>` |
-| `downcast_mut::<T>()` | `Option<&mut T>` |
+| `downcast_ref::<T>()` | `Option<ExternalPtrRef<'_, T>>`, a shared borrow like `borrow()` |
+| `downcast_mut::<T>()` | `Option<ExternalPtrMut<'_, T>>`, an exclusive borrow like `borrow_mut()` |
 | `stored_type_name()` | `Option<&'static str>` |
 
 ## ExternalSlice
@@ -516,7 +589,7 @@ impl_typed_external!(ExternalSlice<f64>);
 
 let data = vec![1.0, 2.0, 3.0];
 let ptr = ExternalPtr::new(ExternalSlice::new(data));
-assert_eq!(ptr.as_slice(), &[1.0, 2.0, 3.0]);
+assert_eq!(ptr.borrow().as_slice(), &[1.0, 2.0, 3.0]);
 ```
 
 This is useful when you need R to own a Rust slice and access it by index (e.g., in ALTREP `elt` callbacks).
@@ -537,7 +610,7 @@ ALTREP objects have two data slots (`data1`, `data2`). These helpers extract typ
 // In an ALTREP callback:
 fn length(x: SEXP) -> R_xlen_t {
     match unsafe { altrep_data1_as::<MyAltrepData>(x) } {
-        Some(ext) => ext.data.len() as R_xlen_t,
+        Some(ext) => ext.borrow().data.len() as R_xlen_t,
         None => 0,
     }
 }
@@ -554,9 +627,10 @@ fn length(x: SEXP) -> R_xlen_t {
 
 The `_unchecked` variants are for performance-critical ALTREP callbacks where you are guaranteed to be on the main thread.
 
-These helpers, and the ALTREP derives' data extraction, read the value
+`altrep_data1_mut` and the ALTREP derives' data extraction read the value
 without borrowing its `RefCell`, so a class method or argument holding the
-same object exclusively doesn't stop them (#2103).
+same object exclusively doesn't stop them (#2103). A handle from
+`altrep_data1_as` / `altrep_data2_as` is read with `borrow()`, like any other.
 
 ## RSidecar (R Data Fields)
 
@@ -627,8 +701,8 @@ the struct still pointed at it (#1846). Keep R values in a `Sidecar<SEXP>`.
 A `Sidecar<T>` field's value lives in the pointer's `prot` list ("SEXP Layout"
 below), which roots it as long as the pointer is reachable. Rust reads and
 writes it through the pointer: the derive generates associated functions on
-the struct that take the `ExternalPtr` handle, with the field's visibility;
-the `#[r_data(...)]` option selects them:
+the struct that take a view or an `ExternalPtr` handle, with the field's
+visibility; the `#[r_data(...)]` option selects them:
 
 | `#[r_data(...)]` | Rust accessors |
 |---|---|
@@ -639,9 +713,9 @@ the `#[r_data(...)]` option selects them:
 `T` is any `IntoR + TryFromSexp` type. Rust code sees no `SEXP`s or slot
 indices: a plain constructor fills the field with `Sidecar::new(v)` (or
 `Sidecar::default()`, which is `Sidecar::new(T::default())`), and a method
-that needs the value takes the handle as its receiver ("ExternalPtr as a Self
-Receiver" above), reads it with `Self::keys(self)` and writes it with
-`Self::set_keys(self, v)`:
+that needs the value takes a view as its receiver ("Receivers that reach the
+R object" above), reads it with `Self::keys(&self)` and writes it with
+`Self::set_keys(&mut self, v)`:
 
 ```rust
 #[miniextendr(r6(r_data_accessors))]
@@ -656,20 +730,21 @@ impl MyType {
         }
     }
 
-    pub fn n_keys(self: &ExternalPtr<Self>) -> usize {
-        Self::keys(self).len()
+    pub fn n_keys(self: ExternalPtrRef<'_, Self>) -> usize {
+        Self::keys(&self).len()
     }
 
-    pub fn push_key(self: &mut ExternalPtr<Self>, key: i32) {
-        let mut keys = Self::keys(self);
+    pub fn push_key(mut self: ExternalPtrMut<'_, Self>, key: i32) {
+        let mut keys = Self::keys(&self);
         keys.push(key);
-        Self::set_keys(self, keys);
+        Self::set_keys(&mut self, keys);
     }
 }
 ```
 
 Any other Rust code with a handle makes the same calls: `MyType::keys(&ptr)`,
-`MyType::set_keys(&mut ptr, v)`.
+`MyType::set_keys(&mut ptr, v)`. Through a handle, the getter takes a shared
+borrow and the setter an exclusive one, for the call.
 
 The struct holds nothing that points back at its pointer, so a plain
 `&self` / `&mut self` receiver cannot reach the values. Custom traits can
@@ -694,17 +769,17 @@ impl KeyAccess for MyType {
 ```
 
 Both `.Call` wrappers and cross-package trait shims supply the owner. These
-handles borrow the allocation and its GC root for the call; they cannot consume
-the Rust value or cross threads. The getter accepts either borrowed handle or
-an ordinary `ExternalPtr`; the setter requires a mutable handle. Native Rust
-calls use `KeyAccess::keys_copy(ExternalPtrRef::from(&ptr))` or
-`KeyAccess::replace_keys(ExternalPtrMut::from(&mut ptr), values)`. The macro
-rewrites the special receiver to an associated-function parameter on stable
-Rust, so use this UFCS form in Rust. Default trait bodies follow the same rule.
+views borrow the value and its GC root for the call; they cannot consume
+the Rust value or cross threads. The getter accepts either view or an
+ordinary `ExternalPtr`; the setter requires `ExternalPtrMut` or a mutable
+handle. Native Rust calls use `KeyAccess::keys_copy(ptr.borrow())` or
+`KeyAccess::replace_keys(ptr.borrow_mut(), values)`. The macro rewrites the
+special receiver to an associated-function parameter on stable Rust, so use
+this UFCS form in Rust. Default trait bodies follow the same rule.
 
 A standard trait with a fixed `&self` signature, such as `Display`, still needs
-an explicit local adapter carrying the borrowed handle, or an inherent method
-with a handle receiver (#1880). High-level ALTREP data traits also receive only
+an explicit local adapter carrying the view, or an inherent method with a
+view receiver (#1880). High-level ALTREP data traits also receive only
 `&T`. ALTREP low-level callbacks can recover the owner explicitly with
 `altrep_data1_as_unchecked::<Self>(x)` and call `Self::keys(&owner)`. See
 [Sidecars in callbacks](ALTREP.md#sidecars-in-callbacks).
@@ -717,10 +792,11 @@ How the value moves:
   pointer's `prot` list. From then on the value lives
   in R only and the field is empty.
 - Every accessor, Rust or R, first moves a pending value of its field into
-  the `prot` list. So `*ptr = MyType::new(..)` through `DerefMut` takes
+  the `prot` list. So `*ptr.borrow_mut() = MyType::new(..)` takes
   effect at the next access from either side; a `saveRDS()` before any access
   writes the old slot values.
-- `mem::swap(&mut *a, &mut *b)` and `*ptr = value` are plain moves of the
+- `mem::swap(a, b)` of two `&mut MyType` (arguments, or
+  `&mut *ptr.borrow_mut()`) and `*view = value` are plain moves of the
   struct: the sidecar values stay with each pointer.
 - `ExternalPtr::into_inner` / `into_raw` read each slot back into its field
   as a pending value, so wrapping the value again keeps the values, straight
@@ -871,18 +947,22 @@ The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained 
 
 ## Thread Safety
 
-`ExternalPtr` is `Send` when `T: Send`, allowing it to be transferred between threads. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded.
+`ExternalPtr` is `Send` when `T: Send`, allowing it to be transferred between threads. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded. The views `ExternalPtrRef` / `ExternalPtrMut` are `!Send`: a borrow stays on the thread that took it.
 
 ## Trait Implementations
 
-`ExternalPtr<T>` mirrors `Box<T>`'s trait implementations:
+`ExternalPtr<T>` mirrors `Box<T>`'s ownership traits; the ones that read the
+value take a checked borrow for the call, like `borrow()` / `borrow_mut()`:
 
-- `Deref<Target = T>` / `DerefMut`
-- `AsRef<T>` / `AsMut<T>` / `Borrow<T>` / `BorrowMut<T>`
-- `Clone` (deep clone, when `T: Clone`)
+- `Clone` / `clone_from` (deep clone, when `T: Clone`)
 - `Default` (when `T: Default`)
-- `Debug` / `Display` / `Pointer`
+- `Display`; `Debug`, which prints `<borrowed>` for a value borrowed
+  mutably, and `<erased>` for an `ExternalPtr<()>`, rather than raising
+- `Pointer` (the value's address, no borrow)
 - `PartialEq` / `Eq` / `PartialOrd` / `Ord` / `Hash` (compare pointee values)
 - `Iterator` / `DoubleEndedIterator` / `ExactSizeIterator` / `FusedIterator`
 - `From<T>` / `From<Box<T>>`
-- `Pin` support via `pin()`, `pin_unchecked()`, `into_pin()`
+
+It has no `Deref` / `DerefMut`, `AsRef` / `AsMut` or `Borrow` / `BorrowMut`:
+each would hand out a reference with no borrow behind it ("Why there is no
+`Deref`" above). There's no `Pin` support either.

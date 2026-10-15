@@ -48,7 +48,7 @@ fn test_env_ptr_binding_unwraps() {
 
     let unwrapped = ExternalPtr::<i32>::try_from_sexp(env)
         .expect("env with a `.ptr` binding should unwrap to the ExternalPtr");
-    assert_eq!(unwrapped.as_ref().copied(), Some(41));
+    assert_eq!(*unwrapped.borrow(), 41);
 }
 
 /// An object carrying `.ptr` as an attribute (S7 stores properties as
@@ -66,7 +66,7 @@ fn test_attribute_ptr_unwraps() {
 
     let unwrapped = ExternalPtr::<i32>::try_from_sexp(carrier)
         .expect("object with a `.ptr` attribute should unwrap to the ExternalPtr");
-    assert_eq!(unwrapped.as_ref().copied(), Some(7));
+    assert_eq!(*unwrapped.borrow(), 7);
 }
 
 /// A list with a `.ptr` element (the hand-built S3 wrapper shape,
@@ -82,7 +82,7 @@ fn test_list_ptr_element_unwraps() {
 
     let unwrapped = ExternalPtr::<i32>::try_from_sexp(wrapper)
         .expect("list with a `.ptr` element should unwrap to the ExternalPtr");
-    assert_eq!(unwrapped.as_ref().copied(), Some(11));
+    assert_eq!(*unwrapped.borrow(), 11);
 }
 
 /// A list whose names do not include `.ptr` is not a handle by element, but
@@ -105,7 +105,7 @@ fn test_list_without_ptr_element_falls_through_to_attribute() {
     }
     let unwrapped = ExternalPtr::<i32>::try_from_sexp(carrier)
         .expect("list with a `.ptr` attribute should unwrap to the ExternalPtr");
-    assert_eq!(unwrapped.as_ref().copied(), Some(13));
+    assert_eq!(*unwrapped.borrow(), 13);
 }
 
 /// An environment with no `.ptr` binding at all (and no R6 `.__enclos_env__`

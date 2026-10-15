@@ -1619,7 +1619,8 @@ impl Altrep for LazyWithCache {
     const HAS_DUPLICATE: bool = true;
 
     fn duplicate(x: SEXP, deep: bool) -> SEXP {
-        let data = unsafe { altrep_data1_as::<LazyWithCache>(x) }?;
+        let handle = unsafe { altrep_data1_as::<LazyWithCache>(x) }?;
+        let data = handle.borrow();
 
         if deep {
             // Deep copy: clone cached data too
@@ -1660,7 +1661,8 @@ impl Altrep for ArithSeq {
     fn coerce(x: SEXP, to_type: SEXPTYPE) -> SEXP {
         use SEXPTYPE::*;
 
-        let data = unsafe { altrep_data1_as::<ArithSeq>(x) }?;
+        let handle = unsafe { altrep_data1_as::<ArithSeq>(x) }?;
+        let data = handle.borrow();
 
         match to_type {
             REALSXP => {

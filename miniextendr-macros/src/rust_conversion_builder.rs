@@ -47,6 +47,9 @@ pub struct RustConversionBuilder {
     /// whose R wrapper passes them unevaluated, #1835). Elsewhere they are a
     /// compile error.
     unevaluated_args: bool,
+    /// The impl's type, for `Self` in a method's borrowed external argument
+    /// (`other: &Self`): the wrapper is a free function.
+    self_type: Option<syn::Type>,
 }
 
 impl RustConversionBuilder {
@@ -63,7 +66,32 @@ impl RustConversionBuilder {
             param_markers: Vec::new(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
             unevaluated_args: false,
+            self_type: None,
         }
+    }
+
+    /// Name the impl's type for `Self` in borrowed external arguments.
+    pub fn with_self_type(mut self, self_type: syn::Type) -> Self {
+        self.self_type = Some(self_type);
+        self
+    }
+
+    /// The borrowed external argument (`&T` / `&mut T` / a view, #2106)
+    /// `pat_type` declares. A parameter marker's parameter is none: the
+    /// marker rebinds the converted value, which a borrowed argument only
+    /// gets after every conversion.
+    fn external_arg(
+        &self,
+        pat_type: &syn::PatType,
+    ) -> Option<crate::externalptr_args::ExternalArg> {
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let name = crate::naming::ident_name(&pat_ident.ident);
+        if self.param_markers.iter().any(|(n, _)| *n == name) {
+            return None;
+        }
+        crate::externalptr_args::external_arg(&pat_type.ty)
     }
 
     /// Bind `Quoted` / `Quosure` parameters (#1835): set for standalone fns,
@@ -208,6 +236,7 @@ impl RustConversionBuilder {
         if crate::type_inspect::call_marker(ty).is_some()
             || crate::type_inspect::unevaluated_param(ty).is_some()
             || crate::type_inspect::is_lazy_dots_marker(ty)
+            || self.external_arg(pat_type).is_some()
         {
             return None;
         }
@@ -501,6 +530,22 @@ impl RustConversionBuilder {
                 );
                 let #ident: #ty = <#ty>::from_sexp(#call);
             };
+            return (vec![stmt], vec![]);
+        }
+
+        // A borrowed external argument (#2106) converts to its handle here;
+        // the C wrapper borrows it after every conversion
+        // (`externalptr_args::arg_borrows`).
+        if let Some(external) = self.external_arg(pat_type) {
+            let err_arm = conversion_err_arm(&ctx, &self.conversion_error_class, ty.span());
+            let stmt = crate::externalptr_args::handle_conversion(
+                ident,
+                sexp_ident,
+                ty,
+                &external,
+                self.self_type.as_ref(),
+                err_arm,
+            );
             return (vec![stmt], vec![]);
         }
 

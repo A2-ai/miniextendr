@@ -666,7 +666,7 @@ pub(crate) fn build_dots_validation_stmt(
 ///     /// Convert FROM Celsius TO Fahrenheit.
 ///     /// Usage: S7::convert(celsius_obj, Fahrenheit)
 ///     #[miniextendr(s7(convert_from = "Celsius"))]
-///     pub fn from_celsius(c: ExternalPtr<Celsius>) -> Self {
+///     pub fn from_celsius(c: &Celsius) -> Self {
 ///         Fahrenheit { value: c.value * 9.0 / 5.0 + 32.0 }
 ///     }
 ///
@@ -1265,7 +1265,8 @@ pub fn miniextendr(
     // Thread strategy:
     // - Main thread is always used unless force_worker is set
     // - force_worker cannot override hard requirements for main thread
-    // - Hard requirements: returns_sexp, has_sexp_inputs,
+    // - Hard requirements: returns_sexp, has_sexp_inputs (borrowed external
+    //   arguments `&T` / `&mut T` / views included, #2106),
     //   has_main_thread_bound_return, has_dots, check_interrupt
     // A `Quoted` / `Quosure` parameter (also under `Missing<..>`, which
     // `is_main_thread_bound_input` does not look into) holds R objects and
@@ -1389,10 +1390,6 @@ pub fn miniextendr(
             .cfg_attrs(cfg_attrs.clone())
             .vis(vis.clone())
             .generics(generics.clone())
-            .consumed_handles(externalptr_args::consumed_handles(
-                inputs,
-                quote::ToTokens::to_token_stream(&parsed.item().block),
-            ))
             .preserve_param_names();
 
     if uses_internal_c_wrapper {

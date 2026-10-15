@@ -232,7 +232,7 @@ impl S7Fahrenheit {
     /// Convert Fahrenheit from Celsius.
     /// Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
     #[miniextendr(s7(convert_from = "S7Celsius"))]
-    pub fn from_celsius(c: miniextendr_api::ExternalPtr<S7Celsius>) -> Self {
+    pub fn from_celsius(c: &S7Celsius) -> Self {
         S7Fahrenheit {
             value: c.value * 9.0 / 5.0 + 32.0,
         }

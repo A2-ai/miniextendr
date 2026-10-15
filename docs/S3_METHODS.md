@@ -351,7 +351,7 @@ value, declare them as sidecar fields: `#[r_data]` fields on the
 Each public field gets `Type_get_<field>(x)` and `Type_set_<field>(x, value)`;
 a `Sidecar<T>` field holds a value, such as a data frame in a
 `Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so
-every method that takes the handle (`self: &ExternalPtr<Self>`) sees them and
+every method that takes a view (`self: ExternalPtrRef<'_, Self>`) sees them and
 nothing has to be re-wrapped. With `#[miniextendr(s3(r_data_accessors))]` on
 the impl, the class also gets `$` / `[[` methods that read the fields and
 `$<-` / `[[<-` methods that write them:

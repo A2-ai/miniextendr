@@ -77,9 +77,9 @@
 //! |----------|------------------|--------------|
 //! | `&self` | `Ref` | Instance method (immutable) |
 //! | `&mut self` | `RefMut` | Instance method (mutable, chainable) |
-//! | `self: &ExternalPtr<Self>` | `ExternalPtrRef` | Instance method (immutable, full ExternalPtr access) |
-//! | `self: &mut ExternalPtr<Self>` | `ExternalPtrRefMut` | Instance method (mutable, full ExternalPtr access) |
-//! | `self: ExternalPtr<Self>` | `ExternalPtrValue` | Instance method (owned ExternalPtr, full access) |
+//! | `self: ExternalPtrRef<'_, Self>` | `ExternalPtrRef` | Instance method (immutable, with the R object: sidecar fields) |
+//! | `self: ExternalPtrMut<'_, Self>` | `ExternalPtrMut` | Instance method (mutable, with the R object: sidecar fields) |
+//! | `self: ExternalPtr<Self>` | `ExternalPtrValue` | Instance method (the handle itself, unborrowed) |
 //! | `self` | `Value` | Consuming method: `-> Self` writes the result back into the same handle; `-> Result<Self, E>` / `Option<Self>` run on a clone (`T: Clone`) and overwrite on success; any other return consumes the handle (later use errors) |
 //! | (none) | `None` | Static method or constructor |
 //!
@@ -129,12 +129,41 @@ fn is_external_ptr_type(ty: &syn::Type) -> bool {
     }
 }
 
-/// Rewrite methods with ExternalPtr-based receivers so they compile on stable Rust
+/// Refuse the receivers `self: &ExternalPtr<Self>` / `self: &mut
+/// ExternalPtr<Self>`, which #2106 replaced by the views: a handle behind a
+/// reference reads its value unchecked, while a view holds the borrow.
+fn old_handle_receiver(sig: &syn::Signature) -> syn::Result<()> {
+    let Some(syn::FnArg::Receiver(receiver)) = sig.inputs.first() else {
+        return Ok(());
+    };
+    let syn::Type::Reference(reference) = receiver.ty.as_ref() else {
+        return Ok(());
+    };
+    if receiver.colon_token.is_none() || !is_external_ptr_type(&reference.elem) {
+        return Ok(());
+    }
+    let (view, binding) = if reference.mutability.is_some() {
+        ("ExternalPtrMut", "mut self")
+    } else {
+        ("ExternalPtrRef", "self")
+    };
+    Err(syn::Error::new_spanned(
+        &receiver.ty,
+        format!(
+            "a method takes its object as `{binding}: {view}<'_, Self>`: the wrapper borrows the \
+             value for the call, and the view carries the R object for the sidecar accessors \
+             (`Self::field(&self)`); use `&self` / `&mut self` when the body needs only the \
+             value, or `self: ExternalPtr<Self>` for the unborrowed handle"
+        ),
+    ))
+}
+
+/// Rewrite methods with handle receivers so they compile on stable Rust
 /// (which lacks `arbitrary_self_types`).
 ///
 /// Handles:
-/// - `self: &ExternalPtr<Self>` → `__miniextendr_self: &ExternalPtr<Self>`
-/// - `self: &mut ExternalPtr<Self>` → `__miniextendr_self: &mut ExternalPtr<Self>`
+/// - `self: ExternalPtrRef<'_, Self>` → `__miniextendr_self: ExternalPtrRef<'_, Self>`
+/// - `self: ExternalPtrMut<'_, Self>` → `__miniextendr_self: ExternalPtrMut<'_, Self>`
 /// - `self: ExternalPtr<Self>` → `__miniextendr_self: ExternalPtr<Self>`
 ///
 /// Also replaces all `self` references in the method body with `__miniextendr_self`.
@@ -143,41 +172,24 @@ fn rewrite_external_ptr_receivers(mut item_impl: syn::ItemImpl) -> syn::ItemImpl
         let syn::ImplItem::Fn(method) = item else {
             continue;
         };
+        if crate::trait_receiver::owner_receiver(&method.sig).is_some() {
+            crate::trait_receiver::rewrite(&mut method.sig, Some(&mut method.block));
+            continue;
+        }
         let Some(syn::FnArg::Receiver(receiver)) = method.sig.inputs.first() else {
             continue;
         };
-        if receiver.colon_token.is_none() {
+        if receiver.colon_token.is_none() || !is_external_ptr_type(receiver.ty.as_ref()) {
             continue;
         }
 
+        // self: ExternalPtr<Self> (by value)
         let receiver_ident =
             proc_macro2::Ident::new("__miniextendr_self", proc_macro2::Span::mixed_site());
         let binding_mutability = receiver.mutability;
-        // Determine if this is an ExternalPtr receiver and build the replacement param.
-        let new_param: Option<syn::FnArg> =
-            if let syn::Type::Reference(type_ref) = receiver.ty.as_ref() {
-                // self: &ExternalPtr<Self> or self: &mut ExternalPtr<Self>
-                if is_external_ptr_type(&type_ref.elem) {
-                    let mutability = type_ref.mutability;
-                    let inner_ty = &type_ref.elem;
-                    Some(syn::parse_quote! {
-                        #binding_mutability #receiver_ident: &#mutability #inner_ty
-                    })
-                } else {
-                    None
-                }
-            } else if is_external_ptr_type(receiver.ty.as_ref()) {
-                // self: ExternalPtr<Self> (by value)
-                let inner_ty = &receiver.ty;
-                Some(syn::parse_quote! {
-                    #binding_mutability #receiver_ident: #inner_ty
-                })
-            } else {
-                None
-            };
-
-        let Some(new_param) = new_param else {
-            continue;
+        let inner_ty = &receiver.ty;
+        let new_param: syn::FnArg = syn::parse_quote! {
+            #binding_mutability #receiver_ident: #inner_ty
         };
 
         // Replace first parameter
@@ -440,11 +452,11 @@ pub enum ReceiverKind {
     /// semantics), `-> Result<Self, E>` / `-> Option<Self>` run on a clone and
     /// overwrite on success, anything else leaves the handle consumed.
     Value,
-    /// `self: &ExternalPtr<Self>` — immutable borrow of the wrapping ExternalPtr
+    /// `self: ExternalPtrRef<'_, Self>` — shared borrow, with the R object
     ExternalPtrRef,
-    /// `self: &mut ExternalPtr<Self>` — mutable borrow of the wrapping ExternalPtr
-    ExternalPtrRefMut,
-    /// `self: ExternalPtr<Self>` — owned ExternalPtr (not consuming the inner T)
+    /// `self: ExternalPtrMut<'_, Self>` — exclusive borrow, with the R object
+    ExternalPtrMut,
+    /// `self: ExternalPtr<Self>` — the handle, unborrowed (not consuming the inner T)
     ExternalPtrValue,
 }
 
@@ -458,14 +470,14 @@ impl ReceiverKind {
                 | ReceiverKind::RefMut
                 | ReceiverKind::Value
                 | ReceiverKind::ExternalPtrRef
-                | ReceiverKind::ExternalPtrRefMut
+                | ReceiverKind::ExternalPtrMut
                 | ReceiverKind::ExternalPtrValue
         )
     }
 
     /// Returns true if this is a mutable instance receiver.
     pub fn is_mut(&self) -> bool {
-        matches!(self, ReceiverKind::RefMut | ReceiverKind::ExternalPtrRefMut)
+        matches!(self, ReceiverKind::RefMut | ReceiverKind::ExternalPtrMut)
     }
 }
 
@@ -518,9 +530,6 @@ pub struct ParsedMethod {
     /// Whether this method accepts dots, either from raw `...` rewritten to
     /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
     pub has_dots: bool,
-    /// `ExternalPtr<T>` parameters the body may consume, which the C wrapper
-    /// leaves unborrowed (`externalptr_args::consumed_handles`).
-    pub consumed_handles: Vec<String>,
 }
 
 /// R6-specific per-method markers, separated from [`MethodAttrs`] so the
@@ -2084,10 +2093,19 @@ impl ParsedMethod {
     ///
     /// Inspects the first parameter to determine whether this is a static function
     /// (`None`), immutable borrow (`Ref`), mutable borrow (`RefMut`), consuming
-    /// method (`Value`), or ExternalPtr receiver (`ExternalPtrRef`, `ExternalPtrRefMut`,
+    /// method (`Value`), or handle receiver (`ExternalPtrRef`, `ExternalPtrMut`,
     /// `ExternalPtrValue`). Handles both standard receivers (`&self`, `&mut self`) and
     /// typed receivers (`self: &Self`, `self: ExternalPtr<Self>`, etc.).
     fn detect_env(sig: &syn::Signature) -> ReceiverKind {
+        match crate::trait_receiver::owner_receiver(sig) {
+            Some(crate::trait_receiver::OwnerReceiver::Shared) => {
+                return ReceiverKind::ExternalPtrRef;
+            }
+            Some(crate::trait_receiver::OwnerReceiver::Mutable) => {
+                return ReceiverKind::ExternalPtrMut;
+            }
+            None => {}
+        }
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
                 // Check for standard &self / &mut self
@@ -2098,16 +2116,10 @@ impl ParsedMethod {
                         ReceiverKind::Ref
                     }
                 } else if r.colon_token.is_some() {
-                    // Check for typed receiver (self: &Self, self: &mut Self,
-                    // self: &ExternalPtr<Self>, self: &mut ExternalPtr<Self>)
+                    // Check for typed receiver (self: &Self, self: &mut Self;
+                    // `old_handle_receiver` refuses `self: &ExternalPtr<Self>`)
                     if let syn::Type::Reference(type_ref) = r.ty.as_ref() {
-                        if is_external_ptr_type(&type_ref.elem) {
-                            if type_ref.mutability.is_some() {
-                                ReceiverKind::ExternalPtrRefMut
-                            } else {
-                                ReceiverKind::ExternalPtrRef
-                            }
-                        } else if type_ref.mutability.is_some() {
+                        if type_ref.mutability.is_some() {
                             ReceiverKind::RefMut
                         } else {
                             ReceiverKind::Ref
@@ -2150,6 +2162,7 @@ impl ParsedMethod {
         class_page: crate::roxygen::RdPage,
     ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
+        old_handle_receiver(&item.sig)?;
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
@@ -2360,8 +2373,9 @@ impl ParsedMethod {
                 return Err(syn::Error::new_spanned(
                     &r.ty,
                     "unsupported receiver type: the R handle stores the value itself, so a \
-                     method can take `self`, `self: Self`, `&self`, `&mut self`, or an \
-                     `ExternalPtr<Self>` receiver — not a smart pointer around `Self`",
+                     method can take `self`, `self: Self`, `&self`, `&mut self`, \
+                     `self: ExternalPtrRef<'_, Self>`, `self: ExternalPtrMut<'_, Self>` or \
+                     `self: ExternalPtr<Self>` — not a smart pointer around `Self`",
                 ));
             }
             if method_attrs.constructor {
@@ -2409,11 +2423,6 @@ impl ParsedMethod {
             ));
         }
         sig.output = crate::type_inspect::serialize_return_type(&output, method_attrs.serialize);
-        let consumed_handles = crate::externalptr_args::consumed_handles(
-            &sig.inputs,
-            quote::ToTokens::to_token_stream(&item.block),
-        );
-
         Ok(ParsedMethod {
             visibility_marker,
             return_wrap,
@@ -2426,7 +2435,6 @@ impl ParsedMethod {
             method_attrs,
             param_defaults,
             has_dots,
-            consumed_handles,
         })
     }
 
@@ -3095,8 +3103,8 @@ impl ParsedImpl {
                         ReceiverKind::Ref => "&self",
                         ReceiverKind::RefMut => "&mut self",
                         ReceiverKind::Value => "self",
-                        ReceiverKind::ExternalPtrRef => "self: &ExternalPtr<Self>",
-                        ReceiverKind::ExternalPtrRefMut => "self: &mut ExternalPtr<Self>",
+                        ReceiverKind::ExternalPtrRef => "self: ExternalPtrRef<'_, Self>",
+                        ReceiverKind::ExternalPtrMut => "self: ExternalPtrMut<'_, Self>",
                         ReceiverKind::ExternalPtrValue => "self: ExternalPtr<Self>",
                         ReceiverKind::None => unreachable!(),
                     };
@@ -3717,9 +3725,6 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
             };
         };
-        let hold_mut = quote! {
-            let #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
-        };
         let (lookup, borrow) = match method.env {
             ReceiverKind::RefMut => (
                 cell_lookup,
@@ -3764,32 +3769,39 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                     },
                 ),
             },
-            // A handle receiver can make its own references through the handle,
-            // so the wrapper holds the borrow for it: shared for `&ExternalPtr`,
-            // exclusive for `&mut ExternalPtr` and `ExternalPtr`.
+            // A view receiver holds the borrow itself, with the R object
+            // the receiver resolved to (rooted by `#owner` for the call).
             ReceiverKind::ExternalPtrRef => (
                 cell_lookup,
                 quote! {
-                    let #guard = ::miniextendr_api::externalptr::borrow_value(#cell);
-                    let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                    let #self_ref = unsafe {
+                        ::miniextendr_api::ExternalPtrRef::<#type_ident>::from_raw_parts(
+                            #owner.owner(),
+                            #cell,
+                        )
+                    };
                 },
             ),
-            ReceiverKind::ExternalPtrRefMut => (
+            ReceiverKind::ExternalPtrMut => (
                 cell_lookup,
                 quote! {
-                    #hold_mut
-                    let mut #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                    let #self_ref = unsafe {
+                        ::miniextendr_api::ExternalPtrMut::<#type_ident>::from_raw_parts(
+                            #owner.owner(),
+                            #cell,
+                        )
+                    };
                 },
             ),
+            // The handle receiver takes no borrow: the body reads through
+            // `borrow()` / `borrow_mut()`, or consumes the handle.
             ReceiverKind::ExternalPtrValue => (
-                cell_lookup,
                 quote! {
-                    #hold_mut
+                    #resolve
                     let #external_ptr =
                         ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
                 },
+                TokenStream::new(),
             ),
             _ => unreachable!(),
         };
@@ -3850,12 +3862,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 unwrap_marker(quote! { #type_ident::#method_ident(#taken, #(#rust_args),*) })
             }
         },
-        ReceiverKind::ExternalPtrRef => {
-            unwrap_marker(quote! { #type_ident::#method_ident(&#external_ptr, #(#rust_args),*) })
+        ReceiverKind::ExternalPtrRef | ReceiverKind::ExternalPtrMut => {
+            unwrap_marker(quote! { #type_ident::#method_ident(#self_ref, #(#rust_args),*) })
         }
-        ReceiverKind::ExternalPtrRefMut => unwrap_marker(
-            quote! { #type_ident::#method_ident(&mut #external_ptr, #(#rust_args),*) },
-        ),
         ReceiverKind::ExternalPtrValue => {
             unwrap_marker(quote! { #type_ident::#method_ident(#external_ptr, #(#rust_args),*) })
         }
@@ -3949,7 +3958,6 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
             builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
         }
     }
-    builder = builder.consumed_handles(method.consumed_handles.clone());
     // `Checked<T>` / `Unchecked<T>` parameters (#1566) convert as `T` and are
     // wrapped back before the call.
     for (rust_name, markers) in &method.param_markers {
