@@ -1134,6 +1134,27 @@ paths.
 
 ---
 
+## Conditional Methods
+
+In inherent `#[miniextendr]` impl blocks, method-level `#[cfg(...)]` and
+`#[cfg_attr(...)]` are resolved before class generation. Disabled methods have
+no C wrapper, native registration, R binding, or generated documentation.
+Constructor inference, property pairing and name checks use only enabled methods.
+
+```rust
+#[miniextendr(r6)]
+impl Reader {
+    #[cfg(feature = "json")]
+    pub fn read_json(&self, text: &str) -> String { todo!() }
+
+    #[cfg_attr(feature = "short-names", miniextendr(r_name = "read"))]
+    pub fn read_text(&self, text: &str) -> String { todo!() }
+}
+```
+
+Keep a conditional S7 property's getter and setter under compatible gates so
+that the enabled methods still form a valid property.
+
 ## Multiple Impl Blocks
 
 A type's methods can be split over several `#[miniextendr]` impl blocks, in one
