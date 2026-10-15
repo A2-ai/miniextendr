@@ -3450,6 +3450,57 @@ fn derive_struct_dataframe(
 
 // region: Enum align path
 
+/// Compare column types using canonical standard-library spellings, without
+/// changing the type emitted for the first variant. Recurse through containers
+/// and references, but never discard arbitrary user module paths or qself.
+fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
+    use syn::visit_mut::VisitMut;
+
+    struct StandardPaths;
+    impl VisitMut for StandardPaths {
+        fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
+            syn::visit_mut::visit_type_path_mut(self, ty);
+            if ty.qself.is_some() {
+                return;
+            }
+            let segments: Vec<_> = ty.path.segments.iter().collect();
+            let [root, module, item] = segments.as_slice() else {
+                return;
+            };
+            if !matches!(root.arguments, syn::PathArguments::None)
+                || !matches!(module.arguments, syn::PathArguments::None)
+            {
+                return;
+            }
+            let standard = match (
+                module.ident.to_string().as_str(),
+                item.ident.to_string().as_str(),
+            ) {
+                ("primitive", _) | ("option", "Option") => {
+                    root.ident == "core" || root.ident == "std"
+                }
+                ("string", "String") | ("vec", "Vec") | ("boxed", "Box") => {
+                    root.ident == "alloc" || root.ident == "std"
+                }
+                _ => false,
+            };
+            if standard {
+                let item = (*item).clone();
+                ty.path.leading_colon = None;
+                ty.path.segments = std::iter::once(item).collect();
+            }
+        }
+    }
+
+    if left == right {
+        return true;
+    }
+    let (mut left, mut right) = (left.clone(), right.clone());
+    StandardPaths.visit_type_mut(&mut left);
+    StandardPaths.visit_type_mut(&mut right);
+    left == right
+}
+
 /// A resolved column in the unified schema across all enum variants.
 ///
 /// Tracks the column name, element type, which variants contribute to this column,
@@ -3514,7 +3565,7 @@ impl<'a> ColumnRegistry<'a> {
     ) -> syn::Result<()> {
         if let Some(&idx) = self.col_index.get(col_name) {
             let existing = &self.columns[idx];
-            if !existing.string_coerced && existing.ty != *col_ty {
+            if !existing.string_coerced && !same_column_type(&existing.ty, col_ty) {
                 if self.coerce_to_string {
                     self.columns[idx].ty = self.string_ty.clone();
                     self.columns[idx].string_coerced = true;
@@ -3806,6 +3857,100 @@ mod tests {
             };
             let error = derive_dataframe_row(input).unwrap_err().to_string();
             assert!(error.contains("`as_factor` is only valid"), "{error}");
+        }
+    }
+
+    #[test]
+    fn enum_columns_compare_standard_spellings_without_string_coercion() {
+        let string_ty = syn::parse_quote!(String);
+        for (first, second) in [
+            (quote!(i32), quote!(::core::primitive::i32)),
+            (quote!(std::primitive::i32), quote!(i32)),
+            (quote!(String), quote!(std::string::String)),
+            (
+                quote!(::alloc::string::String),
+                quote!(::std::string::String),
+            ),
+            (
+                quote!(Vec<i32>),
+                quote!(::std::vec::Vec<::core::primitive::i32>),
+            ),
+            (
+                quote!(Box<[i32]>),
+                quote!(::alloc::boxed::Box<[std::primitive::i32]>),
+            ),
+            (quote!(&[i32]), quote!(&[::core::primitive::i32])),
+            (
+                quote!(Option<String>),
+                quote!(::core::option::Option<::alloc::string::String>),
+            ),
+        ] {
+            let first: syn::Type = syn::parse2(first).unwrap();
+            let second: syn::Type = syn::parse2(second).unwrap();
+            for coerce in [false, true] {
+                let mut registry = ColumnRegistry::new(coerce, &string_ty);
+                registry
+                    .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+                    .unwrap();
+                registry
+                    .register(
+                        "value",
+                        &second,
+                        1,
+                        &syn::parse_quote!(B),
+                        Span::call_site(),
+                    )
+                    .unwrap();
+                assert_eq!(registry.columns[0].ty, first);
+                assert!(!registry.columns[0].string_coerced);
+                assert_eq!(registry.columns[0].present_in, [0, 1]);
+            }
+        }
+    }
+
+    #[test]
+    fn enum_columns_still_detect_real_conflicts_and_distinct_user_paths() {
+        let string_ty = syn::parse_quote!(String);
+        for (first, second) in [
+            (quote!(f64), quote!(String)),
+            (quote!(Vec<i32>), quote!(Vec<f64>)),
+            (quote!(Box<[i32]>), quote!(Vec<i32>)),
+            (quote!(custom::String), quote!(std::string::String)),
+            (quote!(left::Value), quote!(right::Value)),
+            (
+                quote!(std::cmp::Ordering),
+                quote!(std::sync::atomic::Ordering),
+            ),
+        ] {
+            let first = syn::parse2(first).unwrap();
+            let second = syn::parse2(second).unwrap();
+            let mut registry = ColumnRegistry::new(false, &string_ty);
+            registry
+                .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+                .unwrap();
+            assert!(
+                registry
+                    .register(
+                        "value",
+                        &second,
+                        1,
+                        &syn::parse_quote!(B),
+                        Span::call_site()
+                    )
+                    .is_err()
+            );
+            registry.coerce_to_string = true;
+            registry
+                .register(
+                    "value",
+                    &second,
+                    1,
+                    &syn::parse_quote!(B),
+                    Span::call_site(),
+                )
+                .unwrap();
+            assert!(registry.columns[0].string_coerced);
+            assert_eq!(registry.columns[0].ty, string_ty);
         }
     }
 

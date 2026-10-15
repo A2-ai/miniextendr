@@ -523,6 +523,12 @@ fn get_events() -> BuiltDataFrame {
 
 #### Type conflicts across variants
 
+Recognized standard-library spellings do not create a conflict: `i32` and
+`core::primitive::i32`, or `String` and `std::string::String`, share one column.
+The same comparison applies inside `Vec`, `Box`, `Option` and references,
+including dynamically expanded columns. The first variant's spelling is kept
+in the generated Rust type; arbitrary user module paths remain distinct.
+
 If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String:
 
 ```rust
