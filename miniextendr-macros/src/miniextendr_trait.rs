@@ -297,7 +297,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             }
         })
         .collect();
-    let has_generics = !trait_param_idents.is_empty();
+    let has_generics = !trait_item.generics.params.is_empty();
 
     // Collect associated types
     let assoc_types: Vec<&syn::Ident> = trait_item
@@ -543,12 +543,35 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .as_ref()
                 .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
             let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
-            // Names cross without declaration-local types: concrete shims
-            // report the public signature even when the impl renames bindings.
-            let params = &info.param_names;
-            method_metadata.push(quote::quote! {
-                #r_name_attr #skip_attr fn #name(#(#params: ()),*);
-            });
+            // Keep default signatures, but never copy their bodies into an
+            // implementation. Generated wrappers call the trait's own default.
+            // Required methods carry names only, preserving impl-local types.
+            if has_generics && method.default.is_some() {
+                let mut sig = method.sig.clone();
+                for (arg, name) in sig
+                    .inputs
+                    .iter_mut()
+                    .filter_map(|arg| match arg {
+                        syn::FnArg::Typed(arg) => Some(arg),
+                        syn::FnArg::Receiver(_) => None,
+                    })
+                    .zip(&info.param_names)
+                {
+                    *arg.pat = syn::parse_quote!(#name);
+                }
+                let docs = method
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("doc"));
+                method_metadata.push(quote::quote! {
+                    #(#docs)* #r_name_attr #skip_attr #sig {}
+                });
+            } else {
+                let params = &info.param_names;
+                method_metadata.push(quote::quote! {
+                    #r_name_attr #skip_attr fn #name(#(#params: ()),*);
+                });
+            }
             if !has_generics && assoc_types.is_empty() && !info.skip {
                 let r_name = info
                     .r_name
@@ -586,6 +609,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     } else {
         quote::quote! {}
     };
+    let declaration_generics = &trait_item.generics;
     let metadata_macro_name = crate::naming::trait_metadata_macro_ident(trait_name);
     let metadata_macro = quote::quote! {
         #[macro_export]
@@ -595,6 +619,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ::miniextendr_api::__mx_trait_impl_expand! {
                     @impl { $($attrs)* } { $($implementation)* }
                     { #(#method_metadata)* }
+                    { #declaration_generics }
                     #abi_metadata
                 }
             };

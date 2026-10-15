@@ -364,10 +364,6 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
     fn r_len(&self) -> i64 {
         i64::try_from(self.0.len()).expect("length fits i64")
     }
-
-    fn r_is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
 }
 
 /// IntSet inherent methods: membership test.
