@@ -280,7 +280,7 @@ pub struct ProtectScope {
     armed: Cell<bool>,
     // Created only by rooted child conversions. A pool avoids one PROTECT
     // stack entry per list/string element, and supports later child additions.
-    children: RefCell<Option<Box<crate::protect_pool::ProtectPool>>>,
+    children: ChildRoots,
     _nosend: NoSendSync,
 }
 
@@ -295,7 +295,7 @@ impl ProtectScope {
         Self {
             n: Cell::new(0),
             armed: Cell::new(true),
-            children: RefCell::new(None),
+            children: ChildRoots::default(),
             _nosend: PhantomData,
         }
     }
@@ -1038,6 +1038,36 @@ impl Drop for ProtectScope {
 
 // region: Root
 
+/// Lazy retention of uncached ALTREP elements, shared by call scopes and
+/// owned views. Ordinary vectors already trace their elements and need no pool.
+#[derive(Default)]
+pub(crate) struct ChildRoots(RefCell<Option<Box<crate::protect_pool::ProtectPool>>>);
+
+impl ChildRoots {
+    /// Keep `child` alive until this storage drops.
+    ///
+    /// # Safety
+    /// R's main thread; `parent` and `child` must be live on entry. An ordinary
+    /// parent must remain rooted while its returned children are in use.
+    pub(crate) unsafe fn protect(&self, parent: SEXP, child: SEXP) -> SEXP {
+        if !parent.is_altrep() {
+            return child;
+        }
+        // A new pool or pool growth can allocate before retaining the child.
+        let child = unsafe { OwnedProtect::new(child) };
+        let mut children = self.0.borrow_mut();
+        let pool = children.get_or_insert_with(|| {
+            Box::new(unsafe {
+                crate::protect_pool::ProtectPool::new(
+                    crate::protect_pool::ProtectPool::DEFAULT_CAPACITY,
+                )
+            })
+        });
+        unsafe { pool.insert(child.get()) };
+        child.get()
+    }
+}
+
 /// A rooted SEXP tied to the lifetime of a [`ProtectScope`].
 ///
 /// This type has **no `Drop`**. The scope owns unprotection responsibility.
@@ -1064,27 +1094,15 @@ impl<'a> Root<'a> {
     /// # Safety
     /// R's main thread; `child` must be live on entry.
     pub(crate) unsafe fn protect_child(self, child: SEXP) -> Self {
-        if !self.sexp.is_altrep() {
-            return Root {
-                sexp: child,
-                scope: self.scope,
-            };
-        }
-        // A new pool or pool growth can allocate before it retains the child.
-        let child = unsafe { OwnedProtect::new(child) };
-        let mut children = self.scope.children.borrow_mut();
-        let pool = children.get_or_insert_with(|| {
-            Box::new(unsafe {
-                crate::protect_pool::ProtectPool::new(
-                    crate::protect_pool::ProtectPool::DEFAULT_CAPACITY,
-                )
-            })
-        });
-        unsafe { pool.insert(child.get()) };
         Root {
-            sexp: child.get(),
+            sexp: unsafe { self.scope.children.protect(self.sexp, child) },
             scope: self.scope,
         }
+    }
+
+    /// Retention storage borrowed by views that read their elements lazily.
+    pub(crate) fn child_roots(self) -> &'a ChildRoots {
+        &self.scope.children
     }
 
     /// Get the underlying SEXP.

@@ -148,3 +148,31 @@ pub fn rooted_views_through_view() -> Vec<String> {
         ]
     }
 }
+
+/// An ALTSTRING input that returns a fresh, uncached string on every read.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn rooted_uncached_strings() -> miniextendr_api::SEXP {
+    crate::gc_stress_fixtures::GcTransientBorrowString.into_sexp()
+}
+
+/// Borrow uncached strings through each generated parameter path, then collect.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn rooted_uncached_strings_check(
+    text: &str,
+    optional: Option<&str>,
+    cow: Cow<'_, str>,
+    strings: StrVec<'_>,
+    owned: miniextendr_api::ProtectedStrVec,
+) -> bool {
+    let from_view = strings.iter().next().unwrap().unwrap();
+    let from_owner = owned.as_strvec().get_str(0).unwrap();
+    let actual = [text, optional.unwrap(), &cow, from_view, from_owner];
+    let expected = actual.map(str::to_owned);
+    unsafe { miniextendr_api::sys::R_gc() };
+    for i in 0..128 {
+        miniextendr_api::SEXP::charsxp(&format!("recycled-{i:08}-{}", "z".repeat(300)));
+    }
+    actual.iter().zip(&expected).all(|(a, b)| *a == b)
+}

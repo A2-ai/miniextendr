@@ -888,6 +888,17 @@ pub trait TryFromSexp: Sized {
         Self::try_from_sexp(sexp)
     }
 
+    /// Convert with a scope able to retain uncached ALTREP elements.
+    /// Custom reference converters keep their existing behavior by default.
+    ///
+    /// # Safety
+    /// R's main thread. Any R-backed references in the result must be narrowed
+    /// to the lifetime of `root`; this hook does not change `Self`'s lifetime.
+    #[doc(hidden)]
+    unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(root.get())
+    }
+
     /// Whether the converted argument holds a value `#[miniextendr(no_na)]`
     /// refuses after the conversion.
     ///

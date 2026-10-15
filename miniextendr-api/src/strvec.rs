@@ -3,11 +3,10 @@
 //! Provides safe construction and element insertion for string vectors.
 
 use std::borrow::Cow;
-use std::marker::PhantomData;
 
 use crate::SEXPTYPE::STRSXP;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str};
-use crate::gc_protect::{OwnedProtect, ProtectScope};
+use crate::gc_protect::{ChildRoots, OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 use crate::{Preserved, SEXP, SexpExt};
 
@@ -22,9 +21,16 @@ use crate::{Preserved, SEXP, SexpExt};
 /// `TryFromSexp` is unavailable: a copyable SEXP cannot constrain the view's
 /// lifetime. Use [`ProtectedStrVec`] when the result must own its root.
 ///
-/// `Copy` and cheap (a single `SEXP`); covariant in `'a`.
-#[derive(Clone, Copy, Debug)]
-pub struct StrVec<'a>(SEXP, PhantomData<&'a str>);
+/// `Copy` and cheap (a `SEXP` and a retention reference); covariant in `'a`.
+/// Uncached ALTREP elements read through a rooted view stay alive for `'a`.
+#[derive(Clone, Copy)]
+pub struct StrVec<'a>(SEXP, Option<&'a ChildRoots>);
+
+impl std::fmt::Debug for StrVec<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("StrVec").field(&self.0).finish()
+    }
+}
 
 impl<'a> StrVec<'a> {
     /// Strings do not retain a pointer to a native numeric vector.
@@ -36,10 +42,12 @@ impl<'a> StrVec<'a> {
     /// # Safety
     ///
     /// Caller must ensure `sexp` is a valid character vector (`STRSXP`)
-    /// that stays GC-reachable for the inferred lifetime `'a`.
+    /// that stays GC-reachable for the inferred lifetime `'a`. An ALTREP class
+    /// must also retain every CHARSXP read through this raw view for `'a`;
+    /// otherwise use `try_from_root` or `ProtectedStrVec`.
     #[inline]
     pub const unsafe fn from_raw(sexp: SEXP) -> Self {
-        StrVec(sexp, PhantomData)
+        StrVec(sexp, None)
     }
 
     /// Get the underlying `SEXP`.
@@ -68,7 +76,12 @@ impl<'a> StrVec<'a> {
         if idx < 0 || idx >= self.len() {
             return None;
         }
-        Some(self.0.string_elt(idx))
+        let charsxp = self.0.string_elt(idx);
+        Some(match self.1 {
+            // The root/owner behind this reference lives for 'a.
+            Some(children) => unsafe { children.protect(self.0, charsxp) },
+            None => charsxp, // from_raw's caller guarantees element retention
+        })
     }
 
     /// Get the string at the given index (zero-copy), leashed to `'a`.
@@ -107,15 +120,16 @@ impl<'a> StrVec<'a> {
     ///
     /// Unlike [`get_str`](Self::get_str), the returned reference is **not** leashed
     /// to `'a`, so it can be stored in an `ExternalPtr`, a global, or sent across
-    /// threads. The string data lives in R's CHARSXP; it is only valid while that
-    /// `STRSXP` stays GC-reachable.
+    /// threads. The string data lives in R's CHARSXP; the CHARSXP must remain
+    /// reachable. For an uncached ALTREP element, retain this view's protection
+    /// scope or `ProtectedStrVec` owner as well as the source vector.
     ///
     /// # Safety
     ///
-    /// The caller takes on the rooting obligation: the underlying `STRSXP` must be
-    /// kept reachable by R (e.g. via the `prot` slot of the `ExternalPtr` it is
-    /// stored in, or `R_PreserveObject`) for as long as the returned `&'static str`
-    /// is used. Letting R GC the source is use-after-free.
+    /// The caller must keep the returned CHARSXP reachable for as long as the
+    /// reference is used. Rooting an ordinary source STRSXP suffices; an ALTREP
+    /// source may need this view's scope/owner or a separate root for the child.
+    /// Letting R collect that child is use-after-free.
     #[inline]
     pub unsafe fn get_str_static(self, idx: isize) -> Option<&'static str> {
         let charsxp = self.get_charsxp(idx)?;
@@ -296,13 +310,9 @@ impl<'a> Iterator for StrVecIter<'a> {
         if self.idx >= self.len {
             return None;
         }
-        let charsxp = self.vec.0.string_elt(self.idx);
+        let value = self.vec.get_str(self.idx);
         self.idx += 1;
-        if charsxp == SEXP::na_string() {
-            Some(None)
-        } else {
-            Some(Some(unsafe { charsxp_to_str(charsxp) }))
-        }
+        Some(value)
     }
 
     #[inline]
@@ -331,13 +341,9 @@ impl<'a> Iterator for StrVecCowIter<'a> {
         if self.idx >= self.len {
             return None;
         }
-        let charsxp = self.vec.0.string_elt(self.idx);
+        let value = self.vec.get_cow(self.idx);
         self.idx += 1;
-        if charsxp == SEXP::na_string() {
-            Some(None)
-        } else {
-            Some(Some(unsafe { charsxp_to_cow(charsxp) }))
-        }
+        Some(value)
     }
 
     #[inline]
@@ -462,7 +468,9 @@ impl<'a> StrVecBuilder<'a> {
     /// Convert to a `StrVec` view, leashed to the builder's protect scope `'a`.
     #[inline]
     pub fn into_strvec(self) -> StrVec<'a> {
-        StrVec(self.vec, PhantomData)
+        // The builder allocates an ordinary STRSXP, whose elements are traced
+        // directly. Its scope already roots that vector for 'a.
+        StrVec(self.vec, None)
     }
 
     /// Convert to the underlying SEXP.
@@ -524,7 +532,7 @@ impl<'a> StrVec<'a> {
             .into());
         }
         // The root, not an unconstrained return annotation, fixes `'a`.
-        Ok(StrVec(sexp, PhantomData))
+        Ok(StrVec(sexp, Some(root.child_roots())))
     }
 }
 // endregion
@@ -563,6 +571,7 @@ pub struct ProtectedStrVec {
     /// `None` for [`from_sexp_trusted`](Self::from_sexp_trusted), whose caller
     /// roots `sexp`. The field also makes the handle `!Send + !Sync`.
     _root: Option<Preserved>,
+    children: ChildRoots,
     len: isize,
 }
 
@@ -586,6 +595,7 @@ impl ProtectedStrVec {
             sexp,
             len: sexp.xlength(),
             _root: Some(root),
+            children: ChildRoots::default(),
         }
     }
 
@@ -608,6 +618,7 @@ impl ProtectedStrVec {
         Self {
             sexp,
             _root: None,
+            children: ChildRoots::default(),
             len: sexp.xlength(),
         }
     }
@@ -667,9 +678,10 @@ impl ProtectedStrVec {
     /// Get the inner `StrVec` view, leashed to `&self` (the protect guard).
     #[inline]
     pub fn as_strvec(&self) -> StrVec<'_> {
-        // SAFETY: the owned root (or from_sexp_trusted's caller) keeps sexp
-        // reachable. The returned view cannot outlive this borrow.
-        unsafe { StrVec::from_raw(self.sexp) }
+        // The owned root (or from_sexp_trusted's caller) keeps the parent
+        // reachable; uncached children live in this owner's pool. Both outlive
+        // the borrowed view, without materializing or changing the source.
+        StrVec(self.sexp, Some(&self.children))
     }
 }
 

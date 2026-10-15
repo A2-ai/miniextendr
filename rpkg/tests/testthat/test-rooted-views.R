@@ -54,3 +54,20 @@ test_that("trait methods bind borrowed views in the C wrapper and the vtable shi
     c("through view", "1,2,3", "NA:4,5:shim")
   )
 })
+
+test_that("uncached ALTSTRING elements survive generated argument conversion", {
+  x <- miniextendr:::rooted_uncached_strings()
+  expect_true(miniextendr:::rooted_uncached_strings_check(x, x, x, x, x))
+  expect_null(miniextendr:::gc_stress_uncached_string_borrows())
+})
+
+test_that("uncached ALTSTRING borrows survive GC torture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  for (i in seq_len(3L)) {
+    x <- miniextendr:::rooted_uncached_strings()
+    expect_true(miniextendr:::rooted_uncached_strings_check(x, x, x, x, x))
+    expect_null(miniextendr:::gc_stress_uncached_string_borrows())
+  }
+})
