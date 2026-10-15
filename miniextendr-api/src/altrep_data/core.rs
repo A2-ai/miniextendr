@@ -416,20 +416,21 @@ impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
         // `ExternalPtr` is a non-owning wrapper around an R SEXP — dropping it does NOT
         // deallocate the underlying data. The data lives in the ALTREP's data1 slot,
         // which R's GC keeps alive for the duration of the callback. So the pointer
-        // derived from `ext.as_ref()` remains valid after `ext` is dropped.
+        // derived from `ext.as_ref_unchecked()` remains valid after `ext` is dropped.
+        // The read takes no `RefCell` borrow until #2103 measures the checked one.
         unsafe {
             let ext = crate::altrep_data1_as_unchecked::<T>(x)
                 .expect("ALTREP data1 ExternalPtr extraction failed");
-            &*(ext.as_ref().unwrap() as *const T)
+            &*(ext.as_ref_unchecked() as *const T)
         }
     }
 
     unsafe fn altrep_extract_mut(x: crate::SEXP) -> &'static mut Self {
         // SAFETY: caller guarantees x is a valid ALTREP with ExternalPtr<T> in data1
         // and that no other references exist. ALTREP callbacks are on R's main thread.
-        // `altrep_data1_mut_unchecked` goes through `ErasedExternalPtr::downcast_mut`
-        // which returns a reference with transmuted 'static lifetime — sound because
-        // R's GC protects the ALTREP SEXP (and thus its data1) for the callback duration.
+        // `altrep_data1_mut_unchecked` reads the value's `RefCell` with no borrow
+        // and returns a 'static reference — sound because R's GC protects the
+        // ALTREP SEXP (and thus its data1) for the callback duration.
         unsafe {
             crate::altrep_data1_mut_unchecked::<T>(x)
                 .expect("ALTREP data1 mutable ExternalPtr extraction failed")

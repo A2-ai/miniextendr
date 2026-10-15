@@ -294,11 +294,6 @@ pub struct CWrapperContext {
     /// value is then wrapped in the markers for the call
     /// (`RustConversionBuilder::with_param_markers`).
     pub param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
-    /// `ExternalPtr<T>` parameters (Rust name) whose value the body may move
-    /// out of its pointer (`externalptr_args::consumed_handles`): the wrapper
-    /// takes no borrow for them. Every other `ExternalPtr<T>` /
-    /// `Option<ExternalPtr<T>>` parameter is borrowed for the call (#2092).
-    pub consumed_handles: Vec<String>,
     /// When `true`, preserve original parameter names from `inputs` in the C wrapper
     /// signature instead of renaming to `arg_0`, `arg_1`, ... The fn path preserves
     /// user identifiers for rustdoc visibility; impl method path uses `arg_N` for safety.
@@ -349,7 +344,6 @@ impl CWrapperContext {
             layered_choice_params: Vec::new(),
             no_na_params: Vec::new(),
             param_markers: Vec::new(),
-            consumed_handles: Vec::new(),
             preserve_param_names: false,
             vis: syn::Visibility::Inherited,
             generics: syn::Generics::default(),
@@ -517,8 +511,9 @@ impl CWrapperContext {
         // A standalone fn's R wrapper passes `Quoted` / `Quosure` arguments
         // unevaluated (#1835); a method's is generated per class system and
         // does not, so there they stay a compile error.
-        if self.type_context.is_none() {
-            builder = builder.with_unevaluated_args();
+        match &self.type_context {
+            None => builder = builder.with_unevaluated_args(),
+            Some(type_ident) => builder = builder.with_self_type(syn::parse_quote!(#type_ident)),
         }
         builder
     }
@@ -573,17 +568,16 @@ impl CWrapperContext {
         }}
     }
 
-    /// The borrows of the `ExternalPtr<T>` arguments (#2092): every handle
-    /// parameter except those the body may consume and those a marker rebinds
-    /// to another type.
-    fn arg_borrows(&self, sexp_idents: &[syn::Ident]) -> crate::externalptr_args::ArgBorrows {
+    /// The borrows of the borrowed external arguments (`&T` / `&mut T` /
+    /// views, #2106), except those a marker rebinds to another type.
+    fn arg_borrows(&self) -> TokenStream {
         let unborrowed: Vec<String> = self
-            .consumed_handles
+            .param_markers
             .iter()
-            .cloned()
-            .chain(self.param_markers.iter().map(|(name, _)| name.clone()))
+            .map(|(name, _)| name.clone())
             .collect();
-        crate::externalptr_args::arg_borrows(&self.inputs, sexp_idents, &unborrowed)
+        let self_ty: Option<syn::Type> = self.type_context.as_ref().map(|t| syn::parse_quote!(#t));
+        crate::externalptr_args::arg_borrows(&self.inputs, &unborrowed, self_ty.as_ref())
     }
 
     /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
@@ -600,8 +594,7 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
-        let crate::externalptr_args::ArgBorrows { capture, borrow } =
-            self.arg_borrows(&sexp_idents);
+        let borrow = self.arg_borrows();
         let pre_call = &self.pre_call;
         let post_conversion = &self.post_conversion;
         let call_expr = &self.call_expr;
@@ -623,7 +616,6 @@ impl CWrapperContext {
             #alias_guard
             #pre_call_checks
             #(#pre_call)*
-            #capture
             #(#conversion_stmts)*
             #(#post_conversion)*
             #borrow
@@ -704,8 +696,7 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
-        let crate::externalptr_args::ArgBorrows { capture, borrow } =
-            self.arg_borrows(&sexp_idents);
+        let borrow = self.arg_borrows();
         let pre_call = &self.pre_call;
         let post_conversion = &self.post_conversion;
         let call_expr = &self.call_expr;
@@ -740,11 +731,10 @@ impl CWrapperContext {
             #alias_guard
             #pre_call_checks
             #(#pre_call)*
-            #capture
             #(#pre_closure_stmts)*
-            // Post-conversion checks and the argument borrows stay on the
-            // main thread: the borrows hold the values' `RefCell`s there
-            // while the worker runs.
+            // Post-conversion checks stay on the main thread. A borrowed
+            // external argument keeps the whole call there, so `borrow` is
+            // empty here.
             #(#post_conversion)*
             #borrow
 
@@ -1508,8 +1498,6 @@ pub struct CWrapperContextBuilder {
     /// Marked parameters, forwarded to
     /// `RustConversionBuilder::with_param_markers`.
     param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
-    /// `ExternalPtr<T>` parameters the body may consume, left unborrowed.
-    consumed_handles: Vec<String>,
     /// When `true`, use original parameter names in C wrapper signature (for rustdoc).
     preserve_param_names: bool,
     /// Visibility of the generated `extern "C-unwind"` wrapper.
@@ -1696,15 +1684,6 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Record the `ExternalPtr<T>` parameters (Rust names) whose value the
-    /// body may move out of its pointer (`externalptr_args::consumed_handles`).
-    /// The wrapper borrows every other `ExternalPtr<T>` /
-    /// `Option<ExternalPtr<T>>` parameter for the call (#2092).
-    pub fn consumed_handles(mut self, names: Vec<String>) -> Self {
-        self.consumed_handles = names;
-        self
-    }
-
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -1805,7 +1784,6 @@ impl CWrapperContextBuilder {
             layered_choice_params: self.layered_choice_params,
             no_na_params: self.no_na_params,
             param_markers: self.param_markers,
-            consumed_handles: self.consumed_handles,
             preserve_param_names: self.preserve_param_names,
             vis: self.vis,
             generics: self.generics,

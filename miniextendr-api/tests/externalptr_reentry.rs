@@ -45,6 +45,25 @@ impl Reentrant {
         self.value += 1; // the exclusive reference remains live across re-entry
         conflict
     }
+    /// A `&Self` argument is borrowed like any `&T`: the receiver's own
+    /// object conflicts with the receiver's exclusive borrow.
+    pub fn absorb(&mut self, other: &Self) -> i32 {
+        self.value += other.value;
+        self.value
+    }
+    /// A view receiver holds its borrow and reaches the sidecar values.
+    pub fn view_shared(self: ExternalPtrRef<'_, Self>, operation: i32) -> bool {
+        let len = Self::values(&self).len();
+        let conflict = nested(operation);
+        assert_eq!(Self::values(&self.rb()).len(), len);
+        conflict
+    }
+    pub fn view_exclusive(mut self: ExternalPtrMut<'_, Self>, operation: i32) -> bool {
+        let conflict = nested(operation);
+        Self::set_values(&mut self.rb_mut(), vec![1, 2]);
+        self.value += 1;
+        conflict
+    }
 }
 
 fn host() -> Reentrant {
@@ -159,8 +178,62 @@ fn generated_methods_and_fields_reject_conflicting_reentry() {
             value,
         ));
         assert!(RCondition::from_tagged_sexp(result.get()).is_none());
-        assert_eq!(owner.value, 13);
+        assert_eq!(owner.borrow().value, 13);
         OWNER.with(|slot| slot.set(None));
+    });
+}
+
+#[test]
+fn view_receivers_and_self_arguments_borrow_for_the_call() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let owner = ExternalPtr::new(host());
+        let other = ExternalPtr::new(host());
+        OWNER.with(|slot| slot.set(Some(owner.as_sexp())));
+        let scope = ProtectScope::new();
+        for operation in 0..6_i32 {
+            let op = scope.protect(operation.into_sexp()).get();
+            let shared = scope.protect(call3(
+                "Reentrant__view_shared",
+                SEXP::nil(),
+                owner.as_sexp(),
+                op,
+            ));
+            assert_eq!(
+                bool::try_from_sexp(shared.get()).unwrap(),
+                operation % 2 == 1,
+                "operation {operation}"
+            );
+            let exclusive = scope.protect(call3(
+                "Reentrant__view_exclusive",
+                SEXP::nil(),
+                owner.as_sexp(),
+                op,
+            ));
+            assert!(
+                bool::try_from_sexp(exclusive.get()).unwrap(),
+                "operation {operation}"
+            );
+        }
+        assert_eq!(Reentrant::values(&owner), [1, 2]);
+        OWNER.with(|slot| slot.set(None));
+
+        let same = scope.protect(call3(
+            "Reentrant__absorb",
+            SEXP::nil(),
+            owner.as_sexp(),
+            owner.as_sexp(),
+        ));
+        assert!(is_borrow_conflict(
+            RCondition::from_tagged_sexp(same.get()).unwrap()
+        ));
+        let before = owner.borrow().value;
+        let distinct = scope.protect(call3(
+            "Reentrant__absorb",
+            SEXP::nil(),
+            owner.as_sexp(),
+            other.as_sexp(),
+        ));
+        assert_eq!(i32::try_from_sexp(distinct.get()).unwrap(), before + 7);
     });
 }
 
@@ -206,20 +279,20 @@ fn handles_hold_the_borrow_until_dropped_or_unwound() {
         let mut second = ExternalPtr::new(host());
         let alias = ExternalPtr::<Reentrant>::wrap_sexp(first.as_sexp()).unwrap();
         let mut writer = ExternalPtr::<Reentrant>::wrap_sexp(first.as_sexp()).unwrap();
-        let read = ExternalPtrRef::from(&first);
-        let read_again = ExternalPtrRef::from(&alias);
-        let write_other = ExternalPtrMut::from(&mut second);
-        let conflict = catch_condition(|| drop(ExternalPtrMut::from(&mut writer)));
+        let read = first.borrow();
+        let read_again = alias.borrow();
+        let write_other = second.borrow_mut();
+        let conflict = catch_condition(|| drop(writer.borrow_mut()));
         assert!(is_borrow_conflict(conflict.unwrap_err()));
         miniextendr_api::sys::R_gc();
         drop((read, read_again, write_other));
         let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _write = ExternalPtrMut::from(&mut writer);
+            let _write = writer.borrow_mut();
             panic!("release during unwind");
         }));
         assert!(failed.is_err());
-        ExternalPtrMut::from(&mut writer).value = 8;
-        assert_eq!(first.value, 8);
+        writer.borrow_mut().value = 8;
+        assert_eq!(first.borrow().value, 8);
     });
 }
 
@@ -228,7 +301,7 @@ fn into_inner_refuses_a_borrowed_value() {
     r_test_utils::with_r_thread(|| unsafe {
         let owner = ExternalPtr::new(host());
         let alias = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
-        let read = ExternalPtrRef::from(&owner);
+        let read = owner.borrow();
         let conflict = catch_condition(|| ExternalPtr::into_inner(alias).value);
         assert!(is_borrow_conflict(conflict.unwrap_err()));
         drop(read);
@@ -326,18 +399,18 @@ fn a_resolved_receiver_outlives_its_binding_during_the_call() {
     });
 }
 
-// region: `ExternalPtr<T>` arguments (#2092)
+// region: borrowed arguments (#2092, #2106)
 
-/// One object as the `mut` argument and the other: the second borrow conflicts.
+/// One object as the `&mut` argument and the other: the second borrow conflicts.
 #[miniextendr(noexport)]
-pub fn reentrant_pair(mut target: ExternalPtr<Reentrant>, source: ExternalPtr<Reentrant>) -> i32 {
+pub fn reentrant_pair(target: &mut Reentrant, source: &Reentrant) -> i32 {
     target.value += source.value;
     target.value
 }
 
 /// Hold the argument exclusively across `nested(operation)`.
 #[miniextendr(noexport)]
-pub fn reentrant_exclusive_arg(mut obj: ExternalPtr<Reentrant>, operation: i32) -> bool {
+pub fn reentrant_exclusive_arg(obj: &mut Reentrant, operation: i32) -> bool {
     let conflict = nested(operation);
     obj.value += 1;
     conflict
@@ -345,7 +418,7 @@ pub fn reentrant_exclusive_arg(mut obj: ExternalPtr<Reentrant>, operation: i32) 
 
 /// Hold the argument shared across `nested(operation)`.
 #[miniextendr(noexport)]
-pub fn reentrant_shared_arg(obj: ExternalPtr<Reentrant>, operation: i32) -> bool {
+pub fn reentrant_shared_arg(obj: &Reentrant, operation: i32) -> bool {
     let old = obj.value;
     let conflict = nested(operation);
     assert_eq!(obj.value, old);
@@ -354,15 +427,33 @@ pub fn reentrant_shared_arg(obj: ExternalPtr<Reentrant>, operation: i32) -> bool
 
 /// `NULL` is `None`, which holds nothing.
 #[miniextendr(noexport)]
-pub fn reentrant_optional_arg(mut obj: Option<ExternalPtr<Reentrant>>, operation: i32) -> bool {
+pub fn reentrant_optional_arg(obj: Option<&mut Reentrant>, operation: i32) -> bool {
     let conflict = nested(operation);
-    if let Some(obj) = obj.as_mut() {
+    if let Some(obj) = obj {
         obj.value += 1;
     }
     conflict
 }
 
-/// Moves the value out: the argument takes no borrow.
+/// An exclusive view holds its borrow and reaches the sidecar values.
+#[miniextendr(noexport)]
+pub fn reentrant_view_arg(mut obj: ExternalPtrMut<'_, Reentrant>, operation: i32) -> bool {
+    let conflict = nested(operation);
+    Reentrant::set_values(&mut obj, vec![4]);
+    obj.value += 1;
+    conflict
+}
+
+/// A handle holds nothing: callbacks reach the object freely, and the body
+/// borrows only to read.
+#[miniextendr(noexport)]
+pub fn reentrant_handle_arg(obj: ExternalPtr<Reentrant>, operation: i32) -> bool {
+    let conflict = nested(operation);
+    assert!(obj.borrow().value > 0);
+    conflict
+}
+
+/// Moves the value out: a handle takes no borrow.
 #[miniextendr(noexport)]
 pub fn reentrant_take(obj: ExternalPtr<Reentrant>) -> i32 {
     ExternalPtr::into_inner(obj).value
@@ -391,7 +482,7 @@ fn arguments_hold_their_objects_for_the_call() {
         assert!(is_borrow_conflict(
             RCondition::from_tagged_sexp(same.get()).unwrap()
         ));
-        assert_eq!(owner.value, 7);
+        assert_eq!(owner.borrow().value, 7);
         let distinct = scope.protect(call3(
             "reentrant_pair",
             SEXP::nil(),
@@ -402,45 +493,31 @@ fn arguments_hold_their_objects_for_the_call() {
 
         for operation in 0..6_i32 {
             let op = scope.protect(operation.into_sexp()).get();
-            let exclusive = scope.protect(call3(
-                "reentrant_exclusive_arg",
-                SEXP::nil(),
-                owner.as_sexp(),
-                op,
-            ));
+            let call = |name: &str, obj: SEXP| {
+                let result = scope.protect(call3(name, SEXP::nil(), obj, op));
+                bool::try_from_sexp(result.get()).unwrap()
+            };
+            let owner = owner.as_sexp();
             assert!(
-                bool::try_from_sexp(exclusive.get()).unwrap(),
+                call("reentrant_exclusive_arg", owner),
                 "operation {operation}"
             );
-            let shared = scope.protect(call3(
-                "reentrant_shared_arg",
-                SEXP::nil(),
-                owner.as_sexp(),
-                op,
-            ));
             assert_eq!(
-                bool::try_from_sexp(shared.get()).unwrap(),
+                call("reentrant_shared_arg", owner),
                 operation % 2 == 1,
                 "operation {operation}"
             );
-            let optional = scope.protect(call3(
-                "reentrant_optional_arg",
-                SEXP::nil(),
-                owner.as_sexp(),
-                op,
-            ));
             assert!(
-                bool::try_from_sexp(optional.get()).unwrap(),
+                call("reentrant_optional_arg", owner),
                 "operation {operation}"
             );
-            let none = scope.protect(call3(
-                "reentrant_optional_arg",
-                SEXP::nil(),
-                SEXP::nil(),
-                op,
-            ));
             assert!(
-                !bool::try_from_sexp(none.get()).unwrap(),
+                !call("reentrant_optional_arg", SEXP::nil()),
+                "operation {operation}"
+            );
+            assert!(call("reentrant_view_arg", owner), "operation {operation}");
+            assert!(
+                !call("reentrant_handle_arg", owner),
                 "operation {operation}"
             );
         }
@@ -454,30 +531,30 @@ fn arguments_hold_their_objects_for_the_call() {
 }
 
 #[test]
-fn try_borrow_checks_the_value_like_generated_code() {
+fn borrow_checks_the_value_like_generated_code() {
     r_test_utils::with_r_thread(|| unsafe {
         let mut owner = ExternalPtr::new(host());
         let reader = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
         let mut writer = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
         {
-            let read = owner.try_borrow();
-            let read_again = reader.try_borrow();
-            assert_eq!(read.value + read_again.value, 14);
-            let conflict = catch_condition(|| drop(writer.try_borrow_mut()));
+            let read = owner.borrow();
+            let read_again = reader.borrow();
+            let reborrowed = read.rb();
+            assert_eq!(read.value + read_again.value + reborrowed.value, 21);
+            assert_eq!(ExternalPtrRef::as_sexp(&reborrowed), owner.as_sexp());
+            let conflict = catch_condition(|| drop(writer.borrow_mut()));
             assert!(is_borrow_conflict(conflict.unwrap_err()));
         }
         {
-            let mut write = owner.try_borrow_mut();
-            write.value = 9;
-            let conflict = catch_condition(|| drop(reader.try_borrow()));
-            assert!(is_borrow_conflict(conflict.unwrap_err()));
-            let conflict = catch_condition(|| drop(ExternalPtrRef::from(&reader)));
+            let mut write = owner.borrow_mut();
+            write.rb_mut().value = 9;
+            let conflict = catch_condition(|| drop(reader.borrow()));
             assert!(is_borrow_conflict(conflict.unwrap_err()));
         }
-        assert_eq!(writer.try_borrow_mut().value, 9);
+        assert_eq!(writer.borrow_mut().value, 9);
         let erased = ExternalPtr::<()>::from_sexp(owner.as_sexp());
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            drop(erased.try_borrow());
+            drop(erased.borrow());
         }));
         assert!(refused.is_err());
     });
@@ -496,47 +573,59 @@ impl Drop for RootedArgument {
     }
 }
 
-/// Run `callback`, which drops the argument's last reference and collects.
+/// Evaluate `callback`, which drops the argument's last reference and
+/// collects; whether the argument's value survived.
+fn run_dropping_callback(callback: SEXP) -> bool {
+    let drops = ARGUMENT_DROPS.load(Ordering::SeqCst);
+    unsafe {
+        use miniextendr_api::expression::RCall;
+        RCall::from_sexp(callback).eval_with_handlers(miniextendr_api::sys::R_GlobalEnv);
+    }
+    ARGUMENT_DROPS.load(Ordering::SeqCst) == drops
+}
+
+/// A handle argument whose class handle loses its `.ptr` during the call.
 #[miniextendr(noexport)]
 pub fn rooted_argument_survives(obj: ExternalPtr<RootedArgument>, callback: SEXP) -> bool {
-    unsafe {
-        use miniextendr_api::sys::{R_GlobalEnv, Rf_eval, Rf_lang1};
-        let call = OwnedProtect::new(Rf_lang1(callback));
-        Rf_eval(call.get(), R_GlobalEnv);
-    }
-    ARGUMENT_DROPS.load(Ordering::SeqCst) == 0 && obj.value == 3
+    run_dropping_callback(callback) && obj.borrow().value == 3
+}
+
+/// A borrowed argument whose class handle loses its `.ptr` during the call.
+#[miniextendr(noexport)]
+pub fn rooted_ref_argument_survives(obj: &RootedArgument, callback: SEXP) -> bool {
+    run_dropping_callback(callback) && obj.value == 3
 }
 
 /// A class-wrapped argument whose `.ptr` goes away mid-call stays alive until
-/// the call, and its borrow, ends.
+/// the call, and its borrow, ends: the converted handle roots it.
 #[test]
 fn a_class_wrapped_argument_outlives_its_binding_during_the_call() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::expression::r_eval_str_global;
         use miniextendr_api::sys::{R_GlobalEnv, Rf_defineVar, Rf_eval, Rf_install, Rf_lang2};
         let scope = ProtectScope::new();
-        let handle = scope
-            .protect(r_eval_str_global("new.env(parent = emptyenv())").unwrap())
-            .get();
-        let ptr = ExternalPtr::new(RootedArgument { value: 3 });
-        Rf_defineVar(Rf_install(c".ptr".as_ptr()), ptr.as_sexp(), handle);
-        drop(ptr);
         let factory = scope.protect(
             r_eval_str_global(r#"function(e) function() { rm(".ptr", envir = e); gc() }"#).unwrap(),
         );
-        let factory_call = scope.protect(Rf_lang2(factory.get(), handle));
-        let callback = scope
-            .protect(Rf_eval(factory_call.get(), R_GlobalEnv))
-            .get();
-        let result = scope.protect(call3(
-            "rooted_argument_survives",
-            SEXP::nil(),
-            handle,
-            callback,
-        ));
-        assert!(bool::try_from_sexp(result.get()).unwrap());
-        miniextendr_api::sys::R_gc();
-        assert_eq!(ARGUMENT_DROPS.load(Ordering::SeqCst), 1);
+        for (drops, wrapper) in [
+            (1, "rooted_argument_survives"),
+            (2, "rooted_ref_argument_survives"),
+        ] {
+            let handle = scope
+                .protect(r_eval_str_global("new.env(parent = emptyenv())").unwrap())
+                .get();
+            let ptr = ExternalPtr::new(RootedArgument { value: 3 });
+            Rf_defineVar(Rf_install(c".ptr".as_ptr()), ptr.as_sexp(), handle);
+            drop(ptr);
+            let factory_call = scope.protect(Rf_lang2(factory.get(), handle));
+            let callback = scope
+                .protect(Rf_eval(factory_call.get(), R_GlobalEnv))
+                .get();
+            let result = scope.protect(call3(wrapper, SEXP::nil(), handle, callback));
+            assert!(bool::try_from_sexp(result.get()).unwrap(), "{wrapper}");
+            miniextendr_api::sys::R_gc();
+            assert_eq!(ARGUMENT_DROPS.load(Ordering::SeqCst), drops, "{wrapper}");
+        }
     });
 }
 

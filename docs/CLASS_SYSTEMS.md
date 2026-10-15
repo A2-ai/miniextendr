@@ -605,7 +605,7 @@ impl Point {
         self.y
     }
 
-    pub fn distance(&self, other: ExternalPtr<Point>) -> f64 {
+    pub fn distance(&self, other: &Point) -> f64 {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
@@ -757,8 +757,8 @@ S7::method(pair, list(Left, S7::class_any)) <- function(x, other, sep, ...) {
 The receiver is registered for the class, and every other dispatch argument for
 `S7::class_any`. The method's own argument checks and Rust conversions are the
 type check, and their errors name the parameter. No single S7 class matches
-what a parameter accepts in general (an `ExternalPtr<T>` takes the class
-object, a bare external pointer or a list with `.ptr`; `coerce` widens numeric
+what a parameter accepts in general (a `&T` takes the class object, a bare
+external pointer or a list with `.ptr`; `coerce` widens numeric
 parameters), so a narrower class would turn accepted values into "Can't find
 method" errors. A more specific method registered in R,
 such as `S7::method(pair, list(Left, Right))`, still takes precedence over the
@@ -816,7 +816,7 @@ operand, which must be named `e2` (`y`):
 impl Money {
     /// `a + b`
     #[miniextendr(s7(generic = "+"))]
-    pub fn add(&self, e2: ExternalPtr<Money>) -> Self { ... }
+    pub fn add(&self, e2: &Money) -> Self { ... }
 
     /// `a * k`
     #[miniextendr(r_name = "*")]
@@ -1559,8 +1559,8 @@ impl MyConfig {
         }
     }
 
-    pub fn has_table(self: &ExternalPtr<Self>) -> bool {
-        !Self::r_table(self).is_nil()
+    pub fn has_table(self: ExternalPtrRef<'_, Self>) -> bool {
+        !Self::r_table(&self).is_nil()
     }
 }
 ```
@@ -1570,8 +1570,8 @@ to R, and each write converts into Rust or raises an error. `r_table` is a
 `Sidecar<T>`: its value lives in the external pointer's protection list, which
 roots it, and Rust reads and writes it through the `MyConfig::r_table(&ptr)` /
 `MyConfig::set_r_table(&mut ptr, v)` accessors the derive generates, so a
-method that needs it takes the handle as its receiver (`self:
-&ExternalPtr<Self>`, as `has_table` does). The field types, the `Sidecar<T>`
+method that needs it takes a view as its receiver (`self:
+ExternalPtrRef<'_, Self>`, as `has_table` does). The field types, the `Sidecar<T>`
 lifecycle and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R
 Data Fields)".
 
@@ -1824,6 +1824,28 @@ a pointer under a `restored(message = "...")`, which reads as a save:
 pub struct Engine { /* ... */ }
 ```
 
+A name that is no field is refused with `miniextendr_no_field`, whose
+message lists the fields: ``` `value` is not a field of `engine`; its
+fields are `input`, `table` ```. `field_error(no_field_hint = "...")` adds
+the package's own sentence after that list, each `%s` in it replaced by the
+name asked for. Any other `%` in it is written as given. It applies to every
+name the field methods refuse: `$` and `[[`, and `$<-` / `[[<-` where they
+are generated. Without it the message is unchanged.
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3, field_error(
+    class = ["pkg_error_field", "pkg_error"],
+    no_field_hint = "A column of the table is `as.data.frame(x)$%s` or `x$table$%s`.",
+))]
+pub struct Engine { /* ... */ }
+```
+
+```r
+conditionMessage(tryCatch(x$value, error = identity))
+#> [1] "`value` is not a field of `engine`; its fields are `input`, `table`. A column of the table is `as.data.frame(x)$value` or `x$table$value`."
+```
+
 #### Conditions the generated accessors raise
 
 | Error | Class | Raised by |
@@ -1833,7 +1855,7 @@ pub struct Engine { /* ... */ }
 | a pointer of another type under the class | `rust_error`, behind the type's `field_error(class = ...)` | every accessor |
 | a receiver of the class with no pointer | `miniextendr_no_handle`, behind the type's `field_error(class = ...)`, and `restored(class = ...)` for a list or environment | every accessor; every S3 reader under `refuse = "every_read"` |
 | `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
-| no such field | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead) |
+| no such field (the message lists the fields, then the type's `field_error(no_field_hint = ...)`) | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead) |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |

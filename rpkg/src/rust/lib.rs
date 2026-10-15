@@ -812,7 +812,7 @@ pub extern "C-unwind" fn C_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
         false
     } else {
         match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
-            Some(data) => data.materialized.is_some(),
+            Some(data) => data.borrow().materialized.is_some(),
             None => false,
         }
     };

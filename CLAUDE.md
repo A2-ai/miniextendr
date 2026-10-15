@@ -425,7 +425,7 @@ flag in the PR.
   opt into the dedicated worker; R API work routes back through `with_r_thread`.
   The worker is **deprecated** (#2117): an explicit `worker` warns, and its open
   problems are not planned. Don't build new features on it.
-- **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance.
+- **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance. Every read is checked (#2106): a `#[miniextendr]` fn takes `&T` / `&mut T` (or the views `ExternalPtrRef` / `ExternalPtrMut`) and the wrapper borrows the `RefCell` for the call; an `ExternalPtr<T>` handle has no `Deref` and reads through `borrow()` / `borrow_mut()`.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
 - **ALTREP**: Single-struct pattern, no wrapper. Two paths:
   - *Field-based derive* — `#[derive(AltrepInteger)]` with `#[altrep(len = "field", elt = "field", class = "Name")]` generates everything.

@@ -293,35 +293,35 @@ pub fn jiff_span_new(years: i32, months: i32, days: i32) -> JiffSpanPtr {
 /// Extract the years component from a JiffSpan.
 /// @param span ExternalPtr wrapping a JiffSpan.
 #[miniextendr]
-pub fn jiff_span_years(span: JiffSpanPtr) -> i32 {
+pub fn jiff_span_years(span: &JiffSpan) -> i32 {
     i32::from(span.0.get_years())
 }
 
 /// Extract the months component from a JiffSpan.
 /// @param span ExternalPtr wrapping a JiffSpan.
 #[miniextendr]
-pub fn jiff_span_months(span: JiffSpanPtr) -> i32 {
+pub fn jiff_span_months(span: &JiffSpan) -> i32 {
     span.0.get_months()
 }
 
 /// Extract the days component from a JiffSpan.
 /// @param span ExternalPtr wrapping a JiffSpan.
 #[miniextendr]
-pub fn jiff_span_days(span: JiffSpanPtr) -> i32 {
+pub fn jiff_span_days(span: &JiffSpan) -> i32 {
     span.0.get_days()
 }
 
 /// Check whether a JiffSpan is zero.
 /// @param span ExternalPtr wrapping a JiffSpan.
 #[miniextendr]
-pub fn jiff_span_is_zero(span: JiffSpanPtr) -> bool {
+pub fn jiff_span_is_zero(span: &JiffSpan) -> bool {
     span.0.is_zero()
 }
 
 /// Check whether a JiffSpan is negative.
 /// @param span ExternalPtr wrapping a JiffSpan.
 #[miniextendr]
-pub fn jiff_span_is_negative(span: JiffSpanPtr) -> bool {
+pub fn jiff_span_is_negative(span: &JiffSpan) -> bool {
     span.0.is_negative()
 }
 
@@ -366,28 +366,28 @@ pub fn jiff_datetime_new(
 /// Extract the year from a civil::DateTime ExternalPtr.
 /// @param dt ExternalPtr wrapping a JiffDateTimePtr.
 #[miniextendr]
-pub fn jiff_datetime_year(dt: DateTimePtrType) -> i32 {
+pub fn jiff_datetime_year(dt: &JiffDateTimePtr) -> i32 {
     i32::from(dt.0.year())
 }
 
 /// Extract the month from a civil::DateTime ExternalPtr (1–12).
 /// @param dt ExternalPtr wrapping a JiffDateTimePtr.
 #[miniextendr]
-pub fn jiff_datetime_month(dt: DateTimePtrType) -> i32 {
+pub fn jiff_datetime_month(dt: &JiffDateTimePtr) -> i32 {
     i32::from(dt.0.month())
 }
 
 /// Extract the day from a civil::DateTime ExternalPtr (1–31).
 /// @param dt ExternalPtr wrapping a JiffDateTimePtr.
 #[miniextendr]
-pub fn jiff_datetime_day(dt: DateTimePtrType) -> i32 {
+pub fn jiff_datetime_day(dt: &JiffDateTimePtr) -> i32 {
     i32::from(dt.0.day())
 }
 
 /// Extract the hour from a civil::DateTime ExternalPtr (0–23).
 /// @param dt ExternalPtr wrapping a JiffDateTimePtr.
 #[miniextendr]
-pub fn jiff_datetime_hour(dt: DateTimePtrType) -> i32 {
+pub fn jiff_datetime_hour(dt: &JiffDateTimePtr) -> i32 {
     i32::from(dt.0.hour())
 }
 
@@ -414,21 +414,21 @@ pub fn jiff_time_new(hour: i32, minute: i32, second: i32) -> TimePtrType {
 /// Extract the hour from a civil::Time ExternalPtr (0–23).
 /// @param t ExternalPtr wrapping a JiffTimePtr.
 #[miniextendr]
-pub fn jiff_time_hour(t: TimePtrType) -> i32 {
+pub fn jiff_time_hour(t: &JiffTimePtr) -> i32 {
     i32::from(t.0.hour())
 }
 
 /// Extract the minute from a civil::Time ExternalPtr (0–59).
 /// @param t ExternalPtr wrapping a JiffTimePtr.
 #[miniextendr]
-pub fn jiff_time_minute(t: TimePtrType) -> i32 {
+pub fn jiff_time_minute(t: &JiffTimePtr) -> i32 {
     i32::from(t.0.minute())
 }
 
 /// Extract the second from a civil::Time ExternalPtr (0–59).
 /// @param t ExternalPtr wrapping a JiffTimePtr.
 #[miniextendr]
-pub fn jiff_time_second(t: TimePtrType) -> i32 {
+pub fn jiff_time_second(t: &JiffTimePtr) -> i32 {
     i32::from(t.0.second())
 }
 

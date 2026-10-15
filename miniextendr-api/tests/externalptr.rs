@@ -19,12 +19,17 @@ fn externalptr_suite() {
 
 fn test_basic_access() {
     let mut ext = ExternalPtr::new(10i32);
-    assert_eq!(ext.as_ref().copied(), Some(10));
+    assert_eq!(*ext.borrow(), 10);
 
-    if let Some(val) = ext.as_mut() {
-        *val = 42;
-    }
-    assert_eq!(ext.as_ref().copied(), Some(42));
+    *ext.borrow_mut() = 42;
+    assert_eq!(*ext.borrow(), 42);
+
+    // Debug never raises: a value borrowed mutably prints as `<borrowed>`.
+    let alias = unsafe { ExternalPtr::<i32>::wrap_sexp(ext.as_sexp()) }.unwrap();
+    let held = ext.borrow_mut();
+    assert_eq!(format!("{alias:?}"), "<borrowed>");
+    drop(held);
+    assert_eq!(format!("{alias:?}"), "42");
 }
 
 fn test_tag_and_protected() {

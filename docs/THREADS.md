@@ -83,7 +83,10 @@ fn compute_and_report(x: Vec<f64>) -> Vec<f64> {
 The arguments, converted on the main thread, move into the worker, and the
 return value moves back for conversion, so their types must be `Send`. A
 function over a `!Send` type, such as an `ExternalPtr<T>` whose `T` is not
-`Send`, needs `#[miniextendr(no_worker)]` under `worker-default`.
+`Send`, needs `#[miniextendr(no_worker)]` under `worker-default`. A function
+that borrows an external value (a `&T` / `&mut T` / `ExternalPtrRef` /
+`ExternalPtrMut` parameter) runs on the main thread, like an instance method:
+the borrow is taken and released there.
 
 Static methods of an impl block, constructors included, select the worker the
 same way, through their class option (`env(worker)`, `r6(worker)`, ...) or

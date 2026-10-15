@@ -38,7 +38,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Counter>::wrap_sexp(ptr) {
-            Some(ext) => SEXP::scalar_integer(ext.value),
+            Some(ext) => SEXP::scalar_integer(ext.borrow().value),
             None => SEXP::scalar_integer(i32::MIN), // NA_INTEGER equivalent
         }
     }
@@ -54,7 +54,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
     unsafe {
         // Get mutable access via downcast_mut on erased pointer
         let mut erased = ErasedExternalPtr::from_sexp(ptr);
-        if let Some(counter) = erased.downcast_mut::<Counter>() {
+        if let Some(mut counter) = erased.downcast_mut::<Counter>() {
             counter.value += 1;
             return SEXP::scalar_integer(counter.value);
         }
@@ -80,7 +80,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
-            Some(ext) => SEXP::scalar_real(ext.x),
+            Some(ext) => SEXP::scalar_real(ext.borrow().x),
             None => SEXP::scalar_real(f64::NAN),
         }
     }
@@ -96,7 +96,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
         match ExternalPtr::<Point>::wrap_sexp(ptr) {
-            Some(ext) => SEXP::scalar_real(ext.y),
+            Some(ext) => SEXP::scalar_real(ext.borrow().y),
             None => SEXP::scalar_real(f64::NAN),
         }
     }
@@ -176,5 +176,5 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
 pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;
     let ptr = ExternalPtr::new(Counter { value: 99 });
-    ptr.value
+    ptr.borrow().value
 }

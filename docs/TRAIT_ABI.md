@@ -216,6 +216,13 @@ Parameter checks such as `no_na`, `inherits` and `not_inherits` run in the imple
 method's R-facing wrappers: they check R arguments, not the typed values a
 View caller passes.
 
+A `&Self` / `&mut Self` parameter is borrowed by the shim like the receiver,
+after the check that refuses its aliasing the receiver or another such
+parameter mutably, and the method gets a plain reference. An
+`ExternalPtr<T>` parameter arrives as a handle the shim doesn't borrow; the
+method reads it with `borrow()` / `borrow_mut()` (`EXTERNALPTR.md`,
+"Arguments").
+
 ### Failures
 
 The shim is the only check a caller that skips the View gets, so it checks

@@ -19,9 +19,8 @@
 //! - [`ErasedExternalPtr`] — type-erased `ExternalPtr<()>` alias
 //! - [`IntoExternalPtr`] — conversion trait for wrapping values
 //!
-//! `PartialEq`/`PartialOrd` compare the pointee values (like `Box<T>`). Use
-//! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for
-//! explicit by-value comparisons.
+//! `PartialEq`/`PartialOrd` compare the pointee values (like `Box<T>`),
+//! borrowing both. Use `ptr_eq` when you care about pointer identity.
 //!
 //! # Protection Strategies in miniextendr
 //!
@@ -73,7 +72,7 @@
 //! Owning handles (`new` / `from_raw` / `Clone`) root their `EXTPTRSXP` in a
 //! process-wide [`ProtectPool`](crate::protect_pool) so they survive R
 //! allocations while held in Rust; *borrowed* views (`wrap_sexp` / `from_sexp`
-//! / `reborrow`) take no root — the object is kept alive by whatever R-side
+//! / `same_object`) take no root — the object is kept alive by whatever R-side
 //! reference handed it to them. The pool (O(1) any-order release) is used
 //! rather than `R_PreserveObject` because a `Vec<ExternalPtr>` releases its
 //! roots front-to-back, the O(n²) worst case for `R_ReleaseObject`'s
@@ -123,36 +122,34 @@
 //! # Pointer provenance for `cached_ptr`
 //!
 //! `ExternalPtr` caches the address of the value's [`RefCell<T>`] at
-//! construction so `as_ref` / `as_mut` avoid an FFI call on every access.
-//! They reach the value through [`RefCell::as_ptr`], which hands out a
-//! `*mut T` from a shared reference to the cell, so a pointer cached from
-//! `downcast_ref::<RefCell<T>>()` is as good for writes as one from
-//! `Box::into_raw`.
+//! construction so [`borrow`](ExternalPtr::borrow) /
+//! [`borrow_mut`](ExternalPtr::borrow_mut) avoid an FFI call on every access.
+//! A `RefCell` hands out `&mut T` from a shared reference to the cell, so a
+//! pointer cached from `downcast_ref::<RefCell<T>>()` is as good for writes
+//! as one from `Box::into_raw`.
 //!
 //! # Reentrant calls
 //!
-//! A method can call back into R (an R function argument, `RCall`), and R code
-//! can call methods of the same object meanwhile. The generated wrappers take
-//! the value's [`RefCell`] borrow before they make a reference: shared for
-//! `&self` methods and field getters, exclusive for `&mut self`, `self` and
-//! handle receivers and for field setters. A conflicting call raises an R
-//! error of class `miniextendr_borrow_conflict` instead of making a second
-//! reference. A borrow taken through a trait view lives in the producer's
-//! shim, so views in other packages see it too.
+//! R reaches a Rust value only through a generated wrapper, on R's main
+//! thread, and the wrapper borrows the value's [`RefCell`] for the whole call:
+//! shared for `&self` methods, `&T` arguments, [`ExternalPtrRef`] receivers
+//! and arguments, and field getters; exclusive for `&mut self` and `self`
+//! methods, `&mut T` arguments, [`ExternalPtrMut`] receivers and arguments,
+//! and field setters. The body gets plain references, which Rust's borrow
+//! checker covers from there. A second borrow during the call, from the same
+//! object passed twice with a `&mut T`, or from R code the body calls back
+//! into (an R function argument, `RCall`) reaching the object again, raises
+//! an R error of class `miniextendr_borrow_conflict` instead of making a
+//! second reference. A borrow taken through a trait view lives in the
+//! producer's shim, so views in other packages see it too.
 //!
-//! A function's `ExternalPtr<T>` and `Option<ExternalPtr<T>>` arguments are
-//! borrowed the same way (#2092): exclusively for a `mut` binding, shared
-//! otherwise, so one object passed twice with a `mut` argument conflicts too.
-//! A function whose body names `into_inner`, `into_raw`, `into_non_null` or
-//! `leak`, which move the value out and refuse a borrowed one, takes no
-//! borrow for its arguments.
-//!
-//! [`ExternalPtr`]'s own `Deref` / `DerefMut` / `as_ref` / `as_mut` take no
-//! borrow: they are [`RefCell::as_ptr`] accesses, like any `&T` you hold
-//! across a call into R. A handle the wrapper doesn't borrow for you (a `Vec`
-//! element, one you build or keep) can take the borrow with
-//! [`try_borrow`](ExternalPtr::try_borrow) /
-//! [`try_borrow_mut`](ExternalPtr::try_borrow_mut).
+//! An `ExternalPtr<T>` handle, as an argument, a `self: ExternalPtr<Self>`
+//! receiver, a `Vec` element or a value Rust keeps, takes no borrow until it
+//! is read: [`borrow`](ExternalPtr::borrow) and
+//! [`borrow_mut`](ExternalPtr::borrow_mut) check the `RefCell` and raise the
+//! same error. A handle has no `Deref`, so every read through it is one of
+//! these. `into_inner` and the other consuming functions refuse a value
+//! something still borrows, with the same error.
 //!
 //! The borrow is released when the wrapper returns, panics, or unwinds an R
 //! error raised through [`RCall::eval_with_handlers`](crate::expression::RCall::eval_with_handlers)
@@ -189,8 +186,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::mem::{self, ManuallyDrop, MaybeUninit};
-use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
 use crate::RValue;
@@ -602,6 +597,11 @@ pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
 ///
 /// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
 ///   Just the type identifier for readability.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a type an `ExternalPtr` stores",
+    label = "`{Self}` does not implement `TypedExternal`",
+    note = "`#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `{Self}` through an external pointer, as the object of a `#[miniextendr]` impl or a `&{Self}` / `&mut {Self}` parameter"
+)]
 pub trait TypedExternal: 'static {
     /// The type name as a static string (for debugging and display)
     const TYPE_NAME: &'static str;
@@ -870,8 +870,8 @@ pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
     }
 }
 
-/// The typed handle of an instance-method receiver, for `self: &ExternalPtr<Self>`
-/// / `&mut ExternalPtr<Self>` / `ExternalPtr<Self>` receivers: [`resolve_receiver`]
+/// The typed handle of an instance-method receiver, for `self: ExternalPtr<Self>`
+/// receivers: [`resolve_receiver`]
 /// then [`ExternalPtr::wrap_sexp`], failing like the erased receivers do
 /// ([`handle_downcast_failed`]: consumed, restored from a saved session, or a
 /// type mismatch). Runs on R's main thread (the generated prelude).
@@ -934,58 +934,12 @@ impl ReceiverOwner {
     pub fn get(&self) -> SEXP {
         self.sexp
     }
-}
 
-/// The value of a generated wrapper's `ExternalPtr<T>` argument (#2092): its
-/// `RefCell`, reached without borrowing the handle, which the call takes by
-/// value. When the argument was a class handle carrying the pointer, the
-/// pointer is rooted for the call as well: R code the function calls back into
-/// could drop the handle's reference, and the finalizer would then free the
-/// value under the wrapper's borrow (as for [`ReceiverOwner`]). A bare pointer
-/// is the `.Call` argument itself, which R keeps alive.
-#[doc(hidden)]
-pub struct ArgumentCell<T: TypedExternal> {
-    /// `None` for a `NULL` argument and for a type-erased `ExternalPtr<()>`,
-    /// whose address is not its value's cell.
-    cell: Option<NonNull<RefCell<T>>>,
-    _root: Option<PoolRoot>,
-}
-
-impl<T: TypedExternal> ArgumentCell<T> {
-    /// The cell of `ptr`, which was converted from the `.Call` argument `arg`.
-    ///
-    /// # Safety
-    ///
-    /// On R's main thread, with `arg` rooted by the call's frame.
+    /// The resolved `EXTPTRSXP`, as the owner of an [`ExternalPtrRef`] /
+    /// [`ExternalPtrMut`] receiver.
     #[inline]
-    pub unsafe fn new(ptr: Option<&ExternalPtr<T>>, arg: SEXP) -> Self {
-        let Some(ptr) = ptr else {
-            return Self {
-                cell: None,
-                _root: None,
-            };
-        };
-        Self {
-            cell: (!is_type_erased::<T>()).then_some(ptr.cached_ptr),
-            // SAFETY: on R's main thread (caller contract).
-            _root: (ptr.sexp != arg).then(|| unsafe { PoolRoot::new(ptr.sexp) }),
-        }
-    }
-
-    /// Borrow the value shared, for the rest of the call.
-    #[inline]
-    pub fn shared(&self) -> Option<Ref<'_, T>> {
-        // SAFETY: the call or `_root` keeps the pointer, and so its cell,
-        // alive while `self` lives.
-        self.cell.map(|cell| borrow_value(unsafe { cell.as_ref() }))
-    }
-
-    /// Borrow the value exclusively, for the rest of the call.
-    #[inline]
-    pub fn exclusive(&self) -> Option<RefMut<'_, T>> {
-        // SAFETY: as in `shared`.
-        self.cell
-            .map(|cell| borrow_value_mut(unsafe { cell.as_ref() }))
+    pub fn owner(&self) -> &SEXP {
+        &self.sexp
     }
 }
 
@@ -1006,11 +960,44 @@ pub fn borrow_value_mut<T>(cell: &RefCell<T>) -> RefMut<'_, T> {
         .unwrap_or_else(|_| borrow_conflict::<T>())
 }
 
+// The generated wrapper reaches a borrowed argument's value only through
+// these functions, each bounded on `TypedExternal` and spanned on the
+// parameter's type: for a `T` that isn't `TypedExternal` rustc then reports
+// the one missing bound once, with its `on_unimplemented` message.
+
+/// [`ExternalPtr::borrow`] for a generated wrapper's argument.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_borrow<T: TypedExternal>(ptr: &ExternalPtr<T>) -> ExternalPtrRef<'_, T> {
+    ptr.borrow()
+}
+
+/// [`ExternalPtr::borrow_mut`] for a generated wrapper's argument.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_borrow_mut<T: TypedExternal>(ptr: &mut ExternalPtr<T>) -> ExternalPtrMut<'_, T> {
+    ptr.borrow_mut()
+}
+
+/// The `&T` a generated wrapper hands a `&T` parameter.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_shared<'a, T: TypedExternal>(view: &'a ExternalPtrRef<'_, T>) -> &'a T {
+    view
+}
+
+/// The `&mut T` a generated wrapper hands a `&mut T` parameter.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_exclusive<'a, T: TypedExternal>(view: &'a mut ExternalPtrMut<'_, T>) -> &'a mut T {
+    view
+}
+
 #[cold]
 fn borrow_conflict<T>() -> ! {
     crate::error!(
         class = "miniextendr_borrow_conflict",
-        "this `{}` object is in use by a method call that is still running",
+        "this `{}` object is in use by a call that is still running",
         core::any::type_name::<T>()
     )
 }
@@ -1031,6 +1018,14 @@ fn borrow_conflict<T>() -> ! {
 /// However, **concurrent access is not allowed** - R's runtime is single-threaded.
 /// All R API calls are serialized through the main thread via `with_r_thread`.
 ///
+/// # Reading the value
+///
+/// A handle has no `Deref`: [`borrow`](Self::borrow) /
+/// [`borrow_mut`](Self::borrow_mut) read the value, checking its `RefCell`
+/// (see "Reentrant calls" in the [module docs](self)). A `#[miniextendr]`
+/// function that needs only the value takes `&T` / `&mut T` instead, and the
+/// generated wrapper borrows it for the call.
+///
 /// # Safety
 ///
 /// The ExternalPtr assumes exclusive ownership of the underlying data.
@@ -1049,14 +1044,14 @@ fn borrow_conflict<T>() -> ! {
 /// }
 ///
 /// let ptr = ExternalPtr::new(MyData { value: 3.14 });
-/// assert_eq!(ptr.as_ref().unwrap().value, 3.14);
+/// assert_eq!(ptr.borrow().value, 3.14);
 /// ```
 #[repr(C)]
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
     /// Cached address of the value's `RefCell`, set once at construction time.
     ///
-    /// This avoids the `R_ExternalPtrAddr` FFI call on every `as_ref()`/`as_mut()`.
+    /// This avoids the `R_ExternalPtrAddr` FFI call on every `borrow()`/`borrow_mut()`.
     /// The pointer remains valid for the lifetime of the `ExternalPtr` because:
     /// - R's finalizer only runs after R garbage-collects the SEXP (which cannot
     ///   happen while a Rust `ExternalPtr` value exists).
@@ -1074,7 +1069,7 @@ pub struct ExternalPtr<T: TypedExternal> {
     /// `into_raw` / `into_inner` release the root via the key.
     ///
     /// `None` for *borrowed* views of an SEXP R already owns (`wrap_sexp*` /
-    /// `from_sexp*` / `reborrow`): no root is taken, so none is released. The
+    /// `from_sexp*` / `same_object`): no root is taken, so none is released. The
     /// aliased object is kept alive by whatever R-side reference handed it to us
     /// (a `.Call` argument frame, an owning sibling handle, …).
     root: Option<ProtectKey>,
@@ -1220,7 +1215,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// No GC root is taken and none is released — the aliased object is kept
     /// alive by the R-side reference that handed it to us. Used by every
-    /// `wrap_sexp*` / `from_sexp*` / `reborrow` path.
+    /// `wrap_sexp*` / `from_sexp*` / `same_object` path.
     #[inline]
     fn from_borrowed_parts(sexp: SEXP, cached_ptr: NonNull<RefCell<T>>) -> Self {
         Self {
@@ -1229,6 +1224,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
             root: None,
             _marker: PhantomData,
         }
+    }
+
+    /// Root this handle's `EXTPTRSXP` for as long as the handle lives, as the
+    /// fresh-value constructors do: for a pointer converted from a class
+    /// handle, whose `.ptr` reference R code can drop while Rust still holds
+    /// the pointer (a callback the call makes, or a handle Rust keeps).
+    ///
+    /// # Safety
+    ///
+    /// On R's main thread, with no root taken yet.
+    #[inline]
+    pub(crate) unsafe fn rooted(mut self) -> Self {
+        debug_assert!(self.root.is_none());
+        // The pool can allocate while it grows.
+        let guard = unsafe { crate::OwnedProtect::new(self.sexp) };
+        self.root = Some(root_owned(guard.get()));
+        self
     }
 
     /// Release the pool root iff this handle owns one.
@@ -1672,54 +1684,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
             .into_inner()
     }
 
-    // region: Pin support (Box-equivalent)
-
-    /// Constructs a new `Pin<ExternalPtr<T>>`.
-    ///
-    /// Equivalent to `Box::pin`.
-    ///
-    /// # Note
-    ///
-    /// Unlike `Box::pin`, this requires `T: Unpin` because `ExternalPtr`
-    /// implements `DerefMut` unconditionally. For `!Unpin` types, use
-    /// `ExternalPtr::new` and manage pinning guarantees manually.
-    #[inline]
-    pub fn pin(x: T) -> Pin<Self>
-    where
-        T: Unpin,
-    {
-        // SAFETY: T: Unpin, so pinning is always safe
-        Pin::new(Self::new(x))
-    }
-
-    /// Constructs a new `Pin<ExternalPtr<T>>` without requiring `Unpin`.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the pinning invariants are upheld:
-    /// - The data will not be moved out of the `ExternalPtr`
-    /// - The data will not be accessed mutably in ways that would move it
-    ///
-    /// Since `ExternalPtr` implements `DerefMut`, using this with `!Unpin`
-    /// types requires careful handling to avoid moving the inner value.
-    #[inline]
-    pub fn pin_unchecked(x: T) -> Pin<Self> {
-        unsafe { Pin::new_unchecked(Self::new(x)) }
-    }
-
-    /// Converts a `ExternalPtr<T>` into a `Pin<ExternalPtr<T>>`.
-    ///
-    /// Equivalent to `Box::into_pin`.
-    #[inline]
-    pub fn into_pin(this: Self) -> Pin<Self>
-    where
-        T: Unpin,
-    {
-        // SAFETY: T: Unpin, so it's always safe to pin
-        Pin::new(this)
-    }
-    // endregion
-
     // region: Accessors
 
     /// The value's `RefCell`.
@@ -1737,39 +1701,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         self.cell().as_ptr()
     }
 
-    /// Returns a reference to the underlying value.
-    ///
-    /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access. Takes no `RefCell`
-    /// borrow (see "Reentrant calls" in the [module docs](self)): don't hold
-    /// the reference across a call back into R that can reach this object, or
-    /// use [`try_borrow`](Self::try_borrow).
-    #[inline]
-    pub fn as_ref(&self) -> Option<&T> {
-        // SAFETY: the value lives as long as the handle.
-        Some(unsafe { &*self.value_ptr() })
-    }
-
-    /// Returns a mutable reference to the underlying value.
-    ///
-    /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access. Takes no `RefCell`
-    /// borrow, like [`as_ref`](Self::as_ref).
-    #[inline]
-    pub fn as_mut(&mut self) -> Option<&mut T> {
-        // SAFETY: the value lives as long as the handle.
-        Some(unsafe { &mut *self.value_ptr() })
-    }
-
-    /// Borrows the value through its `RefCell`, as generated code does: until
-    /// the returned `Ref` is dropped, a method of the same object that needs
-    /// it mutably, a `mut` argument holding it, or
-    /// [`try_borrow_mut`](Self::try_borrow_mut) through another handle raises
-    /// the error below instead. Use it rather than `Deref` to keep a handle's
-    /// value across a call back into R that can reach the same object.
-    ///
-    /// Not named `borrow`, which would shadow
-    /// [`Borrow::borrow`](std::borrow::Borrow::borrow) in method calls.
+    /// Borrows the value, as the generated wrapper does for a `&T` argument:
+    /// until the returned view drops, a method of the same object that needs
+    /// it mutably, a `&mut T` argument holding it, or
+    /// [`borrow_mut`](Self::borrow_mut) through another handle raises the
+    /// error below instead. The view also carries the R object, for the
+    /// sidecar accessors.
     ///
     /// # Panics
     ///
@@ -1777,23 +1714,50 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// is borrowed mutably, and for a type-erased `ExternalPtr<()>`, which has
     /// no value of its own to borrow (downcast it first).
     #[inline]
-    pub fn try_borrow(&self) -> Ref<'_, T> {
-        borrow_value(self.value_cell())
+    pub fn borrow(&self) -> ExternalPtrRef<'_, T> {
+        ExternalPtrRef::from_guard(&self.sexp, borrow_value(self.value_cell()))
     }
 
-    /// Borrows the value mutably through its `RefCell`, as generated code does
-    /// for `&mut self`: until the returned `RefMut` is dropped, any other
-    /// borrow of the value raises the error below.
+    /// Borrows the value mutably, as the generated wrapper does for a
+    /// `&mut T` argument: until the returned view drops, any other borrow of
+    /// the value raises the error below.
     ///
     /// # Panics
     ///
     /// With the R error of class `miniextendr_borrow_conflict` while the value
-    /// is borrowed (by a running method of the same object, an argument
-    /// holding it, or another handle's [`try_borrow`](Self::try_borrow)), and
-    /// for a type-erased `ExternalPtr<()>`.
+    /// is borrowed (by a running call holding it, or another handle's
+    /// [`borrow`](Self::borrow)), and for a type-erased `ExternalPtr<()>`.
     #[inline]
-    pub fn try_borrow_mut(&mut self) -> RefMut<'_, T> {
-        borrow_value_mut(self.value_cell())
+    pub fn borrow_mut(&mut self) -> ExternalPtrMut<'_, T> {
+        ExternalPtrMut::from_guard(&self.sexp, borrow_value_mut(self.value_cell()))
+    }
+
+    /// The value, with no `RefCell` borrow: only the ALTREP `data1` paths,
+    /// whose per-element callbacks read without one until #2103 measures the
+    /// checked read.
+    ///
+    /// # Safety
+    ///
+    /// Nothing may hold the value mutably while the reference lives.
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn as_ref_unchecked(&self) -> &T {
+        // SAFETY: the value lives as long as the handle; the caller excludes
+        // a mutable borrow.
+        unsafe { &*self.value_ptr() }
+    }
+
+    /// The value mutably, with no `RefCell` borrow, like
+    /// [`as_ref_unchecked`](Self::as_ref_unchecked).
+    ///
+    /// # Safety
+    ///
+    /// Nothing else may hold the value while the reference lives.
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn as_mut_unchecked(&mut self) -> &mut T {
+        // SAFETY: as in `as_ref_unchecked`.
+        unsafe { &mut *self.value_ptr() }
     }
 
     /// The value's `RefCell`, which a type-erased handle doesn't point at.
@@ -1821,7 +1785,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Checks whether two `ExternalPtr`s refer to the same allocation (pointer identity).
     ///
     /// This ignores the pointee values. Use this when you need alias detection;
-    /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
+    /// prefer `PartialEq`/`PartialOrd` for value comparisons.
     #[inline]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         ptr::eq(this.cached_ptr.as_ptr(), other.cached_ptr.as_ptr())
@@ -1840,35 +1804,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
         self.sexp
     }
 
-    /// Create a lightweight alias of this ExternalPtr sharing the same R object.
-    ///
-    /// The returned `ExternalPtr` points to the **same** underlying EXTPTRSXP.
-    /// No data is copied and no new R object is allocated -- both the original
-    /// and the alias refer to the same R-level external pointer.
-    ///
-    /// This is the correct way to return "self" from a method that takes
-    /// `self: &ExternalPtr<Self>`, preserving R object identity:
+    /// A second handle to the same R object: no value is copied and no R
+    /// object is allocated, and the handle takes no borrow until it is read.
+    /// Returning it from a `#[miniextendr]` function returns the same R
+    /// object, so R sees the identity it passed in.
     ///
     /// ```ignore
-    /// #[miniextendr(env)]
-    /// impl MyType {
-    ///     pub fn identity(self: &ExternalPtr<Self>) -> ExternalPtr<Self> {
-    ///         self.reborrow()
-    ///     }
+    /// #[miniextendr]
+    /// pub fn first_of(objs: Vec<ExternalPtr<MyType>>) -> ExternalPtr<MyType> {
+    ///     objs[0].same_object()
     /// }
     /// ```
     ///
-    /// # Safety note
-    ///
-    /// The caller must not use the original and the alias to create overlapping
-    /// mutable references (`as_mut`). In typical use (returning from a method),
-    /// the borrow of the original ends when the method returns, so this is safe.
+    /// The new handle takes no GC root of its own: something else (the handle
+    /// it was made from, or R) must keep the R object reachable while it is
+    /// used.
     #[inline]
-    pub fn reborrow(&self) -> Self {
+    pub fn same_object(&self) -> Self {
         // SAFETY: self.sexp is a valid live EXTPTRSXP that we already hold.
         // wrap_sexp re-extracts the data pointer from the same SEXP.
         unsafe { Self::wrap_sexp(self.sexp) }
-            .expect("reborrow of live ExternalPtr should never fail")
+            .expect("same_object of a live ExternalPtr should never fail")
     }
 
     /// Returns the tag SEXP (type identifier symbol).
@@ -2207,27 +2163,31 @@ impl ExternalPtr<()> {
         any_box.downcast_ref::<RefCell<T>>()
     }
 
-    /// Downcast to an immutable reference of the stored type if it matches `T`.
+    /// Borrow the stored value if it is a `T`, like [`ExternalPtr::borrow`].
     ///
-    /// Uses `Any::downcast_ref` for authoritative runtime type checking. The
-    /// ALTREP `data1` helpers get the struct here. Takes no `RefCell` borrow,
-    /// like [`ExternalPtr::as_ref`].
+    /// Uses `Any::downcast_ref` for authoritative runtime type checking.
+    ///
+    /// # Panics
+    ///
+    /// With the R error of class `miniextendr_borrow_conflict` while the value
+    /// is borrowed mutably.
     #[inline]
-    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        // SAFETY: the value lives as long as the pointer's address.
+    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<ExternalPtrRef<'_, T>> {
         self.downcast_cell::<T>()
-            .map(|cell| unsafe { &*cell.as_ptr() })
+            .map(|cell| ExternalPtrRef::from_guard(&self.sexp, borrow_value(cell)))
     }
 
-    /// Downcast to a mutable reference of the stored type if it matches `T`.
+    /// Borrow the stored value mutably if it is a `T`, like
+    /// [`ExternalPtr::borrow_mut`].
     ///
-    /// Uses `Any::downcast_ref` for authoritative runtime type checking. Takes
-    /// no `RefCell` borrow, like [`ExternalPtr::as_mut`].
+    /// # Panics
+    ///
+    /// With the R error of class `miniextendr_borrow_conflict` while the value
+    /// is borrowed.
     #[inline]
-    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        // SAFETY: the value lives as long as the pointer's address.
+    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<ExternalPtrMut<'_, T>> {
         self.downcast_cell::<T>()
-            .map(|cell| unsafe { &mut *cell.as_ptr() })
+            .map(|cell| ExternalPtrMut::from_guard(&self.sexp, borrow_value_mut(cell)))
     }
 }
 
@@ -2566,50 +2526,6 @@ pub type ErasedExternalPtr = ExternalPtr<()>;
 
 // region: Trait Implementations
 
-impl<T: TypedExternal> Deref for ExternalPtr<T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &T {
-        Self::as_ref(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
-impl<T: TypedExternal> DerefMut for ExternalPtr<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut T {
-        Self::as_mut(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
-impl<T: TypedExternal> AsRef<T> for ExternalPtr<T> {
-    #[inline]
-    fn as_ref(&self) -> &T {
-        Self::as_ref(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
-impl<T: TypedExternal> AsMut<T> for ExternalPtr<T> {
-    #[inline]
-    fn as_mut(&mut self) -> &mut T {
-        Self::as_mut(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
-impl<T: TypedExternal> std::borrow::Borrow<T> for ExternalPtr<T> {
-    #[inline]
-    fn borrow(&self) -> &T {
-        Self::as_ref(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
-impl<T: TypedExternal> std::borrow::BorrowMut<T> for ExternalPtr<T> {
-    #[inline]
-    fn borrow_mut(&mut self) -> &mut T {
-        Self::as_mut(self).expect("ExternalPtr is null or cleared")
-    }
-}
-
 impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     /// Deep clones the inner value into a new ExternalPtr.
     ///
@@ -2620,17 +2536,24 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     /// write replaces the slot, and R copies a shared value before modifying
     /// it in place. For a type with `Sidecar` fields this runs on R's main
     /// thread only.
+    ///
+    /// # Panics
+    ///
+    /// With the R error of class `miniextendr_borrow_conflict` while the value
+    /// is borrowed mutably, like [`borrow`](Self::borrow).
     #[inline]
     fn clone(&self) -> Self {
+        let value = self.borrow();
         if T::R_SLOT_COUNT == 0 {
-            return Self::new((**self).clone());
+            return Self::new(T::clone(&value));
         }
         assert_sidecar_clone_on_main_thread::<T>();
         // SAFETY: on R's main thread; `self.sexp` is the live pointer this
         // handle holds, built by `ExternalPtr` for a `T`.
         let prot = unsafe { R_ExternalPtrProtected(self.sexp) };
-        flush_sidecars(&**self, prot);
-        let new = Self::new((**self).clone());
+        flush_sidecars(&*value, prot);
+        let new = Self::new(T::clone(&value));
+        drop(value);
         // SAFETY: both pointers are live and built for a `T`.
         unsafe { copy_sidecar_slots::<T>(self.sexp, new.sexp) };
         new
@@ -2640,18 +2563,27 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     /// [`Sidecar<T>`] slots are copied as R objects like in
     /// [`clone`](Self::clone), replacing this pointer's slot values and its
     /// pending values.
+    ///
+    /// # Panics
+    ///
+    /// With the R error of class `miniextendr_borrow_conflict` while
+    /// `source`'s value is borrowed mutably or this one's is borrowed, which
+    /// includes cloning a pointer into itself.
     #[inline]
     fn clone_from(&mut self, source: &Self) {
+        let from = source.borrow();
+        let mut to = self.borrow_mut();
         if T::R_SLOT_COUNT == 0 {
-            (**self).clone_from(&**source);
+            T::clone_from(&mut to, &from);
             return;
         }
         assert_sidecar_clone_on_main_thread::<T>();
         // SAFETY: as in `clone`.
         let source_prot = unsafe { R_ExternalPtrProtected(source.sexp) };
-        flush_sidecars(&**source, source_prot);
-        (**self).clone_from(&**source);
-        discard_pending_sidecars(&**self);
+        flush_sidecars(&*from, source_prot);
+        T::clone_from(&mut to, &from);
+        discard_pending_sidecars(&*to);
+        drop((from, to));
         // SAFETY: both pointers are live and built for a `T`.
         unsafe { copy_sidecar_slots::<T>(source.sexp, self.sexp) };
     }
@@ -2674,15 +2606,25 @@ impl<T: TypedExternal + Default> Default for ExternalPtr<T> {
     }
 }
 
+/// Like `RefCell`'s: a value borrowed mutably prints as `<borrowed>`
+/// instead of raising, and so does a type-erased `ExternalPtr<()>`, which has
+/// no value of its own.
 impl<T: TypedExternal + fmt::Debug> fmt::Debug for ExternalPtr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
+        if is_type_erased::<T>() {
+            return f.write_str("<erased>");
+        }
+        match self.cell().try_borrow() {
+            Ok(value) => fmt::Debug::fmt(&*value, f),
+            Err(_) => f.write_str("<borrowed>"),
+        }
     }
 }
 
+/// Borrows the value, like [`ExternalPtr::borrow`].
 impl<T: TypedExternal + fmt::Display> fmt::Display for ExternalPtr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&**self, f)
+        fmt::Display::fmt(&*self.borrow(), f)
     }
 }
 
@@ -2692,10 +2634,11 @@ impl<T: TypedExternal> fmt::Pointer for ExternalPtr<T> {
     }
 }
 
+/// Compares the values, borrowing both, like [`ExternalPtr::borrow`].
 impl<T: TypedExternal + PartialEq> PartialEq for ExternalPtr<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        **self == **other
+        *self.borrow() == *other.borrow()
     }
 }
 
@@ -2704,37 +2647,38 @@ impl<T: TypedExternal + Eq> Eq for ExternalPtr<T> {}
 impl<T: TypedExternal + PartialOrd> PartialOrd for ExternalPtr<T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        (**self).partial_cmp(&**other)
+        (*self.borrow()).partial_cmp(&*other.borrow())
     }
 }
 
 impl<T: TypedExternal + Ord> Ord for ExternalPtr<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (**self).cmp(&**other)
+        (*self.borrow()).cmp(&*other.borrow())
     }
 }
 
 impl<T: TypedExternal + Hash> Hash for ExternalPtr<T> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        (**self).hash(state);
+        (*self.borrow()).hash(state);
     }
 }
 
+/// Each step borrows the value mutably, like [`ExternalPtr::borrow_mut`].
 impl<T: TypedExternal + std::iter::Iterator> std::iter::Iterator for ExternalPtr<T> {
     type Item = T::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        (**self).next()
+        self.borrow_mut().next()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (**self).size_hint()
+        self.borrow().size_hint()
     }
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        (**self).nth(n)
+        self.borrow_mut().nth(n)
     }
 }
 
@@ -2742,11 +2686,11 @@ impl<T: TypedExternal + std::iter::DoubleEndedIterator> std::iter::DoubleEndedIt
     for ExternalPtr<T>
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        (**self).next_back()
+        self.borrow_mut().next_back()
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        (**self).nth_back(n)
+        self.borrow_mut().nth_back(n)
     }
 }
 
@@ -2754,7 +2698,7 @@ impl<T: TypedExternal + std::iter::ExactSizeIterator> std::iter::ExactSizeIterat
     for ExternalPtr<T>
 {
     fn len(&self) -> usize {
-        (**self).len()
+        self.borrow().len()
     }
 }
 

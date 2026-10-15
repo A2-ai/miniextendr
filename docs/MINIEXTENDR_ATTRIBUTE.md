@@ -412,11 +412,11 @@ restricted to inherent S7 methods because these attributes register methods
 with `S7::convert()` as well as wrapping the returned class.
 
 ```rust
-use miniextendr_api::{ConvertFrom, ConvertTo, ExternalPtr, miniextendr};
+use miniextendr_api::{ConvertFrom, ConvertTo, miniextendr};
 
 #[miniextendr(s7)]
 impl Fahrenheit {
-    pub fn from_celsius(source: ExternalPtr<Celsius>) -> ConvertFrom<Self> {
+    pub fn from_celsius(source: &Celsius) -> ConvertFrom<Self> {
         ConvertFrom(Self { value: source.value * 9.0 / 5.0 + 32.0 })
     }
 
@@ -430,7 +430,8 @@ impl Fahrenheit {
 additional parameters. `ConvertFrom<T>` keeps `T` as the returned payload
 (`Self` or the enclosing class type); its static method's sole source
 parameter supplies the source class name. That parameter may be a named
-class, a reference to it, or `ExternalPtr<Source>`. The equivalent attributes
+class, a reference to it (`&Source`), a view (`ExternalPtrRef<'_, Source>`)
+or `ExternalPtr<Source>`. The equivalent attributes
 keep the plain return types and state the target/source name explicitly.
 
 Both spellings feed the existing S7 class-reference resolver, so registered

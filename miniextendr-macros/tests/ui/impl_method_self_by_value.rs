@@ -1,5 +1,6 @@
 //! Test: a smart-pointer `self` receiver is rejected (the R handle stores the
-//! value itself, so only `self`, `&self`, `&mut self`, or `ExternalPtr<Self>`
+//! value itself, so only `self`, `&self`, `&mut self`, the views
+//! `ExternalPtrRef<'_, Self>` / `ExternalPtrMut<'_, Self>` or `ExternalPtr<Self>`
 //! receivers can be handed over). Bare `self` (consuming) is supported since
 //! #1432 and is covered by the pass tests / rpkg fixtures instead.
 

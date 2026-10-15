@@ -46,10 +46,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///
 /// Rust code sees no `SEXP`s, slot indices or other R plumbing: a plain
 /// `fn new() -> Self` constructor fills the field with [`Sidecar::new`], and
-/// a method that needs the value takes the handle as its receiver
-/// (`self: &ExternalPtr<Self>` / `self: &mut ExternalPtr<Self>`) and calls
-/// `Self::keys(self)` / `Self::set_keys(self, v)`; other Rust code writes
-/// `Engine::keys(&ptr)`. The R side keeps its own accessors whatever the
+/// a method that needs the value takes a view as its receiver
+/// (`self: ExternalPtrRef<'_, Self>` / `mut self: ExternalPtrMut<'_, Self>`)
+/// and calls `Self::keys(&self)` / `Self::set_keys(&mut self, v)`; other Rust
+/// code writes `Engine::keys(&ptr)`. The R side keeps its own accessors whatever the
 /// option: for a `pub` field, `Type_get_keys(x)` / `Type_set_keys(x, value)`,
 /// an R6 active binding (`r6(r_data_accessors)`), an S7 property
 /// (`s7(r_data_accessors)`), or `x$keys` / `x$keys <- value` on an S3, S4 or
@@ -78,8 +78,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///             cache: Sidecar::default(),
 ///         }
 ///     }
-///     pub fn key_count(self: &ExternalPtr<Self>) -> usize { Self::keys(self).len() }
-///     pub fn remember(self: &mut ExternalPtr<Self>, value: List) { Self::set_cache(self, Some(value)) }
+///     pub fn key_count(self: ExternalPtrRef<'_, Self>) -> usize { Self::keys(&self).len() }
+///     pub fn remember(mut self: ExternalPtrMut<'_, Self>, value: List) {
+///         Self::set_cache(&mut self, Some(value))
+///     }
 /// }
 ///
 /// // From any other Rust code holding the handle:
@@ -88,11 +90,11 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// assert_eq!(Engine::keys(&ptr), vec![9]);
 /// ```
 ///
-/// The same accessors accept [`super::ExternalPtrRef`] and
-/// [`super::ExternalPtrMut`], borrowed handles carried by explicit trait
-/// receivers (`self: ExternalPtrRef<'_, Self>` / `ExternalPtrMut<'_, Self>`).
-/// Shared handles allow reads; mutable handles allow reads and writes. A
-/// plain `&self` receiver still has no implicit route back to an R owner.
+/// The accessors take [`super::ExternalPtrRef`] / [`super::ExternalPtrMut`]
+/// views (receivers, arguments, `borrow()` / `borrow_mut()`) or an
+/// `ExternalPtr`, which they borrow for the call: shared for the getter,
+/// exclusive for the setter. A plain `&self` receiver has no route back to
+/// an R owner.
 ///
 /// # Values
 ///
@@ -121,8 +123,9 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - **Flushed on every access to the field.** The handle getter and setter,
 ///   and the R getter and setter, first move that field's pending value into
 ///   its slot (the setters drop it: the write supersedes it). So
-///   `*ptr = Engine::new(..)` or `ptr.keys = Sidecar::new(v)` through
-///   `DerefMut` takes effect at the next access from either side. A
+///   `*ptr.borrow_mut() = Engine::new(..)` or
+///   `ptr.borrow_mut().keys = Sidecar::new(v)` takes effect at the next
+///   access from either side. A
 ///   `saveRDS()` before any access writes the old slot value.
 /// - **Loaded when the value leaves its pointer.** `ExternalPtr::into_inner`
 ///   and `into_raw` read each slot of the pointer being consumed back into its
@@ -169,12 +172,12 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// help: it fixes the struct's memory layout, which a save never stores, and
 /// the slot positions follow the source order either way.
 ///
-/// # Methods that need sidecar values take the handle
+/// # Methods that need sidecar values take a view
 ///
 /// A `&self` / `&mut self` method sees the struct, which holds no reference
-/// to its pointer, so it can't reach the values. Take the handle instead:
-/// `self: &ExternalPtr<Self>` to read, `self: &mut ExternalPtr<Self>` to
-/// write (`Deref` still gives the struct fields). The same holds for a
+/// to its pointer, so it can't reach the values. Take a view instead:
+/// `self: ExternalPtrRef<'_, Self>` to read, `mut self: ExternalPtrMut<'_, Self>`
+/// to write (`Deref` still gives the struct fields). The same holds for a
 /// struct moved out of its pointer through `&mut` (`mem::replace`,
 /// `mem::take`): it carries nothing to follow, so nothing can read a freed R
 /// object (#1856). A trait method takes its owner as
@@ -423,10 +426,12 @@ where
     <T as TryFromSexp>::Error: fmt::Display,
 {
     assert_main_thread(name, O::TYPE_NAME);
+    let value = ptr.__mx_read();
     // SAFETY: on R's main thread; the handle's EXTPTRSXP is live and was
     // built for an `O`, so its `prot` list has the slot.
-    let prot = unsafe { R_ExternalPtrProtected(ptr.__mx_owner()) };
-    field(ptr).flush_into(prot, index);
+    let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
+    field(&value).flush_into(prot, index);
+    drop(value);
     convert_slot::<T>(prot, index, name, O::TYPE_NAME)
 }
 
@@ -452,9 +457,10 @@ pub fn sidecar_set<O, T>(
     T: IntoR,
 {
     assert_main_thread(name, O::TYPE_NAME);
+    let target = ptr.__mx_write();
     // SAFETY: as in `sidecar_get`. Storing allocates nothing.
-    let prot = unsafe { R_ExternalPtrProtected(ptr.__mx_owner()) };
-    field(ptr).discard_pending();
+    let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrMut::as_sexp(&target)) };
+    field(&target).discard_pending();
     prot.set_vector_elt(prot_index(index), value.into_sexp());
 }
 
