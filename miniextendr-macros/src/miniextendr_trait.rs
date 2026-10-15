@@ -893,6 +893,7 @@ fn generate_method_shim(
                 &impl_t,
                 i,
                 &argv,
+                None,
             )
         })
         .collect();
@@ -905,6 +906,7 @@ fn generate_method_shim(
             .enumerate()
             .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
         &argv,
+        None,
     );
 
     let self_refs: Vec<_> = method

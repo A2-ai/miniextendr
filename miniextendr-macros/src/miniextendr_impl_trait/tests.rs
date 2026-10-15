@@ -106,6 +106,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         syn::parse_quote!(fn #ident() -> i32)
     };
     TraitMethod {
+        inherited_signature: false,
         ident,
         sig,
         invisible: None,

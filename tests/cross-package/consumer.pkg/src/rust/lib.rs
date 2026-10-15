@@ -558,3 +558,23 @@ pub fn debug_consumer_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_Counter.hi, TAG_Counter.lo)
 }
 // endregion
+
+/// Call an inherited generic default through the producer's ABI callback.
+/// @param object A producer SimpleCounter pointer.
+/// @param values An integer vector to pass to the default method.
+/// @return The integer vector returned by the producer.
+#[miniextendr]
+pub fn inherited_values(object: SEXP, values: SEXP) -> SEXP {
+    unsafe {
+        let vtable = ccall::mx_query(object, shared_traits::TAG_AliasedValues)
+            .cast::<shared_traits::AliasedValuesVTable>();
+        assert!(!vtable.is_null(), "object does not implement AliasedValues");
+        let erased = ccall::mx_get(object);
+        let offset = (*(*erased).base).data_offset;
+        let data = erased.cast::<u8>().add(offset).cast();
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let result = scope.protect(((*vtable).echo)(data, 1, &values)).get();
+        miniextendr_api::trait_abi::repanic_if_rust_error(result);
+        result
+    }
+}

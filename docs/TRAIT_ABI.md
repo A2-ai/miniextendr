@@ -39,10 +39,13 @@ no default body is copied into the impl. Explicit overrides keep their own
 signature, body and wrapper options. Static defaults get R wrappers too.
 The exported vtable static symbols used by webR remain unchanged.
 
-Types in inherited generic signatures must currently be resolvable in the impl
-module. A declaration-local alias that is not imported there fails to resolve;
-private aliases cannot be imported. Preserving declaration-local type scope
-across signature metadata is tracked in [#2123](https://github.com/A2-ai/miniextendr/issues/2123).
+Inherited generic defaults and empty annotated impls infer argument types from
+the concrete trait method. Private declaration-local aliases therefore need no
+imports in the impl module, even across crates or when that module defines a
+conflicting alias. The copied signature still describes the R-facing shape;
+conversion and native-borrow metadata use the inferred concrete type. The
+signature helper neither calls the method nor constructs argument values, and
+adds no conversion bounds to the trait itself.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored

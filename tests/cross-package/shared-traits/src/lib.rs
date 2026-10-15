@@ -112,3 +112,21 @@ pub trait CallsBack {
     /// mutably, then add 1 to it and return the new value.
     fn add_around(&mut self, f: miniextendr_api::SEXP) -> i32;
 }
+
+mod aliased_signature {
+    type LocalValues<T> = Vec<T>;
+
+    /// Generic defaults whose argument aliases belong to this crate.
+    #[miniextendr_api::miniextendr]
+    pub trait AliasedValues<T> {
+        fn count(&self) -> i32;
+        /// Return the supplied values unchanged.
+        fn echo(&self, values: LocalValues<T>) -> LocalValues<T> {
+            values
+        }
+    }
+}
+
+pub use aliased_signature::{
+    AliasedValues as RenamedValues, AliasedValuesVTable, TAG_AliasedValues,
+};

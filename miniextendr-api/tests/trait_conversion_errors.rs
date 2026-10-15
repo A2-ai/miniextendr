@@ -162,16 +162,16 @@ impl Convert for Host {
 #[miniextendr_api::miniextendr]
 pub trait ConvertGeneric<T> {
     fn number(&self, number: T);
-    fn custom(&self, previous: Tracked, value: RefusingValue);
+    fn custom(&self, previous: Tracked, value: RefusingValue) {
+        let _ = (previous, value);
+        panic!("conversion must refuse the input");
+    }
     fn rooted(&self, values: miniextendr_api::RCow<'_, i32>);
     fn other(&self, other: &Self);
 }
 #[miniextendr_api::miniextendr(env, noexport)]
 impl ConvertGeneric<i32> for Host {
     fn number(&self, _renamed: i32) {
-        panic!("conversion must refuse the input");
-    }
-    fn custom(&self, _: Tracked, _renamed: RefusingValue) {
         panic!("conversion must refuse the input");
     }
     fn rooted(&self, _renamed: miniextendr_api::RCow<'_, i32>) {
@@ -259,5 +259,33 @@ fn generated_shims_preserve_conversion_context_and_custom_conditions() {
             generic.rooted,
             generic.other,
         ]);
+    });
+}
+
+#[test]
+fn inherited_c_wrapper_keeps_custom_conversion_condition() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        let host = scope
+            .protect(miniextendr_api::ExternalPtr::new(Host).into_sexp())
+            .get();
+        let text = scope.protect("wrong type".into_sexp()).get();
+        let value = scope
+            .protect(C_trait_conversion_errors_Host__ConvertGeneric__custom(
+                SEXP::nil(),
+                host,
+                SEXP::nil(),
+                text,
+            ))
+            .get();
+        let (kind, parts) = RCondition::from_tagged_sexp(value).unwrap().into_parts();
+        assert_eq!(kind, "conversion");
+        assert_eq!(parts.class, ["test_refusal"]);
+        assert!(
+            parts.message.contains("classed refusal"),
+            "{}",
+            parts.message
+        );
+        assert!(parts.data.unwrap().iter().any(|(name, _)| name == "detail"));
     });
 }
