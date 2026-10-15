@@ -5,6 +5,8 @@ use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::{ExternalPtr, IntoR, TryFromSexp, miniextendr};
 
 mod declaration {
+    type LocalValues<T> = Vec<T>;
+    type LocalNumber = i32;
     #[miniextendr_api::miniextendr]
     pub trait Totals<T = i32, const N: usize = 2> {
         fn total(&self) -> T;
@@ -15,7 +17,13 @@ mod declaration {
             "default".into()
         }
 
-        fn values(&self, values: Vec<T>) -> Vec<T> {
+        fn values(&self, values: LocalValues<T>) -> LocalValues<T> {
+            values
+        }
+        fn total_slice(&self, values: &[LocalNumber]) -> LocalNumber {
+            values.iter().sum()
+        }
+        extern "Rust" fn abi_values(&self, values: LocalValues<T>) -> LocalValues<T> {
             values
         }
         fn array(&self, values: [T; N]) -> [T; N] {
@@ -37,6 +45,9 @@ mod declaration {
 }
 
 use declaration::Totals as RenamedTotals;
+
+// Deliberately shadow the private declaration alias with a different type.
+pub type LocalValues<T> = Vec<Vec<T>>;
 
 #[derive(ExternalPtr)]
 pub struct Ledger(i32);
@@ -101,10 +112,31 @@ fn default_callbacks_dispatch_and_convert_concrete_arguments() {
         let label = scope.protect((table.r_label)(data, 0, no_args)).get();
         assert_eq!(String::try_from_sexp(label).unwrap(), "default");
         let input = scope.protect(vec![2i32, 3].into_sexp()).get();
-        for callback in [table.values, table.array] {
+        for callback in [table.values, table.array, table.abi_values] {
             let value = scope.protect(callback(data, 1, [input].as_ptr())).get();
             assert_eq!(Vec::<i32>::try_from_sexp(value).unwrap(), [2, 3]);
         }
+        let total = scope
+            .protect((table.total_slice)(data, 1, [input].as_ptr()))
+            .get();
+        assert_eq!(i32::try_from_sexp(total).unwrap(), 5);
+        let pointer = scope.protect(ExternalPtr::new(Ledger(9)).into_sexp()).get();
+        let value = scope
+            .protect(C_trait_generic_defaults_Ledger__Totals__values(
+                miniextendr_api::SEXP::nil(),
+                pointer,
+                input,
+            ))
+            .get();
+        assert_eq!(Vec::<i32>::try_from_sexp(value).unwrap(), [2, 3]);
+        let total = scope
+            .protect(C_trait_generic_defaults_Ledger__Totals__total_slice(
+                miniextendr_api::SEXP::nil(),
+                pointer,
+                input,
+            ))
+            .get();
+        assert_eq!(i32::try_from_sexp(total).unwrap(), 5);
         let arg = scope.protect(1i32.into_sexp()).get();
         let value = scope
             .protect((table.ignored)(data, 1, [arg].as_ptr()))

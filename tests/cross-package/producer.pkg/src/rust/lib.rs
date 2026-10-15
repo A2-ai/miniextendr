@@ -990,3 +990,22 @@ pub fn producer_prose_links_probe(x: i32) -> i32 {
 }
 
 // endregion
+
+// The shared trait's private alias must not resolve to this conflicting one.
+pub type LocalValues<T> = Vec<Vec<T>>;
+
+/// Inherit the shared generic trait's echo method through its re-export.
+#[miniextendr(env)]
+impl shared_traits::RenamedValues<i32> for SimpleCounter {
+    fn count(&self) -> i32 {
+        self.value
+    }
+}
+
+/// Create an ordinary external pointer for inherited-wrapper tests.
+/// @param initial Initial counter value.
+/// @return A SimpleCounter external pointer.
+#[miniextendr]
+pub fn new_counter_external(initial: i32) -> SimpleCounter {
+    SimpleCounter::create(initial)
+}

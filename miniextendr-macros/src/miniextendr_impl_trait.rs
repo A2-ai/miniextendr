@@ -124,6 +124,9 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// shims for a single method in an `impl Trait for Type` block.
 #[derive(Debug, Clone)]
 struct TraitMethod {
+    /// Signature copied from declaration metadata: infer its argument types
+    /// from the real method so declaration-local aliases keep their identity.
+    inherited_signature: bool,
     /// Rust method identifier (e.g., `value`, `increment`).
     ident: syn::Ident,
     /// Full method signature including self receiver and all parameters. A
@@ -971,6 +974,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 (marker, sig)
             };
             TraitMethod {
+                inherited_signature: true,
                 ident: sig.ident.clone(),
                 sig,
                 invisible,

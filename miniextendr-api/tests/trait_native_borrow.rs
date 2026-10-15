@@ -73,7 +73,10 @@ pub trait InspectGeneric<T> {
     fn inspect(&self, write: T, other: &Self, read: ReadProbe) -> i32;
     fn inspect_list(&self, items: WriteListProbe) -> i32;
     fn inspect_pair(&self, pair: PairProbe) -> i32;
-    fn inspect_view(&self, values: RCow<'_, i32>, write: T) -> i32;
+    fn inspect_view(&self, values: RCow<'_, i32>, write: T) -> i32 {
+        let _ = (values, write);
+        panic!("the converter must stop before the method");
+    }
 }
 
 // This path generates its shims at the concrete impl, not the trait declaration.
@@ -89,9 +92,6 @@ impl InspectGeneric<WriteProbe> for Sink {
         panic!("the converter must stop before the method");
     }
     fn inspect_pair(&self, _pair: PairProbe) -> i32 {
-        panic!("the converter must stop before the method");
-    }
-    fn inspect_view(&self, _values: RCow<'_, i32>, _: WriteProbe) -> i32 {
         panic!("the converter must stop before the method");
     }
 }

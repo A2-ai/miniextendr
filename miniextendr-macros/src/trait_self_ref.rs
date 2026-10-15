@@ -9,6 +9,7 @@ use quote::{format_ident, quote};
 pub(crate) fn native_borrow_checks<'a>(
     args: impl IntoIterator<Item = (usize, String, &'a syn::Type)>,
     argv: &syn::Ident,
+    targets: Option<&[syn::Ident]>,
 ) -> TokenStream {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
@@ -17,6 +18,19 @@ pub(crate) fn native_borrow_checks<'a>(
             continue;
         }
         values.push(quote! { (*#argv.add(#index), #name) });
+        if let Some(targets) = targets {
+            let target = &targets[index];
+            metadata.push(
+                if crate::type_inspect::is_rooted_view(ty)
+                    || crate::type_inspect::is_rooted_reference(ty)
+                {
+                    quote! { #target.rooted_native_borrow() }
+                } else {
+                    quote! { #target.native_borrow() }
+                },
+            );
+            continue;
+        }
         metadata.push(
             if crate::type_inspect::is_rooted_view(ty)
                 || crate::type_inspect::is_rooted_reference(ty)
@@ -60,10 +74,12 @@ pub(crate) fn argument(
     impl_ty: &impl quote::ToTokens,
     index: usize,
     argv: &syn::Ident,
+    target: Option<&syn::Ident>,
 ) -> TokenStream {
+    let target = target.filter(|_| crate::type_inspect::self_ref_mutability(ty).is_none());
     let input = quote! { unsafe { *#argv.add(#index) } };
     let r_name = crate::r_wrapper_builder::normalize_r_arg_string(diagnostic_name);
-    let (setup, binding, read_ty, conversion, rooted) = if let Some(mutable) =
+    let (setup, binding, mut read_ty, mut conversion, rooted) = if let Some(mutable) =
         crate::type_inspect::self_ref_mutability(ty)
     {
         let handle = handle_ident(name);
@@ -115,10 +131,24 @@ pub(crate) fn argument(
             false,
         )
     };
+    if let Some(target) = target {
+        read_ty = syn::parse_quote!(_);
+        conversion = if rooted {
+            let slot = format_ident!(
+                "__mx_root_{}",
+                crate::naming::unraw(name),
+                span = proc_macro2::Span::mixed_site()
+            );
+            quote! { #target.rooted(unsafe { #slot.rooted(*#argv.add(#index)) }) }
+        } else {
+            quote! { #target.convert(#input) }
+        };
+    }
     let err_arm = crate::rust_conversion_builder::shim_conversion_err_arm(
         &r_name,
         ty,
         (!rooted).then_some(&read_ty),
+        target.filter(|_| !rooted),
     );
     quote! {
         #setup
@@ -250,6 +280,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, ty)| (i, format!("arg{i}"), ty)),
             &argv,
+            None,
         );
         let expected =
             quote! { <(&mut i32, &i32) as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW };
@@ -258,7 +289,7 @@ mod tests {
         assert!(output.contains(&quote! { (*argv.add(1usize), "arg1") }.to_string()));
         assert!(!output.contains("arg0"));
         assert!(!output.contains("arg2"));
-        assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv).is_empty());
+        assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv, None).is_empty());
     }
 
     #[test]

@@ -81,10 +81,15 @@ pub(super) fn generate_vtable_static(
     wrapper_impl
         .items
         .extend(defaults.iter().cloned().map(syn::ImplItem::Fn));
-    let all_methods = match extract_methods(&wrapper_impl, impl_page) {
+    let mut all_methods = match extract_methods(&wrapper_impl, impl_page) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
+    for method in &mut all_methods {
+        method.inherited_signature = defaults
+            .iter()
+            .any(|default| default.sig.ident == method.ident);
+    }
     let consts = extract_consts(impl_item);
 
     // Separate skipped methods: skipped methods are kept in the emitted impl block
@@ -439,6 +444,10 @@ fn generate_concrete_vtable_shims(
                         concrete_type,
                         i,
                         &argv,
+                        method
+                            .inherited_signature
+                            .then(|| crate::trait_signature::argument_ident(&name))
+                            .as_ref(),
                     )
                 } else {
                     quote::quote! {}
@@ -463,6 +472,22 @@ fn generate_concrete_vtable_shims(
             })
             .collect();
 
+        let targets = method.inherited_signature.then(|| {
+            param_names
+                .iter()
+                .map(crate::trait_signature::argument_ident)
+                .collect::<Vec<_>>()
+        });
+        let type_setup = method.inherited_signature.then(|| {
+            crate::trait_signature::setup(
+                &method.sig.inputs,
+                method.has_self,
+                &crate::trait_signature::callable(
+                    &method.sig,
+                    quote::quote!(<#concrete_type as #trait_path>::#method_ident),
+                ),
+            )
+        });
         let native_borrow_checks = crate::trait_self_ref::native_borrow_checks(
             param_names
                 .iter()
@@ -473,6 +498,7 @@ fn generate_concrete_vtable_shims(
                 .enumerate()
                 .map(|(index, (_, ty))| (index, diagnostic_names[index].clone(), ty)),
             &argv,
+            targets.as_deref(),
         );
 
         let self_refs: Vec<_> = param_names
@@ -573,6 +599,7 @@ fn generate_concrete_vtable_shims(
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                     ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
                     let #cell = unsafe { &*#data.cast::<::core::cell::RefCell<#concrete_type>>() };
+                    #type_setup
                     #native_borrow_checks
                     #(#arg_extractions)*
                     #alias_checks
@@ -734,6 +761,7 @@ pub(super) fn extract_methods(
             sig.output = crate::type_inspect::serialize_return_type(&output, attrs.serialize);
 
             methods.push(TraitMethod {
+                inherited_signature: false,
                 ident: method.sig.ident.clone(),
                 sig,
                 invisible,
@@ -1335,6 +1363,13 @@ pub(super) fn generate_trait_method_c_wrapper(
         .return_handling(return_handling)
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);
+
+    if method.inherited_signature {
+        builder = builder.inferred_signature(crate::trait_signature::callable(
+            &method.sig,
+            quote::quote!(<#type_ident as #trait_path>::#method_ident),
+        ));
+    }
 
     let mut post_conversion = Vec::new();
     let handles: Vec<_> = self_ref_params

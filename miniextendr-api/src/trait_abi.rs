@@ -134,6 +134,8 @@
 
 pub mod ccall;
 pub mod conv;
+#[doc(hidden)]
+pub mod signature;
 mod view_data;
 
 #[doc(hidden)]
