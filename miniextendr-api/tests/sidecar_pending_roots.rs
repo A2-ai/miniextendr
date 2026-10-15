@@ -192,7 +192,7 @@ fn failed_extraction_preserves_values_that_were_already_pending() {
             rejects: Sidecar::new(RejectReload),
             drops: Arc::new(AtomicUsize::new(0)),
         });
-        owner.value = ExternalPtr::into_inner(host(&drops)).value;
+        owner.borrow_mut().value = ExternalPtr::into_inner(host(&drops)).value;
         let alias = unsafe { ExternalPtr::<FailingHost>::wrap_sexp(owner.as_sexp()) }.unwrap();
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
