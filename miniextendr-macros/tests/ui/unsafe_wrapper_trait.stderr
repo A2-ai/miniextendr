@@ -1,0 +1,17 @@
+error: unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function
+ --> tests/ui/unsafe_wrapper_trait.rs:5:5
+  |
+5 |     unsafe fn read(&self) -> i32;
+  |     ^^^^^^
+
+error: unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function
+  --> tests/ui/unsafe_wrapper_trait.rs:10:5
+   |
+10 |     unsafe fn echo(&self, value: T) -> T { value }
+   |     ^^^^^^
+
+error: unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function
+  --> tests/ui/unsafe_wrapper_trait.rs:15:5
+   |
+15 |     unsafe fn create() -> i32 { 1 }
+   |     ^^^^^^

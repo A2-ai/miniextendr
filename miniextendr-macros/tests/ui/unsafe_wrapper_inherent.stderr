@@ -1,0 +1,5 @@
+error: unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function
+ --> tests/ui/unsafe_wrapper_inherent.rs:6:5
+  |
+6 |     unsafe fn unchecked(&self, value: i32) -> i32 {
+  |     ^^^^^^

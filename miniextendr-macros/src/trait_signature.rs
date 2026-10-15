@@ -49,20 +49,15 @@ pub(crate) fn setup(
     }
 }
 
-/// Unsafe or foreign-ABI methods are not FnOnce items. A never-called closure
+/// Foreign-ABI methods are not FnOnce items. A never-called closure
 /// presents their argument types to the same inference helper.
 pub(crate) fn callable(sig: &syn::Signature, item: TokenStream) -> TokenStream {
-    if sig.unsafety.is_none() && sig.abi.is_none() {
+    if sig.abi.is_none() {
         return item;
     }
     let args: Vec<_> = (0..sig.inputs.len())
         .map(|i| format_ident!("__mx_value{i}", span = Span::mixed_site()))
         .collect();
     let call = quote! { #item(#(#args),*) };
-    let call = if sig.unsafety.is_some() {
-        quote! { unsafe { #call } }
-    } else {
-        call
-    };
     quote! { |#(#args),*| #call }
 }
