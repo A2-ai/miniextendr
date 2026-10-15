@@ -14,8 +14,10 @@ name: gctorture nightly
 # (measured: 24 files in the 120-minute run 32053834466), far too expensive
 # for a PR gate — and too long for any single hosted job, so the sweep fans
 # out over a shard matrix (MINIEXTENDR_GCTORTURE_SHARD=k/n partitions test
-# files round-robin in scripts/gctorture-full-sweep.R). Scheduled nightly
-# plus a manual workflow_dispatch trigger for on-demand verification.
+# files round-robin in scripts/gctorture-full-sweep.R). The nightly schedule
+# is disabled pending #2070; manual workflow_dispatch remains available. A PR
+# carrying `full-ci` selects it as a job of ci.yml (workflow_call) only while
+# MX_GC_STRESS_CI=true, never as a merge gate.
 
 on:
   # The nightly schedule is DISABLED (#2070, see #1751: shards hit the
@@ -27,6 +29,10 @@ on:
   # this workflow, or after landing SEXP-storage changes) without waiting for
   # the nightly cron.
   workflow_dispatch:
+  # ci.yml's `gctorture-nightly` job calls this on a `full-ci` PR. The call
+  # runs under ci.yml's concurrency group, so a new push to the PR cancels
+  # the in-progress sweep.
+  workflow_call:
 
 permissions:
   contents: read

@@ -53,10 +53,27 @@ All six `*-default` features above are denylisted from rpkg's auto-detected
 default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
 codegen semantics crate-wide, so no PR-gating job ever builds or runs the R
 wrappers they generate. Their only runtime coverage is the scheduled
-`feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`),
-which rebuilds rpkg with one feature bundle on top of the detected base set and
-re-runs `tests/testthat/test-feature-defaults.R` against it. The `coerce-default`
-leg also runs the coercion regression suites.
+`feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`,
+or a PR carrying the `full-ci` label), which rebuilds rpkg with one feature
+bundle on top of the detected base set. Extras, worker and class-default legs
+run the full suite; strict and no-preconditions legs run
+`tests/testthat/test-feature-defaults.R`, and coerce also runs the coercion
+regression suites.
+
+Class-default features change the generated methods and their NAMESPACE
+registrations. Each leg generates wrappers, resets the generated namespace
+with roxygen's namespace writer, regenerates documentation, then installs:
+
+```sh
+R CMD INSTALL --no-R --no-test-load rpkg
+Rscript -e 'roxygen2::roclet_output(roxygen2::namespace_roclet(), character(), "rpkg"); roxygen2::roxygenise("rpkg")'
+R CMD INSTALL rpkg
+```
+
+Keep the same `CARGO_FEATURES` environment for all three commands. Resetting
+the generated namespace prevents obsolete S3 methods from being registered
+while roxygen loads the new class definitions. The final installation then
+uses registrations matching that feature configuration.
 
 ### Hardcoded Defaults (No Longer Feature-Controlled)
 

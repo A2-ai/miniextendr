@@ -318,7 +318,8 @@ parsed by `as.logical()`, so `1` does **not** enable them; see
 `just devtools-test` included, skips them. `just devtools-test-stress [FILTER]`
 turns them on. In CI only the sharded `r-stress-tests` job and the nightly
 sweep set the variable; `r-stress-tests` is **opt-in on PRs via the
-`gc-stress` label** (unconditional on main-push / cron / dispatch; see
+`gc-stress` label** (all events additionally require
+`MX_GC_STRESS_CI=true` pending #2070; see
 `docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label any PR
 that adds SEXP storage. The webR workflow is opt-in the same way via the
 `webr` label, and the Windows R CMD check via the `windows` label (non-gating;
@@ -327,6 +328,18 @@ release; a label named after an R version alias (`oldrel`, `devel`, `next`,
 spelled as rig and `setup-r` spell them) adds that Linux R CMD check leg, so
 it tracks R's yearly releases. Label a PR that touches R-version cfgs
 (`r_4_5`, `r_4_6`) `oldrel`. The leg still needs an R-path change to run.
+The other opt-in PR labels are `heap-check` (the `MALLOC_CHECK_` rounds in
+`r-tests`) and `run-e2e` (the standalone round-trip e2e). **`full-ci` selects
+the full CI set**: those labels, the path filters, the jobs and
+matrix legs that otherwise run only on main-push / cron / dispatch (the extra
+R versions, macOS, the feature legs and feature combos, webR's main-only
+legs), and the nightly gctorture and Miri workflows (called from `ci.yml`).
+GC-stress shards and the called full sweep still require
+`MX_GC_STRESS_CI=true` pending #2070; the nightly schedule stays disabled.
+Only the Pages deploy, the webR image mirror and the source-package artifact
+upload stay off. It costs many runner-hours (the gctorture sweep alone is
+~11), so keep it for risky changes before merge; removing the label cancels
+the run.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with
