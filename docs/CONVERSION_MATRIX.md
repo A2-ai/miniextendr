@@ -306,6 +306,15 @@ the moment it sees `NULL` instead.
 | `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
 | `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
 
+Optional containers and shared references use these same `IntoR` conversions
+from standalone functions, inherent methods in every class system, and trait
+methods. This includes boxed slices, arrays and nonempty tuples. `Some` of an
+empty container stays an empty vector/list; `None` stays `NULL`.
+`Option<Vec<Class>>` and `Option<Vec<ExternalPtr<Class>>>` methods retain the
+class-return error on `None` (as does `Option<Vec<Self>>`), since their R-side
+per-element class wrapper expects a list. A successful result still wraps
+each class element.
+
 See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
 all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as
 opposed to a bare scalar return covered above) is downgraded to a typed NA

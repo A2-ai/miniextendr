@@ -2755,7 +2755,7 @@ impl ParsedMethod {
     ///   identically to a bare `T` at the value level (`IntoR for
     ///   ExternalPtr<T>` already produces a bare `EXTPTRSXP`), so the handle
     ///   is peeled with the same helper the explicit `wrap` path uses.
-    fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+    pub(crate) fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
         let syn::Type::Path(p) = crate::type_inspect::peel_external_ptr(ty) else {
             return None;
         };
@@ -2931,6 +2931,9 @@ fn is_builtin_return_type_name(name: &str) -> bool {
             | "String"
             | "usize"
             | "isize"
+            | "RLogical"
+            | "Rboolean"
+            | "Rcomplex"
     )
 }
 

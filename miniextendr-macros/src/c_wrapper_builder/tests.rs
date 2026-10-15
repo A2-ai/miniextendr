@@ -365,3 +365,44 @@ fn argument_borrows_follow_conversion_on_both_threads() {
     );
     assert!(!consumed.contains("ArgumentCell"), "{consumed}");
 }
+
+#[test]
+fn optional_containers_and_references_use_the_whole_into_r_conversion() {
+    for output in [
+        syn::parse_quote!(-> Option<Vec<i32>>),
+        syn::parse_quote!(-> Option<std::vec::Vec<String>>),
+        syn::parse_quote!(-> Option<Vec<Option<f64>>>),
+        syn::parse_quote!(-> Option<Vec<Vec<i32>>>),
+        syn::parse_quote!(-> Option<Vec<miniextendr_api::RLogical>>),
+        syn::parse_quote!(-> Option<Box<[String]>>),
+        syn::parse_quote!(-> Option<[i32; 3]>),
+        syn::parse_quote!(-> Option<(i32, String)>),
+        syn::parse_quote!(-> Option<HashMap<String, i32>>),
+        syn::parse_quote!(-> Option<BTreeMap<String, Vec<i32>>>),
+        syn::parse_quote!(-> Option<HashSet<i32>>),
+        syn::parse_quote!(-> Option<BTreeSet<String>>),
+        syn::parse_quote!(-> Option<&'static i32>),
+        syn::parse_quote!(-> Option<&'static str>),
+    ] {
+        assert!(
+            matches!(detect_return_handling(&output), ReturnHandling::OptionIntoR),
+            "{}",
+            quote::quote!(#output)
+        );
+    }
+    // These class-list returns still use an R-side lapply wrap. None remains
+    // a tagged error, never silently converted from NULL to list().
+    for output in [
+        syn::parse_quote!(-> Option<Vec<Board>>),
+        syn::parse_quote!(-> Option<Vec<crate::Board>>),
+        syn::parse_quote!(-> Option<Vec<ExternalPtr<Board>>>),
+        syn::parse_quote!(-> Option<Vec<Self>>),
+        syn::parse_quote!(-> Option<Vec<ExternalPtr<Self>>>),
+        syn::parse_quote!(-> Option<Board>),
+    ] {
+        assert!(matches!(
+            detect_return_handling(&output),
+            ReturnHandling::OptionIntoRUnwrap
+        ));
+    }
+}

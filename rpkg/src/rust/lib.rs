@@ -285,6 +285,7 @@ mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
 mod option_self_tests;
+mod optional_container_return_tests;
 #[cfg(feature = "either")]
 mod optional_input_tests;
 #[cfg(feature = "ordered-float")]

@@ -79,12 +79,8 @@ pub enum ReturnHandling {
     /// `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`). `None` maps to whatever the `IntoR`
     /// impl returns (typically NULL or NA).
     ///
-    /// Use this variant explicitly via [`CWrapperContextBuilder::return_handling`] when
-    /// the type has a direct `IntoR` impl for the whole `Option`. The auto-detector
-    /// `detect_return_handling` conservatively returns `OptionIntoRUnwrap` instead
-    /// since it cannot resolve trait impls at macro expansion time.
-    #[allow(dead_code)]
-    // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
+    /// Auto-detected for supported containers and shared references. Class-list
+    /// returns keep `OptionIntoRUnwrap`, since their R wrappers require a list.
     OptionIntoR,
     /// Returns `Option<T>` where `T: IntoR` -- unwraps the option first, then converts the
     /// inner value via `IntoR::into_sexp`. Raises an error on `None`. Suitable when `T: IntoR`
@@ -1849,15 +1845,14 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
 /// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
 /// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, `OptionExternalPtr`
-///   (`T = Self`), or `OptionIntoRUnwrap`
+///   (`T = Self`), `OptionIntoR` for containers/references, or `OptionIntoRUnwrap`
 /// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, `ResultExternalPtr`
 ///   (`T = Self`), or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
 ///
-/// Note: The default for `Option<T>` (non-unit, non-SEXP) is `OptionIntoRUnwrap` (unwrap
-/// first, error on `None`), which preserves the historical behavior for impl methods.
-/// Use [`ReturnHandling::OptionIntoR`] explicitly when the type has a direct
-/// `impl IntoR for Option<T>` (e.g., `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`).
+/// Containers and shared references use the whole Option's `IntoR` contract.
+/// Class lists retain the error on `None`: the R-side per-element wrap expects
+/// a list. Other types keep the conservative `OptionIntoRUnwrap` fallback.
 fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     match ty {
         // Unit tuple ()
@@ -1920,6 +1915,7 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                     {
                         ReturnHandling::OptionExternalPtr
                     }
+                    _ if optional_container_or_reference(inner_ty) => ReturnHandling::OptionIntoR,
                     _ => ReturnHandling::OptionIntoRUnwrap,
                 }
             } else {
@@ -1978,6 +1974,35 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
 
         // Everything else - use IntoR
         _ => ReturnHandling::IntoR,
+    }
+}
+
+/// Shapes with a direct Option conversion. Reuse the R wrapper's class
+/// recognition for Vec elements so its lapply path never receives NULL.
+fn optional_container_or_reference(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Reference(reference) => reference.mutability.is_none(),
+        syn::Type::Array(_) => true,
+        syn::Type::Tuple(tuple) => !tuple.elems.is_empty(),
+        syn::Type::Path(path) => {
+            let Some(segment) = path.path.segments.last() else {
+                return false;
+            };
+            match segment.ident.to_string().as_str() {
+                "Vec" => first_type_argument(segment).is_some_and(|element| {
+                    let element = crate::type_inspect::peel_external_ptr(element);
+                    let is_self = matches!(element, syn::Type::Path(path)
+                        if path.path.is_ident("Self"));
+                    !is_self
+                        && crate::miniextendr_impl::ParsedMethod::inner_class_ident(element)
+                            .is_none()
+                }),
+                "Box" => matches!(first_type_argument(segment), Some(syn::Type::Slice(_))),
+                "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" => true,
+                _ => false,
+            }
+        }
+        _ => false,
     }
 }
 
