@@ -220,7 +220,8 @@ run on R's main thread only. Returns the panic message.
 \subsection{\code{SidecarSlotR6$duplicate()}}{
   A copy of this object in a new external pointer: \code{ExternalPtr::clone}
 copies the struct and shares the sidecar values as R objects, so a
-write to a field on either side replaces that side's slot only.
+write to a field on either side replaces that side's slot only. The
+handle receiver takes no borrow; \code{clone} takes a shared one.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$duplicate()}

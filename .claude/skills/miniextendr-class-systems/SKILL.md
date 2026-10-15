@@ -47,7 +47,8 @@ Every class system maps Rust method receivers to R dispatch differently.
 |---|---|---|
 | `&self` | Instance (immutable) | Instance method on object |
 | `&mut self` | Instance (mutable) | Instance method, chainable (returns `self` visibly; `Invisible<()>` / `invisible` option for silence) |
-| `self: &ExternalPtr<Self>` | Instance (full ExternalPtr access) | Same |
+| `self: ExternalPtrRef<'_, Self>` / `mut self: ExternalPtrMut<'_, Self>` | Instance, borrowed like `&self` / `&mut self`, with the R object (sidecar accessors, identity) | Same |
+| `self: ExternalPtr<Self>` | Instance, the unborrowed handle | Same |
 | (none) / returns `Self` | Static or constructor | `Type$method()` or `new_type()` |
 
 Static methods for Env/S4/S7/S3 are named `<Class>_<method>(...)` or `<Class>$<method>(...)`.

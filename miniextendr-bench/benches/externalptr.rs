@@ -65,28 +65,29 @@ fn create_large_payload() {
 // region: ExternalPtr access benchmarks (using bench_local_refs for !Sync types)
 
 #[divan::bench]
-fn access_as_ref(bencher: divan::Bencher) {
+fn access_borrow(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| {
             let payload = SmallPayload { value: 42 };
             ExternalPtr::new(payload)
         })
         .bench_local_refs(|ptr| {
-            let r = ptr.as_ref();
-            divan::black_box(r);
+            let val = ptr.borrow().value;
+            divan::black_box(val);
         });
 }
 
 #[divan::bench]
-fn access_deref(bencher: divan::Bencher) {
+fn access_borrow_mut(bencher: divan::Bencher) {
     bencher
         .with_inputs(|| {
             let payload = SmallPayload { value: 42 };
             ExternalPtr::new(payload)
         })
         .bench_local_refs(|ptr| {
-            let val = ptr.value;
-            divan::black_box(val);
+            let mut value = ptr.borrow_mut();
+            value.value += 1;
+            divan::black_box(value.value);
         });
 }
 
@@ -260,7 +261,7 @@ fn erased_downcast_mut_hit(bencher: divan::Bencher) {
         })
         .bench_local_refs(|p| {
             let mut erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
-            let r = erased.downcast_mut::<SmallPayload>().unwrap();
+            let mut r = erased.downcast_mut::<SmallPayload>().unwrap();
             r.value += 1;
             divan::black_box(r.value);
         });

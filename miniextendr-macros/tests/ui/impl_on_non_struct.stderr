@@ -1,14 +1,15 @@
-error[E0277]: the trait bound `NotAStruct: TypedExternal` is not satisfied
+error[E0277]: `NotAStruct` is not a type an `ExternalPtr` stores
   --> tests/ui/impl_on_non_struct.rs:11:6
    |
 11 | impl NotAStruct {
-   |      ^^^^^^^^^^ unsatisfied trait bound
+   |      ^^^^^^^^^^ `NotAStruct` does not implement `TypedExternal`
    |
 help: the trait `TypedExternal` is not implemented for `NotAStruct`
   --> tests/ui/impl_on_non_struct.rs:5:1
    |
  5 | enum NotAStruct {
    | ^^^^^^^^^^^^^^^
+   = note: `#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `NotAStruct` through an external pointer, as the object of a `#[miniextendr]` impl or a `&NotAStruct` / `&mut NotAStruct` parameter
    = help: the following other types implement trait `TypedExternal`:
              &'static [T]
              &'static mut [T]

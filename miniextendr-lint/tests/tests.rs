@@ -647,7 +647,7 @@ fn mxl120_vctrs_instance_method_external_ptr() {
         #[miniextendr(vctrs(vctr))]
         impl MyVec {
             pub fn new(values: Vec<f64>) -> Vec<f64> { values }
-            pub fn value(self: &ExternalPtr<Self>) -> f64 { 0.0 }
+            pub fn value(self: ExternalPtrRef<'_, Self>) -> f64 { 0.0 }
         }
         "#,
     )
@@ -659,7 +659,7 @@ fn mxl120_vctrs_instance_method_external_ptr() {
             .diagnostics
             .iter()
             .any(|d| format!("{}", d.code) == "MXL120"),
-        "expected MXL120 error for vctrs instance method with ExternalPtr<Self> receiver, got: {:?}",
+        "expected MXL120 error for vctrs instance method with ExternalPtrRef<'_, Self> receiver, got: {:?}",
         report.diagnostics
     );
 }
@@ -788,7 +788,7 @@ fn mxl120_vctrs_instance_method_externalptr_value_receiver() {
     let src_dir = dir.path().join("src");
     fs::create_dir(&src_dir).unwrap();
 
-    // `self: ExternalPtr<Self>` (by-value) — distinct from `self: &ExternalPtr<Self>` (ref).
+    // `self: ExternalPtr<Self>` (by-value) — distinct from `self: ExternalPtrRef<'_, Self>` (view).
     fs::write(
         src_dir.join("lib.rs"),
         r#"
@@ -1350,12 +1350,13 @@ fn mxl121_inputs_still_fire() {
         r#"
         #[miniextendr(s3, class = "my_class")]
         impl Record {
-            pub fn id(self: &ExternalPtr<Self>) -> i32 { 1 }
-            pub fn same(&self, other: &ExternalPtr<Self>) -> bool { true }
+            pub fn id(self: ExternalPtrRef<'_, Self>) -> i32 { 1 }
+            pub fn same(&self, other: &Self) -> bool { true }
+            pub fn keep(self: ExternalPtr<Self>, other: ExternalPtr<Self>) -> bool { true }
         }
 
         #[miniextendr]
-        pub fn record_id(x: &ExternalPtr<Record>) -> i32 { 1 }
+        pub fn record_id(x: &Record, y: Option<ExternalPtr<Record>>) -> i32 { 1 }
 
         fn helper(x: ExternalPtr<Record>) -> i32 { 1 }
         "#,

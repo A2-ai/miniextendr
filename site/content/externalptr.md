@@ -12,7 +12,9 @@ R has no native way to hold arbitrary Rust data. `ExternalPtr<T>` wraps R's `EXT
 
 - **Type-safe access** via `Any::downcast`
 - **Automatic cleanup** via R GC finalizer that calls `Drop`
-- **Box-like API** (`Deref`, `DerefMut`, `Clone`, `into_inner`, `into_raw`, `pin`, etc.)
+- **Box-like ownership** (`Clone`, `into_inner`, `into_raw`, `leak`), with every read of the
+  value checked: a `#[miniextendr]` function borrows it at the call (`&T` / `&mut T`
+  parameters), and Rust code holding a handle borrows it with `borrow()` / `borrow_mut()`
 
 ## Creating an ExternalPtr
 

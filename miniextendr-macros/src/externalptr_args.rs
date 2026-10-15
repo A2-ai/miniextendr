@@ -1,140 +1,267 @@
-//! The borrows a C wrapper holds for its `ExternalPtr<T>` arguments (#2092).
+//! Borrowed external arguments (#2106): `&T` / `&mut T` for a `TypedExternal`
+//! type, the views `ExternalPtrRef<'_, T>` / `ExternalPtrMut<'_, T>`, and an
+//! `Option` of either.
 //!
-//! An `ExternalPtr<T>` or `Option<ExternalPtr<T>>` parameter borrows the
-//! value's `RefCell` the way a method receiver does (#1965): exclusively for a
-//! `mut` binding, shared otherwise. The borrow is taken after argument
-//! conversion, so an R error that longjmps out of a conversion can't leave
-//! the object borrowed, and held through return conversion. Two arguments
-//! that hold one object, or a callback into R that reaches the object while
-//! the function runs, then raise the `miniextendr_borrow_conflict` error
-//! instead of making a second reference.
+//! The wrapper converts the argument to its `ExternalPtr<T>` handle with the
+//! other arguments (`from_r::__mx_external_arg`, which unwraps and roots a
+//! class handle), then borrows the value's `RefCell` the way a method receiver
+//! is borrowed: shared for `&T` and `ExternalPtrRef`, exclusive for `&mut T`
+//! and `ExternalPtrMut`. The borrow is taken after every conversion and held
+//! through return conversion, and the body gets the plain reference (or the
+//! view). One object passed twice with a `&mut T`, or a callback into R that
+//! reaches the object while the function runs, then raises the
+//! `miniextendr_borrow_conflict` error instead of making a second reference.
 //!
-//! `into_inner`, `into_raw`, `into_non_null` and `leak` move the value out of
-//! its pointer, so they refuse a borrowed value. A body that names one of
-//! them takes no borrow for its handles ([`consumed_handles`]).
+//! An `ExternalPtr<T>` parameter is a handle the body keeps or consumes: it
+//! takes no borrow, and reads through it are `borrow()` / `borrow_mut()`.
+//!
+//! A borrowed argument keeps the call on R's main thread
+//! ([`crate::type_inspect::is_main_thread_bound_input`]), like a `&self`
+//! receiver.
 
-use proc_macro2::{TokenStream, TokenTree};
-use quote::{format_ident, quote};
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote, quote_spanned};
+use syn::spanned::Spanned;
 
-/// The `ExternalPtr` functions that move the value out of its pointer.
-const CONSUMING: [&str; 4] = ["into_inner", "into_raw", "into_non_null", "leak"];
-
-/// `Some(false)` for an `ExternalPtr<T>` parameter type, `Some(true)` for
-/// `Option<ExternalPtr<T>>`, `None` for any other. Matched on the last path
-/// segment: a type alias of either is not seen, and gets no borrow (#2104).
-pub(crate) fn handle_kind(ty: &syn::Type) -> Option<bool> {
-    if is_handle(ty) {
-        return Some(false);
-    }
-    crate::type_inspect::option_inner_type(ty)
-        .is_some_and(is_handle)
-        .then_some(true)
+/// How a borrowed external argument holds its value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// `&T`.
+    Shared,
+    /// `&mut T`.
+    Exclusive,
+    /// `ExternalPtrRef<'_, T>`.
+    SharedView,
+    /// `ExternalPtrMut<'_, T>`.
+    ExclusiveView,
 }
 
-fn is_handle(ty: &syn::Type) -> bool {
+impl Mode {
+    fn is_exclusive(self) -> bool {
+        matches!(self, Mode::Exclusive | Mode::ExclusiveView)
+    }
+}
+
+/// A borrowed external argument's type, taken apart.
+#[derive(Debug)]
+pub(crate) struct ExternalArg {
+    /// `T`, as written (`Self` included).
+    pub value: syn::Type,
+    /// Under `Option`: `NULL` is `None`.
+    pub optional: bool,
+    pub mode: Mode,
+}
+
+/// Names that are never an external value behind `&` / `&mut`: R's native
+/// borrows, `&str` / `&Path`, the dots, and containers with conversions of
+/// their own.
+const NOT_EXTERNAL: &[&str] = &[
+    "str",
+    "Path",
+    "Dots",
+    "LazyDots",
+    "SEXP",
+    "i32",
+    "f64",
+    "u8",
+    "RLogical",
+    "Rcomplex",
+    "Option",
+    "Vec",
+    "Box",
+    "Rc",
+    "Arc",
+    "Cow",
+    "Result",
+    "ExternalPtr",
+    "ExternalPtrRef",
+    "ExternalPtrMut",
+    "Missing",
+];
+
+/// The borrowed external argument `ty` describes, if any: `&T` / `&mut T`
+/// where `T` names a type with no R-side conversion of its own (no type
+/// check, not in [`NOT_EXTERNAL`]), or an `ExternalPtrRef<'_, T>` /
+/// `ExternalPtrMut<'_, T>` view, either one optionally under `Option`.
+/// Matched on the written type: a `&T` whose `T` isn't `TypedExternal` is a
+/// compile error at the type (`ExternalPtr<T>` requires it).
+pub(crate) fn external_arg(ty: &syn::Type) -> Option<ExternalArg> {
+    let (inner, optional) = match crate::type_inspect::option_inner_type(ty) {
+        Some(inner) => (inner, true),
+        None => (ty, false),
+    };
+    let (value, mode) = match inner {
+        syn::Type::Reference(reference) if is_external_value(&reference.elem) => {
+            let mode = if reference.mutability.is_some() {
+                Mode::Exclusive
+            } else {
+                Mode::Shared
+            };
+            (reference.elem.as_ref().clone(), mode)
+        }
+        syn::Type::Path(path) if path.qself.is_none() => {
+            let seg = path.path.segments.last()?;
+            let mode = if seg.ident == "ExternalPtrRef" {
+                Mode::SharedView
+            } else if seg.ident == "ExternalPtrMut" {
+                Mode::ExclusiveView
+            } else {
+                return None;
+            };
+            (crate::type_inspect::first_type_argument(seg)?.clone(), mode)
+        }
+        _ => return None,
+    };
+    Some(ExternalArg {
+        value,
+        optional,
+        mode,
+    })
+}
+
+fn is_external_value(ty: &syn::Type) -> bool {
     let syn::Type::Path(path) = ty else {
         return false;
     };
     path.qself.is_none()
         && path.path.segments.last().is_some_and(|seg| {
-            seg.ident == "ExternalPtr" && crate::type_inspect::first_type_argument(seg).is_some()
+            !NOT_EXTERNAL.contains(&seg.ident.to_string().as_str())
+                && !crate::r_preconditions::has_type_check(ty)
         })
 }
 
-/// The names of the handle parameters a body may move the value out of:
-/// every one when `body` names a consuming function anywhere (in a macro's
-/// arguments, or as a function value, too), none otherwise. The match is on
-/// the name alone, so `Box::leak` counts: a missed borrow, never a false
-/// conflict. The scan can't follow a handle into other code: a function that
-/// consumes it there raises the `miniextendr_borrow_conflict` error.
-pub(crate) fn consumed_handles<'a>(
-    inputs: impl IntoIterator<Item = &'a syn::FnArg>,
-    body: TokenStream,
-) -> Vec<String> {
-    if !names_consuming_fn(body) {
-        return Vec::new();
+/// The binding of the handle a borrowed argument `param` converts to.
+/// Mixed-site: user parameters may use any spelling.
+pub(crate) fn handle_ident(param: &syn::Ident) -> syn::Ident {
+    format_ident!(
+        "__mx_ptr_{}",
+        crate::naming::unraw(param),
+        span = proc_macro2::Span::mixed_site()
+    )
+}
+
+/// `ty` with `Self` replaced by `self_ty` (an impl method's wrapper is a free
+/// function, where `Self` names nothing).
+pub(crate) fn replace_self(ty: &syn::Type, self_ty: Option<&syn::Type>) -> syn::Type {
+    match (ty, self_ty) {
+        (syn::Type::Path(path), Some(self_ty)) if path.path.is_ident("Self") => self_ty.clone(),
+        _ => ty.clone(),
     }
-    inputs
-        .into_iter()
-        .filter_map(|arg| match arg {
-            syn::FnArg::Typed(pt) if handle_kind(&pt.ty).is_some() => match pt.pat.as_ref() {
-                syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect()
 }
 
-fn names_consuming_fn(tokens: TokenStream) -> bool {
-    tokens.into_iter().any(|token| match token {
-        TokenTree::Ident(ident) => CONSUMING.iter().any(|name| ident == name),
-        TokenTree::Group(group) => names_consuming_fn(group.stream()),
-        _ => false,
-    })
+/// The statement converting the borrowed argument `ident` (of type `arg`) to
+/// its handle, given its R-facing failure arm (`err_arm`, an `Err(e) =>`
+/// match arm). `self_ty` replaces `Self`.
+pub(crate) fn handle_conversion(
+    ident: &syn::Ident,
+    sexp_ident: &syn::Ident,
+    ty: &syn::Type,
+    arg: &ExternalArg,
+    self_ty: Option<&syn::Type>,
+    err_arm: TokenStream,
+) -> TokenStream {
+    let handle = handle_ident(ident);
+    if let Some(lifetime) = crate::type_inspect::static_lifetime(ty) {
+        return quote_spanned! {lifetime.span()=>
+            ::core::compile_error!(
+                "this parameter borrows its object for the call and cannot be `'static`; \
+                 elide the lifetime, or take `ExternalPtr<T>` to keep a handle"
+            );
+            let #ident: #ty = ::core::option::Option::<#ty>::None.unwrap();
+        };
+    }
+    let value = replace_self(&arg.value, self_ty);
+    let span = arg.value.span();
+    let convert = if arg.optional {
+        quote_spanned! {span=> __mx_optional_external_arg }
+    } else {
+        quote_spanned! {span=> __mx_external_arg }
+    };
+    let mutability = arg.mode.is_exclusive().then(|| quote! { mut });
+    // Spanned on `T`, like the borrows: every use of `T: TypedExternal` is a
+    // free function's bound there, so a `T` without it is one error.
+    quote_spanned! {span=>
+        let #mutability #handle = match ::miniextendr_api::from_r::#convert::<#value>(#sexp_ident) {
+            ::core::result::Result::Ok(v) => v,
+            #err_arm
+        };
+    }
 }
 
-/// A C wrapper's argument borrows, in two parts.
-#[derive(Default)]
-pub(crate) struct ArgBorrows {
-    /// Binds each handle argument's SEXP, before conversion: the conversion
-    /// binding may shadow the slot (a standalone function keeps its
-    /// parameter names).
-    pub capture: TokenStream,
-    /// Takes the borrows, after every conversion. Each holds its value's
-    /// `RefCell` until the wrapper's closure ends, after return conversion.
-    pub borrow: TokenStream,
-}
-
-/// The borrows for the handle parameters of `inputs`, except those
-/// `unborrowed` names. `sexp_idents` are the C wrapper's argument slots, in
-/// parameter order.
+/// The borrows of the borrowed external parameters of `inputs`, except those
+/// `unborrowed` names (a parameter marker rebinds them to another type).
+/// Each binds the parameter to its reference or view, holding the value's
+/// `RefCell` until the wrapper's closure ends, after return conversion.
 pub(crate) fn arg_borrows(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    sexp_idents: &[syn::Ident],
     unborrowed: &[String],
-) -> ArgBorrows {
-    let mut borrows = ArgBorrows::default();
-    let typed = inputs.iter().filter_map(|arg| match arg {
-        syn::FnArg::Typed(pt) => Some(pt),
-        syn::FnArg::Receiver(_) => None,
-    });
-    for (pt, sexp) in typed.zip(sexp_idents) {
+    self_ty: Option<&syn::Type>,
+) -> TokenStream {
+    let mut borrows = TokenStream::new();
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
         let syn::Pat::Ident(pat) = pt.pat.as_ref() else {
             continue;
         };
-        let Some(optional) = handle_kind(&pt.ty) else {
+        let Some(external) = external_arg(&pt.ty) else {
             continue;
         };
         if unborrowed.contains(&crate::naming::ident_name(&pat.ident)) {
             continue;
         }
         let name = &pat.ident;
-        let plain = crate::naming::unraw(name);
-        let span = proc_macro2::Span::mixed_site();
-        let slot = format_ident!("__mx_handle_sexp_{}", plain, span = span);
-        let cell = format_ident!("__mx_handle_{}", plain, span = span);
-        let guard = format_ident!("__mx_handle_guard_{}", plain, span = span);
-        let handle = if optional {
-            quote! { ::core::option::Option::as_ref(&#name) }
-        } else {
-            quote! { ::core::option::Option::Some(&#name) }
-        };
-        let borrow = if pat.mutability.is_some() {
-            quote! { exclusive }
-        } else {
-            quote! { shared }
-        };
-        borrows.capture.extend(quote! {
-            let #slot = #sexp;
-        });
-        // SAFETY (of the emitted `unsafe`): the wrapper runs on R's main
-        // thread, and `#slot` is the argument the handle was converted from.
-        borrows.borrow.extend(quote! {
-            let #cell = unsafe {
-                ::miniextendr_api::externalptr::ArgumentCell::new(#handle, #slot)
-            };
-            let #guard = ::miniextendr_api::externalptr::ArgumentCell::#borrow(&#cell);
+        let handle = handle_ident(name);
+        let guard = format_ident!(
+            "__mx_guard_{}",
+            crate::naming::unraw(name),
+            span = proc_macro2::Span::mixed_site()
+        );
+        let value = replace_self(&external.value, self_ty);
+        let span = external.value.span();
+        let api = quote_spanned! {span=> ::miniextendr_api::externalptr };
+        borrows.extend(match (external.mode, external.optional) {
+            (Mode::Shared, false) => quote_spanned! {span=>
+                let #guard = #api::__mx_borrow::<#value>(&#handle);
+                let #name = #api::__mx_shared::<#value>(&#guard);
+            },
+            (Mode::Exclusive, false) => quote_spanned! {span=>
+                let mut #guard = #api::__mx_borrow_mut::<#value>(&mut #handle);
+                let #name = #api::__mx_exclusive::<#value>(&mut #guard);
+            },
+            (Mode::SharedView, false) => quote_spanned! {span=>
+                let #name = #api::__mx_borrow::<#value>(&#handle);
+            },
+            (Mode::ExclusiveView, false) => quote_spanned! {span=>
+                let #name = #api::__mx_borrow_mut::<#value>(&mut #handle);
+            },
+            (Mode::Shared, true) => quote_spanned! {span=>
+                let #guard = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&#handle), #api::__mx_borrow::<#value>,
+                );
+                let #name = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&#guard), #api::__mx_shared::<#value>,
+                );
+            },
+            (Mode::Exclusive, true) => quote_spanned! {span=>
+                let mut #guard = ::core::option::Option::map(
+                    ::core::option::Option::as_mut(&mut #handle), #api::__mx_borrow_mut::<#value>,
+                );
+                let #name = ::core::option::Option::map(
+                    ::core::option::Option::as_mut(&mut #guard), #api::__mx_exclusive::<#value>,
+                );
+            },
+            (Mode::SharedView, true) => quote_spanned! {span=>
+                let #name = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&#handle), #api::__mx_borrow::<#value>,
+                );
+            },
+            (Mode::ExclusiveView, true) => quote_spanned! {span=>
+                let #name = ::core::option::Option::map(
+                    ::core::option::Option::as_mut(&mut #handle), #api::__mx_borrow_mut::<#value>,
+                );
+            },
         });
     }
     borrows
@@ -144,92 +271,120 @@ pub(crate) fn arg_borrows(
 mod tests {
     use super::*;
 
-    fn inputs(sig: syn::Signature) -> syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> {
-        sig.inputs
+    fn arg(ty: syn::Type) -> Option<(String, bool, Mode)> {
+        external_arg(&ty).map(|arg| {
+            let value = &arg.value;
+            (quote!(#value).to_string(), arg.optional, arg.mode)
+        })
     }
 
     #[test]
-    fn handles_are_external_pointers_and_their_options() {
-        let kinds = [
-            (syn::parse_quote!(ExternalPtr<Counter>), Some(false)),
-            (
-                syn::parse_quote!(::miniextendr_api::externalptr::ExternalPtr<Counter>),
-                Some(false),
-            ),
-            (syn::parse_quote!(Option<ExternalPtr<Counter>>), Some(true)),
-            (syn::parse_quote!(Vec<ExternalPtr<Counter>>), None),
-            (syn::parse_quote!(Vec<Option<ExternalPtr<Counter>>>), None),
-            (syn::parse_quote!(CounterPtr), None),
-            (syn::parse_quote!(ExternalPtr), None),
-            (syn::parse_quote!(&ExternalPtr<Counter>), None),
-        ];
-        for (ty, kind) in kinds {
-            let ty: syn::Type = ty;
-            assert_eq!(handle_kind(&ty), kind, "{}", quote!(#ty));
-        }
+    fn references_to_types_without_conversions_and_views_are_external() {
+        let some = |value: &str, optional, mode| Some((value.to_owned(), optional, mode));
+        assert_eq!(
+            arg(syn::parse_quote!(&Counter)),
+            some("Counter", false, Mode::Shared)
+        );
+        assert_eq!(
+            arg(syn::parse_quote!(&mut crate::Counter)),
+            some("crate :: Counter", false, Mode::Exclusive)
+        );
+        assert_eq!(
+            arg(syn::parse_quote!(&'a Self)),
+            some("Self", false, Mode::Shared)
+        );
+        assert_eq!(
+            arg(syn::parse_quote!(Option<&mut Counter>)),
+            some("Counter", true, Mode::Exclusive)
+        );
+        assert_eq!(
+            arg(syn::parse_quote!(ExternalPtrRef<'_, Counter>)),
+            some("Counter", false, Mode::SharedView)
+        );
+        assert_eq!(
+            arg(syn::parse_quote!(
+                Option<::miniextendr_api::ExternalPtrMut<'a, Counter>>
+            )),
+            some("Counter", true, Mode::ExclusiveView)
+        );
     }
 
     #[test]
-    fn a_body_naming_a_consuming_function_consumes_every_handle() {
-        let sig: syn::Signature = syn::parse_quote!(fn f(
-            a: ExternalPtr<Counter>,
-            mut b: Option<ExternalPtr<Counter>>,
-            n: i32,
-        ));
-        for body in [
-            quote! { ExternalPtr::into_inner(a).value },
-            quote! { b.map(ExternalPtr::into_raw) },
-            quote! { { let x = 1; ::std::println!("{}", ExternalPtr::leak(a).value); } },
+    fn native_string_dots_container_and_handle_types_are_not_external() {
+        for ty in [
+            quote!(&str),
+            quote!(&Path),
+            quote!(&i32),
+            quote!(&mut f64),
+            quote!(&RLogical),
+            quote!(&[i32]),
+            quote!(&mut [f64]),
+            quote!(&Dots),
+            quote!(&String),
+            quote!(&Vec<i32>),
+            quote!(&Option<Counter>),
+            quote!(&ExternalPtr<Counter>),
+            quote!(ExternalPtr<Counter>),
+            quote!(Option<ExternalPtr<Counter>>),
+            quote!(Vec<&Counter>),
+            quote!(Counter),
         ] {
-            assert_eq!(
-                consumed_handles(&sig.inputs, body),
-                ["a".to_owned(), "b".to_owned()]
-            );
+            let ty: syn::Type = syn::parse2(ty).unwrap();
+            assert!(external_arg(&ty).is_none(), "{}", quote!(#ty));
         }
-        assert!(consumed_handles(&sig.inputs, quote! { a.value + n }).is_empty());
     }
 
     #[test]
-    fn mut_bindings_borrow_exclusively_and_others_shared() {
+    fn borrows_follow_the_mode() {
         let sig: syn::Signature = syn::parse_quote!(fn f(
-            mut a: ExternalPtr<Counter>,
-            b: Option<ExternalPtr<Counter>>,
+            a: &mut Counter,
+            b: Option<&Counter>,
             n: i32,
             c: ExternalPtr<Counter>,
+            d: ExternalPtrRef<'_, Counter>,
+            e: Option<ExternalPtrMut<'_, Counter>>,
+            m: &Counter,
         ));
-        let slots: Vec<syn::Ident> = (0..4_usize).map(|i| format_ident!("arg_{}", i)).collect();
-        let borrows = arg_borrows(&inputs(sig.clone()), &slots, &["c".to_owned()]);
-        let capture = borrows.capture.to_string();
-        let borrow = borrows.borrow.to_string();
-        assert!(capture.contains("= arg_0"), "{capture}");
-        assert!(capture.contains("= arg_1"), "{capture}");
+        let borrow = arg_borrows(&sig.inputs, &["m".to_owned()], None).to_string();
         assert!(
-            !capture.contains("arg_2") && !capture.contains("arg_3"),
-            "{capture}"
+            borrow.contains("let a = :: miniextendr_api :: externalptr :: __mx_exclusive :: < Counter > (& mut __mx_guard_a)"),
+            "{borrow}"
         );
+        assert!(borrow.contains("__mx_shared"), "{borrow}");
         assert!(
-            borrow.contains(":: core :: option :: Option :: Some (& a)"),
+            borrow.contains("let d = :: miniextendr_api :: externalptr :: __mx_borrow :: < Counter > (& __mx_ptr_d)"),
             "{borrow}"
         );
         assert!(
-            borrow.contains(":: core :: option :: Option :: as_ref (& b)"),
+            borrow.contains("let e = :: core :: option :: Option :: map"),
             "{borrow}"
         );
-        assert_eq!(
-            borrow.matches("ArgumentCell :: exclusive").count(),
-            1,
-            "{borrow}"
-        );
-        assert_eq!(
-            borrow.matches("ArgumentCell :: shared").count(),
-            1,
-            "{borrow}"
-        );
+        assert_eq!(borrow.matches("__mx_borrow_mut").count(), 2, "{borrow}");
         assert!(
-            arg_borrows(&inputs(sig), &slots, &[])
-                .borrow
-                .to_string()
-                .contains("(& c)")
+            !borrow.contains("__mx_ptr_c") && !borrow.contains("__mx_ptr_n"),
+            "{borrow}"
         );
+        assert!(!borrow.contains("__mx_ptr_m"), "{borrow}");
+    }
+
+    #[test]
+    fn handle_conversion_names_the_concrete_type_and_mutability() {
+        let ident: syn::Ident = syn::parse_quote!(other);
+        let sexp: syn::Ident = syn::parse_quote!(arg_0);
+        let ty: syn::Type = syn::parse_quote!(&mut Self);
+        let arg = external_arg(&ty).unwrap();
+        let self_ty: syn::Type = syn::parse_quote!(Counter);
+        let stmt =
+            handle_conversion(&ident, &sexp, &ty, &arg, Some(&self_ty), quote! {}).to_string();
+        assert!(stmt.contains("let mut __mx_ptr_other"), "{stmt}");
+        assert!(
+            stmt.contains("__mx_external_arg :: < Counter > (arg_0)"),
+            "{stmt}"
+        );
+
+        let ty: syn::Type = syn::parse_quote!(&'static Counter);
+        let arg = external_arg(&ty).unwrap();
+        let stmt = handle_conversion(&ident, &sexp, &ty, &arg, None, quote! {}).to_string();
+        assert!(stmt.contains("compile_error"), "{stmt}");
     }
 }

@@ -10,7 +10,7 @@
 //!    `ExternalPtr` (`EXTPTRSXP`).
 //!
 //! 2. **Instance receivers** — no method may carry any form of `self` receiver
-//!    (`&self`, `&mut self`, `self`, `self: &ExternalPtr<Self>`, etc.).
+//!    (`&self`, `&mut self`, `self`, `self: ExternalPtrRef<'_, Self>`, etc.).
 //!    A vctrs object is an S3-classed base vector; there is no Rust `Self` stored
 //!    inside the SEXP.  The C wrapper cannot reconstruct `Self` from a base vector,
 //!    so calling an instance method would panic at runtime.

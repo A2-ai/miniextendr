@@ -1,5 +1,7 @@
-//! A worker function's `ExternalPtr<T>` arguments stay borrowed on R's main
-//! thread while the worker runs (#2092).
+//! Worker dispatch with external arguments (#2106): a `&T` / `&mut T`
+//! argument keeps the call on R's main thread, where the wrapper holds its
+//! borrow; an `ExternalPtr<T>` handle moves to the worker unborrowed, and a
+//! borrow the body takes there blocks main-thread borrows while it lives.
 #![cfg(feature = "worker-thread")]
 
 mod r_test_utils;
@@ -26,9 +28,9 @@ fn main_thread_conflicts(exclusive: bool) -> bool {
                 .unwrap();
         let attempt = catch_condition(|| {
             if exclusive {
-                drop(alias.try_borrow_mut());
+                drop(alias.borrow_mut());
             } else {
-                drop(alias.try_borrow());
+                drop(alias.borrow());
             }
         });
         attempt.is_err()
@@ -36,19 +38,29 @@ fn main_thread_conflicts(exclusive: bool) -> bool {
 }
 
 #[miniextendr(worker, noexport)]
-pub fn worker_exclusive_arg(mut obj: ExternalPtr<WorkerProbe>) -> i32 {
-    assert!(!miniextendr_api::worker::is_r_main_thread());
+pub fn worker_exclusive_arg(obj: &mut WorkerProbe) -> i32 {
+    assert!(miniextendr_api::worker::is_r_main_thread());
     assert!(main_thread_conflicts(false));
     obj.value += 1;
     obj.value
 }
 
 #[miniextendr(worker, noexport)]
-pub fn worker_shared_arg(obj: ExternalPtr<WorkerProbe>) -> i32 {
-    assert!(!miniextendr_api::worker::is_r_main_thread());
+pub fn worker_shared_arg(obj: &WorkerProbe) -> i32 {
+    assert!(miniextendr_api::worker::is_r_main_thread());
     assert!(main_thread_conflicts(true));
     assert!(!main_thread_conflicts(false));
     obj.value
+}
+
+#[miniextendr(worker, noexport)]
+pub fn worker_handle_arg(mut obj: ExternalPtr<WorkerProbe>) -> i32 {
+    assert!(!miniextendr_api::worker::is_r_main_thread());
+    assert!(!main_thread_conflicts(true));
+    let mut value = obj.borrow_mut();
+    assert!(main_thread_conflicts(false));
+    value.value += 1;
+    value.value
 }
 
 unsafe fn call(suffix: &str, obj: SEXP) -> SEXP {
@@ -72,12 +84,16 @@ unsafe fn call(suffix: &str, obj: SEXP) -> SEXP {
 }
 
 #[test]
-fn worker_arguments_hold_their_borrow_on_the_main_thread() {
+fn borrowed_arguments_stay_on_the_main_thread_and_handles_move_unborrowed() {
     r_test_utils::with_r_thread(|| unsafe {
         let obj = ExternalPtr::new(WorkerProbe { value: 4 });
         OBJECT.store(obj.as_sexp().0, Ordering::Relaxed);
         let scope = ProtectScope::new();
-        for (suffix, expected) in [("_worker_exclusive_arg", 5), ("_worker_shared_arg", 5)] {
+        for (suffix, expected) in [
+            ("_worker_exclusive_arg", 5),
+            ("_worker_shared_arg", 5),
+            ("_worker_handle_arg", 6),
+        ] {
             let result = scope.protect(call(suffix, obj.as_sexp())).get();
             assert!(RCondition::from_tagged_sexp(result).is_none(), "{suffix}");
             assert_eq!(i32::try_from_sexp(result).unwrap(), expected, "{suffix}");

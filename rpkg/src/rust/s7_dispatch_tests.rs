@@ -7,7 +7,7 @@
 //! `(e1, e2)` the same way, with its single parameter as the right operand.
 //! Tests live in `tests/testthat/test-s7-dispatch.R`.
 
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::miniextendr;
 
 // region: two-argument dispatch
 
@@ -93,7 +93,7 @@ impl MxS7Money {
     /// `MxS7Money_add()` shortcut.
     /// @param e2 Another `MxS7Money`.
     #[miniextendr(s7(generic = "+"))]
-    pub fn add(&self, e2: ExternalPtr<MxS7Money>) -> Self {
+    pub fn add(&self, e2: &MxS7Money) -> Self {
         Self {
             amount: self.amount + e2.amount,
         }
@@ -110,7 +110,7 @@ impl MxS7Money {
     /// Whether two amounts are equal, as `a == b`.
     /// @param e2 Another `MxS7Money`.
     #[miniextendr(s7(generic = "=="))]
-    pub fn equals(&self, e2: ExternalPtr<MxS7Money>) -> bool {
+    pub fn equals(&self, e2: &MxS7Money) -> bool {
         self.amount == e2.amount
     }
 

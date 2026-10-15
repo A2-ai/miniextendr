@@ -1,5 +1,5 @@
-error: unsupported receiver type: the R handle stores the value itself, so a method can take `self`, `self: Self`, `&self`, `&mut self`, or an `ExternalPtr<Self>` receiver — not a smart pointer around `Self`
-  --> tests/ui/impl_method_self_by_value.rs:12:22
+error: unsupported receiver type: the R handle stores the value itself, so a method can take `self`, `self: Self`, `&self`, `&mut self`, `self: ExternalPtrRef<'_, Self>`, `self: ExternalPtrMut<'_, Self>` or `self: ExternalPtr<Self>` — not a smart pointer around `Self`
+  --> tests/ui/impl_method_self_by_value.rs:13:22
    |
-12 |     fn consume(self: Box<Self>) -> i32 {
+13 |     fn consume(self: Box<Self>) -> i32 {
    |                      ^^^^^^^^^

@@ -223,6 +223,9 @@ const MAIN_THREAD_BOUND: &[&str] = &[
 #[inline]
 pub(crate) fn is_main_thread_bound_input(ty: &syn::Type) -> bool {
     is_rooted_view(ty)
+        // A borrowed external argument holds its value's `RefCell` borrow on
+        // the main thread, like a `&self` receiver (#2106).
+        || crate::externalptr_args::external_arg(ty).is_some()
         || matches!(ty, syn::Type::Path(p) if p
         .path
         .segments
@@ -403,7 +406,7 @@ pub(crate) fn static_rooted_view_binding(
 }
 
 /// The first `'static` lifetime written anywhere in `ty`.
-fn static_lifetime(ty: &syn::Type) -> Option<&syn::Lifetime> {
+pub(crate) fn static_lifetime(ty: &syn::Type) -> Option<&syn::Lifetime> {
     let is_static = |lt: &&syn::Lifetime| lt.ident == "static";
     match ty {
         syn::Type::Reference(r) => r

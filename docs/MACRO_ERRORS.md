@@ -269,9 +269,10 @@ impl MyType { /* ... */ }
 impl Display for MyType { /* ... */ }
 ```
 
-### "the trait bound `MyType: TypedExternal` is not satisfied"
+### "`MyType` is not a type an `ExternalPtr` stores"
 
-Types used in `#[miniextendr]` impl blocks need pointer identity:
+Types used in `#[miniextendr]` impl blocks, and the `T` of a `&T` / `&mut T`
+parameter, are values R holds in an external pointer:
 
 ```rust
 #[derive(ExternalPtr)]
@@ -280,7 +281,15 @@ struct MyType { /* ... */ }
 #[miniextendr]
 impl MyType { /* ... */ }
 // Registration is automatic via #[miniextendr].
+
+#[miniextendr]
+pub fn read(x: &MyType) -> i32 { /* ... */ }
 ```
+
+A `&T` parameter borrows an external value for the call (`EXTERNALPTR.md`,
+"Arguments"). Only the reference types the macro reads from an R vector
+(`&str`, `&[T]`, `&i32`, `&f64`, `&RLogical`, ...) mean something else; for
+any other `T`, derive `ExternalPtr` or take the argument by value.
 
 ### "takes `self` and is marked `constructor`"
 
@@ -376,9 +385,23 @@ are reported when the package installs.
 ### "unsupported receiver type"
 
 The R handle stores the value itself, so a method can take `self`,
-`self: Self`, `&self`, `&mut self`, or an `ExternalPtr<Self>` receiver.
+`self: Self`, `&self`, `&mut self`, `self: ExternalPtrRef<'_, Self>`,
+`self: ExternalPtrMut<'_, Self>` or `self: ExternalPtr<Self>`.
 `self: Box<Self>`, `Rc<Self>`, `Arc<Self>` and friends cannot be handed over;
 unwrap to `self` or take `&self`.
+
+### "a method takes its object as `self: ExternalPtrRef<'_, Self>`"
+
+`self: &ExternalPtr<Self>` and `self: &mut ExternalPtr<Self>` receivers are
+gone (#2106). Take `&self` / `&mut self` when the method needs only the
+value, `self: ExternalPtrRef<'_, Self>` / `mut self: ExternalPtrMut<'_, Self>`
+when it also needs the R object (sidecar accessors, identity), or
+`self: ExternalPtr<Self>` for the handle the wrapper doesn't borrow.
+
+### "this parameter borrows its object for the call and cannot be `'static`"
+
+A `&T` / `&mut T` / view parameter is borrowed for the call only. Elide the
+lifetime, or take `ExternalPtr<T>` to keep a handle.
 
 ### "parameter `_x` becomes the R argument `x`, which ..."
 

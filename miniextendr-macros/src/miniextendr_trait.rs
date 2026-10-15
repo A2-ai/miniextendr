@@ -913,7 +913,7 @@ fn generate_method_shim(
     );
     let self_borrows = self_refs
         .iter()
-        .map(|(name, mutable, index)| crate::trait_self_ref::borrow(name, *mutable, *index, &argv));
+        .map(|(name, mutable, _)| crate::trait_self_ref::borrow(name, *mutable));
 
     // Generate method call (uses __ImplT). The receiver borrows the value's
     // RefCell for the rest of the shim, through the result conversion.

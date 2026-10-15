@@ -7,8 +7,8 @@
 mx_point_sum(p)
 }
 \arguments{
-\item{p}{An ExternalPtr wrapping an MxPoint.}
+\item{p}{An MxPoint.}
 }
 \description{
-Test summing fields of an MxPoint ExternalPtr.
+Test summing fields of an MxPoint, borrowed for the call.
 }

@@ -94,15 +94,12 @@ pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 ///     }
 /// }
 /// ```
+///
+/// Takes no `RefCell` borrow: the ALTREP callbacks read their data unchecked
+/// until #2103 measures the checked read.
 #[inline]
 pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
-    unsafe {
-        let mut erased = ErasedExternalPtr::from_sexp(SEXP::altrep_data1_raw(x));
-        // Transmute the lifetime to 'static - this is safe because:
-        // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
-        // 2. The ALTREP object `x` is kept alive by R during the callback
-        erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
-    }
+    unsafe { data1_value_mut(ErasedExternalPtr::from_sexp(SEXP::altrep_data1_raw(x))) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot (unchecked version).
@@ -117,9 +114,25 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
 #[inline]
 pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
     unsafe {
-        let mut erased = ErasedExternalPtr::from_sexp(SEXP::altrep_data1_raw_unchecked(x));
-        erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
+        data1_value_mut(ErasedExternalPtr::from_sexp(
+            SEXP::altrep_data1_raw_unchecked(x),
+        ))
     }
+}
+
+/// The `T` that `erased` holds, with no `RefCell` borrow.
+///
+/// # Safety
+///
+/// As for [`altrep_data1_mut`]. The `'static` lifetime is sound for the
+/// callback: R's GC protects the ALTREP object, and so its data1, while the
+/// callback runs.
+#[inline]
+unsafe fn data1_value_mut<T: TypedExternal>(erased: ErasedExternalPtr) -> Option<&'static mut T> {
+    erased
+        .downcast_cell::<T>()
+        // SAFETY: caller contract; `RefCell::as_ptr` may be written through.
+        .map(|cell| unsafe { &mut *cell.as_ptr() })
 }
 
 // Tests for ExternalPtr require R runtime, so they are in rpkg/src/rust/lib.rs

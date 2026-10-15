@@ -49,14 +49,17 @@ parameter on `release_any` is needed because the vtable carries it.
 
 ### cached_ptr and pointer provenance
 
-`ExternalPtr<T>` caches a `NonNull<RefCell<T>>` in its `cached_ptr` field.
-This allows `as_ref()` / `as_mut()` to skip the `R_ExternalPtrAddr` FFI call on
-every access. They read the value through `RefCell::as_ptr` and take no borrow;
-the generated wrappers borrow through `borrow_value` / `borrow_value_mut`, and
-`ExternalPtr<T>` / `Option<ExternalPtr<T>>` arguments through `ArgumentCell`
-(exclusive for a `mut` parameter, shared otherwise, none when the body names
-`into_inner` / `into_raw` / `into_non_null` / `leak`; #2092). Rust code that
-keeps a handle across a call into R uses `try_borrow()` / `try_borrow_mut()`.
+`ExternalPtr<T>` caches a `NonNull<RefCell<T>>` in its `cached_ptr` field, so
+`borrow()` / `borrow_mut()` skip the `R_ExternalPtrAddr` FFI call. Every read
+of the value is checked (#2106): the handle has no `Deref`, and `borrow()` /
+`borrow_mut()` return the views `ExternalPtrRef` / `ExternalPtrMut`, raising
+`miniextendr_borrow_conflict` on a conflict. The generated wrappers borrow at
+the entry point, through `borrow_value` / `borrow_value_mut`, for receivers and
+for `&T` / `&mut T` / view arguments (exclusive for `&mut T` / `ExternalPtrMut`,
+shared otherwise), and hand the body plain references. An `ExternalPtr<T>`
+argument takes no borrow: it's a handle the body keeps, consumes or reads with
+`borrow()`. Only the ALTREP data1 paths read unchecked, through the hidden
+`as_ref_unchecked` / `as_mut_unchecked` (#2103).
 
 Writes go through the `RefCell`'s `UnsafeCell`, so a `cached_ptr` derived from
 `&RefCell<T>` (`downcast_ref`, `NonNull::from`) may be written through. Never
@@ -162,9 +165,9 @@ Three field tiers are supported in sidecar slots:
   `#[r_data(mut)]` → `fn set_f(ptr: &mut impl SidecarOwnerMut<Self>, value: T)`,
   `#[r_data(ref, mut)]` or a bare `#[r_data]` → both. `ExternalPtr`,
   `ExternalPtrRef` and `ExternalPtrMut` are the owners. A method that needs
-  the value takes the handle (`self: &ExternalPtr<Self>`) and calls
-  `Self::f(self)`; a trait method takes `self: ExternalPtrRef<'_, Self>` /
-  `self: ExternalPtrMut<'_, Self>`, which also works over a trait-ABI object.
+  the value takes a view (`self: ExternalPtrRef<'_, Self>` /
+  `mut self: ExternalPtrMut<'_, Self>`) and calls `Self::f(&self)`, in an
+  inherent impl or a trait (which also works over a trait-ABI object).
   The struct holds nothing that points back at its pointer, so a plain
   `&self` method (a standard trait's included) and an ALTREP data-trait
   callback can't reach the values (#1880). A value passed to
@@ -216,20 +219,18 @@ thread; the Rust allocation happens on the calling thread.
 ### Accessing the wrapped value
 
 ```rust
-// Shared access
-let ptr = ExternalPtr::wrap_sexp(sexp);   // borrow the EXTPTRSXP
-if let Some(data) = ptr.as_ref() {
-    // data: &MyData — via downcast from Box<dyn Any>
-}
+// A #[miniextendr] function borrows at the entry point:
+#[miniextendr]
+pub fn total(data: &MyData) -> f64 { data.value }
 
-// Mutable access
-if let Some(data) = ptr.as_mut() {
-    // data: &mut MyData
-}
+// A handle Rust holds reads through a checked borrow:
+let mut ptr = unsafe { ExternalPtr::<MyData>::wrap_sexp(sexp) }.expect("a MyData");
+let value = ptr.borrow().value;          // ExternalPtrRef<'_, MyData>
+ptr.borrow_mut().value = value + 1.0;    // ExternalPtrMut<'_, MyData>
 ```
 
-Both `as_ref()` and `as_mut()` use `cached_ptr` rather than calling back into
-R's FFI. Type safety is from `Any::downcast_ref` / `Any::downcast_mut`.
+Both use `cached_ptr` rather than calling back into R's FFI. Type safety is
+from the `Any::downcast` in `wrap_sexp`.
 
 ### Choosing the right class system for sidecar fields
 

@@ -296,7 +296,7 @@ impl Counter {
     pub fn rebuilt(self) -> ::core::result::Result<Self, ::std::string::String> {
         ::core::result::Result::Ok(self)
     }
-    pub fn absorb(&mut self, other: ExternalPtr<Counter>) {
+    pub fn absorb(&mut self, other: &Counter) {
         self.value += other.value;
     }
     pub fn origin() -> Self {

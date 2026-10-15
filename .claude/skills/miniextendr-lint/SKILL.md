@@ -101,7 +101,7 @@ Fix: drop the `s4_` prefix from the Rust method name; the codegen adds it.
 
 **MXL120** — Invalid vctrs constructor or receiver.
 A vctrs constructor returns `Self` or a named type (must return `SEXP`), or a
-vctrs impl block includes an instance-method receiver (`&self`, `self: &ExternalPtr<Self>`, etc.).
+vctrs impl block includes an instance-method receiver (`&self`, `self: ExternalPtrRef<'_, Self>`, etc.).
 Mirrors the hard error in `miniextendr-macros`.
 Fix: change the return type to `SEXP` and ensure no instance methods are on the
 vctrs impl.

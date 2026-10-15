@@ -90,10 +90,10 @@ impl GenericSlots<i32> for SlotHost {
 fn ordinary_handles_can_call_the_same_trait_functions() {
     r_test_utils::with_r_thread(|| {
         let mut ptr = ExternalPtr::new(host());
-        assert_eq!(SlotProbe::read(ExternalPtrRef::from(&ptr)), [3, 5, 8]);
-        SlotProbe::write(ExternalPtrMut::from(&mut ptr), vec![13, 21]);
+        assert_eq!(SlotProbe::read(ptr.borrow()), [3, 5, 8]);
+        SlotProbe::write(ptr.borrow_mut(), vec![13, 21]);
         assert_eq!(SlotHost::keys(&ptr), [13, 21]);
-        assert_eq!(ptr.generation, 1);
+        assert_eq!(ptr.borrow().generation, 1);
     });
 }
 
@@ -213,7 +213,7 @@ fn call_wrappers_create_owner_receivers_and_refuse_aliases() {
         write(SEXP::nil(), owner.as_sexp(), values.get());
         let result = scope.protect(read(SEXP::nil(), owner.as_sexp()));
         assert_eq!(Vec::<i32>::try_from_sexp(result.get()).unwrap(), [89, 144]);
-        assert_eq!(owner.generation, 1);
+        assert_eq!(owner.borrow().generation, 1);
         let refused = scope.protect(compare(SEXP::nil(), owner.as_sexp(), owner.as_sexp()));
         let (_, parts) = RCondition::from_tagged_sexp(refused.get())
             .unwrap()

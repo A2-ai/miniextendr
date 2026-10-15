@@ -441,7 +441,7 @@ pub fn condition_error_empty() {
 /// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s3_raiser_id_via_externalptr(x: ExternalPtr<S3Raiser>) -> i32 {
-    x.id
+    x.borrow().id
 }
 
 /// Unwraps an S4-wrapped `S4Raiser` handle (the `ptr` slot, via
@@ -449,7 +449,7 @@ pub fn s3_raiser_id_via_externalptr(x: ExternalPtr<S3Raiser>) -> i32 {
 /// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s4_raiser_id_via_externalptr(x: ExternalPtr<S4Raiser>) -> i32 {
-    x.id
+    x.borrow().id
 }
 
 /// Unwraps an S7-wrapped `S7Raiser` handle (the `.ptr` attribute) and
@@ -457,7 +457,7 @@ pub fn s4_raiser_id_via_externalptr(x: ExternalPtr<S4Raiser>) -> i32 {
 /// @param x A raiser handle (class object or bare external pointer).
 #[miniextendr(noexport)]
 pub fn s7_raiser_id_via_externalptr(x: ExternalPtr<S7Raiser>) -> i32 {
-    x.id
+    x.borrow().id
 }
 
 // endregion

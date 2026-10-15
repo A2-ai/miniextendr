@@ -46,7 +46,7 @@ pub fn veptr_make_bags(n: i32) -> Vec<ExternalPtr<Bag>> {
 /// @param bags A `list()` of `Bag` external pointers.
 #[miniextendr]
 pub fn veptr_sum_bags(bags: Vec<ExternalPtr<Bag>>) -> i32 {
-    bags.iter().map(|b| b.value).sum()
+    bags.iter().map(|b| b.borrow().value).sum()
 }
 
 /// Increment every `Bag` payload, returning a fresh `list()` of handles.
@@ -56,7 +56,11 @@ pub fn veptr_sum_bags(bags: Vec<ExternalPtr<Bag>>) -> i32 {
 #[miniextendr]
 pub fn veptr_increment_bags(bags: Vec<ExternalPtr<Bag>>) -> Vec<ExternalPtr<Bag>> {
     bags.iter()
-        .map(|b| ExternalPtr::new(Bag { value: b.value + 1 }))
+        .map(|b| {
+            ExternalPtr::new(Bag {
+                value: b.borrow().value + 1,
+            })
+        })
         .collect()
 }
 
@@ -110,7 +114,7 @@ pub fn gc_stress_vec_externalptr() {
 
     // Argument side: list() -> Vec<ExternalPtr<Bag>>; force element access.
     let roundtrip: Vec<ExternalPtr<Bag>> = TryFromSexp::try_from_sexp(list.get()).unwrap();
-    let sum: i32 = roundtrip.iter().map(|b| b.value).sum();
+    let sum: i32 = roundtrip.iter().map(|b| b.borrow().value).sum();
     assert_eq!(sum, (1..=8).sum::<i32>());
 
     // Option variant with NULL holes, both directions.

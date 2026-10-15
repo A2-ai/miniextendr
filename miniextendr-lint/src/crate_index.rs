@@ -36,10 +36,10 @@ pub enum MethodReceiverKind {
     RefMut,
     /// `self` (consuming)
     Value,
-    /// `self: &ExternalPtr<Self>`
+    /// `self: ExternalPtrRef<'_, Self>`
     ExternalPtrRef,
-    /// `self: &mut ExternalPtr<Self>`
-    ExternalPtrRefMut,
+    /// `self: ExternalPtrMut<'_, Self>`
+    ExternalPtrMut,
     /// `self: ExternalPtr<Self>`
     ExternalPtrValue,
 }
@@ -58,7 +58,7 @@ impl MethodReceiverKind {
             Self::Ref
                 | Self::RefMut
                 | Self::ExternalPtrRef
-                | Self::ExternalPtrRefMut
+                | Self::ExternalPtrMut
                 | Self::ExternalPtrValue
         )
     }
@@ -70,8 +70,8 @@ impl MethodReceiverKind {
             Self::Ref => "&self",
             Self::RefMut => "&mut self",
             Self::Value => "self",
-            Self::ExternalPtrRef => "self: &ExternalPtr<Self>",
-            Self::ExternalPtrRefMut => "self: &mut ExternalPtr<Self>",
+            Self::ExternalPtrRef => "self: ExternalPtrRef<'_, Self>",
+            Self::ExternalPtrMut => "self: ExternalPtrMut<'_, Self>",
             Self::ExternalPtrValue => "self: ExternalPtr<Self>",
         }
     }
@@ -1162,28 +1162,21 @@ fn detect_receiver_kind(sig: &syn::Signature) -> MethodReceiverKind {
     match first {
         syn::FnArg::Receiver(recv) => {
             // syn 2.x parses *all* `self` receiver forms as `FnArg::Receiver`, including
-            // the typed forms `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`,
+            // the typed forms `self: ExternalPtrRef<'_, Self>`, `self: ExternalPtrMut<'_, Self>`
             // and `self: ExternalPtr<Self>`.  When a colon token is present the receiver
             // has an explicit type in `recv.ty`; otherwise `recv.reference` / `recv.mutability`
             // describe the shorthand `(&)(&mut) self`.
             if recv.colon_token.is_some() {
                 // Typed form: `self: <ty>`.  Classify by inspecting `recv.ty`.
                 match recv.ty.as_ref() {
-                    syn::Type::Reference(r) => {
-                        if is_external_ptr_self_ty(r.elem.as_ref()) {
-                            if r.mutability.is_some() {
-                                MethodReceiverKind::ExternalPtrRefMut
-                            } else {
-                                MethodReceiverKind::ExternalPtrRef
-                            }
-                        } else if r.mutability.is_some() {
-                            MethodReceiverKind::RefMut
-                        } else {
-                            MethodReceiverKind::Ref
-                        }
-                    }
-                    ty if is_external_ptr_self_ty(ty) => MethodReceiverKind::ExternalPtrValue,
-                    _ => MethodReceiverKind::None,
+                    syn::Type::Reference(r) if r.mutability.is_some() => MethodReceiverKind::RefMut,
+                    syn::Type::Reference(_) => MethodReceiverKind::Ref,
+                    ty => match self_handle_ty(ty) {
+                        Some("ExternalPtr") => MethodReceiverKind::ExternalPtrValue,
+                        Some("ExternalPtrRef") => MethodReceiverKind::ExternalPtrRef,
+                        Some("ExternalPtrMut") => MethodReceiverKind::ExternalPtrMut,
+                        _ => MethodReceiverKind::None,
+                    },
                 }
             } else {
                 // Shorthand form: `self`, `&self`, `&mut self`.
@@ -1204,26 +1197,26 @@ fn detect_receiver_kind(sig: &syn::Signature) -> MethodReceiverKind {
     }
 }
 
-/// Returns true if `ty` is `ExternalPtr<Self>` (last path segment = `ExternalPtr`,
-/// single type argument = `Self`).
-fn is_external_ptr_self_ty(ty: &syn::Type) -> bool {
+/// The handle `ty` names over `Self`: `"ExternalPtr"` for `ExternalPtr<Self>`,
+/// `"ExternalPtrRef"` / `"ExternalPtrMut"` for the views (`ExternalPtrRef<'_,
+/// Self>`), matched on the last path segment with a `Self` type argument.
+fn self_handle_ty(ty: &syn::Type) -> Option<&'static str> {
     let syn::Type::Path(p) = ty else {
-        return false;
+        return None;
     };
-    let Some(last) = p.path.segments.last() else {
-        return false;
-    };
-    if last.ident != "ExternalPtr" {
-        return false;
-    }
+    let last = p.path.segments.last()?;
+    let name = ["ExternalPtr", "ExternalPtrRef", "ExternalPtrMut"]
+        .into_iter()
+        .find(|name| last.ident == name)?;
     let syn::PathArguments::AngleBracketed(ref args) = last.arguments else {
-        return false;
+        return None;
     };
-    matches!(
-        args.args.first(),
-        Some(syn::GenericArgument::Type(syn::Type::Path(tp)))
-            if tp.path.is_ident("Self")
-    )
+    args.args
+        .iter()
+        .any(|arg| {
+            matches!(arg, syn::GenericArgument::Type(syn::Type::Path(tp)) if tp.path.is_ident("Self"))
+        })
+        .then_some(name)
 }
 
 /// Returns true when the attribute list contains `#[miniextendr(constructor)]` or

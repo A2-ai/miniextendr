@@ -1,7 +1,9 @@
-//! Tests for ExternalPtr-based self receivers:
-//! `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`, and `self: ExternalPtr<Self>`.
+//! Tests for receivers that reach the R object: the views
+//! `self: ExternalPtrRef<'_, Self>` / `self: ExternalPtrMut<'_, Self>`, which
+//! the wrapper borrows for the call, and the handle `self: ExternalPtr<Self>`,
+//! which it doesn't.
 
-use miniextendr_api::externalptr::ExternalPtr;
+use miniextendr_api::externalptr::{ExternalPtr, ExternalPtrMut, ExternalPtrRef};
 use miniextendr_api::miniextendr;
 
 /// A test struct for ExternalPtr self-receiver methods.
@@ -25,23 +27,24 @@ impl PtrSelfTest {
         self.value
     }
 
-    /// ExternalPtr self — can check pointer state.
-    pub fn is_null_ptr(self: &ExternalPtr<Self>) -> bool {
+    /// Handle self — checks the pointer state.
+    pub fn is_null_ptr(self: ExternalPtr<Self>) -> bool {
         self.is_null()
     }
 
-    /// ExternalPtr self — access inner value via Deref.
-    pub fn value_via_ptr(self: &ExternalPtr<Self>) -> i32 {
+    /// Shared view self — reads the value through `Deref`.
+    pub fn value_via_ptr(self: ExternalPtrRef<'_, Self>) -> i32 {
         self.value
     }
 
-    /// Mutable ExternalPtr self — modify inner value via DerefMut.
-    pub fn set_value_via_ptr(self: &mut ExternalPtr<Self>, new_val: i32) {
+    /// Exclusive view self — writes the value through `DerefMut`.
+    /// @param new_val The new value.
+    pub fn set_value_via_ptr(mut self: ExternalPtrMut<'_, Self>, new_val: i32) {
         self.value = new_val;
     }
 
-    /// By-value ExternalPtr self — access inner value via Deref on owned ptr.
+    /// Handle self — reads the value through a checked `borrow()`.
     pub fn value_owned_ptr(self: ExternalPtr<Self>) -> i32 {
-        self.value
+        self.borrow().value
     }
 }

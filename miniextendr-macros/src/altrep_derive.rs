@@ -878,8 +878,9 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             quote! {
                 fn elt(x: ::miniextendr_api::SEXP, i: ::miniextendr_api::R_xlen_t) -> ::miniextendr_api::SEXP {
                     #written_elt
+                    // No `RefCell` borrow for the ALTREP data1 read, until #2103.
                     unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
-                        .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(&*d, i.max(0) as usize))
+                        .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(unsafe { d.as_ref_unchecked() }, i.max(0) as usize))
                         .unwrap_or(::miniextendr_api::SEXP::nil())
                 }
             }
