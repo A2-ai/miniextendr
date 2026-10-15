@@ -88,6 +88,8 @@ enum Event {
 struct Readable {
     id: i32,
     inner: Inner,
+    #[dataframe(as_factor)]
+    level: Level,
 }
 
 #[derive(DataFrameRow)]
@@ -109,7 +111,35 @@ fn build(rows: Vec<Row<'_>>, events: Vec<Event>) {
     let _ = EventDataFrame::from_rows(events);
 }
 
+// A factor-only struct must not accidentally demand Clone through the
+// parallel reader (no flattened field is present to trigger that fallback).
+#[derive(DataFrameRow)]
+struct FactorRow {
+    #[dataframe(as_factor)]
+    level: Level,
+}
+
+#[derive(DataFrameRow)]
+struct FactorTuple(#[dataframe(as_factor)] Level);
+
+// DataFrameRow is not required of the field: UnitEnumFactor suffices.
+struct ManualFactor;
+impl miniextendr_api::factor::UnitEnumFactor for ManualFactor {
+    const FACTOR_LEVELS: &'static [&'static str] = &["one"];
+    fn to_factor_index(self) -> i32 { 1 }
+    fn from_factor_index(idx: i32) -> Option<Self> {
+        (idx == 1).then_some(Self)
+    }
+}
+#[derive(DataFrameRow)]
+struct ManualRow {
+    #[dataframe(as_factor)]
+    value: ManualFactor,
+}
+
 fn read(df: miniextendr_api::SEXP) {
+    let _ = FactorRow::try_from_dataframe(df);
+    let _ = ManualRow::try_from_dataframe(df);
     let _ = Readable::try_from_dataframe(df);
     let _ = ReadableEvent::try_from_dataframe(df);
 }

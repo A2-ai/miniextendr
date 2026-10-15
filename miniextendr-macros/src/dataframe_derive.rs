@@ -632,6 +632,7 @@ fn generic_type_arg_count(ty: &syn::Type) -> usize {
 /// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list` and
 ///   opaque set/collection columns — those classify as `Single` but lack
 ///   `Vec<_>: TryFromSexp`).
+/// - `Single` factor: `FactorVec<ty>` validates levels and reads owned variants.
 /// - `Single` map column (`HashMap<String, V>` / `BTreeMap<String, V>`): one
 ///   VECSXP list-of-named-lists column read whole via `Vec<map>: TryFromSexp`
 ///   — the exact inverse of the `Vec<map>: IntoR` write shape (#764). Gated
@@ -652,7 +653,8 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
     match rf {
         ResolvedField::Single(d) => {
             !d.needs_into_list
-                && (is_reader_scalar_ty(&d.ty)
+                && (d.is_factor
+                    || is_reader_scalar_ty(&d.ty)
                     || d.map_reader
                     || d.list_elem_ty
                         .as_ref()
@@ -753,6 +755,8 @@ struct SingleFieldData {
     /// `Vec<map>: TryFromSexp` list-of-named-lists impl — the same `pull_col`
     /// path scalar Singles use, so it only widens the capability gate.
     map_reader: bool,
+    /// A unit-only enum stored as one factor column via `UnitEnumFactor`.
+    is_factor: bool,
 }
 
 /// Data for [`ResolvedField::ExpandedFixed`].
@@ -836,12 +840,26 @@ struct AutoExpandVecData {
     borrowed: bool,
 }
 
+/// The same `as_factor` shapes are accepted on struct and enum fields. The
+/// generated conversion checks `UnitEnumFactor` on the selected type.
+fn validate_factor_field_type(ty: &syn::Type) -> syn::Result<()> {
+    match classify_field_type(ty)? {
+        FieldTypeKind::Struct { .. } => Ok(()),
+        _ => Err(syn::Error::new_spanned(
+            ty,
+            "`as_factor` is only valid on bare-ident enum/struct types; \
+             use `as_list` for generic or complex types, or remove \
+             `as_factor` for scalar fields",
+        )),
+    }
+}
+
 /// Resolve a struct field into a [`ResolvedField`], applying field attributes.
 ///
 /// Combines the field's `#[dataframe(...)]` attributes with its type classification
 /// to determine the codegen strategy:
 /// - `skip` -> returns `None`
-/// - `as_list` -> `Single` (suppresses expansion)
+/// - `as_list` / `as_factor` -> `Single` (suppresses expansion)
 /// - `FixedArray` -> `ExpandedFixed` (compile-time expansion to N columns)
 /// - `VariableVec`/`BoxedSlice`/`BorrowedSlice` + `width` -> `ExpandedVec`
 /// - `VariableVec`/`BoxedSlice`/`BorrowedSlice` + `expand` -> `AutoExpandVec`
@@ -882,6 +900,21 @@ fn resolve_struct_field(
     // not set.  The as_list branch below uses `.ok()` to suppress errors.
     let kind = classify_field_type(ty);
 
+    if field_attrs.as_factor {
+        validate_factor_field_type(ty)?;
+        return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
+            rust_name,
+            col_name,
+            col_name_str,
+            ty: ty.clone(),
+            tuple_index,
+            needs_into_list: false,
+            list_elem_ty: None,
+            map_reader: false,
+            is_factor: true,
+        }))));
+    }
+
     // as_list suppresses expansion. For struct-typed fields (#485 opt-out), the
     // companion stores the struct values and the frame assembly converts each
     // one via `IntoList::into_list()` straight into the rooted list-column
@@ -905,6 +938,7 @@ fn resolve_struct_field(
             needs_into_list,
             list_elem_ty: None,
             map_reader: false,
+            is_factor: false,
         }))));
     }
 
@@ -981,6 +1015,7 @@ fn resolve_struct_field(
                         Some((*elem_ty).clone())
                     },
                     map_reader: false,
+                    is_factor: false,
                 }))))
             }
         }
@@ -1053,6 +1088,7 @@ fn resolve_struct_field(
                         needs_into_list: false,
                         list_elem_ty: None,
                         map_reader: true,
+                        is_factor: false,
                     }))));
                 }
                 // Float key check: f32/f64 classify as bare_reader_scalar but are
@@ -1105,6 +1141,7 @@ fn resolve_struct_field(
                 needs_into_list: false,
                 list_elem_ty: None,
                 map_reader,
+                is_factor: false,
             }))))
         }
     }
@@ -1500,18 +1537,27 @@ pub(super) fn expanded_elem_idents(key: &str, n: usize) -> Vec<syn::Ident> {
 
 // region: Struct path (existing logic, extracted)
 
-/// The expression that turns companion column `self.#name` into a column SEXP:
-/// `IntoR` for the whole `Vec`, or for an `as_list` struct field
-/// `into_list_column`, which stores each cell's list in the rooted column as
-/// it is built (#1748). `list_elem_ty` is the field type when the column is
-/// built that way.
-fn column_sexp(name: &syn::Ident, list_elem_ty: Option<&syn::Type>) -> TokenStream {
-    match list_elem_ty {
-        Some(ty) => {
-            let into_list_column = list_column_fn(ty, false);
-            quote! { #into_list_column(self.#name) }
+/// Convert a companion column without adding R objects to the companion:
+/// `as_list` uses the rooted list builder, `as_factor` uses `UnitEnumFactor`,
+/// and ordinary columns convert the whole `Vec` through `IntoR`.
+fn column_sexp(
+    name: &syn::Ident,
+    ty: &syn::Type,
+    needs_into_list: bool,
+    is_factor: bool,
+) -> TokenStream {
+    if needs_into_list {
+        let into_list_column = list_column_fn(ty, false);
+        quote! { #into_list_column(self.#name) }
+    } else if is_factor {
+        let span = syn::spanned::Spanned::span(ty);
+        quote_spanned! {span=>
+            ::miniextendr_api::IntoR::into_sexp(
+                ::miniextendr_api::factor::FactorVec::<#ty>::from(self.#name)
+            )
         }
-        None => quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) },
+    } else {
+        quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) }
     }
 }
 
@@ -1619,6 +1665,8 @@ fn derive_struct_dataframe(
         /// The `from_rows_par` pre-pass clones these sequentially instead of
         /// scatter-writing (the struct need not implement `Default`).
         needs_into_list: bool,
+        /// Convert this column through `UnitEnumFactor`.
+        is_factor: bool,
     }
 
     let mut flat_cols: Vec<FlatCol> = Vec::new();
@@ -1631,6 +1679,7 @@ fn derive_struct_dataframe(
                     col_name_str: data.col_name_str.clone(),
                     vec_elem_ty: data.ty.clone(),
                     needs_into_list: data.needs_into_list,
+                    is_factor: data.is_factor,
                 });
             }
             ResolvedField::ExpandedFixed(data) => {
@@ -1641,6 +1690,7 @@ fn derive_struct_dataframe(
                         col_name_str: name,
                         vec_elem_ty: data.elem_ty.clone(),
                         needs_into_list: false,
+                        is_factor: false,
                     });
                 }
             }
@@ -1654,6 +1704,7 @@ fn derive_struct_dataframe(
                         col_name_str: name,
                         vec_elem_ty: opt_ty,
                         needs_into_list: false,
+                        is_factor: false,
                     });
                 }
             }
@@ -1673,12 +1724,14 @@ fn derive_struct_dataframe(
                     col_name_str: keys_col_name,
                     vec_elem_ty: keys_vec_ty,
                     needs_into_list: false,
+                    is_factor: false,
                 });
                 flat_cols.push(FlatCol {
                     df_field: format_ident!("{}_values", data.base_name),
                     col_name_str: vals_col_name,
                     vec_elem_ty: vals_vec_ty,
                     needs_into_list: false,
+                    is_factor: false,
                 });
             }
         }
@@ -1841,7 +1894,7 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
-            let column = column_sexp(name, fc.needs_into_list.then_some(&fc.vec_elem_ty));
+            let column = column_sexp(name, &fc.vec_elem_ty, fc.needs_into_list, fc.is_factor);
             quote! { (#name_str, __scope.protect_raw(#column)) }
         })
         .collect();
@@ -1896,7 +1949,7 @@ fn derive_struct_dataframe(
                 ResolvedField::Single(data) => {
                     let col_name = &data.col_name;
                     let col_name_str = &data.col_name_str;
-                    let column = column_sexp(col_name, data.needs_into_list.then_some(&data.ty));
+                    let column = column_sexp(col_name, &data.ty, data.needs_into_list, data.is_factor);
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),
@@ -2723,9 +2776,9 @@ fn derive_struct_dataframe(
     // materialisation, sub-frame selection + recursive nested reads) happens up
     // front on the R/worker thread; only then does `(0..nrow).into_par_iter()`
     // assemble each `Self` from the pre-extracted, owned column data by index —
-    // pure Rust, zero R API calls. Shapes containing a struct-flatten field would
-    // need `Inner: Clone` for by-index parallel assembly, so their `_par` reader
-    // delegates to the sequential one (which moves) rather than imposing `Clone`.
+    // pure Rust, zero R API calls. Flattened and factor fields would need
+    // `Clone` for by-index assembly, so their `_par` reader delegates to the
+    // sequential one (which moves) rather than imposing `Clone`.
     let struct_reader = !is_tuple_struct
         && !is_unit_struct
         && !has_tag
@@ -2736,9 +2789,11 @@ fn derive_struct_dataframe(
     let has_autoexpand_field = resolved
         .iter()
         .any(|rf| matches!(rf, ResolvedField::AutoExpandVec(_)));
-    let has_struct_field = resolved
-        .iter()
-        .any(|rf| matches!(rf, ResolvedField::Struct(_)));
+    let has_moved_reader_field = resolved.iter().any(|rf| match rf {
+        ResolvedField::Struct(_) => true,
+        ResolvedField::Single(data) => data.is_factor,
+        _ => false,
+    });
 
     let reader_methods = if struct_reader {
         // Per-field fragments:
@@ -2759,13 +2814,27 @@ fn derive_struct_dataframe(
         // (NA-aware, ALTREP-materialising), then length-check it against `__nrow`.
         // Bypasses `DataFrame::column` because its `Error = SexpError` bound is
         // tighter than the scalar element types' `TryFromSexp::Error`.
-        let pull_col = |col_var: &syn::Ident, col_name_str: &str, elem_ty: &syn::Type| {
+        let pull_col = |col_var: &syn::Ident,
+                        col_name_str: &str,
+                        elem_ty: &syn::Type,
+                        is_factor: bool| {
+            let convert = if is_factor {
+                let span = syn::spanned::Spanned::span(elem_ty);
+                quote_spanned! {span=>
+                    <::miniextendr_api::factor::FactorVec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                        .map(|values| values.into_inner())
+                }
+            } else {
+                quote! {
+                    <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                }
+            };
             quote! {
                 let #col_var: ::std::vec::Vec<#elem_ty> = {
                     let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
-                    <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                    #convert
                         .map_err(|e| ::std::format!(
                             "column `{}` could not be converted to the expected type: {}",
                             #col_name_str, e
@@ -2845,7 +2914,12 @@ fn derive_struct_dataframe(
                         // `pull_col`'s `Vec<#ty>: TryFromSexp` covers both
                         // (maps via the list-of-named-lists impl).
                         ::core::option::Option::None => {
-                            extracts.push(pull_col(&col_var, &data.col_name_str, &data.ty));
+                            extracts.push(pull_col(
+                                &col_var,
+                                &data.col_name_str,
+                                &data.ty,
+                                data.is_factor,
+                            ));
                             seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                             seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
                             par_builds.push(
@@ -2867,7 +2941,7 @@ fn derive_struct_dataframe(
                         let it_var =
                             format_ident!("__efit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
-                        extracts.push(pull_col(&col_var, &col_name_str, elem_ty));
+                        extracts.push(pull_col(&col_var, &col_name_str, elem_ty, false));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                         it_nexts.push(quote! { #it_var.next().unwrap() });
                         idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
@@ -2890,7 +2964,7 @@ fn derive_struct_dataframe(
                         let it_var =
                             format_ident!("__evit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
-                        extracts.push(pull_col(&col_var, &col_name_str, &opt_ty));
+                        extracts.push(pull_col(&col_var, &col_name_str, &opt_ty, false));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
                         it_nexts.push(quote! { #it_var.next().unwrap() });
                         idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
@@ -3112,10 +3186,9 @@ fn derive_struct_dataframe(
             quote! { _ }
         };
 
-        // A struct-flatten field would need `Inner: Clone` for by-index parallel
-        // assembly. Rather than impose that, the parallel reader delegates to the
-        // sequential one (which moves) whenever a struct field is present.
-        let par_body = if has_struct_field {
+        // Flattened and factor values need not be `Clone`. Move them through
+        // the sequential reader, as the enum reader does for the same shapes.
+        let par_body = if has_moved_reader_field {
             quote! { Self::try_from_dataframe(sexp) }
         } else {
             quote! {
@@ -3702,6 +3775,38 @@ mod tests {
     /// Stringify the derive output (whitespace-normalised) for substring assertions.
     fn expand(input: DeriveInput) -> String {
         derive_dataframe_row(input).unwrap().to_string()
+    }
+
+    #[test]
+    fn struct_as_factor_is_one_readable_column() {
+        let input: DeriveInput = syn::parse_quote! {
+            struct Row {
+                #[dataframe(as_factor, rename = "direction")]
+                dir: Direction,
+            }
+        };
+        let syn::Data::Struct(data) = &input.data else {
+            unreachable!()
+        };
+        let resolved = resolve_struct_field(data.fields.iter().next().unwrap(), 0, false)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(&resolved, ResolvedField::Single(_)));
+        assert!(field_reader_capable(&resolved));
+        let code = expand(input);
+        assert!(code.contains("FactorVec"));
+        assert!(code.contains("Self :: try_from_dataframe (sexp)"));
+    }
+
+    #[test]
+    fn struct_as_factor_rejects_non_enum_shapes_at_the_field() {
+        for ty in [quote! { i32 }, quote! { Vec<i32> }, quote! { [i32; 2] }] {
+            let input = syn::parse_quote! {
+                struct Row { #[dataframe(as_factor)] value: #ty }
+            };
+            let error = derive_dataframe_row(input).unwrap_err().to_string();
+            assert!(error.contains("`as_factor` is only valid"), "{error}");
+        }
     }
 
     /// `Option<scalar>` struct fields are a single NA-able column (#1437): the

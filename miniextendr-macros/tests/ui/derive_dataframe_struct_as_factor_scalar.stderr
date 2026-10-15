@@ -1,0 +1,5 @@
+error: `as_factor` is only valid on bare-ident enum/struct types; use `as_list` for generic or complex types, or remove `as_factor` for scalar fields
+ --> tests/ui/derive_dataframe_struct_as_factor_scalar.rs:6:12
+  |
+6 |     value: i32,
+  |            ^^^

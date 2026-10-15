@@ -428,6 +428,26 @@ enum Move {
 // Stop rows have NA in dir.
 ```
 
+The same attribute works on named and tuple struct fields, including
+`rename`. For example:
+
+```rust
+#[derive(DataFrameRow)]
+struct Step {
+    id: i32,
+    #[dataframe(as_factor, rename = "direction")]
+    dir: Direction,
+}
+// Columns: id (integer), direction (factor), with no direction_variant column.
+```
+
+The companion stores owned enum values; conversion needs neither `Clone` nor
+`Copy`. Named struct readers validate the factor's levels and report every NA
+or invalid code in a required factor column. Their parallel reader uses the
+sequential reader to move non-Clone values, as nested enum readers do. Empty
+columns retain the complete level set. Tuple and tagged structs retain their
+usual write-only support.
+
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
 **Generic unit enums**: `#[derive(DataFrameRow)]` rejects enums with type or const generic parameters, so it never emits `UnitEnumFactor` for one. A generic unit enum must implement `UnitEnumFactor` by hand if `as_factor` is needed.

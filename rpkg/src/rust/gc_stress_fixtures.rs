@@ -6038,3 +6038,25 @@ pub fn gc_stress_uncached_string_borrows() {
 }
 
 // endregion
+
+/// Keep struct factor columns alive across later columns and nested subframes.
+#[miniextendr(noexport)]
+pub fn gc_stress_struct_factor() {
+    use crate::dataframe_struct_factor_test::{df_struct_factor, df_struct_factor_roundtrip};
+    use miniextendr_api::SexpExt;
+
+    for shape in ["named", "tuple", "nested", "expanded", "tagged"] {
+        let frame = df_struct_factor(shape, false);
+        let column = if matches!(shape, "named" | "tuple") {
+            "stage"
+        } else {
+            "level"
+        };
+        assert!(frame.column_raw(column).unwrap().is_factor());
+        if matches!(shape, "named" | "nested" | "expanded") {
+            let back = df_struct_factor_roundtrip(frame.as_sexp(), shape).unwrap();
+            assert!(back.column_raw(column).unwrap().is_factor());
+            assert_eq!(back.nrow(), 3);
+        }
+    }
+}
