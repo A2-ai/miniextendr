@@ -118,31 +118,15 @@ pub(super) fn derive_enum_dataframe(
                             is_factor: false,
                         })));
                     } else if fa.as_factor {
-                        // `as_factor` is only valid on bare-ident enum types (Struct kind).
-                        // The inner enum must be unit-only and derive DataFrameRow, which
-                        // auto-emits UnitEnumFactor so FactorOptionVec<T> implements IntoR.
-                        match classify_field_type(&f.ty)? {
-                            FieldTypeKind::Struct { .. } => {
-                                resolved.push(EnumResolvedField::Single(Box::new(
-                                    EnumSingleFieldData {
-                                        col_name: crate::naming::name_ident(&col_name_str),
-                                        binding: binding.clone(),
-                                        rust_name: rust_name.clone(),
-                                        ty: f.ty.clone(),
-                                        needs_into_list: false,
-                                        is_factor: true,
-                                    },
-                                )));
-                            }
-                            _ => {
-                                return Err(syn::Error::new_spanned(
-                                    &f.ty,
-                                    "`as_factor` is only valid on bare-ident enum/struct types; \
-                                     use `as_list` for generic or complex types, or remove \
-                                     `as_factor` for scalar fields",
-                                ));
-                            }
-                        }
+                        super::validate_factor_field_type(&f.ty)?;
+                        resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
+                            col_name: crate::naming::name_ident(&col_name_str),
+                            binding: binding.clone(),
+                            rust_name: rust_name.clone(),
+                            ty: f.ty.clone(),
+                            needs_into_list: false,
+                            is_factor: true,
+                        })));
                     } else {
                         if let Some(error) =
                             raw_variant_column_error(&f.ty, fa.width.is_some() || fa.expand)
@@ -377,28 +361,15 @@ pub(super) fn derive_enum_dataframe(
                             is_factor: false,
                         })));
                     } else if fa.as_factor {
-                        match classify_field_type(&f.ty)? {
-                            FieldTypeKind::Struct { .. } => {
-                                resolved.push(EnumResolvedField::Single(Box::new(
-                                    EnumSingleFieldData {
-                                        col_name: crate::naming::name_ident(&col_name_str),
-                                        binding,
-                                        rust_name,
-                                        ty: f.ty.clone(),
-                                        needs_into_list: false,
-                                        is_factor: true,
-                                    },
-                                )));
-                            }
-                            _ => {
-                                return Err(syn::Error::new_spanned(
-                                    &f.ty,
-                                    "`as_factor` is only valid on bare-ident enum/struct types; \
-                                     use `as_list` for generic or complex types, or remove \
-                                     `as_factor` for scalar fields",
-                                ));
-                            }
-                        }
+                        super::validate_factor_field_type(&f.ty)?;
+                        resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
+                            col_name: crate::naming::name_ident(&col_name_str),
+                            binding,
+                            rust_name,
+                            ty: f.ty.clone(),
+                            needs_into_list: false,
+                            is_factor: true,
+                        })));
                     } else {
                         if let Some(error) =
                             raw_variant_column_error(&f.ty, fa.width.is_some() || fa.expand)

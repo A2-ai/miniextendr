@@ -66,3 +66,64 @@ fn null_byte_level_panics() {
         build_levels_sexp(&["ok", "bad\0name"]);
     });
 }
+
+/// UnitEnumFactor alone suffices: this type has no RFactor, DataFrameRow,
+/// Clone or Copy implementation.
+struct OwnedLevel(i32);
+
+impl miniextendr_api::factor::UnitEnumFactor for OwnedLevel {
+    const FACTOR_LEVELS: &'static [&'static str] = &["low", "high"];
+    fn to_factor_index(self) -> i32 {
+        self.0
+    }
+    fn from_factor_index(idx: i32) -> Option<Self> {
+        (1..=2).contains(&idx).then_some(Self(idx))
+    }
+}
+
+#[test]
+fn factor_vec_moves_unit_enum_values_and_retains_empty_levels() {
+    use miniextendr_api::factor::FactorVec;
+    use miniextendr_api::{IntoR, TryFromSexp};
+    r_test_utils::with_r_thread(|| {
+        for codes in [vec![2, 1, 2], vec![]] {
+            let values = codes.iter().copied().map(OwnedLevel).collect();
+            let factor = unsafe { OwnedProtect::new(FactorVec::new(values).into_sexp()) };
+            assert!(factor.get().is_factor());
+            assert_eq!(factor.get().get_levels().len(), 2);
+            let back = FactorVec::<OwnedLevel>::try_from_sexp(factor.get()).unwrap();
+            assert_eq!(
+                back.into_inner()
+                    .into_iter()
+                    .map(|v| v.0)
+                    .collect::<Vec<_>>(),
+                codes
+            );
+        }
+    });
+}
+
+#[test]
+fn unit_enum_factor_vec_batches_missing_and_invalid_codes() {
+    use miniextendr_api::factor::FactorVec;
+    use miniextendr_api::{RNativeType, TryFromSexp};
+    r_test_utils::with_r_thread(|| {
+        let factor = unsafe {
+            OwnedProtect::new(build_factor_with_levels(
+                &[i32::R_NA, 0, 3],
+                &["low", "high"],
+            ))
+        };
+        let error = match FactorVec::<OwnedLevel>::try_from_sexp(factor.get()) {
+            Ok(_) => panic!("invalid factor unexpectedly accepted"),
+            Err(error) => error.to_string(),
+        };
+        for reason in [
+            "NA is not allowed",
+            "code 0 is not a level",
+            "code 3 is not a level",
+        ] {
+            assert!(error.contains(reason), "{error}");
+        }
+    });
+}
