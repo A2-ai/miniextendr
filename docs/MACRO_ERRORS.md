@@ -289,7 +289,11 @@ pub fn read(x: &MyType) -> i32 { /* ... */ }
 A `&T` parameter borrows an external value for the call (`EXTERNALPTR.md`,
 "Arguments"). Only the reference types the macro reads from an R vector
 (`&str`, `&[T]`, `&i32`, `&f64`, `&RLogical`, ...) mean something else; for
-any other `T`, derive `ExternalPtr` or take the argument by value.
+any other `T`, derive `ExternalPtr` or take the argument by value. If the
+reference already implements `TryFromSexp` (including a type alias such as
+`type Text = str`), use `#[miniextendr(convert)]` on the parameter instead.
+On an inherent or trait impl method, use `#[miniextendr(convert(param))]`
+on the method. See [explicit reference conversions](EXTERNALPTR.md#arguments).
 
 ### "takes `self` and is marked `constructor`"
 

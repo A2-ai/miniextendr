@@ -497,6 +497,8 @@ pub(crate) fn build_dots_validation_stmt(
 /// - `#[miniextendr(check_interrupt)]` — check for a user interrupt once, before the
 ///   arguments are converted and the body runs
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(convert)]` on a reference parameter — use its own conversion rather than
+///   an ExternalPtr borrow; on inherent/trait impl methods, write `#[miniextendr(convert(param))]`.
 /// - `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
 ///   (requires the API `serde` feature); composes with return visibility markers
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
@@ -1437,6 +1439,16 @@ fn expand_miniextendr(
     }
     for (param, message) in no_na_params_list {
         c_wrapper_builder = c_wrapper_builder.no_na(param, message);
+    }
+    for input in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = input
+            && let syn::Pat::Ident(p) = pt.pat.as_ref()
+        {
+            let name = crate::naming::ident_name(&p.ident);
+            if parsed.param_attrs(&name).is_some_and(|a| a.convert) {
+                c_wrapper_builder = c_wrapper_builder.with_convert_param(name);
+            }
+        }
     }
     for (param, markers) in parsed.param_markers() {
         c_wrapper_builder = c_wrapper_builder.param_markers(param.clone(), markers.clone());

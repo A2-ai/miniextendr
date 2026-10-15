@@ -1103,6 +1103,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 } else {
                     preconditions = Some(keep);
                 }
+            } else if meta.path.is_ident("convert") {
+                per_param_span.get_or_insert(meta.path.span());
+                crate::miniextendr_fn::parse_method_convert(&meta, &mut per_param)?;
             } else if meta.path.is_ident("no_na") {
                 per_param_span.get_or_insert(meta.path.span());
                 // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
@@ -1440,6 +1443,9 @@ pub(super) fn generate_trait_method_c_wrapper(
     // `no_na(..)` parameters also have their converted value checked, for what
     // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.per_param {
+        if attrs.convert {
+            builder = builder.with_convert_param(rust_name.clone());
+        }
         if let Some(leaf) = attrs.layered_leaf() {
             builder = builder.layered_choice(rust_name.clone(), leaf);
         }

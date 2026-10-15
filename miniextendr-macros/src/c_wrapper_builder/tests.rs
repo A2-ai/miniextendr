@@ -354,3 +354,31 @@ fn argument_borrows_follow_conversion() {
     );
     assert!(!main.contains("__mx_ptr_c"), "{main}");
 }
+
+#[test]
+fn converted_references_keep_metadata_and_roots_without_external_guards() {
+    for (ty, converter) in [
+        ("&Name", "TryFromRoot"),
+        ("Option<&Name>", "TryFromRoot"),
+        ("&mut Values", "TryFromSexp"),
+        ("Option<&mut Values>", "TryFromSexp"),
+    ] {
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        let context = CWrapperContext::builder(syn::parse_quote!(f), syn::parse_quote!(C_f))
+            .inputs(syn::parse_quote!(x: #ty))
+            .call_expr(quote::quote!(f(x)))
+            .thread_strategy(ThreadStrategy::WorkerThread)
+            .with_convert_param("x".into())
+            .build();
+        let code = context.generate().to_string();
+        assert!(code.contains(converter), "{code}");
+        assert!(code.contains("NATIVE_BORROW"), "{code}");
+        assert!(code.contains("assert_no_aliases"), "{code}");
+        assert!(!code.contains("__mx_external_arg"), "{code}");
+        assert!(!code.contains("__mx_borrow"), "{code}");
+        assert!(!code.contains("run_on_worker"), "{code}");
+        if converter == "TryFromRoot" {
+            assert!(code.contains("__mx_roots_x . rooted"), "{code}");
+        }
+    }
+}
