@@ -2558,6 +2558,7 @@ fn scale_impl_expansion(attrs: proc_macro2::TokenStream) -> String {
         &syn::parse_quote!(Meter),
         &impl_attrs,
         &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
+        &[],
     )
     .to_string()
 }
@@ -2606,6 +2607,7 @@ fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImp
         &syn::parse_quote!(Meter),
         &impl_attrs,
         &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
+        &[],
     )
     .to_string()
 }
@@ -2941,7 +2943,7 @@ fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() 
         }
         {
             #[miniextendr(r_name = "take")]
-            fn r_take();
+            fn r_take(n: ());
             #[miniextendr(r_name = "len")]
             fn r_len();
             #[miniextendr(skip)]
@@ -3016,6 +3018,7 @@ fn impl_vtable_uses_declaration_layout_and_associated_callbacks_through_aliases(
         &syn::parse_quote!(Host),
         &syn::parse_quote!(facade::Renamed),
         &[],
+        &[],
     )
     .unwrap();
     let file: syn::File = syn::parse2(output.clone()).unwrap();
@@ -3055,6 +3058,9 @@ fn generic_impl_vtable_keeps_declared_slots_when_an_impl_hides_an_r_wrapper() {
         &syn::parse_quote!(Host),
         &syn::parse_quote!(Imported<i32>),
         &[method],
+        &[syn::parse_quote!(
+            fn read();
+        )],
     )
     .unwrap()
     .to_string();

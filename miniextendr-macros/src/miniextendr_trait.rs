@@ -543,10 +543,11 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .as_ref()
                 .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
             let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
-            // Only metadata crosses this path; impl signatures, bodies and
-            // parameter attributes keep their original spans and type scope.
+            // Names cross without declaration-local types: concrete shims
+            // report the public signature even when the impl renames bindings.
+            let params = &info.param_names;
             method_metadata.push(quote::quote! {
-                #r_name_attr #skip_attr fn #name();
+                #r_name_attr #skip_attr fn #name(#(#params: ()),*);
             });
             if !has_generics && assoc_types.is_empty() && !info.skip {
                 let r_name = info
@@ -860,20 +861,14 @@ fn generate_method_shim(
         .zip(method.param_types.iter())
         .enumerate()
         .map(|(i, (name, ty))| {
-            let name_str = crate::naming::ident_name(name);
-            if let Some(mutable) = crate::type_inspect::self_ref_mutability(ty) {
-                crate::trait_self_ref::extract(name, &impl_t, i, mutable, &argc, &argv)
-            } else if crate::type_inspect::is_rooted_view(ty)
-                || crate::type_inspect::is_rooted_reference(ty)
-            {
-                crate::trait_self_ref::rooted_view_arg(name, ty, i, &argv)
-            } else {
-                quote::quote! {
-                    let #name: #ty = unsafe {
-                        ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
-                    };
-                }
-            }
+            crate::trait_self_ref::argument(
+                name,
+                &crate::naming::ident_name(name),
+                ty,
+                &impl_t,
+                i,
+                &argv,
+            )
         })
         .collect();
 
