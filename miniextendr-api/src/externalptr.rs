@@ -332,10 +332,8 @@ fn symbol_name(sym: SEXP) -> &'static str {
 #[inline]
 unsafe fn stored_type_id_symbol(sexp: SEXP) -> Option<SEXP> {
     let tag = unsafe { R_ExternalPtrTag(sexp) };
-    if tag.type_of() != SEXPTYPE::SYMSXP
-        || unsafe { std::ffi::CStr::from_ptr(tag.printname().r_char()) }
-            == crate::mx_abi::MX_TAG_NAME
-    {
+    // Symbols are interned, so the trait-ABI tag compares by pointer.
+    if tag.type_of() != SEXPTYPE::SYMSXP || tag == unsafe { crate::mx_abi::get_tag() } {
         return None;
     }
     let prot = unsafe { R_ExternalPtrProtected(sexp) };
