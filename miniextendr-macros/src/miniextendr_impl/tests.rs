@@ -9651,3 +9651,30 @@ fn static_methods_keep_r_values_on_the_main_thread() {
 }
 
 // endregion
+
+#[test]
+fn explicit_reference_conversion_is_shared_by_all_class_systems() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S7,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::Vctrs,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Host {
+                    #[miniextendr(convert(value))]
+                    pub fn read(value: &Text) -> String { value.to_owned() }
+                }
+            },
+        );
+        let method = &parsed.methods[0];
+        assert!(method.method_attrs.per_param["value"].convert);
+        let code = generate_method_c_wrapper(&parsed, method).to_string();
+        assert!(code.contains("TryFromRoot"), "{system:?}: {code}");
+        assert!(!code.contains("__mx_external_arg"), "{system:?}: {code}");
+    }
+}

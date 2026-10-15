@@ -3255,3 +3255,45 @@ fn serialize_attribute_accepts_boolean_forms_and_rejects_result_transport_confli
         );
     }
 }
+
+#[test]
+fn convert_params_are_consumed_and_validate_the_reference_shape() {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn read(#[miniextendr(convert)] text: &Name,
+                #[miniextendr(convert)] values: Option<&mut Values>) {}
+    })
+    .unwrap();
+    assert!(parsed.param_attrs("text").unwrap().convert);
+    assert!(parsed.param_attrs("values").unwrap().convert);
+    for arg in &parsed.item().sig.inputs {
+        let syn::FnArg::Typed(pt) = arg else { panic!() };
+        assert!(pt.attrs.is_empty());
+    }
+    for (input, expected) in [
+        (
+            quote::quote! { fn f(#[miniextendr(convert)] x: Name) {} },
+            "requires `&T`",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(convert)] x: &'static Name) {} },
+            "remove the `'static`",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(convert, coerce)] x: &Name) {} },
+            "cannot be combined",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(convert, match_arg)] x: &Name) {} },
+            "cannot be combined",
+        ),
+        (
+            quote::quote! { extern "C-unwind" fn f(#[miniextendr(convert)] x: &Name) {} },
+            "requires a generated wrapper",
+        ),
+    ] {
+        let err = syn::parse2::<MiniextendrFunctionParsed>(input)
+            .err()
+            .expect("must reject");
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+}

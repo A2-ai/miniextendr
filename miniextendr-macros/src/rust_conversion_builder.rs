@@ -25,6 +25,7 @@ pub struct RustConversionBuilder {
     coerce_all: bool,
     /// Parameter names that should use coercion
     coerce_params: Vec<String>,
+    convert_params: Vec<String>,
     /// Enable strict input conversion for lossy types
     strict: bool,
     /// Parameter names with `match_arg + several_ok` — use `match_arg_vec_from_sexp` instead of `TryFromSexp`.
@@ -62,6 +63,7 @@ impl RustConversionBuilder {
             inferred_types: false,
             coerce_all: false,
             coerce_params: Vec::new(),
+            convert_params: Vec::new(),
             strict: false,
             match_arg_several_ok_params: Vec::new(),
             layered_choice_params: Vec::new(),
@@ -96,7 +98,8 @@ impl RustConversionBuilder {
             return None;
         };
         let name = crate::naming::ident_name(&pat_ident.ident);
-        if self.param_markers.iter().any(|(n, _)| *n == name) {
+        if self.convert_params.contains(&name) || self.param_markers.iter().any(|(n, _)| *n == name)
+        {
             return None;
         }
         crate::externalptr_args::external_arg(&pat_type.ty)
@@ -221,11 +224,21 @@ impl RustConversionBuilder {
         Some(quote! { #(#rebinds)* })
     }
 
-    /// Check if a parameter should use coercion.
-    ///
+    /// Select the reference's conversion, including its native-borrow metadata.
+    pub fn with_convert_param(mut self, param_name: String) -> Self {
+        self.convert_params.push(param_name);
+        self
+    }
+
+    fn explicit_conversion(&self, pat_type: &syn::PatType) -> bool {
+        matches!(pat_type.pat.as_ref(), syn::Pat::Ident(p)
+            if self.convert_params.contains(&crate::naming::ident_name(&p.ident)))
+    }
+
     /// Returns `true` if `coerce_all` is set or `param_name` appears in the per-parameter list.
     fn should_coerce(&self, param_name: &str) -> bool {
-        self.coerce_all || self.coerce_params.contains(&param_name.to_string())
+        !self.convert_params.iter().any(|name| name == param_name)
+            && (self.coerce_all || self.coerce_params.iter().any(|name| name == param_name))
     }
 
     /// Describe only the conversion actually used for this argument.
@@ -241,6 +254,16 @@ impl RustConversionBuilder {
             return None;
         };
         let ty = pat_type.ty.as_ref();
+        if self.explicit_conversion(pat_type) {
+            let reference = crate::externalptr_args::conversion_reference(ty)
+                .expect("validated convert parameter");
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            return Some(if reference.mutability.is_none() {
+                quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
+            } else {
+                quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
+            });
+        }
         if crate::type_inspect::call_marker(ty).is_some()
             || crate::type_inspect::unevaluated_param(ty).is_some()
             || crate::type_inspect::is_lazy_dots_marker(ty)
@@ -586,8 +609,12 @@ impl RustConversionBuilder {
             .iter()
             .find(|(name, _)| *name == param_name)
             .map(|(_, leaf)| leaf);
+        let explicit_conversion = self.explicit_conversion(pat_type);
+        let converted_shared = explicit_conversion
+            && crate::externalptr_args::conversion_reference(ty)
+                .is_some_and(|r| r.mutability.is_none());
         let rooted_reference = root_shared_inputs
-            && crate::type_inspect::is_rooted_reference(ty)
+            && (converted_shared || crate::type_inspect::is_rooted_reference(ty))
             && !self.match_arg_several_ok_params.contains(&param_name)
             && layered_choice.is_none();
         if crate::type_inspect::is_rooted_view(ty) || rooted_reference {
@@ -622,6 +649,19 @@ impl RustConversionBuilder {
                 }],
                 vec![],
             );
+        }
+
+        if explicit_conversion {
+            // Mutable references still use the raw conversion: a
+            // copyable Root proves liveness, not exclusive access. The wrapper
+            // preflights this converter's metadata before any reference exists.
+            let binding_ty = crate::type_inspect::erase_lifetimes(ty);
+            let span = ty.span();
+            let try_expr = quote_spanned! {span=>
+                <#binding_ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#sexp_ident)
+            };
+            let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
+            return (vec![stmt], vec![]);
         }
 
         // Main-thread &str normally returned above. Its existing special
