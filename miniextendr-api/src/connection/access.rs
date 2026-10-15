@@ -14,7 +14,7 @@
 //! R has no R-level getter for the blocking flag, so [`is_blocking`] is
 //! `None` before R 4.6.
 //!
-//! [`write`] raises R's error (before R 4.6, panics with its message);
+//! [`write()`] raises R's error (before R 4.6, panics with its message);
 //! [`write_caught`] returns it as an `io::Error`, for a caller that must not
 //! unwind, such as a `std::io::Write` impl or a progress-bar draw.
 
@@ -131,7 +131,7 @@ mod imp {
         }
     }
 
-    /// [`write`] with R's error (no connection, not open, cannot write, or
+    /// [`write()`] with R's error (no connection, not open, cannot write, or
     /// a write callback that raises) returned as an `io::Error`. The count
     /// is the write callback's, which can be short.
     ///
