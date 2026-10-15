@@ -2559,6 +2559,7 @@ fn scale_impl_expansion(attrs: proc_macro2::TokenStream) -> String {
         &impl_attrs,
         &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
         &[],
+        &[],
     )
     .to_string()
 }
@@ -2607,6 +2608,7 @@ fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImp
         &syn::parse_quote!(Meter),
         &impl_attrs,
         &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
+        &[],
         &[],
     )
     .to_string()
@@ -2949,6 +2951,7 @@ fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() 
             #[miniextendr(skip)]
             fn hidden();
         }
+        { <T> }
         abi Collection true "test-only-metadata-tag" {
             pub r_take: ::miniextendr_api::abi::mx_meth,
             pub r_len: ::miniextendr_api::abi::mx_meth,
@@ -2985,6 +2988,7 @@ fn inherited_skip_never_becomes_a_wrapper_even_with_an_impl_rename() {
             }
         }
         { #[miniextendr(skip)] fn rust_only(); }
+        {}
         abi Hidden false "test-only-metadata-tag" {}
     };
     let output = input.expand().unwrap();

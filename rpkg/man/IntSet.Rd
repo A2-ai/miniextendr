@@ -30,4 +30,6 @@ Arguments of \code{IntSet$contains()}:
 \describe{
 \item{\code{value}}{Integer value to check for membership.}
 }
+
+Check if the collection is empty.
 }

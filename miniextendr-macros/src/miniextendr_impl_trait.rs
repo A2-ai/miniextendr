@@ -463,6 +463,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
 
 // region: Sub-modules
 
+mod defaults;
 mod method_context;
 mod r_wrappers;
 mod vtable;
@@ -583,6 +584,7 @@ struct ImplWithMetadata {
     attrs: ImplAttrs,
     implementation: ItemImpl,
     methods: Vec<syn::TraitItemFn>,
+    generics: syn::Generics,
     abi: TraitAbiMetadata,
 }
 
@@ -602,10 +604,13 @@ impl syn::parse::Parse for ImplWithMetadata {
         while !metadata.is_empty() {
             methods.push(metadata.parse()?);
         }
+        let generics;
+        syn::braced!(generics in input);
         Ok(Self {
             attrs,
             implementation,
             methods,
+            generics: generics.parse()?,
             abi: input.parse()?,
         })
     }
@@ -615,6 +620,12 @@ impl ImplWithMetadata {
     fn expand(mut self) -> syn::Result<TokenStream> {
         vtable::inherit_method_metadata(&mut self.implementation, &self.methods)?;
         let (trait_path, concrete_type) = extract_trait_and_type(&self.implementation)?;
+        let defaults = defaults::inherited_methods(
+            &self.implementation,
+            &self.methods,
+            &self.generics,
+            &trait_path,
+        )?;
         Ok(generate_vtable_static(
             &self.implementation,
             &trait_path,
@@ -622,6 +633,7 @@ impl ImplWithMetadata {
             &self.attrs,
             &self.abi,
             &self.methods,
+            &defaults,
         ))
     }
 }

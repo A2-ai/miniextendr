@@ -9,7 +9,8 @@ An annotated implementation inherits `#[miniextendr(r_name = "...")]` and
 with method bodies, generic traits and traits with associated types. An
 explicit `r_name` on an impl method overrides the inherited R name; a method
 skipped by the declaration stays skipped. Other method options, docs and
-parameter attributes belong to the implementation.
+parameter attributes belong to explicit implementation methods. An omitted
+generic default method uses its declaration's docs and parameter names.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
@@ -29,10 +30,19 @@ the declaration's fingerprint, so it never guesses paths to `TAG_*`, a
 vtable type or a builder next to the imported name. Non-generic shims are
 hidden associated methods with `Self: Sized`: they retain declaration-local
 type resolution and default methods without preventing `dyn Trait`. Generic
-traits retain concrete shims generated from the impl's method signatures, so
-an impl of a generic trait defines every method in the vtable, defaulted ones
-included.
+traits retain concrete shims. Required methods supply their signatures in the
+impl; omitted defaults supply theirs through the declaration metadata, with
+the impl's concrete type/const arguments substituted. Omitted generic arguments
+use the declaration's defaults, and `Self::Item` resolves through the concrete
+trait impl. Both ABI callbacks and R wrappers call the original Rust default;
+no default body is copied into the impl. Explicit overrides keep their own
+signature, body and wrapper options. Static defaults get R wrappers too.
 The exported vtable static symbols used by webR remain unchanged.
+
+Types in inherited generic signatures must currently be resolvable in the impl
+module. A declaration-local alias that is not imported there fails to resolve;
+private aliases cannot be imported. Preserving declaration-local type scope
+across signature metadata is tracked in [#2123](https://github.com/A2-ai/miniextendr/issues/2123).
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored

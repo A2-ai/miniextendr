@@ -41,6 +41,7 @@ pub(super) fn generate_vtable_static(
     impl_attrs: &ImplAttrs,
     abi: &TraitAbiMetadata,
     declaration: &[syn::TraitItemFn],
+    defaults: &[syn::ImplItemFn],
 ) -> TokenStream {
     let trait_name = &abi.name;
 
@@ -76,7 +77,11 @@ pub(super) fn generate_vtable_static(
     );
 
     // Parse methods and consts from the impl block
-    let all_methods = match extract_methods(impl_item, impl_page) {
+    let mut wrapper_impl = impl_item.clone();
+    wrapper_impl
+        .items
+        .extend(defaults.iter().cloned().map(syn::ImplItem::Fn));
+    let all_methods = match extract_methods(&wrapper_impl, impl_page) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
@@ -297,11 +302,7 @@ pub(super) fn generate_impl_vtable(
         let name = field.ident.as_ref().unwrap();
         let callback = if abi.generic {
             let Some(method) = methods.iter().find(|method| method.ident == *name) else {
-                let message = format!(
-                    "this impl must define `{name}`, even if the trait gives it a default: \
-                     a generic `#[miniextendr]` trait's shims are generated from the impl's \
-                     method signatures"
-                );
+                let message = format!("this impl must define the required trait method `{name}`");
                 return Err(syn::Error::new_spanned(trait_path, message));
             };
             concrete_methods.push(method.clone());
@@ -405,10 +406,11 @@ fn generate_concrete_vtable_shims(
             .sig
             .inputs
             .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                syn::FnArg::Receiver(_) => None,
+            })
             .map(|arg| {
-                let syn::FnArg::Typed(arg) = arg else {
-                    unreachable!("metadata has no receiver")
-                };
                 let syn::Pat::Ident(name) = arg.pat.as_ref() else {
                     unreachable!("metadata has named arguments")
                 };
