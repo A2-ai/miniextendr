@@ -240,6 +240,8 @@ pub struct CWrapperContext {
     /// Names of individual parameters that use coercing conversion.
     /// Set by `#[miniextendr(coerce = "param_name")]`.
     pub coerce_params: Vec<String>,
+    /// Borrowed parameters using their explicit conversion.
+    pub convert_params: Vec<String>,
     /// When `true`, emits `R_CheckUserInterrupt()` before the call expression.
     /// Set by `#[miniextendr(check_interrupt)]`.
     pub check_interrupt: bool,
@@ -328,6 +330,7 @@ impl CWrapperContext {
             return_handling: None,
             coerce_all: false,
             coerce_params: Vec::new(),
+            convert_params: Vec::new(),
             check_interrupt: false,
             rng: false,
             cfg_attrs: Vec::new(),
@@ -489,6 +492,9 @@ impl CWrapperContext {
         if self.coerce_all {
             builder = builder.with_coerce_all();
         }
+        for param in &self.convert_params {
+            builder = builder.with_convert_param(param.clone());
+        }
         for param in &self.coerce_params {
             builder = builder.with_coerce_param(param.clone());
         }
@@ -571,6 +577,7 @@ impl CWrapperContext {
             .param_markers
             .iter()
             .map(|(name, _)| name.clone())
+            .chain(self.convert_params.iter().cloned())
             .collect();
         let self_ty: Option<syn::Type> = self.type_context.as_ref().map(|t| syn::parse_quote!(#t));
         crate::externalptr_args::arg_borrows(&self.inputs, &unborrowed, self_ty.as_ref())
@@ -1466,6 +1473,7 @@ pub struct CWrapperContextBuilder {
     coerce_all: bool,
     /// Names of individual parameters with coercing conversion enabled.
     coerce_params: Vec<String>,
+    convert_params: Vec<String>,
     /// Emit `R_CheckUserInterrupt()` before the call.
     check_interrupt: bool,
     /// Wrap call in `GetRNGstate()`/`PutRNGstate()`.
@@ -1579,6 +1587,12 @@ impl CWrapperContextBuilder {
     /// Enables coercing conversion for a specific named parameter.
     pub fn with_coerce_param(mut self, param_name: String) -> Self {
         self.coerce_params.push(param_name);
+        self
+    }
+
+    /// Use a reference's conversion rather than borrowing an external value.
+    pub fn with_convert_param(mut self, param_name: String) -> Self {
+        self.convert_params.push(param_name);
         self
     }
 
@@ -1747,7 +1761,12 @@ impl CWrapperContextBuilder {
 
         // Detect thread strategy if not explicitly set.
         // Main thread is the default for all methods (safer, simpler execution model).
-        let thread_strategy = self.thread_strategy.unwrap_or(ThreadStrategy::MainThread);
+        let thread_strategy = if self.convert_params.is_empty() {
+            self.thread_strategy.unwrap_or(ThreadStrategy::MainThread)
+        } else {
+            // A custom borrowed conversion may retain R storage.
+            ThreadStrategy::MainThread
+        };
 
         // Detect return handling if not explicitly set
         let return_handling = self
@@ -1768,6 +1787,7 @@ impl CWrapperContextBuilder {
             return_handling,
             coerce_all: self.coerce_all,
             coerce_params: self.coerce_params,
+            convert_params: self.convert_params,
             check_interrupt: self.check_interrupt,
             rng: self.rng,
             cfg_attrs: self.cfg_attrs,

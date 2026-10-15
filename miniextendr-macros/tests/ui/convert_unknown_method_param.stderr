@@ -1,0 +1,5 @@
+error: convert references non-existent parameter `typo`
+ --> tests/ui/convert_unknown_method_param.rs:7:19
+  |
+7 |     #[miniextendr(convert(typo))]
+  |                   ^^^^^^^

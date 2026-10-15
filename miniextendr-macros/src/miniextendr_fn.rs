@@ -394,6 +394,12 @@ pub(crate) fn validate_per_param_attr_conflicts(
     ty: Option<&syn::Type>,
     span: proc_macro2::Span,
 ) -> syn::Result<()> {
+    if attr.has_convert {
+        validate_convert_param(
+            ty.expect("parameter validation requires its type"),
+            attr.has_coerce || attr.has_match_arg || attr.choices.is_some(),
+        )?;
+    }
     if attr.has_no_default
         && let Some(msg) = no_default_conflict(
             param_name,
@@ -566,6 +572,8 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `coerce` was present, enabling automatic type coercion for this parameter
     /// (e.g., `i32` to `u16`, `f64` to `f32`).
     pub has_coerce: bool,
+    /// Use the reference type's conversion instead of borrowing an ExternalPtr.
+    pub has_convert: bool,
     /// Whether `match_arg` was present, generating R `match.arg()` validation for
     /// string parameters against a set of allowed values.
     pub has_match_arg: bool,
@@ -602,6 +610,7 @@ impl PerParamMiniextendrAttr {
             self.preconditions = other.preconditions;
         }
         self.has_coerce |= other.has_coerce;
+        self.has_convert |= other.has_convert;
         self.has_match_arg |= other.has_match_arg;
         self.has_several_ok |= other.has_several_ok;
         self.has_no_default |= other.has_no_default;
@@ -657,6 +666,9 @@ pub(crate) fn parse_per_param_attr(
             syn::Meta::Path(path) => {
                 if path.is_ident("coerce") {
                     result.has_coerce = true;
+                    is_per_param = true;
+                } else if path.is_ident("convert") {
+                    result.has_convert = true;
                     is_per_param = true;
                 } else if path.is_ident("match_arg") {
                     result.has_match_arg = true;
@@ -1467,6 +1479,7 @@ pub(crate) struct MiniextendrFunctionParsed {
 #[derive(Default, Debug, Clone)]
 pub(crate) struct ParamAttrs {
     pub coerce: bool,
+    pub convert: bool,
     pub match_arg: bool,
     pub several_ok: bool,
     pub choices: Option<Vec<String>>,
@@ -1517,6 +1530,7 @@ impl ParamAttrs {
     pub(crate) fn is_default_only(&self) -> bool {
         let ParamAttrs {
             coerce,
+            convert,
             match_arg,
             several_ok,
             choices,
@@ -1530,6 +1544,7 @@ impl ParamAttrs {
         } = self;
         default.is_some()
             && !coerce
+            && !convert
             && !match_arg
             && !several_ok
             && choices.is_none()
@@ -1800,6 +1815,50 @@ pub(crate) fn explicit_checks_by_r_name(
         .collect()
 }
 
+/// Parse the method-level spelling of a parameter's `convert` option.
+pub(crate) fn parse_method_convert(
+    meta: &syn::meta::ParseNestedMeta<'_>,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|inner| {
+        let name = method_check_param(&inner)?;
+        per_param.entry(name).or_default().convert = true;
+        Ok(())
+    })
+}
+
+/// An explicit conversion applies to references, optionally wrapped in Option.
+/// Receivers and `Self` parameters retain the trait ABI's external-owner protocol.
+fn validate_convert_param(ty: &syn::Type, conflicting: bool) -> syn::Result<()> {
+    let reference = crate::externalptr_args::conversion_reference(ty).ok_or_else(|| {
+        syn::Error::new_spanned(
+            ty,
+            "`convert` requires `&T`, `&mut T`, or an Option of either",
+        )
+    })?;
+    if is_dots_type(crate::type_inspect::option_inner_type(ty).unwrap_or(ty))
+        || matches!(reference.elem.as_ref(), syn::Type::Path(p) if p.path.is_ident("Self"))
+    {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "`convert` cannot override Self or dots arguments",
+        ));
+    }
+    if let Some(lifetime) = crate::type_inspect::static_lifetime(ty) {
+        return Err(syn::Error::new_spanned(
+            lifetime,
+            "`convert` borrows only for the call; remove the `'static` lifetime",
+        ));
+    }
+    if conflicting {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "`convert` cannot be combined with coerce, match_arg, or choices on the same parameter",
+        ));
+    }
+    Ok(())
+}
+
 /// Check an impl or trait method's per-parameter attributes against its
 /// signature, now that it is known. Every parameter a method-level
 /// `match_arg(...)` / `choices(...)` / `no_default(...)` / `inherits(...)` /
@@ -1838,7 +1897,8 @@ pub(crate) fn finalize_method_param_attrs(
     let mut unknown: Vec<&String> = per_param
         .iter()
         .filter(|(name, a)| {
-            (a.match_arg
+            (a.convert
+                || a.match_arg
                 || a.choices.is_some()
                 || a.no_default
                 || !a.checks.is_empty()
@@ -1849,6 +1909,12 @@ pub(crate) fn finalize_method_param_attrs(
         .collect();
     unknown.sort();
     if let Some(first) = unknown.first() {
+        if per_param[*first].convert {
+            return Err(syn::Error::new(
+                span,
+                format!("convert references non-existent parameter `{first}`"),
+            ));
+        }
         return Err(syn::Error::new(
             span,
             format!(
@@ -1878,6 +1944,9 @@ pub(crate) fn finalize_method_param_attrs(
         let Some(attrs) = per_param.get_mut(&name) else {
             continue;
         };
+        if attrs.convert {
+            validate_convert_param(&pt.ty, attrs.coerce || attrs.is_choice())?;
+        }
         let has_default = attrs.default.is_some() || defaults.contains_key(&name);
         if attrs.no_default
             && let Some(msg) = no_default_conflict(&name, attrs.is_choice(), has_default, true)
@@ -1986,6 +2055,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             pat_type.attrs = kept_attrs;
             let PerParamMiniextendrAttr {
                 has_coerce: had_coerce_attr,
+                has_convert: had_convert,
                 has_match_arg: had_match_arg_attr,
                 default_value: default_with_span,
                 choices: had_choices,
@@ -1994,6 +2064,13 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 checks: had_checks,
                 preconditions: had_preconditions,
             } = param_attr;
+
+            if is_extern && had_convert {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    "`convert` requires a generated wrapper; remove `extern \"C-unwind\"`",
+                ));
+            }
 
             // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566): the
             // parameter converts as the inner type, which every check below
@@ -2079,6 +2156,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
             let per_param_combined = PerParamMiniextendrAttr {
                 has_coerce: had_coerce_attr,
+                has_convert: had_convert,
                 has_match_arg: had_match_arg_attr,
                 default_value: default_with_span.clone(),
                 choices: had_choices.clone(),
@@ -2097,6 +2175,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 
             // Record per-parameter attrs in one entry instead of five side-tables.
             if had_coerce_attr
+                || had_convert
                 || had_match_arg_attr
                 || had_several_ok
                 || had_choices.is_some()
@@ -2107,6 +2186,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 let entry = per_param.entry(param_name.clone()).or_default();
                 entry.checks = had_checks;
                 entry.coerce = had_coerce_attr;
+                entry.convert = had_convert;
                 entry.match_arg = had_match_arg_attr;
                 entry.several_ok = had_several_ok;
                 entry.no_default = had_no_default;

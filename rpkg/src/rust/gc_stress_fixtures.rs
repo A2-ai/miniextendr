@@ -6060,3 +6060,24 @@ pub fn gc_stress_struct_factor() {
         }
     }
 }
+
+/// Check explicit string-alias conversion through the generated C entry point.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_converted_references() {
+    use miniextendr_api::{ProtectScope, SexpExt, TryFromSexp};
+    unsafe {
+        let scope = ProtectScope::new();
+        let source = scope.protect(GcTransientBorrowString.into_sexp());
+        let result = scope.protect(
+            crate::converted_reference_tests::C_miniextendr_converted_refs_strings(
+                SEXP::nil(),
+                source.get(),
+                source.get(),
+                source.get(),
+            ),
+        );
+        assert_eq!(result.get().type_of(), miniextendr_api::SEXPTYPE::STRSXP);
+        let text = String::try_from_sexp(result.get()).unwrap();
+        assert_eq!(text.matches("borrowed-").count(), 3);
+    }
+}
