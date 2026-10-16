@@ -81,7 +81,7 @@ pub(super) fn generate_vtable_static(
     wrapper_impl
         .items
         .extend(defaults.iter().cloned().map(syn::ImplItem::Fn));
-    let mut all_methods = match extract_methods(&wrapper_impl, impl_page) {
+    let mut all_methods = match extract_methods(&wrapper_impl, impl_page, declaration) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
@@ -403,25 +403,8 @@ fn generate_concrete_vtable_shims(
             .count();
         let expected_argc = param_count as i32;
 
-        let declared = declaration
-            .iter()
-            .find(|declared| declared.sig.ident == *method_ident)
+        let diagnostic_names = declared_param_names(declaration, method_ident)
             .expect("trait metadata includes each callback's argument names");
-        let diagnostic_names: Vec<_> = declared
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|arg| match arg {
-                syn::FnArg::Typed(arg) => Some(arg),
-                syn::FnArg::Receiver(_) => None,
-            })
-            .map(|arg| {
-                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
-                    unreachable!("metadata has named arguments")
-                };
-                crate::naming::ident_name(&name.ident)
-            })
-            .collect();
 
         // Generate argument extraction (concrete types, no generics)
         let arg_extractions: Vec<TokenStream> = method
@@ -648,6 +631,34 @@ pub(super) fn inherit_method_metadata(
     Ok(())
 }
 
+/// The parameter names the declaration's metadata gives `method`, in order.
+/// The metadata names every parameter (`arg<i>` for a declaration pattern).
+fn declared_param_names(
+    declaration: &[syn::TraitItemFn],
+    method: &syn::Ident,
+) -> Option<Vec<String>> {
+    let declared = declaration
+        .iter()
+        .find(|declared| declared.sig.ident == *method)?;
+    Some(
+        declared
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .map(|arg| {
+                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                    unreachable!("metadata has named arguments")
+                };
+                crate::naming::ident_name(&name.ident)
+            })
+            .collect(),
+    )
+}
+
 /// Extract all methods from a trait impl block as [`TraitMethod`] structs.
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
@@ -658,6 +669,7 @@ pub(super) fn inherit_method_metadata(
 pub(super) fn extract_methods(
     impl_item: &ItemImpl,
     impl_page: crate::roxygen::RdPage,
+    declaration: &[syn::TraitItemFn],
 ) -> syn::Result<Vec<TraitMethod>> {
     let mut methods = Vec::new();
     for item in &impl_item.items {
@@ -712,7 +724,10 @@ pub(super) fn extract_methods(
             let mut sig = method.sig.clone();
             // Wrappers call the method positionally; patterns belong only to
             // the original impl body. Give every wrapper argument a binding,
-            // including ignored and destructured parameters (#2029).
+            // including ignored and destructured parameters (#2029): the
+            // declaration's name, as the trait's shims report it, else
+            // `arg<i>`.
+            let declared = declared_param_names(declaration, &method.sig.ident);
             let mut used_names: std::collections::HashSet<_> = sig
                 .inputs
                 .iter()
@@ -734,11 +749,14 @@ pub(super) fn extract_methods(
                 .enumerate()
             {
                 if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
-                    let mut name = format!("arg{index}");
+                    let mut name = declared
+                        .as_ref()
+                        .and_then(|names| names.get(index).cloned())
+                        .unwrap_or_else(|| format!("arg{index}"));
                     while !used_names.insert(name.clone()) {
                         name.push('_');
                     }
-                    let name = format_ident!("{name}");
+                    let name = crate::naming::name_ident(&name);
                     arg.pat = syn::parse_quote!(#name);
                 }
             }
