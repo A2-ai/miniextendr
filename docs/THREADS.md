@@ -3,6 +3,13 @@
 This document explains miniextendr's main-thread contract, optional worker
 dispatch, and the limits of its legacy non-API stack controls.
 
+> **The worker thread is deprecated** (#2117): `#[miniextendr(worker)]` and the
+> `worker-thread` / `worker-default` features keep working but won't be
+> developed further, and their known problems (#989, #1425, #2076, #2109) are
+> not planned. An explicit `worker` option warns at compile time;
+> `#![allow(deprecated)]` on the module silences it. `with_r_thread` and
+> `is_r_main_thread` are not deprecated.
+
 ## Non-negotiable rule: R API calls stay on R's main thread
 
 R's API, global state, garbage collector, and error signaling are designed for

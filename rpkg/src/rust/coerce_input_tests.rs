@@ -1,5 +1,8 @@
 //! Coercion must preserve the ordinary converter's valid inputs (#1112).
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::miniextendr;
 
 /// Identity for a coerced i8 parameter.

@@ -1,5 +1,13 @@
 //! Worker thread infrastructure for safe Rust-R FFI.
 //!
+//! **Deprecated** (#2117): the worker thread (`#[miniextendr(worker)]`, the
+//! `worker-thread` and `worker-default` features) won't be developed further.
+//! It keeps working, but its known problems are not planned: #989, #1425,
+//! #2076, #2109. An explicit `worker` option warns where it's written
+//! (through the hidden `WORKER_OPTION`). [`with_r_thread`] and
+//! [`is_r_main_thread`] are not deprecated; the checked FFI layer uses them
+//! on every build.
+//!
 //! ## Why a worker thread at all?
 //!
 //! R's error handling uses `longjmp`, which skips Rust destructors and leaks
@@ -72,6 +80,15 @@ use crate::sys::{self};
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
 // region: Public API
+
+/// Named by the code an explicit `#[miniextendr(worker)]` option expands to,
+/// so rustc warns at the option (#2117). `#![allow(deprecated)]` on the
+/// module silences it.
+#[doc(hidden)]
+#[deprecated(
+    note = "the worker thread (`#[miniextendr(worker)]`, the `worker-thread` / `worker-default` features) is deprecated and won't be developed further; its known problems are not planned: #989, #1425, #2076, #2109 (https://github.com/A2-ai/miniextendr/issues/2117)"
+)]
+pub const WORKER_OPTION: () = ();
 
 /// Wrapper to mark values as Send for main-thread routing.
 ///

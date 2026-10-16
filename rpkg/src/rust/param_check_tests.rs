@@ -20,6 +20,9 @@
 //! newtypes of them) `no_na` also checks the converted value, for what the
 //! marker reads as `NA` beyond `anyNA()`.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use std::collections::HashMap;
 
 use miniextendr_api::{

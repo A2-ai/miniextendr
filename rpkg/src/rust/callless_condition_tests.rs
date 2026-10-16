@@ -7,6 +7,9 @@
 //! a call that is missing for another reason. Tests live in
 //! `rpkg/tests/testthat/test-callless-conditions.R`.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
     Call, defer_condition, defer_message, defer_warning, miniextendr, rust_condition, rust_error,

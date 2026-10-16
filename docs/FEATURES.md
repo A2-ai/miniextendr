@@ -12,7 +12,7 @@ Only `default` features are enabled automatically.
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`, `ATTRIB` / `SET_ATTRIB`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
-| `worker-thread` | Infrastructure for opt-in worker dispatch | (none) |
+| `worker-thread` | Infrastructure for opt-in worker dispatch (deprecated, #2117) | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
 | `indicatif` | Progress bars via R connections / console | indicatif (implies `connections`, `nonapi`) |
 | `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
@@ -73,7 +73,7 @@ Only `default` features are enabled automatically.
 | **Project defaults** | | |
 | `strict-default`, `coerce-default`, `no-preconditions-default` | Default conversion/wrapper policies | (forwarded to miniextendr-macros) |
 | `r6-default`, `s7-default` | Default class system (mutually exclusive) | (forwarded to miniextendr-macros) |
-| `worker-default` | Default worker dispatch | `worker-thread` |
+| `worker-default` | Default worker dispatch (deprecated, #2117) | `worker-thread` |
 
 ---
 
@@ -121,6 +121,10 @@ globals or use the helpers as a substitute for `with_r_thread`; removal or
 relocation of that public surface is tracked in #1352.
 
 ### `worker-thread`
+
+**Deprecated** (#2117): the worker thread won't be developed further, and its
+known problems (#989, #1425, #2076, #2109) are not planned. An explicit
+`#[miniextendr(worker)]` warns at compile time; `worker-default` does not.
 
 Enables the dedicated worker thread infrastructure. Without this feature, `run_on_worker()`
 and `with_r_thread()` are lightweight inline stubs that execute closures directly on the
@@ -1142,7 +1146,7 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 | `no-preconditions-default` | Drop the R-side type checks from every wrapper | `preconditions` |
 | `r6-default` | R6 class system for impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks | `env`, `r6`, etc. |
-| `worker-default` | Force worker thread execution (implies `worker-thread`) | `no_worker` |
+| `worker-default` | Force worker thread execution (implies `worker-thread`; deprecated, #2117) | `no_worker` |
 
 **Note:** The tagged-condition transport (panics, `Err`, `None` → tagged SEXP → R wrapper
 raises a structured `rust_*` condition) and main thread execution are **hardcoded

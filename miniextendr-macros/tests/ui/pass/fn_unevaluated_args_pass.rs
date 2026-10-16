@@ -5,6 +5,8 @@
 //! they keep on R's main thread).
 
 #![allow(dead_code)]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 use miniextendr_api::{Call, Missing, Quosure, Quoted, SEXP, miniextendr};
 

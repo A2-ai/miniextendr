@@ -8,6 +8,8 @@
 //! readers (`rayon`), the Vctrs derive (`vctrs`), a worker wrapper
 //! (`worker-thread`) and a serde-classed error (`serde`).
 #![allow(dead_code)]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 use miniextendr_api::*;
 use std::collections::{BTreeMap, HashMap};

@@ -1,5 +1,7 @@
 //! Inherent static methods honor worker selection without no_main_thread (#2031).
 #![cfg(feature = "worker-thread")]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 mod r_test_utils;
 

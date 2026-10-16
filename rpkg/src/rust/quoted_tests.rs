@@ -10,6 +10,9 @@
 //! the tests can tell that an R exit (an error, a `tryCatch()` handler) ran
 //! the Rust destructors on its way out: `quoted_sentinel_drops()` counts them.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use miniextendr_api::expression::{RCall, try_eval_with_handlers};

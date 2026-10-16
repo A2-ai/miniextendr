@@ -11,6 +11,9 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use crate::SEXP;
 use crate::miniextendr;
 

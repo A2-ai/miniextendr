@@ -1,5 +1,8 @@
 //! Tests for worker thread (run_on_worker) and with_r_thread functionality.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::{SEXP, SexpExt};
 use miniextendr_api::worker::{panic_message_to_r_error, run_on_worker, with_r_thread};

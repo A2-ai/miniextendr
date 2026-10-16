@@ -1,5 +1,8 @@
 //! Regression fixtures for pre-conversion native-borrow alias checks.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::miniextendr;
 
 fn bump<'a>(slices: impl IntoIterator<Item = &'a mut [i32]>) -> i32 {
