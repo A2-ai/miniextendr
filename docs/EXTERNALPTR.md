@@ -18,6 +18,13 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
 - **Context-checked construction** -- `new()` runs on R's main thread or routes
   from an active miniextendr worker context
 
+Checked conversions and erased-handle accessors reject foreign pointers before
+reading their address as Rust storage. They require a symbol tag and an ordinary
+protection list with a type-ID symbol, and exclude the reserved trait-ABI tag
+(which identifies a different allocation layout). This is a metadata boundary,
+not authentication: a foreign address deliberately forged with miniextendr
+metadata is unsupported. `Any::downcast` remains the concrete-type check.
+
 ## When to Use ExternalPtr
 
 | Strategy | Lifetime | Use Case |
@@ -692,9 +699,16 @@ A struct field is a view of the Rust value: every read converts it afresh, and
 every write converts into Rust or fails, so no R copy can drift from it. A
 computed field is a view too, through its function.
 
-A bare `SEXP` under `#[r_data]` is a compile error. The GC doesn't trace Rust
-memory, so once R dropped its own references the value would be freed while
-the struct still pointed at it (#1846). Keep R values in a `Sidecar<SEXP>`.
+A bare R view under `#[r_data]` is a compile error: the GC does not trace
+Rust fields. Use `Sidecar<List>`, `Sidecar<Option<List>>`, `Sidecar<DataFrame>`
+or `Sidecar<SEXP>` to keep the value in the pointer's protection list. The
+check also follows known standard containers, arrays and tuples, so
+`Vec<Option<List>>` needs `Sidecar<Vec<Option<List>>>` too. Owned handles such
+as `BuiltList`, `BuiltDataFrame` and `Preserved` retain their own roots.
+
+The derive checks the written type. It cannot inspect aliases or fields
+inside user-defined wrappers; those must provide their own rooting or use
+`Sidecar<T>`.
 
 ### `Sidecar<T>`: values the pointer roots
 
