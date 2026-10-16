@@ -1443,6 +1443,48 @@ fn s3_wrapper_full_snapshot() {
 }
 
 #[test]
+fn s3_generic_docs_follow_export_and_override_rules() {
+    let item: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn own_value(&self) -> i32 { unimplemented!() }
+            #[miniextendr(s3(generic = "print"))]
+            pub fn show(&self) -> String { unimplemented!() }
+            #[miniextendr(s3(class = "double"))]
+            pub fn format(&self) -> String { unimplemented!() }
+        }
+    };
+    for (internal, noexport, no_rd) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let mut parsed = parse_impl(ClassSystem::S3, item.clone());
+        parsed.internal = internal;
+        parsed.noexport = noexport;
+        if no_rd {
+            parsed.doc_tags.push("@noRd".to_owned());
+        }
+        let wrapper = generate_s3_r_wrapper(&parsed);
+        let markers: Vec<_> = wrapper
+            .lines()
+            .filter(|line| line.starts_with(".__MX_GENERIC_DOC__("))
+            .collect();
+        if internal || noexport || no_rd {
+            assert!(markers.is_empty(), "{wrapper}");
+        } else {
+            assert_eq!(
+                markers,
+                [
+                    r#".__MX_GENERIC_DOC__(kind="S3", generic="own_value", class="Counter", export=true)"#
+                ]
+            );
+        }
+    }
+}
+
+#[test]
 fn s3_wrapper_generic_override() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {

@@ -2,10 +2,6 @@
 % Please edit documentation in R/range_summaries.R, R/miniextendr-wrappers.R
 \name{range_summaries}
 \alias{range_summaries}
-\alias{box_width}
-\alias{box_covers}
-\alias{box_midpoint}
-\alias{box_clamp}
 \alias{box_width.RangeBox}
 \alias{box_covers.RangeBox}
 \alias{rangebox_from_values}

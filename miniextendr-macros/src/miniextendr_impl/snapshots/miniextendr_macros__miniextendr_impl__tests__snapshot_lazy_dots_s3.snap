@@ -16,6 +16,8 @@ new_bag <- function(values) {
 }
 
 # Bag::extra (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="extra", class="Bag", export=true)
+
 #' @title S3 generic for `extra`
 #' @description S3 generic for `extra`
 #' @name extra.Bag

@@ -65,6 +65,17 @@ pub(super) fn generate_trait_r_wrapper(
         ClassSystem::R6 => generate_trait_r6_r_wrapper,
     };
     let result = generate(type_ident, trait_name, methods, consts, impl_preconditions);
+    // Generic pages describe exported generics only. Their write-time markers
+    // are not roxygen lines, so remove them before the visibility passes below.
+    let result = if class_has_no_rd || internal || noexport {
+        result
+            .lines()
+            .filter(|line| !line.starts_with(".__MX_GENERIC_DOC__("))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        result
+    };
 
     // When the impl block has @noRd, suppress documentation generation. A plain
     // `noexport` (without `internal`) is folded into the same gate — it must
@@ -625,6 +636,11 @@ fn generate_trait_s3_r_wrapper(
             .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
 
         if method.generic.is_none() {
+            let class_ref = crate::r_class_formatter::class_ref_or_verbatim(&type_str);
+            lines.push(format!(
+                ".__MX_GENERIC_DOC__(kind=\"S3\", generic=\"{generic_name}\", class=\"{class_ref}\", export=true)"
+            ));
+            lines.push(String::new());
             // S3 generic roxygen (only create if doesn't exist). The type-qualified
             // @name avoids duplicate aliases across types, but it is also the S3
             // method's own name, so the generic block must follow a method-level

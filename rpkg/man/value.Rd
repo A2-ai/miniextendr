@@ -15,5 +15,6 @@ package are available for:
 \item \code{\link{ScalerS7}}
 \item \code{\link{S7Celsius}}
 \item \code{\link{S7Fahrenheit}}
+\item \code{\link{S3TraitCounter}}
 }
 }

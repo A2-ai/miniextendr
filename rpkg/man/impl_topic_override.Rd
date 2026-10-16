@@ -2,7 +2,6 @@
 % Please edit documentation in R/zz_impl_topics.R, R/miniextendr-wrappers.R
 \name{impl_topic_override}
 \alias{impl_topic_override}
-\alias{topic_override}
 \alias{topic_override.TopicS3}
 \title{An explicit member topic}
 \usage{

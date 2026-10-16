@@ -69,6 +69,19 @@ greet.Person <- function(x, ...) {
 }
 ```
 
+## Help for generated generics
+
+An exported generic created for an inherent or trait S3 method gets a
+standalone help page automatically. If several classes share the generic,
+the wrapper writer emits one page listing their class links. The methods
+keep their class-qualified aliases and their own page-routing tags. There
+is no need for handwritten generic stubs or extra bare-name aliases on
+class pages.
+
+An explicit `s3(generic = "...")` or `s3(class = "...")` attaches to an
+existing generic and does not create its help page. Internal, `noexport`
+and `@noRd` impl blocks also contribute no standalone generic page.
+
 ## Key Concepts
 
 ### Generic Override with `#[miniextendr(s3(generic = "..."))]`

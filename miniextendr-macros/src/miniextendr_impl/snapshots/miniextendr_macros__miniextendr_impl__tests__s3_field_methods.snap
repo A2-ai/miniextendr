@@ -142,6 +142,8 @@ as.list.Engine <- function(x, ...) {
 }
 
 # Engine::size (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="size", class="Engine", export=true)
+
 #' @title S3 generic for `size`
 #' @description S3 generic for `size`
 #' @name size.Engine

@@ -132,6 +132,14 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // Only create the S3 generic if no generic/class override was provided
         // (custom class suffix implies using an existing generic)
         if !ctx.has_generic_override() && !ctx.has_class_override() {
+            // A bare generic needs one page across all implementing classes.
+            // The class-qualified block below still follows the method's topic.
+            if should_export {
+                lines.push(format!(
+                    ".__MX_GENERIC_DOC__(kind=\"S3\", generic=\"{generic_name}\", class=\"{class_name}\", export=true)"
+                ));
+                lines.push(String::new());
+            }
             // Create the S3 generic (only for custom generics, not base R overrides)
             if class_has_no_rd {
                 lines.push("#' @noRd".to_string());

@@ -3,7 +3,6 @@
 \docType{class}
 \name{impl_topics}
 \alias{impl_topics}
-\alias{topic_s3_value}
 \alias{TopicENV}
 \alias{TopicENV$new}
 \alias{TopicENV$topic_env_value}

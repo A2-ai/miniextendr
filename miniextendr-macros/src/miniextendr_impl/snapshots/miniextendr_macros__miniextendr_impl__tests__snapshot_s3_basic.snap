@@ -18,6 +18,8 @@ new_counter <- function(value) {
 }
 
 # Counter::get (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="get", class="Counter", export=true)
+
 #' @title S3 generic for `get`
 #' @description S3 generic for `get`
 #' @name get.Counter
@@ -58,6 +60,8 @@ get.Counter <- function(x, ...) {
 }
 
 # Counter::increment (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="increment", class="Counter", export=true)
+
 #' @title S3 generic for `increment`
 #' @description S3 generic for `increment`
 #' @name increment.Counter

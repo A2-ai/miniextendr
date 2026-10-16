@@ -160,6 +160,50 @@ fn opts(
 // are no-ops for Env — we test with S3 and S4 instead.
 
 #[test]
+fn s3_trait_generic_docs_follow_export_and_override_rules() {
+    for system in [ClassSystem::S3, ClassSystem::Vctrs] {
+        for (no_rd, internal, noexport) in [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            let mut external = make_test_method("summary", true);
+            external.generic = Some("summary".to_owned());
+            let mut methods = vec![
+                make_test_method("value", true),
+                make_test_method("factory", false),
+            ];
+            if system == ClassSystem::S3 {
+                methods.push(external);
+            }
+            let result = generate_trait_r_wrapper(
+                &format_ident!("Foo"),
+                &format_ident!("Bar"),
+                &methods,
+                &[],
+                opts(system, no_rd, internal, noexport),
+            )
+            .unwrap();
+            let markers: Vec<_> = result
+                .lines()
+                .filter(|line| line.starts_with(".__MX_GENERIC_DOC__("))
+                .collect();
+            if no_rd || internal || noexport {
+                assert!(markers.is_empty(), "{result}");
+            } else {
+                assert_eq!(
+                    markers,
+                    [
+                        r#".__MX_GENERIC_DOC__(kind="S3", generic="value", class=".__MX_CLASS_REF_Foo__", export=true)"#
+                    ]
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn test_internal_suppresses_export_s3() {
     let type_ident = format_ident!("Foo");
     let trait_name = format_ident!("Bar");

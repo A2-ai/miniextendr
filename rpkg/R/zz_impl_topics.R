@@ -2,7 +2,6 @@
 #'
 #' Members from secondary Rust impl blocks belong to this topic too.
 #' @name impl_topics
-#' @aliases topic_s3_value
 #' @param value Initial value, documented by the topic.
 #' @param offset Offset, documented by the topic.
 #' @param amounts Numeric amounts, documented by the topic.
@@ -15,7 +14,6 @@ NULL
 
 #' An explicit member topic
 #' @name impl_topic_override
-#' @aliases topic_override
 #' @param x An object.
 #' @param ... Additional arguments.
 NULL

@@ -19,6 +19,8 @@ new_reading <- function(value) {
 }
 
 # Reading::value (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="value", class="Reading", export=true)
+
 #' @title S3 generic for `value`
 #' @description S3 generic for `value`
 #' @name value.Reading

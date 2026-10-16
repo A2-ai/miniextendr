@@ -53,8 +53,16 @@ the draw-target factory so the handle closes it after the target drops. Passing
 about the unused connection. Assert that `showConnections(all = TRUE)` is
 unchanged after such fixtures.
 
-## S3 generics from impl blocks need a hand-written Rd alias
-A method in a `#[miniextendr(s3)]` impl block (inherent or trait impl) makes the generated wrappers `export()` a bare S3 generic (`parse_value`) next to the `S3method()` registration. The class Rd page aliases only the method (`parse_value.SerdeChecker`), so `R CMD check` reports the generic under "Undocumented code objects". Convention: add a roxygen block with `@name <generic>`, `@param x`, `@param ...` and a one-line title to `R/generics.R` (see the `check_value` / `parse_value` blocks there), or `@aliases <generic>` on the shared page when the method joins one with `@rdname` / `@describeIn` (see `R/range_summaries.R`). Neither `rcmdinstall` nor `devtools-document` warns about the omission. Verify against the installed package with `Rscript -e 'tools::undoc(package = "miniextendr", lib.loc = "rv/library/4.6/arm64")'` from the repo root (empty output = clean), or with the built-tarball check. `tools::undoc(dir = "rpkg")` does not report these generics (it returned nothing for the `box_*` generics in #1606 while the installed-package check listed them).
+## S3 generic help
+
+Exported S3 generics created by inherent and trait impls get one standalone
+page from the wrapper writer (#2050), deduplicated across their classes.
+Do not add stubs to `R/generics.R` or bare-generic aliases to class/shared
+pages: those duplicate the generated alias. Explicit external-generic
+methods get no generated generic page. `R/generics.R` retains only the
+trait-provided S4/S7 stubs that have no generic marker. Verify installed
+help with `tools::undoc(package = "miniextendr")`, plus the
+`test-s3-generic-docs.R` and shared-page regressions.
 
 ## Capturing R output
 ```bash

@@ -235,6 +235,7 @@ mod ffi_guard_tests;
 mod fixed_array_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
+mod generic_docs_tests;
 mod glob_import_tests;
 #[cfg(feature = "globset")]
 mod globset_adapter_tests;

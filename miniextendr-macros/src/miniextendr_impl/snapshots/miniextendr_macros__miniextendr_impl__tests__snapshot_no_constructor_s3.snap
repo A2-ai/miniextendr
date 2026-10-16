@@ -8,6 +8,8 @@ expression: "generate_s3_r_wrapper(&constructorless_handle(ClassSystem::S3))"
 NULL
 
 # Handle::id (1:1)
+.__MX_GENERIC_DOC__(kind="S3", generic="id", class="Handle", export=true)
+
 #' @title S3 generic for `id`
 #' @description S3 generic for `id`
 #' @name id.Handle
