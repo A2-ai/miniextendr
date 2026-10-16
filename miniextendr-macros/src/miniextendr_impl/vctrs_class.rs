@@ -28,26 +28,24 @@ const VCTRS_IMPORTS: &str =
 /// - `vec_ptype_abbr.<class>`: compact abbreviation for printing (if `abbr` is specified)
 /// - `vec_ptype2.<class>.<class>`: self-coercion prototype (returns empty typed vector)
 /// - `vec_cast.<class>.<class>`: identity cast (returns `x` unchanged)
-/// - Instance methods: S3 generics + `<generic>.<class>` methods, with support for
-///   vctrs protocol overrides via `#[miniextendr(vctrs_protocol = "...")]` and
-///   double-dispatch class suffixes via `#[miniextendr(class = "...")]`
-/// - Static methods: regular functions named `<class>_<method>(...)`
+/// - Static methods: regular functions named `<class>_<method>(...)`, or
+///   `<protocol>.<class>` S3 methods with `#[miniextendr(vctrs(<protocol>))]`
+///   (instance methods are refused, MXL120)
 ///
 /// Roxygen2 documentation and `@importFrom vctrs ...` tags are generated automatically.
 /// A class-level `@noRd` (or a plain `noexport` without `internal`) suppresses the Rd
-/// contribution of every block — self-coercion methods, instance-method generics, and
-/// instance/static method docs all collapse to `@noRd` (#1180), like the other five
+/// contribution of every block — self-coercion methods and static method docs
+/// all collapse to `@noRd` (#1180), like the other five
 /// class-system generators. S3 `S3method()` dispatch registration (`@method` +
 /// `@export`) is kept unconditionally: vctrs generics dispatch from the vctrs
 /// namespace, so an unregistered method would leave even a gated class non-functional
 /// (and roxygen2 warns on any recognized-but-unregistered S3 method).
 ///
 /// The constructor, `vec_ptype_abbr` and the self-coercion methods are the
-/// head; the S3 methods and the static methods are the members.
+/// head; the static methods and protocol methods are the members.
 pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
-        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
-        should_export_from_tags,
+        ClassDocBuilder, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
     };
 
     let class_name = parsed_impl.class_name();
@@ -61,11 +59,11 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // suppress Rd contribution entirely (audit A10 semantics), matching the other
     // five class generators. `internal` keeps full docs (the constructor's
     // ClassDocBuilder adds `@keywords internal`); `should_export` (above) gates
-    // the export()-shaped surface (custom S3 generics) and is always false when
+    // the export()-shaped surface (static helpers) and is always false when
     // this gate is true.
     //
     // S3-method-shaped emissions (`vec_ptype_abbr`/`vec_ptype2`/`vec_cast`,
-    // protocol overrides, instance methods) keep their `@method` + `@export`
+    // protocol overrides) keep their `@method` + `@export`
     // pair unconditionally: with `@method`, `@export` produces an `S3method()`
     // dispatch registration in NAMESPACE — not an `export()` — and both
     // roxygen2 (`warn_missing_s3_exports`) and vctrs itself (generics dispatch
@@ -164,7 +162,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // only the @method + @export S3method() registration pair.
             lines.push("#' @noRd".to_string());
         } else {
-            lines.push(format!("#' @rdname {}", class_name));
+            lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         }
         lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
         lines.push("#' @export".to_string());
@@ -184,14 +182,22 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             class_name, class_name
         ));
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         lines.push(format!(
             "#' @method vec_ptype2 {}.{}",
             class_name, class_name
         ));
-        lines.push(format!("#' @param x A {} vector.", class_name));
-        lines.push(format!("#' @param y A {} vector.", class_name));
-        lines.push("#' @param ... Additional arguments (unused).".to_string());
+        lines.push(super::member_default(format!(
+            "#' @param x A {} vector.",
+            class_name
+        )));
+        lines.push(super::member_default(format!(
+            "#' @param y A {} vector.",
+            class_name
+        )));
+        lines.push(super::member_default(
+            "#' @param ... Additional arguments (unused).".to_string(),
+        ));
     }
     lines.push("#' @export".to_string());
     match vctrs_attrs.kind {
@@ -240,11 +246,19 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("#' @noRd".to_string());
         lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
-        lines.push(format!("#' @param x A {} vector to cast.", class_name));
-        lines.push(format!("#' @param to A {} prototype.", class_name));
-        lines.push("#' @param ... Additional arguments (unused).".to_string());
+        lines.push(super::member_default(format!(
+            "#' @param x A {} vector to cast.",
+            class_name
+        )));
+        lines.push(super::member_default(format!(
+            "#' @param to A {} prototype.",
+            class_name
+        )));
+        lines.push(super::member_default(
+            "#' @param ... Additional arguments (unused).".to_string(),
+        ));
     }
     lines.push("#' @export".to_string());
     lines.push(format!(
@@ -254,96 +268,8 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     lines.push(String::new());
     w.head = std::mem::take(&mut lines);
 
-    // Instance methods as S3 generics + methods. Their conditions report the
-    // generic's call, resolved from the method frame on a raise (#1851).
-    for ctx in parsed_impl.instance_method_contexts() {
-        let ctx = ctx.with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
-        lines.push(ctx.source_comment(type_ident));
-        // vctrs protocol override: use the protocol name as the S3 generic
-        let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
-        let generic_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
-            proto.clone()
-        } else {
-            ctx.generic_name()
-        };
-        // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
-        let method_class_suffix = ctx
-            .class_suffix()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| class_name.clone());
-        let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
-        let full_params = ctx.s3_method_formals(); // x, params, ... (`value` last for `*<-`)
-
-        // Only create the S3 generic if no generic/class override was provided
-        // vctrs protocol methods use existing generics from the vctrs package
-        if !is_protocol && !ctx.has_generic_override() && !ctx.has_class_override() {
-            if class_has_no_rd {
-                lines.push("#' @noRd".to_string());
-            } else {
-                lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-                lines.push(format!("#' @description S3 generic for `{}`", generic_name));
-                lines.push(format!("#' @rdname {}", class_name));
-                // Use class-qualified name to avoid duplicate alias when multiple
-                // classes define the same S3 generic.
-                lines.push(format!("#' @name {}.{}", generic_name, class_name));
-                lines.push("#' @param x An object".to_string());
-                lines.push("#' @param ... Additional arguments passed to methods".to_string());
-                lines.extend(crate::roxygen::method_source_tag(
-                    type_ident,
-                    &ctx.method.ident,
-                ));
-                if should_export {
-                    // Explicit name on @export: the generic is wrapped in
-                    // `if (!exists(...))`, which roxygen2 can't introspect, and
-                    // the @name tag above is the class-qualified form. Without
-                    // an explicit target, roxygen2 attaches the export to the
-                    // next parseable function (the S3 method) — see s3_class.rs.
-                    lines.push(format!("#' @export {}", generic_name));
-                }
-            }
-            lines.push(emit_s3_generic_guard(&generic_name));
-            lines.push(String::new());
-        }
-
-        // Then create the S3 method
-        let qualified_name = format!("{}.{}", generic_name, method_class_suffix);
-        let mx_doc = ctx.choice_param_docs();
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
-                .with_source_method(&ctx.method.ident)
-                .with_r_params(&ctx.params)
-                .with_choice_param_docs(&mx_doc)
-                .with_r_name(qualified_name)
-                .with_class_no_rd(class_has_no_rd);
-        lines.extend(method_doc.build());
-        lines.push(format!(
-            "#' @method {} {}",
-            generic_name, method_class_suffix
-        ));
-        lines.push("#' @export".to_string());
-        lines.push(format!(
-            "{} <- function({}) {{",
-            crate::naming::r_def_name(&s3_method_name),
-            full_params
-        ));
-
-        let what = format!("{}.{}", generic_name, class_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
-
-        let call = ctx.instance_call("x");
-        let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
-            .with_raise_default(ctx.call_attribution.raise_default())
-            .with_strategy(strategy)
-            .with_invisible(ctx.method.is_invisible())
-            .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method, &type_ident.to_string())
-            .with_chain_var("x".to_string());
-        lines.extend(return_builder.build_s3_body());
-
-        lines.push("}".to_string());
-        lines.push(String::new());
-    }
+    // No instance methods: `ParsedImpl::parse` refuses every receiver on a
+    // vctrs impl (MXL120), since the R object is the vector, not a pointer.
 
     // Static methods as regular functions, or as vctrs protocol S3 methods when
     // `#[miniextendr(vctrs(protocol))]` is set (e.g. `vctrs(format)` → `format.<Class>`).

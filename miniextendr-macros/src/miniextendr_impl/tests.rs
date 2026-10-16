@@ -2259,6 +2259,38 @@ fn s7_shortcut_docs_carry_the_method_param_tags() {
     assert!(!method_block.contains("@param"), "{method_block}");
 }
 
+/// The shortcut follows its method's page tags (#2068) but not a `@noRd`:
+/// it is exported with the class, so a shortcut without a page would be an
+/// undocumented code object in R CMD check.
+#[test]
+fn s7_shortcut_of_a_no_rd_method_keeps_its_page() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                pub fn new() -> Self { unimplemented!() }
+                /// @noRd
+                pub fn hidden(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let shortcut_block = wrapper
+        .split("#' Fast-path shortcut for the `hidden` S7 method on `Foo`.")
+        .nth(1)
+        .and_then(|rest| rest.split("Foo_hidden <- function(").next())
+        .expect("shortcut block");
+    assert!(!shortcut_block.contains("@noRd"), "{shortcut_block}");
+    assert!(
+        shortcut_block.contains("#' @rdname Foo"),
+        "{shortcut_block}"
+    );
+    assert!(
+        shortcut_block.contains("#' @export Foo_hidden"),
+        "{shortcut_block}"
+    );
+}
+
 /// Syntactic names keep the bare spelling (no churn in ordinary wrappers).
 #[test]
 fn s7_syntactic_names_stay_bare() {
@@ -6414,10 +6446,11 @@ fn method_level_rdname_overrides_class_default_all_systems() {
         // into the class block, so their `@rdname` is dropped (they always
         // document on the class page). S3 emits two blocks per instance method
         // (the generic guard, named `get.Counter`, and the method itself) and
-        // both move to the split page. Every other system emits one block.
+        // both move to the split page. S7 emits the method
+        // and a direct-call shortcut, which must follow the same page too.
         let expected_get = match class_system {
             ClassSystem::R6 => 0,
-            ClassSystem::S3 => 2,
+            ClassSystem::S3 | ClassSystem::S7 => 2,
             _ => 1,
         };
         assert_eq!(
