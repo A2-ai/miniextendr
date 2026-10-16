@@ -1536,11 +1536,16 @@ pub trait ParallelColumns<Row>: Sized {
 /// companion implements it, `from_rows` otherwise.
 ///
 /// The derived override calls
-/// `(&FromRowsParProbe::<Self, Row>::new()).fill_columns(rows)` with
-/// [`FromRowsParParallel`] and [`FromRowsParSequential`] in scope. Method
-/// lookup tries the receiver type `&FromRowsParProbe` first, where only the
-/// parallel trait's method fits (and only if its impl applies), then
-/// `&&FromRowsParProbe`, where the sequential one does.
+/// `(&FromRowsParProbe::<Self, Row>::new())[()](rows)`. The unit index
+/// selects a builder function; it does not index any rows. `Index<()>` on
+/// `&FromRowsParProbe` selects the parallel fill where its bounds hold.
+/// Otherwise indexing dereferences to `FromRowsParProbe` and selects the
+/// sequential fill.
+///
+/// Indexing uses Rust's `Index` trait directly, so a consumer's `fill_columns`
+/// or `index` method cannot intercept the probe. Keep the explicit borrow and
+/// index expression: a generic helper would select the fallback before its
+/// concrete row type is known, and a method call would reintroduce ambiguity.
 #[cfg(feature = "rayon")]
 #[doc(hidden)]
 pub struct FromRowsParProbe<Df, Row>(std::marker::PhantomData<fn() -> (Df, Row)>);
@@ -1554,33 +1559,23 @@ impl<Df, Row> FromRowsParProbe<Df, Row> {
     }
 }
 
-/// The parallel arm of [`FromRowsParProbe`].
 #[cfg(feature = "rayon")]
-#[doc(hidden)]
-pub trait FromRowsParParallel<Df, Row> {
-    /// Fill `Df` with [`ParallelColumns::from_rows_parallel`].
-    fn fill_columns(&self, rows: Vec<Row>) -> Df;
-}
+impl<Df: ParallelColumns<Row>, Row> std::ops::Index<()> for &FromRowsParProbe<Df, Row> {
+    type Output = fn(Vec<Row>) -> Df;
 
-#[cfg(feature = "rayon")]
-impl<Df: ParallelColumns<Row>, Row> FromRowsParParallel<Df, Row> for FromRowsParProbe<Df, Row> {
-    fn fill_columns(&self, rows: Vec<Row>) -> Df {
-        Df::from_rows_parallel(rows)
+    #[inline]
+    fn index(&self, (): ()) -> &Self::Output {
+        &(<Df as ParallelColumns<Row>>::from_rows_parallel as fn(Vec<Row>) -> Df)
     }
 }
 
-/// The sequential arm of [`FromRowsParProbe`].
 #[cfg(feature = "rayon")]
-#[doc(hidden)]
-pub trait FromRowsParSequential<Df, Row> {
-    /// Fill `Df` with [`ColumnarFrame::from_rows`].
-    fn fill_columns(&self, rows: Vec<Row>) -> Df;
-}
+impl<Df: ColumnarFrame<Row>, Row> std::ops::Index<()> for FromRowsParProbe<Df, Row> {
+    type Output = fn(Vec<Row>) -> Df;
 
-#[cfg(feature = "rayon")]
-impl<Df: ColumnarFrame<Row>, Row> FromRowsParSequential<Df, Row> for &FromRowsParProbe<Df, Row> {
-    fn fill_columns(&self, rows: Vec<Row>) -> Df {
-        Df::from_rows(rows)
+    #[inline]
+    fn index(&self, (): ()) -> &Self::Output {
+        &(<Df as ColumnarFrame<Row>>::from_rows as fn(Vec<Row>) -> Df)
     }
 }
 // endregion

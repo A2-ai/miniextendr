@@ -1434,16 +1434,11 @@ pub(super) fn parallel_columns_impl(
 pub(super) fn from_rows_par_override(row_ty: TokenStream) -> TokenStream {
     quote! {
         ::miniextendr_api::__dataframe_row_when_rayon! {
-            // The explicit borrow is what lets lookup fall back to the
-            // sequential arm; it is not needless.
+            // Index autoderef picks the parallel fill first, then the sequential
+            // fallback, without considering consumer traits. Keep the borrow.
             #[allow(clippy::needless_borrow)]
             fn from_rows_par(rows: ::std::vec::Vec<#row_ty>) -> Self {
-                #[allow(unused_imports)]
-                use ::miniextendr_api::dataframe::{
-                    FromRowsParParallel as _, FromRowsParSequential as _,
-                };
-                (&::miniextendr_api::dataframe::FromRowsParProbe::<Self, #row_ty>::new())
-                    .fill_columns(rows)
+                (&::miniextendr_api::dataframe::FromRowsParProbe::<Self, #row_ty>::new())[()](rows)
             }
         }
     }

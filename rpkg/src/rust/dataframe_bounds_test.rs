@@ -26,6 +26,13 @@ use std::rc::Rc;
 use miniextendr_api::dataframe::ColumnarFrame;
 use miniextendr_api::{BuiltDataFrame, DataFrameRow, IntoDataFrame, IntoR, miniextendr};
 
+// These consumer methods must not capture the derive's specialization probe.
+trait ConsumerSpecialization: Sized {
+    fn fill_columns<T>(self, _rows: T) {}
+    fn index<T>(self, _index: T) {}
+}
+impl<T> ConsumerSpecialization for T {}
+
 // region: Field types
 
 /// A value that implements nothing: not `Default`, `Clone`, `Debug` or `Send`.
