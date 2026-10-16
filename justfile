@@ -870,8 +870,11 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 # tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
 # as a source-mode build side effect. Their script interpreter snapshots and
 # restores the exact starting lockfile, even after failure (#1992).
-# Load and test rpkg with devtools. Its default is report-only; recipes must
-# propagate failed expectations to the command exit status.
+# devtools::test() defaults to stop_on_failure = FALSE, which exits 0 when
+# expectations fail. The R test recipes pass stop_on_failure = TRUE: testthat
+# still runs every test, then errors if any failed (set_max_fails(Inf) keeps
+# it from stopping early), so a failure fails the recipe.
+# Load and test rpkg with devtools
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
@@ -1126,8 +1129,6 @@ minirextendr-rcmdcheck:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
-# Standalone round-trip regression (heavy; maintainer/nightly only).
-#
 # Drives the gated testthat e2e tests in minirextendr/tests/testthat/test-templates.R
 # — including the #757/#775 standalone build → wrapper-gen → library() round-trip
 # at :521 — by flipping the MINIEXTENDR_RUN_E2E bypass so skip_e2e() does NOT
@@ -1139,6 +1140,8 @@ minirextendr-rcmdcheck:
 # label-gated CI job `r-roundtrip-e2e` (see .github/workflows/ci.yml). Requires
 # cargo, autoconf, R, and cargo-revendor on PATH; individual tests self-skip with
 # a clear reason if a tool is missing. See #775 / #805.
+#
+# Standalone round-trip regression (heavy; maintainer/nightly only)
 [script("bash")]
 minirextendr-roundtrip:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
