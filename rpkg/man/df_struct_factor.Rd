@@ -12,5 +12,6 @@ df_struct_factor(shape, empty)
 \item{empty}{(no documentation available)}
 }
 \description{
-Build named, tuple, nested, expanded and tagged struct factor columns.
+Build named, tuple, nested, expanded, tagged and enum-variant struct factor
+columns.
 }
