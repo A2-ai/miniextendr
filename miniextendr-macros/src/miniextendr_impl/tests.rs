@@ -11105,3 +11105,56 @@ fn method_formal_refusals() {
 }
 
 // endregion
+
+// region: unsafe methods (#2124)
+
+#[test]
+fn unsafe_methods_need_ignore_in_every_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let error = ParsedImpl::parse(
+            default_impl_attrs(system),
+            syn::parse_quote! {
+                impl Host {
+                    pub unsafe fn unchecked() -> i32 { 1 }
+                }
+            },
+        )
+        .err()
+        .unwrap_or_else(|| panic!("{system:?}: an exposed unsafe fn must be rejected"));
+        let message = error.to_string();
+        assert!(
+            message.contains("Expose a safe fn"),
+            "{system:?}: {message}"
+        );
+        assert!(
+            message.contains("an `impl` block without `#[miniextendr]`"),
+            "{system:?}: {message}"
+        );
+
+        // vctrs has no `vctrs(ignore)` (that names a protocol); its
+        // methods take the S3 spelling.
+        let class = match system {
+            ClassSystem::Vctrs => quote::format_ident!("s3"),
+            _ => system.to_ident(),
+        };
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Host {
+                    #[miniextendr(#class(ignore))]
+                    pub unsafe fn unchecked() -> i32 { 1 }
+                }
+            },
+        );
+        assert_eq!(parsed.included_methods().count(), 0, "{system:?}");
+    }
+}
+
+// endregion

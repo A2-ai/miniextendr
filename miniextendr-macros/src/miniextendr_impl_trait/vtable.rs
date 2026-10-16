@@ -692,7 +692,10 @@ pub(super) fn extract_methods(
             crate::miniextendr_fn::refuse_rng_guard_in_trait_method(&method.sig.inputs)?;
             let mut attrs = parse_trait_method_attrs(&method.attrs)?;
             if !attrs.skip {
-                crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
+                crate::miniextendr_fn::require_safe_wrapper(
+                    &method.sig,
+                    "mark it `#[miniextendr(skip)]`",
+                )?;
             }
             // Every parameter `choices(...)` / `inherits(...)` /
             // `not_inherits(...)` / `no_na(...)` name must exist, as on

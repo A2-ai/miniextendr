@@ -2337,10 +2337,16 @@ impl ParsedMethod {
         class_page: crate::roxygen::RdPage,
     ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
-        crate::miniextendr_fn::require_safe_wrapper(&item.sig)?;
         old_handle_receiver(&item.sig)?;
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
+        // An ignored method gets no wrapper, like a skipped trait method.
+        if !method_attrs.ignore {
+            crate::miniextendr_fn::require_safe_wrapper(
+                &item.sig,
+                "move it to an `impl` block without `#[miniextendr]`",
+            )?;
+        }
 
         // The `&Dots` parameter is R's `...` wherever it sits (Rust `...`
         // becomes a trailing one); at most one per method.

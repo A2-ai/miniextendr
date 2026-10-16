@@ -1,4 +1,4 @@
-error: unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function
+error: an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold its safety preconditions. Expose a safe fn that checks them and calls this one in an `unsafe` block, or move it to an `impl` block without `#[miniextendr]` to keep it Rust-only
  --> tests/ui/unsafe_wrapper_inherent.rs:6:5
   |
 6 |     unsafe fn unchecked(&self, value: i32) -> i32 {

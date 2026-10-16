@@ -1463,7 +1463,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
     }
 
     if !skip {
-        crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
+        crate::miniextendr_fn::require_safe_wrapper(&method.sig, "mark it `#[miniextendr(skip)]`")?;
     }
 
     // Check for receiver
