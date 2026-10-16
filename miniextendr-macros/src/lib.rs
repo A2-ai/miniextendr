@@ -159,6 +159,7 @@
 mod altrep;
 mod c_wrapper_builder;
 mod call_method_def;
+mod deprecation;
 mod externalptr_args;
 mod list_macro;
 mod match_arg_keys;
@@ -702,6 +703,19 @@ pub(crate) fn build_dots_validation_stmt(
 /// instead; registration is automatic there.
 #[proc_macro_attribute]
 pub fn miniextendr(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    // Spans a failed earlier expansion left behind belong to no output.
+    let _ = deprecation::take();
+    let expanded = proc_macro2::TokenStream::from(expand_miniextendr(attr, item));
+    let warnings = deprecation::take();
+    quote::quote! { #expanded #warnings }.into()
+}
+
+/// The `#[miniextendr]` expansion, before the deprecated-option warnings
+/// ([`deprecation`]) are appended.
+fn expand_miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {

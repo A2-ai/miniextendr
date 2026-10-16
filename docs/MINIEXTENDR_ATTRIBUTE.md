@@ -665,7 +665,7 @@ overflow-checked conversion, nor the thread-checked FFI variants.
 
 | Attribute | Effect |
 |-----------|--------|
-| `worker` | Run on worker thread (default if `worker-default` feature) |
+| `worker` | Run on worker thread (default if `worker-default` feature). Deprecated (#2117): warns at compile time |
 | `no_worker` | Run on main R thread |
 
 Functions taking or returning `!Send` framework types automatically run on the

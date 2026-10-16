@@ -3,6 +3,8 @@
 //! borrow; an `ExternalPtr<T>` handle moves to the worker unborrowed, and a
 //! borrow the body takes there blocks main-thread borrows while it lives.
 #![cfg(feature = "worker-thread")]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 mod r_test_utils;
 

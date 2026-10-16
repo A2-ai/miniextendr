@@ -871,6 +871,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 meta.parse_nested_meta(|inner| {
                     if inner.path.is_ident("worker") {
                         worker = true;
+                        crate::deprecation::worker_option(inner.path.span());
                     } else if inner.path.is_ident("main_thread") {
                         unsafe_main_thread = true;
                     } else if inner.path.is_ident("coerce") {
@@ -917,6 +918,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 })?;
             } else if meta.path.is_ident("worker") {
                 worker = true;
+                crate::deprecation::worker_option(meta.path.span());
             } else if meta.path.is_ident("main_thread") {
                 unsafe_main_thread = true;
             } else if meta.path.is_ident("coerce") {

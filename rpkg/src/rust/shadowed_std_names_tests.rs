@@ -7,6 +7,8 @@
 //! and the serde-classed `Result` error (`serde`). Keep the shadow list in
 //! step with the UI fixture's.
 #![allow(dead_code, unused_macros, non_camel_case_types)]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 // region: shadows
 

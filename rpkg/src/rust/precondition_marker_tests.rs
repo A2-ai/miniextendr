@@ -7,6 +7,9 @@
 //! one leaves it to the Rust conversion (`'n' must be a single integer: got
 //! character`); both raise the same argument-error condition.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::{Checked, ExternalPtr, Unchecked, miniextendr};
 
 // region: free functions

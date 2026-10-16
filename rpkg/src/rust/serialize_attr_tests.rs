@@ -1,5 +1,8 @@
 //! Attribute/type parity for serde return transport (#1521).
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use crate::serde::{Serialize, Serializer};
 use miniextendr_api::serde::AsSerialize;
 use miniextendr_api::{ExternalPtr, Invisible, miniextendr};

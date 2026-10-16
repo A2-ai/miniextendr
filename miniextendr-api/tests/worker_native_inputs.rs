@@ -1,5 +1,7 @@
 //! Shared worker references must borrow Rust-owned snapshots, not R storage.
 #![cfg(feature = "worker-thread")]
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
 
 mod r_test_utils;
 

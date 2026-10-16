@@ -19,6 +19,9 @@
 //! `error!()`, a `Result::Err` return, and an `Option::None` return carry NO
 //! `(at …)` suffix. Tests live in `rpkg/tests/testthat/test-panic-location.R`.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
 
