@@ -870,15 +870,13 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 # tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
 # as a source-mode build side effect. Their script interpreter snapshots and
 # restores the exact starting lockfile, even after failure (#1992).
+# The R test recipes run through scripts/r-test.R: every test runs, then the
+# recipe exits 1 if any failed. FILTER is positional: `just devtools-test cfg-gates`.
 # Load and test rpkg with devtools
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # The plain suite skips the gctorture-heavy blocks (~32 of ~34 min); they run
 # only when MINIEXTENDR_STRESS is true (rpkg/tests/testthat/helper-gc-stress.R).
@@ -889,11 +887,7 @@ devtools-test FILTER="": _assert-no-vendor-leak devtools-document
 devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
     export MINIEXTENDR_STRESS=true
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
@@ -1097,11 +1091,7 @@ minirextendr-document:
 [script("bash")]
 minirextendr-test FILTER="":
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R minirextendr "{{FILTER}}"
 
 # Check minirextendr R package with devtools::check
 minirextendr-check:
@@ -1125,8 +1115,6 @@ minirextendr-rcmdcheck:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
-# Standalone round-trip regression (heavy; maintainer/nightly only).
-#
 # Drives the gated testthat e2e tests in minirextendr/tests/testthat/test-templates.R
 # — including the #757/#775 standalone build → wrapper-gen → library() round-trip
 # at :521 — by flipping the MINIEXTENDR_RUN_E2E bypass so skip_e2e() does NOT
@@ -1138,11 +1126,13 @@ minirextendr-rcmdcheck:
 # label-gated CI job `r-roundtrip-e2e` (see .github/workflows/ci.yml). Requires
 # cargo, autoconf, R, and cargo-revendor on PATH; individual tests self-skip with
 # a clear reason if a tool is missing. See #775 / #805.
+#
+# Standalone round-trip regression (heavy; maintainer/nightly only)
 [script("bash")]
 minirextendr-roundtrip:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     export MINIEXTENDR_RUN_E2E=1
-    Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "templates")'
+    Rscript scripts/r-test.R minirextendr templates
 
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
