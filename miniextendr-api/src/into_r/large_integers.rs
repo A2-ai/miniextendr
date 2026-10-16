@@ -394,6 +394,27 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
     }
 }
 
+/// Convert `Option<ExternalPtr<T>>` to R: `Some` → the external pointer,
+/// `None` → NULL, as a `Vec<Option<ExternalPtr<T>>>` element converts.
+impl<T: crate::externalptr::TypedExternal> IntoR for Option<crate::externalptr::ExternalPtr<T>> {
+    type Error = std::convert::Infallible;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        match self {
+            Some(ptr) => ptr.as_sexp(),
+            None => crate::SEXP::nil(),
+        }
+    }
+}
+
 /// Build an R list (VECSXP) of external pointers from `Vec<ExternalPtr<T>>`.
 ///
 /// Each element `EXTPTRSXP` is rooted in the process-wide

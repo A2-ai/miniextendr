@@ -1207,6 +1207,43 @@ where
     }
 }
 
+/// Convert `Option<&[T]>` to R as the slice converts: `Some` → the R vector
+/// `&[T]` produces, `None` → NULL.
+impl<'a, T> IntoR for Option<&'a [T]>
+where
+    &'a [T]: IntoR,
+{
+    type Error = <&'a [T] as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(v) => v.try_into_sexp(),
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(v) => unsafe { v.try_into_sexp_unchecked() },
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => crate::SEXP::nil(),
+        }
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => crate::SEXP::nil(),
+        }
+    }
+}
+
 /// Convert `Option<HashMap<String, V>>` to R: Some(map) -> named list, None -> NULL.
 impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
     type Error = crate::into_r_error::IntoRError;
