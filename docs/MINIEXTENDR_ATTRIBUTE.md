@@ -1698,6 +1698,54 @@ pub enum Color { Red, Green, Blue }
 
 ---
 
+## Conditional Compilation
+
+`#[cfg(...)]` and `#[cfg_attr(...)]` work wherever Rust accepts them in a
+`#[miniextendr]` item, and the generated code follows the compiled item:
+
+| Gate on | A gated-off member has no |
+|---|---|
+| the function, impl block or trait itself (before or after `#[miniextendr]`) | C wrapper, registration, R function or class |
+| a function parameter | R formal |
+| an impl method or associated item | C wrapper, registration, R method or docs |
+| a trait method | vtable slot or R method |
+| a trait impl method | wrapper (an alternative under another gate takes its place) |
+| an enum variant | factor level or `match_arg` choice |
+| a struct field | column, list element or sidecar accessor |
+
+```rust
+#[miniextendr]
+pub fn read(path: &str, #[cfg(feature = "json")] json: bool) -> String { todo!() }
+
+#[miniextendr(r6)]
+impl Reader {
+    #[cfg(feature = "json")]
+    pub fn read_json(&self, text: &str) -> String { todo!() }
+
+    #[cfg_attr(feature = "short-names", miniextendr(r_name = "read"))]
+    pub fn read_text(&self, text: &str) -> String { todo!() }
+}
+
+#[miniextendr]
+pub enum Format {
+    Csv,
+    #[cfg(feature = "json")]
+    Json,
+}
+```
+
+The macro resolves the gates before it reads the item, so item-wide decisions
+use only the enabled members: constructor inference, S7 property pairing, name
+collisions, factor levels and R formals. A `cfg_attr` can add `miniextendr`
+options (`r_name`, `skip`, `worker`, ...) as well as other gates. Keep a
+conditional S7 property's getter and setter under compatible gates so the
+enabled methods still form a property. A trait's ABI tag covers its enabled
+methods, so a trait method gated differently in two packages gives them
+different tags: objects of one package then don't implement the other's trait.
+Build a producer and its consumers with the same features (#2129).
+
+---
+
 ## Automatic Registration
 
 All `#[miniextendr]` items are automatically registered via linkme distributed slices. No manual module declarations are needed -- simply annotate your items with `#[miniextendr]` and they will be available to R at load time.

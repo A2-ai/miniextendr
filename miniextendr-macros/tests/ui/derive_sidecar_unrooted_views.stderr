@@ -1,0 +1,23 @@
+error: a `List` sidecar field is not rooted: the GC frees its value once R drops its own references. Declare the field as `Sidecar<List>`, which keeps the value in the external pointer's protection list
+ --> tests/ui/derive_sidecar_unrooted_views.rs:6:16
+  |
+6 |     pub value: List,
+  |                ^^^^
+
+error: a `Option<List>` sidecar field is not rooted: the GC frees its value once R drops its own references. Declare the field as `Sidecar<Option<List>>`, which keeps the value in the external pointer's protection list
+  --> tests/ui/derive_sidecar_unrooted_views.rs:12:16
+   |
+12 |     pub value: Option<List>,
+   |                ^^^^^^^^^^^^
+
+error: a `DataFrame` sidecar field is not rooted: the GC frees its value once R drops its own references. Declare the field as `Sidecar<DataFrame>`, which keeps the value in the external pointer's protection list
+  --> tests/ui/derive_sidecar_unrooted_views.rs:18:16
+   |
+18 |     pub value: DataFrame,
+   |                ^^^^^^^^^
+
+error: a `Vec<(i32, Option<List>)>` sidecar field is not rooted: the GC frees its value once R drops its own references. Declare the field as `Sidecar<Vec<(i32, Option<List>)>>`, which keeps the value in the external pointer's protection list
+  --> tests/ui/derive_sidecar_unrooted_views.rs:24:16
+   |
+24 |     pub value: Vec<(i32, Option<List>)>,
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^

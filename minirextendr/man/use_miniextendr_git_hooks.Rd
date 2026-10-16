@@ -35,13 +35,21 @@ or stale NAMESPACE (when \verb{*-wrappers.R} changed without \code{devtools::doc
 blocks on source-shape \code{src/rust/Cargo.lock} (recommends
 \code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), blocks on a staged \code{vendor.tar.xz}
 (a build artifact that \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} vendors into the
-release tarball; never commit it)
+release tarball; never commit it), blocks when the staged \code{rv.lock}
+(repository root, else the package directory) and \code{src/rust/Cargo.lock}
+pin different miniextendr commits (minirextendr from git through rv, the
+\verb{miniextendr-*} crates from git through cargo) and prints the
+\verb{cargo update} / \code{rv} commands that bring them back together
 \item \strong{post-merge}: Reminds you to reconfigure after pulling changes to
 build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 }
 
 Existing hooks are preserved: if a hook file already exists, the miniextendr
 hook is appended as a sourced fragment so both run.
+
+An installed hook does not change when minirextendr is upgraded. Run
+\code{use_miniextendr_git_hooks(force = TRUE)} to replace the miniextendr section
+with the version bundled in the installed minirextendr.
 
 Git hooks belong to the \strong{enclosing repository}, regardless of where the
 package sits inside it. This matches \code{\link[=use_miniextendr]{use_miniextendr()}}'s worldview: a

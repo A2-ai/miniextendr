@@ -17,6 +17,7 @@
 use std::any::Any;
 use std::cell::{Ref, RefCell, RefMut};
 use std::fmt;
+use std::sync::Arc;
 
 use super::{
     NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
@@ -130,7 +131,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - **Loaded when the value leaves its pointer.** `ExternalPtr::into_inner`
 ///   and `into_raw` read each slot of the pointer being consumed back into its
 ///   field as a pending value (unless one is pending already), so wrapping
-///   the value again keeps the values.
+///   the value again keeps the values. Loaded values retain a pool root to
+///   their R slot until they are flushed or dropped, including across clones.
+///   Like an owning `ExternalPtr`, the last loaded copy must be dropped on
+///   R's main thread or its managed worker.
 /// - **A `self -> Self` method** leaves the values in the pointer across the
 ///   call; the write-back flushes only what the method set with
 ///   `Sidecar::new`. `Self { n: .., ..self }` keeps the values,
@@ -195,7 +199,26 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// root it. Use `Sidecar<SEXP>`.
 pub struct Sidecar<T> {
     /// The value the field holds while it is not in a pointer's slot.
-    pending: RefCell<Option<T>>,
+    pending: RefCell<Option<Pending<T>>>,
+}
+
+/// Keep the input slot alive while a converted view travels outside its owner.
+/// The value drops before its root, including when conversion unwinds.
+#[derive(Clone)]
+struct Pending<T> {
+    value: T,
+    root: Option<Arc<PendingRoot>>,
+}
+
+/// Only the pool key crosses threads, as with an owning `ExternalPtr`.
+/// Cloning a pending value needs no R call; the last copy releases the root.
+struct PendingRoot(crate::protect_pool::ProtectKey);
+
+impl Drop for PendingRoot {
+    fn drop(&mut self) {
+        let key = self.0;
+        crate::worker::with_r_thread(move || super::unroot_owned(key));
+    }
 }
 
 impl<T> Sidecar<T> {
@@ -203,7 +226,7 @@ impl<T> Sidecar<T> {
     /// in an `ExternalPtr`.
     pub fn new(value: T) -> Self {
         Self {
-            pending: RefCell::new(Some(value)),
+            pending: RefCell::new(Some(Pending { value, root: None })),
         }
     }
 
@@ -219,10 +242,13 @@ impl<T: IntoR> Sidecar<T> {
     /// On R's main thread. `set_vector_elt` allocates nothing, so the value
     /// fresh from `into_sexp()` needs no protection.
     fn flush_into(&self, prot: SEXP, index: usize) {
-        let Some(value) = self.pending.borrow_mut().take() else {
+        let Some(Pending { value, root }) = self.pending.borrow_mut().take() else {
             return;
         };
         prot.set_vector_elt(prot_index(index), value.into_sexp());
+        // The new slot owns the GC edge now. Keep the old root through IntoR,
+        // which can allocate or panic even when T is an R-backed view.
+        drop(root);
     }
 }
 
@@ -232,12 +258,28 @@ where
 {
     /// Reads slot `index` of `prot` back into the field as its pending value,
     /// unless one is pending already. On R's main thread.
-    fn load_from(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str) {
+    fn load_from(
+        &self,
+        prot: SEXP,
+        index: usize,
+        name: &'static str,
+        owner_type: &'static str,
+    ) -> bool {
         if self.pending.borrow().is_some() {
-            return;
+            return false;
         }
+        // The old owner still roots the slot across pool growth and conversion.
+        // Root the slot itself, not the old protection list, so independent
+        // pending fields do not retain one another's values.
+        let root = Arc::new(PendingRoot(super::root_owned(
+            prot.vector_elt(prot_index(index)),
+        )));
         let value = convert_slot::<T>(prot, index, name, owner_type);
-        *self.pending.borrow_mut() = Some(value);
+        *self.pending.borrow_mut() = Some(Pending {
+            value,
+            root: Some(root),
+        });
+        true
     }
 }
 
@@ -305,8 +347,14 @@ pub trait SidecarField {
     /// Moves a pending value into slot `index` of `prot`.
     fn __mx_flush(&self, prot: SEXP, index: usize);
     /// Reads slot `index` of `prot` back into the field as its pending value,
-    /// unless one is pending already.
-    fn __mx_load(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str);
+    /// unless one is pending already. Returns whether a value was loaded.
+    fn __mx_load(
+        &self,
+        prot: SEXP,
+        index: usize,
+        name: &'static str,
+        owner_type: &'static str,
+    ) -> bool;
     /// Drops a pending value, which a write to the slot supersedes.
     fn __mx_discard_pending(&self);
 }
@@ -319,8 +367,14 @@ where
         self.flush_into(prot, index);
     }
 
-    fn __mx_load(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str) {
-        self.load_from(prot, index, name, owner_type);
+    fn __mx_load(
+        &self,
+        prot: SEXP,
+        index: usize,
+        name: &'static str,
+        owner_type: &'static str,
+    ) -> bool {
+        self.load_from(prot, index, name, owner_type)
     }
 
     fn __mx_discard_pending(&self) {
@@ -339,9 +393,34 @@ pub(crate) fn flush_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
 /// leaving, back into its `Sidecar` field as a pending value (unless one is
 /// pending already). On R's main thread.
 pub(crate) fn load_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
+    // If a later conversion fails, the value stays inside its old pointer.
+    // Roll back only fields loaded by this attempt: their roots could otherwise
+    // keep that pointer alive forever when a sidecar refers back to its owner.
+    struct LoadGuard<'a, T: TypedExternal> {
+        value: &'a T,
+        loaded: Vec<bool>,
+        committed: bool,
+    }
+    impl<T: TypedExternal> Drop for LoadGuard<'_, T> {
+        fn drop(&mut self) {
+            if !self.committed {
+                self.value.__mx_visit_sidecars(&mut |index, _, field| {
+                    if self.loaded[index] {
+                        field.__mx_discard_pending();
+                    }
+                });
+            }
+        }
+    }
+    let mut guard = LoadGuard {
+        value,
+        loaded: vec![false; T::R_SLOT_COUNT],
+        committed: false,
+    };
     value.__mx_visit_sidecars(&mut |index, name, field| {
-        field.__mx_load(prot, index, name, T::TYPE_NAME);
+        guard.loaded[index] = field.__mx_load(prot, index, name, T::TYPE_NAME);
     });
+    guard.committed = true;
 }
 
 /// Drops every pending value of `value`'s `Sidecar` fields.
@@ -670,9 +749,7 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
         if require_live
-            || !(prot.type_of() == SEXPTYPE::VECSXP
-                && prot.len() > 0
-                && is_type_id_symbol::<T>(prot.vector_elt(PROT_TYPE_ID_INDEX)))
+            || !unsafe { super::stored_type_id_symbol(x) }.is_some_and(is_type_id_symbol::<T>)
         {
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
@@ -681,6 +758,9 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
         }
         None
     } else {
+        if unsafe { super::stored_type_id_symbol(x) }.is_none() {
+            refuse_other_type::<T>(receiver, Refused::OtherType);
+        }
         match unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
             Some(cell) => Some(cell),
             None => refuse_other_type::<T>(receiver, Refused::OtherType),
@@ -743,6 +823,9 @@ unsafe fn sidecar_r_cell<'a, T: TypedExternal>(receiver: SEXP) -> &'a RefCell<T>
         // A save by this or another version raises its own error here.
         unsafe { refuse_restored::<T>(x, receiver) };
         refuse_other_type::<T>(receiver, Refused::NullPointer);
+    }
+    if unsafe { super::stored_type_id_symbol(x) }.is_none() {
+        refuse_other_type::<T>(receiver, Refused::OtherType);
     }
     match unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
         Some(cell) => cell,

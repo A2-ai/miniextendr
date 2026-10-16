@@ -96,12 +96,11 @@ clean:
     cd rpkg && ./cleanup
     cd tests/cross-package && just clean
 
-# Clean build artifacts
-#
 # NOTE: The `tmp="$(mktemp -d)" && (cd "$tmp" && cargo ...)` pattern is used
 # throughout this file to run cargo from a neutral directory, preventing it
 # from picking up the wrong .cargo/config.toml. These temp dirs are empty
 # (just used as cwd) and cleaned by the OS periodically - not a significant leak.
+[doc("Clean build artifacts")]
 cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
@@ -202,6 +201,7 @@ update *cargo_flags:
 # unstaged lock edits; ordinary development recipes never invoke it.
 # Those recipes use with-rpkg-lock.sh to restore their exact starting bytes,
 # including staged/unstaged differences, on success and failure.
+[doc("Reset rpkg's lockfile to the Git index, discarding unstaged lock edits")]
 cargo-lock-restore:
     git restore --worktree -- rpkg/src/rust/Cargo.lock
 
@@ -244,6 +244,7 @@ clippy *cargo_flags:
 # Run clippy on rpkg's standalone Rust workspace. Explicit patch overrides keep
 # this independent of configure-generated .cargo/config.toml. The interpreter
 # restores the original lockfile even when clippy fails.
+[doc("Run clippy on rpkg's standalone Rust workspace")]
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 clippy-rpkg *cargo_flags:
     set -euo pipefail
@@ -467,6 +468,7 @@ test *args:
 # toolchain from `stable` even at the same version, hence no rust-src) so results
 # match CI. Never regenerate the snapshots (`TRYBUILD=overwrite`) under a rust-src
 # toolchain — CI is authoritative. See CLAUDE.md "UI test snapshots".
+[doc("Run the trybuild UI snapshot tests as CI renders them")]
 [script("bash")]
 test-ui *cargo_flags:
     set -euo pipefail
@@ -577,6 +579,7 @@ expand *cargo_flags:
 # Expand rpkg against this checkout, including feature-gated derive fixtures.
 # Match clippy-rpkg's Git-source overrides; restore the exact pre-run lockfile
 # so inspecting generated code preserves unstaged dependency changes too.
+[doc("Expand rpkg's macros against this checkout, including feature-gated fixtures")]
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 expand-rpkg *cargo_flags:
     set -euo pipefail
@@ -588,8 +591,6 @@ expand-rpkg *cargo_flags:
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
         {{cargo_flags}}
 
-# Run ./configure
-#
 # Generates build configuration files (Makevars, cargo config, etc.) using
 # the unified install-mode detection in configure.ac:
 #   - source mode (default): cargo resolves miniextendr deps from monorepo
@@ -605,13 +606,12 @@ expand-rpkg *cargo_flags:
 # `R CMD INSTALL rpkg`.
 #
 # See docs/CRAN_COMPATIBILITY.md for the full table.
+[doc("Run rpkg's configure (source mode, or tarball mode when inst/vendor.tar.xz exists)")]
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi
     Rscript -e 'setwd("rpkg"); quit(status = system2("bash", "./configure"))'
 
-# Skip configure when build outputs are already up to date.
-#
 # Checks that rpkg/src/Makevars and rpkg/src/rust/.cargo/config.toml both
 # exist and are newer than their source inputs (configure.ac, Makevars.in,
 # cargo-config.toml.in). If so, skips the ~1 s configure round-trip; otherwise
@@ -627,6 +627,7 @@ configure:
 #   - Changes to monorepo sibling crates will NOT bust the cache.
 #   - For a guaranteed fresh configure, run `just configure` directly or
 #     touch rpkg/configure.ac to force the stale check to fail.
+[doc("Skip configure when build outputs are already up to date")]
 configure-fast:
     if [ -f rpkg/src/Makevars ] && \
        [ -f rpkg/src/rust/.cargo/config.toml ] && \
@@ -742,12 +743,12 @@ vendor:
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
     echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
 
-# Remove a leaked rpkg/inst/vendor.tar.xz.
 # inst/vendor.tar.xz is the single signal that flips configure into tarball mode.
 # A leftover tarball makes subsequent dev installs silently use stale vendored
 # sources instead of workspace edits. Run this if you're seeing
 # "tarball install — vendor/ already populated" during dev iteration and you
 # didn't intend to stay in tarball mode.
+[doc("Remove a leaked rpkg/inst/vendor.tar.xz")]
 [script("bash")]
 clean-vendor-leak:
     set -euo pipefail
@@ -820,6 +821,7 @@ vendor-verify:
 # --freeze --compress` carries vendor/.cargo-config.toml, and configure reuses
 # it so Git dependencies pinned by rev, branch or tag resolve offline.
 # See rpkg/dev/tarball-cargo-config.sh.
+[doc("Run the bootstrap and vendoring regression tests")]
 test-bootstrap-vendor:
     bash tests/bootstrap-never-vendors.sh
     bash tests/vendor-loud-fail.sh
@@ -870,15 +872,13 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 # tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
 # as a source-mode build side effect. Their script interpreter snapshots and
 # restores the exact starting lockfile, even after failure (#1992).
+# The R test recipes run through scripts/r-test.R: every test runs, then the
+# recipe exits 1 if any failed. FILTER is positional: `just devtools-test cfg-gates`.
 # Load and test rpkg with devtools
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # The plain suite skips the gctorture-heavy blocks (~32 of ~34 min); they run
 # only when MINIEXTENDR_STRESS is true (rpkg/tests/testthat/helper-gc-stress.R).
@@ -889,11 +889,7 @@ devtools-test FILTER="": _assert-no-vendor-leak devtools-document
 devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
     export MINIEXTENDR_STRESS=true
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
@@ -905,6 +901,7 @@ devtools-load: _assert-no-vendor-leak devtools-document
 # Install rpkg with devtools::install, in place. build = FALSE keeps configure in
 # rpkg/, where it finds the workspace siblings; a built tarball installs from a
 # temporary copy that resolves the framework crates from git instead.
+[doc("Install rpkg in place with devtools::install")]
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-install: _assert-no-vendor-leak devtools-document
     set -euo pipefail
@@ -914,13 +911,13 @@ devtools-install: _assert-no-vendor-leak devtools-document
 install_deps:
     Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7","vctrs"), repos = "https://cloud.r-project.org")'
 
-# Install Rust dev tools used for day-to-day iteration.
 # cargo-limit: provides `cargo lcheck`/`lclippy`/`ltest`/`lbuild` that surface the first
 # few errors/warnings without dumping thousands of lines of "noise" into the terminal.
 # Prefer these aliases in CLI one-offs; CI still runs full `cargo clippy ... -D warnings`.
 # cargo-revendor: required by `just configure` in dev-monorepo mode to sync
 # workspace crates into rpkg/vendor/ (otherwise cargo metadata fails on the
 # frozen path = "../../vendor/..." deps in rpkg/src/rust/Cargo.toml).
+[doc("Install the Rust dev tools used for day-to-day iteration")]
 dev-tools-install: revendor-install
     cargo install cargo-limit
 
@@ -967,6 +964,7 @@ devtools-build:
 # vendored crates, so _assert-no-vendor-leak refuses to run with one present.
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
+[doc("Check rpkg with devtools::check (the unvendored built-tarball path)")]
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-check: _assert-no-vendor-leak devtools-document
     set -euo pipefail
@@ -978,13 +976,13 @@ devtools-document: configure-fast
     set -euo pipefail
     Rscript -e 'devtools::document("rpkg")'
 
-# Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
+[doc("Document rpkg, minirextendr and the cross-package test packages")]
 document-all: devtools-document minirextendr-document
     cd tests/cross-package && just document-all
 
-# Configure ALL R packages that need vendoring/configure
 # This includes: rpkg and cross-package test packages (minirextendr has no configure step)
+[doc("Configure rpkg and the cross-package test packages")]
 configure-all: configure cross-configure
 
 # The install resolves through the [patch] override, which drifts Cargo.lock;
@@ -1061,10 +1059,9 @@ r-cmd-check *args:
     fi
     Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
-# Extract and inspect R package tarball contents (for debugging build artifacts)
-#
 # Builds tarball with --compression=none and extracts to rpkg_build/ for inspection.
 # Useful for verifying what gets included in CRAN submissions.
+[doc("Build an uncompressed rpkg tarball and extract it to rpkg_build/ for inspection")]
 [script("bash")]
 test-r-build: configure
     set -euo pipefail
@@ -1097,11 +1094,7 @@ minirextendr-document:
 [script("bash")]
 minirextendr-test FILTER="":
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R minirextendr "{{FILTER}}"
 
 # Check minirextendr R package with devtools::check
 minirextendr-check:
@@ -1125,8 +1118,6 @@ minirextendr-rcmdcheck:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
-# Standalone round-trip regression (heavy; maintainer/nightly only).
-#
 # Drives the gated testthat e2e tests in minirextendr/tests/testthat/test-templates.R
 # — including the #757/#775 standalone build → wrapper-gen → library() round-trip
 # at :521 — by flipping the MINIEXTENDR_RUN_E2E bypass so skip_e2e() does NOT
@@ -1138,11 +1129,13 @@ minirextendr-rcmdcheck:
 # label-gated CI job `r-roundtrip-e2e` (see .github/workflows/ci.yml). Requires
 # cargo, autoconf, R, and cargo-revendor on PATH; individual tests self-skip with
 # a clear reason if a tool is missing. See #775 / #805.
+#
+# Standalone round-trip regression (heavy; maintainer/nightly only)
 [script("bash")]
 minirextendr-roundtrip:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     export MINIEXTENDR_RUN_E2E=1
-    Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "templates")'
+    Rscript scripts/r-test.R minirextendr templates
 
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
@@ -1320,6 +1313,7 @@ _templates-upstream-populate dest:
 # minirextendr into a temp library (pure R, no compile), scaffolds a throwaway
 # package, then runs scripts/skill-freshness-audit.sh --user-layout on it.
 # Requires minirextendr's Imports (cli, fs, usethis) plus cargo on PATH.
+[doc("Audit the end-user Claude skills against a freshly scaffolded package")]
 [script("bash")]
 user-skills-check:
     set -euo pipefail
@@ -1339,6 +1333,7 @@ user-skills-check:
 
 # Accept the current delta as approved by regenerating patches/templates.patch
 # (Builds an upstream snapshot from templates-sources before diffing.)
+[doc("Approve the rpkg -> templates delta by regenerating patches/templates.patch")]
 [script("bash")]
 templates-approve:
     set -euo pipefail
@@ -1430,6 +1425,7 @@ committed-artifacts-check range="":
 
 # Refresh the local, untracked GitHub issue cache. Pass an alternate output
 # directory when refreshing the main checkout from an agent worktree.
+[doc("Refresh the local, untracked GitHub issue cache")]
 issues-refresh output_dir="ISSUES":
     bash scripts/refresh-issues-cache.sh "{{output_dir}}"
 
@@ -1609,6 +1605,7 @@ lint-sync-check:
 # and man/ are still committed (and derive from the freshly-regenerated wrappers.R),
 # so those are git-diffed. Catches the failure mode where a Rust-side edit ships
 # without the corresponding regenerated NAMESPACE / man/ (see #602).
+[doc("Check that the committed NAMESPACE and man/ match the Rust source")]
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
@@ -1822,11 +1819,13 @@ bindgen-corpus-remove-packages:
 
 # Regenerate the LLM-ready Rust API corpus from rustdoc JSON into
 # rust-llm-docs/generated/ (gitignored, regenerated on demand).
+[doc("Regenerate the LLM-ready Rust API corpus in rust-llm-docs/generated/")]
 llm-docs toolchain="nightly":
     bash rust-llm-docs/generate-miniextendr-docs.sh "{{toolchain}}"
 
 # Test the renderer, then regenerate the corpus. The regeneration fails on any
 # rustdoc item kind the renderer does not cover (rustdoc_megadoc.py).
+[doc("Test the LLM docs renderer, then regenerate the corpus")]
 [script("bash")]
 llm-docs-check toolchain="nightly":
     set -euo pipefail
@@ -1853,6 +1852,7 @@ site-serve:
 # anchor fails the build) and `external_level = "warn"` (external URLs are
 # warn-only — CI runners get bot-blocked by some hosts, so external liveness
 # is a quarterly-audit concern, not enforced here).
+[doc("Regenerate the manual and check Zola's links")]
 site-check: site-docs
     cd site && zola check
 
@@ -1896,6 +1896,7 @@ docker-webr-shell:
 
 # Non-interactive: run an arbitrary command inside the container with the
 # repo mounted. e.g. `just docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"`.
+[doc("Run a command inside the webR container with the repo mounted")]
 docker-webr-run *cmd:
     docker run --rm \
         -v "{{justfile_directory()}}:/work" \
@@ -1908,6 +1909,7 @@ docker-webr-run *cmd:
 # `bash ./rpkg/configure && cd rpkg/src/rust && cargo check --target
 # wasm32-unknown-emscripten` — `configure` writes the right `[patch."git+url"]`
 # overrides into `.cargo/config.toml` for the workspace siblings.
+[doc("Smoke-test the wasm32 build of miniextendr-api inside the webR container")]
 docker-webr-test: docker-webr-build
     just docker_webr_image={{docker_webr_image}} docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"
 
@@ -1937,6 +1939,7 @@ docker_webr_arm64_image := "miniextendr-webr-dev-arm64:latest"
 # Build the arm64-native webR dev image. Re-run when Dockerfile.webr-arm64
 # changes. Must run on an arm64 host (the emsdk base + native toolchain are
 # arm64); the donor stage is pinned `--platform=linux/amd64` for the FS copy.
+[doc("Build the arm64-native webR dev image")]
 docker-webr-arm64-build *args:
     docker build -f Dockerfile.webr-arm64 {{args}} -t {{docker_webr_arm64_image}} .
 
@@ -1947,8 +1950,7 @@ docker-webr-arm64-shell: docker-webr-arm64-build
         -w /work \
         {{docker_webr_arm64_image}} bash
 
-# Non-interactive: run an arbitrary command inside the arm64 container with the
-# repo mounted.
+[doc("Run a command inside the arm64 webR container with the repo mounted")]
 docker-webr-arm64-run *cmd: docker-webr-arm64-build
     docker run --rm \
         -v "{{justfile_directory()}}:/work" \
@@ -1958,5 +1960,6 @@ docker-webr-arm64-run *cmd: docker-webr-arm64-build
 # arm64-native end-to-end smoke. Same three-phase flow as docker-webr-smoke but
 # against the arm64 image (WEBR_ARM64=1 selects the native-R orchestration +
 # arm64 image inside tests/webr-smoke.sh).
+[doc("Run the arm64-native end-to-end webR smoke")]
 docker-webr-arm64-smoke *args: docker-webr-arm64-build
     WEBR_ARM64=1 WEBR_IMAGE={{docker_webr_arm64_image}} bash tests/webr-smoke.sh {{args}}

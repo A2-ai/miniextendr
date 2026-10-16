@@ -826,12 +826,51 @@ fn computed_getter_path(get: &syn::LitStr, struct_name: &Ident) -> syn::Result<s
     Ok(path)
 }
 
+/// R views stored in ordinary Rust fields have no GC owner. Inspect only
+/// known views and containers: aliases and user-defined wrappers are opaque to
+/// a derive, and a generic argument alone need not be stored (PhantomData).
+fn contains_unrooted_r_view(ty: &syn::Type) -> bool {
+    if crate::type_inspect::is_rooted_reference(ty) {
+        return true;
+    }
+    match ty {
+        syn::Type::Array(t) => contains_unrooted_r_view(&t.elem),
+        syn::Type::Slice(t) => contains_unrooted_r_view(&t.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(contains_unrooted_r_view),
+        syn::Type::Reference(t) => contains_unrooted_r_view(&t.elem),
+        syn::Type::Paren(t) => contains_unrooted_r_view(&t.elem),
+        syn::Type::Group(t) => contains_unrooted_r_view(&t.elem),
+        syn::Type::Path(t) if t.qself.is_none() => {
+            let Some(segment) = t.path.segments.last() else {
+                return false;
+            };
+            match segment.ident.to_string().as_str() {
+                "SEXP" | "List" | "ListMut" | "NamedList" | "DataFrame" | "StrVec" | "RCow"
+                | "RArray" | "RVector" | "RMatrix" | "RArray3D" | "Factor" | "FactorMut" => true,
+                "Option" | "Result" | "Vec" | "VecDeque" | "LinkedList" | "BinaryHeap"
+                | "HashSet" | "BTreeSet" | "HashMap" | "BTreeMap" | "Box" | "Rc" | "Arc"
+                | "Cow" | "Cell" | "RefCell" | "Mutex" | "RwLock" | "OnceCell" | "OnceLock" => {
+                    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+                        return false;
+                    };
+                    args.args.iter().any(|arg| {
+                        matches!(arg, syn::GenericArgument::Type(ty) if contains_unrooted_r_view(ty))
+                    })
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Determine the [`SlotKind`] for a field type by inspecting its last path segment.
 ///
 /// Recognizes `Sidecar<T>`, which takes position `sidecars` (the number of
 /// `Sidecar` fields before it), `Computed` with its `get` function, scalar
 /// numerics (`i32`, `i16`, `i8`, `f64`, `f32`), booleans (`bool`, `Rbool`),
-/// and raw bytes (`u8`). A bare `SEXP` is an error: the struct can't root it.
+/// and raw bytes (`u8`). An R view, including one in a standard container,
+/// is an error: the struct can't root it.
 /// Everything else falls through to [`SlotKind::Conversion`].
 fn slot_kind_for_type(
     ty: &syn::Type,
@@ -847,6 +886,17 @@ fn slot_kind_for_type(
         let get = get.expect("a Computed field has a `get` option");
         return Ok(SlotKind::Computed(computed_getter_path(get, struct_name)?));
     }
+    if contains_unrooted_r_view(ty) {
+        let field_type = crate::type_inspect::type_display(ty);
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "a `{field_type}` sidecar field is not rooted: the GC frees its value once R drops \
+                 its own references. Declare the field as `{SIDECAR_TYPE_NAME}<{field_type}>`, which \
+                 keeps the value in the external pointer's protection list"
+            ),
+        ));
+    }
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
     {
@@ -855,16 +905,6 @@ fn slot_kind_for_type(
             return Err(syn::Error::new_spanned(
                 ty,
                 format!("`{SIDECAR_TYPE_NAME}` takes one type argument: `{SIDECAR_TYPE_NAME}<T>`"),
-            ));
-        }
-        if ident == "SEXP" {
-            return Err(syn::Error::new_spanned(
-                ty,
-                format!(
-                    "a `SEXP` sidecar field is not rooted: the GC frees its value once R drops \
-                     its own references. Declare the field as `{SIDECAR_TYPE_NAME}<SEXP>`, which \
-                     keeps the value in the external pointer's protection list"
-                ),
             ));
         }
         if ident == "i32" || ident == "i16" || ident == "i8" {
@@ -3536,6 +3576,72 @@ mod tests {
         assert!(!out.contains("R_SLOT_COUNT"), "{out}");
         assert!(!out.contains("__mx_visit_sidecars"), "{out}");
         assert!(!out.contains("sidecar_get"), "{out}");
+    }
+
+    #[test]
+    fn r_views_in_plain_fields_are_refused_recursively() {
+        for ty in [
+            "List",
+            "ListMut",
+            "NamedList",
+            "DataFrame",
+            "StrVec<'static>",
+            "RCow<'static, i32>",
+            "RArray<i32, 2>",
+            "RVector<f64>",
+            "RMatrix<i32>",
+            "RArray3D<f64>",
+            "Factor<'static>",
+            "FactorMut<'static>",
+            "::miniextendr_api::list::List",
+            "Option<List>",
+            "Vec<Option<DataFrame>>",
+            "HashMap<String, Vec<List>>",
+            "Result<Vec<i32>, SEXP>",
+            "Box<[List]>",
+            "[Option<List>; 2]",
+            "(i32, Vec<NamedList>)",
+            "&'static List",
+            "&'static str",
+            "Option<&'static i32>",
+            "Box<&'static [f64]>",
+            "Arc<Mutex<Option<List>>>",
+            "(List)",
+        ] {
+            let input =
+                syn::parse_str(&format!("struct Bad {{ #[r_data] pub value: {ty} }}")).unwrap();
+            let err = super::derive_external_ptr(input, true).unwrap_err();
+            assert!(err.to_string().contains("is not rooted"), "{ty}: {err}");
+            assert!(err.to_string().contains("Sidecar<"), "{ty}: {err}");
+        }
+    }
+
+    #[test]
+    fn owned_fields_and_sidecars_keep_their_existing_classification() {
+        for ty in [
+            "String",
+            "Vec<Option<i32>>",
+            "HashMap<String, Vec<f64>>",
+            "Preserved",
+            "BuiltList",
+            "BuiltDataFrame",
+            "ProtectedStrVec",
+            "Option<BuiltList>",
+            "Cow<'static, str>",
+            "PhantomData<List>",
+        ] {
+            let ty = syn::parse_str(ty).unwrap();
+            assert!(!super::contains_unrooted_r_view(&ty), "{ty:?}");
+        }
+        for ty in [
+            "Sidecar<List>",
+            "Sidecar<Option<List>>",
+            "Sidecar<DataFrame>",
+        ] {
+            let ty = syn::parse_str(ty).unwrap();
+            let kind = super::slot_kind_for_type(&ty, 2, None, &syn::parse_quote!(Host)).unwrap();
+            assert!(matches!(kind, super::SlotKind::Sidecar(2)));
+        }
     }
 
     /// A bare `SEXP` under `#[r_data]` is refused: nothing would root it.

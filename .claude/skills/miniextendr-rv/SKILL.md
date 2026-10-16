@@ -14,7 +14,7 @@ mode and quietly breaks every test recipe.
 
 - "`testthat` not installed" or "no package called 'X'" appears mid-test even though deps look correct.
 - Logs contain `WARNING: R version specified in config (4.X) does not match session version (4.Y)` or `creating temporary library: …/__rv_R_mismatch`.
-- `just devtools-test` exits 0 but no test summary appears in the log.
+- `just devtools-test` fails before any test runs, and no test summary appears in the log.
 - `rv sync` complains about missing or incompatible packages.
 - A contributor's `R --version` doesn't match `rproject.toml`'s `r_version`.
 - You want to bump the pinned R version (e.g. 4.5 → 4.6 after R-devel ships a release).
@@ -91,8 +91,9 @@ Calls: loadNamespace -> withRestarts -> withOneRestart -> doWithOneRestart
 Execution halted
 ```
 
-**The `just` recipe still exits 0** even though no tests ran. CI catches this
-because CI installs R deliberately, but locally it's easy to miss.
+The recipe fails before a single test runs. CI doesn't hit this because it
+installs the pinned R deliberately; locally, it's the first thing to check when
+the suite won't start.
 
 ### How to fix
 
