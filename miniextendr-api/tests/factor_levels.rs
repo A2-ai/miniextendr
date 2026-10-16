@@ -127,3 +127,20 @@ fn unit_enum_factor_vec_batches_missing_and_invalid_codes() {
         }
     });
 }
+
+/// An enum row flattens a nested frame by scattering its columns over the
+/// parent's rows; a factor keeps its levels there, with NA in absent rows.
+#[test]
+fn scattered_factor_keeps_levels_and_pads_with_na() {
+    use miniextendr_api::RNativeType;
+    use miniextendr_api::convert::scatter_column;
+    r_test_utils::with_r_thread(|| {
+        let dense =
+            unsafe { OwnedProtect::new(build_factor_with_levels(&[2, 1], &["low", "high"])) };
+        let scattered = unsafe { OwnedProtect::new(scatter_column(dense.get(), &[0, 2], 3)) };
+        let scattered = scattered.get();
+        assert!(scattered.is_factor());
+        assert_eq!(scattered.get_levels().len(), 2);
+        assert_eq!(unsafe { scattered.as_slice::<i32>() }, [2, i32::R_NA, 1]);
+    });
+}

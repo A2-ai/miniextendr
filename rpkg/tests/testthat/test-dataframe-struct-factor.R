@@ -21,8 +21,18 @@ test_that("struct as_factor produces one factor column in every assembly shape",
   }
 })
 
+test_that("a struct factor inside an enum variant stays a factor, NA where absent", {
+  for (empty in c(FALSE, TRUE)) {
+    df <- df_struct_factor("enum", empty)
+    expect_identical(names(df), c("kind", "id", "step_id", "step_stage", "step_label"))
+    expect_identical(class(df$step_stage), "factor")
+    expect_identical(levels(df$step_stage), c("Low", "High"))
+    expect_identical(as.integer(df$step_stage), if (empty) integer() else c(1L, 2L, NA))
+  }
+})
+
 test_that("struct factor readers round-trip owned values and empty columns", {
-  for (shape in c("named", "nested", "expanded")) {
+  for (shape in c("named", "nested", "expanded", "enum")) {
     for (empty in c(FALSE, TRUE)) {
       df <- df_struct_factor(shape, empty)
       expect_identical(df_struct_factor_roundtrip(df, shape), df)
@@ -33,7 +43,7 @@ test_that("struct factor readers round-trip owned values and empty columns", {
 test_that("parallel struct factor readers need neither Clone nor Default", {
   skip_if_not(exists("df_struct_factor_roundtrip_par", mode = "function"),
               "rayon feature not compiled")
-  for (shape in c("named", "nested", "expanded")) {
+  for (shape in c("named", "nested", "expanded", "enum")) {
     for (empty in c(FALSE, TRUE)) {
       df <- df_struct_factor(shape, empty)
       expect_identical(df_struct_factor_roundtrip_par(df, shape), df)

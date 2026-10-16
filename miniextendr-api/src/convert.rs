@@ -201,11 +201,16 @@ pub use crate::dataframe::ColumnSource;
 /// [`gather_native`]. String and list columns stay element-by-element because
 /// they are write-barriered arrays of `SEXP` pointers, not flat buffers.
 ///
+/// When the output type mirrors the input, the column keeps every attribute
+/// except names/dim/dimnames, as `DataFrame::select_rows` does on the way back:
+/// a factor keeps its `levels` and `class` (absent rows are `NA`), a `Date` or
+/// `POSIXct` column its `class` and `tzone`.
+///
 /// # Safety
 ///
 /// Must be called on the R main thread. `src` must be a valid SEXP of length
-/// `>= present_idx.len()`. `n_rows` must equal the total row count of the
-/// parent data frame.
+/// `>= present_idx.len()`, kept reachable by the caller across this call.
+/// `n_rows` must equal the total row count of the parent data frame.
 #[doc(hidden)]
 pub unsafe fn scatter_column(
     src: crate::SEXP,
@@ -217,7 +222,7 @@ pub unsafe fn scatter_column(
     unsafe {
         use crate::{RLogical, Rcomplex, SEXPTYPE, SexpExt as _};
 
-        match src.type_of() {
+        let out = match src.type_of() {
             SEXPTYPE::REALSXP => scatter_native::<f64>(src, present_idx, n_rows),
             SEXPTYPE::INTSXP => scatter_native::<i32>(src, present_idx, n_rows),
             SEXPTYPE::LGLSXP => scatter_native::<RLogical>(src, present_idx, n_rows),
@@ -251,9 +256,13 @@ pub unsafe fn scatter_column(
                 for (pi, &row_i) in present_idx.iter().enumerate() {
                     out.set_vector_elt(row_i as isize, src.vector_elt(pi as isize));
                 }
-                out
+                return out;
             }
-        }
+        };
+        // Copying the attributes allocates, so root `out` until it returns.
+        let out = crate::OwnedProtect::new(out);
+        out.copy_most_attrib(src);
+        *out
     }
 }
 

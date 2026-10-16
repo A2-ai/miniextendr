@@ -989,7 +989,8 @@ pub(super) fn derive_enum_dataframe(
                             &__scope,
                         );
                         // Scatter each column back to full _n_rows with NA/NULL-fill,
-                        // preserving the source column's SEXPTYPE.
+                        // preserving the source column's SEXPTYPE and attributes (a factor
+                        // stays a factor).
                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                             let __prefixed = ::std::format!("{}_{}", #base_name_str, __inner_col_name);
                             let __scattered = __scope.protect_raw(
