@@ -1118,7 +1118,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             unsafe {
                                 let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                                 let pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
-                                    #( (#field_names, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#field_idents))), )*
+                                    #( (#field_names, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#field_idents))), )*
                                 ];
                                 ::miniextendr_api::vctrs::new_rcrd(
                                     ::miniextendr_api::list::List::from_raw_pairs(pairs),

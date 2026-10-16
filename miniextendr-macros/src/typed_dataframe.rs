@@ -215,7 +215,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
         if f.optional {
             quote! {
                 let #col_ident: ::std::option::Option<::miniextendr_api::SEXP> = {
-                    match view.column_raw(#name_str) {
+                    match ::miniextendr_api::dataframe::DataFrame::column_raw(&view, #name_str) {
                         ::std::option::Option::None => ::std::option::Option::None,
                         ::std::option::Option::Some(col) => {
                             let actual = ::miniextendr_api::SexpExt::type_of(&col);
@@ -239,7 +239,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
         } else {
             quote! {
                 let #col_ident: ::miniextendr_api::SEXP = {
-                    match view.column_raw(#name_str) {
+                    match ::miniextendr_api::dataframe::DataFrame::column_raw(&view, #name_str) {
                         ::std::option::Option::None => {
                             ::std::vec::Vec::push(&mut __errs, ::std::format!(
                                 "missing required column `{}` (expected {} / {:?})",
@@ -286,7 +286,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             // Strict mode: reject any column not declared.
             const __DECLARED: &[&str] = &[#( #declared_names ),*];
             let mut __extras: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-            for col_name in view.names() {
+            for col_name in ::miniextendr_api::dataframe::DataFrame::names(&view) {
                 if !<[_]>::contains(__DECLARED, &::std::string::String::as_str(&col_name)) {
                     ::std::vec::Vec::push(&mut __extras, ::std::string::ToString::to_string(&col_name));
                 }
@@ -331,16 +331,14 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             fn try_from_sexp(
                 sexp: ::miniextendr_api::SEXP,
             ) -> ::std::result::Result<Self, ::miniextendr_api::from_r::SexpError> {
-                use ::miniextendr_api::SexpExt as _;
-
                 // 1. Must be a data.frame.
-                if !sexp.is_data_frame() {
+                if !::miniextendr_api::SexpExt::is_data_frame(&sexp) {
                     return ::std::result::Result::Err(
                         ::miniextendr_api::from_r::SexpError::InvalidValue(
                             ::std::format!(
                                 "{}: expected a data.frame, got {:?}",
                                 #struct_name_str,
-                                sexp.type_of(),
+                                ::miniextendr_api::SexpExt::type_of(&sexp),
                             )
                         )
                     );
@@ -351,7 +349,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                     .map_err(|e| ::miniextendr_api::from_r::SexpError::InvalidValue(
                         ::std::format!("{}: {}", #struct_name_str, e)
                     ))?;
-                let nrow = view.nrow();
+                let nrow = ::miniextendr_api::dataframe::DataFrame::nrow(&view);
 
                 // 3. Walk each declared column, batching all errors.
                 let mut __errs: ::std::vec::Vec<::std::string::String> =

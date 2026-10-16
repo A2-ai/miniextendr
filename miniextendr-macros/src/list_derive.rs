@@ -193,7 +193,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 let __root = ::miniextendr_api::Preserved::new({
                     #list_construction
                 });
-                let __sexp = __root.as_sexp();
+                let __sexp = ::miniextendr_api::Preserved::as_sexp(&__root);
                 #remove_names
                 // SAFETY: the builder produced a VECSXP, rooted until return.
                 unsafe { ::miniextendr_api::list::List::from_raw(__sexp) }

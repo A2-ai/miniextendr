@@ -1434,22 +1434,26 @@ pub(super) fn generate_trait_method_c_wrapper(
         {
             let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
             let borrow = match kind {
-                crate::trait_receiver::OwnerReceiver::Shared => quote::quote!(borrow),
-                crate::trait_receiver::OwnerReceiver::Mutable => quote::quote!(borrow_mut),
+                crate::trait_receiver::OwnerReceiver::Shared => quote::quote! {
+                    ::miniextendr_api::ExternalPtr::borrow(&#self_ptr)
+                },
+                crate::trait_receiver::OwnerReceiver::Mutable => quote::quote! {
+                    ::miniextendr_api::ExternalPtr::borrow_mut(&mut #self_ptr)
+                },
             };
             let address = (!self_ref_params.is_empty()).then(|| quote::quote! {
-                let __miniextendr_receiver_addr = #self_ptr.as_ptr().cast::<::core::ffi::c_void>();
+                let __miniextendr_receiver_addr = ::miniextendr_api::ExternalPtr::as_ptr(&#self_ptr).cast::<::core::ffi::c_void>();
             });
             // The alias preflight above runs before constructing either an
             // exclusive view or any &Self argument reference. The view holds
             // the value's RefCell borrow for the rest of the call.
             post_conversion.push(quote::quote! {
-                let #self_ref = #self_ptr.#borrow();
+                let #self_ref = #borrow;
             });
             quote::quote! {
                 #resolve
                 let #receiver_mutability #self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get())
+                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
                 };
                 #address
             }
@@ -1473,9 +1477,9 @@ pub(super) fn generate_trait_method_c_wrapper(
             quote::quote! {
                 #resolve
                 let #self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#owner.get())
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
                 };
-                let #cell = match #self_ptr.downcast_cell::<#type_ident>() {
+                let #cell = match ::miniextendr_api::externalptr::ErasedExternalPtr::downcast_cell::<#type_ident>(&#self_ptr) {
                     ::core::option::Option::Some(cell) => cell,
                     ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
                         &#self_ptr, #trait_method_name,

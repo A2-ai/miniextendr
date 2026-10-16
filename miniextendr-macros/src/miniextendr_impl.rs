@@ -3763,9 +3763,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         let cell_lookup = quote! {
             #resolve
             let #self_ptr = unsafe {
-                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#owner.get())
+                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
             };
-            let #cell = match #self_ptr.downcast_cell::<#type_ident>() {
+            let #cell = match ::miniextendr_api::externalptr::ErasedExternalPtr::downcast_cell::<#type_ident>(&#self_ptr) {
                 ::core::option::Option::Some(cell) => cell,
                 ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
             };
@@ -3803,11 +3803,11 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                     quote! {
                         #resolve
                         let mut #self_ptr = unsafe {
-                            ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(#owner.get())
+                            ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
                         };
                     },
                     quote! {
-                        let #taken = match #self_ptr.take_for_consuming::<#type_ident>() {
+                        let #taken = match ::miniextendr_api::externalptr::ErasedExternalPtr::take_for_consuming::<#type_ident>(&mut #self_ptr) {
                             ::core::option::Option::Some(v) => v,
                             ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
                         };
@@ -3821,7 +3821,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 quote! {
                     let #self_ref = unsafe {
                         ::miniextendr_api::ExternalPtrRef::<#type_ident>::from_raw_parts(
-                            #owner.owner(),
+                            ::miniextendr_api::externalptr::ReceiverOwner::owner(&#owner),
                             #cell,
                         )
                     };
@@ -3832,7 +3832,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 quote! {
                     let #self_ref = unsafe {
                         ::miniextendr_api::ExternalPtrMut::<#type_ident>::from_raw_parts(
-                            #owner.owner(),
+                            ::miniextendr_api::externalptr::ReceiverOwner::owner(&#owner),
                             #cell,
                         )
                     };
@@ -3844,7 +3844,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 quote! {
                     #resolve
                     let #external_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#owner.get());
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner));
                 },
                 TokenStream::new(),
             ),
@@ -3891,7 +3891,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                     unwrap_marker(quote! { #type_ident::#method_ident(#taken, #(#rust_args),*) });
                 quote! {{
                     let __mx_out = #call;
-                    #self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::restore_after_consuming::<#type_ident>(&mut #self_ptr, __mx_out);
                 }}
             }
             ValueMode::Fallible => {

@@ -128,7 +128,7 @@ pub fn caller_marked(x: i32, _call: CallerCall) -> i32 {
 
 #[miniextendr]
 pub fn quoted(expr: Quoted) -> SEXP {
-    expr.eval()
+    Quoted::eval(&expr)
 }
 
 #[miniextendr(dots = typed_list!(alpha => numeric(2), beta? => character()))]

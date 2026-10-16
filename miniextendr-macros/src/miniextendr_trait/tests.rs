@@ -346,13 +346,13 @@ fn view_method_roots_arguments_and_result() {
     for arg in ["a", "b"] {
         assert!(
             view.contains(&format!(
-                "__mx_roots . protect_raw (:: miniextendr_api :: trait_abi :: to_sexp ({arg}))"
+                ":: miniextendr_api :: gc_protect :: ProtectScope :: protect_raw (& __mx_roots , :: miniextendr_api :: trait_abi :: to_sexp ({arg}))"
             )),
             "{view}"
         );
     }
     assert!(
-        view.contains("let result = __mx_roots . protect_raw ({"),
+        view.contains("let result = :: miniextendr_api :: gc_protect :: ProtectScope :: protect_raw (& __mx_roots , {"),
         "{view}"
     );
 }

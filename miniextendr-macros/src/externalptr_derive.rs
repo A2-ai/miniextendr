@@ -1319,10 +1319,9 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
         SlotKind::ScalarInt => {
             let err_value = scalar_err("a number");
             quote::quote! {
-                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = match value.as_integer() {
+                    data.#field_name = match ::miniextendr_api::SexpExt::as_integer(&value) {
                         ::core::option::Option::Some(v) => v,
                         ::core::option::Option::None => return #err_value,
                     };
@@ -1333,10 +1332,9 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
         SlotKind::ScalarReal => {
             let err_value = scalar_err("a number");
             quote::quote! {
-                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = match value.as_real() {
+                    data.#field_name = match ::miniextendr_api::SexpExt::as_real(&value) {
                         ::core::option::Option::Some(v) => v,
                         ::core::option::Option::None => return #err_value,
                     };
@@ -1347,10 +1345,9 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
         SlotKind::ScalarLogical => {
             let err_value = scalar_err("TRUE or FALSE");
             quote::quote! {
-                use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
-                    data.#field_name = match value.as_logical() {
+                    data.#field_name = match ::miniextendr_api::SexpExt::as_logical(&value) {
                         ::core::option::Option::Some(v) => v,
                         ::core::option::Option::None => return #err_value,
                     };
@@ -1361,14 +1358,13 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
         SlotKind::ScalarRaw => {
             let err_value = scalar_err("a raw value");
             quote::quote! {
-                use ::miniextendr_api::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
-                    let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
+                    let raw_vec = ::miniextendr_api::SexpExt::coerce(&value, ::miniextendr_api::SEXPTYPE::RAWSXP);
                     if ::miniextendr_api::SexpExt::len(&raw_vec) == 0 {
                         return #err_value;
                     }
-                    data.#field_name = raw_vec.raw_elt(0);
+                    data.#field_name = ::miniextendr_api::SexpExt::raw_elt(&raw_vec, 0);
                     x
                 }
             }

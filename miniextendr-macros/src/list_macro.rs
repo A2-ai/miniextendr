@@ -125,7 +125,7 @@ pub fn expand_list(input: ListInput) -> TokenStream {
     // Check if all entries are unnamed
     let all_unnamed = input.entries.iter().all(|e| e.name.is_none());
 
-    // Each entry's `into_sexp()` is wrapped in `__scope.protect_raw(...)` so
+    // Each entry's conversion is protected by the scope before the next, so
     // earlier entries stay rooted across later allocations. Without this, the
     // raw `vec![into_sexp(a), into_sexp(b), ...]` form leaves every prior SEXP
     // unrooted across the next allocation — UAF under gctorture
@@ -138,7 +138,7 @@ pub fn expand_list(input: ListInput) -> TokenStream {
             .map(|entry| {
                 let value = entry.value;
                 quote! {
-                    __scope.protect_raw(::miniextendr_api::into_r::IntoR::into_sexp(#value))
+                    ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::into_r::IntoR::into_sexp(#value))
                 }
             })
             .collect();
@@ -161,7 +161,7 @@ pub fn expand_list(input: ListInput) -> TokenStream {
                 let name = entry.name.map(|n| n.to_string_value()).unwrap_or_default(); // Empty string for unnamed
                 let value = entry.value;
                 quote! {
-                    (#name, __scope.protect_raw(::miniextendr_api::into_r::IntoR::into_sexp(#value)))
+                    (#name, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::into_r::IntoR::into_sexp(#value)))
                 }
             })
             .collect();

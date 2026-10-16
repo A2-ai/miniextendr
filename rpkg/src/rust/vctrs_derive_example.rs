@@ -31,7 +31,8 @@
 #[allow(unused_imports)]
 use crate::glob_import_tests::{
     ConsumerAssociated as _, ConsumerCollections as _, ConsumerConversions as _,
-    ConsumerFormatting as _, ConsumerIterators as _, ConsumerOptionMethods as _,
+    ConsumerFormatting as _, ConsumerFramework as _, ConsumerIterators as _,
+    ConsumerOptionMethods as _,
 };
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};

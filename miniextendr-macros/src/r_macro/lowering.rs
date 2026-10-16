@@ -372,12 +372,14 @@ fn classify_atom(tokens: &[TokenTree]) -> Option<LowerAtom> {
 /// ```rust,ignore
 /// unsafe {
 ///     let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-///     let __r_arg_0 = __r_scope.protect_raw(<atom>);
+///     let __r_arg_0 = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__r_scope, <atom>);
 ///     ...
-///     ::miniextendr_api::expression::RCall::new("ident")
-///         .arg(__r_arg_0)
-///         ...
-///         .eval(#env_expr)
+///     ::miniextendr_api::expression::RCall::eval(
+///         &::miniextendr_api::expression::RCall::new("ident")
+///             .arg(__r_arg_0)
+///             ...,
+///         #env_expr,
+///     )
 /// }
 /// ```
 ///
@@ -388,7 +390,7 @@ fn classify_atom(tokens: &[TokenTree]) -> Option<LowerAtom> {
 ///     let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
 ///     let __r_ns_call = ::miniextendr_api::expression::RCall::namespaced("pkg", "fn")?;
 ///     ...
-///     __r_ns_call.arg(...).eval(#env_expr)
+///     ::miniextendr_api::expression::RCall::eval(&__r_ns_call.arg(...), #env_expr)
 /// }
 /// ```
 fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
@@ -400,7 +402,7 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
         let var = quote::format_ident!("__r_arg_{}", i);
         let val_ts = emit_atom(&arg.value, &mut scope_lets);
         scope_lets.push(quote! {
-            let #var = __r_scope.protect_raw(#val_ts);
+            let #var = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__r_scope, #val_ts);
         });
         if let Some(ref name) = arg.name {
             rcall_chain.push(quote! {
@@ -426,9 +428,10 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
                     unsafe {
                         let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         #(#scope_lets)*
-                        ::miniextendr_api::expression::RCall::new(#name)
-                            #(#rcall_chain)*
-                            .eval(#env_expr)
+                        ::miniextendr_api::expression::RCall::eval(
+                            &::miniextendr_api::expression::RCall::new(#name) #(#rcall_chain)*,
+                            #env_expr,
+                        )
                     }
                 })()
             }
@@ -442,9 +445,10 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
                     unsafe {
                         let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         #(#scope_lets)*
-                        __r_ns_call
-                            #(#rcall_chain)*
-                            .eval(#env_expr)
+                        ::miniextendr_api::expression::RCall::eval(
+                            &__r_ns_call #(#rcall_chain)*,
+                            #env_expr,
+                        )
                     }
                 })()
             }
@@ -548,7 +552,7 @@ fn emit_nested_call(call: &LowerCall, scope_lets: &mut Vec<TokenStream>) -> Toke
         let var = quote::format_ident!("__r_nested_{}_{}", idx, i);
         let val_ts = emit_atom(&arg.value, scope_lets);
         scope_lets.push(quote! {
-            let #var = __r_scope.protect_raw(#val_ts);
+            let #var = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__r_scope, #val_ts);
         });
         arg_names.push(var);
         arg_named.push(arg.name.is_some());
@@ -581,7 +585,7 @@ fn emit_nested_call(call: &LowerCall, scope_lets: &mut Vec<TokenStream>) -> Toke
     // scope_lets before passing to the outer `.arg()`.
     let call_var = quote::format_ident!("__r_call_sexp_{}", idx);
     scope_lets.push(quote! {
-        let #call_var = __r_scope.protect_raw(#chain.build());
+        let #call_var = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__r_scope, ::miniextendr_api::expression::RCall::build(&#chain));
     });
 
     quote! { #call_var }

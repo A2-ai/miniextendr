@@ -677,7 +677,7 @@ impl CWrapperContext {
                             ::miniextendr_api::gc_protect::OwnedProtect::new(__miniextendr_rng_value)
                         };
                         unsafe { ::miniextendr_api::sys::PutRNGstate_unchecked(); }
-                        __miniextendr_rng_result.get()
+                        ::miniextendr_api::gc_protect::OwnedProtect::get(&__miniextendr_rng_result)
                     },
                     ::core::option::Option::Some(__miniextendr_call),
                 )

@@ -785,18 +785,18 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     // body (the `mx_meth` contract).
     let owner_argument = method.owner_receiver.map(|_| {
         quote::quote! {
-            self.__mx_view.owner().expect("this trait method requires an R-owned receiver"),
+            ::miniextendr_api::trait_abi::TraitViewData::owner(&self.__mx_view).expect("this trait method requires an R-owned receiver"),
         }
     });
     let vtable_call = if argc > 0 {
         quote::quote! {
             let args: [::miniextendr_api::SEXP; #argc as usize] =
-                [#(__mx_roots.protect_raw(#arg_conversions)),*];
-            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument #argc, args.as_ptr())
+                [#(::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__mx_roots, #arg_conversions)),*];
+            ((*::miniextendr_api::trait_abi::TraitViewData::vtable(&self.__mx_view)).#method_name)(::miniextendr_api::trait_abi::TraitViewData::data(&self.__mx_view), #owner_argument #argc, <[_]>::as_ptr(&args))
         }
     } else {
         quote::quote! {
-            ((*self.__mx_view.vtable()).#method_name)(self.__mx_view.data(), #owner_argument 0, ::std::ptr::null())
+            ((*::miniextendr_api::trait_abi::TraitViewData::vtable(&self.__mx_view)).#method_name)(::miniextendr_api::trait_abi::TraitViewData::data(&self.__mx_view), #owner_argument 0, ::std::ptr::null())
         }
     };
 
@@ -806,7 +806,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     let (return_sig, result_binding, result_conversion) = if let Some(ret_ty) = return_type {
         (
             quote::quote! { -> #ret_ty },
-            quote::quote! { let result = __mx_roots.protect_raw({ #vtable_call }); },
+            quote::quote! { let result = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__mx_roots, { #vtable_call }); },
             quote::quote! {
                 ::miniextendr_api::trait_abi::from_sexp::<#ret_ty>(result)
             },

@@ -1381,9 +1381,9 @@ pub(super) fn companion_debug_clone(
         #[allow(unused_lifetimes)]
         impl #impl_generics ::core::fmt::Debug for #df_name #ty_generics #debug_where {
             fn fmt(&self, __f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                __f.debug_struct(#df_name_str)
-                    #(.field(#names, &self.#idents))*
-                    .finish()
+                let mut __debug = __f.debug_struct(#df_name_str);
+                #(::core::fmt::DebugStruct::field(&mut __debug, #names, &self.#idents);)*
+                ::core::fmt::DebugStruct::finish(&mut __debug)
             }
         }
 
@@ -1884,7 +1884,7 @@ fn derive_struct_dataframe(
     // next column's allocations — UAF under gctorture
     // (reviews/2026-05-07-gctorture-audit.md).
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
+        quote! { (#tag_name, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self._tag))), }
     } else {
         TokenStream::new()
     };
@@ -1895,7 +1895,7 @@ fn derive_struct_dataframe(
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
             let column = column_sexp(name, &fc.vec_elem_ty, fc.needs_into_list, fc.is_factor);
-            quote! { (#name_str, __scope.protect_raw(#column)) }
+            quote! { (#name_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, #column)) }
         })
         .collect();
 
@@ -1937,7 +1937,7 @@ fn derive_struct_dataframe(
         // pairs for auto-expand fields.
         let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
             quote! {
-                ::std::vec::Vec::push(&mut __df_pairs, (::std::string::ToString::to_string(&#tag_name), __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))));
+                ::std::vec::Vec::push(&mut __df_pairs, (::std::string::ToString::to_string(&#tag_name), ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self._tag))));
             }
         } else {
             TokenStream::new()
@@ -1953,7 +1953,7 @@ fn derive_struct_dataframe(
                     quote! {
                         ::std::vec::Vec::push(&mut __df_pairs, (
                             ::std::string::ToString::to_string(&#col_name_str),
-                            __scope.protect_raw(#column),
+                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, #column),
                         ));
                     }
                 }
@@ -1965,7 +1965,7 @@ fn derive_struct_dataframe(
                             quote! {
                                 ::std::vec::Vec::push(&mut __df_pairs, (
                                     ::std::string::ToString::to_string(&#name),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
+                                    ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#ident)),
                                 ));
                             }
                         })
@@ -1980,7 +1980,7 @@ fn derive_struct_dataframe(
                             quote! {
                                 ::std::vec::Vec::push(&mut __df_pairs, (
                                     ::std::string::ToString::to_string(&#name),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
+                                    ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#ident)),
                                 ));
                             }
                         })
@@ -2009,7 +2009,7 @@ fn derive_struct_dataframe(
                             for (__i, __col) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__cols)) {
                                 ::std::vec::Vec::push(&mut __df_pairs, (
                                     ::std::format!("{}_{}", #col_name_str, __i + 1),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
+                                    ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(__col)),
                                 ));
                             }
                         }
@@ -2048,11 +2048,11 @@ fn derive_struct_dataframe(
                     quote! {
                         ::std::vec::Vec::push(&mut __df_pairs, (
                             ::std::string::ToString::to_string(&#keys_name),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#keys_ident)),
+                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#keys_ident)),
                         ));
                         ::std::vec::Vec::push(&mut __df_pairs, (
                             ::std::string::ToString::to_string(&#vals_name),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#vals_ident)),
+                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#vals_ident)),
                         ));
                     }
                 }
@@ -2468,7 +2468,7 @@ fn derive_struct_dataframe(
 
         // Write calls per resolved field (parallel scatter-write only).
         let tag_write = if has_tag {
-            quote! { __w_tag.write(__i, ::std::string::ToString::to_string(&#row_name_str)); }
+            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&__w_tag, __i, ::std::string::ToString::to_string(&#row_name_str)); }
         } else {
             TokenStream::new()
         };
@@ -2488,7 +2488,7 @@ fn derive_struct_dataframe(
                         quote! { __row.#rust_name }
                     };
                     let w_name = format_ident!("__w_{}", crate::naming::unraw(&data.col_name));
-                    quote! { #w_name.write(__i, #access); }
+                    quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, #access); }
                 }
                 ResolvedField::ExpandedFixed(data) => {
                     let access = if let Some(idx) = &data.tuple_index {
@@ -2507,7 +2507,7 @@ fn derive_struct_dataframe(
                         .enumerate()
                         .map(|(i, elem)| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
-                            quote! { #w_name.write(__i, #elem); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, #elem); }
                         })
                         .collect();
                     quote! {
@@ -2538,7 +2538,7 @@ fn derive_struct_dataframe(
                         .enumerate()
                         .map(|(i, elem)| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
-                            quote! { #w_name.write(__i, #elem); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, #elem); }
                         })
                         .collect();
                     quote! {
@@ -2554,7 +2554,7 @@ fn derive_struct_dataframe(
                         quote! { __row.#rust_name }
                     };
                     let w_name = format_ident!("__w_{}", crate::naming::unraw(&data.col_name));
-                    quote! { #w_name.write(__i, #access); }
+                    quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, #access); }
                 }
                 // Struct fields (#485) are collected in the sequential pre-pass
                 // above; nothing to write in the parallel loop.
@@ -2573,8 +2573,8 @@ fn derive_struct_dataframe(
                         let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
                             ::core::iter::IntoIterator::into_iter(#access),
                         );
-                        #w_keys.write(__i, __mx_keys);
-                        #w_vals.write(__i, __mx_vals);
+                        ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_keys, __i, __mx_keys);
+                        ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_vals, __i, __mx_vals);
                     }
                 }
             })
@@ -2834,7 +2834,7 @@ fn derive_struct_dataframe(
             };
             quote! {
                 let #col_var: ::std::vec::Vec<#elem_ty> = {
-                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                    let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
                     #convert
@@ -2870,7 +2870,7 @@ fn derive_struct_dataframe(
                             let col_name_str = &data.col_name_str;
                             extracts.push(quote! {
                                 let #col_var: ::std::vec::Vec<#field_ty> = {
-                                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                                    let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name_str).ok_or_else(|| {
                                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                                     })?;
                                     // VECSXP check via `SexpExt::is_list` (UFCS — avoids the
@@ -3006,7 +3006,7 @@ fn derive_struct_dataframe(
                             let mut __k: usize = 1;
                             loop {
                                 let __cn = ::std::format!("{}_{}", #col_name_str, __k);
-                                match __view.column_raw(&__cn) {
+                                match ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, &__cn) {
                                     ::core::option::Option::Some(__s) => {
                                         let __c: ::std::vec::Vec<::core::option::Option<#elem_ty>> =
                                             <::std::vec::Vec<::core::option::Option<#elem_ty>> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
@@ -3058,7 +3058,7 @@ fn derive_struct_dataframe(
                     extracts.push(quote! {
                         let #vec_var: ::std::vec::Vec<#inner_ty> = {
                             let __prefix: &str = #prefix_lit;
-                            let __names = __view.names();
+                            let __names = ::miniextendr_api::dataframe::DataFrame::names(&__view);
                             let __sel: ::std::vec::Vec<&str> = ::core::iter::Iterator::collect(::core::iter::Iterator::map(
                                 ::core::iter::Iterator::filter(<[_]>::iter(&__names), |__n| ::core::primitive::str::starts_with(__n, __prefix)),
                                 |__n| ::std::string::String::as_str(__n),
@@ -3130,7 +3130,7 @@ fn derive_struct_dataframe(
                                        elem_ty: &syn::Type| {
                         quote! {
                             let #col_var: ::std::vec::Vec<::std::vec::Vec<#elem_ty>> = {
-                                let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
+                                let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name).ok_or_else(|| {
                                     ::std::format!("column `{}` is missing from the data.frame", #col_name)
                                 })?;
                                 if <::miniextendr_api::SEXP as ::miniextendr_api::SexpExt>::is_list(&__col_sexp) {
@@ -3207,7 +3207,7 @@ fn derive_struct_dataframe(
                 ::miniextendr_api::optionals::parallel::ensure_pool();
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| ::std::string::ToString::to_string(&e))?;
-                let __nrow = __view.nrow();
+                let __nrow = ::miniextendr_api::dataframe::DataFrame::nrow(&__view);
                 #(#extracts)*
                 let __indices = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(0..__nrow);
                 let __rows: ::std::vec::Vec<Self> = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::collect(
@@ -3236,7 +3236,7 @@ fn derive_struct_dataframe(
             ) -> ::core::result::Result<::std::vec::Vec<Self>, ::std::string::String> {
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| ::std::string::ToString::to_string(&e))?;
-                let __nrow = __view.nrow();
+                let __nrow = ::miniextendr_api::dataframe::DataFrame::nrow(&__view);
                 #(#extracts)*
                 #(#seq_decls)*
                 let mut __rows: ::std::vec::Vec<Self> = ::std::vec::Vec::with_capacity(__nrow);

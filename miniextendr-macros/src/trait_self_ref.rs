@@ -24,9 +24,9 @@ pub(crate) fn native_borrow_checks<'a>(
                 if crate::type_inspect::is_rooted_view(ty)
                     || crate::type_inspect::is_rooted_reference(ty)
                 {
-                    quote! { #target.rooted_native_borrow() }
+                    quote! { ::miniextendr_api::trait_abi::signature::Argument::rooted_native_borrow(&#target) }
                 } else {
-                    quote! { #target.native_borrow() }
+                    quote! { ::miniextendr_api::trait_abi::signature::Argument::native_borrow(&#target) }
                 },
             );
             continue;
@@ -109,7 +109,7 @@ pub(crate) fn argument(
         let read_ty = crate::type_inspect::erase_lifetimes(ty);
         let conversion = quote! {
             <#read_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                #slot.rooted(*#argv.add(#index))
+                ::miniextendr_api::gc_protect::ProtectScope::rooted(&#slot, *#argv.add(#index))
             })
         };
         (
@@ -139,9 +139,9 @@ pub(crate) fn argument(
                 crate::naming::unraw(name),
                 span = proc_macro2::Span::mixed_site()
             );
-            quote! { #target.rooted(unsafe { #slot.rooted(*#argv.add(#index)) }) }
+            quote! { ::miniextendr_api::trait_abi::signature::Argument::rooted(&#target, unsafe { ::miniextendr_api::gc_protect::ProtectScope::rooted(&#slot, *#argv.add(#index)) }) }
         } else {
-            quote! { #target.convert(#input) }
+            quote! { ::miniextendr_api::trait_abi::signature::Argument::convert(&#target, #input) }
         };
     }
     let err_arm = crate::rust_conversion_builder::shim_conversion_err_arm(
@@ -210,12 +210,12 @@ pub(crate) fn borrow(name: &syn::Ident, mutable: bool) -> TokenStream {
     );
     if mutable {
         quote! {
-            let mut #guard = #handle.borrow_mut();
+            let mut #guard = ::miniextendr_api::ExternalPtr::borrow_mut(&mut #handle);
             let #name = &mut *#guard;
         }
     } else {
         quote! {
-            let #guard = #handle.borrow();
+            let #guard = ::miniextendr_api::ExternalPtr::borrow(&#handle);
             let #name = &*#guard;
         }
     }
@@ -232,7 +232,7 @@ pub(crate) fn alias_checks(
         .iter()
         .map(|(handle, mutable, name)| {
             (
-                quote!(#handle.as_ptr().cast::<::core::ffi::c_void>()),
+                quote!(::miniextendr_api::ExternalPtr::as_ptr(&#handle).cast::<::core::ffi::c_void>()),
                 *mutable,
                 name.clone(),
             )
@@ -330,13 +330,19 @@ mod tests {
     #[test]
     fn self_arguments_hold_their_borrow_for_the_shim() {
         let output = borrow(&format_ident!("r#type"), true).to_string();
-        assert!(output.contains("__extptr_type . borrow_mut ()"), "{output}");
+        assert!(
+            output.contains("ExternalPtr :: borrow_mut (& mut __extptr_type)"),
+            "{output}"
+        );
         assert!(
             output.contains("let r#type = & mut * __mx_guard_type"),
             "{output}"
         );
         let output = borrow(&format_ident!("other"), false).to_string();
-        assert!(output.contains("__extptr_other . borrow ()"), "{output}");
+        assert!(
+            output.contains("ExternalPtr :: borrow (& __extptr_other)"),
+            "{output}"
+        );
         assert!(
             output.contains("let other = & * __mx_guard_other"),
             "{output}"

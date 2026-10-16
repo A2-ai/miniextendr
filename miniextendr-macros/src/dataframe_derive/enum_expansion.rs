@@ -798,7 +798,7 @@ pub(super) fn derive_enum_dataframe(
     // next column's allocations — UAF under gctorture
     // (reviews/2026-05-07-gctorture-audit.md).
     let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
+        quote! { (#tag_name, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self._tag))), }
     } else {
         TokenStream::new()
     };
@@ -808,7 +808,7 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let name_str = name.to_string();
-            quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name))) }
+            quote! { (#name_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#name))) }
         })
         .collect();
 
@@ -846,7 +846,7 @@ pub(super) fn derive_enum_dataframe(
             quote! {
                 ::std::vec::Vec::push(&mut __df_pairs, (
                     ::std::string::ToString::to_string(&#tag_name),
-                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag)),
+                    ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self._tag)),
                 ));
             }
         } else {
@@ -870,7 +870,7 @@ pub(super) fn derive_enum_dataframe(
                 quote! {
                     ::std::vec::Vec::push(&mut __df_pairs, (
                         ::std::string::ToString::to_string(&#name_str),
-                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name)),
+                        ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(self.#name)),
                     ));
                 }
             })
@@ -890,7 +890,7 @@ pub(super) fn derive_enum_dataframe(
                 quote! {
                     ::std::vec::Vec::push(&mut __df_pairs, (
                         ::std::string::ToString::to_string(&#name_str),
-                        __scope.protect_raw(#into_option_list_column(self.#name)),
+                        ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, #into_option_list_column(self.#name)),
                     ));
                 }
             })
@@ -908,7 +908,7 @@ pub(super) fn derive_enum_dataframe(
                 quote! {
                     ::std::vec::Vec::push(&mut __df_pairs, (
                         ::std::string::ToString::to_string(&#name_str),
-                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                        ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(
                             <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(self.#name)
                         )),
                     ));
@@ -953,7 +953,7 @@ pub(super) fn derive_enum_dataframe(
                         for (__i, __col) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__cols)) {
                             ::std::vec::Vec::push(&mut __df_pairs, (
                                 ::std::format!("{}_{}", #base_name_str, __i + 1),
-                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
+                                ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(__col)),
                             ));
                         }
                     }
@@ -995,7 +995,7 @@ pub(super) fn derive_enum_dataframe(
                         // preserving the source column's SEXPTYPE.
                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                             let __prefixed = ::std::format!("{}_{}", #base_name_str, __inner_col_name);
-                            let __scattered = __scope.protect_raw(
+                            let __scattered = ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope,
                                 ::miniextendr_api::convert::scatter_column(
                                     __inner_col_sexp,
                                     &__present_idx,
@@ -1461,7 +1461,7 @@ pub(super) fn derive_enum_dataframe(
                 let variant_name_str = variant_name.to_string();
 
                 let tag_write = if has_tag {
-                    quote! { __w_tag.write(__i, ::std::string::ToString::to_string(&#variant_name_str)); }
+                    quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&__w_tag, __i, ::std::string::ToString::to_string(&#variant_name_str)); }
                 } else {
                     TokenStream::new()
                 };
@@ -1481,9 +1481,9 @@ pub(super) fn derive_enum_dataframe(
                                     {
                                         let binding = &data.binding;
                                         if col.string_coerced {
-                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
+                                            return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
                                         } else {
-                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
+                                            return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(#binding)); };
                                         }
                                     }
                                     EnumResolvedField::ExpandedFixed(data) => {
@@ -1491,7 +1491,7 @@ pub(super) fn derive_enum_dataframe(
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#elem)); };
+                                                return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(#elem)); };
                                             }
                                         }
                                     }
@@ -1500,7 +1500,7 @@ pub(super) fn derive_enum_dataframe(
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #w_name.write(__i, #elem); };
+                                                return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, #elem); };
                                             }
                                         }
                                     }
@@ -1517,8 +1517,8 @@ pub(super) fn derive_enum_dataframe(
                                                 let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
                                                     ::core::iter::IntoIterator::into_iter(#binding),
                                                 );
-                                                #w_name.write(__i, ::core::option::Option::Some(__mx_keys));
-                                                #w_vals.write(__i, ::core::option::Option::Some(__mx_vals));
+                                                ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(__mx_keys));
+                                                ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_vals, __i, ::core::option::Option::Some(__mx_vals));
                                             };
                                         }
                                         if col_name_str == vals_name {
@@ -1531,14 +1531,14 @@ pub(super) fn derive_enum_dataframe(
                                         if data.base_name == col_name_str =>
                                     {
                                         let binding = &data.binding;
-                                        return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
+                                        return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(#binding)); };
                                     }
                                     _ => {}
                                 }
                             }
-                            quote! { #w_name.write(__i, ::core::option::Option::None); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::None); }
                         } else {
-                            quote! { #w_name.write(__i, ::core::option::Option::None); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::None); }
                         }
                     })
                     .collect();
@@ -1556,12 +1556,12 @@ pub(super) fn derive_enum_dataframe(
                                     && data.base_name == ac.base_name
                                 {
                                     let binding = &data.binding;
-                                    return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
+                                    return quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::Some(#binding)); };
                                 }
                             }
-                            quote! { #w_name.write(__i, ::core::option::Option::None); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::None); }
                         } else {
-                            quote! { #w_name.write(__i, ::core::option::Option::None); }
+                            quote! { ::miniextendr_api::rayon_bridge::ColumnWriter::write(&#w_name, __i, ::core::option::Option::None); }
                         }
                     })
                     .collect();
@@ -1830,7 +1830,7 @@ pub(super) fn derive_enum_dataframe(
                             const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
                             static LEVELS_CACHE: OnceLock<::miniextendr_api::SEXP> =
                                 OnceLock::new();
-                            let levels = *LEVELS_CACHE.get_or_init(|| {
+                            let levels = *::std::sync::OnceLock::get_or_init(&LEVELS_CACHE, || {
                                 ::miniextendr_api::factor::build_levels_sexp_cached(LEVELS)
                             });
                             let idx: i32 = match self {
@@ -2449,7 +2449,7 @@ fn generate_split_method(
                                     vec![quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
-                                            __scope.protect_raw(#into_list_column(#buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, #into_list_column(#buf)),
                                         ));
                                     }]
                                 } else if data.is_factor {
@@ -2457,7 +2457,7 @@ fn generate_split_method(
                                     vec![quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(
                                                 <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(
                                                     ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
                                                         ::core::iter::IntoIterator::into_iter(#buf),
@@ -2471,7 +2471,7 @@ fn generate_split_method(
                                     vec![quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }]
                                 }
@@ -2485,7 +2485,7 @@ fn generate_split_method(
                                     quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
                                 })
@@ -2499,7 +2499,7 @@ fn generate_split_method(
                                     quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
                                 })
@@ -2526,7 +2526,7 @@ fn generate_split_method(
                                         for (__ai, __acol) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__auto_cols)) {
                                             ::std::vec::Vec::push(&mut #pairs_var, (
                                                 ::std::format!("{}_{}", #base_str, __ai + 1),
-                                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__acol)),
+                                                ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(__acol)),
                                             ));
                                         }
                                     }
@@ -2543,13 +2543,13 @@ fn generate_split_method(
                                     quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#keys_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#keys_buf)),
                                         ));
                                     },
                                     quote! {
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#vals_str),
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_buf)),
+                                            ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#vals_buf)),
                                         ));
                                     },
                                 ]
@@ -2652,12 +2652,12 @@ fn generate_split_method(
                                     // list goes straight into the rooted column.
                                     let into_list_column = list_column_fn(ty, false);
                                     vec![quote! {
-                                        (#col_str, __scope.protect_raw(#into_list_column(#buf)))
+                                        (#col_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, #into_list_column(#buf)))
                                     }]
                                 } else if data.is_factor {
                                     // Factor: convert Vec<T> → FactorOptionVec<T> (all present).
                                     vec![quote! {
-                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                                        (#col_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(
                                             <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(
                                                 ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
                                                     ::core::iter::IntoIterator::into_iter(#buf),
@@ -2668,7 +2668,7 @@ fn generate_split_method(
                                     }]
                                 } else {
                                     vec![quote! {
-                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
+                                        (#col_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)))
                                     }]
                                 }
                             }
@@ -2678,7 +2678,7 @@ fn generate_split_method(
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
+                                        (#col_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)))
                                     }
                                 })
                                 .collect(),
@@ -2688,7 +2688,7 @@ fn generate_split_method(
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)))
+                                        (#col_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#buf)))
                                     }
                                 })
                                 .collect(),
@@ -2703,10 +2703,10 @@ fn generate_split_method(
                                 let vals_str = format!("{}_values", data.base_name);
                                 vec![
                                     quote! {
-                                        (#keys_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_buf)))
+                                        (#keys_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#keys_buf)))
                                     },
                                     quote! {
-                                        (#vals_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_buf)))
+                                        (#vals_str, ::miniextendr_api::gc_protect::ProtectScope::protect_raw(&__scope, ::miniextendr_api::IntoR::into_sexp(#vals_buf)))
                                     },
                                 ]
                             }
@@ -3017,7 +3017,7 @@ fn build_enum_reader(
     let tag_var = format_ident!("__tag");
     extracts.push(quote! {
         let #tag_var: ::std::vec::Vec<::std::string::String> = {
-            let __tag_sexp = __view.column_raw(#tag_col_name).ok_or_else(|| {
+            let __tag_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #tag_col_name).ok_or_else(|| {
                 ::std::format!("tag column `{}` is missing from the data.frame", #tag_col_name)
             })?;
             <::std::vec::Vec<::std::string::String> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__tag_sexp)
@@ -3076,7 +3076,7 @@ fn build_enum_reader(
             // as_factor column: use unit_factor_option_vec_from_sexp.
             extracts.push(quote! {
                 let mut #col_var: ::std::vec::Vec<::core::option::Option<#ty>> = {
-                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                    let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
                     ::miniextendr_api::factor::unit_factor_option_vec_from_sexp::<#ty>(__col_sexp)
@@ -3097,7 +3097,7 @@ fn build_enum_reader(
             let opt_ty: syn::Type = syn::parse_quote!(::core::option::Option<#ty>);
             extracts.push(quote! {
                 let mut #col_var: ::std::vec::Vec<#opt_ty> = {
-                    let __col_sexp = __view.column_raw(#col_name_str).ok_or_else(|| {
+                    let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name_str).ok_or_else(|| {
                         ::std::format!("column `{}` is missing from the data.frame", #col_name_str)
                     })?;
                     <::std::vec::Vec<#opt_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
@@ -3139,7 +3139,7 @@ fn build_enum_reader(
                 let mut __k: usize = 1;
                 loop {
                     let __cn = ::std::format!("{}_{}", #base_name, __k);
-                    match __view.column_raw(&__cn) {
+                    match ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, &__cn) {
                         ::core::option::Option::Some(__s) => {
                             let __c: ::std::vec::Vec<#opt_elem_ty> =
                                 <::std::vec::Vec<#opt_elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__s)
@@ -3207,7 +3207,7 @@ fn build_enum_reader(
                             // Select the prefixed columns into a sub-frame, strip prefix,
                             // densify to present rows only, then recurse via inner reader.
                             let __prefix: &str = #prefix_lit;
-                            let __names = __view.names();
+                            let __names = ::miniextendr_api::dataframe::DataFrame::names(&__view);
                             let __sel: ::std::vec::Vec<&str> = ::core::iter::Iterator::collect(::core::iter::Iterator::map(
                                 ::core::iter::Iterator::filter(<[_]>::iter(&__names), |__n| ::core::primitive::str::starts_with(__n, __prefix)),
                                 |__n| ::std::string::String::as_str(__n),
@@ -3225,11 +3225,13 @@ fn build_enum_reader(
                             // densified frame before the borrowed handle's root
                             // releases — every intermediate frame is rooted across
                             // the next step's allocations and the recursive read.
-                            let __sub_dense = ::miniextendr_api::dataframe::BuiltDataFrame::strip_prefix(
-                                __view.select(&__sel),
-                                __prefix,
-                            )
-                                .select_rows(&__present_indices);
+                            let __sub_dense = ::miniextendr_api::dataframe::BuiltDataFrame::select_rows(
+                                &::miniextendr_api::dataframe::BuiltDataFrame::strip_prefix(
+                                    __view.select(&__sel),
+                                    __prefix,
+                                ),
+                                &__present_indices,
+                            );
                             let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_dense) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
                                 ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
@@ -3271,7 +3273,7 @@ fn build_enum_reader(
     let emit_map_col_extract = |col_var: &syn::Ident, col_name: &str, elem_ty: &syn::Type| {
         quote! {
             let mut #col_var: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> = {
-                let __col_sexp = __view.column_raw(#col_name).ok_or_else(|| {
+                let __col_sexp = ::miniextendr_api::dataframe::DataFrame::column_raw(&__view, #col_name).ok_or_else(|| {
                     ::std::format!("column `{}` is missing from the data.frame", #col_name)
                 })?;
                 // VECSXP list-column: NULL → None, typed vector → Some(Vec<elem>).
@@ -3373,7 +3375,7 @@ fn build_enum_reader(
     let seq_body = quote! {
         let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
             .map_err(|e| ::std::string::ToString::to_string(&e))?;
-        let __nrow = __view.nrow();
+        let __nrow = ::miniextendr_api::dataframe::DataFrame::nrow(&__view);
         #(#extracts)*
         let mut __rows: ::std::vec::Vec<Self> = ::std::vec::Vec::with_capacity(__nrow);
         for __i in 0..__nrow {
@@ -3403,7 +3405,7 @@ fn build_enum_reader(
             ::miniextendr_api::optionals::parallel::ensure_pool();
             let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                 .map_err(|e| ::std::string::ToString::to_string(&e))?;
-            let __nrow = __view.nrow();
+            let __nrow = ::miniextendr_api::dataframe::DataFrame::nrow(&__view);
             #(#extracts)*
             let __indices = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(0..__nrow);
             let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::map(

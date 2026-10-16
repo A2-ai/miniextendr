@@ -185,7 +185,7 @@ macro_rules! __impl_altrep_base {
                     use $crate::sys::{Rf_protect_unchecked, Rf_unprotect_unchecked};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
-                    let data1 = ext_ptr.as_sexp();
+                    let data1 = $crate::externalptr::ExternalPtr::as_sexp(&ext_ptr);
                     // Protect across the allocation in new_altrep_unchecked.
                     Rf_protect_unchecked(data1);
                     let cls = R_altrep_class_t::from_sexp(class);

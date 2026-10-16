@@ -419,7 +419,10 @@ fn converted_references_keep_metadata_and_roots_without_external_guards() {
         assert!(!code.contains("__mx_borrow"), "{code}");
         assert!(!code.contains("run_on_worker"), "{code}");
         if converter == "TryFromRoot" {
-            assert!(code.contains("__mx_roots_x . rooted"), "{code}");
+            assert!(
+                code.contains("ProtectScope :: rooted (& __mx_roots_x"),
+                "{code}"
+            );
         }
     }
 }

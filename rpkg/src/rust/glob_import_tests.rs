@@ -161,6 +161,151 @@ pub(crate) trait ConsumerAssociated: Sized {
 }
 impl<T> ConsumerAssociated for T {}
 
+// By-value methods intercept borrowing inherent methods on owned handles.
+#[allow(clippy::wrong_self_convention)]
+pub(crate) trait ConsumerFramework: Sized {
+    fn protect_raw<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn rooted<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn get(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_sexp(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn column_raw<T>(self, _name: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn nrow(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn names(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn get_or_init<T>(self, _init: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn owner(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn data(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn vtable(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn downcast_cell<T>(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn rooted_native_borrow(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn native_borrow(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn expectation(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn convert<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn borrow(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn borrow_mut(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn select<T>(self, _columns: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn select_rows<T>(self, _rows: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_mut_unchecked(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_ref_unchecked(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn take_for_consuming<T>(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn restore_after_consuming<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_ptr(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn write<I, T>(self, _index: I, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn field<N, T>(self, _name: N, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn finish(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn debug_struct<T>(self, _name: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn is_data_frame(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn type_of(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_integer(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_real(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_logical(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn coerce<T>(self, _kind: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn raw_elt<T>(self, _index: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    // Exact by-value inherent methods are covered too.
+    fn new_altrep<A, B>(self, _data1: A, _data2: B) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn new_altrep_unchecked<A, B>(self, _data1: A, _data2: B) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn sexptype(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn set_class_str<T>(self, _classes: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn set_row_names_int<T>(self, _n: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn arg<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn named_arg<N, T>(self, _name: N, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn eval<T>(self, _env: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn build(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn into_inner(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+}
+impl<T> ConsumerFramework for T {}
+
 // No nested struct: the parallel reader assembles each row by index, cloning
 // the cells out of the pre-extracted columns.
 #[derive(Clone, DataFrameRow)]
@@ -277,18 +422,22 @@ pub fn glob_import_roundtrip() -> Vec<i32> {
 
     #[cfg(feature = "rayon")]
     let par = [
-        count(GlobRow::try_from_dataframe_par(rows.get())),
-        count(GlobEvent::try_from_dataframe_par(events.get())),
-        count(GlobNested::try_from_dataframe_par(nested.get())),
+        count(GlobRow::try_from_dataframe_par(OwnedProtect::get(&rows))),
+        count(GlobEvent::try_from_dataframe_par(OwnedProtect::get(
+            &events,
+        ))),
+        count(GlobNested::try_from_dataframe_par(OwnedProtect::get(
+            &nested,
+        ))),
     ];
     #[cfg(not(feature = "rayon"))]
     let par = [-1; 3];
     vec![
-        count(GlobRow::try_from_dataframe(rows.get())),
+        count(GlobRow::try_from_dataframe(OwnedProtect::get(&rows))),
         par[0],
-        count(GlobEvent::try_from_dataframe(events.get())),
+        count(GlobEvent::try_from_dataframe(OwnedProtect::get(&events))),
         par[1],
-        count(GlobNested::try_from_dataframe(nested.get())),
+        count(GlobNested::try_from_dataframe(OwnedProtect::get(&nested))),
         par[2],
     ]
 }

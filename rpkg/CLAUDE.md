@@ -20,6 +20,8 @@ Standalone `pkgload::load_all()` checks can run the Rust build even with
 `recompile = FALSE`. Carry the install's `CARGO_FEATURES` and profile settings,
 and run the R command through `scripts/with-rpkg-lock.sh`: it can resolve the
 path overrides and change Cargo.lock without an explicit install recipe.
+For a fresh installed-package test, pass `package = "miniextendr"` to
+`testthat::test_file()` so unexported fixtures resolve in the package namespace.
 
 ## Where installs land (main vs worktree)
 `just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,

@@ -1095,7 +1095,10 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
     ] {
         let code = conversion_text(&builder, src);
         assert!(code.contains("try_from_root"), "{code}");
-        assert!(code.contains("__mx_roots_x . rooted (arg_0)"), "{code}");
+        assert!(
+            code.contains("ProtectScope :: rooted (& __mx_roots_x , arg_0)"),
+            "{code}"
+        );
         assert!(!code.contains("TryFromSexp"), "{code}");
         assert!(code.contains("'_"), "{code}");
         let syn::FnArg::Typed(param) = parse_param(src) else {
@@ -1170,7 +1173,7 @@ fn main_thread_shared_references_bind_the_argument_root() {
         let source = conversion_text(&builder, &format!("value: {ty}"));
         assert!(source.contains("TryFromRoot"), "{ty}: {source}");
         assert!(
-            source.contains("__mx_roots_value . rooted (arg_0)"),
+            source.contains("ProtectScope :: rooted (& __mx_roots_value , arg_0)"),
             "{ty}: {source}"
         );
         assert!(!source.contains("TryFromSexp"), "{ty}: {source}");

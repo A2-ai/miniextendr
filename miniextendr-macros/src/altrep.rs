@@ -117,7 +117,7 @@ pub(crate) fn generate_direct_altrep_registration(
             fn get_or_init_class() -> ::miniextendr_api::sys::altrep::R_altrep_class_t {
                 use ::std::sync::OnceLock;
                 static CLASS: OnceLock<::miniextendr_api::sys::altrep::R_altrep_class_t> = OnceLock::new();
-                *CLASS.get_or_init(move || {
+                *::std::sync::OnceLock::get_or_init(&CLASS, move || {
                     let cls = unsafe {
                         <#ident as ::miniextendr_api::altrep_data::InferBase>::make_class(
                             <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
@@ -153,7 +153,7 @@ pub(crate) fn generate_direct_altrep_registration(
 
                 let ext_ptr = ExternalPtr::new(self);
                 let cls = Self::get_or_init_class();
-                let data1 = ext_ptr.as_sexp();
+                let data1 = ::miniextendr_api::externalptr::ExternalPtr::as_sexp(&ext_ptr);
                 unsafe {
                     Rf_protect(data1);
                     let altrep = cls.new_altrep(data1, SEXP::nil());
@@ -169,7 +169,7 @@ pub(crate) fn generate_direct_altrep_registration(
 
                 let ext_ptr = ExternalPtr::new_unchecked(self);
                 let cls = Self::get_or_init_class();
-                let data1 = ext_ptr.as_sexp();
+                let data1 = ::miniextendr_api::externalptr::ExternalPtr::as_sexp(&ext_ptr);
                 unsafe {
                     Rf_protect_unchecked(data1);
                     let altrep = cls.new_altrep_unchecked(
@@ -215,7 +215,7 @@ pub(crate) fn generate_direct_altrep_registration(
             type Target = #ident #ty_generics;
 
             fn deref(&self) -> &Self::Target {
-                unsafe { self.0.as_ref_unchecked() }
+                unsafe { ::miniextendr_api::externalptr::ExternalPtr::as_ref_unchecked(&self.0) }
             }
         }
 
@@ -249,13 +249,13 @@ pub(crate) fn generate_direct_altrep_registration(
             type Target = #ident #ty_generics;
 
             fn deref(&self) -> &Self::Target {
-                unsafe { self.0.as_ref_unchecked() }
+                unsafe { ::miniextendr_api::externalptr::ExternalPtr::as_ref_unchecked(&self.0) }
             }
         }
 
         impl ::core::ops::DerefMut for #mut_ident {
             fn deref_mut(&mut self) -> &mut Self::Target {
-                unsafe { self.0.as_mut_unchecked() }
+                unsafe { ::miniextendr_api::externalptr::ExternalPtr::as_mut_unchecked(&mut self.0) }
             }
         }
 

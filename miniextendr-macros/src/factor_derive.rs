@@ -270,7 +270,7 @@ fn derive_simple_factor(
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::SEXP> =
                     ::std::sync::OnceLock::new();
-                let levels = *LEVELS_CACHE.get_or_init(|| {
+                let levels = *::std::sync::OnceLock::get_or_init(&LEVELS_CACHE, || {
                     ::miniextendr_api::build_levels_sexp_cached(
                         <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                     )
@@ -498,7 +498,7 @@ fn derive_interaction_factor(
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
                 static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::SEXP> =
                     ::std::sync::OnceLock::new();
-                let levels = *LEVELS_CACHE.get_or_init(|| {
+                let levels = *::std::sync::OnceLock::get_or_init(&LEVELS_CACHE, || {
                     ::miniextendr_api::build_levels_sexp_cached(
                         <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES
                     )

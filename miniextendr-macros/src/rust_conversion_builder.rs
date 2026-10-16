@@ -340,9 +340,9 @@ impl RustConversionBuilder {
         if self.inferred_types {
             let target = crate::trait_signature::argument_ident(name);
             if rooted {
-                quote! { #target.rooted_native_borrow() }
+                quote! { ::miniextendr_api::trait_abi::signature::Argument::rooted_native_borrow(&#target) }
             } else {
-                quote! { #target.native_borrow() }
+                quote! { ::miniextendr_api::trait_abi::signature::Argument::native_borrow(&#target) }
             }
         } else {
             let ty = crate::type_inspect::erase_lifetimes(ty);
@@ -628,15 +628,18 @@ impl RustConversionBuilder {
                 let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
                 (
                     quote! { let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() }; },
-                    quote! { #target.rooted(unsafe { #roots.rooted(#sexp_ident) }) },
+                    quote! { ::miniextendr_api::trait_abi::signature::Argument::rooted(&#target, unsafe { ::miniextendr_api::gc_protect::ProtectScope::rooted(&#roots, #sexp_ident) }) },
                 )
             } else {
                 if !ctx.expected_known {
                     ctx.declared = Some(
-                        quote! { #target.expectation().map(::std::string::ToString::to_string) },
+                        quote! { ::miniextendr_api::trait_abi::signature::Argument::expectation(&#target).map(::std::string::ToString::to_string) },
                     );
                 }
-                (TokenStream::new(), quote! { #target.convert(#sexp_ident) })
+                (
+                    TokenStream::new(),
+                    quote! { ::miniextendr_api::trait_abi::signature::Argument::convert(&#target, #sexp_ident) },
+                )
             };
             let stmt = self.conversion_stmt(convert, &ctx, ident, &syn::parse_quote!(_), ty.span());
             return (vec![quote! { #setup #stmt }], vec![]);
@@ -667,7 +670,7 @@ impl RustConversionBuilder {
             // children returned by an ALTREP accessor during conversion.
             let try_expr = quote_spanned! {span=>
                 <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                    #roots.rooted(#sexp_ident)
+                    ::miniextendr_api::gc_protect::ProtectScope::rooted(&#roots, #sexp_ident)
                 })
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
@@ -738,7 +741,7 @@ impl RustConversionBuilder {
                 let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
                 ::core::result::Result::map(
                     <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                        #roots.rooted(#sexp_ident)
+                        ::miniextendr_api::gc_protect::ProtectScope::rooted(&#roots, #sexp_ident)
                     }),
                     #copy,
                 )
@@ -1614,8 +1617,9 @@ pub(crate) fn shim_conversion_err_arm(
     let mut ctx = ArgContext::new(name, ty, false);
     if let Some(target) = target {
         if !ctx.expected_known {
-            ctx.declared =
-                Some(quote! { #target.expectation().map(::std::string::ToString::to_string) });
+            ctx.declared = Some(
+                quote! { ::miniextendr_api::trait_abi::signature::Argument::expectation(&#target).map(::std::string::ToString::to_string) },
+            );
         }
     } else if let Some(read_ty) = read_ty {
         ctx = ctx.with_declared(read_ty);
