@@ -9,7 +9,10 @@ An annotated implementation inherits `#[miniextendr(r_name = "...")]` and
 with method bodies, generic traits and traits with associated types. An
 explicit `r_name` on an impl method overrides the inherited R name; a method
 skipped by the declaration stays skipped. Other method options, docs and
-parameter attributes belong to the implementation.
+parameter attributes belong to explicit implementation methods. An omitted
+default method, of a generic trait or not, uses its declaration's docs and
+parameter names. An implementation parameter written as a pattern (`_`, a
+tuple) takes the declaration's name in its R formal; a named one keeps its own.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
@@ -29,10 +32,33 @@ the declaration's fingerprint, so it never guesses paths to `TAG_*`, a
 vtable type or a builder next to the imported name. Non-generic shims are
 hidden associated methods with `Self: Sized`: they retain declaration-local
 type resolution and default methods without preventing `dyn Trait`. Generic
-traits retain concrete shims generated from the impl's method signatures, so
-an impl of a generic trait defines every method in the vtable, defaulted ones
-included.
+traits retain concrete shims. Required methods supply their signatures in the
+impl; omitted defaults supply theirs through the declaration metadata, with
+the impl's concrete type/const arguments substituted. Omitted generic arguments
+use the declaration's defaults, and `Self::Item` resolves through the concrete
+trait impl. Both ABI callbacks and R wrappers call the original Rust default;
+no default body is copied into the impl. Explicit overrides keep their own
+signature, body and wrapper options. Static defaults get R wrappers too.
 The exported vtable static symbols used by webR remain unchanged.
+
+Inherited defaults and empty annotated impls infer argument types from the
+concrete trait method. Private declaration-local aliases therefore need no
+imports in the impl module, even across crates or when that module defines a
+conflicting alias. The copied signature still describes the R-facing shape and
+picks the conversion path (strict and coercing reads, rooted borrows);
+only the type each conversion produces comes from the inferred concrete type,
+native-borrow metadata included. The signature helper neither calls the method
+nor constructs argument values, and adds no conversion bounds to the trait
+itself.
+
+Argument conversion failures from either shim path carry `kind = "conversion"`,
+`param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
+bindings in a generic implementation do not change those parameter names or
+native-alias diagnostics. Custom `RConditionData` messages, classes and fields
+survive the View round trip; the outer wrapper supplies the consumer's call.
+The shim uses the `conversion_error_class` configuration of the crate where it
+is generated (the declaration crate for non-generic traits, the implementation
+crate for generic traits).
 
 ## Key Concepts
 

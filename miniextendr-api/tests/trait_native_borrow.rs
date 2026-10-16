@@ -73,28 +73,25 @@ pub trait InspectGeneric<T> {
     fn inspect(&self, write: T, other: &Self, read: ReadProbe) -> i32;
     fn inspect_list(&self, items: WriteListProbe) -> i32;
     fn inspect_pair(&self, pair: PairProbe) -> i32;
-    fn inspect_view(&self, values: RCow<'_, i32>, write: T) -> i32;
+    fn inspect_view(&self, values: RCow<'_, i32>, write: T) -> i32 {
+        let _ = (values, write);
+        panic!("the converter must stop before the method");
+    }
 }
 
 // This path generates its shims at the concrete impl, not the trait declaration.
 #[miniextendr(env, noexport)]
 impl InspectGeneric<WriteProbe> for Sink {
-    // A concrete shim reports the impl's parameter names, not the trait's
-    // (#2029), so these match the declaration's.
-    fn inspect(&self, write: WriteProbe, other: &Self, read: ReadProbe) -> i32 {
-        let _ = (write, other, read);
+    // Deliberately differ from the declaration. Both shim paths must name
+    // the declaration's arguments, including raw identifiers and `_` patterns.
+    fn inspect(&self, _write: WriteProbe, _other: &Self, r#read: ReadProbe) -> i32 {
+        let _ = r#read;
         panic!("the converter must stop before the method");
     }
-    fn inspect_list(&self, items: WriteListProbe) -> i32 {
-        let _ = items;
+    fn inspect_list(&self, _: WriteListProbe) -> i32 {
         panic!("the converter must stop before the method");
     }
-    fn inspect_pair(&self, pair: PairProbe) -> i32 {
-        let _ = pair;
-        panic!("the converter must stop before the method");
-    }
-    fn inspect_view(&self, values: RCow<'_, i32>, write: WriteProbe) -> i32 {
-        let _ = (values, write);
+    fn inspect_pair(&self, _pair: PairProbe) -> i32 {
         panic!("the converter must stop before the method");
     }
 }
@@ -185,7 +182,10 @@ fn check_shims(
         // A view that cannot bind fails like any other conversion.
         let text = scope.protect("text".into_sexp()).get();
         let message = shim_message(&scope, inspect_view, data, &[text, w]);
-        assert!(message.contains("type mismatch"), "{message}");
+        assert!(
+            message.contains("invalid 'values' argument: expected integer, got character"),
+            "{message}"
+        );
         let message = shim_message(&scope, inspect_view, data, &[v, w]);
         assert!(message.contains("argument conversion reached"), "{message}");
 

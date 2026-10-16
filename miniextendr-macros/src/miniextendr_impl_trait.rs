@@ -124,6 +124,9 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// shims for a single method in an `impl Trait for Type` block.
 #[derive(Debug, Clone)]
 struct TraitMethod {
+    /// Signature copied from declaration metadata: infer its argument types
+    /// from the real method so declaration-local aliases keep their identity.
+    inherited_signature: bool,
     /// Rust method identifier (e.g., `value`, `increment`).
     ident: syn::Ident,
     /// Full method signature including self receiver and all parameters. A
@@ -463,6 +466,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
 
 // region: Sub-modules
 
+mod defaults;
 mod method_context;
 mod r_wrappers;
 mod vtable;
@@ -583,6 +587,7 @@ struct ImplWithMetadata {
     attrs: ImplAttrs,
     implementation: ItemImpl,
     methods: Vec<syn::TraitItemFn>,
+    generics: syn::Generics,
     abi: TraitAbiMetadata,
 }
 
@@ -602,10 +607,13 @@ impl syn::parse::Parse for ImplWithMetadata {
         while !metadata.is_empty() {
             methods.push(metadata.parse()?);
         }
+        let generics;
+        syn::braced!(generics in input);
         Ok(Self {
             attrs,
             implementation,
             methods,
+            generics: generics.parse()?,
             abi: input.parse()?,
         })
     }
@@ -615,12 +623,20 @@ impl ImplWithMetadata {
     fn expand(mut self) -> syn::Result<TokenStream> {
         vtable::inherit_method_metadata(&mut self.implementation, &self.methods)?;
         let (trait_path, concrete_type) = extract_trait_and_type(&self.implementation)?;
+        let defaults = defaults::inherited_methods(
+            &self.implementation,
+            &self.methods,
+            &self.generics,
+            &trait_path,
+        )?;
         Ok(generate_vtable_static(
             &self.implementation,
             &trait_path,
             &concrete_type,
             &self.attrs,
             &self.abi,
+            &self.methods,
+            &defaults,
         ))
     }
 }
@@ -958,6 +974,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 (marker, sig)
             };
             TraitMethod {
+                inherited_signature: true,
                 ident: sig.ident.clone(),
                 sig,
                 invisible,
@@ -1031,11 +1048,16 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // the shared naming.rs helper so the three reconstruction sites can't drift, #1273)
     let vtable_static_name = crate::naming::vtable_static_ident(trait_name, &type_name_str);
 
-    let vtable =
-        match vtable::generate_impl_vtable(&tpie_input.abi, &concrete_type, trait_path, &methods) {
-            Ok(tokens) => tokens,
-            Err(error) => return error.into_compile_error().into(),
-        };
+    let vtable = match vtable::generate_impl_vtable(
+        &tpie_input.abi,
+        &concrete_type,
+        trait_path,
+        &methods,
+        &[],
+    ) {
+        Ok(tokens) => tokens,
+        Err(error) => return error.into_compile_error().into(),
+    };
 
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(

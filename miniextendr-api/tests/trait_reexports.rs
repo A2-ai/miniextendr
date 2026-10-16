@@ -33,6 +33,13 @@ impl RToVec<i32> for Generic {
 }
 
 mod defining {
+    type Words = Vec<String>;
+    #[miniextendr_api::miniextendr]
+    pub trait PrivateEcho {
+        fn echo(&self, words: Words) -> Words {
+            words
+        }
+    }
     // The default callback's argument type must resolve here, even though the
     // consumer only imports the trait (under another name).
     pub type Count = i32;
@@ -81,6 +88,13 @@ impl facade::RenamedAssociated for AssociatedHost {
         9
     }
 }
+
+pub use defining::PrivateEcho as RenamedEcho;
+// A conflicting caller type must never participate in the copied signature.
+pub type Words = Vec<i32>;
+impl RenamedEcho for RootPath {}
+#[miniextendr(env, noexport)]
+impl RenamedEcho for RootPath {}
 
 // An empty impl through a user re-export uses the declaration's name too.
 #[miniextendr(env, noexport)]
@@ -143,6 +157,12 @@ fn import_spelling_does_not_change_r_names_or_trait_object_compatibility() {
             .content
             .contains("CounterHost$Counter$read")
     );
+    // The omitted default, its `Count` argument read in the declaration.
+    assert!(
+        R_WRAPPERS_CounterHost_Counter_IMPL
+            .content
+            .contains("CounterHost$Counter$plus")
+    );
     assert!(
         R_WRAPPERS_CratePathGreeter_Greet_IMPL
             .content
@@ -188,5 +208,25 @@ fn a_consumer_view_dispatches_default_methods_through_the_reexported_impl() {
             std::mem::align_of_val(&table),
             std::mem::align_of_val(&__VTABLE_trait_reexports_Counter_FOR_CounterHost)
         );
+    });
+}
+
+#[test]
+fn empty_impl_wrappers_keep_private_declaration_aliases() {
+    use miniextendr_api::{IntoR, SEXP, TryFromSexp};
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let pointer = scope.protect(ExternalPtr::new(RootPath).into_sexp()).get();
+        let input = scope
+            .protect(vec!["one".to_owned(), "two".to_owned()].into_sexp())
+            .get();
+        let value = scope
+            .protect(C_trait_reexports_RootPath__PrivateEcho__echo(
+                SEXP::nil(),
+                pointer,
+                input,
+            ))
+            .get();
+        assert_eq!(Vec::<String>::try_from_sexp(value).unwrap(), ["one", "two"]);
     });
 }

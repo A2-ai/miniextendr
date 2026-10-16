@@ -297,7 +297,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             }
         })
         .collect();
-    let has_generics = !trait_param_idents.is_empty();
+    let has_generics = !trait_item.generics.params.is_empty();
 
     // Collect associated types
     let assoc_types: Vec<&syn::Ident> = trait_item
@@ -543,18 +543,46 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .as_ref()
                 .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
             let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
-            // Only metadata crosses this path; impl signatures, bodies and
-            // parameter attributes keep their original spans and type scope.
-            method_metadata.push(quote::quote! {
-                #r_name_attr #skip_attr fn #name();
-            });
+            // Copied signatures name every parameter as the declaration's
+            // metadata does (`arg<i>` for a pattern), since the generated
+            // wrappers pass each argument by name.
+            let mut sig = method.sig.clone();
+            for (arg, name) in sig
+                .inputs
+                .iter_mut()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => Some(arg),
+                    syn::FnArg::Receiver(_) => None,
+                })
+                .zip(&info.param_names)
+            {
+                *arg.pat = syn::parse_quote!(#name);
+            }
+            // Keep default signatures, but never copy their bodies into an
+            // implementation. Generated wrappers call the trait's own default,
+            // so an impl that omits a default still gets its R wrapper, generic
+            // trait or not. Required methods carry names only, preserving
+            // impl-local types.
+            if method.default.is_some() {
+                let docs = method
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("doc"));
+                method_metadata.push(quote::quote! {
+                    #(#docs)* #r_name_attr #skip_attr #sig {}
+                });
+            } else {
+                let params = &info.param_names;
+                method_metadata.push(quote::quote! {
+                    #r_name_attr #skip_attr fn #name(#(#params: ()),*);
+                });
+            }
             if !has_generics && assoc_types.is_empty() && !info.skip {
                 let r_name = info
                     .r_name
                     .as_deref()
                     .map(crate::naming::name_ident)
                     .unwrap_or_else(|| name.clone());
-                let sig = &method.sig;
                 tpie_method_metadata.push(quote::quote! {
                     method { r_name = #r_name; #sig; }
                 });
@@ -585,6 +613,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     } else {
         quote::quote! {}
     };
+    let declaration_generics = &trait_item.generics;
     let metadata_macro_name = crate::naming::trait_metadata_macro_ident(trait_name);
     let metadata_macro = quote::quote! {
         #[macro_export]
@@ -594,6 +623,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 ::miniextendr_api::__mx_trait_impl_expand! {
                     @impl { $($attrs)* } { $($implementation)* }
                     { #(#method_metadata)* }
+                    { #declaration_generics }
                     #abi_metadata
                 }
             };
@@ -860,20 +890,15 @@ fn generate_method_shim(
         .zip(method.param_types.iter())
         .enumerate()
         .map(|(i, (name, ty))| {
-            let name_str = crate::naming::ident_name(name);
-            if let Some(mutable) = crate::type_inspect::self_ref_mutability(ty) {
-                crate::trait_self_ref::extract(name, &impl_t, i, mutable, &argc, &argv)
-            } else if crate::type_inspect::is_rooted_view(ty)
-                || crate::type_inspect::is_rooted_reference(ty)
-            {
-                crate::trait_self_ref::rooted_view_arg(name, ty, i, &argv)
-            } else {
-                quote::quote! {
-                    let #name: #ty = unsafe {
-                        ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
-                    };
-                }
-            }
+            crate::trait_self_ref::argument(
+                name,
+                &crate::naming::ident_name(name),
+                ty,
+                &impl_t,
+                i,
+                &argv,
+                None,
+            )
         })
         .collect();
 
@@ -885,6 +910,7 @@ fn generate_method_shim(
             .enumerate()
             .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
         &argv,
+        None,
     );
 
     let self_refs: Vec<_> = method

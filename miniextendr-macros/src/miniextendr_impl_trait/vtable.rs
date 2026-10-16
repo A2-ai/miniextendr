@@ -40,6 +40,8 @@ pub(super) fn generate_vtable_static(
     concrete_type: &syn::Type,
     impl_attrs: &ImplAttrs,
     abi: &TraitAbiMetadata,
+    declaration: &[syn::TraitItemFn],
+    defaults: &[syn::ImplItemFn],
 ) -> TokenStream {
     let trait_name = &abi.name;
 
@@ -75,10 +77,19 @@ pub(super) fn generate_vtable_static(
     );
 
     // Parse methods and consts from the impl block
-    let all_methods = match extract_methods(impl_item, impl_page) {
+    let mut wrapper_impl = impl_item.clone();
+    wrapper_impl
+        .items
+        .extend(defaults.iter().cloned().map(syn::ImplItem::Fn));
+    let mut all_methods = match extract_methods(&wrapper_impl, impl_page, declaration) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
+    for method in &mut all_methods {
+        method.inherited_signature = defaults
+            .iter()
+            .any(|default| default.sig.ident == method.ident);
+    }
     let consts = extract_consts(impl_item);
 
     // Separate skipped methods: skipped methods are kept in the emitted impl block
@@ -175,7 +186,7 @@ pub(super) fn generate_vtable_static(
     };
 
     let vtable_static_tokens =
-        match generate_impl_vtable(abi, concrete_type, trait_path, &all_methods) {
+        match generate_impl_vtable(abi, concrete_type, trait_path, &all_methods, declaration) {
             Ok(tokens) => tokens,
             Err(error) => return error.into_compile_error(),
         };
@@ -279,6 +290,7 @@ pub(super) fn generate_impl_vtable(
     concrete_type: &syn::Type,
     trait_path: &syn::Path,
     methods: &[TraitMethod],
+    declaration: &[syn::TraitItemFn],
 ) -> syn::Result<TokenStream> {
     let trait_name = &abi.name;
     let type_name = type_to_symbol_name(concrete_type);
@@ -295,11 +307,7 @@ pub(super) fn generate_impl_vtable(
         let name = field.ident.as_ref().unwrap();
         let callback = if abi.generic {
             let Some(method) = methods.iter().find(|method| method.ident == *name) else {
-                let message = format!(
-                    "this impl must define `{name}`, even if the trait gives it a default: \
-                     a generic `#[miniextendr]` trait's shims are generated from the impl's \
-                     method signatures"
-                );
+                let message = format!("this impl must define the required trait method `{name}`");
                 return Err(syn::Error::new_spanned(trait_path, message));
             };
             concrete_methods.push(method.clone());
@@ -317,6 +325,7 @@ pub(super) fn generate_impl_vtable(
         trait_name,
         trait_path,
         concrete_type,
+        declaration,
     );
     Ok(quote::quote! {
         #[doc(hidden)]
@@ -358,6 +367,7 @@ fn generate_concrete_vtable_shims(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
+    declaration: &[syn::TraitItemFn],
 ) -> TokenStream {
     let mut shims = Vec::new();
 
@@ -393,6 +403,9 @@ fn generate_concrete_vtable_shims(
             .count();
         let expected_argc = param_count as i32;
 
+        let diagnostic_names = declared_param_names(declaration, method_ident)
+            .expect("trait metadata includes each callback's argument names");
+
         // Generate argument extraction (concrete types, no generics)
         let arg_extractions: Vec<TokenStream> = method
             .sig
@@ -407,20 +420,18 @@ fn generate_concrete_vtable_shims(
                     } else {
                         format_ident!("arg{}", i)
                     };
-                    let name_str = crate::naming::ident_name(&name);
-
-                    if let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty) {
-                        crate::trait_self_ref::extract(&name, concrete_type, i, mutable, &argc, &argv)
-                    } else if crate::type_inspect::is_rooted_view(&pt.ty) || crate::type_inspect::is_rooted_reference(&pt.ty) {
-                        crate::trait_self_ref::rooted_view_arg(&name, &pt.ty, i, &argv)
-                    } else {
-                        let ty = &pt.ty;
-                        quote::quote! {
-                            let #name: #ty = unsafe {
-                                ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
-                            };
-                        }
-                    }
+                    crate::trait_self_ref::argument(
+                        &name,
+                        &diagnostic_names[i],
+                        &pt.ty,
+                        concrete_type,
+                        i,
+                        &argv,
+                        method
+                            .inherited_signature
+                            .then(|| crate::trait_signature::argument_ident(&name))
+                            .as_ref(),
+                    )
                 } else {
                     quote::quote! {}
                 }
@@ -444,6 +455,22 @@ fn generate_concrete_vtable_shims(
             })
             .collect();
 
+        let targets = method.inherited_signature.then(|| {
+            param_names
+                .iter()
+                .map(crate::trait_signature::argument_ident)
+                .collect::<Vec<_>>()
+        });
+        let type_setup = method.inherited_signature.then(|| {
+            crate::trait_signature::setup(
+                &method.sig.inputs,
+                method.has_self,
+                &crate::trait_signature::callable(
+                    &method.sig,
+                    quote::quote!(<#concrete_type as #trait_path>::#method_ident),
+                ),
+            )
+        });
         let native_borrow_checks = crate::trait_self_ref::native_borrow_checks(
             param_names
                 .iter()
@@ -452,34 +479,29 @@ fn generate_concrete_vtable_shims(
                     syn::FnArg::Receiver(_) => None,
                 }))
                 .enumerate()
-                .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+                .map(|(index, (_, ty))| (index, diagnostic_names[index].clone(), ty)),
             &argv,
+            targets.as_deref(),
         );
 
-        let self_refs: Vec<_> = method
-            .sig
-            .inputs
+        let self_refs: Vec<_> = param_names
             .iter()
-            .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+            .zip(method.sig.inputs.iter().filter_map(|arg| match arg {
+                syn::FnArg::Typed(pt) => Some(pt.ty.as_ref()),
+                syn::FnArg::Receiver(_) => None,
+            }))
             .enumerate()
-            .filter_map(|(index, arg)| {
-                if let syn::FnArg::Typed(pt) = arg
-                    && let syn::Pat::Ident(pat) = pt.pat.as_ref()
-                    && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
-                {
-                    Some((&pat.ident, mutable, index))
-                } else {
-                    None
-                }
+            .filter_map(|(index, (name, ty))| {
+                crate::type_inspect::self_ref_mutability(ty).map(|mutable| (name, mutable, index))
             })
             .collect();
         let handles: Vec<_> = self_refs
             .iter()
-            .map(|(name, mutable, _)| {
+            .map(|(name, mutable, index)| {
                 (
                     crate::trait_self_ref::handle_ident(name),
                     *mutable,
-                    crate::naming::ident_name(name),
+                    diagnostic_names[*index].clone(),
                 )
             })
             .collect();
@@ -560,6 +582,7 @@ fn generate_concrete_vtable_shims(
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                     ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
                     let #cell = unsafe { &*#data.cast::<::core::cell::RefCell<#concrete_type>>() };
+                    #type_setup
                     #native_borrow_checks
                     #(#arg_extractions)*
                     #alias_checks
@@ -608,6 +631,34 @@ pub(super) fn inherit_method_metadata(
     Ok(())
 }
 
+/// The parameter names the declaration's metadata gives `method`, in order.
+/// The metadata names every parameter (`arg<i>` for a declaration pattern).
+fn declared_param_names(
+    declaration: &[syn::TraitItemFn],
+    method: &syn::Ident,
+) -> Option<Vec<String>> {
+    let declared = declaration
+        .iter()
+        .find(|declared| declared.sig.ident == *method)?;
+    Some(
+        declared
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .map(|arg| {
+                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                    unreachable!("metadata has named arguments")
+                };
+                crate::naming::ident_name(&name.ident)
+            })
+            .collect(),
+    )
+}
+
 /// Extract all methods from a trait impl block as [`TraitMethod`] structs.
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
@@ -618,6 +669,7 @@ pub(super) fn inherit_method_metadata(
 pub(super) fn extract_methods(
     impl_item: &ItemImpl,
     impl_page: crate::roxygen::RdPage,
+    declaration: &[syn::TraitItemFn],
 ) -> syn::Result<Vec<TraitMethod>> {
     let mut methods = Vec::new();
     for item in &impl_item.items {
@@ -670,6 +722,44 @@ pub(super) fn extract_methods(
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
             let mut sig = method.sig.clone();
+            // Wrappers call the method positionally; patterns belong only to
+            // the original impl body. Give every wrapper argument a binding,
+            // including ignored and destructured parameters (#2029): the
+            // declaration's name, as the trait's shims report it, else
+            // `arg<i>`.
+            let declared = declared_param_names(declaration, &method.sig.ident);
+            let mut used_names: std::collections::HashSet<_> = sig
+                .inputs
+                .iter()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => match arg.pat.as_ref() {
+                        syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            for (index, arg) in sig
+                .inputs
+                .iter_mut()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => Some(arg),
+                    _ => None,
+                })
+                .enumerate()
+            {
+                if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
+                    let mut name = declared
+                        .as_ref()
+                        .and_then(|names| names.get(index).cloned())
+                        .unwrap_or_else(|| format!("arg{index}"));
+                    while !used_names.insert(name.clone()) {
+                        name.push('_');
+                    }
+                    let name = crate::naming::name_ident(&name);
+                    arg.pat = syn::parse_quote!(#name);
+                }
+            }
             let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
             if return_wrap
                 .as_ref()
@@ -689,6 +779,7 @@ pub(super) fn extract_methods(
             sig.output = crate::type_inspect::serialize_return_type(&output, attrs.serialize);
 
             methods.push(TraitMethod {
+                inherited_signature: false,
                 ident: method.sig.ident.clone(),
                 sig,
                 invisible,
@@ -1290,6 +1381,13 @@ pub(super) fn generate_trait_method_c_wrapper(
         .return_handling(return_handling)
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);
+
+    if method.inherited_signature {
+        builder = builder.inferred_signature(crate::trait_signature::callable(
+            &method.sig,
+            quote::quote!(<#type_ident as #trait_path>::#method_ident),
+        ));
+    }
 
     let mut post_conversion = Vec::new();
     let handles: Vec<_> = self_ref_params

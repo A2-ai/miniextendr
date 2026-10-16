@@ -3,12 +3,13 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// Check native arguments before `extract_arg` can create references. Arity
+/// Check native arguments before conversion can create references. Arity
 /// must already be checked, and the caller must be inside the shim's R unwind
 /// boundary. `&Self` uses ExternalPtr handles and its separate address check.
 pub(crate) fn native_borrow_checks<'a>(
     args: impl IntoIterator<Item = (usize, String, &'a syn::Type)>,
     argv: &syn::Ident,
+    targets: Option<&[syn::Ident]>,
 ) -> TokenStream {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
@@ -17,6 +18,19 @@ pub(crate) fn native_borrow_checks<'a>(
             continue;
         }
         values.push(quote! { (*#argv.add(#index), #name) });
+        if let Some(targets) = targets {
+            let target = &targets[index];
+            metadata.push(
+                if crate::type_inspect::is_rooted_view(ty)
+                    || crate::type_inspect::is_rooted_reference(ty)
+                {
+                    quote! { #target.rooted_native_borrow() }
+                } else {
+                    quote! { #target.native_borrow() }
+                },
+            );
+            continue;
+        }
         metadata.push(
             if crate::type_inspect::is_rooted_view(ty)
                 || crate::type_inspect::is_rooted_reference(ty)
@@ -49,32 +63,98 @@ pub(crate) fn native_borrow_checks<'a>(
     }}
 }
 
-/// Bind a borrowed view to a local root scope. A borrow directly from the
-/// raw argv pointer would itself have an unconstrained lifetime.
-/// Arity and native alias checks must run before this code. A conversion
-/// failure panics, as `trait_abi::extract_arg` does.
-pub(crate) fn rooted_view_arg(
+/// Convert one shim argument with the C wrapper's structured error arm.
+/// Arity and native alias checks must run first. Self handles are borrowed
+/// later, after their address checks; rooted views retain a local scope until
+/// the method's return has been converted.
+pub(crate) fn argument(
     name: &syn::Ident,
+    diagnostic_name: &str,
     ty: &syn::Type,
+    impl_ty: &impl quote::ToTokens,
     index: usize,
     argv: &syn::Ident,
+    target: Option<&syn::Ident>,
 ) -> TokenStream {
-    if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(name, ty) {
-        return stmt;
+    let target = target.filter(|_| crate::type_inspect::self_ref_mutability(ty).is_none());
+    let input = quote! { unsafe { *#argv.add(#index) } };
+    let r_name = crate::r_wrapper_builder::normalize_r_arg_string(diagnostic_name);
+    let (setup, binding, mut read_ty, mut conversion, rooted) = if let Some(mutable) =
+        crate::type_inspect::self_ref_mutability(ty)
+    {
+        let handle = handle_ident(name);
+        let mutability = mutable.then(|| quote!(mut));
+        let read_ty: syn::Type = syn::parse_quote!(::miniextendr_api::ExternalPtr<#impl_ty>);
+        let conversion = quote! {
+            <#read_ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#input)
+        };
+        (
+            TokenStream::new(),
+            quote!(#mutability #handle),
+            read_ty,
+            conversion,
+            false,
+        )
+    } else if crate::type_inspect::is_rooted_view(ty)
+        || crate::type_inspect::is_rooted_reference(ty)
+    {
+        if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(name, ty) {
+            return stmt;
+        }
+        let slot = format_ident!(
+            "__mx_root_{}",
+            crate::naming::unraw(name),
+            span = proc_macro2::Span::mixed_site()
+        );
+        let read_ty = crate::type_inspect::erase_lifetimes(ty);
+        let conversion = quote! {
+            <#read_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
+                #slot.rooted(*#argv.add(#index))
+            })
+        };
+        (
+            quote! { let #slot = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() }; },
+            quote!(#name),
+            read_ty,
+            conversion,
+            true,
+        )
+    } else {
+        let conversion = quote! {
+            <#ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#input)
+        };
+        (
+            TokenStream::new(),
+            quote!(#name),
+            ty.clone(),
+            conversion,
+            false,
+        )
+    };
+    if let Some(target) = target {
+        read_ty = syn::parse_quote!(_);
+        conversion = if rooted {
+            let slot = format_ident!(
+                "__mx_root_{}",
+                crate::naming::unraw(name),
+                span = proc_macro2::Span::mixed_site()
+            );
+            quote! { #target.rooted(unsafe { #slot.rooted(*#argv.add(#index)) }) }
+        } else {
+            quote! { #target.convert(#input) }
+        };
     }
-    let slot = format_ident!(
-        "__mx_root_{}",
-        crate::naming::unraw(name),
-        span = proc_macro2::Span::mixed_site()
+    let err_arm = crate::rust_conversion_builder::shim_conversion_err_arm(
+        &r_name,
+        ty,
+        (!rooted).then_some(&read_ty),
+        target.filter(|_| !rooted),
     );
-    let ty = crate::type_inspect::erase_lifetimes(ty);
     quote! {
-        let #slot = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
-        let #name: #ty = match <#ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-            #slot.rooted(*#argv.add(#index))
-        }) {
+        #setup
+        let #binding: #read_ty = match #conversion {
             ::core::result::Result::Ok(value) => value,
-            ::core::result::Result::Err(error) => ::core::panic!("{error}"),
+            #err_arm
         };
     }
 }
@@ -116,29 +196,10 @@ pub(crate) fn handle_ident(name: &syn::Ident) -> syn::Ident {
     )
 }
 
-/// Extract handles first; references are created only after alias checks.
-pub(crate) fn extract(
-    name: &syn::Ident,
-    ty: &impl quote::ToTokens,
-    index: usize,
-    mutable: bool,
-    argc: &syn::Ident,
-    argv: &syn::Ident,
-) -> TokenStream {
-    let handle = handle_ident(name);
-    let mutability = mutable.then(|| quote!(mut));
-    let name_str = crate::naming::ident_name(name);
-    quote! {
-        let #mutability #handle: ::miniextendr_api::ExternalPtr<#ty> = unsafe {
-            ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #index, #name_str)
-        };
-    }
-}
-
 /// Borrow a `&Self` argument's value for the rest of the shim, exclusively
 /// for `&mut Self`, as a C wrapper borrows a `&T` / `&mut T` argument
 /// (#2106): a call still running on the object makes the borrow raise the
-/// `miniextendr_borrow_conflict` error. The handle [`extract`] made roots the
+/// `miniextendr_borrow_conflict` error. The handle [`argument`] made roots the
 /// pointer of a class-wrapped argument. Runs after [`alias_checks`].
 pub(crate) fn borrow(name: &syn::Ident, mutable: bool) -> TokenStream {
     let handle = handle_ident(name);
@@ -219,6 +280,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, ty)| (i, format!("arg{i}"), ty)),
             &argv,
+            None,
         );
         let expected =
             quote! { <(&mut i32, &i32) as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW };
@@ -227,7 +289,7 @@ mod tests {
         assert!(output.contains(&quote! { (*argv.add(1usize), "arg1") }.to_string()));
         assert!(!output.contains("arg0"));
         assert!(!output.contains("arg2"));
-        assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv).is_empty());
+        assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv, None).is_empty());
     }
 
     #[test]

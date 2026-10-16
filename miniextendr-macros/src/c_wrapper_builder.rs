@@ -222,6 +222,8 @@ pub struct CWrapperContext {
     /// Function parameters (excluding the `self` receiver for methods).
     /// Each parameter becomes a `SEXP` argument in the C wrapper signature.
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    /// Concrete method item supplying types for declaration-copied signatures.
+    pub inferred_signature: Option<TokenStream>,
     /// The original Rust return type. Used by strict-mode to inspect whether the inner
     /// type is lossy (e.g., `i64`, `u64`) and needs checked conversion.
     pub output: syn::ReturnType,
@@ -324,6 +326,7 @@ impl CWrapperContext {
             c_ident,
             r_wrapper_const: None,
             inputs: syn::punctuated::Punctuated::new(),
+            inferred_signature: None,
             output: syn::ReturnType::Default,
             pre_call: Vec::new(),
             post_conversion: Vec::new(),
@@ -487,6 +490,9 @@ impl CWrapperContext {
     /// Configure argument conversion once for both metadata and value conversion.
     fn conversion_builder(&self) -> crate::RustConversionBuilder {
         let mut builder = crate::RustConversionBuilder::new();
+        if self.inferred_signature.is_some() {
+            builder = builder.with_inferred_types();
+        }
         if self.strict {
             builder = builder.with_strict();
         }
@@ -594,6 +600,10 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
+        let type_setup = self
+            .inferred_signature
+            .as_ref()
+            .map(|callable| crate::trait_signature::setup(&self.inputs, self.has_self, callable));
         let borrow = self.arg_borrows();
         let pre_call = &self.pre_call;
         let post_conversion = &self.post_conversion;
@@ -613,6 +623,7 @@ impl CWrapperContext {
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         let guarded_body = self.protect_wrapper_body(quote! {
+            #type_setup
             #alias_guard
             #pre_call_checks
             #(#pre_call)*
@@ -696,6 +707,10 @@ impl CWrapperContext {
         let (c_params, _, sexp_idents) = self.build_c_params();
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
+        let type_setup = self
+            .inferred_signature
+            .as_ref()
+            .map(|callable| crate::trait_signature::setup(&self.inputs, self.has_self, callable));
         let borrow = self.arg_borrows();
         let pre_call = &self.pre_call;
         let post_conversion = &self.post_conversion;
@@ -728,6 +743,7 @@ impl CWrapperContext {
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         let guarded_body = self.protect_wrapper_body(quote! {
+            #type_setup
             #alias_guard
             #pre_call_checks
             #(#pre_call)*
@@ -1454,6 +1470,7 @@ pub struct CWrapperContextBuilder {
     r_wrapper_const: Option<syn::Ident>,
     /// Function parameters (excluding `self`). Defaults to empty.
     inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    inferred_signature: Option<TokenStream>,
     /// Rust return type. Defaults to `()` (no return type annotation).
     output: syn::ReturnType,
     /// Pre-call statements emitted before the call expression. Defaults to empty.
@@ -1531,6 +1548,12 @@ impl CWrapperContextBuilder {
         inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     ) -> Self {
         self.inputs = inputs;
+        self
+    }
+
+    /// Infer inherited parameter types from this concrete method item.
+    pub fn inferred_signature(mut self, callable: TokenStream) -> Self {
+        self.inferred_signature = Some(callable);
         self
     }
 
@@ -1764,6 +1787,7 @@ impl CWrapperContextBuilder {
             c_ident: self.c_ident,
             r_wrapper_const: self.r_wrapper_const,
             inputs: self.inputs,
+            inferred_signature: self.inferred_signature,
             output: self.output,
             pre_call: self.pre_call,
             post_conversion: self.post_conversion,

@@ -170,6 +170,7 @@ mod return_wrap;
 mod s7_conversion;
 mod trait_receiver;
 mod trait_self_ref;
+mod trait_signature;
 mod type_inspect;
 mod typed_dataframe;
 mod typed_list;

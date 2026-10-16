@@ -19,6 +19,8 @@ use syn::spanned::Spanned;
 /// - Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 /// - Default → TryFromSexp
 pub struct RustConversionBuilder {
+    /// Infer copied trait signature types from a concrete method item.
+    inferred_types: bool,
     /// Enable coercion for all parameters
     coerce_all: bool,
     /// Parameter names that should use coercion
@@ -57,6 +59,7 @@ impl RustConversionBuilder {
     /// `conversion_error_class` from the manifest (empty when unset).
     pub fn new() -> Self {
         Self {
+            inferred_types: false,
             coerce_all: false,
             coerce_params: Vec::new(),
             strict: false,
@@ -68,6 +71,11 @@ impl RustConversionBuilder {
             unevaluated_args: false,
             self_type: None,
         }
+    }
+
+    pub(crate) fn with_inferred_types(mut self) -> Self {
+        self.inferred_types = true;
+        self
     }
 
     /// Name the impl's type for `Self` in borrowed external arguments.
@@ -247,8 +255,7 @@ impl RustConversionBuilder {
             return None;
         }
         if crate::type_inspect::is_rooted_view(ty) {
-            let ty = crate::type_inspect::erase_lifetimes(ty);
-            return Some(quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW });
+            return Some(self.borrow_metadata_for(ty, &pat_ident.ident, true));
         }
         let param_name = crate::naming::ident_name(&pat_ident.ident);
         match ty {
@@ -299,11 +306,28 @@ impl RustConversionBuilder {
                 }
             }
         }
-        if crate::type_inspect::is_rooted_reference(ty) {
-            let ty = crate::type_inspect::erase_lifetimes(ty);
-            Some(quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW })
+        Some(self.borrow_metadata_for(
+            ty,
+            &pat_ident.ident,
+            crate::type_inspect::is_rooted_reference(ty),
+        ))
+    }
+
+    fn borrow_metadata_for(&self, ty: &syn::Type, name: &syn::Ident, rooted: bool) -> TokenStream {
+        if self.inferred_types {
+            let target = crate::trait_signature::argument_ident(name);
+            if rooted {
+                quote! { #target.rooted_native_borrow() }
+            } else {
+                quote! { #target.native_borrow() }
+            }
         } else {
-            Some(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW })
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            if rooted {
+                quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
+            } else {
+                quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
+            }
         }
     }
 
@@ -549,6 +573,13 @@ impl RustConversionBuilder {
             return (vec![stmt], vec![]);
         }
 
+        // A copied trait signature (#2123) may name a type that resolves only
+        // in the declaration's module: its plain conversions take their type
+        // from the witness inferred from the concrete method instead.
+        let target = self
+            .inferred_types
+            .then(|| crate::trait_signature::argument_ident(ident));
+
         let param_name = crate::naming::ident_name(ident);
         let layered_choice = self
             .layered_choice_params
@@ -564,14 +595,24 @@ impl RustConversionBuilder {
                 return (vec![stmt], vec![]);
             }
             let span = ty.span();
-            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
             let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
             // The call roots its argument. The scope also retains any transient
             // children returned by an ALTREP accessor during conversion.
-            let try_expr = quote_spanned! {span=>
-                <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                    #roots.rooted(#sexp_ident)
-                })
+            let root = quote_spanned! {span=> unsafe { #roots.rooted(#sexp_ident) } };
+            let (try_expr, bound_ty): (_, syn::Type) = match &target {
+                Some(target) => (
+                    quote_spanned! {span=> #target.rooted(#root) },
+                    syn::parse_quote!(_),
+                ),
+                None => {
+                    let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+                    (
+                        quote_spanned! {span=>
+                            <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(#root)
+                        },
+                        bound_ty,
+                    )
+                }
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
             return (
@@ -748,19 +789,20 @@ impl RustConversionBuilder {
                     // the user's lifetime need not be in scope, and the `Err` arm's
                     // probe needs the error type named.
                     let span = ty.span();
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                    };
-                    let binding_ty = crate::type_inspect::erase_lifetimes(ty);
+                    let (try_expr, binding_ty) = try_from_sexp(
+                        target.as_ref(),
+                        sexp_ident,
+                        crate::type_inspect::erase_lifetimes(ty),
+                        span,
+                    );
                     let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
                     let span = ty.span();
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                    };
-                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
+                    let (try_expr, binding_ty) =
+                        try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
+                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 }
             }
@@ -917,13 +959,16 @@ impl RustConversionBuilder {
                         self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }
                     None => {
-                        let try_expr = quote_spanned! {span=>
-                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                        };
+                        let (try_expr, binding_ty) =
+                            try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
                         // `ty: TryFromSexp` here, so a failure can ask the
                         // type what it declares.
+                        let declared = match &target {
+                            Some(target) => ctx.with_inferred(target),
+                            None => ctx.with_declared(ty),
+                        };
                         let stmt =
-                            self.conversion_stmt(try_expr, &ctx.with_declared(ty), ident, ty, span);
+                            self.conversion_stmt(try_expr, &declared, ident, &binding_ty, span);
                         // `ty: TryFromSexp` is proven here, so a `no_na`
                         // parameter's value can be asked after the binding.
                         // Owned vector: it runs on the main thread, before a
@@ -1007,6 +1052,28 @@ impl RustConversionBuilder {
 impl Default for RustConversionBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// `TryFromSexp` on `sexp_ident`, and the type its binding names: `ty`, or
+/// for a copied trait signature (#2123) `_`, with the conversion through the
+/// witness `target` inferred from the concrete method, so a declaration-local
+/// type is never spelled in the impl's module.
+fn try_from_sexp(
+    target: Option<&syn::Ident>,
+    sexp_ident: &syn::Ident,
+    ty: syn::Type,
+    span: proc_macro2::Span,
+) -> (TokenStream, syn::Type) {
+    match target {
+        Some(target) => (
+            quote_spanned! {span=> #target.convert(#sexp_ident) },
+            syn::parse_quote!(_),
+        ),
+        None => (
+            quote_spanned! {span=> ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) },
+            ty,
+        ),
     }
 }
 
@@ -1434,6 +1501,17 @@ impl ArgContext {
         ctx
     }
 
+    /// [`ArgContext::with_declared`] for a copied trait signature (#2123):
+    /// the witness `target` names the type the method takes.
+    fn with_inferred(&self, target: &syn::Ident) -> Self {
+        let mut ctx = self.clone();
+        if !ctx.expected_known && ctx.expected_at_run_time.is_none() {
+            ctx.declared =
+                Some(quote! { #target.expectation().map(::std::string::ToString::to_string) });
+        }
+        ctx
+    }
+
     /// The context of a choice parameter of type `ty` decoded as `leaf`, when
     /// the type has an `Either<.., R>` layer; `None` otherwise. A value `R`
     /// refuses is reported against the whole parameter, in the words of its
@@ -1482,6 +1560,45 @@ fn conversion_err_arm(
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
+    let call = crate::naming::call_slot_ident();
+    conversion_err_arm_with_call(
+        ctx,
+        crate_class,
+        &quote! { ::core::option::Option::Some(#call) },
+        span,
+    )
+}
+
+/// Trait shims have no R call slot. They return the same structured argument
+/// error as C wrappers; a View re-panic attributes it to the consumer's call.
+/// `read_ty` supplies TryFromSexp expectations when the conversion uses that
+/// trait; rooted views instead derive their expectation from the error.
+pub(crate) fn shim_conversion_err_arm(
+    name: &str,
+    ty: &syn::Type,
+    read_ty: Option<&syn::Type>,
+    target: Option<&syn::Ident>,
+) -> TokenStream {
+    let mut ctx = ArgContext::new(name, ty, false);
+    if let Some(target) = target {
+        ctx = ctx.with_inferred(target);
+    } else if let Some(read_ty) = read_ty {
+        ctx = ctx.with_declared(read_ty);
+    }
+    conversion_err_arm_with_call(
+        &ctx,
+        &crate::crate_config::conversion_error_class(),
+        &quote! { ::core::option::Option::None },
+        ty.span(),
+    )
+}
+
+fn conversion_err_arm_with_call(
+    ctx: &ArgContext,
+    crate_class: &[String],
+    call: &TokenStream,
+    span: proc_macro2::Span,
+) -> TokenStream {
     let ArgContext {
         prefix,
         expected_known,
@@ -1496,7 +1613,6 @@ fn conversion_err_arm(
         None if *expected_known => Expected::Literal(prefix),
         None => Expected::FromError(declared.as_ref()),
     };
-    let call = crate::naming::call_slot_ident();
     let value = conversion_value_tokens(
         &ConversionSubject {
             expected,
@@ -1506,7 +1622,7 @@ fn conversion_err_arm(
             rust_type,
         },
         crate_class,
-        &quote! { ::core::option::Option::Some(#call) },
+        call,
         span,
     );
     let err = crate::naming::conversion_error_ident();

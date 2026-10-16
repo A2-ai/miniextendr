@@ -1,5 +1,0 @@
-error: this impl must define `label`, even if the trait gives it a default: a generic `#[miniextendr]` trait's shims are generated from the impl's method signatures
-  --> tests/ui/trait_impl_generic_default_method.rs:20:6
-   |
-20 | impl Totals<i32> for Ledger {
-   |      ^^^^^^^^^^^

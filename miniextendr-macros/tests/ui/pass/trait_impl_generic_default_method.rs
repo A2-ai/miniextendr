@@ -1,7 +1,4 @@
-//! Test: an impl of a generic `#[miniextendr]` trait must spell out every
-//! method the vtable holds, defaulted ones included. Its shims are generated
-//! from the impl's own signatures, since the trait's type parameters are only
-//! concrete there.
+//! Generic annotated impls can omit defaults from the trait declaration.
 
 use miniextendr_api::{ExternalPtr, miniextendr};
 
@@ -21,6 +18,17 @@ impl Totals<i32> for Ledger {
     fn total(&self) -> i32 {
         self.0
     }
+}
+
+#[miniextendr]
+pub trait Fixed<const N: usize> {
+    fn marker(&self) -> i32;
+    fn values(&self, values: [i32; N]) -> [i32; N] { values }
+}
+
+#[miniextendr(env)]
+impl Fixed<2> for Ledger {
+    fn marker(&self) -> i32 { self.0 }
 }
 
 fn main() {}
