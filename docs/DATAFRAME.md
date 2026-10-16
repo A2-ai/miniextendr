@@ -501,7 +501,24 @@ fn get_events() -> BuiltDataFrame {
 
 #### Type conflicts across variants
 
-If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String:
+A proc macro sees types only as written, so the derive compares spellings. A
+standard-library path to a prelude type matches its bare name: `i32` and
+`::core::primitive::i32`, `String` and `std::string::String` (or
+`alloc::string::String`), and likewise `Vec`, `Box` and `Option`, with or
+without a leading `::`. The comparison looks inside type arguments, slices,
+arrays and references, so `Vec<i32>` matches `::std::vec::Vec<::core::primitive::i32>`,
+and it ignores parentheses and the invisible group a `macro_rules!` `$t:ty`
+adds. Such fields share one column, typed as the first variant spells it.
+
+Anything else is compared as written: a type alias (`type Id = i32`), a renamed
+import (`use std::string::String as Text`), a module-relative path
+(`primitive::i32`) or a non-prelude type (`HashMap` against
+`std::collections::HashMap`). The conflict error names both spellings; when they
+are one type, spell it the same way in every variant. If a local type shadows a
+prelude name (`struct String`), the two spellings still match, and rustc reports
+the mismatched types instead of the derive. Comparing the types themselves rather than their spellings is #2141.
+
+If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String. The coercion uses the same comparison, so a field typed as an alias of the other variant's type becomes a String column too. Only single-column fields are coerced so far; a conflict in an expanded, map or nested-struct field still fails to compile (#2140):
 
 ```rust
 #[derive(Clone, DataFrameRow)]
