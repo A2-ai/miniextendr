@@ -1215,6 +1215,23 @@ impl-level `@param`, which roxygen2 hands down to the class's methods, spares
 the methods of its own block their `(no documentation available)` placeholder;
 a method in another block documents the argument itself (#2066).
 
+An `@rdname topic` on the defining block moves the whole class to `topic`, not
+only its roxygen block: the constructor, the methods and static methods of
+every block, and the helpers the class generates for them (S3 generics, S4
+`setMethod()`s, S7 shortcuts and `convert()` methods, vctrs protocol methods,
+`as.<class>()` coercions, the field methods) go there too, and no
+`<Class>.Rd` is written (#2068). A method's own `@rdname` or `@describeIn`
+still sends that method elsewhere. Trait impl methods (`impl Trait for Type`)
+do not follow yet and stay on `<Type>.Rd`; give each one `@rdname topic` until
+#2144 is fixed.
+
+On `topic` the members sort after the topic's own block (`@order NaN`), so
+that block names and titles the page, and they add no generated `@param`
+lines: a later `@param` would replace the topic's text for the same argument.
+The topic's block therefore documents every argument of the class's members,
+the generated ones included (`x`, `...`, an S7 shortcut's `.mx_self`, an S7
+constructor's `.ptr`, env's `self` and `name`, vctrs' `y` and `to`).
+
 The blocks of a type follow four rules, checked when the wrapper writer
 assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the
 install with an error naming the blocks:
@@ -1645,14 +1662,9 @@ still calls them, e.g. to read a saved object's `Sidecar` values (below).
 The field methods are documented on the class's page, or on the topic an
 `@rdname` in the impl block's doc comment names. On the author's topic they
 add no `@param` lines (the topic's own block documents `x`, `name`, `i`,
-`...`, `value` and `pattern`) and sort after its block (`@order NaN`).
-
-That topic also receives the constructor, methods, statics and generated
-protocol helpers of the class, including members declared in other impl
-blocks. The block that defines the class chooses the default topic. A
-method's explicit `@rdname` or supported `@describeIn` overrides it;
-generated argument placeholders do not overwrite the author topic's
-parameter descriptions.
+`...`, `value` and `pattern`) and sort after its block (`@order NaN`). The
+class's other members follow the same topic
+([Multiple Impl Blocks](#multiple-impl-blocks)).
 
 #### Field syntax on S3, S4 and env classes
 
