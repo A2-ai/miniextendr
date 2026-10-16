@@ -1739,9 +1739,10 @@ use only the enabled members: constructor inference, S7 property pairing, name
 collisions, factor levels and R formals. A `cfg_attr` can add `miniextendr`
 options (`r_name`, `skip`, `worker`, ...) as well as other gates. Keep a
 conditional S7 property's getter and setter under compatible gates so the
-enabled methods still form a property. A trait method gated differently in two
-packages gives them different vtables, so build a producer and its consumers
-with the same features.
+enabled methods still form a property. A trait's ABI tag covers its enabled
+methods, so a trait method gated differently in two packages gives them
+different tags: objects of one package then don't implement the other's trait.
+Build a producer and its consumers with the same features (#2129).
 
 ---
 
