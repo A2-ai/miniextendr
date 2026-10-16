@@ -2050,7 +2050,7 @@ fn raw_variant_column_error(ty: &syn::Type, padded: bool) -> Option<syn::Error> 
     } else {
         match classify_field_type(ty).ok()? {
             FieldTypeKind::Scalar if is_raw_scalar_ty(ty) => ty,
-            FieldTypeKind::FixedArray(elem, _) if is_raw_scalar_ty(elem) => elem,
+            FieldTypeKind::FixedArray(elem, len) if len > 0 && is_raw_scalar_ty(elem) => elem,
             FieldTypeKind::VariableVec(elem)
             | FieldTypeKind::BoxedSlice(elem)
             | FieldTypeKind::BorrowedSlice(elem)
@@ -2115,23 +2115,24 @@ fn generate_split_method(
             )
         });
 
-        // A unit or all-skipped variant has no column to carry its row count.
-        if vi.fields.is_empty() {
-            let count_var = format_ident!("__s_{}_count", snake);
-            buf_decls.push(quote! {
-                let mut #count_var: usize = 0usize;
-            });
+        // Count rows independently of columns: even a payload field can
+        // contribute no columns, as with [T; 0] or an empty dynamic expansion.
+        let n_var = format_ident!("__n_{}", snake);
+        buf_decls.push(quote! {
+            let mut #n_var: usize = 0usize;
+        });
 
+        if vi.fields.is_empty() {
             match_arms.push(quote! {
                 #pattern => {
-                    #count_var += 1;
+                    #n_var += 1;
                 }
             });
 
             df_constructions.push(quote! {
                 let #df_var = ::miniextendr_api::list::List::from_raw_pairs_empty()
                 .set_class_str(&["data.frame"])
-                .set_row_names_int(#count_var);
+                .set_row_names_int(#n_var);
             });
         } else {
             // region: Variants with payload columns
@@ -2269,6 +2270,7 @@ fn generate_split_method(
 
             match_arms.push(quote! {
                 #pattern => {
+                    #n_var += 1;
                     #(#push_stmts)*
                 }
             });
@@ -2277,65 +2279,6 @@ fn generate_split_method(
             if has_auto {
                 // Dynamic path: build Vec<(String, SEXP)>
                 let pairs_var = format_ident!("__pairs_{}", snake);
-                let n_var = format_ident!("__n_{}", snake);
-
-                // Find the first non-dynamic field for the length expression, or first dynamic.
-                // "Dynamic" = AutoExpandVec or Struct (both use dynamic pairs path).
-                let len_expr: TokenStream = {
-                    let first_non_dynamic = vi.fields.iter().find(|f| {
-                        !matches!(
-                            f,
-                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_)
-                        )
-                    });
-                    if let Some(f) = first_non_dynamic {
-                        match f {
-                            EnumResolvedField::Single(data) => {
-                                let buf = format_ident!(
-                                    "__s_{}_{}",
-                                    snake,
-                                    crate::naming::unraw(&data.col_name)
-                                );
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            EnumResolvedField::ExpandedFixed(data) => {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            EnumResolvedField::ExpandedVec(data) => {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
-                                unreachable!()
-                            }
-                            EnumResolvedField::Map(data) => {
-                                let keys_buf =
-                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                                quote! { <[_]>::len(&#keys_buf) }
-                            }
-                        }
-                    } else {
-                        // All fields are dynamic — use the first dynamic buf length
-                        if let Some(first) = vi.fields.first() {
-                            match first {
-                                EnumResolvedField::AutoExpandVec(data) => {
-                                    let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                    quote! { <[_]>::len(&#buf) }
-                                }
-                                EnumResolvedField::Struct(data) => {
-                                    let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                    quote! { <[_]>::len(&#buf) }
-                                }
-                                _ => quote! { 0usize },
-                            }
-                        } else {
-                            quote! { 0usize }
-                        }
-                    }
-                };
 
                 // Static pair pushes — wrap each `into_sexp()` in
                 // `__scope.protect_raw` to keep prior column SEXPs rooted
@@ -2487,7 +2430,6 @@ fn generate_split_method(
                         .collect();
 
                 df_constructions.push(quote! {
-                        let #n_var = #len_expr;
                         // SAFETY: split-method runs on the R main thread. The scope
                         // roots this partition's columns until `from_raw_pairs` owns
                         // them; the multi-variant body roots the finished partition.
@@ -2502,41 +2444,6 @@ fn generate_split_method(
                     });
             } else {
                 // Static path: vec![...] of (&str, SEXP) pairs
-                let n_var = format_ident!("__n_{}", snake);
-
-                // Length expression: first field's buffer length
-                let len_expr: TokenStream = if let Some(erf) = vi.fields.first() {
-                    match erf {
-                        EnumResolvedField::Single(data) => {
-                            let buf = format_ident!(
-                                "__s_{}_{}",
-                                snake,
-                                crate::naming::unraw(&data.col_name)
-                            );
-                            quote! { <[_]>::len(&#buf) }
-                        }
-                        EnumResolvedField::ExpandedFixed(data) => {
-                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                            quote! { <[_]>::len(&#buf) }
-                        }
-                        EnumResolvedField::ExpandedVec(data) => {
-                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                            quote! { <[_]>::len(&#buf) }
-                        }
-                        // AutoExpandVec and Struct both trigger has_auto = true, so these
-                        // branches are unreachable in the non-auto static path.
-                        EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
-                            unreachable!()
-                        }
-                        EnumResolvedField::Map(data) => {
-                            let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                            quote! { <[_]>::len(&#keys_buf) }
-                        }
-                    }
-                } else {
-                    // No fields (unexpected for Named/Tuple, but handle it)
-                    quote! { 0usize }
-                };
 
                 // Collect pairs — each `into_sexp()` is rooted via
                 // `__scope.protect_raw` so prior columns survive the
@@ -2617,7 +2524,6 @@ fn generate_split_method(
                         .collect();
 
                 df_constructions.push(quote! {
-                    let #n_var = #len_expr;
                     // SAFETY: see has_auto branch.
                     let #df_var = unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
@@ -2740,7 +2646,7 @@ fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
             !data.needs_into_list && (data.is_factor || is_reader_scalar_ty(&data.ty))
         }
         EnumResolvedField::ExpandedFixed(data) => {
-            !data.borrowed && is_reader_scalar_ty(&data.elem_ty)
+            !data.borrowed && (data.len == 0 || is_reader_scalar_ty(&data.elem_ty))
         }
         EnumResolvedField::ExpandedVec(data) => {
             !data.borrowed && is_bare_reader_scalar_ty(&data.elem_ty)
@@ -2899,13 +2805,15 @@ fn build_enum_reader(
         return None;
     }
 
-    // Struct-flatten and factor columns hold user types, which need not be
-    // `Clone`: the parallel reader, which clones cells, delegates to the
-    // sequential one, which moves them, for these shapes.
+    // Struct-flatten and factor columns need not be Clone, and arbitrary
+    // zero-array element types need not be Send. Delegate these shapes to the
+    // sequential reader rather than imposing new bounds on the user's row.
     let par_delegates = variant_infos.iter().any(|vi| {
         vi.fields.iter().any(|f| {
             matches!(f, EnumResolvedField::Struct(_))
                 || matches!(f, EnumResolvedField::Single(d) if d.is_factor)
+                || matches!(f, EnumResolvedField::ExpandedFixed(d)
+                    if d.len == 0 && !is_reader_scalar_ty(&d.elem_ty))
         })
     });
 
@@ -3359,7 +3267,7 @@ fn build_enum_reader(
             /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
             /// rayon. All SEXP access happens up front on the R/worker thread; the
             /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
-            /// struct-flatten/nested-enum or factor fields delegate to the sequential
+            /// struct-flatten/nested-enum, factor or arbitrary zero-array fields delegate to the sequential
             /// reader instead.
             // The extracted columns are `mut` for the sequential reader, which
             // moves cells out of them; this one only reads them.

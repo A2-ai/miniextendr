@@ -660,7 +660,9 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
                         .as_ref()
                         .is_some_and(is_bare_reader_scalar_ty))
         }
-        ResolvedField::ExpandedFixed(d) => d.readable && is_reader_scalar_ty(&d.elem_ty),
+        ResolvedField::ExpandedFixed(d) => {
+            d.readable && (d.len == 0 || is_reader_scalar_ty(&d.elem_ty))
+        }
         ResolvedField::ExpandedVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
         ResolvedField::AutoExpandVec(d) => d.readable && is_bare_reader_scalar_ty(&d.elem_ty),
         ResolvedField::Struct(_) => true,
@@ -2787,9 +2789,10 @@ fn derive_struct_dataframe(
     let has_autoexpand_field = resolved
         .iter()
         .any(|rf| matches!(rf, ResolvedField::AutoExpandVec(_)));
-    let has_moved_reader_field = resolved.iter().any(|rf| match rf {
+    let par_reader_delegates = resolved.iter().any(|rf| match rf {
         ResolvedField::Struct(_) => true,
         ResolvedField::Single(data) => data.is_factor,
+        ResolvedField::ExpandedFixed(data) => data.len == 0 && !is_reader_scalar_ty(&data.elem_ty),
         _ => false,
     });
 
@@ -3193,9 +3196,10 @@ fn derive_struct_dataframe(
             quote! { _ }
         };
 
-        // Flattened and factor values need not be `Clone`. Move them through
-        // the sequential reader, as the enum reader does for the same shapes.
-        let par_body = if has_moved_reader_field {
+        // Flattened and factor values need not be Clone; arbitrary zero-array
+        // elements need not be Send. Keep the enum reader's sequential fallback
+        // for these shapes rather than imposing new bounds on the user's row.
+        let par_body = if par_reader_delegates {
             quote! { Self::try_from_dataframe(sexp) }
         } else {
             quote! {
