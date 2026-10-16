@@ -10,7 +10,9 @@ with method bodies, generic traits and traits with associated types. An
 explicit `r_name` on an impl method overrides the inherited R name; a method
 skipped by the declaration stays skipped. Other method options, docs and
 parameter attributes belong to explicit implementation methods. An omitted
-generic default method uses its declaration's docs and parameter names.
+default method, of a generic trait or not, uses its declaration's docs and
+parameter names. An implementation parameter written as a pattern (`_`, a
+tuple) takes the declaration's name in its R formal; a named one keeps its own.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
@@ -39,13 +41,15 @@ no default body is copied into the impl. Explicit overrides keep their own
 signature, body and wrapper options. Static defaults get R wrappers too.
 The exported vtable static symbols used by webR remain unchanged.
 
-Inherited generic defaults and empty annotated impls infer argument types from
-the concrete trait method. Private declaration-local aliases therefore need no
+Inherited defaults and empty annotated impls infer argument types from the
+concrete trait method. Private declaration-local aliases therefore need no
 imports in the impl module, even across crates or when that module defines a
-conflicting alias. The copied signature still describes the R-facing shape;
-conversion and native-borrow metadata use the inferred concrete type. The
-signature helper neither calls the method nor constructs argument values, and
-adds no conversion bounds to the trait itself.
+conflicting alias. The copied signature still describes the R-facing shape and
+picks the conversion path (strict and coercing reads, rooted borrows);
+only the type each conversion produces comes from the inferred concrete type,
+native-borrow metadata included. The signature helper neither calls the method
+nor constructs argument values, and adds no conversion bounds to the trait
+itself.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
