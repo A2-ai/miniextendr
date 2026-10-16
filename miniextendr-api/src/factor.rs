@@ -462,7 +462,7 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 
 /// Convert an R factor SEXP to a `Vec<Option<T>>` using [`UnitEnumFactor`] (NA → `None`).
 ///
-/// Used by the enum DataFrame reader to reconstruct `as_factor` columns.
+/// Used by DataFrame readers for enum and nullable struct `as_factor` columns.
 /// Unlike `factor_option_vec_from_sexp` (which requires `RFactor + MatchArg`),
 /// this accepts any `UnitEnumFactor` — including `#[derive(DataFrameRow)]`
 /// unit-only enums that do not implement `RFactor`.

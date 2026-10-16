@@ -1,0 +1,23 @@
+error: `as_factor` on `Option<T>` requires T to be a unit-only enum type implementing `UnitEnumFactor`
+ --> tests/ui/derive_dataframe_optional_factor_invalid.rs:6:12
+  |
+6 |     level: Option<i32>,
+  |            ^^^^^^^^^^^
+
+error: `as_factor` on `Option<T>` requires T to be a unit-only enum type implementing `UnitEnumFactor`
+  --> tests/ui/derive_dataframe_optional_factor_invalid.rs:12:12
+   |
+12 |     level: Option<Option<Level>>,
+   |            ^^^^^^^^^^^^^^^^^^^^^
+
+error: enum variant `as_factor` fields already use NA for absent variants; store the unit enum directly instead of `Option<Enum>`
+  --> tests/ui/derive_dataframe_optional_factor_invalid.rs:26:16
+   |
+26 |         level: Option<Level>,
+   |                ^^^^^^^^^^^^^
+
+error: enum variant `as_factor` fields already use NA for absent variants; store the unit enum directly instead of `Option<Enum>`
+  --> tests/ui/derive_dataframe_optional_factor_invalid.rs:34:35
+   |
+34 |     Value(#[dataframe(as_factor)] ::std::option::Option<Level>),
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

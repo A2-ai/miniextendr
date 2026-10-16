@@ -122,7 +122,7 @@ pub(super) fn derive_enum_dataframe(
                             is_factor: false,
                         })));
                     } else if fa.as_factor {
-                        super::validate_factor_field_type(&f.ty)?;
+                        super::validate_factor_field_type(&f.ty, false)?;
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: crate::naming::name_ident(&col_name_str),
                             binding: binding.clone(),
@@ -371,7 +371,7 @@ pub(super) fn derive_enum_dataframe(
                             is_factor: false,
                         })));
                     } else if fa.as_factor {
-                        super::validate_factor_field_type(&f.ty)?;
+                        super::validate_factor_field_type(&f.ty, false)?;
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
                             col_name: crate::naming::name_ident(&col_name_str),
                             binding,

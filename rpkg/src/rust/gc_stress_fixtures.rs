@@ -6181,15 +6181,40 @@ pub fn gc_stress_struct_factor() {
     use crate::dataframe_struct_factor_test::{df_struct_factor, df_struct_factor_roundtrip};
     use miniextendr_api::SexpExt;
 
-    for shape in ["named", "tuple", "nested", "expanded", "tagged"] {
+    for shape in [
+        "named",
+        "tuple",
+        "nested",
+        "expanded",
+        "tagged",
+        "optional-named",
+        "optional-tuple",
+        "optional-nested",
+        "optional-expanded",
+        "optional-tagged",
+    ] {
         let frame = df_struct_factor(shape, false);
-        let column = if matches!(shape, "named" | "tuple") {
-            "stage"
-        } else {
-            "level"
+        let column = match shape {
+            "named" | "tuple" | "optional-named" | "optional-tuple" => "stage",
+            "optional-nested" => "inner_stage",
+            _ => "level",
         };
+        if shape.starts_with("optional-") {
+            assert_eq!(
+                frame.column::<Vec<Option<i32>>>(column).unwrap(),
+                [Some(1), None, Some(2)],
+            );
+        }
         assert!(frame.column_raw(column).unwrap().is_factor());
-        if matches!(shape, "named" | "nested" | "expanded") {
+        if matches!(
+            shape,
+            "named"
+                | "nested"
+                | "expanded"
+                | "optional-named"
+                | "optional-nested"
+                | "optional-expanded"
+        ) {
             let back = df_struct_factor_roundtrip(frame.as_sexp(), shape).unwrap();
             assert!(back.column_raw(column).unwrap().is_factor());
             assert_eq!(back.nrow(), 3);

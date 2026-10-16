@@ -23,6 +23,13 @@ path overrides and change Cargo.lock without an explicit install recipe.
 For a fresh installed-package test, pass `package = "miniextendr"` to
 `testthat::test_file()` so unexported fixtures resolve in the package namespace.
 
+A feature-disabled validation build can leave tracked `NAMESPACE` exporting
+unavailable fixtures (notably `worker-thread`). If installation stops at those
+undefined exports, bootstrap with `just devtools-document`, then reinstall:
+its load-all pass regenerates wrappers and namespace before the full install
+enforces exports. Restore only unrelated feature-gated documentation omissions
+after validation; keep the change's actual generated additions.
+
 ## Where installs land (main vs worktree)
 `just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,
 which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.

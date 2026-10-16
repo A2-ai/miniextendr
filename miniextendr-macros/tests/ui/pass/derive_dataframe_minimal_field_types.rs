@@ -137,7 +137,31 @@ struct ManualRow {
     value: ManualFactor,
 }
 
+// Nullable factors retain the same move-only contract, including types supplied
+// as macro_rules type fragments and fully qualified Option spellings.
+macro_rules! nullable_row {
+    ($ty:ty) => {
+        #[derive(DataFrameRow)]
+        struct NullableFactorRow {
+            #[dataframe(as_factor)]
+            level: $ty,
+        }
+    };
+}
+nullable_row!(::core::option::Option<Level>);
+
+#[derive(DataFrameRow)]
+struct NullableManualRow {
+    #[dataframe(as_factor)]
+    value: Option<ManualFactor>,
+}
+
+#[derive(DataFrameRow)]
+struct NullableFactorTuple(#[dataframe(as_factor)] Option<Level>);
+
 fn read(df: miniextendr_api::SEXP) {
+    let _ = NullableFactorRow::try_from_dataframe(df);
+    let _ = NullableManualRow::try_from_dataframe(df);
     let _ = FactorRow::try_from_dataframe(df);
     let _ = ManualRow::try_from_dataframe(df);
     let _ = Readable::try_from_dataframe(df);

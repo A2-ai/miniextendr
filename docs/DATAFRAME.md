@@ -364,7 +364,7 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 
 The following shapes produce a compile error (since #484) because they cannot be automatically expanded and would otherwise silently produce a confusing opaque list-column:
 
-- `Option<T>` for a **non-scalar** `T` — `Option<HashMap<K,V>>`, `Option<UserStruct>`, `Option<Vec<T>>`, etc. (`Option<f64>`, `Option<String>` and the other scalar payloads are the NA contract and are accepted; see [Missing data](#missing-data))
+- `Option<T>` for a **non-scalar** `T` — `Option<HashMap<K,V>>`, `Option<UserStruct>`, `Option<Vec<T>>`, etc. (`Option<f64>`, `Option<String>` and the other scalar payloads are the NA contract and are accepted; see [Missing data](#missing-data); a struct's `#[dataframe(as_factor)] Option<UnitEnum>` is also accepted)
 - `Cow<T>`, `Rc<T>`, `Arc<T>`, `RefCell<T>`, `Cell<T>`, `Mutex<T>`, `RwLock<T>`
 
 For all of these, use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, or unwrap to the inner type (e.g. store `HashMap<K,V>` directly and use an empty map for the absent case):
@@ -447,6 +447,26 @@ or invalid code in a required factor column. Their parallel reader uses the
 sequential reader to move non-Clone values, as nested enum readers do. Empty
 columns retain the complete level set. Tuple and tagged structs retain their
 usual write-only support.
+
+Struct factor fields may also use `Option<Enum>`:
+
+```rust
+#[derive(DataFrameRow)]
+struct MaybeStep {
+    #[dataframe(as_factor)]
+    dir: Option<Direction>,
+}
+```
+
+The companion stores `Vec<Option<Direction>>`. `None` writes `NA_integer_` in
+the factor column, and the reader maps NA back to `None` while still validating
+levels and collecting invalid-code errors. Empty and all-NA columns retain the
+complete level set. This works with renamed fields, nested rows and dynamic
+column expansion; it adds no `Clone` or `Copy` requirement.
+
+An enum variant's `as_factor` field must use the bare enum type. Its column
+already uses NA for rows of other variants, so another `Option` layer is not
+supported.
 
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
@@ -989,7 +1009,9 @@ struct Record {
 
 Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 `usize`, `String` (the reader covers the same set as bare scalars: `u64`,
-`isize`, `usize` are write-only). `Option` around a map, a nested
+`isize`, `usize` are write-only). A unit enum marked `#[dataframe(as_factor)]`
+also supports `Option` on struct fields (see [Factor columns](#as_factor--unit-only-inner-enum)).
+`Option` around a map, a nested
 `DataFrameRow` struct, or a collection is rejected at compile time (see
 [Rejected wrapper types](#rejected-wrapper-types)); in **enum** row types the
 variant fields are already `Option` columns (absent for other variants), so

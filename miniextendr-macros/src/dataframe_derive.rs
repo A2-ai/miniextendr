@@ -637,7 +637,8 @@ fn generic_type_arg_count(ty: &syn::Type) -> usize {
 /// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list` and
 ///   opaque set/collection columns — those classify as `Single` but lack
 ///   `Vec<_>: TryFromSexp`).
-/// - `Single` factor: `FactorVec<ty>` validates levels and reads owned variants.
+/// - `Single` factor: validates levels and reads owned variants, preserving
+///   NA as `None` for an `Option<Enum>` field.
 /// - `Single` map column (`HashMap<String, V>` / `BTreeMap<String, V>`): one
 ///   VECSXP list-of-named-lists column read whole via `Vec<map>: TryFromSexp`
 ///   — the exact inverse of the `Vec<map>: IntoR` write shape (#764). Gated
@@ -762,7 +763,7 @@ struct SingleFieldData {
     /// `Vec<map>: TryFromSexp` list-of-named-lists impl — the same `pull_col`
     /// path scalar Singles use, so it only widens the capability gate.
     map_reader: bool,
-    /// A unit-only enum stored as one factor column via `UnitEnumFactor`.
+    /// A unit-only enum (optionally nullable) stored via `UnitEnumFactor`.
     is_factor: bool,
 }
 
@@ -847,9 +848,26 @@ struct AutoExpandVecData {
     borrowed: bool,
 }
 
-/// The same `as_factor` shapes are accepted on struct and enum fields. The
-/// generated conversion checks `UnitEnumFactor` on the selected type.
-fn validate_factor_field_type(ty: &syn::Type) -> syn::Result<()> {
+/// The generated conversion checks `UnitEnumFactor` on the selected type.
+/// Struct fields may wrap it in `Option`; enum columns already add that layer.
+fn validate_factor_field_type(ty: &syn::Type, allow_option: bool) -> syn::Result<()> {
+    if let Some(inner) = option_payload(ty) {
+        if !allow_option {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "enum variant `as_factor` fields already use NA for absent variants; \
+                 store the unit enum directly instead of `Option<Enum>`",
+            ));
+        }
+        return match classify_field_type(inner) {
+            Ok(FieldTypeKind::Struct { .. }) => Ok(()),
+            _ => Err(syn::Error::new_spanned(
+                ty,
+                "`as_factor` on `Option<T>` requires T to be a unit-only enum type \
+                 implementing `UnitEnumFactor`",
+            )),
+        };
+    }
     match classify_field_type(ty)? {
         FieldTypeKind::Struct { .. } => Ok(()),
         _ => Err(syn::Error::new_spanned(
@@ -908,7 +926,7 @@ fn resolve_struct_field(
     let kind = classify_field_type(ty);
 
     if field_attrs.as_factor {
-        validate_factor_field_type(ty)?;
+        validate_factor_field_type(ty, true)?;
         return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
             rust_name,
             col_name,
@@ -1553,9 +1571,14 @@ fn column_sexp(
         quote! { #into_list_column(self.#name) }
     } else if is_factor {
         let span = syn::spanned::Spanned::span(ty);
+        let factor_ty = if let Some(inner) = option_payload(ty) {
+            quote_spanned! {span=> ::miniextendr_api::factor::FactorOptionVec<#inner> }
+        } else {
+            quote_spanned! {span=> ::miniextendr_api::factor::FactorVec<#ty> }
+        };
         quote_spanned! {span=>
             ::miniextendr_api::IntoR::into_sexp(
-                <::miniextendr_api::factor::FactorVec<#ty> as ::core::convert::From<_>>::from(self.#name)
+                <#factor_ty as ::core::convert::From<_>>::from(self.#name)
             )
         }
     } else {
@@ -2826,9 +2849,15 @@ fn derive_struct_dataframe(
                         is_factor: bool| {
             let convert = if is_factor {
                 let span = syn::spanned::Spanned::span(elem_ty);
-                quote_spanned! {span=>
-                    <::miniextendr_api::factor::FactorVec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
-                        .map(|values| values.into_inner())
+                if let Some(inner) = option_payload(elem_ty) {
+                    quote_spanned! {span=>
+                        ::miniextendr_api::factor::unit_factor_option_vec_from_sexp::<#inner>(__col_sexp)
+                    }
+                } else {
+                    quote_spanned! {span=>
+                        <::miniextendr_api::factor::FactorVec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                            .map(|values| values.into_inner())
+                    }
                 }
             } else {
                 quote! {
@@ -4087,6 +4116,34 @@ mod tests {
         let code = expand(input);
         assert!(code.contains("FactorVec"));
         assert!(code.contains("Self :: try_from_dataframe (sexp)"));
+    }
+
+    #[test]
+    fn struct_optional_factor_keeps_nullable_reader_and_writer() {
+        let grouped_inner = grouped_type(quote!(Level));
+        for ty in [
+            quote!(Option<Level>),
+            quote!(::core::option::Option<crate::Level>),
+            grouped_type(quote!(Option<#grouped_inner>)),
+        ] {
+            let input: DeriveInput = syn::parse_quote! {
+                struct Row {
+                    #[dataframe(as_factor, rename = "stage")]
+                    level: #ty,
+                }
+            };
+            let syn::Data::Struct(data) = &input.data else {
+                unreachable!()
+            };
+            let resolved = resolve_struct_field(data.fields.iter().next().unwrap(), 0, false)
+                .unwrap()
+                .unwrap();
+            assert!(field_reader_capable(&resolved));
+            let code = expand(input);
+            assert!(code.contains("FactorOptionVec"), "{code}");
+            assert!(code.contains("unit_factor_option_vec_from_sexp"), "{code}");
+            assert!(code.contains("Self :: try_from_dataframe (sexp)"), "{code}");
+        }
     }
 
     #[test]
