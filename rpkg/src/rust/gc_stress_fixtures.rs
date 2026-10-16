@@ -5996,3 +5996,71 @@ pub fn gc_stress_rooted_list_borrows() {
 }
 
 // endregion
+
+// region: explicit borrowed conversions (#2110)
+
+/// Drive `#[miniextendr(convert)]` parameters through their generated C entry
+/// points: shared references rooted for the call (across a collection in
+/// `converted_refs_strings`), a mutable one updated in place, and the alias
+/// check refusing one vector passed as both.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_converted_references() {
+    use crate::converted_reference_tests::{
+        C_miniextendr_converted_refs_alias_pair, C_miniextendr_converted_refs_describe,
+        C_miniextendr_converted_refs_strings,
+    };
+    use miniextendr_api::ProtectScope;
+
+    unsafe {
+        let scope = ProtectScope::new();
+        let values = scope.protect(vec![2_i32, 3, 5].into_sexp()).get();
+        let label = scope.protect("sum".into_sexp()).get();
+        let described = scope
+            .protect(C_miniextendr_converted_refs_describe(
+                SEXP::nil(),
+                values,
+                label,
+            ))
+            .get();
+        assert_eq!(described.string_elt_str(0), Some("sum:10"));
+
+        let strings = scope
+            .protect(C_miniextendr_converted_refs_strings(
+                SEXP::nil(),
+                label,
+                label,
+                label,
+            ))
+            .get();
+        assert_eq!(strings.string_elt_str(0), Some("sum:sum:sum"));
+
+        let write = scope.protect(vec![1_i32, 1, 1].into_sexp()).get();
+        let total = scope
+            .protect(C_miniextendr_converted_refs_alias_pair(
+                SEXP::nil(),
+                values,
+                write,
+            ))
+            .get();
+        assert_eq!(total.integer_elt(0), 16);
+        assert_eq!(write.integer_elt(0), 2);
+
+        let refused = scope
+            .protect(C_miniextendr_converted_refs_alias_pair(
+                SEXP::nil(),
+                values,
+                values,
+            ))
+            .get();
+        assert!(
+            refused
+                .vector_elt(0)
+                .string_elt_str(0)
+                .unwrap()
+                .contains("aliasing")
+        );
+        assert_eq!(values.integer_elt(0), 2);
+    }
+}
+
+// endregion

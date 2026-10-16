@@ -392,6 +392,42 @@ vector's element), dots, and types with a `TryFromSexp` precondition. A
 `'static` lifetime on a borrowed parameter is a compile error: the borrow
 ends with the call.
 
+If a reference has its own `TryFromSexp` implementation, select that
+conversion explicitly. The macro cannot resolve a type alias or discover
+trait implementations while choosing between native and external borrows:
+
+```rust
+type Text = str;
+
+#[miniextendr]
+pub fn text_length(#[miniextendr(convert)] text: &Text) -> usize {
+    text.len()
+}
+
+#[miniextendr(env)]
+impl MyType {
+    #[miniextendr(convert(text))]
+    pub fn text_length(&self, text: &Text) -> usize {
+        text.len()
+    }
+}
+```
+
+The method-level `convert(text, other)` form also works on trait impl methods.
+The option accepts `&T`, `&mut T`, and `Option` of either. Shared references
+use `TryFromRoot`, whose blanket implementation delegates to
+`TryFromSexp for &'static T` (or `Option<&'static T>`) and shortens the result
+to the call's root lifetime. Mutable references use their raw `TryFromSexp`
+implementation; a root alone cannot establish exclusive access. Both forms
+run on the main thread and participate in native alias checks through the
+converter's `NATIVE_BORROW` metadata. Custom converters borrowing native
+storage must supply that metadata, as other `TryFromSexp` implementations do.
+The option preserves the converter's NULL, NA, and error semantics; an
+optional custom reference therefore needs its own corresponding conversion.
+It does not apply to receivers or `Self` arguments, and cannot be combined
+with a parameter's `coerce`, `match_arg`, or `choices` option. It overrides
+function-wide coercion for that parameter.
+
 An `ExternalPtr<T>` parameter is a handle: the wrapper takes no borrow, and
 the body reads the value with `borrow()` / `borrow_mut()`, keeps the handle,
 returns it, or moves the value out with `ExternalPtr::into_inner` (which
