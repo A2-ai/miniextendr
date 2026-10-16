@@ -464,11 +464,11 @@ macro_rules! __impl_alt_elt {
             if let ::core::option::Option::Some(data2) =
                 unsafe { $crate::altrep_data::materialized_altrep_data2(x) }
             {
-                return <$elem as $crate::RNativeType>::elt(data2, i.max(0));
+                return <$elem as $crate::RNativeType>::elt(data2, ::core::cmp::Ord::max(i, 0));
             }
             let data =
                 unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-            <$ty as $trait>::elt(data, i.max(0) as usize)
+            <$ty as $trait>::elt(data, ::core::cmp::Ord::max(i, 0) as usize)
         }
     };
 }
@@ -953,11 +953,11 @@ macro_rules! __impl_altlogical_methods {
 
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> i32 {
                 if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
-                    return <$crate::RLogical as $crate::RNativeType>::elt(data2, i.max(0)).to_i32();
+                    return <$crate::RLogical as $crate::RNativeType>::elt(data2, ::core::cmp::Ord::max(i, 0)).to_i32();
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                let i = i.max(0) as usize;
+                let i = ::core::cmp::Ord::max(i, 0) as usize;
                 if let ::core::option::Option::Some(values) = <$ty as $crate::altrep_data::AltLogicalData>::as_r_slice(data) {
                     return values[i];
                 }
@@ -1167,7 +1167,7 @@ macro_rules! impl_altlist_from_data_generic {
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-                <$ty as $crate::altrep_data::AltListData>::elt(data, i.max(0) as usize)
+                <$ty as $crate::altrep_data::AltListData>::elt(data, ::core::cmp::Ord::max(i, 0) as usize)
             }
 
             const HAS_SET_ELT: bool = true;

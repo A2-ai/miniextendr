@@ -457,7 +457,10 @@ fn derive_interaction_factor(
             const CHOICES: &'static [&'static str] = &[#(#combined_level_strs),*];
 
             fn from_choice(choice: &str) -> ::core::option::Option<Self> {
-                let idx_1 = <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES.iter().position(|&l| l == choice).map(|i| i as i32 + 1)?;
+                let idx_1 = ::core::iter::Iterator::position(
+                    &mut <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES.iter(),
+                    |&l| l == choice,
+                ).map(|i| i as i32 + 1)?;
                 <Self as ::miniextendr_api::RFactor>::from_level_index(idx_1)
             }
 

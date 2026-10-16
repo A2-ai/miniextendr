@@ -880,7 +880,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                     #written_elt
                     // No `RefCell` borrow for the ALTREP data1 read, until #2103.
                     unsafe { ::miniextendr_api::altrep_data1_as::<#name #ty_generics>(x) }
-                        .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(unsafe { d.as_ref_unchecked() }, i.max(0) as usize))
+                        .map(|d| <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(unsafe { d.as_ref_unchecked() }, ::core::cmp::Ord::max(i, 0) as usize))
                         .unwrap_or(::miniextendr_api::SEXP::nil())
                 }
             }
@@ -891,7 +891,7 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
                     let data = unsafe {
                         <#name #ty_generics as ::miniextendr_api::altrep_data::AltrepExtract>::altrep_extract_ref(x)
                     };
-                    <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(data, i.max(0) as usize)
+                    <#name #ty_generics as ::miniextendr_api::altrep_data::AltListData>::elt(data, ::core::cmp::Ord::max(i, 0) as usize)
                 }
             }
         };

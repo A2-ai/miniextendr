@@ -363,7 +363,10 @@ pub fn derive_into_r(input: DeriveInput) -> syn::Result<TokenStream> {
             #[inline]
             fn elements_into_sexp(values: ::std::vec::Vec<Self>) -> ::miniextendr_api::SEXP {
                 <::std::vec::Vec<#inner> as ::miniextendr_api::IntoR>::into_sexp(
-                    values.into_iter().map(|v| #unwrap_v).collect::<::std::vec::Vec<#inner>>()
+                    ::core::iter::Iterator::collect::<::std::vec::Vec<#inner>>(::core::iter::Iterator::map(
+                        ::core::iter::IntoIterator::into_iter(values),
+                        |v| #unwrap_v,
+                    ))
                 )
             }
         }

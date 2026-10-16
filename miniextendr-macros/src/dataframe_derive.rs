@@ -1996,17 +1996,17 @@ fn derive_struct_dataframe(
                     quote! {
                         {
                             let __auto = self.#col_name;
-                            let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                                .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
-                                .collect();
+                            let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(__auto.iter(), |v| v.len())).unwrap_or(0);
+                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = ::core::iter::Iterator::collect(
+                                ::core::iter::Iterator::map(0..__max, |_| ::std::vec::Vec::with_capacity(_n_rows)),
+                            );
                             for __row_vec in __auto {
                                 let mut __elems = #elems_iter;
                                 for __col in __cols.iter_mut() {
                                     __col.push(::core::iter::Iterator::next(&mut __elems));
                                 }
                             }
-                            for (__i, __col) in __cols.into_iter().enumerate() {
+                            for (__i, __col) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__cols)) {
                                 __df_pairs.push((
                                     ::std::format!("{}_{}", #col_name_str, __i + 1),
                                     __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
@@ -2242,9 +2242,9 @@ fn derive_struct_dataframe(
                 let keys_col = format_ident!("{}_keys", data.base_name);
                 let vals_col = format_ident!("{}_values", data.base_name);
                 quote! {
-                    let (__mx_keys, __mx_vals) = #access
-                        .into_iter()
-                        .unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                    let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                        ::core::iter::IntoIterator::into_iter(#access),
+                    );
                     #keys_col.push(__mx_keys);
                     #vals_col.push(__mx_vals);
                 }
@@ -2570,9 +2570,9 @@ fn derive_struct_dataframe(
                     let w_keys = format_ident!("__w_{}_keys", data.base_name);
                     let w_vals = format_ident!("__w_{}_values", data.base_name);
                     quote! {
-                        let (__mx_keys, __mx_vals) = #access
-                            .into_iter()
-                            .unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                        let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                            ::core::iter::IntoIterator::into_iter(#access),
+                        );
                         #w_keys.write(__i, __mx_keys);
                         #w_vals.write(__i, __mx_vals);
                     }
@@ -2615,10 +2615,11 @@ fn derive_struct_dataframe(
         let par_loop = if has_par_cols {
             quote! {
                 {
-                    use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                     ::miniextendr_api::optionals::parallel::ensure_pool();
                     #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                    let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(rows);
+                    let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::IndexedParallelIterator::enumerate(__rows);
+                    ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::for_each(__rows, |(__i, __row)| unsafe {
                         #tag_write
                         #(#par_write_calls)*
                         #(#par_skip_bindings)*
@@ -2683,7 +2684,7 @@ fn derive_struct_dataframe(
             if i > 0 {
                 iter_init_tokens.extend(quote! { , });
             }
-            iter_init_tokens.extend(quote! { #name: <::std::vec::Vec<#ty>>::into_iter(#name) });
+            iter_init_tokens.extend(quote! { #name: <::std::vec::Vec<#ty> as ::core::iter::IntoIterator>::into_iter(#name) });
         }
 
         // For next(): reconstruct original field names (col_name == rust_name for Single)
@@ -2695,7 +2696,9 @@ fn derive_struct_dataframe(
                 }
                 let rust_name = &data.rust_name;
                 let col_name = &data.col_name;
-                next_struct_tokens.extend(quote! { #rust_name: self.#col_name.next()? });
+                next_struct_tokens.extend(
+                    quote! { #rust_name: ::core::iter::Iterator::next(&mut self.#col_name)? },
+                );
             }
         }
 
@@ -2892,9 +2895,9 @@ fn derive_struct_dataframe(
                                         __v
                                     } else {
                                         // Non-list column → every row is an empty collection.
-                                        (0..__nrow)
-                                            .map(|_| ::core::convert::Into::into(::std::vec::Vec::<#elem_ty>::new()))
-                                            .collect()
+                                        ::core::iter::Iterator::collect(::core::iter::Iterator::map(0..__nrow, |_| {
+                                            ::core::convert::Into::into(::std::vec::Vec::<#elem_ty>::new())
+                                        }))
                                     }
                                 };
                                 if #col_var.len() != __nrow {
@@ -2904,8 +2907,8 @@ fn derive_struct_dataframe(
                                     ));
                                 }
                             });
-                            seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
-                            seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                            seq_decls.push(quote! { let mut #it_var = ::core::iter::IntoIterator::into_iter(#col_var); });
+                            seq_builds.push(quote! { #rust_name: ::core::iter::Iterator::next(&mut #it_var).unwrap() });
                             par_builds.push(
                                 quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
                             );
@@ -2920,8 +2923,8 @@ fn derive_struct_dataframe(
                                 &data.ty,
                                 data.is_factor,
                             ));
-                            seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
-                            seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                            seq_decls.push(quote! { let mut #it_var = ::core::iter::IntoIterator::into_iter(#col_var); });
+                            seq_builds.push(quote! { #rust_name: ::core::iter::Iterator::next(&mut #it_var).unwrap() });
                             par_builds.push(
                                 quote! { #rust_name: ::core::clone::Clone::clone(&#col_var[__i]) },
                             );
@@ -2942,8 +2945,9 @@ fn derive_struct_dataframe(
                             format_ident!("__efit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
                         extracts.push(pull_col(&col_var, &col_name_str, elem_ty, false));
-                        seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
-                        it_nexts.push(quote! { #it_var.next().unwrap() });
+                        seq_decls.push(quote! { let mut #it_var = ::core::iter::IntoIterator::into_iter(#col_var); });
+                        it_nexts
+                            .push(quote! { ::core::iter::Iterator::next(&mut #it_var).unwrap() });
                         idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
                     }
                     seq_builds.push(quote! { #rust_name: [ #(#it_nexts),* ] });
@@ -2965,20 +2969,25 @@ fn derive_struct_dataframe(
                             format_ident!("__evit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
                         extracts.push(pull_col(&col_var, &col_name_str, &opt_ty, false));
-                        seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
-                        it_nexts.push(quote! { #it_var.next().unwrap() });
+                        seq_decls.push(quote! { let mut #it_var = ::core::iter::IntoIterator::into_iter(#col_var); });
+                        it_nexts
+                            .push(quote! { ::core::iter::Iterator::next(&mut #it_var).unwrap() });
                         idx_clones.push(quote! { ::core::clone::Clone::clone(&#col_var[__i]) });
                     }
                     // `.into()` converts the collected `Vec<elem>` to the field's
                     // own container type (`Vec<T>` identity or `Box<[T]>`).
                     seq_builds.push(quote! {
                         #rust_name: ::core::convert::Into::into(
-                            [ #(#it_nexts),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()
+                            ::core::iter::Iterator::collect::<::std::vec::Vec<#elem_ty>>(
+                                ::core::iter::Iterator::flatten(::core::iter::IntoIterator::into_iter([ #(#it_nexts),* ])),
+                            )
                         )
                     });
                     par_builds.push(quote! {
                         #rust_name: ::core::convert::Into::into(
-                            [ #(#idx_clones),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()
+                            ::core::iter::Iterator::collect::<::std::vec::Vec<#elem_ty>>(
+                                ::core::iter::Iterator::flatten(::core::iter::IntoIterator::into_iter([ #(#idx_clones),* ])),
+                            )
                         )
                     });
                 }
@@ -3024,9 +3033,9 @@ fn derive_struct_dataframe(
                     // `Vec<Vec<…>>`, so there is nothing to drain field-wise.
                     let build = quote! {
                         #rust_name: ::core::convert::Into::into(
-                            #cols_var.iter()
-                                .filter_map(|__c| ::core::clone::Clone::clone(&__c[__i]))
-                                .collect::<::std::vec::Vec<#elem_ty>>()
+                            ::core::iter::Iterator::collect::<::std::vec::Vec<#elem_ty>>(
+                                ::core::iter::Iterator::filter_map(#cols_var.iter(), |__c| ::core::clone::Clone::clone(&__c[__i])),
+                            )
                         )
                     };
                     seq_builds.push(build.clone());
@@ -3050,11 +3059,10 @@ fn derive_struct_dataframe(
                         let #vec_var: ::std::vec::Vec<#inner_ty> = {
                             let __prefix: &str = #prefix_lit;
                             let __names = __view.names();
-                            let __sel: ::std::vec::Vec<&str> = __names
-                                .iter()
-                                .filter(|__n| __n.starts_with(__prefix))
-                                .map(|__n| __n.as_str())
-                                .collect();
+                            let __sel: ::std::vec::Vec<&str> = ::core::iter::Iterator::collect(::core::iter::Iterator::map(
+                                ::core::iter::Iterator::filter(__names.iter(), |__n| __n.starts_with(__prefix)),
+                                |__n| __n.as_str(),
+                            ));
                             if __sel.is_empty() {
                                 return ::core::result::Result::Err(::std::format!(
                                     "struct column `{}`: no columns with prefix `{}` found in the data.frame",
@@ -3089,8 +3097,10 @@ fn derive_struct_dataframe(
                             ));
                         }
                     });
-                    seq_decls.push(quote! { let mut #it_var = #vec_var.into_iter(); });
-                    seq_builds.push(quote! { #rust_name: #it_var.next().unwrap() });
+                    seq_decls.push(quote! { let mut #it_var = ::core::iter::IntoIterator::into_iter(#vec_var); });
+                    seq_builds.push(
+                        quote! { #rust_name: ::core::iter::Iterator::next(&mut #it_var).unwrap() },
+                    );
                     par_builds
                         .push(quote! { #rust_name: ::core::clone::Clone::clone(&#vec_var[__i]) });
                 }
@@ -3147,7 +3157,7 @@ fn derive_struct_dataframe(
                                     __v
                                 } else {
                                     // Non-list column → all rows have empty maps.
-                                    (0..__nrow).map(|_| ::std::vec::Vec::new()).collect()
+                                    ::core::iter::Iterator::collect(::core::iter::Iterator::map(0..__nrow, |_| ::std::vec::Vec::new()))
                                 }
                             };
                             if #col_var.len() != __nrow {
@@ -3161,20 +3171,20 @@ fn derive_struct_dataframe(
                     extracts.push(extract_col(&keys_var, &keys_col_name, key_ty));
                     extracts.push(extract_col(&vals_var, &vals_col_name, val_ty));
 
-                    seq_decls.push(quote! { let mut #keys_it_var = #keys_var.into_iter(); });
-                    seq_decls.push(quote! { let mut #vals_it_var = #vals_var.into_iter(); });
+                    seq_decls.push(quote! { let mut #keys_it_var = ::core::iter::IntoIterator::into_iter(#keys_var); });
+                    seq_decls.push(quote! { let mut #vals_it_var = ::core::iter::IntoIterator::into_iter(#vals_var); });
                     seq_builds.push(quote! {
                         #rust_name: {
-                            let __k = #keys_it_var.next().unwrap();
-                            let __v = #vals_it_var.next().unwrap();
-                            __k.into_iter().zip(__v).collect::<#map_ty>()
+                            let __k = ::core::iter::Iterator::next(&mut #keys_it_var).unwrap();
+                            let __v = ::core::iter::Iterator::next(&mut #vals_it_var).unwrap();
+                            ::core::iter::Iterator::collect::<#map_ty>(::core::iter::Iterator::zip(::core::iter::IntoIterator::into_iter(__k), __v))
                         }
                     });
                     par_builds.push(quote! {
-                        #rust_name: ::core::clone::Clone::clone(&#keys_var[__i])
-                            .into_iter()
-                            .zip(::core::clone::Clone::clone(&#vals_var[__i]))
-                            .collect::<#map_ty>()
+                        #rust_name: ::core::iter::Iterator::collect::<#map_ty>(::core::iter::Iterator::zip(
+                            ::core::iter::IntoIterator::into_iter(::core::clone::Clone::clone(&#keys_var[__i])),
+                            ::core::clone::Clone::clone(&#vals_var[__i]),
+                        ))
                     });
                 }
             }
@@ -3194,16 +3204,15 @@ fn derive_struct_dataframe(
             quote! { Self::try_from_dataframe(sexp) }
         } else {
             quote! {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                 ::miniextendr_api::optionals::parallel::ensure_pool();
                 let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                     .map_err(|e| e.to_string())?;
                 let __nrow = __view.nrow();
                 #(#extracts)*
-                let __rows: ::std::vec::Vec<Self> = (0..__nrow)
-                    .into_par_iter()
-                    .map(|__i| Self { #(#par_builds),* })
-                    .collect();
+                let __indices = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(0..__nrow);
+                let __rows: ::std::vec::Vec<Self> = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::collect(
+                    ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::map(__indices, |__i| Self { #(#par_builds),* }),
+                );
                 ::core::result::Result::Ok(__rows)
             }
         };

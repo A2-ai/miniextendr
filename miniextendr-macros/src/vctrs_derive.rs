@@ -1073,13 +1073,12 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         (
             quote! {
                 let __class: ::std::vec::Vec<&'static str> =
-                    ::std::iter::once(<Self as ::miniextendr_api::vctrs::VctrsClass>::CLASS_NAME)
-                        .chain(
-                            <Self as ::miniextendr_api::vctrs::VctrsClass>::additional_classes()
-                                .iter()
-                                .copied(),
-                        )
-                        .collect();
+                    ::core::iter::Iterator::collect(::core::iter::Iterator::chain(
+                        ::core::iter::once(<Self as ::miniextendr_api::vctrs::VctrsClass>::CLASS_NAME),
+                        ::core::iter::Iterator::copied(
+                            <Self as ::miniextendr_api::vctrs::VctrsClass>::additional_classes().iter(),
+                        ),
+                    ));
             },
             quote! { &__class },
         )

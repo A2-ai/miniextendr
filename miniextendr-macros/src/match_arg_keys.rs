@@ -159,10 +159,10 @@ pub(crate) fn param_doc_entry_tokens(
                 several_ok: #several_ok,
                 suffix: #suffix,
                 choices_str: || {
-                    (#choices)
-                        .iter()
-                        .map(|c| ::std::format!("\"{}\"", c))
-                        .collect::<::std::vec::Vec<_>>()
+                    ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
+                        (#choices).iter(),
+                        |c| ::std::format!("\"{}\"", c),
+                    ))
                         .join(", ")
                 },
             };

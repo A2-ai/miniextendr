@@ -930,14 +930,14 @@ pub(super) fn derive_enum_dataframe(
                 quote! {
                     {
                         let __auto = self.#df_field;
-                        let __max = __auto.iter()
-                            .filter_map(|v| v.as_ref())
-                            .map(|v| v.len())
-                            .max()
+                        let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(
+                            ::core::iter::Iterator::filter_map(__auto.iter(), |v| v.as_ref()),
+                            |v| v.len(),
+                        ))
                             .unwrap_or(0);
-                        let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                            .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
-                            .collect();
+                        let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = ::core::iter::Iterator::collect(
+                            ::core::iter::Iterator::map(0..__max, |_| ::std::vec::Vec::with_capacity(_n_rows)),
+                        );
                         for __opt_vec in __auto {
                             let mut __elems = ::core::option::Option::map(
                                 __opt_vec,
@@ -950,7 +950,7 @@ pub(super) fn derive_enum_dataframe(
                                 ));
                             }
                         }
-                        for (__i, __col) in __cols.into_iter().enumerate() {
+                        for (__i, __col) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__cols)) {
                             __df_pairs.push((
                                 ::std::format!("{}_{}", #base_name_str, __i + 1),
                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
@@ -977,7 +977,7 @@ pub(super) fn derive_enum_dataframe(
                         // (no Clone needed: we consume the Vec<Option<Inner>>).
                         let mut __present_idx: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
                         let mut __inner_rows: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
-                        for (__row_i, __opt) in self.#df_field.into_iter().enumerate() {
+                        for (__row_i, __opt) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(self.#df_field)) {
                             if let ::core::option::Option::Some(__inner) = __opt {
                                 __present_idx.push(__row_i);
                                 __inner_rows.push(__inner);
@@ -1237,7 +1237,9 @@ pub(super) fn derive_enum_dataframe(
                                     if col_name_str == keys_name {
                                         let vals_col = format_ident!("{}", vals_name);
                                         return quote! {
-                                            let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                                            let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                                                ::core::iter::IntoIterator::into_iter(#binding),
+                                            );
                                             #col_name.push(::core::option::Option::Some(__mx_keys));
                                             #vals_col.push(::core::option::Option::Some(__mx_vals));
                                         };
@@ -1512,7 +1514,9 @@ pub(super) fn derive_enum_dataframe(
                                             let vals_col = format_ident!("{}", vals_name);
                                             let w_vals = format_ident!("__w_{}", vals_col);
                                             return quote! {
-                                                let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                                                let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                                                    ::core::iter::IntoIterator::into_iter(#binding),
+                                                );
                                                 #w_name.write(__i, ::core::option::Option::Some(__mx_keys));
                                                 #w_vals.write(__i, ::core::option::Option::Some(__mx_vals));
                                             };
@@ -1633,13 +1637,14 @@ pub(super) fn derive_enum_dataframe(
             &input.generics,
             &par_bounds,
             quote! {
-                use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                 ::miniextendr_api::optionals::parallel::ensure_pool();
                 let len = rows.len();
                 #(#par_col_decls)*
                 {
                     #(#writer_decls)*
-                    rows.into_par_iter().enumerate().for_each(|(__i, __row)| unsafe {
+                    let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(rows);
+                    let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::IndexedParallelIterator::enumerate(__rows);
+                    ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::for_each(__rows, |(__i, __row)| unsafe {
                         match __row {
                             #(#par_match_arms)*
                         }
@@ -2299,7 +2304,9 @@ fn generate_split_method(
                                     format_ident!("__s_{}_{}_values", snake, data.base_name);
                                 // unzip() guarantees pairwise alignment of keys and values.
                                 vec![quote! {
-                                    let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                                    let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                                        ::core::iter::IntoIterator::into_iter(#binding),
+                                    );
                                     #keys_buf.push(__mx_keys);
                                     #vals_buf.push(__mx_vals);
                                 }]
@@ -2452,7 +2459,10 @@ fn generate_split_method(
                                             #col_str.to_string(),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
                                                 ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
-                                                    #buf.into_iter().map(|v| ::std::option::Option::Some(v)).collect::<::std::vec::Vec<_>>()
+                                                    ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
+                                                        ::core::iter::IntoIterator::into_iter(#buf),
+                                                        ::core::option::Option::Some,
+                                                    ))
                                                 )
                                             )),
                                         ));
@@ -2503,17 +2513,17 @@ fn generate_split_method(
                                 vec![quote! {
                                     {
                                         let __auto = #buf;
-                                        let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                                        let mut __auto_cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                                            .map(|_| ::std::vec::Vec::with_capacity(#n_var))
-                                            .collect();
+                                        let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(__auto.iter(), |v| v.len())).unwrap_or(0);
+                                        let mut __auto_cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = ::core::iter::Iterator::collect(
+                                            ::core::iter::Iterator::map(0..__max, |_| ::std::vec::Vec::with_capacity(#n_var)),
+                                        );
                                         for __row_vec in __auto {
                                             let mut __elems = #elems_iter;
                                             for __acol in __auto_cols.iter_mut() {
                                                 __acol.push(::core::iter::Iterator::next(&mut __elems));
                                             }
                                         }
-                                        for (__ai, __acol) in __auto_cols.into_iter().enumerate() {
+                                        for (__ai, __acol) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__auto_cols)) {
                                             #pairs_var.push((
                                                 ::std::format!("{}_{}", #base_str, __ai + 1),
                                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__acol)),
@@ -2649,7 +2659,10 @@ fn generate_split_method(
                                     vec![quote! {
                                         (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
                                             ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
-                                                #buf.into_iter().map(|v| ::std::option::Option::Some(v)).collect::<::std::vec::Vec<_>>()
+                                                ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
+                                                    ::core::iter::IntoIterator::into_iter(#buf),
+                                                    ::core::option::Option::Some,
+                                                ))
                                             )
                                         )))
                                     }]
@@ -2889,7 +2902,9 @@ fn enum_reader_field_value(
             let slots: Vec<TokenStream> = (1..=data.width)
                 .map(|k| cell(&format_ident!("__col_{}_{}", data.base_name, k)))
                 .collect();
-            quote! { ::core::convert::Into::into([ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()) }
+            quote! { ::core::convert::Into::into(::core::iter::Iterator::collect::<::std::vec::Vec<#elem_ty>>(
+                ::core::iter::Iterator::flatten(::core::iter::IntoIterator::into_iter([ #(#slots),* ])),
+            )) }
         }
         EnumResolvedField::AutoExpandVec(data) => {
             let elem_ty = &data.elem_ty;
@@ -2907,7 +2922,7 @@ fn enum_reader_field_value(
                     })
                 }
             };
-            quote! { ::core::convert::Into::into(#cells.collect::<::std::vec::Vec<#elem_ty>>()) }
+            quote! { ::core::convert::Into::into(::core::iter::Iterator::collect::<::std::vec::Vec<#elem_ty>>(#cells)) }
         }
         EnumResolvedField::Map(data) => {
             let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
@@ -2926,7 +2941,7 @@ fn enum_reader_field_value(
                             #variant_name_str, __i, #base, __keys.len(), __vals.len()
                         ));
                     }
-                    __keys.into_iter().zip(__vals).collect::<#map_ty>()
+                    ::core::iter::Iterator::collect::<#map_ty>(::core::iter::Iterator::zip(::core::iter::IntoIterator::into_iter(__keys), __vals))
                 }
             }
         }
@@ -3181,9 +3196,10 @@ fn build_enum_reader(
                         // Build presence mask: row i is present iff its tag is one of the
                         // variants that contribute this Struct field.
                         let __contributing: &[&str] = &[#(#contributing_variant_names),*];
-                        let __present_indices: ::std::vec::Vec<usize> = (0..__nrow)
-                            .filter(|&__i| __contributing.contains(&__tag[__i].as_str()))
-                            .collect();
+                        let __present_indices: ::std::vec::Vec<usize> = ::core::iter::Iterator::collect(::core::iter::Iterator::filter(
+                            0..__nrow,
+                            |&__i| __contributing.contains(&__tag[__i].as_str()),
+                        ));
 
                         let __inner_result: ::std::vec::Vec<#inner_ty> = if __present_indices.is_empty() {
                             ::std::vec::Vec::new()
@@ -3192,11 +3208,10 @@ fn build_enum_reader(
                             // densify to present rows only, then recurse via inner reader.
                             let __prefix: &str = #prefix_lit;
                             let __names = __view.names();
-                            let __sel: ::std::vec::Vec<&str> = __names
-                                .iter()
-                                .filter(|__n| __n.starts_with(__prefix))
-                                .map(|__n| __n.as_str())
-                                .collect();
+                            let __sel: ::std::vec::Vec<&str> = ::core::iter::Iterator::collect(::core::iter::Iterator::map(
+                                ::core::iter::Iterator::filter(__names.iter(), |__n| __n.starts_with(__prefix)),
+                                |__n| __n.as_str(),
+                            ));
                             if __sel.is_empty() {
                                 return ::core::result::Result::Err(::std::format!(
                                     "struct column `{}`: no columns with prefix `{}` found",
@@ -3232,11 +3247,11 @@ fn build_enum_reader(
 
                         // Scatter dense Vec<Inner> back to Vec<Option<Inner>> of length __nrow.
                         let mut __result: ::std::vec::Vec<::core::option::Option<#inner_ty>> =
-                            (0..__nrow).map(|_| ::core::option::Option::None).collect();
-                        let mut __dense_iter = __inner_result.into_iter();
+                            ::core::iter::Iterator::collect(::core::iter::Iterator::map(0..__nrow, |_| ::core::option::Option::None));
+                        let mut __dense_iter = ::core::iter::IntoIterator::into_iter(__inner_result);
                         for &__i in &__present_indices {
                             __result[__i] = ::core::option::Option::Some(
-                                __dense_iter.next().expect("dense iter must match present count")
+                                ::core::iter::Iterator::next(&mut __dense_iter).expect("dense iter must match present count")
                             );
                         }
                         __result
@@ -3285,7 +3300,7 @@ fn build_enum_reader(
                     __v
                 } else {
                     // Non-list column → no map present in any row.
-                    (0..__nrow).map(|_| ::core::option::Option::None).collect()
+                    ::core::iter::Iterator::collect(::core::iter::Iterator::map(0..__nrow, |_| ::core::option::Option::None))
                 }
             };
             if #col_var.len() != __nrow {
@@ -3384,15 +3399,15 @@ fn build_enum_reader(
     } else {
         // Extract all columns on the R thread, then parallelize per-row dispatch.
         quote! {
-            use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
             ::miniextendr_api::optionals::parallel::ensure_pool();
             let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
                 .map_err(|e| e.to_string())?;
             let __nrow = __view.nrow();
             #(#extracts)*
-            let __rows: ::std::vec::Vec<Self> = (0..__nrow)
-                .into_par_iter()
-                .map(|__i| -> ::core::result::Result<Self, ::std::string::String> {
+            let __indices = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(0..__nrow);
+            let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::map(
+                __indices,
+                |__i| -> ::core::result::Result<Self, ::std::string::String> {
                     match #tag_var[__i].as_str() {
                         #(#par_match_arms)*
                         __unknown => {
@@ -3402,8 +3417,11 @@ fn build_enum_reader(
                             ))
                         }
                     }
-                })
-                .collect::<::core::result::Result<::std::vec::Vec<Self>, _>>()?;
+                },
+            );
+            let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::collect::<
+                ::core::result::Result<::std::vec::Vec<Self>, _>,
+            >(__rows)?;
             ::core::result::Result::Ok(__rows)
         }
     };

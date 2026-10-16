@@ -250,7 +250,12 @@ impl ReturnWrap {
                 Some((container, rest)) => {
                     let inner = map(quote!(__mx_value), rest);
                     if *container == Container::Vec {
-                        quote!((#call).into_iter().map(|__mx_value| #inner).collect::<::std::vec::Vec<_>>())
+                        quote! {
+                            ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
+                                ::core::iter::IntoIterator::into_iter(#call),
+                                |__mx_value| #inner,
+                            ))
+                        }
                     } else {
                         quote!((#call).map(|__mx_value| #inner))
                     }
