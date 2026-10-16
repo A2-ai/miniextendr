@@ -3805,8 +3805,8 @@ pub(super) struct EnumStructFieldData {
 /// Parsed and resolved information about a single enum variant for DataFrame codegen.
 ///
 /// Contains the variant's name, shape (named/tuple/unit), resolved fields (after
-/// applying `#[dataframe(...)]` attributes and type classification), and any
-/// skipped field names (needed for complete destructure patterns in named variants).
+/// applying `#[dataframe(...)]` attributes and type classification), and the
+/// complete destructure pattern shared by sequential, parallel and split writers.
 pub(super) struct VariantInfo {
     /// Variant name.
     pub(super) name: syn::Ident,
@@ -3814,8 +3814,10 @@ pub(super) struct VariantInfo {
     pub(super) shape: VariantShape,
     /// Resolved fields (after applying field attrs + type classification).
     pub(super) fields: Vec<EnumResolvedField>,
-    /// Original Rust field names (for named variants) — needed for skipped fields in destructure.
-    pub(super) skipped_fields: Vec<syn::Ident>,
+    /// Full variant pattern, including wildcards in every skipped field's position.
+    pub(super) pattern: TokenStream,
+    /// A reader cannot reconstruct values omitted from the dataframe.
+    pub(super) has_skipped_fields: bool,
 }
 // endregion
 

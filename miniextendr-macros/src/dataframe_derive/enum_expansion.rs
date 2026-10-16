@@ -79,21 +79,25 @@ pub(super) fn derive_enum_dataframe(
     let mut variant_infos: Vec<VariantInfo> = Vec::new();
 
     for variant in &data.variants {
+        let variant_name = &variant.ident;
         match &variant.fields {
             Fields::Named(fields) => {
                 let mut resolved = Vec::new();
-                let mut skipped = Vec::new();
+                let mut pattern_fields = Vec::new();
+                let mut has_skipped_fields = false;
                 for f in &fields.named {
                     let fa = parse_field_attrs(f)?;
                     let rust_name = f.ident.as_ref().unwrap().clone();
                     if fa.skip {
-                        skipped.push(rust_name);
+                        pattern_fields.push(quote! { #rust_name: _ });
+                        has_skipped_fields = true;
                         continue;
                     }
                     let col_name_str = fa
                         .rename
                         .unwrap_or_else(|| crate::naming::ident_name(&rust_name));
                     let binding = format_ident!("__v_{}", crate::naming::unraw(&rust_name));
+                    pattern_fields.push(quote! { #rust_name: #binding });
 
                     if fa.as_list {
                         // Struct-typed fields with `as_list` must be converted via `into_list()`
@@ -327,21 +331,27 @@ pub(super) fn derive_enum_dataframe(
                     name: variant.ident.clone(),
                     shape: VariantShape::Named,
                     fields: resolved,
-                    skipped_fields: skipped,
+                    pattern: quote! { #row_name::#variant_name { #(#pattern_fields),* } },
+                    has_skipped_fields,
                 });
             }
             Fields::Unnamed(fields) => {
                 let mut resolved = Vec::new();
+                let mut pattern_fields = Vec::new();
+                let mut has_skipped_fields = false;
                 for (i, f) in fields.unnamed.iter().enumerate() {
                     let fa = parse_field_attrs(f)?;
                     let rust_name = format_ident!("_{}", i);
                     if fa.skip {
+                        pattern_fields.push(quote! { _ });
+                        has_skipped_fields = true;
                         continue;
                     }
                     let col_name_str = fa
                         .rename
                         .unwrap_or_else(|| crate::naming::ident_name(&rust_name));
                     let binding = format_ident!("__v_{}", crate::naming::unraw(&rust_name));
+                    pattern_fields.push(quote! { #binding });
 
                     // Tuple enum fields: same expansion logic
                     if fa.as_list {
@@ -495,7 +505,8 @@ pub(super) fn derive_enum_dataframe(
                     name: variant.ident.clone(),
                     shape: VariantShape::Tuple,
                     fields: resolved,
-                    skipped_fields: vec![],
+                    pattern: quote! { #row_name::#variant_name(#(#pattern_fields),*) },
+                    has_skipped_fields,
                 });
             }
             Fields::Unit => {
@@ -503,7 +514,8 @@ pub(super) fn derive_enum_dataframe(
                     name: variant.ident.clone(),
                     shape: VariantShape::Unit,
                     fields: vec![],
-                    skipped_fields: vec![],
+                    pattern: quote! { #row_name::#variant_name },
+                    has_skipped_fields: false,
                 });
             }
         }
@@ -1301,49 +1313,13 @@ pub(super) fn derive_enum_dataframe(
                 })
                 .collect();
 
-            // Generate destructure pattern based on variant shape
-            match vi.shape {
-                VariantShape::Named => {
-                    let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let rust_name = erf.rust_name();
-                        let binding = erf.binding();
-                        quote! { #rust_name: #binding }
-                    }).collect();
-                    // Add skipped fields as wildcard bindings
-                    for skipped in &vi.skipped_fields {
-                        field_bindings.push(quote! { #skipped: _ });
-                    }
-                    quote! {
-                        #row_name::#variant_name { #(#field_bindings),* } => {
-                            #tag_push
-                            #elem_prelude
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Tuple => {
-                    let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let binding = erf.binding();
-                        quote! { #binding }
-                    }).collect();
-                    quote! {
-                        #row_name::#variant_name(#(#field_bindings),*) => {
-                            #tag_push
-                            #elem_prelude
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Unit => {
-                    quote! {
-                        #row_name::#variant_name => {
-                            #tag_push
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
+            let pattern = &vi.pattern;
+            quote! {
+                #pattern => {
+                    #tag_push
+                    #elem_prelude
+                    #(#col_pushes)*
+                    #(#auto_expand_pushes)*
                 }
             }
         })
@@ -1576,48 +1552,13 @@ pub(super) fn derive_enum_dataframe(
                     })
                     .collect();
 
-                // Generate destructure pattern based on variant shape
-                match vi.shape {
-                    VariantShape::Named => {
-                        let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                            let rust_name = erf.rust_name();
-                            let binding = erf.binding();
-                            quote! { #rust_name: #binding }
-                        }).collect();
-                        for skipped in &vi.skipped_fields {
-                            field_bindings.push(quote! { #skipped: _ });
-                        }
-                        quote! {
-                            #row_name::#variant_name { #(#field_bindings),* } => {
-                                #tag_write
-                                #elem_prelude
-                                #(#col_writes)*
-                                #(#auto_expand_writes)*
-                            }
-                        }
-                    }
-                    VariantShape::Tuple => {
-                        let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                            let binding = erf.binding();
-                            quote! { #binding }
-                        }).collect();
-                        quote! {
-                            #row_name::#variant_name(#(#field_bindings),*) => {
-                                #tag_write
-                                #elem_prelude
-                                #(#col_writes)*
-                                #(#auto_expand_writes)*
-                            }
-                        }
-                    }
-                    VariantShape::Unit => {
-                        quote! {
-                            #row_name::#variant_name => {
-                                #tag_write
-                                #(#col_writes)*
-                                #(#auto_expand_writes)*
-                            }
-                        }
+                let pattern = &vi.pattern;
+                quote! {
+                    #pattern => {
+                        #tag_write
+                        #elem_prelude
+                        #(#col_writes)*
+                        #(#auto_expand_writes)*
                     }
                 }
             })
@@ -2158,6 +2099,7 @@ fn generate_split_method(
 
     for vi in variant_infos {
         let variant_name = &vi.name;
+        let pattern = &vi.pattern;
         let snake = naming::to_snake_case(&variant_name.to_string());
         snake_names.push(snake.clone());
 
@@ -2173,95 +2115,88 @@ fn generate_split_method(
             )
         });
 
-        match vi.shape {
-            // region: Unit variant
-            VariantShape::Unit => {
-                let count_var = format_ident!("__s_{}_count", snake);
-                buf_decls.push(quote! {
-                    let mut #count_var: usize = 0usize;
-                });
+        // A unit or all-skipped variant has no column to carry its row count.
+        if vi.fields.is_empty() {
+            let count_var = format_ident!("__s_{}_count", snake);
+            buf_decls.push(quote! {
+                let mut #count_var: usize = 0usize;
+            });
 
-                match_arms.push(quote! {
-                    #row_name::#variant_name => {
-                        #count_var += 1;
+            match_arms.push(quote! {
+                #pattern => {
+                    #count_var += 1;
+                }
+            });
+
+            df_constructions.push(quote! {
+                let #df_var = ::miniextendr_api::list::List::from_raw_pairs_empty()
+                .set_class_str(&["data.frame"])
+                .set_row_names_int(#count_var);
+            });
+        } else {
+            // region: Variants with payload columns
+            // Declare per-field buffers
+            for erf in &vi.fields {
+                match erf {
+                    EnumResolvedField::Single(data) => {
+                        let buf =
+                            format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
+                        let ty = &data.ty;
+                        // For needs_into_list fields this is the raw struct type; the
+                        // list-column is built from it when the partition is assembled.
+                        buf_decls.push(quote! {
+                            let mut #buf: ::std::vec::Vec<#ty> = ::std::vec::Vec::new();
+                        });
                     }
-                });
-
-                df_constructions.push(quote! {
-                    let #df_var = ::miniextendr_api::list::List::from_raw_pairs_empty()
-                    .set_class_str(&["data.frame"])
-                    .set_row_names_int(#count_var);
-                });
-            }
-            // endregion
-
-            // region: Named or Tuple variants
-            VariantShape::Named | VariantShape::Tuple => {
-                // Declare per-field buffers
-                for erf in &vi.fields {
-                    match erf {
-                        EnumResolvedField::Single(data) => {
-                            let buf = format_ident!(
-                                "__s_{}_{}",
-                                snake,
-                                crate::naming::unraw(&data.col_name)
-                            );
-                            let ty = &data.ty;
-                            // For needs_into_list fields this is the raw struct type; the
-                            // list-column is built from it when the partition is assembled.
+                    EnumResolvedField::ExpandedFixed(data) => {
+                        for i in 1..=data.len {
+                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
+                            let elem_ty = &data.elem_ty;
                             buf_decls.push(quote! {
-                                let mut #buf: ::std::vec::Vec<#ty> = ::std::vec::Vec::new();
+                                let mut #buf: ::std::vec::Vec<#elem_ty> = ::std::vec::Vec::new();
                             });
                         }
-                        EnumResolvedField::ExpandedFixed(data) => {
-                            for i in 1..=data.len {
-                                let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
-                                let elem_ty = &data.elem_ty;
-                                buf_decls.push(quote! {
-                                    let mut #buf: ::std::vec::Vec<#elem_ty> = ::std::vec::Vec::new();
-                                });
-                            }
-                        }
-                        EnumResolvedField::ExpandedVec(data) => {
-                            for i in 1..=data.width {
-                                let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
-                                let elem_ty = &data.elem_ty;
-                                buf_decls.push(quote! {
+                    }
+                    EnumResolvedField::ExpandedVec(data) => {
+                        for i in 1..=data.width {
+                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
+                            let elem_ty = &data.elem_ty;
+                            buf_decls.push(quote! {
                                     let mut #buf: ::std::vec::Vec<::core::option::Option<#elem_ty>> = ::std::vec::Vec::new();
                                 });
-                            }
                         }
-                        EnumResolvedField::AutoExpandVec(data) => {
-                            let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                            let container_ty = &data.container_ty;
-                            buf_decls.push(quote! {
-                                let mut #buf: ::std::vec::Vec<#container_ty> = ::std::vec::Vec::new();
-                            });
-                        }
-                        EnumResolvedField::Map(data) => {
-                            let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                            let vals_buf = format_ident!("__s_{}_{}_values", snake, data.base_name);
-                            let key_ty = &data.key_ty;
-                            let val_ty = &data.val_ty;
-                            buf_decls.push(quote! {
+                    }
+                    EnumResolvedField::AutoExpandVec(data) => {
+                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                        let container_ty = &data.container_ty;
+                        buf_decls.push(quote! {
+                            let mut #buf: ::std::vec::Vec<#container_ty> = ::std::vec::Vec::new();
+                        });
+                    }
+                    EnumResolvedField::Map(data) => {
+                        let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                        let vals_buf = format_ident!("__s_{}_{}_values", snake, data.base_name);
+                        let key_ty = &data.key_ty;
+                        let val_ty = &data.val_ty;
+                        buf_decls.push(quote! {
                                 let mut #keys_buf: ::std::vec::Vec<::std::vec::Vec<#key_ty>> = ::std::vec::Vec::new();
                                 let mut #vals_buf: ::std::vec::Vec<::std::vec::Vec<#val_ty>> = ::std::vec::Vec::new();
                             });
-                        }
-                        // Struct field: buffer holds Vec<Inner> (no Option — split only sees
-                        // rows of this variant, so every row has the field present).
-                        EnumResolvedField::Struct(data) => {
-                            let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                            let inner_ty = &data.inner_ty;
-                            buf_decls.push(quote! {
-                                let mut #buf: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
-                            });
-                        }
+                    }
+                    // Struct field: buffer holds Vec<Inner> (no Option — split only sees
+                    // rows of this variant, so every row has the field present).
+                    EnumResolvedField::Struct(data) => {
+                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
+                        let inner_ty = &data.inner_ty;
+                        buf_decls.push(quote! {
+                            let mut #buf: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
+                        });
                     }
                 }
+            }
 
-                // Build destructure pattern and push statements
-                let push_stmts: Vec<TokenStream> = vi
+            // Build destructure pattern and push statements
+            let push_stmts: Vec<TokenStream> = vi
                     .fields
                     .iter()
                     .enumerate()
@@ -2332,121 +2267,81 @@ fn generate_split_method(
                     })
                     .collect();
 
-                let arm = match vi.shape {
-                    VariantShape::Named => {
-                        let mut field_bindings: Vec<TokenStream> = vi
-                            .fields
-                            .iter()
-                            .map(|erf| {
-                                let rust_name = erf.rust_name();
-                                let binding = erf.binding();
-                                quote! { #rust_name: #binding }
-                            })
-                            .collect();
-                        for skipped in &vi.skipped_fields {
-                            field_bindings.push(quote! { #skipped: _ });
-                        }
-                        quote! {
-                            #row_name::#variant_name { #(#field_bindings),* } => {
-                                #(#push_stmts)*
+            match_arms.push(quote! {
+                #pattern => {
+                    #(#push_stmts)*
+                }
+            });
+
+            // Construct the data.frame for this variant
+            if has_auto {
+                // Dynamic path: build Vec<(String, SEXP)>
+                let pairs_var = format_ident!("__pairs_{}", snake);
+                let n_var = format_ident!("__n_{}", snake);
+
+                // Find the first non-dynamic field for the length expression, or first dynamic.
+                // "Dynamic" = AutoExpandVec or Struct (both use dynamic pairs path).
+                let len_expr: TokenStream = {
+                    let first_non_dynamic = vi.fields.iter().find(|f| {
+                        !matches!(
+                            f,
+                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_)
+                        )
+                    });
+                    if let Some(f) = first_non_dynamic {
+                        match f {
+                            EnumResolvedField::Single(data) => {
+                                let buf = format_ident!(
+                                    "__s_{}_{}",
+                                    snake,
+                                    crate::naming::unraw(&data.col_name)
+                                );
+                                quote! { <[_]>::len(&#buf) }
+                            }
+                            EnumResolvedField::ExpandedFixed(data) => {
+                                let buf =
+                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                                quote! { <[_]>::len(&#buf) }
+                            }
+                            EnumResolvedField::ExpandedVec(data) => {
+                                let buf =
+                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                                quote! { <[_]>::len(&#buf) }
+                            }
+                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
+                                unreachable!()
+                            }
+                            EnumResolvedField::Map(data) => {
+                                let keys_buf =
+                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                                quote! { <[_]>::len(&#keys_buf) }
                             }
                         }
-                    }
-                    VariantShape::Tuple => {
-                        let bindings: Vec<TokenStream> = vi
-                            .fields
-                            .iter()
-                            .map(|erf| {
-                                let binding = erf.binding();
-                                quote! { #binding }
-                            })
-                            .collect();
-                        quote! {
-                            #row_name::#variant_name(#(#bindings),*) => {
-                                #(#push_stmts)*
-                            }
-                        }
-                    }
-                    VariantShape::Unit => unreachable!("handled above"),
-                };
-                match_arms.push(arm);
-
-                // Construct the data.frame for this variant
-                if has_auto {
-                    // Dynamic path: build Vec<(String, SEXP)>
-                    let pairs_var = format_ident!("__pairs_{}", snake);
-                    let n_var = format_ident!("__n_{}", snake);
-
-                    // Find the first non-dynamic field for the length expression, or first dynamic.
-                    // "Dynamic" = AutoExpandVec or Struct (both use dynamic pairs path).
-                    let len_expr: TokenStream = {
-                        let first_non_dynamic = vi.fields.iter().find(|f| {
-                            !matches!(
-                                f,
-                                EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_)
-                            )
-                        });
-                        if let Some(f) = first_non_dynamic {
-                            match f {
-                                EnumResolvedField::Single(data) => {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}",
-                                        snake,
-                                        crate::naming::unraw(&data.col_name)
-                                    );
+                    } else {
+                        // All fields are dynamic — use the first dynamic buf length
+                        if let Some(first) = vi.fields.first() {
+                            match first {
+                                EnumResolvedField::AutoExpandVec(data) => {
+                                    let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                     quote! { <[_]>::len(&#buf) }
                                 }
-                                EnumResolvedField::ExpandedFixed(data) => {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}",
-                                        snake,
-                                        data.base_name,
-                                        1usize
-                                    );
+                                EnumResolvedField::Struct(data) => {
+                                    let buf = format_ident!("__s_{}_{}", snake, data.base_name);
                                     quote! { <[_]>::len(&#buf) }
                                 }
-                                EnumResolvedField::ExpandedVec(data) => {
-                                    let buf = format_ident!(
-                                        "__s_{}_{}_{}",
-                                        snake,
-                                        data.base_name,
-                                        1usize
-                                    );
-                                    quote! { <[_]>::len(&#buf) }
-                                }
-                                EnumResolvedField::AutoExpandVec(_)
-                                | EnumResolvedField::Struct(_) => unreachable!(),
-                                EnumResolvedField::Map(data) => {
-                                    let keys_buf =
-                                        format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                                    quote! { <[_]>::len(&#keys_buf) }
-                                }
+                                _ => quote! { 0usize },
                             }
                         } else {
-                            // All fields are dynamic — use the first dynamic buf length
-                            if let Some(first) = vi.fields.first() {
-                                match first {
-                                    EnumResolvedField::AutoExpandVec(data) => {
-                                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                        quote! { <[_]>::len(&#buf) }
-                                    }
-                                    EnumResolvedField::Struct(data) => {
-                                        let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                        quote! { <[_]>::len(&#buf) }
-                                    }
-                                    _ => quote! { 0usize },
-                                }
-                            } else {
-                                quote! { 0usize }
-                            }
+                            quote! { 0usize }
                         }
-                    };
+                    }
+                };
 
-                    // Static pair pushes — wrap each `into_sexp()` in
-                    // `__scope.protect_raw` to keep prior column SEXPs rooted
-                    // across subsequent allocations
-                    // (reviews/2026-05-07-gctorture-audit.md).
-                    let static_pushes: Vec<TokenStream> = vi
+                // Static pair pushes — wrap each `into_sexp()` in
+                // `__scope.protect_raw` to keep prior column SEXPs rooted
+                // across subsequent allocations
+                // (reviews/2026-05-07-gctorture-audit.md).
+                let static_pushes: Vec<TokenStream> = vi
                         .fields
                         .iter()
                         .flat_map(|erf| match erf {
@@ -2591,7 +2486,7 @@ fn generate_split_method(
                         })
                         .collect();
 
-                    df_constructions.push(quote! {
+                df_constructions.push(quote! {
                         let #n_var = #len_expr;
                         // SAFETY: split-method runs on the R main thread. The scope
                         // roots this partition's columns until `from_raw_pairs` owns
@@ -2605,52 +2500,49 @@ fn generate_split_method(
                                 .set_row_names_int(#n_var)
                         };
                     });
-                } else {
-                    // Static path: vec![...] of (&str, SEXP) pairs
-                    let n_var = format_ident!("__n_{}", snake);
+            } else {
+                // Static path: vec![...] of (&str, SEXP) pairs
+                let n_var = format_ident!("__n_{}", snake);
 
-                    // Length expression: first field's buffer length
-                    let len_expr: TokenStream = if let Some(erf) = vi.fields.first() {
-                        match erf {
-                            EnumResolvedField::Single(data) => {
-                                let buf = format_ident!(
-                                    "__s_{}_{}",
-                                    snake,
-                                    crate::naming::unraw(&data.col_name)
-                                );
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            EnumResolvedField::ExpandedFixed(data) => {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            EnumResolvedField::ExpandedVec(data) => {
-                                let buf =
-                                    format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { <[_]>::len(&#buf) }
-                            }
-                            // AutoExpandVec and Struct both trigger has_auto = true, so these
-                            // branches are unreachable in the non-auto static path.
-                            EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
-                                unreachable!()
-                            }
-                            EnumResolvedField::Map(data) => {
-                                let keys_buf =
-                                    format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                                quote! { <[_]>::len(&#keys_buf) }
-                            }
+                // Length expression: first field's buffer length
+                let len_expr: TokenStream = if let Some(erf) = vi.fields.first() {
+                    match erf {
+                        EnumResolvedField::Single(data) => {
+                            let buf = format_ident!(
+                                "__s_{}_{}",
+                                snake,
+                                crate::naming::unraw(&data.col_name)
+                            );
+                            quote! { <[_]>::len(&#buf) }
                         }
-                    } else {
-                        // No fields (unexpected for Named/Tuple, but handle it)
-                        quote! { 0usize }
-                    };
+                        EnumResolvedField::ExpandedFixed(data) => {
+                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                            quote! { <[_]>::len(&#buf) }
+                        }
+                        EnumResolvedField::ExpandedVec(data) => {
+                            let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
+                            quote! { <[_]>::len(&#buf) }
+                        }
+                        // AutoExpandVec and Struct both trigger has_auto = true, so these
+                        // branches are unreachable in the non-auto static path.
+                        EnumResolvedField::AutoExpandVec(_) | EnumResolvedField::Struct(_) => {
+                            unreachable!()
+                        }
+                        EnumResolvedField::Map(data) => {
+                            let keys_buf = format_ident!("__s_{}_{}_keys", snake, data.base_name);
+                            quote! { <[_]>::len(&#keys_buf) }
+                        }
+                    }
+                } else {
+                    // No fields (unexpected for Named/Tuple, but handle it)
+                    quote! { 0usize }
+                };
 
-                    // Collect pairs — each `into_sexp()` is rooted via
-                    // `__scope.protect_raw` so prior columns survive the
-                    // next column's allocation
-                    // (reviews/2026-05-07-gctorture-audit.md).
-                    let pairs: Vec<TokenStream> = vi
+                // Collect pairs — each `into_sexp()` is rooted via
+                // `__scope.protect_raw` so prior columns survive the
+                // next column's allocation
+                // (reviews/2026-05-07-gctorture-audit.md).
+                let pairs: Vec<TokenStream> = vi
                         .fields
                         .iter()
                         .flat_map(|erf| match erf {
@@ -2724,20 +2616,20 @@ fn generate_split_method(
                         })
                         .collect();
 
-                    df_constructions.push(quote! {
-                        let #n_var = #len_expr;
-                        // SAFETY: see has_auto branch.
-                        let #df_var = unsafe {
-                            let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                            ::miniextendr_api::list::List::from_raw_pairs::<&str>(::std::vec![
-                                #(#pairs),*
-                            ])
-                            .set_class_str(&["data.frame"])
-                            .set_row_names_int(#n_var)
-                        };
-                    });
-                }
-            } // endregion
+                df_constructions.push(quote! {
+                    let #n_var = #len_expr;
+                    // SAFETY: see has_auto branch.
+                    let #df_var = unsafe {
+                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                        ::miniextendr_api::list::List::from_raw_pairs::<&str>(::std::vec![
+                            #(#pairs),*
+                        ])
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(#n_var)
+                    };
+                });
+            }
+            // endregion
         }
     }
 
@@ -2990,7 +2882,7 @@ fn build_enum_reader(
     let tag_col_name = attrs.tag.as_deref()?;
 
     // Gate 2: no skipped fields.
-    if variant_infos.iter().any(|vi| !vi.skipped_fields.is_empty()) {
+    if variant_infos.iter().any(|vi| vi.has_skipped_fields) {
         return None;
     }
 
