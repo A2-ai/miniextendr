@@ -464,7 +464,8 @@ test_that("a vector conversion lists every bad element, 1-based and batched", {
   expect_identical(miniextendr:::arg_error_u16s(c(1, 2)), 3L)
 })
 
-test_that("Either, AsFromStr and tuple arguments say what they accept", {
+test_that("Either arguments say what they accept", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature not compiled in")
   e <- caught(either_int_or_str(1:2))
   expect_identical(class(e), layers)
   expect_identical(e$rust_type, "Either<i32, String>")
@@ -477,7 +478,9 @@ test_that("Either, AsFromStr and tuple arguments say what they accept", {
     conditionMessage(caught(either_int_or_str(list()))),
     "'value' must be a single integer or a single string: got list"
   )
+})
 
+test_that("data frame, AsFromStr and tuple arguments say what they accept", {
   # A data frame argument given a list that is not a data frame.
   e <- caught(df_option_scalar_none_count(list()))
   expect_identical(e$param, "df")
