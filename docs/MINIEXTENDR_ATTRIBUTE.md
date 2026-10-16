@@ -217,6 +217,38 @@ pub fn prepare_sources() { /* ... */ }
 
 The R page gets "Prepares the sources." and rustdoc gets both paragraphs.
 
+### `unsafe fn`
+
+`#[miniextendr]` rejects an `unsafe fn`, at its `unsafe` keyword: the
+generated wrapper's R callers cannot uphold the function's safety
+preconditions. Expose a safe function that checks them and makes the unsafe
+call:
+
+```rust
+/// # Safety
+/// `i` must be less than `xs.len()`.
+unsafe fn nth_unchecked(xs: &[i32], i: usize) -> i32 {
+    unsafe { *xs.get_unchecked(i) }
+}
+
+#[miniextendr]
+pub fn nth(xs: &[i32], i: i32) -> i32 {
+    let i = usize::try_from(i).expect("`i` must not be negative");
+    assert!(i < xs.len(), "`i` is past the end of `xs`");
+    // SAFETY: `i` was checked against `xs.len()` above.
+    unsafe { nth_unchecked(xs, i) }
+}
+```
+
+Methods follow the same rule: an `unsafe fn` may stay in a `#[miniextendr]`
+impl block or trait only when it gets no wrapper, as an
+[ignored](#shared-method-attributes-all-class-systems) inherent method or a
+`#[miniextendr(skip)]` trait method. An `unsafe trait` is accepted:
+implementing it is the author's promise, and calling its methods is safe. A
+raw `extern "C-unwind"` function is separate: R's `.Call()` reaches it
+directly through `unsafe_<name>()`, with the `SEXP` arguments as they are,
+whether or not it is marked `unsafe`.
+
 ### Function Attributes
 
 #### Visibility & Export
@@ -1371,7 +1403,7 @@ impl Person {
     pub fn as_df(&self) -> List { /* ... */ }
 
     // Skip this method
-    #[miniextendr(ignore)]
+    #[miniextendr(s3(ignore))]
     pub fn internal_helper(&self) { /* ... */ }
 
     // Parameter defaults
@@ -1384,7 +1416,7 @@ impl Person {
 
 | Attribute | Effect |
 |-----------|--------|
-| `ignore` | Don't generate R wrapper for this method |
+| `ignore` | Don't generate an R wrapper for this method, spelled `<system>(ignore)` (`r6(ignore)`; `s3(ignore)` in a vctrs block). The method stays Rust-only and may be `unsafe` |
 | `constructor` | Mark as the constructor, spelled `<system>(constructor)` (`r6(constructor)`). Without a mark, a receiver-less `new` returning `Self` is the constructor, else the type's one receiver-less method returning `Self`. A constructor not named `new` is also a static method under its own name (see [Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)) |
 | `generic = "..."` | Override S3/S4/S7 generic name |
 | `receiver = "..."` | S3/S4 with `generic`: the receiver formal, for a generic whose first argument is not `x` (`summary(object, ...)`); see [Methods on an existing generic](CLASS_SYSTEMS.md#methods-on-an-existing-generic-s3-and-s4) |
@@ -1531,6 +1563,7 @@ Generates cross-package ABI:
 - Methods must take `&self` or `&mut self` (not `self` by value)
 - No async methods
 - No generic method parameters (trait-level generics are OK)
+- No `unsafe fn` methods, except `#[miniextendr(skip)]` ones (see [`unsafe fn`](#unsafe-fn))
 - Static methods work (resolved at compile time, not in vtable)
 
 ### Trait Impl Blocks

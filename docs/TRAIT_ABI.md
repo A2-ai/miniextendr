@@ -51,11 +51,12 @@ native-borrow metadata included. The signature helper neither calls the method
 nor constructs argument values, and adds no conversion bounds to the trait
 itself.
 
-Exposed functions and methods must be safe Rust functions. An `unsafe fn`
-requires caller obligations that a generated R wrapper cannot enforce; expose
-a safe adapter that validates those obligations before making the unsafe call.
-A trait method marked `#[miniextendr(skip)]` remains Rust-only and may be unsafe.
-Explicit raw `extern "C-unwind"` registration keeps its existing safety contract.
+A trait method must be safe unless the declaration marks it
+`#[miniextendr(skip)]`: a skipped method gets no vtable slot or R wrapper, so
+it may be `unsafe`, and an annotated impl inherits the `skip`. The declaration
+rejects any other `unsafe fn` (see
+[`unsafe fn`](MINIEXTENDR_ATTRIBUTE.md#unsafe-fn)), so no vtable shim,
+inherited-default wrapper or empty impl ever calls one.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
