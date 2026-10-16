@@ -47,7 +47,7 @@ pub fn shapes(
 
 #[miniextendr]
 pub fn rooted_views<'a>(strings: StrVec<'_>, values: RCow<'a, i32>) -> RCow<'a, i32> {
-    let _ = strings.len();
+    let _ = StrVec::len(strings);
     values
 }
 
@@ -78,14 +78,14 @@ pub fn strict_rows(
     x: i64,
 ) -> ::std::vec::Vec<::core::option::Option<::std::boxed::Box<[i64]>>> {
     let mut rows = ::std::vec::Vec::new();
-    rows.push(::core::option::Option::None);
-    rows.push(::core::option::Option::Some(::std::boxed::Box::from([x])));
+    ::std::vec::Vec::push(&mut rows, ::core::option::Option::None);
+    ::std::vec::Vec::push(&mut rows, ::core::option::Option::Some(::std::boxed::Box::from([x])));
     rows
 }
 
 #[miniextendr(coerce, check_interrupt, rng)]
 pub fn coerced(x: u16, xs: ::std::vec::Vec<u8>) -> f64 {
-    f64::from(x) + xs.len() as f64
+    f64::from(x) + ::std::vec::Vec::len(&xs) as f64
 }
 
 #[miniextendr(unwrap_in_r)]
@@ -102,7 +102,7 @@ pub fn checks(
     loose: Unchecked<::std::vec::Vec<f64>>,
 ) -> f64 {
     let _ = frame;
-    factor * f64::from(n + *marked) + loose.len() as f64
+    factor * f64::from(n + *marked) + ::std::vec::Vec::len(&loose) as f64
 }
 
 #[miniextendr]
@@ -117,7 +117,7 @@ pub fn returns_impl(x: i32) -> impl IntoR {
 
 #[miniextendr]
 pub fn markers(x: i32, call: Call, rest: LazyDots, n: NArgs) -> i32 {
-    let _ = (call.sexp(), rest.len());
+    let _ = (call.sexp(), LazyDots::len(&rest));
     x + i32::try_from(n.get()).unwrap_or(0)
 }
 
@@ -172,7 +172,7 @@ pub fn pick(
     #[miniextendr(choices("a", "b"))] letter: &str,
 ) -> usize {
     let _ = (mode, letter);
-    usize::from(maybe.is_some()) + many.len()
+    usize::from(maybe.is_some()) + ::std::vec::Vec::len(&many)
 }
 
 #[derive(::core::clone::Clone, ::core::marker::Copy, Debug, miniextendr_api::RFactor)]
@@ -337,7 +337,7 @@ impl ReadValue for Counter {
         0
     }
     fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
-        let _ = strings.len();
+        let _ = StrVec::len(strings);
         values[0]
     }
     fn read_refs(
@@ -360,7 +360,7 @@ pub trait Convert<T> {
 impl Convert<f64> for Counter {
     fn convert(&self, value: f64) -> ::std::vec::Vec<f64> {
         let mut out = ::std::vec::Vec::new();
-        out.push(value);
+        ::std::vec::Vec::push(&mut out, value);
         out
     }
 }
@@ -428,7 +428,7 @@ impl ReadValue for Engine {
         1
     }
     fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
-        let _ = strings.len();
+        let _ = StrVec::len(strings);
         values[0]
     }
     fn read_refs(
@@ -486,7 +486,7 @@ impl ReadValue for Gauge {
         2
     }
     fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
-        let _ = strings.len();
+        let _ = StrVec::len(strings);
         values[0]
     }
     fn read_refs(
@@ -535,7 +535,7 @@ impl ReadValue for Shape4 {
         4
     }
     fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
-        let _ = strings.len();
+        let _ = StrVec::len(strings);
         values[0]
     }
     fn read_refs(
@@ -581,8 +581,8 @@ impl Range7 {
     }
     pub fn shifted(&self, by: f64) -> ::std::vec::Vec<f64> {
         let mut out = ::std::vec::Vec::new();
-        out.push(self.start + by);
-        out.push(self.end + by);
+        ::std::vec::Vec::push(&mut out, self.start + by);
+        ::std::vec::Vec::push(&mut out, self.end + by);
         out
     }
 }
@@ -603,7 +603,7 @@ impl ReadValue for Range7 {
         7
     }
     fn read_views(&self, strings: StrVec<'_>, values: RCow<'_, i32>) -> i32 {
-        let _ = strings.len();
+        let _ = StrVec::len(strings);
         values[0]
     }
     fn read_refs(
@@ -627,7 +627,7 @@ impl Scale {
     pub fn new(mode: Mode, n: i32) -> ::std::vec::Vec<f64> {
         let _ = mode;
         let mut out = ::std::vec::Vec::new();
-        out.push(f64::from(n));
+        ::std::vec::Vec::push(&mut out, f64::from(n));
         out
     }
 }
@@ -777,10 +777,10 @@ pub enum TaggedNested {
 
 #[miniextendr]
 pub fn read_rows(frame: SEXP) -> i32 {
-    let rows = Readable::try_from_dataframe(frame).map_or(0, |r| r.len());
-    let events = ReadableEvent::try_from_dataframe(frame).map_or(0, |r| r.len());
-    let nested = TaggedNested::try_from_dataframe(frame).map_or(0, |r| r.len());
-    let outer = Outer::try_from_dataframe(frame).map_or(0, |r| r.len());
+    let rows = Readable::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
+    let events = ReadableEvent::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
+    let nested = TaggedNested::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
+    let outer = Outer::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
     i32::try_from(rows + events + nested + outer).unwrap_or(i32::MAX)
 }
 
@@ -958,7 +958,7 @@ pub struct Ints {
 
 impl AltrepLen for Ints {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -991,7 +991,7 @@ pub struct Reals {
 
 impl AltrepLen for Reals {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1015,7 +1015,7 @@ pub struct Strings {
 
 impl AltrepLen for Strings {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1042,7 +1042,7 @@ pub struct Logicals {
 
 impl AltrepLen for Logicals {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1069,7 +1069,7 @@ pub struct Raws {
 
 impl AltrepLen for Raws {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1087,7 +1087,7 @@ pub struct Complexes {
 
 impl AltrepLen for Complexes {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1147,7 +1147,7 @@ pub struct Registered {
 
 impl AltrepLen for Registered {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
@@ -1176,13 +1176,13 @@ pub struct RegisteredStrings {
 
 impl AltrepLen for RegisteredStrings {
     fn altrep_len(&self) -> usize {
-        self.data.len()
+        ::std::vec::Vec::len(&self.data)
     }
 }
 
 impl AltStringData for RegisteredStrings {
     fn elt(&self, i: usize) -> ::core::option::Option<&str> {
-        ::core::option::Option::Some(self.data[i].as_str())
+        ::core::option::Option::Some(::std::string::String::as_str(&self.data[i]))
     }
 }
 

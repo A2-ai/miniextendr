@@ -79,6 +79,56 @@ pub(crate) trait ConsumerIterators: Sized {
 }
 impl<T> ConsumerIterators for T {}
 
+pub(crate) struct ConsumerCollectionCalled;
+
+// A by-value receiver can win over an inherent method that borrows a Vec.
+pub(crate) trait ConsumerCollections: Sized {
+    fn len(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn push<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn iter(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn iter_mut(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_str(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_bytes(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn is_empty(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn contains<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn starts_with<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn strip_prefix<T>(self, _value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn join<T>(self, _sep: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn into_boxed_slice(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+}
+impl<T> ConsumerCollections for T {}
+
+pub(crate) trait ConsumerFormatting {
+    fn to_string(&self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+}
+impl<T: ?Sized> ConsumerFormatting for T {}
+
 // No nested struct: the parallel reader assembles each row by index, cloning
 // the cells out of the pre-extracted columns.
 #[derive(Clone, DataFrameRow)]
@@ -149,7 +199,7 @@ fn glob_events() -> Vec<GlobEvent> {
         GlobEvent::Scores {
             scores: vec![3.0, 4.0],
             extra: vec![5, 6],
-            counts: BTreeMap::from([("a".to_string(), 1)]),
+            counts: BTreeMap::from([(std::string::ToString::to_string("a"), 1)]),
         },
         GlobEvent::Empty,
     ]
@@ -173,7 +223,9 @@ fn glob_nested() -> Vec<GlobNested> {
 #[miniextendr(noexport)]
 pub fn glob_import_roundtrip() -> Vec<i32> {
     fn count<T>(rows: Result<Vec<T>, String>) -> i32 {
-        rows.map_or(-2, |rows| i32::try_from(rows.len()).unwrap_or(i32::MAX))
+        rows.map_or(-2, |rows| {
+            i32::try_from(Vec::len(&rows)).unwrap_or(i32::MAX)
+        })
     }
 
     let rows = miniextendr_api::IntoR::into_sexp(GlobRow::to_dataframe(glob_rows()));
@@ -229,10 +281,10 @@ pub struct GlobRatio {
 #[cfg(any(feature = "worker-thread", feature = "worker-default"))]
 #[miniextendr(worker, noexport)]
 pub fn glob_import_worker(label: &str, xs: Vec<f64>) -> Result<f64, String> {
-    if xs.is_empty() {
-        Err("empty".to_string())
+    if <[_]>::is_empty(&xs) {
+        Err(std::string::ToString::to_string("empty"))
     } else {
-        Ok(xs.iter().sum::<f64>() + label.len() as f64)
+        Ok(<[_]>::iter(&xs).sum::<f64>() + str::len(label) as f64)
     }
 }
 

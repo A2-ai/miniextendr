@@ -500,17 +500,17 @@ macro_rules! __mx_condition_field_name {
             !$crate::condition::is_reserved_condition_field($name),
             "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots; rename the field"
         );
-        ($name).to_string()
+        ::std::string::ToString::to_string(&($name))
     }};
     (ident $name:ident) => {{
         const _: () = ::core::assert!(
             !$crate::condition::is_reserved_condition_field(::core::stringify!($name)),
             "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots; rename the field"
         );
-        ::core::stringify!($name).to_string()
+        ::std::string::ToString::to_string(::core::stringify!($name))
     }};
     (expr $name:expr) => {
-        $crate::condition::check_condition_field_name(($name).to_string())
+        $crate::condition::check_condition_field_name(::std::string::ToString::to_string(&($name)))
     };
 }
 

@@ -1365,7 +1365,7 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
-                    if raw_vec.len() == 0 {
+                    if ::miniextendr_api::SexpExt::len(&raw_vec) == 0 {
                         return #err_value;
                     }
                     data.#field_name = raw_vec.raw_elt(0);
@@ -2279,10 +2279,10 @@ fn generate_typed_external(
             const TYPE_NAME: &'static str = #display_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
             const TYPE_ID_CSTR: &'static [u8] =
-                ::core::concat!(
+                ::core::primitive::str::as_bytes(::core::concat!(
                     ::core::env!("CARGO_PKG_NAME"), "@", ::core::env!("CARGO_PKG_VERSION"),
                     "::", ::core::module_path!(), "::", #name_lit, "\0"
-                ).as_bytes();
+                ));
             #r_slot_count
             #restored_class
             #restored_message

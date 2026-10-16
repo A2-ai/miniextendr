@@ -29,7 +29,10 @@
 // #2020: consumer traits must not intercept generated conversions or iterator calls.
 // An unused import is the expected outcome after dispatch is qualified.
 #[allow(unused_imports)]
-use crate::glob_import_tests::{ConsumerConversions as _, ConsumerIterators as _};
+use crate::glob_import_tests::{
+    ConsumerCollections as _, ConsumerConversions as _, ConsumerFormatting as _,
+    ConsumerIterators as _,
+};
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
 use miniextendr_api::{AsVctrs, PreferVctrs, Vctrs, miniextendr};
@@ -72,7 +75,9 @@ impl DerivedPercent {
 #[miniextendr]
 pub fn new_derived_percent(x: Vec<f64>) -> Result<miniextendr_api::SEXP, String> {
     let percent = DerivedPercent::new(x);
-    percent.into_vctrs().map_err(|e| e.to_string())
+    percent
+        .into_vctrs()
+        .map_err(|e| std::string::ToString::to_string(&e))
 }
 
 /// Create a derived_percent vector via the `AsVctrs` call-site wrapper.
@@ -134,8 +139,10 @@ pub struct DerivedRational {
 impl DerivedRational {
     /// Create a new Rational from parallel vectors.
     pub fn new(n: Vec<i32>, d: Vec<i32>) -> Result<Self, String> {
-        if n.len() != d.len() {
-            return Err("n and d must have the same length".to_string());
+        if Vec::len(&n) != Vec::len(&d) {
+            return Err(std::string::ToString::to_string(
+                "n and d must have the same length",
+            ));
         }
         Ok(Self { n, d })
     }
@@ -149,7 +156,9 @@ impl DerivedRational {
 #[miniextendr]
 pub fn new_derived_rational(n: Vec<i32>, d: Vec<i32>) -> Result<miniextendr_api::SEXP, String> {
     let rational = DerivedRational::new(n, d)?;
-    rational.into_vctrs().map_err(|e| e.to_string())
+    rational
+        .into_vctrs()
+        .map_err(|e| std::string::ToString::to_string(&e))
 }
 
 /// Verify VctrsClass trait constants for rational.
@@ -192,7 +201,9 @@ pub fn new_derived_int_lists(x: miniextendr_api::SEXP) -> Result<miniextendr_api
     use miniextendr_api::from_r::TryFromSexp;
     let lists: Vec<Vec<i32>> = TryFromSexp::try_from_sexp(x).map_err(|e| format!("{:?}", e))?;
     let int_lists = DerivedIntLists::new(lists);
-    int_lists.into_vctrs().map_err(|e| e.to_string())
+    int_lists
+        .into_vctrs()
+        .map_err(|e| std::string::ToString::to_string(&e))
 }
 // endregion
 
@@ -217,8 +228,10 @@ pub struct DerivedPoint {
 
 impl DerivedPoint {
     pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self, String> {
-        if x.len() != y.len() {
-            return Err("x and y must have the same length".to_string());
+        if Vec::len(&x) != Vec::len(&y) {
+            return Err(std::string::ToString::to_string(
+                "x and y must have the same length",
+            ));
         }
         Ok(Self { x, y })
     }
@@ -232,7 +245,9 @@ impl DerivedPoint {
 #[miniextendr]
 pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::SEXP, String> {
     let point = DerivedPoint::new(x, y)?;
-    point.into_vctrs().map_err(|e| e.to_string())
+    point
+        .into_vctrs()
+        .map_err(|e| std::string::ToString::to_string(&e))
 }
 // endregion
 
@@ -261,7 +276,8 @@ impl DerivedTemp {
 #[miniextendr]
 pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::SEXP, String> {
     let temp = DerivedTemp::new(x);
-    temp.into_vctrs().map_err(|e| e.to_string())
+    temp.into_vctrs()
+        .map_err(|e| std::string::ToString::to_string(&e))
 }
 // endregion
 
@@ -300,7 +316,7 @@ impl DerivedCurrency {
     /// @param amounts Numeric amounts to format.
     /// @return Character vector of formatted values like `"$1.00"`.
     pub fn format_amounts(symbol: String, amounts: Vec<f64>) -> Vec<String> {
-        Iterator::collect(Iterator::map(amounts.iter(), |a| {
+        Iterator::collect(Iterator::map(<[_]>::iter(&amounts), |a| {
             format!("{}{:.2}", symbol, a)
         }))
     }

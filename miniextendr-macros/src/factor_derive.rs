@@ -428,21 +428,21 @@ fn derive_interaction_factor(
 
             // Check level count
             ::core::assert!(
-                ACTUAL.len() == EXPECTED.len(),
+                <[_]>::len(ACTUAL) == <[_]>::len(EXPECTED),
                 "interaction factor: inner type level count mismatch"
             );
 
             // Check each level matches (const string comparison)
             let mut i = 0;
-            while i < ACTUAL.len() {
-                let actual_bytes = ACTUAL[i].as_bytes();
-                let expected_bytes = EXPECTED[i].as_bytes();
+            while i < <[_]>::len(ACTUAL) {
+                let actual_bytes = ::core::primitive::str::as_bytes(ACTUAL[i]);
+                let expected_bytes = ::core::primitive::str::as_bytes(EXPECTED[i]);
                 ::core::assert!(
-                    actual_bytes.len() == expected_bytes.len(),
+                    <[_]>::len(actual_bytes) == <[_]>::len(expected_bytes),
                     "interaction factor: inner type level string length mismatch"
                 );
                 let mut j = 0;
-                while j < actual_bytes.len() {
+                while j < <[_]>::len(actual_bytes) {
                     ::core::assert!(
                         actual_bytes[j] == expected_bytes[j],
                         "interaction factor: inner type level string content mismatch"
@@ -458,7 +458,7 @@ fn derive_interaction_factor(
 
             fn from_choice(choice: &str) -> ::core::option::Option<Self> {
                 let idx_1 = ::core::iter::Iterator::position(
-                    &mut <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES.iter(),
+                    &mut <[_]>::iter(<Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES),
                     |&l| l == choice,
                 ).map(|i| i as i32 + 1)?;
                 <Self as ::miniextendr_api::RFactor>::from_level_index(idx_1)

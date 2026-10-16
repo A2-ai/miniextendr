@@ -116,7 +116,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             let n = idents.len();
             let construction = quote! {
                 let mut __builder = ::miniextendr_api::NamedListBuilder::with_capacity(#n);
-                #( __builder.push(#names, #idents); )*
+                #( ::miniextendr_api::NamedListBuilder::push(&mut __builder, #names, #idents); )*
                 __builder
             };
             (pat, construction)
@@ -143,7 +143,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             let n = value_idents.len();
             let construction = quote! {
                 let mut __builder = ::miniextendr_api::NamedListBuilder::with_capacity(#n);
-                #( __builder.push("", #value_idents); )*
+                #( ::miniextendr_api::NamedListBuilder::push(&mut __builder, "", #value_idents); )*
                 __builder
             };
             (pat, construction)
@@ -340,7 +340,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                             .ok_or_else(|| ::miniextendr_api::from_r::SexpError::Length(
                                 ::miniextendr_api::from_r::SexpLengthError {
                                     expected: #input_fields,
-                                    actual: __mx_list.len() as usize,
+                                    actual: ::miniextendr_api::list::List::len(__mx_list) as usize,
                                 }
                             ))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)

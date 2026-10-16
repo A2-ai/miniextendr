@@ -780,13 +780,13 @@ pub(super) fn derive_enum_dataframe(
     // region: Generate IntoDataFrame
     // The first "real" column for length reference. If tag exists, use _tag.
     let length_ref = if has_tag {
-        quote! { self._tag.len() }
+        quote! { <[_]>::len(&self._tag) }
     } else if let Some(first_col) = columns.first() {
         let first = &first_col.col_name;
-        quote! { self.#first.len() }
+        quote! { <[_]>::len(&self.#first) }
     } else if let Some(first_ac) = auto_expand_cols.first() {
         let first = &first_ac.df_field;
-        quote! { self.#first.len() }
+        quote! { <[_]>::len(&self.#first) }
     } else {
         // No columns and no tag — degenerate case, length is 0
         quote! { 0usize }
@@ -820,11 +820,11 @@ pub(super) fn derive_enum_dataframe(
             let name_str = name.to_string();
             quote! {
                 ::core::assert!(
-                    self.#name.len() == _n_rows,
+                    <[_]>::len(&self.#name) == _n_rows,
                     "column length mismatch in {}: column `{}` has length {} but expected {}",
                     ::core::stringify!(#df_name),
                     #name_str,
-                    self.#name.len(),
+                    <[_]>::len(&self.#name),
                     _n_rows,
                 );
             }
@@ -844,8 +844,8 @@ pub(super) fn derive_enum_dataframe(
         // and/or as_factor fields.
         let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
             quote! {
-                __df_pairs.push((
-                    #tag_name.to_string(),
+                ::std::vec::Vec::push(&mut __df_pairs, (
+                    ::std::string::ToString::to_string(&#tag_name),
                     __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag)),
                 ));
             }
@@ -868,8 +868,8 @@ pub(super) fn derive_enum_dataframe(
                 let name = &col.col_name;
                 let name_str = name.to_string();
                 quote! {
-                    __df_pairs.push((
-                        #name_str.to_string(),
+                    ::std::vec::Vec::push(&mut __df_pairs, (
+                        ::std::string::ToString::to_string(&#name_str),
                         __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name)),
                     ));
                 }
@@ -888,8 +888,8 @@ pub(super) fn derive_enum_dataframe(
                 let name_str = name.to_string();
                 let into_option_list_column = list_column_fn(&col.ty, true);
                 quote! {
-                    __df_pairs.push((
-                        #name_str.to_string(),
+                    ::std::vec::Vec::push(&mut __df_pairs, (
+                        ::std::string::ToString::to_string(&#name_str),
                         __scope.protect_raw(#into_option_list_column(self.#name)),
                     ));
                 }
@@ -906,8 +906,8 @@ pub(super) fn derive_enum_dataframe(
                 let name_str = name.to_string();
                 let ty = &col.ty;
                 quote! {
-                    __df_pairs.push((
-                        #name_str.to_string(),
+                    ::std::vec::Vec::push(&mut __df_pairs, (
+                        ::std::string::ToString::to_string(&#name_str),
                         __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
                             ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(self.#name)
                         )),
@@ -931,8 +931,8 @@ pub(super) fn derive_enum_dataframe(
                     {
                         let __auto = self.#df_field;
                         let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(
-                            ::core::iter::Iterator::filter_map(__auto.iter(), |v| v.as_ref()),
-                            |v| v.len(),
+                            ::core::iter::Iterator::filter_map(<[_]>::iter(&__auto), |v| v.as_ref()),
+                            |v| <[_]>::len(v),
                         ))
                             .unwrap_or(0);
                         let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = ::core::iter::Iterator::collect(
@@ -943,15 +943,15 @@ pub(super) fn derive_enum_dataframe(
                                 __opt_vec,
                                 |__row_vec| #elems_iter,
                             );
-                            for __col in __cols.iter_mut() {
-                                __col.push(::core::option::Option::and_then(
+                            for __col in <[_]>::iter_mut(&mut __cols) {
+                                ::std::vec::Vec::push(__col, ::core::option::Option::and_then(
                                     ::core::option::Option::as_mut(&mut __elems),
                                     ::core::iter::Iterator::next,
                                 ));
                             }
                         }
                         for (__i, __col) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__cols)) {
-                            __df_pairs.push((
+                            ::std::vec::Vec::push(&mut __df_pairs, (
                                 ::std::format!("{}_{}", #base_name_str, __i + 1),
                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                             ));
@@ -979,8 +979,8 @@ pub(super) fn derive_enum_dataframe(
                         let mut __inner_rows: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
                         for (__row_i, __opt) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(self.#df_field)) {
                             if let ::core::option::Option::Some(__inner) = __opt {
-                                __present_idx.push(__row_i);
-                                __inner_rows.push(__inner);
+                                ::std::vec::Vec::push(&mut __present_idx, __row_i);
+                                ::std::vec::Vec::push(&mut __inner_rows, __inner);
                             }
                         }
                         // Call Inner::to_dataframe and extract named column SEXPs.
@@ -1002,7 +1002,7 @@ pub(super) fn derive_enum_dataframe(
                                     _n_rows,
                                 ),
                             );
-                            __df_pairs.push((__prefixed, __scattered));
+                            ::std::vec::Vec::push(&mut __df_pairs, (__prefixed, __scattered));
                         }
                     }
                 }
@@ -1180,7 +1180,7 @@ pub(super) fn derive_enum_dataframe(
             let variant_name_str = variant_name.to_string();
 
             let tag_push = if has_tag {
-                quote! { _tag.push(#variant_name_str.to_string()); }
+                quote! { ::std::vec::Vec::push(&mut _tag, ::std::string::ToString::to_string(&#variant_name_str)); }
             } else {
                 TokenStream::new()
             };
@@ -1204,9 +1204,9 @@ pub(super) fn derive_enum_dataframe(
                                 {
                                     let binding = &data.binding;
                                     if col.string_coerced {
-                                        return quote! { #col_name.push(::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
+                                        return quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
                                     } else {
-                                        return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
+                                        return quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::Some(#binding)); };
                                     }
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
@@ -1214,7 +1214,7 @@ pub(super) fn derive_enum_dataframe(
                                     for (i, elem) in elems.iter().enumerate() {
                                         let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                         if expanded_name == col_name_str {
-                                            return quote! { #col_name.push(::core::option::Option::Some(#elem)); };
+                                            return quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::Some(#elem)); };
                                         }
                                     }
                                 }
@@ -1223,7 +1223,7 @@ pub(super) fn derive_enum_dataframe(
                                     for (i, elem) in elems.iter().enumerate() {
                                         let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                         if expanded_name == col_name_str {
-                                            return quote! { #col_name.push(#elem); };
+                                            return quote! { ::std::vec::Vec::push(&mut #col_name, #elem); };
                                         }
                                     }
                                 }
@@ -1240,8 +1240,8 @@ pub(super) fn derive_enum_dataframe(
                                             let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
                                                 ::core::iter::IntoIterator::into_iter(#binding),
                                             );
-                                            #col_name.push(::core::option::Option::Some(__mx_keys));
-                                            #vals_col.push(::core::option::Option::Some(__mx_vals));
+                                            ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::Some(__mx_keys));
+                                            ::std::vec::Vec::push(&mut #vals_col, ::core::option::Option::Some(__mx_vals));
                                         };
                                     }
                                     if col_name_str == vals_name {
@@ -1254,15 +1254,15 @@ pub(super) fn derive_enum_dataframe(
                                     if data.base_name == col_name_str =>
                                 {
                                     let binding = &data.binding;
-                                    return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
+                                    return quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::Some(#binding)); };
                                 }
                                 // AutoExpandVec doesn't contribute to static columns
                                 _ => {}
                             }
                         }
-                        quote! { #col_name.push(::core::option::Option::None); }
+                        quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::None); }
                     } else {
-                        quote! { #col_name.push(::core::option::Option::None); }
+                        quote! { ::std::vec::Vec::push(&mut #col_name, ::core::option::Option::None); }
                     }
                 })
                 .collect();
@@ -1281,13 +1281,13 @@ pub(super) fn derive_enum_dataframe(
                                 && data.base_name == ac.base_name
                             {
                                 let binding = &data.binding;
-                                return quote! { #ac_field.push(::core::option::Option::Some(#binding)); };
+                                return quote! { ::std::vec::Vec::push(&mut #ac_field, ::core::option::Option::Some(#binding)); };
                             }
                         }
                         // shouldn't reach here
-                        quote! { #ac_field.push(::core::option::Option::None); }
+                        quote! { ::std::vec::Vec::push(&mut #ac_field, ::core::option::Option::None); }
                     } else {
-                        quote! { #ac_field.push(::core::option::Option::None); }
+                        quote! { ::std::vec::Vec::push(&mut #ac_field, ::core::option::Option::None); }
                     }
                 })
                 .collect();
@@ -1361,7 +1361,7 @@ pub(super) fn derive_enum_dataframe(
     let from_vec_impl = quote! {
         impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
             fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                let len = rows.len();
+                let len = <[_]>::len(&rows);
                 #tag_init
                 #(#col_vec_inits)*
                 for row in rows {
@@ -1461,7 +1461,7 @@ pub(super) fn derive_enum_dataframe(
                 let variant_name_str = variant_name.to_string();
 
                 let tag_write = if has_tag {
-                    quote! { __w_tag.write(__i, #variant_name_str.to_string()); }
+                    quote! { __w_tag.write(__i, ::std::string::ToString::to_string(&#variant_name_str)); }
                 } else {
                     TokenStream::new()
                 };
@@ -1638,7 +1638,7 @@ pub(super) fn derive_enum_dataframe(
             &par_bounds,
             quote! {
                 ::miniextendr_api::optionals::parallel::ensure_pool();
-                let len = rows.len();
+                let len = <[_]>::len(&rows);
                 #(#par_col_decls)*
                 {
                     #(#writer_decls)*
@@ -2259,7 +2259,7 @@ fn generate_split_method(
                         match erf {
                             EnumResolvedField::Single(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
-                                vec![quote! { #buf.push(#binding); }]
+                                vec![quote! { ::std::vec::Vec::push(&mut #buf, #binding); }]
                             }
                             EnumResolvedField::ExpandedFixed(data) => {
                                 let elems = enum_elem_idents(pos, data.len);
@@ -2272,7 +2272,7 @@ fn generate_split_method(
                                 stmts.extend(elems.iter().enumerate().map(|(i, elem)| {
                                     let buf =
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
-                                    quote! { #buf.push(#elem); }
+                                    quote! { ::std::vec::Vec::push(&mut #buf, #elem); }
                                 }));
                                 stmts
                             }
@@ -2289,13 +2289,13 @@ fn generate_split_method(
                                 stmts.extend(elems.iter().enumerate().map(|(i, elem)| {
                                     let buf =
                                         format_ident!("__s_{}_{}_{}", snake, data.base_name, i + 1);
-                                    quote! { #buf.push(#elem); }
+                                    quote! { ::std::vec::Vec::push(&mut #buf, #elem); }
                                 }));
                                 stmts
                             }
                             EnumResolvedField::AutoExpandVec(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                vec![quote! { #buf.push(#binding); }]
+                                vec![quote! { ::std::vec::Vec::push(&mut #buf, #binding); }]
                             }
                             EnumResolvedField::Map(data) => {
                                 let keys_buf =
@@ -2307,15 +2307,15 @@ fn generate_split_method(
                                     let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
                                         ::core::iter::IntoIterator::into_iter(#binding),
                                     );
-                                    #keys_buf.push(__mx_keys);
-                                    #vals_buf.push(__mx_vals);
+                                    ::std::vec::Vec::push(&mut #keys_buf, __mx_keys);
+                                    ::std::vec::Vec::push(&mut #vals_buf, __mx_vals);
                                 }]
                             }
                             // Struct field: push binding directly (split only sees this variant's rows,
                             // so every row has the field — no Option needed).
                             EnumResolvedField::Struct(data) => {
                                 let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                vec![quote! { #buf.push(#binding); }]
+                                vec![quote! { ::std::vec::Vec::push(&mut #buf, #binding); }]
                             }
                         }
                     })
@@ -2383,7 +2383,7 @@ fn generate_split_method(
                                         snake,
                                         crate::naming::unraw(&data.col_name)
                                     );
-                                    quote! { #buf.len() }
+                                    quote! { <[_]>::len(&#buf) }
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
                                     let buf = format_ident!(
@@ -2392,7 +2392,7 @@ fn generate_split_method(
                                         data.base_name,
                                         1usize
                                     );
-                                    quote! { #buf.len() }
+                                    quote! { <[_]>::len(&#buf) }
                                 }
                                 EnumResolvedField::ExpandedVec(data) => {
                                     let buf = format_ident!(
@@ -2401,14 +2401,14 @@ fn generate_split_method(
                                         data.base_name,
                                         1usize
                                     );
-                                    quote! { #buf.len() }
+                                    quote! { <[_]>::len(&#buf) }
                                 }
                                 EnumResolvedField::AutoExpandVec(_)
                                 | EnumResolvedField::Struct(_) => unreachable!(),
                                 EnumResolvedField::Map(data) => {
                                     let keys_buf =
                                         format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                                    quote! { #keys_buf.len() }
+                                    quote! { <[_]>::len(&#keys_buf) }
                                 }
                             }
                         } else {
@@ -2417,11 +2417,11 @@ fn generate_split_method(
                                 match first {
                                     EnumResolvedField::AutoExpandVec(data) => {
                                         let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                        quote! { #buf.len() }
+                                        quote! { <[_]>::len(&#buf) }
                                     }
                                     EnumResolvedField::Struct(data) => {
                                         let buf = format_ident!("__s_{}_{}", snake, data.base_name);
-                                        quote! { #buf.len() }
+                                        quote! { <[_]>::len(&#buf) }
                                     }
                                     _ => quote! { 0usize },
                                 }
@@ -2447,16 +2447,16 @@ fn generate_split_method(
                                     // Each cell's list goes straight into the rooted column.
                                     let into_list_column = list_column_fn(ty, false);
                                     vec![quote! {
-                                        #pairs_var.push((
-                                            #col_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(#into_list_column(#buf)),
                                         ));
                                     }]
                                 } else if data.is_factor {
                                     // Factor column: convert Vec<T> → FactorOptionVec<T> (all present).
                                     vec![quote! {
-                                        #pairs_var.push((
-                                            #col_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
                                                 ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
                                                     ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
@@ -2469,8 +2469,8 @@ fn generate_split_method(
                                     }]
                                 } else {
                                     vec![quote! {
-                                        #pairs_var.push((
-                                            #col_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }]
@@ -2483,8 +2483,8 @@ fn generate_split_method(
                                     );
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        #pairs_var.push((
-                                            #col_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
@@ -2497,8 +2497,8 @@ fn generate_split_method(
                                     );
                                     let col_str = format!("{}_{}", data.base_name, i);
                                     quote! {
-                                        #pairs_var.push((
-                                            #col_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#buf)),
                                         ));
                                     }
@@ -2513,18 +2513,18 @@ fn generate_split_method(
                                 vec![quote! {
                                     {
                                         let __auto = #buf;
-                                        let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(__auto.iter(), |v| v.len())).unwrap_or(0);
+                                        let __max = ::core::iter::Iterator::max(::core::iter::Iterator::map(<[_]>::iter(&__auto), |v| <[_]>::len(v))).unwrap_or(0);
                                         let mut __auto_cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = ::core::iter::Iterator::collect(
                                             ::core::iter::Iterator::map(0..__max, |_| ::std::vec::Vec::with_capacity(#n_var)),
                                         );
                                         for __row_vec in __auto {
                                             let mut __elems = #elems_iter;
-                                            for __acol in __auto_cols.iter_mut() {
-                                                __acol.push(::core::iter::Iterator::next(&mut __elems));
+                                            for __acol in <[_]>::iter_mut(&mut __auto_cols) {
+                                                ::std::vec::Vec::push(__acol, ::core::iter::Iterator::next(&mut __elems));
                                             }
                                         }
                                         for (__ai, __acol) in ::core::iter::Iterator::enumerate(::core::iter::IntoIterator::into_iter(__auto_cols)) {
-                                            #pairs_var.push((
+                                            ::std::vec::Vec::push(&mut #pairs_var, (
                                                 ::std::format!("{}_{}", #base_str, __ai + 1),
                                                 __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__acol)),
                                             ));
@@ -2541,14 +2541,14 @@ fn generate_split_method(
                                 let vals_str = format!("{}_values", data.base_name);
                                 vec![
                                     quote! {
-                                        #pairs_var.push((
-                                            #keys_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#keys_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_buf)),
                                         ));
                                     },
                                     quote! {
-                                        #pairs_var.push((
-                                            #vals_str.to_string(),
+                                        ::std::vec::Vec::push(&mut #pairs_var, (
+                                            ::std::string::ToString::to_string(&#vals_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_buf)),
                                         ));
                                     },
@@ -2572,7 +2572,7 @@ fn generate_split_method(
                                         );
                                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                                             let __prefixed = ::std::format!("{}_{}", #base_str, __inner_col_name);
-                                            #pairs_var.push((__prefixed, __inner_col_sexp));
+                                            ::std::vec::Vec::push(&mut #pairs_var, (__prefixed, __inner_col_sexp));
                                         }
                                     }
                                 }]
@@ -2607,17 +2607,17 @@ fn generate_split_method(
                                     snake,
                                     crate::naming::unraw(&data.col_name)
                                 );
-                                quote! { #buf.len() }
+                                quote! { <[_]>::len(&#buf) }
                             }
                             EnumResolvedField::ExpandedFixed(data) => {
                                 let buf =
                                     format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { #buf.len() }
+                                quote! { <[_]>::len(&#buf) }
                             }
                             EnumResolvedField::ExpandedVec(data) => {
                                 let buf =
                                     format_ident!("__s_{}_{}_{}", snake, data.base_name, 1usize);
-                                quote! { #buf.len() }
+                                quote! { <[_]>::len(&#buf) }
                             }
                             // AutoExpandVec and Struct both trigger has_auto = true, so these
                             // branches are unreachable in the non-auto static path.
@@ -2627,7 +2627,7 @@ fn generate_split_method(
                             EnumResolvedField::Map(data) => {
                                 let keys_buf =
                                     format_ident!("__s_{}_{}_keys", snake, data.base_name);
-                                quote! { #keys_buf.len() }
+                                quote! { <[_]>::len(&#keys_buf) }
                             }
                         }
                     } else {
@@ -2911,13 +2911,13 @@ fn enum_reader_field_value(
             let cols_var = format_ident!("__aev_{}", data.base_name.replace('-', "_"));
             let cells = if take {
                 quote! {
-                    ::core::iter::Iterator::filter_map(#cols_var.iter_mut(), |__c| {
+                    ::core::iter::Iterator::filter_map(<[_]>::iter_mut(&mut #cols_var), |__c| {
                         ::core::option::Option::take(&mut __c[__i])
                     })
                 }
             } else {
                 quote! {
-                    ::core::iter::Iterator::filter_map(#cols_var.iter(), |__c| {
+                    ::core::iter::Iterator::filter_map(<[_]>::iter(&#cols_var), |__c| {
                         ::core::clone::Clone::clone(&__c[__i])
                     })
                 }
@@ -2935,10 +2935,10 @@ fn enum_reader_field_value(
                 {
                     let __keys = #keys;
                     let __vals = #vals;
-                    if __keys.len() != __vals.len() {
+                    if <[_]>::len(&__keys) != <[_]>::len(&__vals) {
                         return ::core::result::Result::Err(::std::format!(
                             "variant `{}` row {}: map column `{}` has {} keys but {} values",
-                            #variant_name_str, __i, #base, __keys.len(), __vals.len()
+                            #variant_name_str, __i, #base, <[_]>::len(&__keys), <[_]>::len(&__vals)
                         ));
                     }
                     ::core::iter::Iterator::collect::<#map_ty>(::core::iter::Iterator::zip(::core::iter::IntoIterator::into_iter(__keys), __vals))
@@ -3026,10 +3026,10 @@ fn build_enum_reader(
                     #tag_col_name, e
                 ))?
         };
-        if #tag_var.len() != __nrow {
+        if <[_]>::len(&#tag_var) != __nrow {
             return ::core::result::Result::Err(::std::format!(
                 "tag column `{}` has length {} but data.frame has {} rows",
-                #tag_col_name, #tag_var.len(), __nrow
+                #tag_col_name, <[_]>::len(&#tag_var), __nrow
             ));
         }
     });
@@ -3085,10 +3085,10 @@ fn build_enum_reader(
                             #col_name_str, e
                         ))?
                 };
-                if #col_var.len() != __nrow {
+                if <[_]>::len(&#col_var) != __nrow {
                     return ::core::result::Result::Err(::std::format!(
                         "column `{}` has length {} but data.frame has {} rows",
-                        #col_name_str, #col_var.len(), __nrow
+                        #col_name_str, <[_]>::len(&#col_var), __nrow
                     ));
                 }
             });
@@ -3106,10 +3106,10 @@ fn build_enum_reader(
                             #col_name_str, e
                         ))?
                 };
-                if #col_var.len() != __nrow {
+                if <[_]>::len(&#col_var) != __nrow {
                     return ::core::result::Result::Err(::std::format!(
                         "column `{}` has length {} but data.frame has {} rows",
-                        #col_name_str, #col_var.len(), __nrow
+                        #col_name_str, <[_]>::len(&#col_var), __nrow
                     ));
                 }
             });
@@ -3147,13 +3147,13 @@ fn build_enum_reader(
                                         "column `{}` could not be converted: {}",
                                         __cn, e
                                     ))?;
-                            if __c.len() != __nrow {
+                            if <[_]>::len(&__c) != __nrow {
                                 return ::core::result::Result::Err(::std::format!(
                                     "column `{}` has length {} but data.frame has {} rows",
-                                    __cn, __c.len(), __nrow
+                                    __cn, <[_]>::len(&__c), __nrow
                                 ));
                             }
-                            __cols.push(__c);
+                            ::std::vec::Vec::push(&mut __cols, __c);
                             __k += 1;
                         }
                         ::core::option::Option::None => break,
@@ -3198,10 +3198,10 @@ fn build_enum_reader(
                         let __contributing: &[&str] = &[#(#contributing_variant_names),*];
                         let __present_indices: ::std::vec::Vec<usize> = ::core::iter::Iterator::collect(::core::iter::Iterator::filter(
                             0..__nrow,
-                            |&__i| __contributing.contains(&__tag[__i].as_str()),
+                            |&__i| <[_]>::contains(__contributing, &::std::string::String::as_str(&__tag[__i])),
                         ));
 
-                        let __inner_result: ::std::vec::Vec<#inner_ty> = if __present_indices.is_empty() {
+                        let __inner_result: ::std::vec::Vec<#inner_ty> = if <[_]>::is_empty(&__present_indices) {
                             ::std::vec::Vec::new()
                         } else {
                             // Select the prefixed columns into a sub-frame, strip prefix,
@@ -3209,10 +3209,10 @@ fn build_enum_reader(
                             let __prefix: &str = #prefix_lit;
                             let __names = __view.names();
                             let __sel: ::std::vec::Vec<&str> = ::core::iter::Iterator::collect(::core::iter::Iterator::map(
-                                ::core::iter::Iterator::filter(__names.iter(), |__n| __n.starts_with(__prefix)),
-                                |__n| __n.as_str(),
+                                ::core::iter::Iterator::filter(<[_]>::iter(&__names), |__n| ::core::primitive::str::starts_with(__n, __prefix)),
+                                |__n| ::std::string::String::as_str(__n),
                             ));
-                            if __sel.is_empty() {
+                            if <[_]>::is_empty(&__sel) {
                                 return ::core::result::Result::Err(::std::format!(
                                     "struct column `{}`: no columns with prefix `{}` found",
                                     #base, __prefix
@@ -3225,9 +3225,10 @@ fn build_enum_reader(
                             // densified frame before the borrowed handle's root
                             // releases — every intermediate frame is rooted across
                             // the next step's allocations and the recursive read.
-                            let __sub_dense = __view
-                                .select(&__sel)
-                                .strip_prefix(__prefix)
+                            let __sub_dense = ::miniextendr_api::dataframe::BuiltDataFrame::strip_prefix(
+                                __view.select(&__sel),
+                                __prefix,
+                            )
                                 .select_rows(&__present_indices);
                             let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_dense) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
@@ -3279,14 +3280,14 @@ fn build_enum_reader(
                     let __list = unsafe {
                         ::miniextendr_api::list::List::from_raw(__col_sexp)
                     };
-                    let __len = __list.len();
+                    let __len = ::miniextendr_api::list::List::len(__list);
                     let mut __v: ::std::vec::Vec<::core::option::Option<::std::vec::Vec<#elem_ty>>> =
                         ::std::vec::Vec::with_capacity(__len as usize);
                     for __j in 0..__len {
                         // in-bounds by construction (0..len)
                         let __elt = __list.get(__j).unwrap();
                         if __elt == ::miniextendr_api::SEXP::nil() {
-                            __v.push(::core::option::Option::None);
+                            ::std::vec::Vec::push(&mut __v, ::core::option::Option::None);
                         } else {
                             let __inner: ::std::vec::Vec<#elem_ty> =
                                 <::std::vec::Vec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elt)
@@ -3294,7 +3295,7 @@ fn build_enum_reader(
                                         "column `{}` element {} could not be converted to the expected type: {}",
                                         #col_name, __j, e
                                     ))?;
-                            __v.push(::core::option::Option::Some(__inner));
+                            ::std::vec::Vec::push(&mut __v, ::core::option::Option::Some(__inner));
                         }
                     }
                     __v
@@ -3303,10 +3304,10 @@ fn build_enum_reader(
                     ::core::iter::Iterator::collect(::core::iter::Iterator::map(0..__nrow, |_| ::core::option::Option::None))
                 }
             };
-            if #col_var.len() != __nrow {
+            if <[_]>::len(&#col_var) != __nrow {
                 return ::core::result::Result::Err(::std::format!(
                     "column `{}` has length {} but data.frame has {} rows",
-                    #col_name, #col_var.len(), __nrow
+                    #col_name, <[_]>::len(&#col_var), __nrow
                 ));
             }
         }
@@ -3357,7 +3358,7 @@ fn build_enum_reader(
         let seq_body = arm_body(true);
         match_arms.push(quote! {
             #variant_name_str => {
-                __rows.push(#seq_body);
+                ::std::vec::Vec::push(&mut __rows, #seq_body);
             }
         });
         // Parallel arm: return Ok(row_value).
@@ -3371,12 +3372,12 @@ fn build_enum_reader(
     // region: sequential body
     let seq_body = quote! {
         let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ::std::string::ToString::to_string(&e))?;
         let __nrow = __view.nrow();
         #(#extracts)*
         let mut __rows: ::std::vec::Vec<Self> = ::std::vec::Vec::with_capacity(__nrow);
         for __i in 0..__nrow {
-            match #tag_var[__i].as_str() {
+            match ::std::string::String::as_str(&#tag_var[__i]) {
                 #(#match_arms)*
                 __unknown => {
                     return ::core::result::Result::Err(::std::format!(
@@ -3401,14 +3402,14 @@ fn build_enum_reader(
         quote! {
             ::miniextendr_api::optionals::parallel::ensure_pool();
             let __view = ::miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ::std::string::ToString::to_string(&e))?;
             let __nrow = __view.nrow();
             #(#extracts)*
             let __indices = ::miniextendr_api::rayon_bridge::rayon::iter::IntoParallelIterator::into_par_iter(0..__nrow);
             let __rows = ::miniextendr_api::rayon_bridge::rayon::iter::ParallelIterator::map(
                 __indices,
                 |__i| -> ::core::result::Result<Self, ::std::string::String> {
-                    match #tag_var[__i].as_str() {
+                    match ::std::string::String::as_str(&#tag_var[__i]) {
                         #(#par_match_arms)*
                         __unknown => {
                             ::core::result::Result::Err(::std::format!(

@@ -446,20 +446,20 @@ impl<'a> Shape<'a> {
                 let value = value(f, quote! { __value });
                 quote! {
                     if let ::core::option::Option::Some(__value) = #binding {
-                        __data.push((::std::string::String::from(#name), #value));
+                        ::std::vec::Vec::push(&mut __data, (::std::string::String::from(#name), #value));
                     }
                 }
             } else {
                 let value = value(f, quote! { #binding });
-                quote! { __data.push((::std::string::String::from(#name), #value)); }
+                quote! { ::std::vec::Vec::push(&mut __data, (::std::string::String::from(#name), #value)); }
             })
         });
-        let extra = extra.map(|entry| quote! { __data.push(#entry); });
+        let extra = extra.map(|entry| quote! { ::std::vec::Vec::push(&mut __data, #entry); });
         quote! {{
             let mut __data: ::miniextendr_api::condition::ConditionData = ::std::vec::Vec::new();
             #(#pushes)*
             #(#extra)*
-            (!__data.is_empty()).then_some(__data)
+            (!<[_]>::is_empty(&__data)).then_some(__data)
         }}
     }
 }
@@ -1266,12 +1266,12 @@ mod tests {
             "{code}"
         );
         assert!(
-            code.contains("(! __data . is_empty ()) . then_some (__data)"),
+            code.contains("(! < [_] > :: is_empty (& __data)) . then_some (__data)"),
             "{code}"
         );
         // The plain field is pushed whatever its value.
         assert!(
-            code.contains(r#"__data . push ((:: std :: string :: String :: from ("verb")"#),
+            code.contains(r#":: std :: vec :: Vec :: push (& mut __data , (:: std :: string :: String :: from ("verb")"#),
             "{code}"
         );
     }

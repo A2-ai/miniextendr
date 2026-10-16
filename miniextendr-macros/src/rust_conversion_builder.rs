@@ -938,7 +938,7 @@ impl RustConversionBuilder {
                         crate::SeveralOkContainer::BoxedSlice => {
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
-                                    .map(|v| v.into_boxed_slice())
+                                    .map(::std::vec::Vec::into_boxed_slice)
                             };
                             let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
                             return (vec![stmt], vec![]);
@@ -966,7 +966,7 @@ impl RustConversionBuilder {
                                 conversion_err_arm(&len_ctx, &self.conversion_error_class, span);
                             let arr_stmt = quote_spanned! {span=>
                                 let #ident: #ty = match <[#inner_ty; #n]>::try_from(#vec_ident)
-                                    .map_err(|v| ::std::format!("got length {}", v.len()))
+                                    .map_err(|v| ::std::format!("got length {}", <[_]>::len(&v)))
                                 {
                                     ::core::result::Result::Ok(v) => v,
                                     #len_arm

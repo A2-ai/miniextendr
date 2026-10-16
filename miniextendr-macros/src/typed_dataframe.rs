@@ -221,7 +221,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                             let actual = ::miniextendr_api::SexpExt::type_of(&col);
                             let expected = <#elem_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
                             if actual != expected {
-                                __errs.push(::std::format!(
+                                ::std::vec::Vec::push(&mut __errs, ::std::format!(
                                     "column `{}`: expected {} ({:?}), got {:?}",
                                     #name_str,
                                     ::std::stringify!(#elem_ty),
@@ -241,7 +241,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                 let #col_ident: ::miniextendr_api::SEXP = {
                     match view.column_raw(#name_str) {
                         ::std::option::Option::None => {
-                            __errs.push(::std::format!(
+                            ::std::vec::Vec::push(&mut __errs, ::std::format!(
                                 "missing required column `{}` (expected {} / {:?})",
                                 #name_str,
                                 ::std::stringify!(#elem_ty),
@@ -253,7 +253,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
                             let actual = ::miniextendr_api::SexpExt::type_of(&col);
                             let expected = <#elem_ty as ::miniextendr_api::RNativeType>::SEXP_TYPE;
                             if actual != expected {
-                                __errs.push(::std::format!(
+                                ::std::vec::Vec::push(&mut __errs, ::std::format!(
                                     "column `{}`: expected {} ({:?}), got {:?}",
                                     #name_str,
                                     ::std::stringify!(#elem_ty),
@@ -287,12 +287,12 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             const __DECLARED: &[&str] = &[#( #declared_names ),*];
             let mut __extras: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
             for col_name in view.names() {
-                if !__DECLARED.contains(&col_name.as_str()) {
-                    __extras.push(col_name.to_string());
+                if !<[_]>::contains(__DECLARED, &::std::string::String::as_str(&col_name)) {
+                    ::std::vec::Vec::push(&mut __extras, ::std::string::ToString::to_string(&col_name));
                 }
             }
-            if !__extras.is_empty() {
-                __errs.push(::std::format!(
+            if !<[_]>::is_empty(&__extras) {
+                ::std::vec::Vec::push(&mut __errs, ::std::format!(
                     "unexpected extra columns: {:?}",
                     __extras
                 ));
@@ -361,13 +361,13 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
 
                 #allow_extra_check
 
-                if !__errs.is_empty() {
+                if !<[_]>::is_empty(&__errs) {
                     return ::std::result::Result::Err(
                         ::miniextendr_api::from_r::SexpError::InvalidValue(
                             ::std::format!(
                                 "{}: {}",
                                 #struct_name_str,
-                                __errs.join("; ")
+                                <[_]>::join(&__errs, "; ")
                             )
                         )
                     );

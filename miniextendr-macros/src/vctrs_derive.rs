@@ -1076,7 +1076,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                     ::core::iter::Iterator::collect(::core::iter::Iterator::chain(
                         ::core::iter::once(<Self as ::miniextendr_api::vctrs::VctrsClass>::CLASS_NAME),
                         ::core::iter::Iterator::copied(
-                            <Self as ::miniextendr_api::vctrs::VctrsClass>::additional_classes().iter(),
+                            <[_]>::iter(<Self as ::miniextendr_api::vctrs::VctrsClass>::additional_classes()),
                         ),
                     ));
             },
@@ -1148,7 +1148,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             let list = unsafe { List::from_raw(data_sexp) };
                             // For list_of, we pass size = list length, ptype = None (handled in R wrapper)
                             let size = ::core::option::Option::Some(
-                                i32::try_from(list.len()).expect("list_of length exceeds i32::MAX"),
+                                i32::try_from(::miniextendr_api::list::List::len(list)).expect("list_of length exceeds i32::MAX"),
                             );
                             ::miniextendr_api::vctrs::new_list_of(
                                 list,
