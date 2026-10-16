@@ -7,9 +7,24 @@ use miniextendr_api::miniextendr;
 
 // region: Define a trait with #[miniextendr]
 
+// Same-named supertrait methods must never capture Counter's ABI callbacks.
+#[allow(dead_code)]
+pub trait CounterBase {
+    fn value(&self) -> i32 {
+        -1000
+    }
+    fn increment(&mut self) {
+        panic!("CounterBase::increment must not be dispatched")
+    }
+    fn checked_add(&mut self, _n: i32) {
+        panic!("CounterBase::checked_add must not be dispatched")
+    }
+}
+impl<T> CounterBase for T {}
+
 /// Counter trait for testing cross-type trait ABI dispatch.
 #[miniextendr]
-pub trait Counter {
+pub trait Counter: CounterBase {
     /// Associated constant: Maximum value for this counter type.
     const MAX_VALUE: i32;
 

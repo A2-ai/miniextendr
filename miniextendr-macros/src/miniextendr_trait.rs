@@ -956,28 +956,25 @@ fn generate_method_shim(
     // Generate method call (uses __ImplT). The receiver borrows the value's
     // RefCell for the rest of the shim, through the result conversion.
     let param_names = &method.param_names;
-    let (receiver, method_call) = if let Some(kind) = method.owner_receiver {
+    let receiver = if let Some(kind) = method.owner_receiver {
         let handle = kind.type_path();
-        let trait_args =
-            (!trait_param_idents.is_empty()).then(|| quote::quote!(<#(#trait_param_idents),*>));
-        (
-            quote::quote! {
-                let #self_ref = unsafe {
-                    #handle::<#impl_t>::from_raw_parts(
-                        &#owner,
-                        #cell,
-                    )
-                };
-            },
-            quote::quote! {
-                <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
-            },
-        )
+        quote::quote! {
+            let #self_ref = unsafe {
+                #handle::<#impl_t>::from_raw_parts(
+                    &#owner,
+                    #cell,
+                )
+            };
+        }
     } else {
-        (
-            crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut),
-            quote::quote! { #self_ref.#method_name(#(#param_names),*) },
-        )
+        crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut)
+    };
+    // A supertrait may have a method with this name too. Select the declared
+    // interface, as the concrete impl-site shims already do.
+    let trait_args =
+        (!trait_param_idents.is_empty()).then(|| quote::quote!(<#(#trait_param_idents),*>));
+    let method_call = quote::quote! {
+        <#impl_t as #trait_name #trait_args>::#method_name(#self_ref, #(#param_names),*)
     };
 
     // Generate result conversion
