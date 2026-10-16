@@ -159,6 +159,7 @@
 mod altrep;
 mod c_wrapper_builder;
 mod call_method_def;
+mod cfg_gates;
 mod deprecation;
 mod externalptr_args;
 mod list_macro;
@@ -719,6 +720,15 @@ fn expand_miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    // rustc must select gated members before any expansion reads them (#2107).
+    if let Ok(parsed) = syn::parse::<syn::Item>(item.clone()) {
+        match cfg_gates::select(&attr.clone().into(), &parsed) {
+            Ok(Some(selected)) => return selected.into(),
+            Ok(None) => {}
+            Err(error) => return error.into_compile_error().into(),
+        }
+    }
+
     // Try to parse as function first
     if syn::parse::<syn::ItemFn>(item.clone()).is_ok() {
         // Continue with function handling below
