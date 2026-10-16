@@ -1,8 +1,9 @@
 // Every derive, attribute and function-like macro, invoked once each.
 //
 // Included by the pass fixtures that put generated code in a hostile scope:
-// `shadowed_standard_names.rs` (std names shadowed, #1991) and
-// `glob_import_method_calls.rs` (`use miniextendr_api::*`, #2020). Its own
+// `shadowed_standard_names.rs` (std names shadowed, #1991),
+// `glob_import_method_calls.rs` (`use miniextendr_api::*`, #2020), and
+// `consumer_conversion_methods.rs` (blanket conversion traits, #2020). Its own
 // code spells every standard-library path out and calls trait methods with
 // fully qualified syntax, so only the generated code can fail.
 

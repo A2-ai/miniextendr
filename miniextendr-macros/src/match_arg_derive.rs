@@ -264,16 +264,17 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = ::core::convert::Infallible;
 
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                use ::miniextendr_api::match_arg::MatchArg;
-                self.to_choice().into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(
+                    <Self as ::miniextendr_api::match_arg::MatchArg>::to_choice(self)
+                )
             }
         }
 

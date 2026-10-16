@@ -2042,7 +2042,7 @@ fn derive_try_from_list_looks_fields_up_in_one_sorted_pass() {
     assert!(s.contains("letzeta:f64={let__elem=__mx_positions[2usize]"));
     assert!(s.contains("letalpha:f64={let__elem=__mx_positions[0usize]"));
     assert!(s.contains("letr#type:f64={let__elem=__mx_positions[1usize]"));
-    assert!(s.contains("MissingField(\"type\".into())"));
+    assert!(s.contains("MissingField(::core::convert::Into::into(\"type\"))"));
 }
 
 #[test]
@@ -2312,7 +2312,7 @@ fn test_derive_altrep_logical_with_elt_field() {
     let output_str = normalize_tokens(output);
 
     // Should use field conversion via Into<Logical>
-    assert!(output_str.contains("self.value.into()"));
+    assert!(output_str.contains("::core::convert::Into::into(self.value)"));
 }
 
 #[test]

@@ -125,8 +125,8 @@ struct AltrepAttrs {
     /// When set, `elt()` returns `self.{field}` for every index.
     elt_field: Option<syn::Ident>,
     /// Field name for delegated element access, set via `#[altrep(elt_delegate = "field")]`.
-    /// When set, `elt()` calls `self.{field}.elt(i)`, delegating to the inner type's
-    /// `AltIntegerData`/`AltRealData`/etc. implementation. Useful for wrapper types
+    /// When set, `elt()` calls the inner type's `AltIntegerData`/
+    /// `AltRealData`/etc. implementation explicitly. Useful for wrapper types
     /// around `StreamingIntData`, `StreamingRealData`, etc.
     elt_delegate: Option<syn::Ident>,
     /// Whether to generate the low-level trait impls (`Altrep`, `AltVec`,
@@ -585,7 +585,7 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
         quote! { ::miniextendr_api::altrep_data::AltIntegerData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> i32 { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> i32 { ::miniextendr_api::altrep_data::AltIntegerData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> i32 { self.#f } }
             } else {
@@ -619,7 +619,7 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         quote! { ::miniextendr_api::altrep_data::AltRealData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> f64 { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> f64 { ::miniextendr_api::altrep_data::AltRealData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> f64 { self.#f } }
             } else {
@@ -653,9 +653,9 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         quote! { ::miniextendr_api::altrep_data::AltLogicalData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::altrep_data::Logical { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::altrep_data::Logical { ::miniextendr_api::altrep_data::AltLogicalData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
-                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { self.#f.into() } }
+                quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { ::core::convert::Into::into(self.#f) } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical { ::miniextendr_api::altrep_data::Logical::Na } }
             }
@@ -687,7 +687,7 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         quote! { ::miniextendr_api::altrep_data::AltRawData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> u8 { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> u8 { ::miniextendr_api::altrep_data::AltRawData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> u8 { self.#f } }
             } else {
@@ -723,9 +723,9 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         quote! { ::miniextendr_api::altrep_data::AltStringData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> ::core::option::Option<&str> { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> ::core::option::Option<&str> { ::miniextendr_api::altrep_data::AltStringData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
-                quote! { fn elt(&self, _i: usize) -> ::core::option::Option<&str> { ::core::option::Option::Some(self.#f.as_ref()) } }
+                quote! { fn elt(&self, _i: usize) -> ::core::option::Option<&str> { ::core::option::Option::Some(::core::convert::AsRef::<str>::as_ref(&self.#f)) } }
             } else {
                 quote! { fn elt(&self, _i: usize) -> ::core::option::Option<&str> { ::core::option::Option::None } }
             }
@@ -761,7 +761,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         quote! { ::miniextendr_api::altrep_data::AltComplexData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::Rcomplex { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> ::miniextendr_api::Rcomplex { ::miniextendr_api::altrep_data::AltComplexData::elt(&self.#d, i) } }
             } else if let Some(f) = elt_field {
                 quote! { fn elt(&self, _i: usize) -> ::miniextendr_api::Rcomplex { self.#f } }
             } else {

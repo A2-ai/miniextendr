@@ -26,6 +26,11 @@
 //! }
 //! ```
 
+// #2020: consumer traits must not intercept generated field conversions.
+// An unused import is the expected outcome after dispatch is qualified.
+#[allow(unused_imports)]
+use crate::glob_import_tests::ConsumerConversions as _;
+
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
 use miniextendr_api::{AsVctrs, PreferVctrs, Vctrs, miniextendr};
 

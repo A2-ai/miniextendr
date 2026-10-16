@@ -1257,22 +1257,22 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
             #[inline]
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::convert::ColumnSource::into_column_list(self))
             }
 
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::convert::ColumnSource::into_column_list(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::convert::ColumnSource::into_column_list(self))
             }
         }
     })
@@ -2972,12 +2972,14 @@ fn derive_struct_dataframe(
                     // `.into()` converts the collected `Vec<elem>` to the field's
                     // own container type (`Vec<T>` identity or `Box<[T]>`).
                     seq_builds.push(quote! {
-                        #rust_name: [ #(#it_nexts),* ]
-                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
+                        #rust_name: ::core::convert::Into::into(
+                            [ #(#it_nexts),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()
+                        )
                     });
                     par_builds.push(quote! {
-                        #rust_name: [ #(#idx_clones),* ]
-                            .into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into()
+                        #rust_name: ::core::convert::Into::into(
+                            [ #(#idx_clones),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()
+                        )
                     });
                 }
                 // `Vec<T>`/`Box<[T]>` + `expand` → a runtime-determined number of
@@ -3021,11 +3023,11 @@ fn derive_struct_dataframe(
                     // Both seq and par index by row (`__i`): the columns are a
                     // `Vec<Vec<…>>`, so there is nothing to drain field-wise.
                     let build = quote! {
-                        #rust_name: #cols_var
-                            .iter()
-                            .filter_map(|__c| ::core::clone::Clone::clone(&__c[__i]))
-                            .collect::<::std::vec::Vec<#elem_ty>>()
-                            .into()
+                        #rust_name: ::core::convert::Into::into(
+                            #cols_var.iter()
+                                .filter_map(|__c| ::core::clone::Clone::clone(&__c[__i]))
+                                .collect::<::std::vec::Vec<#elem_ty>>()
+                        )
                     };
                     seq_builds.push(build.clone());
                     par_builds.push(build);
@@ -3267,7 +3269,7 @@ fn derive_struct_dataframe(
             for #df_name #ty_generics #where_clause
         {
             fn from_rows(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                rows.into()
+                ::core::convert::Into::into(rows)
             }
 
             #from_rows_par_method
@@ -3283,7 +3285,7 @@ fn derive_struct_dataframe(
         impl #impl_generics #row_name #ty_generics #where_clause {
             #[doc(hidden)]
             pub fn to_dataframe(rows: ::std::vec::Vec<Self>) -> #df_name #ty_generics {
-                rows.into()
+                ::core::convert::Into::into(rows)
             }
 
             #reader_methods

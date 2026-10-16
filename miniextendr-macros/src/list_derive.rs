@@ -284,7 +284,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                     let #ident: #ty = {
                         let __elem = __mx_positions[#slot]
                             .and_then(|__i| __mx_list.get(__i))
-                            .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(#name_str.into()))?;
+                            .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(::core::convert::Into::into(#name_str)))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
                             .map_err(::miniextendr_api::from_r::SexpError::from)?
                     };
@@ -438,22 +438,22 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
 
             #[inline]
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::list::IntoList::into_list(self))
             }
 
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::list::IntoList::into_list(self))
             }
         }
 
@@ -480,22 +480,22 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
 
             #[inline]
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             #[inline]
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::externalptr::ExternalPtr::new(self))
             }
 
             #[inline]
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
+                ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::externalptr::ExternalPtr::new(self))
             }
         }
 
@@ -522,12 +522,12 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
 
             #[inline]
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             #[inline]
@@ -575,7 +575,7 @@ pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
             #[inline]
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
         }
 

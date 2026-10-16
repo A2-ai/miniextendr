@@ -260,11 +260,11 @@ fn derive_simple_factor(
             type Error = ::core::convert::Infallible;
 
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
@@ -485,11 +485,11 @@ fn derive_interaction_factor(
             type Error = ::core::convert::Infallible;
 
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                self.try_into_sexp()
+                ::miniextendr_api::IntoR::try_into_sexp(self)
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {

@@ -14,6 +14,16 @@
 use miniextendr_api::*;
 use std::collections::{BTreeMap, HashMap};
 
+// Consumer blankets are a separate hazard from the crate's own glob (#2020).
+// The vctrs examples import this too, covering all three conversion branches.
+pub(crate) trait ConsumerConversions: Sized {
+    fn into_sexp(self) {}
+    fn try_into_sexp(self) {}
+    fn into_sexp_unchecked(self) {}
+    fn try_into_sexp_unchecked(self) {}
+}
+impl<T> ConsumerConversions for T {}
+
 // No nested struct: the parallel reader assembles each row by index, cloning
 // the cells out of the pre-extracted columns.
 #[derive(Clone, DataFrameRow)]
@@ -109,19 +119,17 @@ fn glob_nested() -> Vec<GlobNested> {
 /// that's missing (without `rayon`) reports -1.
 #[miniextendr(noexport)]
 pub fn glob_import_roundtrip() -> Vec<i32> {
-    use miniextendr_api::into_r::IntoR as _;
-
     fn count<T>(rows: Result<Vec<T>, String>) -> i32 {
         rows.map_or(-2, |rows| i32::try_from(rows.len()).unwrap_or(i32::MAX))
     }
 
-    let rows = GlobRow::to_dataframe(glob_rows()).into_sexp();
+    let rows = miniextendr_api::IntoR::into_sexp(GlobRow::to_dataframe(glob_rows()));
     // SAFETY: on the R thread; each frame is fresh and stays protected while
     // the readers allocate.
     let rows = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(rows) };
-    let events = GlobEvent::to_dataframe(glob_events()).into_sexp();
+    let events = miniextendr_api::IntoR::into_sexp(GlobEvent::to_dataframe(glob_events()));
     let events = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(events) };
-    let nested = GlobNested::to_dataframe(glob_nested()).into_sexp();
+    let nested = miniextendr_api::IntoR::into_sexp(GlobNested::to_dataframe(glob_nested()));
     let nested = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(nested) };
 
     #[cfg(feature = "rayon")]

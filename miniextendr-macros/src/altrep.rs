@@ -138,11 +138,11 @@ pub(crate) fn generate_direct_altrep_registration(
             type Error = ::core::convert::Infallible;
 
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(self.into_sexp())
+                ::core::result::Result::Ok(::miniextendr_api::IntoR::into_sexp(self))
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                ::core::result::Result::Ok(unsafe { self.into_sexp_unchecked() })
+                ::core::result::Result::Ok(unsafe { ::miniextendr_api::IntoR::into_sexp_unchecked(self) })
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {

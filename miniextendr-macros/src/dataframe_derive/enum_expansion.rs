@@ -1668,7 +1668,7 @@ pub(super) fn derive_enum_dataframe(
             for #df_name #ty_generics #where_clause
         {
             fn from_rows(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                rows.into()
+                ::core::convert::Into::into(rows)
             }
 
             #from_rows_par_method
@@ -1701,7 +1701,7 @@ pub(super) fn derive_enum_dataframe(
         impl #impl_generics #row_name #ty_generics #where_clause {
             #[doc(hidden)]
             pub fn to_dataframe(rows: ::std::vec::Vec<Self>) -> #df_name #ty_generics {
-                rows.into()
+                ::core::convert::Into::into(rows)
             }
 
             #enum_reader_methods
@@ -2889,7 +2889,7 @@ fn enum_reader_field_value(
             let slots: Vec<TokenStream> = (1..=data.width)
                 .map(|k| cell(&format_ident!("__col_{}_{}", data.base_name, k)))
                 .collect();
-            quote! { [ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into() }
+            quote! { ::core::convert::Into::into([ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>()) }
         }
         EnumResolvedField::AutoExpandVec(data) => {
             let elem_ty = &data.elem_ty;
@@ -2907,7 +2907,7 @@ fn enum_reader_field_value(
                     })
                 }
             };
-            quote! { #cells.collect::<::std::vec::Vec<#elem_ty>>().into() }
+            quote! { ::core::convert::Into::into(#cells.collect::<::std::vec::Vec<#elem_ty>>()) }
         }
         EnumResolvedField::Map(data) => {
             let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
