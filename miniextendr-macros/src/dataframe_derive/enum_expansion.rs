@@ -761,6 +761,15 @@ pub(super) fn derive_enum_dataframe(
         ));
     }
 
+    // With no tag or payload column there is no vector from which to recover
+    // the row count. Store it, as the struct companion does for this shape.
+    let has_len_field = !has_tag && column_fields.is_empty();
+    let (len_field, len_init) = if has_len_field {
+        companion_fields.push((format_ident!("_len"), quote! { usize }));
+        (quote! { pub _len: usize, }, quote! { _len: len, })
+    } else {
+        (TokenStream::new(), TokenStream::new())
+    };
     companion_fields.extend(column_fields);
     let (phantom_field, phantom_init) =
         companion_lifetime_marker(&input.generics, &mut companion_fields);
@@ -769,6 +778,7 @@ pub(super) fn derive_enum_dataframe(
     let dataframe_struct = quote! {
         pub struct #df_name #impl_generics #where_clause {
             #tag_field
+            #len_field
             #phantom_field
             #(#df_fields),*
         }
@@ -788,8 +798,7 @@ pub(super) fn derive_enum_dataframe(
         let first = &first_ac.df_field;
         quote! { <[_]>::len(&self.#first) }
     } else {
-        // No columns and no tag — degenerate case, length is 0
-        quote! { 0usize }
+        quote! { self._len }
     };
 
     // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
@@ -1371,6 +1380,7 @@ pub(super) fn derive_enum_dataframe(
                 }
                 #df_name {
                     #tag_struct_field
+                    #len_init
                     #phantom_init
                     #(#col_struct_fields),*
                 }
@@ -1922,17 +1932,27 @@ pub(super) fn derive_enum_dataframe(
     // The build delegates to the companion engine via `ColumnSource::into_dataframe`;
     // the parallel path uses the #777 scatter-write builder when one was generated
     // for this shape, else the sequential transposition.
-    let has_par_builder = !from_rows_par_method.is_empty();
-    let rows_into_dataframe_par_body = if has_par_builder {
-        quote! {
-            ::miniextendr_api::convert::ColumnSource::into_dataframe(
-                <#df_name #ty_generics as ::miniextendr_api::dataframe::ColumnarFrame<
-                    #row_name #ty_generics,
-                >>::from_rows_par(rows),
-            )
-        }
+    let rows_into_dataframe_par_method = if from_rows_par_method.is_empty() {
+        // Inherit the trait's sequential default. Emitting Self::rows_into_dataframe
+        // here would let an unrelated inherent function on the row type capture it.
+        TokenStream::new()
     } else {
-        quote! { Self::rows_into_dataframe(rows) }
+        quote! {
+            ::miniextendr_api::__dataframe_row_when_rayon! {
+                fn rows_into_dataframe_par(
+                    rows: ::std::vec::Vec<Self>,
+                ) -> ::core::result::Result<
+                    ::miniextendr_api::dataframe::DataFrame,
+                    ::miniextendr_api::dataframe::DataFrameError,
+                > {
+                    ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                        <#df_name #ty_generics as ::miniextendr_api::dataframe::ColumnarFrame<
+                            #row_name #ty_generics,
+                        >>::from_rows_par(rows),
+                    )
+                }
+            }
+        }
     };
 
     // rows_from_dataframe / rows_from_dataframe_par overrides (only when reader-capable).
@@ -1989,16 +2009,7 @@ pub(super) fn derive_enum_dataframe(
                 )
             }
 
-            ::miniextendr_api::__dataframe_row_when_rayon! {
-                fn rows_into_dataframe_par(
-                    rows: ::std::vec::Vec<Self>,
-                ) -> ::core::result::Result<
-                    ::miniextendr_api::dataframe::DataFrame,
-                    ::miniextendr_api::dataframe::DataFrameError,
-                > {
-                    #rows_into_dataframe_par_body
-                }
-            }
+            #rows_into_dataframe_par_method
 
             #reader_override
         }
@@ -2718,7 +2729,7 @@ fn generate_split_method(
                         // SAFETY: see has_auto branch.
                         let #df_var = unsafe {
                             let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                            ::miniextendr_api::list::List::from_raw_pairs(::std::vec![
+                            ::miniextendr_api::list::List::from_raw_pairs::<&str>(::std::vec![
                                 #(#pairs),*
                             ])
                             .set_class_str(&["data.frame"])

@@ -2087,7 +2087,7 @@ fn derive_struct_dataframe(
                     // SAFETY: see auto-expand branch.
                     unsafe {
                         let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        ::miniextendr_api::list::List::from_raw_pairs(::std::vec![
+                        ::miniextendr_api::list::List::from_raw_pairs::<&str>(::std::vec![
                             #tag_pair
                             #(#df_pairs),*
                         ])
@@ -3355,17 +3355,27 @@ fn derive_struct_dataframe(
 
     // The parallel build goes through `from_rows_par` when the derive overrides it for this
     // shape; otherwise it is the sequential transposition.
-    let has_par_builder = !from_rows_par_method.is_empty();
-    let rows_into_dataframe_par_body = if has_par_builder {
-        quote! {
-            ::miniextendr_api::convert::ColumnSource::into_dataframe(
-                <#df_name #ty_generics as ::miniextendr_api::dataframe::ColumnarFrame<
-                    #row_name #ty_generics,
-                >>::from_rows_par(rows),
-            )
-        }
+    let rows_into_dataframe_par_method = if from_rows_par_method.is_empty() {
+        // Inherit the trait's sequential default. Emitting Self::rows_into_dataframe
+        // here would let an unrelated inherent function on the row type capture it.
+        TokenStream::new()
     } else {
-        quote! { Self::rows_into_dataframe(rows) }
+        quote! {
+            ::miniextendr_api::__dataframe_row_when_rayon! {
+                fn rows_into_dataframe_par(
+                    rows: ::std::vec::Vec<Self>,
+                ) -> ::core::result::Result<
+                    ::miniextendr_api::dataframe::DataFrame,
+                    ::miniextendr_api::dataframe::DataFrameError,
+                > {
+                    ::miniextendr_api::convert::ColumnSource::into_dataframe(
+                        <#df_name #ty_generics as ::miniextendr_api::dataframe::ColumnarFrame<
+                            #row_name #ty_generics,
+                        >>::from_rows_par(rows),
+                    )
+                }
+            }
+        }
     };
 
     // Readers are overridden for every reader-capable struct shape (scalar,
@@ -3421,16 +3431,7 @@ fn derive_struct_dataframe(
                 )
             }
 
-            ::miniextendr_api::__dataframe_row_when_rayon! {
-                fn rows_into_dataframe_par(
-                    rows: ::std::vec::Vec<Self>,
-                ) -> ::core::result::Result<
-                    ::miniextendr_api::dataframe::DataFrame,
-                    ::miniextendr_api::dataframe::DataFrameError,
-                > {
-                    #rows_into_dataframe_par_body
-                }
-            }
+            #rows_into_dataframe_par_method
 
             #reader_overrides
         }
