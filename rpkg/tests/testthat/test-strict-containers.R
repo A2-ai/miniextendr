@@ -1,7 +1,10 @@
 # Strict returns of slices, boxed slices and arrays (#1684). Fixture:
 # src/rust/strict_container_tests.rs. Each fixture takes `big`: FALSE keeps
-# every value in R's integer range, TRUE adds values outside it (3e9, or
-# i32::MIN for the isize rows, since a 32-bit isize cannot hold 3e9).
+# every value in R's integer range, TRUE adds values outside it. The isize
+# rows add i32::MIN (R's NA_integer_) on every target, and 3e9 only where a
+# pointer is 64-bit: a 32-bit isize (webR's wasm32) cannot hold it.
+
+wide_isize <- .Machine$sizeof.pointer == 8L
 
 strict_message <- function(expr) {
   e <- tryCatch(expr, error = identity)
@@ -51,7 +54,12 @@ test_that("strict rows report the row and the position inside it", {
 
   msg <- strict_message(miniextendr:::strict_array_rows_isize(TRUE))
   expect_match(msg, "strict conversion failed for Vec<[isize; 2]>:", fixed = TRUE)
-  expect_match(msg, "at inner position 2 (element 2)", fixed = TRUE)
+  expect_match(msg, "isize value -2147483648 is outside R integer range", fixed = TRUE)
+  expect_match(msg, "at inner position 1 (element 1)", fixed = TRUE)
+  if (wide_isize) {
+    expect_match(msg, "isize value 3000000000 is outside R integer range", fixed = TRUE)
+    expect_match(msg, "at inner position 2 (element 2)", fixed = TRUE)
+  }
 
   msg <- strict_message(miniextendr:::strict_optional_slice_rows_u64(TRUE))
   expect_match(msg, "strict conversion failed for Vec<Option<&'static [u64]>>:", fixed = TRUE)
@@ -68,5 +76,8 @@ test_that("without strict the same shapes still widen to doubles", {
   expect_identical(miniextendr:::lax_optional_boxed_i64(TRUE), big)
   expect_null(miniextendr:::lax_optional_boxed_i64(NULL))
   expect_identical(miniextendr:::lax_boxed_rows_i64(TRUE), list(1:3, big))
-  expect_identical(miniextendr:::lax_array_rows_isize(TRUE), list(1:2, c(3, -2147483648)))
+  expect_identical(
+    miniextendr:::lax_array_rows_isize(TRUE),
+    list(c(-2147483648, 2), if (wide_isize) c(3, 3e9) else 3:4)
+  )
 })
