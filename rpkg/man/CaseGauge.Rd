@@ -23,12 +23,25 @@ CaseGauge
 }
 \description{
 CaseGauge inherent methods (constructor).
+}
+\section{Methods}{
 
+\describe{
+\item{\code{CaseGauge$new()}}{
 Create a gauge holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{The reading.}
 }
+}
+}
 
+
+\describe{
+\item{\code{CaseGauge$new_case_gauge()}}{
 \code{CaseGauge$new_case_gauge()} is another name for the constructor \code{CaseGauge$new()}.
 }
+}
+}
+

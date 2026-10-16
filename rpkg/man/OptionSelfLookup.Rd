@@ -23,22 +23,48 @@ OptionSelfLookup
 \item{name}{Method name for dispatch.}
 }
 \description{
+OptionSelfLookup Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{OptionSelfLookup$new()}}{
 Create a new entry directly.
 
+\strong{Arguments:}
 \describe{
 \item{\code{id}}{Integer id.}
 \item{\code{label}}{Entry label.}
 }
+}
+}
 
+
+\describe{
+\item{\code{OptionSelfLookup$id()}}{
 The entry's id.
+}
+}
 
+
+\describe{
+\item{\code{OptionSelfLookup$label()}}{
 The entry's label.
+}
+}
 
+
+\describe{
+\item{\code{OptionSelfLookup$try_find()}}{
 Look up a known entry by id — the \verb{Option<Self>} lookup-shaped
 fallible constructor (#1164). Returns the entry for ids 1..=3;
 \code{None} (raised as an R error) otherwise.
 
+\strong{Arguments:}
 \describe{
 \item{\code{id}}{Integer id to look up.}
 }
 }
+}
+}
+

@@ -199,20 +199,16 @@ fn forwarded_body_tag(tag: &str) -> bool {
             .is_none_or(|name| name != "title" && !PAGE_TAGS.contains(&name))
 }
 
-/// The documentation body of a block without `\usage` (see
-/// [`forwarded_body_tag`]), documented like an env inherent method: the
-/// forwarded author tags, then one `\describe{}` list with the author's
-/// `@param` items and the choice text of the parameters they leave
-/// undocumented ([`describe_params_lines`](crate::r_class_formatter::describe_params_lines)).
-/// `label` is the block's topic name, used in the list's lead-in. Empty for a
-/// method with no doc comment and no choice parameter.
+/// Document a trait namespace member with the same formatter as an inherent
+/// env member. The resolved R call name labels its prose and argument list;
+/// page tags are emitted separately by own_block_page_lines.
 fn namespace_member_body_lines(
     ctx: &TraitMethodContext<'_>,
     type_str: &str,
     label: &str,
 ) -> Vec<String> {
     let choice_docs = ctx.choice_param_docs();
-    crate::r_class_formatter::describe_params_lines(
+    crate::r_class_formatter::namespace_member_doc_lines(
         &ctx.method.doc_tags,
         forwarded_body_tag,
         &ctx.params,

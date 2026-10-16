@@ -42,39 +42,6 @@ NdArrayDyn
 }
 \description{
 NdArrayDyn methods: N-dimensional array operations, indexing, and reshaping.
-
-Get the element at the given n-dimensional 1-based index.
-
-\describe{
-\item{\code{indices}}{1-based indices, one per dimension. Errors on a non-positive index, an out-of-bounds index, or a length mismatch with the array's dimensionality.}
-}
-
-Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on
-both ends per dimension — R's \code{x[s1:e1, s2:e2, ...]} convention).
-Elements are returned flattened in column-major (R) order.
-
-\describe{
-\item{\code{start}}{1-based inclusive start indices, one per dimension.}
-\item{\code{end}}{1-based inclusive end indices, one per dimension. Errors on a dimensionality mismatch or when any dimension violates \verb{1 <= start <= end <= extent}.}
-}
-
-Check if the given 1-based n-dimensional index is valid.
-
-Get all elements where dimension \code{axis} is fixed at position \code{index}.
-Both arguments are 1-based: \code{axis} follows R's \code{MARGIN} convention
-(1 = first dimension), and \code{index} matches \code{row}/\code{col}. Elements are
-returned in column-major (R) order.
-
-\describe{
-\item{\code{axis}}{1-based dimension selector (R's \code{MARGIN} convention). Errors if out of \verb{1..=ndim}.}
-\item{\code{index}}{1-based position along that dimension. Errors if out of \verb{1..=extent}.}
-}
-
-Reshape the array to new dimensions (data must fit exactly).
-
-\describe{
-\item{\code{new_shape}}{Target dimensions. Errors if the total element count doesn't match the array's current length.}
-}
 }
 \details{
 \code{get_nd}, \code{is_valid_nd}, \code{slice_nd}, and \code{axis_slice} take
@@ -85,3 +52,67 @@ Reshape the array to new dimensions (data must fit exactly).
 \code{slice_nd}, and \code{axis_slice} error on an out-of-bounds/invalid argument
 instead of silently yielding no value.
 }
+\section{Methods}{
+
+\describe{
+\item{\code{NdArrayDyn$get_nd()}}{
+Get the element at the given n-dimensional 1-based index.
+
+\strong{Arguments:}
+\describe{
+\item{\code{indices}}{1-based indices, one per dimension. Errors on a non-positive index, an out-of-bounds index, or a length mismatch with the array's dimensionality.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdArrayDyn$slice_nd()}}{
+Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on
+both ends per dimension — R's \code{x[s1:e1, s2:e2, ...]} convention).
+Elements are returned flattened in column-major (R) order.
+
+\strong{Arguments:}
+\describe{
+\item{\code{start}}{1-based inclusive start indices, one per dimension.}
+\item{\code{end}}{1-based inclusive end indices, one per dimension. Errors on a dimensionality mismatch or when any dimension violates \verb{1 <= start <= end <= extent}.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdArrayDyn$is_valid_nd()}}{
+Check if the given 1-based n-dimensional index is valid.
+}
+}
+
+
+\describe{
+\item{\code{NdArrayDyn$axis_slice()}}{
+Get all elements where dimension \code{axis} is fixed at position \code{index}.
+Both arguments are 1-based: \code{axis} follows R's \code{MARGIN} convention
+(1 = first dimension), and \code{index} matches \code{row}/\code{col}. Elements are
+returned in column-major (R) order.
+
+\strong{Arguments:}
+\describe{
+\item{\code{axis}}{1-based dimension selector (R's \code{MARGIN} convention). Errors if out of \verb{1..=ndim}.}
+\item{\code{index}}{1-based position along that dimension. Errors if out of \verb{1..=extent}.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdArrayDyn$reshape()}}{
+Reshape the array to new dimensions (data must fit exactly).
+
+\strong{Arguments:}
+\describe{
+\item{\code{new_shape}}{Target dimensions. Errors if the total element count doesn't match the array's current length.}
+}
+}
+}
+}
+

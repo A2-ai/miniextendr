@@ -24,11 +24,26 @@ AtomicCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+AtomicCounter Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{AtomicCounter$new()}}{
 Create an atomic counter holding \code{initial}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{initial}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{AtomicCounter$new_atomic()}}{
 \code{AtomicCounter$new_atomic()} is another name for the constructor \code{AtomicCounter$new()}.
 }
+}
+}
+

@@ -30,59 +30,93 @@ SeededRng
 }
 \description{
 SeededRng inherent methods: constructor.
+}
+\section{Methods}{
 
-Arguments of \code{SeededRng$new()}:
-
+\describe{
+\item{\code{SeededRng$new()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{seed}}{Integer seed (absolute value is used).}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_range_f64()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_range_f64()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{low}}{Lower bound (inclusive).}
 \item{\code{high}}{Upper bound (exclusive).}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_range_i32()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_range_i32()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{low}}{Lower bound (inclusive).}
 \item{\code{high}}{Upper bound (exclusive).}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_bool()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_bool()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{p}}{Probability of TRUE, in [0, 1].}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$random_f64_vec()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$random_f64_vec()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of values to generate.}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_range_f64_vec()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_range_f64_vec()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of values to generate.}
 \item{\code{low}}{Lower bound (inclusive).}
 \item{\code{high}}{Upper bound (exclusive).}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_range_i32_vec()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_range_i32_vec()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of values to generate.}
 \item{\code{low}}{Lower bound (inclusive).}
 \item{\code{high}}{Upper bound (exclusive).}
 }
+}
+}
 
-Arguments of \code{SeededRng$RRngOps$gen_bool_vec()}:
 
+\describe{
+\item{\code{SeededRng$RRngOps$gen_bool_vec()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of values to generate.}
 \item{\code{p}}{Probability of TRUE, in [0, 1].}
 }
 }
+}
+}
+

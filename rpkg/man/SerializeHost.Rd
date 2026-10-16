@@ -25,14 +25,21 @@ SerializeHost
 }
 \description{
 A class with ordinary and serialized return methods.
-
-Construct a class instance for serialization examples.
 }
-\details{
+\section{Methods}{
+
+\describe{
+\item{\code{SerializeHost$new()}}{
+Construct a class instance for serialization examples.
+
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Integer stored in the instance.}
 }
 }
+}
+}
+
 \examples{
 obj <- SerializeHost$new(5L)
 obj$snapshot() # list(value = 5L, label = "value-5")

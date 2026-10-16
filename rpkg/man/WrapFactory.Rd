@@ -36,70 +36,171 @@ WrapFactory
 \item{name}{Method name for dispatch.}
 }
 \description{
-Construct the factory.
+WrapFactory Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{WrapFactory$new()}}{
+Construct the factory.
+}
+}
+
+
+\describe{
+\item{\code{WrapFactory$build()}}{
 Return a usable R6 board from an Env instance method.
 
+\strong{Arguments:}
 \describe{
 \item{\code{w,h}}{Board dimensions.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$build_attr()}}{
 The equivalent attribute spelling keeps the Rust return type unchanged.
 
+\strong{Arguments:}
 \describe{
 \item{\code{w,h}}{Board dimensions.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$build_handle()}}{
 A marker around an \code{ExternalPtr} handle wraps like the bare class (#1375).
 
+\strong{Arguments:}
 \describe{
 \item{\code{w,h}}{Board dimensions.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$build_handle_attr()}}{
 The attribute spelling accepts the same handle return.
 
+\strong{Arguments:}
 \describe{
 \item{\code{w,h}}{Board dimensions.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s7()}}{
 Wrap an S7 counter.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s7_attr()}}{
 Attribute equivalent for S7.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s4()}}{
 Wrap an S4 counter.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s4_attr()}}{
 Attribute equivalent for S4.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s3()}}{
 Wrap an S3 counter.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$s3_attr()}}{
 Attribute equivalent for S3.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$env()}}{
 Wrap another Env class.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$env_attr()}}{
 Nested class-system attribute spelling.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$fallible()}}{
 Preserve error transport before constructing the R6 object.
 
+\strong{Arguments:}
 \describe{
 \item{\code{fail}}{Whether to return an error.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$boards()}}{
 Wrap each returned board independently.
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$optional_boards()}}{
 Optional method returns retain the boundary error on None.
 
+\strong{Arguments:}
 \describe{
 \item{\code{present}}{Whether to return a vector.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$optional_board()}}{
 Ordinary optional class returns retain the boundary's None error.
 
+\strong{Arguments:}
 \describe{
 \item{\code{present}}{Whether to return a board.}
 }
+}
+}
 
+
+\describe{
+\item{\code{WrapFactory$hidden()}}{
 Visibility applies to the completed R6 object.
 }
+}
+}
+
 \examples{
 factory <- WrapFactory$new()
 board <- factory$build(3L, 4L)

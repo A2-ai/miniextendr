@@ -27,45 +27,83 @@ ParamCheckHolder
 \description{
 Env class whose \code{add()} method checks its arguments with
 \code{inherits(...)} / \code{no_na(...)}.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{ParamCheckHolder$add()}}{
 Add \code{y} if \code{x} is an \code{mx_obj}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{x}}{An object of class \code{mx_obj} or \code{mx_other}.}
 \item{\code{y}}{A non-NA double.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ParamCheckHolder$add_checked()}}{
 \code{add()} with the method-level messages.
 
+\strong{Arguments:}
 \describe{
 \item{\code{x}}{An object of class \code{mx_obj} or \code{mx_other}.}
 \item{\code{y}}{A non-NA double.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ParamCheckHolder$add_dose()}}{
 Add a dose read like \code{as.numeric()}; \code{" NA "} is refused as \code{NA} is.
 
+\strong{Arguments:}
 \describe{
 \item{\code{dose}}{A number, string or factor label that is not missing.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ParamCheckHolder$add_doses()}}{
 Add several doses, with a method-level message for a missing one.
 
+\strong{Arguments:}
 \describe{
 \item{\code{doses}}{Numbers, strings or factor labels, none of them missing.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ParamCheckHolder$add_duration()}}{
 Add a duration given as a plain number; \code{NULL} adds nothing. A
 \code{difftime}, \code{Date} or date-time is refused with the method-level
 \code{not_inherits} message.
 
+\strong{Arguments:}
 \describe{
 \item{\code{tau}}{\code{NULL}, or a number in the time unit of the data.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ParamCheckHolder$add_model()}}{
 Count one more \code{mx_model}. A data frame or a fit is refused with the
 method-level \code{when(...)} hint for its class.
 
+\strong{Arguments:}
 \describe{
 \item{\code{model}}{An object of class \code{mx_model}.}
 }
 }
+}
+}
+

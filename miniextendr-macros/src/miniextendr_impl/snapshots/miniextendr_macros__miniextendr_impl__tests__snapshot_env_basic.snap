@@ -9,10 +9,16 @@ expression: generate_env_r_wrapper(&parsed)
 Counter <- new.env(parent = emptyenv())
 
 # Counter::new (1:1)
-#' @description Create a new counter
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Counter$new()}}{
+#' Create a new counter
 #'
+#' \strong{Arguments:}
 #' \describe{
 #'   \item{\code{value}}{Initial value}
+#' }
+#'   }
 #' }
 #' @name Counter$new
 #' @rdname Counter
@@ -27,7 +33,12 @@ Counter$new <- function(value) {
 }
 
 # Counter::get (1:1)
-#' @description Get the current value
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Counter$get()}}{
+#' Get the current value
+#'   }
+#' }
 #' @name Counter$get
 #' @rdname Counter
 Counter$get <- function() {
@@ -37,7 +48,12 @@ Counter$get <- function() {
 }
 
 # Counter::increment (1:1)
-#' @description Increment by one
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Counter$increment()}}{
+#' Increment by one
+#'   }
+#' }
 #' @name Counter$increment
 #' @rdname Counter
 Counter$increment <- function() {
@@ -47,7 +63,12 @@ Counter$increment <- function() {
 }
 
 # Counter::add (1:1)
-#' @description Add a value and return the result
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Counter$add()}}{
+#' Add a value and return the result
+#'   }
+#' }
 #' @name Counter$add
 #' @rdname Counter
 Counter$add <- function(n) {
@@ -59,7 +80,12 @@ Counter$add <- function(n) {
 }
 
 # Counter::from_string (1:1)
-#' @description Create from string
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Counter$from_string()}}{
+#' Create from string
+#'   }
+#' }
 #' @name Counter$from_string
 #' @rdname Counter
 Counter$from_string <- function(s) {

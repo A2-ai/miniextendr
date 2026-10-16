@@ -20,11 +20,21 @@ EitherRoutesEnv
 \item{name}{Method name for dispatch.}
 }
 \description{
+EitherRoutesEnv Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{EitherRoutesEnv$plan()}}{
 Route names or a data frame of doses, and omittable tier names or a
 number.
 
+\strong{Arguments:}
 \describe{
 \item{\code{routes}}{One or more of "oral", "bolus", "infusion", or a data frame.}
 \item{\code{tiers}}{One or more of "low", "mid", "high", or a number; omitting the argument means no choice.}
 }
 }
+}
+}
+

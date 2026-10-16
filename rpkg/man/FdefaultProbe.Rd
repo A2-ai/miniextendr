@@ -21,12 +21,25 @@ FdefaultProbe
 }
 \description{
 Class-system probe generated under the build's default class system.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{FdefaultProbe$new()}}{
 Creates a new probe holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Integer stored in the probe.}
 }
+}
+}
 
+
+\describe{
+\item{\code{FdefaultProbe$probe_value()}}{
 Returns the stored value.
 }
+}
+}
+

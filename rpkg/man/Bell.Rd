@@ -23,7 +23,21 @@ Bell
 \item{name}{Method name for dispatch.}
 }
 \description{
-A bell that has not rung yet.
+Bell Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{Bell$new()}}{
+A bell that has not rung yet.
+}
+}
+
+
+\describe{
+\item{\code{Bell$rings()}}{
 Rings so far.
 }
+}
+}
+

@@ -26,24 +26,38 @@ SeededNormal
 }
 \description{
 SeededNormal inherent methods: constructor.
+}
+\section{Methods}{
 
-Arguments of \code{SeededNormal$new()}:
-
+\describe{
+\item{\code{SeededNormal$new()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{mean}}{Mean of the normal distribution.}
 \item{\code{sd}}{Standard deviation (must be finite).}
 \item{\code{seed}}{Integer seed (absolute value is used).}
 }
+}
+}
 
-Arguments of \code{SeededNormal$RDistributionOps$sample_n()}:
 
+\describe{
+\item{\code{SeededNormal$RDistributionOps$sample_n()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of samples to draw.}
 }
+}
+}
 
-Arguments of \code{SeededNormal$RDistributionOps$sample_vec()}:
 
+\describe{
+\item{\code{SeededNormal$RDistributionOps$sample_vec()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{n}}{Integer number of samples to draw.}
 }
 }
+}
+}
+

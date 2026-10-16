@@ -26,10 +26,16 @@ IntVecIter
 }
 \description{
 IntVecIter inherent methods: constructor from integer vector.
+}
+\section{Methods}{
 
-Arguments of \code{IntVecIter$new()}:
-
+\describe{
+\item{\code{IntVecIter$new()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{data}}{Integer vector of elements to iterate over.}
 }
 }
+}
+}
+

@@ -23,22 +23,40 @@ OmitPickEnv
 }
 \description{
 OmitPickEnv inherent methods: constructor.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{OmitPickEnv$OmitGrade$omit_grade()}}{
 Pick one grade, or none.
 
+\strong{Arguments:}
 \describe{
 \item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
 }
+}
+}
 
-Arguments of \code{OmitPickEnv$OmitGrade$omit_grades()}:
 
+\describe{
+\item{\code{OmitPickEnv$OmitGrade$omit_grades()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{grades}}{The grades to pick; all of them for NULL.}
 }
+}
+}
 
+
+\describe{
+\item{\code{OmitPickEnv$GradeDefaults$default_grade()}}{
 Pick the default grade, or none.
 
+\strong{Arguments:}
 \describe{
 \item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
 }
 }
+}
+}
+

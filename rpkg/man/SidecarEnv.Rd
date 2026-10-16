@@ -40,30 +40,55 @@ SidecarEnv
 Env class registration for SidecarEnv: with \code{env(r_data_accessors)},
 \code{obj$count} / \code{obj[["count"]]} read a field and \code{obj$count <- value}
 writes it, next to the methods \code{obj$method()} reaches.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SidecarEnv$new()}}{
 Create a SidecarEnv with a \code{NULL} \code{raw_slot}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{count}}{Integer sidecar field.}
 \item{\code{score}}{Numeric sidecar field.}
 \item{\code{flag}}{Logical sidecar field.}
 \item{\code{name}}{Character sidecar field.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SidecarEnv$double_count()}}{
 Doubles \code{count} (a method next to the fields).
+}
+}
 
+
+\describe{
+\item{\code{SidecarEnv$bump_around()}}{
 Calls \code{f()} while this method holds the object mutably, then adds 1 to
 \code{count} and returns it. A callback that reads, writes or calls a method
 of the same object gets a \code{miniextendr_borrow_conflict} error (#1965).
 
+\strong{Arguments:}
 \describe{
 \item{\code{f}}{An R function of no arguments.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SidecarEnv$read_around()}}{
 Calls \code{f()} while this method holds the object shared, then returns
 \code{count}. A callback may read the object but not write it (#1965).
 
+\strong{Arguments:}
 \describe{
 \item{\code{f}}{An R function of no arguments.}
 }
 }
+}
+}
+

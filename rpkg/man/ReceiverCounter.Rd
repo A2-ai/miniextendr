@@ -24,18 +24,46 @@ ReceiverCounter
 }
 \description{
 Env-style counter class with constructor, accessor, and mutation methods.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{ReceiverCounter$new()}}{
 Creates a new counter with the given initial value.
 
+\strong{Arguments:}
 \describe{
 \item{\code{initial}}{Integer initial counter value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{ReceiverCounter$value()}}{
 Returns the current value.
+}
+}
 
+
+\describe{
+\item{\code{ReceiverCounter$inc()}}{
 Increments the counter by 1 and returns the new value.
+}
+}
 
+
+\describe{
+\item{\code{ReceiverCounter$add()}}{
 Adds the given amount to the counter and returns the new value.
+}
+}
 
+
+\describe{
+\item{\code{ReceiverCounter$default_counter()}}{
 A static method that returns a default counter (value = 0).
 }
+}
+}
+

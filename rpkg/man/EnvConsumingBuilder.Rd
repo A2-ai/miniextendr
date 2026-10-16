@@ -25,28 +25,63 @@ EnvConsumingBuilder
 }
 \description{
 Chains as \code{b$with_amount(1L)$try_amount(2L)$total()}.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{EnvConsumingBuilder$new()}}{
 Start at zero.
+}
+}
 
+
+\describe{
+\item{\code{EnvConsumingBuilder$with_amount()}}{
 \code{self -> Self} step.
 
+\strong{Arguments:}
 \describe{
 \item{\code{amount}}{Amount to add.}
 }
+}
+}
 
+
+\describe{
+\item{\code{EnvConsumingBuilder$try_amount()}}{
 \verb{self -> Result<Self, E>} step.
 
+\strong{Arguments:}
 \describe{
 \item{\code{amount}}{Amount to add (must be non-negative).}
 }
+}
+}
 
+
+\describe{
+\item{\code{EnvConsumingBuilder$checked_bump()}}{
 Fallible in-place step (#1433).
 
+\strong{Arguments:}
 \describe{
 \item{\code{amount}}{Amount to add (must be non-negative).}
 }
+}
+}
 
+
+\describe{
+\item{\code{EnvConsumingBuilder$total()}}{
 Read the total.
+}
+}
 
+
+\describe{
+\item{\code{EnvConsumingBuilder$finish()}}{
 Terminal consume.
 }
+}
+}
+

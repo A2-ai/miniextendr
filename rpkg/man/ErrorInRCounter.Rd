@@ -23,13 +23,42 @@ ErrorInRCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+ErrorInRCounter Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{ErrorInRCounter$new()}}{
 Create a new counter.
+}
+}
 
+
+\describe{
+\item{\code{ErrorInRCounter$get()}}{
 Get the current value -- should always succeed.
+}
+}
 
+
+\describe{
+\item{\code{ErrorInRCounter$inc()}}{
 Increment -- mutable method, should succeed and allow chaining.
+}
+}
 
+
+\describe{
+\item{\code{ErrorInRCounter$panic_method()}}{
 Deliberately panic in a method.
+}
+}
 
+
+\describe{
+\item{\code{ErrorInRCounter$failing_method()}}{
 Return Result::Err in a method.
 }
+}
+}
+

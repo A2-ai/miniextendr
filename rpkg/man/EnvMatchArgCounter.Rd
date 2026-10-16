@@ -22,22 +22,40 @@ EnvMatchArgCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-Arguments of \code{EnvMatchArgCounter$new()}:
+EnvMatchArgCounter Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{EnvMatchArgCounter$new()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
 }
+}
+}
 
-Arguments of \code{EnvMatchArgCounter$reset()}:
 
+\describe{
+\item{\code{EnvMatchArgCounter$reset()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
 }
+}
+}
 
+
+\describe{
+\item{\code{EnvMatchArgCounter$pick()}}{
 A mode with no default (#1828): the formal is bare, and an omitted
 argument reaches Rust as \code{Absent}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
 }
 }
+}
+}
+

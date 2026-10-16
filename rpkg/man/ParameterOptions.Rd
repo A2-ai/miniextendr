@@ -37,57 +37,97 @@ ParameterOptions
 \item{name}{Method name for dispatch.}
 }
 \description{
-Arguments of \code{ParameterOptions$mode()}:
+ParameterOptions Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{ParameterOptions$mode()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{mode}}{One of "fast", "safe".}
 }
+}
+}
 
-Arguments of \code{ParameterOptions$modes()}:
 
+\describe{
+\item{\code{ParameterOptions$modes()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{modes}}{One or more of "fast", "safe".}
 }
+}
+}
 
-Arguments of \code{ParameterOptions$labels()}:
 
+\describe{
+\item{\code{ParameterOptions$labels()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{labels}}{One or more of "fast", "safe".}
 }
+}
+}
 
-Arguments of \code{ParameterOptions$ParameterTrait$declared()}:
 
+\describe{
+\item{\code{ParameterOptions$ParameterTrait$declared()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{renamed}}{One of "fast", "safe".}
 }
-
-Arguments of \code{ParameterOptions$ParameterTrait$implemented()}:
-
-\describe{
-\item{\code{mode}}{One of "fast", "safe".}
+}
 }
 
-Arguments of \code{ParameterOptions$ParameterTrait$named()}:
 
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
-}
-
-Arguments of \code{ParameterOptions$ParameterDefault$inherited()}:
-
-\describe{
-\item{\code{mode}}{One of "fast", "safe".}
-}
-
-Arguments of \code{ParameterOptions$ParameterGeneric$generic_mode()}:
-
-\describe{
-\item{\code{mode}}{One of "fast", "safe".}
-}
-
-Arguments of \code{ParameterOptions$ParameterGeneric$generic_default()}:
-
+\item{\code{ParameterOptions$ParameterTrait$implemented()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{mode}}{One of "fast", "safe".}
 }
 }
+}
+
+
+\describe{
+\item{\code{ParameterOptions$ParameterTrait$named()}}{
+\strong{Arguments:}
+\describe{
+\item{\code{mode}}{One of "fast", "safe".}
+}
+}
+}
+
+
+\describe{
+\item{\code{ParameterOptions$ParameterDefault$inherited()}}{
+\strong{Arguments:}
+\describe{
+\item{\code{mode}}{One of "fast", "safe".}
+}
+}
+}
+
+
+\describe{
+\item{\code{ParameterOptions$ParameterGeneric$generic_mode()}}{
+\strong{Arguments:}
+\describe{
+\item{\code{mode}}{One of "fast", "safe".}
+}
+}
+}
+
+
+\describe{
+\item{\code{ParameterOptions$ParameterGeneric$generic_default()}}{
+\strong{Arguments:}
+\describe{
+\item{\code{mode}}{One of "fast", "safe".}
+}
+}
+}
+}
+

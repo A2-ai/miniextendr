@@ -25,23 +25,59 @@ PtrSelfTest
 \item{name}{Method name for dispatch.}
 }
 \description{
+PtrSelfTest Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{PtrSelfTest$new()}}{
 Create a new PtrSelfTest.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Integer value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{PtrSelfTest$value()}}{
 Regular &self method — returns the stored value.
+}
+}
 
+
+\describe{
+\item{\code{PtrSelfTest$is_null_ptr()}}{
 Handle self — checks the pointer state.
+}
+}
 
+
+\describe{
+\item{\code{PtrSelfTest$value_via_ptr()}}{
 Shared view self — reads the value through \code{Deref}.
+}
+}
 
+
+\describe{
+\item{\code{PtrSelfTest$set_value_via_ptr()}}{
 Exclusive view self — writes the value through \code{DerefMut}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{new_val}}{The new value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{PtrSelfTest$value_owned_ptr()}}{
 Handle self — reads the value through a checked \code{borrow()}.
 }
+}
+}
+

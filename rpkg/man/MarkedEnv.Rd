@@ -23,16 +23,39 @@ MarkedEnv
 }
 \description{
 Env class with a marked constructor.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{MarkedEnv$new()}}{
 Create an object holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{MarkedEnv$value()}}{
 The current value.
+}
+}
 
+
+\describe{
+\item{\code{MarkedEnv$with_value()}}{
 \code{MarkedEnv$with_value()} is another name for the constructor \code{MarkedEnv$new()}.
+}
+}
 
+
+\describe{
+\item{\code{MarkedEnv$zero()}}{
 An object holding zero.
 }
+}
+}
+

@@ -76,7 +76,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
                     .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
-                    .with_params_as_details()
+                    .with_namespace_member_docs()
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());
@@ -111,7 +111,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
-                    .with_params_as_details()
+                    .with_namespace_member_docs()
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());
@@ -162,7 +162,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &doc_tags)
                     .with_source_method(&ctx.method.ident)
                     .with_name_prefix("$")
-                    .with_params_as_details()
+                    .with_namespace_member_docs()
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());

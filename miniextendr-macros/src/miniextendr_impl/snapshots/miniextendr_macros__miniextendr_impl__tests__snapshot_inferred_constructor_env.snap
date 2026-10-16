@@ -10,10 +10,16 @@ expression: "generate_env_r_wrapper(&inferred_reading(ClassSystem::Env))"
 Reading <- new.env(parent = emptyenv())
 
 # Reading::from_value (1:1)
-#' @description Read a value.
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Reading$new()}}{
+#' Read a value.
 #'
+#' \strong{Arguments:}
 #' \describe{
 #'   \item{\code{value}}{The value.}
+#' }
+#'   }
 #' }
 #' @name Reading$new
 #' @rdname Reading
@@ -37,7 +43,12 @@ Reading$value <- function() {
 }
 
 # Reading::from_value (1:1)
-#' @description `Reading$from_value()` is another name for the constructor `Reading$new()`.
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Reading$from_value()}}{
+#' `Reading$from_value()` is another name for the constructor `Reading$new()`.
+#'   }
+#' }
 #' @name Reading$from_value
 #' @rdname Reading
 Reading$from_value <- function(value) {

@@ -20,15 +20,29 @@ AliasPalette
 \item{name}{Method name for dispatch.}
 }
 \description{
-Arguments of \code{AliasPalette$new()}:
+AliasPalette Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{AliasPalette$new()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{color}}{One of "red", "gray", "blue".}
 }
+}
+}
 
+
+\describe{
+\item{\code{AliasPalette$paint()}}{
 Replace the colour and return it.
 
+\strong{Arguments:}
 \describe{
 \item{\code{color}}{One of "red", "gray", "blue".}
 }
 }
+}
+}
+

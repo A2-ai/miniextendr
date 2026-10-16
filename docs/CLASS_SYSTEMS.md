@@ -1431,14 +1431,18 @@ warning) because they only make sense on a method:
 
 Tags on **method** doc comments are not stripped: `@param`, `@return`,
 `@examples`, `@rdname`, `@name`, `@seealso`, and so on flow through to the
-generated wrapper verbatim (undocumented parameters get an auto-generated
-`@param name (undocumented)` line, except when the method's own `@rdname`,
-`@describeIn` or `@inheritParams` sends it to a page that documents them; see
+generated wrapper. For methods with a usage entry, undocumented parameters
+get an auto-generated `@param name (undocumented)` line, except when the
+method's own `@rdname`, `@describeIn` or `@inheritParams` sends it to a page
+that documents them; see
 [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages); env
-methods, which have no usage section, get no filler, and their choice
-parameters get a `\describe` item instead). A
-method that joins another topic also drops the generator's fixed `x` / `...`
-lines and sorts after that topic's own block. `@describeIn` works on the
+methods, which have no usage section, get no filler. Env namespace members
+are grouped by their R call names in the help page's **Methods** section:
+`@description` / `@details` prose, argument descriptions and choice text, and
+`@return` / `@returns` text stay with the member they describe. The class
+keeps its own description. Examples and page-routing tags retain their
+roxygen meaning. A method that joins another topic also drops the generator's
+fixed `x` / `...` lines and sorts after that topic's own block. `@describeIn` works on the
 methods whose wrapper is a plain R function (S3 instance methods, static
 methods, S4 constructors) and is a compile error elsewhere; see the same
 section. Trait-impl methods (`impl Trait for Type`) forward only their
@@ -1447,8 +1451,8 @@ section. Trait-impl methods (`impl Trait for Type`) forward only their
 methods, the `Type$Trait$method` statics of S3 and vctrs classes and the
 `attr(Type, "Trait")$method` statics of S7 classes are documented like env
 methods: every tag but `@title` and a bare `@export` (which would export the
-member itself) flows through, and their `@param` lines and choice text go into
-a `\describe` list. S4 statics
+member itself) flows through the same member formatter, which groups prose,
+arguments and return descriptions under the R call name. S4 statics
 (`Type_Trait_method()`) get `@param` lines, generated ones included. R6
 constructor and instance methods are documented on the class page whatever
 their tags, so they keep the generated line. The one exception is class

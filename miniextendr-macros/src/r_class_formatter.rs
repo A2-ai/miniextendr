@@ -686,27 +686,17 @@ fn push_param_filler(
     }
 }
 
-/// The documentation body of a method block that has no `\usage` (env
-/// methods): the author tags `forward` accepts, verbatim, then one
-/// `\describe{}` list with the author's `@param` items followed by the
-/// choice items of [`generated_params`]. A formal without choice text gets no
-/// item (nothing in `\usage` asks for one), and no `@param` line is emitted:
-/// with no usage entry to match, roxygen2 would write an `\arguments` entry
-/// that `R CMD check` reports as "Documented arguments not in \usage".
+/// Document a namespace member without a roxygen-visible usage entry.
+/// Its prose, arguments and return value belong to one named item in the
+/// Methods section; otherwise roxygen2 would merge unrelated method prose
+/// into the class description. Parameter items never become top-level
+/// arguments, which would fail codoc without a matching usage.
 ///
-/// After a forwarded `@description` / `@details`, the list continues that
-/// section after a blank line; after `@examples` / `@examplesIf`, whose code
-/// block a blank line does not end, it opens a `@details`. Otherwise
-/// `@description Arguments of \code{<label>()}:` and a blank line open it:
-/// roxygen2 runs a tag's text up to the next tag, so after any other tag
-/// (`@return`, `@seealso`, `@title`, ...) the list would land in that tag's
-/// section, and an untagged list would be the block's intro paragraph, i.e.
-/// its title, which roxygen2 drops on the class page the block merges into.
-///
-/// `doc_tags` is the full tag list, so a page tag that `forward` rejects
-/// still sends the arguments elsewhere. Emits nothing when there is neither a
-/// forwarded tag nor an item.
-pub(crate) fn describe_params_lines(
+/// Other author tags (page routing, examples, links, imports, etc.) retain
+/// their roxygen meaning. The section tag terminates any preceding examples
+/// block. A plain undocumented formal gets no filler; choice text is kept
+/// unless the author's tags document its parameters elsewhere.
+pub(crate) fn namespace_member_doc_lines(
     doc_tags: &[String],
     forward: impl Fn(&str) -> bool,
     r_params: &str,
@@ -714,20 +704,32 @@ pub(crate) fn describe_params_lines(
     choice_docs: Option<&std::collections::HashMap<String, String>>,
     label: &str,
 ) -> Vec<String> {
-    let (param_tags, other_tags): (Vec<&str>, Vec<&str>) = doc_tags
+    let mut prose = Vec::new();
+    let mut returns = Vec::new();
+    let mut items = Vec::new();
+    let mut other_tags = Vec::new();
+    let item = |name: &str, desc: &str| format!("  \\item{{\\code{{{name}}}}}{{{desc}}}");
+    for tag in doc_tags
         .iter()
         .map(String::as_str)
         .filter(|tag| forward(tag))
-        .partition(|tag| tag.trim_start().starts_with("@param "));
-    let item = |name: &str, desc: &str| format!("  \\item{{\\code{{{name}}}}}{{{desc}}}");
-    let mut items: Vec<String> = param_tags
-        .iter()
-        .filter_map(|tag| {
-            let rest = tag.trim_start().strip_prefix("@param ")?;
-            let (name, desc) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-            Some(item(name, desc))
-        })
-        .collect();
+    {
+        let name = crate::roxygen::roxygen_tag_name(tag);
+        let text = tag
+            .trim_start()
+            .split_once(char::is_whitespace)
+            .map_or("", |(_, text)| text);
+        match name {
+            Some("description" | "details") => prose.push(text.to_owned()),
+            Some("return" | "returns") => returns.push(text),
+            Some("param") => {
+                let (name, desc) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
+                items.push(item(name, desc));
+            }
+            None => prose.push(tag.to_owned()),
+            _ => other_tags.push(tag),
+        }
+    }
     items.extend(
         generated_params(r_params, doc_tags, page, choice_docs)
             .into_iter()
@@ -736,27 +738,31 @@ pub(crate) fn describe_params_lines(
 
     let mut lines = Vec::new();
     crate::roxygen::push_roxygen_tags_str(&mut lines, &other_tags);
-    if items.is_empty() {
+    if prose.is_empty() && items.is_empty() && returns.is_empty() {
         return lines;
     }
-    match other_tags
-        .last()
-        .and_then(|tag| crate::roxygen::roxygen_tag_name(tag))
-    {
-        Some("description" | "details") => lines.push("#'".to_string()),
-        Some("examples" | "examplesIf") => lines.push("#' @details".to_string()),
-        _ => {
-            // `%` starts an Rd comment and `\` an escape, also inside `\code{}`.
-            let label = label.replace('\\', "\\\\").replace('%', "\\%");
-            lines.push(format!("#' @description Arguments of \\code{{{label}()}}:"));
-            lines.push("#'".to_string());
-        }
+
+    // '%' starts an Rd comment and '\' an escape, also inside \code{}.
+    let label = label.replace('\\', "\\\\").replace('%', "\\%");
+    lines.extend([
+        "#' @section Methods:".to_owned(),
+        "#' \\describe{".to_owned(),
+        format!("#'   \\item{{\\code{{{label}()}}}}{{"),
+    ]);
+    if !items.is_empty() {
+        prose.push(format!(
+            "\\strong{{Arguments:}}\n\\describe{{\n{}\n}}",
+            items.join("\n")
+        ));
     }
-    lines.push("#' \\describe{".to_string());
-    // One `#' ` per line, so a wrapped `@param` stays inside the block.
-    let item_refs: Vec<&str> = items.iter().map(String::as_str).collect();
-    crate::roxygen::push_roxygen_tags_str(&mut lines, &item_refs);
-    lines.push("#' }".to_string());
+    prose.extend(
+        returns
+            .into_iter()
+            .map(|text| format!("\\strong{{Returns:}} {text}")),
+    );
+    let body = prose.join("\n\n");
+    crate::roxygen::push_roxygen_tags_str(&mut lines, &[&body]);
+    lines.extend(["#'   }".to_owned(), "#' }".to_owned()]);
     lines
 }
 
@@ -998,18 +1004,13 @@ pub struct MethodDocBuilder<'a> {
     /// Whether the parent class has `@noRd`. When `true`, this method emits only
     /// `#' @noRd` and skips all other documentation tags.
     class_has_no_rd: bool,
-    /// When `true`, convert `@param` tags into `\describe{}` blocks instead of
-    /// roxygen `@param` entries, with the choice text of undocumented choice
-    /// parameters as extra items ([`describe_params_lines`]).
-    ///
-    /// Used for env-class methods where roxygen cannot infer `\usage` from
-    /// `Class$method <- function()`. Without this, `@param` tags create
-    /// `\arguments` entries with no matching `\usage`, causing R CMD check
-    /// warnings ("Documented arguments not in \\usage").
-    params_as_details: bool,
+    /// Group prose, arguments, and return docs under the R call name in the
+    /// Methods section. Used for env namespace members, which roxygen cannot
+    /// give a usage entry; their parameters must not become top-level arguments.
+    namespace_member_docs: bool,
     /// Optional comma-separated R parameter string for auto-generating `@param` tags.
     /// When set, any parameter not already documented gets `@param name (undocumented)`
-    /// (in `params_as_details` mode only a choice parameter gets an item).
+    /// (in `namespace_member_docs` mode only a choice parameter gets an item).
     r_params: Option<&'a str>,
     /// When `true`, filter out `@param` tags from the doc_tags before pushing.
     ///
@@ -1052,7 +1053,7 @@ impl<'a> MethodDocBuilder<'a> {
             r_name_override: None,
             always_export: false,
             class_has_no_rd: false,
-            params_as_details: false,
+            namespace_member_docs: false,
             r_params: None,
             suppress_params: false,
             choice_param_docs: None,
@@ -1103,17 +1104,11 @@ impl<'a> MethodDocBuilder<'a> {
         self
     }
 
-    /// Convert `@param` tags to inline `\describe{}` blocks instead of roxygen `@param`.
-    ///
-    /// Used for env-class methods where roxygen can't infer `\usage` from `Class$method <- function()`.
-    /// Without this, `@param` tags create `\arguments` entries with no matching `\usage`,
-    /// causing R CMD check warnings ("Documented arguments not in \\usage"). With
-    /// [`with_r_params`](Self::with_r_params) and
-    /// [`with_choice_param_docs`](Self::with_choice_param_docs), an undocumented
-    /// choice parameter gets a list item with its choice text; no parameter
-    /// gets an `(undocumented)` filler.
-    pub fn with_params_as_details(mut self) -> Self {
-        self.params_as_details = true;
+    /// Document an env namespace member in the Methods section. Includes
+    /// author prose, parameters and return text, plus generated choice docs;
+    /// undocumented ordinary parameters get no filler.
+    pub fn with_namespace_member_docs(mut self) -> Self {
+        self.namespace_member_docs = true;
         self
     }
 
@@ -1164,11 +1159,11 @@ impl<'a> MethodDocBuilder<'a> {
             self.method_name.to_string()
         };
 
-        if self.params_as_details {
+        if self.namespace_member_docs {
             // Env methods: no `\usage`, so the author's `@param` tags and the
             // choice text go into a `\describe{}` list (no `@param` filler).
             // A bare `@export` would export `Type$method` itself.
-            lines.extend(describe_params_lines(
+            lines.extend(namespace_member_doc_lines(
                 self.doc_tags,
                 crate::roxygen::forwarded_member_tag,
                 self.r_params.unwrap_or(""),
@@ -1377,11 +1372,11 @@ mod tests {
                 examples.to_owned(),
             ];
             let docs = super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
-                .with_params_as_details()
+                .with_namespace_member_docs()
                 .build()
                 .join("\n");
             assert!(
-                docs.contains("Example$new(1L)\n#' @details\n#' \\describe{"),
+                docs.contains("Example$new(1L)\n#' @section Methods:\n#' \\describe{"),
                 "{docs}"
             );
         }
@@ -1403,7 +1398,7 @@ mod tests {
         .to_vec();
         let docs = super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
             .with_name_prefix("$")
-            .with_params_as_details()
+            .with_namespace_member_docs()
             .build()
             .join("\n");
         assert!(
@@ -1411,7 +1406,7 @@ mod tests {
             "{docs}"
         );
         for line in [
-            "#' @description Make one.",
+            "#' Make one.",
             "#' @export example_helper",
             "#' @name Example$new",
         ] {
@@ -1699,126 +1694,97 @@ mod tests {
         let tags = tags_of(tags);
         super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
             .with_name_prefix("$")
-            .with_params_as_details()
+            .with_namespace_member_docs()
             .with_r_params(params)
             .with_choice_param_docs(docs)
             .build()
     }
 
-    /// An env method (no `\usage`) lists the author's `@param` items and then
-    /// the choice items in one `\describe{}`, with no `(undocumented)` item
-    /// and no `@param` line (roxygen2 would report "Documented arguments not
-    /// in \usage"). Unless a `@description` / `@details` tag directly
-    /// precedes the list, a labelled `@description` lead-in and a blank line
-    /// open it.
+    /// Every member's prose, arguments and return value stay together,
+    /// even when a method has no arguments or only generated choice docs.
     #[test]
-    fn env_params_share_one_describe_list() {
+    fn env_members_group_prose_params_and_returns() {
         let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
         let params = "n, plain, mode = c(\"a\", \"b\")";
-
-        for tags in [&[][..], &["@param n Amount."][..]] {
-            let lines = env_docs(tags, params, &docs);
-            assert!(!lines.iter().any(|l| l.contains("@param")), "{lines:#?}");
-            assert!(
-                !lines.iter().any(|l| l.contains("undocumented")),
-                "{lines:#?}"
-            );
-            assert_eq!(lines.iter().filter(|l| *l == "#' \\describe{").count(), 1);
-            let joined = lines.join("\n");
-            assert!(
-                joined.starts_with(
-                    "#' @description Arguments of \\code{Example$new()}:\n#'\n#' \\describe{\n"
-                ),
-                "{joined}"
-            );
-            assert!(
-                joined.contains("#'   \\item{\\code{mode}}{One of \"a\", \"b\".}\n#' }"),
-                "{joined}"
-            );
-        }
-        let with_author = env_docs(&["@param n Amount."], params, &docs).join("\n");
-        assert!(
-            with_author.contains(
-                "#'   \\item{\\code{n}}{Amount.}\n#'   \\item{\\code{mode}}{One of \"a\", \"b\".}"
-            ),
-            "author item first: {with_author}"
-        );
-
-        // A prose tag before the list keeps it in that section; after any
-        // other tag the lead-in opens it, or the list would land in that
-        // tag's section (`\value`, `\seealso`, the title).
-        let lead_in = "#' @description Arguments of \\code{Example$new()}:\n#'\n#' \\describe{";
-        for (last, sep) in [
-            (
-                "@description Plan it.",
-                "#' @description Plan it.\n#'\n#' \\describe{".to_string(),
-            ),
-            (
-                "@details More.",
-                "#' @details More.\n#'\n#' \\describe{".to_string(),
-            ),
-            ("@seealso other", format!("#' @seealso other\n{lead_in}")),
-            (
-                "@return A value.",
-                format!("#' @return A value.\n{lead_in}"),
-            ),
-            ("@title Mine", format!("#' @title Mine\n{lead_in}")),
-        ] {
-            let joined = env_docs(&[last], params, &docs).join("\n");
-            assert!(joined.starts_with(&sep), "`{last}`: {joined}");
-            assert_eq!(
-                joined.matches("Arguments of").count(),
-                usize::from(sep.contains("Arguments of")),
-                "`{last}`: {joined}"
-            );
-        }
-        // Prose and a trailing `@return`: the lead-in is a second
-        // `@description`, which roxygen2 merges into the first.
         let joined = env_docs(
-            &["@description Plan it.", "@return A value."],
+            &[
+                "@description Plan it.",
+                "@details More.\n\nStill more.",
+                "@param n Amount.",
+                "@return A value.",
+                "@seealso other",
+            ],
             params,
             &docs,
         )
         .join("\n");
         assert!(
-            joined.starts_with(&format!(
-                "#' @description Plan it.\n#' @return A value.\n{lead_in}"
+            joined.starts_with(concat!(
+                "#' @seealso other\n",
+                "#' @section Methods:\n#' \\describe{\n",
+                "#'   \\item{\\code{Example$new()}}{\n",
+                "#' Plan it.\n#'\n#' More.\n#'\n#' Still more.\n",
             )),
             "{joined}"
         );
+        assert!(
+            joined.contains(concat!(
+                "#' \\strong{Arguments:}\n#' \\describe{\n",
+                "#'   \\item{\\code{n}}{Amount.}\n",
+                "#'   \\item{\\code{mode}}{One of \"a\", \"b\".}\n#' }\n",
+                "#'\n#' \\strong{Returns:} A value.\n#'   }\n#' }",
+            )),
+            "{joined}"
+        );
+        assert!(!joined.contains("@param"), "{joined}");
+        assert!(!joined.contains("@description"), "{joined}");
+        assert!(!joined.contains("@return"), "{joined}");
+        assert!(!joined.contains("undocumented"), "{joined}");
 
-        // An author `@param` on the choice parameter replaces its choice item.
+        for tags in [&[][..], &["@param n Amount."][..]] {
+            let joined = env_docs(tags, params, &docs).join("\n");
+            assert!(
+                joined.contains("\\item{\\code{Example$new()}}{"),
+                "{joined}"
+            );
+            assert!(joined.contains("\\item{\\code{mode}}{One of"), "{joined}");
+            assert!(!joined.contains("\\item{\\code{plain}}"), "{joined}");
+        }
+
+        let empty = std::collections::HashMap::new();
+        let prose_only = env_docs(&["@description No arguments."], "", &empty).join("\n");
+        assert!(
+            prose_only.contains("\\item{\\code{Example$new()}}{\n#' No arguments."),
+            "{prose_only}"
+        );
+        assert!(!prose_only.contains("Arguments:"), "{prose_only}");
+        let return_only = env_docs(&["@returns A value."], "", &empty).join("\n");
+        assert!(
+            return_only.contains("\\item{\\code{Example$new()}}{\n#' \\strong{Returns:} A value."),
+            "{return_only}"
+        );
+
         let joined = env_docs(&["@param mode Mine."], params, &docs).join("\n");
         assert_eq!(
             joined.matches("\\item{\\code{mode}}").count(),
             1,
             "{joined}"
         );
-        assert!(
-            joined.contains("#'   \\item{\\code{mode}}{Mine.}"),
-            "{joined}"
-        );
+        assert!(joined.contains("\\item{\\code{mode}}{Mine.}"), "{joined}");
         assert!(!joined.contains("One of"), "{joined}");
 
-        // No item and no tag: nothing at all; a plain formal gets no item.
-        let empty = std::collections::HashMap::new();
-        let nothing = env_docs(&[], "n, plain", &empty);
-        assert!(
-            nothing
-                .iter()
-                .all(|l| !l.contains("describe") && !l.contains("@description")),
-            "{nothing:#?}"
-        );
+        let nothing = env_docs(&[], "n, plain", &empty).join("\n");
+        assert!(!nothing.contains("@section"), "{nothing}");
     }
 
     /// Tags the caller does not forward still send the arguments elsewhere
     /// (`@inheritParams`), so no choice item is generated for them; the label
     /// is used verbatim, with `%` and `\` escaped for Rd.
     #[test]
-    fn describe_params_lines_forward_and_label() {
+    fn namespace_member_doc_lines_forward_and_label() {
         let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
         let tags = tags_of(&["@inheritParams family"]);
-        let lines = super::describe_params_lines(
+        let lines = super::namespace_member_doc_lines(
             &tags,
             |tag| !tag.starts_with("@inheritParams"),
             "mode = c(\"a\", \"b\")",
@@ -1828,7 +1794,7 @@ mod tests {
         );
         assert!(lines.is_empty(), "{lines:#?}");
 
-        let lines = super::describe_params_lines(
+        let lines = super::namespace_member_doc_lines(
             &[],
             |_| true,
             "mode = c(\"a\", \"b\")",
@@ -1837,7 +1803,7 @@ mod tests {
             "Example$%op%",
         );
         assert_eq!(
-            lines[0], "#' @description Arguments of \\code{Example$\\%op\\%()}:",
+            lines[2], "#'   \\item{\\code{Example$\\%op\\%()}}{",
             "{lines:#?}"
         );
     }

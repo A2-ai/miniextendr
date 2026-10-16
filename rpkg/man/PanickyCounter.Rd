@@ -27,15 +27,40 @@ PanickyCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+PanickyCounter Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{PanickyCounter$new()}}{
 Create a new panicky counter.
 
+\strong{Arguments:}
 \describe{
 \item{\code{initial}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{PanickyCounter$get_value()}}{
 Get value.
+}
+}
 
+
+\describe{
+\item{\code{PanickyCounter$try_add()}}{
 Add (may panic).
+}
+}
 
+
+\describe{
+\item{\code{PanickyCounter$new_panicky()}}{
 \code{PanickyCounter$new_panicky()} is another name for the constructor \code{PanickyCounter$new()}.
 }
+}
+}
+

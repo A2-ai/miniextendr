@@ -369,7 +369,14 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for IntSet {
 /// IntSet inherent methods: membership test.
 #[miniextendr(env)]
 impl IntSet {
+    /// Test whether an integer belongs to the set.
+    ///
+    /// Membership checks leave the set unchanged.
     /// @param value Integer value to check for membership.
+    /// @return Whether the value belongs to the set.
+    /// @examples
+    /// values <- IntSet$RFromIter$from_vec(c(1L, 2L))
+    /// values$contains(2L)
     fn contains(&self, value: i32) -> bool {
         self.0.contains(&value)
     }

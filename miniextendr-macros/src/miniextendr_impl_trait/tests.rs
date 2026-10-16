@@ -1354,11 +1354,17 @@ fn env_trait_method_documents_prose_params_and_choices() {
     assert_eq!(
         block_above(&r, "Foo$Bar$pick <- "),
         [
-            "#' @description Pick a level.",
+            "#' @section Methods:",
+            "#' \\describe{",
+            "#'   \\item{\\code{Foo$Bar$pick()}}{",
+            "#' Pick a level.",
             "#'",
+            "#' \\strong{Arguments:}",
             "#' \\describe{",
             "#'   \\item{\\code{n}}{How many.}",
             LEVEL_ITEM,
+            "#' }",
+            "#'   }",
             "#' }",
             "#' @name Foo$Bar$pick",
             "#' @rdname Foo",
@@ -1384,10 +1390,14 @@ fn env_trait_method_choice_lead_in() {
     assert_eq!(
         block_above(&r, "Foo$Bar$pick <- "),
         [
-            "#' @description Arguments of \\code{Foo$Bar$pick()}:",
-            "#'",
+            "#' @section Methods:",
+            "#' \\describe{",
+            "#'   \\item{\\code{Foo$Bar$pick()}}{",
+            "#' \\strong{Arguments:}",
             "#' \\describe{",
             LEVEL_ITEM,
+            "#' }",
+            "#'   }",
             "#' }",
             "#' @name Foo$Bar$pick",
             "#' @rdname Foo",
@@ -1418,10 +1428,12 @@ fn env_trait_method_on_author_topic_keeps_author_items_only() {
         let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
         let block = block_above(&r, "Foo$Bar$pick <- ");
         assert_eq!(
-            block[..4],
+            block[..6],
             [
-                "#' @description Arguments of \\code{Foo$Bar$pick()}:",
-                "#'",
+                "#' @section Methods:",
+                "#' \\describe{",
+                "#'   \\item{\\code{Foo$Bar$pick()}}{",
+                "#' \\strong{Arguments:}",
                 "#' \\describe{",
                 "#'   \\item{\\code{n}}{How many.}",
             ],
@@ -1447,8 +1459,9 @@ fn env_trait_method_on_author_topic_keeps_author_items_only() {
 }
 
 /// Every author tag but the page tags, `@title` and a bare `@export` reaches
-/// the body; a list after `@examples` opens a `@details` section. A bare
-/// `@export` would make roxygen2 export `Foo$Bar$pick`, which R refuses to
+/// the body; prose/returns join the named method item. The Methods section
+/// ends any preceding `@examples`. A bare `@export` would make roxygen2
+/// export `Foo$Bar$pick`, which R refuses to
 /// load; an `@export <symbol>` names its own target and is kept.
 #[test]
 fn env_trait_method_forwards_other_tags_but_title() {
@@ -1463,9 +1476,9 @@ fn env_trait_method_forwards_other_tags_but_title() {
     ]);
     let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
     for tag in [
-        "#' @description D.\n",
+        "#' D.\n",
         "#' @export pick_helper\n",
-        "#' @return R.\n",
+        "#' \\strong{Returns:} R.\n",
         "#' @examples x <- 1\n",
     ] {
         assert_eq!(r.matches(tag).count(), 1, "`{tag}`: got:\n{r}");
@@ -1474,7 +1487,10 @@ fn env_trait_method_forwards_other_tags_but_title() {
         !r.lines().any(|l| l.trim_end() == "#' @export"),
         "got:\n{r}"
     );
-    assert!(r.contains("#' @details\n#' \\describe{\n"), "got:\n{r}");
+    assert!(
+        r.contains("#' @examples x <- 1\n#' @section Methods:\n#' \\describe{\n"),
+        "got:\n{r}"
+    );
     assert!(!r.contains("Mine"), "got:\n{r}");
 }
 
@@ -1524,10 +1540,14 @@ fn static_trait_methods_document_their_arguments() {
     let namespace_block = |intro: &str, name: &str| {
         vec![
             intro.to_string(),
-            format!("#' @description Arguments of \\code{{{name}()}}:"),
-            "#'".to_string(),
+            "#' @section Methods:".to_string(),
+            "#' \\describe{".to_string(),
+            format!("#'   \\item{{\\code{{{name}()}}}}{{"),
+            "#' \\strong{Arguments:}".to_string(),
             "#' \\describe{".to_string(),
             LEVEL_ITEM.to_string(),
+            "#' }".to_string(),
+            "#'   }".to_string(),
             "#' }".to_string(),
             format!("#' @name {name}"),
             "#' @rdname Foo".to_string(),
@@ -2362,8 +2382,7 @@ fn test_trait_method_forwards_author_page_tags() {
             ClassSystem::Env | ClassSystem::S3 | ClassSystem::S7
         ));
         assert_eq!(
-            r.matches("#' @description Kept on namespace members.\n")
-                .count(),
+            r.matches("#' Kept on namespace members.\n").count(),
             prose,
             "{class_system:?}: got:\n{r}"
         );

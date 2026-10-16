@@ -68,10 +68,18 @@ Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{attr(OmitPickS7, "GradeDefaults")$default_grade()}}{
 Pick the default grade, or none.
 
+\strong{Arguments:}
 \describe{
 \item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
 }
 }
+}
+}
+

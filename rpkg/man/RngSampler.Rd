@@ -23,13 +23,42 @@ RngSampler
 \item{name}{Method name for dispatch.}
 }
 \description{
+RngSampler Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{RngSampler$new()}}{
 Create a new RngSampler.
+}
+}
 
+
+\describe{
+\item{\code{RngSampler$seed_hint()}}{
 Get the seed hint (for testing).
+}
+}
 
+
+\describe{
+\item{\code{RngSampler$sample_uniform()}}{
 Sample n uniform values using the rng attribute on a method.
+}
+}
 
+
+\describe{
+\item{\code{RngSampler$sample_normal()}}{
 Sample n normal values.
+}
+}
 
+
+\describe{
+\item{\code{RngSampler$static_sample()}}{
 Static method with rng.
 }
+}
+}
+

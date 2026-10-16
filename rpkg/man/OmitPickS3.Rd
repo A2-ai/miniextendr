@@ -49,10 +49,18 @@ of \code{mode}, \code{modes} and \code{level}.
 S3 generic for \code{omit_grade}
 
 S3 generic for \code{omit_grades}
+}
+\section{Methods}{
 
+\describe{
+\item{\code{OmitPickS3$GradeDefaults$default_grade()}}{
 Pick the default grade, or none.
 
+\strong{Arguments:}
 \describe{
 \item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
 }
 }
+}
+}
+

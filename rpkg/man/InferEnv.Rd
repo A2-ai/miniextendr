@@ -23,20 +23,44 @@ InferEnv
 }
 \description{
 Env class with an inferred constructor.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{InferEnv$new()}}{
 Create an object holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{InferEnv$value()}}{
 The current value.
+}
+}
 
+
+\describe{
+\item{\code{InferEnv$from_value()}}{
 \code{InferEnv$from_value()} is another name for the constructor \code{InferEnv$new()}.
+}
+}
 
+
+\describe{
+\item{\code{InferEnv$parse()}}{
 Parse an object from text.
 
+\strong{Arguments:}
 \describe{
 \item{\code{text}}{An integer, as text.}
 }
 }
+}
+}
+

@@ -23,5 +23,14 @@ WithEnums
 \item{name}{Method name for dispatch.}
 }
 \description{
+WithEnums Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{WithEnums$new_circle()}}{
 \code{WithEnums$new_circle()} is another name for the constructor \code{WithEnums$new()}.
 }
+}
+}
+

@@ -82,7 +82,7 @@ test_that("env several_ok: NULL selects every choice", {
   expect_equal(EnvMatchArgCounter$new(NULL)$count(), 3L)
 })
 
-test_that("env methods list their arguments under the description", {
+test_that("env methods group their arguments under each method", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
   rd_text <- function(topic) {
@@ -96,13 +96,13 @@ test_that("env methods list their arguments under the description", {
   # Env methods have no usage section, so a choice parameter's text is a
   # \describe item instead of an @param line.
   page <- rd_text("EnvMatchArgCounter")
-  expect_match(page, "Arguments of \\code{EnvMatchArgCounter$new()}:", fixed = TRUE)
-  expect_match(page, "Arguments of \\code{EnvMatchArgCounter$reset()}:", fixed = TRUE)
+  expect_match(page, "\\item{\\code{EnvMatchArgCounter$new()}}", fixed = TRUE)
+  expect_match(page, "\\item{\\code{EnvMatchArgCounter$reset()}}", fixed = TRUE)
   expect_match(page, "One or more of \"Fast\", \"Safe\", \"Debug\".", fixed = TRUE)
   # A block with only author @param lines used to open with an untagged
   # list, which roxygen2 read as the block's title and dropped.
   page <- rd_text("IntSet")
-  expect_match(page, "Arguments of \\code{IntSet$contains()}:", fixed = TRUE)
+  expect_match(page, "\\item{\\code{IntSet$contains()}}", fixed = TRUE)
   expect_match(page, "Integer value to check for membership.", fixed = TRUE)
 })
 

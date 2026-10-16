@@ -20,12 +20,27 @@ AliasGuardProbe
 \item{name}{Method name for dispatch.}
 }
 \description{
-Create an alias-check probe.
+AliasGuardProbe Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{AliasGuardProbe$new()}}{
+Create an alias-check probe.
+}
+}
+
+
+\describe{
+\item{\code{AliasGuardProbe$check()}}{
 Check list and direct-slice arguments through an instance method.
 
+\strong{Arguments:}
 \describe{
 \item{\code{a}}{List of integer vectors.}
 \item{\code{b}}{Shared integer vector.}
 }
 }
+}
+}
+

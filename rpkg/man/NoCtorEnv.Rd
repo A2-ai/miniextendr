@@ -22,18 +22,37 @@ NoCtorEnv
 }
 \description{
 Env class whose objects come from its factories.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{NoCtorEnv$value()}}{
 The current value.
+}
+}
 
+
+\describe{
+\item{\code{NoCtorEnv$of()}}{
 An object holding \code{value}, which must not be negative.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{The value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{NoCtorEnv$parse()}}{
 An object parsed from \code{text}; an error when it is no integer.
 
+\strong{Arguments:}
 \describe{
 \item{\code{text}}{An integer, as text.}
 }
 }
+}
+}
+

@@ -22,14 +22,32 @@ SplitInferEnv
 }
 \description{
 Env class with an inferred constructor in its second impl block.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SplitInferEnv$new()}}{
 Create an object holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SplitInferEnv$value()}}{
 The current value.
+}
+}
 
+
+\describe{
+\item{\code{SplitInferEnv$from_value()}}{
 \code{SplitInferEnv$from_value()} is another name for the constructor \code{SplitInferEnv$new()}.
 }
+}
+}
+

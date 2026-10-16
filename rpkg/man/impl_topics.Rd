@@ -89,10 +89,6 @@ Members from secondary Rust impl blocks belong to this topic too.
 
 An env class on an author topic.
 
-Read the value.
-
-Start from an offset.
-
 An R6 class on an author topic.
 
 Start from an offset.
@@ -130,6 +126,22 @@ Start from an offset.
 \describe{
 \item{\code{ptr}}{External pointer to Rust \code{TopicS4} struct}
 }}
+
+\section{Methods}{
+
+\describe{
+\item{\code{TopicENV$topic_env_value()}}{
+Read the value.
+}
+}
+
+
+\describe{
+\item{\code{TopicENV$origin()}}{
+Start from an offset.
+}
+}
+}
 
 \section{Methods}{
 \subsection{Public methods}{

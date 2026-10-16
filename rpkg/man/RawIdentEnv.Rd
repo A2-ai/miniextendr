@@ -38,13 +38,26 @@ The RawIdentEnv pointer (invisibly)
 Getter and setter functions for \verb{#[r_data]} fields on \code{RawIdentEnv}.
 
 Env class registration for \code{RawIdentEnv}; its methods are keywords too.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{RawIdentEnv$new()}}{
 Creates the object.
 
+\strong{Arguments:}
 \describe{
 \item{\code{type}}{Integer initial sidecar value.}
 \item{\code{base}}{Integer base value for \code{loop()}.}
 }
+}
+}
 
+
+\describe{
+\item{\code{RawIdentEnv$loop()}}{
 \code{base} plus \code{where}: \code{RawIdentEnv$loop(obj, where = 1L)}.
 }
+}
+}
+

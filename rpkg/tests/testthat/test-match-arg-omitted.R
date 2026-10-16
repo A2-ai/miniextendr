@@ -335,7 +335,7 @@ test_that("method choice params get the choice text as their @param line", {
     "Pick one grade, or none.",
     grade_text,
     "The grades to pick; all of them for NULL.",
-    "Arguments of",
+    "\\strong{Arguments:}",
     "Pick the default grade, or none."
   )) {
     expect_match(env_page, text, fixed = TRUE)

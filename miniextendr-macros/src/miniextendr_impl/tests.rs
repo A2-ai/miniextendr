@@ -2908,8 +2908,8 @@ fn roxygen_tags_propagate_to_wrapper() {
         "wrapper should contain param as \\describe item"
     );
     assert!(
-        wrapper.contains("#' @return The counter value"),
-        "wrapper should contain @return tag"
+        wrapper.contains("#' \\strong{Returns:} The counter value"),
+        "wrapper should contain the method return description"
     );
 
     // Generated tags should be present

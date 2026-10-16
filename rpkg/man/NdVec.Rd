@@ -40,28 +40,6 @@ NdVec
 }
 \description{
 NdVec methods: 1D numeric array operations, slicing, and conversion.
-
-Get the element at the given 1-based index.
-
-\describe{
-\item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
-}
-
-Extract the elements \code{start:end} (1-based, inclusive on both ends —
-R's \code{x[start:end]} convention).
-
-\describe{
-\item{\code{start}}{1-based inclusive start index.}
-\item{\code{end}}{1-based inclusive end index. Errors unless \verb{1 <= start <= end <= length}.}
-}
-
-Get elements at the given 1-based indices.
-
-\describe{
-\item{\code{indices}}{1-based indices. Out-of-bounds indices yield \code{NA}.}
-}
-
-Check if the given 1-based index is valid.
 }
 \details{
 \code{get}, \code{get_many}, \code{is_valid_index}, and \code{slice_1d} take 1-based
@@ -71,3 +49,50 @@ out-of-bounds element instead (vectorized contract). \code{slice_1d} takes
 1-based inclusive bounds (R's \code{x[start:end]} convention) and errors
 unless \verb{1 <= start <= end <= length}.
 }
+\section{Methods}{
+
+\describe{
+\item{\code{NdVec$get()}}{
+Get the element at the given 1-based index.
+
+\strong{Arguments:}
+\describe{
+\item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdVec$slice_1d()}}{
+Extract the elements \code{start:end} (1-based, inclusive on both ends —
+R's \code{x[start:end]} convention).
+
+\strong{Arguments:}
+\describe{
+\item{\code{start}}{1-based inclusive start index.}
+\item{\code{end}}{1-based inclusive end index. Errors unless \verb{1 <= start <= end <= length}.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdVec$get_many()}}{
+Get elements at the given 1-based indices.
+
+\strong{Arguments:}
+\describe{
+\item{\code{indices}}{1-based indices. Out-of-bounds indices yield \code{NA}.}
+}
+}
+}
+
+
+\describe{
+\item{\code{NdVec$is_valid_index()}}{
+Check if the given 1-based index is valid.
+}
+}
+}
+

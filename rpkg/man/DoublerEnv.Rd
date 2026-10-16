@@ -23,11 +23,26 @@ DoublerEnv
 \item{name}{Method name for dispatch.}
 }
 \description{
+DoublerEnv Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{DoublerEnv$new()}}{
 Create a new DoublerEnv.
 
+\strong{Arguments:}
 \describe{
 \item{\code{v}}{Initial value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{DoublerEnv$value()}}{
 Get the stored value.
 }
+}
+}
+

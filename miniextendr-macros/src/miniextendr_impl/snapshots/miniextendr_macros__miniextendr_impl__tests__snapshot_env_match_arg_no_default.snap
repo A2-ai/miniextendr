@@ -20,11 +20,15 @@ Picker$new <- function() {
 }
 
 # Picker::pick (1:1)
-#' @description Arguments of \code{Picker$pick()}:
-#'
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Picker$pick()}}{
+#' \strong{Arguments:}
 #' \describe{
 #'   \item{\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}
 #'   \item{\code{color}}{One of "red", "green".}
+#' }
+#'   }
 #' }
 #' @name Picker$pick
 #' @rdname Picker
@@ -37,10 +41,14 @@ Picker$pick <- function(mode, color) {
 }
 
 # Picker::pick_many (1:1)
-#' @description Arguments of \code{Picker$pick_many()}:
-#'
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Picker$pick_many()}}{
+#' \strong{Arguments:}
 #' \describe{
 #'   \item{\code{modes}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_many_modes__}
+#' }
+#'   }
 #' }
 #' @name Picker$pick_many
 #' @rdname Picker

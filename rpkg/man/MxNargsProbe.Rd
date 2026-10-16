@@ -20,5 +20,14 @@ MxNargsProbe
 \item{name}{Method name for dispatch.}
 }
 \description{
+MxNargsProbe Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{MxNargsProbe$new()}}{
 Create a probe.
 }
+}
+}
+

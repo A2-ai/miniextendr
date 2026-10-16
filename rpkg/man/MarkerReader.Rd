@@ -29,6 +29,13 @@ MarkerReader
 }
 \description{
 Env class whose \code{MarkerArgs} trait methods take the reading markers.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{MarkerReader$new()}}{
 Create a reader.
 }
+}
+}
+

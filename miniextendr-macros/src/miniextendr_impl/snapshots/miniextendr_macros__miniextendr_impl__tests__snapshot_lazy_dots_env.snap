@@ -22,7 +22,12 @@ Bag$new <- function(values) {
 }
 
 # Bag::extra (1:1)
-#' @description Count the extra arguments.
+#' @section Methods:
+#' \describe{
+#'   \item{\code{Bag$extra()}}{
+#' Count the extra arguments.
+#'   }
+#' }
 #' @name Bag$extra
 #' @rdname Bag
 Bag$extra <- function(n, ...) {

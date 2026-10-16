@@ -24,12 +24,33 @@ IntSet
 }
 \description{
 IntSet inherent methods: membership test.
+}
+\section{Methods}{
 
-Arguments of \code{IntSet$contains()}:
+\describe{
+\item{\code{IntSet$contains()}}{
+Test whether an integer belongs to the set.
 
+Membership checks leave the set unchanged.
+
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Integer value to check for membership.}
 }
 
+\strong{Returns:} Whether the value belongs to the set.
+}
+}
+
+
+\describe{
+\item{\code{IntSet$RToVec$is_empty()}}{
 Check if the collection is empty.
+}
+}
+}
+
+\examples{
+values <- IntSet$RFromIter$from_vec(c(1L, 2L))
+values$contains(2L)
 }

@@ -24,5 +24,14 @@ WithOptionals
 \item{name}{Method name for dispatch.}
 }
 \description{
+WithOptionals Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{WithOptionals$all_present()}}{
 \code{WithOptionals$all_present()} is another name for the constructor \code{WithOptionals$new()}.
 }
+}
+}
+

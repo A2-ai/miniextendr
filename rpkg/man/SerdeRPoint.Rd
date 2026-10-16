@@ -21,7 +21,21 @@ SerdeRPoint
 \item{name}{Method name for dispatch.}
 }
 \description{
-Serialize this Point to an R list.
+SerdeRPoint Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SerdeRPoint$to_r()}}{
+Serialize this Point to an R list.
+}
+}
+
+
+\describe{
+\item{\code{SerdeRPoint$from_r()}}{
 Deserialize a Point from an R list.
 }
+}
+}
+

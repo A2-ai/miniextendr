@@ -23,14 +23,32 @@ EnvPipeBuilder
 \description{
 Env builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.
 Chains as \code{b$add(1L)$add(2L)$total()}.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{EnvPipeBuilder$new()}}{
 Create a new builder starting at zero.
+}
+}
 
+
+\describe{
+\item{\code{EnvPipeBuilder$add()}}{
 Add \code{amount} in place and return the builder for chaining.
 
+\strong{Arguments:}
 \describe{
 \item{\code{amount}}{Amount to add.}
 }
+}
+}
 
+
+\describe{
+\item{\code{EnvPipeBuilder$total()}}{
 Terminal accessor: read the accumulated total.
 }
+}
+}
+

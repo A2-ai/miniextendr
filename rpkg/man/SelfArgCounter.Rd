@@ -26,38 +26,72 @@ SelfArgCounter
 }
 \description{
 SelfArgCounter inherent methods (constructor and getter).
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SelfArgCounter$new()}}{
 Create a counter holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{The initial value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SelfArgCounter$get_value()}}{
 The counter's value.
+}
+}
 
+
+\describe{
+\item{\code{SelfArgCounter$new_self_arg()}}{
 \code{SelfArgCounter$new_self_arg()} is another name for the constructor \code{SelfArgCounter$new()}.
+}
+}
 
-Arguments of \code{SelfArgCounter$SelfArgs$copy_to()}:
 
+\describe{
+\item{\code{SelfArgCounter$SelfArgs$copy_to()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{other}}{The counter to overwrite.}
 }
+}
+}
 
-Arguments of \code{SelfArgCounter$SelfArgs$swap_with()}:
 
+\describe{
+\item{\code{SelfArgCounter$SelfArgs$swap_with()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{other}}{The counter to swap with.}
 }
+}
+}
 
-Arguments of \code{SelfArgCounter$SelfArgs$difference()}:
 
+\describe{
+\item{\code{SelfArgCounter$SelfArgs$difference()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{type}}{The counter to subtract.}
 }
+}
+}
 
-Arguments of \code{SelfArgCounter$SelfArgs$exchange()}:
 
+\describe{
+\item{\code{SelfArgCounter$SelfArgs$exchange()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{left,right}}{The counters to swap.}
 }
 }
+}
+}
+

@@ -25,29 +25,64 @@ SplitEnv
 }
 \description{
 Its second impl block documents the class and adds the arithmetic.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SplitEnv$new()}}{
 Create an object holding \code{value}.
 
+\strong{Arguments:}
 \describe{
 \item{\code{value}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SplitEnv$value()}}{
 The current value.
+}
+}
 
+
+\describe{
+\item{\code{SplitEnv$add()}}{
 Add \code{by} to the value.
 
+\strong{Arguments:}
 \describe{
 \item{\code{by}}{Amount to add.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SplitEnv$doubled()}}{
 Twice the value.
+}
+}
 
+
+\describe{
+\item{\code{SplitEnv$origin()}}{
 The value a new object starts from by default.
+}
+}
 
+
+\describe{
+\item{\code{SplitEnv$from_half()}}{
 An object holding twice \code{half}. The first block's \code{new} is the
 constructor, so this stays a static method.
 
+\strong{Arguments:}
 \describe{
 \item{\code{half}}{Half the value.}
 }
 }
+}
+}
+

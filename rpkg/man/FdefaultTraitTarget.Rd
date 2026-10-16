@@ -24,7 +24,21 @@ FdefaultTraitTarget
 \item{name}{Method name for dispatch.}
 }
 \description{
-Creates the probe.
+FdefaultTraitTarget Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{FdefaultTraitTarget$new()}}{
+Creates the probe.
+}
+}
+
+
+\describe{
+\item{\code{FdefaultTraitTarget$tag()}}{
 Returns the probe's tag (always 0).
 }
+}
+}
+

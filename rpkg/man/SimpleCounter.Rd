@@ -27,15 +27,40 @@ SimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+SimpleCounter Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{SimpleCounter$new()}}{
 Create a new counter with given initial value.
 
+\strong{Arguments:}
 \describe{
 \item{\code{initial}}{Starting value.}
 }
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$get_value()}}{
 Get the counter's value.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$trait_add()}}{
 Add to the counter using the trait method.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$new_counter()}}{
 \code{SimpleCounter$new_counter()} is another name for the constructor \code{SimpleCounter$new()}.
 }
+}
+}
+

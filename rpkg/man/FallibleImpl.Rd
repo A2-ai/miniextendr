@@ -22,7 +22,21 @@ FallibleImpl
 \item{name}{Method name for dispatch.}
 }
 \description{
-Create a new FallibleImpl.
+FallibleImpl Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{FallibleImpl$new()}}{
+Create a new FallibleImpl.
+}
+}
+
+
+\describe{
+\item{\code{FallibleImpl$inherent_value()}}{
 Get value via inherent method.
 }
+}
+}
+
