@@ -323,3 +323,45 @@ fn non_generic_defaults_get_wrappers_too() {
         assert_eq!(String::try_from_sexp(value).unwrap(), "plain");
     });
 }
+
+// Every class system's trait generator takes the inherited defaults of a
+// non-generic trait.
+macro_rules! plain_reader {
+    ($($ty:ident: $system:ident),* $(,)?) => {$(
+        #[derive(ExternalPtr)]
+        pub struct $ty(i32);
+
+        #[miniextendr($system, noexport)]
+        impl Plain for $ty {
+            fn read(&self) -> i32 {
+                self.0
+            }
+        }
+    )*};
+}
+
+plain_reader!(ReaderR6: r6, ReaderS3: s3, ReaderS4: s4, ReaderS7: s7, ReaderVctrs: vctrs);
+
+#[test]
+fn every_class_system_wraps_inherited_defaults() {
+    for (ty, content) in [
+        ("ReaderR6", R_WRAPPERS_ReaderR6_Plain_IMPL.content),
+        ("ReaderS3", R_WRAPPERS_ReaderS3_Plain_IMPL.content),
+        ("ReaderS4", R_WRAPPERS_ReaderS4_Plain_IMPL.content),
+        ("ReaderS7", R_WRAPPERS_ReaderS7_Plain_IMPL.content),
+        ("ReaderVctrs", R_WRAPPERS_ReaderVctrs_Plain_IMPL.content),
+    ] {
+        // Instance defaults (an `r_name` one and a `_` parameter included)
+        // and the static default each call their own C wrapper.
+        for method in [
+            "read", "echo", "maybe", "total", "r_label", "ignored", "kind",
+        ] {
+            assert!(
+                content.contains(&format!("C_trait_default_methods_{ty}__Plain__{method},")),
+                "{ty}: {method}\n{content}"
+            );
+        }
+        assert!(content.contains("arg0"), "{ty}\n{content}");
+        assert!(!content.contains("rust_only"), "{ty}\n{content}");
+    }
+}
