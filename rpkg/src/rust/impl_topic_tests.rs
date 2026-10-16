@@ -1,5 +1,6 @@
 //! Impl topics must include members from every block, in every class system.
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::r_coerce::RCoerceError;
+use miniextendr_api::{ExternalPtr, IntoR, SEXP, miniextendr};
 
 #[derive(ExternalPtr)]
 pub struct TopicENV {
@@ -25,6 +26,12 @@ impl TopicENV {
     /// Start from an offset.
     pub fn origin(offset: i32) -> i32 {
         offset
+    }
+
+    /// Coerce to an integer.
+    #[miniextendr(as = "integer")]
+    pub fn topic_as_integer(&self) -> Result<SEXP, RCoerceError> {
+        Ok(self.value.into_sexp())
     }
 }
 
@@ -112,6 +119,20 @@ impl TopicS4 {
 }
 
 #[derive(ExternalPtr)]
+pub struct TopicS7Peer {
+    value: i32,
+}
+
+/// The S7 class `TopicS7` converts to and from.
+/// @rdname impl_topics
+#[miniextendr(s7)]
+impl TopicS7Peer {
+    pub fn new(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(ExternalPtr)]
 pub struct TopicS7 {
     value: i32,
 }
@@ -135,6 +156,16 @@ impl TopicS7 {
     /// Start from an offset.
     pub fn origin(offset: i32) -> i32 {
         offset
+    }
+
+    #[miniextendr(s7(convert_to = "TopicS7Peer"))]
+    pub fn to_peer(&self) -> TopicS7Peer {
+        TopicS7Peer { value: self.value }
+    }
+
+    #[miniextendr(s7(convert_from = "TopicS7Peer"))]
+    pub fn from_peer(peer: &TopicS7Peer) -> Self {
+        Self { value: peer.value }
     }
 }
 

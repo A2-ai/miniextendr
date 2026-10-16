@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use miniextendr_api::condition::RCondition;
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::trait_abi::{extract_arg, from_sexp};
+use miniextendr_api::trait_abi::{check_arity, from_sexp};
 use miniextendr_api::unwind_protect::with_r_unwind_protect_shim;
 use miniextendr_api::{IntoR, SEXP, TryFromSexp};
 
@@ -60,7 +60,7 @@ fn conversion_failure_drops_the_error_and_previously_converted_arguments() {
         let args = [SEXP::nil()];
         let result = scope.protect(with_r_unwind_protect_shim(|| {
             let _previous_arg = DropFlag(&dropped);
-            let _: RefusingValue = extract_arg(1, args.as_ptr(), 0, "value");
+            let _: RefusingValue = from_sexp(args[0]);
             SEXP::nil()
         }));
         assert_panic(result.get(), "conversion refused");
@@ -73,23 +73,19 @@ fn conversion_failure_drops_the_error_and_previously_converted_arguments() {
 }
 
 #[test]
-fn invalid_indices_panic_before_reading_argv_without_narrowing_usize() {
+fn an_arity_mismatch_panics_inside_the_boundary() {
     r_test_utils::with_r_thread(|| unsafe {
         let scope = ProtectScope::new();
-        let args = [SEXP::nil()];
-        for (argc, index) in [(0, 0), (-1, 0), (1, 1), (1, usize::MAX)] {
-            let dropped = Cell::new(false);
-            let result = scope.protect(with_r_unwind_protect_shim(|| {
-                let _previous_arg = DropFlag(&dropped);
-                let _: i32 = extract_arg(argc, args.as_ptr(), index, "value");
-                SEXP::nil()
-            }));
-            assert_panic(result.get(), "missing argument: value");
-            assert!(dropped.get());
-        }
+        let dropped = Cell::new(false);
+        let result = scope.protect(with_r_unwind_protect_shim(|| {
+            let _previous_arg = DropFlag(&dropped);
+            check_arity(2, 1, "method");
+            SEXP::nil()
+        }));
+        assert_panic(result.get(), "method: expected 1 arguments, got 2");
+        assert!(dropped.get());
         let value = scope.protect(42i32.into_sexp()).get();
         assert_eq!(from_sexp::<i32>(value), 42);
-        assert_eq!(extract_arg::<i32>(1, [value].as_ptr(), 0, "value"), 42);
     });
 }
 

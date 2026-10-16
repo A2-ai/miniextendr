@@ -438,7 +438,7 @@ Installs idempotent `pre-commit` and `post-merge` hooks into `.git/hooks/`:
 
 | Hook | Checks |
 |------|--------|
-| `pre-commit` | `cargo fmt --check`; blocks if `configure.ac` is staged without an up-to-date `configure`; blocks a staged `vendor.tar.xz` (a build artifact that `miniextendr_build_tarball()` vendors into the release tarball; never commit it) |
+| `pre-commit` | `cargo fmt --check`; blocks if `configure.ac` is staged without an up-to-date `configure`; blocks if `R/*-wrappers.R` is staged without `NAMESPACE`; blocks a staged `vendor.tar.xz` (a build artifact that `miniextendr_build_tarball()` vendors into the release tarball; never commit it); blocks a source-shape `src/rust/Cargo.lock` (`path+` sources or `[[patch.unused]]`; recover with `miniextendr_repair_lock()`); blocks when the staged `rv.lock` and `src/rust/Cargo.lock` pin different miniextendr commits (see below) |
 | `post-merge` | Reminds you to reconfigure + rebuild when build-relevant files changed (`configure.ac`, `Makevars.in`, `Cargo.toml`, `*.rs`) |
 
 The hooks auto-detect standalone vs monorepo layouts (searches for
@@ -446,7 +446,31 @@ The hooks auto-detect standalone vs monorepo layouts (searches for
 append a marker-delimited miniextendr section rather than
 overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
 Running twice is safe; the installer skips on the `# miniextendr`
-marker.
+marker. An installed hook stays as it was when minirextendr is upgraded:
+run `use_miniextendr_git_hooks(force = TRUE)` to replace the miniextendr
+section with the version the installed minirextendr bundles.
+
+The pin check is for a package that follows miniextendr from git on both
+sides: minirextendr in `rproject.toml`
+(`{ name = "minirextendr", git = "https://github.com/A2-ai/miniextendr.git", branch = "main", directory = "minirextendr" }`)
+and `miniextendr-api` in `src/rust/Cargo.toml`
+(`{ git = "https://github.com/A2-ai/miniextendr", branch = "main" }`). The
+two lock files then pin miniextendr commits independently: rv re-resolves a
+branch pin on every `rv sync` and rewrites `rv.lock`, while `Cargo.lock`
+keeps its commit until `cargo update`. The package's build files
+(`src/rust/build.rs`, `Makevars.in`, `mx_abi.h`, ...) follow `miniextendr-api`,
+so both locks must name the same commit. When `rv.lock` or
+`src/rust/Cargo.lock` is staged, the hook compares the full commit sha of
+minirextendr in the staged `rv.lock` (repository root first, then the package
+directory) with the git-sourced `miniextendr-*` crates in the staged
+`Cargo.lock`. It blocks when they differ, or when those crates disagree among
+themselves, and prints both fixes: move Rust to the R pin
+(`cargo update -p miniextendr-api --precise <sha>`, or a new `rev` for a
+`rev`-pinned crate), or move R to the Rust pin (`rv remove minirextendr --no-sync`
+followed by `rv add minirextendr --git <url> --commit <sha> --directory minirextendr`,
+which replaces the branch with a commit pin). Without an `rv.lock`, with
+minirextendr from a repository or a path, or with path or registry
+`miniextendr-*` crates there is nothing to compare and the check passes.
 
 ## knitr / Rmarkdown / Quarto Integration
 

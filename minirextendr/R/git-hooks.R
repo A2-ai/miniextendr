@@ -16,12 +16,20 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #'   blocks on source-shape `src/rust/Cargo.lock` (recommends
 #'   [miniextendr_repair_lock()]), blocks on a staged `vendor.tar.xz`
 #'   (a build artifact that [miniextendr_build_tarball()] vendors into the
-#'   release tarball; never commit it)
+#'   release tarball; never commit it), blocks when the staged `rv.lock`
+#'   (repository root, else the package directory) and `src/rust/Cargo.lock`
+#'   pin different miniextendr commits (minirextendr from git through rv, the
+#'   `miniextendr-*` crates from git through cargo) and prints the
+#'   `cargo update` / `rv` commands that bring them back together
 #' - **post-merge**: Reminds you to reconfigure after pulling changes to
 #'   build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 #'
 #' Existing hooks are preserved: if a hook file already exists, the miniextendr
 #' hook is appended as a sourced fragment so both run.
+#'
+#' An installed hook does not change when minirextendr is upgraded. Run
+#' `use_miniextendr_git_hooks(force = TRUE)` to replace the miniextendr section
+#' with the version bundled in the installed minirextendr.
 #'
 #' Git hooks belong to the **enclosing repository**, regardless of where the
 #' package sits inside it. This matches [use_miniextendr()]'s worldview: a

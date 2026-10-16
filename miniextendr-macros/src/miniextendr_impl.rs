@@ -2188,7 +2188,7 @@ impl ParsedMethod {
         // them), and merged with the method's `preconditions(p)` /
         // `no_preconditions(p)`, which a marker must not contradict.
         let mut peeled_sig = item.sig.clone();
-        crate::miniextendr_fn::normalize_method_params(&mut peeled_sig);
+        crate::miniextendr_fn::normalize_method_params(&mut peeled_sig, &[]);
         let param_markers = crate::miniextendr_fn::collect_param_markers(&peeled_sig.inputs)?;
         peeled_sig.inputs =
             crate::miniextendr_fn::peeled_inputs(&peeled_sig.inputs, &param_markers)?;

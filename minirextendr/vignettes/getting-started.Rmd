@@ -261,7 +261,7 @@ fresh `inst/vendor.tar.xz` (i.e., before `R CMD build` for CRAN submission).
 `use_miniextendr_git_hooks()` installs a pre-commit hook that, among
 other checks, blocks any commit staging `src/rust/Cargo.lock` when the
 file has drifted into source-shape (`path+...` source entries or
-`checksum = ` lines). The hook prints the recovery command:
+`[[patch.unused]]` blocks). The hook prints the recovery command:
 
 ```{r}
 # Run once per checkout
@@ -271,6 +271,19 @@ use_miniextendr_git_hooks()
 After installation, if you accidentally `git add src/rust/Cargo.lock`
 after a `devtools::install()` rewrote it, the hook stops the commit and
 points you at `miniextendr_repair_lock()`.
+
+If your package takes minirextendr from git through rv and the
+`miniextendr-*` crates from git through cargo, the hook also blocks a
+commit whose staged `rv.lock` and `src/rust/Cargo.lock` pin different
+miniextendr commits, and prints the `cargo update` or `rv` command that
+brings them back together.
+
+An installed hook does not change when you upgrade minirextendr. To pick
+up new checks, reinstall it:
+
+```{r}
+use_miniextendr_git_hooks(force = TRUE)
+```
 
 ### Upgrading
 

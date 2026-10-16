@@ -142,7 +142,7 @@ mod view_data;
 pub use view_data::TraitViewData;
 
 // Re-export commonly used items
-pub use conv::{check_arity, extract_arg, from_sexp, missing_to_sexp, nil, to_sexp, try_from_sexp};
+pub use conv::{check_arity, from_sexp, missing_to_sexp, nil, to_sexp, try_from_sexp};
 
 // Re-export for use in macro-generated View method wrappers (Approach 1, issue #345).
 // The View method wrapper calls this immediately after the vtable call to re-panic

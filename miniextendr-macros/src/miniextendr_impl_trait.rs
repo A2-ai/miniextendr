@@ -990,7 +990,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         });
     }
     let mut methods =
-        match vtable::extract_methods(&signature_impl, crate::roxygen::RdPage::Suppressed) {
+        match vtable::extract_methods(&signature_impl, crate::roxygen::RdPage::Suppressed, &[]) {
             Ok(methods) => methods,
             Err(error) => return error.into_compile_error().into(),
         };

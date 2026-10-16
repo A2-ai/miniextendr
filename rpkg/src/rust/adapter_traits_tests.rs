@@ -429,6 +429,9 @@ impl IterableVec {
 }
 
 /// RIterator blanket trait ABI registration for IterableVecIter.
+///
+/// Only the required methods are spelled; the omitted defaults (`count`,
+/// `collect_n`, `skip`, `nth`) take their wrappers from the declaration.
 #[miniextendr(env, blanket)]
 impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     type Item = i32;
@@ -438,22 +441,6 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     }
 
     fn size_hint(&self) -> (i64, Option<i64>) {
-        unreachable!()
-    }
-
-    fn count(&self) -> i64 {
-        unreachable!()
-    }
-
-    fn collect_n(&self, n: i32) -> Vec<Self::Item> {
-        unreachable!()
-    }
-
-    fn skip(&self, n: i32) -> i32 {
-        unreachable!()
-    }
-
-    fn nth(&self, n: i32) -> Option<Self::Item> {
         unreachable!()
     }
 }

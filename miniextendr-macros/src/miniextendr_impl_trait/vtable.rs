@@ -81,7 +81,7 @@ pub(super) fn generate_vtable_static(
     wrapper_impl
         .items
         .extend(defaults.iter().cloned().map(syn::ImplItem::Fn));
-    let mut all_methods = match extract_methods(&wrapper_impl, impl_page) {
+    let mut all_methods = match extract_methods(&wrapper_impl, impl_page, declaration) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
@@ -412,25 +412,8 @@ fn generate_concrete_vtable_shims(
             .count();
         let expected_argc = param_count as i32;
 
-        let declared = declaration
-            .iter()
-            .find(|declared| declared.sig.ident == *method_ident)
+        let diagnostic_names = declared_param_names(declaration, method_ident)
             .expect("trait metadata includes each callback's argument names");
-        let diagnostic_names: Vec<_> = declared
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|arg| match arg {
-                syn::FnArg::Typed(arg) => Some(arg),
-                syn::FnArg::Receiver(_) => None,
-            })
-            .map(|arg| {
-                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
-                    unreachable!("metadata has named arguments")
-                };
-                crate::naming::ident_name(&name.ident)
-            })
-            .collect();
 
         // Generate argument extraction (concrete types, no generics)
         let arg_extractions: Vec<TokenStream> = method
@@ -695,6 +678,34 @@ pub(super) fn inherit_method_metadata(
     Ok(())
 }
 
+/// The parameter names the declaration's metadata gives `method`, in order.
+/// The metadata names every parameter (`arg<i>` for a declaration pattern).
+fn declared_param_names(
+    declaration: &[syn::TraitItemFn],
+    method: &syn::Ident,
+) -> Option<Vec<String>> {
+    let declared = declaration
+        .iter()
+        .find(|declared| declared.sig.ident == *method)?;
+    Some(
+        declared
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .map(|arg| {
+                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                    unreachable!("metadata has named arguments")
+                };
+                crate::naming::ident_name(&name.ident)
+            })
+            .collect(),
+    )
+}
+
 /// Extract all methods from a trait impl block as [`TraitMethod`] structs.
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
@@ -705,6 +716,7 @@ pub(super) fn inherit_method_metadata(
 pub(super) fn extract_methods(
     impl_item: &ItemImpl,
     impl_page: crate::roxygen::RdPage,
+    declaration: &[syn::TraitItemFn],
 ) -> syn::Result<Vec<TraitMethod>> {
     let mut methods = Vec::new();
     for item in &impl_item.items {
@@ -724,7 +736,11 @@ pub(super) fn extract_methods(
                 crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
             }
             let mut sig = method.sig.clone();
-            crate::miniextendr_fn::normalize_method_params(&mut sig);
+            let declared = declared_param_names(declaration, &method.sig.ident);
+            crate::miniextendr_fn::normalize_method_params(
+                &mut sig,
+                declared.as_deref().unwrap_or_default(),
+            );
             crate::miniextendr_fn::take_method_param_attrs(
                 &mut sig,
                 &mut attrs.per_param,

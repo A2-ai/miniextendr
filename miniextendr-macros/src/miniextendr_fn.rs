@@ -803,8 +803,9 @@ fn take_param_attrs(attrs: &mut Vec<syn::Attribute>) -> syn::Result<PerParamMini
 }
 
 /// Method wrappers call positionally; patterns stay in the author's Rust body.
-/// Give their copied signatures stable, noncolliding parameter names.
-pub(crate) fn normalize_method_params(sig: &mut syn::Signature) {
+/// Give their copied signatures stable, noncolliding parameter names, using
+/// the trait declaration's names for patterns when metadata supplies them.
+pub(crate) fn normalize_method_params(sig: &mut syn::Signature, declared_names: &[String]) {
     let mut used_names: std::collections::HashSet<_> = sig
         .inputs
         .iter()
@@ -826,11 +827,14 @@ pub(crate) fn normalize_method_params(sig: &mut syn::Signature) {
         .enumerate()
     {
         if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
-            let mut name = format!("arg{index}");
+            let mut name = declared_names
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| format!("arg{index}"));
             while !used_names.insert(name.clone()) {
                 name.push('_');
             }
-            let name = quote::format_ident!("{name}");
+            let name = crate::naming::name_ident(&name);
             arg.pat = syn::parse_quote!(#name);
         }
     }

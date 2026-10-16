@@ -945,6 +945,42 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
     );
 }
 
+/// A pattern parameter takes the declaration's name for its binding, so its R
+/// formal and conversion errors match the trait's shims (#2029); a name the
+/// impl already uses gets a suffix, and with no declaration it is `arg<i>`.
+#[test]
+fn pattern_parameters_take_the_declarations_names() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            fn pick(&self, _: i32, other: i32, (a, b): (i32, i32)) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+    let declaration: Vec<syn::TraitItemFn> = vec![syn::parse_quote!(
+        fn pick(value: (), pair: (), other: ());
+    )];
+    let names = |declaration: &[syn::TraitItemFn]| -> Vec<String> {
+        let methods = super::vtable::extract_methods(
+            &impl_item,
+            crate::roxygen::RdPage::Rendered,
+            declaration,
+        )
+        .unwrap();
+        methods[0]
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg.pat.to_token_stream().to_string()),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .collect()
+    };
+    assert_eq!(names(&declaration), ["value", "other", "other_"]);
+    assert_eq!(names(&[]), ["arg0", "other", "arg2"]);
+}
+
 /// A trait method's `choices(...)` checks come out in signature order, not in
 /// the order of the per-parameter `HashMap`, which differs between maps and
 /// between compiler runs (see `method_choice_params_emit_in_signature_order`
@@ -963,7 +999,8 @@ fn test_trait_method_choices_prelude_in_signature_order() {
             }
         };
         let methods =
-            super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+            super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
+                .unwrap();
         let result = generate_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
@@ -1007,7 +1044,7 @@ fn test_trait_method_choices_no_default() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let result = generate_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
@@ -1026,7 +1063,8 @@ fn test_trait_method_choices_no_default() {
     assert!(!result.contains("mode = c("), "{result}");
 
     let extract_err = |impl_item: syn::ItemImpl| {
-        let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+        let Err(err) =
+            super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
         else {
             panic!("must be rejected");
         };
@@ -1071,7 +1109,7 @@ fn test_trait_method_checks_take_custom_messages() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let result = generate_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
@@ -1093,7 +1131,8 @@ fn test_trait_method_checks_take_custom_messages() {
             fn scale(&mut self, model: List) -> f64 { unimplemented!() }
         }
     };
-    let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+    let Err(err) =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
     else {
         panic!("a class check without a class must be rejected");
     };
@@ -1118,7 +1157,7 @@ fn test_trait_method_not_inherits() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let result = generate_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
@@ -1140,7 +1179,8 @@ fn test_trait_method_not_inherits() {
             fn scale(&mut self, model: List) -> f64 { unimplemented!() }
         }
     };
-    let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+    let Err(err) =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
     else {
         panic!("a class in both lists must be rejected");
     };
@@ -1204,7 +1244,8 @@ fn test_trait_method_rejects_unknown_parameter_names() {
         ),
     ];
     for (impl_item, expected) in cases {
-        let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+        let Err(err) =
+            super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
         else {
             panic!("`{expected}` must be rejected");
         };
@@ -1219,7 +1260,7 @@ fn test_trait_method_rejects_unknown_parameter_names() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     assert!(methods[0].per_param["type"].checks.no_na);
 }
 
@@ -1234,7 +1275,7 @@ fn trait_method_no_na_checks_the_converted_value() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let out = super::vtable::generate_trait_method_c_wrapper(
         &methods[0],
         &format_ident!("Foo"),
@@ -2735,7 +2776,7 @@ fn trait_method_preconditions_list_names_a_parameter() {
             fn scaled(&self, k: f64) -> f64 { unimplemented!() }
         }
     };
-    let err = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+    let err = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
         .expect_err("rejected")
         .to_string();
     assert!(
@@ -2835,7 +2876,8 @@ fn suppressed_trait_methods_keep_no_links() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Suppressed).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Suppressed, &[])
+            .unwrap();
     assert_eq!(
         methods[0].doc_tags,
         [
@@ -2858,7 +2900,7 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let generate = |method: TraitMethod, system| {
         generate_trait_r_wrapper(
             &format_ident!("Foo"),
@@ -2919,7 +2961,7 @@ fn trait_s4_owned_explicit_generic_has_help_and_validates_context() {
             fn category(&self) -> i32 { 0 }
         }
     };
-    let method = super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered)
+    let method = super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[])
         .unwrap()
         .remove(0);
     let generate = |method: TraitMethod, system, no_rd, internal, noexport| {
@@ -3021,7 +3063,7 @@ fn trait_static_methods_keep_r_values_on_the_main_thread() {
         }
     };
     let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     for (method, worker) in methods.iter().zip([false, false, false, true]) {
         let out = super::vtable::generate_trait_method_c_wrapper(
             method,
@@ -3072,7 +3114,8 @@ fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() 
     let original = input.implementation.items.clone();
     vtable::inherit_method_metadata(&mut input.implementation, &input.methods).unwrap();
     let methods =
-        vtable::extract_methods(&input.implementation, crate::roxygen::RdPage::Rendered).unwrap();
+        vtable::extract_methods(&input.implementation, crate::roxygen::RdPage::Rendered, &[])
+            .unwrap();
     assert_eq!(methods[0].r_method_name(), "take");
     assert!(methods[0].check_interrupt);
     assert!(methods[0].param_defaults.contains_key("n"));
@@ -3191,8 +3234,8 @@ fn unsafe_trait_impl_methods_require_skip() {
             unsafe fn read(&self) -> i32 { 1 }
         }
     };
-    let error =
-        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap_err();
+    let error = vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered, &[])
+        .unwrap_err();
     assert!(error.to_string().contains("provide a safe Rust adapter"));
 
     let implementation: syn::ItemImpl = syn::parse_quote! {
@@ -3202,7 +3245,7 @@ fn unsafe_trait_impl_methods_require_skip() {
         }
     };
     let methods =
-        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap();
+        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     assert!(methods[0].skip);
 }
 
@@ -3262,7 +3305,7 @@ fn method_parameter_options_share_function_validation() {
             ) {}
         }
     };
-    let methods = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered).unwrap();
+    let methods = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let method = &methods[0];
     assert!(method.per_param["mode"].match_arg);
     assert_eq!(method.param_defaults["mode"], "safe");
@@ -3295,7 +3338,7 @@ fn method_parameter_options_share_function_validation() {
             }
         },
     ] {
-        let error = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered)
+        let error = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered, &[])
             .err()
             .unwrap();
         assert!(
@@ -3320,7 +3363,7 @@ fn declaration_parameter_options_follow_position_and_allow_impl_overrides() {
     };
     vtable::inherit_method_metadata(&mut implementation, &declaration).unwrap();
     let methods =
-        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap();
+        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     assert!(methods[0].per_param["renamed"].checks.no_na);
     let input: syn::ItemImpl = syn::parse_quote! {
         impl Bar for Foo {
@@ -3328,9 +3371,35 @@ fn declaration_parameter_options_follow_position_and_allow_impl_overrides() {
             fn mode(&self, mode: Mode) -> Mode { mode }
         }
     };
-    let named = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered).unwrap();
+    let named = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     assert_eq!(named[0].per_param["mode"].default.as_deref(), Some("safe"));
 
     assert_eq!(methods[0].param_defaults["n"], "2L");
     assert!(!methods[0].per_param.contains_key("value"));
+}
+
+#[test]
+fn declaration_pattern_names_precede_parameter_option_validation() {
+    let declaration = vec![syn::parse_quote! {
+        fn run(&self, #[miniextendr(no_na)] value: (), #[miniextendr(default = "1L")] count: ());
+    }];
+    let mut implementation: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            fn run(&self, _: f64, _: i32) {}
+        }
+    };
+    vtable::inherit_method_metadata(&mut implementation, &declaration).unwrap();
+    let methods = vtable::extract_methods(
+        &implementation,
+        crate::roxygen::RdPage::Rendered,
+        &declaration,
+    )
+    .unwrap();
+    assert!(methods[0].per_param["value"].checks.no_na);
+    assert_eq!(methods[0].param_defaults["count"], "1L");
+    let sig = &methods[0].sig;
+    assert_eq!(
+        quote::quote!(#sig).to_string(),
+        "fn run (& self , value : f64 , count : i32)"
+    );
 }

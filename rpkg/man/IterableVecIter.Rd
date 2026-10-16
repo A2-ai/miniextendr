@@ -27,3 +27,42 @@ IterableVecIter
 \description{
 IterableVecIter blanket impl: collect all remaining items.
 }
+\section{Methods}{
+
+\describe{
+\item{\code{IterableVecIter$RIterator$count()}}{
+Consume the iterator and count remaining elements.
+
+\strong{Warning:} This exhausts the iterator.
+}
+}
+
+
+\describe{
+\item{\code{IterableVecIter$RIterator$collect_n()}}{
+Collect up to \code{n} elements into a vector.
+
+Returns fewer than \code{n} elements if the iterator is exhausted first.
+}
+}
+
+
+\describe{
+\item{\code{IterableVecIter$RIterator$skip()}}{
+Skip \code{n} elements from the iterator.
+
+Returns the number of elements actually skipped (may be less than \code{n}
+if the iterator is exhausted).
+}
+}
+
+
+\describe{
+\item{\code{IterableVecIter$RIterator$nth()}}{
+Get the \code{n}th element (0-indexed), consuming elements up to and including it.
+
+Returns None if the iterator has fewer than \code{n + 1} elements.
+}
+}
+}
+
