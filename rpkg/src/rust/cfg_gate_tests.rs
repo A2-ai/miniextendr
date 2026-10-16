@@ -1,8 +1,11 @@
-//! Method gates are resolved before class analysis and R registration (#2107).
+//! Gates inside `#[miniextendr]` items are resolved before anything is
+//! generated (#2107): methods, trait items, parameters and enum variants.
 // Constant gates deliberately exercise both branches on every target.
 #![allow(clippy::non_minimal_cfg)]
 
 use miniextendr_api::{ExternalPtr, miniextendr};
+
+// region: Inherent methods
 
 macro_rules! gated_class {
     ($name:ident, $system:ident, $visibility:ident $(, $extra:item)*) => {
@@ -100,3 +103,90 @@ mod vctrs {
         }
     }
 }
+// endregion
+
+// region: Parameters, enum variants and traits
+
+/// A gated-off parameter has no R formal.
+/// @param kept Returned unchanged.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn cfg_gate_params(
+    #[cfg(any())] _hidden: MissingType,
+    kept: i32,
+    #[cfg_attr(all(), cfg(any()))] _nested: MissingType,
+) -> i32 {
+    kept
+}
+
+/// Factor whose gated-off variant is not a level.
+#[miniextendr]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum CfgGateLevel {
+    Low,
+    #[cfg(any())]
+    Hidden,
+    High,
+}
+
+/// @noRd
+#[miniextendr(noexport)]
+pub fn cfg_gate_level_high() -> CfgGateLevel {
+    CfgGateLevel::High
+}
+
+/// Choices whose gated-off variant is not offered.
+#[miniextendr(match_arg)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum CfgGateMode {
+    Fast,
+    #[cfg_attr(all(), cfg(any()))]
+    Hidden,
+    Slow,
+}
+
+/// @param mode A mode.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn cfg_gate_mode(#[miniextendr(match_arg)] mode: CfgGateMode) -> String {
+    format!("{mode:?}")
+}
+
+/// Trait with a gated-off method.
+#[miniextendr]
+pub trait CfgGateShape {
+    /// The shape's area.
+    fn area(&self) -> f64;
+
+    /// Gated off.
+    #[cfg(any())]
+    fn hidden(&self) -> MissingType;
+}
+
+#[derive(ExternalPtr)]
+pub struct CfgGateSquare {
+    side: f64,
+}
+
+/// @noRd
+#[miniextendr(env, noexport)]
+impl CfgGateSquare {
+    pub fn new(side: f64) -> Self {
+        Self { side }
+    }
+}
+
+/// One of two gated alternative implementations is compiled.
+#[miniextendr(env, noexport)]
+impl CfgGateShape for CfgGateSquare {
+    #[cfg(all())]
+    fn area(&self) -> f64 {
+        self.side * self.side
+    }
+
+    #[cfg(any())]
+    fn area(&self) -> f64 {
+        unreachable!()
+    }
+}
+// endregion

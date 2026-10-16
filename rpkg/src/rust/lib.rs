@@ -168,6 +168,7 @@ mod box_slice_tests;
 mod bytes_adapter_tests;
 mod call_attribution_demo;
 mod callless_condition_tests;
+mod cfg_gate_tests;
 mod class_system_matrix;
 mod classed_result_tests;
 mod coerce_input_tests;
@@ -273,7 +274,6 @@ mod match_arg_omitted_tests;
 mod match_arg_tests;
 #[cfg(feature = "md5")]
 mod md5_adapter_tests;
-mod method_cfg_tests;
 mod misc_tests;
 mod missing_tests;
 mod multi_para_doc_demo;

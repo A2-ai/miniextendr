@@ -1,4 +1,4 @@
-# Disabled methods must be absent from both the native table and R classes.
+# Gated-off members must be absent from the native table and from R (#2107).
 for (system in c("env", "r6", "s3", "s4", "s7", "vctrs")) {
   test_that(paste(system, "methods follow cfg and cfg_attr"), {
     feature_enabled <- "vctrs" %in% miniextendr_enabled_features()
@@ -47,4 +47,28 @@ test_that("gated-off methods leave no native registrations or R functions", {
   expect_false(any(grepl("__cfg_(disabled|nested_disabled)$", gated)))
   ns <- asNamespace("miniextendr")
   expect_false(any(grepl("cfg_(disabled|nested_disabled)", ls(ns, all.names = TRUE))))
+})
+
+test_that("a gated-off parameter has no formal", {
+  ns <- asNamespace("miniextendr")
+  expect_identical(names(formals(ns$cfg_gate_params)), "kept")
+  expect_identical(ns$cfg_gate_params(3L), 3L)
+})
+
+test_that("gated-off enum variants are neither levels nor choices", {
+  ns <- asNamespace("miniextendr")
+  expect_identical(levels(ns$cfg_gate_level_high()), c("Low", "High"))
+  expect_identical(eval(formals(ns$cfg_gate_mode)$mode), c("Fast", "Slow"))
+  expect_identical(ns$cfg_gate_mode("Slow"), "Slow")
+  expect_error(ns$cfg_gate_mode("Hidden"))
+})
+
+test_that("trait gates select methods and implementations", {
+  ns <- asNamespace("miniextendr")
+  square <- ns$CfgGateSquare$new(3)
+  expect_identical(square$CfgGateShape$area(), 9)
+  expect_null(square$CfgGateShape$hidden)
+  native <- names(getDLLRegisteredRoutines("miniextendr")$.Call)
+  expect_true(any(grepl("CfgGateShape.*area", native)))
+  expect_false(any(grepl("CfgGateShape.*hidden", native)))
 })

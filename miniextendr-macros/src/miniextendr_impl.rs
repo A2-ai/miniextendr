@@ -4138,8 +4138,6 @@ fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
     }
 }
 
-mod cfg_methods;
-
 // region: Class-system R wrapper generators (sub-modules)
 
 /// Environment-based class wrapper generator (`obj$method()` dispatch).
@@ -5121,14 +5119,6 @@ pub fn expand_impl(
     if item_impl.trait_.is_some() {
         // Delegate to trait ABI vtable generator
         return crate::miniextendr_impl_trait::expand_miniextendr_impl_trait(attr, item);
-    }
-
-    // rustc must select methods before class-wide analysis (constructors,
-    // properties, name collisions) or any C/R registration is generated.
-    match cfg_methods::select(attr.clone().into(), &item_impl) {
-        Ok(Some(selected)) => return selected.into(),
-        Ok(None) => {}
-        Err(error) => return error.into_compile_error().into(),
     }
 
     // Otherwise, this is an inherent impl - parse class system attrs
