@@ -2948,8 +2948,9 @@ pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///   `T`'s columns convert to R; the elements are moved, so `T` needs no
 ///   `Clone` or `Copy`. Over a borrowed `&[T; N]` / `&[T]`, `T` must also be
 ///   `Clone`;
-/// - a flattened struct or nested enum, or an `as_factor` unit enum:
-///   `#[derive(DataFrameRow)]`;
+/// - a flattened struct or nested enum: `#[derive(DataFrameRow)]`;
+/// - `as_factor`: `UnitEnumFactor`, which `#[derive(DataFrameRow)]` on a
+///   unit-only enum and `#[derive(RFactor)]` both provide;
 /// - `as_list`: `IntoList`;
 /// - `skip`: nothing.
 ///

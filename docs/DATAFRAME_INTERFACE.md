@@ -78,6 +78,7 @@ local `Row` type, and `miniextendr_api` carries the blanket
 verbs — the indirection is invisible.
 
 `FromDataFrame` is emitted for every **struct** row shape: simple scalar fields,
+`as_factor` fields (the factor's levels are checked, and `NA` is an error),
 column expansion (`[T; N]`, `Vec<T>` + `width`, `Vec<T>`/`Box<[T]>` + `expand`),
 struct-flatten (nested `DataFrameRow` fields, including several levels of nesting),
 map fields (`HashMap`/`BTreeMap`, one list-of-named-lists column read back whole),

@@ -441,12 +441,14 @@ struct Step {
 // Columns: id (integer), direction (factor), with no direction_variant column.
 ```
 
-The companion stores owned enum values; conversion needs neither `Clone` nor
-`Copy`. Named struct readers validate the factor's levels and report every NA
-or invalid code in a required factor column. Their parallel reader uses the
-sequential reader to move non-Clone values, as nested enum readers do. Empty
-columns retain the complete level set. Tuple and tagged structs retain their
-usual write-only support.
+The companion stores the enum values themselves, so the enum needs neither
+`Clone` nor `Copy`. A struct's factor column has no missing rows, so its reader
+checks the factor's levels and reports every `NA` or invalid code in one error.
+The parallel reader delegates to the sequential one, which moves the values, as
+enum readers do for flattened and factor fields. An empty column still carries
+every level. Tuple structs and `#[dataframe(tag)]` structs stay write-only, as
+for every field type. A struct with a factor field can itself be flattened into
+an enum variant; rows of the other variants get `NA` in its factor column.
 
 Factor levels are the variant idents in declaration order. `is.factor(df$dir)` returns `TRUE`. Annotating a payload-bearing enum with `as_factor` is a compile error (missing `UnitEnumFactor` implementation).
 
@@ -600,7 +602,7 @@ reported at the field:
 | `[T; N]`, or `width` / `expand` over an owned `Vec<T>` / `Box<[T]>` | `T`'s columns convert to R; the elements are moved, so `T` needs no `Clone` or `Copy` |
 | the same over a borrowed `&[T; N]` / `&[T]` | also `T: Clone`: each element is cloned out of the borrow |
 | flattened struct, nested enum | `#[derive(DataFrameRow)]`; no `Clone`: values are moved into their columns, and out of them when an enum is read back |
-| `as_factor` | a unit-only enum with `#[derive(DataFrameRow)]`; no `Clone` or `Copy` |
+| `as_factor` | `UnitEnumFactor`, which `#[derive(DataFrameRow)]` on a unit-only enum and `#[derive(RFactor)]` both provide; no `Clone` or `Copy` |
 | `as_list` | `IntoList` (see below) |
 | `skip` | nothing |
 
@@ -658,7 +660,7 @@ for m in &rows {
 }
 ```
 
-The reader covers scalar fields, fixed/auto expansion, nested struct flattening,
+The reader covers scalar fields, `as_factor` fields, fixed/auto expansion, nested struct flattening,
 tagged enums (including flattened payload enums and `as_factor` unit enums),
 and enum map columns. Shapes that intentionally discard reconstruction
 information still return `DataFrameError::Conversion`: borrowed or `skip`
