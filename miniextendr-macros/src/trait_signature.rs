@@ -61,3 +61,58 @@ pub(crate) fn callable(sig: &syn::Signature, item: TokenStream) -> TokenStream {
     let call = quote! { #item(#(#args),*) };
     quote! { |#(#args),*| #call }
 }
+
+/// Read MatchArg constants without resolving a declaration-local type path in
+/// the impl module. Like `setup`, this infers from a method item and never calls
+/// it. Borrowing the callable keeps this const function free of generic drops.
+pub(crate) fn match_arg_values(
+    sig: &syn::Signature,
+    parameter: &str,
+    leaf: &syn::Type,
+    callable: &TokenStream,
+) -> TokenStream {
+    use syn::visit_mut::VisitMut;
+    struct ReplaceLeaf<'a>(&'a syn::Type);
+    impl VisitMut for ReplaceLeaf<'_> {
+        fn visit_type_mut(&mut self, ty: &mut syn::Type) {
+            if ty == self.0 {
+                *ty = syn::parse_quote!(__MxChoice);
+            } else {
+                syn::visit_mut::visit_type_mut(self, ty);
+            }
+        }
+    }
+    let mut generics = Vec::new();
+    let args: Vec<syn::Type> = sig
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(index, arg)| {
+            if let syn::FnArg::Typed(arg) = arg
+                && let syn::Pat::Ident(name) = arg.pat.as_ref()
+                && crate::naming::ident_name(&name.ident) == parameter
+            {
+                let mut ty = *arg.ty.clone();
+                ReplaceLeaf(leaf).visit_type_mut(&mut ty);
+                ty
+            } else {
+                let name = format_ident!("__MxArg{index}");
+                generics.push(name.clone());
+                syn::parse_quote!(#name)
+            }
+        })
+        .collect();
+    quote! {{
+        const fn __mx_choices<__MxChoice, __MxOutput, __MxFn, #(#generics),*>(
+            _: &__MxFn,
+        ) -> (&'static [&'static str], &'static [(&'static str, &'static str)])
+        where
+            __MxChoice: ::miniextendr_api::match_arg::MatchArg,
+            __MxFn: ::core::ops::FnOnce(#(#args),*) -> __MxOutput,
+        {
+            (<__MxChoice as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
+             <__MxChoice as ::miniextendr_api::match_arg::MatchArg>::ALIASES)
+        }
+        __mx_choices(&(#callable))
+    }}
+}

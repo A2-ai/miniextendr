@@ -185,6 +185,7 @@ pub(super) fn generate_vtable_static(
                 method
                     .attrs
                     .retain(|attr| !attr.path().is_ident("miniextendr"));
+                crate::miniextendr_fn::strip_param_attrs(&mut method.sig);
                 crate::trait_receiver::rewrite(&mut method.sig, Some(&mut method.block));
             }
         }
@@ -649,6 +650,44 @@ pub(super) fn inherit_method_metadata(
                 .attrs
                 .push(syn::parse_quote!(#[miniextendr(r_name = #r_name)]));
         }
+        // Declaration options follow argument position, even when an impl renames
+        // its bindings. An explicit impl configuration replaces that parameter's
+        // inherited configuration; duplicate spellings within the impl still fail.
+        for (arg, declared_arg) in method
+            .sig
+            .inputs
+            .iter_mut()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                _ => None,
+            })
+            .zip(declared.sig.inputs.iter().filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg),
+                _ => None,
+            }))
+        {
+            let named_override = match arg.pat.as_ref() {
+                syn::Pat::Ident(pat) => {
+                    let name = crate::naming::ident_name(&pat.ident);
+                    own.per_param.contains_key(&name) || own.defaults.contains_key(&name)
+                }
+                _ => false,
+            };
+            if !named_override
+                && !arg
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("miniextendr"))
+            {
+                arg.attrs.extend(
+                    declared_arg
+                        .attrs
+                        .iter()
+                        .filter(|attr| attr.path().is_ident("miniextendr"))
+                        .cloned(),
+                );
+            }
+        }
         if inherited.skip && !own.skip {
             method.attrs.push(syn::parse_quote!(#[miniextendr(skip)]));
         }
@@ -684,13 +723,20 @@ pub(super) fn extract_methods(
             if !attrs.skip {
                 crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
             }
+            let mut sig = method.sig.clone();
+            crate::miniextendr_fn::normalize_method_params(&mut sig);
+            crate::miniextendr_fn::take_method_param_attrs(
+                &mut sig,
+                &mut attrs.per_param,
+                &mut attrs.defaults,
+            )?;
             // Every parameter `choices(...)` / `inherits(...)` /
             // `not_inherits(...)` / `no_na(...)` name must exist, as on
             // inherent methods; `Option<T>` scalar
             // choices params are the optional form (#1473).
             crate::miniextendr_fn::finalize_method_param_attrs(
                 &mut attrs.per_param,
-                &method.sig.inputs,
+                &sig.inputs,
                 &[],
                 &attrs.defaults,
                 attrs
@@ -699,7 +745,7 @@ pub(super) fn extract_methods(
             )?;
             check_trait_method_defaults(
                 &attrs.defaults,
-                &method.sig.inputs,
+                &sig.inputs,
                 attrs
                     .defaults_span
                     .unwrap_or_else(|| method.sig.ident.span()),
@@ -720,39 +766,6 @@ pub(super) fn extract_methods(
             }
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
-            let mut sig = method.sig.clone();
-            // Wrappers call the method positionally; patterns belong only to
-            // the original impl body. Give every wrapper argument a binding,
-            // including ignored and destructured parameters (#2029).
-            let mut used_names: std::collections::HashSet<_> = sig
-                .inputs
-                .iter()
-                .filter_map(|arg| match arg {
-                    syn::FnArg::Typed(arg) => match arg.pat.as_ref() {
-                        syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
-                        _ => None,
-                    },
-                    _ => None,
-                })
-                .collect();
-            for (index, arg) in sig
-                .inputs
-                .iter_mut()
-                .filter_map(|arg| match arg {
-                    syn::FnArg::Typed(arg) => Some(arg),
-                    _ => None,
-                })
-                .enumerate()
-            {
-                if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
-                    let mut name = format!("arg{index}");
-                    while !used_names.insert(name.clone()) {
-                        name.push('_');
-                    }
-                    let name = format_ident!("{name}");
-                    arg.pat = syn::parse_quote!(#name);
-                }
-            }
             let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
             if return_wrap
                 .as_ref()
@@ -1132,23 +1145,19 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     })?;
                     r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
                 }
+            } else if meta.path.is_ident("match_arg") || meta.path.is_ident("match_arg_several_ok") {
+                per_param_span.get_or_insert(meta.path.span());
+                let several_ok = meta.path.is_ident("match_arg_several_ok");
+                meta.parse_nested_meta(|inner| {
+                    let name = crate::miniextendr_fn::method_check_param(&inner)?;
+                    let entry = per_param.entry(name).or_default();
+                    entry.match_arg = true;
+                    entry.several_ok |= several_ok;
+                    Ok(())
+                })?;
             } else if meta.path.is_ident("choices") {
                 per_param_span.get_or_insert(meta.path.span());
                 // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
-                //
-                // NOTE: `match_arg`/`match_arg_several_ok` (choices derived from a
-                // `#[derive(MatchArg)]` enum's `CHOICES` const) are intentionally NOT
-                // supported here yet. The inherent-impl path additionally emits a
-                // `MX_MATCH_ARG_CHOICES` registration
-                // (`generate_method_match_arg_entries` in
-                // `miniextendr_impl.rs`) that resolves the write-time placeholder
-                // formal default into the enum's literal choice list — trait methods
-                // have no equivalent metadata registration yet, so accepting `match_arg`
-                // here would silently ship a formal default that never resolves
-                // (`object '.__MX_MATCH_ARG_CHOICES_...__' not found` at call time).
-                // `choices(...)` needs no such resolution (the literal list is baked in
-                // at macro-expansion time), so it's safe to support today. Tracked in
-                // the trait-method-emitter follow-up issue for full match_arg parity.
                 meta.parse_nested_meta(|inner| {
                     let name = crate::miniextendr_fn::method_check_param(&inner)?;
                     let _: syn::Token![=] = inner.input.parse()?;
@@ -1369,7 +1378,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Build the wrapper using the builder infrastructure
     // Use custom call_method_def_ident to avoid collisions with inherent impl methods
     // Messages R sees name the method as R calls it (`r_name`).
-    let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+    let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident.clone())
         .r_name(method.r_entry_name(class_system, type_ident, trait_name))
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
@@ -1535,11 +1544,16 @@ pub(super) fn generate_trait_method_c_wrapper(
     // `no_na(..)` parameters also have their converted value checked, for what
     // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.per_param {
+        if attrs.coerce {
+            builder = builder.with_coerce_param(rust_name.clone());
+        }
         if attrs.convert {
             builder = builder.with_convert_param(rust_name.clone());
         }
         if let Some(leaf) = attrs.layered_leaf() {
             builder = builder.layered_choice(rust_name.clone(), leaf);
+        } else if attrs.match_arg && attrs.several_ok {
+            builder = builder.match_arg_several_ok(rust_name.clone());
         }
         if attrs.checks.no_na {
             builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
@@ -1547,7 +1561,21 @@ pub(super) fn generate_trait_method_c_wrapper(
     }
 
     // The builder generates both the C wrapper and the R_CallMethodDef
-    builder.post_conversion(post_conversion).build().generate()
+    let c_wrapper = builder.post_conversion(post_conversion).build().generate();
+    let callable = method.inherited_signature.then(|| {
+        crate::trait_signature::callable(
+            &method.sig,
+            quote::quote!(<#type_ident as #trait_path>::#method_ident),
+        )
+    });
+    let choices = crate::match_arg_keys::method_entries(
+        &method.sig,
+        &method.per_param,
+        &c_ident.to_string(),
+        &[],
+        callable.as_ref(),
+    );
+    quote::quote!(#c_wrapper #choices)
 }
 
 /// Generate a C wrapper function and `R_CallMethodDef` for a trait associated constant.

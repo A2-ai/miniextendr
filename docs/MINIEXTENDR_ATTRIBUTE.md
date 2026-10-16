@@ -866,8 +866,27 @@ it for the R string literal: quotes, backslashes, newlines and other control
 characters, and non-ASCII text as `\u{..}` (R code in a package must be
 ASCII).
 
-Impl and trait methods cannot carry parameter attributes, so the same options
-are method-level and name the parameter: `match_arg(p)`,
+Inherent methods, trait implementations and trait declarations accept the same
+parameter attributes as standalone functions:
+
+```rust
+#[miniextendr(env)]
+impl Counter {
+    pub fn record(&mut self, #[miniextendr(match_arg)] mode: Mode) { /* ... */ }
+    pub fn add(&mut self, #[miniextendr(coerce, no_na, default = "1L")] n: i32) { /* ... */ }
+}
+```
+
+The macro consumes these attributes before emitting the Rust method. This also
+covers `convert`, `choices`, `several_ok`, `no_default`, class checks and the
+parameter's `preconditions` policy. Trait declaration options follow argument
+position into each implementation, so renaming an implementation parameter
+keeps its options. Explicit implementation options for that parameter replace
+the declaration's options. Empty impl wrappers and inherited generic defaults
+use the declaration's options too. These options steer the R wrapper; they do
+not change the trait ABI's conversion requirements.
+
+Named method-level forms remain available on implementations: `match_arg(p)`,
 `match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
 `no_default(p, q)`, `inherits(p = "cls_a, cls_b")`, `not_inherits(p = "cls_a, cls_b")`,
 `no_na(p, q)`. A message goes in parentheses after the parameter:
@@ -877,6 +896,11 @@ are method-level and name the parameter: `match_arg(p)`,
 comma-separated string, as in `choices(p = "a, b")`, because a nested option
 cannot hold a list of literals. At parameter level no class name is split, so
 `inherits(class = "a, b")` names one class, `a, b`.
+
+Configure each parameter either on the parameter or through the method's named
+forms, including `defaults(p = "...")`. Mixing the two for the same parameter
+is a compile error. A whole-method policy such as bare `coerce` or
+`no_preconditions` still supplies the default for individual parameters.
 
 #### Hints for common wrong classes
 

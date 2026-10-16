@@ -976,67 +976,26 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         _ => format_ident!("Unknown"),
     };
 
-    // Convert TpieMethod → TraitMethod, rewriting Self → ConcreteType
-    let methods: Vec<TraitMethod> = tpie_input
-        .methods
-        .iter()
-        .map(|tm| {
-            let mut sig = tm.sig.clone();
-            rewrite_self_in_params(&mut sig, &concrete_type);
-
-            let (has_self, is_mut) = sig.inputs.first().map_or((false, false), |arg| {
-                if let syn::FnArg::Receiver(_) = arg {
-                    (true, crate::trait_receiver::is_mut(&sig))
-                } else {
-                    (false, false)
-                }
-            });
-
-            // Peel a return-visibility marker (#1213) so the return-shape
-            // predicates and the C wrapper see the inner type.
-            let (invisible, sig) = {
-                let (marker, output) = crate::type_inspect::peel_return_visibility(&sig.output);
-                let mut sig = sig;
-                sig.output = output;
-                (marker, sig)
-            };
-            TraitMethod {
-                inherited_signature: true,
-                ident: sig.ident.clone(),
-                sig,
-                invisible,
-                has_self,
-                is_mut,
-                worker: cfg!(feature = "worker-default"),
-                unsafe_main_thread: false,
-                coerce: false,
-                check_interrupt: false,
-                rng: false,
-                unwrap_in_r: false,
-                serialize: false,
-                return_wrap: None,
-                param_defaults: Default::default(),
-                doc_tags: vec![],
-                skip: false,
-                strict: false,
-                lifecycle: None,
-                r_entry: None,
-                r_post_checks: None,
-                r_on_exit: None,
-                no_shortcut: false,
-                generic: None,
-                receiver: None,
-                no_dispatch_dots: false,
-                per_param: Default::default(),
-                preconditions: None,
-                r_name: if tm.sig.ident == tm.r_name {
-                    None // r_name matches ident → no override
-                } else {
-                    Some(tm.r_name.clone())
-                },
-            }
-        })
-        .collect();
+    // Empty impls use the same parser as populated impls, including parameter
+    // options. This synthetic impl is only metadata, never emitted Rust code.
+    let mut signature_impl: syn::ItemImpl = syn::parse_quote!(impl #concrete_type {});
+    for tm in &tpie_input.methods {
+        let mut sig = tm.sig.clone();
+        rewrite_self_in_params(&mut sig, &concrete_type);
+        let r_name = tm.r_name.to_string();
+        signature_impl.items.push(syn::parse_quote! {
+            #[miniextendr(r_name = #r_name)]
+            #sig {}
+        });
+    }
+    let mut methods =
+        match vtable::extract_methods(&signature_impl, crate::roxygen::RdPage::Suppressed) {
+            Ok(methods) => methods,
+            Err(error) => return error.into_compile_error().into(),
+        };
+    for method in &mut methods {
+        method.inherited_signature = true;
+    }
 
     // Generate C wrappers
     let c_wrappers: Vec<TokenStream> = methods

@@ -1,9 +1,7 @@
 //! `match_arg` / `choices` / `several_ok` on impl-block methods (issue #153).
 //!
-//! Unlike standalone functions, impl methods can't carry per-parameter
-//! `#[miniextendr(match_arg)]` attributes — Rust's parser rejects attribute
-//! macros on fn parameters inside impl items. The surface is instead
-//! method-level: `#[miniextendr(match_arg(p), choices(q = "a, b"))]`.
+//! Both parameter attributes and named method-level options are supported.
+//! These fixtures keep the named forms to verify their behavior stays intact.
 //!
 //! These fixtures exercise the commonly-used class-system generators
 //! (r6, env, s7, s3, s4) to confirm:

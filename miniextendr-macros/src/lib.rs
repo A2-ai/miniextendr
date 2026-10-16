@@ -1997,7 +1997,10 @@ fn expand_miniextendr(
                     &entry_ident,
                     placeholder,
                     aliases_placeholder,
-                    choices_ty,
+                    &quote::quote!((
+                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
+                        <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::ALIASES,
+                    )),
                     preferred_default,
                 ))
             },
@@ -2024,7 +2027,7 @@ fn expand_miniextendr(
                     doc_placeholder,
                     attrs.several_ok,
                     &attrs.choice_doc_suffix(),
-                    choices_ty,
+                    &quote::quote!(<#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES),
                 ))
             })
             .collect();

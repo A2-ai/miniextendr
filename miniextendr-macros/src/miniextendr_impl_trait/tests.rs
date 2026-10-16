@@ -828,18 +828,8 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
     );
 }
 
-/// BUG2 regression: trait methods had no `match_arg`/`choices` attribute
-/// support at all before this refactor (`TraitMethod` carried no per-param
-/// map). This exercises the shared `TraitMethodContext::match_arg_prelude` /
-/// `build_match_arg_prelude` primitive directly via `per_param` (bypassing
-/// attribute parsing) — `#[miniextendr(match_arg(...))]` itself is not yet
-/// exposed as a trait-method attribute because, unlike `choices(...)`, it
-/// needs an enum's derived `MatchArg::CHOICES` resolved through a write-time
-/// registration the inherent-impl path has
-/// (`generate_method_match_arg_entries` in `miniextendr_impl.rs`) and the
-/// trait path doesn't yet; see the tracked follow-up issue. `choices(...)`
-/// (no derivation needed) *is* exposed and covered by
-/// `test_bug2_choices_prelude_emitted_for_trait_method` below.
+/// Trait methods share the choice prelude and write-time registration with
+/// inherent methods; this checks the prelude independently of attribute parsing.
 #[test]
 fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
     let type_ident = format_ident!("Foo");
@@ -3138,4 +3128,90 @@ fn trait_none_errors_follow_class_entry_names() {
         );
         assert!(out.contains("`lookup()` returned no value"), "{out}");
     }
+}
+
+#[test]
+fn method_parameter_options_share_function_validation() {
+    let input: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            fn run(&self,
+                #[miniextendr(match_arg, default = "safe")] mode: Mode,
+                #[miniextendr(coerce, no_na)] count: i32,
+                #[miniextendr(choices("a", "b"), several_ok, no_default)] labels: Vec<String>,
+                #[miniextendr(default = "4L", no_preconditions)] n: i32,
+                #[miniextendr(convert)] alias: &Alias,
+            ) {}
+        }
+    };
+    let methods = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered).unwrap();
+    let method = &methods[0];
+    assert!(method.per_param["mode"].match_arg);
+    assert_eq!(method.param_defaults["mode"], "safe");
+    assert!(method.per_param["count"].coerce);
+    assert!(method.per_param["count"].checks.no_na);
+    assert!(method.per_param["labels"].several_ok);
+    assert!(method.per_param["labels"].no_default);
+    assert_eq!(method.param_defaults["n"], "4L");
+    assert_eq!(method.per_param["n"].preconditions, Some(false));
+    assert!(method.per_param["alias"].convert);
+    assert!(
+        !{
+            let sig = &method.sig;
+            quote::quote!(#sig).to_string()
+        }
+        .contains("miniextendr")
+    );
+
+    for input in [
+        syn::parse_quote! {
+            impl Bar for Foo {
+                #[miniextendr(no_na(x))]
+                fn run(&self, #[miniextendr(coerce)] x: i32) {}
+            }
+        },
+        syn::parse_quote! {
+            impl Bar for Foo {
+                #[miniextendr(defaults(x = "1L"))]
+                fn run(&self, #[miniextendr(no_na)] x: i32) {}
+            }
+        },
+    ] {
+        let error = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered)
+            .err()
+            .unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("both method and parameter level"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn declaration_parameter_options_follow_position_and_allow_impl_overrides() {
+    let declaration = vec![syn::parse_quote! {
+        fn run(&self, #[miniextendr(no_na)] value: (), #[miniextendr(default = "1L")] count: ());
+    }];
+    let mut implementation: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(defaults(n = "2L"))]
+            fn run(&self, renamed: f64, n: i32) {}
+        }
+    };
+    vtable::inherit_method_metadata(&mut implementation, &declaration).unwrap();
+    let methods =
+        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap();
+    assert!(methods[0].per_param["renamed"].checks.no_na);
+    let input: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(match_arg(mode), defaults(mode = "safe"))]
+            fn mode(&self, mode: Mode) -> Mode { mode }
+        }
+    };
+    let named = vtable::extract_methods(&input, crate::roxygen::RdPage::Rendered).unwrap();
+    assert_eq!(named[0].per_param["mode"].default.as_deref(), Some("safe"));
+
+    assert_eq!(methods[0].param_defaults["n"], "2L");
+    assert!(!methods[0].per_param.contains_key("value"));
 }

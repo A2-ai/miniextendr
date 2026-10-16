@@ -779,6 +779,149 @@ pub(crate) fn parse_per_param_attr(
     Ok(Some(result))
 }
 
+/// Consume parameter options through the same parser in functions and methods.
+/// Leave unrelated Rust attributes in place.
+fn take_param_attrs(attrs: &mut Vec<syn::Attribute>) -> syn::Result<PerParamMiniextendrAttr> {
+    let mut parsed = PerParamMiniextendrAttr::default();
+    let mut kept = Vec::with_capacity(attrs.len());
+    for attr in std::mem::take(attrs) {
+        match parse_per_param_attr(&attr)? {
+            Some(options) => parsed
+                .merge(options)
+                .map_err(|message| syn::Error::new_spanned(&attr, message))?,
+            None if attr.path().is_ident("miniextendr") => {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    "expected parameter options in #[miniextendr(...)]",
+                ));
+            }
+            None => kept.push(attr),
+        }
+    }
+    *attrs = kept;
+    Ok(parsed)
+}
+
+/// Method wrappers call positionally; patterns stay in the author's Rust body.
+/// Give their copied signatures stable, noncolliding parameter names.
+pub(crate) fn normalize_method_params(sig: &mut syn::Signature) {
+    let mut used_names: std::collections::HashSet<_> = sig
+        .inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(arg) => match arg.pat.as_ref() {
+                syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    for (index, arg) in sig
+        .inputs
+        .iter_mut()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(arg) => Some(arg),
+            _ => None,
+        })
+        .enumerate()
+    {
+        if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
+            let mut name = format!("arg{index}");
+            while !used_names.insert(name.clone()) {
+                name.push('_');
+            }
+            let name = quote::format_ident!("{name}");
+            arg.pat = syn::parse_quote!(#name);
+        }
+    }
+}
+
+/// Collect a method's parameter attributes before marker-policy merging.
+/// A named method-level option and a parameter-level option must not configure
+/// the same argument. Whole-method policies still act as defaults.
+pub(crate) fn take_method_param_attrs(
+    sig: &mut syn::Signature,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+    defaults: &mut std::collections::HashMap<String, String>,
+) -> syn::Result<()> {
+    use syn::spanned::Spanned;
+    for arg in &mut sig.inputs {
+        let syn::FnArg::Typed(arg) = arg else {
+            if let syn::FnArg::Receiver(receiver) = arg
+                && let Some(attr) = receiver
+                    .attrs
+                    .iter()
+                    .find(|a| a.path().is_ident("miniextendr"))
+            {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    "parameter options cannot apply to the self receiver",
+                ));
+            }
+            continue;
+        };
+        let Some(span) = arg
+            .attrs
+            .iter()
+            .find(|a| a.path().is_ident("miniextendr"))
+            .map(Spanned::span)
+        else {
+            continue;
+        };
+        let syn::Pat::Ident(pat) = arg.pat.as_ref() else {
+            unreachable!("method parameter patterns are normalized before collecting options");
+        };
+        let name = crate::naming::ident_name(&pat.ident);
+        if per_param.contains_key(&name) || defaults.contains_key(&name) {
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "parameter `{name}` is configured at both method and parameter level; put all its options in one place"
+                ),
+            ));
+        }
+        let options = take_param_attrs(&mut arg.attrs)?;
+        validate_per_param_attr_conflicts(
+            &options,
+            &name,
+            is_dots_type(&arg.ty),
+            Some(&arg.ty),
+            span,
+        )?;
+        let default = options.default_value.map(|(value, _)| value);
+        if let Some(value) = &default {
+            defaults.insert(name.clone(), value.clone());
+        }
+        per_param.insert(
+            name,
+            ParamAttrs {
+                coerce: options.has_coerce,
+                convert: options.has_convert,
+                match_arg: options.has_match_arg,
+                several_ok: options.has_several_ok,
+                choices: options.choices,
+                default,
+                no_default: options.has_no_default,
+                checks: options.checks,
+                preconditions: options.preconditions,
+                ..Default::default()
+            },
+        );
+    }
+    Ok(())
+}
+
+/// Consumed options must not reach rustc on a re-emitted trait or impl.
+pub(crate) fn strip_param_attrs(sig: &mut syn::Signature) {
+    for arg in &mut sig.inputs {
+        let attrs = match arg {
+            syn::FnArg::Typed(arg) => &mut arg.attrs,
+            syn::FnArg::Receiver(arg) => &mut arg.attrs,
+        };
+        attrs.retain(|attr| !attr.path().is_ident("miniextendr"));
+    }
+}
+
 /// The two class checks a parameter can name: `inherits` (the argument must
 /// inherit from one of the classes) and `not_inherits` (from none of them,
 /// #1815). Both take the same spellings at parameter and method level; this
@@ -1956,6 +2099,11 @@ pub(crate) fn finalize_method_param_attrs(
         let Some(attrs) = per_param.get_mut(&name) else {
             continue;
         };
+        // Named method defaults and parameter defaults feed the same choice
+        // registration; the preferred enum choice must reach ParamAttrs too.
+        if attrs.default.is_none() {
+            attrs.default = defaults.get(&name).cloned();
+        }
         if attrs.convert {
             validate_convert_param(&pt.ty, attrs.coerce || attrs.is_choice())?;
         }
@@ -2055,17 +2203,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             // match_arg, choices, several_ok, default, inherits, not_inherits,
             // no_na), merging
             // them when a parameter carries several; keep every other attribute.
-            let mut param_attr = PerParamMiniextendrAttr::default();
-            let mut kept_attrs = Vec::with_capacity(pat_type.attrs.len());
-            for attr in std::mem::take(&mut pat_type.attrs) {
-                match parse_per_param_attr(&attr)? {
-                    Some(parsed) => param_attr
-                        .merge(parsed)
-                        .map_err(|msg| syn::Error::new_spanned(&attr, msg))?,
-                    None => kept_attrs.push(attr),
-                }
-            }
-            pat_type.attrs = kept_attrs;
+            let param_attr = take_param_attrs(&mut pat_type.attrs)?;
             let PerParamMiniextendrAttr {
                 has_coerce: had_coerce_attr,
                 has_convert: had_convert,

@@ -261,14 +261,11 @@ pub(crate) fn match_arg_skip_set(
 /// decides, under the crate default and the `no-preconditions-default`
 /// feature; the named checks stay either way.
 ///
-/// Neither impl methods nor trait methods carry a per-param `coerce` flag
-/// (only function-wide `coerce`, see `ParsedMethod::per_param` docs), so
-/// `coerce_params` is always empty here. `call` is the call every failing
-/// guard is attributed to (`PreconditionOutput::guards`): `None` for the
-/// method's own frame, `environment()` for an S3 method (#1851). Shared by
-/// `MethodContext::precondition_checks`,
-/// `TraitMethodContext::precondition_checks` and the R6 active-binding
-/// setter.
+/// `call` is the attribution for a failing guard: `None` for the method's
+/// own frame, `environment()` for an S3 method (#1851).
+///
+/// Shared by `MethodContext::precondition_checks`,
+/// `TraitMethodContext::precondition_checks` and the R6 active-binding setter.
 pub(crate) fn build_method_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
@@ -279,7 +276,11 @@ pub(crate) fn build_method_precondition_checks(
 ) -> Vec<String> {
     let opts = crate::r_preconditions::PreconditionOptions {
         coerce_all,
-        coerce_params: std::collections::HashSet::new(),
+        coerce_params: per_param
+            .iter()
+            .filter(|(_, attrs)| attrs.coerce)
+            .map(|(name, _)| crate::r_wrapper_builder::normalize_r_arg_string(name))
+            .collect(),
         explicit: crate::miniextendr_fn::explicit_checks_by_r_name(per_param),
         unchecked: crate::r_preconditions::unchecked_params(
             inputs,
@@ -575,11 +576,6 @@ impl<'a> MethodContext<'a> {
     /// per-parameter `inherits(...)` / `not_inherits(...)` / `no_na(...)`
     /// checks stay.
     pub fn precondition_checks(&self) -> Vec<String> {
-        // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
-        // its precondition tightens to `is.integer` (#616). Impl methods carry
-        // coerce at method level (`method_attrs.coerce`, equivalent to
-        // `coerce_all`); there is no per-param coerce on the impl path (see
-        // ParsedMethod::per_param docs).
         build_method_precondition_checks(
             &self.method.sig.inputs,
             &self.method.method_attrs.per_param,

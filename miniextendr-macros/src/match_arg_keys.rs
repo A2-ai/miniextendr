@@ -105,6 +105,7 @@ pub(crate) fn placeholder_ident_suffix(placeholder: &str) -> String {
 /// (e.g. `"zstd"`). Pass `""` when the user supplied no default — the write
 /// pass then keeps the natural enum order.
 ///
+/// `values` is a const expression yielding `(choices, aliases)`.
 /// `aliases_placeholder` is the parameter's [`aliases_placeholder`], which
 /// its check carries; the entry resolves it from the type's
 /// `MatchArg::ALIASES`.
@@ -113,7 +114,7 @@ pub(crate) fn choices_entry_tokens(
     entry_ident: &syn::Ident,
     placeholder: &str,
     aliases_placeholder: &str,
-    choices_ty: &syn::Type,
+    values: &proc_macro2::TokenStream,
     preferred_default: &str,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
@@ -121,14 +122,16 @@ pub(crate) fn choices_entry_tokens(
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_MATCH_ARG_CHOICES), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
-        static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
+        static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry = {
+            let (__mx_choices, __mx_aliases) = #values;
             ::miniextendr_api::registry::MatchArgChoicesEntry {
                 placeholder: #placeholder,
-                choices: <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
+                choices: __mx_choices,
                 preferred_default: #preferred_default,
                 aliases_placeholder: #aliases_placeholder,
-                aliases: <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::ALIASES,
-            };
+                aliases: __mx_aliases,
+            }
+        };
     }
 }
 
@@ -143,7 +146,7 @@ pub(crate) fn param_doc_entry_tokens(
     placeholder: &str,
     several_ok: bool,
     suffix: &str,
-    choices_ty: &syn::Type,
+    choices: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
         #(#cfg_attrs)*
@@ -156,7 +159,7 @@ pub(crate) fn param_doc_entry_tokens(
                 several_ok: #several_ok,
                 suffix: #suffix,
                 choices_str: || {
-                    <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
+                    (#choices)
                         .iter()
                         .map(|c| ::std::format!("\"{}\"", c))
                         .collect::<::std::vec::Vec<_>>()
@@ -164,4 +167,109 @@ pub(crate) fn param_doc_entry_tokens(
                 },
             };
     }
+}
+
+/// Register the same choice/default/doc placeholders for every method emitter.
+pub(crate) fn method_entries(
+    sig: &syn::Signature,
+    per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    c_ident: &str,
+    cfg_attrs: &[syn::Attribute],
+    inherited_callable: Option<&proc_macro2::TokenStream>,
+) -> proc_macro2::TokenStream {
+    let mut out = proc_macro2::TokenStream::new();
+
+    // Signature order, so the emitted items don't follow the map's order.
+    for (rust_name, attrs) in
+        crate::miniextendr_fn::per_param_in_signature_order(&sig.inputs, per_param)
+    {
+        if !attrs.match_arg {
+            continue;
+        }
+        // Find the parameter type from the (already-normalized) signature.
+        let Some(param_ty) = find_param_type(&sig.inputs, rust_name) else {
+            continue;
+        };
+        // several_ok containers (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode]) and the
+        // `Option<Mode>` scalar form both wrap the enum; register the enum's
+        // CHOICES, not the wrapper's.
+        let several_ok = attrs.several_ok;
+        let choices_ty = crate::match_arg_choices_ty(param_ty, several_ok).clone();
+        let values = if let Some(callable) = inherited_callable {
+            crate::trait_signature::match_arg_values(sig, rust_name, &choices_ty, callable)
+        } else {
+            quote::quote!((
+                <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
+                <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::ALIASES,
+            ))
+        };
+
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+
+        // Placeholder that the write-time substitution pass replaces with the
+        // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
+        let placeholder = crate::r_class_formatter::match_arg_placeholder(c_ident, &r_name);
+        let entry_ident = syn::Ident::new(
+            &format!(
+                "match_arg_choices_entry_{}",
+                crate::match_arg_keys::placeholder_ident_suffix(&placeholder)
+            ),
+            proc_macro2::Span::call_site(),
+        );
+        let doc_placeholder =
+            crate::r_class_formatter::match_arg_param_doc_placeholder(c_ident, &r_name);
+        let doc_entry_ident = syn::Ident::new(
+            &format!(
+                "match_arg_param_doc_entry_{}",
+                crate::match_arg_keys::placeholder_ident_suffix(&doc_placeholder)
+            ),
+            proc_macro2::Span::call_site(),
+        );
+
+        let preferred_default = attrs
+            .default
+            .as_deref()
+            .map(crate::match_arg_keys::extract_match_arg_default)
+            .unwrap_or_default();
+        let aliases_placeholder = crate::match_arg_keys::aliases_placeholder(c_ident, &r_name);
+        let choices_entry_tokens = choices_entry_tokens(
+            cfg_attrs,
+            &entry_ident,
+            &placeholder,
+            &aliases_placeholder,
+            &values,
+            &preferred_default,
+        );
+        let param_doc_entry_tokens = param_doc_entry_tokens(
+            cfg_attrs,
+            &doc_entry_ident,
+            &doc_placeholder,
+            several_ok,
+            &attrs.choice_doc_suffix(),
+            &quote::quote!(#entry_ident.choices),
+        );
+
+        out.extend(quote::quote! {
+            #choices_entry_tokens
+            #param_doc_entry_tokens
+        });
+    }
+
+    out
+}
+
+/// Find a parameter's Rust type from a stripped signature by identifier name.
+fn find_param_type<'a>(
+    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    name: &str,
+) -> Option<&'a syn::Type> {
+    for arg in inputs {
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            && crate::naming::unraw(&pat_ident.ident) == name
+        {
+            return Some(pt.ty.as_ref());
+        }
+    }
+    None
 }

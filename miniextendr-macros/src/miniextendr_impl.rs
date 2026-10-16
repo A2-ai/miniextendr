@@ -217,6 +217,7 @@ fn strip_miniextendr_attrs_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemI
     for item in &mut item_impl.items {
         match item {
             syn::ImplItem::Fn(fn_item) => {
+                crate::miniextendr_fn::strip_param_attrs(&mut fn_item.sig);
                 fn_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&fn_item.attrs);
                 fn_item
                     .attrs
@@ -718,16 +719,9 @@ pub struct MethodAttrs {
     /// Per-parameter `match_arg` / `several_ok` / `choices` state for this
     /// method, keyed by the Rust parameter name.
     ///
-    /// Method-level (not parameter-level) because Rust's parser rejects
-    /// attribute macros on fn parameters inside impl items. Standalone
-    /// functions take the per-param syntax directly; impl methods spell the
-    /// same data through `#[miniextendr(match_arg(p1, p2))]`,
-    /// `#[miniextendr(match_arg_several_ok(p))]`,
-    /// `#[miniextendr(choices(p = "a, b"))]` and
-    /// `#[miniextendr(no_default(p))]` on the method attribute.
-    ///
-    /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs)
-    /// struct — the `coerce` / `default` fields are unused on the impl path.
+    /// Collected from parameter attributes or named method-level options such
+    /// as `match_arg(p)` and `choices(p = "a, b")`. A parameter uses one spelling.
+    /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs).
     pub per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     /// Span of `match_arg(...)` / `choices(...)` for error reporting.
     pub match_arg_span: Option<proc_macro2::Span>,
@@ -2181,8 +2175,17 @@ impl ParsedMethod {
         // from the signature the codegen sees (the re-emitted impl keeps
         // them), and merged with the method's `preconditions(p)` /
         // `no_preconditions(p)`, which a marker must not contradict.
-        let param_markers = crate::miniextendr_fn::collect_param_markers(&item.sig.inputs)?;
-        for arg in &item.sig.inputs {
+        let mut peeled_sig = item.sig.clone();
+        crate::miniextendr_fn::normalize_method_params(&mut peeled_sig);
+        let param_markers = crate::miniextendr_fn::collect_param_markers(&peeled_sig.inputs)?;
+        peeled_sig.inputs =
+            crate::miniextendr_fn::peeled_inputs(&peeled_sig.inputs, &param_markers)?;
+        crate::miniextendr_fn::take_method_param_attrs(
+            &mut peeled_sig,
+            &mut method_attrs.per_param,
+            &mut method_attrs.defaults,
+        )?;
+        for arg in &peeled_sig.inputs {
             let syn::FnArg::Typed(pt) = arg else {
                 continue;
             };
@@ -2202,8 +2205,6 @@ impl ParsedMethod {
                 &pt.ty,
             )?;
         }
-        let mut peeled_sig = item.sig.clone();
-        peeled_sig.inputs = crate::miniextendr_fn::peeled_inputs(&item.sig.inputs, &param_markers)?;
 
         // `dots = typed_list!(...)` sugar: inject the `dots_typed` binding at the
         // top of the method body, reusing the shared helper that the standalone-fn
@@ -2238,8 +2239,7 @@ impl ParsedMethod {
         }
 
         // Validate: all defaults reference existing parameters
-        let param_names: std::collections::HashSet<String> = item
-            .sig
+        let param_names: std::collections::HashSet<String> = peeled_sig
             .inputs
             .iter()
             .filter_map(|input| {
@@ -2322,14 +2322,7 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
-        // match_arg / choices / inherits / not_inherits / no_na on impl methods: unlike standalone
-        // functions, Rust doesn't accept `#[miniextendr(...)]` on method parameters
-        // inside an impl (attribute macros aren't allowed there — "expected
-        // non-macro attribute"). The surface is instead method-level:
-        // `#[miniextendr(match_arg(p), choices(q = "a, b"))]`. Every named param
-        // must exist on the signature, so typos fail at compile time; `Option<T>`
-        // scalar match_arg/choices params are the optional form (#1473);
-        // `Missing<T>` ones and defaults on `Option<T>` are rejected.
+        // Validate the merged method/parameter options against the wrapper signature.
         crate::miniextendr_fn::finalize_method_param_attrs(
             &mut method_attrs.per_param,
             &peeled_sig.inputs,
@@ -3989,6 +3982,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
     // `no_na(..)` parameters also have their converted value checked, for what
     // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.method_attrs.per_param {
+        if attrs.coerce {
+            builder = builder.with_coerce_param(rust_name.clone());
+        }
         if attrs.convert {
             builder = builder.with_convert_param(rust_name.clone());
         }
@@ -4009,117 +4005,18 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     let c_wrapper_and_def = builder.build().generate();
 
-    let match_arg_entries = generate_method_match_arg_entries(parsed_impl, method);
+    let match_arg_entries = crate::match_arg_keys::method_entries(
+        &method.sig,
+        &method.method_attrs.per_param,
+        &method.c_wrapper_ident(&parsed_impl.type_ident).to_string(),
+        &parsed_impl.cfg_attrs,
+        None,
+    );
 
     quote! {
         #c_wrapper_and_def
         #match_arg_entries
     }
-}
-
-/// Register enum choices, aliases, defaults and parameter documentation for
-/// write-time placeholder substitution. R calls no choice-lookup C helper.
-fn generate_method_match_arg_entries(
-    parsed_impl: &ParsedImpl,
-    method: &ParsedMethod,
-) -> TokenStream {
-    if !method.method_attrs.per_param.values().any(|a| a.match_arg) {
-        return TokenStream::new();
-    }
-
-    let type_ident = &parsed_impl.type_ident;
-    let c_ident = method.c_wrapper_ident(type_ident);
-    let c_ident_str = c_ident.to_string();
-    let cfg_attrs = &parsed_impl.cfg_attrs;
-
-    let mut out = TokenStream::new();
-
-    // Signature order, so the emitted items don't follow the map's order.
-    for (rust_name, attrs) in crate::miniextendr_fn::per_param_in_signature_order(
-        &method.sig.inputs,
-        &method.method_attrs.per_param,
-    ) {
-        if !attrs.match_arg {
-            continue;
-        }
-        // Find the parameter type from the (already-normalized) signature.
-        let Some(param_ty) = find_param_type(&method.sig.inputs, rust_name) else {
-            continue;
-        };
-        // several_ok containers (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode]) and the
-        // `Option<Mode>` scalar form both wrap the enum; register the enum's
-        // CHOICES, not the wrapper's.
-        let several_ok = attrs.several_ok;
-        let choices_ty = crate::match_arg_choices_ty(param_ty, several_ok).clone();
-
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-
-        // Placeholder that the write-time substitution pass replaces with the
-        // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
-        let placeholder = crate::r_class_formatter::match_arg_placeholder(&c_ident_str, &r_name);
-        let entry_ident = syn::Ident::new(
-            &format!(
-                "match_arg_choices_entry_{}",
-                crate::match_arg_keys::placeholder_ident_suffix(&placeholder)
-            ),
-            proc_macro2::Span::call_site(),
-        );
-        let doc_placeholder =
-            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
-        let doc_entry_ident = syn::Ident::new(
-            &format!(
-                "match_arg_param_doc_entry_{}",
-                crate::match_arg_keys::placeholder_ident_suffix(&doc_placeholder)
-            ),
-            proc_macro2::Span::call_site(),
-        );
-
-        let preferred_default = attrs
-            .default
-            .as_deref()
-            .map(crate::match_arg_keys::extract_match_arg_default)
-            .unwrap_or_default();
-        let aliases_placeholder = crate::match_arg_keys::aliases_placeholder(&c_ident_str, &r_name);
-        let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
-            cfg_attrs,
-            &entry_ident,
-            &placeholder,
-            &aliases_placeholder,
-            &choices_ty,
-            &preferred_default,
-        );
-        let param_doc_entry_tokens = crate::match_arg_keys::param_doc_entry_tokens(
-            cfg_attrs,
-            &doc_entry_ident,
-            &doc_placeholder,
-            several_ok,
-            &attrs.choice_doc_suffix(),
-            &choices_ty,
-        );
-
-        out.extend(quote! {
-            #choices_entry_tokens
-            #param_doc_entry_tokens
-        });
-    }
-
-    out
-}
-
-/// Find a parameter's Rust type from a stripped signature by identifier name.
-fn find_param_type<'a>(
-    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    name: &str,
-) -> Option<&'a syn::Type> {
-    for arg in inputs {
-        if let syn::FnArg::Typed(pt) = arg
-            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-            && crate::naming::unraw(&pat_ident.ident) == name
-        {
-            return Some(pt.ty.as_ref());
-        }
-    }
-    None
 }
 
 /// Returns true if a vctrs constructor's return type is `Self`, `&Self`, `&mut Self`,

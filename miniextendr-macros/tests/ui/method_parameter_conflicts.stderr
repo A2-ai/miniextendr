@@ -1,0 +1,23 @@
+error: parameter `n` is configured at both method and parameter level; put all its options in one place
+ --> tests/ui/method_parameter_conflicts.rs:7:25
+  |
+7 |     pub fn mixed(&self, #[miniextendr(coerce)] n: i32) -> i32 { n }
+  |                         ^
+
+error: several_ok requires choices() or match_arg on parameter `n`; several_ok enables multi-value match.arg which needs a choice list
+  --> tests/ui/method_parameter_conflicts.rs:12:23
+   |
+12 |     fn invalid(&self, #[miniextendr(several_ok)] n: i32) -> i32;
+   |                       ^
+
+error: parameter options cannot apply to the self receiver
+  --> tests/ui/method_parameter_conflicts.rs:27:18
+   |
+27 |     pub fn value(#[miniextendr(no_na)] &self) -> i32 { 0 }
+   |                  ^^^^^^^^^^^^^^^^^^^^^
+
+error: parameter `n` is configured at both method and parameter level; put all its options in one place
+  --> tests/ui/method_parameter_conflicts.rs:21:21
+   |
+21 |     fn value(&self, #[miniextendr(no_na)] n: i32) -> i32 { n }
+   |                     ^

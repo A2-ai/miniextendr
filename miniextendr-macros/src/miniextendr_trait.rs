@@ -401,6 +401,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             method
                 .attrs
                 .retain(|attr| !attr.path().is_ident("miniextendr"));
+            crate::miniextendr_fn::strip_param_attrs(&mut method.sig);
             crate::trait_receiver::rewrite(&mut method.sig, method.default.as_mut());
         }
     }
@@ -567,9 +568,24 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                     #(#docs)* #r_name_attr #skip_attr #sig {}
                 });
             } else {
-                let params = &info.param_names;
+                let params = method
+                    .sig
+                    .inputs
+                    .iter()
+                    .filter_map(|arg| match arg {
+                        syn::FnArg::Typed(arg) => Some(arg),
+                        _ => None,
+                    })
+                    .zip(&info.param_names)
+                    .map(|(arg, name)| {
+                        let attrs = arg
+                            .attrs
+                            .iter()
+                            .filter(|attr| attr.path().is_ident("miniextendr"));
+                        quote::quote!(#(#attrs)* #name: ())
+                    });
                 method_metadata.push(quote::quote! {
-                    #r_name_attr #skip_attr fn #name(#(#params: ()),*);
+                    #r_name_attr #skip_attr fn #name(#(#params),*);
                 });
             }
             if !has_generics && assoc_types.is_empty() && !info.skip {
@@ -1457,6 +1473,25 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
     if !skip {
         crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
     }
+
+    // Validate declaration options now; metadata retains their source spelling
+    // for each implementation, while the Rust trait emitted below drops them.
+    let mut parameter_sig = method.sig.clone();
+    crate::miniextendr_fn::normalize_method_params(&mut parameter_sig);
+    let mut per_param = std::collections::HashMap::new();
+    let mut defaults = std::collections::HashMap::new();
+    crate::miniextendr_fn::take_method_param_attrs(
+        &mut parameter_sig,
+        &mut per_param,
+        &mut defaults,
+    )?;
+    crate::miniextendr_fn::finalize_method_param_attrs(
+        &mut per_param,
+        &parameter_sig.inputs,
+        &[],
+        &defaults,
+        method.sig.ident.span(),
+    )?;
 
     // Check for receiver
     let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
