@@ -144,6 +144,7 @@ test_that("readers handle a zero-row data.frame", {
 test_that("reader gctorture fixtures drive the struct-flatten read path", {
   expect_no_error(miniextendr:::gc_stress_reader_struct_flatten())
   expect_no_error(miniextendr:::gc_stress_reader_nested_flatten())
+  expect_no_error(miniextendr:::gc_stress_reader_empty_nested())
 })
 
 # region: opaque list-column readers (#809) ------------------------------------

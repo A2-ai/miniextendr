@@ -3061,12 +3061,9 @@ fn derive_struct_dataframe(
                                 ::core::iter::Iterator::filter(<[_]>::iter(&__names), |__n| ::core::primitive::str::starts_with(__n, __prefix)),
                                 |__n| ::std::string::String::as_str(__n),
                             ));
-                            if <[_]>::is_empty(&__sel) {
-                                return ::core::result::Result::Err(::std::format!(
-                                    "struct column `{}`: no columns with prefix `{}` found in the data.frame",
-                                    #base, __prefix
-                                ));
-                            }
+                            // An empty selection can be a valid zero-column child.
+                            // Let its reader validate the schema; selection preserves
+                            // the parent row count even when no columns are selected.
                             // `select` returns an owned, GC-rooted `BuiltDataFrame`
                             // (#1247); `strip_prefix` (inherent forward) edits the
                             // same frame in place and carries the handle through, so

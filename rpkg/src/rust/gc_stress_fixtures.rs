@@ -3733,6 +3733,62 @@ pub fn gc_stress_dataframe_builder_serial() {
 
 // endregion
 
+/// Read zero-column nested structs and sparse enum payloads under GC pressure.
+///
+/// The selected child frames have no columns but must retain the correct row
+/// counts across prefix stripping, enum row selection and recursive reads.
+#[miniextendr(noexport)]
+pub fn gc_stress_reader_empty_nested() {
+    use miniextendr_api::dataframe::{FromDataFrame, IntoDataFrame};
+
+    #[derive(Debug, PartialEq, miniextendr_api::DataFrameRow)]
+    struct Child {
+        #[dataframe(expand)]
+        values: Vec<String>,
+    }
+
+    #[derive(Debug, PartialEq, miniextendr_api::DataFrameRow)]
+    struct Row {
+        id: i32,
+        child: Child,
+    }
+
+    #[derive(Debug, PartialEq, miniextendr_api::DataFrameRow)]
+    #[dataframe(tag = "kind")]
+    enum Event {
+        Payload { child: Child },
+        Absent,
+    }
+
+    let child = || Child { values: vec![] };
+    let rows = || {
+        vec![
+            Row {
+                id: 1,
+                child: child(),
+            },
+            Row {
+                id: 2,
+                child: child(),
+            },
+        ]
+    };
+    let frame = rows().into_dataframe().unwrap();
+    assert_eq!((frame.nrow(), frame.ncol()), (2, 1));
+    assert_eq!(Vec::<Row>::from_dataframe(&frame).unwrap(), rows());
+
+    let events = || {
+        vec![
+            Event::Payload { child: child() },
+            Event::Absent,
+            Event::Payload { child: child() },
+        ]
+    };
+    let frame = events().into_dataframe().unwrap();
+    assert_eq!((frame.nrow(), frame.ncol()), (3, 1));
+    assert_eq!(Vec::<Event>::from_dataframe(&frame).unwrap(), events());
+}
+
 // region: enum reader GC-stress fixtures (#807)
 //
 // The enum reader allocates sub-frames (via `select` + `strip_prefix` + `select_rows`)
