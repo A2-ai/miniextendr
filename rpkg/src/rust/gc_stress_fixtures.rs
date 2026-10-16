@@ -3733,6 +3733,80 @@ pub fn gc_stress_dataframe_builder_serial() {
 
 // endregion
 
+/// Coerce expanded and map cells without losing roots across allocations.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_string_conflicts() {
+    use miniextendr_api::dataframe::{DataFrame, IntoDataFrame};
+    use std::collections::BTreeMap;
+
+    #[derive(miniextendr_api::DataFrameRow)]
+    #[dataframe(tag = "kind", conflicts = "string")]
+    enum Row {
+        Integer {
+            fixed: [i32; 2],
+            #[dataframe(width = 2)]
+            pinned: Vec<i32>,
+            #[dataframe(expand)]
+            auto: Vec<i32>,
+            entries: BTreeMap<i32, i32>,
+        },
+        Text {
+            fixed: [String; 2],
+            #[dataframe(width = 2)]
+            pinned: Vec<String>,
+            #[dataframe(expand)]
+            auto: Vec<String>,
+            entries: BTreeMap<String, String>,
+        },
+        Empty,
+    }
+
+    let rows = || {
+        vec![
+            Row::Integer {
+                fixed: [1, 2],
+                pinned: vec![3],
+                auto: vec![4, 5],
+                entries: BTreeMap::from([(1, 10)]),
+            },
+            Row::Text {
+                fixed: ["a".into(), "b".into()],
+                pinned: vec![],
+                auto: vec!["c".into()],
+                entries: BTreeMap::from([("key".into(), "value".into())]),
+            },
+            Row::Empty,
+        ]
+    };
+    let check = |frame: &DataFrame| {
+        assert_eq!(
+            frame.column::<Vec<Option<String>>>("fixed_1").unwrap(),
+            [Some("1".into()), Some("a".into()), None]
+        );
+        assert_eq!(
+            frame.column::<Vec<Option<String>>>("pinned_2").unwrap(),
+            [None, None, None]
+        );
+        assert_eq!(
+            frame.column::<Vec<Option<String>>>("auto_2").unwrap(),
+            [Some("5".into()), None, None]
+        );
+        let column = frame
+            .column::<miniextendr_api::List>("entries_values")
+            .unwrap();
+        assert_eq!(column.get_index::<Vec<String>>(0).unwrap(), ["10"]);
+        assert_eq!(column.get_index::<Vec<String>>(1).unwrap(), ["value"]);
+        assert_eq!(column.get_index::<Option<Vec<String>>>(2).unwrap(), None);
+    };
+    let frame = rows().into_dataframe().unwrap();
+    check(&frame);
+    #[cfg(feature = "rayon")]
+    {
+        let frame = rows().into_dataframe_par().unwrap();
+        check(&frame);
+    }
+}
+
 /// Read zero-column nested structs and sparse enum payloads under GC pressure.
 ///
 /// The selected child frames have no columns but must retain the correct row

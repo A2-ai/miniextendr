@@ -3522,6 +3522,28 @@ fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     left == right
 }
 
+/// R column shape, retained when resolving cross-variant type conflicts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ColumnKind {
+    Scalar,
+    List,
+    Nested,
+    StructList,
+    Factor,
+}
+
+/// Stringify a sequence without requiring its elements to be Clone or Copy.
+pub(super) fn string_elements(value: TokenStream) -> TokenStream {
+    quote! {
+        ::core::iter::Iterator::collect::<::std::vec::Vec<::std::string::String>>(
+            ::core::iter::Iterator::map(
+                <[_]>::iter(&#value),
+                ::std::string::ToString::to_string,
+            ),
+        )
+    }
+}
+
 /// A resolved column in the unified schema across all enum variants.
 ///
 /// Tracks the column name, element type, which variants contribute to this column,
@@ -3531,17 +3553,29 @@ pub(super) struct ResolvedColumn {
     /// Column name in the companion struct / data frame.
     pub(super) col_name: syn::Ident,
     /// Element type (used as `Vec<Option<#ty>>`).
-    /// When `string_coerced` is true, this is always `String`.
+    /// Coercion stores String for scalars or Vec<String> for list cells.
     pub(super) ty: syn::Type,
     /// Indices of variants that contain this field.
     pub(super) present_in: Vec<usize>,
     /// Whether this column was coerced to `String` due to type conflicts.
     /// When true, values are converted via `ToString::to_string()` at push time.
     pub(super) string_coerced: bool,
-    /// Whether this column should be emitted as an R factor (via `as_factor` attribute).
-    /// When `true`, `into_data_frame` wraps the `Vec<Option<T>>` in `FactorOptionVec<T>`
-    /// before calling `IntoR::into_sexp`, using the `UnitEnumFactor` blanket impl.
-    pub(super) is_factor: bool,
+    /// The column's conversion contract, shared by every contributing variant.
+    pub(super) kind: ColumnKind,
+}
+
+impl ResolvedColumn {
+    /// Convert a present cell before either sequential push or parallel write.
+    fn value(&self, value: TokenStream) -> TokenStream {
+        if !self.string_coerced {
+            return value;
+        }
+        match self.kind {
+            ColumnKind::Scalar => quote! { ::std::string::ToString::to_string(&#value) },
+            ColumnKind::List => string_elements(value),
+            _ => unreachable!("structured columns cannot be string-coerced"),
+        }
+    }
 }
 
 /// Accumulates unique columns for an enum-to-dataframe unified schema.
@@ -3580,24 +3614,55 @@ impl<'a> ColumnRegistry<'a> {
         &mut self,
         col_name: &str,
         col_ty: &syn::Type,
+        kind: ColumnKind,
         variant_idx: usize,
         variant_name: &syn::Ident,
         error_span: Span,
     ) -> syn::Result<()> {
         if let Some(&idx) = self.col_index.get(col_name) {
             let existing = &self.columns[idx];
+            if existing.kind != kind {
+                return Err(syn::Error::new(
+                    error_span,
+                    format!(
+                        "incompatible column shapes for field `{col_name}`; use different field names"
+                    ),
+                ));
+            }
             if !existing.string_coerced && !same_column_type(&existing.ty, col_ty) {
                 if self.coerce_to_string {
-                    self.columns[idx].ty = self.string_ty.clone();
+                    let string_ty = self.string_ty;
+                    self.columns[idx].ty = match kind {
+                        ColumnKind::Scalar => string_ty.clone(),
+                        ColumnKind::List => syn::parse_quote!(::std::vec::Vec<#string_ty>),
+                        _ => {
+                            let shape = match kind {
+                                ColumnKind::Nested => "nested struct",
+                                ColumnKind::StructList => "as_list struct",
+                                ColumnKind::Factor => "factor",
+                                _ => unreachable!(),
+                            };
+                            return Err(syn::Error::new(
+                                error_span,
+                                format!(
+                                    "cannot coerce conflicting {shape} field `{col_name}` with `conflicts = \"string\"`; use the same field type in every variant or rename the fields"
+                                ),
+                            ));
+                        }
+                    };
                     self.columns[idx].string_coerced = true;
                 } else {
+                    let hint = match kind {
+                        ColumnKind::Scalar | ColumnKind::List => {
+                            "use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String"
+                        }
+                        _ => "use the same field type in every variant or rename the fields",
+                    };
                     return Err(syn::Error::new(
                         error_span,
                         format!(
-                            "type conflict for field `{}`: variant `{}` has a different type \
-                             than a previous variant; \
-                             use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String",
-                            col_name, variant_name
+                            "type conflict for field `{col_name}`: variant `{variant_name}` has a different type \
+                             than a previous variant; {hint}"
                         ),
                     ));
                 }
@@ -3610,29 +3675,9 @@ impl<'a> ColumnRegistry<'a> {
                 ty: col_ty.clone(),
                 present_in: vec![variant_idx],
                 string_coerced: false,
-                is_factor: false,
+                kind,
             });
             self.col_index.insert(col_name.to_string(), idx);
-        }
-        Ok(())
-    }
-
-    /// Like `register`, but marks the column as a factor column (`is_factor = true`).
-    ///
-    /// Used for fields annotated with `#[dataframe(as_factor)]`. The companion struct
-    /// field type stays `Vec<Option<T>>`, but `into_data_frame` wraps it in
-    /// `FactorOptionVec<T>` (using the `UnitEnumFactor` blanket `IntoR` impl).
-    pub(super) fn register_factor(
-        &mut self,
-        col_name: &str,
-        col_ty: &syn::Type,
-        variant_idx: usize,
-        variant_name: &syn::Ident,
-        error_span: Span,
-    ) -> syn::Result<()> {
-        self.register(col_name, col_ty, variant_idx, variant_name, error_span)?;
-        if let Some(&idx) = self.col_index.get(col_name) {
-            self.columns[idx].is_factor = true;
         }
         Ok(())
     }
@@ -3881,12 +3926,20 @@ mod tests {
             for coerce in [false, true] {
                 let mut registry = ColumnRegistry::new(coerce, &string_ty);
                 registry
-                    .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+                    .register(
+                        "value",
+                        &first,
+                        ColumnKind::Scalar,
+                        0,
+                        &syn::parse_quote!(A),
+                        Span::call_site(),
+                    )
                     .unwrap();
                 registry
                     .register(
                         "value",
                         &second,
+                        ColumnKind::Scalar,
                         1,
                         &syn::parse_quote!(B),
                         Span::call_site(),
@@ -3917,13 +3970,21 @@ mod tests {
             let second = syn::parse2(second).unwrap();
             let mut registry = ColumnRegistry::new(false, &string_ty);
             registry
-                .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+                .register(
+                    "value",
+                    &first,
+                    ColumnKind::Scalar,
+                    0,
+                    &syn::parse_quote!(A),
+                    Span::call_site(),
+                )
                 .unwrap();
             assert!(
                 registry
                     .register(
                         "value",
                         &second,
+                        ColumnKind::Scalar,
                         1,
                         &syn::parse_quote!(B),
                         Span::call_site()
@@ -3935,6 +3996,7 @@ mod tests {
                 .register(
                     "value",
                     &second,
+                    ColumnKind::Scalar,
                     1,
                     &syn::parse_quote!(B),
                     Span::call_site(),
@@ -3943,6 +4005,67 @@ mod tests {
             assert!(registry.columns[0].string_coerced);
             assert_eq!(registry.columns[0].ty, string_ty);
         }
+    }
+
+    #[test]
+    fn string_conflicts_refuse_structured_columns_at_the_field() {
+        for (attrs, shape) in [
+            (quote!(), "nested struct"),
+            (quote!(#[dataframe(as_list)]), "as_list struct"),
+            (quote!(#[dataframe(as_factor)]), "factor"),
+        ] {
+            let error = derive_dataframe_row(syn::parse_quote! {
+                #[dataframe(tag = "kind", conflicts = "string")]
+                enum Row { A { #attrs value: First }, B { #attrs value: Second } }
+            })
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains(&format!("conflicting {shape} field `value`")),
+                "{error}"
+            );
+            assert!(error.contains("rename the fields"), "{error}");
+            assert!(
+                derive_dataframe_row(syn::parse_quote! {
+                    #[dataframe(tag = "kind", conflicts = "string")]
+                    enum Row { A { #attrs value: First }, B { #attrs value: First } }
+                })
+                .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn string_conflicts_do_not_merge_incompatible_column_shapes() {
+        for attrs in [quote!(), quote!(#[dataframe(conflicts = "string")])] {
+            let error = derive_dataframe_row(syn::parse_quote! {
+                #attrs
+                enum Row {
+                    A { entries_keys: i32 },
+                    B { entries: BTreeMap<i32, i32> },
+                }
+            })
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains("incompatible column shapes for field `entries_keys`"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn string_conflicts_preserve_auto_container_kind_restriction() {
+        let error = derive_dataframe_row(syn::parse_quote! {
+            #[dataframe(conflicts = "string")]
+            enum Row {
+                A { #[dataframe(expand)] values: Vec<i32> },
+                B { #[dataframe(expand)] values: Box<[f64]> },
+            }
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("container type mismatch"), "{error}");
     }
 
     #[test]

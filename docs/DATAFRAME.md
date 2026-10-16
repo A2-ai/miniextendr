@@ -538,6 +538,23 @@ enum Mixed {
 }
 ```
 
+String coercion preserves the column shape. Fixed-array and pinned-width
+expansions stringify each conflicting slot; automatic expansions stringify the
+elements into owned storage before discovering their width. Padded and absent
+cells remain `NA`. Automatic expansions still require the same container kind
+in every variant (`Vec`, boxed slice, or borrowed slice).
+
+Ordinary vector/boxed-slice list columns and map `_keys` / `_values` columns
+remain lists of vectors: a conflicting column becomes a list of character
+vectors. Map key/value pairing is preserved. Empty vectors remain empty, while
+an absent variant contributes `NULL`.
+
+Conflicting nested structs, `as_list` structs and factors have no scalar
+string-column interpretation. The derive rejects those conflicts at the field;
+use the same type across variants or give the fields different names. An
+unchanged structured column can coexist with string-coerced columns elsewhere.
+Splitting by variant keeps each variant's original column types.
+
 #### Enum field attributes
 
 All field-level attributes (`skip`, `rename`, `as_list`, `width`) work in enum variants too:

@@ -730,6 +730,28 @@ pub enum Mixed {
 }
 
 #[derive(miniextendr_api::DataFrameRow)]
+#[dataframe(tag = "kind", conflicts = "string")]
+pub enum ExpandedStrings {
+    Integer {
+        fixed: [i32; 2],
+        #[dataframe(width = 2)]
+        pinned: ::std::vec::Vec<i32>,
+        #[dataframe(expand)]
+        auto: ::std::vec::Vec<i32>,
+        keyed: ::std::collections::BTreeMap<i32, i32>,
+    },
+    Text {
+        fixed: [::std::string::String; 2],
+        #[dataframe(width = 2)]
+        pinned: ::std::vec::Vec<::std::string::String>,
+        #[dataframe(expand)]
+        auto: ::std::vec::Vec<::std::string::String>,
+        keyed: ::std::collections::BTreeMap<::std::string::String, ::std::string::String>,
+    },
+    Empty,
+}
+
+#[derive(miniextendr_api::DataFrameRow)]
 pub enum Nested {
     Has { id: i32, inner: Inner },
     Without { id: i32 },

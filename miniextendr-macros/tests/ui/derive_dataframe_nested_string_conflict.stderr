@@ -1,0 +1,5 @@
+error: cannot coerce conflicting nested struct field `payload` with `conflicts = "string"`; use the same field type in every variant or rename the fields
+ --> tests/ui/derive_dataframe_nested_string_conflict.rs:8:14
+  |
+8 |     Second { payload: Second },
+  |              ^^^^^^^
