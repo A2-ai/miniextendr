@@ -7,7 +7,9 @@
 \alias{TopicENV}
 \alias{TopicENV$new}
 \alias{TopicENV$topic_env_value}
+\alias{TopicENV$topic_as_integer}
 \alias{TopicENV$origin}
+\alias{as.integer.TopicENV}
 \alias{$.TopicENV}
 \alias{[[.TopicENV}
 \alias{TopicR6}
@@ -20,11 +22,18 @@
 \alias{TopicS4-s4_topic_s4_value}
 \alias{s4_topic_s4_value,TopicS4-method}
 \alias{TopicS4_origin}
+\alias{TopicS7Peer}
 \alias{TopicS7}
 \alias{TopicS7-topic_s7_value}
 \alias{TopicS7$topic_s7_value}
 \alias{TopicS7_topic_s7_value}
+\alias{TopicS7-to_peer}
+\alias{TopicS7$to_peer}
+\alias{TopicS7_to_peer}
 \alias{TopicS7_origin}
+\alias{TopicS7_from_peer}
+\alias{convert-TopicS7-to-TopicS7Peer}
+\alias{convert-TopicS7Peer-to-TopicS7}
 \alias{TopicVctrs}
 \alias{new_topicvctrs}
 \alias{vec_ptype_abbr.TopicVctrs}
@@ -34,6 +43,8 @@
 \title{Classes sharing an author-defined topic}
 \usage{
 TopicENV
+
+\method{as.integer}{TopicENV}(x, ...)
 
 \method{$}{TopicENV}(self, name)
 
@@ -51,11 +62,17 @@ TopicS4(value)
 
 TopicS4_origin(offset)
 
+TopicS7Peer(value, .ptr = NULL)
+
 TopicS7(value, .ptr = NULL)
 
 TopicS7_topic_s7_value(.mx_self, ...)
 
+TopicS7_to_peer(.mx_self, ...)
+
 TopicS7_origin(offset)
+
+TopicS7_from_peer(peer)
 
 new_topicvctrs(amounts)
 
@@ -68,17 +85,19 @@ new_topicvctrs(amounts)
 topicvctrs_origin(offset)
 }
 \arguments{
-\item{name}{A member name, documented by the topic.}
-
-\item{value}{Initial value, documented by the topic.}
-
 \item{x, .mx_self, self}{An object, documented by the topic.}
 
 \item{...}{Additional arguments, documented by the topic.}
 
+\item{name}{A member name, documented by the topic.}
+
+\item{value}{Initial value, documented by the topic.}
+
 \item{offset}{Offset, documented by the topic.}
 
 \item{.ptr}{Internal pointer, documented by the topic.}
+
+\item{peer}{A \code{TopicS7Peer} object, documented by the topic.}
 
 \item{amounts}{Numeric amounts, documented by the topic.}
 
@@ -91,7 +110,11 @@ An env class on an author topic.
 
 Read the value.
 
+Coerce to an integer.
+
 Start from an offset.
+
+Coerce to an integer.
 
 An R6 class on an author topic.
 
@@ -109,9 +132,17 @@ Read the value.
 
 Start from an offset.
 
+The S7 class \code{TopicS7} converts to and from.
+
 An S7 class on an author topic.
 
 Read the value.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -130,6 +161,18 @@ Start from an offset.
 \describe{
 \item{\code{ptr}}{External pointer to Rust \code{TopicS4} struct}
 }}
+
+\section{Conversion to \code{TopicS7Peer}}{
+
+\code{S7::convert(from, TopicS7Peer)} converts an object of this class to the target class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
+\section{Conversion from \code{TopicS7Peer}}{
+
+\code{S7::convert(from, TopicS7)} converts a source object to this class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
 
 \section{Methods}{
 \subsection{Public methods}{

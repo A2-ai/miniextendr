@@ -11,6 +11,7 @@
 #' @param y,to A vector prototype, documented by the topic.
 #' @param ... Additional arguments, documented by the topic.
 #' @param .ptr Internal pointer, documented by the topic.
+#' @param peer A `TopicS7Peer` object, documented by the topic.
 NULL
 
 #' An explicit member topic
