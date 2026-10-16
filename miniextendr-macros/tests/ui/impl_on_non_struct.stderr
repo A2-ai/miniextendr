@@ -10,6 +10,7 @@ help: the trait `TypedExternal` is not implemented for `NotAStruct`
  5 | enum NotAStruct {
    | ^^^^^^^^^^^^^^^
    = note: `#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `NotAStruct` through an external pointer, as the object of a `#[miniextendr]` impl or a `&NotAStruct` / `&mut NotAStruct` parameter
+   = note: a parameter whose `&NotAStruct` converts through its own `TryFromSexp` impl, or whose type is an alias (`type Text = str`), takes `#[miniextendr(convert)]` (`#[miniextendr(convert(param))]` on an impl method)
    = help: the following other types implement trait `TypedExternal`:
              &'static [T]
              &'static mut [T]

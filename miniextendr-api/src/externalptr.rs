@@ -612,7 +612,8 @@ pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a type an `ExternalPtr` stores",
     label = "`{Self}` does not implement `TypedExternal`",
-    note = "`#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `{Self}` through an external pointer, as the object of a `#[miniextendr]` impl or a `&{Self}` / `&mut {Self}` parameter"
+    note = "`#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `{Self}` through an external pointer, as the object of a `#[miniextendr]` impl or a `&{Self}` / `&mut {Self}` parameter",
+    note = "a parameter whose `&{Self}` converts through its own `TryFromSexp` impl, or whose type is an alias (`type Text = str`), takes `#[miniextendr(convert)]` (`#[miniextendr(convert(param))]` on an impl method)"
 )]
 pub trait TypedExternal: 'static {
     /// The type name as a static string (for debugging and display)
