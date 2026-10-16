@@ -230,7 +230,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   config_build_lines <- paste0(names(MX_CONFIG_BUILD_FIELDS), ": ",
                                MX_CONFIG_BUILD_FIELDS, collapse = "\n")
   desc_content <- sprintf(
-    "Package: %s\nTitle: What the Package Does (One Line, Title Case)\nVersion: 0.0.0.9000\nDepends: %s\nAuthors@R:\n    person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\nDescription: What the package does (one paragraph).\nLicense: MIT + file LICENSE\nEncoding: UTF-8\nSystemRequirements: Rust (>= 1.85)\n%s\nConfig/roxygen2/markdown: TRUE\nConfig/roxygen2/version: 8.0.0\n",
+    "Package: %s\nTitle: What the Package Does (One Line, Title Case)\nVersion: 0.0.0.9000\nDepends: %s\nAuthors@R:\n    person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\nDescription: What the package does (one paragraph).\nLicense: MIT + file LICENSE\nEncoding: UTF-8\nSystemRequirements: Rust (>= 1.88)\n%s\nConfig/roxygen2/markdown: TRUE\nConfig/roxygen2/version: 8.0.0\n",
     data$package, mx_r_depends_entry(), config_build_lines
   )
   writeLines(desc_content, desc_path)
