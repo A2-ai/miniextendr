@@ -1,0 +1,47 @@
+error: trait ABI parameter `other` cannot use a borrowed external argument; take `ExternalPtr<Other>` and borrow the handle inside the method; for an alias or reference with its own conversion, mark this parameter `#[miniextendr(convert)]`
+  --> tests/ui/trait_abi_wrapper_arguments.rs:10:27
+   |
+10 |     fn read(&self, other: &Other) -> i32;
+   |                           ^^^^^^
+
+error: trait ABI parameter `other` cannot use a borrowed external argument; take `ExternalPtr<Other>` and borrow the handle inside the method; for an alias or reference with its own conversion, mark this parameter `#[miniextendr(convert)]`
+  --> tests/ui/trait_abi_wrapper_arguments.rs:15:27
+   |
+15 |     fn read(&self, other: &mut Other) -> i32 { other.0 }
+   |                           ^^^^^^^^^^
+
+error: trait ABI parameter `other` cannot use a borrowed external argument; take `Option<ExternalPtr<Other>>` and borrow the handle inside the method; for an alias or reference with its own conversion, mark this parameter `#[miniextendr(convert)]`
+  --> tests/ui/trait_abi_wrapper_arguments.rs:20:27
+   |
+20 |     fn read(&self, other: Option<&Other>) -> i32;
+   |                           ^^^^^^^^^^^^^^
+
+error: trait ABI parameter `other` cannot use a borrowed external argument; take `ExternalPtr<Other>` and borrow the handle inside the method
+  --> tests/ui/trait_abi_wrapper_arguments.rs:25:27
+   |
+25 |     fn read(&self, other: ExternalPtrRef<'_, Other>) -> i32;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: trait ABI parameter `other` cannot use a borrowed external argument; take `Option<ExternalPtr<Other>>` and borrow the handle inside the method
+  --> tests/ui/trait_abi_wrapper_arguments.rs:30:27
+   |
+30 |     fn read(&self, other: Option<ExternalPtrMut<'_, Other>>) -> i32;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: trait ABI parameter `rest` cannot take `Dots` or `&Dots`; pass a `List` value instead, or put `...` on an inherent method or a standalone function
+  --> tests/ui/trait_abi_wrapper_arguments.rs:35:26
+   |
+35 |     fn read(&self, rest: &Dots) -> i32;
+   |                          ^^^^^
+
+error: trait ABI parameter `arg0` cannot take `Dots` or `&Dots`; pass a `List` value instead, or put `...` on an inherent method or a standalone function
+  --> tests/ui/trait_abi_wrapper_arguments.rs:40:23
+   |
+40 |     fn read(&self, _: &miniextendr_api::dots::Dots) -> i32 { 0 }
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: trait ABI parameter `rest` cannot take `Dots` or `&Dots`; pass a `List` value instead, or put `...` on an inherent method or a standalone function
+  --> tests/ui/trait_abi_wrapper_arguments.rs:45:26
+   |
+45 |     fn read(&self, rest: Option<&Dots>) -> i32;
+   |                          ^^^^^^^^^^^^^

@@ -1,7 +1,7 @@
 //! Explicit borrowed conversions (#2110), exercised from R and trait Views.
 
 use miniextendr_api::from_r::{NativeBorrow, SexpError};
-use miniextendr_api::{ExternalPtr, SEXP, TryFromSexp, miniextendr};
+use miniextendr_api::{ExternalPtr, IntoR, SEXP, TryFromSexp, miniextendr};
 
 pub type Text = str;
 pub type Integers = [i32];
@@ -128,13 +128,21 @@ impl ConvertedRefHost {
 
 #[miniextendr]
 pub trait ConvertedReads {
-    fn total(&self, values: &Integers) -> i32;
+    fn total(&self, #[miniextendr(convert)] values: &Integers) -> i32;
+
+    fn strings(
+        &self,
+        #[miniextendr(convert)] text: &Text,
+        #[miniextendr(convert)] optional: Option<&Text>,
+        later: String,
+    ) -> String {
+        converted_refs_strings(text, optional, later)
+    }
 }
 
 #[miniextendr(env, noexport)]
 impl ConvertedReads for ConvertedRefHost {
     /// @param values Integer vector.
-    #[miniextendr(convert(values))]
     fn total(&self, values: &Integers) -> i32 {
         values.iter().sum()
     }
@@ -143,6 +151,15 @@ impl ConvertedReads for ConvertedRefHost {
 #[miniextendr]
 pub trait GenericConvertedReads<T> {
     fn generic_total(&self, values: &[T]) -> i32;
+
+    fn generic_strings(
+        &self,
+        #[miniextendr(convert)] text: &Text,
+        #[miniextendr(convert)] optional: Option<&Text>,
+        later: String,
+    ) -> String {
+        converted_refs_strings(text, optional, later)
+    }
 }
 
 #[miniextendr(env, noexport)]
@@ -154,7 +171,7 @@ impl GenericConvertedReads<i32> for ConvertedRefHost {
     }
 }
 
-/// A trait View already converts non-Self references; the opt-out fixes its R wrapper.
+/// The declaration's conversion choice also reaches its R wrapper.
 /// @noRd
 #[miniextendr(noexport, no_worker)]
 pub fn converted_refs_through_view() -> i32 {
@@ -165,5 +182,28 @@ pub fn converted_refs_through_view() -> i32 {
         ));
         let view = ConvertedReadsView::from_sexp(handle.get());
         view.total(&[2, 3, 5])
+    }
+}
+
+/// Exercise both ABI shim generators with transient ALTSTRING children.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn converted_refs_trait_strings() -> Vec<String> {
+    unsafe {
+        let scope = miniextendr_api::ProtectScope::new();
+        let source = scope.protect(crate::gc_stress_fixtures::GcTransientBorrowString.into_sexp());
+        let host = std::cell::RefCell::new(ConvertedRefHost);
+        let data = std::ptr::from_ref(&host).cast_mut().cast();
+        let plain = __ConvertedReads_build_vtable::<ConvertedRefHost>();
+        let generic = &__VTABLE_miniextendr_GenericConvertedReads_FOR_ConvertedRefHost;
+        let mut results = Vec::new();
+        for shim in [plain.strings, generic.generic_strings] {
+            let result = scope.protect(shim(data, 3, [source.get(); 3].as_ptr()));
+            miniextendr_api::trait_abi::repanic_if_rust_error(result.get());
+            let text = String::try_from_sexp(result.get()).unwrap();
+            assert_eq!(text.matches("borrowed-").count(), 3);
+            results.push(text);
+        }
+        results
     }
 }

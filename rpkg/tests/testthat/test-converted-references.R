@@ -42,6 +42,18 @@ test_that("aliased string types retain transient ALTSTRING elements", {
   x <- miniextendr:::rooted_uncached_strings()
   text <- miniextendr:::converted_refs_strings(x, x, x)
   expect_identical(lengths(regmatches(text, gregexpr("borrowed-", text))), 3L)
+  host <- miniextendr:::ConvertedRefHost$new()
+  for (strings in list(host$ConvertedReads$strings,
+                       host$GenericConvertedReads$generic_strings)) {
+    expect_identical(strings("a", "b", "c"), "a:b:c")
+    expect_identical(strings("a", NULL, "c"), "a:missing:c")
+    text <- strings(x, x, x)
+    expect_identical(lengths(regmatches(text, gregexpr("borrowed-", text))), 3L)
+    expect_error(strings(1L, NULL, "c"), class = "rust_error")
+  }
+  results <- miniextendr:::converted_refs_trait_strings()
+  expect_length(results, 2L)
+  expect_true(all(lengths(regmatches(results, gregexpr("borrowed-", results))) == 3L))
   expect_null(miniextendr:::gc_stress_converted_references())
 })
 

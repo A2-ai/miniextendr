@@ -6197,9 +6197,13 @@ pub fn gc_stress_struct_factor() {
     }
 }
 
-/// Check explicit string-alias conversion through the generated C entry point.
+/// Check explicit string-alias conversion through C wrappers and trait ABI shims.
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_converted_references() {
+    assert_eq!(
+        crate::converted_reference_tests::converted_refs_trait_strings().len(),
+        2
+    );
     use miniextendr_api::{ProtectScope, SexpExt, TryFromSexp};
     unsafe {
         let scope = ProtectScope::new();

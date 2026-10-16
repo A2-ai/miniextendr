@@ -22,10 +22,9 @@ impl Host {
 }
 
 #[miniextendr]
-pub trait Read { fn total(&self, value: &Values) -> i32; }
+pub trait Read { fn total(&self, #[miniextendr(convert)] value: &Values) -> i32; }
 #[miniextendr(env)]
 impl Read for Host {
-    #[miniextendr(convert(value))]
     fn total(&self, value: &Values) -> i32 { value.iter().sum() }
 }
 fn main() {}

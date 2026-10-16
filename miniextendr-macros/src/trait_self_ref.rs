@@ -3,6 +3,16 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+/// Non-Self shared references cross the trait ABI through their converters,
+/// including explicitly converted aliases. Root them just as the C wrapper
+/// does; an ALTSTRING child need not be retained by its source vector.
+fn uses_rooted_conversion(ty: &syn::Type) -> bool {
+    crate::type_inspect::is_rooted_view(ty)
+        || crate::type_inspect::is_rooted_reference(ty)
+        || crate::externalptr_args::conversion_reference(ty)
+            .is_some_and(|reference| reference.mutability.is_none())
+}
+
 /// Check native arguments before conversion can create references. Arity
 /// must already be checked, and the caller must be inside the shim's R unwind
 /// boundary. `&Self` uses ExternalPtr handles and its separate address check.
@@ -21,8 +31,7 @@ pub(crate) fn native_borrow_checks<'a>(
         if let Some(targets) = targets {
             let target = &targets[index];
             metadata.push(
-                if crate::type_inspect::is_rooted_view(ty)
-                    || crate::type_inspect::is_rooted_reference(ty)
+                if uses_rooted_conversion(ty)
                 {
                     quote! { ::miniextendr_api::trait_abi::signature::Argument::rooted_native_borrow(&#target) }
                 } else {
@@ -31,16 +40,12 @@ pub(crate) fn native_borrow_checks<'a>(
             );
             continue;
         }
-        metadata.push(
-            if crate::type_inspect::is_rooted_view(ty)
-                || crate::type_inspect::is_rooted_reference(ty)
-            {
-                let ty = crate::type_inspect::erase_lifetimes(ty);
-                quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
-            } else {
-                quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
-            },
-        );
+        metadata.push(if uses_rooted_conversion(ty) {
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
+        } else {
+            quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
+        });
     }
     if values.is_empty() {
         return TokenStream::new();
@@ -95,9 +100,7 @@ pub(crate) fn argument(
             conversion,
             false,
         )
-    } else if crate::type_inspect::is_rooted_view(ty)
-        || crate::type_inspect::is_rooted_reference(ty)
-    {
+    } else if uses_rooted_conversion(ty) {
         if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(name, ty) {
             return stmt;
         }

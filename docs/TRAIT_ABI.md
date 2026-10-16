@@ -236,13 +236,14 @@ View never reads the data, so a consumer needs no part in this.
 
 ### Argument types
 
-The View converts each argument to R with `IntoR`, and the shim reads it back
-with `TryFromSexp`, so a trait-method parameter type needs both. `Missing<T>`
+The View converts each argument to R with `IntoR`. The shim reads owned values
+back with `TryFromSexp` and shared references or rooted views with `TryFromRoot`,
+so a trait-method parameter needs conversions in both directions. `Missing<T>`
 crosses as R's missing-argument sentinel when absent. The reading markers
 (`AsNumeric`, `AsNumericVec`, `AsCharacter`, `AsCharacterVec`) cross as their
 inner value, and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text.
 The borrowed views `StrVec<'_>` and `RCow<'_, T>` have no `TryFromSexp`: the
-shim binds each to a local copy of its argument slot, so the implementation
+shim gives each a local root through return conversion, so the implementation
 sees it for the call only, and a trait method cannot return one (#1427).
 Parameter checks such as `no_na`, `inherits` and `not_inherits` run in the implementing
 method's R-facing wrappers: they check R arguments, not the typed values a
@@ -254,6 +255,22 @@ parameter mutably, and the method gets a plain reference. An
 `ExternalPtr<T>` parameter arrives as a handle the shim doesn't borrow; the
 method reads it with `borrow()` / `borrow_mut()` (`EXTERNALPTR.md`,
 "Arguments").
+
+A borrowed external argument (`&Other`, `&mut Other`, `ExternalPtrRef` or
+`ExternalPtrMut`, optionally under `Option`) is refused at the trait
+declaration. Pass `ExternalPtr<Other>` (or `Option<ExternalPtr<Other>>`) and
+borrow that handle in the method. Native references such as `&str` and
+`&[i32]` keep their conversions. For an alias or custom reference with its
+own conversion, mark the declaration parameter `#[miniextendr(convert)]`;
+implementations inherit that choice by argument position. Shared converted
+references retain a root through the call, including transient ALTSTRING
+children; mutable conversions retain their native alias checks.
+
+Instance trait methods also refuse `Dots` / `&Dots`: pass a `List` value
+instead. These restrictions apply to arguments crossing the vtable; static
+methods and `#[miniextendr(skip)]` methods keep their existing contracts.
+`LazyDots` remains a wrapper-frame parameter for free functions and inherent
+methods.
 
 ### Failures
 

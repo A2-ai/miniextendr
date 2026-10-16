@@ -1507,7 +1507,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
     let skip_count = if has_self { 1 } else { 0 };
     let mut param_types = Vec::new();
     let mut param_names = Vec::new();
-    for (i, arg) in method.sig.inputs.iter().skip(skip_count).enumerate() {
+    for (i, arg) in parameter_sig.inputs.iter().skip(skip_count).enumerate() {
         if let syn::FnArg::Typed(pat_type) = arg {
             if crate::return_wrap::contains_marker(&pat_type.ty) {
                 return Err(syn::Error::new_spanned(
@@ -1538,6 +1538,55 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
                         },
                     ),
                 ));
+            }
+            // Only instance arguments cross the vtable. Rust-only methods
+            // and static methods keep their existing wrapper contracts.
+            if has_self && !skip {
+                let name = match pat_type.pat.as_ref() {
+                    syn::Pat::Ident(name) => crate::naming::ident_name(&name.ident),
+                    _ => format!("arg{i}"),
+                };
+                let ty = pat_type.ty.as_ref();
+                let inner = crate::type_inspect::option_inner_type(ty).unwrap_or(ty);
+                if crate::miniextendr_fn::dots_kind(inner)
+                    == Some(crate::miniextendr_fn::DotsKind::Forced)
+                {
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        format!(
+                            "trait ABI parameter `{name}` cannot take `Dots` or `&Dots`; \
+                             pass a `List` value instead, or put `...` on an inherent \
+                             method or a standalone function"
+                        ),
+                    ));
+                }
+                if crate::type_inspect::self_ref_mutability(ty).is_none()
+                    && !per_param.get(&name).is_some_and(|attrs| attrs.convert)
+                    && let Some(external) = crate::externalptr_args::external_arg(ty)
+                {
+                    let value = crate::type_inspect::type_display(&external.value);
+                    let handle = format!("ExternalPtr<{value}>");
+                    let handle = if external.optional {
+                        format!("Option<{handle}>")
+                    } else {
+                        handle
+                    };
+                    let conversion = if crate::externalptr_args::conversion_reference(ty).is_some()
+                    {
+                        "; for an alias or reference with its own conversion, mark this \
+                         parameter `#[miniextendr(convert)]`"
+                    } else {
+                        ""
+                    };
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        format!(
+                            "trait ABI parameter `{name}` cannot use a borrowed external \
+                             argument; take `{handle}` and borrow the handle inside the \
+                             method{conversion}"
+                        ),
+                    ));
+                }
             }
             param_types.push((*pat_type.ty).clone());
             if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {

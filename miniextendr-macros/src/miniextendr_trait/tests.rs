@@ -690,3 +690,59 @@ fn declaration_shims_live_on_the_trait_and_are_excluded_from_trait_objects() {
         matches!(item, syn::Item::Fn(function) if function.sig.ident.to_string().ends_with("_shim"))
     }));
 }
+
+#[test]
+fn trait_arguments_require_abi_values() {
+    for (ty, expected) in [
+        (syn::parse_quote!(&Other), "ExternalPtr<Other>"),
+        (syn::parse_quote!(&mut Other), "ExternalPtr<Other>"),
+        (
+            syn::parse_quote!(Option<&Other>),
+            "Option<ExternalPtr<Other>>",
+        ),
+        (
+            syn::parse_quote!(ExternalPtrRef<'_, Other>),
+            "ExternalPtr<Other>",
+        ),
+        (
+            syn::parse_quote!(Option<ExternalPtrMut<'_, Other>>),
+            "Option<ExternalPtr<Other>>",
+        ),
+        (syn::parse_quote!(&miniextendr_api::dots::Dots), "List"),
+        (syn::parse_quote!(Option<&Dots>), "List"),
+    ] {
+        let ty: syn::Type = ty;
+        let method: syn::TraitItemFn = syn::parse_quote!(fn read(&self, value: #ty););
+        let error =
+            extract_method_info(&method).expect_err("wrapper-only argument must be refused");
+        assert!(error.to_string().contains("value"), "{error}");
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+}
+
+#[test]
+fn trait_arguments_keep_conversions_self_and_rust_only_methods() {
+    for method in [
+        syn::parse_quote!(
+            fn read(&self, value: &[i32], label: &str, other: &Self);
+        ),
+        syn::parse_quote!(
+            fn read(&self, other: &mut Self, value: ExternalPtr<Other>);
+        ),
+        syn::parse_quote!(
+            fn read(&self, #[miniextendr(convert)] value: &Alias);
+        ),
+        syn::parse_quote!(
+            fn read(&self, #[miniextendr(convert)] value: Option<&mut Alias>);
+        ),
+        syn::parse_quote!(
+            fn read(value: &Other, dots: &Dots);
+        ),
+        syn::parse_quote!(
+            #[miniextendr(skip)]
+            fn read(&self, value: &Other, dots: &Dots);
+        ),
+    ] {
+        extract_method_info(&method).unwrap();
+    }
+}
