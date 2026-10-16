@@ -18,7 +18,7 @@ macro_rules! gated_class {
         #[miniextendr($system, $visibility)]
         impl $name {
             #[cfg(all())]
-            pub fn new(value: i32) -> Self {
+            pub fn new(#[cfg(any())] _hidden: MissingType, value: i32) -> Self {
                 Self { value }
             }
 
@@ -27,6 +27,15 @@ macro_rules! gated_class {
 
             #[cfg(all())]
             pub fn cfg_value(&self) -> i32 { self.value }
+
+            #[cfg_attr(any(), miniextendr(no_na(hidden)))]
+            pub fn cfg_sum(
+                &self,
+                #[cfg(any())] #[miniextendr(no_na)] hidden: MissingType,
+                #[cfg_attr(all(), miniextendr(no_na))] value: i32,
+                #[cfg_attr(all(), cfg(any()))] _nested: MissingType,
+                #[cfg_attr(any(), cfg(any()))] kept: i32,
+            ) -> i32 { self.value + value + kept }
 
             #[cfg(any())]
             #[miniextendr($system(worker))]
@@ -78,13 +87,23 @@ mod vctrs {
     impl GatedMethodVctrs {
         #[cfg(all())]
         #[allow(clippy::new_ret_no_self)]
-        pub fn new(values: Vec<f64>) -> Vec<f64> {
+        pub fn new(#[cfg(any())] _hidden: MissingType, values: Vec<f64>) -> Vec<f64> {
             values
         }
 
         #[cfg(all())]
         pub fn cfg_value(values: Vec<f64>) -> f64 {
             values[0]
+        }
+
+        pub fn cfg_sum(
+            values: Vec<f64>,
+            #[cfg(any())] _hidden: MissingType,
+            #[cfg_attr(all(), miniextendr(no_na))] value: i32,
+            #[cfg_attr(all(), cfg(any()))] _nested: MissingType,
+            #[cfg_attr(any(), cfg(any()))] kept: i32,
+        ) -> f64 {
+            values[0] + f64::from(value + kept)
         }
 
         #[cfg_attr(all(), miniextendr(r_name = "cfg_renamed"))]
@@ -156,7 +175,16 @@ pub fn cfg_gate_mode(#[miniextendr(match_arg)] mode: CfgGateMode) -> String {
 #[miniextendr]
 pub trait CfgGateShape {
     /// The shape's area.
-    fn area(&self) -> f64;
+    fn area(&self, #[cfg(any())] _hidden: MissingType) -> f64;
+
+    /// A default whose ABI signature contains only its enabled parameter.
+    fn shifted(
+        &self,
+        #[cfg_attr(all(), cfg_attr(all(), cfg(any())))] _hidden: MissingType,
+        #[cfg(all())] value: f64,
+    ) -> f64 {
+        self.area() + value
+    }
 
     /// Gated off.
     #[cfg(any())]
@@ -180,13 +208,57 @@ impl CfgGateSquare {
 #[miniextendr(env, noexport)]
 impl CfgGateShape for CfgGateSquare {
     #[cfg(all())]
-    fn area(&self) -> f64 {
+    fn area(&self, #[cfg(any())] _hidden: MissingType) -> f64 {
         self.side * self.side
     }
 
     #[cfg(any())]
     fn area(&self) -> f64 {
         unreachable!()
+    }
+}
+// endregion
+
+// region: Gated parameters in generic and empty trait impls
+
+#[miniextendr]
+pub trait CfgGateGeneric<T> {
+    fn seed(&self) -> T;
+    fn echo(&self, #[cfg(any())] _hidden: MissingType, value: T) -> T {
+        value
+    }
+}
+
+#[miniextendr(env, noexport)]
+impl CfgGateGeneric<i32> for CfgGateSquare {
+    fn seed(&self) -> i32 {
+        1
+    }
+}
+
+#[miniextendr]
+pub trait CfgGateDefaults {
+    fn echo(&self, #[cfg(any())] _hidden: MissingType, value: i32) -> i32 {
+        value
+    }
+}
+
+impl CfgGateDefaults for CfgGateSquare {}
+
+#[miniextendr(env, noexport)]
+impl CfgGateDefaults for CfgGateSquare {}
+
+/// Dispatch through the trait ABI, including its gated default signature.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn cfg_gate_shape_view(side: f64, value: f64) -> f64 {
+    unsafe {
+        let erased = __mx_wrap_CfgGateSquare(CfgGateSquare { side });
+        let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
+            miniextendr_api::trait_abi::ccall::mx_wrap(erased),
+        );
+        let view = CfgGateShapeView::from_sexp(sexp.get());
+        view.shifted(value)
     }
 }
 // endregion

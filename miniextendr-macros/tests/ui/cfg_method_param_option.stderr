@@ -1,0 +1,11 @@
+error: match_arg/choices/no_default/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `hidden`
+ --> tests/ui/cfg_method_param_option.rs:9:19
+  |
+9 |     #[miniextendr(no_na(hidden))]
+  |                   ^^^^^
+
+error: match_arg/choices/no_default/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `hidden`
+  --> tests/ui/cfg_method_param_option.rs:18:19
+   |
+18 |     #[miniextendr(no_na(hidden))]
+   |                   ^^^^^

@@ -14,18 +14,26 @@ for (system in c("env", "r6", "s3", "s4", "s7", "vctrs")) {
       s7 = ns$GatedMethodS7(10L),
       vctrs = ns$new_gatedmethodvctrs(10)
     )
-    call <- function(name) {
+    call <- function(name, ...) {
       switch(system,
-        env = object[[name]](),
-        r6 = object[[name]](),
-        s3 = ns[[name]](object),
-        s4 = ns[[paste0("s4_", name)]](object),
-        s7 = ns[[name]](object),
-        vctrs = ns[[paste0("gatedmethodvctrs_", name)]](object)
+        env = object[[name]](...),
+        r6 = object[[name]](...),
+        s3 = ns[[name]](object, ...),
+        s4 = ns[[paste0("s4_", name)]](object, ...),
+        s7 = ns[[name]](object, ...),
+        vctrs = ns[[paste0("gatedmethodvctrs_", name)]](object, ...)
       )
     }
     expect_equal(call("cfg_value"), 10)
     expect_equal(call("cfg_renamed"), 11)
+    expect_equal(call("cfg_sum", value = 5L, kept = 7L), 22)
+    expect_error(call("cfg_sum", value = NA_integer_, kept = 7L))
+    calls <- getDLLRegisteredRoutines("miniextendr")$.Call
+    class_name <- paste0("GatedMethod", switch(system,
+      env = "Env", r6 = "R6", s3 = "S3", s4 = "S4", s7 = "S7", vctrs = "Vctrs"
+    ))
+    symbol <- paste0("C_miniextendr_", class_name, "__cfg_sum")
+    expect_identical(calls[[symbol]]$numParameters, 4L)
     expect_identical(call("cfg_feature"), feature_enabled)
     if (system %in% c("env", "r6")) {
       expect_null(object$cfg_disabled)
@@ -71,4 +79,23 @@ test_that("trait gates select methods and implementations", {
   native <- names(getDLLRegisteredRoutines("miniextendr")$.Call)
   expect_true(any(grepl("CfgGateShape.*area", native)))
   expect_false(any(grepl("CfgGateShape.*hidden", native)))
+})
+
+test_that("trait parameter gates agree across wrappers and ABI callbacks", {
+  ns <- asNamespace("miniextendr")
+  square <- ns$CfgGateSquare$new(3)
+  expect_identical(ns$cfg_gate_shape_view(3, 2), 11)
+  expect_no_error(ns$gc_stress_cfg_trait_params())
+  expect_identical(square$CfgGateGeneric$echo(7L), 7L)
+  expect_identical(square$CfgGateDefaults$echo(8L), 8L)
+
+  for (trait in c("CfgGateShape", "CfgGateGeneric", "CfgGateDefaults")) {
+    method <- if (trait == "CfgGateShape") "area" else "echo"
+    wrapper <- ns$CfgGateSquare[[trait]][[method]]
+    expected <- if (trait == "CfgGateShape") ".mx_self" else c(".mx_self", "value")
+    expect_identical(names(formals(wrapper)), expected)
+    symbol <- paste0("C_miniextendr_CfgGateSquare__", trait, "__", method)
+    calls <- getDLLRegisteredRoutines("miniextendr")$.Call
+    expect_identical(calls[[symbol]]$numParameters, length(expected) + 1L)
+  }
 })

@@ -3733,6 +3733,12 @@ pub fn gc_stress_dataframe_builder_serial() {
 
 // endregion
 
+/// Dispatch a gated trait default through its rooted ABI View.
+#[miniextendr(noexport)]
+pub fn gc_stress_cfg_trait_params() {
+    assert_eq!(crate::cfg_gate_tests::cfg_gate_shape_view(3.0, 2.0), 11.0);
+}
+
 /// Coerce expanded and map cells without losing roots across allocations.
 #[miniextendr(noexport)]
 pub fn gc_stress_dataframe_string_conflicts() {

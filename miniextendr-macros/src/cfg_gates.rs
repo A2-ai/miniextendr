@@ -23,7 +23,7 @@ use syn::{Attribute, Item, Meta, Token, punctuated::Punctuated};
 /// Re-enter `#[miniextendr(attr)]` on both resolutions of the item's first
 /// member gate, or return `None` when no member carries one.
 pub(crate) fn select(attr: &TokenStream, item: &Item) -> syn::Result<Option<TokenStream>> {
-    for member in 0..member_count(item) {
+    for member in members(item) {
         let Some(attrs) = member_attrs(item, member) else {
             continue;
         };
@@ -68,25 +68,90 @@ pub(crate) fn select(attr: &TokenStream, item: &Item) -> syn::Result<Option<Toke
     Ok(None)
 }
 
-/// Number of gateable members: function parameters, impl and trait items, enum
-/// variants, struct fields.
-fn member_count(item: &Item) -> usize {
-    match item {
+/// A direct member, or a parameter inside an impl/trait method. Visiting the
+/// method first lets a disabled method disappear without inspecting its inputs.
+#[derive(Clone, Copy)]
+struct Member {
+    index: usize,
+    parameter: Option<usize>,
+}
+
+fn members(item: &Item) -> Vec<Member> {
+    let count = match item {
         Item::Fn(item) => item.sig.inputs.len(),
         Item::Impl(item) => item.items.len(),
         Item::Trait(item) => item.items.len(),
         Item::Enum(item) => item.variants.len(),
         Item::Struct(item) => item.fields.len(),
         _ => 0,
+    };
+    let mut members = Vec::new();
+    for index in 0..count {
+        members.push(Member {
+            index,
+            parameter: None,
+        });
+        if let Some(signature) = method_signature(item, index) {
+            members.extend((0..signature.inputs.len()).map(|parameter| Member {
+                index,
+                parameter: Some(parameter),
+            }));
+        }
+    }
+    members
+}
+
+fn method_signature(item: &Item, index: usize) -> Option<&syn::Signature> {
+    match item {
+        Item::Impl(item) => match &item.items[index] {
+            syn::ImplItem::Fn(method) => Some(&method.sig),
+            _ => None,
+        },
+        Item::Trait(item) => match &item.items[index] {
+            syn::TraitItem::Fn(method) => Some(&method.sig),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
-fn member_attrs(item: &Item, member: usize) -> Option<&Vec<Attribute>> {
+fn method_signature_mut(item: &mut Item, index: usize) -> &mut syn::Signature {
     match item {
-        Item::Fn(item) => Some(match &item.sig.inputs[member] {
-            syn::FnArg::Receiver(receiver) => &receiver.attrs,
-            syn::FnArg::Typed(typed) => &typed.attrs,
-        }),
+        Item::Impl(item) => match &mut item.items[index] {
+            syn::ImplItem::Fn(method) => &mut method.sig,
+            _ => unreachable!(),
+        },
+        Item::Trait(item) => match &mut item.items[index] {
+            syn::TraitItem::Fn(method) => &mut method.sig,
+            _ => unreachable!(),
+        },
+        _ => unreachable!(),
+    }
+}
+
+fn parameter_attrs(arg: &syn::FnArg) -> &Vec<Attribute> {
+    match arg {
+        syn::FnArg::Receiver(receiver) => &receiver.attrs,
+        syn::FnArg::Typed(typed) => &typed.attrs,
+    }
+}
+
+fn parameter_attrs_mut(arg: &mut syn::FnArg) -> &mut Vec<Attribute> {
+    match arg {
+        syn::FnArg::Receiver(receiver) => &mut receiver.attrs,
+        syn::FnArg::Typed(typed) => &mut typed.attrs,
+    }
+}
+
+fn member_attrs(item: &Item, member: Member) -> Option<&Vec<Attribute>> {
+    if let Some(parameter) = member.parameter {
+        return Some(parameter_attrs(
+            &method_signature(item, member.index)?.inputs[parameter],
+        ));
+    }
+    let member = member.index;
+    match item {
+        Item::Fn(item) => Some(parameter_attrs(&item.sig.inputs[member])),
         Item::Impl(item) => match &item.items[member] {
             syn::ImplItem::Fn(member) => Some(&member.attrs),
             syn::ImplItem::Const(member) => Some(&member.attrs),
@@ -108,12 +173,15 @@ fn member_attrs(item: &Item, member: usize) -> Option<&Vec<Attribute>> {
 }
 
 /// Only called for a member `member_attrs` returned.
-fn member_attrs_mut(item: &mut Item, member: usize) -> &mut Vec<Attribute> {
+fn member_attrs_mut(item: &mut Item, member: Member) -> &mut Vec<Attribute> {
+    if let Some(parameter) = member.parameter {
+        return parameter_attrs_mut(
+            &mut method_signature_mut(item, member.index).inputs[parameter],
+        );
+    }
+    let member = member.index;
     match item {
-        Item::Fn(item) => match &mut item.sig.inputs[member] {
-            syn::FnArg::Receiver(receiver) => &mut receiver.attrs,
-            syn::FnArg::Typed(typed) => &mut typed.attrs,
-        },
+        Item::Fn(item) => parameter_attrs_mut(&mut item.sig.inputs[member]),
         Item::Impl(item) => match &mut item.items[member] {
             syn::ImplItem::Fn(member) => &mut member.attrs,
             syn::ImplItem::Const(member) => &mut member.attrs,
@@ -134,7 +202,15 @@ fn member_attrs_mut(item: &mut Item, member: usize) -> &mut Vec<Attribute> {
     }
 }
 
-fn remove_member(item: &mut Item, member: usize) {
+fn remove_member(item: &mut Item, member: Member) {
+    if let Some(parameter) = member.parameter {
+        remove_at(
+            &mut method_signature_mut(item, member.index).inputs,
+            parameter,
+        );
+        return;
+    }
+    let member = member.index;
     match item {
         Item::Fn(item) => remove_at(&mut item.sig.inputs, member),
         Item::Impl(item) => {

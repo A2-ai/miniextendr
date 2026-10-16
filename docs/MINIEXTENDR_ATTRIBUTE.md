@@ -1734,7 +1734,7 @@ pub enum Color { Red, Green, Blue }
 | Gate on | A gated-off member has no |
 |---|---|
 | the function, impl block or trait itself (before or after `#[miniextendr]`) | C wrapper, registration, R function or class |
-| a function parameter | R formal |
+| a function or method parameter (inherent, trait declaration or trait impl) | R formal or ABI argument |
 | an impl method or associated item | C wrapper, registration, R method or docs |
 | a trait method | vtable slot or R method |
 | a trait impl method | wrapper (an alternative under another gate takes its place) |
@@ -1771,6 +1771,14 @@ enabled methods still form a property. A trait's ABI tag covers its enabled
 methods, so a trait method gated differently in two packages gives them
 different tags: objects of one package then don't implement the other's trait.
 Build a producer and its consumers with the same features (#2129).
+
+Parameter-level options disappear with their gated parameter. If an option is
+written on the impl method instead, gate that option with the same condition:
+`#[cfg_attr(feature = "json", miniextendr(no_na(json)))]` for a
+`#[cfg(feature = "json")] json: i32` parameter. An ungated method option naming
+a disabled parameter is an error, just like an option naming an unknown
+parameter. Inherited default methods and empty trait impls use the declaration's
+resolved signature.
 
 ---
 
