@@ -2259,6 +2259,38 @@ fn s7_shortcut_docs_carry_the_method_param_tags() {
     assert!(!method_block.contains("@param"), "{method_block}");
 }
 
+/// The shortcut follows its method's page tags (#2068) but not a `@noRd`:
+/// it is exported with the class, so a shortcut without a page would be an
+/// undocumented code object in R CMD check.
+#[test]
+fn s7_shortcut_of_a_no_rd_method_keeps_its_page() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                pub fn new() -> Self { unimplemented!() }
+                /// @noRd
+                pub fn hidden(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let shortcut_block = wrapper
+        .split("#' Fast-path shortcut for the `hidden` S7 method on `Foo`.")
+        .nth(1)
+        .and_then(|rest| rest.split("Foo_hidden <- function(").next())
+        .expect("shortcut block");
+    assert!(!shortcut_block.contains("@noRd"), "{shortcut_block}");
+    assert!(
+        shortcut_block.contains("#' @rdname Foo"),
+        "{shortcut_block}"
+    );
+    assert!(
+        shortcut_block.contains("#' @export Foo_hidden"),
+        "{shortcut_block}"
+    );
+}
+
 /// Syntactic names keep the bare spelling (no churn in ordinary wrappers).
 #[test]
 fn s7_syntactic_names_stay_bare() {

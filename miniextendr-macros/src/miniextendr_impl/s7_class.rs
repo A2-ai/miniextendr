@@ -1148,8 +1148,10 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 // Pass the method's parameter and page tags: its prose
                 // (@title/description) is already rendered on the shared @rdname
                 // page by the generic block above, and re-emitting it here would
-                // duplicate it. The generic block suppresses `@param` (an S7
-                // method assignment has no \usage), so the shortcut's \usage is
+                // duplicate it. Not its `@noRd`: the shortcut is exported with the
+                // class (below), and an exported function without a page is an
+                // undocumented code object. The generic block suppresses `@param`
+                // (an S7 method assignment has no \usage), so the shortcut's \usage is
                 // the only place those formals are documented; without them each
                 // one fell back to `(undocumented)`. Mirrors the trait shortcut,
                 // which forwards `param_tags`.
@@ -1161,9 +1163,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     .filter(|tag| {
                         matches!(
                             crate::roxygen::roxygen_tag_name(tag),
-                            Some(
-                                "param" | "rdname" | "order" | "noRd" | "inheritParams" | "inherit"
-                            )
+                            Some("param" | "rdname" | "order" | "inheritParams" | "inherit")
                         )
                     })
                     .cloned()
