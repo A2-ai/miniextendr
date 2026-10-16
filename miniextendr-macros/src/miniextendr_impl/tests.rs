@@ -9555,3 +9555,79 @@ fn explicit_reference_conversion_is_shared_by_all_class_systems() {
         assert!(!code.contains("__mx_external_arg"), "{system:?}: {code}");
     }
 }
+
+#[test]
+fn none_errors_follow_class_entry_names() {
+    for (system, instance, static_name) in [
+        (ClassSystem::Env, "read", "load_entry"),
+        (ClassSystem::R6, "read", "load_entry"),
+        (ClassSystem::S3, "read", "rlookup_load_entry"),
+        (ClassSystem::S4, "s4_read", "RLookup_load_entry"),
+        (ClassSystem::S7, "read", "RLookup_load_entry"),
+        (ClassSystem::Vctrs, "read", "rlookup_load_entry"),
+    ] {
+        let mut parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Lookup {
+                    #[miniextendr(postfix = "_entry")]
+                    pub fn load() -> Option<()> { None }
+                }
+            },
+        );
+        parsed.class_name = Some("RLookup".to_string());
+        let out = c_wrapper_tokens(&parsed, "load");
+        assert!(
+            out.contains(&format!("`{static_name}()` returned no value")),
+            "{out}"
+        );
+        if system == ClassSystem::Vctrs {
+            continue;
+        }
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Lookup {
+                    #[miniextendr(r_name = "read")]
+                    pub fn rust_read(&self) -> Option<()> { None }
+                }
+            },
+        );
+        let out = c_wrapper_tokens(&parsed, "rust_read");
+        assert!(
+            out.contains(&format!("`{instance}()` returned no value")),
+            "{out}"
+        );
+    }
+    for system in [ClassSystem::S3, ClassSystem::S4, ClassSystem::S7] {
+        let keyword = system.to_ident();
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Lookup {
+                    #[miniextendr(#keyword(generic = "lookup"))]
+                    pub fn rust_read(&self) -> Option<()> { None }
+                }
+            },
+        );
+        let out = c_wrapper_tokens(&parsed, "rust_read");
+        assert!(out.contains("`lookup()` returned no value"), "{out}");
+    }
+}
+
+#[test]
+fn none_errors_name_vctrs_protocol_generics() {
+    let parsed = parse_impl(
+        ClassSystem::Vctrs,
+        syn::parse_quote! {
+            impl Lookup {
+                #[miniextendr(vctrs(format))]
+                pub fn render(x: Vec<f64>) -> Option<()> { None }
+            }
+        },
+    );
+    let out = c_wrapper_tokens(&parsed, "render");
+    assert!(out.contains("`format()` returned no value"), "{out}");
+    let r = generate_vctrs_r_wrapper(&parsed);
+    assert!(r.contains("format.Lookup <- function(x, ...)"), "{r}");
+}

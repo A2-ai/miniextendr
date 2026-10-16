@@ -100,7 +100,15 @@ pub(super) fn generate_vtable_static(
     // Generate C wrappers and call defs for each non-skipped method
     let method_c_wrappers: Vec<TokenStream> = methods
         .iter()
-        .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
+        .map(|m| {
+            generate_trait_method_c_wrapper(
+                m,
+                &type_ident,
+                trait_name,
+                trait_path,
+                impl_attrs.class_system,
+            )
+        })
         .collect();
 
     // Generate C wrappers for consts
@@ -1280,6 +1288,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
+    class_system: ClassSystem,
 ) -> TokenStream {
     use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
 
@@ -1361,7 +1370,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Use custom call_method_def_ident to avoid collisions with inherent impl methods
     // Messages R sees name the method as R calls it (`r_name`).
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
-        .r_name(method.r_method_name())
+        .r_name(method.r_entry_name(class_system, type_ident, trait_name))
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
         .output(method.sig.output.clone())

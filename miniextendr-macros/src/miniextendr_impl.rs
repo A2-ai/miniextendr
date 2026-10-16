@@ -2497,6 +2497,38 @@ impl ParsedMethod {
         }
     }
 
+    /// The dispatch generic, before class-system-specific prefixes.
+    pub fn r_generic_name(&self) -> String {
+        self.method_attrs
+            .generic
+            .clone()
+            .unwrap_or_else(|| self.r_method_name())
+    }
+
+    /// Canonical R entry used by the wrapper and its return diagnostics.
+    /// Namespace members keep their member name; dispatching methods name the
+    /// generic (also when called through an S7 shortcut). Static functions use
+    /// the same class prefix as their R definition.
+    pub fn r_entry_name(&self, parsed: &ParsedImpl) -> String {
+        if parsed.class_system == ClassSystem::Vctrs
+            && let Some(protocol) = &self.method_attrs.vctrs_protocol
+        {
+            return protocol.clone();
+        }
+        let name = self.r_method_name();
+        match parsed.class_system {
+            ClassSystem::Env | ClassSystem::R6 => name,
+            ClassSystem::S4 if self.env.is_instance() => s4_class::s4_generic_name(self),
+            ClassSystem::S3 | ClassSystem::S7 | ClassSystem::Vctrs if self.env.is_instance() => {
+                self.r_generic_name()
+            }
+            ClassSystem::S3 | ClassSystem::Vctrs => {
+                format!("{}_{}", parsed.class_name().to_lowercase(), name)
+            }
+            ClassSystem::S4 | ClassSystem::S7 => format!("{}_{}", parsed.class_name(), name),
+        }
+    }
+
     /// C wrapper identifier for this method.
     ///
     /// Format: `C_{crate}_{Type}__{method}` — crate-prefixed for webR
@@ -3913,7 +3945,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 
     // Build the context using the builder
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
-        .r_name(method.r_method_name())
+        .r_name(method.r_entry_name(parsed_impl))
         .inputs(method.sig.inputs.clone())
         .output(method.sig.output.clone())
         .pre_call(pre_call)

@@ -277,11 +277,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(ctx.source_comment(type_ident));
         // vctrs protocol override: use the protocol name as the S3 generic
         let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
-        let generic_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
-            proto.clone()
-        } else {
-            ctx.generic_name()
-        };
+        let generic_name = ctx.method.r_entry_name(parsed_impl);
         // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
         let method_class_suffix = ctx
             .class_suffix()
@@ -380,12 +376,12 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(ctx.source_comment(type_ident));
 
         let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
-        let fn_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
-            // vctrs protocol override: emit as `<protocol>.<Class>` S3 method
-            format!("{}.{}", proto, class_name)
+        let entry_name = ctx.method.r_entry_name(parsed_impl);
+        let fn_name = if is_protocol {
+            // The entry is the generic; its implementation has the class suffix.
+            format!("{entry_name}.{class_name}")
         } else {
-            let method_name = ctx.method.r_method_name();
-            format!("{}_{}", class_name.to_lowercase(), method_name)
+            entry_name
         };
         let r_name = fn_name.clone();
 

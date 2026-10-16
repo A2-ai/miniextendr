@@ -457,7 +457,7 @@ test_that("AdapterNamesS4 - renamed adapter methods keep their R names", {
   expect_equal(s4_trait_RHash_hash(parsed), s4_trait_RHash_hash(a))
   expect_error(
     AdapterNamesS4_RFromStr_from_str("four"),
-    "`from_str()` returned no value",
+    "`AdapterNamesS4_RFromStr_from_str()` returned no value",
     fixed = TRUE
   )
 

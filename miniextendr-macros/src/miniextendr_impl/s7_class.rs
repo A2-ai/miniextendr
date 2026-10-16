@@ -960,7 +960,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
 
         let method_attrs = &ctx.method.method_attrs;
-        let target = s7_generic_target(&ctx.generic_name());
+        let target = s7_generic_target(&ctx.method.r_entry_name(parsed_impl));
         // The bare generic name (a `pkg::` qualifier only picks the target).
         let generic_name = target.name().to_string();
         // The generic in R symbol position (assignment target, first argument
@@ -1205,7 +1205,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     for ctx in parsed_impl.static_method_contexts() {
         lines.push(ctx.source_comment(type_ident));
         let method_name = ctx.method.r_method_name();
-        let fn_name = format!("{}_{}", class_name, method_name);
+        let fn_name = ctx.method.r_entry_name(parsed_impl);
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {

@@ -621,10 +621,7 @@ fn generate_trait_s3_r_wrapper(
     // report the generic's call, resolved from the method frame on a raise
     // (#1851).
     for method in &instance_methods {
-        let generic_name = method
-            .generic
-            .clone()
-            .unwrap_or_else(|| method.r_method_name());
+        let generic_name = method.r_entry_name(ClassSystem::S3, type_ident, trait_name);
         let receiver = method.receiver.as_deref().unwrap_or("x");
         let s3_method_name = format!("{}.{}", generic_name, type_str);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
@@ -867,10 +864,7 @@ fn generate_trait_s4_r_wrapper(
 
     // Generate S4 generics + methods for instance methods
     for method in &instance_methods {
-        let generic_name = method
-            .generic
-            .clone()
-            .unwrap_or_else(|| format!("s4_trait_{}_{}", trait_name, method.r_method_name()));
+        let generic_name = method.r_entry_name(ClassSystem::S4, type_ident, trait_name);
         let receiver = method.receiver.as_deref().unwrap_or("x");
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions);
@@ -1068,7 +1062,7 @@ fn generate_trait_s7_r_wrapper(
 
     // Generate S7 generics + methods for instance methods
     for method in &instance_methods {
-        let generic_name = format!("s7_trait_{}_{}", trait_name, method.r_method_name());
+        let generic_name = method.r_entry_name(ClassSystem::S7, type_ident, trait_name);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions);
 

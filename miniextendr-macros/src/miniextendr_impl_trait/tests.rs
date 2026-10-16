@@ -1205,6 +1205,7 @@ fn trait_method_no_na_checks_the_converted_value() {
         &format_ident!("Foo"),
         &format_ident!("Dosing"),
         &syn::parse_quote!(Dosing),
+        ClassSystem::Env,
     )
     .to_string();
     for (binding, message) in [("d", "'d' must not be NA"), ("doses", "need doses")] {
@@ -2918,6 +2919,7 @@ fn trait_static_methods_keep_r_values_on_the_main_thread() {
             &format_ident!("Foo"),
             &format_ident!("Source"),
             &syn::parse_quote!(Source),
+            ClassSystem::Env,
         )
         .to_string();
         assert_eq!(
@@ -3093,4 +3095,47 @@ fn unsafe_trait_impl_methods_require_skip() {
     let methods =
         vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap();
     assert!(methods[0].skip);
+}
+
+#[test]
+fn trait_none_errors_follow_class_entry_names() {
+    for (system, instance, static_name) in [
+        (ClassSystem::Env, "read", "load"),
+        (ClassSystem::R6, "read", "load"),
+        (ClassSystem::S3, "read", "load"),
+        (ClassSystem::S4, "s4_trait_Scale_read", "Meter_Scale_load"),
+        (ClassSystem::S7, "s7_trait_Scale_read", "load"),
+        (ClassSystem::Vctrs, "read", "load"),
+    ] {
+        let keyword = system.to_ident();
+        let out = trait_impl_expansion(
+            quote::quote!(#keyword),
+            syn::parse_quote! {
+                impl Scale for Meter {
+                    #[miniextendr(r_name = "read")]
+                    fn rust_read(&self) -> Option<i32> { None }
+                    #[miniextendr(r_name = "load")]
+                    fn rust_load() -> Option<i32> { None }
+                }
+            },
+        );
+        for name in [instance, static_name] {
+            assert!(
+                out.contains(&format!("`{name}()` returned no value")),
+                "{out}"
+            );
+        }
+    }
+    for keyword in [quote::quote!(s3), quote::quote!(s4)] {
+        let out = trait_impl_expansion(
+            keyword.clone(),
+            syn::parse_quote! {
+                impl Scale for Meter {
+                    #[miniextendr(#keyword(generic = "lookup"))]
+                    fn rust_read(&self) -> Option<i32> { None }
+                }
+            },
+        );
+        assert!(out.contains("`lookup()` returned no value"), "{out}");
+    }
 }

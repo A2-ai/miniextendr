@@ -523,11 +523,7 @@ impl<'a> MethodContext<'a> {
         // Explicit `generic = ".."` wins; otherwise the R-facing method name
         // (`r_name` / `postfix` / Rust ident) doubles as the generic, so a
         // renamed S3/S7 instance method dispatches under its R name.
-        self.method
-            .method_attrs
-            .generic
-            .clone()
-            .unwrap_or_else(|| self.method.r_method_name())
+        self.method.r_generic_name()
     }
 
     /// Generate a source location comment for this method.

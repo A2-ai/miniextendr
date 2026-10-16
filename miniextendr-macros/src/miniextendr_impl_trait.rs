@@ -218,6 +218,33 @@ impl TraitMethod {
             .unwrap_or_else(|| crate::naming::ident_name(&self.ident))
     }
 
+    /// Canonical R entry, shared by dispatch generation and None diagnostics.
+    /// Trait namespace members keep their member name, except S4's flat
+    /// namespace functions. S4/S7 instance generics include the trait name.
+    fn r_entry_name(
+        &self,
+        class_system: ClassSystem,
+        type_ident: &syn::Ident,
+        trait_name: &syn::Ident,
+    ) -> String {
+        let name = self.r_method_name();
+        if self.has_self {
+            match class_system {
+                ClassSystem::S3 | ClassSystem::Vctrs => self.generic.clone().unwrap_or(name),
+                ClassSystem::S4 => self
+                    .generic
+                    .clone()
+                    .unwrap_or_else(|| format!("s4_trait_{trait_name}_{name}")),
+                ClassSystem::S7 => format!("s7_trait_{trait_name}_{name}"),
+                ClassSystem::Env | ClassSystem::R6 => name,
+            }
+        } else if class_system == ClassSystem::S4 {
+            method_context::trait_namespace_target(class_system, type_ident, trait_name, &name)
+        } else {
+            name
+        }
+    }
+
     /// Generates the C wrapper function identifier: `C_{crate}_{Type}__{Trait}__{method}`.
     ///
     /// This is the symbol name registered with R via `R_CallMethodDef` for `.Call()` access.
@@ -1014,7 +1041,9 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Generate C wrappers
     let c_wrappers: Vec<TokenStream> = methods
         .iter()
-        .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
+        .map(|m| {
+            generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path, class_system)
+        })
         .collect();
 
     // Generate R wrappers

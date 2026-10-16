@@ -119,7 +119,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     for ctx in parsed_impl.instance_method_contexts() {
         let ctx = ctx.with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
         lines.push(ctx.source_comment(type_ident));
-        let generic_name = ctx.generic_name();
+        let generic_name = ctx.method.r_entry_name(parsed_impl);
         // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
         let method_class_suffix = ctx
             .class_suffix()
@@ -262,7 +262,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(ctx.source_comment(type_ident));
         // Static methods get a prefix to avoid naming conflicts
         let method_name = ctx.method.r_method_name();
-        let fn_name = format!("{}_{}", class_name.to_lowercase(), method_name);
+        let fn_name = ctx.method.r_entry_name(parsed_impl);
 
         let mx_doc = ctx.choice_param_docs();
         let doc_tags = parsed_impl.static_doc_tags(

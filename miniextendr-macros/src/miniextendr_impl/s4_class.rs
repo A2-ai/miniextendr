@@ -183,7 +183,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
         let start = method.ident.span().start();
-        let method_name = s4_generic_name(method);
+        let method_name = method.r_entry_name(parsed_impl);
         w.member_names.push(format!(
             "the S4 method of `{method_name}` for `{class_name}`"
         ));
@@ -277,7 +277,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     for ctx in parsed_impl.static_method_contexts() {
         lines.push(ctx.source_comment(type_ident));
         let method_name = ctx.method.r_method_name();
-        let fn_name = format!("{}_{}", class_name, method_name);
+        let fn_name = ctx.method.r_entry_name(parsed_impl);
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
