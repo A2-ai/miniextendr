@@ -1,14 +1,18 @@
 //! Strict returns of slices, boxed slices and arrays (#1684), driven by
 //! `tests/testthat/test-strict-containers.R`.
 //!
-//! Each fixture returns in-range values, or values past `i32::MAX` when `big`
-//! is true. Under `strict` the first give integer vectors and the second
-//! raise, naming every failing element; the `lax_*` twins show what the same
-//! shape does without `strict` (a double vector once a value is too large).
+//! Each fixture returns in-range values, or values outside R's integer range
+//! when `big` is true. Under `strict` the first give integer vectors and the
+//! second raise, naming every failing element; the `lax_*` twins show what the
+//! same shape does without `strict` (a double vector once a value is too large).
 
 use miniextendr_api::miniextendr;
 
 const BIG: i64 = 3_000_000_000;
+
+/// The `isize` outside R's integer range on every target: `i32::MIN`, which R
+/// reserves for `NA_integer_`. A 32-bit `isize` (wasm32) cannot hold `BIG`.
+const BIG_ISIZE: isize = -2_147_483_648;
 
 fn values(big: bool) -> Vec<i64> {
     if big {
@@ -87,14 +91,14 @@ pub fn lax_boxed_rows_i64(big: bool) -> Vec<Box<[i64]>> {
 /// @noRd
 #[miniextendr(noexport, strict)]
 pub fn strict_array_rows_isize(big: bool) -> Vec<[isize; 2]> {
-    let last = if big { 3_000_000_000 } else { 4 };
+    let last = if big { BIG_ISIZE } else { 4 };
     vec![[1, 2], [3, last]]
 }
 
 /// @noRd
 #[miniextendr(noexport)]
 pub fn lax_array_rows_isize(big: bool) -> Vec<[isize; 2]> {
-    let last = if big { 3_000_000_000 } else { 4 };
+    let last = if big { BIG_ISIZE } else { 4 };
     vec![[1, 2], [3, last]]
 }
 
