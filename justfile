@@ -870,19 +870,13 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 # tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
 # as a source-mode build side effect. Their script interpreter snapshots and
 # restores the exact starting lockfile, even after failure (#1992).
-# devtools::test() defaults to stop_on_failure = FALSE, which exits 0 when
-# expectations fail. The R test recipes pass stop_on_failure = TRUE: testthat
-# still runs every test, then errors if any failed (set_max_fails(Inf) keeps
-# it from stopping early), so a failure fails the recipe.
+# The R test recipes run through scripts/r-test.R: every test runs, then the
+# recipe exits 1 if any failed. FILTER is positional: `just devtools-test cfg-gates`.
 # Load and test rpkg with devtools
 [script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", stop_on_failure = TRUE)'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", stop_on_failure = TRUE, filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # The plain suite skips the gctorture-heavy blocks (~32 of ~34 min); they run
 # only when MINIEXTENDR_STRESS is true (rpkg/tests/testthat/helper-gc-stress.R).
@@ -893,11 +887,7 @@ devtools-test FILTER="": _assert-no-vendor-leak devtools-document
 devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
     export MINIEXTENDR_STRESS=true
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", stop_on_failure = TRUE)'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", stop_on_failure = TRUE, filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R rpkg "{{FILTER}}"
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
@@ -1101,11 +1091,7 @@ minirextendr-document:
 [script("bash")]
 minirextendr-test FILTER="":
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
-    if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", stop_on_failure = TRUE)'
-    else
-      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", stop_on_failure = TRUE, filter = "{{FILTER}}")'
-    fi
+    Rscript scripts/r-test.R minirextendr "{{FILTER}}"
 
 # Check minirextendr R package with devtools::check
 minirextendr-check:
@@ -1146,7 +1132,7 @@ minirextendr-rcmdcheck:
 minirextendr-roundtrip:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     export MINIEXTENDR_RUN_E2E=1
-    Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", stop_on_failure = TRUE, filter = "templates")'
+    Rscript scripts/r-test.R minirextendr templates
 
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
