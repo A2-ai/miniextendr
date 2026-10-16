@@ -18,6 +18,27 @@
 use miniextendr_api::condition::{ConditionData, RCondition, RConditionData, RError};
 use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 
+// Generated condition probes must ignore consumer blanket methods (#2020).
+#[allow(dead_code)]
+pub(super) trait ConsumerConditionMethods {
+    fn __mx_classed_parts(&self) -> Option<miniextendr_api::condition::ErrParts> {
+        panic!("consumer classed probe")
+    }
+    fn __mx_fallback_parts(&self, _: &str) -> miniextendr_api::condition::ErrParts {
+        panic!("consumer fallback probe")
+    }
+    fn __mx_conversion_parts(&self, _: bool) -> miniextendr_api::condition::ErrParts {
+        panic!("consumer conversion probe")
+    }
+    fn __mx_conversion_expectation(&self) -> Option<String> {
+        panic!("consumer expectation probe")
+    }
+    fn __mx_conversion_arg_message(&self, _: &str) -> Option<String> {
+        panic!("consumer argument probe")
+    }
+}
+impl<T> ConsumerConditionMethods for T {}
+
 // region: RConditionData on a package error enum
 
 /// Stand-in for a downstream package's thiserror-style error enum.

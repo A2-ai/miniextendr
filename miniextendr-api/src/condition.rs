@@ -1732,103 +1732,37 @@ pub struct ErrParts {
     pub call: ConditionCall,
 }
 
-/// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionData`.
-///
-/// The generated code calls `(&e).__mx_classed_parts()` with both first-stage
-/// traits in scope. Method resolution tries the receiver type `&E` by value
-/// first, which only this impl (on `E`, taking `&self`) satisfies; the
-/// [`ErrPartsUnclassed`] arm on `&E` needs one more auto-ref and is only
-/// reached when `E` does not implement [`RConditionData`]. It yields `None`,
-/// and the second stage ([`ErrPartsSerde`] / [`ErrPartsDebug`]) decides.
-///
-/// Two two-way probes rather than one three-way probe: the `Serialize` and
-/// `Debug` bounds both hold for `&E` whenever they hold for `E`, so a single
-/// method name with three impls at increasing reference depth is ambiguous at
-/// the first step. Each stage has exactly one impl on `E` and one on `&E`.
+/// Bound-based strategies for the generated condition probes.
 #[doc(hidden)]
-pub trait ErrPartsClassed {
-    fn __mx_classed_parts(&self) -> Option<ErrParts>;
-}
-
-impl<E: RConditionData> ErrPartsClassed for E {
-    #[track_caller]
-    fn __mx_classed_parts(&self) -> Option<ErrParts> {
-        Some(ErrParts {
-            message: self.message(),
-            class: self.class(),
-            data: check_condition_data(self.data()),
-            call: self.call(),
-        })
-    }
-}
-
-/// First stage, fallback arm: no [`RConditionData`] impl.
-#[doc(hidden)]
-pub trait ErrPartsUnclassed {
-    fn __mx_classed_parts(&self) -> Option<ErrParts>;
-}
-
-impl<E> ErrPartsUnclassed for &E {
-    fn __mx_classed_parts(&self) -> Option<ErrParts> {
-        None
-    }
-}
-
-/// Second stage, preferred arm: `E: Serialize + Display` under the `serde`
-/// feature, classed via [`serde_err_parts`] with the defaults (`kind` tag,
-/// the `<crate>_error` prefix the macro passes in, no skip / rename).
-/// `#[miniextendr(serde_error(..))]` bypasses the probe with explicit options.
-///
-/// The trait exists without the feature so the generated `use` resolves; it
-/// then has no impl and every type takes the [`ErrPartsDebug`] arm.
-#[doc(hidden)]
-pub trait ErrPartsSerde {
-    fn __mx_fallback_parts(&self, prefix: &str) -> ErrParts;
-}
-
-#[cfg(feature = "serde")]
-impl<E: ::serde::Serialize + std::fmt::Display> ErrPartsSerde for E {
-    #[track_caller]
-    fn __mx_fallback_parts(&self, prefix: &str) -> ErrParts {
-        serde_err_parts(self, "kind", prefix, &[], &[])
-    }
-}
-
-/// Second stage, fallback arm: any `E: Debug` (the historical
-/// `format!("{e:?}")` rendering, no class, no data).
-#[doc(hidden)]
-pub trait ErrPartsDebug {
-    fn __mx_fallback_parts(&self, prefix: &str) -> ErrParts;
-}
-
-impl<E: std::fmt::Debug> ErrPartsDebug for &E {
-    fn __mx_fallback_parts(&self, _prefix: &str) -> ErrParts {
-        ErrParts {
-            message: format!("{self:?}"),
-            class: Vec::new(),
-            data: None,
-            call: ConditionCall::Inherit,
-        }
-    }
-}
+pub mod probe;
 
 /// Internal: the `Err(e)` probe used by generated wrappers. Not public API.
 ///
-/// `$prefix` is the family class for the serde arm (`<crate>_error`, computed
-/// by the macro from `CARGO_CRATE_NAME` at expansion time).
+/// Prefer `RConditionData`, then (with serde) `Serialize + Display`, then
+/// `Debug`. `$prefix` is the serde family class (`<crate>_error`), evaluated
+/// only when the classed stage declines the error.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_result_err_parts {
     ($e:expr, $prefix:expr) => {{
-        #[allow(unused_imports)]
-        use $crate::condition::{
-            ErrPartsClassed as _, ErrPartsDebug as _, ErrPartsSerde as _, ErrPartsUnclassed as _,
-        };
         match &$e {
-            __mx_e => match __mx_e.__mx_classed_parts() {
-                ::core::option::Option::Some(parts) => parts,
-                ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
-            },
+            __mx_e => {
+                let __mx_probe = $crate::condition::probe::Probe::<
+                    _,
+                    $crate::condition::probe::ClassedParts,
+                >::new(__mx_e);
+                #[allow(clippy::needless_borrow)] // References select specialization tiers.
+                match (&__mx_probe)[()].classed(__mx_e) {
+                    ::core::option::Option::Some(parts) => parts,
+                    ::core::option::Option::None => {
+                        let __mx_fallback = $crate::condition::probe::Probe::<
+                            _,
+                            $crate::condition::probe::FallbackParts,
+                        >::new(__mx_e);
+                        (&__mx_fallback)[()].fallback(__mx_e, $prefix)
+                    }
+                }
+            }
         }
     }};
 }
@@ -1837,157 +1771,14 @@ macro_rules! __mx_result_err_parts {
 
 // region: Classed argument-conversion errors
 
-/// Conversion probe, preferred arm: `E: RConditionData`.
+/// Internal: the argument-conversion `Err(e)` probe used by generated wrappers.
+/// Yields the error's own `ErrParts`; `conversion_condition_value` adds context.
 ///
-/// When an argument fails its `TryFromSexp` conversion, the generated wrapper
-/// calls `(&e).__mx_conversion_parts(expected_known)` with the three
-/// conversion-probe traits in scope (see [`crate::__mx_conversion_err_parts!`]).
-/// This impl, on `E` taking `&self`, matches the receiver `&E` by value, so a
-/// `TryFromSexp::Error` that implements [`RConditionData`] contributes its
-/// class vector, message and data. [`ConversionErrBuiltin`] matches at the
-/// same step for the built-in conversion errors, which never implement
-/// [`RConditionData`], so the two never compete. [`ConversionErrDisplay`]
-/// needs one more auto-ref and is only reached otherwise.
-///
-/// Unlike the `Result` probe ([`crate::__mx_result_err_parts!`]) there is no
-/// serde stage and the fallback is `Display`, not `Debug`: the generated code
-/// has always rendered conversion errors with `Display`, which every built-in
-/// error type (`SexpError`, `MatchArgError`, ...) implements.
-#[doc(hidden)]
-pub trait ConversionErrClassed {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
-}
-
-impl<E: RConditionData> ConversionErrClassed for E {
-    #[track_caller]
-    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
-        ErrParts {
-            message: self.message(),
-            class: self.class(),
-            data: check_condition_data(self.data()),
-            call: self.call(),
-        }
-    }
-}
-
-/// Conversion probe, built-in arm: the framework's own conversion errors
-/// ([`SexpError`](crate::from_r::SexpError) and the
-/// [`SexpTypeError`](crate::from_r::SexpTypeError) /
-/// [`SexpClassError`](crate::from_r::SexpClassError) /
-/// [`SexpLengthError`](crate::from_r::SexpLengthError) /
-/// [`SexpNaError`](crate::from_r::SexpNaError) it wraps, and
-/// [`MatchArgError`](crate::match_arg::MatchArgError)), reworded for R
-/// users (#1591).
-///
-/// Their `Display` text is written for the package author: SEXPTYPE names
-/// (`expected INTSXP, got STRSXP`) and a variant prefix (`invalid value: ...`).
-/// The condition message says instead what the argument should have been,
-/// with the reason from `SexpError::r_reason` (`got character`,
-/// `got length 2`, `NA is not allowed`, the invalid value's own text, ...)
-/// or `MatchArgError::r_reason` (`got "zzz"`).
-///
-/// `expected_known` is set by the macro when it knows the argument's R-facing
-/// expectation and puts it in the message prefix (`'x' must be a single
-/// integer`); the reason then does not repeat it. The type names are those of
-/// [`sexptype_name`](crate::typed_list::sexptype_name) (`numeric` for a
-/// double, `list`, `NULL`, ...).
-#[doc(hidden)]
-pub trait ConversionErrBuiltin {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
-}
-
-/// The R-facing reason for a built-in conversion error, see
-/// [`ConversionErrBuiltin`].
-fn builtin_reason_parts(message: String) -> ErrParts {
-    ErrParts {
-        message,
-        class: Vec::new(),
-        data: None,
-        call: ConditionCall::Inherit,
-    }
-}
-
-impl ConversionErrBuiltin for crate::from_r::SexpTypeError {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(self.r_reason(expected_known))
-    }
-}
-
-impl ConversionErrBuiltin for crate::from_r::SexpClassError {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(self.r_reason(expected_known))
-    }
-}
-
-impl ConversionErrBuiltin for crate::from_r::SexpLengthError {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(self.r_reason(expected_known))
-    }
-}
-
-impl ConversionErrBuiltin for crate::from_r::SexpNaError {
-    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
-        builtin_reason_parts("NA is not allowed".to_string())
-    }
-}
-
-/// A `SexpError` also carries the classes and fields of the check refusals
-/// ([`SexpError::Condition`](crate::from_r::SexpError::Condition)) whose
-/// reasons its message reports, directly or from an `Either` arm.
-impl ConversionErrBuiltin for crate::from_r::SexpError {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        let mut parts = builtin_reason_parts(self.r_reason(expected_known));
-        let mut data = ConditionData::new();
-        for refusal in self.reported_conditions() {
-            for class in refusal.classes() {
-                if !parts.class.contains(class) {
-                    parts.class.push(class.clone());
-                }
-            }
-            for (name, value) in refusal.fields() {
-                if !data.iter().any(|(seen, _)| seen == name) {
-                    data.push((name.clone(), value.clone()));
-                }
-            }
-        }
-        parts.data = check_condition_data((!data.is_empty()).then_some(data));
-        parts
-    }
-}
-
-impl ConversionErrBuiltin for crate::match_arg::MatchArgError {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(self.r_reason(expected_known))
-    }
-}
-
-/// Conversion probe, fallback arm: any `E: Display`. The message is the
-/// error's `Display` text, with no class and no data, so the condition keeps
-/// the plain `rust_error` class vector.
-#[doc(hidden)]
-pub trait ConversionErrDisplay {
-    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
-}
-
-impl<E: std::fmt::Display> ConversionErrDisplay for &E {
-    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
-        ErrParts {
-            message: self.to_string(),
-            class: Vec::new(),
-            data: None,
-            call: ConditionCall::Inherit,
-        }
-    }
-}
-
-/// Internal: the argument-conversion `Err(e)` probe used by generated
-/// wrappers. Not public API. Yields the error's own [`ErrParts`];
-/// [`crate::error_value::conversion_condition_value`] adds the parameter
-/// context.
-///
-/// The second argument is `expected_known` (see [`ConversionErrBuiltin`]):
-/// `true` when the message prefix already states what the argument should
-/// be. It defaults to `false`.
+/// Framework errors use R-facing reasons (`got character` rather than
+/// `expected INTSXP, got STRSXP`). User `RConditionData` errors supply their
+/// message, classes and fields; all other errors use `Display`, never serde.
+/// `expected_known` is true when the prefix already states what the argument
+/// should be, so the reason does not repeat it. It defaults to false.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_conversion_err_parts {
@@ -1995,155 +1786,56 @@ macro_rules! __mx_conversion_err_parts {
         $crate::__mx_conversion_err_parts!($e, false)
     };
     ($e:expr, $expected_known:expr) => {{
-        #[allow(unused_imports)]
-        use $crate::condition::{
-            ConversionErrBuiltin as _, ConversionErrClassed as _, ConversionErrDisplay as _,
-        };
         match &$e {
-            __mx_e => __mx_e.__mx_conversion_parts($expected_known),
+            __mx_e => {
+                let __mx_probe = $crate::condition::probe::Probe::<
+                    _,
+                    $crate::condition::probe::ConversionParts,
+                >::new(__mx_e);
+                #[allow(clippy::needless_borrow)]
+                (&&__mx_probe)[()].conversion(__mx_e, $expected_known)
+            }
         }
     }};
 }
 
-/// Expectation probe, built-in arm: an error that knows what the value should
-/// have been. A `match_arg` choice error (`MatchArgError`, or a `SexpError`
-/// carrying one, as `#[derive(MatchArg)]`'s `TryFromSexp` returns) names its
-/// choices: `one of "fast", "slow"`; a class error names the class
-/// (`a data frame`); an `Either` whose arms both refused the kind of value
-/// names both (`one of "fast", "slow", or numeric`).
-#[doc(hidden)]
-pub trait ConversionExpectBuiltin {
-    fn __mx_conversion_expectation(&self) -> Option<String>;
-}
-
-impl ConversionExpectBuiltin for crate::from_r::SexpError {
-    fn __mx_conversion_expectation(&self) -> Option<String> {
-        self.r_expectation()
-    }
-}
-
-impl ConversionExpectBuiltin for crate::match_arg::MatchArgError {
-    fn __mx_conversion_expectation(&self) -> Option<String> {
-        Some(self.expectation())
-    }
-}
-
-/// Expectation probe, fallback arm: any other error type says nothing about
-/// what the value should have been.
-#[doc(hidden)]
-pub trait ConversionExpectNone {
-    fn __mx_conversion_expectation(&self) -> Option<String>;
-}
-
-impl<E> ConversionExpectNone for &E {
-    fn __mx_conversion_expectation(&self) -> Option<String> {
-        None
-    }
-}
-
-/// Internal: what a failed argument conversion's error says the value should
-/// have been, for a parameter whose Rust type gives the macro no R-facing
-/// expectation (#1594). `Some("one of \"fast\", \"slow\"")` for a `match_arg`
-/// choice error, `Some("a data frame")` for a class error, the joined
-/// expectation of an `Either` whose arms both refused the kind of value,
-/// `None` otherwise. Not public API.
+/// Internal: what the conversion error says the value should have been.
+/// A built-in `SexpError` or `MatchArgError` can supply `one of "fast", "slow"`,
+/// `a data frame`, or an Either's joined expectation. Other errors return None.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_conversion_expectation {
     ($e:expr) => {{
-        #[allow(unused_imports)]
-        use $crate::condition::{ConversionExpectBuiltin as _, ConversionExpectNone as _};
         match &$e {
-            __mx_e => __mx_e.__mx_conversion_expectation(),
+            __mx_e => {
+                let __mx_probe = $crate::condition::probe::Probe::<
+                    _,
+                    $crate::condition::probe::Expectation,
+                >::new(__mx_e);
+                #[allow(clippy::needless_borrow)]
+                (&__mx_probe)[()].expectation(__mx_e)
+            }
         }
     }};
 }
 
-/// Whole-message probe, built-in arm: a `match_arg` choice error, as a
-/// [`MatchArgError`](crate::match_arg::MatchArgError) or at the top of a
-/// `SexpError` (`#[derive(MatchArg)]`'s `TryFromSexp` returns one), words the
-/// whole argument error the way the wrapper's R-side `match_arg` check
-/// (`.miniextendr_match_arg`) does, from the same
-/// [`MatchArgError::arg_error`](crate::match_arg::MatchArgError::arg_error)
-/// (#1767): `'mode' should be one of "fast", "slow"`, `'mode' must be of
-/// length 1`, `'mode' must be NULL or a character vector`. So a `match_arg`
-/// type converted without `#[miniextendr(match_arg)]` and one checked by the
-/// wrapper raise the same message.
-///
-/// A choice error inside an `Either` is not one: the `Either` names both of
-/// its arms (`'x' must be one of "oral", "bolus", or a single double: got
-/// logical`).
-#[doc(hidden)]
-pub trait ConversionArgMessageBuiltin {
-    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
-}
-
-impl ConversionArgMessageBuiltin for crate::match_arg::MatchArgError {
-    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String> {
-        Some(self.arg_error(name).message().to_string())
-    }
-}
-
-impl ConversionArgMessageBuiltin for crate::from_r::SexpError {
-    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String> {
-        match self {
-            crate::from_r::SexpError::MatchArg(e) => Some(e.arg_error(name).message().to_string()),
-            // A type's check refusal (`check_sexp` under `Option<T>` /
-            // `Vec<T>`, or a conversion whose error converted into
-            // `SexpError`) with its own whole message (#1833).
-            crate::from_r::SexpError::Condition(e) => e.argument_message_str().map(str::to_string),
-            _ => None,
-        }
-    }
-}
-
-/// Whole-message probe, classed arm: any [`RConditionData`] answers with its
-/// [`argument_message`](RConditionData::argument_message), so a type's own
-/// conversion error can word the whole argument error (#1833). Same autoref
-/// level as [`ConversionArgMessageBuiltin`], like [`ConversionErrClassed`]:
-/// no built-in error type implements [`RConditionData`].
-#[doc(hidden)]
-pub trait ConversionArgMessageClassed {
-    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
-}
-
-impl<E: RConditionData> ConversionArgMessageClassed for E {
-    fn __mx_conversion_arg_message(&self, _name: &str) -> Option<String> {
-        self.argument_message()
-    }
-}
-
-/// Whole-message probe, fallback arm: any other error leaves the message to
-/// the prefix and the error's reason.
-#[doc(hidden)]
-pub trait ConversionArgMessageNone {
-    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
-}
-
-impl<E> ConversionArgMessageNone for &E {
-    fn __mx_conversion_arg_message(&self, _name: &str) -> Option<String> {
-        None
-    }
-}
-
-/// Internal: the whole message of a failed argument conversion whose error
-/// words it itself (a `match_arg` choice error, see
-/// [`ConversionArgMessageBuiltin`], or an error with an
-/// [`argument_message`](RConditionData::argument_message), see
-/// [`ConversionArgMessageClassed`]), for the argument `$name`; `None`
-/// otherwise. [`crate::error_value::conversion_condition_value`] then uses it
-/// in place of `<prefix>: <reason>`. Not public API.
+/// Internal: the whole argument message supplied by `RConditionData`, or by a
+/// top-level match_arg / check refusal. `conversion_condition_value` uses it
+/// instead of `<prefix>: <reason>`. A match_arg error nested inside an Either
+/// is a reason, not a whole argument message. Other errors return None.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_conversion_arg_message {
     ($e:expr, $name:expr) => {{
-        #[allow(unused_imports)]
-        use $crate::condition::{
-            ConversionArgMessageBuiltin as _, ConversionArgMessageClassed as _,
-            ConversionArgMessageNone as _,
-        };
         match &$e {
-            __mx_e => __mx_e.__mx_conversion_arg_message($name),
+            __mx_e => {
+                let __mx_probe = $crate::condition::probe::Probe::<
+                    _,
+                    $crate::condition::probe::ArgumentMessage,
+                >::new(__mx_e);
+                #[allow(clippy::needless_borrow)]
+                (&&__mx_probe)[()].argument_message(__mx_e, $name)
+            }
         }
     }};
 }
@@ -2271,7 +1963,7 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 ///
 /// Reached two ways: automatically, for every `Result<T, E>` whose `E` is
 /// `Serialize + Display` without an [`RConditionData`] impl (the
-/// [`ErrPartsSerde`] probe arm, defaults only), or explicitly through
+/// [`crate::__mx_result_err_parts!`] probe, defaults only), or explicitly through
 /// `#[miniextendr(serde_error(tag = .., prefix = .., skip(..), rename(..)))]`,
 /// which carries the options and always takes this path.
 ///

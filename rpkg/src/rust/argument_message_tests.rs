@@ -12,6 +12,9 @@
 //! and `Spacing` a scalar-backed type whose check also runs once on a whole
 //! `Vec`.
 
+#[allow(unused_imports)] // Regression: generated probes must ignore this trait.
+use crate::classed_result_tests::ConsumerConditionMethods as _;
+
 use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{List, SEXP, SexpExt, TryFromSexp, miniextendr};
 

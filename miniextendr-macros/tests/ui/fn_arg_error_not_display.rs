@@ -4,7 +4,7 @@
 //! A failed conversion becomes an R condition built from the error: its
 //! `RConditionData` class, message and data when it has the impl, its
 //! `Display` text otherwise. With neither, the generated `Err` arm's probe
-//! (`__mx_conversion_err_parts!`) finds no method and names both bounds.
+//! (`__mx_conversion_err_parts!`) requires Display on its fallback.
 
 use miniextendr_api::{SEXP, TryFromSexp};
 use miniextendr_macros::miniextendr;

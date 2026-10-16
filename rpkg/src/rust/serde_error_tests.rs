@@ -17,6 +17,9 @@
 //! raises the reserved-name error, and a rename onto a name the variant already
 //! carries raises the duplicate-name error (#1459).
 
+#[allow(unused_imports)] // Regression: generated probes must ignore this trait.
+use crate::classed_result_tests::ConsumerConditionMethods as _;
+
 use crate::serde::Serialize;
 use miniextendr_api::miniextendr;
 
