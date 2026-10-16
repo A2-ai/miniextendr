@@ -2197,8 +2197,8 @@ impl ParsedMethod {
             &mut method_attrs.per_param,
             &mut method_attrs.defaults,
         )?;
-        for arg in &peeled_sig.inputs {
-            let syn::FnArg::Typed(pt) = arg else {
+        for (arg, original) in peeled_sig.inputs.iter().zip(&item.sig.inputs) {
+            let (syn::FnArg::Typed(pt), syn::FnArg::Typed(original)) = (arg, original) else {
                 continue;
             };
             let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
@@ -2214,7 +2214,9 @@ impl ParsedMethod {
                 entry.preconditions,
                 &name,
                 true,
-                &pt.ty,
+                // A marker conflict belongs to the written Checked/Unchecked
+                // type, before peeling; normalized names still come from pt.
+                &original.ty,
             )?;
         }
 
