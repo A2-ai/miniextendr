@@ -312,8 +312,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // Class-level @param tags (in class_doc_tags) are inherited by all methods
         // via roxygen2 8.0.0 — skip emitting a placeholder for params covered there.
         let ctor_mx_doc = ctx.choice_param_docs();
-        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
-            let param_name = param.split('=').next().unwrap_or(param).trim();
+        for param in crate::roxygen::split_r_formals(&ctx.params) {
+            let param_name = crate::roxygen::formal_name(param);
             if param_name == ".ptr" {
                 continue;
             }
@@ -530,8 +530,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // document this parameter, which only the wrapper writer can see.
         let method_mx_doc = ctx.choice_param_docs();
         let r_method_name = ctx.method.r_method_name();
-        for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
-            let param_name = param.split('=').next().unwrap_or(param).trim();
+        for param in crate::roxygen::split_r_formals(&ctx.params) {
+            let param_name = crate::roxygen::formal_name(param);
             let already_documented =
                 crate::roxygen::param_documented(&ctx.method.doc_tags, param_name);
             if !already_documented {
@@ -742,4 +742,43 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 #[cfg(test)]
 pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     generate_r6_class(parsed_impl).render()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parameter_docs_do_not_split_default_expressions() {
+        let parsed = super::ParsedImpl::parse(
+            syn::parse_quote!(r6),
+            syn::parse_quote! {
+                impl Choices {
+                    #[miniextendr(choices(mode = "low, mid, high"),
+                        defaults(nested = "list(c(1L, 2L), 3L)"))]
+                    pub fn new(mode: String, nested: SEXP) -> Self { unimplemented!() }
+
+                    #[miniextendr(choices(mode = "low, mid, high"),
+                        defaults(value = "c(1L, 2L)"))]
+                    pub fn pick(&self, mode: String, value: Vec<i32>) {}
+                }
+            },
+        )
+        .unwrap();
+        let wrapper = super::generate_r6_r_wrapper(&parsed);
+        assert_eq!(
+            wrapper.matches("@param mode One of").count(),
+            2,
+            "{wrapper}"
+        );
+        assert_eq!(
+            wrapper.matches(".__MX_INHERITED_PARAM__(").count(),
+            2,
+            "{wrapper}"
+        );
+        for (method, param) in [("initialize", "nested"), ("pick", "value")] {
+            assert!(
+                wrapper.contains(&format!(r#"method="{method}", param="{param}""#)),
+                "{wrapper}"
+            );
+        }
+    }
 }

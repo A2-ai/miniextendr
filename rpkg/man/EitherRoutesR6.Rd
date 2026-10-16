@@ -52,8 +52,6 @@ number.
     \describe{
       \item{\code{routes}}{One or more of "oral", "bolus", "infusion", or a data frame.}
       \item{\code{tiers}}{One or more of "low", "mid", "high", or a number; omitting the argument means no choice.}
-      \item{\code{"mid"}}{(no documentation available)}
-      \item{\code{"high")}}{(no documentation available)}
     }
     \if{html}{\out{</div>}}
   }

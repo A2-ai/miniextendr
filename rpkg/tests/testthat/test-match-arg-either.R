@@ -257,6 +257,8 @@ test_that("method Either choice params name the other kind in their @param line"
   for (topic in c("EitherRouteS3", "EitherRouteS7", "EitherRouteVctrs")) {
     expect_match(rd_text(topic), level_or_number, fixed = TRUE)
   }
+  # Commas inside the choices default must not become bogus parameter names.
+  expect_no_match(rd_text("EitherRoutesR6"), "no documentation available", fixed = TRUE)
   # The S7 constructor's `start` (inlined in `new_class()`).
   expect_match(
     rd_text("EitherRouteS7"),
