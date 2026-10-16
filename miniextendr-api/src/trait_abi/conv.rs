@@ -11,17 +11,18 @@
 //! 2. Convert Rust return values to SEXP
 //! 3. Return structured argument errors inside the shim's unwind boundary
 //!
-//! This module provides a uniform interface for these conversions.
+//! The shims convert their arguments themselves, with the C wrappers'
+//! structured `kind = "conversion"` condition (#2029); this module holds the
+//! other conversions: return values, the View's arguments and results, and
+//! the arity check.
 //!
 //! ## Error Handling
 //!
-//! Generated shims emit typed argument conversions and return structured
-//! conversion conditions directly, preserving custom error classes and fields.
-//! These generic helpers instead panic with a diagnostic on conversion or
-//! argument-count failure. The shim's `with_r_unwind_protect_shim` catches it,
-//! so Rust-owned values are dropped before returning across the C ABI. A View
-//! re-panics with that condition for the consumer's outer boundary. Call these helpers only inside such a boundary:
-//! their panics must not cross a C ABI unguarded.
+//! These helpers panic with a diagnostic on conversion or argument-count
+//! failure. The shim's `with_r_unwind_protect_shim` catches it, so Rust-owned
+//! values are dropped before returning across the C ABI. A View re-panics with
+//! that condition for the consumer's outer boundary. Call these helpers only
+//! inside such a boundary: their panics must not cross a C ABI unguarded.
 //!
 //! ## Thread Safety
 //!
@@ -215,59 +216,7 @@ where
     T::try_from_sexp(x)
 }
 
-// region: Argument extraction helpers
-
-/// Extract and convert an argument from argv with bounds checking.
-///
-/// Checks that `index < argc` before extracting, and provides a helpful
-/// error message if out of bounds.
-///
-/// # Type Parameters
-///
-/// * `T` - Target Rust type (must implement [`TryFromSexp`])
-///
-/// # Arguments
-///
-/// * `argc` - Number of arguments
-/// * `argv` - Pointer to argument array
-/// * `index` - Index of argument to extract
-/// * `name` - Name of argument (for error messages)
-///
-/// # Returns
-///
-/// The converted argument value.
-///
-/// # Safety
-///
-/// - If `index` is in range, `argv` must point to at least `argc` valid SEXPs
-/// - Must be called on R's main thread
-///
-/// # Panics
-///
-/// Panics if `argc` is negative, `index >= argc` (missing argument), or
-/// conversion fails. Generated shims run this inside their unwind boundary.
-///
-/// # Example
-///
-/// ```ignore
-/// // In a method shim for fn foo(&self, x: i32, y: String)
-/// let x: i32 = unsafe { extract_arg(argc, argv, 0, "x") };
-/// let y: String = unsafe { extract_arg(argc, argv, 1, "y") };
-/// ```
-///
-/// [`TryFromSexp`]: crate::TryFromSexp
-#[inline]
-pub unsafe fn extract_arg<T>(argc: i32, argv: *const SEXP, index: usize, name: &str) -> T
-where
-    T: crate::TryFromSexp,
-    T::Error: std::fmt::Display,
-{
-    assert!(
-        usize::try_from(argc).is_ok_and(|len| index < len),
-        "missing argument: {name}"
-    );
-    unsafe { from_sexp(*argv.add(index)) }
-}
+// region: Arity check
 
 /// Check that the number of arguments matches expected arity.
 ///
