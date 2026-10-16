@@ -82,6 +82,7 @@ impl<T> ConsumerIterators for T {}
 pub(crate) struct ConsumerCollectionCalled;
 
 // A by-value receiver can win over an inherent method that borrows a Vec.
+#[allow(clippy::wrong_self_convention)]
 pub(crate) trait ConsumerCollections: Sized {
     fn len(self) -> ConsumerCollectionCalled {
         ConsumerCollectionCalled
