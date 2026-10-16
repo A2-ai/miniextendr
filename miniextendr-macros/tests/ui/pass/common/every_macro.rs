@@ -735,6 +735,42 @@ pub enum Nested {
     Without { id: i32 },
 }
 
+// Invisible groups around macro_rules! type fragments must not change the
+// column layout or disable readers. This fixture is also compiled by consumers
+// with hostile blanket methods and shadowed standard-library names.
+macro_rules! grouped_dataframe_rows {
+    ($scalar:ty, $nullable:ty, $values:ty) => {
+        #[derive(miniextendr_api::DataFrameRow)]
+        pub struct GroupedRow {
+            pub id: $scalar,
+            pub maybe: $nullable,
+            #[dataframe(expand)]
+            pub values: $values,
+        }
+
+        #[derive(miniextendr_api::DataFrameRow)]
+        #[dataframe(align, tag = "kind")]
+        pub enum GroupedEvent {
+            Generated {
+                id: $scalar,
+                #[dataframe(expand)]
+                values: $values,
+            },
+            Written {
+                id: i32,
+                #[dataframe(expand)]
+                values: ::std::vec::Vec<i32>,
+            },
+            Empty,
+        }
+    };
+}
+grouped_dataframe_rows!(
+    i32,
+    ::core::option::Option<i32>,
+    ::std::vec::Vec<i32>
+);
+
 // Rows with `try_from_dataframe` readers: every field reads back, including
 // qualified strings (#2036). Without a nested struct the `rayon` reader
 // assembles rows by index; with one it hands off to the sequential reader.

@@ -295,6 +295,19 @@ pub(super) enum FieldTypeKind<'a> {
     },
 }
 
+/// Ignore syntax-only wrappers when inspecting a field type. A macro_rules!
+/// `$ty:ty` fragment arrives in a delimiter-less Group; parentheses likewise
+/// do not change its shape. Borrow the inner AST without rewriting emitted types.
+fn ungroup_type(mut ty: &syn::Type) -> &syn::Type {
+    loop {
+        ty = match ty {
+            syn::Type::Group(group) => &group.elem,
+            syn::Type::Paren(paren) => &paren.elem,
+            _ => return ty,
+        };
+    }
+}
+
 /// Classify a field type for DataFrame column expansion.
 ///
 /// Inspects the type AST to detect:
@@ -312,6 +325,8 @@ pub(super) enum FieldTypeKind<'a> {
 /// `RefCell<T>`, `Cell<T>`, `Mutex<T>`, `RwLock<T>`.  Use
 /// `#[dataframe(as_list)]` to opt into list-column treatment explicitly.
 pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'_>> {
+    let original_ty = ty;
+    let ty = ungroup_type(ty);
     // Check for [T; N]
     if let syn::Type::Array(arr) = ty
         && let syn::Expr::Lit(syn::ExprLit {
@@ -326,11 +341,11 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
     // Check for &[T] and &[T; N]
     if let syn::Type::Reference(ref_ty) = ty {
         // &[T] → BorrowedSlice
-        if let syn::Type::Slice(slice) = &*ref_ty.elem {
+        if let syn::Type::Slice(slice) = ungroup_type(&ref_ty.elem) {
             return Ok(FieldTypeKind::BorrowedSlice(&slice.elem));
         }
         // &[T; N] → FixedArray (same as owned)
-        if let syn::Type::Array(arr) = &*ref_ty.elem
+        if let syn::Type::Array(arr) = ungroup_type(&ref_ty.elem)
             && let syn::Expr::Lit(syn::ExprLit {
                 lit: syn::Lit::Int(lit_int),
                 ..
@@ -421,7 +436,7 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
 
             // Check for Box<[T]>
             if seg.ident == "Box"
-                && let syn::Type::Slice(slice) = inner
+                && let syn::Type::Slice(slice) = ungroup_type(inner)
             {
                 return Ok(FieldTypeKind::BoxedSlice(&slice.elem));
             }
@@ -473,7 +488,9 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
                     "isize", "u8", "u16", "u32", "u64", "u128", "usize", "String",
                 ];
                 if !KNOWN_SCALARS.contains(&name.as_str()) {
-                    return Ok(FieldTypeKind::Struct { inner_ty: ty });
+                    return Ok(FieldTypeKind::Struct {
+                        inner_ty: original_ty,
+                    });
                 }
             }
         }
@@ -509,7 +526,7 @@ pub(super) const OPTION_SCALAR_NAMES: &[&str] = &[
 /// relative paths have the same conversion support; associated types and
 /// generic payloads still need their own classification.
 fn is_known_scalar_ty(ty: &syn::Type, names: &[&str]) -> bool {
-    if let syn::Type::Path(tp) = ty
+    if let syn::Type::Path(tp) = ungroup_type(ty)
         && tp.qself.is_none()
         && let Some(seg) = tp.path.segments.last()
         && matches!(seg.arguments, syn::PathArguments::None)
@@ -528,7 +545,7 @@ pub(super) fn is_raw_scalar_ty(ty: &syn::Type) -> bool {
 
 /// The payload of `Option<T>` (possibly qualified), if `ty` is one.
 pub(super) fn option_payload(ty: &syn::Type) -> Option<&syn::Type> {
-    if let syn::Type::Path(tp) = ty
+    if let syn::Type::Path(tp) = ungroup_type(ty)
         && tp.qself.is_none()
         && let Some(seg) = tp.path.segments.last()
         && seg.ident == "Option"
@@ -580,25 +597,13 @@ pub(super) fn is_bare_reader_scalar_ty(ty: &syn::Type) -> bool {
 ///
 /// `pub(super)` so `enum_expansion.rs` can reuse it.
 pub(super) fn is_reader_scalar_ty(ty: &syn::Type) -> bool {
-    if is_bare_reader_scalar_ty(ty) {
-        return true;
-    }
-    // Option<scalar>
-    if let syn::Type::Path(tp) = ty
-        && let Some(seg) = tp.path.segments.last()
-        && seg.ident == "Option"
-        && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
-    {
-        return is_bare_reader_scalar_ty(inner);
-    }
-    false
+    is_bare_reader_scalar_ty(ty) || option_payload(ty).is_some_and(is_bare_reader_scalar_ty)
 }
 
 /// True if `ty`'s last path segment is the bare ident `String` (path-identity
 /// check, same convention as `classify_field_type`).
 fn is_string_ty(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(tp) = ty
+    if let syn::Type::Path(tp) = ungroup_type(ty)
         && let Some(seg) = tp.path.segments.last()
         && matches!(seg.arguments, syn::PathArguments::None)
     {
@@ -612,7 +617,7 @@ fn is_string_ty(ty: &syn::Type) -> bool {
 /// reader path — the `Vec<HashMap<String, V>>: TryFromSexp` impl only covers
 /// the default hasher.
 fn generic_type_arg_count(ty: &syn::Type) -> usize {
-    if let syn::Type::Path(tp) = ty
+    if let syn::Type::Path(tp) = ungroup_type(ty)
         && let Some(seg) = tp.path.segments.last()
         && let syn::PathArguments::AngleBracketed(args) = &seg.arguments
     {
@@ -675,7 +680,7 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
 /// True if `ty` is a borrowed reference (`&[T]`, `&[T; N]`, `&str`, …). Such
 /// expansion fields can't be reconstructed by value in the R→Rust reader.
 pub(super) fn field_is_borrowed_ref(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Reference(_))
+    matches!(ungroup_type(ty), syn::Type::Reference(_))
 }
 // endregion
 
@@ -1096,7 +1101,7 @@ fn resolve_struct_field(
                 // Float key check: f32/f64 classify as bare_reader_scalar but are
                 // neither Eq+Hash nor Ord, so they can't be a map key at all.
                 let is_float_ty = |t: &syn::Type| -> bool {
-                    if let syn::Type::Path(tp) = t
+                    if let syn::Type::Path(tp) = ungroup_type(t)
                         && let Some(seg) = tp.path.segments.last()
                         && matches!(seg.arguments, syn::PathArguments::None)
                     {
@@ -3460,12 +3465,20 @@ fn derive_struct_dataframe(
 
 /// Compare column types using canonical standard-library spellings, without
 /// changing the type emitted for the first variant. Recurse through containers
-/// and references, but never discard arbitrary user module paths or qself.
+/// and references, ignoring syntax-only groups and parentheses but never
+/// discarding arbitrary user module paths or qself.
 fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     use syn::visit_mut::VisitMut;
 
     struct StandardPaths;
     impl VisitMut for StandardPaths {
+        fn visit_type_mut(&mut self, ty: &mut syn::Type) {
+            if matches!(ty, syn::Type::Group(_) | syn::Type::Paren(_)) {
+                *ty = ungroup_type(ty).clone();
+            }
+            syn::visit_mut::visit_type_mut(self, ty);
+        }
+
         fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
             syn::visit_mut::visit_type_path_mut(self, ty);
             if ty.qself.is_some() {
@@ -3962,6 +3975,140 @@ mod tests {
             let error = derive_dataframe_row(input).unwrap_err().to_string();
             assert!(error.contains("`as_factor` is only valid"), "{error}");
         }
+    }
+
+    // Model both rustc's invisible fragment group and explicit parentheses,
+    // including a nested group, without normalizing the AST before the derive.
+    fn grouped_type(tokens: TokenStream) -> TokenStream {
+        let group = proc_macro2::Group::new(proc_macro2::Delimiter::None, tokens);
+        let group = proc_macro2::Group::new(proc_macro2::Delimiter::None, quote!((#group)));
+        quote!(#group)
+    }
+
+    #[test]
+    fn grouped_field_types_keep_readers_and_emitted_types() {
+        let scalar = grouped_type(quote!(i32));
+        let string = grouped_type(quote!(String));
+        let slice = grouped_type(quote!([#scalar]));
+        for field_ty in [
+            scalar.clone(),
+            grouped_type(quote!(Option<#scalar>)),
+            grouped_type(quote!([#scalar; 2])),
+            grouped_type(quote!(Vec<#scalar>)),
+            grouped_type(quote!(Box<#slice>)),
+            grouped_type(quote!(HashMap<#string, #scalar>)),
+            grouped_type(quote!(BTreeMap<#scalar, #scalar>)),
+            grouped_type(quote!(Child)),
+        ] {
+            let input: DeriveInput = syn::parse_quote! {
+                struct Row { field: #field_ty }
+            };
+            let code = expand(input);
+            assert!(
+                code.contains("fn try_from_dataframe ("),
+                "{field_ty}: {code}"
+            );
+        }
+        let ty: syn::Type = syn::parse2(grouped_type(quote!(Child))).unwrap();
+        let FieldTypeKind::Struct { inner_ty } = classify_field_type(&ty).unwrap() else {
+            panic!("grouped Child must flatten");
+        };
+        assert_eq!(inner_ty, &ty, "keep the original type for code generation");
+        let ty: syn::Type = syn::parse2(grouped_type(quote!(Option<#scalar>))).unwrap();
+        let field: syn::Field = syn::parse_quote!(value: #ty);
+        let Some(ResolvedField::Single(field)) = resolve_struct_field(&field, 0, false).unwrap()
+        else {
+            panic!("grouped Option<scalar> must be one column");
+        };
+        assert_eq!(field.ty, ty, "keep the original nullable field type");
+
+        let custom_map: syn::Type = syn::parse2(grouped_type(
+            quote!(HashMap<#string, #scalar, CustomHasher>),
+        ))
+        .unwrap();
+        let code = expand(syn::parse_quote! {
+            struct Row { value: #custom_map }
+        });
+        assert!(!code.contains("fn try_from_dataframe"), "{code}");
+    }
+
+    #[test]
+    fn groups_cannot_bypass_field_diagnostics() {
+        let scalar = grouped_type(quote!(i32));
+        let raw = grouped_type(quote!(u8));
+        let float = grouped_type(quote!(f64));
+        for (ty, expected) in [
+            (quote!(Option<#raw>), "raw vectors have no NA value"),
+            (quote!(Option<Vec<#scalar>>), "does not support `Option<…>`"),
+            (quote!(Rc<#scalar>), "does not support `Rc<…>`"),
+            (
+                quote!(HashMap<#float, #scalar>),
+                "float keys is not supported",
+            ),
+        ] {
+            let ty = grouped_type(ty);
+            let error = derive_dataframe_row(syn::parse_quote! {
+                struct Row { value: #ty }
+            })
+            .unwrap_err()
+            .to_string();
+            assert!(error.contains(expected), "{error}");
+        }
+        let option = grouped_type(quote!(Option<#scalar>));
+        let error = derive_dataframe_row(syn::parse_quote! {
+            #[dataframe(tag = "kind")]
+            enum Row { Present { value: #option }, Empty }
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("already become `Option<T>` columns"),
+            "{error}"
+        );
+
+        let vec = grouped_type(quote!(Vec<#raw>));
+        let error = derive_dataframe_row(syn::parse_quote! {
+            struct Row { #[dataframe(expand)] values: #vec }
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("raw vectors have no NA value"), "{error}");
+    }
+
+    #[test]
+    fn grouped_borrowed_fields_stay_write_only() {
+        let slice = grouped_type(quote!([i32]));
+        let array = grouped_type(quote!([i32; 2]));
+        for (attrs, ty) in [
+            (quote!(#[dataframe(expand)]), quote!(&'a #slice)),
+            (quote!(#[dataframe(width = 2)]), quote!(&'a #slice)),
+            (quote!(), quote!(&'a #array)),
+        ] {
+            let ty = grouped_type(ty);
+            for input in [
+                syn::parse_quote! { struct Row<'a> { #attrs value: #ty } },
+                syn::parse_quote! {
+                    #[dataframe(tag = "kind")]
+                    enum Row<'a> { Present { #attrs value: #ty }, Empty }
+                },
+            ] {
+                let code = expand(input);
+                assert!(!code.contains("fn try_from_dataframe"), "{code}");
+            }
+        }
+    }
+
+    #[test]
+    fn column_comparison_ignores_groups_recursively_without_rewriting_types() {
+        let scalar = grouped_type(quote!(i32));
+        let ty: syn::Type = syn::parse2(grouped_type(quote!(Box<[#scalar]>))).unwrap();
+        let original = ty.clone();
+        assert!(same_column_type(
+            &ty,
+            &syn::parse_quote!(std::boxed::Box<[i32]>)
+        ));
+        assert_eq!(ty, original);
+        assert!(!same_column_type(&ty, &syn::parse_quote!(Box<[f64]>)));
     }
 
     /// `Option<scalar>` struct fields are a single NA-able column (#1437): the
