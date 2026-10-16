@@ -573,51 +573,12 @@ impl RustConversionBuilder {
             return (vec![stmt], vec![]);
         }
 
-        // Inherited signatures have no impl-local type paths. Keep the
-        // specialised strict/coercing and marker paths when they apply.
-        let param_name = crate::naming::ident_name(ident);
-        let rooted =
-            crate::type_inspect::is_rooted_view(ty) || crate::type_inspect::is_rooted_reference(ty);
-        let specialised = (self.strict
-            && crate::return_type_analysis::strict_input_conversion_for_type(ty, sexp_ident)
-                .is_some())
-            || (self.should_coerce(&param_name) && CoercionMapping::from_type(ty).is_some())
-            || self.match_arg_several_ok_params.contains(&param_name)
-            || self
-                .layered_choice_params
-                .iter()
-                .any(|(name, _)| *name == param_name)
-            || crate::type_inspect::unevaluated_param(ty).is_some()
-            || crate::type_inspect::is_lazy_dots_marker(ty);
-        if self.inferred_types
-            && !specialised
-            && (root_shared_inputs
-                || (!rooted
-                    && worker_string_storage(ty, sexp_ident).is_none()
-                    && worker_native_storage(ty, sexp_ident).is_none()))
-        {
-            if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
-                return (vec![stmt], vec![]);
-            }
-            let target = crate::trait_signature::argument_ident(ident);
-            let mut ctx = ctx;
-            let (setup, convert) = if rooted {
-                let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
-                (
-                    quote! { let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() }; },
-                    quote! { #target.rooted(unsafe { #roots.rooted(#sexp_ident) }) },
-                )
-            } else {
-                if !ctx.expected_known {
-                    ctx.declared = Some(
-                        quote! { #target.expectation().map(::std::string::ToString::to_string) },
-                    );
-                }
-                (TokenStream::new(), quote! { #target.convert(#sexp_ident) })
-            };
-            let stmt = self.conversion_stmt(convert, &ctx, ident, &syn::parse_quote!(_), ty.span());
-            return (vec![quote! { #setup #stmt }], vec![]);
-        }
+        // A copied trait signature (#2123) may name a type that resolves only
+        // in the declaration's module: its plain conversions take their type
+        // from the witness inferred from the concrete method instead.
+        let target = self
+            .inferred_types
+            .then(|| crate::trait_signature::argument_ident(ident));
 
         let param_name = crate::naming::ident_name(ident);
         let layered_choice = self
@@ -634,14 +595,24 @@ impl RustConversionBuilder {
                 return (vec![stmt], vec![]);
             }
             let span = ty.span();
-            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
             let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
             // The call roots its argument. The scope also retains any transient
             // children returned by an ALTREP accessor during conversion.
-            let try_expr = quote_spanned! {span=>
-                <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                    #roots.rooted(#sexp_ident)
-                })
+            let root = quote_spanned! {span=> unsafe { #roots.rooted(#sexp_ident) } };
+            let (try_expr, bound_ty): (_, syn::Type) = match &target {
+                Some(target) => (
+                    quote_spanned! {span=> #target.rooted(#root) },
+                    syn::parse_quote!(_),
+                ),
+                None => {
+                    let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+                    (
+                        quote_spanned! {span=>
+                            <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(#root)
+                        },
+                        bound_ty,
+                    )
+                }
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
             return (
@@ -818,19 +789,20 @@ impl RustConversionBuilder {
                     // the user's lifetime need not be in scope, and the `Err` arm's
                     // probe needs the error type named.
                     let span = ty.span();
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                    };
-                    let binding_ty = crate::type_inspect::erase_lifetimes(ty);
+                    let (try_expr, binding_ty) = try_from_sexp(
+                        target.as_ref(),
+                        sexp_ident,
+                        crate::type_inspect::erase_lifetimes(ty),
+                        span,
+                    );
                     let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
                     let span = ty.span();
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                    };
-                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
+                    let (try_expr, binding_ty) =
+                        try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
+                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 }
             }
@@ -987,13 +959,16 @@ impl RustConversionBuilder {
                         self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }
                     None => {
-                        let try_expr = quote_spanned! {span=>
-                            ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                        };
+                        let (try_expr, binding_ty) =
+                            try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
                         // `ty: TryFromSexp` here, so a failure can ask the
                         // type what it declares.
+                        let declared = match &target {
+                            Some(target) => ctx.with_inferred(target),
+                            None => ctx.with_declared(ty),
+                        };
                         let stmt =
-                            self.conversion_stmt(try_expr, &ctx.with_declared(ty), ident, ty, span);
+                            self.conversion_stmt(try_expr, &declared, ident, &binding_ty, span);
                         // `ty: TryFromSexp` is proven here, so a `no_na`
                         // parameter's value can be asked after the binding.
                         // Owned vector: it runs on the main thread, before a
@@ -1077,6 +1052,28 @@ impl RustConversionBuilder {
 impl Default for RustConversionBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// `TryFromSexp` on `sexp_ident`, and the type its binding names: `ty`, or
+/// for a copied trait signature (#2123) `_`, with the conversion through the
+/// witness `target` inferred from the concrete method, so a declaration-local
+/// type is never spelled in the impl's module.
+fn try_from_sexp(
+    target: Option<&syn::Ident>,
+    sexp_ident: &syn::Ident,
+    ty: syn::Type,
+    span: proc_macro2::Span,
+) -> (TokenStream, syn::Type) {
+    match target {
+        Some(target) => (
+            quote_spanned! {span=> #target.convert(#sexp_ident) },
+            syn::parse_quote!(_),
+        ),
+        None => (
+            quote_spanned! {span=> ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident) },
+            ty,
+        ),
     }
 }
 
@@ -1504,6 +1501,17 @@ impl ArgContext {
         ctx
     }
 
+    /// [`ArgContext::with_declared`] for a copied trait signature (#2123):
+    /// the witness `target` names the type the method takes.
+    fn with_inferred(&self, target: &syn::Ident) -> Self {
+        let mut ctx = self.clone();
+        if !ctx.expected_known && ctx.expected_at_run_time.is_none() {
+            ctx.declared =
+                Some(quote! { #target.expectation().map(::std::string::ToString::to_string) });
+        }
+        ctx
+    }
+
     /// The context of a choice parameter of type `ty` decoded as `leaf`, when
     /// the type has an `Either<.., R>` layer; `None` otherwise. A value `R`
     /// refuses is reported against the whole parameter, in the words of its
@@ -1573,10 +1581,7 @@ pub(crate) fn shim_conversion_err_arm(
 ) -> TokenStream {
     let mut ctx = ArgContext::new(name, ty, false);
     if let Some(target) = target {
-        if !ctx.expected_known {
-            ctx.declared =
-                Some(quote! { #target.expectation().map(::std::string::ToString::to_string) });
-        }
+        ctx = ctx.with_inferred(target);
     } else if let Some(read_ty) = read_ty {
         ctx = ctx.with_declared(read_ty);
     }
