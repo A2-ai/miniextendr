@@ -2067,7 +2067,9 @@ fn derive_try_from_list_does_not_pin_error_type() {
     // Convertibility bound is present for the numeric-vector field.
     assert!(s.contains("SexpError:::core::convert::From<<Vec<f64>as"));
     // Conversion happens at extraction time.
-    assert!(s.contains("map_err(::miniextendr_api::from_r::SexpError::from)"));
+    assert!(s.contains(
+        "map_err(<::miniextendr_api::from_r::SexpErroras::core::convert::From<_>>::from)"
+    ));
 }
 
 #[test]

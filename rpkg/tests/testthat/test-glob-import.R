@@ -30,3 +30,13 @@ test_that("Option return handling resists consumer methods (#2020)", {
   expect_match(conditionMessage(e), "returned no value", fixed = TRUE)
   expect_identical(conditionCall(e), quote(optional(FALSE)))
 })
+
+test_that("condition payload conversion resists consumer associated functions (#2020)", {
+  payload <- get("glob_import_condition_payload", envir = asNamespace("miniextendr"))
+  e <- tryCatch(payload(), error = identity)
+  expect_s3_class(e, "glob_conversion")
+  expect_identical(conditionMessage(e), "refused")
+  expect_identical(e$code, 7L)
+  expect_identical(e$labels, c("a", "b"))
+  expect_identical(conditionCall(e), quote(payload()))
+})

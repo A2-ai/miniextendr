@@ -520,10 +520,10 @@ macro_rules! __mx_condition_field_name {
 #[macro_export]
 macro_rules! __mx_condition_pair {
     (($name:literal, $value:expr $(,)?)) => {
-        ($crate::__mx_condition_field_name!(lit $name), $crate::RValue::from($value))
+        ($crate::__mx_condition_field_name!(lit $name), <$crate::RValue as ::core::convert::From<_>>::from($value))
     };
     (($name:expr, $value:expr $(,)?)) => {
-        ($crate::__mx_condition_field_name!(expr $name), $crate::RValue::from($value))
+        ($crate::__mx_condition_field_name!(expr $name), <$crate::RValue as ::core::convert::From<_>>::from($value))
     };
 }
 
@@ -550,13 +550,13 @@ macro_rules! __mx_condition_data {
     (($name:literal, $value:expr $(,)?)) => {
         ::std::option::Option::Some(::std::vec![(
             $crate::__mx_condition_field_name!(lit $name),
-            $crate::RValue::from($value),
+            <$crate::RValue as ::core::convert::From<_>>::from($value),
         )])
     };
     (($name:expr, $value:expr $(,)?)) => {
         ::std::option::Option::Some(::std::vec![(
             $crate::__mx_condition_field_name!(expr $name),
-            $crate::RValue::from($value),
+            <$crate::RValue as ::core::convert::From<_>>::from($value),
         )])
     };
     ([ $($pair:tt),* $(,)? ]) => {
@@ -569,7 +569,7 @@ macro_rules! __mx_condition_data {
             $(
                 (
                     $crate::__mx_condition_field_name!(ident $name),
-                    $crate::RValue::from($value),
+                    <$crate::RValue as ::core::convert::From<_>>::from($value),
                 ),
             )*
         ])

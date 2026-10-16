@@ -1553,7 +1553,7 @@ fn column_sexp(
         let span = syn::spanned::Spanned::span(ty);
         quote_spanned! {span=>
             ::miniextendr_api::IntoR::into_sexp(
-                ::miniextendr_api::factor::FactorVec::<#ty>::from(self.#name)
+                <::miniextendr_api::factor::FactorVec<#ty> as ::core::convert::From<_>>::from(self.#name)
             )
         }
     } else {

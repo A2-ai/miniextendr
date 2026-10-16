@@ -286,7 +286,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                             .and_then(|__i| __mx_list.get(__i))
                             .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(::core::convert::Into::into(#name_str)))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
-                            .map_err(::miniextendr_api::from_r::SexpError::from)?
+                            .map_err(<::miniextendr_api::from_r::SexpError as ::core::convert::From<_>>::from)?
                     };
                 }
             });
@@ -344,7 +344,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                                 }
                             ))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
-                            .map_err(::miniextendr_api::from_r::SexpError::from)?
+                            .map_err(<::miniextendr_api::from_r::SexpError as ::core::convert::From<_>>::from)?
                     };
                 });
                 ctor_args.push(quote! { #ident });

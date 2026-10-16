@@ -79,13 +79,13 @@ pub fn strict_rows(
 ) -> ::std::vec::Vec<::core::option::Option<::std::boxed::Box<[i64]>>> {
     let mut rows = ::std::vec::Vec::new();
     ::std::vec::Vec::push(&mut rows, ::core::option::Option::None);
-    ::std::vec::Vec::push(&mut rows, ::core::option::Option::Some(::std::boxed::Box::from([x])));
+    ::std::vec::Vec::push(&mut rows, ::core::option::Option::Some(<::std::boxed::Box<[i64]> as ::core::convert::From<_>>::from([x])));
     rows
 }
 
 #[miniextendr(coerce, check_interrupt, rng)]
 pub fn coerced(x: u16, xs: ::std::vec::Vec<u8>) -> f64 {
-    f64::from(x) + ::std::vec::Vec::len(&xs) as f64
+    <f64 as ::core::convert::From<_>>::from(x) + ::std::vec::Vec::len(&xs) as f64
 }
 
 #[miniextendr(unwrap_in_r)]
@@ -102,7 +102,7 @@ pub fn checks(
     loose: Unchecked<::std::vec::Vec<f64>>,
 ) -> f64 {
     let _ = frame;
-    factor * f64::from(n + *marked) + ::std::vec::Vec::len(&loose) as f64
+    factor * <f64 as ::core::convert::From<_>>::from(n + *marked) + ::std::vec::Vec::len(&loose) as f64
 }
 
 #[miniextendr]
@@ -118,7 +118,7 @@ pub fn returns_impl(x: i32) -> impl IntoR {
 #[miniextendr]
 pub fn markers(x: i32, call: Call, rest: LazyDots, n: NArgs) -> i32 {
     let _ = (call.sexp(), LazyDots::len(&rest));
-    x + i32::try_from(n.get()).unwrap_or(0)
+    x + <i32 as ::core::convert::TryFrom<_>>::try_from(n.get()).unwrap_or(0)
 }
 
 #[miniextendr(noexport, call = caller)]
@@ -172,7 +172,7 @@ pub fn pick(
     #[miniextendr(choices("a", "b"))] letter: &str,
 ) -> usize {
     let _ = (mode, letter);
-    usize::from(::core::option::Option::is_some(&maybe)) + ::std::vec::Vec::len(&many)
+    <usize as ::core::convert::From<_>>::from(::core::option::Option::is_some(&maybe)) + ::std::vec::Vec::len(&many)
 }
 
 #[derive(::core::clone::Clone, ::core::marker::Copy, Debug, miniextendr_api::RFactor)]
@@ -477,7 +477,7 @@ impl ReadValue for Gauge {
         self.reading as i32
     }
     fn bump(&mut self, by: i32) {
-        self.reading += f64::from(by);
+        self.reading += <f64 as ::core::convert::From<_>>::from(by);
     }
     fn merge(&mut self, other: &Self) -> i32 {
         (self.reading + other.reading) as i32
@@ -526,7 +526,7 @@ impl ReadValue for Shape4 {
         self.side as i32
     }
     fn bump(&mut self, by: i32) {
-        self.side += f64::from(by);
+        self.side += <f64 as ::core::convert::From<_>>::from(by);
     }
     fn merge(&mut self, other: &Self) -> i32 {
         (self.side + other.side) as i32
@@ -594,7 +594,7 @@ impl ReadValue for Range7 {
         self.start as i32
     }
     fn bump(&mut self, by: i32) {
-        self.start += f64::from(by);
+        self.start += <f64 as ::core::convert::From<_>>::from(by);
     }
     fn merge(&mut self, other: &Self) -> i32 {
         (self.start + other.start) as i32
@@ -627,7 +627,7 @@ impl Scale {
     pub fn new(mode: Mode, n: i32) -> ::std::vec::Vec<f64> {
         let _ = mode;
         let mut out = ::std::vec::Vec::new();
-        ::std::vec::Vec::push(&mut out, f64::from(n));
+        ::std::vec::Vec::push(&mut out, <f64 as ::core::convert::From<_>>::from(n));
         out
     }
 }
@@ -781,7 +781,7 @@ pub fn read_rows(frame: SEXP) -> i32 {
     let events = ReadableEvent::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
     let nested = TaggedNested::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
     let outer = Outer::try_from_dataframe(frame).map_or(0, |r| ::std::vec::Vec::len(&r));
-    i32::try_from(rows + events + nested + outer).unwrap_or(i32::MAX)
+    <i32 as ::core::convert::TryFrom<_>>::try_from(rows + events + nested + outer).unwrap_or(i32::MAX)
 }
 
 miniextendr_api::typed_dataframe! {
@@ -1190,7 +1190,7 @@ miniextendr_api::impl_altstring_from_data!(RegisteredStrings);
 
 #[miniextendr]
 pub fn altrep_values(n: i32) -> Repeated {
-    Repeated { len: usize::try_from(n).unwrap_or(0), value: n }
+    Repeated { len: <usize as ::core::convert::TryFrom<_>>::try_from(n).unwrap_or(0), value: n }
 }
 
 // endregion

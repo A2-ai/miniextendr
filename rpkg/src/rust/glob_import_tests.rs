@@ -148,6 +148,19 @@ pub(crate) trait ConsumerOptionMethods: Sized {
 }
 impl<T> ConsumerOptionMethods for T {}
 
+pub(crate) trait ConsumerAssociated: Sized {
+    fn from<T>(_value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn try_from<T>(_value: T) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn default() -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+}
+impl<T> ConsumerAssociated for T {}
+
 // No nested struct: the parallel reader assembles each row by index, cloning
 // the cells out of the pre-extracted columns.
 #[derive(Clone, DataFrameRow)]
@@ -199,13 +212,16 @@ pub enum GlobNested {
 fn glob_rows() -> Vec<GlobRow> {
     Iterator::collect(Iterator::map(0..4, |i| GlobRow {
         id: i,
-        weight: f64::from(i) / 2.0,
-        maybe: (i % 2 == 0).then_some(f64::from(i)),
-        coords: [f64::from(i), -f64::from(i)],
+        weight: <f64 as std::convert::From<_>>::from(i) / 2.0,
+        maybe: (i % 2 == 0).then_some(<f64 as std::convert::From<_>>::from(i)),
+        coords: [
+            <f64 as std::convert::From<_>>::from(i),
+            -<f64 as std::convert::From<_>>::from(i),
+        ],
         corners: [i, i + 1],
         scores: vec![1.0, 2.0],
         extra: vec![i, i * 2],
-        counts: HashMap::from([(format!("k{i}"), i)]),
+        counts: <HashMap<_, _> as std::convert::From<_>>::from([(format!("k{i}"), i)]),
     }))
 }
 
@@ -218,7 +234,10 @@ fn glob_events() -> Vec<GlobEvent> {
         GlobEvent::Scores {
             scores: vec![3.0, 4.0],
             extra: vec![5, 6],
-            counts: BTreeMap::from([(std::string::ToString::to_string("a"), 1)]),
+            counts: <BTreeMap<_, _> as std::convert::From<_>>::from([(
+                std::string::ToString::to_string("a"),
+                1,
+            )]),
         },
         GlobEvent::Empty,
     ]
@@ -243,7 +262,7 @@ fn glob_nested() -> Vec<GlobNested> {
 pub fn glob_import_roundtrip() -> Vec<i32> {
     fn count<T>(rows: Result<Vec<T>, String>) -> i32 {
         rows.map_or(-2, |rows| {
-            i32::try_from(Vec::len(&rows)).unwrap_or(i32::MAX)
+            <i32 as std::convert::TryFrom<_>>::try_from(Vec::len(&rows)).unwrap_or(i32::MAX)
         })
     }
 
@@ -278,6 +297,16 @@ pub fn glob_import_roundtrip() -> Vec<i32> {
 #[miniextendr(noexport)]
 pub fn glob_import_option_unit(present: bool) -> Option<()> {
     present.then_some(())
+}
+
+/// Exercise condition field conversion under consumer associated functions.
+#[miniextendr(noexport)]
+pub fn glob_import_condition_payload() {
+    miniextendr_api::rust_error!(
+        class = "glob_conversion",
+        data = { code = 7_i32, labels = vec!["a", "b"] },
+        "refused",
+    );
 }
 
 /// A vctrs class derived under the glob import.

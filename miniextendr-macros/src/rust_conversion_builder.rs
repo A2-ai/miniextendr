@@ -965,7 +965,7 @@ impl RustConversionBuilder {
                             let len_arm =
                                 conversion_err_arm(&len_ctx, &self.conversion_error_class, span);
                             let arr_stmt = quote_spanned! {span=>
-                                let #ident: #ty = match <[#inner_ty; #n]>::try_from(#vec_ident)
+                                let #ident: #ty = match <[#inner_ty; #n] as ::core::convert::TryFrom<_>>::try_from(#vec_ident)
                                     .map_err(|v| ::std::format!("got length {}", <[_]>::len(&v)))
                                 {
                                     ::core::result::Result::Ok(v) => v,
@@ -1270,7 +1270,7 @@ fn worker_native_storage(
             let element = &slice.elem;
             (
                 syn::parse_quote!(::std::vec::Vec<#element>),
-                quote!(::std::vec::Vec::from),
+                quote!(<::std::vec::Vec<#element> as ::core::convert::From<_>>::from),
                 if optional.is_some() {
                     quote!(::core::option::Option::as_deref(&#storage))
                 } else {

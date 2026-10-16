@@ -407,13 +407,13 @@ impl<'a> Shape<'a> {
             if f.debug {
                 quote! { ::miniextendr_api::RValue::debug(#binding) }
             } else {
-                quote! { ::miniextendr_api::RValue::from(::core::clone::Clone::clone(#binding)) }
+                quote! { <::miniextendr_api::RValue as ::core::convert::From<_>>::from(::core::clone::Clone::clone(#binding)) }
             }
         };
         let extra = self.extra.iter().map(|entry| {
             let name = &entry.name;
             let expr = &entry.value;
-            quote! { (::std::string::String::from(#name), ::miniextendr_api::RValue::from(#expr)) }
+            quote! { (<::std::string::String as ::core::convert::From<_>>::from(#name), <::miniextendr_api::RValue as ::core::convert::From<_>>::from(#expr)) }
         });
         if !self
             .fields
@@ -427,7 +427,7 @@ impl<'a> Shape<'a> {
                     let name = f.data_name.as_ref()?;
                     let binding = &f.binding;
                     let value = value(f, quote! { #binding });
-                    Some(quote! { (::std::string::String::from(#name), #value) })
+                    Some(quote! { (<::std::string::String as ::core::convert::From<_>>::from(#name), #value) })
                 })
                 .chain(extra)
                 .collect();
@@ -446,12 +446,12 @@ impl<'a> Shape<'a> {
                 let value = value(f, quote! { __value });
                 quote! {
                     if let ::core::option::Option::Some(__value) = #binding {
-                        ::std::vec::Vec::push(&mut __data, (::std::string::String::from(#name), #value));
+                        ::std::vec::Vec::push(&mut __data, (<::std::string::String as ::core::convert::From<_>>::from(#name), #value));
                     }
                 }
             } else {
                 let value = value(f, quote! { #binding });
-                quote! { ::std::vec::Vec::push(&mut __data, (::std::string::String::from(#name), #value)); }
+                quote! { ::std::vec::Vec::push(&mut __data, (<::std::string::String as ::core::convert::From<_>>::from(#name), #value)); }
             })
         });
         let extra = extra.map(|entry| quote! { ::std::vec::Vec::push(&mut __data, #entry); });
@@ -540,7 +540,7 @@ fn derive_condition(
                 Some(ClassSpec::List(list, _)) => list.iter().map(syn::LitStr::value).collect(),
                 None => vec![default_family()],
             };
-            let class = quote! { ::std::vec![#(::std::string::String::from(#classes)),*] };
+            let class = quote! { ::std::vec![#(<::std::string::String as ::core::convert::From<_>>::from(#classes)),*] };
             let pattern = shape.pattern_data(&self_path);
             let data_expr = shape.data_expr();
             let data = quote! {
@@ -629,8 +629,8 @@ fn derive_condition(
                 let wild = shape.pattern_wild(&path);
                 class_arms.push(quote! {
                     #wild => ::std::vec![
-                        #(::std::string::String::from(#members),)*
-                        ::std::string::String::from(#family),
+                        #(<::std::string::String as ::core::convert::From<_>>::from(#members),)*
+                        <::std::string::String as ::core::convert::From<_>>::from(#family),
                     ],
                 });
                 let pattern = shape.pattern_data(&path);
@@ -1148,7 +1148,7 @@ mod tests {
         });
         assert!(
             code.contains(
-                r#"vec ! [:: std :: string :: String :: from ("pkg_message_selection_dropped") , :: std :: string :: String :: from ("pkg_message")]"#
+                r#"vec ! [< :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("pkg_message_selection_dropped") , < :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("pkg_message")]"#
             ),
             "{code}"
         );
@@ -1166,7 +1166,7 @@ mod tests {
         });
         assert!(
             code.contains(
-                r#"Self :: Masked => :: std :: vec ! [:: std :: string :: String :: from ("pkg_warning_engine_masked") , :: std :: string :: String :: from ("pkg_engine_warning") , :: std :: string :: String :: from ("pkg_warning") ,]"#
+                r#"Self :: Masked => :: std :: vec ! [< :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("pkg_warning_engine_masked") , < :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("pkg_engine_warning") , < :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("pkg_warning") ,]"#
             ),
             "{code}"
         );
@@ -1207,7 +1207,7 @@ mod tests {
         });
         assert!(
             code.contains(
-                r#"Some (:: std :: vec ! [(:: std :: string :: String :: from ("param") , :: miniextendr_api :: RValue :: from ("unit_table"))])"#
+                r#"Some (:: std :: vec ! [(< :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("param") , < :: miniextendr_api :: RValue as :: core :: convert :: From < _ >> :: from ("unit_table"))])"#
             ),
             "{code}"
         );
@@ -1271,7 +1271,7 @@ mod tests {
         );
         // The plain field is pushed whatever its value.
         assert!(
-            code.contains(r#":: std :: vec :: Vec :: push (& mut __data , (:: std :: string :: String :: from ("verb")"#),
+            code.contains(r#":: std :: vec :: Vec :: push (& mut __data , (< :: std :: string :: String as :: core :: convert :: From < _ >> :: from ("verb")"#),
             "{code}"
         );
     }

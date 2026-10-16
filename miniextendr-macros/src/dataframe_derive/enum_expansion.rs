@@ -909,7 +909,7 @@ pub(super) fn derive_enum_dataframe(
                     ::std::vec::Vec::push(&mut __df_pairs, (
                         ::std::string::ToString::to_string(&#name_str),
                         __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
-                            ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(self.#name)
+                            <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(self.#name)
                         )),
                     ));
                 }
@@ -2458,7 +2458,7 @@ fn generate_split_method(
                                         ::std::vec::Vec::push(&mut #pairs_var, (
                                             ::std::string::ToString::to_string(&#col_str),
                                             __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
-                                                ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
+                                                <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(
                                                     ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
                                                         ::core::iter::IntoIterator::into_iter(#buf),
                                                         ::core::option::Option::Some,
@@ -2658,7 +2658,7 @@ fn generate_split_method(
                                     // Factor: convert Vec<T> → FactorOptionVec<T> (all present).
                                     vec![quote! {
                                         (#col_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
-                                            ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(
+                                            <::miniextendr_api::factor::FactorOptionVec<#ty> as ::core::convert::From<_>>::from(
                                                 ::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
                                                     ::core::iter::IntoIterator::into_iter(#buf),
                                                     ::core::option::Option::Some,
@@ -2765,7 +2765,7 @@ fn generate_split_method(
         let outer_pairs: Vec<TokenStream> = snake_names
             .iter()
             .zip(df_var_names.iter())
-            .map(|(name, var)| quote! { (::std::string::String::from(#name), #var) })
+            .map(|(name, var)| quote! { (<::std::string::String as ::core::convert::From<_>>::from(#name), #var) })
             .collect();
         quote! {
             ::miniextendr_api::dataframe::DataFrameShape::PerVariantList(::std::vec![
