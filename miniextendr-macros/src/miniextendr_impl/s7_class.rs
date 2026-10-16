@@ -1133,17 +1133,19 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // MethodDocBuilder skips the receiver.
             if !class_has_no_rd {
                 lines.extend(shortcut_advisory_lines(&method_name, &class_name));
-                lines.push(format!("#' @param .mx_self A `{}` object.", class_name));
+                lines.push(super::member_default(format!(
+                    "#' @param .mx_self A `{}` object.",
+                    class_name
+                )));
                 // `...` appears in the shortcut signature for parity with the S7
                 // generic but MethodDocBuilder doesn't document it, so emit it
                 // here to avoid an "Undocumented arguments" R CMD check warning.
                 if !method_attrs.s7.no_dots {
-                    lines.push(
-                        "#' @param ... Additional arguments; ignored by the fast-path shortcut."
-                            .to_string(),
-                    );
+                    lines.push(super::member_default(
+                        "#' @param ... Additional arguments; ignored by the fast-path shortcut.",
+                    ));
                 }
-                // Pass only the method's `@param` tags: its prose
+                // Pass the method's parameter and page tags: its prose
                 // (@title/description) is already rendered on the shared @rdname
                 // page by the generic block above, and re-emitting it here would
                 // duplicate it. The generic block suppresses `@param` (an S7
@@ -1156,7 +1158,14 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     .method
                     .doc_tags
                     .iter()
-                    .filter(|tag| crate::roxygen::roxygen_tag_name(tag) == Some("param"))
+                    .filter(|tag| {
+                        matches!(
+                            crate::roxygen::roxygen_tag_name(tag),
+                            Some(
+                                "param" | "rdname" | "order" | "noRd" | "inheritParams" | "inherit"
+                            )
+                        )
+                    })
                     .cloned()
                     .collect();
                 let method_doc =
@@ -1276,7 +1285,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 // Convert methods emit scaffolding only (no method prose), but a
                 // method-level `@rdname` still decides which page they land on;
                 // a split page needs its own `@title` (see `MethodDocBuilder`).
-                crate::roxygen::push_rdname_or_default(&mut lines, &method.doc_tags, &class_name);
+                super::push_member_rdname(&mut lines, &method.doc_tags, &class_name);
                 if crate::roxygen::rdname_value(&method.doc_tags).is_some()
                     && !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title")
                 {
@@ -1343,7 +1352,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
                 lines.push(format!("#' @name convert-{}-to-{}", class_name, to_type));
-                crate::roxygen::push_rdname_or_default(&mut lines, &method.doc_tags, &class_name);
+                super::push_member_rdname(&mut lines, &method.doc_tags, &class_name);
                 if crate::roxygen::rdname_value(&method.doc_tags).is_some()
                     && !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title")
                 {

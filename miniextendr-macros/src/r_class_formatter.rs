@@ -1148,7 +1148,8 @@ impl<'a> MethodDocBuilder<'a> {
 
     /// Build the roxygen `#' @tag` lines for the method.
     ///
-    /// Returns a vector of strings, each a complete roxygen comment line. If the parent
+    /// Returns roxygen comment lines, with generated member defaults marked for
+    /// the class assembler (`CLASS_MEMBER_DEFAULT_PREFIX`). If the parent
     /// class has `@noRd`, returns only `["#' @noRd"]`. Otherwise generates `@name`,
     /// `@rdname`, `@source`, and optionally `@export` tags, plus any user-provided tags.
     /// A method that joins an author topic (`@rdname other`, `@describeIn other`)
@@ -1208,12 +1209,18 @@ impl<'a> MethodDocBuilder<'a> {
             // #1590). Choice params get their choice text (a match_arg
             // placeholder is rendered by the wrapper writer, #210).
             if let Some(params) = self.r_params {
+                let mut fillers = Vec::new();
                 push_param_filler(
-                    &mut lines,
+                    &mut fillers,
                     params,
                     self.doc_tags,
                     self.class_name,
                     self.choice_param_docs,
+                );
+                lines.extend(
+                    fillers
+                        .into_iter()
+                        .map(crate::miniextendr_impl::member_default),
                 );
             }
         }
@@ -1243,7 +1250,10 @@ impl<'a> MethodDocBuilder<'a> {
                     lines.push(format!("#' @title {}", r_name));
                 }
             } else {
-                lines.push(format!("#' @rdname {}", self.class_name));
+                lines.push(crate::miniextendr_impl::member_default(format!(
+                    "#' @rdname {}",
+                    self.class_name
+                )));
             }
         }
         // On an author topic the topic's own block names and titles the page
@@ -1505,7 +1515,9 @@ mod tests {
 
         let class_page = build(&[]);
         assert!(
-            class_page.contains(&"#' @rdname Counter".to_string()),
+            class_page.contains(&crate::miniextendr_impl::member_default(
+                "#' @rdname Counter"
+            )),
             "{class_page:#?}"
         );
         assert!(!class_page.contains(&order), "{class_page:#?}");
@@ -1845,7 +1857,13 @@ mod tests {
     fn env_wrapped_param_stays_in_roxygen_block() {
         let empty = std::collections::HashMap::new();
         let lines = env_docs(&["@param n Amount\nto add."], "n", &empty);
-        assert!(lines.iter().all(|l| l.starts_with("#'")), "{lines:#?}");
+        assert!(
+            lines.iter().all(|l| l
+                .strip_prefix(crate::miniextendr_impl::CLASS_MEMBER_DEFAULT_PREFIX)
+                .unwrap_or(l)
+                .starts_with("#'")),
+            "{lines:#?}"
+        );
         let joined = lines.join("\n");
         assert!(
             joined.contains("#'   \\item{\\code{n}}{Amount\n#' to add.}"),

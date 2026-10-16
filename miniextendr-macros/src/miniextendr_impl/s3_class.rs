@@ -151,16 +151,24 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     // split page it would beat the method's structural title.
                     // The author's topic describes the method itself, so the
                     // structural description would only add a stray paragraph.
-                    lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-                    lines.push(format!("#' @description S3 generic for `{}`", generic_name));
+                    lines.push(super::member_default(format!(
+                        "#' @title S3 generic for `{}`",
+                        generic_name
+                    )));
+                    lines.push(super::member_default(format!(
+                        "#' @description S3 generic for `{}`",
+                        generic_name
+                    )));
                 }
                 lines.push(format!("#' @name {}.{}", generic_name, class_name));
-                crate::roxygen::push_rdname_or_default(&mut lines, method_tags, &class_name);
+                super::push_member_rdname(&mut lines, method_tags, &class_name);
                 if !joined {
                     // On the author's topic its own block documents `x` and
                     // `...`; a generated line would replace that text (#1590).
-                    lines.push("#' @param x An object".to_string());
-                    lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                    lines.push(super::member_default("#' @param x An object".to_string()));
+                    lines.push(super::member_default(
+                        "#' @param ... Additional arguments passed to methods".to_string(),
+                    ));
                 }
                 crate::roxygen::push_order_after_topic_blocks(&mut lines, method_tags, &class_name);
                 lines.extend(crate::roxygen::method_source_tag(
@@ -212,9 +220,13 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // topic's own block documents them instead: roxygen2 keeps the
             // later `@param` of a name, and this block sorts last (#1590).
             if !crate::roxygen::joins_author_topic(&ctx.method.doc_tags, Some(&class_name)) {
-                lines.push(format!("#' @param {receiver} An object."));
+                lines.push(super::member_default(format!(
+                    "#' @param {receiver} An object."
+                )));
                 if !ctx.method.method_attrs.no_dispatch_dots || ctx.method.has_dots {
-                    lines.push("#' @param ... Additional arguments.".to_string());
+                    lines.push(super::member_default(
+                        "#' @param ... Additional arguments.".to_string(),
+                    ));
                 }
             }
             if should_register_s3method {
