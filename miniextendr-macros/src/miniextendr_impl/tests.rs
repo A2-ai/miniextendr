@@ -1664,6 +1664,68 @@ fn s4_generic_names_follow_r_method_names() {
 }
 
 #[test]
+fn s4_owned_explicit_generic_gets_local_guard_and_help() {
+    let mut parsed = parse_impl(
+        ClassSystem::S4,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(s4(generic = "category", own, receiver = "object"))]
+                pub fn category(&self) -> i32 { 0 }
+            }
+        },
+    );
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s4_r_wrapper(&parsed);
+    for expected in [
+        r#".__MX_GENERIC_DOC__(kind="S4", generic="category", class="Counter", export=true, dispatch="object")"#,
+        r#"if (!exists("category", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("category", function(object, ...) standardGeneric("category"))"#,
+        r#"methods::setMethod("category", c(object = "Counter"), function(object, ...)"#,
+    ] {
+        assert!(wrapper.contains(expected), "{expected}: {wrapper}");
+    }
+    parsed.doc_tags.push("@noRd".into());
+    let hidden = generate_s4_r_wrapper(&parsed);
+    assert!(!hidden.contains(".__MX_GENERIC_DOC__"), "{hidden}");
+    assert!(!hidden.contains("@exportMethod"), "{hidden}");
+}
+
+#[test]
+fn s4_own_requires_an_explicit_generic_on_an_s4_instance_method() {
+    for (system, method) in [
+        (
+            ClassSystem::S4,
+            quote::quote! {
+                #[miniextendr(s4(own))]
+                pub fn category(&self) -> i32 { 0 }
+            },
+        ),
+        (
+            ClassSystem::S3,
+            quote::quote! {
+                #[miniextendr(s4(generic = "category", own))]
+                pub fn category(&self) -> i32 { 0 }
+            },
+        ),
+        (
+            ClassSystem::S4,
+            quote::quote! {
+                #[miniextendr(s4(generic = "category", own))]
+                pub fn category() -> i32 { 0 }
+            },
+        ),
+    ] {
+        let error = ParsedImpl::parse(
+            default_impl_attrs(system),
+            syn::parse_quote! { impl Counter { #method } },
+        )
+        .and_then(|parsed| check_method_formals(&parsed))
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("`s4(own)`"), "{error}");
+    }
+}
+
+#[test]
 fn s4_generic_collisions_are_rejected_within_one_block() {
     for (members, generic, first, second) in [
         (

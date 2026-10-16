@@ -369,6 +369,14 @@ fn check_trait_method_formals(
         ClassSystem::Vctrs => "vctrs",
     };
     for method in methods {
+        if method.own_generic
+            && (class_system != ClassSystem::S4 || !method.has_self || method.generic.is_none())
+        {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                "`s4(own)` requires an S4 instance method with an explicit `generic = \"...\"`",
+            ));
+        }
         if (method.generic.is_some() || method.receiver.is_some() || method.no_dispatch_dots)
             && (!method.has_self || !matches!(class_system, ClassSystem::S3 | ClassSystem::S4))
         {
@@ -865,12 +873,11 @@ fn generate_trait_s4_r_wrapper(
     // (setClass for S4, or setOldClass for S3/env) takes care of that. Calling
     // setOldClass here would clobber a proper S4 setClass with slots.
     //
-    // The import joins the next roxygen block (a blank line does not end
-    // one), the first generic's, which opens with a tag. Only the instance
-    // methods need it: before a static's untagged intro line it would read
-    // that line as a continuation of `@importFrom`.
+    // Anchor the namespace directive independently: a generated generic
+    // help page begins with a title, which must not continue @importFrom.
     if !instance_methods.is_empty() {
         lines.push("#' @importFrom methods setGeneric setMethod".to_string());
+        lines.push("NULL".to_string());
         lines.push(String::new());
     }
 
@@ -888,7 +895,13 @@ fn generate_trait_s4_r_wrapper(
             !method.no_dispatch_dots,
         );
 
-        if method.generic.is_none() {
+        if method.own_generic {
+            let class_ref = crate::r_class_formatter::class_ref_or_verbatim(&type_str);
+            lines.push(format!(
+                ".__MX_GENERIC_DOC__(kind=\"S4\", generic=\"{generic_name}\", class=\"{class_ref}\", export=true, dispatch=\"{receiver}\")"
+            ));
+            lines.push(String::new());
+        } else if method.generic.is_none() {
             // S4 generic roxygen (include @param tags from method doc comments)
             // S4 generic names are already type-qualified (s4_trait_TypeName_method)
             // so @name won't create duplicate aliases across types. The prose is a
@@ -913,10 +926,10 @@ fn generate_trait_s4_r_wrapper(
             lines.extend(generic_roxygen.export().build());
         }
         // Define the generic unless it exists; an explicit `generic` may be
-        // another package's. Also ends the `@importFrom` block above.
+        // another package's unless the author marks it `own`.
         lines.push(crate::miniextendr_impl::s4_class::s4_generic_guard(
             &generic_name,
-            method.generic.is_some(),
+            method.generic.is_some() && !method.own_generic,
             receiver,
         ));
         lines.push(String::new());

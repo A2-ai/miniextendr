@@ -810,6 +810,7 @@ pub(super) fn extract_methods(
                 r_on_exit: attrs.r_on_exit,
                 no_shortcut: attrs.no_shortcut,
                 generic: attrs.generic,
+                own_generic: attrs.own_generic,
                 receiver: attrs.receiver,
                 no_dispatch_dots: attrs.no_dispatch_dots,
                 per_param: attrs.per_param,
@@ -897,6 +898,7 @@ struct TraitMethodAttrs {
     /// Opt out of the S7 fast-dispatch shortcut (`#[miniextendr(s7(no_shortcut))]`).
     no_shortcut: bool,
     generic: Option<String>,
+    own_generic: bool,
     receiver: Option<String>,
     no_dispatch_dots: bool,
     /// The method's bare `preconditions` / `no_preconditions` (#1017); the
@@ -944,6 +946,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut r_on_exit: Option<crate::miniextendr_fn::ROnExit> = None;
     let mut no_shortcut = false;
     let mut generic = None;
+    let mut own_generic = false;
     let mut receiver = None;
     let mut no_dispatch_dots = false;
     let mut preconditions: Option<bool> = None;
@@ -993,6 +996,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         if generic.replace(value.value()).is_some() {
                             return Err(inner.error("generic may be specified only once"));
                         }
+                    } else if meta.path.is_ident("s4") && inner.path.is_ident("own") {
+                        own_generic = true;
                     } else if (meta.path.is_ident("s3") || meta.path.is_ident("s4"))
                         && inner.path.is_ident("receiver")
                     {
@@ -1008,7 +1013,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
                              `no_coerce`, `check_interrupt`, `unwrap_in_r`, `serialize`, or \
-                             `no_shortcut` (S3/S4 also accept `generic`, `receiver`, `no_dots`)",
+                             `no_shortcut` (S3/S4 also accept `generic`, `receiver`, `no_dots`; S4 accepts `own`)",
                         ));
                     }
                     Ok(())
@@ -1249,6 +1254,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_on_exit,
         no_shortcut,
         generic,
+        own_generic,
         receiver,
         no_dispatch_dots,
         preconditions,

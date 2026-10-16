@@ -1946,7 +1946,8 @@ fn splice_match_arg_entry(content: &str, entry: &MatchArgChoicesEntry) -> String
 /// .__MX_GENERIC_DOC__(kind="S7", generic="get_value", class="MyClass",
 ///                     export=true, dispatch="x", no_dots=false)
 /// ```
-/// S3/S4 markers omit `dispatch` and `no_dots` (always `"x"` / `false`).
+/// Omitted `dispatch` and `no_dots` default to `"x"` / `false` (S3).
+/// S4 markers pass the receiver as `dispatch` and always keep the generic dots.
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_generic_doc_marker(marker: &str) -> Option<(String, String, String, bool, String, bool)> {
     // Strip prefix and trailing ')'

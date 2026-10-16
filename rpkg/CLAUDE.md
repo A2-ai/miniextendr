@@ -16,6 +16,11 @@ just r-cmd-build / r-cmd-check  # tarball + check
 ```
 After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just rcmdinstall && just devtools-document`, then commit `NAMESPACE` + `man/*.Rd` in the same PR. `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are **gitignored** (regenerated on every install, like `inst/vendor.tar.xz`) — nothing to commit there. CI's `just wrappers-sync-check` regenerates wrappers.R and git-diffs NAMESPACE + man to catch drift.
 
+Standalone `pkgload::load_all()` checks can run the Rust build even with
+`recompile = FALSE`. Carry the install's `CARGO_FEATURES` and profile settings,
+and run the R command through `scripts/with-rpkg-lock.sh`: it can resolve the
+path overrides and change Cargo.lock without an explicit install recipe.
+
 ## Where installs land (main vs worktree)
 `just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,
 which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.
@@ -62,7 +67,7 @@ pages: those duplicate the generated alias. Explicit external-generic
 methods get no generated generic page. `R/generics.R` retains only the
 trait-provided S4/S7 stubs that have no generic marker. Verify installed
 help with `tools::undoc(package = "miniextendr")`, plus the
-`test-s3-generic-docs.R` and shared-page regressions.
+`test-generic-docs.R` and shared-page regressions.
 
 ## Capturing R output
 ```bash

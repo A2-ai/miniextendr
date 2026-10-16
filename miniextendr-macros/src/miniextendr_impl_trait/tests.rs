@@ -131,6 +131,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_on_exit: None,
         no_shortcut: false,
         generic: None,
+        own_generic: false,
         receiver: None,
         no_dispatch_dots: false,
         per_param: Default::default(),
@@ -2908,6 +2909,61 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
         no_added_dots.contains("function(object, ...)"),
         "{no_added_dots}"
     );
+}
+
+#[test]
+fn trait_s4_owned_explicit_generic_has_help_and_validates_context() {
+    let source: syn::ItemImpl = syn::parse_quote! {
+        impl Categories for Foo {
+            #[miniextendr(s4(generic = "category", own, receiver = "object"))]
+            fn category(&self) -> i32 { 0 }
+        }
+    };
+    let method = super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered)
+        .unwrap()
+        .remove(0);
+    let generate = |method: TraitMethod, system, no_rd, internal, noexport| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Categories"),
+            &[method],
+            &[],
+            opts(system, no_rd, internal, noexport),
+        )
+    };
+    let r = generate(method.clone(), ClassSystem::S4, false, false, false).unwrap();
+    for expected in [
+        r#".__MX_GENERIC_DOC__(kind="S4", generic="category", class=".__MX_CLASS_REF_Foo__", export=true, dispatch="object")"#,
+        r#"if (!exists("category", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("category", function(object, ...) standardGeneric("category"))"#,
+        r#"methods::setMethod("category", c(object = "Foo"), function(object, ...)"#,
+        "#' @importFrom methods setGeneric setMethod\nNULL\n",
+    ] {
+        assert!(r.contains(expected), "{expected}: {r}");
+    }
+    assert!(!r.contains("#' @name category\n"), "{r}");
+    for (no_rd, internal, noexport) in [
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let hidden = generate(method.clone(), ClassSystem::S4, no_rd, internal, noexport).unwrap();
+        assert!(!hidden.contains(".__MX_GENERIC_DOC__"), "{hidden}");
+        assert!(!hidden.contains("@export"), "{hidden}");
+    }
+    let mut no_generic = method.clone();
+    no_generic.generic = None;
+    let mut static_method = method.clone();
+    static_method.has_self = false;
+    for (method, system) in [
+        (no_generic, ClassSystem::S4),
+        (static_method, ClassSystem::S4),
+        (method, ClassSystem::S3),
+    ] {
+        let error = generate(method, system, false, false, false)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("`s4(own)`"), "{error}");
+    }
 }
 
 #[test]

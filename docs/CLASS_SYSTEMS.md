@@ -563,9 +563,18 @@ package, so the method attaches to `show` or `length` instead of masking them
 with a generic of the package's own. A generic from an installed copy of the
 same package does not count, so `load_all()` with that copy attached still
 defines it. A name nothing defines is created as
-`setGeneric(name, function(<receiver>, ...))`, but gets no generated help page
-(#2039); without `generic`, an S4 method uses the documented
-`s4_<method>` generic.
+`setGeneric(name, function(<receiver>, ...))`. When your package owns that
+name, opt into `s4(generic = "category", own)` on the instance method. It
+defines the generic in your namespace and gives it one generated help page,
+shared across all implementing classes. The namespace-local guard preserves
+methods registered by other impls and works with an installed copy attached
+during `load_all()`. Both inherent and trait impl methods accept `own`;
+it requires an explicit generic name and an S4 instance method. `receiver`
+also controls the generic's dispatch formal and its help parameter.
+
+Without `own`, an explicit name gets no generated generic page, so methods
+on external generics keep their owner's documentation. Without `generic`,
+an S4 method uses the documented `s4_<method>` generic.
 
 ### When to Use
 

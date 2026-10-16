@@ -193,6 +193,7 @@ struct TraitMethod {
     no_shortcut: bool,
     /// Existing S3/S4 generic and its receiver/formals contract.
     generic: Option<String>,
+    own_generic: bool,
     receiver: Option<String>,
     no_dispatch_dots: bool,
     /// Per-parameter `#[miniextendr(match_arg(...))]` / `choices(...)` /

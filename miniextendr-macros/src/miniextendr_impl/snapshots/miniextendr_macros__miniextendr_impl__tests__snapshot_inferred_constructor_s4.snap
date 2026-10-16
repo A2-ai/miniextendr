@@ -24,7 +24,7 @@ Reading <- function(value) {
   methods::new("Reading", ptr = .val)
 }
 
-.__MX_GENERIC_DOC__(kind="S4", generic="s4_value", class="Reading", export=true)
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_value", class="Reading", export=true, dispatch="x")
 # Reading::value (1:1)
 #' @name Reading-s4_value
 #' @rdname Reading

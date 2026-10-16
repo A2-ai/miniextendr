@@ -647,7 +647,8 @@ pub struct MethodAttrs {
     /// Use this to implement methods for existing generics (like `print`, `format`, `length`)
     /// without creating a new generic. When set, the generated code:
     /// - Uses the specified generic name instead of the method name
-    /// - Skips creating a new generic (assumes it already exists)
+    /// - Reuses an existing generic; S4 can create a missing one, or explicitly
+    ///   define and document a package-local one with `s4(generic = "...", own)`
     /// - Creates only the method implementation (e.g., `print.MyClass`)
     ///
     /// # Example
@@ -662,6 +663,8 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
+    /// Define and document an explicitly named package-owned S4 generic.
+    pub own_generic: bool,
     /// First formal of an existing S3/S4 generic (for example `object` for show).
     pub receiver: Option<String>,
     /// Omit the automatic dispatch dots for an existing S3/S4 generic.
@@ -1394,6 +1397,13 @@ impl ParsedMethod {
             ));
         }
 
+        if attrs.own_generic && (class_system != ClassSystem::S4 || attrs.generic.is_none()) {
+            return Err(syn::Error::new(
+                span,
+                "`s4(own)` requires an explicit S4 `generic = \"...\"`",
+            ));
+        }
+
         // R6-only boolean markers must not appear under any other class system.
         if class_system != ClassSystem::R6 {
             if attrs.r6.active {
@@ -1565,6 +1575,8 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.generic = Some(value.value());
+                        } else if meta.path.is_ident("s4") && inner.path.is_ident("own") {
+                            method_attrs.own_generic = true;
                         } else if inner.path.is_ident("receiver") {
                             let value: syn::LitStr = inner.value()?.parse()?;
                             let name = crate::naming::parse_r_receiver(&value)?;
@@ -1693,7 +1705,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, own (S4), class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -4782,6 +4794,12 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
             return Err(syn::Error::new_spanned(
                 &m.ident,
                 "`receiver` and `no_dots` apply only to instance methods",
+            ));
+        }
+        if m.method_attrs.own_generic && !instance {
+            return Err(syn::Error::new_spanned(
+                &m.ident,
+                "`s4(own)` applies only to instance methods",
             ));
         }
         let generic_receiver = m.method_attrs.receiver.as_deref().unwrap_or("x");

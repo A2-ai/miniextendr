@@ -1,4 +1,4 @@
-//! One generated S3 generic shared by inherent and trait methods (#2050).
+//! Shared generic help for inherent and trait methods (S3 #2050, S4 #2039).
 
 use miniextendr_api::{ExternalPtr, miniextendr};
 
@@ -39,5 +39,47 @@ pub trait GenericDocValue {
 impl GenericDocValue for GenericDocTrait {
     fn generic_doc_shared(&self) -> i32 {
         22
+    }
+}
+
+/// An inherent method on an explicitly owned S4 generic.
+#[derive(ExternalPtr)]
+pub struct GenericDocS4Inherent;
+
+#[miniextendr(s4)]
+impl GenericDocS4Inherent {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Return the inherent S4 implementation's value.
+    #[miniextendr(s4(generic = "generic_doc_s4_shared", own, receiver = "object"))]
+    pub fn value(&self) -> i32 {
+        31
+    }
+}
+
+/// A trait method on the same explicitly owned S4 generic.
+#[derive(ExternalPtr)]
+pub struct GenericDocS4Trait;
+
+#[miniextendr(s4)]
+impl GenericDocS4Trait {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Trait half of the owned S4 generic fixture.
+#[miniextendr]
+pub trait GenericDocS4Value {
+    fn value(&self) -> i32;
+}
+
+#[miniextendr(s4)]
+impl GenericDocS4Value for GenericDocS4Trait {
+    #[miniextendr(s4(generic = "generic_doc_s4_shared", own, receiver = "object"))]
+    fn value(&self) -> i32 {
+        32
     }
 }

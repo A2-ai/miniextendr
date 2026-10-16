@@ -21,7 +21,7 @@ Bag <- function(values) {
   methods::new("Bag", ptr = .val)
 }
 
-.__MX_GENERIC_DOC__(kind="S4", generic="s4_extra", class="Bag", export=true)
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_extra", class="Bag", export=true, dispatch="x")
 # Bag::extra (1:1)
 #' @description Count the extra arguments.
 #' @name Bag-s4_extra

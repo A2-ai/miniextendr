@@ -10,7 +10,7 @@ expression: "generate_s4_r_wrapper(&constructorless_handle(ClassSystem::S4))"
 #' @slot ptr External pointer to Rust `Handle` struct
 methods::setClass("Handle", slots = c(ptr = "externalptr"))
 
-.__MX_GENERIC_DOC__(kind="S4", generic="s4_id", class="Handle", export=true)
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_id", class="Handle", export=true, dispatch="x")
 # Handle::id (1:1)
 #' @name Handle-s4_id
 #' @rdname Handle

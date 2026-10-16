@@ -1323,6 +1323,7 @@ impl Person {
 | `ignore` | Don't generate R wrapper for this method |
 | `constructor` | Mark as the constructor, spelled `<system>(constructor)` (`r6(constructor)`). Without a mark, a receiver-less `new` returning `Self` is the constructor, else the type's one receiver-less method returning `Self`. A constructor not named `new` is also a static method under its own name (see [Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns)) |
 | `generic = "..."` | Override S3/S4/S7 generic name |
+| `s4(generic = "...", own)` | Define and document an explicitly named package-owned S4 generic; instance methods only, inherent and trait impls |
 | `receiver = "..."` | S3/S4 with `generic`: the receiver formal, for a generic whose first argument is not `x` (`summary(object, ...)`); see [Methods on an existing generic](CLASS_SYSTEMS.md#methods-on-an-existing-generic-s3-and-s4) |
 | `no_dots` | S3/S4 with `generic`: no `...` after the parameters (`show(object)`, `length(x)`); S7: see below |
 | `class = "..."` | Override S3 class suffix |
@@ -1357,8 +1358,11 @@ An S4 instance method uses `s4_<R method name>` as its default generic:
 uses exactly `category`, without the prefix (it can't be combined with
 `r_name`), and defines it only when no generic or function of that name is
 visible, so `s4(generic = "show", receiver = "object", no_dots)` adds a method
-to `methods::show`. Two instance methods of one impl block on the same generic
-are a compile error, since the second `setMethod()` would replace the first.
+to `methods::show`. Add `own` when your package owns the explicit name:
+`s4(generic = "category", own)` uses a namespace-local guard and generates
+its standalone help page. Two instance methods of one impl block on the same
+generic are a compile error, since the second `setMethod()` would replace
+the first.
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,

@@ -63,7 +63,7 @@ methods::setMethod("$<-", "Engine", function(x, name, value) {
   x
 })
 
-.__MX_GENERIC_DOC__(kind="S4", generic="s4_size", class="Engine", export=true)
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_size", class="Engine", export=true, dispatch="x")
 # Engine::size (1:1)
 #' @name Engine-s4_size
 #' @rdname Engine
