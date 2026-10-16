@@ -43,7 +43,8 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 ///
 /// # Safety
 /// The returned &str is only valid as long as R doesn't garbage collect the CHARSXP.
-/// In practice, this is safe within a single .Call invocation.
+/// For ALTSTRING inputs, rooting the source alone may not retain its elements.
+/// Use `TryFromRoot` to retain uncached elements for the call's scope.
 impl TryFromSexp for &'static str {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
@@ -61,6 +62,15 @@ impl TryFromSexp for &'static str {
         }
 
         // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
+        Ok(unsafe { charsxp_to_str(charsxp) })
+    }
+
+    unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
+        let charsxp = scalar_charsxp(root.get())?;
+        if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
+            return Ok("");
+        }
+        let charsxp = unsafe { root.protect_child(charsxp) }.get();
         Ok(unsafe { charsxp_to_str(charsxp) })
     }
 
@@ -99,6 +109,21 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(Some(""));
         }
 
+        Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+    }
+
+    unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let charsxp = scalar_charsxp(root.get())?;
+        if charsxp == SEXP::na_string() {
+            return Ok(None);
+        }
+        if charsxp == SEXP::blank_string() {
+            return Ok(Some(""));
+        }
+        let charsxp = unsafe { root.protect_child(charsxp) }.get();
         Ok(Some(unsafe { charsxp_to_str(charsxp) }))
     }
 

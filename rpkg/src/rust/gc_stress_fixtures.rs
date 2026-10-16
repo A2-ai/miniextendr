@@ -5996,3 +5996,45 @@ pub fn gc_stress_rooted_list_borrows() {
 }
 
 // endregion
+
+// region: uncached ALTSTRING borrows (#2086)
+
+/// Exercise third-party ALTSTRING behavior: each Elt returns a fresh CHARSXP
+/// without retaining it in data2 or any other R-traced storage.
+#[derive(miniextendr_api::AltrepString)]
+#[altrep(manual, no_lowlevel, class = "GcTransientBorrowString")]
+pub(crate) struct GcTransientBorrowString;
+
+impl miniextendr_api::altrep_traits::Altrep for GcTransientBorrowString {
+    fn length(_: SEXP) -> miniextendr_api::R_xlen_t {
+        1
+    }
+}
+impl miniextendr_api::altrep_traits::AltVec for GcTransientBorrowString {}
+impl miniextendr_api::altrep_traits::AltString for GcTransientBorrowString {
+    fn elt(_: SEXP, _: miniextendr_api::R_xlen_t) -> SEXP {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let next = NEXT.fetch_add(1, Ordering::Relaxed);
+        SEXP::charsxp(&format!("borrowed-{next:08}-{}", "x".repeat(300)))
+    }
+}
+miniextendr_api::impl_inferbase_string!(GcTransientBorrowString);
+
+/// Retain lazy ALTSTRING elements through scalar and vector borrows and GC.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_uncached_string_borrows() {
+    use miniextendr_api::{ProtectScope, ProtectedStrVec, StrVec, TryFromRoot};
+    use std::borrow::Cow;
+    let scope = unsafe { ProtectScope::new() };
+    let root = unsafe { scope.protect(GcTransientBorrowString.into_sexp()) };
+    assert!(crate::rooted_view_tests::rooted_uncached_strings_check(
+        <&str>::try_from_root(root).unwrap(),
+        Option::<&str>::try_from_root(root).unwrap(),
+        Cow::<str>::try_from_root(root).unwrap(),
+        StrVec::try_from_root(root).unwrap(),
+        unsafe { ProtectedStrVec::new(root.get()) },
+    ));
+}
+
+// endregion
