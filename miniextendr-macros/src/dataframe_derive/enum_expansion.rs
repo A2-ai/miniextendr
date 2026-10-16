@@ -10,13 +10,15 @@ use syn::{DeriveInput, Fields};
 use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
-    EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
-    classify_field_type, companion_debug_clone, companion_lifetime_marker, expanded_elem_idents,
-    field_is_borrowed_ref, fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty,
-    is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn, option_payload, owned_elems_iter,
-    parallel_columns_impl, parse_field_attrs, raw_na_column_error, width_elems,
+    EnumStructFieldData, FieldTypeKind, ResolvedColumn, SPELL_TYPES_ALIKE, VariantInfo,
+    VariantShape, classify_field_type, companion_debug_clone, companion_lifetime_marker,
+    expanded_elem_idents, field_is_borrowed_ref, fixed_array_elems, from_rows_par_override,
+    is_bare_reader_scalar_ty, is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn,
+    option_payload, owned_elems_iter, parallel_columns_impl, parse_field_attrs,
+    raw_na_column_error, same_column_type, width_elems,
 };
 use crate::naming;
+use crate::type_inspect::type_display;
 use std::collections::HashMap;
 
 /// Derive `DataFrameRow` for an enum with `#[dataframe(align)]`.
@@ -594,6 +596,7 @@ pub(super) fn derive_enum_dataframe(
         elem_ty: syn::Type,
         container_ty: syn::Type,
         present_in: Vec<usize>,
+        first_variant: syn::Ident,
     }
 
     let mut auto_expand_cols: Vec<EnumAutoExpandCol> = Vec::new();
@@ -603,12 +606,10 @@ pub(super) fn derive_enum_dataframe(
         for erf in &vi.fields {
             if let EnumResolvedField::AutoExpandVec(auto_data) = erf {
                 if let Some(&idx) = auto_expand_index.get(&auto_data.base_name) {
-                    let elem_match =
-                        super::same_column_type(&auto_expand_cols[idx].elem_ty, &auto_data.elem_ty);
-                    let container_match = super::same_column_type(
-                        &auto_expand_cols[idx].container_ty,
-                        &auto_data.container_ty,
-                    );
+                    let first = &auto_expand_cols[idx];
+                    let elem_match = same_column_type(&first.elem_ty, &auto_data.elem_ty);
+                    let container_match =
+                        same_column_type(&first.container_ty, &auto_data.container_ty);
                     if !elem_match {
                         if coerce_to_string {
                             auto_expand_cols[idx].elem_ty = string_ty.clone();
@@ -616,22 +617,32 @@ pub(super) fn derive_enum_dataframe(
                             return Err(syn::Error::new(
                                 auto_data.rust_name.span(),
                                 format!(
-                                    "type conflict for auto-expand field `{}`: different element type \
-                                     than a previous variant; \
-                                     use `#[dataframe(conflicts = \"string\")]` to coerce",
+                                    "type conflict for auto-expand field `{}`: variant `{}` has \
+                                     element type `{}`, variant `{}` has `{}`. {}",
                                     auto_data.base_name,
+                                    vi.name,
+                                    type_display(&auto_data.elem_ty),
+                                    first.first_variant,
+                                    type_display(&first.elem_ty),
+                                    SPELL_TYPES_ALIKE,
                                 ),
                             ));
                         }
                     }
                     if !container_match {
+                        let first = &auto_expand_cols[idx];
                         return Err(syn::Error::new(
                             auto_data.rust_name.span(),
                             format!(
                                 "container type mismatch for auto-expand field `{}`: \
+                                 variant `{}` has `{}`, variant `{}` has `{}`; \
                                  all variants must use the same container type \
                                  (`Vec<T>`, `Box<[T]>`, or `&[T]`)",
                                 auto_data.base_name,
+                                vi.name,
+                                type_display(&auto_data.container_ty),
+                                first.first_variant,
+                                type_display(&first.container_ty),
                             ),
                         ));
                     }
@@ -644,6 +655,7 @@ pub(super) fn derive_enum_dataframe(
                         elem_ty: auto_data.elem_ty.clone(),
                         container_ty: auto_data.container_ty.clone(),
                         present_in: vec![variant_idx],
+                        first_variant: vi.name.clone(),
                     });
                     auto_expand_index.insert(auto_data.base_name.clone(), idx);
                 }

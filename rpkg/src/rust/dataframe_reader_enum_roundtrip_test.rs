@@ -192,7 +192,9 @@ pub enum REMapH {
 
 // region: REQualified — qualified scalar spellings (#2036)
 
-/// Qualified scalar spellings keep the enum reader. Columns: `_type`, `id`,
+/// Qualified scalar spellings keep the enum reader, and `id`, spelled
+/// `::core::primitive::i32` in one variant and `i32` in the other, stays one
+/// integer column (#2084). Columns: `_type`, `id`,
 /// `label` (Named only), `pair_1..pair_2` (Named only), `keyed_keys` / `keyed_values`
 /// (Keyed only).
 #[derive(Clone, Debug, PartialEq, DataFrameRow)]

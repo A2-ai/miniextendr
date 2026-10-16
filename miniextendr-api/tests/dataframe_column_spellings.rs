@@ -59,6 +59,19 @@ pub enum Expanded {
     },
 }
 
+// A `$t:ty` fragment reaches the derive inside an invisible group.
+macro_rules! from_macro {
+    ($t:ty) => {
+        #[derive(DataFrameRow)]
+        #[dataframe(align, tag = "kind")]
+        pub enum FromMacro {
+            Generated { id: $t },
+            Written { id: i32 },
+        }
+    };
+}
+from_macro!(::core::primitive::i32);
+
 #[test]
 fn equivalent_scalar_spellings_keep_native_columns_and_roundtrip() {
     r_test_utils::with_r_thread(|| {
@@ -88,6 +101,16 @@ fn equivalent_scalar_spellings_keep_native_columns_and_roundtrip() {
             let frame = rows.clone().into_dataframe_par().unwrap();
             assert_eq!(Vec::<Scalars>::from_dataframe_par(&frame).unwrap(), rows);
         }
+    });
+}
+
+#[test]
+fn macro_fragment_types_share_the_written_column() {
+    r_test_utils::with_r_thread(|| {
+        let frame = vec![FromMacro::Generated { id: 1 }, FromMacro::Written { id: 2 }]
+            .into_dataframe()
+            .unwrap();
+        assert_eq!(frame.column::<Vec<i32>>("id").unwrap(), [1, 2]);
     });
 }
 
