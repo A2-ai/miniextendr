@@ -9801,3 +9801,55 @@ fn none_errors_name_vctrs_protocol_generics() {
     let r = generate_vctrs_r_wrapper(&parsed);
     assert!(r.contains("format.Lookup <- function(x, ...)"), "{r}");
 }
+
+#[test]
+fn ignored_methods_keep_rust_only_signatures() {
+    for method in [
+        quote::quote!(
+            pub unsafe fn unchecked(&self) -> i32 {
+                1
+            }
+        ),
+        quote::quote!(
+            pub fn boxed(self: Box<Self>) -> i32 {
+                2
+            }
+        ),
+        quote::quote!(
+            pub fn missing(&self, x: Missing<Missing<i32>>) {
+                let _ = x;
+            }
+        ),
+        quote::quote!(
+            pub fn dots(&self, x: &Dots, y: &Dots) {
+                let _ = (x, y);
+            }
+        ),
+        quote::quote!(
+            pub fn visibility(&self) -> Option<Invisible<i32>> {
+                None
+            }
+        ),
+    ] {
+        for class_system in [
+            ClassSystem::Env,
+            ClassSystem::R6,
+            ClassSystem::S3,
+            ClassSystem::S4,
+            ClassSystem::S7,
+            ClassSystem::Vctrs,
+        ] {
+            let parsed = parse_impl(
+                class_system,
+                syn::parse_quote! {
+                    impl Host {
+                        #[miniextendr(env(ignore))]
+                        #method
+                    }
+                },
+            );
+            assert!(parsed.methods.is_empty());
+            assert_eq!(parsed.original_impl.items.len(), 1);
+        }
+    }
+}

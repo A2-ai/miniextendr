@@ -471,7 +471,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     if let Some(dc_method) = parsed_impl
         .methods
         .iter()
-        .find(|m| m.method_attrs.r6.deep_clone && m.should_include())
+        .find(|m| m.method_attrs.r6.deep_clone)
     {
         w.member_names
             .push("the R6 member `deep_clone`".to_string());

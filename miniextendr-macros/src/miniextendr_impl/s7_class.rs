@@ -530,9 +530,6 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
     // First pass: collect all property methods (getters, setters, validators)
     for method in &parsed_impl.methods {
-        if !method.should_include() {
-            continue;
-        }
         let attrs = &method.method_attrs;
 
         if attrs.s7.getter || attrs.s7.setter || attrs.s7.validate {
@@ -610,8 +607,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // The `convert()` methods bind S7's `convert` by name: the class docs
     // import it for whichever impl block of the type has them.
     let has_convert_methods = parsed_impl.methods.iter().any(|m| {
-        m.should_include()
-            && (m.method_attrs.s7.convert_from.is_some() || m.method_attrs.s7.convert_to.is_some())
+        m.method_attrs.s7.convert_from.is_some() || m.method_attrs.s7.convert_to.is_some()
     });
     if has_convert_methods {
         w.class_doc_lines
@@ -1265,9 +1261,6 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     //    R: S7::method(S7::convert, list(ThisClass, OtherType)) <- function(from, to) ...
 
     for method in &parsed_impl.methods {
-        if !method.should_include() {
-            continue;
-        }
         let attrs = &method.method_attrs;
 
         // Handle convert_from (static method pattern)

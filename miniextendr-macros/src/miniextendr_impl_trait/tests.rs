@@ -3113,14 +3113,17 @@ fn body_impl_inherits_names_and_skip_without_replacing_implementation_options() 
     };
     let original = input.implementation.items.clone();
     vtable::inherit_method_metadata(&mut input.implementation, &input.methods).unwrap();
-    let methods =
-        vtable::extract_methods(&input.implementation, crate::roxygen::RdPage::Rendered, &[])
-            .unwrap();
+    let methods = vtable::extract_methods(
+        &input.implementation,
+        crate::roxygen::RdPage::Rendered,
+        &input.methods,
+    )
+    .unwrap();
     assert_eq!(methods[0].r_method_name(), "take");
     assert!(methods[0].check_interrupt);
     assert!(methods[0].param_defaults.contains_key("n"));
     assert_eq!(methods[1].r_method_name(), "custom_len");
-    assert!(methods[2].skip);
+    assert_eq!(methods.len(), 2);
     for (before, after) in original.iter().zip(&input.implementation.items) {
         if let (syn::ImplItem::Fn(before), syn::ImplItem::Fn(after)) = (before, after) {
             assert_eq!(before.sig, after.sig);

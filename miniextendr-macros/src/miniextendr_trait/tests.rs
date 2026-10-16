@@ -337,7 +337,7 @@ fn view_method_roots_arguments_and_result() {
         fn join(&self, a: String, b: Vec<f64>) -> String;
     })
     .unwrap();
-    let info = extract_method_info(&method).unwrap();
+    let info = extract_method_info(&method).unwrap().unwrap();
     let view = generate_view_method(&info).unwrap().to_string();
     assert!(
         view.contains(":: miniextendr_api :: gc_protect :: ProtectScope :: new ()"),
@@ -364,7 +364,7 @@ fn view_method_without_arguments_or_result_opens_no_scope() {
         fn touch(&mut self);
     })
     .unwrap();
-    let info = extract_method_info(&method).unwrap();
+    let info = extract_method_info(&method).unwrap().unwrap();
     let view = generate_view_method(&info).unwrap().to_string();
     assert!(!view.contains("ProtectScope"), "{view}");
 }
@@ -379,7 +379,7 @@ fn extract_method_info_captures_name() {
     })
     .unwrap();
 
-    let info = extract_method_info(&method).unwrap();
+    let info = extract_method_info(&method).unwrap().unwrap();
     assert_eq!(info.name.to_string(), "my_method");
 }
 
@@ -389,14 +389,14 @@ fn extract_method_info_detects_self() {
         fn method(&self) -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&with_self).unwrap();
+    let info = extract_method_info(&with_self).unwrap().unwrap();
     assert!(info.has_self);
 
     let without_self: syn::TraitItemFn = syn::parse2(quote::quote! {
         fn static_method() -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&without_self).unwrap();
+    let info = extract_method_info(&without_self).unwrap().unwrap();
     assert!(!info.has_self);
 }
 
@@ -406,14 +406,14 @@ fn extract_method_info_detects_mutability() {
         fn get(&self) -> i32;
     })
     .unwrap();
-    let info = extract_method_info(&immutable).unwrap();
+    let info = extract_method_info(&immutable).unwrap().unwrap();
     assert!(!info.is_mut);
 
     let mutable: syn::TraitItemFn = syn::parse2(quote::quote! {
         fn set(&mut self, value: i32);
     })
     .unwrap();
-    let info = extract_method_info(&mutable).unwrap();
+    let info = extract_method_info(&mutable).unwrap().unwrap();
     assert!(info.is_mut);
 }
 
@@ -424,7 +424,7 @@ fn extract_method_info_extracts_params() {
     })
     .unwrap();
 
-    let info = extract_method_info(&method).unwrap();
+    let info = extract_method_info(&method).unwrap().unwrap();
     assert_eq!(info.param_names.len(), 2);
     assert_eq!(info.param_names[0].to_string(), "a");
     assert_eq!(info.param_names[1].to_string(), "b");
@@ -440,7 +440,7 @@ fn view_method_passes_missing_args_as_the_sentinel() {
         fn pick(&self, level: Missing<Option<String>>, n: i32) -> String;
     })
     .unwrap();
-    let info = extract_method_info(&method).unwrap();
+    let info = extract_method_info(&method).unwrap().unwrap();
     let view = generate_view_method(&info).unwrap().to_string();
     assert!(
         view.contains(":: miniextendr_api :: trait_abi :: missing_to_sexp (level)"),
@@ -563,8 +563,8 @@ fn interface_tags_track_exported_signatures() {
                 let syn::TraitItem::Fn(method) = item else {
                     return None;
                 };
-                let info = extract_method_info(method).unwrap();
-                (info.has_self && !info.skip).then_some(info)
+                let info = extract_method_info(method).unwrap()?;
+                info.has_self.then_some(info)
             })
             .collect();
         trait_abi_tag_path(&item.ident, &methods)
@@ -744,5 +744,46 @@ fn trait_arguments_keep_conversions_self_and_rust_only_methods() {
         ),
     ] {
         extract_method_info(&method).unwrap();
+    }
+}
+
+#[test]
+fn skipped_methods_keep_rust_only_signatures() {
+    for method in [
+        quote::quote!(
+            fn consume(self) -> Vec<i32>;
+        ),
+        quote::quote!(
+            fn boxed(self: Box<Self>) -> i32;
+        ),
+        quote::quote!(
+            async fn fetch(&self) -> i32;
+        ),
+        quote::quote!(
+            fn map<T>(&self, value: T) -> T;
+        ),
+        quote::quote!(
+            fn array<const N: usize>(&self, value: [i32; N]) -> [i32; N];
+        ),
+        quote::quote!(
+            fn lazy(&self, dots: &LazyDots);
+        ),
+        quote::quote!(
+            unsafe fn unchecked(&self) -> i32;
+        ),
+        quote::quote!(
+            fn markers(&self, value: Checked<i32>) -> Option<Invisible<i32>>;
+        ),
+    ] {
+        let item: ItemTrait = syn::parse_quote! {
+            trait RustOnly {
+                fn visible(&self) -> i32;
+                #[miniextendr(skip)]
+                #method
+            }
+        };
+        validate_trait(&item).unwrap();
+        let output = generate_trait_abi(&item);
+        assert!(!output.to_string().contains("compile_error"), "{output}");
     }
 }

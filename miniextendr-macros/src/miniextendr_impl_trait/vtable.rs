@@ -177,7 +177,7 @@ pub(super) fn generate_vtable_static(
     // - Body is empty (no methods, no consts) — blanket impl provides it
     // - `blanket` flag is set — a blanket impl exists, methods are only for
     //   C wrapper signature extraction, not for actual trait implementation
-    let has_items = !all_methods.is_empty() || !consts.is_empty();
+    let has_items = !impl_item.items.is_empty();
     let clean_impl_tokens = if has_items && !impl_attrs.blanket {
         let mut clean_impl = impl_item.clone();
         for item in &mut clean_impl.items {
@@ -721,6 +721,13 @@ pub(super) fn extract_methods(
     let mut methods = Vec::new();
     for item in &impl_item.items {
         if let syn::ImplItem::Fn(method) = item {
+            // A declaration-level skip removes both the ABI slot and the R
+            // wrapper. An impl-only skip still needs its declared ABI callback.
+            if let Some(declared) = declaration.iter().find(|m| m.sig.ident == method.sig.ident)
+                && parse_trait_method_attrs(&declared.attrs)?.skip
+            {
+                continue;
+            }
             // Check receiver type
             let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
                 if let syn::FnArg::Receiver(_) = arg {

@@ -54,7 +54,16 @@ itself.
 Exposed functions and methods must be safe Rust functions. An `unsafe fn`
 requires caller obligations that a generated R wrapper cannot enforce; expose
 a safe adapter that validates those obligations before making the unsafe call.
-A trait method marked `#[miniextendr(skip)]` remains Rust-only and may be unsafe.
+A trait method marked `#[miniextendr(skip)]` remains Rust-only. It may be
+unsafe, async, generic, consume `self`, or use arguments and returns without R
+conversions (including `LazyDots`). Its original Rust signature and body stay
+on the trait and impl; it contributes no ABI slot, callback, fingerprint entry,
+default-method wrapper or R registration. Only its name and skip choice reach
+impl metadata, so implementations inherit the exclusion.
+
+The same rule applies to an inherent method marked with its class system's
+`ignore` option, such as `#[miniextendr(env(ignore))]`. These methods do not
+participate in constructor inference or class-wrapper validation.
 Explicit raw `extern "C-unwind"` registration keeps its existing safety contract.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,

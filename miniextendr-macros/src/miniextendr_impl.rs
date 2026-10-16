@@ -808,6 +808,7 @@ pub struct ParsedImpl {
     /// Used for class-level documentation (e.g., the R6 class docstring or S3 type description).
     pub doc_tags: Vec<String>,
     /// All parsed methods in this impl block, in source order.
+    /// Ignored methods remain only in original_impl, never in this model.
     pub methods: Vec<ParsedMethod>,
     /// The original impl block with `#[miniextendr]` and roxygen attrs stripped.
     /// Re-emitted as-is so the Rust compiler sees the actual method implementations.
@@ -2164,18 +2165,22 @@ impl ParsedMethod {
 
     /// Parse a method from an impl item.
     ///
+    /// Ignored methods return `None` before wrapper-specific processing.
     /// Regular doc comments are auto-converted to `@description` for all class
     /// systems. `class_page` is whether the class block renders a help page:
     /// the method's docs go nowhere else when it does not.
     pub fn from_impl_item(
         item: &mut syn::ImplItemFn,
         class_page: crate::roxygen::RdPage,
-    ) -> syn::Result<Self> {
+    ) -> syn::Result<Option<Self>> {
         use syn::spanned::Spanned;
+        let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
+        if method_attrs.ignore {
+            return Ok(None);
+        }
         crate::miniextendr_fn::require_safe_wrapper(&item.sig)?;
         old_handle_receiver(&item.sig)?;
         let env = Self::detect_env(&item.sig);
-        let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
         // The `&Dots` parameter is R's `...` wherever it sits (Rust `...`
         // becomes a trailing one); at most one per method.
@@ -2435,7 +2440,7 @@ impl ParsedMethod {
             ));
         }
         sig.output = crate::type_inspect::serialize_return_type(&output, method_attrs.serialize);
-        Ok(ParsedMethod {
+        Ok(Some(ParsedMethod {
             visibility_marker,
             return_wrap,
             ident: item.sig.ident.clone(),
@@ -2447,13 +2452,7 @@ impl ParsedMethod {
             method_attrs,
             param_defaults,
             has_dots,
-        })
-    }
-
-    /// Returns true if this method should be included in the class.
-    pub fn should_include(&self) -> bool {
-        // Skip ignored methods
-        !self.method_attrs.ignore
+        }))
     }
 
     /// Returns true if this method should be private in R6.
@@ -3078,7 +3077,9 @@ impl ParsedImpl {
         let mut methods = Vec::new();
         for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let mut method = ParsedMethod::from_impl_item(fn_item, class_page)?;
+                let Some(mut method) = ParsedMethod::from_impl_item(fn_item, class_page)? else {
+                    continue;
+                };
                 crate::s7_conversion::configure(
                     &mut method,
                     fn_item,
@@ -3428,9 +3429,9 @@ impl ParsedImpl {
         definitions
     }
 
-    /// Get methods that should be included.
+    /// Get the methods retained for class generation.
     pub fn included_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
-        self.methods.iter().filter(|m| m.should_include())
+        self.methods.iter()
     }
 
     /// The class constructor of this impl block, if it has one: the
@@ -3555,8 +3556,7 @@ impl ParsedImpl {
     /// R6 finalizer or `deep_clone` handler).
     pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env.is_instance()
+            m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && !m.method_attrs.r6.deep_clone
@@ -3568,8 +3568,7 @@ impl ParsedImpl {
     /// Get private instance methods (have env, private visibility, not active).
     pub fn private_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env.is_instance()
+            m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_private()
@@ -3581,8 +3580,7 @@ impl ParsedImpl {
     /// Active bindings provide property-like access (obj$name instead of obj$name()).
     pub fn active_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env.is_instance()
+            m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_active()
@@ -3594,7 +3592,7 @@ impl ParsedImpl {
     pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods
             .iter()
-            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6.setter)
+            .filter(|m| m.env.is_instance() && m.method_attrs.r6.setter)
     }
 
     /// Find the setter method for a given property name.
@@ -3613,9 +3611,9 @@ impl ParsedImpl {
 
     /// Get instance methods (have env) - includes both public and private.
     pub fn instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
-        self.methods.iter().filter(|m| {
-            m.should_include() && m.env.is_instance() && !m.is_constructor() && !m.is_finalizer()
-        })
+        self.methods
+            .iter()
+            .filter(|m| m.env.is_instance() && !m.is_constructor() && !m.is_finalizer())
     }
 
     /// Get static methods (no env, not finalizer): the receiver-less methods
@@ -3623,8 +3621,7 @@ impl ParsedImpl {
     /// isn't `new` ([`constructor_keeps_own_name`](Self::constructor_keeps_own_name)).
     pub fn static_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env == ReceiverKind::None
+            m.env == ReceiverKind::None
                 && (!self.is_method_constructor(m) || self.constructor_keeps_own_name(m))
                 && !m.is_finalizer()
         })
@@ -3646,14 +3643,12 @@ impl ParsedImpl {
     pub fn as_coercion_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods
             .iter()
-            .filter(|m| m.should_include() && m.method_attrs.as_coercion.is_some())
+            .filter(|m| m.method_attrs.as_coercion.is_some())
     }
 
     /// Get the finalizer method, if any.
     pub fn finalizer(&self) -> Option<&ParsedMethod> {
-        self.methods
-            .iter()
-            .find(|m| m.should_include() && m.is_finalizer())
+        self.methods.iter().find(|m| m.is_finalizer())
     }
 }
 

@@ -73,7 +73,8 @@
 //!
 //! ## Supported Method Signatures
 //!
-//! Methods must follow these constraints:
+//! Exposed methods must follow these constraints; `#[miniextendr(skip)]` methods
+//! remain Rust-only and are exempt:
 //!
 //! - **Receiver**: `&self`, `&mut self`, `self: ExternalPtrRef<'_, Self>` or
 //!   `self: ExternalPtrMut<'_, Self>` for instance methods, or none for static methods.
@@ -184,7 +185,9 @@ fn validate_trait(trait_item: &ItemTrait) -> syn::Result<()> {
 
     // Validate each method
     for item in &trait_item.items {
-        if let syn::TraitItem::Fn(method) = item {
+        if let syn::TraitItem::Fn(method) = item
+            && !method_options(method)?.0
+        {
             validate_method(method, trait_name)?;
         }
     }
@@ -322,10 +325,11 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         for item in &trait_item.items {
             if let syn::TraitItem::Fn(method) = item {
                 let info = match extract_method_info(method) {
-                    Ok(info) => info,
+                    Ok(Some(info)) => info,
+                    Ok(None) => continue,
                     Err(e) => return e.into_compile_error(),
                 };
-                if info.has_self && !info.skip {
+                if info.has_self {
                     collected.push(info);
                 }
             }
@@ -534,16 +538,23 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let mut tpie_method_metadata = Vec::new();
     for item in &trait_item.items {
         if let syn::TraitItem::Fn(method) = item {
+            let name = &method.sig.ident;
             let info = match extract_method_info(method) {
-                Ok(info) => info,
+                Ok(Some(info)) => info,
+                Ok(None) => {
+                    // Only the name and skip choice reach impls. Rust-only
+                    // signatures never enter wrapper/default-method lowering.
+                    method_metadata.push(quote::quote! {
+                        #[miniextendr(skip)] fn #name();
+                    });
+                    continue;
+                }
                 Err(e) => return e.into_compile_error(),
             };
-            let name = &method.sig.ident;
             let r_name_attr = info
                 .r_name
                 .as_ref()
                 .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
-            let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
             // Copied signatures name every parameter as the declaration's
             // metadata does (`arg<i>` for a pattern), since the generated
             // wrappers pass each argument by name.
@@ -570,7 +581,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                     .iter()
                     .filter(|attr| attr.path().is_ident("doc"));
                 method_metadata.push(quote::quote! {
-                    #(#docs)* #r_name_attr #skip_attr #sig {}
+                    #(#docs)* #r_name_attr #sig {}
                 });
             } else {
                 let params = method
@@ -590,10 +601,10 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                         quote::quote!(#(#attrs)* #name: ())
                     });
                 method_metadata.push(quote::quote! {
-                    #r_name_attr #skip_attr fn #name(#(#params),*);
+                    #r_name_attr fn #name(#(#params),*);
                 });
             }
-            if !has_generics && assoc_types.is_empty() && !info.skip {
+            if !has_generics && assoc_types.is_empty() {
                 let r_name = info
                     .r_name
                     .as_deref()
@@ -1111,8 +1122,6 @@ struct MethodInfo {
     param_names: Vec<syn::Ident>,
     /// Return type. `None` when the method returns `()` (unit type or no return annotation).
     return_type: Option<syn::Type>,
-    /// Whether method is marked `#[miniextendr(skip)]`, excluding it from codegen.
-    skip: bool,
     /// Override the R-facing method name (from `#[miniextendr(r_name = "...")]`).
     /// When set, R wrappers and TPIE metadata use this name instead of the Rust ident.
     r_name: Option<String>,
@@ -1441,14 +1450,8 @@ fn build_where_predicates(
     all
 }
 
-/// Extract method information from a trait method definition.
-///
-/// Parses the method signature to determine receiver type, parameter names/types,
-/// return type, and any `#[miniextendr(...)]` attributes like `skip` and `r_name`.
-/// Parameters with non-ident patterns are assigned synthetic names (`arg0`, `arg1`, etc.).
-fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
-    let name = method.sig.ident.clone();
-
+/// Parse the declaration's export choice before inspecting its signature.
+fn method_options(method: &syn::TraitItemFn) -> syn::Result<(bool, Option<String>)> {
     // Check for #[miniextendr(skip)] and #[miniextendr(r_name = "...")]
     let mut skip = false;
     let mut r_name: Option<String> = None;
@@ -1471,9 +1474,18 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         })?;
     }
 
-    if !skip {
-        crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
+    Ok((skip, r_name))
+}
+
+/// Skipped methods have no ABI information: their Rust signatures are opaque
+/// to wrapper generation.
+fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<Option<MethodInfo>> {
+    let (skip, r_name) = method_options(method)?;
+    if skip {
+        return Ok(None);
     }
+    let name = method.sig.ident.clone();
+    crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
 
     // Validate declaration options now; metadata retains their source spelling
     // for each implementation, while the Rust trait emitted below drops them.
@@ -1541,7 +1553,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
             }
             // Only instance arguments cross the vtable. Rust-only methods
             // and static methods keep their existing wrapper contracts.
-            if has_self && !skip {
+            if has_self {
                 let name = match pat_type.pat.as_ref() {
                     syn::Pat::Ident(name) => crate::naming::ident_name(&name.ident),
                     _ => format!("arg{i}"),
@@ -1628,7 +1640,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         }
     };
 
-    Ok(MethodInfo {
+    Ok(Some(MethodInfo {
         name,
         has_self,
         is_mut,
@@ -1636,9 +1648,8 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         param_types,
         param_names,
         return_type,
-        skip,
         r_name,
-    })
+    }))
 }
 
 #[cfg(test)]
