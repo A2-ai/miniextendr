@@ -146,13 +146,12 @@ pub(crate) fn generate_direct_altrep_registration(
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
-                use ::miniextendr_api::altrep_registration::RegisterAltrep;
                 use ::miniextendr_api::externalptr::ExternalPtr;
                 use ::miniextendr_api::SEXP;
                 use ::miniextendr_api::sys::{Rf_protect, Rf_unprotect};
 
                 let ext_ptr = ExternalPtr::new(self);
-                let cls = Self::get_or_init_class();
+                let cls = <Self as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
                 let data1 = ::miniextendr_api::externalptr::ExternalPtr::as_sexp(&ext_ptr);
                 unsafe {
                     Rf_protect(data1);
@@ -163,12 +162,11 @@ pub(crate) fn generate_direct_altrep_registration(
             }
 
             unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::SEXP {
-                use ::miniextendr_api::altrep_registration::RegisterAltrep;
                 use ::miniextendr_api::externalptr::ExternalPtr;
                 use ::miniextendr_api::sys::{Rf_protect_unchecked, Rf_unprotect_unchecked};
 
                 let ext_ptr = ExternalPtr::new_unchecked(self);
-                let cls = Self::get_or_init_class();
+                let cls = <Self as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
                 let data1 = ::miniextendr_api::externalptr::ExternalPtr::as_sexp(&ext_ptr);
                 unsafe {
                     Rf_protect_unchecked(data1);
