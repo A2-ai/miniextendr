@@ -698,7 +698,7 @@ pub const CONFIG_BUILD_FIELDS: &[(&str, &str)] = &[
 
 /// `SystemRequirements` entry for the Rust toolchain (shared between the
 /// fresh DESCRIPTION and the `init use` merge path).
-pub const RUST_SYSTEM_REQUIREMENT: &str = "Rust (>= 1.85)";
+pub const RUST_SYSTEM_REQUIREMENT: &str = "Rust (>= 1.88)";
 
 /// Minimum R version supported by miniextendr-backed packages
 /// (~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the

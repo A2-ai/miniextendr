@@ -2,13 +2,13 @@
 name = "miniextendr-api"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Runtime library for miniextendr - safe Rust-R interop with worker threads, ALTREP, and type conversions"
 documentation = "https://docs.rs/miniextendr-api"
-rust-version = "1.85"
 
 [features]
 default = ["doc-lint"]

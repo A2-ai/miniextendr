@@ -119,7 +119,8 @@ is required and an enabled merge button proves nothing (#1391).
 pushes, a weekly schedule (Saturday 06:00 UTC) and `workflow_dispatch`. Its
 `CI Success` job is the one check to require. It needs Generated Files Check,
 Version Check, Detect changes, Sync Checks, Docs Link Check, Docs Examples
-Check, Rust lint, Rust tests, R CMD check / Linux, R tests / Linux, the R GC-stress shards,
+Check, Rust lint, MSRV (`cargo check` on the declared `rust-version`), Rust
+tests, R CMD check / Linux, R tests / Linux, the R GC-stress shards,
 Cross-Package Trait ABI, minirextendr, CRAN-like check and Bootstrap Vendor
 Test. A skipped job passes; a failed or cancelled one fails the aggregate. A
 green `CI Success` therefore means only that nothing which ran failed:

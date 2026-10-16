@@ -103,7 +103,7 @@ make_doctor_pkg <- function(cargo_lines) {
     "Package: mypkg",
     "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   rust_dir <- file.path(tmp, "src", "rust")
