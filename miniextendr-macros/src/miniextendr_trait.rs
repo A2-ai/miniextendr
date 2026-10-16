@@ -543,22 +543,27 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 .as_ref()
                 .map(|name| quote::quote!(#[miniextendr(r_name = #name)]));
             let skip_attr = info.skip.then(|| quote::quote!(#[miniextendr(skip)]));
+            // Copied signatures name every parameter as the declaration's
+            // metadata does (`arg<i>` for a pattern), since the generated
+            // wrappers pass each argument by name.
+            let mut sig = method.sig.clone();
+            for (arg, name) in sig
+                .inputs
+                .iter_mut()
+                .filter_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => Some(arg),
+                    syn::FnArg::Receiver(_) => None,
+                })
+                .zip(&info.param_names)
+            {
+                *arg.pat = syn::parse_quote!(#name);
+            }
             // Keep default signatures, but never copy their bodies into an
-            // implementation. Generated wrappers call the trait's own default.
-            // Required methods carry names only, preserving impl-local types.
-            if has_generics && method.default.is_some() {
-                let mut sig = method.sig.clone();
-                for (arg, name) in sig
-                    .inputs
-                    .iter_mut()
-                    .filter_map(|arg| match arg {
-                        syn::FnArg::Typed(arg) => Some(arg),
-                        syn::FnArg::Receiver(_) => None,
-                    })
-                    .zip(&info.param_names)
-                {
-                    *arg.pat = syn::parse_quote!(#name);
-                }
+            // implementation. Generated wrappers call the trait's own default,
+            // so an impl that omits a default still gets its R wrapper, generic
+            // trait or not. Required methods carry names only, preserving
+            // impl-local types.
+            if method.default.is_some() {
                 let docs = method
                     .attrs
                     .iter()
@@ -578,7 +583,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                     .as_deref()
                     .map(crate::naming::name_ident)
                     .unwrap_or_else(|| name.clone());
-                let sig = &method.sig;
                 tpie_method_metadata.push(quote::quote! {
                     method { r_name = #r_name; #sig; }
                 });

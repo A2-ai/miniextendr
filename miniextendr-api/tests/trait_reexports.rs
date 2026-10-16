@@ -157,6 +157,12 @@ fn import_spelling_does_not_change_r_names_or_trait_object_compatibility() {
             .content
             .contains("CounterHost$Counter$read")
     );
+    // The omitted default, its `Count` argument read in the declaration.
+    assert!(
+        R_WRAPPERS_CounterHost_Counter_IMPL
+            .content
+            .contains("CounterHost$Counter$plus")
+    );
     assert!(
         R_WRAPPERS_CratePathGreeter_Greet_IMPL
             .content

@@ -409,6 +409,16 @@ test_that("IterableVecIter - collect via RIterator works", {
   expect_equal(result, c(100L, 200L, 300L))
 })
 
+test_that("IterableVecIter - omitted RIterator defaults get wrappers", {
+  v <- IterableVec$new(c(1L, 2L, 3L, 4L, 5L))
+  it_ptr <- v$RMakeIter$make_iter()
+  class(it_ptr) <- "IterableVecIter"
+
+  expect_equal(it_ptr$RIterator$skip(1L), 1L)
+  expect_equal(it_ptr$RIterator$nth(1L), 3L)
+  expect_equal(it_ptr$RIterator$count(), 2L)
+})
+
 # =============================================================================
 # Renamed adapter methods under S3, S4, S7 and R6 (#2020)
 # =============================================================================
