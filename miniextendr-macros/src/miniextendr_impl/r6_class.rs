@@ -168,11 +168,20 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
     lines
 }
 
-/// Marker prefix emitted by the proc-macro when a subclass method param might be
-/// inherited from a parent class documented in-package. Resolved at write-time in
-/// `registry.rs` to either nothing (parent is documented → roxygen2 inherits) or
-/// `(no documentation available)` (parent not found or not in-package).
-pub(crate) const MX_INHERITED_PARAM_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
+/// Defer missing R6 parameter docs until every impl block has been merged.
+/// The writer drops the marker when class or in-package parent docs cover the
+/// parameter, and otherwise supplies the ordinary undocumented fallback.
+fn missing_param_doc(parsed_impl: &ParsedImpl, method: &str, param: &str) -> String {
+    let class = parsed_impl.class_name();
+    let parent = parsed_impl
+        .r6_inherit
+        .as_deref()
+        .map(class_ref_or_verbatim)
+        .unwrap_or_default();
+    format!(
+        "#' .__MX_INHERITED_PARAM__(class=\"{class}\", parent=\"{parent}\", method=\"{method}\", param=\"{param}\")"
+    )
+}
 
 /// Generates the R wrapper of an R6-style class, in the parts the wrapper
 /// writer merges per type ([`super::ClassWrapper`], #1776).
@@ -318,11 +327,11 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 // Choice params get their choice text: the literal
                 // `choices(...)` line, or the write-time placeholder the
                 // wrapper writer renders to `One of "A", "B".` (#210).
-                let body = ctor_mx_doc
-                    .get(param_name)
-                    .map(String::as_str)
-                    .unwrap_or("(no documentation available)");
-                lines.push(format!("    #' @param {} {}", param_name, body));
+                let doc = ctor_mx_doc.get(param_name).map_or_else(
+                    || missing_param_doc(parsed_impl, "initialize", param_name),
+                    |body| format!("#' @param {param_name} {body}"),
+                );
+                lines.push(format!("    {doc}"));
             }
         }
 
@@ -517,9 +526,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
         // Document method params that aren't already documented.
         // Class-level @param tags are inherited by roxygen2 8.0.0 — skip covered params.
-        // For subclass methods (r6_inherit set) and params not covered at class level,
-        // emit a write-time marker so the registry can detect in-package parent docs
-        // and suppress the placeholder (letting roxygen2 pull from the parent method).
+        // Defer missing docs: another impl block or an in-package parent may
+        // document this parameter, which only the wrapper writer can see.
         let method_mx_doc = ctx.choice_param_docs();
         let r_method_name = ctx.method.r_method_name();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
@@ -531,23 +539,10 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 if class_param_names.contains(param_name) {
                     continue;
                 }
-                let body = method_mx_doc
-                    .get(param_name)
-                    .map(String::as_str)
-                    .unwrap_or("(no documentation available)");
-                // For subclass methods: if there is an in-package parent, emit a
-                // write-time marker. The registry pass will resolve it to nothing
-                // (parent documented → roxygen2 inherits) or to the fallback text.
-                if let Some(ref parent) = parsed_impl.r6_inherit
-                    && body == "(no documentation available)"
-                {
-                    lines.push(format!(
-                        "#' {}class=\"{}\", parent=\"{}\", method=\"{}\", param=\"{}\")",
-                        MX_INHERITED_PARAM_PREFIX, class_name, parent, r_method_name, param_name,
-                    ));
-                } else {
-                    lines.push(format!("#' @param {} {}", param_name, body));
-                }
+                lines.push(method_mx_doc.get(param_name).map_or_else(
+                    || missing_param_doc(parsed_impl, &r_method_name, param_name),
+                    |body| format!("#' @param {param_name} {body}"),
+                ));
             }
         }
         lines.push(format!(

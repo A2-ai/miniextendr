@@ -39,7 +39,7 @@ Temperature <- R6::R6Class("Temperature",
 
 # Temperature::set_celsius (1:1)
 #' @description Set the temperature in Celsius.
-#' @param value (no documentation available)
+#' .__MX_INHERITED_PARAM__(class="Temperature", parent="", method="set_celsius", param="value")
 Temperature$set("public", "set_celsius", function(value) {
   if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
   if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")

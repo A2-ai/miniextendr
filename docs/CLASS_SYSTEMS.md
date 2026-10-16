@@ -1211,9 +1211,11 @@ constructor's), then each other block's, in source order:
   defining block.
 
 Each method's doc comment documents that method, whichever block has it. An R6
-impl-level `@param`, which roxygen2 hands down to the class's methods, spares
-the methods of its own block their `(no documentation available)` placeholder;
-a method in another block documents the argument itself (#2066).
+impl-level `@param` applies to constructors and methods in every block of the
+type, including comma-separated names (`@param lower,upper Bounds.`). An
+explicit method `@param` takes precedence. Missing parameter docs are resolved
+after the blocks merge, before falling back to in-package parent documentation
+or `(no documentation available)` (#2066).
 
 The blocks of a type follow four rules, checked when the wrapper writer
 assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the

@@ -70,12 +70,17 @@ pub struct SplitR6 {
 }
 
 /// R6 class with methods in two impl blocks.
+/// @param by Amount to add.
 #[miniextendr(r6)]
 impl SplitR6 {
     /// Create an object holding `value`.
-    /// @param value Starting value.
     pub fn new(value: i32) -> Self {
         Self { value }
+    }
+
+    /// Add an integer without changing the object.
+    pub fn plus(&self, offset: i32) -> i32 {
+        self.value + offset
     }
 
     /// The current value.
@@ -86,11 +91,17 @@ impl SplitR6 {
 
 /// Its second impl block adds an active binding, a private method, a
 /// finalizer and a static method.
+/// @param value,offset An integer value.
 #[miniextendr(r6)]
 impl SplitR6 {
     /// Add `by` to the value.
-    /// @param by Amount to add.
     pub fn add(&mut self, by: i32) {
+        self.value += by;
+    }
+
+    /// Add a method-specific amount.
+    /// @param by A separately documented increment.
+    pub fn add_documented(&mut self, by: i32) {
         self.value += by;
     }
 

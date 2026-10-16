@@ -12,7 +12,7 @@ Bag <- R6::R6Class("Bag",
   public = list(
     # Bag::new (1:1)
     #' @description Create a new `Bag`.
-    #' @param values (no documentation available)
+    #' .__MX_INHERITED_PARAM__(class="Bag", parent="", method="initialize", param="values")
     initialize = function(values, .ptr = NULL) {
       if (is.null(.ptr)) {
         if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
@@ -36,8 +36,8 @@ Bag <- R6::R6Class("Bag",
 
 # Bag::extra (1:1)
 #' @description Count the extra arguments.
-#' @param n (no documentation available)
-#' @param ... (no documentation available)
+#' .__MX_INHERITED_PARAM__(class="Bag", parent="", method="extra", param="n")
+#' .__MX_INHERITED_PARAM__(class="Bag", parent="", method="extra", param="...")
 Bag$set("public", "extra", function(n, ...) {
   if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
   if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")

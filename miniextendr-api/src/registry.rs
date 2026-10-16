@@ -2233,172 +2233,87 @@ fn parse_inherited_param_marker(marker: &str) -> Option<(String, String, String,
         }
     }
 
-    if class.is_empty() || parent.is_empty() || method.is_empty() || param.is_empty() {
+    if class.is_empty() || method.is_empty() || param.is_empty() {
         return None;
     }
 
     Some((class, parent, method, param))
 }
 
-/// Resolve `.__MX_INHERITED_PARAM__(...)` markers.
-///
-/// For each marker, checks whether the parent class is in-package and has
-/// `@param <param>` documented for either:
-/// - The same method name (in any of its method doc blocks), or
-/// - The class-level `@param` (emitted in the class header).
-///
-/// If the parent is documented → delete the marker line (roxygen2 8.0.0 inherits
-/// the parent method's `@param` into the subclass method).
-///
-/// If the parent is cross-package or the param is not documented there → replace
-/// with `#' @param {param} (no documentation available)` to preserve the zero-warning
-/// guarantee on rendered Rd.
-///
-/// Cross-package parents: markers are always replaced with the fallback text because
-/// we cannot inspect foreign packages' wrapper content at write time.
+/// Resolve missing R6 parameter docs after all class blocks have been merged.
+/// Class-level docs may come from any impl block. Otherwise, let roxygen2
+/// inherit an in-package parent's method/class docs, or supply the fallback.
+/// Cross-package parents cannot be inspected in the generated wrapper text.
 #[cfg(not(target_arch = "wasm32"))]
 fn resolve_inherited_param_markers(content: String) -> String {
     use std::collections::{HashMap, HashSet};
 
     const MARKER_PREFIX: &str = ".__MX_INHERITED_PARAM__(";
-
-    // Check if the marker is present at all (fast path).
     if !content.contains(MARKER_PREFIX) {
         return content;
     }
 
-    // Build an index of in-package class param documentation:
-    //   class_name → Set<param_name>
-    // We scan the content for:
-    //   1. Class-level @param tags: lines like `#' @param <name> ...` appearing
-    //      between `#' @name <ClassName>` and the R6Class(...) definition.
-    //   2. Method-level @param tags for a specific method: lines like
-    //      `    #' @param <name> ...` inside the method's doc block.
-    //
-    // Strategy: build a map of (class_name, method_name_or_class) → Set<param_name>
-    // where method_name_or_class = "" means class-level.
-    let mut class_method_params: HashMap<(String, String), HashSet<String>> = HashMap::new();
-
-    // We need to scan the wrapper content to find documented params.
-    // Simple heuristic: find `#' @name ClassName` then collect `#' @param` lines
-    // until the next non-doc line (the R6Class definition).
-    let lines: Vec<&str> = content.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i].trim();
-        // Class-level: `#' @name ClassName` followed by class-level @param lines
-        if let Some(rest) = line.strip_prefix("#' @name ") {
-            let class_name = rest.trim().to_string();
-            // Scan forward for @param lines in the class header (until non-doc)
-            let mut j = i + 1;
-            while j < lines.len() {
-                let next = lines[j].trim();
-                if next.starts_with("#'") {
-                    if let Some(param_rest) = next.strip_prefix("#' @param ") {
-                        if let Some(param_name) = param_rest.split_whitespace().next() {
-                            class_method_params
-                                .entry((class_name.clone(), String::new()))
-                                .or_default()
-                                .insert(param_name.to_string());
-                        }
-                    }
-                    j += 1;
-                } else {
-                    break;
-                }
+    // Index adjacent documentation by its actual R class/method binding,
+    // not @name (which may name a different help topic) or Rust source comments.
+    // An empty method name denotes the class header. Public methods are $set
+    // blocks; only initialize is inline in R6Class().
+    let mut documented: HashMap<(&str, &str), HashSet<&str>> = HashMap::new();
+    let mut params = HashSet::new();
+    let mut current_class = None;
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(doc) = line.strip_prefix("#'") {
+            if let Some(rest) = doc.trim_start().strip_prefix("@param ")
+                && let Some(names) = rest.split_whitespace().next()
+            {
+                params.extend(names.split(','));
             }
+            continue;
         }
-        // Method-level: `    #' @description Method \`method_name\`.` or source comment
-        // Simpler: look for `    #' @param` lines at method indent — attribute to the
-        // nearest preceding `#' @rdname ClassName` (method blocks carry this).
-        // Actually, method-level @param inside an R6 class block are indented with 4 spaces.
-        // We track the current class context from the most recent R6Class definition.
-        i += 1;
+        let target = if let Some((_, rest)) = line.split_once(" <- R6::R6Class(\"") {
+            let (class, _) = rest.split_once('"').unwrap();
+            current_class = Some(class);
+            Some((class, ""))
+        } else if let Some((class, rest)) = line.split_once(r#"$set("public", ""#) {
+            let (method, _) = rest.split_once('"').unwrap();
+            Some((class, method))
+        } else if line.starts_with("initialize = function(") {
+            current_class.map(|class| (class, "initialize"))
+        } else {
+            None
+        };
+        if let Some(target) = target {
+            documented.entry(target).or_default().extend(params.drain());
+        } else {
+            params.clear();
+        }
     }
 
-    // Walk the content to track current R6 class + method context, and also
-    // build method-level param maps. We do a second pass specifically for method params.
-    let mut current_class: Option<String> = None;
-    let mut current_method: Option<String> = None;
-    i = 0;
-    while i < lines.len() {
-        let raw = lines[i];
-        let trimmed = raw.trim();
-        // Detect R6Class definition: `ClassName <- R6::R6Class("ClassName",`
-        if trimmed.contains("R6::R6Class(\"") {
-            if let Some(start) = trimmed.find("R6::R6Class(\"") {
-                let rest = &trimmed[start + "R6::R6Class(\"".len()..];
-                if let Some(end) = rest.find('"') {
-                    current_class = Some(rest[..end].to_string());
-                    current_method = None;
-                }
-            }
-        }
-        // Detect method source comment: `    # ClassName::method_name (file:line)`
-        if let Some(ref cls) = current_class.clone() {
-            let prefix = format!("# {}::", cls);
-            if trimmed.starts_with(&prefix) {
-                let rest = &trimmed[prefix.len()..];
-                let method_name = rest.split_whitespace().next().unwrap_or("").to_string();
-                if !method_name.is_empty() {
-                    current_method = Some(method_name);
-                }
-            }
-            // Detect indented method @param: `    #' @param name ...`
-            if let Some(ref method) = current_method.clone() {
-                if let Some(rest) = raw.strip_prefix("    #' @param ") {
-                    if let Some(param_name) = rest.split_whitespace().next() {
-                        class_method_params
-                            .entry((cls.clone(), method.clone()))
-                            .or_default()
-                            .insert(param_name.to_string());
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-
-    // Second pass: resolve markers.
+    let has_param = |class: &str, method: &str, param: &str| {
+        documented
+            .get(&(class, method))
+            .is_some_and(|params| params.contains(param))
+    };
     let mut result = String::with_capacity(content.len());
     for line in content.lines() {
-        let trimmed = line.trim();
-        // Marker format: `    #' .__MX_INHERITED_PARAM__(class="...", parent="...", method="...", param="...")`
-        let inner = trimmed.strip_prefix("#' ").unwrap_or(trimmed);
-        if inner.starts_with(MARKER_PREFIX) {
-            if let Some((_class, parent, method, param)) = parse_inherited_param_marker(inner) {
-                // Check if parent is in-package and has the param documented:
-                // Either at method level (parent, method) or class level (parent, "").
-                let parent_method_key = (parent.clone(), method.clone());
-                let parent_class_key = (parent.clone(), String::new());
-                let documented_in_method = class_method_params
-                    .get(&parent_method_key)
-                    .map(|s| s.contains(&param))
-                    .unwrap_or(false);
-                let documented_at_class = class_method_params
-                    .get(&parent_class_key)
-                    .map(|s| s.contains(&param))
-                    .unwrap_or(false);
-
-                if documented_in_method || documented_at_class {
-                    // Parent is documented in-package → drop this line entirely.
-                    // roxygen2 8.0.0 inherits the parent method's @param.
-                    continue;
-                } else {
-                    // Parent not found or param not documented → keep fallback.
-                    // Reconstruct indentation from the original line.
-                    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                    result.push_str(&indent);
-                    result.push_str(&format!("#' @param {} (no documentation available)", param));
-                    result.push('\n');
-                    continue;
-                }
+        let inner = line.trim().strip_prefix("#' ").unwrap_or(line.trim());
+        if let Some((class, parent, method, param)) = parse_inherited_param_marker(inner) {
+            if has_param(&class, "", &param)
+                || has_param(&parent, &method, &param)
+                || has_param(&parent, "", &param)
+            {
+                // No explicit method tag: roxygen2 inherits the real docs.
+                continue;
             }
+            let indent = &line[..line.len() - line.trim_start().len()];
+            result.push_str(&format!(
+                "{indent}#' @param {param} (no documentation available)\n"
+            ));
+        } else {
+            result.push_str(line);
+            result.push('\n');
         }
-        result.push_str(line);
-        result.push('\n');
     }
-
     result
 }
 
@@ -3287,18 +3202,9 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // duplicate-alias fix is not re-introduced.
     content = resolve_generic_doc_markers(content);
 
-    // Resolve .__MX_INHERITED_PARAM__(...) markers.
-    //
-    // Each R6 subclass method param that might be inherited from a parent class
-    // emits one marker line per undocumented param. The write-time pass:
-    //   1. Scans the assembled content for method and class-level @param docs.
-    //   2. For each marker: if the parent class is in-package and has the param
-    //      documented (at method or class level) → delete the marker line
-    //      (roxygen2 8.0.0 inherits the parent's @param into the subclass method).
-    //   3. Otherwise → replace the marker with the fallback placeholder text.
-    //
-    // This guarantees zero markers remain in the final wrappers.R and zero
-    // roxygen2 warnings about undocumented parameters.
+    // Resolve R6 missing-parameter markers against the merged class docs and
+    // in-package parents. This must follow class-reference resolution because
+    // the parent may have a custom R class name.
     content = resolve_inherited_param_markers(content);
 
     // Detect collisions between separately-expanded wrapper definitions (#991).
@@ -5918,6 +5824,109 @@ mod tests {
             .into_iter()
             .map(|f| f.content.into_owned())
             .collect()
+    }
+
+    #[test]
+    fn r6_param_docs_come_from_every_class_block() {
+        let mut first = widget_block(
+            10,
+            r#"
+#' @title Widget
+.__MX_CLASS_DOCS__
+Widget <- R6::R6Class("Widget",
+  public = list(
+    #' .__MX_INHERITED_PARAM__(class="Widget", parent="", method="initialize", param="value")
+    initialize = function(value) {}
+  )
+)
+"#,
+            r#"
+#' .__MX_INHERITED_PARAM__(class="Widget", parent="", method="add", param="by")
+Widget$set("public", "add", function(by) {})
+"#,
+        );
+        first.defines = &["constructor"];
+        // A different help topic and @param before @name must not hide docs.
+        first.class_docs = "\n#' @param by,other Amount to add.\n#' @rdname widgets\n";
+        let mut second = widget_block(
+            20,
+            "\n\n",
+            r#"
+#' .__MX_INHERITED_PARAM__(class="Widget", parent="", method="plus", param="other")
+Widget$set("public", "plus", function(other) {})
+#' @param by Method-specific amount.
+Widget$set("public", "explicit", function(by) {})
+#' .__MX_INHERITED_PARAM__(class="Widget", parent="", method="unknown", param="missing")
+Widget$set("public", "unknown", function(missing) {})
+"#,
+        );
+        second.class_docs = "\n#' @param value Starting value.\n";
+        let output = resolve_inherited_param_markers(merged(&[second, first]).remove(0));
+        assert!(!output.contains(".__MX_INHERITED_PARAM__"), "{output}");
+        assert!(!output.contains("@param by (no documentation"), "{output}");
+        assert!(
+            !output.contains("@param other (no documentation"),
+            "{output}"
+        );
+        assert!(
+            !output.contains("@param value (no documentation"),
+            "{output}"
+        );
+        assert!(
+            output.contains("@param by Method-specific amount."),
+            "{output}"
+        );
+        assert!(
+            output.contains("@param missing (no documentation available)"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn r6_param_docs_inherit_from_actual_parent_method_bindings() {
+        let input = r#"
+#' @param shared Class-level parameter.
+#' @name parent_help
+Parent <- R6::R6Class("Parent",
+  public = list(
+    #' @param value Starting value.
+    initialize = function(value) {}
+  )
+)
+# RustType::rust_name (1:1)
+#' @param times,other Repeat count.
+Parent$set("public", "speak", function(times, other) {})
+#' @param unrelated Another method's argument.
+Parent$set("public", "elsewhere", function(unrelated) {})
+Child <- R6::R6Class("Child", inherit = Parent,
+  public = list(
+    #' .__MX_INHERITED_PARAM__(class="Child", parent="Parent", method="initialize", param="value")
+    initialize = function(value) {}
+  )
+)
+#' .__MX_INHERITED_PARAM__(class="Child", parent="Parent", method="speak", param="times")
+#' .__MX_INHERITED_PARAM__(class="Child", parent="Parent", method="speak", param="other")
+#' .__MX_INHERITED_PARAM__(class="Child", parent="Parent", method="speak", param="shared")
+#' .__MX_INHERITED_PARAM__(class="Child", parent="Parent", method="speak", param="unrelated")
+Child$set("public", "speak", function(times, other, shared, unrelated) {})
+#' .__MX_INHERITED_PARAM__(class="ForeignChild", parent="pkg::Parent", method="speak", param="times")
+ForeignChild$set("public", "speak", function(times) {})
+"#;
+        let output = resolve_inherited_param_markers(input.to_owned());
+        let child = output.split("Child <-").nth(1).unwrap();
+        assert!(!output.contains(".__MX_INHERITED_PARAM__"), "{output}");
+        assert!(!child.contains("@param value"), "{output}");
+        assert!(!child.contains("@param other"), "{output}");
+        assert!(!child.contains("@param shared"), "{output}");
+        assert_eq!(child.matches("@param times").count(), 1, "{output}");
+        assert!(
+            child.contains("@param unrelated (no documentation available)"),
+            "{output}"
+        );
+        assert!(
+            child.contains("#' @param times (no documentation available)\nForeignChild$set"),
+            "{output}"
+        );
     }
 
     /// The defining block's topic governs defaults from every block, while

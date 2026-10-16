@@ -30,8 +30,10 @@ constructor, so this stays a static method.
 \subsection{Public methods}{
   \itemize{
     \item \href{#method-SplitR6-initialize}{\code{SplitR6$new()}}
+    \item \href{#method-SplitR6-plus}{\code{SplitR6$plus()}}
     \item \href{#method-SplitR6-value}{\code{SplitR6$value()}}
     \item \href{#method-SplitR6-add}{\code{SplitR6$add()}}
+    \item \href{#method-SplitR6-add_documented}{\code{SplitR6$add_documented()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -47,8 +49,27 @@ constructor, so this stays a static method.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{Starting value.}
+      \item{\code{value, offset}}{An integer value.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SplitR6-plus"></a>}}
+\if{latex}{\out{\hypertarget{method-SplitR6-plus}{}}}
+\subsection{\code{SplitR6$plus()}}{
+  Add an integer without changing the object.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SplitR6$plus(offset)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{value, offset}}{An integer value.}
     }
     \if{html}{\out{</div>}}
   }
@@ -80,6 +101,25 @@ constructor, so this stays a static method.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{by}}{Amount to add.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SplitR6-add_documented"></a>}}
+\if{latex}{\out{\hypertarget{method-SplitR6-add_documented}{}}}
+\subsection{\code{SplitR6$add_documented()}}{
+  Add a method-specific amount.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SplitR6$add_documented(by)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{by}}{A separately documented increment.}
     }
     \if{html}{\out{</div>}}
   }

@@ -5513,6 +5513,40 @@ fn method_choice_params_emit_in_signature_order() {
 }
 
 #[test]
+fn r6_defers_missing_constructor_and_method_params() {
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r6_inherit = Some("Parent".to_owned());
+    let parsed = ParsedImpl::parse(
+        attrs,
+        syn::parse_quote! {
+            /// @param local Local class docs.
+            impl Widget {
+                pub fn new(value: i32) -> Self { unimplemented!() }
+                /// @param explicit Method-specific docs.
+                pub fn add(&self, by: i32, local: i32, explicit: i32) {}
+                #[miniextendr(choices(mode = "a, b"))]
+                pub fn choose(&self, mode: String) {}
+            }
+        },
+    )
+    .unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    for (method, param) in [("initialize", "value"), ("add", "by")] {
+        assert!(wrapper.contains(&format!(
+            r#"class="Widget", parent=".__MX_CLASS_REF_Parent__", method="{method}", param="{param}""#
+        )), "{wrapper}");
+    }
+    assert!(!wrapper.contains(r#"param="local""#), "{wrapper}");
+    assert!(!wrapper.contains(r#"param="explicit""#), "{wrapper}");
+    assert!(!wrapper.contains(r#"param="mode""#), "{wrapper}");
+    assert!(
+        wrapper.contains("@param explicit Method-specific docs."),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("@param mode"), "{wrapper}");
+}
+
+#[test]
 fn snapshot_r6_basic() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {

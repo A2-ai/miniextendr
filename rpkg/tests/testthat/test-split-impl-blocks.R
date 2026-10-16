@@ -163,3 +163,30 @@ test_that("the class page has the doc comments of both impl blocks", {
     }
   }
 })
+
+# Parameter docs must be inherited from the assembled class, in both
+# directions across impl blocks, without overriding explicit method docs.
+test_that("R6 parameters inherit docs across impl blocks", {
+  rd <- split_rd_db()[["SplitR6.Rd"]]
+  subsections <- function(node) {
+    if (!is.list(node)) return(list())
+    if (identical(attr(node, "Rd_tag"), "\\subsection")) return(list(node))
+    unlist(lapply(node, subsections), recursive = FALSE)
+  }
+  sections <- subsections(rd)
+  docs <- function(name) {
+    matches <- Filter(function(x) {
+      grepl(paste0(name, "()"), paste(unlist(x[[1]]), collapse = ""), fixed = TRUE)
+    }, sections)
+    expect_identical(length(matches), 1L, info = name)
+    trimws(gsub("[[:space:]]+", " ", paste(unlist(matches), collapse = "")))
+  }
+  expect_match(docs("new"), "An integer value.", fixed = TRUE)
+  expect_match(docs("add"), "Amount to add.", fixed = TRUE)
+  expect_match(docs("plus"), "An integer value.", fixed = TRUE)
+  expect_match(docs("add_documented"), "A separately documented increment.", fixed = TRUE)
+  expect_false(grepl("no documentation available", paste(unlist(rd), collapse = ""), fixed = TRUE))
+  obj <- SplitR6$new(2L)
+  obj$add_documented(3L)
+  expect_identical(obj$plus(4L), 9L)
+})
