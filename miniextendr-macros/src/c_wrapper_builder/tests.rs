@@ -382,3 +382,51 @@ fn converted_references_keep_metadata_and_roots_without_external_guards() {
         }
     }
 }
+
+/// `convert` on a reference the macro already reads from R keeps that
+/// reference's own conversion: shared ones through the rooted `TryFromRoot`
+/// path, mutable ones through `TryFromSexp` (spelled with the type).
+#[test]
+fn convert_on_a_native_reference_keeps_its_conversion() {
+    let conversion_of_x = |ty: &syn::Type, convert: bool| {
+        let mut builder = CWrapperContext::builder(syn::parse_quote!(f), syn::parse_quote!(C_f))
+            .inputs(syn::parse_quote!(x: #ty, y: i32))
+            .call_expr(quote::quote!(f(x, y)))
+            .thread_strategy(ThreadStrategy::MainThread);
+        if convert {
+            builder = builder.with_convert_param("x".into());
+        }
+        let code = builder.build().generate().to_string();
+        let start = code
+            .find("let __mx_roots_x")
+            .or_else(|| code.find("let x :"))
+            .expect("x is converted");
+        let end = start + code[start..].find("let y :").expect("y follows x");
+        code[start..end].to_owned()
+    };
+    for ty in [
+        "&str",
+        "Option<&str>",
+        "&[i32]",
+        "Option<&[f64]>",
+        "&i32",
+        "&mut [i32]",
+        "Option<&mut [i32]>",
+        "&mut f64",
+    ] {
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        let qualified = format!(
+            "< {} as :: miniextendr_api :: TryFromSexp > :: try_from_sexp",
+            quote::quote!(#ty)
+        );
+        assert_eq!(
+            conversion_of_x(&ty, true).replace(
+                &qualified,
+                ":: miniextendr_api :: TryFromSexp :: try_from_sexp"
+            ),
+            conversion_of_x(&ty, false),
+            "{}",
+            quote::quote!(#ty)
+        );
+    }
+}

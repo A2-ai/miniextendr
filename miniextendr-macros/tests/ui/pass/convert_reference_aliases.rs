@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::{ExternalPtr, Unchecked, miniextendr};
 type Text = str;
 type Values = [i32];
 
@@ -11,6 +11,9 @@ pub fn values(#[miniextendr(convert)] value: Option<&Values>) -> i32 {
 }
 #[miniextendr]
 pub fn mutable<'a>(#[miniextendr(convert)] value: &'a mut Values) { value.fill(0); }
+// The marker peels first: `convert` sees the reference it wraps.
+#[miniextendr]
+pub fn marked(#[miniextendr(convert)] value: Unchecked<&str>) -> usize { value.0.len() }
 
 #[derive(ExternalPtr)]
 pub struct Host;
@@ -19,6 +22,8 @@ impl Host {
     pub fn new() -> Self { Self }
     #[miniextendr(convert(value))]
     pub fn read(&self, value: &Text) -> String { value.to_owned() }
+    #[miniextendr(convert(value))]
+    pub fn marked(&self, value: Unchecked<&str>) -> usize { value.0.len() }
 }
 
 #[miniextendr]
