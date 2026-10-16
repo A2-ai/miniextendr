@@ -861,7 +861,7 @@ impl CWrapperContext {
                 let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result: ::core::option::Option<()> = #call_expr;
-                    if __result.is_none() {
+                    if ::core::option::Option::is_none(&__result) {
                         return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
                         ) };
@@ -881,7 +881,7 @@ impl CWrapperContext {
                 let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result = #call_expr;
-                    if __result.is_none() {
+                    if ::core::option::Option::is_none(&__result) {
                         return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
                         ) };
@@ -1111,7 +1111,7 @@ impl CWrapperContext {
                 // Return the Option from worker, check on main thread.
                 let worker = quote! { #call_expr };
                 let convert = quote! {
-                    if __miniextendr_result.is_none() {
+                    if ::core::option::Option::is_none(&__miniextendr_result) {
                         unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
                         ) }

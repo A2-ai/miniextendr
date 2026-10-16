@@ -172,7 +172,7 @@ pub fn pick(
     #[miniextendr(choices("a", "b"))] letter: &str,
 ) -> usize {
     let _ = (mode, letter);
-    usize::from(maybe.is_some()) + ::std::vec::Vec::len(&many)
+    usize::from(::core::option::Option::is_some(&maybe)) + ::std::vec::Vec::len(&many)
 }
 
 #[derive(::core::clone::Clone, ::core::marker::Copy, Debug, miniextendr_api::RFactor)]
@@ -1021,7 +1021,7 @@ impl AltrepLen for Strings {
 
 impl AltStringData for Strings {
     fn elt(&self, i: usize) -> ::core::option::Option<&str> {
-        self.data[i].as_deref()
+        ::core::option::Option::as_deref(&self.data[i])
     }
 }
 

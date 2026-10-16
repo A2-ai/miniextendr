@@ -20,3 +20,13 @@ test_that("a serde-classed error compiles under a glob import", {
   expect_s3_class(e, "glob_refused")
   expect_equal(conditionMessage(e), "refused with 3")
 })
+
+test_that("Option return handling resists consumer methods (#2020)", {
+  optional <- get("glob_import_option_unit", envir = asNamespace("miniextendr"))
+  expect_null(optional(TRUE))
+  e <- tryCatch(optional(FALSE), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "none_err")
+  expect_match(conditionMessage(e), "returned no value", fixed = TRUE)
+  expect_identical(conditionCall(e), quote(optional(FALSE)))
+})

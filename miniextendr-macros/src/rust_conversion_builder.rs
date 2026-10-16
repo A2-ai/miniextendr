@@ -1815,12 +1815,12 @@ pub(crate) fn conversion_value_tokens(
                     &::miniextendr_api::condition::conversion_prefix(
                         #quoted,
                         #nullable,
-                        __mx_expected.as_deref(),
+                        ::core::option::Option::as_deref(&__mx_expected),
                     ),
                     #param,
                     #rust_type,
                     &[#(#crate_class),*],
-                    ::miniextendr_api::__mx_conversion_err_parts!(#e, __mx_expected.is_some()),
+                    ::miniextendr_api::__mx_conversion_err_parts!(#e, ::core::option::Option::is_some(&__mx_expected)),
                     #arg_message,
                     #call,
                 )

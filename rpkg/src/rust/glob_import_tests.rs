@@ -130,6 +130,24 @@ pub(crate) trait ConsumerFormatting {
 }
 impl<T: ?Sized> ConsumerFormatting for T {}
 
+// Borrowing Option methods can lose to a consumer method taking self by value.
+#[allow(clippy::wrong_self_convention)]
+pub(crate) trait ConsumerOptionMethods: Sized {
+    fn is_none(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn is_some(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_ref(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+    fn as_deref(self) -> ConsumerCollectionCalled {
+        ConsumerCollectionCalled
+    }
+}
+impl<T> ConsumerOptionMethods for T {}
+
 // No nested struct: the parallel reader assembles each row by index, cloning
 // the cells out of the pre-extracted columns.
 #[derive(Clone, DataFrameRow)]
@@ -254,6 +272,12 @@ pub fn glob_import_roundtrip() -> Vec<i32> {
         count(GlobNested::try_from_dataframe(nested.get())),
         par[2],
     ]
+}
+
+/// Exercise Option<()> return handling under the consumer blanket trait.
+#[miniextendr(noexport)]
+pub fn glob_import_option_unit(present: bool) -> Option<()> {
+    present.then_some(())
 }
 
 /// A vctrs class derived under the glob import.

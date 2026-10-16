@@ -103,11 +103,11 @@ fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
     // argument` when it does not.
     assert!(s.contains("__mx_conversion_expectation ! (e)"), "{s}");
     assert!(
-        s.contains("conversion_prefix (\"nums\" , false , __mx_expected . as_deref () ,)"),
+        s.contains("conversion_prefix (\"nums\" , false , :: core :: option :: Option :: as_deref (& __mx_expected) ,)"),
         "{s}"
     );
     assert!(
-        s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
+        s.contains("__mx_conversion_err_parts ! (e , :: core :: option :: Option :: is_some (& __mx_expected))"),
         "{s}"
     );
     assert!(
@@ -140,7 +140,7 @@ fn test_opaque_type_failure_asks_the_type_first() {
         );
         assert!(
             s.contains(&format!(
-                "conversion_prefix (\"x\" , {nullable} , __mx_expected . as_deref () ,)"
+                "conversion_prefix (\"x\" , {nullable} , :: core :: option :: Option :: as_deref (& __mx_expected) ,)"
             )),
             "{src}: {s}"
         );
@@ -546,7 +546,7 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
         );
         assert!(
             s.contains(&format!(
-                "conversion_prefix (\"mode\" , {nullable} , __mx_expected . as_deref () ,)"
+                "conversion_prefix (\"mode\" , {nullable} , :: core :: option :: Option :: as_deref (& __mx_expected) ,)"
             )),
             "{src}: {s}"
         );
@@ -557,7 +557,7 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             "{src}: {s}"
         );
         assert!(
-            s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
+            s.contains("__mx_conversion_err_parts ! (e , :: core :: option :: Option :: is_some (& __mx_expected))"),
             "{src}: {s}"
         );
         assert!(
