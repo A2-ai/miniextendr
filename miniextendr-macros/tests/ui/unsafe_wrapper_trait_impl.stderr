@@ -1,0 +1,13 @@
+error[E0053]: method `read` has an incompatible type for trait
+  --> tests/ui/unsafe_wrapper_trait_impl.rs:18:5
+   |
+18 |     unsafe fn read(&self) -> i32 { 1 }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected safe fn, found unsafe fn
+   |
+note: type in trait
+  --> tests/ui/unsafe_wrapper_trait_impl.rs:13:5
+   |
+13 |     fn read(&self) -> i32;
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+   = note: expected signature `fn(&Host) -> i32`
+              found signature `unsafe fn(&Host) -> i32`
