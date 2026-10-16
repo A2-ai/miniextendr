@@ -1647,6 +1647,13 @@ The field methods are documented on the class's page, or on the topic an
 add no `@param` lines (the topic's own block documents `x`, `name`, `i`,
 `...`, `value` and `pattern`) and sort after its block (`@order NaN`).
 
+That topic also receives the constructor, methods, statics and generated
+protocol helpers of the class, including members declared in other impl
+blocks. The block that defines the class chooses the default topic. A
+method's explicit `@rdname` or supported `@describeIn` overrides it;
+generated argument placeholders do not overwrite the author topic's
+parameter descriptions.
+
 #### Field syntax on S3, S4 and env classes
 
 The generated methods call the same accessors as the standalone functions, so

@@ -6414,10 +6414,11 @@ fn method_level_rdname_overrides_class_default_all_systems() {
         // into the class block, so their `@rdname` is dropped (they always
         // document on the class page). S3 emits two blocks per instance method
         // (the generic guard, named `get.Counter`, and the method itself) and
-        // both move to the split page. Every other system emits one block.
+        // both move to the split page. S7 emits the method
+        // and a direct-call shortcut, which must follow the same page too.
         let expected_get = match class_system {
             ClassSystem::R6 => 0,
-            ClassSystem::S3 => 2,
+            ClassSystem::S3 | ClassSystem::S7 => 2,
             _ => 1,
         };
         assert_eq!(

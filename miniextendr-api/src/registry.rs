@@ -407,6 +407,11 @@ pub const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
 /// Spelled the same as `miniextendr_macros`'s `CLASS_DEFAULT_PREFIX`.
 pub const CLASS_DEFAULT_PREFIX: &str = ".__MX_CLASS_DEFAULT__";
 
+/// Generated member page/parameter/prose defaults. The class assembler resolves
+/// these against the defining impl's topic, preserving explicit member tags.
+/// Spelled the same as the proc-macro's `CLASS_MEMBER_DEFAULT_PREFIX`.
+pub const CLASS_MEMBER_DEFAULT_PREFIX: &str = ".__MX_CLASS_MEMBER_DEFAULT__";
+
 /// One `#[miniextendr]` impl block's share of its Rust type's R class (#1776).
 ///
 /// A type's methods may be split over several impl blocks. Each block
@@ -1249,6 +1254,65 @@ fn resolve_class_constructor<'a>(
     Ok(blocks.to_vec())
 }
 
+/// Resolve each member's generated page after the defining impl is known.
+/// A default page follows that impl's `@rdname`; explicit member pages do not.
+/// On an inherited author topic, its block supplies the title and parameter
+/// docs, so generated prose/parameters are removed and the member sorts last.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_class_member_docs(content: &str, class: &str, topic: &str) -> String {
+    fn unmark(line: &str) -> &str {
+        line.strip_prefix(CLASS_MEMBER_DEFAULT_PREFIX)
+            .unwrap_or(line)
+    }
+    let mut lines = content.split('\n').peekable();
+    let mut result = Vec::new();
+    while let Some(line) = lines.next() {
+        if !unmark(line).trim_start().starts_with("#'") {
+            result.push(line.to_owned());
+            continue;
+        }
+        let mut block = vec![line];
+        while lines
+            .peek()
+            .is_some_and(|line| unmark(line).trim_start().starts_with("#'"))
+        {
+            block.push(lines.next().unwrap());
+        }
+        let default_page = block.iter().any(|line| {
+            line.strip_prefix(CLASS_MEMBER_DEFAULT_PREFIX)
+                .is_some_and(|line| line.starts_with("#' @rdname "))
+        });
+        let page = if default_page {
+            Some(topic)
+        } else {
+            block
+                .iter()
+                .find_map(|line| line.strip_prefix("#' @rdname "))
+        };
+        let joined = page.is_some_and(|page| page != class)
+            || block.iter().any(|line| line.starts_with("#' @describeIn "));
+        let has_order = block
+            .iter()
+            .any(|line| unmark(line).starts_with("#' @order "));
+        let no_rd = block.iter().any(|line| unmark(line).trim() == "#' @noRd");
+        for line in block {
+            match line.strip_prefix(CLASS_MEMBER_DEFAULT_PREFIX) {
+                Some(default) if joined => {
+                    if default.starts_with("#' @rdname ") {
+                        result.push(format!("#' @rdname {topic}"));
+                    }
+                }
+                Some(default) => result.push(default.to_owned()),
+                None => result.push(line.to_owned()),
+            }
+        }
+        if joined && !has_order && !no_rd && default_page {
+            result.push("#' @order NaN".to_owned());
+        }
+    }
+    result.join("\n")
+}
+
 /// The text of a type's merged class: see [`merge_class_blocks`].
 #[cfg(not(target_arch = "wasm32"))]
 fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> String {
@@ -1338,7 +1402,13 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
         content.push_str(text.trim_start_matches('\n'));
         previous = Some(block);
     }
-    content
+    let topic = block_docs[0]
+        .1
+        .iter()
+        .find(|tag| tag.name() == "rdname")
+        .map(|tag| tag.value())
+        .unwrap_or_else(|| definer.r_class_name.to_owned());
+    resolve_class_member_docs(&content, definer.r_class_name, &topic)
 }
 
 // endregion
@@ -5848,6 +5918,79 @@ mod tests {
             .into_iter()
             .map(|f| f.content.into_owned())
             .collect()
+    }
+
+    /// The defining block's topic governs defaults from every block, while
+    /// an explicit method page (including the original class page) wins.
+    #[test]
+    fn class_member_docs_inherit_the_defining_blocks_topic() {
+        let mut first = widget_block(10, "\n.__MX_CLASS_DOCS__\nWidget <- new.env()\n", "\n\n");
+        first.class_docs = "\n#' @rdname widget_api\n";
+        first.defines = &["constructor"];
+        let second = widget_block(
+            20,
+            "\n\n",
+            concat!(
+                "\n#' @description Author prose.\n",
+                "#' @param n Author parameter.\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @title Generated title\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @param x An object.\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @param missing (undocumented)\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @rdname Widget\n",
+                "#' @name Widget_origin\nWidget_origin <- function(x, n, missing) 1\n\n",
+                "#' @rdname Widget\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @param n (undocumented)\n",
+                "#' @name Widget_explicit\nWidget_explicit <- function(n) 1\n\n",
+                "#' @rdname own_page\n#' @order 2\n",
+                "Widget_own <- function() 1\n\n",
+                "#' @describeIn widget_api A described member.\n",
+                "Widget_described <- function() 1\n",
+            ),
+        );
+        let output = merged(&[second, first]).remove(0);
+        assert!(
+            output.contains(concat!(
+                "#' @description Author prose.\n#' @param n Author parameter.\n",
+                "#' @rdname widget_api\n#' @name Widget_origin\n#' @order NaN\n",
+                "Widget_origin <- function(x, n, missing) 1"
+            )),
+            "{output}"
+        );
+        assert!(
+            output.contains("#' @rdname Widget\n#' @param n (undocumented)"),
+            "{output}"
+        );
+        assert!(
+            output.contains("#' @rdname own_page\n#' @order 2\nWidget_own"),
+            "{output}"
+        );
+        assert!(
+            output.contains("#' @describeIn widget_api A described member.\nWidget_described"),
+            "{output}"
+        );
+        assert!(!output.contains(CLASS_MEMBER_DEFAULT_PREFIX), "{output}");
+        assert!(!output.contains("Generated title"), "{output}");
+        assert!(!output.contains("@param missing"), "{output}");
+    }
+
+    #[test]
+    fn class_member_docs_keep_default_page_and_author_order() {
+        let member = concat!(
+            ".__MX_CLASS_MEMBER_DEFAULT__#' @rdname Widget\n",
+            ".__MX_CLASS_MEMBER_DEFAULT__#' @param x An object.\n",
+            "#' @order 3\nWidget_value <- function(x) x\n",
+        );
+        assert_eq!(
+            resolve_class_member_docs(member, "Widget", "Widget"),
+            concat!(
+                "#' @rdname Widget\n#' @param x An object.\n",
+                "#' @order 3\nWidget_value <- function(x) x\n",
+            )
+        );
+        assert_eq!(
+            resolve_class_member_docs(member, "Widget", "widget_api"),
+            "#' @rdname widget_api\n#' @order 3\nWidget_value <- function(x) x\n"
+        );
     }
 
     /// The docs-only block of a class the package names and builds itself

@@ -164,7 +164,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // only the @method + @export S3method() registration pair.
             lines.push("#' @noRd".to_string());
         } else {
-            lines.push(format!("#' @rdname {}", class_name));
+            lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         }
         lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
         lines.push("#' @export".to_string());
@@ -184,14 +184,22 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             class_name, class_name
         ));
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         lines.push(format!(
             "#' @method vec_ptype2 {}.{}",
             class_name, class_name
         ));
-        lines.push(format!("#' @param x A {} vector.", class_name));
-        lines.push(format!("#' @param y A {} vector.", class_name));
-        lines.push("#' @param ... Additional arguments (unused).".to_string());
+        lines.push(super::member_default(format!(
+            "#' @param x A {} vector.",
+            class_name
+        )));
+        lines.push(super::member_default(format!(
+            "#' @param y A {} vector.",
+            class_name
+        )));
+        lines.push(super::member_default(
+            "#' @param ... Additional arguments (unused).".to_string(),
+        ));
     }
     lines.push("#' @export".to_string());
     match vctrs_attrs.kind {
@@ -240,11 +248,19 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("#' @noRd".to_string());
         lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(super::member_default(format!("#' @rdname {}", class_name)));
         lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
-        lines.push(format!("#' @param x A {} vector to cast.", class_name));
-        lines.push(format!("#' @param to A {} prototype.", class_name));
-        lines.push("#' @param ... Additional arguments (unused).".to_string());
+        lines.push(super::member_default(format!(
+            "#' @param x A {} vector to cast.",
+            class_name
+        )));
+        lines.push(super::member_default(format!(
+            "#' @param to A {} prototype.",
+            class_name
+        )));
+        lines.push(super::member_default(
+            "#' @param ... Additional arguments (unused).".to_string(),
+        ));
     }
     lines.push("#' @export".to_string());
     lines.push(format!(
@@ -280,14 +296,27 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             if class_has_no_rd {
                 lines.push("#' @noRd".to_string());
             } else {
-                lines.push(format!("#' @title S3 generic for `{}`", generic_name));
-                lines.push(format!("#' @description S3 generic for `{}`", generic_name));
-                lines.push(format!("#' @rdname {}", class_name));
-                // Use class-qualified name to avoid duplicate alias when multiple
-                // classes define the same S3 generic.
+                let method_tags = &ctx.method.doc_tags;
+                let joined = crate::roxygen::joins_author_topic(method_tags, Some(&class_name));
+                if !joined {
+                    lines.push(super::member_default(format!(
+                        "#' @title S3 generic for `{}`",
+                        generic_name
+                    )));
+                    lines.push(super::member_default(format!(
+                        "#' @description S3 generic for `{}`",
+                        generic_name
+                    )));
+                }
+                super::push_member_rdname(&mut lines, method_tags, &class_name);
                 lines.push(format!("#' @name {}.{}", generic_name, class_name));
-                lines.push("#' @param x An object".to_string());
-                lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                if !joined {
+                    lines.push(super::member_default("#' @param x An object"));
+                    lines.push(super::member_default(
+                        "#' @param ... Additional arguments passed to methods",
+                    ));
+                }
+                crate::roxygen::push_order_after_topic_blocks(&mut lines, method_tags, &class_name);
                 lines.extend(crate::roxygen::method_source_tag(
                     type_ident,
                     &ctx.method.ident,

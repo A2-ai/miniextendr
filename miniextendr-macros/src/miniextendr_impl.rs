@@ -4198,6 +4198,29 @@ pub(crate) const CLASS_DOCS_MARKER: &str = ".__MX_CLASS_DOCS__";
 /// `miniextendr_api::registry::CLASS_DEFAULT_PREFIX`.
 pub(crate) const CLASS_DEFAULT_PREFIX: &str = ".__MX_CLASS_DEFAULT__";
 
+/// A generated member-documentation default resolved when the wrapper writer
+/// knows the defining impl block's help topic (#2068). Unlike class defaults,
+/// these belong to individual member blocks: an inherited author topic replaces
+/// their page and drops generated parameter/structural prose, never author tags.
+/// Spelled the same as `miniextendr_api::registry::CLASS_MEMBER_DEFAULT_PREFIX`.
+pub(crate) const CLASS_MEMBER_DEFAULT_PREFIX: &str = ".__MX_CLASS_MEMBER_DEFAULT__";
+
+pub(crate) fn member_default(line: impl std::fmt::Display) -> String {
+    format!("{CLASS_MEMBER_DEFAULT_PREFIX}{line}")
+}
+
+/// A companion block follows a method's explicit page; otherwise its page is
+/// inherited from the defining impl at wrapper-write time.
+pub(crate) fn push_member_rdname(lines: &mut Vec<String>, tags: &[String], class: &str) {
+    if crate::roxygen::describe_in_topic(tags).is_some()
+        || crate::roxygen::rdname_value(tags).is_some()
+    {
+        crate::roxygen::push_rdname_or_default(lines, tags, class);
+    } else {
+        lines.push(member_default(format!("#' @rdname {class}")));
+    }
+}
+
 /// `line` as a generated default of the class's roxygen block
 /// ([`CLASS_DEFAULT_PREFIX`]).
 pub(crate) fn class_default(line: impl std::fmt::Display) -> String {
@@ -4317,7 +4340,8 @@ impl ClassWrapper {
         }
     }
 
-    /// The wrapper as the writer writes a type with this one impl block.
+    /// Local macro rendering for snapshots, with merge markers stripped.
+    /// Write-time topic inheritance is covered by the registry and rpkg tests.
     #[cfg(test)]
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
@@ -4340,7 +4364,15 @@ impl ClassWrapper {
         }
         lines.extend(self.members.iter().cloned());
         lines.extend(self.tail.iter().cloned());
-        lines.join("\n")
+        lines
+            .join("\n")
+            .split('\n')
+            .map(|line| {
+                line.strip_prefix(CLASS_MEMBER_DEFAULT_PREFIX)
+                    .unwrap_or(line)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -4433,7 +4465,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
                         lines.push(format!("#' @title {}", s3_method_name));
                     }
                 } else {
-                    lines.push(format!("#' @rdname {}", class_name));
+                    lines.push(member_default(format!("#' @rdname {}", class_name)));
                 }
             }
             crate::roxygen::push_order_after_topic_blocks(
