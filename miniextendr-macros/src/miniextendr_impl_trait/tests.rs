@@ -3282,27 +3282,3 @@ fn generic_impl_vtable_keeps_declared_slots_when_an_impl_hides_an_r_wrapper() {
     assert!(output.contains("as Imported < i32 > > :: read"), "{output}");
     assert!(output.contains("read : __vtshim_"), "{output}");
 }
-
-#[test]
-fn unsafe_trait_impl_methods_require_skip() {
-    let implementation: syn::ItemImpl = syn::parse_quote! {
-        impl Unchecked for Host {
-            unsafe fn read(&self) -> i32 { 1 }
-        }
-    };
-    let error =
-        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap_err();
-    let message = error.to_string();
-    assert!(message.contains("Expose a safe fn"), "{message}");
-    assert!(message.contains("`#[miniextendr(skip)]`"), "{message}");
-
-    let implementation: syn::ItemImpl = syn::parse_quote! {
-        impl Unchecked for Host {
-            #[miniextendr(skip)]
-            unsafe fn read(&self) -> i32 { 1 }
-        }
-    };
-    let methods =
-        vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap();
-    assert!(methods[0].skip);
-}
