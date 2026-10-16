@@ -3380,11 +3380,31 @@ fn derive_struct_dataframe(
 /// Compare column types using canonical standard-library spellings, without
 /// changing the type emitted for the first variant. Recurse through containers
 /// and references, but never discard arbitrary user module paths or qself.
+///
+/// A std path is shortened only to a prelude name (`::core::primitive::i32` →
+/// `i32`, `std::vec::Vec` → `Vec`); a non-prelude name such as `HashMap` names
+/// whatever the user imported. Parentheses and the invisible group around a
+/// `macro_rules!` `$t:ty` are dropped. Aliases and renamed imports stay as
+/// written, so they remain conflicts. A false match (a user `struct String`
+/// in scope) is still caught: every merged column has one Rust type, and the
+/// generated code moves values into and out of it without converting them, so
+/// rustc rejects the mismatch.
 fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     use syn::visit_mut::VisitMut;
 
     struct StandardPaths;
     impl VisitMut for StandardPaths {
+        fn visit_type_mut(&mut self, ty: &mut syn::Type) {
+            loop {
+                *ty = match ty {
+                    syn::Type::Group(group) => (*group.elem).clone(),
+                    syn::Type::Paren(paren) => (*paren.elem).clone(),
+                    _ => break,
+                };
+            }
+            syn::visit_mut::visit_type_mut(self, ty);
+        }
+
         fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
             syn::visit_mut::visit_type_path_mut(self, ty);
             if ty.qself.is_some() {
@@ -3428,6 +3448,11 @@ fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     left == right
 }
 
+/// The fix every cross-variant type-conflict error offers first: the derive
+/// compares spellings ([`same_column_type`]), so one type needs one spelling.
+pub(super) const SPELL_TYPES_ALIKE: &str = "If both name the same type, spell it the same way \
+     in every variant (type aliases and renamed imports are compared as written)";
+
 /// A resolved column in the unified schema across all enum variants.
 ///
 /// Tracks the column name, element type, which variants contribute to this column,
@@ -3441,6 +3466,9 @@ pub(super) struct ResolvedColumn {
     pub(super) ty: syn::Type,
     /// Indices of variants that contain this field.
     pub(super) present_in: Vec<usize>,
+    /// The variant that registered the column first (whose spelling `ty` keeps),
+    /// named in a type-conflict error.
+    pub(super) first_variant: syn::Ident,
     /// Whether this column was coerced to `String` due to type conflicts.
     /// When true, values are converted via `ToString::to_string()` at push time.
     pub(super) string_coerced: bool,
@@ -3500,10 +3528,13 @@ impl<'a> ColumnRegistry<'a> {
                     return Err(syn::Error::new(
                         error_span,
                         format!(
-                            "type conflict for field `{}`: variant `{}` has a different type \
-                             than a previous variant; \
-                             use `#[dataframe(conflicts = \"string\")]` to coerce all conflicting fields to String",
-                            col_name, variant_name
+                            "type conflict for field `{col_name}`: variant `{variant_name}` has \
+                             type `{}`, variant `{}` has `{}`. {SPELL_TYPES_ALIKE}; \
+                             otherwise use `#[dataframe(conflicts = \"string\")]` to store \
+                             conflicting fields as String",
+                            crate::type_inspect::type_display(col_ty),
+                            existing.first_variant,
+                            crate::type_inspect::type_display(&existing.ty),
                         ),
                     ));
                 }
@@ -3515,6 +3546,7 @@ impl<'a> ColumnRegistry<'a> {
                 col_name: crate::naming::name_ident(col_name),
                 ty: col_ty.clone(),
                 present_in: vec![variant_idx],
+                first_variant: variant_name.clone(),
                 string_coerced: false,
                 is_factor: false,
             });
@@ -3758,7 +3790,12 @@ mod tests {
     #[test]
     fn enum_columns_compare_standard_spellings_without_string_coercion() {
         let string_ty = syn::parse_quote!(String);
+        // A `macro_rules!` `$t:ty` reaches the derive in an invisible group.
+        let from_macro = proc_macro2::Group::new(proc_macro2::Delimiter::None, quote!(i32));
         for (first, second) in [
+            (quote!(#from_macro), quote!(i32)),
+            (quote!((i32)), quote!(::core::primitive::i32)),
+            (quote!(&'a str), quote!(&'a ::core::primitive::str)),
             (quote!(i32), quote!(::core::primitive::i32)),
             (quote!(std::primitive::i32), quote!(i32)),
             (quote!(String), quote!(std::string::String)),
@@ -3812,6 +3849,14 @@ mod tests {
             (quote!(Box<[i32]>), quote!(Vec<i32>)),
             (quote!(custom::String), quote!(std::string::String)),
             (quote!(left::Value), quote!(right::Value)),
+            // Not a prelude name: a bare `HashMap` is whatever the user imported.
+            (
+                quote!(HashMap<String, i32>),
+                quote!(std::collections::HashMap<String, i32>),
+            ),
+            // Aliases and module-relative paths are compared as written.
+            (quote!(primitive::i32), quote!(i32)),
+            (quote!(Id), quote!(i32)),
             (
                 quote!(std::cmp::Ordering),
                 quote!(std::sync::atomic::Ordering),
@@ -3847,6 +3892,38 @@ mod tests {
             assert!(registry.columns[0].string_coerced);
             assert_eq!(registry.columns[0].ty, string_ty);
         }
+    }
+
+    /// The conflict error names both variants and both spellings, and offers
+    /// one spelling before `conflicts = "string"` (#2084).
+    #[test]
+    fn enum_type_conflicts_name_both_spellings() {
+        let input: DeriveInput = syn::parse_quote! {
+            enum Row {
+                A { id: Id },
+                B { id: i32 },
+            }
+        };
+        let error = derive_dataframe_row(input).unwrap_err().to_string();
+        assert!(
+            error.contains("variant `B` has type `i32`, variant `A` has `Id`"),
+            "{error}"
+        );
+        assert!(error.contains(SPELL_TYPES_ALIKE), "{error}");
+        assert!(error.contains("conflicts = \"string\""), "{error}");
+
+        let input: DeriveInput = syn::parse_quote! {
+            enum Row {
+                A { #[dataframe(expand)] values: Vec<i32> },
+                B { #[dataframe(expand)] values: Vec<f64> },
+            }
+        };
+        let error = derive_dataframe_row(input).unwrap_err().to_string();
+        assert!(
+            error.contains("variant `B` has element type `f64`, variant `A` has `i32`"),
+            "{error}"
+        );
+        assert!(error.contains(SPELL_TYPES_ALIKE), "{error}");
     }
 
     /// `Option<scalar>` struct fields are a single NA-able column (#1437): the
