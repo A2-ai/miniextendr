@@ -1,7 +1,7 @@
 #!/bin/bash
 # miniextendr pre-commit hook
 # Checks: cargo fmt, stale configure, stale NAMESPACE, staged vendor tarball,
-# Cargo.lock shape
+# Cargo.lock shape, rv.lock and Cargo.lock pinning the same miniextendr commit
 # Installed by minirextendr::use_miniextendr_git_hooks()
 
 miniextendr_pre_commit() {
@@ -124,6 +124,117 @@ miniextendr_pre_commit() {
                 echo ""
                 echo "  Recovery (R):  miniextendr_repair_lock()"
                 echo "  Or full vendor refresh: miniextendr_vendor()"
+                return 1
+            fi
+        fi
+    fi
+
+    # ── rv.lock and Cargo.lock pin the same miniextendr commit ───────────────
+    # A package that takes minirextendr from git through rv and the miniextendr
+    # crates from git through cargo pins the framework twice, and the two lock
+    # files move on their own: rv re-resolves a branch pin on every `rv sync`,
+    # while Cargo.lock keeps its commit until `cargo update`. The package's
+    # build files (src/rust/build.rs, Makevars.in, mx_abi.h, ...) follow
+    # miniextendr-api, so both locks must name one commit. The two files spell
+    # the repository URL differently, so only the full sha is compared. The
+    # staged (index) copies are read, since that is what gets committed.
+    # Nothing to compare (pass): no rv.lock, no minirextendr in it, a non-git
+    # minirextendr source, or no git-sourced miniextendr-* crate in Cargo.lock.
+    CARGO_LOCK_REL="${PREFIX}src/rust/Cargo.lock"
+    RUST_DIR="${PREFIX}src/rust"
+    STAGED_PIN=$(echo "$STAGED" | grep -Fx -e "rv.lock" -e "${PREFIX}rv.lock" -e "$CARGO_LOCK_REL" || true)
+    if [ -n "$STAGED_PIN" ]; then
+        # rv.lock at the repository root first, then in the package directory.
+        RV_LOCK_REL=""
+        for f in "rv.lock" "${PREFIX}rv.lock"; do
+            if git cat-file -e ":${f}" 2>/dev/null; then
+                RV_LOCK_REL="$f"
+                break
+            fi
+        done
+        # The `source = { ... }` line of the minirextendr [[packages]] entry.
+        RV_SOURCE=""
+        if [ -n "$RV_LOCK_REL" ]; then
+            RV_SOURCE=$(git show ":${RV_LOCK_REL}" | awk '
+                function flush() {
+                    if (pkg && name == "minirextendr" && src != "" && !found) { print src; found = 1 }
+                }
+                /^\[/ { flush(); pkg = ($0 == "[[packages]]"); name = ""; src = ""; next }
+                pkg && /^name = "/ { name = $0; sub(/^name = "/, "", name); sub(/".*$/, "", name); next }
+                pkg && /^source = / { src = $0; next }
+                END { flush() }
+            ')
+        fi
+        RV_GIT=""
+        RV_SHA=""
+        RE_RV_GIT='[{ ,]git = "([^"]*)"'
+        RE_RV_SHA='[{ ,]sha = "([0-9a-f]{40})"'
+        RE_RV_DIR='[{ ,]directory = "([^"]*)"'
+        if [[ $RV_SOURCE =~ $RE_RV_GIT ]]; then
+            RV_GIT="${BASH_REMATCH[1]}"
+            if [[ $RV_SOURCE =~ $RE_RV_SHA ]]; then
+                RV_SHA="${BASH_REMATCH[1]}"
+            fi
+        fi
+        # One "<crate> <sha> <rev|ref>" line per git-sourced miniextendr-* crate.
+        CARGO_PINS=""
+        if [ -n "$RV_SHA" ] && git cat-file -e ":${CARGO_LOCK_REL}" 2>/dev/null; then
+            CARGO_PINS=$(git show ":${CARGO_LOCK_REL}" | awk '
+                function flush() {
+                    if (pkg && name ~ /^miniextendr-/ && src ~ /^"git[+][^#]*#[0-9a-f]+"$/) {
+                        sha = src; sub(/^[^#]*#/, "", sha); sub(/"$/, "", sha)
+                        if (length(sha) == 40) print name, sha, (src ~ /[?&]rev=/ ? "rev" : "ref")
+                    }
+                }
+                /^\[/ { flush(); pkg = ($0 == "[[package]]"); name = ""; src = ""; next }
+                pkg && /^name = "/ { name = $0; sub(/^name = "/, "", name); sub(/".*$/, "", name); next }
+                pkg && /^source = "/ { src = $0; sub(/^source = /, "", src); next }
+                END { flush() }
+            ')
+        fi
+        if [ -n "$CARGO_PINS" ]; then
+            CARGO_SHA=$(awk '{ print $2 }' <<<"$CARGO_PINS" | sort -u)
+            case "$CARGO_SHA" in
+            *$'\n'*)
+                echo "BLOCKED: ${CARGO_LOCK_REL} pins the miniextendr crates to different commits:"
+                while read -r PIN_CRATE PIN_SHA _; do
+                    printf '  %-20s %s\n' "$PIN_CRATE" "$PIN_SHA"
+                done <<<"$CARGO_PINS"
+                echo "  Give every miniextendr-* dependency in ${RUST_DIR}/Cargo.toml the same"
+                echo "  git source (same url and branch, tag or rev), at the commit"
+                echo "  ${RV_LOCK_REL} pins minirextendr to: ${RV_SHA}"
+                return 1
+                ;;
+            esac
+            if [ "$CARGO_SHA" != "$RV_SHA" ]; then
+                FIRST_CRATE=$(awk 'NR == 1 { print $1 }' <<<"$CARGO_PINS")
+                RV_ADD_DIR=""
+                if [[ $RV_SOURCE =~ $RE_RV_DIR ]]; then
+                    RV_ADD_DIR=" --directory ${BASH_REMATCH[1]}"
+                fi
+                RV_ADD="rv remove minirextendr --no-sync && rv add minirextendr --git ${RV_GIT} --commit ${CARGO_SHA}${RV_ADD_DIR}"
+                if [ "$RV_LOCK_REL" != "rv.lock" ]; then
+                    RV_ADD="(cd ${RPKG_DIR} && ${RV_ADD})"
+                fi
+                RV_LABEL="${RV_LOCK_REL} (minirextendr):"
+                CARGO_LABEL="${CARGO_LOCK_REL} (miniextendr-*):"
+                echo "BLOCKED: ${RV_LOCK_REL} and ${CARGO_LOCK_REL} pin different miniextendr commits:"
+                printf '  %-*s %s\n' "${#CARGO_LABEL}" "$RV_LABEL" "$RV_SHA"
+                printf '  %s %s\n' "$CARGO_LABEL" "$CARGO_SHA"
+                echo "  The package's build files (src/rust/build.rs, Makevars.in, mx_abi.h, ...)"
+                echo "  follow miniextendr-api, so both locks must name the same commit."
+                echo "  Move Rust to the R pin:"
+                if grep -q ' rev$' <<<"$CARGO_PINS"; then
+                    echo "    set rev = \"${RV_SHA}\" on the miniextendr-* dependencies in"
+                    echo "    ${RUST_DIR}/Cargo.toml, then run"
+                    echo "    (cd ${RUST_DIR} && cargo update -p ${FIRST_CRATE})"
+                else
+                    echo "    (cd ${RUST_DIR} && cargo update -p ${FIRST_CRATE} --precise ${RV_SHA})"
+                fi
+                echo "  Or move R to the Rust pin (rv add does not replace a listed package, so"
+                echo "  remove it first; minirextendr is then pinned to that commit, not a branch):"
+                echo "    ${RV_ADD}"
+                echo "  Then stage what changed (the lock file, and rproject.toml for the rv route)."
                 return 1
             fi
         fi
