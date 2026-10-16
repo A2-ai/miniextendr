@@ -1134,6 +1134,15 @@ paths.
 
 ---
 
+## Conditional Methods
+
+Methods and associated items in a `#[miniextendr]` impl block can carry
+`#[cfg(...)]` / `#[cfg_attr(...)]`. A gated-off method has no C wrapper,
+registration, R binding or docs, and constructor inference, S7 property pairing
+and name checks see only the enabled methods. See
+[Conditional Compilation](MINIEXTENDR_ATTRIBUTE.md#conditional-compilation) for
+every place a gate can sit.
+
 ## Multiple Impl Blocks
 
 A type's methods can be split over several `#[miniextendr]` impl blocks, in one
