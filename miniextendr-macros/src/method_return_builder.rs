@@ -107,9 +107,9 @@ pub enum ReturnStrategy {
     /// ExternalPtr-backed class. The final decision is deferred to
     /// `write_r_wrappers_to_file`, where the complete class registry is known.
     ReturnOtherClass,
-    /// The method returns a *list* of values (`Vec<Class>`, plus the
-    /// `Option<Vec<Class>>` / `Result<Vec<Class>, E>` wrappers the C wrapper
-    /// already unwraps) whose element type may be another registered
+    /// The method returns a *list* of values (`Vec<Class>`, plus its
+    /// `Option<Vec<Class>>` / `Result<Vec<Class>, E>` wrappers; an `Option`'s
+    /// `NULL` passes through the wrap) whose element type may be another registered
     /// ExternalPtr-backed class (#1284). Deferred to `write_r_wrappers_to_file`
     /// like [`ReturnOtherClass`](Self::ReturnOtherClass), but through a
     /// distinct `.__MX_WRAP_LIST_RETURN_*` marker that resolves to a per-element
@@ -131,12 +131,12 @@ impl ReturnStrategy {
     /// Determine the return strategy for a parsed method.
     ///
     /// - Methods that return `Self`, `Result<Self, E>`, or `Option<Self>` use
-    ///   `ReturnSelf`. For the latter two, the C wrapper already raised on
-    ///   `Err` / `None` (see
-    ///   [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`] and
-    ///   [`crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr`]), so a
-    ///   successful `.val` is a bare ExternalPtr — identical in shape to the
-    ///   bare-`Self` case — and gets the same class-wrapping tail.
+    ///   `ReturnSelf`. The C wrapper already raised on `Err` (see
+    ///   [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`]) and
+    ///   gives `NULL` for `None` (see
+    ///   [`crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr`]), which
+    ///   passes through; any other `.val` is a bare ExternalPtr — identical in
+    ///   shape to the bare-`Self` case — and gets the same class-wrapping tail.
     /// - In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
     ///   `&mut self -> ()` methods use `ChainableMutation`. Both return the
     ///   receiver object (`x` / `self`, visibly unless marked invisible) so the
@@ -153,8 +153,8 @@ impl ReturnStrategy {
     ///   classes and leaves false positives unchanged. This also covers the
     ///   explicit-handle spelling `ExternalPtr<Class>` (#1375) — the detector
     ///   peels through it to the same wrapped name.
-    /// - `Vec<Class>` (and the `Option`/`Result` wrappers of it the C wrapper
-    ///   unwraps) use `ReturnOtherClassList`; write-time registry lookup wraps
+    /// - `Vec<Class>` (and its `Option`/`Result` wrappers; an `Option` return's
+    ///   `NULL` passes through) use `ReturnOtherClassList`; write-time registry lookup wraps
     ///   registered element classes via `lapply` and leaves false positives
     ///   unchanged (#1284). This also covers `Vec<ExternalPtr<Class>>` and
     ///   `Vec<Self>` (#1375) — the latter via `returns_self_list()`, since the
@@ -237,6 +237,10 @@ pub struct MethodReturnBuilder {
     return_class: Option<String>,
     /// Explicit constructor selection, before automatic return-shape tails.
     explicit_wrap: Option<crate::return_wrap::ReturnWrap>,
+    /// The method returns `Option<..>`, so `.val` is `NULL` for `None` (the C
+    /// wrapper converts the whole `Option`, as a function's does): the class
+    /// wrap or receiver passes it through instead of constructing from it.
+    nullable: bool,
     /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
     /// `"x"` for S3). Defaults to `"self"` if not set.
     chain_var: Option<String>,
@@ -260,6 +264,7 @@ impl MethodReturnBuilder {
             class_name: None,
             return_class: None,
             explicit_wrap: None,
+            nullable: false,
             chain_var: None,
             invisible: false,
             indent: 2,
@@ -345,6 +350,7 @@ impl MethodReturnBuilder {
         if let Some(wrap) = &method.return_wrap {
             return self.with_explicit_wrap(wrap.clone());
         }
+        self.nullable = method.returns_option();
         match self.strategy {
             ReturnStrategy::ReturnOtherClass => {
                 let return_class = method
@@ -367,6 +373,14 @@ impl MethodReturnBuilder {
             }
             _ => {}
         }
+        self
+    }
+
+    /// Mark `.val` as `NULL` for `None` (an `Option` return; see `nullable`).
+    /// [`with_return_class_from_method`](Self::with_return_class_from_method)
+    /// sets it for inherent methods.
+    pub fn with_nullable(mut self, nullable: bool) -> Self {
+        self.nullable = nullable;
         self
     }
 
@@ -393,7 +407,18 @@ impl MethodReturnBuilder {
             .return_class
             .as_ref()
             .expect("return_class required for ReturnOtherClass strategy");
-        format!(".__MX_WRAP_RETURN_{return_class}__(.val)")
+        self.null_passes(format!(".__MX_WRAP_RETURN_{return_class}__(.val)"))
+    }
+
+    /// Pass a `NULL` `.val` (an `Option` method's `None`) through the
+    /// cross-class wrap `expr`: no constructor takes `NULL`, and `lapply()`
+    /// would turn it into `list()`.
+    fn null_passes(&self, expr: String) -> String {
+        if self.nullable {
+            format!("if (is.null(.val)) NULL else {expr}")
+        } else {
+            expr
+        }
     }
 
     /// List-shaped sibling of
@@ -408,7 +433,7 @@ impl MethodReturnBuilder {
             .return_class
             .as_ref()
             .expect("return_class required for ReturnOtherClassList strategy");
-        format!(".__MX_WRAP_LIST_RETURN_{return_class}__(.val)")
+        self.null_passes(format!(".__MX_WRAP_LIST_RETURN_{return_class}__(.val)"))
     }
 
     // region: Core shared build path
@@ -438,6 +463,16 @@ impl MethodReturnBuilder {
                 wrap.r_expression(".val", self.class_name.as_deref())
             ));
             return self.apply_visibility(lines);
+        }
+        // An `Option<Self>` / `Option<&mut Self>` return's `None` is `NULL`;
+        // neither the class wrap nor the receiver stands in for it.
+        if self.nullable
+            && matches!(
+                self.strategy,
+                ReturnStrategy::ReturnSelf | ReturnStrategy::ChainableMutation
+            )
+        {
+            lines.push(format!("{indent}if (is.null(.val)) return(NULL)"));
         }
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
@@ -581,9 +616,9 @@ impl MethodReturnBuilder {
                         .class_name
                         .as_ref()
                         .expect("class_name required for ReturnSelf strategy");
-                    format!("{}(.ptr = .val)", class_name)
+                    self.null_passes(format!("{}(.ptr = .val)", class_name))
                 }
-                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::ChainableMutation => self.null_passes("x".to_string()),
                 ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
                 ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
                 ReturnStrategy::Direct => ".val".to_string(),
@@ -607,9 +642,9 @@ impl MethodReturnBuilder {
                         .class_name
                         .as_ref()
                         .expect("class_name required for ReturnSelf strategy");
-                    format!("methods::new(\"{}\", ptr = .val)", class_name)
+                    self.null_passes(format!("methods::new(\"{}\", ptr = .val)", class_name))
                 }
-                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::ChainableMutation => self.null_passes("x".to_string()),
                 ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
                 ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
                 ReturnStrategy::Direct => ".val".to_string(),

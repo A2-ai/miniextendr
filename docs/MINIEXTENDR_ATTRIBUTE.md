@@ -277,7 +277,7 @@ impl Counter {
 ```
 
 The marker is peeled before any other analysis, so `Invisible<Option<T>>`
-keeps `Option`'s `None`-raises rule, `Invisible<Result<T, E>>` still raises
+converts `None` as `Option<T>` does, `Invisible<Result<T, E>>` still raises
 on `Err`, and `Invisible<Self>` still wraps the handle in the class. Trait
 methods take the marker in the impl's signature (which must match the trait's
 declaration): `fn poke(&mut self) -> Invisible<()>`.
@@ -387,11 +387,10 @@ Put containers outside the marker: `Option<WrapAsR6<Board>>`,
 `Result<WrapAsR6<Board>, Error>`, `Vec<WrapAsR6<Board>>`,
 `Option<Vec<WrapAsR6<Board>>>`, or `Result<Vec<WrapAsR6<Board>>, Error>`.
 The attribute accepts the same shapes with bare `Board` payloads. `Err`
-retains normal error transport; vectors wrap each element. Explicit optional
-class returns raise on `None`, including free functions and optional vectors:
-the boundary unwraps the container before converting its class payload.
-Ordinary free functions without explicit wrapping keep their existing
-`Option<T>: IntoR` rules (including `NULL` for supported optional vectors). `Result<T, ()>` is not supported by explicit wrapping.
+retains normal error transport; vectors wrap each element. An optional class
+return gives `NULL` for `None`, from a function or a method, as an unwrapped
+`Option<Vec<T>>` does: the wrap passes `NULL` through instead of constructing
+from it. `Result<T, ()>` is not supported by explicit wrapping.
 Put visibility outside the complete return, e.g.
 `Invisible<Result<WrapAsR6<Board>, Error>>`.
 
@@ -441,7 +440,8 @@ conversion markers from `WrapAsS7<T>`, which explicitly wraps a return without
 registering an S7 conversion.
 
 `Result<ConvertTo<T>, E>` / `Result<ConvertFrom<Self>, E>` preserve error
-transport; `Option` variants raise on `None`. Put `Invisible` or `Visible`
+transport. `Option<ConvertTo<T>>` and `Option<ConvertFrom<Self>>` give `NULL`
+for `None`, like any optional class return. Put `Invisible` or `Visible`
 outside the complete return. Visibility applies to both ordinary method
 calls and `S7::convert()`. Conversion returns represent one class instance,
 so vectors of class instances are rejected. Conflicting marker/attribute

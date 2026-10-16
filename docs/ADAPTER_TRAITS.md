@@ -115,7 +115,7 @@ concrete vtable shim generation at the impl site:
 
 | Trait | Wraps | R methods | Notes |
 |-------|-------|-----------|-------|
-| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `size_hint()`, `count()`, `collect_n()`, `skip()`, `nth()` | Rust `next` is `next_item` in R via `r_name`; `size_hint` returns `list(lower, upper)` (NA upper bound when unknown) |
+| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `size_hint()`, `count()`, `collect_n()`, `skip()`, `nth()` | Rust `next` is `next_item` in R via `r_name`; `next` and `nth` return `Nullable<Item>`, `NULL` in R at the end; `size_hint` returns `list(lower, upper)` (NA upper bound when unknown) |
 | `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | Rust `r_len` / `r_is_empty`; `extend_from_slice` skipped |
 | `RFromIter<T>` | `FromIterator` | `from_vec(items)` | |
 | `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | Rust `r_to_vec` / `r_len` / `r_is_empty` |
@@ -193,17 +193,20 @@ struct CountUp {
 impl miniextendr_api::adapter_traits::RIterator for CountUp {
     type Item = i32;
 
-    fn next(&self) -> Option<i32> { /* ... */ }
+    fn next(&self) -> Nullable<i32> { /* ... */ }
     fn size_hint(&self) -> (i64, Option<i64>) { /* ... */ }
     fn count(&self) -> i64 { /* ... */ }
     fn collect_n(&self, n: i32) -> Vec<i32> { /* ... */ }
     fn skip(&self, n: i32) -> i32 { /* ... */ }
-    fn nth(&self, n: i32) -> Option<i32> { /* ... */ }
+    fn nth(&self, n: i32) -> Nullable<i32> { /* ... */ }
 }
 ```
 
 In R, the method is called `next_item()` (not `next()`, which would shadow
-R's built-in), and `size_hint()` returns `list(lower, upper)`.
+R's built-in), and `size_hint()` returns `list(lower, upper)`. `next_item()`
+and `nth()` return `NULL` once the iterator is exhausted, whatever the item
+type. An `Option<i32>` would give `NA_integer_`, which a real item could also
+be; `Nullable<T>` gives `NULL` for `None`.
 
 ## Alternative: Newtype Wrapper
 
@@ -360,7 +363,7 @@ give a Rust method that avoids a std name its std name in R:
 #[miniextendr]
 pub trait RIterator {
     #[miniextendr(r_name = "next_item")]
-    fn next(&self) -> Option<Self::Item>;  // Called next_item() in R
+    fn next(&self) -> Nullable<Self::Item>;  // Called next_item() in R
 }
 ```
 

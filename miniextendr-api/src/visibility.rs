@@ -38,8 +38,8 @@
 //! }
 //! ```
 //!
-//! The marker is transparent everywhere else: `Invisible<Option<i32>>` keeps
-//! `Option`'s `None`-raises semantics, `Invisible<Self>` still wraps the
+//! The marker is transparent everywhere else: `Invisible<Option<i32>>` gives
+//! `NA_integer_` for `None`, as `Option<i32>` does, `Invisible<Self>` still wraps the
 //! returned handle in the class, `Invisible<Result<T, E>>` still raises on
 //! `Err`. Both types implement [`IntoR`] by forwarding to `T`, so a value that
 //! reaches a conversion without the macro having peeled the marker (a type

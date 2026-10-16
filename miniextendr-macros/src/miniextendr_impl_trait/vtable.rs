@@ -1360,7 +1360,10 @@ pub(super) fn generate_trait_method_c_wrapper(
     {
         ReturnHandling::IntoR
     } else {
-        crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
+        crate::c_wrapper_builder::detect_return_handling(
+            &method.sig.output,
+            method.return_wrap.as_ref(),
+        )
     };
 
     // Generate R wrapper const name (not actually used but needed by builder)
@@ -1582,7 +1585,7 @@ pub(super) fn generate_trait_const_c_wrapper(
     // Determine return type handling - we need to convert the const to SEXP
     // The return type is `-> Type` not just `Type`
     let return_type: syn::ReturnType = syn::parse_quote!(-> #const_ty);
-    let return_handling = crate::c_wrapper_builder::detect_return_handling(&return_type);
+    let return_handling = crate::c_wrapper_builder::detect_return_handling(&return_type, None);
 
     // Build wrapper - no inputs, just returns the const value
     let builder = CWrapperContext::builder(const_ident.clone(), c_ident)

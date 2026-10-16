@@ -1,9 +1,10 @@
 //! Fixture for `Option<Self>` static returns (#1164).
 //!
 //! `try_find` is the lookup-shaped fallible constructor: `Some(Self)` wraps as
-//! a class object exactly like `$new()`, while `None` raises an R error (the
-//! normal `Option` error path). Symmetric with the `Result<Self, E>` fixture
-//! (`SerdeRPoint$from_r` in `serde_r_tests.rs`, audit A4).
+//! a class object exactly like `$new()`, while `None` is `NULL`, as every
+//! `Option` return gives (#2121). The `Result<Self, E>` fixture
+//! (`SerdeRPoint$from_r` in `serde_r_tests.rs`, audit A4) is the raising
+//! spelling.
 
 use miniextendr_api::miniextendr;
 
@@ -27,7 +28,7 @@ impl OptionSelfLookup {
 
     /// Look up a known entry by id — the `Option<Self>` lookup-shaped
     /// fallible constructor (#1164). Returns the entry for ids 1..=3;
-    /// `None` (raised as an R error) otherwise.
+    /// `None` (`NULL` in R) otherwise.
     /// @param id Integer id to look up.
     pub fn try_find(id: i32) -> Option<Self> {
         let label = match id {

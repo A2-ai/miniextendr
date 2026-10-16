@@ -82,13 +82,8 @@ test_that("Point - RFromStr from_str parses string to Point", {
   expect_equal(p$x(), 10L)
   expect_equal(p$y(), 20L)
 
-  # Invalid string returns error (Option<T> with None becomes R error). The
-  # message names the method as R calls it, not its Rust name `r_from_str`.
-  expect_error(
-    Point$RFromStr$from_str("invalid"),
-    "`from_str()` returned no value",
-    fixed = TRUE
-  )
+  # An invalid string is `None`: `Option<Self>` gives NULL, as every Option does.
+  expect_null(Point$RFromStr$from_str("invalid"))
 
   # Empty parens with valid numbers
   p2 <- Point$RFromStr$from_str("(-5, 15)")
@@ -136,9 +131,7 @@ test_that("renamed adapter methods keep their std names in R", {
   }
 })
 
-# =============================================================================
-# MyFloat - RPartialOrd tests
-# =============================================================================
+# region: MyFloat - RPartialOrd tests
 
 test_that("MyFloat - basic operations work", {
   f1 <- MyFloat$new(1.5)
@@ -166,20 +159,16 @@ test_that("MyFloat - RPartialOrd handles NaN correctly", {
   f1 <- MyFloat$new(1.0)
   nan <- MyFloat$nan()
 
-  # NaN is not comparable to anything (including itself)
-  # Option<T> returning None throws error in miniextendr
-  expect_error(
-    nan$RPartialOrd$partial_cmp(f1),
-    "`partial_cmp()` returned no value",
-    fixed = TRUE
-  )
-  expect_error(f1$RPartialOrd$partial_cmp(nan), "returned no value")
-  expect_error(nan$RPartialOrd$partial_cmp(nan), "returned no value")
+  # NaN is not comparable to anything (including itself): `None` of an
+  # `Option<i32>` is NA_integer_.
+  expect_identical(nan$RPartialOrd$partial_cmp(f1), NA_integer_)
+  expect_identical(f1$RPartialOrd$partial_cmp(nan), NA_integer_)
+  expect_identical(nan$RPartialOrd$partial_cmp(nan), NA_integer_)
 })
 
-# =============================================================================
-# ChainedError - RError tests
-# =============================================================================
+# endregion
+
+# region: ChainedError - RError tests
 
 test_that("ChainedError - basic creation works", {
   err <- ChainedError$new("outer error", "inner cause")
@@ -211,9 +200,9 @@ test_that("ChainedError - RError error_chain_length works", {
   expect_equal(err_no_source$error_chain_length(), 1L)
 })
 
-# =============================================================================
-# IntVecIter - RIterator tests
-# =============================================================================
+# endregion
+
+# region: IntVecIter - RIterator tests
 
 test_that("IntVecIter - basic iteration works", {
   it <- IntVecIter$new(c(1L, 2L, 3L))
@@ -221,13 +210,17 @@ test_that("IntVecIter - basic iteration works", {
   expect_equal(it$RIterator$next_item(), 1L)
   expect_equal(it$RIterator$next_item(), 2L)
   expect_equal(it$RIterator$next_item(), 3L)
-  # Option<T> returning None throws error in miniextendr
-  # The message names the R method, not the Rust `next`.
-  expect_error(
-    it$RIterator$next_item(),
-    "`next_item()` returned no value",
-    fixed = TRUE
-  )
+  # Exhausted: `next` returns `Nullable<i32>`, so the end is NULL.
+  expect_null(it$RIterator$next_item())
+  expect_null(it$RIterator$next_item())
+})
+
+test_that("IntVecIter - an NA item is not the end", {
+  it <- IntVecIter$new(c(NA_integer_, 1L))
+
+  expect_identical(it$RIterator$next_item(), NA_integer_)
+  expect_identical(it$RIterator$next_item(), 1L)
+  expect_null(it$RIterator$next_item())
 })
 
 test_that("IntVecIter - RIterator next_item and count work via trait namespace", {
@@ -242,8 +235,8 @@ test_that("IntVecIter - count works", {
   it <- IntVecIter$new(c(1L, 2L, 3L, 4L, 5L))
   expect_equal(it$RIterator$count(), 5L)
 
-  # After count, iterator is exhausted - Option<T> returning None throws
-  expect_error(it$RIterator$next_item(), "returned no value")
+  # After count, the iterator is exhausted: next_item() gives NULL.
+  expect_null(it$RIterator$next_item())
 })
 
 test_that("IntVecIter - collect_n works", {
@@ -278,13 +271,14 @@ test_that("IntVecIter - nth works", {
   # nth(1) skips one more and returns the next
   expect_equal(it$RIterator$nth(1L), 30L)
 
-  # nth past end throws error - Option<T> returning None throws
-  expect_error(it$RIterator$nth(10L), "returned no value")
+  # nth past the end is NULL, as is a negative index.
+  expect_null(it$RIterator$nth(10L))
+  expect_null(IntVecIter$new(1L)$RIterator$nth(-1L))
 })
 
-# =============================================================================
-# GrowableVec - RExtend tests
-# =============================================================================
+# endregion
+
+# region: GrowableVec - RExtend tests
 
 test_that("GrowableVec - basic operations work", {
   v <- GrowableVec$new()
@@ -324,9 +318,9 @@ test_that("GrowableVec - clear works", {
   expect_true(v$RExtend$is_empty())
 })
 
-# =============================================================================
-# IntSet - RFromIter and RToVec tests
-# =============================================================================
+# endregion
+
+# region: IntSet - RFromIter and RToVec tests
 
 test_that("IntSet - RFromIter from_vec works with deduplication", {
   # HashSet automatically deduplicates
@@ -366,9 +360,9 @@ test_that("IntSet - empty set works", {
   expect_equal(s$RToVec$to_vec(), integer(0))
 })
 
-# =============================================================================
-# IterableVec and IterableVecIter - RMakeIter tests
-# =============================================================================
+# endregion
+
+# region: IterableVec and IterableVecIter - RMakeIter tests
 
 test_that("IterableVec - basic operations work", {
   v <- IterableVec$new(c(1L, 2L, 3L))
@@ -407,6 +401,9 @@ test_that("IterableVecIter - collect via RIterator works", {
 
   result <- it_ptr$RIterator$collect_n(10L)
   expect_equal(result, c(100L, 200L, 300L))
+  # The blanket impl's `next` ends with NULL as well.
+  expect_null(it_ptr$RIterator$next_item())
+  expect_null(it_ptr$RIterator$nth(0L))
 })
 
 test_that("IterableVecIter - omitted RIterator defaults get wrappers", {
@@ -419,9 +416,9 @@ test_that("IterableVecIter - omitted RIterator defaults get wrappers", {
   expect_equal(it_ptr$RIterator$count(), 2L)
 })
 
-# =============================================================================
-# Renamed adapter methods under S3, S4, S7 and R6 (#2020)
-# =============================================================================
+# endregion
+
+# region: Renamed adapter methods under S3, S4, S7 and R6 (#2020)
 #
 # `hash()`, `clone()`, `default()` and `from_str()` are `r_hash`, `r_clone`,
 # `r_default` and `r_from_str` in Rust. Each class system reaches them under
@@ -441,11 +438,7 @@ test_that("AdapterNamesS3 - renamed adapter methods keep their R names", {
   parsed <- AdapterNamesS3$RFromStr$from_str("4")
   expect_s3_class(parsed, "AdapterNamesS3")
   expect_equal(hash(parsed), hash(a))
-  expect_error(
-    AdapterNamesS3$RFromStr$from_str("four"),
-    "`from_str()` returned no value",
-    fixed = TRUE
-  )
+  expect_null(AdapterNamesS3$RFromStr$from_str("four"))
 
   expect_false(exists("r_hash", mode = "function"))
   expect_false(exists("r_clone", mode = "function"))
@@ -465,11 +458,7 @@ test_that("AdapterNamesS4 - renamed adapter methods keep their R names", {
 
   parsed <- AdapterNamesS4_RFromStr_from_str("4")
   expect_equal(s4_trait_RHash_hash(parsed), s4_trait_RHash_hash(a))
-  expect_error(
-    AdapterNamesS4_RFromStr_from_str("four"),
-    "`from_str()` returned no value",
-    fixed = TRUE
-  )
+  expect_null(AdapterNamesS4_RFromStr_from_str("four"))
 
   expect_false(exists("s4_trait_RHash_r_hash"))
   expect_false(exists("AdapterNamesS4_RDefault_r_default"))
@@ -489,11 +478,7 @@ test_that("AdapterNamesS7 - renamed adapter methods keep their R names", {
 
   parsed <- attr(AdapterNamesS7, "RFromStr")$from_str("4")
   expect_equal(s7_trait_RHash_hash(parsed), s7_trait_RHash_hash(a))
-  expect_error(
-    attr(AdapterNamesS7, "RFromStr")$from_str("four"),
-    "`from_str()` returned no value",
-    fixed = TRUE
-  )
+  expect_null(attr(AdapterNamesS7, "RFromStr")$from_str("four"))
 
   expect_false(exists("s7_trait_RHash_r_hash"))
   expect_null(attr(AdapterNamesS7, "RDefault")$r_default)
@@ -513,11 +498,7 @@ test_that("AdapterNamesR6 - renamed adapter methods keep their R names", {
 
   parsed <- AdapterNamesR6$RFromStr$from_str("4")
   expect_equal(AdapterNamesR6$RHash$hash(parsed), AdapterNamesR6$RHash$hash(a))
-  expect_error(
-    AdapterNamesR6$RFromStr$from_str("four"),
-    "`from_str()` returned no value",
-    fixed = TRUE
-  )
+  expect_null(AdapterNamesR6$RFromStr$from_str("four"))
 
   expect_null(AdapterNamesR6$RHash$r_hash)
   expect_null(AdapterNamesR6$RClone$r_clone)
@@ -537,3 +518,5 @@ test_that("RIterator size_hint is exposed as a positional list", {
   class(borrowed) <- "IterableVecIter"
   expect_identical(borrowed$RIterator$size_hint(), list(2L, 2L))
 })
+
+# endregion

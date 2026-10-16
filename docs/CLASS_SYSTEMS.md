@@ -1094,7 +1094,7 @@ wrapper does depends on the return type:
 | Signature | Wrapper behaviour | R result |
 |---|---|---|
 | `fn step(self, ..) -> Self` | moves the value out, calls, writes the result back into the **same** handle | the receiver object (identity preserved, like `&mut Self`) |
-| `fn step(self, ..) -> Result<Self, E>` / `-> Option<Self>` | calls on a **clone** (`T: Clone` required), overwrites the handle only on `Ok` / `Some` | the receiver object; `Err` / `None` raise and leave the object untouched |
+| `fn step(self, ..) -> Result<Self, E>` / `-> Option<Self>` | calls on a **clone** (`T: Clone` required), overwrites the handle only on `Ok` / `Some` | the receiver object; `Err` raises and `None` gives `NULL`, both leaving the object untouched |
 | `fn finish(self, ..) -> T` (anything else) | moves the value out and converts `T` as usual; the handle is left **consumed** | the converted value; later use of the object errors with "was consumed" |
 
 ```rust
@@ -1129,8 +1129,13 @@ inferred from a `self` receiver any more; mark it with `r6(finalize)`.
 
 Fallible in-place steps, `&mut self -> Result<&mut Self, E>` and
 `-> Option<&mut Self>`, are recognised alongside `&mut self -> &mut Self`:
-success hands back the same handle, failure raises through the normal error
-paths.
+success hands back the same handle, `Err` raises through the normal error
+path, and `None` gives `NULL`.
+
+An `Option` is an absent value, never an error, for chain steps too: `None`
+hands `NULL` to the next step of `obj |> step() |> next()`, or into
+`x <- x$step()`. A step whose failure must stop the chain returns
+`Result<Self, E>` / `Result<&mut Self, E>`.
 
 ---
 

@@ -2592,9 +2592,10 @@ impl ParsedMethod {
     /// Four shapes are recognized:
     /// - A bare capitalized path, e.g. `-> Board`.
     /// - `Option<T>` where `T` is a bare capitalized path. The C wrapper
-    ///   already unwraps this and raises on `None`
-    ///   (`ReturnHandling::OptionIntoRUnwrap`), so the successful `.val` is a
-    ///   bare pointer — identical to the bare-class case on the R side.
+    ///   converts the whole `Option` (`ReturnHandling::OptionIntoR`, as a
+    ///   function's), so `.val` is a bare pointer for `Some`, wrapped as in the
+    ///   bare-class case, and `NULL` for `None`, which the wrap passes through
+    ///   ([`returns_option`](Self::returns_option)).
     /// - `Result<T, E>` where `T` is a bare capitalized path and `E` is not
     ///   `()`. `Result<T, ()>` is excluded: the unit-error sentinel maps to
     ///   `ReturnHandling::ResultNullOnErr`, where `.val` can be `NULL` on
@@ -2665,9 +2666,10 @@ impl ParsedMethod {
     /// - `Vec<Class>` — the C wrapper converts via `IntoR` into a `VECSXP` of
     ///   external pointers (the `IntoRVecElement` impl emitted by
     ///   `#[derive(ExternalPtr)]`), so `.val` is a bare list.
-    /// - `Option<Vec<Class>>` — the C wrapper already unwraps and raises on
-    ///   `None` (`ReturnHandling::OptionIntoRUnwrap`), so the successful
-    ///   `.val` is the same bare list.
+    /// - `Option<Vec<Class>>` — the C wrapper converts the whole `Option`
+    ///   (`ReturnHandling::OptionIntoR`), so `.val` is the same bare list for
+    ///   `Some` and `NULL` for `None`, which the `lapply` wrap passes through
+    ///   rather than turning it into `list()`.
     /// - `Result<Vec<Class>, E>` where `E` is not `()` — the C wrapper raises
     ///   on `Err` (`ReturnHandling::ResultIntoR`); same bare list on `Ok`.
     ///   `Result<Vec<Class>, ()>` is excluded: the unit-error sentinel maps to
@@ -2893,10 +2895,17 @@ impl ParsedMethod {
     }
 
     /// `-> Option<&Self>` / `-> Option<&mut Self>`: the `Option` sibling of
-    /// [`Self::returns_result_self_ref`]; `None` raises the usual absence error.
+    /// [`Self::returns_result_self_ref`]; `None` returns `NULL` and leaves the
+    /// object as it was.
     pub fn returns_option_self_ref(&self) -> bool {
         self.wrapped_output_arg("Option")
             .is_some_and(Self::is_self_ref_type)
+    }
+
+    /// `-> Option<..>`: `.val` is `NULL` for `None`, so a cross-class wrap of
+    /// the value has to let `NULL` through.
+    pub fn returns_option(&self) -> bool {
+        self.wrapped_output_arg("Option").is_some()
     }
 
     /// Returns true if this method has no return type (returns unit `()`).
@@ -2940,6 +2949,9 @@ fn is_builtin_return_type_name(name: &str) -> bool {
             | "String"
             | "usize"
             | "isize"
+            | "RLogical"
+            | "Rboolean"
+            | "Rcomplex"
     )
 }
 
@@ -3901,7 +3913,10 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
     {
         ReturnHandling::IntoR
     } else {
-        crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
+        crate::c_wrapper_builder::detect_return_handling(
+            &method.sig.output,
+            method.return_wrap.as_ref(),
+        )
     };
 
     // Build the context using the builder

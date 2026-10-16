@@ -107,6 +107,9 @@ use crate::strvec::StrVecBuilder;
 /// let result = "hello".try_into_sexp();
 /// assert!(result.is_ok());
 /// ```
+#[diagnostic::on_unimplemented(
+    note = "an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = \"r6\")]` (any class system)"
+)]
 pub trait IntoR {
     /// The error type for fallible conversions.
     ///

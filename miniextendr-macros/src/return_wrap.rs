@@ -242,6 +242,14 @@ impl ReturnWrap {
         self.containers.contains(&Container::Vec)
     }
 
+    /// `Option<Class>`, the one wrapped shape without an `IntoR` impl for its
+    /// `Option` (the orphan rule refuses one in the class's crate): the C wrapper
+    /// converts the payload and gives `NULL` for `None`
+    /// (`ReturnHandling::OptionClassPayload`).
+    pub(crate) fn is_optional_class(&self) -> bool {
+        self.containers == [Container::Option]
+    }
+
     /// Unwrap only syntactic marker values; attributes keep the user's value.
     pub(crate) fn prepare_value(&self, call: TokenStream) -> TokenStream {
         fn map(call: TokenStream, containers: &[Container]) -> TokenStream {
@@ -282,10 +290,17 @@ impl ReturnWrap {
                 format!("structure({value}, class = unique(c(\"{target}\", class({value}))))")
             }
         };
-        if self.containers.contains(&Container::Vec) {
+        let wrapped = if self.containers.contains(&Container::Vec) {
             format!("lapply({value}, function(.item) {})", wrap(".item"))
         } else {
             wrap(value)
+        };
+        // `None` arrives as `NULL` (an `Option` converts as a function's does);
+        // no constructor takes it, and `lapply()` would turn it into `list()`.
+        if self.containers.first() == Some(&Container::Option) {
+            format!("if (is.null({value})) NULL else {wrapped}")
+        } else {
+            wrapped
         }
     }
 }
@@ -333,6 +348,31 @@ mod tests {
             }
         }
     }
+    /// An `Option` return is `NULL` for `None` (#2088): the wrap lets it through.
+    #[test]
+    fn optional_wraps_let_null_through() {
+        for (shape, guarded) in [
+            ("{}", false),
+            ("Option<{}>", true),
+            ("Result<{}, String>", false),
+            ("Vec<{}>", false),
+            ("Option<Vec<{}>>", true),
+            ("Result<Vec<{}>, String>", false),
+        ] {
+            let output: ReturnType =
+                syn::parse_str(&format!("-> {}", shape.replace("{}", "WrapAsR6<Board>"))).unwrap();
+            let (plan, _) = resolve(&output, None).unwrap();
+            let plan = plan.unwrap();
+            assert_eq!(plan.is_optional_class(), shape == "Option<{}>", "{shape}");
+            let expr = plan.r_expression(".val", None);
+            assert_eq!(
+                expr.starts_with("if (is.null(.val)) NULL else "),
+                guarded,
+                "{shape}: {expr}"
+            );
+        }
+    }
+
     #[test]
     fn rejects_misplaced_markers_and_conflicting_systems() {
         for (output, message) in [

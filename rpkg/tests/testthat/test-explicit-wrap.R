@@ -31,9 +31,9 @@ test_that("wrapping preserves container boundaries, errors, and visibility", {
   expected <- list(c(1L, 2L), c(3L, 4L))
   expect_identical(lapply(factory$boards(), function(x) x$dimensions()), expected)
   expect_identical(lapply(factory$optional_boards(TRUE), function(x) x$dimensions()), expected)
-  expect_error(factory$optional_boards(FALSE), "returned no value", class = "rust_error")
+  expect_null(factory$optional_boards(FALSE))
   expect_identical(factory$optional_board(TRUE)$dimensions(), c(6L, 7L))
-  expect_error(factory$optional_board(FALSE), class = "rust_error")
+  expect_null(factory$optional_board(FALSE))
   hidden <- withVisible(factory$hidden())
   expect_false(hidden$visible)
   expect_identical(hidden$value$dimensions(), c(8L, 9L))
@@ -68,7 +68,7 @@ test_that("cross-class and trait factory wrapping survives GC stress", {
 
 test_that("explicit free-function class containers unwrap before converting", {
   for (make in list(wrapped_optional_boards, wrapped_optional_boards_attr)) {
-    expect_error(make(FALSE), "returned no value", class = "rust_error")
+    expect_null(make(FALSE))
     expect_identical(make(TRUE)[[1L]]$dimensions(), c(1L, 2L))
   }
   expect_identical(wrapped_result_boards(FALSE)[[1L]]$dimensions(), c(1L, 2L))
