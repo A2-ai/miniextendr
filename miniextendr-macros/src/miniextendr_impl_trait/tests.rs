@@ -3125,7 +3125,9 @@ fn unsafe_trait_impl_methods_require_skip() {
     };
     let error =
         vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered).unwrap_err();
-    assert!(error.to_string().contains("provide a safe Rust adapter"));
+    let message = error.to_string();
+    assert!(message.contains("Expose a safe fn"), "{message}");
+    assert!(message.contains("`#[miniextendr(skip)]`"), "{message}");
 
     let implementation: syn::ItemImpl = syn::parse_quote! {
         impl Unchecked for Host {
