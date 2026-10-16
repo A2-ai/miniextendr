@@ -21,6 +21,9 @@ mod declaration {
         fn values(&self, values: LocalValues<T>) -> LocalValues<T> {
             values
         }
+        fn maybe_values(&self, values: Option<LocalValues<T>>) -> LocalValues<T> {
+            values.unwrap_or_default()
+        }
         fn total_slice(&self, values: &[LocalNumber]) -> LocalNumber {
             values.iter().sum()
         }
@@ -47,8 +50,9 @@ mod declaration {
 
 use declaration::Totals as RenamedTotals;
 
-// Deliberately shadow the private declaration alias with a different type.
+// Deliberately shadow the private declaration aliases with different types.
 pub type LocalValues<T> = Vec<Vec<T>>;
+pub type LocalNumber = f64;
 
 #[derive(ExternalPtr)]
 pub struct Ledger(i32);
@@ -78,7 +82,14 @@ impl RenamedTotals<i32, 3> for Override {
 fn default_wrappers_inherit_metadata_and_overrides_win() {
     let inherited = R_WRAPPERS_Ledger_Totals_IMPL.content;
     for name in [
-        "total", "label", "values", "array", "ignored", "other", "title",
+        "total",
+        "label",
+        "values",
+        "maybe_values",
+        "array",
+        "ignored",
+        "other",
+        "title",
     ] {
         assert!(
             inherited.contains(&format!("Ledger$Totals${name} <- function(")),
@@ -130,6 +141,16 @@ fn default_callbacks_dispatch_and_convert_concrete_arguments() {
             ))
             .get();
         assert_eq!(Vec::<i32>::try_from_sexp(value).unwrap(), [2, 3]);
+        for (argument, expected) in [(input, vec![2, 3]), (miniextendr_api::SEXP::nil(), vec![])] {
+            let value = scope
+                .protect(C_trait_default_methods_Ledger__Totals__maybe_values(
+                    miniextendr_api::SEXP::nil(),
+                    pointer,
+                    argument,
+                ))
+                .get();
+            assert_eq!(Vec::<i32>::try_from_sexp(value).unwrap(), expected);
+        }
         let total = scope
             .protect(C_trait_default_methods_Ledger__Totals__total_slice(
                 miniextendr_api::SEXP::nil(),
@@ -199,12 +220,19 @@ fn defaults_can_name_the_implementations_associated_types() {
 // skipped one, and argument types read in the declaration's module.
 mod plain_declaration {
     type LocalWords = Vec<String>;
+    type LocalNumber = i32;
     #[miniextendr_api::miniextendr]
     pub trait Plain {
         fn read(&self) -> i32;
 
         fn echo(&self, words: LocalWords) -> LocalWords {
             words
+        }
+        fn maybe(&self, words: Option<LocalWords>) -> LocalWords {
+            words.unwrap_or_default()
+        }
+        fn total(&self, values: &[LocalNumber]) -> LocalNumber {
+            values.iter().sum()
         }
         #[miniextendr(r_name = "label")]
         fn r_label(&self) -> String {
@@ -240,7 +268,7 @@ impl Plain for Reader {
 #[test]
 fn non_generic_defaults_get_wrappers_too() {
     let wrappers = R_WRAPPERS_Reader_Plain_IMPL.content;
-    for name in ["read", "echo", "label", "ignored", "kind"] {
+    for name in ["read", "echo", "maybe", "total", "label", "ignored", "kind"] {
         assert!(
             wrappers.contains(&format!("Reader$Plain${name} <- function(")),
             "{wrappers}"
@@ -268,6 +296,25 @@ fn non_generic_defaults_get_wrappers_too() {
             ))
             .get();
         assert_eq!(Vec::<String>::try_from_sexp(value).unwrap(), ["one", "two"]);
+        for (argument, expected) in [(input, 2), (miniextendr_api::SEXP::nil(), 0)] {
+            let value = scope
+                .protect(C_trait_default_methods_Reader__Plain__maybe(
+                    miniextendr_api::SEXP::nil(),
+                    pointer,
+                    argument,
+                ))
+                .get();
+            assert_eq!(Vec::<String>::try_from_sexp(value).unwrap().len(), expected);
+        }
+        let numbers = scope.protect(vec![2i32, 3].into_sexp()).get();
+        let value = scope
+            .protect(C_trait_default_methods_Reader__Plain__total(
+                miniextendr_api::SEXP::nil(),
+                pointer,
+                numbers,
+            ))
+            .get();
+        assert_eq!(i32::try_from_sexp(value).unwrap(), 5);
         let value = scope
             .protect(C_trait_default_methods_Reader__Plain__kind(
                 miniextendr_api::SEXP::nil(),
