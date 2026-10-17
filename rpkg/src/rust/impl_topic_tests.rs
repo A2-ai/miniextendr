@@ -197,3 +197,103 @@ impl TopicS3 {
         self.value
     }
 }
+
+/// Trait members join the inherent class topic, across modules as well.
+#[miniextendr]
+pub trait TopicProbe {
+    fn probe_value(&self, offset: i32) -> i32;
+    fn probe_origin(offset: i32) -> i32 {
+        offset
+    }
+    const PROBE_ID: i32;
+
+    /// An explicitly selected method page stays separate.
+    /// @rdname impl_topic_override
+    fn probe_split(&self) -> i32 {
+        9
+    }
+}
+
+mod trait_env {
+    use super::{TopicENV, TopicProbe};
+    use miniextendr_api::miniextendr;
+
+    #[miniextendr(env)]
+    impl TopicProbe for TopicENV {
+        fn probe_value(&self, offset: i32) -> i32 {
+            self.value + offset
+        }
+
+        const PROBE_ID: i32 = 21;
+    }
+}
+
+mod trait_r6 {
+    use super::{TopicProbe, TopicR6};
+    use miniextendr_api::miniextendr;
+
+    #[miniextendr(r6)]
+    impl TopicProbe for TopicR6 {
+        fn probe_value(&self, offset: i32) -> i32 {
+            self.value + offset
+        }
+
+        const PROBE_ID: i32 = 21;
+    }
+}
+
+mod trait_s3 {
+    use super::{TopicProbe, TopicS3};
+    use miniextendr_api::miniextendr;
+
+    #[miniextendr(s3)]
+    impl TopicProbe for TopicS3 {
+        fn probe_value(&self, offset: i32) -> i32 {
+            self.value + offset
+        }
+
+        const PROBE_ID: i32 = 21;
+    }
+}
+
+mod trait_s4 {
+    use super::{TopicProbe, TopicS4};
+    use miniextendr_api::miniextendr;
+
+    #[miniextendr(s4)]
+    impl TopicProbe for TopicS4 {
+        fn probe_value(&self, offset: i32) -> i32 {
+            self.value + offset
+        }
+
+        const PROBE_ID: i32 = 21;
+    }
+}
+
+mod trait_s7 {
+    use super::{TopicProbe, TopicS7};
+    use miniextendr_api::miniextendr;
+
+    #[miniextendr(s7)]
+    impl TopicProbe for TopicS7 {
+        fn probe_value(&self, offset: i32) -> i32 {
+            self.value + offset
+        }
+
+        const PROBE_ID: i32 = 21;
+    }
+}
+
+/// Exercise the separate empty-impl metadata expansion.
+#[miniextendr]
+pub trait TopicDefaults {
+    fn default_origin(offset: i32) -> i32 {
+        offset
+    }
+}
+
+// An empty annotated impl registers an existing Rust implementation.
+impl TopicDefaults for TopicENV {}
+
+#[miniextendr(env)]
+impl TopicDefaults for TopicENV {}

@@ -1274,6 +1274,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #[allow(non_upper_case_globals, non_snake_case)]
         static #r_wrappers_const_ident: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
+                trait_class: ::core::option::Option::None,
                 priority: ::miniextendr_api::registry::RWrapperPriority::Vctrs,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,

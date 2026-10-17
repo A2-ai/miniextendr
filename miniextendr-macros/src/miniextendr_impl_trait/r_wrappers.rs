@@ -9,7 +9,9 @@ use super::method_context::{
     TraitMethodContext, s7_trait_member_access, trait_namespace_env_var, trait_namespace_target,
 };
 use super::{TraitConst, TraitMethod};
-use crate::miniextendr_impl::ClassSystem;
+use crate::miniextendr_impl::{
+    CLASS_MEMBER_DEFAULT_PREFIX, ClassSystem, member_default, push_member_rdname,
+};
 use crate::r_class_formatter::emit_s3_generic_guard;
 
 /// Options controlling export visibility and documentation for trait R wrapper generation.
@@ -105,7 +107,7 @@ pub(super) fn generate_trait_r_wrapper(
                             || line.contains("@param ")
                             || (keep_export && line.contains("@export"))
                         {
-                            out.push(line.to_string());
+                            out.push(roxygen_line(line).to_string());
                         }
                     }
                 }
@@ -113,7 +115,7 @@ pub(super) fn generate_trait_r_wrapper(
             };
 
             for line in result.lines() {
-                if line.starts_with("#'") {
+                if roxygen_line(line).starts_with("#'") {
                     roxygen_block.push(line);
                     continue;
                 }
@@ -132,7 +134,7 @@ pub(super) fn generate_trait_r_wrapper(
         } else {
             Ok(result
                 .lines()
-                .filter(|line| !line.starts_with("#'"))
+                .filter(|line| !roxygen_line(line).starts_with("#'"))
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
@@ -148,10 +150,10 @@ pub(super) fn generate_trait_r_wrapper(
         let mut processed: Vec<String> = Vec::with_capacity(lines.len());
         let mut start = 0;
         while start < lines.len() {
-            let roxygen = lines[start].starts_with("#'");
+            let roxygen = roxygen_line(lines[start]).starts_with("#'");
             let end = lines[start..]
                 .iter()
-                .position(|line| line.starts_with("#'") != roxygen)
+                .position(|line| roxygen_line(line).starts_with("#'") != roxygen)
                 .map_or(lines.len(), |len| start + len);
             let block = &lines[start..end];
             let registers_s3 = roxygen && block.iter().any(|line| line.contains("@method "));
@@ -166,12 +168,55 @@ pub(super) fn generate_trait_r_wrapper(
         }
         // For class systems without @export (e.g., Env), insert @keywords internal
         // before the first roxygen tag if no @export line was found to replace.
-        if !has_export && let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
+        if !has_export
+            && let Some(pos) = processed
+                .iter()
+                .position(|l| roxygen_line(l).starts_with("#'"))
+        {
             processed.insert(pos, "#' @keywords internal".to_string());
         }
         Ok(processed.join("\n"))
     } else {
         Ok(result)
+    }
+}
+
+/// The visibility passes run before the writer resolves member defaults.
+fn roxygen_line(line: &str) -> &str {
+    line.strip_prefix(CLASS_MEMBER_DEFAULT_PREFIX)
+        .unwrap_or(line)
+}
+
+/// Mark generated page/prose/parameter lines. Names, exports and source tags
+/// remain unconditional; author tags must be appended separately.
+fn default_doc_lines(lines: Vec<String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .map(|line| {
+            if [
+                "#' @rdname ",
+                "#' @title ",
+                "#' @description ",
+                "#' @param ",
+            ]
+            .iter()
+            .any(|prefix| line.starts_with(prefix))
+            {
+                member_default(line)
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+/// An explicit method page still needs its structural title. Only the
+/// inherited page can obtain that title from the class's defining block.
+fn method_prose(method: &TraitMethod, line: String) -> String {
+    if crate::roxygen::rdname_value(&method.doc_tags).is_some() || describes_in(method) {
+        line
+    } else {
+        member_default(line)
     }
 }
 
@@ -185,7 +230,7 @@ pub(super) fn generate_trait_r_wrapper(
 /// Env trait methods and the namespace statics of S3, vctrs and S7 forward
 /// every other tag but `@title` and a bare `@export` too
 /// ([`forwarded_body_tag`]); S4 statics get `@param` lines
-/// ([`param_doc_tags`]).
+/// ([`param_doc_lines`]).
 const PAGE_TAGS: &[&str] = &[
     "describeIn",
     "rdname",
@@ -236,9 +281,10 @@ fn namespace_member_body_lines(
 /// `(undocumented)` otherwise. A method whose arguments another block
 /// documents (an author topic, `@inheritParams`) gets no generated tag
 /// (#1590).
-fn param_doc_tags(ctx: &TraitMethodContext<'_>, type_str: &str) -> Vec<String> {
+fn param_doc_lines(ctx: &TraitMethodContext<'_>, type_str: &str) -> Vec<String> {
     let method = ctx.method;
-    let mut tags: Vec<String> = param_tags(method).cloned().collect();
+    let mut tags = Vec::new();
+    push_param_tags(&mut tags, method);
     if params_documented_elsewhere(method, type_str) {
         return tags;
     }
@@ -251,7 +297,7 @@ fn param_doc_tags(ctx: &TraitMethodContext<'_>, type_str: &str) -> Vec<String> {
         let body = choice_docs
             .get(pname)
             .map_or("(undocumented)", String::as_str);
-        tags.push(format!("@param {pname} {body}"));
+        tags.push(member_default(format!("#' @param {pname} {body}")));
     }
     tags
 }
@@ -262,14 +308,6 @@ fn param_tags(method: &TraitMethod) -> impl Iterator<Item = &String> {
         .doc_tags
         .iter()
         .filter(|tag| crate::roxygen::roxygen_tag_name(tag) == Some("param"))
-}
-
-/// The page a trait method's own block lands on, and with it the companion
-/// block that must share it (the S3 generic block, named after the method):
-/// the `@describeIn` destination, the method-level `@rdname`, else the type's
-/// shared page. Generics of S4 / S7 and consts always use the type page.
-fn method_page<'a>(method: &'a TraitMethod, type_str: &'a str) -> &'a str {
-    crate::roxygen::method_page(&method.doc_tags, type_str)
 }
 
 /// Whether the method's page is an author topic other than the type page
@@ -328,7 +366,7 @@ fn own_block_page_lines(
             lines.push(format!("#' @name {name}"));
         }
         if !has("rdname") {
-            lines.push(format!("#' @rdname {type_str}"));
+            lines.push(member_default(format!("#' @rdname {type_str}")));
         }
     }
     let page_tags: Vec<String> = tags
@@ -577,7 +615,7 @@ fn generate_trait_env_r_wrapper(
             .name(target.clone())
             .rdname(&type_str)
             .build();
-        lines.extend(roxygen);
+        lines.extend(default_doc_lines(roxygen));
 
         // Build .Call() invocation
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
@@ -668,9 +706,7 @@ fn generate_trait_s3_r_wrapper(
                 } else {
                     generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
                 };
-            let generic_roxygen = generic_roxygen
-                .name(format!("{}.{}", generic_name, type_str))
-                .rdname(method_page(method, &type_str));
+            let generic_roxygen = generic_roxygen.name(format!("{}.{}", generic_name, type_str));
             // On an author topic its own block describes the method and documents
             // `x` and `...` (#1590); the structural lines would only compete.
             let generic_roxygen = if joins_author_topic(method, &type_str) {
@@ -697,7 +733,8 @@ fn generate_trait_s3_r_wrapper(
                 // function and leaving the generic unexported (see s3_class.rs).
                 .custom(format!("@export {}", generic_name))
                 .build();
-            lines.extend(generic_roxygen);
+            lines.extend(default_doc_lines(generic_roxygen));
+            push_member_rdname(&mut lines, &method.doc_tags, &type_str);
 
             // S3 generic definition
             lines.push(emit_s3_generic_guard(generic_name.as_str()));
@@ -735,10 +772,8 @@ fn generate_trait_s3_r_wrapper(
                     method_roxygen.custom("@param ... Additional arguments passed to methods");
             }
         }
-        for tag in param_doc_tags(&ctx, &type_str) {
-            method_roxygen = method_roxygen.custom(tag);
-        }
-        lines.extend(method_roxygen.build());
+        lines.extend(default_doc_lines(method_roxygen.build()));
+        lines.extend(param_doc_lines(&ctx, &type_str));
 
         // Build .Call() invocation
         let call = ctx.instance_call(receiver);
@@ -788,9 +823,9 @@ fn generate_trait_s3_r_wrapper(
 
         // Static method roxygen: the intro line (the block's title), the
         // body of a block without `\usage`, the page lines.
-        lines.push(format!(
-            "#' Static trait method {}::{}()",
-            trait_name, r_name
+        lines.push(method_prose(
+            method,
+            format!("#' Static trait method {}::{}()", trait_name, r_name),
         ));
         lines.extend(namespace_member_body_lines(&ctx, &type_str, &target));
         lines.extend(own_block_page_lines(method, &type_str, Some(&target), None));
@@ -818,7 +853,7 @@ fn generate_trait_s3_r_wrapper(
             .name(target.clone())
             .rdname(&type_str)
             .build();
-        lines.extend(roxygen);
+        lines.extend(default_doc_lines(roxygen));
 
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
@@ -906,7 +941,7 @@ fn generate_trait_s4_r_wrapper(
             // S4 generic names are already type-qualified (s4_trait_TypeName_method)
             // so @name won't create duplicate aliases across types. The prose is a
             // `@description`, not a bare line (see the S3 generic above).
-            let mut generic_roxygen = RoxygenBuilder::new()
+            let generic_roxygen = RoxygenBuilder::new()
                 .description(format!(
                     "S4 generic for trait method `{}::{}`",
                     trait_name,
@@ -920,10 +955,8 @@ fn generate_trait_s4_r_wrapper(
                 ))
                 .custom(format!("@param x A `{}` object", type_str))
                 .custom("@param ... Additional arguments passed to methods");
-            for tag in param_tags(method) {
-                generic_roxygen = generic_roxygen.custom(tag.clone());
-            }
-            lines.extend(generic_roxygen.export().build());
+            lines.extend(default_doc_lines(generic_roxygen.export().build()));
+            push_param_tags(&mut lines, method);
         }
         // Define the generic unless it exists; an explicit `generic` may be
         // another package's unless the author marks it `own`.
@@ -945,9 +978,13 @@ fn generate_trait_s4_r_wrapper(
             Some(&generic_name),
         ));
         if method.generic.is_some() && !joins_author_topic(method, &type_str) {
-            lines.push(format!("#' @param {receiver} A `{type_str}` object"));
+            lines.push(member_default(format!(
+                "#' @param {receiver} A `{type_str}` object"
+            )));
             if !method.no_dispatch_dots {
-                lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                lines.push(member_default(
+                    "#' @param ... Additional arguments passed to methods",
+                ));
             }
         }
         push_param_tags(&mut lines, method);
@@ -984,9 +1021,12 @@ fn generate_trait_s4_r_wrapper(
         // destination's "Functions" section, whose own block titles the page,
         // so it carries no intro line that could title it instead.
         if !describes_in(method) {
-            lines.push(format!(
-                "#' Static trait method {}::{}() for {}",
-                trait_name, r_name, type_str
+            lines.push(method_prose(
+                method,
+                format!(
+                    "#' Static trait method {}::{}() for {}",
+                    trait_name, r_name, type_str
+                ),
             ));
         }
         lines.extend(own_block_page_lines(
@@ -998,7 +1038,7 @@ fn generate_trait_s4_r_wrapper(
         // The block documents the plain function `Type_Trait_method`, whose
         // `\usage` lists every formal: `R CMD check` codoc needs each one
         // documented.
-        crate::roxygen::push_roxygen_tags(&mut lines, &param_doc_tags(&ctx, &type_str));
+        lines.extend(param_doc_lines(&ctx, &type_str));
         lines.push("#' @export".to_string());
 
         let call = ctx.static_call();
@@ -1025,7 +1065,7 @@ fn generate_trait_s4_r_wrapper(
             .rdname(&type_str)
             .export()
             .build();
-        lines.extend(roxygen);
+        lines.extend(default_doc_lines(roxygen));
 
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
@@ -1117,7 +1157,7 @@ fn generate_trait_s7_r_wrapper(
             ))
             .export()
             .build();
-        lines.extend(generic_roxygen);
+        lines.extend(default_doc_lines(generic_roxygen));
 
         // S7 generic definition. An operator `r_name` makes the prefixed
         // generic non-syntactic (`s7_trait_Ops_[[`), so symbol positions are
@@ -1186,9 +1226,17 @@ fn generate_trait_s7_r_wrapper(
                 &type_str,
             );
             let advisory_len = if joined { 1 } else { advisory.len() };
-            lines.extend(advisory.into_iter().take(advisory_len));
+            lines.extend(
+                advisory
+                    .into_iter()
+                    .take(advisory_len)
+                    .map(|line| method_prose(method, line)),
+            );
             if !joined {
-                lines.push(format!("#' @param .mx_self A `{}` object.", type_str));
+                lines.push(member_default(format!(
+                    "#' @param .mx_self A `{}` object.",
+                    type_str
+                )));
             }
             push_param_tags(&mut lines, method);
             // Auto-document any formal lacking an explicit @param tag. `...` is
@@ -1211,15 +1259,14 @@ fn generate_trait_s7_r_wrapper(
                     continue;
                 }
                 if pname == "..." {
-                    lines.push(
-                        "#' @param ... Additional arguments; ignored by the fast-path shortcut."
-                            .to_string(),
-                    );
+                    lines.push(member_default(
+                        "#' @param ... Additional arguments; ignored by the fast-path shortcut.",
+                    ));
                 } else if fillers {
                     let body = choice_docs
                         .get(pname)
                         .map_or("(undocumented)", String::as_str);
-                    lines.push(format!("#' @param {pname} {body}"));
+                    lines.push(member_default(format!("#' @param {pname} {body}")));
                 }
             }
             lines.extend(own_block_page_lines(
@@ -1265,9 +1312,9 @@ fn generate_trait_s7_r_wrapper(
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions);
 
-        lines.push(format!(
-            "#' Static trait method {}::{}()",
-            trait_name, r_name
+        lines.push(method_prose(
+            method,
+            format!("#' Static trait method {}::{}()", trait_name, r_name),
         ));
         let name = s7_trait_member_access(type_ident, trait_name, &r_name);
         lines.extend(namespace_member_body_lines(&ctx, &type_str, &name));
@@ -1296,7 +1343,7 @@ fn generate_trait_s7_r_wrapper(
             .name(s7_trait_member_access(type_ident, trait_name, &const_str))
             .rdname(&type_str)
             .build();
-        lines.extend(roxygen);
+        lines.extend(default_doc_lines(roxygen));
 
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();
@@ -1433,9 +1480,9 @@ fn generate_trait_r6_r_wrapper(
             .with_impl_preconditions(impl_preconditions);
         let target = ctx.namespace_target(ClassSystem::R6);
 
-        lines.push(format!(
-            "#' Static trait method {}::{}()",
-            trait_name, r_name
+        lines.push(method_prose(
+            method,
+            format!("#' Static trait method {}::{}()", trait_name, r_name),
         ));
         lines.extend(own_block_page_lines(method, &type_str, Some(&target), None));
 
@@ -1462,7 +1509,7 @@ fn generate_trait_r6_r_wrapper(
             .name(target.clone())
             .rdname(&type_str)
             .build();
-        lines.extend(roxygen);
+        lines.extend(default_doc_lines(roxygen));
 
         let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
         let call = DotCallBuilder::new(&c_ident).build();

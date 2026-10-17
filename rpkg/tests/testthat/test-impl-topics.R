@@ -24,6 +24,15 @@ test_that("all class systems keep their members on the impl topic", {
     "TopicS7", "TopicS7$topic_s7_value", "TopicS7_topic_s7_value", "TopicS7_origin",
     "TopicS7Peer", "TopicS7_from_peer", "convert-TopicS7-to-TopicS7Peer",
     "convert-TopicS7Peer-to-TopicS7",
+    "TopicENV$TopicProbe$probe_value", "TopicENV$TopicProbe$probe_origin",
+    "TopicENV$TopicProbe$PROBE_ID", "TopicENV$TopicDefaults$default_origin",
+    "TopicR6$TopicProbe$probe_value", "TopicR6$TopicProbe$probe_origin",
+    "TopicR6$TopicProbe$PROBE_ID", "probe_value.TopicS3",
+    "TopicS3$TopicProbe$probe_origin", "TopicS3$TopicProbe$PROBE_ID",
+    "s4_trait_TopicProbe_probe_value", "s4_trait_TopicProbe_probe_value,TopicS4-method",
+    "TopicS4_TopicProbe_probe_origin", "TopicS4_TopicProbe_PROBE_ID",
+    "s7_trait_TopicProbe_probe_value", "TopicS7_probe_value",
+    'attr(TopicS7, "TopicProbe")$probe_origin', 'attr(TopicS7, "TopicProbe")$PROBE_ID',
     "new_topicvctrs", "topicvctrs_origin", "vec_ptype_abbr.TopicVctrs",
     "vec_ptype2.TopicVctrs.TopicVctrs", "vec_cast.TopicVctrs.TopicVctrs"
   )
@@ -37,7 +46,16 @@ test_that("all class systems keep their members on the impl topic", {
   expect_false(grepl(".__MX_CLASS_MEMBER_DEFAULT__", text, fixed = TRUE))
   override <- paste0(as.character(db[["impl_topic_override.Rd"]]), collapse = "")
   expect_match(override, "topic_override.TopicS3", fixed = TRUE)
+  expect_match(override, "x, .mx_self", fixed = TRUE)
   expect_false("topic_override.TopicS3" %in% aliases)
+  for (alias in c("TopicENV$TopicProbe$probe_split", "TopicR6$TopicProbe$probe_split",
+                  "probe_split.TopicS3", "s4_trait_TopicProbe_probe_split,TopicS4-method",
+                  "TopicS7_probe_split")) {
+    expect_match(override, alias, fixed = TRUE)
+    expect_false(alias %in% aliases, info = alias)
+  }
+  expect_false(grepl("S3 generic for|S4 generic for|S7 generic for|Fast-path shortcut|Static trait method", text))
+
 })
 
 test_that("topic inheritance preserves callable constructors and secondary members", {
@@ -56,4 +74,24 @@ test_that("topic inheritance preserves callable constructors and secondary membe
   peer <- S7::convert(TopicS7(4L), TopicS7Peer)
   expect_true(S7::S7_inherits(peer, TopicS7Peer))
   expect_identical(topic_s7_value(S7::convert(peer, TopicS7)), 4L)
+})
+
+test_that("trait members remain callable after topic inheritance", {
+  expect_identical(TopicENV$new(4L)$TopicProbe$probe_value(3L), 7L)
+  expect_identical(TopicR6$TopicProbe$probe_value(TopicR6$new(4L), 3L), 7L)
+  expect_identical(probe_value(TopicS3$new(4L), 3L), 7L)
+  expect_identical(s4_trait_TopicProbe_probe_value(TopicS4(4L), 3L), 7L)
+  expect_identical(s7_trait_TopicProbe_probe_value(TopicS7(4L), 3L), 7L)
+  expect_identical(TopicS7_probe_value(TopicS7(4L), 3L), 7L)
+  for (origin in list(TopicENV$TopicProbe$probe_origin, TopicR6$TopicProbe$probe_origin,
+                     TopicS3$TopicProbe$probe_origin, TopicS4_TopicProbe_probe_origin,
+                     attr(TopicS7, "TopicProbe")$probe_origin,
+                     TopicENV$TopicDefaults$default_origin)) {
+    expect_identical(origin(7L), 7L)
+  }
+  for (id in list(TopicENV$TopicProbe$PROBE_ID, TopicR6$TopicProbe$PROBE_ID,
+                 TopicS3$TopicProbe$PROBE_ID, TopicS4_TopicProbe_PROBE_ID,
+                 attr(TopicS7, "TopicProbe")$PROBE_ID)) {
+    expect_identical(id(), 21L)
+  }
 })

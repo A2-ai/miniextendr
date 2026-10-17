@@ -2257,9 +2257,15 @@ fn page_tag_wrapper(class_system: ClassSystem, methods: &[TraitMethod]) -> syn::
 }
 
 /// The roxygen block (the `#'` lines) directly above the first line of `r`
-/// that starts with `anchor`.
+/// that starts with `anchor`, resolving defaults as on the original type page.
 fn block_above<'a>(r: &'a str, anchor: &str) -> Vec<&'a str> {
-    let lines: Vec<&str> = r.lines().collect();
+    let lines: Vec<&str> = r
+        .lines()
+        .map(|line| {
+            line.strip_prefix(crate::miniextendr_impl::CLASS_MEMBER_DEFAULT_PREFIX)
+                .unwrap_or(line)
+        })
+        .collect();
     let at = lines
         .iter()
         .position(|l| l.starts_with(anchor))
@@ -3405,4 +3411,65 @@ fn declaration_pattern_names_precede_parameter_option_validation() {
         quote::quote!(#sig).to_string(),
         "fn run (& self , value : f64 , count : i32)"
     );
+}
+
+/// The writer must distinguish generated defaults from author tags before it
+/// knows the class's help topic, in every trait generator (#2144).
+#[test]
+fn trait_member_defaults_wait_for_the_class_topic() {
+    use crate::miniextendr_impl::CLASS_MEMBER_DEFAULT_PREFIX as PREFIX;
+    let mut instance = make_test_method("probe_value", true);
+    instance.sig = syn::parse_quote!(fn probe_value(&self, amount: i32) -> i32);
+    instance.doc_tags = vec!["@param authored Author text.".to_owned()];
+    let static_method = make_test_method("probe_origin", false);
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let output = generate_trait_r_wrapper(
+            &syn::parse_quote!(Host),
+            &syn::parse_quote!(Probe),
+            &[instance.clone(), static_method.clone()],
+            &[TraitConst {
+                ident: syn::parse_quote!(PROBE_ID),
+                ty: syn::parse_quote!(i32),
+            }],
+            opts(system, false, false, false),
+        )
+        .unwrap();
+        assert!(
+            output.contains(&format!("{PREFIX}#' @rdname Host")),
+            "{system:?}: {output}"
+        );
+        assert!(
+            !output.lines().any(|line| line == "#' @rdname Host"),
+            "{system:?}: {output}"
+        );
+        for line in output.lines() {
+            if line.contains("(undocumented)")
+                || line.starts_with("#' @param x ")
+                || line.starts_with("#' @param .mx_self ")
+                || line.starts_with("#' @param ... ")
+            {
+                assert!(line.starts_with(PREFIX), "{system:?}: {line}");
+            }
+        }
+        assert!(
+            !output.contains(&format!("{PREFIX}#' @param authored")),
+            "{output}"
+        );
+        let hidden = generate_trait_r_wrapper(
+            &syn::parse_quote!(Host),
+            &syn::parse_quote!(Probe),
+            &[instance.clone()],
+            &[],
+            opts(system, true, false, false),
+        )
+        .unwrap();
+        assert!(!hidden.contains(PREFIX), "{system:?}: {hidden}");
+    }
 }

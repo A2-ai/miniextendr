@@ -3,15 +3,38 @@
 \name{impl_topic_override}
 \alias{impl_topic_override}
 \alias{topic_override.TopicS3}
+\alias{TopicENV$TopicProbe$probe_split}
+\alias{TopicR6$TopicProbe$probe_split}
+\alias{probe_split.TopicS3}
+\alias{s4_trait_TopicProbe_probe_split,TopicS4-method}
+\alias{TopicS7_probe_split}
 \title{An explicit member topic}
 \usage{
 \method{topic_override}{TopicS3}(x, ...)
+
+\method{probe_split}{TopicS3}(x, ...)
+
+\S4method{s4_trait_TopicProbe_probe_split}{TopicS4}(x, ...)
+
+TopicS7_probe_split(.mx_self, ...)
 }
 \arguments{
-\item{x}{An object.}
+\item{x, .mx_self}{An object.}
 
 \item{...}{Additional arguments.}
 }
 \description{
 An explicit method topic wins over the impl topic.
+}
+\section{Methods}{
+
+\describe{
+\item{\code{TopicENV$TopicProbe$probe_split()}}{
+An explicitly selected method page stays separate.
+}
+}
+}
+
+\seealso{
+\link{impl_topics} for the class topic these members override.
 }

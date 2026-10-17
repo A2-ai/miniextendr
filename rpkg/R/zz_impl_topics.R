@@ -1,6 +1,6 @@
 #' Classes sharing an author-defined topic
 #'
-#' Members from secondary Rust impl blocks belong to this topic too.
+#' Members from secondary Rust impl blocks and trait impls belong to this topic too.
 #' @name impl_topics
 #' @param value Initial value, documented by the topic.
 #' @param offset Offset, documented by the topic.
@@ -15,6 +15,7 @@ NULL
 
 #' An explicit member topic
 #' @name impl_topic_override
-#' @param x An object.
+#' @seealso [impl_topics] for the class topic these members override.
+#' @param x,.mx_self An object.
 #' @param ... Additional arguments.
 NULL

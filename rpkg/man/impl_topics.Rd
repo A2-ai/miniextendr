@@ -39,6 +39,26 @@
 \alias{vec_ptype2.TopicVctrs.TopicVctrs}
 \alias{vec_cast.TopicVctrs.TopicVctrs}
 \alias{topicvctrs_origin}
+\alias{TopicENV$TopicProbe$probe_value}
+\alias{TopicENV$TopicProbe$probe_origin}
+\alias{TopicENV$TopicProbe$PROBE_ID}
+\alias{TopicR6$TopicProbe$probe_value}
+\alias{TopicR6$TopicProbe$probe_origin}
+\alias{TopicR6$TopicProbe$PROBE_ID}
+\alias{probe_value.TopicS3}
+\alias{TopicS3$TopicProbe$probe_origin}
+\alias{TopicS3$TopicProbe$PROBE_ID}
+\alias{s4_trait_TopicProbe_probe_value}
+\alias{s4_trait_TopicProbe_probe_value,TopicS4-method}
+\alias{s4_trait_TopicProbe_probe_split}
+\alias{TopicS4_TopicProbe_probe_origin}
+\alias{TopicS4_TopicProbe_PROBE_ID}
+\alias{s7_trait_TopicProbe_probe_value}
+\alias{TopicS7_probe_value}
+\alias{s7_trait_TopicProbe_probe_split}
+\alias{attr(TopicS7, "TopicProbe")$probe_origin}
+\alias{attr(TopicS7, "TopicProbe")$PROBE_ID}
+\alias{TopicENV$TopicDefaults$default_origin}
 \title{Classes sharing an author-defined topic}
 \usage{
 TopicENV
@@ -82,6 +102,16 @@ new_topicvctrs(amounts)
 \method{vec_cast}{TopicVctrs.TopicVctrs}(x, to, ...)
 
 topicvctrs_origin(offset)
+
+\method{probe_value}{TopicS3}(x, offset, ...)
+
+\S4method{s4_trait_TopicProbe_probe_value}{TopicS4}(x, offset, ...)
+
+TopicS4_TopicProbe_probe_origin(offset)
+
+TopicS4_TopicProbe_PROBE_ID()
+
+TopicS7_probe_value(.mx_self, offset, ...)
 }
 \arguments{
 \item{x, .mx_self, self}{An object, documented by the topic.}
@@ -103,7 +133,7 @@ topicvctrs_origin(offset)
 \item{y, to}{A vector prototype, documented by the topic.}
 }
 \description{
-Members from secondary Rust impl blocks belong to this topic too.
+Members from secondary Rust impl blocks and trait impls belong to this topic too.
 
 An env class on an author topic.
 

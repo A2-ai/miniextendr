@@ -239,6 +239,10 @@ pub(super) fn generate_vtable_static(
         #[allow(non_upper_case_globals)]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
+                trait_class: ::core::option::Option::Some(::miniextendr_api::registry::TraitImplClass {
+                    rust_type: ::core::stringify!(#type_ident),
+                    type_path: || ::core::any::type_name::<#concrete_type>(),
+                }),
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,

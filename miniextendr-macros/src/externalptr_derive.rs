@@ -2143,6 +2143,7 @@ fn generate_sidecar_accessors(
         #[allow(non_upper_case_globals)]
         static #const_name_wrappers: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
+                trait_class: ::core::option::Option::None,
                 priority: ::miniextendr_api::registry::RWrapperPriority::Sidecar,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,

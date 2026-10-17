@@ -2058,6 +2058,7 @@ fn expand_miniextendr(
         #[allow(non_snake_case)]
         static #r_wrapper_generator: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
+                trait_class: ::core::option::Option::None,
                 priority: ::miniextendr_api::registry::RWrapperPriority::Function,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,

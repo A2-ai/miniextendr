@@ -286,6 +286,9 @@ pub enum RWrapperPriority {
 pub struct RWrapperEntry {
     /// Ordering priority (lower = earlier in output file).
     pub priority: RWrapperPriority,
+    /// The implementing Rust type for trait fragments, so their default help
+    /// topic can follow the defining inherent impl at wrapper-write time.
+    pub trait_class: Option<TraitImplClass>,
     /// R source code fragment.
     pub content: &'static str,
     /// Source file path (from `file!()`). Used to derive a default `@rdname`
@@ -301,6 +304,15 @@ pub struct RWrapperEntry {
 
 // SAFETY: All fields are immutable and valid for 'static lifetime.
 unsafe impl Sync for RWrapperEntry {}
+
+/// The class owning a trait wrapper's documentation.
+pub struct TraitImplClass {
+    /// Type spelling used as the fragment's default help topic.
+    pub rust_type: &'static str,
+    /// Canonical Rust identity, matching [`ClassBlockEntry::type_path`].
+    /// Unlike the spelling, this distinguishes modules and resolves aliases.
+    pub type_path: fn() -> &'static str,
+}
 
 /// The package crate's `conversion_error_class`, registered by
 /// `miniextendr_init!` in [`MX_CONVERSION_ERROR_CLASS`].
@@ -825,15 +837,39 @@ struct WrapperFragment {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<&RWrapperEntry> for WrapperFragment {
-    fn from(entry: &RWrapperEntry) -> Self {
+impl WrapperFragment {
+    fn from_entry(
+        entry: &RWrapperEntry,
+        topics: &std::collections::HashMap<&'static str, String>,
+    ) -> Self {
+        let content = match &entry.trait_class {
+            Some(class) => {
+                let topic = topics
+                    .get((class.type_path)())
+                    .map_or(class.rust_type, String::as_str);
+                std::borrow::Cow::Owned(resolve_class_member_docs(
+                    entry.content,
+                    class.rust_type,
+                    topic,
+                ))
+            }
+            None => std::borrow::Cow::Borrowed(entry.content),
+        };
         WrapperFragment {
             priority: entry.priority,
             source_file: entry.source_file,
             source_line: entry.source_line,
-            content: std::borrow::Cow::Borrowed(entry.content),
+            content,
         }
     }
+}
+
+/// The assembled class fragments and their resolved topics, keyed by Rust
+/// identity so trait impls in other modules follow the same defining block.
+#[cfg(not(target_arch = "wasm32"))]
+struct MergedClasses {
+    fragments: Vec<WrapperFragment>,
+    topics: std::collections::HashMap<&'static str, String>,
 }
 
 /// A [`ClassBlockEntry`] part without the newline its raw string literal
@@ -883,7 +919,7 @@ fn class_block_name(block: &ClassBlockEntry) -> String {
 ///   one ([`resolve_class_constructor`], which first picks each block's
 ///   rendering).
 #[cfg(not(target_arch = "wasm32"))]
-fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>, String> {
+fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<MergedClasses, String> {
     use std::collections::HashMap;
 
     let mut ordered: Vec<&ClassBlockEntry> = blocks.iter().collect();
@@ -928,7 +964,8 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
     }
 
     let mut fragments = Vec::with_capacity(types.len());
-    for (_, type_blocks) in &types {
+    let mut topics = HashMap::with_capacity(types.len());
+    for (path, type_blocks) in &types {
         let type_blocks = match resolve_class_constructor(type_blocks) {
             Ok(blocks) => blocks,
             Err(error) => {
@@ -1006,16 +1043,18 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
         if errors.len() > type_errors {
             continue;
         }
+        let (content, topic) = merged_class_content(definer, &type_blocks);
+        topics.insert(*path, topic);
         fragments.push(WrapperFragment {
             priority: RWrapperPriority::Class,
             source_file: first.source_file,
             source_line: first.source_line,
-            content: std::borrow::Cow::Owned(merged_class_content(definer, &type_blocks)),
+            content: std::borrow::Cow::Owned(content),
         });
     }
 
     if errors.is_empty() {
-        Ok(fragments)
+        Ok(MergedClasses { fragments, topics })
     } else {
         Err(errors.join("\n"))
     }
@@ -1313,9 +1352,12 @@ fn resolve_class_member_docs(content: &str, class: &str, topic: &str) -> String 
     result.join("\n")
 }
 
-/// The text of a type's merged class: see [`merge_class_blocks`].
+/// The text and help topic of a type's merged class: see [`merge_class_blocks`].
 #[cfg(not(target_arch = "wasm32"))]
-fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> String {
+fn merged_class_content(
+    definer: &ClassBlockEntry,
+    blocks: &[&ClassBlockEntry],
+) -> (String, String) {
     let block_docs = block_docs(definer, blocks);
     // A default of `owner` gives way to the same tag on another block; its
     // own docs were seen when it was generated.
@@ -1408,7 +1450,10 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
         .find(|tag| tag.name() == "rdname")
         .map(|tag| tag.value())
         .unwrap_or_else(|| definer.r_class_name.to_owned());
-    resolve_class_member_docs(&content, definer.r_class_name, &topic)
+    (
+        resolve_class_member_docs(&content, definer.r_class_name, &topic),
+        topic,
+    )
 }
 
 // endregion
@@ -1428,8 +1473,8 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     let classes = merge_class_blocks(&MX_CLASS_BLOCKS).unwrap_or_else(|msg| panic!("{msg}"));
     let mut entries: Vec<WrapperFragment> = MX_R_WRAPPERS
         .iter()
-        .map(WrapperFragment::from)
-        .chain(classes)
+        .map(|entry| WrapperFragment::from_entry(entry, &classes.topics))
+        .chain(classes.fragments)
         .chain(sidecar_accessor_fragments(
             &MX_SIDECAR_ACCESSORS,
             &MX_CLASS_NAMES,
@@ -5859,6 +5904,7 @@ mod tests {
     fn merged(blocks: &[ClassBlockEntry]) -> Vec<String> {
         merge_class_blocks(blocks)
             .unwrap_or_else(|msg| panic!("{msg}"))
+            .fragments
             .into_iter()
             .map(|f| f.content.into_owned())
             .collect()
@@ -6018,6 +6064,82 @@ ForeignChild$set("public", "speak", function(times) {})
         assert!(!output.contains(CLASS_MEMBER_DEFAULT_PREFIX), "{output}");
         assert!(!output.contains("Generated title"), "{output}");
         assert!(!output.contains("@param missing"), "{output}");
+    }
+
+    #[test]
+    fn trait_docs_use_the_defining_topic_by_rust_identity() {
+        let first = widget_block(10, "\n\n", "\n\n");
+        let mut definer = widget_block(20, "\n.__MX_CLASS_DOCS__\n", "\n\n");
+        definer.defines = &["constructor"];
+        definer.r_class_name = "PublicWidget";
+        definer.class_docs = "\n#' @rdname widget_api\n";
+        let mut first = first;
+        first.r_class_name = "PublicWidget";
+        let classes = merge_class_blocks(&[definer, first]).unwrap_or_else(|msg| panic!("{msg}"));
+        let entry = RWrapperEntry {
+            priority: RWrapperPriority::TraitImpl,
+            trait_class: Some(TraitImplClass {
+                rust_type: "Alias",
+                type_path: widget_path,
+            }),
+            source_file: "other_module.rs",
+            source_line: 1,
+            content: concat!(
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @title Generated title\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @rdname Alias\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @param x Generated receiver.\n",
+                "#' @param offset Authored parameter.\n",
+                "#' @name Alias$Probe$value\n",
+                "Alias$Probe$value <- function(x, offset) 1\n\n",
+                "#' @rdname own_page\n#' @title Explicit page\n",
+                "#' @order 2\nAlias$Probe$own <- function() 1\n",
+            ),
+        };
+        let output = WrapperFragment::from_entry(&entry, &classes.topics).content;
+        assert!(output.contains("#' @rdname widget_api\n"), "{output}");
+        assert!(
+            output.contains("#' @param offset Authored parameter.\n"),
+            "{output}"
+        );
+        assert!(
+            output.contains("#' @name Alias$Probe$value\n#' @order NaN"),
+            "{output}"
+        );
+        assert!(
+            output.contains("#' @rdname own_page\n#' @title Explicit page\n#' @order 2"),
+            "{output}"
+        );
+        assert!(!output.contains("Generated"), "{output}");
+        assert!(!output.contains(CLASS_MEMBER_DEFAULT_PREFIX), "{output}");
+    }
+
+    #[test]
+    fn trait_docs_without_a_local_class_keep_the_written_default_topic() {
+        let mut local = widget_block(10, "\n\n", "\n\n");
+        local.class_docs = "\n#' @rdname local_api\n";
+        let classes = merge_class_blocks(&[local]).unwrap_or_else(|msg| panic!("{msg}"));
+        // Same last identifier, different Rust type; no local inherent impl.
+        let entry = RWrapperEntry {
+            priority: RWrapperPriority::TraitImpl,
+            trait_class: Some(TraitImplClass {
+                rust_type: "Widget",
+                type_path: other_widget_path,
+            }),
+            source_file: "other_module.rs",
+            source_line: 1,
+            content: concat!(
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @title Generated title\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @rdname Widget\n",
+                ".__MX_CLASS_MEMBER_DEFAULT__#' @param x Generated receiver.\n",
+                "Widget$Probe$value <- function(x) 1\n",
+            ),
+        };
+        let output = WrapperFragment::from_entry(&entry, &classes.topics).content;
+        assert_eq!(
+            output,
+            entry.content.replace(CLASS_MEMBER_DEFAULT_PREFIX, "")
+        );
+        assert!(!output.contains("local_api"), "{output}");
     }
 
     #[test]
