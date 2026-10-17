@@ -34,6 +34,18 @@ impl GenericRustOnly<i32> for Host {
     fn safe(&self) -> i32 { 2 }
 }
 
+// An inherited (omitted) skipped default gets no wrapper either.
+#[miniextendr]
+pub trait GenericInherited<T> {
+    #[miniextendr(skip)]
+    unsafe fn inherited_unchecked(&self, value: T) -> T { value }
+    fn inherited_safe(&self) -> i32;
+}
+#[miniextendr(env, noexport)]
+impl GenericInherited<i32> for Host {
+    fn inherited_safe(&self) -> i32 { 6 }
+}
+
 // A populated impl of a non-generic trait inherits the declaration's `skip`.
 #[miniextendr]
 pub trait PopulatedRustOnly {
