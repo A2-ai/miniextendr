@@ -176,6 +176,15 @@ pub fn as_data_frame(&self) -> Result<List, RCoerceError> {
 }
 ```
 
+## Export control
+
+Coercion aliases use the same S3 registration rule as ordinary S3 methods.
+An `internal` class keeps its coercion methods registered and documented.
+A class with `@noRd` keeps dispatch but contributes no help page. On a plain
+`noexport` class, coercion aliases contribute neither help entries nor S3
+registrations. Their generated functions remain available for direct calls
+within the package or through `:::`.
+
 ## Class System Compatibility
 
 The `as = "..."` attribute works with **all class systems** - S3, R6, S7, S4, env, and vctrs. R's `as.*()` generics dispatch based on the class attribute, which all miniextendr class systems set appropriately.

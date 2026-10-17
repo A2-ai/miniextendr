@@ -4445,12 +4445,14 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
 
-    // Check if class has @noRd - if so, skip documentation
+    // Match ClassDocBuilder's page gate; S3 registration is independent of
+    // documentation, just as for ordinary S3 methods.
     let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
     let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
         || parsed_impl.internal;
-    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd")
+        || (parsed_impl.noexport && !class_has_internal);
+    let should_register_s3method = !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -4515,11 +4517,15 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
                 &class_name,
             );
             lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
+        } else {
+            lines.push("#' @noRd".to_string());
         }
 
-        // Export and method registration
-        if should_export {
+        if should_register_s3method {
             lines.push("#' @export".to_string());
+        } else {
+            // Tell roxygen the missing S3 registration is intentional.
+            lines.push("#' @exportS3Method NULL".to_string());
         }
         lines.push(format!("#' @method {} {}", r_generic, class_name));
 

@@ -6016,8 +6016,10 @@ fn class_generators_noexport_suppresses_all_rd() {
         // S3-class noexport drops even dispatch registration (see #431).
         if !matches!(class_system, ClassSystem::Env) {
             assert!(
-                !wrapper.contains("#' @export"),
-                "{class_system:?}: noexport must not emit @export, got:\n{wrapper}"
+                wrapper.lines().all(
+                    |line| !line.starts_with("#' @export") || line == "#' @exportS3Method NULL"
+                ),
+                "{class_system:?}: noexport must not request an export, got:\n{wrapper}"
             );
         }
     }
@@ -6839,6 +6841,77 @@ fn as_coercion_checks_keep_explicit_call_suppression() {
     assert!(wrapper.contains("!anyNA(value)"), "{wrapper}");
     assert!(wrapper.contains(", NULL)"), "{wrapper}");
     assert!(wrapper.contains(".call = FALSE"), "{wrapper}");
+}
+
+/// Coercion aliases keep documentation visibility separate from S3 registration.
+#[test]
+fn as_coercion_visibility_matches_s3_methods() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        for (noexport, internal, no_rd, documented, registered) in [
+            (false, false, false, true, true),
+            (true, false, false, false, false),
+            (false, true, false, true, true),
+            (false, false, true, false, true),
+            (true, true, false, true, false),
+            (true, false, true, false, false),
+        ] {
+            let mut attrs = default_impl_attrs(system);
+            attrs.noexport = noexport;
+            attrs.internal = internal;
+            let mut source: syn::ItemImpl = syn::parse_quote! {
+                impl Counter {
+                    pub fn new() -> Self { unimplemented!() }
+                    /// Convert to a list.
+                    #[miniextendr(as = "list")]
+                    pub fn items(&self) -> List { unimplemented!() }
+                }
+            };
+            if no_rd {
+                source.attrs.push(syn::parse_quote!(#[doc = "@noRd"]));
+            }
+            let parsed = ParsedImpl::parse(attrs, source).unwrap();
+            let wrapper = generate_as_coercion_methods(&parsed);
+            assert_eq!(wrapper.contains("#' @noRd"), !documented, "{wrapper}");
+            assert_eq!(wrapper.contains("#' @rdname"), documented, "{wrapper}");
+            assert_eq!(
+                wrapper.lines().any(|line| line == "#' @export"),
+                registered,
+                "{wrapper}"
+            );
+            assert_eq!(
+                wrapper.contains("#' @exportS3Method NULL"),
+                !registered,
+                "{wrapper}"
+            );
+            if !documented {
+                for tag in ["@description", "@name ", "@title", "@source"] {
+                    assert!(!wrapper.contains(tag), "{tag}: {wrapper}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn s3_noexport_methods_explicitly_decline_registration() {
+    for internal in [false, true] {
+        let mut attrs = default_impl_attrs(ClassSystem::S3);
+        attrs.noexport = true;
+        attrs.internal = internal;
+        let parsed = ParsedImpl::parse(attrs, simple_counter_impl()).unwrap();
+        let wrapper = generate_s3_r_wrapper(&parsed);
+        assert!(wrapper.contains("#' @exportS3Method NULL"), "{wrapper}");
+        assert!(
+            !wrapper.lines().any(|line| line == "#' @export"),
+            "{wrapper}"
+        );
+    }
 }
 
 /// S7 `convert_from` / `convert_to` blocks emit scaffolding only, but a

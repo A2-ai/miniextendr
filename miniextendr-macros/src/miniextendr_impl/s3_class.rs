@@ -202,14 +202,9 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
         // Then create the S3 method
         if class_has_no_rd {
-            // @noRd class: minimal roxygen — just @method (+ @export for NAMESPACE
-            // dispatch registration, gated by `should_register_s3method` so a
-            // `noexport`-driven suppression — folded into `class_has_no_rd` above —
-            // also drops S3 dispatch, not just Rd docs; a plain user `@noRd` with
-            // no `noexport` attr still registers dispatch as before, since
-            // `should_register_s3method` is `true` whenever `noexport` isn't set).
-            // @export on S3 methods produces S3method() in NAMESPACE (not export()).
-            lines.extend(generic.roxygen(&method_class_suffix, should_register_s3method));
+            // Keep method metadata even without a help page. Registration
+            // (or its explicit suppression) is emitted below for both paths.
+            lines.extend(generic.roxygen(&method_class_suffix, false));
         } else {
             let mx_doc = ctx.choice_param_docs();
             let method_doc =
@@ -218,12 +213,10 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
                     .with_r_name(s3_method_name.clone());
-            lines.extend(
-                method_doc
-                    .build()
-                    .into_iter()
-                    .filter(|line| generic.package.is_none() || line.trim() != "#' @export"),
-            );
+            lines.extend(method_doc.build().into_iter().filter(|line| {
+                (should_register_s3method && generic.package.is_none())
+                    || line.trim() != "#' @export"
+            }));
             lines.extend(generic.roxygen(&method_class_suffix, false));
             // roxygen2 can't parse generic blocks wrapped in if (!exists(...)),
             // so @param x/@param ... must also appear on the method block. On
@@ -240,9 +233,11 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     ));
                 }
             }
-            if should_register_s3method {
-                lines.push(format!("#' {}", generic.export_tag()));
-            }
+        }
+        if should_register_s3method {
+            lines.push(format!("#' {}", generic.export_tag()));
+        } else {
+            lines.push("#' @exportS3Method NULL".to_string());
         }
         lines.push(format!(
             "{} <- function({}) {{",

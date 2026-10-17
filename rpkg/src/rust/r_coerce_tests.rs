@@ -272,3 +272,38 @@ impl RCoerceArgsTest {
 }
 
 // endregion
+
+// region: Coercion visibility (#1821)
+
+macro_rules! coercion_visibility {
+    ($(#[$doc:meta])* $type:ident $(, $visibility:ident)?) => {
+        #[derive(ExternalPtr)]
+        pub struct $type;
+
+        $(#[$doc])*
+        /// Coercion documentation and dispatch visibility.
+        #[miniextendr(s3 $(, $visibility)?)]
+        impl $type {
+            /// Construct a visibility fixture.
+            pub fn new() -> Self {
+                Self
+            }
+
+            /// Convert the fixture into a list.
+            /// @return A list containing the fixture value.
+            #[miniextendr(as = "list")]
+            pub fn coerce_visibility_list(&self) -> Result<List, RCoerceError> {
+                Ok(List::from_values(vec![42_i32]))
+            }
+        }
+    };
+}
+
+coercion_visibility!(CoerceHidden, noexport);
+coercion_visibility!(CoerceInternal, internal);
+coercion_visibility!(
+    /// @noRd
+    CoerceNoRd
+);
+
+// endregion

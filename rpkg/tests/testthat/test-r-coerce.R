@@ -232,3 +232,47 @@ test_that("coercion wrappers retain one explicit dots formal and no_default", {
 })
 
 # endregion
+
+
+# region: Coercion visibility (#1821)
+
+test_that("noexport coercions stay callable directly without S3 registration", {
+  ns <- asNamespace("miniextendr")
+  obj <- miniextendr:::new_coercehidden()
+  method <- get("as.list.CoerceHidden", envir = ns, inherits = FALSE)
+  expect_identical(method(obj), list(42L))
+  expect_null(getS3method("as.list", "CoerceHidden", optional = TRUE, envir = baseenv()))
+  methods <- getNamespaceInfo(ns, "S3methods")
+  expect_false(any(methods[, 2L] == "CoerceHidden"))
+  expect_false("new_coercehidden" %in% getNamespaceExports(ns))
+  expect_false("CoerceHidden" %in% getNamespaceExports(ns))
+})
+
+test_that("internal and noRd coercions retain S3 dispatch without constructor exports", {
+  ns <- asNamespace("miniextendr")
+  for (type in c("CoerceInternal", "CoerceNoRd")) {
+    ctor <- paste0("new_", tolower(type))
+    obj <- get(ctor, envir = ns, inherits = FALSE)()
+    expect_identical(as.list(obj), list(42L))
+    expect_true(is.function(getS3method("as.list", type, envir = baseenv())))
+    expect_false(ctor %in% getNamespaceExports(ns))
+    expect_false(type %in% getNamespaceExports(ns))
+  }
+})
+
+test_that("coercion aliases follow the class's documentation visibility", {
+  rd <- tools::Rd_db("miniextendr")
+  aliases <- unlist(lapply(rd, function(page) {
+    tags <- Filter(function(tag) identical(attr(tag, "Rd_tag"), "\\alias"), page)
+    vapply(tags, paste, character(1), collapse = "")
+  }), use.names = FALSE)
+  expect_false(any(grepl("CoerceHidden|CoerceNoRd", aliases, ignore.case = TRUE)))
+  expect_true("as.list.CoerceInternal" %in% aliases)
+  expect_true("coerce_visibility_list.CoerceInternal" %in% aliases)
+  expect_true("CoerceInternal.Rd" %in% names(rd))
+  keywords <- Filter(function(tag) identical(attr(tag, "Rd_tag"), "\\keyword"),
+                     rd[["CoerceInternal.Rd"]])
+  expect_true("internal" %in% vapply(keywords, paste, character(1), collapse = ""))
+})
+
+# endregion
