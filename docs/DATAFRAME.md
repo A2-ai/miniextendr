@@ -409,7 +409,7 @@ Absent-variant rows (e.g. `Other` above, which has no `status` field) produce `N
 
 **Inner tag naming**: use `#[dataframe(tag = "variant")]` on the inner enum — the outer prefix then produces `<field>_variant` (single underscore). Using `#[dataframe(tag = "_variant")]` (with leading underscore) produces `<field>__variant` (double underscore). Avoid leading underscores on inner tags.
 
-#### `as_factor` — unit-only inner enum
+#### Factor columns for unit enums
 
 When the inner enum has only unit variants (no payload), annotate the field with `#[dataframe(as_factor)]` to emit a single R factor column instead of flattening. The inner enum does **not** need `DataFrameRow` for this path — only `UnitEnumFactor`, which is auto-emitted by `#[derive(DataFrameRow)]` for unit-only enums:
 
@@ -1010,7 +1010,7 @@ struct Record {
 Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 `usize`, `String` (the reader covers the same set as bare scalars: `u64`,
 `isize`, `usize` are write-only). A unit enum marked `#[dataframe(as_factor)]`
-also supports `Option` on struct fields (see [Factor columns](#as_factor--unit-only-inner-enum)).
+also supports `Option` on struct fields (see [Factor columns](#factor-columns-for-unit-enums)).
 `Option` around a map, a nested
 `DataFrameRow` struct, or a collection is rejected at compile time (see
 [Rejected wrapper types](#rejected-wrapper-types)); in **enum** row types the
