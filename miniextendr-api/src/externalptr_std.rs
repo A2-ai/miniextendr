@@ -6,9 +6,11 @@
 //! # Generic Types
 //!
 //! For generic types like `Vec<T>`, the type name does not include the type parameter
-//! (e.g., `Vec<i32>` and `Vec<String>` both have type name "Vec"). This means type
-//! checking at the R level won't distinguish between different instantiations.
-//! If you need stricter type safety, create a newtype wrapper and derive `ExternalPtr`.
+//! (e.g., `Vec<i32>` and `Vec<String>` both have type name "Vec"). The display
+//! does not distinguish different instantiations. Concrete access still
+//! checks Rust's `TypeId` through `Any::downcast`, so a `Vec<i32>` cannot be read
+//! as a `Vec<String>`. For a distinct display tag and diagnostic name, create a
+//! local newtype and derive `ExternalPtr`.
 
 use crate::externalptr::TypedExternal;
 

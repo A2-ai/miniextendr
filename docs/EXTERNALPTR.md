@@ -626,17 +626,25 @@ Methods on `ErasedExternalPtr`:
 
 ## ExternalSlice
 
-`ExternalSlice<T>` stores a `Vec<T>` as a raw pointer + length + capacity, suitable for wrapping in `ExternalPtr`:
+`ExternalSlice<T>` owns a `Vec<T>` allocation as a raw pointer, length and
+capacity. It implements `TypedExternal` for every `'static` element type, so
+wrap it directly in `ExternalPtr` without defining another type or trait impl:
 
 ```rust
-impl_typed_external!(ExternalSlice<f64>);
+use miniextendr_api::{ExternalPtr, ExternalSlice};
 
+// Inside a #[miniextendr] function on R's main thread:
 let data = vec![1.0, 2.0, 3.0];
 let ptr = ExternalPtr::new(ExternalSlice::new(data));
 assert_eq!(ptr.borrow().as_slice(), &[1.0, 2.0, 3.0]);
 ```
 
 This is useful when you need R to own a Rust slice and access it by index (e.g., in ALTREP `elt` callbacks).
+
+The display tag and diagnostic ID do not include `T`, as for `Vec<T>` and the
+other generic containers. Runtime downcasting still distinguishes every
+element type through `Any::downcast`. Use a local newtype when you want a
+distinct R-facing name.
 
 | Method | Returns |
 |--------|---------|

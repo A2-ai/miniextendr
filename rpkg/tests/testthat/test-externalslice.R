@@ -5,4 +5,5 @@ test_that("ExternalSlice length is correct", {
 
 test_that("ExternalSlice sum via as_slice", {
   expect_equal(external_slice_sum(c(1.0, 2.0, 3.0, 4.0)), 10.0)
+  expect_equal(external_slice_sum(numeric(0)), 0.0)
 })

@@ -2895,18 +2895,37 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
 ///
 /// # Usage
 ///
-/// To use with `ExternalPtr`, implement `TypedExternal` for your specific
-/// `ExternalSlice<YourType>`:
+/// Implements [`TypedExternal`] for every `'static` element type, so it can
+/// be wrapped directly without a local newtype or a trait implementation.
+/// All element types share the display tag `ExternalSlice`; the concrete
+/// `T` remains part of Rust's runtime type identity for downcasting.
 ///
-/// ```ignore
-/// impl_typed_external!(ExternalSlice<MyElement>);
+/// ```no_run
+/// use miniextendr_api::{ExternalPtr, ExternalSlice};
+///
+/// // Run on R's main thread, for example inside a #[miniextendr] function.
 /// let ptr = ExternalPtr::new(ExternalSlice::new(vec![1, 2, 3]));
+/// assert_eq!(ptr.borrow().as_slice(), &[1, 2, 3]);
 /// ```
 #[repr(C)]
 pub struct ExternalSlice<T: 'static> {
     ptr: NonNull<T>,
     len: usize,
     capacity: usize,
+}
+
+impl<T: 'static> TypedExternal for ExternalSlice<T> {
+    const TYPE_NAME: &'static str = "ExternalSlice";
+    const TYPE_NAME_CSTR: &'static [u8] = b"ExternalSlice\0";
+    const TYPE_ID_CSTR: &'static [u8] = concat!(
+        env!("CARGO_PKG_NAME"),
+        "@",
+        env!("CARGO_PKG_VERSION"),
+        "::",
+        module_path!(),
+        "::ExternalSlice\0"
+    )
+    .as_bytes();
 }
 
 impl<T: 'static> ExternalSlice<T> {
