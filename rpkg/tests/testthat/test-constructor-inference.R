@@ -267,7 +267,14 @@ test_that("every export has a help page", {
   # S4 method tables (`.__T__generic:pkg`) are exported but not documented,
   # as `R CMD check` knows.
   exports <- grep("^[.]__[TC]__", getNamespaceExports("miniextendr"), value = TRUE, invert = TRUE)
-  expect_identical(setdiff(exports, aliases), character())
+  # exportMethods() also exposes external generics such as base::all.equal.
+  # Their defining package owns the help page; local generics still need one.
+  undocumented <- setdiff(exports, aliases)
+  external_generic <- vapply(undocumented, function(name) {
+    value <- get(name, envir = asNamespace("miniextendr"), inherits = FALSE)
+    methods::is(value, "genericFunction") && value@package != "miniextendr"
+  }, logical(1))
+  expect_identical(undocumented[!external_generic], character())
 })
 
 # endregion
