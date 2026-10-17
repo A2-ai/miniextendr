@@ -189,3 +189,86 @@ impl RCoerceErrorTest {
     }
 }
 // endregion
+
+// region: Coercion argument handling (#1830)
+
+/// Coercions share ordinary method choice defaults, checks and hooks.
+#[derive(ExternalPtr)]
+pub struct RCoerceArgsTest;
+
+/// @title Coercion argument handling
+#[miniextendr(s3)]
+impl RCoerceArgsTest {
+    /// Construct the argument-handling fixture.
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Preserve omission and validate choices before converting a list.
+    /// @param mode An optional mode; omission and NULL stay distinct.
+    /// @param label An optional low or high label.
+    /// @param value A number inheriting from coerce_value, excluding coerce_forbidden.
+    #[miniextendr(
+        as = "list",
+        match_arg(mode),
+        choices(label = "low, high"),
+        defaults(value = "structure(1, class = 'coerce_value')"),
+        no_na(value(message = "coercion value must not be missing")),
+        inherits(value = "coerce_value"),
+        not_inherits(value = "coerce_forbidden")
+    )]
+    pub fn coerce_selected(
+        &self,
+        mode: miniextendr_api::Missing<Option<crate::match_arg_impl_tests::ImplMode>>,
+        label: Option<String>,
+        value: f64,
+    ) -> List {
+        let mode = match mode {
+            miniextendr_api::Missing::Absent => "absent".to_string(),
+            miniextendr_api::Missing::Present(None) => "null".to_string(),
+            miniextendr_api::Missing::Present(Some(mode)) => format!("{mode:?}"),
+        };
+        List::from_pairs(vec![
+            ("mode", mode),
+            ("label", label.unwrap_or_else(|| "null".to_string())),
+            ("value", value.to_string()),
+        ])
+    }
+
+    /// Entry runs before checks, post-check code before Rust, and cleanup on exit.
+    /// @param amount An integer value; the entry hook coerces it before validation.
+    #[miniextendr(
+        as = "character",
+        call = none,
+        defaults(amount = "1L"),
+        no_na(amount),
+        r_entry = "amount <- as.integer(amount)",
+        r_post_checks = "amount <- amount + 1L",
+        r_on_exit = "message('coercion cleanup')"
+    )]
+    pub fn coerce_hooked(&self, amount: i32) -> String {
+        amount.to_string()
+    }
+
+    /// Explicit dots keep their position and a required mode has no default.
+    /// @param ... Additional values, counted by the method.
+    /// @param mode A mode; optional for list conversion and required for integer conversion.
+    #[miniextendr(as = "integer", match_arg(mode), no_default(mode))]
+    pub fn coerce_dots(
+        &self,
+        dots: &miniextendr_api::dots::Dots,
+        mode: crate::match_arg_impl_tests::ImplMode,
+    ) -> Vec<i32> {
+        use crate::match_arg_impl_tests::ImplMode;
+        vec![
+            i32::try_from(dots.len()).expect("fixture dots length"),
+            match mode {
+                ImplMode::Fast => 1,
+                ImplMode::Safe => 2,
+                ImplMode::Debug => 3,
+            },
+        ]
+    }
+}
+
+// endregion

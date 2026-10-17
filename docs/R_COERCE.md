@@ -130,6 +130,22 @@ pub fn as_data_frame(&self) -> Result<List, RCoerceError> { ... }
 pub fn as_character(&self) -> Result<String, RCoerceError> { ... }
 ```
 
+## Extra arguments
+
+An `as = "..."` method uses the same argument rules as its ordinary class
+method: `match_arg` and `choices` supply the formal defaults and validate
+supplied values; `no_default` leaves a required formal; `Missing<T>` keeps
+omission distinct from a supplied value. Type checks and explicit
+`no_na`, `inherits` and `not_inherits` guards run before Rust conversion.
+
+The standard method prelude also runs `r_entry`, `r_on_exit`, lifecycle
+notices and `r_post_checks` in their usual order. Errors report the
+coercion generic's call unless `call = none` suppresses it.
+
+The S3 wrapper starts with `x` and accepts `...`. A Rust `&Dots` / `LazyDots`
+parameter keeps its position and receives those arguments; the wrapper
+does not add a second dots formal.
+
 ## Creating data.frames
 
 Use `ListBuilder` for heterogeneous column types:

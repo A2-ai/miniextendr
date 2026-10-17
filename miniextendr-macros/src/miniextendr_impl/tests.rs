@@ -6750,6 +6750,97 @@ fn as_coercion_method_rdname_defaults_to_class() {
     );
 }
 
+/// Coercion aliases have the same formals and prelude as ordinary methods.
+#[test]
+fn as_coercion_preserves_choice_formals_and_method_prelude() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter {
+                    #[miniextendr(
+                        as = "list",
+                        choices(mode = "fast, safe", label = "low, high"),
+                        no_na(value),
+                        r_entry = "entry()",
+                        r_on_exit = "cleanup()",
+                        r_post_checks = "post()"
+                    )]
+                    pub fn to_list(
+                        &self, mode: Missing<Option<String>>, label: Option<String>, value: f64
+                    ) -> List { unimplemented!() }
+                }
+            },
+        );
+        let wrapper = generate_as_coercion_methods(&parsed);
+        assert!(
+            wrapper.contains("function(x, mode = c(\"fast\", \"safe\"), label = NULL, value, ...)"),
+            "{system:?}: {wrapper}"
+        );
+        let positions: Vec<_> = [
+            "  entry()",
+            "  on.exit(",
+            "is.double(value)",
+            "!anyNA(value)",
+            ".miniextendr_match_arg(",
+            "  post()",
+            ".Call(",
+        ]
+        .iter()
+        .map(|part| {
+            wrapper
+                .find(part)
+                .unwrap_or_else(|| panic!("{part}: {wrapper}"))
+        })
+        .collect();
+        assert!(positions.windows(2).all(|p| p[0] < p[1]), "{wrapper}");
+        assert!(
+            wrapper.contains("if (missing(mode)) quote(expr=) else mode"),
+            "{wrapper}"
+        );
+    }
+}
+
+#[test]
+fn as_coercion_keeps_explicit_dots_and_no_default() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(as = "integer", match_arg(mode), no_default(mode))]
+                pub fn integers(&self, rest: &Dots, mode: Mode) -> Vec<i32> { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_as_coercion_methods(&parsed);
+    assert!(wrapper.contains("function(x, ..., mode)"), "{wrapper}");
+    assert!(wrapper.contains("list(...)"), "{wrapper}");
+    assert!(wrapper.contains(".miniextendr_match_arg("), "{wrapper}");
+}
+
+#[test]
+fn as_coercion_checks_keep_explicit_call_suppression() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Counter {
+                #[miniextendr(as = "character", call = none, no_na(value))]
+                pub fn text(&self, value: f64) -> String { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_as_coercion_methods(&parsed);
+    assert!(wrapper.contains("!anyNA(value)"), "{wrapper}");
+    assert!(wrapper.contains(", NULL)"), "{wrapper}");
+    assert!(wrapper.contains(".call = FALSE"), "{wrapper}");
+}
+
 /// S7 `convert_from` / `convert_to` blocks emit scaffolding only, but a
 /// method-level `@rdname` still decides their page.
 #[test]

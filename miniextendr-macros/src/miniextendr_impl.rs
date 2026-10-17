@@ -4463,7 +4463,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
 
         // Build method context for .Call generation
         let ctx = MethodContext::new(method, type_ident)
-            .with_impl_preconditions(parsed_impl.preconditions);
+            .with_impl_preconditions(parsed_impl.preconditions)
+            .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal
@@ -4522,17 +4523,11 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         }
         lines.push(format!("#' @method {} {}", r_generic, class_name));
 
-        // Function signature: always takes x and ... for S3 method compatibility
-        // Additional parameters from the method are included
-        let method_params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let formals = if method_params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", method_params)
-        };
-
+        // Use the method's effective choice/default formals and keep explicit
+        // dots in their original position, adding dispatch dots only if absent.
+        let formals = ctx.instance_formals_with_receiver("x", true);
         lines.push(format!("{} <- function({}) {{", s3_method_name, formals));
+        ctx.emit_method_prelude(&mut lines, "  ", &s3_method_name);
 
         // Build the .Call() invocation
         let call = ctx.instance_call("x");

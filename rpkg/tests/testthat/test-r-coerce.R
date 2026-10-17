@@ -3,9 +3,7 @@
 # These tests verify that the `as = "..."` attribute generates proper S3 methods
 # for R's coercion generics like as.data.frame(), as.list(), as.character().
 
-# =============================================================================
-# RCoerceTestData tests - successful coercions
-# =============================================================================
+# region: RCoerceTestData tests - successful coercions
 
 test_that("as.data.frame.RCoerceTestData works", {
   obj <- RCoerceTestData$new(c("Alice", "Bob", "Charlie"), c(1.0, 2.0, 3.0))
@@ -61,9 +59,9 @@ test_that("as.integer.RCoerceTestData works", {
   expect_equal(int, c(10L, 20L, 30L))  # truncated, not rounded
 })
 
-# =============================================================================
-# RCoerceErrorTest tests - error handling
-# =============================================================================
+# endregion
+
+# region: RCoerceErrorTest tests - error handling
 
 test_that("as.data.frame.RCoerceErrorTest returns error when empty", {
   obj <- RCoerceErrorTest$new(TRUE)  # is_empty = TRUE
@@ -102,9 +100,9 @@ test_that("as.character.RCoerceErrorTest returns custom error", {
   )
 })
 
-# =============================================================================
-# Edge cases
-# =============================================================================
+# endregion
+
+# region: Edge cases
 
 test_that("as.data.frame.RCoerceTestData works with empty data", {
   obj <- RCoerceTestData$new(character(0), numeric(0))
@@ -131,9 +129,9 @@ test_that("len method works via S3 generic", {
   expect_equal(len(obj), 3L)
 })
 
-# =============================================================================
-# Exported snake_case surface (constructor aliases + underscore generics)
-# =============================================================================
+# endregion
+
+# region: Exported snake_case surface (constructor aliases + underscore generics)
 
 test_that("new_rcoercetestdata constructor alias builds a working object", {
   obj <- new_rcoercetestdata(c("a", "b"), c(1.0, 2.0))
@@ -170,3 +168,67 @@ test_that("as_data_frame generic dispatches like as.data.frame", {
   obj <- RCoerceTestData$new(c("a", "b"), c(1.0, 2.0))
   expect_equal(as_data_frame(obj), as.data.frame(obj))
 })
+
+# endregion
+
+# region: Coercion argument handling (#1830)
+
+test_that("coercion aliases preserve choice formals and omitted arguments", {
+  obj <- new_rcoerceargstest()
+  method <- getS3method("as.list", "RCoerceArgsTest")
+  expect_identical(names(formals(method)), c("x", "mode", "label", "value", "..."))
+  choices <- eval(formals(method)$mode)
+  expect_identical(choices, c("Fast", "Safe", "Debug"))
+  expect_null(formals(method)$label)
+  expect_identical(as.list(obj), list(mode = "absent", label = "null", value = "1"))
+  expect_identical(as.list(obj, mode = NULL)$mode, "null")
+  expect_identical(as.list(obj, mode = "Sa", label = "h"),
+                   list(mode = "Safe", label = "high", value = "1"))
+  expect_identical(as.list(obj, mode = choices)$mode, "absent")
+  expect_identical(as.list(obj, mode = factor("Safe"))$mode, "Safe")
+  expect_identical(as.list(obj, mode = "Sa", label = "h"),
+                   coerce_selected(obj, mode = "Sa", label = "h"))
+  expect_error(as.list(obj, label = "invalid"), class = "rust_error")
+  expect_error(as.list(obj, label = c("low", "high", "low")), class = "rust_error")
+})
+
+test_that("coercion checks report the generic call and honor explicit guards", {
+  obj <- new_rcoerceargstest()
+  bad <- structure("wrong", class = "coerce_value")
+  err <- tryCatch(as.list(obj, value = bad), error = identity)
+  expect_s3_class(err, "rust_error")
+  expect_identical(err$param, "value")
+  expect_match(conditionMessage(err), "double")
+  expect_identical(conditionCall(err), quote(as.list(obj, value = bad)))
+  expect_error(as.list(obj, value = structure(NA_real_, class = "coerce_value")),
+               "coercion value must not be missing", class = "rust_error")
+  expect_error(as.list(obj, value = 2), "must inherit", class = "rust_error")
+  expect_error(as.list(obj, value = structure(2, class = c("coerce_value", "coerce_forbidden"))),
+               "must not inherit", class = "rust_error")
+  expect_identical(as.list(obj, value = structure(2, class = "coerce_value"))$value, "2")
+})
+
+test_that("coercion wrappers run the ordinary method hooks", {
+  obj <- new_rcoerceargstest()
+  expect_message(value <- as.character(obj, amount = 1.5), "coercion cleanup")
+  expect_identical(value, "2")
+  expect_message(err <- tryCatch(as.character(obj, amount = NA_integer_), error = identity),
+                 "coercion cleanup")
+  expect_s3_class(err, "rust_error")
+  expect_identical(err$param, "amount")
+  expect_null(conditionCall(err))
+})
+
+test_that("coercion wrappers retain one explicit dots formal and no_default", {
+  obj <- new_rcoerceargstest()
+  method <- getS3method("as.integer", "RCoerceArgsTest")
+  expect_identical(names(formals(method)), c("x", "...", "mode"))
+  expect_identical(formals(method)["mode"], alist(mode = ))
+  expect_identical(as.integer(obj, a = 10, b = 20, mode = "Sa"), c(2L, 2L))
+  expect_error(as.integer(obj), 'argument "mode" is missing')
+  direct <- tryCatch(coerce_dots(obj), error = identity)
+  alias <- tryCatch(as.integer(obj), error = identity)
+  expect_identical(class(alias), class(direct))
+})
+
+# endregion
