@@ -540,7 +540,7 @@ fn generate_trait_env_r_wrapper(
     consts: &[TraitConst],
     impl_preconditions: Option<bool>,
 ) -> String {
-    use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
+    use crate::r_wrapper_builder::RoxygenBuilder;
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
@@ -626,13 +626,9 @@ fn generate_trait_env_r_wrapper(
             .build();
         lines.extend(default_doc_lines(roxygen));
 
-        // Build .Call() invocation
-        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).build();
-
         // Generate const wrapper
         lines.push(format!("{target} <- function() {{"));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_const.r_body_lines(type_ident, trait_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -659,7 +655,7 @@ fn generate_trait_s3_r_wrapper(
     consts: &[TraitConst],
     impl_preconditions: Option<bool>,
 ) -> String {
-    use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
+    use crate::r_wrapper_builder::RoxygenBuilder;
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
@@ -876,11 +872,8 @@ fn generate_trait_s3_r_wrapper(
             .build();
         lines.extend(default_doc_lines(roxygen));
 
-        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).build();
-
         lines.push(format!("{target} <- function() {{"));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_const.r_body_lines(type_ident, trait_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -905,7 +898,7 @@ fn generate_trait_s4_r_wrapper(
     consts: &[TraitConst],
     impl_preconditions: Option<bool>,
 ) -> String {
-    use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
+    use crate::r_wrapper_builder::RoxygenBuilder;
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
@@ -1088,11 +1081,8 @@ fn generate_trait_s4_r_wrapper(
             .build();
         lines.extend(default_doc_lines(roxygen));
 
-        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).build();
-
         lines.push(format!("{} <- function() {{", fn_name));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_const.r_body_lines(type_ident, trait_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1117,7 +1107,7 @@ fn generate_trait_s7_r_wrapper(
     consts: &[TraitConst],
     impl_preconditions: Option<bool>,
 ) -> String {
-    use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
+    use crate::r_wrapper_builder::RoxygenBuilder;
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
@@ -1366,14 +1356,11 @@ fn generate_trait_s7_r_wrapper(
             .build();
         lines.extend(default_doc_lines(roxygen));
 
-        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).build();
-
         lines.push(format!(
             "{} <- function() {{",
             trait_namespace_target(ClassSystem::S7, type_ident, trait_name, &const_str)
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_const.r_body_lines(type_ident, trait_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1417,7 +1404,7 @@ fn generate_trait_r6_r_wrapper(
     consts: &[TraitConst],
     impl_preconditions: Option<bool>,
 ) -> String {
-    use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
+    use crate::r_wrapper_builder::RoxygenBuilder;
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
@@ -1532,11 +1519,8 @@ fn generate_trait_r6_r_wrapper(
             .build();
         lines.extend(default_doc_lines(roxygen));
 
-        let c_ident = trait_const.c_wrapper_ident_string(type_ident, trait_name);
-        let call = DotCallBuilder::new(&c_ident).build();
-
         lines.push(format!("{target} <- function() {{"));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_const.r_body_lines(type_ident, trait_name));
         lines.push("}".to_string());
         lines.push(String::new());
     }

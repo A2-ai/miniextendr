@@ -52,10 +52,15 @@ pub fn condition_check_lines_with_default(indent: &str, raise_default: &str) -> 
 /// - `call_expr`: The `.Call()` expression to evaluate
 /// - `inner`: The final expression to return after the error check passes
 /// - `indent`: Leading whitespace for the inner lines (e.g., `"    "` for 4-space)
-pub fn condition_check_inline_block(call_expr: &str, inner: &str, indent: &str) -> String {
+pub fn condition_check_inline_block(
+    call_expr: &str,
+    inner: &str,
+    indent: &str,
+    raise_default: &str,
+) -> String {
     format!(
         "{{\n{indent}.val <- {call_expr}\n\
-         {indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n\
+         {indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, {raise_default}))\n\
          {indent}{inner}\n  \
          }}"
     )
@@ -590,7 +595,7 @@ impl MethodReturnBuilder {
             }
         };
         let inner = self.apply_visibility_expr(inner);
-        condition_check_inline_block(&self.call_expr, &inner, "    ")
+        condition_check_inline_block(&self.call_expr, &inner, "    ", &self.raise_default)
     }
 
     /// Build S4-style return (uses methods::new()).
@@ -616,7 +621,7 @@ impl MethodReturnBuilder {
             }
         };
         let inner = self.apply_visibility_expr(inner);
-        condition_check_inline_block(&self.call_expr, &inner, "    ")
+        condition_check_inline_block(&self.call_expr, &inner, "    ", &self.raise_default)
     }
 }
 

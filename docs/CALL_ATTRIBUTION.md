@@ -516,8 +516,8 @@ is the whole function's decision. `.call = FALSE` is the marker of a
 call-less condition that the transport already carries, so the Rust side
 needs nothing new.
 
-- It applies to standalone functions, S3 methods included. Class and trait
-  methods have no `call = ...` option (#1868).
+- It applies to standalone functions, S3 methods included, and to class and
+  trait methods. An impl-level `call = none` supplies the default for its methods.
 - It has no marker: a `Call` / `CallerCall` parameter would have nothing to
   receive, so one next to `call = none` is a compile error, as are `call_arg`
   (`.call` names the call to report) and an `extern "C-unwind"` function
@@ -528,6 +528,40 @@ needs nothing new.
 
 Fixture pair: `no_call_verb` / `with_call_verb` and the `format` method of
 `mx_rec` in `rpkg/src/rust/s3_call_tests.rs`, verified by `test-s3-call.R`.
+
+### Class and trait methods
+
+Use `#[miniextendr(call = none)]` on one method, or put `call = none` on
+its inherent or trait impl block:
+
+```rust
+#[miniextendr(s3, call = none)]
+impl Counter {
+    pub fn new(value: i32) -> Self { Self { value } }
+    pub fn value(&self) -> i32 { self.value }
+}
+```
+
+The option covers constructors, static methods, instance methods, trait
+constants, R6 active bindings and callbacks, S7 properties and conversion
+methods, and empty trait impls. All six class systems support it. A method
+may also use its class spelling, such as `r6(call = none)`; vctrs uses the
+flat `call = none` option alongside its protocol selector.
+
+Only `none` is accepted on methods and impls (`"none"` is equivalent).
+Omitting the option retains normal method attribution. Another impl block
+on the same type keeps its own policy; an impl-wide opt-out cannot be
+reversed inside that block. Crate attribution defaults and `Call` /
+`CallerCall` parameters remain standalone-function features. The option
+adds no R formal and preserves the native call slot and registration arity.
+
+This governs framework conditions and generated argument checks. It does
+not rewrite author-supplied R hooks or errors raised by a dispatch library
+before the generated wrapper runs. Derived sidecar accessors have their
+own callback contract and are not Rust methods in the annotated impl.
+
+Runtime fixtures: `rpkg/src/rust/method_call_tests.rs` and
+`rpkg/tests/testthat/test-method-call.R`.
 
 ## Choosing the attribution: marker, attribute, crate default
 
@@ -586,8 +620,8 @@ functions only: an exported function's caller is arbitrary user code, so it
 keeps `wrapper`. `"wrapper"` and `"none"` apply to every standalone function.
 A per-item spelling beats the crate default; a `call = wrapper` on one entry
 point restores the wrapper's own call under a `"caller"` or `"none"` default.
-Class and trait methods are untouched by all three spellings (a marker on a
-method is a compile error) and always report their own call.
+Class and trait methods ignore the crate default and reject marker parameters.
+They retain their normal call unless the method or its impl specifies `call = none`.
 
 Two spellings on one function must agree. A `Call` parameter with
 `call = caller`, any marker with `call = none`, two markers, a `CallerCall`
@@ -602,12 +636,12 @@ and the crate default in `tests/cross-package/producer.pkg`
 
 ## Where this is emitted
 
-Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (`.call = environment()` for an S3 class's methods, `with_call_attribution(CallAttribution::Generic)`; `.call = NULL` for the lambda frames below, `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller`, `call_arg` and an S3 method with a `Call` parameter, `.call = environment()` for an S3 method (`for_s3_method`, resolved to the generic's call by `.miniextendr_frame_call()` when a condition is raised) and `.call = FALSE` for `none`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
+Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (`.call = environment()` for an S3 class's methods, `with_call_attribution(CallAttribution::Generic)`; `.call = NULL` for the lambda frames below, `null_call_attribution(policy)`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller`, `call_arg` and an S3 method with a `Call` parameter, `.call = environment()` for an S3 method (`for_s3_method`, resolved to the generic's call by `.miniextendr_frame_call()` when a condition is raised) and `.call = FALSE` for `none`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
 
 It applies uniformly to:
 
 - Standalone `#[miniextendr]` functions
-- All six class systems (R6, S3, S4, S7, Env, Vctrs) — constructors, instance methods, static methods, active bindings (the R6 finalizer and `deep_clone` pass `.call = NULL` instead, see below)
+- All six class systems (R6, S3, S4, S7, Env, Vctrs) — constructors, instance methods, static methods, active bindings (dispatch callbacks normally pass `.call = NULL`, and `call = none` preserves `FALSE` there too)
 - All trait implementations across all class systems
 - `match_arg` choices helper calls
 - Warnings and messages deferred from Rust, which carry the slot's call
@@ -620,7 +654,8 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `sys.call()`
 
-No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The raise helper's fallback, `if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call` with the wrapper's `sys.call()` as `.call_default` (`condition_check_lines`), then surfaces the nearest meaningful frame. (`FALSE` is the marker of a condition raised with `call = none`, which keeps no call at all; see [Conditions without a call](CONDITIONS.md#conditions-without-a-call).)
+No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` normally passes `.call = NULL`; `call = none` keeps
+`.call = FALSE` and a `NULL` raise fallback at these sites too. The raise helper's fallback, `if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call` with the wrapper's `sys.call()` as `.call_default` (`condition_check_lines`), then surfaces the nearest meaningful frame. (`FALSE` is the marker of a condition raised with `call = none`, which keeps no call at all; see [Conditions without a call](CONDITIONS.md#conditions-without-a-call).)
 
 The five sites are:
 
@@ -630,7 +665,7 @@ The five sites are:
 4. **S7 property getter** — `getter = function(self) .Call(C_mypkg_Type__get_prop, .call = NULL, self@.ptr)`
 5. **S7 property setter** — `setter = function(self, value) { .Call(C_mypkg_Type__set_prop, .call = NULL, self@.ptr, value); self }`
 
-This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it, and the raise helper's `.call_default` fallback (the wrapper's `sys.call()`) recovers the user's frame.
+This is implemented via `DotCallBuilder::null_call_attribution(policy)` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it, and the raise helper's `.call_default` fallback (the wrapper's `sys.call()`) recovers the user's frame.
 
 ## Reproducing the transcript
 

@@ -90,7 +90,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             lines.push(format!("  {}", line));
         }
         lines.push(format!("  .val <- {}", ctx.static_call()));
-        lines.extend(crate::method_return_builder::condition_check_lines("  "));
+        lines.extend(ctx.condition_check_lines("  "));
         lines.push("  self <- .val".to_string());
         lines.push(format!("  class(self) <- \"{}\"", class_name));
         lines.push("  self".to_string());
@@ -130,7 +130,8 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
         let call = ctx.instance_call(".mx_self");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let return_builder = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_chain_var(".mx_self".to_string())
@@ -179,7 +180,8 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctx.emit_method_prelude(&mut lines, "  ", &what);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
+        let return_builder = ctx
+            .return_builder(ctx.static_call())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())

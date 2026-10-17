@@ -105,7 +105,11 @@ fn active_setter_precondition_checks(
         setter.method_attrs.coerce,
         setter.method_attrs.preconditions,
         impl_preconditions,
-        None,
+        setter
+            .method_attrs
+            .call_attribution
+            .unwrap_or(crate::r_wrapper_builder::CallAttribution::Wrapper)
+            .r_check_call(),
     )
 }
 
@@ -364,7 +368,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("      } else {".to_string());
         lines.push(format!("        .val <- {}", ctx.static_call()));
         // Use shared condition switch (supports error!/warning!/message!/condition!).
-        for check_line in crate::method_return_builder::condition_check_lines("        ") {
+        for check_line in ctx.condition_check_lines("        ") {
             lines.push(check_line);
         }
         lines.push("        private$.ptr <- .val".to_string());
@@ -442,7 +446,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let return_builder = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
@@ -456,11 +461,13 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // Finalizer (if any)
     if let Some(finalizer) = parsed_impl.finalizer() {
         w.member_names.push("the R6 member `finalize`".to_string());
-        let c_ident = finalizer.c_wrapper_ident(type_ident).to_string();
-        let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
-            .null_call_attribution()
+        let ctx = crate::r_class_formatter::MethodContext::new(finalizer, type_ident);
+        let c_ident = &ctx.c_ident;
+        let finalize_call = crate::r_wrapper_builder::DotCallBuilder::new(c_ident)
+            .null_call_attribution(ctx.call_attribution)
             .with_self("private$.ptr")
             .build();
+        let finalize_call = ctx.condition_inline_block(&finalize_call, ".val");
         lines.push(String::new());
         lines.push(format!(
             "{class_name}$set(\"private\", \"finalize\", function() {finalize_call})"
@@ -475,12 +482,14 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     {
         w.member_names
             .push("the R6 member `deep_clone`".to_string());
-        let c_ident = dc_method.c_wrapper_ident(type_ident).to_string();
-        let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(&c_ident)
-            .null_call_attribution()
+        let ctx = crate::r_class_formatter::MethodContext::new(dc_method, type_ident);
+        let c_ident = &ctx.c_ident;
+        let deep_clone_call = crate::r_wrapper_builder::DotCallBuilder::new(c_ident)
+            .null_call_attribution(ctx.call_attribution)
             .with_self("private$.ptr")
             .with_args(&["name", "value"])
             .build();
+        let deep_clone_call = ctx.condition_inline_block(&deep_clone_call, ".val");
         lines.push(String::new());
         lines.push(format!(
             "{class_name}$set(\"private\", \"deep_clone\", function(name, value) {deep_clone_call})"
@@ -555,7 +564,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let return_builder = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
@@ -598,7 +608,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // getter-only active binding path below.
             let getter_call = ctx.instance_call("private$.ptr");
             let getter_strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let getter_builder = crate::MethodReturnBuilder::new(getter_call)
+            let getter_builder = ctx
+                .return_builder(getter_call)
                 .with_strategy(getter_strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
@@ -620,13 +631,16 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // transported Rust condition (the bare `.Call()` used to
             // discard the tagged condition value, silently dropping the
             // assignment error).
-            let setter_c_ident = setter_method.c_wrapper_ident(type_ident).to_string();
-            let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&setter_c_ident)
+            let setter_ctx =
+                crate::r_class_formatter::MethodContext::new(setter_method, type_ident);
+            let setter_c_ident = &setter_ctx.c_ident;
+            let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(setter_c_ident)
+                .with_call_attribution(setter_ctx.call_attribution)
                 .with_self("private$.ptr")
                 .with_args(&["value"])
                 .build();
             lines.push(format!("    .val <- {}", setter_call));
-            lines.extend(crate::method_return_builder::condition_check_lines("    "));
+            lines.extend(setter_ctx.condition_check_lines("    "));
             // The generated assignment branch keeps its invisible default,
             // while explicit method markers/options control direct binding calls.
             let invisible = setter_method
@@ -654,7 +668,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
             let call = ctx.instance_call("private$.ptr");
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_builder = crate::MethodReturnBuilder::new(call)
+            let return_builder = ctx
+                .return_builder(call)
                 .with_strategy(strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
@@ -703,7 +718,8 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctx.emit_method_prelude(&mut lines, "  ", &what);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
+        let return_builder = ctx
+            .return_builder(ctx.static_call())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())

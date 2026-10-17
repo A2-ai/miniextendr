@@ -162,7 +162,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             lines.push(format!("  {}", line));
         }
         lines.push(format!("  .val <- {}", ctx.static_call()));
-        lines.extend(crate::method_return_builder::condition_check_lines("  "));
+        lines.extend(ctx.condition_check_lines("  "));
         lines.push(format!("  methods::new(\"{}\", ptr = .val)", class_name));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -249,7 +249,8 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
 
         let strategy = crate::ReturnStrategy::for_method(method);
-        let body_lines = crate::MethodReturnBuilder::new(call)
+        let body_lines = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_chain_var(receiver.to_string())
             .with_invisible(method.is_invisible())
@@ -309,7 +310,8 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
+        let return_expr = ctx
+            .return_builder(ctx.static_call())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())

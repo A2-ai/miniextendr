@@ -171,7 +171,9 @@ impl<'a> TraitMethodContext<'a> {
             args,
             choice_omission_prelude,
             impl_preconditions: None,
-            call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
+            call_attribution: method
+                .call_attribution
+                .unwrap_or(crate::r_wrapper_builder::CallAttribution::Wrapper),
         }
     }
 
@@ -188,7 +190,7 @@ impl<'a> TraitMethodContext<'a> {
         mut self,
         call_attribution: crate::r_wrapper_builder::CallAttribution,
     ) -> Self {
-        self.call_attribution = call_attribution;
+        self.call_attribution = self.method.call_attribution.unwrap_or(call_attribution);
         self
     }
 
@@ -262,6 +264,7 @@ impl<'a> TraitMethodContext<'a> {
     /// Build the `.Call()` expression for a static (non-receiver) trait method.
     pub(super) fn static_call(&self) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_call_attribution(self.call_attribution)
             .with_args_str(&self.args)
             .build()
     }

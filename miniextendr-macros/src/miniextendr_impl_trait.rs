@@ -124,6 +124,7 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// shims for a single method in an `impl Trait for Type` block.
 #[derive(Debug, Clone)]
 struct TraitMethod {
+    call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Signature copied from declaration metadata: infer its argument types
     /// from the real method so declaration-local aliases keep their identity.
     inherited_signature: bool,
@@ -362,6 +363,7 @@ impl TraitMethod {
 /// that simply return the constant value.
 #[derive(Debug)]
 struct TraitConst {
+    call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Constant identifier (e.g., `MAX_SIZE`).
     ident: syn::Ident,
     /// Constant type (e.g., `i32`, `&str`). Used to determine SEXP conversion.
@@ -369,6 +371,19 @@ struct TraitConst {
 }
 
 impl TraitConst {
+    /// Constants use the same guarded condition transport as static methods.
+    fn r_body_lines(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> Vec<String> {
+        let attribution = self
+            .call_attribution
+            .unwrap_or(crate::r_wrapper_builder::CallAttribution::Wrapper);
+        let call = crate::r_wrapper_builder::DotCallBuilder::new(
+            self.c_wrapper_ident_string(type_ident, trait_name),
+        )
+        .with_call_attribution(attribution)
+        .build();
+        trait_method_body_lines(&call, "  ", attribution.raise_default())
+    }
+
     /// Generates the C wrapper function identifier: `C_{crate}_{Type}__{Trait}__{CONST}`.
     ///
     /// This is the symbol name registered with R for `.Call()` access to the constant.
@@ -453,23 +468,7 @@ pub fn expand_miniextendr_impl_trait(
             impl_item.impl_token.span,
         );
         let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
-        let mut output = generate_tpie_invocation(
-            &trait_path,
-            &concrete_type,
-            impl_attrs.class_system,
-            no_rd,
-            impl_attrs.internal,
-            impl_attrs.noexport,
-            // The trait's signatures carry no method or parameter spellings,
-            // so the impl block, the crate default and the feature decide;
-            // the `macro_rules!` contract carries the decision as a bool.
-            !crate::r_preconditions::resolve_item_type_checks(
-                None,
-                impl_attrs.preconditions,
-                crate::crate_config::preconditions_default(),
-                cfg!(feature = "no-preconditions-default"),
-            ),
-        );
+        let mut output = generate_tpie_invocation(&trait_path, &concrete_type, &impl_attrs, no_rd);
         output.extend(param_warnings);
         return output.into();
     }
@@ -733,6 +732,8 @@ struct TpieInput {
     /// `no-preconditions-default` feature, resolved in the implementing crate
     /// when the empty impl invoked the trait's `macro_rules!` helper.
     no_preconditions: bool,
+    /// The implementing block suppresses calls on every generated method.
+    no_call: bool,
     /// Method signatures and R-facing names from the trait definition.
     methods: Vec<TpieMethod>,
     abi: TraitAbiMetadata,
@@ -842,6 +843,15 @@ impl syn::parse::Parse for TpieInput {
         input.parse::<syn::Token![;]>()?;
         let no_preconditions = no_preconditions_lit.value;
 
+        let kw: syn::Ident = input.parse()?;
+        if kw != "no_call" {
+            return Err(syn::Error::new_spanned(kw, "expected 'no_call'"));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let no_call: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let no_call = no_call.value;
+
         let abi = input.parse()?;
 
         // method { ... } repeated
@@ -867,6 +877,7 @@ impl syn::parse::Parse for TpieInput {
             internal,
             noexport,
             no_preconditions,
+            no_call,
             methods,
             abi,
         })
@@ -1021,6 +1032,9 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         };
     for method in &mut methods {
         method.inherited_signature = true;
+        method.call_attribution = tpie_input
+            .no_call
+            .then_some(crate::r_wrapper_builder::CallAttribution::NoCall);
     }
 
     // Generate C wrappers
@@ -1161,40 +1175,27 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn generate_tpie_invocation(
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
-    class_system: ClassSystem,
+    attrs: &ImplAttrs,
     class_has_no_rd: bool,
-    internal: bool,
-    noexport: bool,
-    no_preconditions: bool,
 ) -> TokenStream {
     // Resolve metadata through the same path as the trait. The declaration
     // exports both in separate Rust namespaces.
     let mut macro_path = trait_path.clone();
     macro_path.segments.last_mut().unwrap().arguments = syn::PathArguments::None;
-    let class_system_ident = class_system.to_ident();
-    let no_rd_ident = if class_has_no_rd {
-        format_ident!("true")
-    } else {
-        format_ident!("false")
-    };
-    let internal_ident = if internal {
-        format_ident!("true")
-    } else {
-        format_ident!("false")
-    };
-    let noexport_ident = if noexport {
-        format_ident!("true")
-    } else {
-        format_ident!("false")
-    };
-    let no_preconditions_ident = if no_preconditions {
-        format_ident!("true")
-    } else {
-        format_ident!("false")
-    };
-
+    let class_system = attrs.class_system.to_ident();
+    let internal = attrs.internal;
+    let noexport = attrs.noexport;
+    // Empty impls have no method-level options: resolve the impl and crate defaults here.
+    let no_preconditions = !crate::r_preconditions::resolve_item_type_checks(
+        None,
+        attrs.preconditions,
+        crate::crate_config::preconditions_default(),
+        cfg!(feature = "no-preconditions-default"),
+    );
+    let no_call = attrs.call_attribution == Some(crate::r_wrapper_builder::CallAttribution::NoCall);
     quote::quote! {
-        #macro_path !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident, #no_preconditions_ident);
+        #macro_path !(#concrete_type, #trait_path, #class_system, #class_has_no_rd,
+            #internal, #noexport, #no_preconditions, #no_call);
     }
 }
 

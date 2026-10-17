@@ -79,10 +79,7 @@ fn tpie_invocations_accept_bare_and_qualified_trait_names() {
         let output = generate_tpie_invocation(
             &syn::parse_str(path).unwrap(),
             &syn::parse_quote!(Host),
-            ClassSystem::Env,
-            false,
-            false,
-            false,
+            &syn::parse_quote!(env, preconditions),
             false,
         );
         let file: syn::File = syn::parse2(output).unwrap();
@@ -106,6 +103,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         syn::parse_quote!(fn #ident() -> i32)
     };
     TraitMethod {
+        call_attribution: None,
         inherited_signature: false,
         ident,
         sig,
@@ -1940,6 +1938,7 @@ fn test_tpie_self_return_rewrapped() {
         internal = false;
         noexport = false;
         no_preconditions = false;
+        no_call = false;
         abi Bar false "test-only-tpie-tag" {}
         method { r_name = dup; fn dup(&self) -> Self; }
         method { r_name = parse; fn parse(s: &str) -> Option<Self>; }
@@ -2003,6 +2002,7 @@ fn test_tpie_self_return_rewrapped() {
 #[test]
 fn test_s7_statics_documented_as_attr_access() {
     let consts = [TraitConst {
+        call_attribution: None,
         ident: format_ident!("MAX"),
         ty: syn::parse_quote!(i32),
     }];
@@ -2798,22 +2798,19 @@ fn trait_method_preconditions_list_names_a_parameter() {
 }
 
 /// An empty-body (TPIE) impl hands its `no_preconditions` to the trait's
-/// `macro_rules!` helper as the last token, and the expansion input parses
+/// `macro_rules!` helper as a flag, and the expansion input parses
 /// it back. The trait side's forwarding is in `miniextendr_trait/tests.rs`.
 #[test]
 fn tpie_carries_no_preconditions() {
     let invocation = generate_tpie_invocation(
         &syn::parse_quote!(miniextendr_api::adapter_traits::RFromStr),
         &syn::parse_quote!(Meter),
-        ClassSystem::R6,
+        &syn::parse_quote!(r6, no_preconditions),
         false,
-        false,
-        false,
-        true,
     )
     .to_string();
     assert!(
-        invocation.contains("r6 , false , false , false , true)"),
+        invocation.contains("r6 , false , false , false , true , false)"),
         "{invocation}"
     );
 
@@ -2825,6 +2822,7 @@ fn tpie_carries_no_preconditions() {
         internal = false;
         noexport = false;
         no_preconditions = true;
+        no_call = false;
         abi RFromStr false "test-only-tpie-tag" {}
         method { r_name = from_str; fn r_from_str(s: &str) -> Option<Self>; }
     };
@@ -3445,6 +3443,7 @@ fn trait_member_defaults_wait_for_the_class_topic() {
             &syn::parse_quote!(Probe),
             &[instance.clone(), static_method.clone()],
             &[TraitConst {
+                call_attribution: None,
                 ident: syn::parse_quote!(PROBE_ID),
                 ty: syn::parse_quote!(i32),
             }],
@@ -3557,3 +3556,121 @@ fn qualified_s3_trait_methods_preserve_lazy_registration_under_visibility_filter
         }
     }
 }
+
+// region: method and impl call suppression (#1868)
+
+#[test]
+fn trait_no_call_applies_to_instance_static_and_constant_wrappers() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let mut instance = make_test_method("read", true);
+        instance.call_attribution = Some(crate::r_wrapper_builder::CallAttribution::NoCall);
+        let mut static_method = make_test_method("make", false);
+        static_method.call_attribution = instance.call_attribution;
+        let wrapper = generate_trait_r_wrapper(
+            &format_ident!("Widget"),
+            &format_ident!("Read"),
+            &[instance, static_method],
+            &[TraitConst {
+                ident: format_ident!("LIMIT"),
+                ty: syn::parse_quote!(i32),
+                call_attribution: Some(crate::r_wrapper_builder::CallAttribution::NoCall),
+            }],
+            opts(system, false, false, false),
+        )
+        .unwrap();
+        let calls: Vec<_> = wrapper.lines().filter(|l| l.contains(".Call(")).collect();
+        assert!(calls.len() >= 3, "{system:?}: {wrapper}");
+        for call in calls {
+            assert!(call.contains(".call = FALSE"), "{system:?}: {call}");
+        }
+        assert!(
+            !wrapper.contains(".miniextendr_raise_condition(.val, sys.call())"),
+            "{wrapper}"
+        );
+        assert!(
+            !wrapper.contains(".miniextendr_raise_condition(.val, environment())"),
+            "{wrapper}"
+        );
+        assert!(
+            wrapper.contains(".miniextendr_raise_condition(.val, NULL)"),
+            "{wrapper}"
+        );
+    }
+}
+
+#[test]
+fn trait_no_call_resolves_impl_defaults_and_method_options() {
+    for system in ["env", "r6", "s3", "s4", "s7", "vctrs"] {
+        let system = format_ident!("{system}");
+        let output = trait_impl_expansion(
+            quote::quote!(#system, call = none),
+            syn::parse_quote! {
+                impl Scale for Meter {
+                    const LIMIT: i32 = 10;
+                    fn read(&self, value: i32) -> i32 { value }
+                    fn make(value: i32) -> i32 { value }
+                }
+            },
+        );
+        assert!(output.contains("__Scale__LIMIT, .call = FALSE"), "{output}");
+        assert!(output.contains("__Scale__read, .call = FALSE"), "{output}");
+        assert!(output.contains("__Scale__make, .call = FALSE"), "{output}");
+        let option = if system == "vctrs" {
+            quote::quote!(call = none)
+        } else {
+            quote::quote!(#system(call = none))
+        };
+        let output = trait_impl_expansion(
+            quote::quote!(#system),
+            syn::parse_quote! {
+                impl Scale for Meter {
+                    #[miniextendr(#option)]
+                    fn read(&self, value: i32) -> i32 { value }
+                    fn make(value: i32) -> i32 { value }
+                }
+            },
+        );
+        assert!(output.contains("__Scale__read, .call = FALSE"), "{output}");
+        assert!(
+            output.contains("__Scale__make, .call = sys.call()"),
+            "{output}"
+        );
+    }
+}
+
+#[test]
+fn tpie_carries_no_call_to_inherited_methods() {
+    let invocation = generate_tpie_invocation(
+        &syn::parse_quote!(Read),
+        &syn::parse_quote!(Widget),
+        &syn::parse_quote!(s3, preconditions, call = none),
+        false,
+    )
+    .to_string();
+    assert!(
+        invocation.contains("s3 , false , false , false , false , true)"),
+        "{invocation}"
+    );
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Widget;
+        trait_path = Read;
+        class_system = s3;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = false;
+        no_call = true;
+        abi Read false "test-only-tpie-tag" {}
+        method { r_name = read; fn read(&self, value: i32) -> i32; }
+    };
+    assert!(input.no_call);
+}
+
+// endregion

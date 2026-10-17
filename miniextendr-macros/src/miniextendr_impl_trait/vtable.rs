@@ -87,11 +87,15 @@ pub(super) fn generate_vtable_static(
         Err(e) => return e.into_compile_error(),
     };
     for method in &mut all_methods {
+        method.call_attribution = method.call_attribution.or(impl_attrs.call_attribution);
         method.inherited_signature = defaults
             .iter()
             .any(|default| default.sig.ident == method.ident);
     }
-    let consts = extract_consts(impl_item);
+    let mut consts = extract_consts(impl_item);
+    for item in &mut consts {
+        item.call_attribution = impl_attrs.call_attribution;
+    }
 
     // Separate skipped methods: skipped methods are kept in the emitted impl block
     // but excluded from C wrappers, R wrappers and call defs. The declaration
@@ -822,6 +826,7 @@ pub(super) fn extract_methods(
             sig.output = crate::type_inspect::serialize_return_type(&output, attrs.serialize);
 
             methods.push(TraitMethod {
+                call_attribution: attrs.call_attribution,
                 inherited_signature: false,
                 ident: method.sig.ident.clone(),
                 sig,
@@ -899,6 +904,7 @@ fn check_trait_method_defaults(
 /// Extracted from method-level attributes to control C wrapper behavior,
 /// threading, and R wrapper generation.
 struct TraitMethodAttrs {
+    call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `worker-default` feature.
     worker: bool,
     /// Force execution on R's main thread (overrides explicit or feature-selected worker dispatch).
@@ -966,6 +972,7 @@ struct TraitMethodAttrs {
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     use syn::spanned::Spanned;
     let mut worker = false;
+    let mut call_attribution = None;
     let mut unsafe_main_thread = false;
     let mut coerce: Option<bool> = None;
     let mut check_interrupt = false;
@@ -1006,7 +1013,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
 
             if is_class_meta {
                 meta.parse_nested_meta(|inner| {
-                    if inner.path.is_ident("worker") {
+                    if inner.path.is_ident("call") {
+                        call_attribution = Some(crate::r_wrapper_builder::CallAttribution::parse_method(inner.value()?)?);
+                    } else if inner.path.is_ident("worker") {
                         worker = true;
                         crate::deprecation::worker_option(inner.path.span());
                     } else if inner.path.is_ident("main_thread") {
@@ -1060,6 +1069,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     }
                     Ok(())
                 })?;
+            } else if meta.path.is_ident("call") {
+                call_attribution = Some(crate::r_wrapper_builder::CallAttribution::parse_method(meta.value()?)?);
             } else if meta.path.is_ident("worker") {
                 worker = true;
                 crate::deprecation::worker_option(meta.path.span());
@@ -1263,7 +1274,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
                      `choices`, `choices_several_ok`, `no_default`, `inherits`, `not_inherits`, `no_na`, \
-                     `preconditions`, `no_preconditions`",
+                     `preconditions`, `no_preconditions`, `call = none`",
                 ));
             }
             Ok(())
@@ -1278,6 +1289,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     }
 
     Ok(TraitMethodAttrs {
+        call_attribution,
         worker: worker || cfg!(feature = "worker-default"),
         unsafe_main_thread,
         coerce: coerce.unwrap_or(cfg!(feature = "coerce-default")),
@@ -1317,6 +1329,7 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
         .filter_map(|item| {
             if let syn::ImplItem::Const(const_item) = item {
                 Some(TraitConst {
+                    call_attribution: None,
                     ident: const_item.ident.clone(),
                     ty: const_item.ty.clone(),
                 })

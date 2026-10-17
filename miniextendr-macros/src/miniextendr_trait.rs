@@ -653,7 +653,7 @@ fn generate_trait_abi(trait_item: &ItemTrait, partial_eq: bool) -> TokenStream {
     };
     let empty_impl_arm = if !has_generics && assoc_types.is_empty() {
         quote::quote! {
-            ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt) => {
+            ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt, $no_preconditions:tt, $no_call:tt) => {
                 ::miniextendr_api::__mx_trait_impl_expand! {
                     concrete_type = $concrete_type;
                     trait_path = $trait_path;
@@ -662,6 +662,7 @@ fn generate_trait_abi(trait_item: &ItemTrait, partial_eq: bool) -> TokenStream {
                     internal = $internal;
                     noexport = $noexport;
                     no_preconditions = $no_preconditions;
+                    no_call = $no_call;
                     #abi_metadata
                     #(#tpie_method_metadata)*
                 }

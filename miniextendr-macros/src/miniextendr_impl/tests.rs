@@ -4,6 +4,7 @@ use super::*;
 
 fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
     ImplAttrs {
+        call_attribution: None,
         class_system,
         class_name: None,
         vctrs_attrs: VctrsAttrs::default(),
@@ -2790,8 +2791,7 @@ fn r6_deep_clone_is_not_a_public_method() {
     let wrapper = class.render();
     assert!(
         wrapper.contains(
-            "Counter$set(\"private\", \"deep_clone\", function(name, value) \
-             .Call(C_miniextendr_macros_Counter__clone_field, .call = NULL, private$.ptr, name, value))"
+            "Counter$set(\"private\", \"deep_clone\", function(name, value) {\n    .val <- .Call(C_miniextendr_macros_Counter__clone_field, .call = NULL, private$.ptr, name, value)"
         ),
         "{wrapper}"
     );
@@ -6218,7 +6218,7 @@ fn method_call_caller_is_rejected_clearly() {
         )
         .expect_err("call = caller on a method must fail");
         assert!(
-            err.to_string().contains("only supported on standalone"),
+            err.to_string().contains("support only `call = none`"),
             "{err}"
         );
     }
@@ -10157,3 +10157,190 @@ fn vctrs_constructors_refuse_explicit_self_handles() {
         &syn::parse_quote!(Currency)
     ));
 }
+
+// region: method and impl call suppression (#1868)
+
+#[test]
+fn no_call_inherits_through_every_class_generator() {
+    for (system, generate) in [
+        (
+            ClassSystem::Env,
+            generate_env_r_wrapper as fn(&ParsedImpl) -> String,
+        ),
+        (ClassSystem::R6, generate_r6_r_wrapper),
+        (ClassSystem::S3, generate_s3_r_wrapper),
+        (ClassSystem::S4, generate_s4_r_wrapper),
+        (ClassSystem::S7, generate_s7_r_wrapper),
+        (ClassSystem::Vctrs, generate_vctrs_r_wrapper),
+    ] {
+        let mut attrs = default_impl_attrs(system);
+        attrs.call_attribution = Some(crate::r_wrapper_builder::CallAttribution::NoCall);
+        // vctrs methods are static: the vector payload is an ordinary argument.
+        let code = if system == ClassSystem::Vctrs {
+            syn::parse_quote! {
+                impl Widget {
+                    pub fn new(value: Vec<f64>) -> Vec<f64> { value }
+                    pub fn read(value: i32) -> i32 { value }
+                }
+            }
+        } else {
+            syn::parse_quote! {
+                impl Widget {
+                    pub fn new(value: i32) -> Self { unimplemented!() }
+                    pub fn read(&self, value: i32) -> i32 { value }
+                    pub fn create(value: i32) -> Self { unimplemented!() }
+                }
+            }
+        };
+        let parsed = ParsedImpl::parse(attrs, code).unwrap();
+        let wrapper = generate(&parsed);
+        let calls: Vec<_> = wrapper.lines().filter(|l| l.contains(".Call(")).collect();
+        assert!(!calls.is_empty(), "{system:?}: {wrapper}");
+        for call in calls {
+            assert!(call.contains(".call = FALSE"), "{system:?}: {call}");
+        }
+        assert!(
+            wrapper.contains(".miniextendr_raise_condition(.val, NULL)"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(
+            !wrapper.contains(".miniextendr_raise_condition(.val, sys.call())"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(!wrapper.contains(".mx_call"), "{system:?}: {wrapper}");
+        assert!(!wrapper.contains("function(.call"), "{system:?}: {wrapper}");
+        assert!(
+            parsed
+                .methods
+                .iter()
+                .all(|m| m.method_attrs.call_attribution
+                    == Some(crate::r_wrapper_builder::CallAttribution::NoCall))
+        );
+    }
+}
+
+#[test]
+fn method_no_call_is_local_and_supports_class_spellings() {
+    for system in ["env", "r6", "s3", "s4", "s7"] {
+        let system = syn::Ident::new(system, proc_macro2::Span::call_site());
+        let attrs: ImplAttrs = syn::parse2(quote::quote!(#system)).unwrap();
+        let parsed = ParsedImpl::parse(
+            attrs,
+            syn::parse_quote! {
+                impl Widget {
+                    #[miniextendr(#system(call = none))]
+                    pub fn quiet(value: i32) -> i32 { value }
+                    pub fn ordinary(value: i32) -> i32 { value }
+                }
+            },
+        )
+        .unwrap();
+        let quiet =
+            crate::r_class_formatter::MethodContext::new(&parsed.methods[0], &parsed.type_ident)
+                .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
+        let ordinary =
+            crate::r_class_formatter::MethodContext::new(&parsed.methods[1], &parsed.type_ident);
+        assert!(quiet.static_call().contains(".call = FALSE"));
+        assert!(quiet.precondition_checks().join("\n").contains(", NULL)"));
+        assert!(ordinary.static_call().contains(".call = sys.call()"));
+        assert_eq!(parsed.methods[1].method_attrs.call_attribution, None);
+    }
+    let quoted: ImplAttrs = syn::parse_quote!(s3, call = "none");
+    assert_eq!(
+        quoted.call_attribution,
+        Some(crate::r_wrapper_builder::CallAttribution::NoCall)
+    );
+    for value in ["caller", "wrapper", "bogus"] {
+        let err = syn::parse_str::<ImplAttrs>(&format!("s3, call = {value}")).unwrap_err();
+        assert!(
+            err.to_string().contains("support only `call = none`"),
+            "{err}"
+        );
+    }
+}
+
+#[test]
+fn r6_active_setter_uses_its_own_no_call_policy() {
+    let parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Widget {
+                #[miniextendr(r6(active))]
+                pub fn count(&self) -> i32 { 1 }
+                #[miniextendr(r6(setter, prop = "count"), call = none)]
+                pub fn set_count(&mut self, value: i32) {}
+            }
+        },
+    );
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(wrapper.contains("__count, .call = sys.call()"), "{wrapper}");
+    assert!(wrapper.contains("__set_count, .call = FALSE"), "{wrapper}");
+    let active = &wrapper[wrapper.find("$set(\"active\"").unwrap()..];
+    let setter = &active[active.find("} else {").unwrap()..];
+    assert!(
+        setter.contains(".miniextendr_raise_condition(.val, NULL)"),
+        "{setter}"
+    );
+    assert!(setter.contains(", NULL)"), "{setter}");
+}
+
+#[test]
+fn lambda_callbacks_transport_conditions_with_their_call_policy() {
+    for no_call in [false, true] {
+        let mut attrs = default_impl_attrs(ClassSystem::R6);
+        attrs.call_attribution =
+            no_call.then_some(crate::r_wrapper_builder::CallAttribution::NoCall);
+        let parsed = ParsedImpl::parse(
+            attrs,
+            syn::parse_quote! {
+                impl Widget {
+                    #[miniextendr(r6(finalize))]
+                    pub fn finish(&mut self) {}
+                    #[miniextendr(r6(deep_clone))]
+                    pub fn copy(&self, name: &str, value: SEXP) -> SEXP { value }
+                }
+            },
+        )
+        .unwrap();
+        let wrapper = generate_r6_r_wrapper(&parsed);
+        assert_eq!(
+            wrapper.matches(".miniextendr_raise_condition").count(),
+            2,
+            "{wrapper}"
+        );
+        let call = if no_call {
+            ".call = FALSE"
+        } else {
+            ".call = NULL"
+        };
+        assert_eq!(wrapper.matches(call).count(), 2, "{wrapper}");
+
+        let mut attrs = default_impl_attrs(ClassSystem::S7);
+        attrs.call_attribution =
+            no_call.then_some(crate::r_wrapper_builder::CallAttribution::NoCall);
+        let parsed = ParsedImpl::parse(
+            attrs,
+            syn::parse_quote! {
+                impl Widget {
+                    #[miniextendr(s7(getter))]
+                    pub fn count(&self) -> i32 { 1 }
+                    #[miniextendr(s7(setter, prop = "count"))]
+                    pub fn set_count(&mut self, value: i32) {}
+                    #[miniextendr(s7(validate, prop = "count"))]
+                    pub fn validate_count(value: i32) -> Option<String> { None }
+                }
+            },
+        )
+        .unwrap();
+        let wrapper = generate_s7_r_wrapper(&parsed);
+        let wrapper = wrapper.split("constructor =").next().unwrap();
+        assert_eq!(wrapper.matches(call).count(), 3, "{wrapper}");
+        assert_eq!(
+            wrapper.matches(".miniextendr_raise_condition").count(),
+            3,
+            "{wrapper}"
+        );
+    }
+}
+
+// endregion

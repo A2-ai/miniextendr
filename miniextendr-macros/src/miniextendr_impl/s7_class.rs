@@ -810,10 +810,11 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // Use null_call_attribution: this runs inside S7's dispatch lambda, so
             // sys.call() would name S7 internals, not the user's call site.
             let validator_call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
-                .null_call_attribution()
+                .null_call_attribution(ctx.call_attribution)
                 .with_args(&["value"])
                 .build();
-            prop_parts.push(format!("validator = function(value) {validator_call}"));
+            let validator_body = ctx.condition_inline_block(&validator_call, ".val");
+            prop_parts.push(format!("validator = function(value) {validator_body}"));
         }
 
         // Generate getter (with optional deprecation warning)
@@ -823,10 +824,17 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let ctx = MethodContext::new(getter_method, type_ident);
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let getter_call = ctx.instance_call_null_attr("self@.ptr");
+            let getter_call = ctx.condition_inline_block(&getter_call, ".val");
+            let call_option =
+                if ctx.call_attribution == crate::r_wrapper_builder::CallAttribution::NoCall {
+                    ", call. = FALSE"
+                } else {
+                    ""
+                };
             if let Some(ref msg) = prop.deprecated {
                 // Deprecated getter: emit warning then return value
                 prop_parts.push(format!(
-                    "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
+                    "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"{call_option}); {} }}",
                     prop.name, msg, getter_call
                 ));
             } else {
@@ -841,6 +849,13 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let ctx = MethodContext::new(setter_method, type_ident);
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let setter_call = ctx.instance_call_null_attr("self@.ptr");
+            let setter_call = ctx.condition_inline_block(&setter_call, "self");
+            let call_option =
+                if ctx.call_attribution == crate::r_wrapper_builder::CallAttribution::NoCall {
+                    ", call. = FALSE"
+                } else {
+                    ""
+                };
 
             if prop.frozen {
                 // Frozen pattern: error if property was already set (non-NULL)
@@ -848,27 +863,24 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 // a separate flag in the object to track if ever set
                 if let Some(ref msg) = prop.deprecated {
                     prop_parts.push(format!(
-                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"{call_option}); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"{call_option}); {} }}",
                         prop.name, msg, prop.name, prop.name, setter_call
                     ));
                 } else {
                     prop_parts.push(format!(
-                        "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"{call_option}); {} }}",
                         prop.name, prop.name, setter_call
                     ));
                 }
             } else if let Some(ref msg) = prop.deprecated {
                 // Deprecated setter: emit warning then set value
                 prop_parts.push(format!(
-                    "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
+                    "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"{call_option}); {} }}",
                     prop.name, msg, setter_call
                 ));
             } else {
                 // Normal setter
-                prop_parts.push(format!(
-                    "setter = function(self, value) {{ {}; self }}",
-                    setter_call
-                ));
+                prop_parts.push(format!("setter = function(self, value) {}", setter_call));
             }
         }
 
@@ -923,9 +935,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
         lines.push("    } else {".to_string());
         lines.push(format!("      .val <- {}", ctx.static_call()));
-        lines.extend(crate::method_return_builder::condition_check_lines(
-            "      ",
-        ));
+        lines.extend(ctx.condition_check_lines("      "));
         lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
         lines.push("    }".to_string());
         lines.push("  }".to_string());
@@ -1074,7 +1084,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let body_lines = crate::MethodReturnBuilder::new(call)
+        let body_lines = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
@@ -1178,7 +1189,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             }
 
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let shortcut_body = crate::MethodReturnBuilder::new(shortcut_call)
+            let shortcut_body = ctx
+                .return_builder(shortcut_call)
                 .with_strategy(strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
@@ -1236,7 +1248,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
+        let return_expr = ctx
+            .return_builder(ctx.static_call())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
@@ -1310,11 +1323,13 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // The convert_from method takes the source object as its sole parameter
             // We pass from@.ptr to extract the ExternalPtr from the S7 object
             let call_with_from = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .with_call_attribution(ctx.call_attribution)
                 .with_self("from@.ptr")
                 .build();
 
             let strategy = crate::ReturnStrategy::for_method(method);
-            let return_expr = crate::MethodReturnBuilder::new(call_with_from)
+            let return_expr = ctx
+                .return_builder(call_with_from)
                 .with_strategy(strategy)
                 .with_invisible(method.is_invisible())
                 .with_class_name(class_name.clone())
@@ -1372,6 +1387,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // Generate: S7::method(convert, list(ThisClass, ToType)) <- function(from, to, ...) ...
             // The convert_to method is an instance method where self is mapped to from@.ptr
             let call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .with_call_attribution(ctx.call_attribution)
                 .with_self("from@.ptr")
                 .build();
 
@@ -1382,7 +1398,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
             // Force ReturnSelf strategy for convert methods since they return S7 class types
             // that need to be wrapped: ToType(.ptr = <result>)
-            let return_expr = crate::MethodReturnBuilder::new(call)
+            let return_expr = ctx
+                .return_builder(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type_ref.clone())
                 .with_invisible(method.is_invisible())

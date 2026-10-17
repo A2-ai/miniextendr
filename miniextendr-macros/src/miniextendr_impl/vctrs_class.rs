@@ -107,7 +107,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             lines.push(format!("  {}", line));
         }
         lines.push(format!("  .val <- {}", ctx.static_call()));
-        lines.extend(crate::method_return_builder::condition_check_lines("  "));
+        lines.extend(ctx.condition_check_lines("  "));
         lines.push("  data <- .val".to_string());
 
         match vctrs_attrs.kind {
@@ -338,7 +338,8 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
-        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
+        let return_builder = ctx
+            .return_builder(ctx.static_call())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())

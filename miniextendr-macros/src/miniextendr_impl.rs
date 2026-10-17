@@ -614,6 +614,8 @@ pub struct S7MethodAttrs {
 /// Per-method attributes for class system customization.
 #[derive(Debug, Default)]
 pub struct MethodAttrs {
+    /// Explicit or impl-inherited suppression of condition calls.
+    pub call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Skip this method
     pub ignore: bool,
     /// Mark as constructor
@@ -886,6 +888,8 @@ pub struct ParsedImpl {
 /// attribute formats like `#[miniextendr(r6, class = "Custom")]`.
 #[derive(Debug)]
 pub struct ImplAttrs {
+    /// The call policy inherited by methods in this block.
+    pub call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Which R class system to generate wrappers for.
     /// Defaults to `Env` unless overridden by feature flags (`r6-default`, `s7-default`).
     pub class_system: ClassSystem,
@@ -964,7 +968,7 @@ const CLASS_SETTING_TAGS: [&str; 2] = ["noRd", "keywords internal"];
 /// bare and the `key = value` forms.
 const IMPL_OPTIONS_HELP: &str = "env, env(...), r6, r6(...), s3, s3(...), s4, s4(...), s7, \
      s7(...), vctrs, vctrs(...) (class system), class = \"...\" (R class name), \
-     blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport";
+     blanket, strict, no_strict, preconditions, no_preconditions, call = none, internal, noexport";
 
 impl syn::parse::Parse for ImplAttrs {
     /// Parses `#[miniextendr(...)]` impl-level options.
@@ -978,6 +982,7 @@ impl syn::parse::Parse for ImplAttrs {
         };
         let mut class_system_span: Option<(&str, proc_macro2::Span)> = None;
         let mut class_name = None;
+        let mut call_attribution = None;
         let mut vctrs_attrs = VctrsAttrs::default();
         let mut r6_inherit = None;
         let mut r6_portable = None;
@@ -1014,6 +1019,11 @@ impl syn::parse::Parse for ImplAttrs {
             if input.peek(syn::Token![=]) {
                 let _: syn::Token![=] = input.parse()?;
                 match ident_str.as_str() {
+                    "call" => {
+                        call_attribution = Some(
+                            crate::r_wrapper_builder::CallAttribution::parse_method(input)?,
+                        );
+                    }
                     "class" => {
                         let value: syn::LitStr = input.parse()?;
                         class_name = Some(value.value());
@@ -1407,6 +1417,7 @@ impl syn::parse::Parse for ImplAttrs {
         };
 
         Ok(ImplAttrs {
+            call_attribution,
             class_system,
             class_name,
             vctrs_attrs,
@@ -1704,11 +1715,7 @@ impl ParsedMethod {
                             crate::miniextendr_fn::validate_postfix(&val, &value)?;
                             method_attrs.postfix = Some(val);
                         } else if inner.path.is_ident("call") {
-                            return Err(inner.error(
-                                "`call = caller` is only supported on standalone `#[miniextendr]` \
-                                 functions (the internal-entry-point pattern); class methods keep \
-                                 their own call attribution",
-                            ));
+                            method_attrs.call_attribution = Some(crate::r_wrapper_builder::CallAttribution::parse_method(inner.value()?)?);
                         } else if inner.path.is_ident("r_entry") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -2038,11 +2045,7 @@ impl ParsedMethod {
                     crate::miniextendr_fn::validate_postfix(&val, &value)?;
                     method_attrs.postfix = Some(val);
                 } else if meta.path.is_ident("call") {
-                    return Err(meta.error(
-                        "`call = caller` is only supported on standalone `#[miniextendr]` \
-                         functions (the internal-entry-point pattern); class methods keep \
-                         their own call attribution",
-                    ));
+                    method_attrs.call_attribution = Some(crate::r_wrapper_builder::CallAttribution::parse_method(meta.value()?)?);
                 } else if meta.path.is_ident("r_entry") {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let value: syn::LitStr = meta.input.parse()?;
@@ -3152,6 +3155,10 @@ impl ParsedImpl {
                 let Some(mut method) = ParsedMethod::from_impl_item(fn_item, class_page)? else {
                     continue;
                 };
+                method.method_attrs.call_attribution = method
+                    .method_attrs
+                    .call_attribution
+                    .or(attrs.call_attribution);
                 crate::s7_conversion::configure(
                     &mut method,
                     fn_item,
@@ -4528,7 +4535,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         // Build the .Call() invocation
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let return_builder = ctx
+            .return_builder(call)
             .with_strategy(strategy)
             .with_invisible(method.is_invisible())
             .with_class_name(class_name.clone())

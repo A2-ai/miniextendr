@@ -413,7 +413,10 @@ impl<'a> MethodContext<'a> {
             args,
             choice_omission_prelude,
             impl_preconditions: None,
-            call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
+            call_attribution: method
+                .method_attrs
+                .call_attribution
+                .unwrap_or(crate::r_wrapper_builder::CallAttribution::Wrapper),
         }
     }
 
@@ -431,7 +434,11 @@ impl<'a> MethodContext<'a> {
         mut self,
         call_attribution: crate::r_wrapper_builder::CallAttribution,
     ) -> Self {
-        self.call_attribution = call_attribution;
+        self.call_attribution = self
+            .method
+            .method_attrs
+            .call_attribution
+            .unwrap_or(call_attribution);
         self
     }
 
@@ -462,9 +469,34 @@ impl<'a> MethodContext<'a> {
         )
     }
 
+    /// Start a return builder with this method's condition-call policy.
+    pub fn return_builder(&self, call: String) -> crate::MethodReturnBuilder {
+        crate::MethodReturnBuilder::new(call)
+            .with_raise_default(self.call_attribution.raise_default())
+    }
+
+    /// Re-raise a transported condition using this method's fallback call.
+    pub fn condition_check_lines(&self, indent: &str) -> Vec<String> {
+        crate::method_return_builder::condition_check_lines_with_default(
+            indent,
+            self.call_attribution.raise_default(),
+        )
+    }
+
+    /// Guard a callback body with the same condition-call policy as ordinary methods.
+    pub fn condition_inline_block(&self, call: &str, result: &str) -> String {
+        crate::method_return_builder::condition_check_inline_block(
+            call,
+            result,
+            "    ",
+            self.call_attribution.raise_default(),
+        )
+    }
+
     /// Build the `.Call()` expression for a static/constructor call.
     pub fn static_call(&self) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_call_attribution(self.call_attribution)
             .with_args_str(&self.args)
             .build()
     }
@@ -481,13 +513,14 @@ impl<'a> MethodContext<'a> {
             .build()
     }
 
-    /// Like [`instance_call`](Self::instance_call) but passes `.call = NULL`.
+    /// Like [`instance_call`](Self::instance_call), using `NULL` for ordinary
+    /// dispatch callbacks and retaining `FALSE` under explicit `NoCall`.
     ///
     /// Use for lambda dispatch sites (S7 property getter/setter) where
     /// `sys.call()` names the S7 dispatch frame, not the user's call.
     pub fn instance_call_null_attr(&self, self_expr: &str) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
-            .null_call_attribution()
+            .null_call_attribution(self.call_attribution)
             .with_self(self_expr)
             .with_args_str(&self.args)
             .build()

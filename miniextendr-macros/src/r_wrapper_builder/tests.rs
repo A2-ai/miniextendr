@@ -192,7 +192,7 @@ fn test_dot_call_with_args_str_passes_through() {
 #[test]
 fn test_dot_call_null_call_no_args() {
     let call = DotCallBuilder::new("C_Type__finalize")
-        .null_call_attribution()
+        .null_call_attribution(CallAttribution::Wrapper)
         .with_self("private$.ptr")
         .build();
     assert_eq!(call, ".Call(C_Type__finalize, .call = NULL, private$.ptr)");
@@ -201,7 +201,7 @@ fn test_dot_call_null_call_no_args() {
 #[test]
 fn test_dot_call_null_call_with_args() {
     let call = DotCallBuilder::new("C_Type__deep_clone")
-        .null_call_attribution()
+        .null_call_attribution(CallAttribution::Wrapper)
         .with_self("private$.ptr")
         .with_args(&["name", "value"])
         .build();
@@ -214,7 +214,7 @@ fn test_dot_call_null_call_with_args() {
 #[test]
 fn test_dot_call_null_call_validator() {
     let call = DotCallBuilder::new("C_Type__validate_prop")
-        .null_call_attribution()
+        .null_call_attribution(CallAttribution::Wrapper)
         .with_args(&["value"])
         .build();
     assert_eq!(call, ".Call(C_Type__validate_prop, .call = NULL, value)");

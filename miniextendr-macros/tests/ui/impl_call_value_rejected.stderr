@@ -1,0 +1,11 @@
+error: class and trait methods support only `call = none`; omit `call` to keep normal method attribution (other values are standalone-function options)
+ --> tests/ui/impl_call_value_rejected.rs:7:27
+  |
+7 | #[miniextendr(env, call = caller)]
+  |                           ^^^^^^
+
+error: class and trait methods support only `call = none`; omit `call` to keep normal method attribution (other values are standalone-function options)
+  --> tests/ui/impl_call_value_rejected.rs:14:26
+   |
+14 |     #[miniextendr(call = wrapper)]
+   |                          ^^^^^^^

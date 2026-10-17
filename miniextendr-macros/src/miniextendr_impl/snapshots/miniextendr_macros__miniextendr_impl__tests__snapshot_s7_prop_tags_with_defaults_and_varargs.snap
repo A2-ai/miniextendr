@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 5873
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title WithDefaults S7 Class
@@ -14,7 +15,11 @@ expression: generate_s7_r_wrapper(&parsed)
 WithDefaults <- S7::new_class("WithDefaults",
   properties = list(
     .ptr = S7::class_any,
-    name = S7::new_property(class = S7::class_character, getter = function(self) .Call(C_miniextendr_macros_WithDefaults__name, .call = NULL, self@.ptr))
+    name = S7::new_property(class = S7::class_character, getter = function(self) {
+    .val <- .Call(C_miniextendr_macros_WithDefaults__name, .call = NULL, self@.ptr)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+    .val
+  })
   ),
   constructor = function(name, scale, mode, .ptr = NULL) {
     if (is.null(.ptr)) {

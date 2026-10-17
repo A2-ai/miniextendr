@@ -992,7 +992,9 @@ arrive call-less through the transport that already exists, and it hands
 `NULL` to its own checks (type and length guards, `no_na`, `inherits`,
 `not_inherits`, `match_arg` / `choices`), which a failed Rust conversion
 shares. The option applies to standalone functions, S3 methods
-(`s3(generic = ..., class = ...)`) included; it has no marker type, so a
+(`s3(generic = ..., class = ...)`) included, and to class and trait methods.
+On an impl block it applies to that block's methods and trait constants;
+another impl block on the same type keeps its own policy. It has no marker type, so a
 `Call` / `CallerCall` parameter next to it is a compile error, as are
 `call_arg` and an `extern "C-unwind"` function. A crate default,
 `call_attribution = "none"` in `Cargo.toml`, applies it to every free

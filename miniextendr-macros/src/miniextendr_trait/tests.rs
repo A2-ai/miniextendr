@@ -466,11 +466,11 @@ fn tpie_macro_forwards_no_preconditions() {
     };
     let out = generate_trait_abi(&trait_item, false).to_string();
     assert!(
-        out.contains("$ noexport : tt , $ no_preconditions : tt)"),
+        out.contains("$ noexport : tt , $ no_preconditions : tt , $ no_call : tt)"),
         "{out}"
     );
     assert!(
-        out.contains("no_preconditions = $ no_preconditions ;"),
+        out.contains("no_preconditions = $ no_preconditions ; no_call = $ no_call ;"),
         "{out}"
     );
 }

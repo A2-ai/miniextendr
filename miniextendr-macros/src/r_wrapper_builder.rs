@@ -501,9 +501,9 @@ pub enum CallAttribution {
     /// call.
     Argument,
     /// `.call = FALSE`: no call at all (#1851). Selected by
-    /// `#[miniextendr(call = none)]` on a standalone function (an S3 method
-    /// included) or by the crate default `call_attribution = "none"`, which
-    /// applies to every standalone function. Every condition the wrapper
+    /// `#[miniextendr(call = none)]` on a function, method or impl block,
+    /// or by the crate default `call_attribution = "none"`, which applies
+    /// only to standalone functions. Every condition the wrapper
     /// raises then has a `NULL` `conditionCall()`, like R's `call. = FALSE`:
     /// the R-side checks and the `match_arg` helpers are passed `NULL`, the
     /// slot carries `FALSE`, the marker the raise helper already reads as "no
@@ -538,6 +538,29 @@ pub enum CallAttribution {
 }
 
 impl CallAttribution {
+    /// Methods suppress their wrapper's call explicitly; caller attribution
+    /// and call markers remain standalone-function options.
+    pub(crate) fn parse_method(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let value: syn::Expr = input.parse()?;
+        let is_none = match &value {
+            syn::Expr::Path(path) => path.path.is_ident("none"),
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(name),
+                ..
+            }) => name.value() == "none",
+            _ => false,
+        };
+        if is_none {
+            Ok(Self::NoCall)
+        } else {
+            Err(syn::Error::new_spanned(
+                value,
+                "class and trait methods support only `call = none`; omit `call` to keep \
+                 normal method attribution (other values are standalone-function options)",
+            ))
+        }
+    }
+
     /// The spelling shared by the attribute (`call = wrapper | caller | none`)
     /// and the crate default (`call_attribution = "wrapper" | "caller" |
     /// "none"`).
@@ -918,13 +941,21 @@ impl DotCallBuilder {
     /// Pass `.call = NULL` instead of `.call = sys.call()`: for the R6 / S7
     /// lambda frames, which R6 / S7 dispatch calls (R6 finalizer / `deep_clone`, S7
     /// property getter / setter / validator), where `sys.call()` names an
-    /// internal dispatch frame instead of the user's call. Not reachable from
-    /// any attribute. With `NULL`, the raise helper's fallback (a `NULL`
+    /// internal dispatch frame instead of the user's call. No attribute selects
+    /// this NULL policy directly. With `NULL`, the raise helper's fallback (a `NULL`
     /// `.val$call` takes `.call_default`, the `sys.call()` in
     /// `condition_check_lines`; only a call-less condition's `FALSE` marker
     /// gives `NULL`) surfaces the nearest meaningful frame instead.
-    pub fn null_call_attribution(mut self) -> Self {
-        self.call_expr = Some("NULL".to_string());
+    /// Explicit `NoCall` keeps `FALSE` even at these dispatch sites.
+    pub fn null_call_attribution(mut self, attribution: CallAttribution) -> Self {
+        self.call_expr = Some(
+            if attribution == CallAttribution::NoCall {
+                "FALSE"
+            } else {
+                "NULL"
+            }
+            .to_string(),
+        );
         self
     }
 

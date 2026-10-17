@@ -103,3 +103,16 @@ fn standalone_body_call_default_is_configurable() {
     );
     assert!(!caller.contains("sys.call()"), "{caller}");
 }
+
+#[test]
+fn inline_class_returns_preserve_a_call_less_fallback() {
+    let builder = MethodReturnBuilder::new(".Call(C_read, .call = FALSE)".to_string())
+        .with_raise_default("NULL");
+    for body in [builder.build_s4_inline(), builder.build_s7_inline()] {
+        assert!(
+            body.contains(".miniextendr_raise_condition(.val, NULL)"),
+            "{body}"
+        );
+        assert!(!body.contains("sys.call()"), "{body}");
+    }
+}

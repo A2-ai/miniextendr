@@ -451,6 +451,14 @@ return markers, renamed imports and type aliases do not select the syntax.
 
 #### Condition call: markers and defaults
 
+Class and trait methods accept `call = none` on the method or its impl block
+(all six class systems). It suppresses condition calls, including argument errors;
+another impl block keeps its own policy. Other attribution values and marker
+parameters remain standalone-function options. See
+[method call suppression](CALL_ATTRIBUTION.md#class-and-trait-methods).
+
+The following table describes standalone functions.
+
 Every generated wrapper passes a call object to its C entry point
 (`.Call(C_pkg_f, .call = <call>, ...)`), and conditions raised from Rust are
 attributed to it, as written. Which call it is has three attributions and up
