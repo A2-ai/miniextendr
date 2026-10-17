@@ -2163,6 +2163,7 @@ impl ParsedMethod {
         class_page: crate::roxygen::RdPage,
     ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
+        crate::miniextendr_fn::require_safe_wrapper(&item.sig)?;
         old_handle_receiver(&item.sig)?;
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
