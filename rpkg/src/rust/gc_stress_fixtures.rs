@@ -6392,3 +6392,25 @@ pub fn gc_stress_rfunction() {
         assert_eq!(i32::try_from_sexp(value.get()).unwrap(), 12);
     }
 }
+
+/// Keep a foreign callback result live until the adapter returns.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_foreign_callback() {
+    unsafe {
+        let scope = miniextendr_api::ProtectScope::new();
+        let expr = scope.protect(
+            miniextendr_api::expression::r_eval_str(
+                "quote(list(value = 42L))",
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .unwrap(),
+        );
+        let result = OwnedProtect::new(crate::foreign_callback_tests::roundtrip(
+            expr.get(),
+            miniextendr_api::sys::R_BaseEnv,
+        ));
+        assert_eq!(result.get().xlength(), 1);
+        assert_eq!(result.get().vector_elt(0).as_slice::<i32>(), &[42]);
+    }
+}

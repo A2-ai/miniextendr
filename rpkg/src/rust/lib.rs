@@ -236,6 +236,7 @@ mod feature_default_fixtures;
 mod ffi_guard_tests;
 mod field_fallback_tests;
 mod fixed_array_tests;
+mod foreign_callback_tests;
 mod formal_names_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;

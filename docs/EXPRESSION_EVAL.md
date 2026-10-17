@@ -349,8 +349,32 @@ let out = unsafe {
 ```
 
 Both must run inside a miniextendr boundary on the main thread, and the unwind
-they start must not be caught with `catch_unwind` on the way. Details:
+they start must reach that boundary. A foreign callback can catch it temporarily
+and resume it after returning through its foreign caller, as described below. Details:
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#handler-keeping-evaluation).
+
+## Foreign callbacks
+
+`expression::call_unwinding(fun, data)` exposes the same R-exit handling
+for a low-level R operation. It is `unsafe`: call it on R's main thread
+inside an active miniextendr boundary, keep `data` and its R objects valid,
+and put no Rust values needing `Drop` in the operation across an R call
+that may longjmp.
+
+A C or Fortran solver cannot be unwound through just by declaring its callback
+`extern "C-unwind"`. The adapter must:
+
+1. Call `call_unwinding` inside `catch_unwind` in its Rust callback.
+2. Save the opaque payload and report failure to the solver normally.
+3. Let every foreign frame return.
+4. Resume the payload with `std::panic::resume_unwind` on the same thread,
+   before the same framework call returns.
+
+This retains the original condition and restart; it does not construct a new
+error. Keep the first payload if the solver calls back again after failure.
+The API's rustdoc includes a complete adapter example. An outer
+`with_r_unwind_protect` does not replace this pattern: it would resume the
+R jump while the foreign frames were still live.
 
 ## Safety Requirements
 

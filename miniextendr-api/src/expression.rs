@@ -26,6 +26,9 @@
 //! }
 //! ```
 
+/// Run a low-level R operation while carrying R exits through Rust frames.
+pub use crate::unwind_protect::call_unwinding;
+
 use crate::condition::ConditionClass;
 use crate::from_r::TryFromSexp;
 use crate::gc_protect::{OwnedProtect, ProtectScope};
@@ -1634,7 +1637,7 @@ pub(crate) unsafe fn try_call(body: TryBody, body_data: *mut c_void) -> Result<S
 /// Evaluate `expr` in `env` in the caller's R context, with `error`
 /// conditions caught ([`catch_error`]): the caller's handlers and restarts
 /// stay in place, and any other R exit leaves as a Rust unwind
-/// ([`call_unwinding`](crate::unwind_protect::call_unwinding)). Never
+/// ([`call_unwinding`]). Never
 /// [`Caught::Exit`].
 ///
 /// The slot is protected before the evaluation and holds the caught condition
