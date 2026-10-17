@@ -11,6 +11,13 @@
 //! recursively using each field's `Into<RValue>` implementation. This lets
 //! condition data carry a tuple without allocating in R or requiring `Debug`.
 //!
+//! `(A, B, ...)::try_from(value)` reads the inverse positional list when every
+//! field implements `TryFrom<RValue>` with an error convertible to `SexpError`.
+//! Names are ignored; another variant or a wrong arity is a type/length error.
+//! Field failures are batched with 1-based positions, preserving any condition
+//! classes and fields, just as tuple [`TryFromSexp`] does. These conversions
+//! consume only owned Rust values and need no R runtime.
+//!
 //! The variants enumerate R's (finite, closed) data type system — vectors only,
 //! since R has no true scalars. NA is modelled with `Option` where R carries it
 //! out of band (logical/integer/character); `Double` carries NA in the `NA_REAL`
@@ -243,6 +250,41 @@ macro_rules! impl_tuple_rvalue {
         impl<$($T: Into<RValue>),+> From<($($T,)+)> for RValue {
             fn from(value: ($($T,)+)) -> Self {
                 Self::List(vec![$((None, value.$idx.into()),)+])
+            }
+        }
+
+        impl<$($T: TryFrom<RValue>),+> TryFrom<RValue> for ($($T,)+)
+        where
+            $($T::Error: Into<SexpError>,)+
+        {
+            type Error = SexpError;
+
+            fn try_from(value: RValue) -> Result<Self, Self::Error> {
+                let fields = match value {
+                    RValue::List(fields) => fields,
+                    other => return Err(wrong_type(SEXPTYPE::VECSXP, &other)),
+                };
+                if fields.len() != $n {
+                    return Err(SexpLengthError {
+                        expected: $n,
+                        actual: fields.len(),
+                    }.into());
+                }
+
+                let mut fields = fields.into_iter();
+                let mut errors = crate::from_r::ElementErrors::default();
+                let partial = ($(
+                    match $T::try_from(fields.next().unwrap().1) {
+                        Ok(value) => Some(value),
+                        Err(error) => {
+                            errors.push($idx, error.into());
+                            None
+                        }
+                    },
+                )+);
+                let partial = errors.into_result(partial)?;
+                // The arity was checked, and every field succeeded.
+                Ok(($(partial.$idx.unwrap(),)+))
             }
         }
     };
@@ -658,5 +700,169 @@ mod tests {
         // wrong variant → Type
         let bad: Result<Vec<u8>, _> = RValue::from(1i32).try_into();
         assert!(matches!(bad, Err(SexpError::Type(_))));
+    }
+
+    #[test]
+    fn tuple_round_trips_cover_every_arity() {
+        fn round_trip<T>(expected: T)
+        where
+            T: Clone + std::fmt::Debug + PartialEq + TryFrom<RValue, Error = SexpError>,
+            RValue: From<T>,
+        {
+            let value = RValue::from(expected.clone());
+            assert_eq!(T::try_from(value).unwrap(), expected);
+        }
+
+        macro_rules! check_arity {
+            ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
+                round_trip(($($idx,)+));
+            };
+        }
+        crate::tuple_macros::for_each_tuple!(check_arity);
+        round_trip((7_i32, String::from("seven")));
+        round_trip((String::from("nested"), (true, 2.5_f64)));
+        round_trip((vec![Some(1_i32), None, Some(3)], vec![4.0_f64, 5.0]));
+    }
+
+    #[test]
+    fn tuple_names_are_ignored_without_reordering() {
+        let value = RValue::List(vec![
+            (Some("same".into()), 7_i32.into()),
+            (Some("same".into()), "seven".into()),
+            (None, true.into()),
+        ]);
+        let tuple: (i32, String, bool) = value.try_into().unwrap();
+        assert_eq!(tuple, (7, String::from("seven"), true));
+    }
+
+    #[test]
+    fn tuple_shape_is_checked_before_any_field_conversion() {
+        #[derive(Debug)]
+        struct Never;
+        impl TryFrom<RValue> for Never {
+            type Error = SexpError;
+
+            fn try_from(_: RValue) -> Result<Self, Self::Error> {
+                panic!("invalid tuple shape must not convert its fields")
+            }
+        }
+
+        for actual in [0, 1, 3] {
+            let value = RValue::List(vec![(None, RValue::Null); actual]);
+            let error = <(Never, Never)>::try_from(value).unwrap_err();
+            assert!(matches!(
+                error,
+                SexpError::Length(SexpLengthError { expected: 2, actual: found }) if found == actual
+            ));
+        }
+        for value in [RValue::Null, RValue::Integer(vec![Some(1), Some(2)])] {
+            let actual = value.sexptype();
+            let error = <(Never, Never)>::try_from(value).unwrap_err();
+            assert!(matches!(
+                error,
+                SexpError::Type(SexpTypeError { expected: SEXPTYPE::VECSXP, actual: found })
+                    if found == actual
+            ));
+        }
+    }
+
+    #[test]
+    fn tuple_collects_every_field_error_and_keeps_nested_positions() {
+        let value = RValue::from(("bad", true, "also bad"));
+        let error = <(i32, String, i32)>::try_from(value).unwrap_err();
+        assert!(matches!(error, SexpError::InvalidValue(_)));
+        assert_eq!(
+            error.r_reason(false),
+            "expected integer, got character (elements 1, 3); expected character, got logical (element 2)"
+        );
+
+        let error = <((i32, i32), i32)>::try_from(RValue::from((("a", "b"), "c"))).unwrap_err();
+        assert_eq!(
+            error.r_reason(false),
+            "expected integer, got character (elements 1, 2) (element 1); expected integer, got character (element 2)"
+        );
+
+        let error = <(i32, i32)>::try_from(RValue::from((None::<i32>, None::<i32>))).unwrap_err();
+        assert_eq!(error.r_reason(false), "NA is not allowed (elements 1, 2)");
+    }
+
+    #[derive(Debug)]
+    struct Refused<const ID: i32>;
+
+    impl<const ID: i32> TryFrom<RValue> for Refused<ID> {
+        type Error = crate::condition::RError;
+
+        fn try_from(_: RValue) -> Result<Self, Self::Error> {
+            Err(crate::condition::RError::new("ordinary message")
+                .argument_message(format!("refused {ID}"))
+                .class([format!("refusal_{ID}"), "common".into()])
+                .data("shared", ID)
+                .data(format!("field_{ID}"), ID))
+        }
+    }
+
+    #[test]
+    fn tuple_preserves_classed_errors_and_fields_even_when_nested() {
+        let value = RValue::from(((1_i32,), "bad", 2_i32));
+        let error = <((Refused<1>,), i32, Refused<2>)>::try_from(value).unwrap_err();
+        let SexpError::Condition(error) = error else {
+            panic!("classed field errors must survive tuple batching")
+        };
+        assert_eq!(error.classes(), ["refusal_1", "common", "refusal_2"]);
+        assert_eq!(
+            error.message_str(),
+            "refused 1 (element 1) (element 1); expected integer, got character (element 2); refused 2 (element 3)"
+        );
+        let fields: Vec<_> = error
+            .fields()
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_i32()))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                ("shared", Some(1)),
+                ("field_1", Some(1)),
+                ("field_2", Some(2))
+            ]
+        );
+    }
+
+    #[test]
+    fn tuple_can_keep_an_unconverted_owned_rvalue_field() {
+        let (raw, count): (RValue, i32) = RValue::from((RValue::Raw(vec![1, 2, 3]), 4_i32))
+            .try_into()
+            .unwrap();
+        assert!(matches!(raw, RValue::Raw(bytes) if bytes == [1, 2, 3]));
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn tuple_drops_successful_fields_on_failure_and_continues_reading() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static DROPPED: AtomicUsize = AtomicUsize::new(0);
+
+        #[derive(Debug)]
+        struct Dropped;
+        impl TryFrom<RValue> for Dropped {
+            type Error = SexpError;
+
+            fn try_from(_: RValue) -> Result<Self, Self::Error> {
+                Ok(Self)
+            }
+        }
+        impl Drop for Dropped {
+            fn drop(&mut self) {
+                DROPPED.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        let error =
+            <(Dropped, i32, Dropped)>::try_from(RValue::from((1_i32, "bad", 3_i32))).unwrap_err();
+        assert_eq!(
+            error.r_reason(false),
+            "expected integer, got character (element 2)"
+        );
+        assert_eq!(DROPPED.load(Ordering::Relaxed), 2);
     }
 }

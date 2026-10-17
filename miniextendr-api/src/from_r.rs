@@ -765,6 +765,12 @@ impl std::error::Error for SexpError {
     }
 }
 
+impl From<std::convert::Infallible> for SexpError {
+    fn from(error: std::convert::Infallible) -> Self {
+        match error {}
+    }
+}
+
 impl From<SexpTypeError> for SexpError {
     fn from(e: SexpTypeError) -> Self {
         SexpError::Type(e)

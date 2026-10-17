@@ -390,7 +390,11 @@ these same positional conversions and batched field errors. Element-wise
 `Coerce` covers all twelve arities, including the singleton; the existing
 blanket supplies its infallible `TryCoerce`. `()` remains R NULL. Fields that
 implement `Into<RValue>` also give the tuple an owned unnamed-list conversion
-for condition data. Heterogeneous tuples have no single native atomic layout
+for condition data. The inverse `TryFrom<RValue>` accepts a list of exactly
+that arity, ignores its names and reads each field through its own
+`TryFrom<RValue>` (whose error must convert into `SexpError`). It collects all
+field failures, preserving classed errors as the R-list conversion does, and
+needs no R runtime. Heterogeneous tuples have no single native atomic layout
 or missing-value sentinel, so they do not implement `RNativeType` or `IsNA`.
 
 #### `Vec<Option<C>>` for collection element types
