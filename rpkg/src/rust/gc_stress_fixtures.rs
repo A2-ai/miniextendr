@@ -6366,3 +6366,29 @@ pub fn gc_stress_lazy_dots_forward() {
         assert!(err.message().contains("forwarded failure"));
     }
 }
+
+/// Borrow a fresh closure and retain it explicitly in its call builder.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_rfunction() {
+    use miniextendr_api::{RFunction, TryFromRoot, TryFromSexp};
+    unsafe {
+        let call = {
+            let scope = miniextendr_api::ProtectScope::new();
+            let root = scope.protect(
+                miniextendr_api::expression::r_eval_str(
+                    "local({ offset <- 10L; function(x) { gc(); x + offset } })",
+                    miniextendr_api::sys::R_BaseEnv,
+                )
+                .expect("a closure"),
+            );
+            RFunction::try_from_root(root)
+                .unwrap()
+                .call()
+                .arg_value(2_i32)
+        };
+        miniextendr_api::sys::R_gc();
+        let value = OwnedProtect::new(call.eval_with_handlers(miniextendr_api::sys::R_BaseEnv));
+        assert_eq!(i32::try_from_sexp(value.get()).unwrap(), 12);
+    }
+}

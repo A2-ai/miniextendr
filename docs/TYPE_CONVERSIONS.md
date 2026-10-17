@@ -927,6 +927,38 @@ outside that conversion; the list check does not supply a lifetime. Accept
 
 ---
 
+## R callbacks and validator messages
+
+Use `RFunction<'_>` for an R callback. It accepts a closure, builtin or special;
+strings naming a function and other R values are refused with a classed
+argument error (`'f' must be a function`). `Option<RFunction<'_>>` maps
+`NULL` to `None`.
+
+```rust
+use miniextendr_api::{RFunction, SEXP, miniextendr};
+
+#[miniextendr]
+fn apply(f: RFunction<'_>, x: SEXP) -> SEXP {
+    unsafe { f.call().arg(x).eval_with_handlers(miniextendr_api::sys::R_GlobalEnv) }
+}
+```
+
+The handle borrows the call's `Root` and stays on R's main thread. It has no
+owned GC root: use `Preserved` explicitly when keeping the function after
+the call. `as_sexp()` exposes the validated function; `call()` starts the
+ordinary `RCall` builder, which owns its callable's root. The builder's
+evaluators retain their usual contracts. In particular, an R exit through
+`eval_with_handlers` must unwind only through Rust frames to a miniextendr
+boundary, never through a foreign callback or a destructor.
+
+A `#[try_from_sexp(validate = check)]` validator can return
+`Result<(), &str>` or `Result<(), String>`. Both messages convert to
+`SexpError::Condition(RError::new(message))`, keeping the ordinary argument
+condition transport. Use `RConditionData` or `RError` when the error also
+needs custom classes or data.
+
+---
+
 ## Borrowed vector roots
 
 `StrVec<'a>`, `RCow<'a, T>`, `Cow<'a, [T]>`, `Cow<'a, str>` and the shared

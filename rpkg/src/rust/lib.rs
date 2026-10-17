@@ -334,6 +334,7 @@ mod receiver_tests;
 mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
+mod rfunction_tests;
 mod rmath_tests;
 mod rng_tests;
 mod rooted_view_tests;

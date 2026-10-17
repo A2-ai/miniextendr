@@ -715,6 +715,8 @@ enum RTypeCheck {
     /// List check: `is.list(x)` (1 assertion).
     /// Used for `HashMap`, `BTreeMap`, `NamedList`, `List`, `ListMut`.
     List,
+    /// An R closure, builtin or special: is.function(x), with no length check.
+    Function,
 }
 
 /// Build the R expression for the numeric type predicate.
@@ -861,6 +863,11 @@ impl RTypeCheck {
                 .into_iter()
                 .map(RAssertion::nullable)
                 .collect(),
+            RTypeCheck::Function => vec![RAssertion::new(
+                param,
+                "must be a function",
+                format!("is.function({param})"),
+            )],
             RTypeCheck::List => vec![RAssertion::new(
                 param,
                 "must be a list",
@@ -886,7 +893,8 @@ impl RTypeCheck {
             | RTypeCheck::ScalarIntegerWide
             | RTypeCheck::ScalarNonNeg
             | RTypeCheck::Scalar(_)
-            | RTypeCheck::ScalarNumericOrText => false,
+            | RTypeCheck::ScalarNumericOrText
+            | RTypeCheck::Function => false,
             RTypeCheck::Nullable(inner) => inner.is_vector(),
         }
     }
@@ -930,6 +938,7 @@ impl RTypeCheck {
                 inner => format!("NULL or {inner}"),
             },
             RTypeCheck::List => "a list".into(),
+            RTypeCheck::Function => "a function".into(),
         }
     }
 }
@@ -1098,6 +1107,8 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
         // one for the scalar. "'x' must be atomic" is base R's own wording.
         "AsCharacter" => Some(RTypeCheck::Scalar("atomic")),
         "AsCharacterVec" => Some(RTypeCheck::Vector("atomic")),
+
+        "RFunction" => Some(RTypeCheck::Function),
 
         // Option<T> → Nullable
         "Option" => {
@@ -3191,5 +3202,50 @@ mod tests {
                 r#"if (!isTRUE(inherits(x, "caf\u{e9}"))) .miniextendr_arg_error("x", "must inherit from 'caf\u{e9}'")"#
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod rfunction_tests {
+    use super::*;
+
+    #[test]
+    fn function_checks_accept_all_callable_kinds_without_a_length_constraint() {
+        for spelling in ["RFunction<'_>", "miniextendr_api::RFunction<'_>"] {
+            let ty = syn::parse_str(spelling).unwrap();
+            let check = r_check_for_type(&ty).unwrap();
+            assert_eq!(check.expectation(), "a function");
+            let checks = check.assertions("f");
+            assert_eq!(checks.len(), 1);
+            assert_eq!(checks[0].condition, "is.function(f)");
+            assert_eq!(checks[0].message(), "'f' must be a function");
+            assert!(crate::type_inspect::is_rooted_view(&ty));
+            assert!(crate::type_inspect::is_main_thread_bound_input(&ty));
+        }
+        let ty = syn::parse_quote!(Option<miniextendr_api::RFunction<'_>>);
+        let check = r_check_for_type(&ty).unwrap();
+        assert_eq!(check.expectation(), "NULL or a function");
+        assert_eq!(
+            check.assertions("f")[0].condition,
+            "is.null(f) || is.function(f)"
+        );
+        assert!(crate::type_inspect::is_rooted_view(&ty));
+        assert!(crate::type_inspect::is_main_thread_bound_input(&ty));
+    }
+
+    #[test]
+    fn static_callbacks_get_the_root_lifetime_diagnostic() {
+        for ty in [
+            syn::parse_quote!(RFunction<'static>),
+            syn::parse_quote!(Option<RFunction<'static>>),
+        ] {
+            assert!(crate::type_inspect::is_rooted_view(&ty));
+            let diagnostic =
+                crate::type_inspect::static_rooted_view_binding(&syn::parse_quote!(f), &ty)
+                    .unwrap()
+                    .to_string();
+            assert!(diagnostic.contains("cannot be"));
+            assert!(diagnostic.contains("'static"));
+        }
     }
 }

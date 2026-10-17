@@ -125,7 +125,7 @@ pub use crate::{r_print, r_println, r_warning};
 // protect-safe parse + eval function they expand to, and `REvalError` the R
 // error they return.
 pub use crate::expression::{REvalError, r_eval_str};
-pub use crate::{r, r_str};
+pub use crate::{RFunction, r, r_str};
 // endregion
 
 // region: Safe R-value surface

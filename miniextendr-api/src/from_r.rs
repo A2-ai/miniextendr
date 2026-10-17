@@ -765,6 +765,19 @@ impl std::error::Error for SexpError {
     }
 }
 
+/// A plain validator message uses the same condition transport as a classed error.
+impl From<&str> for SexpError {
+    fn from(message: &str) -> Self {
+        Self::Condition(crate::condition::RError::new(message))
+    }
+}
+
+impl From<String> for SexpError {
+    fn from(message: String) -> Self {
+        Self::Condition(crate::condition::RError::new(message))
+    }
+}
+
 impl From<std::convert::Infallible> for SexpError {
     fn from(error: std::convert::Infallible) -> Self {
         match error {}

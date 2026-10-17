@@ -712,7 +712,9 @@ pub mod encoding;
 
 // Expression evaluation helpers (RSymbol, RCall, REnv)
 pub mod expression;
+pub mod rfunction;
 pub use expression::{RCall, REnv, REvalError, RSymbol, r_eval_str, r_eval_str_global};
+pub use rfunction::RFunction;
 
 // S4 slot access and class checking helpers
 pub mod s4_helpers;

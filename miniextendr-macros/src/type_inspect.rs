@@ -202,6 +202,7 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "ProtectedStrVec",
     "StrVec",
     "RCow",
+    "RFunction",
     "BuiltDataFrame",
     "NamedListBuilder",
     "BuiltList",
@@ -338,8 +339,18 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
     let Some(seg) = path.path.segments.last() else {
         return false;
     };
-    if seg.ident == "StrVec" || seg.ident == "RCow" || seg.ident == "Cow" {
+    if seg.ident == "StrVec"
+        || seg.ident == "RCow"
+        || seg.ident == "Cow"
+        || seg.ident == "RFunction"
+    {
         return true;
+    }
+    if seg.ident == "Option" {
+        return first_type_argument(seg).is_some_and(|inner| {
+            matches!(inner, syn::Type::Path(p) if p.qself.is_none()
+                && p.path.segments.last().is_some_and(|s| s.ident == "RFunction"))
+        });
     }
     seg.ident == "Vec"
         && first_type_argument(seg).is_some_and(|elem| {
