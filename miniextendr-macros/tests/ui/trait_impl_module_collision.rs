@@ -6,7 +6,6 @@ pub struct Host;
 
 mod first {
     use miniextendr_api::miniextendr;
-    use crate::Host;
     #[miniextendr]
     pub trait Counter { fn first(&self) -> i32; }
     #[miniextendr(env)]
@@ -15,7 +14,6 @@ mod first {
 
 mod second {
     use miniextendr_api::miniextendr;
-    use crate::Host;
     #[miniextendr]
     pub trait Counter { fn second(&self) -> i32; }
     #[miniextendr(env)]

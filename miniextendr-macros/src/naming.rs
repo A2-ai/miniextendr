@@ -175,6 +175,8 @@ pub(crate) fn trait_member_c_wrapper_string(
     member_ident: &syn::Ident,
 ) -> String {
     let prefix = crate_prefix();
+    let type_ident = unraw(type_ident);
+    let trait_name = unraw(trait_name);
     let member_ident = unraw(member_ident);
     format!("C_{prefix}_{type_ident}__{trait_name}__{member_ident}")
 }

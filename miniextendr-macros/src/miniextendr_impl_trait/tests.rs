@@ -1277,6 +1277,7 @@ fn trait_method_no_na_checks_the_converted_value() {
     let out = super::vtable::generate_trait_method_c_wrapper(
         &methods[0],
         &format_ident!("Foo"),
+        &syn::parse_quote!(Foo),
         &format_ident!("Dosing"),
         &syn::parse_quote!(Dosing),
         ClassSystem::Env,
@@ -3081,6 +3082,7 @@ fn trait_static_methods_keep_r_values_on_the_main_thread() {
         let out = super::vtable::generate_trait_method_c_wrapper(
             method,
             &format_ident!("Foo"),
+            &syn::parse_quote!(Foo),
             &format_ident!("Source"),
             &syn::parse_quote!(Source),
             ClassSystem::Env,
@@ -3494,6 +3496,7 @@ fn exact_comparison_missing_operand_is_a_diagnostic_not_a_macro_panic() {
     let output = super::vtable::generate_trait_method_c_wrapper(
         &methods[0],
         &format_ident!("Item"),
+        &syn::parse_quote!(Item),
         &format_ident!("RPartialEq"),
         &syn::parse_quote!(Equality),
         ClassSystem::S3,

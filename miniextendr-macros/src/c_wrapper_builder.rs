@@ -253,9 +253,10 @@ pub struct CWrapperContext {
     /// `#[cfg(...)]` attributes from the original item, propagated to the C wrapper
     /// and `call_method_def` constant so they are conditionally compiled.
     pub cfg_attrs: Vec<syn::Attribute>,
-    /// For methods: the type identifier (e.g., `MyStruct`). Used in doc comments
-    /// and default `call_method_def` naming. `None` for standalone functions.
-    pub type_context: Option<syn::Ident>,
+    /// For methods: the naming identifier and full concrete Rust type.
+    /// Keep paths and generic arguments for conversions; only names use the identifier.
+    /// `None` for standalone functions.
+    pub type_context: Option<(syn::Ident, syn::Type)>,
     /// Whether the original method has a `self` receiver. When `true`, the C wrapper
     /// includes a `self_sexp` parameter before the regular arguments.
     pub has_self: bool,
@@ -521,7 +522,7 @@ impl CWrapperContext {
         // does not, so there they stay a compile error.
         match &self.type_context {
             None => builder = builder.with_unevaluated_args(),
-            Some(type_ident) => builder = builder.with_self_type(syn::parse_quote!(#type_ident)),
+            Some((_, self_type)) => builder = builder.with_self_type(self_type.clone()),
         }
         builder
     }
@@ -585,8 +586,8 @@ impl CWrapperContext {
             .map(|(name, _)| name.clone())
             .chain(self.convert_params.iter().cloned())
             .collect();
-        let self_ty: Option<syn::Type> = self.type_context.as_ref().map(|t| syn::parse_quote!(#t));
-        crate::externalptr_args::arg_borrows(&self.inputs, &unborrowed, self_ty.as_ref())
+        let self_ty = self.type_context.as_ref().map(|(_, ty)| ty);
+        crate::externalptr_args::arg_borrows(&self.inputs, &unborrowed, self_ty)
     }
 
     /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
@@ -1402,7 +1403,7 @@ impl CWrapperContext {
         };
         // Use custom call_method_def_ident if set, otherwise use default naming
         let call_method_def_ident = self.call_method_def_ident.clone().unwrap_or_else(|| {
-            if let Some(ref type_ident) = self.type_context {
+            if let Some((ref type_ident, _)) = self.type_context {
                 format_ident!("call_method_def_{}_{}", type_ident, fn_ident)
             } else {
                 format_ident!("call_method_def_{}", fn_ident)
@@ -1412,7 +1413,7 @@ impl CWrapperContext {
         let registration =
             crate::call_method_def::call_method_def(&call_method_def_ident, c_ident, num_args);
 
-        let item_label = if let Some(ref type_ident) = self.type_context {
+        let item_label = if let Some((ref type_ident, _)) = self.type_context {
             format!("`{}::{}`", type_ident, fn_ident)
         } else {
             format!("`{}`", fn_ident)
@@ -1442,7 +1443,7 @@ impl CWrapperContext {
     /// cross-reference to the R wrapper constant when there is one.
     fn generate_doc_comment(&self, thread_info: &str) -> String {
         let item = match self.type_context {
-            Some(ref type_ident) => format!("{}::{}", type_ident, self.fn_ident),
+            Some((ref type_ident, _)) => format!("{}::{}", type_ident, self.fn_ident),
             None => self.fn_ident.to_string(),
         };
         match self.r_wrapper_const {
@@ -1497,8 +1498,8 @@ pub struct CWrapperContextBuilder {
     rng: bool,
     /// `#[cfg(...)]` attributes to propagate to generated items.
     cfg_attrs: Vec<syn::Attribute>,
-    /// Type identifier for method context (e.g., `MyStruct`). `None` for standalone functions.
-    type_context: Option<syn::Ident>,
+    /// Naming identifier and concrete type for methods; `None` for functions.
+    type_context: Option<(syn::Ident, syn::Type)>,
     /// Whether the original method has a `self` receiver.
     has_self: bool,
     /// Custom `call_method_def` constant name override.
@@ -1637,10 +1638,10 @@ impl CWrapperContextBuilder {
         self
     }
 
-    /// Sets the type context for methods (e.g., `MyStruct`). Used in doc comments
-    /// and default `call_method_def` naming.
-    pub fn type_context(mut self, type_ident: syn::Ident) -> Self {
-        self.type_context = Some(type_ident);
+    /// Sets the method's naming identifier and full Rust type. The identifier
+    /// supplies docs/registration names; the type supplies `Self` conversions.
+    pub fn type_context(mut self, type_ident: syn::Ident, self_type: syn::Type) -> Self {
+        self.type_context = Some((type_ident, self_type));
         self
     }
 

@@ -205,12 +205,14 @@
 //! ### Base Vtable
 //!
 //! ```ignore
-//! static __MX_BASE_VTABLE_MyCounter: mx_base_vtable = mx_base_vtable {
-//!     drop: ErasedObject::<MyCounter>::drop_raw,
-//!     concrete_tag: __MX_TAG_MyCounter,
-//!     query: ErasedObject::<MyCounter>::query,
-//!     data_offset: ErasedObject::<MyCounter>::DATA_OFFSET,
-//! };
+//! static __MX_BASE_VTABLE_MyCounter: LazyLock<mx_base_vtable> = LazyLock::new(|| {
+//!     mx_base_vtable {
+//!         drop: ErasedObject::<MyCounter>::drop_raw,
+//!         concrete_tag: mx_tag_from_path(core::any::type_name::<MyCounter>()),
+//!         query: ErasedObject::<MyCounter>::query,
+//!         data_offset: ErasedObject::<MyCounter>::DATA_OFFSET,
+//!     }
+//! });
 //! ```
 //!
 //! Trait implementations register their vtables with the dispatch registry.
@@ -2535,8 +2537,7 @@ pub fn derive_external_ptr(
 /// Generate the type-erased wrapper infrastructure for trait ABI dispatch.
 ///
 /// For `#[derive(ExternalPtr)] struct MyCounter { ... }` generates:
-/// - `__MX_TAG_MyCounter` - concrete type tag (FNV-1a hash of module_path + type)
-/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with trait/sidecar query
+/// - `__MX_BASE_VTABLE_MyCounter` - lazy base vtable with canonical concrete-type tag and trait/sidecar query
 /// - `__mx_wrap_MyCounter` - constructor returning `*mut mx_erased`
 fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     let type_ident = &input.ident;
@@ -2547,29 +2548,27 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     }
 
     // Preserve case: distinct Rust types need distinct module-local helpers.
+    // Resolve identity from Rust's type name, not the spelling/module of an
+    // impl. LazyLock keeps the fixed ABI vtable rooted at a static address;
+    // type_name is not const-stable on the supported Rust versions.
     let type_name = crate::naming::unraw(type_ident);
 
     let base_vtable_name = quote::format_ident!("__MX_BASE_VTABLE_{}", type_name);
-    let concrete_tag_name = quote::format_ident!("__MX_TAG_{}", type_name);
     let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_name);
     let source_loc_doc = crate::source_location_doc(type_ident.span());
-    let tag_path = format!("::{}", type_ident);
 
     quote::quote! {
         #[doc(hidden)]
         #[allow(non_upper_case_globals)]
-        const #concrete_tag_name: ::miniextendr_api::abi::mx_tag =
-            ::miniextendr_api::abi::mx_tag_from_path(::core::concat!(::core::module_path!(), #tag_path));
-
-        #[doc(hidden)]
-        #[allow(non_upper_case_globals)]
-        static #base_vtable_name: ::miniextendr_api::abi::mx_base_vtable =
-            ::miniextendr_api::abi::mx_base_vtable {
+        static #base_vtable_name: ::std::sync::LazyLock<::miniextendr_api::abi::mx_base_vtable> =
+            ::std::sync::LazyLock::new(|| ::miniextendr_api::abi::mx_base_vtable {
                 drop: ::miniextendr_api::abi::ErasedObject::<#type_ident>::drop_raw,
-                concrete_tag: #concrete_tag_name,
+                concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
+                    ::core::any::type_name::<#type_ident>()
+                ),
                 query: ::miniextendr_api::abi::ErasedObject::<#type_ident>::query,
                 data_offset: ::miniextendr_api::abi::ErasedObject::<#type_ident>::DATA_OFFSET,
-            };
+            });
 
         #[doc(hidden)]
         #[doc = #source_loc_doc]
@@ -2578,7 +2577,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
             // SAFETY: the matching base vtable above uses this storage's
             // destructor/offset and this concrete type's registry tag.
             unsafe {
-                ::miniextendr_api::abi::ErasedObject::into_raw(data, &#base_vtable_name)
+                ::miniextendr_api::abi::ErasedObject::into_raw(data, ::std::sync::LazyLock::force(&#base_vtable_name))
             }
         }
     }

@@ -106,7 +106,16 @@ interface contract, not Rust type identity: packages must use the same spelling
 and agree on what imported names, aliases and associated types mean. An alias
 and its expanded type can conservatively produce different tags.
 
-Concrete type tags are separate from these trait interface tags.
+Concrete type tags are separate from these trait interface tags. They hash
+Rust's resolved `core::any::type_name::<T>()`, so an impl in another module,
+a qualified type path or a type alias uses the defining type's identity.
+Generated wrappers keep that full type for receiver extraction, `Self`
+arguments, static methods, constants and inherited defaults; short names
+still determine C/R member names. The fixed-layout base vtable initializes
+once through `LazyLock` because `type_name` is not const-stable. Native
+dispatch entries resolve their concrete tag through a function pointer;
+the wasm snapshot records that tag as a literal-returning callback.
+The R trait namespaces and exported vtable symbols do not change.
 
 ### Erased Header (`mx_erased`)
 

@@ -655,8 +655,10 @@ unsafe impl Sync for SidecarPropEntry {}
 /// Trait dispatch entry mapping (concrete_tag, trait_tag) → vtable.
 #[repr(C)]
 pub struct TraitDispatchEntry {
-    /// Tag identifying the concrete type.
-    pub concrete_tag: mx_tag,
+    /// Resolve the concrete type's tag from its canonical Rust name.
+    /// A function keeps module paths and aliases correct without unstable
+    /// const `type_name`; the wasm snapshot replaces it with a literal closure.
+    pub concrete_tag: fn() -> mx_tag,
     /// Tag identifying the trait interface.
     pub trait_tag: mx_tag,
     /// Pointer to the trait's vtable (cast from `&'static SomeVTable`).
@@ -708,7 +710,7 @@ unsafe impl Send for AltrepRegistration {}
 pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag) -> *const c_void {
     let concrete_tag = unsafe { (*(*ptr).base).concrete_tag };
     for entry in trait_dispatch().iter() {
-        if entry.concrete_tag == concrete_tag && entry.trait_tag == trait_tag {
+        if entry.trait_tag == trait_tag && (entry.concrete_tag)() == concrete_tag {
             return entry.vtable;
         }
     }

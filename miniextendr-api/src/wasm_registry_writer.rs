@@ -37,7 +37,8 @@ use std::fmt::Write as _;
 //    `install_wasm_runtime_slices` (#1768).
 // 3: ALTREP registration function pointers use the C-unwind ABI.
 // 4: Trait vtable symbols preserve crate, trait and type spelling (#1778).
-const GENERATOR_VERSION: u32 = 4;
+// 5: Concrete trait tags resolve through callbacks using canonical type names.
+const GENERATOR_VERSION: u32 = 5;
 
 /// Pre-extracted, host-side view of one `R_CallMethodDef`.
 ///
@@ -252,7 +253,7 @@ fn format_trait_dispatch_slice(out: &mut String, trait_dispatches: &[&TraitDispa
         // dispatch-free files carry no unused imports — see format_body.
         writeln!(
             out,
-            "        concrete_tag: ::miniextendr_api::abi::mx_tag::new(0x{:016x}, 0x{:016x}),",
+            "        concrete_tag: || ::miniextendr_api::abi::mx_tag::new(0x{:016x}, 0x{:016x}),",
             row.concrete_tag.lo, row.concrete_tag.hi
         )
         .unwrap();
@@ -359,7 +360,7 @@ fn read_runtime_slices() -> (Vec<CallDefRow>, Vec<AltrepRegRow>, Vec<TraitDispat
     let trait_dispatches: Vec<TraitDispatchRow> = MX_TRAIT_DISPATCH
         .iter()
         .map(|t: &TraitDispatchEntry| TraitDispatchRow {
-            concrete_tag: t.concrete_tag,
+            concrete_tag: (t.concrete_tag)(),
             trait_tag: t.trait_tag,
             vtable_symbol: t.vtable_symbol.to_string(),
         })
@@ -573,14 +574,14 @@ mod tests {
     }
 
     #[test]
-    fn renders_mx_tag_with_const_constructor() {
+    fn renders_concrete_tag_callback_and_trait_tag_literal() {
         let (a, b, c) = sample_inputs();
         let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
             out.contains(
-                "::miniextendr_api::abi::mx_tag::new(0xdeadbeefdeadbeef, 0x1234567812345678)"
+                "concrete_tag: || ::miniextendr_api::abi::mx_tag::new(0xdeadbeefdeadbeef, 0x1234567812345678)"
             ),
-            "expected fully-qualified concrete_tag literal; got:\n{out}"
+            "expected fully-qualified concrete_tag callback; got:\n{out}"
         );
         assert!(
             out.contains(

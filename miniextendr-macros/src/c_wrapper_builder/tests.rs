@@ -321,7 +321,7 @@ fn argument_borrows_follow_conversion() {
         .inputs(sig.sig.inputs.clone())
         .thread_strategy(ThreadStrategy::MainThread)
         .post_conversion(vec![quote::quote!(post_conversion_marker();)])
-        .type_context(syn::parse_quote!(Counter))
+        .type_context(syn::parse_quote!(Counter), syn::parse_quote!(Counter))
         .preserve_param_names()
         .build()
         .generate()

@@ -40,5 +40,5 @@ fn main() {
     let _: fn(Counter) -> *mut mx_erased = __mx_wrap_Counter;
     let _: fn(counter) -> *mut mx_erased = __mx_wrap_counter;
     let _: fn(r#type) -> *mut mx_erased = __mx_wrap_type;
-    assert_ne!(__MX_TAG_Counter, __MX_TAG_counter);
+    assert_ne!(__MX_BASE_VTABLE_Counter.concrete_tag, __MX_BASE_VTABLE_counter.concrete_tag);
 }

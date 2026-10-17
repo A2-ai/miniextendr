@@ -1001,14 +1001,14 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let class_system = tpie_input.class_system;
     let class_system_str = class_system.to_ident().to_string();
 
-    let trait_name = &tpie_input.abi.name;
+    let trait_name = &crate::naming::unraw(&tpie_input.abi.name);
 
     let type_ident = match &concrete_type {
         syn::Type::Path(tp) => tp
             .path
             .segments
             .last()
-            .map(|s| s.ident.clone())
+            .map(|s| crate::naming::unraw(&s.ident))
             .unwrap_or_else(|| format_ident!("Unknown")),
         _ => format_ident!("Unknown"),
     };
@@ -1044,6 +1044,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             generate_trait_method_c_wrapper(
                 m,
                 &type_ident,
+                &concrete_type,
                 trait_name,
                 trait_path,
                 class_system,
@@ -1153,8 +1154,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #[allow(non_upper_case_globals)]
         static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
             ::miniextendr_api::registry::TraitDispatchEntry {
-                concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
-                    ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#type_ident))
+                concrete_tag: || ::miniextendr_api::abi::mx_tag_from_path(
+                    ::core::any::type_name::<#concrete_type>()
                 ),
                 trait_tag: ::miniextendr_api::abi::mx_tag_from_path(#trait_tag),
                 vtable: unsafe {

@@ -43,7 +43,7 @@ pub(super) fn generate_vtable_static(
     declaration: &[syn::TraitItemFn],
     defaults: &[syn::ImplItemFn],
 ) -> TokenStream {
-    let trait_name = &abi.name;
+    let trait_name = &crate::naming::unraw(&abi.name);
     let class_system_str = impl_attrs.class_system.to_ident().to_string();
 
     // Extract type identifier (for simple types)
@@ -56,7 +56,7 @@ pub(super) fn generate_vtable_static(
                 )
                 .into_compile_error();
             };
-            last_seg.ident.clone()
+            crate::naming::unraw(&last_seg.ident)
         }
         _ => format_ident!("Unknown"),
     };
@@ -109,6 +109,7 @@ pub(super) fn generate_vtable_static(
             generate_trait_method_c_wrapper(
                 m,
                 &type_ident,
+                concrete_type,
                 trait_name,
                 trait_path,
                 impl_attrs.class_system,
@@ -120,7 +121,9 @@ pub(super) fn generate_vtable_static(
     // Generate C wrappers for consts
     let const_c_wrappers: Vec<TokenStream> = consts
         .iter()
-        .map(|c| generate_trait_const_c_wrapper(c, &type_ident, trait_name, trait_path))
+        .map(|c| {
+            generate_trait_const_c_wrapper(c, &type_ident, concrete_type, trait_name, trait_path)
+        })
         .collect();
 
     // Combine C wrappers
@@ -291,8 +294,8 @@ pub(super) fn generate_vtable_static(
         #[allow(non_upper_case_globals)]
         static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
             ::miniextendr_api::registry::TraitDispatchEntry {
-                concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
-                    ::core::concat!(::core::module_path!(), "::", ::core::stringify!(#type_ident))
+                concrete_tag: || ::miniextendr_api::abi::mx_tag_from_path(
+                    ::core::any::type_name::<#concrete_type>()
                 ),
                 trait_tag: ::miniextendr_api::abi::mx_tag_from_path(#trait_tag),
                 vtable: unsafe {
@@ -319,13 +322,13 @@ pub(super) fn generate_impl_vtable(
     methods: &[TraitMethod],
     declaration: &[syn::TraitItemFn],
 ) -> syn::Result<TokenStream> {
-    let trait_name = &abi.name;
+    let trait_name = &crate::naming::unraw(&abi.name);
     let type_name = type_to_symbol_name(concrete_type);
     let static_name = crate::naming::vtable_static_ident(trait_name, &type_name);
     let layout_name = crate::naming::vtable_layout_ident(trait_name, &type_name);
     let fields = &abi.fields;
     let type_ident = match concrete_type {
-        syn::Type::Path(path) => path.path.segments.last().unwrap().ident.clone(),
+        syn::Type::Path(path) => crate::naming::unraw(&path.path.segments.last().unwrap().ident),
         _ => format_ident!("Unknown"),
     };
     // `no_mangle` statics in different modules can pass cargo check and only
@@ -1370,6 +1373,7 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
 pub(super) fn generate_trait_method_c_wrapper(
     method: &TraitMethod,
     type_ident: &syn::Ident,
+    concrete_type: &syn::Type,
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
     class_system: ClassSystem,
@@ -1461,13 +1465,13 @@ pub(super) fn generate_trait_method_c_wrapper(
         .output(method.sig.output.clone())
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
-        .type_context(type_ident.clone())
+        .type_context(type_ident.clone(), concrete_type.clone())
         .call_method_def_ident(call_method_def_ident);
 
     if method.inherited_signature {
         builder = builder.inferred_signature(crate::trait_signature::callable(
             &method.sig,
-            quote::quote!(<#type_ident as #trait_path>::#method_ident),
+            quote::quote!(<#concrete_type as #trait_path>::#method_ident),
         ));
     }
 
@@ -1486,7 +1490,9 @@ pub(super) fn generate_trait_method_c_wrapper(
         .has_self
         .then(|| (quote::quote!(__miniextendr_receiver_addr), method.is_mut));
     post_conversion.push(crate::trait_self_ref::alias_checks(
-        type_ident, &handles, receiver,
+        concrete_type,
+        &handles,
+        receiver,
     ));
 
     if method.has_self {
@@ -1498,7 +1504,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         let guard = syn::Ident::new("__mx_guard", proc_macro2::Span::mixed_site());
         let resolve = quote::quote! {
             let #owner =
-                ::miniextendr_api::externalptr::ReceiverOwner::resolve::<#type_ident>(#self_sexp);
+                ::miniextendr_api::externalptr::ReceiverOwner::resolve::<#concrete_type>(#self_sexp);
         };
         let self_extraction = if let Some(kind) = crate::trait_receiver::owner_receiver(&method.sig)
         {
@@ -1523,7 +1529,7 @@ pub(super) fn generate_trait_method_c_wrapper(
             quote::quote! {
                 #resolve
                 let #receiver_mutability #self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
+                    ::miniextendr_api::externalptr::wrap_receiver::<#concrete_type>(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
                 };
                 #address
             }
@@ -1549,9 +1555,9 @@ pub(super) fn generate_trait_method_c_wrapper(
                 let #self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::ReceiverOwner::get(&#owner))
                 };
-                let #cell = match ::miniextendr_api::externalptr::ErasedExternalPtr::downcast_cell::<#type_ident>(&#self_ptr) {
+                let #cell = match ::miniextendr_api::externalptr::ErasedExternalPtr::downcast_cell::<#concrete_type>(&#self_ptr) {
                     ::core::option::Option::Some(cell) => cell,
-                    ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                    ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#concrete_type>(
                         &#self_ptr, #trait_method_name,
                     ),
                 };
@@ -1563,7 +1569,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         // Use fully-qualified syntax to avoid ambiguity with generic traits
         // (e.g., `RExtend<i32>::method()` is ambiguous — `<` parsed as comparison)
         let call_expr = quote::quote! {
-            <#type_ident as #trait_path>::#method_ident(#self_ref, #(#call_args),*)
+            <#concrete_type as #trait_path>::#method_ident(#self_ref, #(#call_args),*)
         };
         // The exact-comparison protocol exposes all.equal, while its trait ABI
         // still returns bool. Use the ordinary borrow/unwind/condition boundary.
@@ -1607,7 +1613,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     } else {
         // Static method: call directly without self
         let call_expr = quote::quote! {
-            <#type_ident as #trait_path>::#method_ident(#(#call_args),*)
+            <#concrete_type as #trait_path>::#method_ident(#(#call_args),*)
         };
         let call_expr = crate::type_inspect::prepare_return_value(
             call_expr,
@@ -1669,7 +1675,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     let callable = method.inherited_signature.then(|| {
         crate::trait_signature::callable(
             &method.sig,
-            quote::quote!(<#type_ident as #trait_path>::#method_ident),
+            quote::quote!(<#concrete_type as #trait_path>::#method_ident),
         )
     });
     let choices = crate::match_arg_keys::method_entries(
@@ -1690,6 +1696,7 @@ pub(super) fn generate_trait_method_c_wrapper(
 pub(super) fn generate_trait_const_c_wrapper(
     trait_const: &TraitConst,
     type_ident: &syn::Ident,
+    concrete_type: &syn::Type,
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
 ) -> TokenStream {
@@ -1708,7 +1715,7 @@ pub(super) fn generate_trait_const_c_wrapper(
 
     // Build the call expression to access the const
     let call_expr = quote::quote! {
-        <#type_ident as #trait_path>::#const_ident
+        <#concrete_type as #trait_path>::#const_ident
     };
 
     // Determine return type handling - we need to convert the const to SEXP
@@ -1724,7 +1731,7 @@ pub(super) fn generate_trait_const_c_wrapper(
         .call_expr(call_expr)
         .thread_strategy(ThreadStrategy::MainThread)
         .return_handling(return_handling)
-        .type_context(type_ident.clone())
+        .type_context(type_ident.clone(), concrete_type.clone())
         .call_method_def_ident(call_method_def_ident);
 
     builder.build().generate()

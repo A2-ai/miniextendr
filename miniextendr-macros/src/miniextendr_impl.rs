@@ -4052,7 +4052,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
             method.method_attrs.serde_error.as_ref(),
         ))
         .cfg_attrs(parsed_impl.cfg_attrs.clone())
-        .type_context(type_ident.clone());
+        .type_context(type_ident.clone(), syn::parse_quote!(#type_ident));
 
     if method.env.is_instance() {
         builder = builder.has_self();
