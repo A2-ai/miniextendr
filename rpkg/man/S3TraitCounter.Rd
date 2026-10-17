@@ -49,4 +49,6 @@ S3 generic for \code{value}
 S3 generic for \code{increment}
 
 S3 generic for \code{checked_add}
+
+Static method: Returns the default initial value for this counter type.
 }

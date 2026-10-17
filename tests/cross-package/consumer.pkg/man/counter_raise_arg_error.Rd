@@ -16,6 +16,6 @@ Raise an arg_error!() through a Counter trait method via trait dispatch.
 
 Verifies that a producer-side \verb{arg_error!()} reaches the consumer as an
 argument error: \code{e$kind == "conversion"}, \code{e$param}, the consumer wrapper's
-call, and the consumer crate's \code{conversion_error_class} (none here), since
-the consumer's wrapper raises it (#1740).
+call, and the implementing package's \code{conversion_error_class}, as from that
+package's own wrapper for the method.
 }

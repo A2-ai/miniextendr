@@ -35,6 +35,8 @@ Arguments of \code{SeededNormal$new()}:
 \item{\code{seed}}{Integer seed (absolute value is used).}
 }
 
+Draw a single sample from the distribution.
+
 Arguments of \code{SeededNormal$RDistributionOps$sample_n()}:
 
 \describe{
@@ -46,4 +48,16 @@ Arguments of \code{SeededNormal$RDistributionOps$sample_vec()}:
 \describe{
 \item{\code{n}}{Integer number of samples to draw.}
 }
+
+Get the mean/expected value of the distribution, if known.
+
+Returns None by default. Override for distributions with known mean.
+
+Get the variance of the distribution, if known.
+
+Returns None by default. Override for distributions with known variance.
+
+Get the standard deviation of the distribution, if known.
+
+Default implementation returns sqrt(variance) if variance is known.
 }

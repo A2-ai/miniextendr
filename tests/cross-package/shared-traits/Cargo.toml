@@ -10,6 +10,12 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+# The declaring crate's class never reaches R: a trait method's argument
+# errors take the implementing package's classes (consumer.pkg's
+# test-error-classes.R checks that none of these appear).
+[package.metadata.miniextendr]
+conversion_error_class = ["shared_traits_error_argument", "shared_traits_error"]
+
 [dependencies]
 miniextendr-api = { path = "../../../miniextendr-api" , version = "*" }
 

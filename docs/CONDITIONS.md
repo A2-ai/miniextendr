@@ -1066,7 +1066,8 @@ the body's alike.
   (`kind = "result_err"`), so raise it with `.raise()`.
 - **Where it works**: immediate calls, `#[miniextendr(worker)]` bodies (the
   worker wrapper builds the condition on the main thread) and trait-ABI calls,
-  where the consumer package's wrapper raises it with that crate's classes.
+  where the consumer package's wrapper raises it with the classes of the
+  package that implements the method, as that package's own wrapper would.
 
 **How the crate's classes get there.** A `macro_rules!` macro cannot read
 `[package.metadata.miniextendr]`, so the tagged condition value carries the
@@ -1084,6 +1085,9 @@ classes `miniextendr_init!` registered for the package (on wasm32, the copy
 the `wasm_registry.rs` snapshot carries), and raises the same condition: the
 crate classes, `kind = "conversion"`, `e$param` and the `rust_error` layering
 (#1768). A connection callback returns its fallback value, as for any panic.
+A trait-ABI shim resolves it the same way before returning the condition to
+the calling package, so the classes are the implementing package's
+([TRAIT_ABI.md](TRAIT_ABI.md)).
 
 ## Trait-ABI and ALTREP error class layering
 

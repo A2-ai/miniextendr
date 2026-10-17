@@ -32,4 +32,43 @@ Point
 }
 \description{
 Point inherent methods: constructor and field accessors.
+
+Get a compact debug string representation.
+
+Get a pretty-printed debug string with indentation.
+
+Convert to a user-friendly string.
+
+Compute a hash of this value.
+
+Returns the \code{DefaultHasher} \code{u64} output as a 16-character lowercase
+hex string, which keeps all 64 bits: R has no 64-bit integer, and a
+number would lose the low bits above \code{2^53}.
+
+Create a deep copy of this value.
+
+Create a new instance with default values.
+
+Parse a string into this type.
+
+Returns \code{Some(value)} on success, \code{None} on parse failure, which R
+raises as \verb{ `from_str()` returned no value}.
+
+Create a bitwise copy of this value.
+
+For Copy types, this is always cheap (O(1), no heap allocation).
+
+Check if this type implements Copy.
+
+Always returns true for types implementing this trait.
+Useful for runtime type checking in R.
+
+Compare with another value.
+
+Returns:
+\itemize{
+\item \code{-1} if \code{self < other}
+\item \code{0} if \code{self == other}
+\item \code{1} if \code{self > other}
+}
 }

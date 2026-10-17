@@ -65,8 +65,8 @@ pub trait Counter {
 
     /// Raise an `arg_error!()` for argument `mode` — verifies that the
     /// argument error keeps `e$kind == "conversion"` and `e$param` across the
-    /// trait-ABI boundary and takes the consumer crate's
-    /// `conversion_error_class` (#1740).
+    /// trait-ABI boundary and takes the implementing package's
+    /// `conversion_error_class`, whichever package calls it.
     fn raise_arg_error(&self, mode: String);
 }
 

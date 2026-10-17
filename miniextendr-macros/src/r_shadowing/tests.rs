@@ -26,6 +26,17 @@ fn choice_attrs(name: &str, ty: &str) -> crate::miniextendr_fn::ParamAttrs {
     attrs
 }
 
+#[test]
+fn refers_to_finds_variable_uses_only() {
+    assert!(refers_to("stopifnot(k > 0)", "k"));
+    assert!(refers_to("x <- k\n", "k"));
+    assert!(refers_to("f(x == k)", "k"));
+    assert!(!refers_to("stopifnot(kk > 0, k2 > 0)", "k"));
+    assert!(!refers_to("message(\"k is wrong\") # k", "k"));
+    assert!(!refers_to("obj$k + obj@k + pkg::k", "k"));
+    assert!(!refers_to("f(k = 1)", "k"));
+}
+
 // region: the pass
 
 #[test]

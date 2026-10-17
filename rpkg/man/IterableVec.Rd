@@ -23,4 +23,9 @@ IterableVec
 }
 \description{
 IterableVec inherent methods: constructor, length, and conversion.
+
+Create a new iterator wrapper.
+
+The iterator is independent from this collection (typically by cloning
+the underlying data).
 }

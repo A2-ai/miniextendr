@@ -10,6 +10,8 @@
 ExportControlTraitPoint
 }
 \description{
-ExportControlTraitPoint Class
+Get a compact debug string representation.
+
+Get a pretty-printed debug string with indentation.
 }
 \keyword{internal}

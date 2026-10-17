@@ -241,16 +241,23 @@ test_that("trait condition!(): classed + catchable + e$kind", {
 })
 
 # arg_error!() — an argument error found by the implementation's body
-test_that("trait arg_error!(): kind, param and the consumer crate's classes (#1740)", {
+test_that("trait arg_error!(): kind, param and the implementing package's classes", {
   skip_if_not_installed("producer.pkg")
   library(producer.pkg)
 
-  counters <- list(new_counter(5L), new_stateful_counter(2L), new_double_counter(1L))
-  for (counter in counters) {
-    e <- tryCatch(counter_raise_arg_error(counter, "sideways"), error = function(e) e)
-    # The consumer's wrapper raises the condition, so the crate classes are
-    # consumer.pkg's (it sets no conversion_error_class), not producer.pkg's.
-    expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  base <- c("rust_error", "simpleError", "error", "condition")
+  # The classes are those of the package that implements the method, as from
+  # its own wrapper, not those of the consumer that raises the condition:
+  # producer.pkg for SimpleCounter and StatefulCounter, consumer.pkg for
+  # DoubleCounter.
+  cases <- list(
+    list(counter = new_counter(5L), class = c("producer_error_argument", "producer_error", base)),
+    list(counter = new_stateful_counter(2L), class = c("producer_error_argument", "producer_error", base)),
+    list(counter = new_double_counter(1L), class = c("consumer_error_argument", "consumer_error", base))
+  )
+  for (case in cases) {
+    e <- tryCatch(counter_raise_arg_error(case$counter, "sideways"), error = function(e) e)
+    expect_identical(class(e), case$class)
     expect_identical(e$kind, "conversion")
     expect_identical(e$param, "mode")
     expect_identical(conditionMessage(e), "'mode' is not a counter mode: \"sideways\"")
@@ -258,9 +265,10 @@ test_that("trait arg_error!(): kind, param and the consumer crate's classes (#17
     expect_true(grepl("counter_raise_arg_error", deparse(conditionCall(e))[[1]]))
   }
 
-  # The consumer's own check of the same argument raises the same family.
+  # The consumer function's own check of its `mode` argument is the
+  # consumer's argument error, whichever counter it was given.
   e_check <- tryCatch(counter_raise_arg_error(new_counter(1L), 1:2), error = function(e) e)
-  expect_identical(class(e_check), class(e))
+  expect_identical(class(e_check), c("consumer_error_argument", "consumer_error", base))
   expect_identical(e_check$kind, "conversion")
   expect_identical(e_check$param, "mode")
 })
@@ -421,21 +429,30 @@ test_that("a shim's failed argument conversion reaches the caller as rust_error"
   skip_if_not_installed("producer.pkg")
   library(producer.pkg)
 
+  base <- c("rust_error", "simpleError", "error", "condition")
+  producer <- c("producer_error_argument", "producer_error", base)
+  consumer <- c("consumer_error_argument", "consumer_error", base)
   # counter_add_raw() hands its R value to the shim as is, as a caller that
-  # skips the View does, so the producer's shim converts it.
-  counters <- list(new_counter(5L), new_stateful_counter(5L), new_double_counter(5L))
+  # skips the View does, so the implementing package's shim converts it, with
+  # that package's classes.
+  counters <- list(
+    list(counter = new_counter(5L), class = producer),
+    list(counter = new_stateful_counter(5L), class = producer),
+    list(counter = new_double_counter(5L), class = consumer)
+  )
   cases <- list(
     list(n = "five", message = "'n' must be a single integer: got character"),
     list(n = NA_integer_, message = "'n' must be a single integer: NA is not allowed"),
     list(n = 1:2, message = "'n' must be a single integer: got length 2")
   )
-  for (counter in counters) {
+  for (impl in counters) {
+    counter <- impl$counter
     for (case in cases) {
       e <- tryCatch(counter_add_raw(counter, case$n), error = function(e) e)
       expect_identical(e$kind, "conversion")
       expect_identical(e$param, "n")
       expect_identical(e$rust_type, "i32")
-      expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+      expect_identical(class(e), impl$class)
       expect_true(startsWith(conditionMessage(e), case$message),
         info = conditionMessage(e))
       expect_true(grepl("counter_add_raw", deparse(conditionCall(e))[[1]]),
@@ -446,6 +463,32 @@ test_that("a shim's failed argument conversion reaches the caller as rust_error"
     counter_add_raw(counter, 2L)
     expect_equal(peek_value(counter), 7L)
   }
+})
+
+test_that("a trait method's argument error has one class on every path", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  base <- c("rust_error", "simpleError", "error", "condition")
+  arg_error <- function(expr) tryCatch(expr, error = function(e) e)
+
+  # producer.pkg implements Counter for SimpleCounter: its own wrapper and
+  # consumer.pkg's call through the vtable raise producer.pkg's classes. The
+  # trait is declared in shared-traits, whose classes never appear.
+  producer <- c("producer_error_argument", "producer_error", base)
+  direct <- arg_error(SimpleCounter$Counter$add(new_counter_external(5L), "five"))
+  through_vtable <- arg_error(counter_add_raw(new_counter(5L), "five"))
+  expect_identical(class(direct), producer)
+  expect_identical(class(through_vtable), producer)
+  expect_identical(direct$param, through_vtable$param)
+
+  # consumer.pkg implements it for DoubleCounter: consumer.pkg's classes.
+  consumer <- c("consumer_error_argument", "consumer_error", base)
+  direct <- arg_error(DoubleCounter$create(5L)$Counter$add("five"))
+  through_vtable <- arg_error(counter_add_raw(new_double_counter(5L), "five"))
+  expect_identical(class(direct), consumer)
+  expect_identical(class(through_vtable), consumer)
+  expect_identical(direct$param, through_vtable$param)
 })
 
 test_that("a View's failed result conversion reaches the caller as rust_error", {

@@ -11,6 +11,12 @@ publish = false
 path = "lib.rs"
 crate-type = ["staticlib"]
 
+# A class of its own, distinct from producer.pkg's: an argument error takes
+# the classes of the package that implements the method, whichever package
+# calls it (test-error-classes.R).
+[package.metadata.miniextendr]
+conversion_error_class = ["consumer_error_argument", "consumer_error"]
+
 [features]
 default = []
 nonapi = ["miniextendr-api/nonapi"]
