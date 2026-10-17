@@ -807,6 +807,41 @@ struct SidecarInfo {
     class_system: ClassSystem,
 }
 
+/// A sidecar's stored or computed value, shared with comparison derives.
+/// Ordinary fields keep the comparison derive's Clone + IntoR path.
+pub(crate) enum ComparisonField {
+    Selector,
+    Slot(usize),
+    Computed(syn::Path),
+}
+
+pub(crate) fn comparison_fields(
+    input: &DeriveInput,
+) -> syn::Result<std::collections::HashMap<String, ComparisonField>> {
+    let attrs = parse_externalptr_attrs(input)?;
+    let info = parse_sidecar_info(input, attrs.class_system)?;
+    let mut fields = std::collections::HashMap::new();
+    if let syn::Data::Struct(data) = &input.data {
+        for field in &data.fields {
+            if has_r_data_attr(field)
+                && is_rsidecar_type(field)
+                && let Some(name) = &field.ident
+            {
+                fields.insert(crate::naming::ident_name(name), ComparisonField::Selector);
+            }
+        }
+    }
+    for slot in info.slots {
+        let value = match slot.kind {
+            SlotKind::Sidecar(index) => ComparisonField::Slot(index),
+            SlotKind::Computed(getter) => ComparisonField::Computed(getter),
+            _ => continue,
+        };
+        fields.insert(crate::naming::ident_name(&slot.name), value);
+    }
+    Ok(fields)
+}
+
 /// The getter path of a `Computed` field, `#[r_data(get = "Self::f")]`,
 /// parsed from the literal; a leading `Self` becomes the struct's name, since
 /// the getter is called from a free function the derive emits outside any

@@ -6270,3 +6270,25 @@ pub fn gc_stress_field_fallbacks() {
         .expect("fallback borrow and return remain rooted");
     }
 }
+
+/// Keep AllEqual's field lists rooted while later getters allocate.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_all_equal() {
+    unsafe {
+        miniextendr_api::expression::r_eval_str_global(
+            r#"
+            local({
+                x <- miniextendr::new_equalgetter("borrowed", 1)
+                y <- miniextendr::new_equalgetter("borrowed", 1.001)
+                stopifnot(isTRUE(all.equal(x, y)))
+                x <- miniextendr::new_equalsidecar(quote(stop("not evaluated")), 1)
+                y <- miniextendr::new_equalsidecar(quote(stop("not evaluated")), 1)
+                stopifnot(isTRUE(all.equal(x, y)))
+                y$value <- 5
+                stopifnot(is.character(all.equal(x, y)))
+            })
+        "#,
+        )
+        .expect("AllEqual fields and getter returns remain rooted");
+    }
+}

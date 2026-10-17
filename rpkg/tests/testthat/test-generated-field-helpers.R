@@ -3,7 +3,7 @@ test_that("field helpers are emitted only for classes with field syntax", {
   types <- c(
     "SidecarEnv", "SidecarS3", "SidecarS3Get", "SidecarComputed",
     "SidecarHandmade", "SidecarStrict", "SidecarS4",
-    "FallbackS3", "FallbackS4", "FallbackEnv", "FallbackScalar"
+    "FallbackS3", "FallbackS4", "FallbackEnv", "FallbackScalar", "EqualSidecar"
   )
   for (kind in c("fields", "get", "set", "no_field", "error_class", "every_read", "live")) {
     prefix <- paste0(".rdata_", kind, "_")

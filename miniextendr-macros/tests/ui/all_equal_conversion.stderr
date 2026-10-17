@@ -1,0 +1,18 @@
+error[E0277]: the trait bound `NotConvertible: IntoR` is not satisfied
+ --> tests/ui/all_equal_conversion.rs:8:12
+  |
+8 |     field: NotConvertible,
+  |            ^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `IntoExternalPtr` is not implemented for `NotConvertible`
+ --> tests/ui/all_equal_conversion.rs:4:1
+  |
+4 | struct NotConvertible;
+  | ^^^^^^^^^^^^^^^^^^^^^
+help: the trait `IntoExternalPtr` is implemented for `NeedsGetter`
+ --> tests/ui/all_equal_conversion.rs:6:10
+  |
+6 | #[derive(ExternalPtr, AllEqual)]
+  |          ^^^^^^^^^^^
+  = note: required for `NotConvertible` to implement `IntoR`
+  = note: this error originates in the derive macro `ExternalPtr` (in Nightly builds, run with -Z macro-backtrace for more info)

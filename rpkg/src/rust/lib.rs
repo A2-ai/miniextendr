@@ -133,6 +133,7 @@ mod adapter_traits_tests;
 #[cfg(feature = "aho-corasick")]
 mod aho_corasick_adapter_tests;
 mod alias_fixtures;
+mod all_equal_tests;
 mod altrep_condition_tests;
 mod altrep_container_tests;
 mod altrep_manual_fixture;

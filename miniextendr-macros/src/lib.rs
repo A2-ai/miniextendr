@@ -186,6 +186,7 @@ pub(crate) use rust_conversion_builder::RustConversionBuilder;
 mod method_return_builder;
 /// Helpers for shaping method return handling (R vs Rust wrapper code).
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
+mod all_equal_derive;
 mod altrep_derive;
 mod condition_derive;
 mod dataframe_derive;
@@ -2637,6 +2638,27 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
     // `prefer = "native"` dispatch path suppresses it (#1283).
     externalptr_derive::derive_external_ptr(input, true)
         .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Compare a pointer-backed struct field by field using R's `all.equal()`.
+///
+/// Every unskipped field is cloned and converted with `IntoR`. Sidecar slots
+/// and computed fields use their existing accessors. `#[all_equal(with =
+/// "Self::getter")]` replaces a field's conversion; `skip` omits it and
+/// `label = "Description"` changes its diagnostic prefix.
+///
+/// `tolerance`, `scale`, `check_attributes` and `check_names` set method
+/// defaults on the struct, or fixed overrides on a field. Numbers and booleans
+/// are literals; a string supplies an R expression (for example `scale = "NULL"`).
+/// Unset settings are not forwarded, preserving nested methods' defaults.
+///
+/// The type must have an inherent `#[miniextendr]` class registration. The
+/// wrapper writer resolves its R class name and S3/S4/S7 dispatch there.
+#[proc_macro_derive(AllEqual, attributes(all_equal))]
+pub fn derive_all_equal(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    all_equal_derive::derive(syn::parse_macro_input!(input as syn::DeriveInput))
+        .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
 

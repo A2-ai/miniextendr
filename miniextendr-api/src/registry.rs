@@ -11,6 +11,9 @@ use crate::sys::{DllInfo, R_CallMethodDef};
 use linkme::distributed_slice;
 use std::os::raw::c_void;
 
+mod all_equal;
+pub use all_equal::{AllEqualEntry, AllEqualField, all_equal_getter_type};
+
 // region: Distributed Slices
 //
 // `linkme::distributed_slice` does not compile for `wasm32-*` targets — the
@@ -120,6 +123,11 @@ pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_SIDECAR_ACCESSORS: [SidecarAccessorsEntry];
+
+/// Fieldwise comparison derives, resolved against the inherent class at write time.
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_ALL_EQUAL: [AllEqualEntry];
 
 /// The package crate's `conversion_error_class`. **Host-only.**
 ///
@@ -873,6 +881,10 @@ impl WrapperFragment {
 /// The defining block's metadata, shared by trait dispatch validation and docs.
 #[cfg(not(target_arch = "wasm32"))]
 struct MergedClass {
+    r_class_name: &'static str,
+    documented: bool,
+    comparison_needs_title: bool,
+    comparison_internal: bool,
     topic: String,
     class_system: &'static str,
     origin: String,
@@ -1103,10 +1115,25 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<MergedClasses, Strin
         if errors.len() > type_errors {
             continue;
         }
-        let (content, topic) = merged_class_content(definer, &type_blocks);
+        let (content, topic, comparison_needs_title) = merged_class_content(definer, &type_blocks);
         by_type.insert(
             *path,
             MergedClass {
+                r_class_name: definer.r_class_name,
+                // Only the class's opening documentation controls this gate;
+                // later helpers in the head can have their own @noRd.
+                documented: !definer
+                    .class_docs
+                    .lines()
+                    .chain(definer.head.lines().take_while(|line| {
+                        line.trim().is_empty() || line.trim_start().starts_with('#')
+                    }))
+                    .any(|line| line.trim() == "#' @noRd"),
+                comparison_needs_title,
+                comparison_internal: definer
+                    .settings
+                    .split(", ")
+                    .any(|setting| matches!(setting, "internal" | "@keywords internal")),
                 topic,
                 class_system: definer.class_system,
                 origin: class_block_name(definer),
@@ -1424,7 +1451,7 @@ fn resolve_class_member_docs(content: &str, class: &str, topic: &str) -> String 
 fn merged_class_content(
     definer: &ClassBlockEntry,
     blocks: &[&ClassBlockEntry],
-) -> (String, String) {
+) -> (String, String, bool) {
     let block_docs = block_docs(definer, blocks);
     // A default of `owner` gives way to the same tag on another block; its
     // own docs were seen when it was generated.
@@ -1460,6 +1487,12 @@ fn merged_class_content(
                 "rdname" | "noRd" | "keywords" | "order" | "export"
             )
         });
+    // A comparison may be the first documented member of a class whose
+    // otherwise empty docs-only block was omitted. An author's shared topic
+    // owns its title elsewhere.
+    let comparison_needs_title = definer.head.contains(CLASS_DOCS_ONLY_MARKER)
+        && !says_something
+        && !class_docs.iter().any(|tag| tag.name() == "rdname");
     let mut skipping = false;
     // `split`, not `lines`: a blank last line separates the head from the
     // members.
@@ -1520,6 +1553,7 @@ fn merged_class_content(
     (
         resolve_class_member_docs(&content, definer.r_class_name, &topic),
         topic,
+        comparison_needs_title,
     )
 }
 
@@ -1541,10 +1575,13 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     classes
         .validate_trait_impls(&MX_R_WRAPPERS)
         .unwrap_or_else(|msg| panic!("{msg}"));
+    let comparisons = all_equal::fragments(&MX_ALL_EQUAL, &classes.by_type)
+        .unwrap_or_else(|message| panic!("{message}"));
     let mut entries: Vec<WrapperFragment> = MX_R_WRAPPERS
         .iter()
         .map(|entry| WrapperFragment::from_entry(entry, &classes.by_type))
         .chain(classes.fragments)
+        .chain(comparisons)
         .chain(sidecar_accessor_fragments(
             &MX_SIDECAR_ACCESSORS,
             &MX_CLASS_NAMES,
@@ -2495,6 +2532,19 @@ fn resolve_wrap_return_markers(
     result
 }
 
+/// Wrap a native pointer in the class representation used by method returns
+/// and fieldwise comparisons.
+#[cfg(not(target_arch = "wasm32"))]
+fn wrap_class_value(system: &str, name: &str, expr: &str) -> String {
+    let literal = crate::match_arg::escape_r_string(name);
+    match system {
+        "r6" => format!("{name}$new(.ptr = {expr})"),
+        "s7" => format!("{name}(.ptr = {expr})"),
+        "s4" => format!("methods::new(\"{literal}\", ptr = {expr})"),
+        _ => format!("structure({expr}, class = \"{literal}\")"),
+    }
+}
+
 /// Resolve scalar `.__MX_WRAP_RETURN_<RustName>__(<expr>)` placeholders
 /// emitted by class-method wrappers whose Rust return type may name a
 /// different ExternalPtr-backed class.
@@ -2513,26 +2563,11 @@ fn resolve_scalar_return_wrappers(
         ".__MX_WRAP_RETURN_",
         class_index,
         |result, entry, expr| match entry {
-            Some(entry) => match entry.class_system {
-                "r6" => {
-                    result.push_str(&format!("{}$new(.ptr = {})", entry.r_class_name, expr));
-                }
-                "s7" => {
-                    result.push_str(&format!("{}(.ptr = {})", entry.r_class_name, expr));
-                }
-                "s4" => {
-                    result.push_str(&format!(
-                        "methods::new(\"{}\", ptr = {})",
-                        entry.r_class_name, expr
-                    ));
-                }
-                _ => {
-                    result.push_str(&format!(
-                        "structure({}, class = \"{}\")",
-                        expr, entry.r_class_name
-                    ));
-                }
-            },
+            Some(entry) => result.push_str(&wrap_class_value(
+                entry.class_system,
+                entry.r_class_name,
+                expr,
+            )),
             None => result.push_str(expr),
         },
     )

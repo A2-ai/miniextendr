@@ -1143,6 +1143,83 @@ paths.
 
 ---
 
+## Comparing pointer-backed objects
+
+Base R's default `all.equal()` does not compare the Rust values inside external
+pointers. Two objects of the same class can compare equal even when their Rust
+fields differ; env/R6 and S4 comparisons can reach the same pointer fallback.
+`identical()` distinguishes pointer identity, not the pointee's Rust value.
+
+Derive `AllEqual` to compare fields using their own R `all.equal()` methods:
+
+```rust
+use miniextendr_api::{AllEqual, ExternalPtr, miniextendr};
+
+#[derive(ExternalPtr, AllEqual)]
+#[all_equal(tolerance = 1e-6)]
+pub struct Fit {
+    #[all_equal(label = "Estimates")]
+    estimates: Vec<f64>,
+    #[all_equal(tolerance = 0)]
+    iterations: i32,
+    #[all_equal(skip)]
+    cache: std::cell::RefCell<Option<Vec<f64>>>,
+}
+
+#[miniextendr(s3)]
+impl Fit {
+    pub fn new(estimates: Vec<f64>, iterations: i32) -> Self {
+        Self { estimates, iterations, cache: Default::default() }
+    }
+}
+```
+
+The derive registers the method against the type's inherent class impl. It
+uses that impl's R name and help topic, including `class = "..."` and a class
+defined across multiple impl blocks. S3, env, R6 and vctrs use a registered
+S3 method; S4 uses `setMethod()` and S7 uses its own registration for base's
+S3 generic. A vctrs object must carry the Rust pointer in its `.ptr` attribute.
+The ordinary vector-only vctrs constructor does not create such a pointer.
+A derive without an inherent class registration is an error when wrappers
+are written.
+
+By default, each included field needs `Clone + IntoR`. Use
+`#[all_equal(with = "Self::getter")]` for a different conversion; the getter
+takes `&Self` and returns an `IntoR` value, including borrowed values.
+`#[r_data] Sidecar<T>` fields read their live slot, `Computed` fields use
+their getter, and the `RSidecar` selector contributes no field.
+`skip` removes the field and its conversion bounds. Registered nested
+classes, including `ExternalPtr<Model>` aliases, retain class dispatch.
+
+The generated method has `target, current, ...` and four setting formals:
+
+| Rust setting | R argument |
+|---|---|
+| `tolerance` | `tolerance` |
+| `scale` | `scale` |
+| `check_attributes` | `check.attributes` |
+| `check_names` | `check.names` |
+
+A setting on the struct becomes a formal default; one on a field fixes that
+field's argument. Values can be numeric or boolean literals, or R expression
+strings such as `scale = "NULL"`. Precedence is **field override, call argument,
+struct default, nested method default**. Unset settings are not forwarded, so
+a nested comparison keeps its own defaults. Other `...` arguments are forwarded
+once.
+
+The result is `TRUE` or all differing fields' messages in source order.
+The default prefix follows base's list comparison, `Component “estimates”:`
+(or `Component 1:` for a tuple field); `label = "Estimates"` uses
+`Estimates:`. Nested comparisons retain both prefixes. A differently classed
+`current` returns `"target is <class>, current is <class>"`. A restored pointer
+raises its usual classed restored-value error, including for fieldless structs
+and structs whose fields are all skipped.
+
+Testthat edition 2's `expect_equal()` calls `all.equal()` and uses this method.
+Edition 3 uses `waldo::compare()` instead: distinct external pointers remain
+different even when this method considers their values equal. To test the
+derive in either edition, write `expect_true(all.equal(x, y))`.
+
 ## Conditional Methods
 
 Methods and associated items in a `#[miniextendr]` impl block can carry

@@ -1052,6 +1052,20 @@ The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained 
 
 `ExternalPtr` is `Send` when `T: Send`, allowing it to be transferred between threads. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded. The views `ExternalPtrRef` / `ExternalPtrMut` are `!Send`: a borrow stays on the thread that took it.
 
+## Comparing values in R
+
+Rust's `PartialEq` implementation on `ExternalPtr<T>` compares pointee values,
+but it does not install an R method. Base R's default `all.equal()` on two
+same-class external pointers can return `TRUE` without inspecting either
+Rust value. `identical()` compares the pointers' identities.
+
+Use `#[derive(ExternalPtr, AllEqual)]` on the struct and an inherent
+`#[miniextendr(...)]` class impl to register a fieldwise R comparison.
+It delegates to each converted field's `all.equal()`, preserving numeric
+tolerances and nested class dispatch. Sidecar fields read their live slots;
+restored pointers are refused. See [Comparing pointer-backed objects](CLASS_SYSTEMS.md#comparing-pointer-backed-objects)
+for settings, field getters, skips, and testthat edition differences.
+
 ## Trait Implementations
 
 `ExternalPtr<T>` mirrors `Box<T>`'s ownership traits; the ones that read the

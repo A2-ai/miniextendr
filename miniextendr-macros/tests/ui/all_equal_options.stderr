@@ -1,0 +1,17 @@
+error: unknown all_equal option; expected tolerance, scale, check_attributes, check_names, or field-only skip, label, with
+ --> tests/ui/all_equal_options.rs:4:13
+  |
+4 | #[all_equal(tolerence = 0)]
+  |             ^^^^^^^^^
+
+error: `skip` cannot be combined with other all_equal options
+ --> tests/ui/all_equal_options.rs:9:5
+  |
+9 |     #[all_equal(skip, label = "ignored")]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `tolerance` is given twice
+  --> tests/ui/all_equal_options.rs:14:28
+   |
+14 | #[all_equal(tolerance = 0, tolerance = 1)]
+   |                            ^^^^^^^^^

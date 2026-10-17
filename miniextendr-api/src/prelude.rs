@@ -44,6 +44,7 @@
 // region: Proc-macro re-exports
 pub use crate::{
     // Derive macros
+    AllEqual,
     Altrep,
     AltrepComplex,
     AltrepInteger,

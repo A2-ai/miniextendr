@@ -211,6 +211,13 @@ pub(crate) fn sidecar_live_c_name(type_name: &str) -> String {
     format!("C_{prefix}__mx_rdata_live_{type_name}")
 }
 
+/// Field extraction callback registered by the AllEqual derive.
+pub(crate) fn all_equal_c_ident(ty: &syn::Ident) -> syn::Ident {
+    let prefix = crate_prefix();
+    let name = unraw(ty);
+    quote::format_ident!("C_{prefix}__mx_all_equal_{name}")
+}
+
 /// One field-fallback callback per impl block. Source coordinates distinguish
 /// repeated class settings across blocks, including empty blocks. Use both
 /// spans so impls repeated by a macro can still differ at the concrete type's

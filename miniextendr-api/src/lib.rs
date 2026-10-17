@@ -261,9 +261,9 @@ pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // suit: the enum and the derive are re-exported together from `condition`.
 #[doc(inline)]
 pub use miniextendr_macros::{
-    Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
-    AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferExternalPtr, PreferList,
-    PreferRNativeType, RFactor, TryFromList, TryFromSexp,
+    AllEqual, Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw,
+    AltrepReal, AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferExternalPtr,
+    PreferList, PreferRNativeType, RFactor, TryFromList, TryFromSexp,
 };
 
 pub mod altrep;
