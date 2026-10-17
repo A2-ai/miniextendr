@@ -2855,3 +2855,33 @@ fn mxl204_description_is_watched_when_present() {
 }
 
 // endregion
+
+#[test]
+fn mxl120_vctrs_ctor_returns_explicit_handle() {
+    for ty in [
+        "ExternalPtr<Self>",
+        "::miniextendr_api::ExternalPtr<Currency>",
+        "Result<ExternalPtr<Self>, String>",
+        "Option<ExternalPtr<Currency>>",
+        "(Box<ExternalPtr<Self>>)",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src");
+        fs::create_dir(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("lib.rs"),
+            format!(
+                "#[miniextendr(vctrs(vctr))] impl Currency {{ pub fn new() -> {ty} {{ todo!() }} }}"
+            ),
+        )
+        .unwrap();
+        let report = run(dir.path()).unwrap();
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|d| d.code.to_string() == "MXL120"),
+            "{ty}"
+        );
+    }
+}

@@ -177,7 +177,7 @@ impl ReturnStrategy {
         let is_consuming_builder = method.env == ReceiverKind::Value && returns_self_shaped;
         if is_consuming_builder || is_self_ref_builder || is_unit_mutator {
             ReturnStrategy::ChainableMutation
-        } else if returns_self_shaped {
+        } else if returns_self_shaped || method.returns_owned_self() {
             ReturnStrategy::ReturnSelf
         } else if method.returns_other_class().is_some() {
             ReturnStrategy::ReturnOtherClass

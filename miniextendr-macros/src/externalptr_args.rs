@@ -152,10 +152,22 @@ pub(crate) fn handle_ident(param: &syn::Ident) -> syn::Ident {
 /// `ty` with `Self` replaced by `self_ty` (an impl method's wrapper is a free
 /// function, where `Self` names nothing).
 pub(crate) fn replace_self(ty: &syn::Type, self_ty: Option<&syn::Type>) -> syn::Type {
-    match (ty, self_ty) {
-        (syn::Type::Path(path), Some(self_ty)) if path.path.is_ident("Self") => self_ty.clone(),
-        _ => ty.clone(),
+    use syn::visit_mut::VisitMut;
+    struct ReplaceSelf<'a>(&'a syn::Type);
+    impl VisitMut for ReplaceSelf<'_> {
+        fn visit_type_mut(&mut self, ty: &mut syn::Type) {
+            if matches!(ty, syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident("Self")) {
+                *ty = self.0.clone();
+            } else {
+                syn::visit_mut::visit_type_mut(self, ty);
+            }
+        }
     }
+    let mut ty = ty.clone();
+    if let Some(self_ty) = self_ty {
+        ReplaceSelf(self_ty).visit_type_mut(&mut ty);
+    }
+    ty
 }
 
 /// The statement converting the borrowed argument `ident` (of type `arg`) to

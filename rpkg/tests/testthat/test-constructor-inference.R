@@ -298,3 +298,81 @@ test_that("a constructor from a second impl block keeps its own name", {
 })
 
 # endregion
+
+# region: explicit pointer constructors (#1849)
+
+handle_ctor_cases <- function() {
+  list(
+    env = list(
+      new = HandleCtorEnv$new, alias = HandleCtorEnv$create,
+      reuse = HandleCtorEnv$reuse, value = function(x) x$value(),
+      ptr = identity, class = "HandleCtorEnv"
+    ),
+    r6 = list(
+      new = HandleCtorR6$new, alias = HandleCtorR6$create,
+      reuse = HandleCtorR6$reuse, value = function(x) x$value(),
+      ptr = function(x) x$.__enclos_env__$private$.ptr, class = "HandleCtorR6"
+    ),
+    s3 = list(
+      new = new_handlectors3, alias = handlectors3_create,
+      reuse = handlectors3_reuse, value = handle_ctor_s3_value,
+      ptr = identity, class = "HandleCtorS3"
+    ),
+    s4 = list(
+      new = HandleCtorS4, alias = HandleCtorS4_create,
+      reuse = HandleCtorS4_reuse, value = s4_handle_ctor_s4_value,
+      ptr = function(x) x@ptr, class = "HandleCtorS4"
+    ),
+    s7 = list(
+      new = HandleCtorS7, alias = HandleCtorS7_create,
+      reuse = HandleCtorS7_reuse, value = handle_ctor_s7_value,
+      ptr = function(x) S7::prop(x, ".ptr"), class = HandleCtorS7
+    )
+  )
+}
+
+expect_handle_ctor <- function(case) {
+  is_class <- if (is.character(case$class)) {
+    function(x) inherits(x, case$class)
+  } else {
+    function(x) S7::S7_inherits(x, case$class)
+  }
+  obj <- case$new(5L)
+  expect_true(is_class(obj))
+  expect_identical(case$value(obj), 5L)
+  alias <- case$alias(6L)
+  expect_true(is_class(alias))
+  expect_identical(case$value(alias), 6L)
+  reused <- case$reuse(obj)
+  expect_true(is_class(reused))
+  expect_identical(case$value(reused), 5L)
+  expect_identical(case$ptr(reused), case$ptr(obj))
+}
+
+test_that("explicit handle constructors and their aliases preserve the pointer", {
+  for (case in handle_ctor_cases()) {
+    expect_handle_ctor(case)
+    expect_error(case$new(-1L), "requires a nonnegative value", class = "rust_error")
+    expect_error(case$alias(-1L), "requires a nonnegative value", class = "rust_error")
+    expect_identical(case$value(case$new(7L)), 7L)
+  }
+})
+
+test_that("explicit handle constructor roots survive GC during R class wrapping", {
+  skip_gc_stress_if_disabled()
+  for (case in handle_ctor_cases()) {
+    # Stress every allocation in construction and R wrapping; testthat's
+    # assertions do not need to run with a collection on every allocation.
+    values <- tryCatch({
+      gctorture(TRUE)
+      obj <- case$new(5L)
+      list(obj = obj, alias = case$alias(6L), reused = case$reuse(obj))
+    }, finally = gctorture(FALSE))
+    expect_identical(case$value(values$obj), 5L)
+    expect_identical(case$value(values$alias), 6L)
+    expect_identical(case$value(values$reused), 5L)
+    expect_identical(case$ptr(values$reused), case$ptr(values$obj))
+  }
+})
+
+# endregion

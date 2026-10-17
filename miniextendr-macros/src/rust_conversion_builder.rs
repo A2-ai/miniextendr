@@ -80,7 +80,7 @@ impl RustConversionBuilder {
         self
     }
 
-    /// Name the impl's type for `Self` in borrowed external arguments.
+    /// Name the impl's type for `Self` in argument conversions and alias metadata.
     pub fn with_self_type(mut self, self_type: syn::Type) -> Self {
         self.self_type = Some(self_type);
         self
@@ -253,7 +253,9 @@ impl RustConversionBuilder {
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
             return None;
         };
-        let ty = pat_type.ty.as_ref();
+        let resolved_ty =
+            crate::externalptr_args::replace_self(&pat_type.ty, self.self_type.as_ref());
+        let ty = &resolved_ty;
         if self.explicit_conversion(pat_type) {
             let reference = crate::externalptr_args::conversion_reference(ty)
                 .expect("validated convert parameter");
@@ -546,7 +548,9 @@ impl RustConversionBuilder {
         // worker borrows, cross into another closure). Source parameters may
         // use the same spelling, so keep every temporary hygienic.
         let binding_span = proc_macro2::Span::mixed_site();
-        let ty = pat_type.ty.as_ref();
+        let resolved_ty =
+            crate::externalptr_args::replace_self(&pat_type.ty, self.self_type.as_ref());
+        let ty = &resolved_ty;
         // The R formal's name (`_x` → `x`, `r#type` → `type`): what a
         // conversion condition names in its message and in `e$param`.
         let r_name =

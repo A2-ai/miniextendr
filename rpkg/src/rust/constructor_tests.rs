@@ -13,8 +13,8 @@
 //!   and S7's `T()` raise an error without a `.ptr`; env and S3 leave
 //!   `T$new` `NULL`, and S4 and vctrs define no `T()` or `new_t()` (#2069).
 //! - `SplitInfer*`: the methods are in a first impl block and the one
-//!   candidate in a second; the decision is made for the type, across its
-//!   blocks (#1776).
+//!   candidate, returning `ExternalPtr<Self>`, in a second; selection spans
+//!   all of the type's blocks (#1776).
 //! - `NoCtorRec`: an S3 class the package names (`class = "noctor_rec"`)
 //!   and builds with its factories. Its impl docs get a page named after the
 //!   class, `noctor_rec`, titled by default. (`handmade_rec` in
@@ -141,8 +141,8 @@ impl SplitInferEnv {
 impl SplitInferEnv {
     /// Create an object holding `value`.
     /// @param value Starting value.
-    pub fn from_value(value: i32) -> Self {
-        Self { value }
+    pub fn from_value(value: i32) -> ExternalPtr<Self> {
+        ExternalPtr::new(Self { value })
     }
 }
 // endregion
@@ -256,8 +256,8 @@ impl SplitInferR6 {
 impl SplitInferR6 {
     /// Create an object holding `value`.
     /// @param value Starting value.
-    pub fn from_value(value: i32) -> Self {
-        Self { value }
+    pub fn from_value(value: i32) -> ExternalPtr<Self> {
+        ExternalPtr::new(Self { value })
     }
 }
 // endregion
@@ -401,8 +401,8 @@ impl SplitInferS3 {
 impl SplitInferS3 {
     /// Create an object holding `value`.
     /// @param value Starting value.
-    pub fn from_value(value: i32) -> Self {
-        Self { value }
+    pub fn from_value(value: i32) -> ExternalPtr<Self> {
+        ExternalPtr::new(Self { value })
     }
 }
 // endregion
@@ -516,8 +516,8 @@ impl SplitInferS4 {
 impl SplitInferS4 {
     /// Create an object holding `value`.
     /// @param value Starting value.
-    pub fn from_value(value: i32) -> Self {
-        Self { value }
+    pub fn from_value(value: i32) -> ExternalPtr<Self> {
+        ExternalPtr::new(Self { value })
     }
 }
 // endregion
@@ -631,8 +631,8 @@ impl SplitInferS7 {
 impl SplitInferS7 {
     /// Create an object holding `value`.
     /// @param value Starting value.
-    pub fn from_value(value: i32) -> Self {
-        Self { value }
+    pub fn from_value(value: i32) -> ExternalPtr<Self> {
+        ExternalPtr::new(Self { value })
     }
 }
 // endregion
@@ -649,6 +649,172 @@ impl NoCtorVctrs {
     /// @param amounts Numeric amounts.
     pub fn total(amounts: Vec<f64>) -> f64 {
         amounts.iter().sum()
+    }
+}
+// endregion
+
+// region: explicit constructor handles (#1849)
+//
+// Each constructor keeps its own R name too. Reusing an existing handle
+// checks that both paths return the original R pointer, without reboxing.
+
+/// An Env class constructed from an explicit pointer.
+#[derive(ExternalPtr)]
+pub struct HandleCtorEnv {
+    value: i32,
+}
+
+/// Env constructor inference preserves explicit pointer ownership.
+#[miniextendr(env)]
+impl HandleCtorEnv {
+    /// Construct a pointer holding a nonnegative value.
+    /// @param value Starting value.
+    #[miniextendr(r_name = "create")]
+    pub fn new(value: i32) -> ExternalPtr<Self> {
+        assert!(
+            value >= 0,
+            "handle constructor requires a nonnegative value"
+        );
+        ExternalPtr::new(Self { value })
+    }
+
+    /// Wrap the same pointer in another class object.
+    /// @param ptr An existing object of this class.
+    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> {
+        ptr
+    }
+
+    /// Read the value to check the pointer contains the original Rust type.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// An R6 class constructed from an explicit pointer.
+#[derive(ExternalPtr)]
+pub struct HandleCtorR6 {
+    value: i32,
+}
+
+/// R6 constructor inference preserves explicit pointer ownership.
+#[miniextendr(r6)]
+impl HandleCtorR6 {
+    /// Construct a pointer holding a nonnegative value.
+    /// @param value Starting value.
+    #[miniextendr(r_name = "create")]
+    pub fn new(value: i32) -> ExternalPtr<Self> {
+        assert!(
+            value >= 0,
+            "handle constructor requires a nonnegative value"
+        );
+        ExternalPtr::new(Self { value })
+    }
+
+    /// Wrap the same pointer in another class object.
+    /// @param ptr An existing object of this class.
+    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> {
+        ptr
+    }
+
+    /// Read the value to check the pointer contains the original Rust type.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// An S3 class constructed from an explicit pointer.
+#[derive(ExternalPtr)]
+pub struct HandleCtorS3 {
+    value: i32,
+}
+
+/// S3 constructor inference preserves explicit pointer ownership.
+#[miniextendr(s3)]
+impl HandleCtorS3 {
+    /// Construct a pointer holding a nonnegative value.
+    /// @param value Starting value.
+    #[miniextendr(r_name = "create")]
+    pub fn new(value: i32) -> ExternalPtr<Self> {
+        assert!(
+            value >= 0,
+            "handle constructor requires a nonnegative value"
+        );
+        ExternalPtr::new(Self { value })
+    }
+
+    /// Wrap the same pointer in another class object.
+    /// @param ptr An existing object of this class.
+    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> {
+        ptr
+    }
+
+    /// Read the value to check the pointer contains the original Rust type.
+    pub fn handle_ctor_s3_value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// An S4 class constructed from an explicit pointer.
+#[derive(ExternalPtr)]
+pub struct HandleCtorS4 {
+    value: i32,
+}
+
+/// S4 constructor inference preserves explicit pointer ownership.
+#[miniextendr(s4)]
+impl HandleCtorS4 {
+    /// Construct a pointer holding a nonnegative value.
+    /// @param value Starting value.
+    #[miniextendr(r_name = "create")]
+    pub fn new(value: i32) -> ExternalPtr<Self> {
+        assert!(
+            value >= 0,
+            "handle constructor requires a nonnegative value"
+        );
+        ExternalPtr::new(Self { value })
+    }
+
+    /// Wrap the same pointer in another class object.
+    /// @param ptr An existing object of this class.
+    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> {
+        ptr
+    }
+
+    /// Read the value to check the pointer contains the original Rust type.
+    pub fn handle_ctor_s4_value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// An S7 class constructed from an explicit pointer.
+#[derive(ExternalPtr)]
+pub struct HandleCtorS7 {
+    value: i32,
+}
+
+/// S7 constructor inference preserves explicit pointer ownership.
+#[miniextendr(s7)]
+impl HandleCtorS7 {
+    /// Construct a pointer holding a nonnegative value.
+    /// @param value Starting value.
+    #[miniextendr(r_name = "create")]
+    pub fn new(value: i32) -> ExternalPtr<Self> {
+        assert!(
+            value >= 0,
+            "handle constructor requires a nonnegative value"
+        );
+        ExternalPtr::new(Self { value })
+    }
+
+    /// Wrap the same pointer in another class object.
+    /// @param ptr An existing object of this class.
+    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> {
+        ptr
+    }
+
+    /// Read the value to check the pointer contains the original Rust type.
+    pub fn handle_ctor_s7_value(&self) -> i32 {
+        self.value
     }
 }
 // endregion

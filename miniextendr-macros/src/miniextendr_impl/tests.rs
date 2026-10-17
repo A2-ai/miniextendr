@@ -10023,3 +10023,137 @@ fn s3_impl_double_dispatch_tags_match_the_method_name() {
         "{wrapper}"
     );
 }
+
+#[test]
+fn explicit_self_handles_follow_constructor_selection_without_reboxing() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter {
+                    #[miniextendr(r_name = "create")]
+                    pub fn new(value: i32) -> ::miniextendr_api::ExternalPtr<Self> { unimplemented!() }
+                    pub fn reuse(ptr: ExternalPtr<Self>) -> ExternalPtr<Self> { ptr }
+                    pub fn replacement(self) -> ExternalPtr<Self> { unimplemented!() }
+                    pub fn try_make() -> Result<ExternalPtr<Self>, String> { unimplemented!() }
+                    pub fn find() -> Option<ExternalPtr<Self>> { unimplemented!() }
+                }
+            },
+        );
+        assert_eq!(constructor_name(&parsed).as_deref(), Some("new"));
+        assert_eq!(
+            static_names(&parsed),
+            ["create", "reuse", "try_make", "find"]
+        );
+        assert_eq!(
+            parsed
+                .constructor_candidates()
+                .map(|m| m.ident.to_string())
+                .collect::<Vec<_>>(),
+            ["reuse"]
+        );
+        for name in ["new", "reuse", "replacement"] {
+            let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+            assert!(method.returns_owned_self());
+            assert!(
+                !method.returns_self(),
+                "an existing handle must never be boxed again"
+            );
+            assert_eq!(
+                crate::ReturnStrategy::for_method(method),
+                crate::ReturnStrategy::ReturnSelf
+            );
+            assert!(matches!(
+                crate::c_wrapper_builder::detect_return_handling(&method.sig.output),
+                crate::c_wrapper_builder::ReturnHandling::IntoR
+            ));
+        }
+    }
+}
+
+#[test]
+fn explicit_self_handle_can_be_the_sole_constructor_candidate() {
+    let mut parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn create() -> ExternalPtr<Self> { unimplemented!() }
+                pub fn try_create() -> Result<ExternalPtr<Self>, String> { unimplemented!() }
+                pub fn find() -> Option<ExternalPtr<Self>> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("create"));
+    assert!(parsed.declared_constructor().is_none());
+    assert_eq!(parsed.constructor_candidates().count(), 1);
+    parsed.constructor_demoted = true;
+    assert_eq!(constructor_name(&parsed), None);
+    assert_eq!(static_names(&parsed), ["create", "try_create", "find"]);
+
+    let ambiguous = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn zero() -> Self { unimplemented!() }
+                pub fn create() -> ExternalPtr<Self> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&ambiguous), None);
+    assert_eq!(ambiguous.constructor_candidates().count(), 2);
+}
+
+#[test]
+fn marked_constructor_wins_over_explicit_self_handle_new() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> ExternalPtr<Self> { unimplemented!() }
+                #[miniextendr(s7(constructor))]
+                pub fn make() -> Self { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&parsed).as_deref(), Some("make"));
+    assert_eq!(static_names(&parsed), ["new", "make"]);
+
+    let converted = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Celsius {
+                #[miniextendr(s7(convert_from = "Fahrenheit"))]
+                pub fn from_fahrenheit(f: &Fahrenheit) -> ExternalPtr<Self> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(constructor_name(&converted), None);
+}
+
+#[test]
+fn vctrs_constructors_refuse_explicit_self_handles() {
+    for ty in [
+        "ExternalPtr<Self>",
+        "::miniextendr_api::ExternalPtr<Currency>",
+        "Result<ExternalPtr<Self>, String>",
+        "Option<ExternalPtr<Currency>>",
+        "(Box<ExternalPtr<Self>>)",
+    ] {
+        let output: syn::ReturnType = syn::parse_str(&format!("-> {ty}")).unwrap();
+        assert!(
+            vctrs_ctor_returns_self_or_type(&output, &syn::parse_quote!(Currency)),
+            "{ty}"
+        );
+    }
+    let output: syn::ReturnType = syn::parse_quote!(-> Result<Vec<f64>, String>);
+    assert!(!vctrs_ctor_returns_self_or_type(
+        &output,
+        &syn::parse_quote!(Currency)
+    ));
+}

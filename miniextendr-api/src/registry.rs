@@ -471,7 +471,7 @@ pub struct ClassBlockEntry {
     pub settings: &'static str,
     /// The Rust name of the block's class constructor, `""` when it has
     /// none: the method marked `#[miniextendr(<system>(constructor))]`, else a
-    /// receiver-less `new` returning `Self`, else
+    /// receiver-less `new` returning `Self` or `ExternalPtr<Self>`, else
     /// ([`constructor_inferred`](Self::constructor_inferred)) the block's one
     /// [candidate](Self::constructor_candidates).
     pub constructor: &'static str,
@@ -479,7 +479,7 @@ pub struct ClassBlockEntry {
     /// declares none and has one candidate. The type's constructor is then
     /// decided across its impl blocks when [`collect_r_wrappers`] merges them.
     pub constructor_inferred: bool,
-    /// The Rust names of the block's receiver-less methods returning `Self`
+    /// The Rust names of the block's receiver-less methods returning `Self` or `ExternalPtr<Self>`
     /// other than a declared constructor: the methods that could be the
     /// constructor of a type that declares none.
     pub constructor_candidates: &'static [&'static str],
@@ -525,7 +525,7 @@ unsafe impl Sync for ClassBlockEntry {}
 
 /// Implemented by `#[miniextendr]` for each type with an impl block that
 /// declares its class constructor (`#[miniextendr(<system>(constructor))]`,
-/// or a receiver-less `new` returning `Self`). `Block` is a type private to that
+/// or a receiver-less `new` returning `Self` or `ExternalPtr<Self>`). `Block` is a type private to that
 /// impl block, so two such blocks don't conflict here; the wrapper writer
 /// refuses them ([`merge_class_blocks`]).
 ///
@@ -535,7 +535,7 @@ unsafe impl Sync for ClassBlockEntry {}
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(
     message = "`{Self}` has several methods that could be its constructor, and none is declared",
-    label = "this method returns `Self` and takes no receiver, like another method of `{Self}`",
+    label = "this method returns an owned instance of `Self` and takes no receiver, like another method of `{Self}`",
     note = "mark the constructor with the class system's `constructor` option, e.g. \
             `#[miniextendr(r6(constructor))]`, or name it `new`; the other methods stay static \
             factory methods"
@@ -1333,7 +1333,7 @@ fn class_doc_conflicts(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -
 ///
 /// - A block that declares the constructor
 ///   (`#[miniextendr(<system>(constructor))]`, or a receiver-less `new`
-///   returning `Self`) has it. A block that would
+///   returning `Self` or `ExternalPtr<Self>`) has it. A block that would
 ///   infer one takes its [`demoted`](ClassBlockEntry::demoted) rendering,
 ///   where that method is a static method. Two declaring blocks are refused
 ///   with the other two-definer cases ([`merge_class_blocks`]).

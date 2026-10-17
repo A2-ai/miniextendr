@@ -997,11 +997,12 @@ The constructor is decided for the Rust type, across all its impl blocks:
 
 1. The method marked `#[miniextendr(<system>(constructor))]`
    (`r6(constructor)`, `s7(constructor)`, ...).
-2. Otherwise a receiver-less method named `new` that returns `Self`. A vctrs
-   `new` is the constructor whatever it returns, since it returns the payload.
-3. Otherwise the type's one receiver-less method returning `Self`, whatever its
-   name. `Result<Self, E>` and `Option<Self>` don't make a method a candidate:
-   a fallible constructor is marked with rule 1. An S7 `convert_from` method
+2. Otherwise a receiver-less method named `new` that returns `Self` or
+   `ExternalPtr<Self>`. A vctrs `new` is selected by name and must return
+   the vector payload.
+3. Otherwise the type's one receiver-less method returning `Self` or
+   `ExternalPtr<Self>`, whatever its name. Neither `Result` nor `Option` makes
+   either return shape a candidate; mark a fallible constructor with rule 1. An S7 `convert_from` method
    isn't a candidate either, and a vctrs class never infers its constructor.
 
 ```rust
@@ -1013,14 +1014,20 @@ impl Reading {
 }
 ```
 
+An explicit `ExternalPtr<Self>` return uses the existing pointer through
+`IntoR`; it is never boxed again. The same R class wrapping applies to the
+constructor's static alias and to other methods returning that handle.
+This applies to env, R6, S3, S4 and S7. vctrs constructors must return a
+vector payload; `Self` and `ExternalPtr<Self>` are rejected.
+
 A constructor whose R name isn't `new`, marked (rule 1) or inferred (rule 3),
 keeps that name too: it is also a static method under it, which builds the
 same object (`Reading$from_value()` above, `typename_from_value()` for S3,
 `TypeName_from_value()` for S4 and S7). A vctrs class has only its `new`.
 
-Every other receiver-less method returning `Self`, such as a `from_file`
-factory next to a `new`, is a static method. A type that has several such
-methods and no declared constructor is refused, at compile time when they are
+Every other receiver-less method returning `Self` or `ExternalPtr<Self>`, such as
+a `from_file` factory next to a `new`, is a static method. A type that has
+several such methods and no declared constructor is refused, at compile time when they are
 in one impl block and when the wrapper writer runs when they are in several.
 The error lists them: mark one with `<system>(constructor)` or name it `new`,
 and the others stay static methods.
@@ -1028,9 +1035,9 @@ and the others stay static methods.
 #### A class without a constructor
 
 A type with no constructor by these rules (no marked method, no `new`, and no
-receiver-less method returning bare `Self`) is defined without one. Its
-objects come from its factories: static methods returning `Result<Self, E>` or
-`Option<Self>`, which wrap the pointer they return in the class directly
+receiver-less method returning bare `Self` or `ExternalPtr<Self>`) is defined
+without one. Its objects come from its factories: static methods returning
+`Result<Self, E>` or `Option<Self>`, which wrap the pointer they return in the class directly
 (`Class$new(.ptr = ...)` for R6, `Class(.ptr = ...)` for S7,
 `methods::new("Class", ptr = ...)` for S4), or functions of other classes that
 return one. A type with factories returning bare `Self` has candidates, so it
@@ -1368,9 +1375,9 @@ install with an error naming the blocks:
   defines the class; without one, the first block in source order does. The
   constructor is decided for the type
   ([Constructor Patterns](#constructor-patterns)): a block's one method
-  returning `Self` is the constructor when no block declares one, and a static
-  method when another block has a `new` or a marked constructor. Methods
-  returning `Self` in two blocks, with none declared, are refused.
+  returning `Self` or `ExternalPtr<Self>` is the constructor when no block
+  declares one, and a static method when another block has a `new` or a marked
+  constructor. Methods returning either shape in two blocks, with none declared, are refused.
 - **The doc comments agree on the title and page**: one `@title` value, and a
   `@name` / `@rdname` only as the defining block has it (see above).
 - **The blocks agree on the class settings**: the class system with its options

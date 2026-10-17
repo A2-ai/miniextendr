@@ -2524,10 +2524,10 @@ impl ParsedMethod {
     }
 
     /// Returns true if this is likely a constructor.
-    /// Inferred from: no env + named "new" + returns Self.
+    /// Inferred from: no receiver + named "new" + returns Self or its handle.
     pub fn is_constructor(&self) -> bool {
         self.method_attrs.constructor
-            || (self.env == ReceiverKind::None && self.ident == "new" && self.returns_self())
+            || (self.env == ReceiverKind::None && self.ident == "new" && self.returns_owned_self())
     }
 
     /// Returns true if this method is the R6 finalizer.
@@ -2622,6 +2622,18 @@ impl ParsedMethod {
         matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
             if matches!(ty.as_ref(), syn::Type::Path(p)
                 if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
+    }
+
+    /// Returns an owned instance: either `Self` or `ExternalPtr<Self>`.
+    ///
+    /// Constructor selection and R class wrapping treat both alike. C return
+    /// conversion and consuming-receiver writeback must keep using
+    /// [`returns_self`](Self::returns_self): an explicit handle already owns
+    /// its pointer and must not be boxed again or written into the old receiver.
+    pub fn returns_owned_self(&self) -> bool {
+        matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
+            if matches!(crate::type_inspect::peel_external_ptr(ty), syn::Type::Path(p)
+                if p.path.is_ident("Self")))
     }
 
     /// Returns true if this method returns `Result<Self, E>` — a fallible
@@ -3520,7 +3532,7 @@ impl ParsedImpl {
     /// The constructor the block declares: the method marked
     /// `#[miniextendr(<system>(constructor))]` (at most one,
     /// [`check_constructor_markers`](Self::check_constructor_markers)), else
-    /// a receiver-less `new` returning `Self`. For vctrs, `new` may return
+    /// a receiver-less `new` returning `Self` or `ExternalPtr<Self>`. For vctrs, `new` may return
     /// anything: the canonical vctrs constructor returns the vector payload
     /// (e.g. `Vec<f64>`), which `vctrs::new_vctr()` then wraps; returning
     /// `Self` would produce an `ExternalPtr` that `new_vctr` can't accept as
@@ -3532,14 +3544,14 @@ impl ParsedImpl {
                 self.included_methods().find(|m| {
                     m.env == ReceiverKind::None
                         && m.ident == "new"
-                        && (self.class_system == ClassSystem::Vctrs || m.returns_self())
+                        && (self.class_system == ClassSystem::Vctrs || m.returns_owned_self())
                 })
             })
     }
 
     /// The methods that could be the class constructor: the receiver-less
-    /// methods returning `Self` (bare `Self`, as [`ParsedMethod::returns_self`]
-    /// reads it, so not `Result<Self, E>` or `Option<Self>`), other than the
+    /// methods returning `Self` or `ExternalPtr<Self>` (neither wrapped in
+    /// `Result` or `Option`; see [`ParsedMethod::returns_owned_self`]), other than the
     /// declared constructor and an S7 `convert_from` method, in source order.
     /// Without a declared constructor, the one candidate of a type is its
     /// constructor; with several, the type needs a declared one. None for
@@ -3549,7 +3561,7 @@ impl ParsedImpl {
         self.included_methods().filter(move |m| {
             self.class_system != ClassSystem::Vctrs
                 && m.env == ReceiverKind::None
-                && m.returns_self()
+                && m.returns_owned_self()
                 && m.method_attrs.s7.convert_from.is_none()
                 && !declared.is_some_and(|d| std::ptr::eq(d, *m))
         })
@@ -4103,7 +4115,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
 }
 
 /// Returns true if a vctrs constructor's return type is `Self`, `&Self`, `&mut Self`,
-/// the named impl type, `Box<Self>`, `Result<Self, _>`, or `Result<NamedType, _>`.
+/// the named impl type, or either inside `ExternalPtr`, `Box`, `Result` or `Option`.
 ///
 /// These are all invalid for a vctrs constructor because the generated R wrapper
 /// passes the return value to `vctrs::new_vctr()` / `new_rcrd()` / `new_list_of()`,
@@ -4115,8 +4127,8 @@ fn vctrs_ctor_returns_self_or_type(output: &syn::ReturnType, type_ident: &syn::I
     ty_is_self_or_named(ty.as_ref(), type_ident)
 }
 
-/// Recursively checks whether `ty` is `Self`, `&Self`, `&mut Self`, `Box<Self>`,
-/// the named type, or `Result<(Self | NamedType), _>`.
+/// Recursively checks for the impl type through references and wrappers
+/// that still return a pointer rather than a vector payload.
 fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
     match ty {
         syn::Type::Path(p) => {
@@ -4128,16 +4140,11 @@ fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
             if last.ident == "Self" || last.ident == *type_ident {
                 return true;
             }
-            // `Result<Self, _>` or `Result<TypeName, _>`
-            if last.ident == "Result"
-                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
-                && let Some(syn::GenericArgument::Type(first_ty)) = args.args.first()
-            {
-                return ty_is_self_or_named(first_ty, type_ident);
-            }
-            // `Box<Self>` or `Box<TypeName>`
-            if last.ident == "Box"
-                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
+            // Wrapping an instance or handle does not make it a vector payload.
+            if matches!(
+                last.ident.to_string().as_str(),
+                "Result" | "Option" | "Box" | "ExternalPtr"
+            ) && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
                 && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
             {
                 return ty_is_self_or_named(inner, type_ident);
@@ -4146,6 +4153,8 @@ fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
         }
         // `&Self` or `&mut Self`
         syn::Type::Reference(r) => ty_is_self_or_named(r.elem.as_ref(), type_ident),
+        syn::Type::Group(g) => ty_is_self_or_named(&g.elem, type_ident),
+        syn::Type::Paren(p) => ty_is_self_or_named(&p.elem, type_ident),
         _ => false,
     }
 }

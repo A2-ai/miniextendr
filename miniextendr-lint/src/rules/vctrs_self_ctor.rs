@@ -122,7 +122,7 @@ pub fn check(index: &CrateIndex, diagnostics: &mut Vec<Diagnostic>) {
 // update both.
 
 /// Returns true if `return_type_str` represents `Self`, `&Self`, `&mut Self`,
-/// `Box<Self>`, the named type, `Result<Self, _>`, or `Result<NamedType, _>`.
+/// the named type, or either inside `ExternalPtr`, `Box`, `Result` or `Option`.
 ///
 /// `return_type_str` is the stringified token form produced by
 /// `quote::ToTokens::to_token_stream()` on a `syn::ReturnType::Type`.
@@ -140,8 +140,8 @@ fn return_type_is_self_or_named(return_type_str: &str, type_name: &str) -> bool 
     ty_is_self_or_named(&ty, type_name)
 }
 
-/// Recursively checks whether `ty` is `Self`, `&Self`, `&mut Self`, `Box<Self>`,
-/// the named type, or `Result<(Self | NamedType), _>`.
+/// Recursively checks for the impl type through references and wrappers
+/// that still return a pointer rather than a vector payload.
 fn ty_is_self_or_named(ty: &syn::Type, type_name: &str) -> bool {
     match ty {
         syn::Type::Path(p) => {
@@ -152,16 +152,11 @@ fn ty_is_self_or_named(ty: &syn::Type, type_name: &str) -> bool {
             if last.ident == "Self" || last.ident == type_name {
                 return true;
             }
-            // `Result<Self, _>` or `Result<TypeName, _>`
-            if last.ident == "Result"
-                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
-                && let Some(syn::GenericArgument::Type(first_ty)) = args.args.first()
-            {
-                return ty_is_self_or_named(first_ty, type_name);
-            }
-            // `Box<Self>` or `Box<TypeName>`
-            if last.ident == "Box"
-                && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
+            // Wrapping an instance or handle does not make it a vector payload.
+            if matches!(
+                last.ident.to_string().as_str(),
+                "Result" | "Option" | "Box" | "ExternalPtr"
+            ) && let syn::PathArguments::AngleBracketed(ref args) = last.arguments
                 && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
             {
                 return ty_is_self_or_named(inner, type_name);
@@ -170,6 +165,8 @@ fn ty_is_self_or_named(ty: &syn::Type, type_name: &str) -> bool {
         }
         // `&Self` or `&mut Self`
         syn::Type::Reference(r) => ty_is_self_or_named(r.elem.as_ref(), type_name),
+        syn::Type::Group(g) => ty_is_self_or_named(&g.elem, type_name),
+        syn::Type::Paren(p) => ty_is_self_or_named(&p.elem, type_name),
         _ => false,
     }
 }

@@ -2,7 +2,7 @@ error[E0277]: `Shape` has several methods that could be its constructor, and non
   --> tests/ui/impl_constructor_ambiguous.rs:17:12
    |
 17 |     pub fn circle(radius: f64) -> Self {
-   |            ^^^^^^ this method returns `Self` and takes no receiver, like another method of `Shape`
+   |            ^^^^^^ this method returns an owned instance of `Self` and takes no receiver, like another method of `Shape`
    |
 help: the trait `miniextendr_api::registry::ClassConstructor<_>` is not implemented for `Shape`
   --> tests/ui/impl_constructor_ambiguous.rs:11:1
@@ -20,7 +20,7 @@ error[E0277]: `Shape` has several methods that could be its constructor, and non
   --> tests/ui/impl_constructor_ambiguous.rs:23:12
    |
 23 |     pub fn square(side: f64) -> Self {
-   |            ^^^^^^ this method returns `Self` and takes no receiver, like another method of `Shape`
+   |            ^^^^^^ this method returns an owned instance of `Self` and takes no receiver, like another method of `Shape`
    |
 help: the trait `miniextendr_api::registry::ClassConstructor<_>` is not implemented for `Shape`
   --> tests/ui/impl_constructor_ambiguous.rs:11:1

@@ -1372,3 +1372,35 @@ fn worker_native_references_copy_before_dispatch_and_borrow_inside_it() {
         assert!(worker_native_storage(&ty, &syn::parse_quote!(__owned_value)).is_none());
     }
 }
+
+#[test]
+fn nested_self_in_handles_is_resolved_in_conversion_and_alias_metadata() {
+    let builder = RustConversionBuilder::new().with_self_type(syn::parse_quote!(Counter));
+    for ty in [
+        "ExternalPtr<Self>",
+        "Option<ExternalPtr<Self>>",
+        "Vec<ExternalPtr<Self>>",
+    ] {
+        let syn::FnArg::Typed(param) = parse_param(&format!("value: {ty}")) else {
+            unreachable!()
+        };
+        let sexp: syn::Ident = syn::parse_quote!(value_sexp);
+        let conversion = builder
+            .build_conversion(&param, &sexp)
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let metadata = builder
+            .native_borrow_metadata(&param, &sexp)
+            .unwrap()
+            .to_string();
+        for generated in [conversion, metadata] {
+            assert!(generated.contains("ExternalPtr < Counter >"), "{generated}");
+            assert!(
+                !generated.split_whitespace().any(|word| word == "Self"),
+                "{generated}"
+            );
+        }
+    }
+}

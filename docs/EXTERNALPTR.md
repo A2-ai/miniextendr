@@ -799,6 +799,13 @@ object completes to `character(0)`, including without
 `restored(refuse = "every_read")`. Repeat the same fallback settings on
 each annotated impl block, as with other class settings.
 
+A constructor may also return `ExternalPtr<Self>` directly when it needs to
+initialize the handle before returning it. A receiver-less `new` returning
+that handle is recognized as the class constructor, just like `new -> Self`;
+a sole receiver-less factory returning it is inferred too. R wrapping reuses
+the existing pointer, including its sidecars. See
+[Constructor Patterns](CLASS_SYSTEMS.md#constructor-patterns).
+
 ### `Sidecar<T>`: values the pointer roots
 
 A `Sidecar<T>` field's value lives in the pointer's `prot` list ("SEXP Layout"
