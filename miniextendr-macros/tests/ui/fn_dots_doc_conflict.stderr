@@ -1,0 +1,5 @@
+error: `@param sources` and `@param ...` both document the dots parameter; keep only one
+ --> tests/ui/fn_dots_doc_conflict.rs:6:16
+  |
+6 | pub fn collect(sources: ...) -> i32 {
+  |                ^^^^^^^

@@ -1786,6 +1786,7 @@ fn generated_fn_param_tags_with_call(
     let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed =
         syn::parse2(item).expect("fixture fn parses");
     let mut tags = roxygen_tags_from_attrs(parsed.attrs(), RdPage::Rendered);
+    normalize_dots_param_tags(&mut tags, parsed.dots_ident()).unwrap();
     let placeholders = push_fn_param_tags(
         &mut tags,
         parsed.inputs(),
@@ -2418,4 +2419,84 @@ fn fn_param_tags_keep_explicit_grouped_dots_documentation() {
         fn f(x: i32, rest: &Dots) {}
     });
     assert_eq!(param_lines(&tags), ["@param x,... Values to inspect."]);
+}
+
+#[test]
+fn dots_docs_rewrite_only_the_exact_parameter_name() {
+    let mut tags = tag_list(&[
+        "  @param  before,sources,after Values from sources.\n  More sources.",
+        "@param sources2 Another argument.",
+        "@description sources are collected.",
+    ]);
+    normalize_dots_param_tags(&mut tags, Some(&syn::parse_quote!(sources))).unwrap();
+    assert_eq!(
+        tags,
+        tag_list(&[
+            "  @param  before,...,after Values from sources.\n  More sources.",
+            "@param sources2 Another argument.",
+            "@description sources are collected.",
+        ])
+    );
+}
+
+#[test]
+fn dots_docs_preserve_raw_names_and_distinct_underscore_names() {
+    for (ident, original, expected) in [
+        (
+            syn::parse_quote!(r#type),
+            "@param type Values.",
+            "@param ... Values.",
+        ),
+        (
+            syn::parse_quote!(param),
+            "@param param Values.",
+            "@param ... Values.",
+        ),
+        (
+            syn::parse_quote!(_dots),
+            "@param dots Ordinary values.",
+            "@param dots Ordinary values.",
+        ),
+    ] {
+        let mut tags = tag_list(&[original]);
+        normalize_dots_param_tags(&mut tags, Some(&ident)).unwrap();
+        assert_eq!(tags, tag_list(&[expected]));
+    }
+}
+
+#[test]
+fn dots_docs_leave_functions_without_dots_unchanged() {
+    let mut tags = tag_list(&["@param sources Values.", "@param ... More values."]);
+    let original = tags.clone();
+    normalize_dots_param_tags(&mut tags, None).unwrap();
+    assert_eq!(tags, original);
+}
+
+#[test]
+fn dots_docs_reject_both_names_without_mutating_the_tags() {
+    for mut tags in [
+        tag_list(&["@param sources Values.", "@param ... Other values."]),
+        tag_list(&["@param sources,... Values."]),
+        tag_list(&["@param before,...,sources Values."]),
+    ] {
+        let original = tags.clone();
+        let err = normalize_dots_param_tags(&mut tags, Some(&syn::parse_quote!(sources)))
+            .expect_err("both names document the same formal");
+        assert_eq!(
+            err.to_string(),
+            "`@param sources` and `@param ...` both document the dots parameter; keep only one"
+        );
+        assert_eq!(tags, original);
+    }
+}
+
+#[test]
+fn named_dots_docs_prevent_a_generated_filler() {
+    for ty in [quote::quote!(&Dots), quote::quote!(LazyDots)] {
+        let (tags, _) = generated_fn_param_tags(quote::quote! {
+            /// @param sources Author's extra arguments.
+            fn f(sources: #ty) {}
+        });
+        assert_eq!(param_lines(&tags), ["@param ... Author's extra arguments."]);
+    }
 }

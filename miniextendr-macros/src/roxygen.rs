@@ -1394,6 +1394,51 @@ pub(crate) fn param_documented(tags: &[String], name: &str) -> bool {
     tags.iter().any(|tag| tag_documents_param(tag, name))
 }
 
+/// Rewrite documentation for the Rust dots binding to the R formal `...`.
+/// Do this before fillers and class-system emitters inspect the parameter tags.
+pub(crate) fn normalize_dots_param_tags(
+    tags: &mut [String],
+    dots: Option<&syn::Ident>,
+) -> syn::Result<()> {
+    let Some(dots) = dots else {
+        return Ok(());
+    };
+    let name = crate::naming::ident_name(dots);
+    if !param_documented(tags, &name) {
+        return Ok(());
+    }
+    if param_documented(tags, "...") {
+        return Err(syn::Error::new(
+            dots.span(),
+            format!(
+                "`@param {name}` and `@param ...` both document the dots parameter; keep only one"
+            ),
+        ));
+    }
+    for tag in tags {
+        if !tag_documents_param(tag, &name) {
+            continue;
+        }
+        let names = param_names_token(tag).expect("matched a parameter tag");
+        let renamed = names
+            .split(',')
+            .map(|n| if n == name { "..." } else { n })
+            .collect::<Vec<_>>()
+            .join(",");
+        // Locate the token after the tag, not the first occurrence of its
+        // text: a binding named `param` also occurs inside `@param`.
+        let rest = tag
+            .trim_start()
+            .strip_prefix("@param ")
+            .expect("matched a parameter tag")
+            .trim_start();
+        let start = tag.len() - rest.len();
+        let end = start + names.len();
+        tag.replace_range(start..end, &renamed);
+    }
+    Ok(())
+}
+
 /// Like [`param_documented`] but returns the matching tag itself rather than
 /// a bool, for callers that reuse the tag's rendered text verbatim (S7
 /// constructor param doc forwarding pushes the found tag as-is).

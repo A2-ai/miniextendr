@@ -2389,6 +2389,8 @@ impl ParsedMethod {
         let mut doc_tags =
             crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs, class_page);
 
+        crate::roxygen::normalize_dots_param_tags(&mut doc_tags, dots_ident.as_ref())?;
+
         // Inject lifecycle badge into method roxygen tags if present
         if let Some(ref spec) = method_attrs.lifecycle {
             crate::lifecycle::inject_lifecycle_badge(&mut doc_tags, spec);

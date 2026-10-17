@@ -1,0 +1,5 @@
+error: `@param rest` and `@param ...` both document the dots parameter; keep only one
+ --> tests/ui/method_dots_doc_conflict.rs:9:27
+  |
+9 |     pub fn collect(&self, rest: miniextendr_api::LazyDots) -> i32 {
+  |                           ^^^^

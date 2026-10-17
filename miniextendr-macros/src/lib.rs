@@ -1602,6 +1602,12 @@ fn expand_miniextendr(
         )
     };
 
+    if let Err(err) =
+        crate::roxygen::normalize_dots_param_tags(&mut roxygen_tags, dots_ident.as_ref())
+    {
+        return err.into_compile_error().into();
+    }
+
     // Determine lifecycle: explicit attr > #[deprecated] extraction
     let lifecycle_spec = lifecycle.or_else(|| {
         attrs

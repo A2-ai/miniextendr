@@ -55,3 +55,42 @@ pub fn dots_docs_group_first(rest: &Dots) -> i32 {
 pub fn dots_docs_group_second(rest: &Dots) -> i32 {
     i32::try_from(rest.len()).expect("fewer than 2^31 dots")
 }
+
+// Named-binding documentation is normalized for functions and methods (#1550).
+
+#[miniextendr(doc = "@param sources Inputs documented through a doc override.")]
+pub fn dots_docs_named_tag(sources: ...) -> i32 {
+    i32::try_from(sources.len()).expect("fewer than 2^31 dots")
+}
+
+/// Count eager dots alongside an ordinary argument.
+/// @param label,rest Values accepted by this fixture.
+#[miniextendr]
+pub fn dots_docs_explicit_tag(label: i32, rest: &Dots) -> i32 {
+    let _ = label;
+    i32::try_from(rest.len()).expect("fewer than 2^31 dots")
+}
+
+/// Count documented lazy dots without forcing them.
+/// @param rest Unevaluated inputs.
+#[miniextendr]
+pub fn dots_docs_lazy_tag(rest: LazyDots) -> i32 {
+    i32::try_from(rest.len()).expect("fewer than 2^31 dots")
+}
+
+/// A class with named dots documentation.
+#[derive(miniextendr_api::ExternalPtr, Default)]
+pub struct NamedDotsDocs;
+
+#[miniextendr(r6)]
+impl NamedDotsDocs {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Count lazy method inputs.
+    /// @param sources Unevaluated method inputs.
+    pub fn collect(&self, sources: LazyDots) -> i32 {
+        i32::try_from(sources.len()).expect("fewer than 2^31 dots")
+    }
+}

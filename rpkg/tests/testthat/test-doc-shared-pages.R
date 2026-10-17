@@ -269,7 +269,7 @@ test_that("shared and inherited dots keep the author's documentation (#1819)", {
   expect_identical(inherited[["label"]], "(no documentation available)")
 })
 
-test_that("dots fixture pages have no usage-documentation mismatches (#1819)", {
+test_that("dots fixture pages have no usage-documentation mismatches (#1819, #1550)", {
   path <- getNamespaceInfo("miniextendr", "path")
   problems <- if (dir.exists(file.path(path, "man"))) {
     tools::checkDocFiles(dir = path)
@@ -277,7 +277,9 @@ test_that("dots fixture pages have no usage-documentation mismatches (#1819)", {
     tools::checkDocFiles(package = "miniextendr")
   }
   pages <- paste0(c("dots_docs", "dots_docs_unnamed", "dots_docs_named",
-                   "dots_docs_explicit", "dots_docs_lazy", "dots_docs_inherited"), ".Rd")
+                   "dots_docs_explicit", "dots_docs_lazy", "dots_docs_inherited",
+                   "dots_docs_named_tag", "dots_docs_explicit_tag",
+                   "dots_docs_lazy_tag", "NamedDotsDocs"), ".Rd")
   expect_length(intersect(pages, names(problems)), 0L)
   expect_length(intersect(pages, names(attr(problems, "bad_lines"))), 0L)
 })
@@ -292,4 +294,40 @@ test_that("documenting dots preserves their formals and evaluation behavior", {
   expect_identical(dots_docs_inherited(3L, values = 1:2, step = 0.5), 3L)
   expect_identical(dots_docs_group_first(1L, 2L), 2L)
   expect_identical(dots_docs_group_second(1L, 2L), 2L)
+})
+
+test_that("Rust binding docs describe the R dots formal (#1550)", {
+  db <- shared_pages_rd_db()
+  expected <- c(
+    dots_docs_named_tag = "Inputs documented through a doc override.",
+    dots_docs_lazy_tag = "Unevaluated inputs."
+  )
+  for (name in names(expected)) {
+    rd <- db[[paste0(name, ".Rd")]]
+    expect_false(is.null(rd), info = name)
+    args <- rd_argument_items(rd)
+    expect_identical(names(args), "...", info = name)
+    expect_identical(args[["..."]], unname(expected[[name]]), info = name)
+  }
+  grouped <- rd_argument_items(db[["dots_docs_explicit_tag.Rd"]])
+  expect_identical(names(grouped), "label, ...")
+  expect_identical(unname(grouped), "Values accepted by this fixture.")
+
+  method <- db[["NamedDotsDocs.Rd"]]
+  expect_false(is.null(method))
+  expect_match(rd_section_text(method, "\\section"),
+               "Unevaluated method inputs.", fixed = TRUE)
+  expect_false(any(grepl("sources", unlist(method), fixed = TRUE)))
+})
+
+test_that("named dots documentation leaves evaluation and formals unchanged (#1550)", {
+  expect_identical(dots_docs_named_tag(a = 1L, b = 2L), 2L)
+  expect_identical(dots_docs_explicit_tag(3L, a = 1L), 1L)
+  expect_identical(dots_docs_lazy_tag(stop("must stay unforced")), 1L)
+  expect_identical(names(formals(dots_docs_named_tag)), "...")
+  expect_identical(names(formals(dots_docs_explicit_tag)), c("label", "..."))
+  expect_identical(names(formals(dots_docs_lazy_tag)), "...")
+  object <- NamedDotsDocs$new()
+  expect_identical(object$collect(stop("must stay unforced")), 1L)
+  expect_identical(names(formals(object$collect)), "...")
 })

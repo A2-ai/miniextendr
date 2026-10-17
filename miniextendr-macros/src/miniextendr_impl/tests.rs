@@ -10596,3 +10596,31 @@ fn r6_no_rd_check_only_applies_to_documented_public_instance_methods() {
         parse_impl(system, item);
     }
 }
+
+#[test]
+fn method_dots_documentation_uses_the_r_formal() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        for ty in [quote::quote!(&Dots), quote::quote!(LazyDots)] {
+            let item: syn::ItemImpl = syn::parse_quote! {
+                impl Counter {
+                    /// @param sources Values collected by the method.
+                    pub fn collect(&self, sources: #ty) -> i32 { 0 }
+                }
+            };
+            let parsed = parse_impl(system, item);
+            assert!(
+                parsed.methods[0]
+                    .doc_tags
+                    .contains(&"@param ... Values collected by the method.".to_string()),
+                "{system:?}: {:?}",
+                parsed.methods[0].doc_tags
+            );
+        }
+    }
+}

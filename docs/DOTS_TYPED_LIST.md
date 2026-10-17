@@ -35,8 +35,13 @@ Don't write a bare `...` with no pattern. rustc rejects it before `#[miniextendr
 
 ### Documenting dots
 
-Write `/// @param ...` for the R formal, regardless of the Rust binding name.
-Standalone functions without that tag receive `Additional arguments.` as the
+Write `/// @param ...` for the R formal, or document the Rust binding:
+`/// @param sources The inputs.` on `sources: ...` becomes `@param ...`.
+The same mapping applies to explicit `&Dots` and `LazyDots` bindings on
+functions and methods, including comma-separated parameter tags. Documenting
+both the binding and `...` in the same block is a compile error.
+
+Standalone functions without either tag receive `Additional arguments.` as the
 default description. An author description on a shared page takes precedence.
 Use `@inheritDotParams function_name` to inherit the arguments of another
 function into the dots entry; the generated default does not block it.
