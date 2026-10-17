@@ -166,10 +166,17 @@ just devtools-test-stress gc-stress-fixtures  # FILTER is positional
 
 or use the per-function harness above for a faster loop.
 
-In CI, only the sharded `r-stress-tests` job and the nightly sweep set
-`MINIEXTENDR_STRESS`. `r-stress-tests` runs unconditionally on push-to-main,
-the weekly cron and `workflow_dispatch`; on a pull request it runs **only when
-the PR carries the `gc-stress` label** (the same opt-in shape as `heap-check`
+CI stress coverage is temporarily suspended pending #2070: the
+`r-stress-tests` job requires repository variable `MX_GC_STRESS_CI=true`
+(unset means off), and the full sweep's nightly schedule is disabled. The
+manual full-sweep dispatch and local recipes remain available. A green
+`CI Success` does not establish that the stress tests ran.
+
+Only the sharded `r-stress-tests` job and the full sweep set
+`MINIEXTENDR_STRESS`. With the variable enabled, `r-stress-tests` still
+requires matching R paths;
+scheduled and dispatched runs bypass that path filter. On a pull request it
+runs **only when the PR carries the `gc-stress` label** (the same opt-in shape as `heap-check`
 for the MALLOC_CHECK_ rounds). Label a PR that adds or changes a path holding
 SEXPs across allocations — `Vec<SEXP>`, sidecar fields, generic-list buffers,
 a new `gc_stress_*` fixture — and re-label after a force-push if the label was
@@ -188,23 +195,24 @@ a labeled PR whose shards fail blocks the merge. Two env vars, both handled by
   fixture index. Unset locally, so `just devtools-test-stress` runs the whole
   sweep.
 
-Main-branch coverage is unchanged by this layout — same fixtures, same
-iteration counts, run once per merge instead of five times. PR coverage is
-the author's call via the label; the nightly sweep below is the backstop for
-anything that slipped through unlabeled.
+The shard layout retains the same fixtures and iteration counts. During the
+CI suspension, use the local stress recipe for this coverage; neither a PR
+label nor a main push restores it.
 
 ## Adding to CI (nightly deep sweep)
 
-A nightly `gctorture nightly` job invokes the full-suite recipe at `step = 100` on the
-Linux R-release runner, catching this class of bug before it reaches a release. It is
+The manually dispatched `gctorture nightly` workflow invokes the full-suite
+recipe at `step = 100` on the Linux R-release runner. It is
 **wired up** at `.github/workflows/gctorture-nightly.yml` (#1024):
 
-- Scheduled at 04:00 UTC daily, plus `workflow_dispatch` for on-demand runs. It is
+- The 04:00 UTC daily schedule is disabled pending #2070;
+  `workflow_dispatch` remains available for on-demand runs. It is
   deliberately **not** on the `pull_request` / `push` matrix — the full sweep needs
   ~11 hours of runner time, far too expensive for a PR gate, so it fans out over a
   six-shard matrix (`MINIEXTENDR_GCTORTURE_SHARD=k/n` partitions the test files).
-- `timeout-minutes: 300` per shard (~2 hours of sweeping each, plus the build and
-  uneven file weights). The harness also calls `setTimeLimit(Inf)` /
+- `timeout-minutes: 300` per shard; the historical two-hour estimate no longer
+  holds for every shard, and timeouts are tracked in #2070. The harness also
+  calls `setTimeLimit(Inf)` /
   `options(timeout = Inf)` so R's own wall-clock limits never abort the
   (deliberately slow) run.
 - The torture logic lives in `just gctorture-full` (→ `scripts/gctorture-full-sweep.R`),

@@ -5,10 +5,18 @@ CLI** (a Rust binary) and **`rpkg`** (the R package, which installs as
 `library(miniextendr)`). There is no release-automation workflow today; releases
 are manual tag-and-push. This document is the recipe.
 
-> Not to be confused with [`RELEASE_WORKFLOW.md`](./RELEASE_WORKFLOW.md), which
+> Not to be confused with [`RELEASE_WORKFLOW.md`](RELEASE_WORKFLOW.md), which
 > is about the CI workflow *downstream consumers* scaffold
 > (`minirextendr::use_release_workflow()`) — not about releasing miniextendr
 > itself.
+
+## Release gates
+
+A release commit is tagged only after it passes the release column of the
+[CI and release gates](MAINTAINER.md#ci-and-release-gates) on that exact
+commit. The [release checklist](MAINTAINER.md#release-checklist) walks through
+it and ends with the tag commands. GitHub enforces none of this; nothing is a
+required check on `main` yet (#1391).
 
 ## Version bumping
 
@@ -21,13 +29,9 @@ just bump-version 0.2.0        # or: bash scripts/bump-version.sh 0.2.0
 It updates `[workspace.package].version` in the root `Cargo.toml` (which the CLI
 inherits via `version.workspace = true`) and the `Version:` field of every
 DESCRIPTION (`rpkg`, `minirextendr`, the cross-package test fixtures). Commit the
-result, then tag:
-
-```bash
-git commit -am "release: v0.2.0"
-git tag -a v0.2.0 -m "v0.2.0"
-git push && git push --tags
-```
+result on a branch and land it on `main` through a pull request. Tag the merged
+commit only after the release gates pass on it; the release checklist ends with
+the tag commands.
 
 ## Releasing the CLI
 
@@ -138,7 +142,7 @@ toolchain, network access, and the committed lock sha.
 > match CRAN's R, or the `.so` fails to load / trips `--as-cran`. configure bakes
 > a per-install `MACOSX_DEPLOYMENT_TARGET` floor into `.cargo/config.toml`
 > (configure.ac:520–577), but a release runner should also pin the SDK. See
-> [RELEASE_WORKFLOW.md](./RELEASE_WORKFLOW.md) Gotchas 5–6 — and note
+> [RELEASE_WORKFLOW.md](RELEASE_WORKFLOW.md) Gotchas 5–6 — and note
 > `minirextendr::use_release_workflow(rpkg_subdir = "rpkg")` scaffolds a
 > known-good workflow for this exact subdir layout.
 
