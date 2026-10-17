@@ -5,6 +5,7 @@
 \alias{EnvMatchArgCounter$new}
 \alias{EnvMatchArgCounter$count}
 \alias{EnvMatchArgCounter$reset}
+\alias{EnvMatchArgCounter$pick_rotated}
 \alias{EnvMatchArgCounter$pick}
 \alias{$.EnvMatchArgCounter}
 \alias{[[.EnvMatchArgCounter}
@@ -41,6 +42,18 @@ EnvMatchArgCounter Class
 \strong{Arguments:}
 \describe{
 \item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+}
+}
+}
+
+
+\describe{
+\item{\code{EnvMatchArgCounter$pick_rotated()}}{
+A rotated choice formal still means omission when supplied whole.
+
+\strong{Arguments:}
+\describe{
+\item{\code{mode}}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice; the whole default counts as omitted.}
 }
 }
 }

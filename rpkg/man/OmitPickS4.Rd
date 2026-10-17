@@ -13,7 +13,7 @@ OmitPickS4()
 OmitPickS4_GradeDefaults_default_grade(grade = c("low", "mid", "high"))
 }
 \arguments{
-\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 Omittable choices on an S4 method: reports what reached Rust for each

@@ -4,7 +4,10 @@
 \alias{omit_grade_through_view}
 \title{omit_grade_through_view}
 \usage{
-omit_grade_through_view()
+omit_grade_through_view(grade = c("low", "mid", "high"))
+}
+\arguments{
+\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 Calls the \code{OmitGrade} methods through the trait's View, the path another

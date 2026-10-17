@@ -95,6 +95,15 @@ impl EnvMatchArgCounter {
         self.count()
     }
 
+    /// A rotated choice formal still means omission when supplied whole.
+    #[miniextendr(match_arg(mode), defaults(mode = "\"Safe\""))]
+    pub fn pick_rotated(&self, mode: Missing<ImplMode>) -> String {
+        match mode {
+            Missing::Absent => "absent".to_string(),
+            Missing::Present(mode) => format!("{mode:?}"),
+        }
+    }
+
     /// A mode with no default (#1828): the formal is bare, and an omitted
     /// argument reaches Rust as `Absent`.
     #[miniextendr(match_arg(mode), no_default(mode))]
@@ -470,7 +479,9 @@ impl OmitGrade for OmitPickS3 {
 /// package takes: an omitted, a `NULL` and a supplied grade, then an omitted
 /// and a supplied list of grades.
 #[miniextendr(no_worker)]
-pub fn omit_grade_through_view() -> Vec<String> {
+pub fn omit_grade_through_view(
+    #[miniextendr(choices("low", "mid", "high"))] grade: Missing<Option<String>>,
+) -> Vec<String> {
     unsafe {
         let erased = __mx_wrap_OmitPickS3(OmitPickS3);
         let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
@@ -478,6 +489,7 @@ pub fn omit_grade_through_view() -> Vec<String> {
         );
         let view = OmitGradeView::from_sexp(sexp.get());
         vec![
+            view.omit_grade(grade),
             view.omit_grade(Missing::Absent),
             view.omit_grade(Missing::Present(None)),
             view.omit_grade(Missing::Present(Some("mid".to_string()))),

@@ -2352,7 +2352,7 @@ impl ParsedMethod {
                 .unwrap_or_else(|| item.sig.ident.span()),
         )?;
 
-        // Validate: Missing<T> parameters must not have defaults
+        // Missing<T> defaults are refused, except a single-choice match_arg rotation.
         for arg in peeled_sig.inputs.iter() {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
@@ -2360,6 +2360,10 @@ impl ParsedMethod {
                 let name = crate::naming::ident_name(&pat_ident.ident);
                 if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
                     && param_defaults.contains_key(&name)
+                    && !method_attrs
+                        .per_param
+                        .get(&name)
+                        .is_some_and(|attrs| attrs.match_arg && !attrs.several_ok)
                 {
                     let span = method_attrs.defaults_span.unwrap_or(item.sig.ident.span());
                     return Err(syn::Error::new(

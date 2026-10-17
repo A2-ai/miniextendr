@@ -28,15 +28,15 @@ OmitPickS3
 \arguments{
 \item{x}{An object}
 
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
+\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 
 \item{modes}{One or more of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
 
-\item{level}{One of "low", "mid", "high"; omitting the argument means no choice.}
+\item{level}{One of "low", "mid", "high"; omitting the argument means no choice; the whole default counts as omitted.}
 
 \item{...}{Additional arguments passed to methods}
 
-\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 
 \item{grades}{One or more of "low", "mid", "high"; omitting the argument means no choice.}
 }
@@ -58,7 +58,7 @@ Pick the default grade, or none.
 
 \strong{Arguments:}
 \describe{
-\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 }
 }

@@ -908,8 +908,16 @@ fn snapshot_choice_param_forms() {
             Some(default) => format!("mode = {default}"),
             None => "mode".to_string(),
         };
+        let ty_tokens: syn::Type = syn::parse_str(ty).unwrap();
+        let sig: syn::Signature = syn::parse_quote!(fn pick(mode: #ty_tokens));
+        let defaults = attrs
+            .choice_formal(choices)
+            .map(|formal| ("mode".to_string(), formal))
+            .into_iter()
+            .collect();
+        let omission = build_choice_omission_prelude(&sig.inputs, &defaults, |_| Some(&attrs));
         output.push_str(&format!(
-            "{ty}{}{}\n  formal:  {formal}\n  wrapper: {}\n  caller:  {}\n  @param:  mode {prefix} \"fast\", \"safe\"{}.\n",
+            "{ty}{}{}\n  formal:  {formal}\n  omission: {omission:?}\n  wrapper: {}\n  caller:  {}\n  @param:  mode {prefix} \"fast\", \"safe\"{}.\n",
             if several_ok { " (several_ok)" } else { "" },
             // Not `Mode (no_default)`: the shadowing test reads `Mode (` as a call.
             if no_default { " with no_default" } else { "" },
@@ -1047,10 +1055,13 @@ fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
     for (ty, want) in [
         ("Mode", ""),
         ("Option<Mode>", ", or NULL for no choice"),
-        ("Missing<Mode>", "; omitting the argument means no choice"),
+        (
+            "Missing<Mode>",
+            "; omitting the argument means no choice; the whole default counts as omitted",
+        ),
         (
             "Missing<Option<Mode>>",
-            ", or NULL; omitting the argument means no choice",
+            ", or NULL; omitting the argument means no choice; the whole default counts as omitted",
         ),
         ("Either<Mode, DataFrame>", ", or a data frame"),
         (
@@ -1059,7 +1070,7 @@ fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
         ),
         (
             "Missing<Option<Either<Mode, DataFrame>>>",
-            ", a data frame, or NULL; omitting the argument means no choice",
+            ", a data frame, or NULL; omitting the argument means no choice; the whole default counts as omitted",
         ),
     ] {
         assert_eq!(choice_attrs(ty, false).choice_doc_suffix(), want, "{ty}");

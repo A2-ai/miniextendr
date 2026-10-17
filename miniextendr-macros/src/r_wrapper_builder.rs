@@ -359,11 +359,8 @@ impl<'a> RArgumentBuilder<'a> {
 
             // `Missing<T>`: forward true missingness as the `R_MissingArg`
             // sentinel, produced *at the argument position*. A binding holding
-            // the sentinel errors on symbol lookup ("argument is missing, with
-            // no default"), so the former `if (missing(x)) x <- quote(expr=)`
-            // prelude broke every truly-missing call. (`Missing<T>` + user
-            // default is rejected at macro parse time, so no default-shadowing
-            // concern here.)
+            // the sentinel errors on symbol lookup, so always guard that lookup
+            // with `missing()`, including after choice-formal normalization.
             if is_missing_type(pat_type.ty.as_ref()) {
                 call_args.push(format!(
                     "if (missing({p})) quote(expr=) else {p}",
@@ -377,6 +374,31 @@ impl<'a> RArgumentBuilder<'a> {
 
         call_args
     }
+}
+
+/// Treat a supplied single-choice `Missing<..>` formal as omission (#2152).
+///
+/// Use the effective formal, including any write-time default rotation, before
+/// checks or matching can change the value. Attributes participate in
+/// `identical()`. The existing `missing()` guards then skip checks and forward
+/// the sentinel without looking up the missing binding.
+pub(crate) fn build_choice_omission_prelude<'a>(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    defaults: &std::collections::HashMap<String, String>,
+    param_attrs: impl Fn(&str) -> Option<&'a crate::miniextendr_fn::ParamAttrs>,
+) -> Vec<String> {
+    r_formal_names(inputs)
+        .filter_map(|(name, ident)| {
+            let attrs = param_attrs(&crate::naming::ident_name(ident))?;
+            if !attrs.is_choice() || !attrs.omittable || attrs.several_ok || attrs.no_default {
+                return None;
+            }
+            let formal = &defaults[&name];
+            Some(format!(
+                "if (!missing({name}) && identical({name}, {formal})) {name} <- quote(expr=)"
+            ))
+        })
+        .collect()
 }
 
 /// Build R formal parameters from a Rust function signature, with optional defaults.

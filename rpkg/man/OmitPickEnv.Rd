@@ -32,7 +32,7 @@ Pick one grade, or none.
 
 \strong{Arguments:}
 \describe{
-\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 }
 }
@@ -54,7 +54,7 @@ Pick the default grade, or none.
 
 \strong{Arguments:}
 \describe{
-\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 }
 }

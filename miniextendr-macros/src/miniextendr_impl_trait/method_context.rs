@@ -125,6 +125,8 @@ pub(super) struct TraitMethodContext<'a> {
     /// context existed, trait methods built call args via
     /// `collect_param_idents` instead, which skipped that forwarding entirely.
     pub(super) args: String,
+    /// Single-choice formal normalization, before the parameter checks.
+    choice_omission_prelude: Vec<String>,
     /// The impl block's `preconditions` / `no_preconditions`
     /// (`ImplAttrs::preconditions`; for an empty-body impl, its decision with
     /// the crate default and the feature folded in), below the method's own
@@ -152,6 +154,11 @@ impl<'a> TraitMethodContext<'a> {
             &method.per_param,
             &c_ident,
         );
+        let choice_omission_prelude = crate::r_wrapper_builder::build_choice_omission_prelude(
+            &method.sig.inputs,
+            &effective_defaults,
+            |name| method.per_param.get(name),
+        );
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -162,6 +169,7 @@ impl<'a> TraitMethodContext<'a> {
             c_ident,
             params,
             args,
+            choice_omission_prelude,
             impl_preconditions: None,
             call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
         }
@@ -303,14 +311,16 @@ impl<'a> TraitMethodContext<'a> {
     /// block's, the crate default and the feature decide; the per-parameter
     /// `inherits(...)` / `not_inherits(...)` / `no_na(...)` checks stay.
     pub(super) fn precondition_checks(&self) -> Vec<String> {
-        crate::r_class_formatter::build_method_precondition_checks(
+        let mut checks = self.choice_omission_prelude.clone();
+        checks.extend(crate::r_class_formatter::build_method_precondition_checks(
             &self.method.sig.inputs,
             &self.method.per_param,
             self.method.coerce,
             self.method.preconditions,
             self.impl_preconditions,
             self.call_attribution.r_check_call(),
-        )
+        ));
+        checks
     }
 
     /// Emit the shared method prelude into `lines`, each line prefixed with

@@ -1345,8 +1345,7 @@ fn choice_trait_method() -> TraitMethod {
     method
 }
 
-const LEVEL_DOC: &str =
-    "#' @param level One of \"low\", \"high\", or NULL; omitting the argument means no choice.";
+const LEVEL_DOC: &str = "#' @param level One of \"low\", \"high\", or NULL; omitting the argument means no choice; the whole default counts as omitted.";
 
 /// The S3 method block of a trait method documents every formal of its
 /// `\usage` the doc comment leaves out, a `choices(...)` param with the same
@@ -1410,7 +1409,7 @@ fn s7_trait_shortcut_documents_choice_params() {
 }
 
 /// The `\describe{}` item of the `level` choice parameter.
-const LEVEL_ITEM: &str = "#'   \\item{\\code{level}}{One of \"low\", \"high\", or NULL; omitting the argument means no choice.}";
+const LEVEL_ITEM: &str = "#'   \\item{\\code{level}}{One of \"low\", \"high\", or NULL; omitting the argument means no choice; the whole default counts as omitted.}";
 
 /// [`choice_trait_method`] with `doc_tags`.
 fn choice_trait_method_with(tags: &[&str]) -> TraitMethod {

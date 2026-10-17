@@ -352,11 +352,21 @@ missing-argument sentinel to Rust (the same `quote(expr=)` forwarding every
 `Missing<T>` parameter uses), so the formal default is only documentation.
 Explicit `NULL` is `Present(None)`, exactly as for any `Missing<Option<T>>`;
 collapse the two with `mode.into_option().flatten()` when the difference does
-not matter. The auto-generated `@param` line ends in ", or NULL; omitting the
-argument means no choice".
+not matter.
 
-The other forms follow the same rule, `Missing<X>` behaves like `X` for every
-supplied value and adds `Absent` for an omitted one:
+For a single choice, supplying a value `identical()` to the displayed choice
+vector also reaches Rust as `Absent` (#2152). A `default = "\"Safe\""`
+rotates that vector to `c("Safe", "Fast", "Debug")`; only that order counts as
+omitted. Names and other attributes count in the comparison, so a named or
+classed copy is matched normally. The comparison happens before matching:
+with one choice `"only"`, the exact scalar counts as omitted, while a prefix
+`"on"` or an alias still selects it. The auto-generated `@param` line adds
+"the whole default counts as omitted". `several_ok` still selects every
+choice from the full vector; `no_default` keeps ordinary matching because its
+formal has no choice vector.
+
+The other forms follow the same rule: `Missing<X>` adds `Absent` for omission
+and, for a single choice with a formal default, for the whole choice vector:
 
 | Parameter type | Formal | Omitted | `NULL` | `"Sa"` |
 |----------------|--------|---------|--------|--------|
@@ -374,23 +384,25 @@ To refuse an explicit `NULL` in any of these forms, with your own message, see
 
 `choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
 has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
-it cannot carry a `default = "..."`. Impl methods of every class system take
+a single-choice `match_arg` may carry `default = "..."` to rotate the displayed
+list. Ordinary `Missing<T>` defaults remain invalid. Impl methods of every
+class system take
 the same types through the method-level `match_arg(p)` /
 `match_arg_several_ok(p)` / `choices(p = "...")` attributes; trait methods
-accept `choices(p = "...")` / `choices_several_ok(p = "...")` only, so they
-take the string forms (`Missing<String>`, `Missing<Option<String>>`,
-`Missing<Vec<String>>`, and with the `either` feature
-`Missing<Either<String, R>>` / `Missing<Either<Vec<String>, R>>`). An omitted
-argument crosses the trait ABI of a `#[miniextendr]` trait as R's
-missing-argument sentinel, so a cross-package call sees `Absent` too.
+support those options too. Parameter-level attributes work on functions and
+methods alike. The string forms include `Missing<String>`,
+`Missing<Option<String>>`, `Missing<Vec<String>>`, and, with the `either`
+feature, `Missing<Either<String, R>>` / `Missing<Either<Vec<String>, R>>`.
+A normalized omitted argument crosses the trait ABI of a `#[miniextendr]`
+trait as R's missing-argument sentinel, so a cross-package call sees `Absent`
+too.
 
-A hand-written R function in front of such a wrapper passes omission on only
-if its own formal has no default: `run <- function(mode) run_impl(mode)`
-reaches Rust as `Absent` when called as `run()`, while
-`function(mode = c("Fast", "Safe")) run_impl(mode)` hands the default vector
-over as a supplied value (R's `missing()` does not see through a formal with a
-default). To give the generated wrapper itself a bare formal, use
-`no_default` (below).
+A hand-written R function can forward omission through a bare formal:
+`run <- function(mode) run_impl(mode)` reaches Rust as `Absent` for `run()`.
+A caller that uses the same whole choice vector as its default also reaches
+`Absent`, because the generated wrapper recognizes that supplied vector.
+Other supplied defaults are matched normally. To give the generated wrapper
+itself a bare formal, use `no_default` (below).
 
 #### Without a Default: `no_default`
 

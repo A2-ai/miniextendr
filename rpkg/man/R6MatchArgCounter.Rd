@@ -82,7 +82,7 @@ an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
     }
     \if{html}{\out{</div>}}
   }

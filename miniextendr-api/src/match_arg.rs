@@ -754,7 +754,12 @@ pub fn match_arg_null_or<U, E>(
 /// missing-argument sentinel (`if (missing(x)) quote(expr=) else x`), so
 /// `#[miniextendr(match_arg)] mode: Missing<Option<Mode>>` reaches Rust as
 /// `Absent` when omitted, `Present(None)` for `NULL`, and
-/// `Present(Some(mode))` for a matched choice. The C wrapper decodes it with
+/// `Present(Some(mode))` for a matched choice. For a single choice, the wrapper
+/// also normalizes a value identical to its formal choice vector (including a
+/// preferred-default rotation) to the missing sentinel before any checks.
+/// Attributes participate in that comparison. `several_ok` and `no_default`
+/// keep ordinary matching of a supplied choice vector.
+/// The C wrapper decodes it with
 /// `match_arg_missing_or(sexp, match_arg_option_from_sexp::<Mode>)`.
 pub fn match_arg_missing_or<U, E>(
     sexp: SEXP,

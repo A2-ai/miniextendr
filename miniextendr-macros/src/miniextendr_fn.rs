@@ -511,11 +511,13 @@ pub(crate) fn validate_per_param_attr_conflicts(
     }
     // `Missing<Quoted>` / `Missing<Quosure>` takes a `default` that only
     // writes the formal: the wrapper tests `missing()` before it captures the
-    // argument, so the default is never evaluated (#1835).
+    // argument, so the default is never evaluated (#1835). A single-choice
+    // `match_arg` default only rotates its documented choice vector (#2152).
     if let Some(ty) = ty
         && is_missing_type(ty)
         && crate::type_inspect::unevaluated_param(ty).is_none()
         && attr.default_value.is_some()
+        && !(attr.has_match_arg && !attr.has_several_ok)
     {
         return Err(syn::Error::new(
             span,
@@ -1744,7 +1746,8 @@ impl ParamAttrs {
     /// `, a data frame, or NULL for no choice` for both,
     /// `, or NULL; omitting the argument means no choice` for
     /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
-    /// `Missing<T>`, and nothing for a plain choice. Under `no_default`
+    /// `Missing<T>`, plus `; the whole default counts as omitted` for
+    /// single-choice `Missing<..>`, and nothing for a plain choice. Under `no_default`
     /// (#1828) the omission note goes (the author documents what omission
     /// means) and the rest stays.
     pub(crate) fn choice_doc_suffix(&self) -> String {
@@ -1757,6 +1760,9 @@ impl ParamAttrs {
             choice_alternatives_suffix(self.either_noun.as_deref(), self.optional, null_word);
         if self.omittable && !self.no_default {
             suffix.push_str("; omitting the argument means no choice");
+            if !self.several_ok {
+                suffix.push_str("; the whole default counts as omitted");
+            }
         }
         suffix
     }

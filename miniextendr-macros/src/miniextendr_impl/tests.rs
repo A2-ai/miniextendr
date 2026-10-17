@@ -5466,7 +5466,7 @@ fn method_choice_params_get_choice_text() {
             }
         }
     };
-    let color = "@param color One of \"red\", \"green\"; omitting the argument means no choice.";
+    let color = "@param color One of \"red\", \"green\"; omitting the argument means no choice; the whole default counts as omitted.";
     let tags = "@param tags One or more of \"a\", \"b\".";
     let mode = "@param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__";
     for (class_system, wrapper) in [
@@ -5500,7 +5500,7 @@ fn method_choice_params_get_choice_text() {
         .and_then(|rest| rest.split("Picker$pick <- function(").next())
         .expect("Picker$pick block");
     for item in [
-        "\\item{\\code{color}}{One of \"red\", \"green\"; omitting the argument means no choice.}",
+        "\\item{\\code{color}}{One of \"red\", \"green\"; omitting the argument means no choice; the whole default counts as omitted.}",
         "\\item{\\code{tags}}{One or more of \"a\", \"b\".}",
         "\\item{\\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}",
     ] {
@@ -5533,7 +5533,7 @@ fn constructor_choice_params_get_choice_text() {
     };
     let lines = [
         "#' @param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__new_mode__",
-        "#' @param color One of \"red\", \"green\"; omitting the argument means no choice.",
+        "#' @param color One of \"red\", \"green\"; omitting the argument means no choice; the whole default counts as omitted.",
         "#' @param size (undocumented)",
     ];
     let mut vctrs_attrs = default_impl_attrs(ClassSystem::Vctrs);

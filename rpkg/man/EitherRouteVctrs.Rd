@@ -33,7 +33,7 @@ eitherroutevctrs_plan(
 
 \item{to}{A EitherRouteVctrs prototype.}
 
-\item{level}{One of "low", "mid", "high", or a number; omitting the argument means no choice.}
+\item{level}{One of "low", "mid", "high", or a number; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 A route name or a data frame of doses, and an omittable level name or

@@ -26,6 +26,7 @@ doses <- data.frame(time = c(0, 12), amt = c(100, 50))
 test_that("Either<T, DataFrame>: choices formal, character and factor go Left, a data frame goes Right", {
   expect_equal(eval(formals(match_arg_either_route)$route), routes)
   expect_equal(match_arg_either_route(), "Oral")
+  expect_equal(match_arg_either_route(routes), "Oral")
   expect_equal(match_arg_either_route("inf"), "Infusion")
   expect_equal(match_arg_either_route(factor("bolus")), "Bolus")
   expect_equal(match_arg_either_route(doses), "frame:2x2")
@@ -62,12 +63,14 @@ test_that("Option<Either<T, R>>: NULL formal, NULL is None", {
 test_that("Missing<Either<T, R>> and Missing<Option<Either<T, R>>> report omission", {
   expect_equal(eval(formals(match_arg_either_route_omitted)$route), routes)
   expect_equal(match_arg_either_route_omitted(), "absent")
+  expect_equal(match_arg_either_route_omitted(routes), "absent")
   expect_equal(match_arg_either_route_omitted("oral"), "Oral")
   expect_equal(match_arg_either_route_omitted(doses), "frame:2x2")
   expect_choice_error(match_arg_either_route_omitted("iv"), "route", routes)
 
   expect_equal(eval(formals(match_arg_either_route_omitted_optional)$route), routes)
   expect_equal(match_arg_either_route_omitted_optional(), "absent")
+  expect_equal(match_arg_either_route_omitted_optional(routes), "absent")
   expect_equal(match_arg_either_route_omitted_optional(NULL), "null")
   expect_equal(match_arg_either_route_omitted_optional("inf"), "Infusion")
   expect_equal(match_arg_either_route_omitted_optional(doses), "frame:2x2")
@@ -76,6 +79,7 @@ test_that("Missing<Either<T, R>> and Missing<Option<Either<T, R>>> report omissi
 test_that("not_inherits(\"NULL\") on Missing<Either<T, DataFrame>> refuses NULL with its own message", {
   expect_equal(eval(formals(match_arg_either_route_refuse_null)$route), routes)
   expect_equal(match_arg_either_route_refuse_null(), "absent")
+  expect_equal(match_arg_either_route_refuse_null(routes), "absent")
   expect_equal(match_arg_either_route_refuse_null("bol"), "Bolus")
   expect_equal(match_arg_either_route_refuse_null(doses), "frame:2x2")
   # Without the check, NULL goes to the DataFrame arm, which refuses it in
@@ -155,6 +159,7 @@ levels <- c("low", "mid", "high")
 # which keeps an omitted argument missing.
 expect_route_level <- function(f) {
   expect_equal(f(), "route=Oral;level=absent")
+  expect_equal(f(route = routes, level = levels), "route=Oral;level=absent")
   expect_equal(f("inf"), "route=Infusion;level=absent")
   expect_equal(f(factor("bolus")), "route=Bolus;level=absent")
   expect_equal(f(doses), "route=frame:2x2;level=absent")
@@ -220,6 +225,7 @@ test_that("vctrs constructor and static method with Either choice parameters", {
 # / `number:<n>`) for an omittable `choices(...)` `Either<String, f64>`.
 expect_either_grade <- function(grade) {
   expect_equal(grade(), "absent")
+  expect_equal(grade(grade = levels), "absent")
   expect_equal(grade(grade = "hi"), "level:high")
   expect_equal(grade(grade = 4), "number:4")
   expect_choice_error(grade(grade = "max"), "grade", levels)
@@ -253,7 +259,7 @@ test_that("method Either choice params name the other kind in their @param line"
     expect_length(page, 1L)
     page[[1L]]
   }
-  level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice."
+  level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice; the whole default counts as omitted."
   for (topic in c("EitherRouteS3", "EitherRouteS7", "EitherRouteVctrs")) {
     expect_match(rd_text(topic), level_or_number, fixed = TRUE)
   }
@@ -262,7 +268,7 @@ test_that("method Either choice params name the other kind in their @param line"
   # The S7 constructor's `start` (inlined in `new_class()`).
   expect_match(
     rd_text("EitherRouteS7"),
-    "\"infusion\", or a data frame; omitting the argument means no choice.",
+    "\"infusion\", or a data frame; omitting the argument means no choice; the whole default counts as omitted.",
     fixed = TRUE
   )
 })
@@ -322,6 +328,7 @@ test_that("several_ok Either<Box<[T]>, DataFrame>", {
 test_that("several_ok Missing<Either<Vec<T>, R>> reports omission", {
   expect_equal(eval(formals(match_arg_either_routes_omitted)$route_list), routes)
   expect_equal(match_arg_either_routes_omitted(), "absent")
+  expect_equal(match_arg_either_routes_omitted(routes), "Oral,Bolus,Infusion")
   expect_equal(match_arg_either_routes_omitted(c("inf", "or")), "Infusion,Oral")
   expect_equal(match_arg_either_routes_omitted(doses), "frame:2x2")
   expect_choice_error(match_arg_either_routes_omitted("iv"), "route_list", routes)
@@ -341,6 +348,7 @@ test_that("several_ok Option<Either<Vec<T>, R>>: NULL formal, NULL is None", {
 test_that("several_ok Missing<Option<Either<Vec<T>, R>>>: omitted is Absent, NULL is Present(None)", {
   expect_equal(eval(formals(match_arg_either_routes_omitted_optional)$route_pick), routes)
   expect_equal(match_arg_either_routes_omitted_optional(), "absent")
+  expect_equal(match_arg_either_routes_omitted_optional(routes), "Oral,Bolus,Infusion")
   expect_equal(match_arg_either_routes_omitted_optional(NULL), "null")
   expect_equal(match_arg_either_routes_omitted_optional("inf"), "Infusion")
   expect_equal(match_arg_either_routes_omitted_optional(doses), "frame:2x2")

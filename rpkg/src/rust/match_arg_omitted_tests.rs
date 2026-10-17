@@ -184,3 +184,41 @@ pub fn choices_no_default_color(
     }
 }
 // endregion
+
+// region: Whole choice formals count as omission (#2152)
+
+/// A preferred default rotates the displayed choices but does not choose for
+/// an omitted argument or a supplied copy of the whole formal.
+#[miniextendr_api::miniextendr]
+pub fn match_arg_omitted_rotated(
+    #[miniextendr(match_arg, default = "\"Safe\"")] mode: Missing<Mode>,
+) -> String {
+    match_arg_omitted_plain(mode)
+}
+
+/// Omission skips explicit preconditions too; a supplied choice must be a factor.
+#[miniextendr_api::miniextendr]
+pub fn match_arg_omitted_factor(
+    #[miniextendr(match_arg, inherits = "factor")] mode: Missing<Mode>,
+) -> String {
+    match_arg_omitted_plain(mode)
+}
+
+#[derive(Clone, Copy, miniextendr_api::MatchArg)]
+pub enum OnlyChoice {
+    #[match_arg(rename = "only", alias = "solo")]
+    Only,
+}
+
+/// Only the supplied formal counts as omitted, before partial or alias matching.
+#[miniextendr_api::miniextendr]
+pub fn match_arg_omitted_singleton(
+    #[miniextendr(match_arg)] identical: Missing<OnlyChoice>,
+) -> String {
+    match identical {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(OnlyChoice::Only) => "only".to_string(),
+    }
+}
+
+// endregion

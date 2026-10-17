@@ -1469,7 +1469,7 @@ fn expand_miniextendr(
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
     let mut arg_builder = RArgumentBuilder::new(inputs);
-    // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
+    // Add user-specified parameter defaults before resolving choice formals.
     let mut merged_defaults = parsed.param_defaults();
     // For match_arg params, always use the choices placeholder as the formal
     // default — the write-time pass replaces it with `c("a", "b", ...)`.
@@ -1523,6 +1523,11 @@ fn expand_miniextendr(
             merged_defaults.entry(r_name).or_insert(formal);
         }
     }
+    let choice_omission_prelude =
+        r_wrapper_builder::build_choice_omission_prelude(inputs, &merged_defaults, |name| {
+            parsed.param_attrs(name)
+        })
+        .join("\n  ");
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
     let r_formals = arg_builder.build_formals();
@@ -1866,10 +1871,9 @@ fn expand_miniextendr(
 
     // Combine all preludes: call attribution (`.mx_call` under `call = caller`,
     // first so the R-side checks below can raise with it, #1548), r_entry,
-    // on.exit, lifecycle, static preconditions, match.arg, choices,
-    // r_post_checks. (Missing<T> forwarding lives inline in the `.Call()` args
-    // — see `build_call_args_vec` — because a prelude binding of the missing
-    // sentinel errors on lookup.)
+    // on.exit, lifecycle, choice-formal omission, static preconditions,
+    // match.arg, choices, r_post_checks. Missing<T> forwarding remains guarded
+    // inline in the `.Call()` args (see `build_call_args_vec`).
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
     let attribution_prelude = call_attribution.prelude(call_formal.is_some());
     let combined_prelude = {
@@ -1885,6 +1889,9 @@ fn expand_miniextendr(
         }
         if let Some(ref lc) = lifecycle_prelude {
             parts.push(lc.as_str());
+        }
+        if !choice_omission_prelude.is_empty() {
+            parts.push(&choice_omission_prelude);
         }
         if !precondition_prelude.is_empty() {
             parts.push(&precondition_prelude);

@@ -366,6 +366,8 @@ pub struct MethodContext<'a> {
     /// R call arguments string without defaults (e.g., `"value, step"`), used
     /// inside `.Call()` expressions.
     pub args: String,
+    /// Single-choice formal normalization, before the parameter checks.
+    choice_omission_prelude: Vec<String>,
     /// The impl block's `preconditions` / `no_preconditions`
     /// (`ImplAttrs::preconditions`): below the method's own and each
     /// parameter's, above the crate default (see
@@ -395,6 +397,11 @@ impl<'a> MethodContext<'a> {
             &method.method_attrs.per_param,
             &c_ident,
         );
+        let choice_omission_prelude = crate::r_wrapper_builder::build_choice_omission_prelude(
+            &method.sig.inputs,
+            &effective_defaults,
+            |name| method.method_attrs.per_param.get(name),
+        );
         let arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
             .with_defaults(effective_defaults);
         let params = arg_builder.build_formals();
@@ -404,6 +411,7 @@ impl<'a> MethodContext<'a> {
             c_ident,
             params,
             args,
+            choice_omission_prelude,
             impl_preconditions: None,
             call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
         }
@@ -576,14 +584,16 @@ impl<'a> MethodContext<'a> {
     /// per-parameter `inherits(...)` / `not_inherits(...)` / `no_na(...)`
     /// checks stay.
     pub fn precondition_checks(&self) -> Vec<String> {
-        build_method_precondition_checks(
+        let mut checks = self.choice_omission_prelude.clone();
+        checks.extend(build_method_precondition_checks(
             &self.method.sig.inputs,
             &self.method.method_attrs.per_param,
             self.method.method_attrs.coerce,
             self.method.method_attrs.preconditions,
             self.impl_preconditions,
             self.call_attribution.r_check_call(),
-        )
+        ));
+        checks
     }
 
     /// Emit the 6-step method prelude into `lines`, each line prefixed with `indent`.
@@ -594,13 +604,12 @@ impl<'a> MethodContext<'a> {
     /// 1. `r_entry` — user code injected before any checks
     /// 2. `r_on_exit` — `on.exit(...)` cleanup
     /// 3. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
-    /// 4. `precondition_checks` — one `isTRUE()` guard per check on typed params
+    /// 4. `precondition_checks` — normalize choice-formal omission, then check typed params
     /// 5. `match_arg_prelude` — `base::match.arg(param)` validation
     /// 6. `r_post_checks` — user code after all checks, before `.Call()`
     ///
-    /// (`Missing<T>` forwarding is not a prelude step: it lives inline in the
-    /// `.Call()` args — see `build_call_args_vec` — because a binding of the
-    /// missing sentinel errors on lookup.)
+    /// `Missing<T>` forwarding stays guarded inline in the `.Call()` args
+    /// (see `build_call_args_vec`), including after choice-formal normalization.
     ///
     /// `what` is the human-readable method label passed to `lifecycle_prelude`
     /// (e.g., `"Type.method"` for S3/S4, `"Type$method"` for Env/R6/S7).
