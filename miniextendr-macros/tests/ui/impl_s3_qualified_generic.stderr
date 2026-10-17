@@ -1,0 +1,5 @@
+error: expected an S3 generic name or `package::generic` with a valid R package name and exactly one `::`
+ --> tests/ui/impl_s3_qualified_generic.rs:7:32
+  |
+7 |     #[miniextendr(s3(generic = "bad_pkg::as_tibble"))]
+  |                                ^^^^^^^^^^^^^^^^^^^^

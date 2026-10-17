@@ -1,0 +1,23 @@
+error: expected an S3 generic name or `package::generic` with a valid R package name and exactly one `::`
+ --> tests/ui/fn_s3_qualified_generic.rs:3:28
+  |
+3 | #[miniextendr(s3(generic = "::as_tibble", class = "rows"))]
+  |                            ^^^^^^^^^^^^^
+
+error: expected an S3 generic name or `package::generic` with a valid R package name and exactly one `::`
+ --> tests/ui/fn_s3_qualified_generic.rs:6:28
+  |
+6 | #[miniextendr(s3(generic = "bad_pkg::as_tibble", class = "rows"))]
+  |                            ^^^^^^^^^^^^^^^^^^^^
+
+error: expected an S3 generic name or `package::generic` with a valid R package name and exactly one `::`
+ --> tests/ui/fn_s3_qualified_generic.rs:9:28
+  |
+9 | #[miniextendr(s3(generic = "tibble::as_tibble::extra", class = "rows"))]
+  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: expected an S3 generic name or `package::generic` with a valid R package name and exactly one `::`
+  --> tests/ui/fn_s3_qualified_generic.rs:12:28
+   |
+12 | #[miniextendr(s3(generic = "tibble::", class = "rows"))]
+   |                            ^^^^^^^^^^

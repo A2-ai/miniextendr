@@ -2094,7 +2094,7 @@ fn test_trait_method_rdname_override_all_systems() {
             // must not stay behind on the type page (duplicated alias across
             // two Rd files), and it drops its filler title on the split page.
             let guard = result
-                .find("#' @name value.Foo")
+                .find("#' @name value..__MX_CLASS_REF_Foo__")
                 .unwrap_or_else(|| panic!("missing S3 guard block in:\n{result}"));
             let guard_rdname = result[guard..]
                 .lines()
@@ -2225,7 +2225,9 @@ fn s3_operator_names_are_quoted_in_trait_wrappers() {
         )
         .unwrap();
         assert!(
-            wrapper.contains(&format!("`{generic}.Foo` <- function(x, ...)")),
+            wrapper.contains(&format!(
+                "`{generic}..__MX_CLASS_REF_Foo__` <- function(x, ...)"
+            )),
             "{wrapper}"
         );
         assert!(
@@ -2236,7 +2238,7 @@ fn s3_operator_names_are_quoted_in_trait_wrappers() {
         );
         assert!(
             wrapper.contains(&format!(
-                "S7::method(`{generic}`, S7::new_S3_class(\"Foo\")) <- `{generic}.Foo`"
+                "S7::method(`{generic}`, S7::new_S3_class(\".__MX_CLASS_REF_Foo__\")) <- `{generic}..__MX_CLASS_REF_Foo__`"
             )),
             "{wrapper}"
         );
@@ -2296,11 +2298,15 @@ fn test_trait_method_describe_in_routes_own_block() {
 
     // (class system, methods, anchor line of each method's own block)
     let cases: Vec<(ClassSystem, Vec<TraitMethod>, Vec<&str>)> = vec![
-        (ClassSystem::S3, vec![inst.clone()], vec!["value.Foo <- "]),
+        (
+            ClassSystem::S3,
+            vec![inst.clone()],
+            vec!["value..__MX_CLASS_REF_Foo__ <- "],
+        ),
         (
             ClassSystem::Vctrs,
             vec![inst.clone()],
-            vec!["value.Foo <- "],
+            vec!["value..__MX_CLASS_REF_Foo__ <- "],
         ),
         (
             ClassSystem::S4,
@@ -2919,11 +2925,14 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
     };
     let s3 = generate(methods[0].clone(), ClassSystem::S3);
     assert!(
-        s3.contains("predict.Foo <- function(object, x, ...)"),
+        s3.contains("predict..__MX_CLASS_REF_Foo__ <- function(object, x, ...)"),
         "{s3}"
     );
     assert!(s3.contains(", object, x)"), "{s3}");
-    assert!(s3.contains("#' @method predict Foo"), "{s3}");
+    assert!(
+        s3.contains("#' @method predict .__MX_CLASS_REF_Foo__"),
+        "{s3}"
+    );
     assert!(s3.contains("#' @param object An object"), "{s3}");
     assert!(!s3.contains("UseMethod("), "{s3}");
     assert!(!s3.contains("#' @export predict\n"), "{s3}");
@@ -3493,4 +3502,58 @@ fn exact_comparison_missing_operand_is_a_diagnostic_not_a_macro_panic() {
     )
     .to_string();
     assert!(output.contains("RPartialEq::r_eq requires an other argument"));
+}
+
+#[test]
+fn qualified_s3_trait_methods_preserve_lazy_registration_under_visibility_filters() {
+    let source: syn::ItemImpl = syn::parse_quote! {
+        impl Rows for Foo {
+            #[miniextendr(s3(generic = "tibble::as_tibble"))]
+            fn rows(&self) -> i32 { 1 }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[]).unwrap();
+    assert_eq!(
+        methods[0].r_entry_name(
+            ClassSystem::S3,
+            &format_ident!("Foo"),
+            &format_ident!("Rows")
+        ),
+        "as_tibble"
+    );
+    for (no_rd, internal, noexport) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let wrapper = generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Rows"),
+            &methods,
+            &[],
+            opts(ClassSystem::S3, no_rd, internal, noexport),
+        )
+        .unwrap();
+        assert!(
+            wrapper.contains("as_tibble..__MX_CLASS_REF_Foo__ <- function(x, ...)"),
+            "{wrapper}"
+        );
+        assert_eq!(
+            wrapper.contains("#' @exportS3Method tibble::as_tibble"),
+            !noexport,
+            "{wrapper}"
+        );
+        for forbidden in [
+            "#' @method",
+            "#' @export\n",
+            "UseMethod(",
+            "get0(",
+            "S7::method",
+            "tibble::as_tibble.Foo",
+        ] {
+            assert!(!wrapper.contains(forbidden), "{forbidden}: {wrapper}");
+        }
+    }
 }

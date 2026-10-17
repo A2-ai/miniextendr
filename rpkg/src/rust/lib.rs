@@ -339,6 +339,7 @@ mod roxygen_prose_links_tests;
 mod roxygen_rustdoc_links_tests;
 mod s3_call_tests;
 mod s3_nonsyntactic_tests;
+mod s3_qualified_tests;
 mod s3_replacement_tests;
 mod s3_subscript_tests;
 mod s3_tests;

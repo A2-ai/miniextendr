@@ -217,7 +217,8 @@ mod misplaced_dots;
 // r! proc-macro implementation
 mod r_macro;
 
-// vctrs support
+// S3 and vctrs support
+mod s3_generics;
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
 mod vctrs_generics;
@@ -1180,26 +1181,32 @@ fn expand_miniextendr(
         }
         None => None,
     };
+    let s3_target_name = s3_generic
+        .clone()
+        .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
+    let s3_target = is_s3_method.then(|| crate::s3_generics::S3Generic::new(&s3_target_name));
     let r_wrapper_ident_str: String;
     let s3_method_comment: String;
 
-    if is_s3_method {
+    if let Some(generic) = s3_target {
         // For S3 methods, function name is generic.class
         // generic defaults to Rust function name if not specified
-        let generic = s3_generic
-            .clone()
-            .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
         // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
         // validates that s3(...) always has class specified
         let class = s3_class.as_ref().expect("s3_class validated at parse time");
-        r_wrapper_ident_str = format!("{}.{}", generic, class);
+        r_wrapper_ident_str = generic.method_name(class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
-        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
-            format!("#' @importFrom vctrs {}\n", generic)
-        } else {
-            String::new()
-        };
-        s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
+        let import_comment =
+            if generic.package.is_none() && crate::vctrs_generics::is_vctrs_generic(generic.name) {
+                format!("#' @importFrom vctrs {}\n", generic.name)
+            } else {
+                String::new()
+            };
+        s3_method_comment = import_comment
+            + &generic
+                .method_tag(class)
+                .map(|tag| format!("#' {tag}\n"))
+                .unwrap_or_default();
     } else if let Some(ref custom_name) = fn_r_name {
         r_wrapper_ident_str = custom_name.clone();
         s3_method_comment = String::new();
@@ -1697,6 +1704,15 @@ fn expand_miniextendr(
         roxygen_tags.insert(0, format!("@title {}", r_wrapper_ident_str));
     }
 
+    // An explicit bare @export means the same registration as an automatic
+    // export; package qualification must not accidentally add an eager one.
+    if let Some(target) = s3_target.filter(|target| target.package.is_some()) {
+        for tag in &mut roxygen_tags {
+            if tag.trim() == "@export" {
+                *tag = target.export_tag();
+            }
+        }
+    }
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_export_tag(&roxygen_tags);
     let has_internal_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "keywords internal");
@@ -1714,7 +1730,7 @@ fn expand_miniextendr(
     } else {
         ""
     };
-    // S3 methods need both @method (for registration) AND @export (for NAMESPACE)
+    // Bare S3 targets use @method + @export; qualified targets use @exportS3Method.
     // Don't auto-export functions marked with @noRd, @keywords internal, or attr flags
     // #[miniextendr(export)] forces @export even on non-pub functions
     let export_comment = if (matches!(vis, syn::Visibility::Public(_)) || export)
@@ -1724,7 +1740,10 @@ fn expand_miniextendr(
         && !internal
         && !noexport
     {
-        "#' @export\n".to_string()
+        format!(
+            "#' {}\n",
+            s3_target.map_or_else(|| "@export".to_owned(), |target| target.export_tag())
+        )
     } else {
         String::new()
     };

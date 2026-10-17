@@ -1624,7 +1624,11 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.generic = Some(value.value());
+                            method_attrs.generic = Some(if meta.path.is_ident("s3") {
+                                crate::s3_generics::parse(&value)?
+                            } else {
+                                value.value()
+                            });
                         } else if meta.path.is_ident("s4") && inner.path.is_ident("own") {
                             method_attrs.own_generic = true;
                         } else if inner.path.is_ident("receiver") {
@@ -2578,9 +2582,12 @@ impl ParsedMethod {
         match parsed.class_system {
             ClassSystem::Env | ClassSystem::R6 => name,
             ClassSystem::S4 if self.env.is_instance() => s4_class::s4_generic_name(self),
-            ClassSystem::S3 | ClassSystem::S7 | ClassSystem::Vctrs if self.env.is_instance() => {
-                self.r_generic_name()
+            ClassSystem::S3 if self.env.is_instance() => {
+                crate::s3_generics::S3Generic::new(&self.r_generic_name())
+                    .name
+                    .to_owned()
             }
+            ClassSystem::S7 | ClassSystem::Vctrs if self.env.is_instance() => self.r_generic_name(),
             ClassSystem::S3 | ClassSystem::Vctrs => {
                 format!("{}_{}", parsed.class_name().to_lowercase(), name)
             }

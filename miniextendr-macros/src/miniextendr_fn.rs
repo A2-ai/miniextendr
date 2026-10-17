@@ -3776,7 +3776,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             if meta.path.is_ident("generic") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;
-                                s3_generic = Some(value.value());
+                                s3_generic = Some(crate::s3_generics::parse(&value)?);
                             } else if meta.path.is_ident("class") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;

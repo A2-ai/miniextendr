@@ -100,7 +100,10 @@ pub(super) fn generate_trait_r_wrapper(
             let mut roxygen_block: Vec<&str> = Vec::new();
 
             let flush_block = |block: &mut Vec<&str>, out: &mut Vec<String>| {
-                if block.iter().any(|line| line.contains("@method ")) {
+                if block
+                    .iter()
+                    .any(|line| line.contains("@method ") || line.contains("@exportS3Method "))
+                {
                     out.push("#' @noRd".to_string());
                     for &line in block.iter() {
                         if line.contains("@method ")
@@ -156,9 +159,15 @@ pub(super) fn generate_trait_r_wrapper(
                 .position(|line| roxygen_line(line).starts_with("#'") != roxygen)
                 .map_or(lines.len(), |len| start + len);
             let block = &lines[start..end];
-            let registers_s3 = roxygen && block.iter().any(|line| line.contains("@method "));
+            let registers_s3 = roxygen
+                && block
+                    .iter()
+                    .any(|line| line.contains("@method ") || line.contains("@exportS3Method "));
             for &line in block {
-                if line.contains("@export") && !(registers_s3 && line.trim_end() == "#' @export") {
+                if line.contains("@export")
+                    && !(registers_s3
+                        && (line.trim_end() == "#' @export" || line.contains("@exportS3Method ")))
+                {
                     processed.push("#' @keywords internal".to_string());
                 } else {
                     processed.push(line.to_string());
@@ -654,6 +663,7 @@ fn generate_trait_s3_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
+    let dispatch_class = crate::r_class_formatter::class_ref_or_verbatim(&type_str);
 
     // Header comment
     lines.push(format!(
@@ -676,7 +686,9 @@ fn generate_trait_s3_r_wrapper(
     for method in &instance_methods {
         let generic_name = method.r_entry_name(ClassSystem::S3, type_ident, trait_name);
         let receiver = method.receiver.as_deref().unwrap_or("x");
-        let s3_method_name = format!("{}.{}", generic_name, type_str);
+        let generic =
+            crate::s3_generics::S3Generic::new(method.generic.as_deref().unwrap_or(&generic_name));
+        let s3_method_name = generic.method_name(&dispatch_class);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions)
             .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
@@ -706,7 +718,8 @@ fn generate_trait_s3_r_wrapper(
                 } else {
                     generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
                 };
-            let generic_roxygen = generic_roxygen.name(format!("{}.{}", generic_name, type_str));
+            let generic_roxygen =
+                generic_roxygen.name(format!("{}.{}", generic_name, dispatch_class));
             // On an author topic its own block describes the method and documents
             // `x` and `...` (#1590); the structural lines would only compete.
             let generic_roxygen = if joins_author_topic(method, &type_str) {
@@ -762,9 +775,13 @@ fn generate_trait_s3_r_wrapper(
             None,
             Some(&s3_method_name),
         ));
-        let mut method_roxygen = RoxygenBuilder::new()
-            .export()
-            .method(&generic_name, &type_str);
+        let mut method_roxygen = if generic.package.is_some() {
+            RoxygenBuilder::new().custom(generic.export_tag())
+        } else {
+            RoxygenBuilder::new()
+                .export()
+                .method(&generic_name, &dispatch_class)
+        };
         if method.generic.is_some() && !joins_author_topic(method, &type_str) {
             method_roxygen = method_roxygen.custom(format!("@param {receiver} An object"));
             if !method.no_dispatch_dots {
@@ -789,19 +806,23 @@ fn generate_trait_s3_r_wrapper(
         finish_instance_body(&mut lines, method, receiver);
         lines.push("}".to_string());
 
-        // Additionally register as S7 method if the generic is S7
-        // This ensures S7 dispatch works when the generic was defined by an S7 class
-        lines.push(format!(
-            "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
-        ));
-        // Both sides of the registration are R symbols: quote operator names
-        // such as `[` so the emitted line parses (#1475).
-        let generic_symbol = crate::naming::r_def_name(&generic_name);
-        let method_symbol = crate::naming::r_def_name(&s3_method_name);
-        lines.push(format!(
-            "  S7::method({generic_symbol}, S7::new_S3_class(\"{type_str}\")) <- {method_symbol}"
-        ));
-        lines.push("}".to_string());
+        // Only locally resolved generics can participate in this S7 bridge.
+        // A qualified S3 target is registered lazily by R's namespace loader.
+        if generic.package.is_none() {
+            // Additionally register as S7 method if the generic is S7
+            // This ensures S7 dispatch works when the generic was defined by an S7 class
+            lines.push(format!(
+                "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
+            ));
+            // Both sides of the registration are R symbols: quote operator names
+            // such as `[` so the emitted line parses (#1475).
+            let generic_symbol = crate::naming::r_def_name(&generic_name);
+            let method_symbol = crate::naming::r_def_name(&s3_method_name);
+            lines.push(format!(
+                "  S7::method({generic_symbol}, S7::new_S3_class(\"{dispatch_class}\")) <- {method_symbol}"
+            ));
+            lines.push("}".to_string());
+        }
         lines.push(String::new());
     }
 

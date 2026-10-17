@@ -1030,7 +1030,12 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         && inner.path.is_ident("generic")
                     {
                         let value: syn::LitStr = inner.value()?.parse()?;
-                        if generic.replace(value.value()).is_some() {
+                        let target = if meta.path.is_ident("s3") {
+                            crate::s3_generics::parse(&value)?
+                        } else {
+                            value.value()
+                        };
+                        if generic.replace(target).is_some() {
                             return Err(inner.error("generic may be specified only once"));
                         }
                     } else if meta.path.is_ident("s4") && inner.path.is_ident("own") {

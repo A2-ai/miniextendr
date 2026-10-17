@@ -231,7 +231,11 @@ impl TraitMethod {
         let name = self.r_method_name();
         if self.has_self {
             match class_system {
-                ClassSystem::S3 | ClassSystem::Vctrs => self.generic.clone().unwrap_or(name),
+                ClassSystem::S3 | ClassSystem::Vctrs => {
+                    crate::s3_generics::S3Generic::new(self.generic.as_deref().unwrap_or(&name))
+                        .name
+                        .to_owned()
+                }
                 ClassSystem::S4 => self
                     .generic
                     .clone()

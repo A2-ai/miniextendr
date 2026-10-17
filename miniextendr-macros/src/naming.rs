@@ -514,6 +514,19 @@ pub(crate) fn parse_r_receiver(value: &syn::LitStr) -> syn::Result<String> {
     Ok(name)
 }
 
+/// R's rule for a package name (Writing R Extensions, "The DESCRIPTION
+/// file"): ASCII letters, digits and `.`, at least two characters, starting
+/// with a letter and not ending in `.`.
+pub(crate) fn is_r_package_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[bytes.len() - 1] != b'.'
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'.')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

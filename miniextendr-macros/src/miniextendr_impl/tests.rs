@@ -9952,3 +9952,74 @@ fn fallback_s4_readers_reject_inherent_generic_collisions() {
     }
 }
 // endregion
+
+#[test]
+fn qualified_s3_impl_uses_lazy_registration_and_full_class_suffix() {
+    for (no_rd, internal, noexport) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let mut attrs = default_impl_attrs(ClassSystem::S3);
+        attrs.internal = internal;
+        attrs.noexport = noexport;
+        let mut source: syn::ItemImpl = syn::parse_quote! {
+            impl Rows {
+                /// @export
+                #[miniextendr(s3(generic = "vctrs::vec_ptype2", class = "rows.other"))]
+                pub fn prototype(&self, y: i32) -> i32 { y }
+            }
+        };
+        if no_rd {
+            source.attrs.push(syn::parse_quote!(#[doc = "@noRd"]));
+        }
+        let parsed = ParsedImpl::parse(attrs, source).unwrap();
+        assert_eq!(parsed.methods[0].r_entry_name(&parsed), "vec_ptype2");
+        let wrapper = generate_s3_r_wrapper(&parsed);
+        assert!(
+            wrapper.contains("vec_ptype2.rows.other <- function(x, y, ...)"),
+            "{wrapper}"
+        );
+        assert_eq!(
+            wrapper.contains("#' @exportS3Method vctrs::vec_ptype2"),
+            !noexport,
+            "{wrapper}"
+        );
+        let method_block = wrapper
+            .split("\n\n")
+            .find(|block| block.contains("vec_ptype2.rows.other <- function"))
+            .unwrap();
+        assert!(!method_block.contains("#' @export\n"), "{method_block}");
+        for forbidden in [
+            "#' @method",
+            "UseMethod(",
+            "@importFrom vctrs",
+            "vctrs::vec_ptype2.rows",
+        ] {
+            assert!(!wrapper.contains(forbidden), "{forbidden}: {wrapper}");
+        }
+    }
+}
+
+#[test]
+fn s3_impl_double_dispatch_tags_match_the_method_name() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Rows {
+                #[miniextendr(s3(generic = "vec_ptype2", class = "rows.other"))]
+                pub fn prototype(&self, y: i32) -> i32 { y }
+            }
+        },
+    );
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("#' @method vec_ptype2 rows.other"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @name vec_ptype2.rows.other"),
+        "{wrapper}"
+    );
+}
