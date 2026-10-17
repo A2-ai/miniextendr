@@ -149,17 +149,6 @@ impl LintItem {
 }
 // endregion
 
-// region: Attributed trait impls from source
-
-#[derive(Clone, Debug)]
-pub struct AttributedTraitImpl {
-    pub type_name: String,
-    pub trait_name: String,
-    pub class_system: Option<String>,
-    pub line: usize,
-}
-// endregion
-
 // region: Per-file parsed data
 
 #[derive(Debug, Default)]
@@ -170,10 +159,6 @@ pub struct FileData {
     // Type/derive information
     pub types_with_external_ptr: HashSet<String>,
     pub types_with_typed_external: HashSet<String>,
-
-    // Impl block details
-    pub inherent_impl_class_systems: HashMap<String, (String, usize)>,
-    pub attributed_trait_impls: Vec<AttributedTraitImpl>,
 
     // Function details
     pub fn_visibility: HashMap<String, bool>,
@@ -744,19 +729,11 @@ fn collect_items_recursive(items: &[Item], data: &mut FileData) {
                                         full_name,
                                         line,
                                     ));
-                                    data.attributed_trait_impls.push(AttributedTraitImpl {
-                                        type_name: type_name.clone(),
-                                        trait_name,
-                                        class_system: impl_attrs.class_system.clone(),
-                                        line,
-                                    });
                                 }
                             } else {
                                 // Inherent impl
                                 let class_system =
                                     impl_attrs.class_system.clone().unwrap_or_default();
-                                data.inherent_impl_class_systems
-                                    .insert(type_name.clone(), (class_system.clone(), line));
                                 data.miniextendr_items.push(LintItem::new(
                                     LintKind::Impl,
                                     type_name.clone(),

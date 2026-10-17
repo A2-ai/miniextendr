@@ -5175,6 +5175,7 @@ pub fn expand_impl(
                 rust_type: ::core::stringify!(#type_ident),
                 type_path: || ::core::any::type_name::<#type_ident>(),
                 r_class_name: #r_class_name_str,
+                class_system: #class_system_str,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,
                 source_column: #source_col_lit,

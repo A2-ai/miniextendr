@@ -1,6 +1,6 @@
 //! Stable lint rule identifiers.
 //!
-//! Each rule has a code like `MXL008` that is grep-able and CI-friendly.
+//! Each rule has a code like `MXL110` that is grep-able and CI-friendly.
 
 use std::fmt;
 
@@ -9,11 +9,6 @@ use std::fmt;
 /// Display format is `MXL###`, derived directly from the variant name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LintCode {
-    // region: Source-side validation
-    /// Trait impl class system incompatible with inherent impl class system.
-    MXL008,
-    // endregion
-
     // region: P0: High Impact
     /// Registered top-level function is not `pub`.
     MXL106,
@@ -66,9 +61,6 @@ impl LintCode {
     pub fn default_severity(self) -> super::diagnostic::Severity {
         use super::diagnostic::Severity;
         match self {
-            // Source-side checks are errors (CI-blocking).
-            Self::MXL008 => Severity::Error,
-
             // Codegen-breaking: reserved words produce syntactically invalid R wrappers.
             Self::MXL110 => Severity::Error,
 

@@ -964,6 +964,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let concrete_type = unwrap_group_type(&tpie_input.concrete_type);
     let trait_path = &tpie_input.trait_path;
     let class_system = tpie_input.class_system;
+    let class_system_str = class_system.to_ident().to_string();
 
     let trait_name = &tpie_input.abi.name;
 
@@ -1071,6 +1072,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             ::miniextendr_api::registry::RWrapperEntry {
                 trait_class: ::core::option::Option::Some(::miniextendr_api::registry::TraitImplClass {
                     rust_type: ::core::stringify!(#type_ident),
+                    trait_name: ::core::stringify!(#trait_path),
+                    class_system: #class_system_str,
                     type_path: || ::core::any::type_name::<#concrete_type>(),
                 }),
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,

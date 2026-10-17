@@ -8,7 +8,6 @@ pub mod doc_pkg_links;
 pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
-pub mod impl_validation;
 pub mod no_constructor;
 pub mod nonapi_attrib;
 pub mod r_reserved_params;
@@ -24,9 +23,6 @@ use crate::diagnostic::Diagnostic;
 /// Run all lint rules against the crate index, collecting diagnostics.
 pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-
-    // Per-file impl validation (MXL008)
-    impl_validation::check(index, &mut diagnostics);
 
     // Per-file: function visibility (MXL106)
     fn_visibility::check(index, &mut diagnostics);

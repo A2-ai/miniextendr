@@ -44,6 +44,7 @@ pub(super) fn generate_vtable_static(
     defaults: &[syn::ImplItemFn],
 ) -> TokenStream {
     let trait_name = &abi.name;
+    let class_system_str = impl_attrs.class_system.to_ident().to_string();
 
     // Extract type identifier (for simple types)
     let type_ident = match concrete_type {
@@ -241,6 +242,8 @@ pub(super) fn generate_vtable_static(
             ::miniextendr_api::registry::RWrapperEntry {
                 trait_class: ::core::option::Option::Some(::miniextendr_api::registry::TraitImplClass {
                     rust_type: ::core::stringify!(#type_ident),
+                    trait_name: ::core::stringify!(#trait_path),
+                    class_system: #class_system_str,
                     type_path: || ::core::any::type_name::<#concrete_type>(),
                 }),
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,

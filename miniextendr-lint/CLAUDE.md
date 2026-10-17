@@ -15,7 +15,7 @@ Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `
 - `helpers.rs` — shared AST predicates.
 
 ## Rule registry
-- **MXL008** — trait-impl class-system compat with inherent impl.
+- ~~**MXL008**~~ — *removed*: the wrapper writer checks trait/inherent class-system compatibility across the crate by canonical Rust identity (#1777), with both source locations.
 - ~~**MXL009**~~ / ~~**MXL010**~~ — *removed*: they required a distinct `label = "..."` on each impl block of a type. The labels are gone; the wrapper writer merges a type's impl blocks into one class (#1776).
 - **MXL106** — non-`pub` fn with a hand-written `/// @export` (the tag still exports it) → make it `pub` or drop the tag.
 - **MXL110** — parameter name is an R reserved word.

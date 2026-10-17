@@ -286,8 +286,8 @@ pub enum RWrapperPriority {
 pub struct RWrapperEntry {
     /// Ordering priority (lower = earlier in output file).
     pub priority: RWrapperPriority,
-    /// The implementing Rust type for trait fragments, so their default help
-    /// topic can follow the defining inherent impl at wrapper-write time.
+    /// The implementing Rust type and class system for trait fragments, so the
+    /// writer can validate dispatch and resolve their default help topic.
     pub trait_class: Option<TraitImplClass>,
     /// R source code fragment.
     pub content: &'static str,
@@ -305,10 +305,14 @@ pub struct RWrapperEntry {
 // SAFETY: All fields are immutable and valid for 'static lifetime.
 unsafe impl Sync for RWrapperEntry {}
 
-/// The class owning a trait wrapper's documentation.
+/// The class owning a trait wrapper's dispatch and documentation.
 pub struct TraitImplClass {
     /// Type spelling used as the fragment's default help topic.
     pub rust_type: &'static str,
+    /// Trait path as written in the impl, for diagnostics.
+    pub trait_name: &'static str,
+    /// Resolved class system, including the crate's default selector.
+    pub class_system: &'static str,
     /// Canonical Rust identity, matching [`ClassBlockEntry::type_path`].
     /// Unlike the spelling, this distinguishes modules and resolves aliases.
     pub type_path: fn() -> &'static str,
@@ -444,6 +448,8 @@ pub struct ClassBlockEntry {
     pub type_path: fn() -> &'static str,
     /// R-visible class name (`class = "..."`, else the type's identifier).
     pub r_class_name: &'static str,
+    /// Resolved class system, compared with each trait impl's system.
+    pub class_system: &'static str,
     /// Source file of the impl block (`file!()`).
     pub source_file: &'static str,
     /// Line of the impl's type in `source_file`.
@@ -840,13 +846,13 @@ struct WrapperFragment {
 impl WrapperFragment {
     fn from_entry(
         entry: &RWrapperEntry,
-        topics: &std::collections::HashMap<&'static str, String>,
+        classes: &std::collections::HashMap<&'static str, MergedClass>,
     ) -> Self {
         let content = match &entry.trait_class {
             Some(class) => {
-                let topic = topics
+                let topic = classes
                     .get((class.type_path)())
-                    .map_or(class.rust_type, String::as_str);
+                    .map_or(class.rust_type, |inherent| inherent.topic.as_str());
                 std::borrow::Cow::Owned(resolve_class_member_docs(
                     entry.content,
                     class.rust_type,
@@ -864,12 +870,66 @@ impl WrapperFragment {
     }
 }
 
-/// The assembled class fragments and their resolved topics, keyed by Rust
-/// identity so trait impls in other modules follow the same defining block.
+/// The defining block's metadata, shared by trait dispatch validation and docs.
+#[cfg(not(target_arch = "wasm32"))]
+struct MergedClass {
+    topic: String,
+    class_system: &'static str,
+    origin: String,
+}
+
+/// The assembled class fragments and metadata, keyed by Rust identity so trait
+/// impls in other modules follow the same defining block.
 #[cfg(not(target_arch = "wasm32"))]
 struct MergedClasses {
     fragments: Vec<WrapperFragment>,
-    topics: std::collections::HashMap<&'static str, String>,
+    by_type: std::collections::HashMap<&'static str, MergedClass>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl MergedClasses {
+    fn validate_trait_impls(&self, entries: &[RWrapperEntry]) -> Result<(), String> {
+        let mut traits: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| entry.trait_class.as_ref().map(|class| (entry, class)))
+            .collect();
+        traits.sort_by_key(|(entry, class)| {
+            (
+                entry.source_file,
+                entry.source_line,
+                class.trait_name,
+                class.rust_type,
+            )
+        });
+
+        let mut errors = Vec::new();
+        for (entry, class) in traits {
+            let Some(inherent) = self.by_type.get((class.type_path)()) else {
+                continue;
+            };
+            // S3 generics dispatch on the class attribute all systems provide.
+            if class.class_system != inherent.class_system && class.class_system != "s3" {
+                errors.push(format!(
+                    "miniextendr: `impl {} for {}` ({}:{}) uses `{}`, but {} uses `{}`. \
+                     Trait and inherent impls must use the same class system \
+                     (S3 traits work with every system); use #[miniextendr({})] on the trait impl.",
+                    class.trait_name,
+                    class.rust_type,
+                    entry.source_file,
+                    entry.source_line,
+                    class.class_system,
+                    inherent.origin,
+                    inherent.class_system,
+                    inherent.class_system,
+                ));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("\n"))
+        }
+    }
 }
 
 /// A [`ClassBlockEntry`] part without the newline its raw string literal
@@ -964,7 +1024,7 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<MergedClasses, Strin
     }
 
     let mut fragments = Vec::with_capacity(types.len());
-    let mut topics = HashMap::with_capacity(types.len());
+    let mut by_type = HashMap::with_capacity(types.len());
     for (path, type_blocks) in &types {
         let type_blocks = match resolve_class_constructor(type_blocks) {
             Ok(blocks) => blocks,
@@ -1044,7 +1104,14 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<MergedClasses, Strin
             continue;
         }
         let (content, topic) = merged_class_content(definer, &type_blocks);
-        topics.insert(*path, topic);
+        by_type.insert(
+            *path,
+            MergedClass {
+                topic,
+                class_system: definer.class_system,
+                origin: class_block_name(definer),
+            },
+        );
         fragments.push(WrapperFragment {
             priority: RWrapperPriority::Class,
             source_file: first.source_file,
@@ -1054,7 +1121,7 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<MergedClasses, Strin
     }
 
     if errors.is_empty() {
-        Ok(MergedClasses { fragments, topics })
+        Ok(MergedClasses { fragments, by_type })
     } else {
         Err(errors.join("\n"))
     }
@@ -1471,9 +1538,12 @@ fn merged_class_content(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
     let classes = merge_class_blocks(&MX_CLASS_BLOCKS).unwrap_or_else(|msg| panic!("{msg}"));
+    classes
+        .validate_trait_impls(&MX_R_WRAPPERS)
+        .unwrap_or_else(|msg| panic!("{msg}"));
     let mut entries: Vec<WrapperFragment> = MX_R_WRAPPERS
         .iter()
-        .map(|entry| WrapperFragment::from_entry(entry, &classes.topics))
+        .map(|entry| WrapperFragment::from_entry(entry, &classes.by_type))
         .chain(classes.fragments)
         .chain(sidecar_accessor_fragments(
             &MX_SIDECAR_ACCESSORS,
@@ -5883,6 +5953,7 @@ mod tests {
             rust_type: "Widget",
             type_path: widget_path,
             r_class_name: "Widget",
+            class_system: "env",
             source_file: "lib.rs",
             source_line: line,
             source_column: 6,
@@ -6066,6 +6137,78 @@ ForeignChild$set("public", "speak", function(times) {})
         assert!(!output.contains("@param missing"), "{output}");
     }
 
+    fn widget_trait(class_system: &'static str) -> RWrapperEntry {
+        RWrapperEntry {
+            priority: RWrapperPriority::TraitImpl,
+            trait_class: Some(TraitImplClass {
+                rust_type: "Alias",
+                trait_name: "Probe",
+                class_system,
+                type_path: widget_path,
+            }),
+            source_file: "traits.rs",
+            source_line: 20,
+            content: "",
+        }
+    }
+
+    #[test]
+    fn trait_class_system_compatibility_matrix() {
+        let systems = ["env", "r6", "s3", "s4", "s7", "vctrs"];
+        for inherent in systems {
+            let mut block = widget_block(10, "\n\n", "\n\n");
+            block.class_system = inherent;
+            let classes = merge_class_blocks(&[block]).unwrap_or_else(|msg| panic!("{msg}"));
+            for trait_system in systems {
+                let result = classes.validate_trait_impls(&[widget_trait(trait_system)]);
+                assert_eq!(
+                    result.is_ok(),
+                    inherent == trait_system || trait_system == "s3",
+                    "{trait_system} on {inherent}: {result:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn trait_class_mismatches_report_both_origins_in_source_order() {
+        let mut block = widget_block(10, "\n\n", "\n\n");
+        block.class_system = "r6";
+        let classes = merge_class_blocks(&[block]).unwrap_or_else(|msg| panic!("{msg}"));
+        let mut late = widget_trait("s7");
+        late.source_file = "z.rs";
+        let mut early = widget_trait("env");
+        early.source_file = "a.rs";
+        let mut middle = widget_trait("s4");
+        middle.source_file = "a.rs";
+        middle.source_line = 30;
+        let error = classes
+            .validate_trait_impls(&[late, middle, early, widget_trait("s3")])
+            .unwrap_err();
+        let lines: Vec<_> = error.lines().collect();
+        assert_eq!(lines.len(), 3, "{error}");
+        for (line, origin, system) in [
+            (lines[0], "a.rs:20", "env"),
+            (lines[1], "a.rs:30", "s4"),
+            (lines[2], "z.rs:20", "s7"),
+        ] {
+            assert!(
+                line.contains(&format!(
+                    "`impl Probe for Alias` ({origin}) uses `{system}`"
+                )),
+                "{line}"
+            );
+            assert!(
+                line.contains("`impl Widget` (lib.rs:10) uses `r6`"),
+                "{line}"
+            );
+            assert!(
+                line.contains("#[miniextendr(r6)] on the trait impl"),
+                "{line}"
+            );
+        }
+    }
+
     #[test]
     fn trait_docs_use_the_defining_topic_by_rust_identity() {
         let first = widget_block(10, "\n\n", "\n\n");
@@ -6080,6 +6223,8 @@ ForeignChild$set("public", "speak", function(times) {})
             priority: RWrapperPriority::TraitImpl,
             trait_class: Some(TraitImplClass {
                 rust_type: "Alias",
+                trait_name: "Probe",
+                class_system: "env",
                 type_path: widget_path,
             }),
             source_file: "other_module.rs",
@@ -6095,7 +6240,10 @@ ForeignChild$set("public", "speak", function(times) {})
                 "#' @order 2\nAlias$Probe$own <- function() 1\n",
             ),
         };
-        let output = WrapperFragment::from_entry(&entry, &classes.topics).content;
+        classes
+            .validate_trait_impls(std::slice::from_ref(&entry))
+            .unwrap();
+        let output = WrapperFragment::from_entry(&entry, &classes.by_type).content;
         assert!(output.contains("#' @rdname widget_api\n"), "{output}");
         assert!(
             output.contains("#' @param offset Authored parameter.\n"),
@@ -6123,6 +6271,8 @@ ForeignChild$set("public", "speak", function(times) {})
             priority: RWrapperPriority::TraitImpl,
             trait_class: Some(TraitImplClass {
                 rust_type: "Widget",
+                trait_name: "Probe",
+                class_system: "s7",
                 type_path: other_widget_path,
             }),
             source_file: "other_module.rs",
@@ -6134,7 +6284,10 @@ ForeignChild$set("public", "speak", function(times) {})
                 "Widget$Probe$value <- function(x) 1\n",
             ),
         };
-        let output = WrapperFragment::from_entry(&entry, &classes.topics).content;
+        classes
+            .validate_trait_impls(std::slice::from_ref(&entry))
+            .unwrap();
+        let output = WrapperFragment::from_entry(&entry, &classes.by_type).content;
         assert_eq!(
             output,
             entry.content.replace(CLASS_MEMBER_DEFAULT_PREFIX, "")

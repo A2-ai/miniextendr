@@ -19,7 +19,7 @@ A source file the lint cannot parse gets a `<file>: failed to parse: <error>` wa
 ## Lint Codes Reference
 
 The build script prints every diagnostic as a cargo warning
-(`warning: <crate>@<version>: [MXL008] <file>:<line>: ...`) and never fails the build;
+(`warning: <crate>@<version>: [MXL110] <file>:<line>: ...`) and never fails the build;
 `just lint` lists them without failing either. The groups below are the
 rules' severities: an error-severity rule flags code that will not work as
 written.
@@ -28,7 +28,6 @@ written.
 
 | Code | Description | Fix |
 |------|-------------|-----|
-| **MXL008** | Trait impl class system incompatible | Ensure trait impl uses same class system as inherent impl |
 | **MXL110** | Parameter name is an R reserved word | Rename the parameter — generated R wrapper would fail to parse |
 | **MXL120** | vctrs constructor returns `Self` / a named type, or the vctrs impl has an instance-method receiver | Return the plain vector payload; turn instance methods into static methods that take the vector data as a parameter |
 
@@ -257,15 +256,20 @@ impl MyType {
 
 ### "trait impl class system incompatible"
 
-A trait impl's class system must match the inherent impl's class system (MXL008).
-An `s3` trait impl works with every inherent class system. A trait impl does not
-inherit the inherent impl's system: a bare `#[miniextendr]` counts as `env`.
+The wrapper writer rejects a trait impl whose class system differs from its
+type's inherent impl, reporting both source locations and the attribute to use.
+It checks across modules and resolves type aliases by Rust identity. An `s3`
+trait impl works with every inherent class system; a type with no local
+`#[miniextendr]` inherent impl is not checked.
+
+A trait impl does not inherit the inherent impl's system: a bare
+`#[miniextendr]` uses `env`, or the crate's `r6-default` / `s7-default` selector.
 
 ```rust
 #[miniextendr(s7)]
 impl MyType { /* ... */ }
 
-#[miniextendr]  // MXL008: env-style trait impl on an s7 type; write #[miniextendr(s7)] or (s3)
+#[miniextendr(env)]  // Writer error: use #[miniextendr(s7)] or (s3).
 impl Display for MyType { /* ... */ }
 ```
 

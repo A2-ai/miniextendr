@@ -164,9 +164,11 @@ impl Describe for Counter {
 ```
 
 A trait impl does not inherit the type's class system: a bare
-`#[miniextendr]` is env, so name the system of the type's own impl block
-(`r6` for the `Counter` above), or use `s3`, which works with every class
-system. Lint MXL008 reports a mismatch as a build warning. For an env class, R gets
+`#[miniextendr]` is env unless `r6-default` / `s7-default` selects another
+default. Name the system of the type's own impl block (`r6` for the `Counter`
+above), or use `s3`, which works with every class system. The wrapper writer
+rejects mismatches across the crate at install, naming both source locations;
+types without a local inherent impl are not checked. For an env class, R gets
 dual calling forms: `Counter$Describe$describe(obj)` and
 `obj$Describe$describe()`. This is how you share one method surface across
 several Rust types.

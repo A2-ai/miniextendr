@@ -1,6 +1,6 @@
 # Tests for class system matrix: different trait impl styles
 # All types use the SAME class system for inherent and trait impls
-# (MXL008 requires matching class systems)
+# (the wrapper writer requires matching systems, except S3 traits work with all)
 
 # =============================================================================
 # Env trait impl (CounterTraitEnv)
