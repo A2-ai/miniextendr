@@ -103,8 +103,11 @@ impl Counter for DoubleCounter {
         self.value += 2; // Increments by 2, not 1!
     }
 
-    fn add(&mut self, n: i32) {
-        self.value += n;
+    // The trait calls the parameter `n`; this impl's own name doesn't reach R
+    // (test-parameter-names.R).
+    /// @param amount The amount to add.
+    fn add(&mut self, amount: i32) {
+        self.value += amount;
     }
 
     fn panic_plain(&self) {

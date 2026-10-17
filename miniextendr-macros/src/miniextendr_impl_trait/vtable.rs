@@ -659,6 +659,159 @@ fn declared_param_names(
     )
 }
 
+/// One parameter of an impl method, which the wrappers name as the
+/// declaration does.
+struct RenamedParam {
+    /// The impl's name for it; `None` for a pattern (`_`, a destructuring).
+    own: Option<String>,
+    /// The name the wrappers use: the declaration's.
+    declared: String,
+}
+
+impl RenamedParam {
+    /// The R formal the impl's name would have given ([`normalize_r_arg_string`]
+    /// drops leading underscores), when it differs from the declared one.
+    ///
+    /// [`normalize_r_arg_string`]: crate::r_wrapper_builder::normalize_r_arg_string
+    fn own_formal(&self) -> Option<String> {
+        let own = crate::r_wrapper_builder::normalize_r_arg_string(self.own.as_deref()?);
+        (own != self.formal()).then_some(own)
+    }
+
+    /// The R formal: the declared name, normalized.
+    fn formal(&self) -> String {
+        crate::r_wrapper_builder::normalize_r_arg_string(&self.declared)
+    }
+}
+
+/// Name every parameter of `sig`, a copy of an impl method's signature, as
+/// the declaration's metadata does (`declared`; `arg<i>` for a declaration
+/// pattern), so every impl of a trait has the same R formals and argument
+/// errors. Without the declaration's names, or with another count, which
+/// rustc refuses, a named parameter keeps its name and a pattern becomes
+/// `arg<i>`. A name already taken gets a `_` suffix. Returns each
+/// parameter's names, in order.
+fn name_params_as_declared(
+    sig: &mut syn::Signature,
+    declared: Option<&[String]>,
+) -> Vec<RenamedParam> {
+    let params: Vec<&mut syn::PatType> = sig
+        .inputs
+        .iter_mut()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(arg) => Some(arg),
+            syn::FnArg::Receiver(_) => None,
+        })
+        .collect();
+    let declared = declared.filter(|names| names.len() == params.len());
+    let mut used = std::collections::HashSet::new();
+    let mut renamed = Vec::with_capacity(params.len());
+    for (index, param) in params.into_iter().enumerate() {
+        let own = match param.pat.as_ref() {
+            syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
+            _ => None,
+        };
+        let mut name = match declared {
+            Some(names) => names[index].clone(),
+            None => own.clone().unwrap_or_else(|| format!("arg{index}")),
+        };
+        while !used.insert(name.clone()) {
+            name.push('_');
+        }
+        let mut ident = crate::naming::name_ident(&name);
+        ident.set_span(syn::spanned::Spanned::span(&param.pat));
+        param.pat = syn::parse_quote!(#ident);
+        renamed.push(RenamedParam {
+            own,
+            declared: name,
+        });
+    }
+    renamed
+}
+
+/// `options`, keyed by parameter names as the impl method spells them, keyed
+/// by the declared names. A key may also be the declared name already; one
+/// that names no parameter stays, for the caller's check to refuse. Naming
+/// one parameter both ways is an error at `span`.
+fn rekey_params<V>(
+    options: std::collections::HashMap<String, V>,
+    renamed: &[RenamedParam],
+    what: &str,
+    span: proc_macro2::Span,
+) -> syn::Result<std::collections::HashMap<String, V>> {
+    let mut keys: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut rekeyed = std::collections::HashMap::with_capacity(options.len());
+    for (key, value) in options {
+        let name = key.strip_prefix("r#").unwrap_or(&key);
+        let target = renamed
+            .iter()
+            .find(|param| param.own.as_deref() == Some(name))
+            .or_else(|| renamed.iter().find(|param| param.declared == name))
+            .map_or_else(|| key.clone(), |param| param.declared.clone());
+        if let Some(other) = keys.insert(target.clone(), key.clone()) {
+            let (first, second) = if other < key {
+                (other, key)
+            } else {
+                (key, other)
+            };
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "{what} name the trait's parameter `{target}` twice, as `{first}` and \
+                     `{second}`"
+                ),
+            ));
+        }
+        rekeyed.insert(target, value);
+    }
+    Ok(rekeyed)
+}
+
+/// Refuse a method's R code (`r_entry`, `r_post_checks`, `r_on_exit`, a
+/// `defaults(...)` value) that uses a parameter by the impl's name where the
+/// wrapper's formal has the declaration's: R would find no such variable when
+/// the wrapper runs.
+fn check_r_code_uses_declared_names(
+    attrs: &TraitMethodAttrs,
+    renamed: &[RenamedParam],
+    span: proc_macro2::Span,
+) -> syn::Result<()> {
+    let snippets = [
+        ("r_entry", attrs.r_entry.as_deref()),
+        ("r_post_checks", attrs.r_post_checks.as_deref()),
+        (
+            "r_on_exit",
+            attrs.r_on_exit.as_ref().map(|exit| exit.expr.as_str()),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(what, code)| Some((what, code?)))
+    .chain(
+        attrs
+            .defaults
+            .values()
+            .map(|code| ("defaults(...)", code.as_str())),
+    );
+    for (what, code) in snippets {
+        for param in renamed {
+            if let Some(own) = param.own_formal()
+                && crate::r_shadowing::refers_to(code, &own)
+            {
+                return Err(syn::Error::new(
+                    span,
+                    format!(
+                        "{what} uses `{own}`, this impl's name for the trait's parameter `{}`; \
+                         R wrappers take the trait's parameter names, so write `{}`",
+                        param.formal(),
+                        param.formal()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Extract all methods from a trait impl block as [`TraitMethod`] structs.
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
@@ -685,32 +838,59 @@ pub(super) fn extract_methods(
             // The unforced dots are no trait-method parameter (#1892).
             crate::miniextendr_fn::refuse_lazy_dots_in_trait_method(&method.sig.inputs)?;
             let mut attrs = parse_trait_method_attrs(&method.attrs)?;
+            // The wrappers name every parameter as the declaration does, for
+            // every impl: the R formals, `e$param` and the messages are the
+            // trait's. Wrappers call the method positionally, so the impl's
+            // body keeps its own names.
+            let mut sig = method.sig.clone();
+            let renamed = name_params_as_declared(
+                &mut sig,
+                declared_param_names(declaration, &method.sig.ident).as_deref(),
+            );
+            let span = method.sig.ident.span();
+            attrs.per_param = rekey_params(
+                std::mem::take(&mut attrs.per_param),
+                &renamed,
+                "the parameter options",
+                attrs.per_param_span.unwrap_or(span),
+            )?;
+            attrs.defaults = rekey_params(
+                std::mem::take(&mut attrs.defaults),
+                &renamed,
+                "defaults(...)",
+                attrs.defaults_span.unwrap_or(span),
+            )?;
+            check_r_code_uses_declared_names(&attrs, &renamed, span)?;
             // Every parameter `choices(...)` / `inherits(...)` /
             // `not_inherits(...)` / `no_na(...)` name must exist, as on
             // inherent methods; `Option<T>` scalar
             // choices params are the optional form (#1473).
             crate::miniextendr_fn::finalize_method_param_attrs(
                 &mut attrs.per_param,
-                &method.sig.inputs,
+                &sig.inputs,
                 &[],
                 &attrs.defaults,
-                attrs
-                    .per_param_span
-                    .unwrap_or_else(|| method.sig.ident.span()),
+                attrs.per_param_span.unwrap_or(span),
             )?;
             check_trait_method_defaults(
                 &attrs.defaults,
-                &method.sig.inputs,
-                attrs
-                    .defaults_span
-                    .unwrap_or_else(|| method.sig.ident.span()),
+                &sig.inputs,
+                attrs.defaults_span.unwrap_or(span),
             )?;
 
             // The author's tags; the R wrapper generators pick the `@param`
             // lines and the page tags from them (every tag but `@title` and a
             // bare `@export` on blocks without `\usage`,
-            // `r_wrappers::forwarded_body_tag`).
-            let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs, impl_page);
+            // `r_wrappers::forwarded_body_tag`). An `@param` documents the
+            // parameter under the declaration's name too.
+            let mut doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs, impl_page);
+            crate::roxygen::rename_param_tags(&mut doc_tags, |name| {
+                renamed
+                    .iter()
+                    .find(|param| param.own_formal().as_deref() == Some(name))
+                    .map(RenamedParam::formal)
+            })
+            .map_err(|message| syn::Error::new(span, message))?;
 
             // Validate and peel a return-visibility marker (#1213): the
             // codegen sees the inner type, `.0` unwraps the value.
@@ -721,45 +901,6 @@ pub(super) fn extract_methods(
             }
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
-            let mut sig = method.sig.clone();
-            // Wrappers call the method positionally; patterns belong only to
-            // the original impl body. Give every wrapper argument a binding,
-            // including ignored and destructured parameters (#2029): the
-            // declaration's name, as the trait's shims report it, else
-            // `arg<i>`.
-            let declared = declared_param_names(declaration, &method.sig.ident);
-            let mut used_names: std::collections::HashSet<_> = sig
-                .inputs
-                .iter()
-                .filter_map(|arg| match arg {
-                    syn::FnArg::Typed(arg) => match arg.pat.as_ref() {
-                        syn::Pat::Ident(pat) => Some(crate::naming::ident_name(&pat.ident)),
-                        _ => None,
-                    },
-                    _ => None,
-                })
-                .collect();
-            for (index, arg) in sig
-                .inputs
-                .iter_mut()
-                .filter_map(|arg| match arg {
-                    syn::FnArg::Typed(arg) => Some(arg),
-                    _ => None,
-                })
-                .enumerate()
-            {
-                if !matches!(arg.pat.as_ref(), syn::Pat::Ident(_)) {
-                    let mut name = declared
-                        .as_ref()
-                        .and_then(|names| names.get(index).cloned())
-                        .unwrap_or_else(|| format!("arg{index}"));
-                    while !used_names.insert(name.clone()) {
-                        name.push('_');
-                    }
-                    let name = crate::naming::name_ident(&name);
-                    arg.pat = syn::parse_quote!(#name);
-                }
-            }
             let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
             if return_wrap
                 .as_ref()
