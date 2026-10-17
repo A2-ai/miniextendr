@@ -7,7 +7,7 @@
 match_arg_omitted_mode(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}, or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 Omittable optional mode: the formal keeps the choice vector, an omitted

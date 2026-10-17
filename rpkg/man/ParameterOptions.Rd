@@ -45,7 +45,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$mode()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
+\item{\code{mode}}{One of \verb{"safe", "fast"}.}
 }
 }
 }
@@ -55,7 +55,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$modes()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{modes}}{One or more of "fast", "safe".}
+\item{\code{modes}}{One or more of \verb{"fast", "safe"}.}
 }
 }
 }
@@ -85,7 +85,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$ParameterTrait$implemented()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
+\item{\code{mode}}{One of \verb{"fast", "safe"}.}
 }
 }
 }
@@ -95,7 +95,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$ParameterTrait$named()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
+\item{\code{mode}}{One of \verb{"safe", "fast"}.}
 }
 }
 }
@@ -105,7 +105,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$ParameterDefault$inherited()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
+\item{\code{mode}}{One of \verb{"safe", "fast"}.}
 }
 }
 }
@@ -115,7 +115,7 @@ ParameterOptions Class
 \item{\code{ParameterOptions$ParameterGeneric$generic_mode()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "fast", "safe".}
+\item{\code{mode}}{One of \verb{"fast", "safe"}.}
 }
 }
 }

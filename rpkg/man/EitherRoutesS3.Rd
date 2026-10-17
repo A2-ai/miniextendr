@@ -23,7 +23,7 @@ EitherRoutesS3
 \arguments{
 \item{x}{An object}
 
-\item{routes}{One or more of "oral", "bolus", "infusion", or a data frame.}
+\item{routes}{One or more of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 
 \item{tiers}{One or more of "low", "mid", "high", or a number; omitting the argument means no choice.}
 

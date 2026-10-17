@@ -12,7 +12,7 @@
 S4MatchArgHolder(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 S4MatchArgHolder S4 Class

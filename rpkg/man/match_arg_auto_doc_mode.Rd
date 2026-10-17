@@ -7,7 +7,7 @@
 match_arg_auto_doc_mode(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 Auto-doc fixture: no user @param for mode — auto-injected from enum choices.

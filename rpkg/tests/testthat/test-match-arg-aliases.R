@@ -51,7 +51,7 @@ test_that("the formal and the usage list the choices only", {
   } else {
     tools::Rd_db("miniextendr")
   }
-  rd_text <- function(page) paste(capture.output(print(db[[page]])), collapse = "\n")
+  rd_text <- function(page) gsub("\\s+", " ", paste(unlist(db[[page]]), collapse = ""))
   shade <- rd_text("match_arg_alias_shade.Rd")
   expect_match(shade, "match_arg_alias_shade(color = c(\"red\", \"gray\", \"blue\"))", fixed = TRUE)
   expect_false(grepl("grey", shade, fixed = TRUE))

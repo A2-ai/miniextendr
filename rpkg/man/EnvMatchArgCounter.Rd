@@ -31,7 +31,7 @@ EnvMatchArgCounter Class
 \item{\code{EnvMatchArgCounter$new()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+\item{\code{modes}}{One or more of \verb{"Fast", "Safe", "Debug"}.}
 }
 }
 }
@@ -41,7 +41,7 @@ EnvMatchArgCounter Class
 \item{\code{EnvMatchArgCounter$reset()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+\item{\code{modes}}{One or more of \verb{"Fast", "Safe", "Debug"}.}
 }
 }
 }
@@ -53,7 +53,7 @@ A rotated choice formal still means omission when supplied whole.
 
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice; the whole default counts as omitted.}
+\item{\code{mode}}{One of \verb{"Safe", "Fast", "Debug"}; omitting the argument means no choice; the whole default counts as omitted.}
 }
 }
 }
@@ -66,7 +66,7 @@ argument reaches Rust as \code{Absent}.
 
 \strong{Arguments:}
 \describe{
-\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+\item{\code{mode}}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 }
 }

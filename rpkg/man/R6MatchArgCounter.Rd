@@ -30,7 +30,7 @@ independently of the derived-enum path used by match_arg.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+      \item{\code{mode}}{One of \verb{"Fast", "Safe", "Debug"}.}
       \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
     }
     \if{html}{\out{</div>}}
@@ -62,7 +62,7 @@ independently of the derived-enum path used by match_arg.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+      \item{\code{mode}}{One of \verb{"Fast", "Safe", "Debug"}.}
     }
     \if{html}{\out{</div>}}
   }
@@ -82,7 +82,7 @@ an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
+      \item{\code{mode}}{One of \verb{"Fast", "Safe", "Debug"}, or NULL; omitting the argument means no choice; the whole default counts as omitted.}
     }
     \if{html}{\out{</div>}}
   }

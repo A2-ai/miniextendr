@@ -7,7 +7,7 @@
 match_arg_either_routes_no_default(route_order)
 }
 \arguments{
-\item{route_order}{One or more of "oral", "bolus", "infusion", a data frame, or NULL.}
+\item{route_order}{One or more of \verb{"oral", "bolus", "infusion"}, a data frame, or NULL.}
 }
 \description{
 Optional route names or a data frame with no default (#1828): the formal

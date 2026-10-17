@@ -7,7 +7,7 @@
 match_arg_no_default_mode(mode)
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 Mode without a default: the formal is bare and the function reports an

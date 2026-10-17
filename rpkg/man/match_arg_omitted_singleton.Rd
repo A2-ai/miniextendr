@@ -7,7 +7,7 @@
 match_arg_omitted_singleton(identical = c("only"))
 }
 \arguments{
-\item{identical}{One of "only"; omitting the argument means no choice; the whole default counts as omitted.}
+\item{identical}{One of \verb{"only"}; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 Only the supplied formal counts as omitted, before partial or alias matching.

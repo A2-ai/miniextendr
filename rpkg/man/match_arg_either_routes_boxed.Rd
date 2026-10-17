@@ -7,7 +7,7 @@
 match_arg_either_routes_boxed(route_set = c("oral", "bolus", "infusion"))
 }
 \arguments{
-\item{route_set}{One or more of "oral", "bolus", "infusion", or a data frame.}
+\item{route_set}{One or more of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 }
 \description{
 Route names or a data frame of doses, as a boxed slice.

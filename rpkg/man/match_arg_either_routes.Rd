@@ -7,7 +7,7 @@
 match_arg_either_routes(routes = c("oral", "bolus", "infusion"))
 }
 \arguments{
-\item{routes}{One or more of "oral", "bolus", "infusion", or a data frame.}
+\item{routes}{One or more of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 }
 \description{
 Route names or a data frame of doses.

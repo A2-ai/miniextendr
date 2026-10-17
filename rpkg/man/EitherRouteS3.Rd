@@ -23,7 +23,7 @@ EitherRouteS3
 \arguments{
 \item{x}{An object}
 
-\item{route}{One of "oral", "bolus", "infusion", or a data frame.}
+\item{route}{One of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 
 \item{level}{One of "low", "mid", "high", or a number; omitting the argument means no choice; the whole default counts as omitted.}
 

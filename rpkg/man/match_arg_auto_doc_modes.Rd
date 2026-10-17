@@ -7,7 +7,7 @@
 match_arg_auto_doc_modes(modes = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{modes}{One or more of "Fast", "Safe", "Debug".}
+\item{modes}{One or more of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 Auto-doc fixture: no user @param for modes — auto-injected as several_ok.

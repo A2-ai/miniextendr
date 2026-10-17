@@ -29,7 +29,7 @@ AliasPalette Class
 \item{\code{AliasPalette$new()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{color}}{One of "red", "gray", "blue".}
+\item{\code{color}}{One of \verb{"red", "gray", "blue"}.}
 }
 }
 }
@@ -41,7 +41,7 @@ Replace the colour and return it.
 
 \strong{Arguments:}
 \describe{
-\item{\code{color}}{One of "red", "gray", "blue".}
+\item{\code{color}}{One of \verb{"red", "gray", "blue"}.}
 }
 }
 }
@@ -51,7 +51,7 @@ Replace the colour and return it.
 \item{\code{AliasPalette$AliasChoice$inherited_color()}}{
 \strong{Arguments:}
 \describe{
-\item{\code{color}}{One of "red", "gray", "blue".}
+\item{\code{color}}{One of \verb{"red", "gray", "blue"}.}
 }
 }
 }

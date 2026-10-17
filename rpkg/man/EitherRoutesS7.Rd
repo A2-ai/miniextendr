@@ -26,7 +26,7 @@ EitherRoutesS7_plan_routes_s7(
 EitherRoutesS7_either_grades(.mx_self, grades = c("low", "mid", "high"), ...)
 }
 \arguments{
-\item{start}{One or more of "oral", "bolus", "infusion", or a data frame; omitting the argument means no choice.}
+\item{start}{One or more of \verb{"oral", "bolus", "infusion"}, or a data frame; omitting the argument means no choice.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
@@ -34,7 +34,7 @@ EitherRoutesS7_either_grades(.mx_self, grades = c("low", "mid", "high"), ...)
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
-\item{routes}{One or more of "oral", "bolus", "infusion", or a data frame.}
+\item{routes}{One or more of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 
 \item{tiers}{One or more of "low", "mid", "high", or a number; omitting the argument means no choice.}
 

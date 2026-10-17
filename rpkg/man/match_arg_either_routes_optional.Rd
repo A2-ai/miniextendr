@@ -7,7 +7,7 @@
 match_arg_either_routes_optional(maybe_routes = NULL)
 }
 \arguments{
-\item{maybe_routes}{One or more of "oral", "bolus", "infusion", a data frame, or NULL for no choice.}
+\item{maybe_routes}{One or more of \verb{"oral", "bolus", "infusion"}, a data frame, or NULL for no choice.}
 }
 \description{
 Optional route names or a data frame: \code{NULL} is no choice.

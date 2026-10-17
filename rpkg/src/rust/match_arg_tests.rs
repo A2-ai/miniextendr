@@ -428,3 +428,66 @@ pub fn match_arg_param_with_default_mode(mode: miniextendr_api::SEXP) -> String 
     format!("{:?}", mode)
 }
 // endregion
+
+// region: Documentation follows effective defaults and preserves literals (#1807)
+
+/// Count on generated documentation to describe the preferred mode.
+#[miniextendr_api::miniextendr]
+pub fn match_arg_auto_doc_default(
+    #[miniextendr(match_arg, default = "\"Safe\"")] mode: Mode,
+) -> Mode {
+    mode
+}
+
+/// Choices whose R literals need escaping in help as well as in formals.
+#[derive(Copy, Clone, MatchArg)]
+pub enum DocEscapes {
+    #[match_arg(rename = "say \"hi\"")]
+    Quoted,
+    #[match_arg(rename = "c:\\path")]
+    Path,
+    #[match_arg(rename = "{x}%")]
+    Markup,
+    #[match_arg(rename = "line\nbreak")]
+    Newline,
+}
+
+/// Preserve punctuation and escapes when generating choice documentation.
+#[miniextendr_api::miniextendr]
+pub fn match_arg_auto_doc_escaped(
+    #[miniextendr(match_arg, default = r#""c:\\path""#)] value: DocEscapes,
+) -> DocEscapes {
+    value
+}
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct MatchArgDocDefaults {
+    mode: Mode,
+}
+
+/// Generated choice documentation for constructors, methods, and statics.
+#[miniextendr_api::miniextendr(r6)]
+impl MatchArgDocDefaults {
+    #[miniextendr(match_arg(mode), defaults(mode = "\"Safe\""))]
+    pub fn new(mode: Mode) -> Self {
+        Self { mode }
+    }
+
+    pub fn get_mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// Select a mode using a different preferred default.
+    #[miniextendr(match_arg(mode), defaults(mode = "\"Debug\""))]
+    pub fn select(&self, mode: Mode) -> Mode {
+        mode
+    }
+
+    /// Select a mode without constructing an instance.
+    #[miniextendr(match_arg(mode), defaults(mode = "\"Safe\""))]
+    pub fn select_static(mode: Mode) -> Mode {
+        mode
+    }
+}
+
+// endregion

@@ -7,7 +7,7 @@
 match_arg_omitted_modes_boxed(modes = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{modes}{One or more of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
+\item{modes}{One or more of \verb{"Fast", "Safe", "Debug"}; omitting the argument means no choice.}
 }
 \description{
 Omittable several_ok list in a boxed slice.

@@ -906,8 +906,11 @@ constructor regardless of return type.
 ### Auto-Injected `@param` Docs
 
 When you leave a `match_arg` parameter undocumented, miniextendr fills in
-the roxygen `@param` line at write time using the enum's `CHOICES`; a
-`choices(...)` parameter gets the same line from its literal list:
+the roxygen `@param` line at write time using the same choices and preferred
+default as the formal. An explicit `default = "\"Safe\""` puts `"Safe"`
+first in both the usage and generated description. The choice literals use
+Rd verbatim markup so quotes, backslashes, and punctuation survive rendering.
+A `choices(...)` parameter gets its line from its literal list:
 
 ```r
 #' @param mode One of "Fast", "Safe", "Debug".

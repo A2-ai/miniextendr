@@ -501,3 +501,15 @@ test_that("match_arg_param_with_default() follows a default = parameter's rotate
   }
   expect_identical(wrapped(), "Safe")
 })
+
+
+test_that("generated choice help follows function and method defaults (#1807)", {
+  expect_identical(match_arg_auto_doc_default(), "Safe")
+  object <- MatchArgDocDefaults$new()
+  expect_identical(object$get_mode(), "Safe")
+  expect_identical(object$select(), "Debug")
+  expect_identical(MatchArgDocDefaults$select_static(), "Safe")
+  expect_identical(eval(formals(object$select)$mode), c("Debug", "Fast", "Safe"))
+  expect_identical(eval(formals(MatchArgDocDefaults$select_static)$mode),
+                   c("Safe", "Fast", "Debug"))
+})

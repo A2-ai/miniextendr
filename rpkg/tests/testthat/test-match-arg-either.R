@@ -129,13 +129,15 @@ test_that("the auto-generated @param line names the other kind", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
   # The Rd page that documents `topic`.
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   # Each standalone fixture documents its own page (#1289); the R6 method has
   # its own argument list.
@@ -251,13 +253,15 @@ test_that("S7 trait method and its shortcut with an omittable Either choice", {
 test_that("method Either choice params name the other kind in their @param line", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice; the whole default counts as omitted."
   for (topic in c("EitherRouteS3", "EitherRouteS7", "EitherRouteVctrs")) {
@@ -491,13 +495,15 @@ test_that("S7 trait method and its shortcut with an omittable several_ok Either 
 test_that("several_ok Either choice lists name the other kind in their @param line", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   # Each standalone fixture documents its own page (#1289).
   expect_match(

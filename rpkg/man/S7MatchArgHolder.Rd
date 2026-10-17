@@ -17,7 +17,7 @@ S7MatchArgHolder_current(.mx_self, ...)
 S7MatchArgHolder_set(.mx_self, mode = c("Fast", "Safe", "Debug"), ...)
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 

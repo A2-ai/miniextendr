@@ -331,3 +331,33 @@ test_that("named dots documentation leaves evaluation and formals unchanged (#15
   expect_identical(object$collect(stop("must stay unforced")), 1L)
   expect_identical(names(formals(object$collect)), "...")
 })
+
+
+test_that("generated choice docs use the preferred formal order (#1807)", {
+  db <- shared_pages_rd_db()
+  args <- rd_argument_items(db[["match_arg_auto_doc_default.Rd"]])
+  expect_identical(args[["mode"]], 'One of "Safe", "Fast", "Debug".')
+  expect_identical(eval(formals(match_arg_auto_doc_default)$mode),
+                   c("Safe", "Fast", "Debug"))
+  # Explicit author prose remains authoritative.
+  author <- rd_argument_items(db[["match_arg_with_default.Rd"]])
+  expect_identical(author[["mode"]], "A Mode enum value.")
+
+  class_doc <- rd_section_text(db[["MatchArgDocDefaults.Rd"]], "\\section")
+  expect_match(class_doc, 'One of "Safe", "Fast", "Debug".', fixed = TRUE)
+  expect_match(class_doc, 'One of "Debug", "Fast", "Safe".', fixed = TRUE)
+})
+
+test_that("escaped choice literals survive rendered help (#1807)", {
+  rd <- shared_pages_rd_db()[["match_arg_auto_doc_escaped.Rd"]]
+  choices <- eval(formals(match_arg_auto_doc_escaped)$value)
+  expect_identical(choices, c("c:\\path", 'say "hi"', "{x}%", "line\nbreak"))
+  rendered <- paste(capture.output(tools::Rd2txt(rd)), collapse = "\n")
+  for (choice in encodeString(choices, quote = '"')) {
+    expect_match(rendered, choice, fixed = TRUE)
+  }
+  expect_identical(match_arg_auto_doc_escaped(), "c:\\path")
+  for (choice in choices) {
+    expect_identical(match_arg_auto_doc_escaped(choice), choice)
+  }
+})

@@ -107,13 +107,15 @@ test_that("the auto-generated @param line says that omitting means no choice", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
   # The Rd page that documents `topic`.
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   # Each standalone fixture documents its own page (#1289); the R6 method has
   # its own argument list.
@@ -317,13 +319,15 @@ test_that("S3 trait generics and vctrs static helpers are exported by name", {
 test_that("method choice params get the choice text as their @param line", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   omittable_levels <- "One of \"low\", \"mid\", \"high\"; omitting the argument means no choice; the whole default counts as omitted."
   # `level` is a `choices(...)` param of the inherent S3 / S7 / vctrs methods
@@ -355,12 +359,12 @@ test_that("method choice params get the choice text as their @param line", {
     "Pick one grade, or none.",
     grade_text,
     "The grades to pick; all of them for NULL.",
-    "\\strong{Arguments:}",
     "Pick the default grade, or none."
   )) {
     expect_match(env_page, text, fixed = TRUE)
   }
-  expect_match(rd_text("OmitPickS4"), paste0("\\item{grade}{", grade_text, "}"), fixed = TRUE)
+  expect_match(rd_text("OmitPickEnv", markup = TRUE), "\\strong{Arguments:}", fixed = TRUE)
+  expect_match(rd_text("OmitPickS4", markup = TRUE), paste0("\\item{grade}{", grade_text, "}"), fixed = TRUE)
   for (topic in c("OmitPickS3", "OmitPickS7")) {
     expect_match(rd_text(topic), "Pick the default grade, or none.", fixed = TRUE)
   }
@@ -455,13 +459,15 @@ test_that("no_default on an env method: bare formal, omitted is Absent", {
 test_that("no_default: the usage line shows the bare argument and the @param line drops the omission note", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  rd_text <- function(topic) {
+  rd_text <- function(topic, markup = FALSE) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
     }, character(1))
-    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
-    expect_length(page, 1L)
-    page[[1L]]
+    at <- which(grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE))
+    expect_length(at, 1L)
+    if (markup) pages[[at]] else {
+      gsub("\\s+", " ", paste(unlist(rd_db[[at]]), collapse = ""))
+    }
   }
   mode_page <- rd_text("match_arg_no_default_mode")
   expect_match(mode_page, "match_arg_no_default_mode(mode)", fixed = TRUE)
@@ -472,8 +478,8 @@ test_that("no_default: the usage line shows the bare argument and the @param lin
   expect_match(color_page, "choices_no_default_color(color)", fixed = TRUE)
   expect_match(color_page, "One of \"red\", \"green\", \"blue\", or NULL.", fixed = TRUE)
   expect_no_match(color_page, "omitting the argument", fixed = TRUE)
-  env_page <- rd_text("EnvMatchArgCounter")
-  expect_match(env_page, "\\item{\\code{mode}}{One of \"Fast\", \"Safe\", \"Debug\".}", fixed = TRUE)
+  env_page <- rd_text("EnvMatchArgCounter", markup = TRUE)
+  expect_match(env_page, "\\item{\\code{mode}}{One of \\verb{\"Fast\", \"Safe\", \"Debug\"}.}", fixed = TRUE)
 })
 
 # endregion

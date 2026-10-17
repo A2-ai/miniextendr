@@ -25,7 +25,7 @@ S3MatchArgPoint
 
 \item{...}{Additional arguments.}
 
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL for no choice.}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}, or NULL for no choice.}
 }
 \description{
 S3 generic for \code{label}

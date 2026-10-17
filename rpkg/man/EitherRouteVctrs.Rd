@@ -23,7 +23,7 @@ eitherroutevctrs_plan(
 )
 }
 \arguments{
-\item{route}{One of "oral", "bolus", "infusion", or a data frame.}
+\item{route}{One of \verb{"oral", "bolus", "infusion"}, or a data frame.}
 
 \item{x}{A EitherRouteVctrs vector to cast.}
 

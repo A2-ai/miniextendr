@@ -7,7 +7,7 @@
 match_arg_either_route_or_list(route = c("oral", "bolus", "infusion"))
 }
 \arguments{
-\item{route}{One of "oral", "bolus", "infusion", or a list.}
+\item{route}{One of \verb{"oral", "bolus", "infusion"}, or a list.}
 }
 \description{
 A route name or a list of doses: a \code{List} as the other arm.

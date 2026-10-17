@@ -368,13 +368,10 @@ pub struct MatchArgParamDocEntry {
     /// one (#1473), an omission note for `Missing<T>` (#1551). Composed by
     /// the macro from the parameter type.
     pub suffix: &'static str,
-    /// Function that returns the choices as a comma-separated quoted string,
-    /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
-    pub choices_str: fn() -> String,
+    /// The same metadata that supplies this parameter's formal and check.
+    /// Its preferred default also comes first in the generated documentation.
+    pub choices: &'static MatchArgChoicesEntry,
 }
-
-// SAFETY: function pointer, bools, and &'static str are Send+Sync.
-unsafe impl Sync for MatchArgParamDocEntry {}
 
 /// Entry mapping a Rust type name to its R-visible class name and class system.
 ///
@@ -2011,6 +2008,16 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) -> String {
+    format!(
+        "c({})",
+        match_arg_choice_literals(choices, preferred, placeholder)
+    )
+}
+
+/// R string literals in the parameter's effective order, shared by formals
+/// and generated documentation.
+#[cfg(not(target_arch = "wasm32"))]
+fn match_arg_choice_literals(choices: &[&str], preferred: &str, placeholder: &str) -> String {
     use crate::match_arg::{default_first, escape_r_string};
     let formal = if preferred.is_empty() {
         choices.to_vec()
@@ -2026,7 +2033,32 @@ pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) ->
         .iter()
         .map(|choice| format!("\"{}\"", escape_r_string(choice)))
         .collect();
-    format!("c({})", quoted.join(", "))
+    quoted.join(", ")
+}
+
+/// Choice literals need a second escaping layer for Rd, in addition to R
+/// string escaping. Verbatim markup also keeps roxygen Markdown from
+/// interpreting punctuation in a choice.
+#[cfg(not(target_arch = "wasm32"))]
+fn match_arg_param_doc(entry: &MatchArgParamDocEntry) -> String {
+    let choices = match_arg_choice_literals(
+        entry.choices.choices,
+        entry.choices.preferred_default,
+        entry.choices.placeholder,
+    );
+    let mut escaped = String::with_capacity(choices.len());
+    for ch in choices.chars() {
+        if matches!(ch, '\\' | '{' | '}' | '%') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    let prefix = if entry.several_ok {
+        "One or more of"
+    } else {
+        "One of"
+    };
+    format!("{prefix} \\verb{{{escaped}}}{}.", entry.suffix)
 }
 
 /// The trailing argument a `match_arg` parameter's check passes to
@@ -3204,16 +3236,10 @@ pub fn write_r_wrappers_to_file(path: &str) {
         content = splice_match_arg_entry(&content, entry);
     }
 
-    // Replace match_arg @param doc placeholders with human-readable choice descriptions
+    // Documentation uses the same ordered choices and preferred default as
+    // the formal, escaped as literal Rd text.
     for entry in MX_MATCH_ARG_PARAM_DOCS.iter() {
-        let choices = (entry.choices_str)();
-        let prefix = if entry.several_ok {
-            "One or more of"
-        } else {
-            "One of"
-        };
-        let replacement = format!("{prefix} {choices}{}.", entry.suffix);
-        content = content.replace(entry.placeholder, &replacement);
+        content = content.replace(entry.placeholder, &match_arg_param_doc(entry));
     }
 
     // Replace .__MX_S7_SIDECAR_PROP_DOCS_<TypeName>__ placeholders with @prop lines.
@@ -3964,6 +3990,91 @@ pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn match_arg_docs_follow_the_formals_default_order_and_keep_suffixes() {
+        static CHOICES: MatchArgChoicesEntry = MatchArgChoicesEntry {
+            placeholder: "choices",
+            choices: &["Fast", "Safe", "Debug"],
+            preferred_default: "Safe",
+            aliases_placeholder: "aliases",
+            aliases: &[],
+        };
+        let mut entry = MatchArgParamDocEntry {
+            placeholder: "doc",
+            several_ok: false,
+            suffix: "",
+            choices: &CHOICES,
+        };
+        assert_eq!(
+            match_arg_formal(
+                CHOICES.choices,
+                CHOICES.preferred_default,
+                CHOICES.placeholder
+            ),
+            r#"c("Safe", "Fast", "Debug")"#,
+        );
+        assert_eq!(
+            match_arg_param_doc(&entry),
+            r#"One of \verb{"Safe", "Fast", "Debug"}."#
+        );
+        entry.several_ok = true;
+        entry.suffix = ", or NULL for no choice";
+        assert_eq!(
+            match_arg_param_doc(&entry),
+            r#"One or more of \verb{"Safe", "Fast", "Debug"}, or NULL for no choice."#,
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn match_arg_docs_escape_r_literals_and_rd_markup_separately() {
+        static CHOICES: MatchArgChoicesEntry = MatchArgChoicesEntry {
+            placeholder: "choices",
+            choices: &["say \"hi\"", r"c:\path", "{x}%", "line\nbreak"],
+            preferred_default: r"c:\\path",
+            aliases_placeholder: "aliases",
+            aliases: &[],
+        };
+        let entry = MatchArgParamDocEntry {
+            placeholder: "doc",
+            several_ok: false,
+            suffix: "",
+            choices: &CHOICES,
+        };
+        assert_eq!(
+            match_arg_formal(
+                CHOICES.choices,
+                CHOICES.preferred_default,
+                CHOICES.placeholder
+            ),
+            r#"c("c:\\path", "say \"hi\"", "{x}%", "line\nbreak")"#,
+        );
+        assert_eq!(
+            match_arg_param_doc(&entry),
+            r#"One of \verb{"c:\\\\path", "say \\"hi\\"", "\{x\}\%", "line\\nbreak"}."#,
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    #[should_panic(expected = "does not match any choice")]
+    fn match_arg_docs_validate_the_same_default_as_the_formal() {
+        static CHOICES: MatchArgChoicesEntry = MatchArgChoicesEntry {
+            placeholder: "choices",
+            choices: &["Fast", "Safe"],
+            preferred_default: "Slow",
+            aliases_placeholder: "aliases",
+            aliases: &[],
+        };
+        match_arg_param_doc(&MatchArgParamDocEntry {
+            placeholder: "doc",
+            several_ok: false,
+            suffix: "",
+            choices: &CHOICES,
+        });
+    }
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]

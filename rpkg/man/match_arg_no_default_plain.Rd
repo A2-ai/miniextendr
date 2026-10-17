@@ -7,7 +7,7 @@
 match_arg_no_default_plain(mode)
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 Plain mode without a default: an omitted argument is R's

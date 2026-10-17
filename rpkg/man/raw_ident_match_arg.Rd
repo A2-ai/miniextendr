@@ -7,7 +7,7 @@
 raw_ident_match_arg(type = c("Fast", "Slow"))
 }
 \arguments{
-\item{type}{One of "Fast", "Slow".}
+\item{type}{One of \verb{"Fast", "Slow"}.}
 }
 \description{
 \code{match_arg} on a keyword parameter: the choices helper, the write-time

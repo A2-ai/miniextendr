@@ -7,7 +7,7 @@
 match_arg_omitted_rotated(mode = c("Safe", "Fast", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice; the whole default counts as omitted.}
+\item{mode}{One of \verb{"Safe", "Fast", "Debug"}; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 A preferred default rotates the displayed choices but does not choose for

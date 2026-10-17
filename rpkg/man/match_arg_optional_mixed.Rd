@@ -9,7 +9,7 @@ match_arg_optional_mixed(n, mode = NULL)
 \arguments{
 \item{n}{Count.}
 
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL for no choice.}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}, or NULL for no choice.}
 }
 \description{
 Optional mode next to a regular parameter; \code{mode} is auto-documented.

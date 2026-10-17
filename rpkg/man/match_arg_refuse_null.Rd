@@ -7,7 +7,7 @@
 match_arg_refuse_null(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug".}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}.}
 }
 \description{
 A mode whose explicit \code{NULL} is refused: the class check runs before the

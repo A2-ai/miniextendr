@@ -27,7 +27,7 @@ vctrsomitscale_omit_pick(
 \method{format}{VctrsOmitScale}(x, style = c("short", "long"), ...)
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice; the whole default counts as omitted.}
+\item{mode}{One of \verb{"Fast", "Safe", "Debug"}, or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 
 \item{x}{The vctrs payload.}
 
@@ -37,7 +37,7 @@ vctrsomitscale_omit_pick(
 
 \item{to}{A VctrsOmitScale prototype.}
 
-\item{modes}{One or more of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
+\item{modes}{One or more of \verb{"Fast", "Safe", "Debug"}; omitting the argument means no choice.}
 
 \item{level}{One of "low", "mid", "high"; omitting the argument means no choice; the whole default counts as omitted.}
 

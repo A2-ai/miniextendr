@@ -7,7 +7,7 @@
 foreign_enum_interps(methods = c("linear", "cubic", "nearest"))
 }
 \arguments{
-\item{methods}{One or more of "linear", "cubic", "nearest".}
+\item{methods}{One or more of \verb{"linear", "cubic", "nearest"}.}
 }
 \description{
 Echo one or more interpolation methods; \code{methods} is left undocumented so

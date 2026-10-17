@@ -96,6 +96,17 @@ pub(crate) fn placeholder_ident_suffix(placeholder: &str) -> String {
     placeholder.trim_matches('_').replace('.', "_")
 }
 
+/// The choice registration referenced by its parameter documentation too.
+pub(crate) fn choices_entry_ident(placeholder: &str) -> syn::Ident {
+    syn::Ident::new(
+        &format!(
+            "match_arg_choices_entry_{}",
+            placeholder_ident_suffix(placeholder)
+        ),
+        proc_macro2::Span::call_site(),
+    )
+}
+
 /// Emit the `MX_MATCH_ARG_CHOICES` static + its linkme registration.
 ///
 /// Factored so lib.rs (standalone fns) and miniextendr_impl.rs (impl methods)
@@ -146,7 +157,7 @@ pub(crate) fn param_doc_entry_tokens(
     placeholder: &str,
     several_ok: bool,
     suffix: &str,
-    choices: &proc_macro2::TokenStream,
+    choices_entry: &syn::Ident,
 ) -> proc_macro2::TokenStream {
     quote::quote! {
         #(#cfg_attrs)*
@@ -158,15 +169,7 @@ pub(crate) fn param_doc_entry_tokens(
                 placeholder: #placeholder,
                 several_ok: #several_ok,
                 suffix: #suffix,
-                choices_str: || {
-                    <[_]>::join(
-                        &::core::iter::Iterator::collect::<::std::vec::Vec<_>>(::core::iter::Iterator::map(
-                            <[_]>::iter(#choices),
-                            |c| ::std::format!("\"{}\"", c),
-                        )),
-                        ", ",
-                    )
-                },
+                choices: &#choices_entry,
             };
     }
 }
@@ -211,13 +214,7 @@ pub(crate) fn method_entries(
         // Placeholder that the write-time substitution pass replaces with the
         // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
         let placeholder = crate::r_class_formatter::match_arg_placeholder(c_ident, &r_name);
-        let entry_ident = syn::Ident::new(
-            &format!(
-                "match_arg_choices_entry_{}",
-                crate::match_arg_keys::placeholder_ident_suffix(&placeholder)
-            ),
-            proc_macro2::Span::call_site(),
-        );
+        let entry_ident = choices_entry_ident(&placeholder);
         let doc_placeholder =
             crate::r_class_formatter::match_arg_param_doc_placeholder(c_ident, &r_name);
         let doc_entry_ident = syn::Ident::new(
@@ -248,7 +245,7 @@ pub(crate) fn method_entries(
             &doc_placeholder,
             several_ok,
             &attrs.choice_doc_suffix(),
-            &quote::quote!(#entry_ident.choices),
+            &entry_ident,
         );
 
         out.extend(quote::quote! {

@@ -46,7 +46,7 @@ EitherRoutePlanner R6 Class
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{route}}{One of "oral", "bolus", "infusion", or a data frame.}
+      \item{\code{route}}{One of \verb{"oral", "bolus", "infusion"}, or a data frame.}
     }
     \if{html}{\out{</div>}}
   }

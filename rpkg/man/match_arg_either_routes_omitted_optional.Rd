@@ -9,7 +9,7 @@ match_arg_either_routes_omitted_optional(
 )
 }
 \arguments{
-\item{route_pick}{One or more of "oral", "bolus", "infusion", a data frame, or NULL; omitting the argument means no choice.}
+\item{route_pick}{One or more of \verb{"oral", "bolus", "infusion"}, a data frame, or NULL; omitting the argument means no choice.}
 }
 \description{
 Optional route names or a data frame whose omission is reported.

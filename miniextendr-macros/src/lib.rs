@@ -1946,7 +1946,7 @@ fn expand_miniextendr(
     let original_item = original_item;
 
     // Generate MX_MATCH_ARG_CHOICES entries for placeholder → choices replacement
-    // Resolve the `MatchArg`-bound type used in the choices_str closure: for
+    // Resolve the `MatchArg`-bound type used in the choice registration: for
     // `several_ok` params that's the inner element of the container, otherwise
     // it's the param type directly.
     let choices_ty_for = |rust_param: &str| -> Option<&syn::Type> {
@@ -1964,13 +1964,7 @@ fn expand_miniextendr(
         .filter_map(
             |(placeholder, aliases_placeholder, rust_param, preferred_default)| {
                 let choices_ty = choices_ty_for(rust_param)?;
-                let entry_ident = syn::Ident::new(
-                    &format!(
-                        "match_arg_choices_entry_{}",
-                        crate::match_arg_keys::placeholder_ident_suffix(placeholder)
-                    ),
-                    proc_macro2::Span::call_site(),
-                );
+                let entry_ident = crate::match_arg_keys::choices_entry_ident(placeholder);
                 Some(crate::match_arg_keys::choices_entry_tokens(
                     &cfg_attrs,
                     &entry_ident,
@@ -1991,7 +1985,10 @@ fn expand_miniextendr(
         match_arg_param_doc_placeholders
             .iter()
             .filter_map(|(doc_placeholder, rust_param)| {
-                let choices_ty = choices_ty_for(rust_param)?;
+                let (placeholder, _, _, _) = match_arg_placeholders
+                    .iter()
+                    .find(|(_, _, name, _)| name == rust_param)?;
+                let choices_entry = crate::match_arg_keys::choices_entry_ident(placeholder);
                 let attrs = parsed.param_attrs(rust_param)?;
                 let entry_ident = syn::Ident::new(
                     &format!(
@@ -2006,7 +2003,7 @@ fn expand_miniextendr(
                     doc_placeholder,
                     attrs.several_ok,
                     &attrs.choice_doc_suffix(),
-                    &quote::quote!(<#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES),
+                    &choices_entry,
                 ))
             })
             .collect();

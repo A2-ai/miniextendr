@@ -7,7 +7,7 @@
 match_arg_either_route_omitted_optional(route = c("oral", "bolus", "infusion"))
 }
 \arguments{
-\item{route}{One of "oral", "bolus", "infusion", a data frame, or NULL; omitting the argument means no choice; the whole default counts as omitted.}
+\item{route}{One of \verb{"oral", "bolus", "infusion"}, a data frame, or NULL; omitting the argument means no choice; the whole default counts as omitted.}
 }
 \description{
 An optional route name or data frame whose omission is reported.
