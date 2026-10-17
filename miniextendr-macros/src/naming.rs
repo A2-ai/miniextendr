@@ -211,6 +211,25 @@ pub(crate) fn sidecar_live_c_name(type_name: &str) -> String {
     format!("C_{prefix}__mx_rdata_live_{type_name}")
 }
 
+/// One field-fallback callback per impl block. Source coordinates distinguish
+/// repeated class settings across blocks, including empty blocks. Use both
+/// spans so impls repeated by a macro can still differ at the concrete type's
+/// call site. Unlike an expansion counter or a hash of cfg-selected members,
+/// these coordinates agree between the host build and the wasm build.
+pub(crate) fn field_fallback_c_ident(item: &syn::ItemImpl, ty: &syn::Ident) -> syn::Ident {
+    let prefix = crate_prefix();
+    let name = unraw(ty);
+    let block = item.impl_token.span.start();
+    let target = ty.span().start();
+    quote::format_ident!(
+        "C_{prefix}__mx_rdata_fallback_{name}_{}_{}_{}_{}",
+        block.line,
+        block.column,
+        target.line,
+        target.column
+    )
+}
+
 /// The R helpers `#[derive(ExternalPtr)]` emits for a type's sidecar fields
 /// and the `$` / `[[` field methods of `r_data_accessors` call (#1848).
 #[derive(Debug, Clone, Copy)]

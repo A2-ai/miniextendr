@@ -848,6 +848,8 @@ pub struct ParsedImpl {
     /// `s3(r_data_accessors, lookup = "list")`: how the S3 readers look a
     /// field up (see [`FieldLookup`]).
     pub field_lookup: FieldLookup,
+    /// Optional exact-name reader and completion paths for non-field names (#2150).
+    pub field_fallback: Option<field_syntax::Fallback>,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
     /// The impl block's `preconditions` / `no_preconditions`, inherited by
@@ -921,6 +923,8 @@ pub struct ImplAttrs {
     pub r_data_accessors: RDataAccessors,
     /// How the S3 readers look a field up (`lookup = "list"`, #1921).
     pub field_lookup: FieldLookup,
+    /// Optional exact-name reader and completion paths for non-field names (#2150).
+    pub field_fallback: Option<field_syntax::Fallback>,
     // endregion
     // region: Strict conversion mode
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
@@ -984,6 +988,8 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_abstract = false;
         let mut r_data_accessors = RDataAccessors::Off;
         let mut field_lookup: Option<(FieldLookup, proc_macro2::Span)> = None;
+        let mut fallback = None;
+        let mut fallback_names = None;
         let mut strict: Option<bool> = None;
         let mut preconditions: Option<bool> = None;
         let mut internal = false;
@@ -1318,6 +1324,29 @@ impl syn::parse::Parse for ImplAttrs {
                                 }
                             };
                             field_lookup = Some((lookup, key.span()));
+                        } else if key == "fallback" || key == "fallback_names" {
+                            let slot = if key == "fallback" {
+                                &mut fallback
+                            } else {
+                                &mut fallback_names
+                            };
+                            if slot.is_some() {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!("`{key}` is given twice"),
+                                ));
+                            }
+                            let _: syn::Token![=] = content.parse()?;
+                            let value: syn::LitStr = content.parse()?;
+                            let path = value.parse::<syn::Path>().map_err(|_| {
+                                syn::Error::new(
+                                    value.span(),
+                                    format!(
+                                        "`{key}` must be a function path, e.g. \"Self::column\""
+                                    ),
+                                )
+                            })?;
+                            *slot = Some(path);
                         } else if key == "r_data_accessors" {
                             r_data_accessors =
                                 parse_r_data_accessors_value(&content, &key, parsed_system)?;
@@ -1332,7 +1361,7 @@ impl syn::parse::Parse for ImplAttrs {
                                 format!(
                                     "unknown {ident_str} option: {key} (expected \
                                      r_data_accessors, or r_data_accessors = \"get\" for \
-                                     getters only{lookup})"
+                                     getters only{lookup}, fallback, fallback_names)"
                                 ),
                             ));
                         }
@@ -1358,6 +1387,25 @@ impl syn::parse::Parse for ImplAttrs {
             }
         }
 
+        let field_fallback = match (fallback, fallback_names) {
+            (Some(get), names) => {
+                if !r_data_accessors.enabled() {
+                    return Err(syn::Error::new_spanned(
+                        &get,
+                        "`fallback` requires `r_data_accessors` (or `r_data_accessors = \"get\"`)",
+                    ));
+                }
+                Some(field_syntax::Fallback { get, names })
+            }
+            (None, Some(names)) => {
+                return Err(syn::Error::new_spanned(
+                    names,
+                    "`fallback_names` requires `fallback`",
+                ));
+            }
+            (None, None) => None,
+        };
+
         Ok(ImplAttrs {
             class_system,
             class_name,
@@ -1371,6 +1419,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             field_lookup: field_lookup.map(|(lookup, _)| lookup).unwrap_or_default(),
+            field_fallback,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             preconditions,
             internal,
@@ -3237,6 +3286,7 @@ impl ParsedImpl {
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
             field_lookup: attrs.field_lookup,
+            field_fallback: attrs.field_fallback,
             strict: attrs.strict,
             preconditions: attrs.preconditions,
             internal: attrs.internal,
@@ -3386,6 +3436,19 @@ impl ParsedImpl {
         }
         if self.field_lookup == FieldLookup::List {
             options.push("lookup = \"list\"".to_string());
+        }
+
+        if let Some(fallback) = &self.field_fallback {
+            options.push(format!(
+                "fallback = {:?}",
+                quote::ToTokens::to_token_stream(&fallback.get).to_string()
+            ));
+            if let Some(names) = &fallback.names {
+                options.push(format!(
+                    "fallback_names = {:?}",
+                    quote::ToTokens::to_token_stream(names).to_string()
+                ));
+            }
         }
 
         let system = self.class_system.to_ident().to_string();
@@ -5213,6 +5276,7 @@ pub fn expand_impl(
     };
     let class_block = block_entry(&constructor, infers_constructor, demoted_ref, parts);
     let constructor_check = constructor_check(&parsed);
+    let field_fallback = field_syntax::fallback_wrapper(&parsed);
 
     // The registrations sit in an anonymous `const _` so that any number of
     // impl blocks of one type can register theirs; the wrapper writer merges
@@ -5227,6 +5291,7 @@ pub fn expand_impl(
 
         // C wrappers and call method defs
         #(#c_wrappers)*
+        #field_fallback
 
         // Forwarding trait impls for as.<class>() coercion methods
         #trait_impls

@@ -50,6 +50,9 @@
 use super::{ClassSystem, FieldLookup, ParsedImpl};
 use crate::naming::{RDataHelper, rdata_helper_name};
 
+mod fallback;
+pub(super) use fallback::{Fallback, additional_readers, fallback_wrapper};
+
 /// The names of the type's field helpers.
 struct Helpers {
     fields: String,
@@ -310,6 +313,20 @@ pub(super) fn s3_field_methods(
             ),
         ),
     };
+    let (name, i) = if parsed_impl.field_fallback.is_some() {
+        (
+            (
+                "name",
+                "An exact field or fallback name; assignment accepts fields only.",
+            ),
+            (
+                "i",
+                "An exact field or fallback name, or a position among the fields only.",
+            ),
+        )
+    } else {
+        (name, i)
+    };
     let value = ("value", "The new value of the field.");
 
     // `$`: an exact field name reads the field. On a bare pointer any other
@@ -321,17 +338,21 @@ pub(super) fn s3_field_methods(
     lines.push(format!("{} <- function(x, name) {{", def("$")));
     lines.extend(h.every_read_check());
     lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
-    match parsed_impl.field_lookup {
-        FieldLookup::Strict => lines.push(format!(
-            "    if (typeof(x) == \"externalptr\") {}(name, environment(), {class_lit})",
-            h.no_field
-        )),
-        FieldLookup::List => {
-            lines.push("    if (typeof(x) == \"externalptr\") return(NULL)".to_string())
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::read(parsed_impl, "x", "name", "    "));
+    } else {
+        match parsed_impl.field_lookup {
+            FieldLookup::Strict => lines.push(format!(
+                "    if (typeof(x) == \"externalptr\") {}(name, environment(), {class_lit})",
+                h.no_field
+            )),
+            FieldLookup::List => {
+                lines.push("    if (typeof(x) == \"externalptr\") return(NULL)".to_string())
+            }
         }
+        lines.push("    if (is.list(x)) return(.subset2(x, name))".to_string());
+        lines.push("    return(NextMethod())".to_string());
     }
-    lines.push("    if (is.list(x)) return(.subset2(x, name))".to_string());
-    lines.push("    return(NextMethod())".to_string());
     lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x, name)", h.get));
     lines.extend(guard("  "));
@@ -358,6 +379,14 @@ pub(super) fn s3_field_methods(
     );
     lines.push(format!("{} <- function(x, i, ...) {{", def("[[")));
     lines.extend(h.every_read_check());
+    if parsed_impl.field_fallback.is_some() {
+        lines.push(format!(
+            "  if (is.character(i) && length(i) == 1L && !is.na(i) && is.na(match(i, {}))) {{",
+            h.fields
+        ));
+        lines.extend(fallback::read(parsed_impl, "x", "i", "    "));
+        lines.push("  }".to_string());
+    }
     lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
     let field_at = format!(
         "      i <- .miniextendr_field_at({}, i, environment(), {})",
@@ -457,11 +486,15 @@ pub(super) fn s3_field_methods(
         "{} <- function(x, pattern = \"\") {{",
         def(".DollarNames")
     ));
-    lines.push(h.dollar_names_guard("x"));
-    lines.push(format!(
-        "  grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
-        h.fields
-    ));
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::completion(parsed_impl, "x", ""));
+    } else {
+        lines.push(h.dollar_names_guard("x"));
+        lines.push(format!(
+            "  grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
+            h.fields
+        ));
+    }
     lines.push("}".to_string());
     lines.push(String::new());
 
@@ -549,7 +582,14 @@ pub(super) fn s4_field_methods(
         }
     };
     let x = ("x", "An object.");
-    let name = ("name", "A field name.");
+    let name = (
+        "name",
+        if parsed_impl.field_fallback.is_some() {
+            "An exact field or fallback name; assignment accepts fields only."
+        } else {
+            "A field name."
+        },
+    );
     let value = ("value", "The new value of the field.");
 
     doc(&mut lines, "$", &[x, name]);
@@ -557,11 +597,15 @@ pub(super) fn s4_field_methods(
         "methods::setMethod(\"$\", \"{class_name}\", function(x, name) {{"
     ));
     lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
-    lines.extend(h.live_check("x@ptr", "    "));
-    lines.push(format!(
-        "    {}(name, environment(), {class_lit})",
-        h.no_field
-    ));
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::read(parsed_impl, "x@ptr", "name", "    "));
+    } else {
+        lines.extend(h.live_check("x@ptr", "    "));
+        lines.push(format!(
+            "    {}(name, environment(), {class_lit})",
+            h.no_field
+        ));
+    }
     lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x@ptr, name)", h.get));
     lines.extend(guard("  "));
@@ -574,10 +618,18 @@ pub(super) fn s4_field_methods(
         "{} <- function(x, pattern = \"\") {{",
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
-    lines.push(h.dollar_names_guard("x@ptr"));
-    lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields));
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::completion(parsed_impl, "x@ptr", ""));
+    } else {
+        lines.push(h.dollar_names_guard("x@ptr"));
+        lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields));
+    }
     lines.push("}".to_string());
     lines.push(String::new());
+
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::additional_readers(parsed_impl, on_page, export));
+    }
 
     if parsed_impl.r_data_accessors.setters() {
         doc(&mut lines, "$<-", &[x, name, value]);
@@ -619,7 +671,11 @@ pub(super) fn env_field_branch(parsed_impl: &ParsedImpl) -> Vec<String> {
 /// "every_read")` a pointer without its Rust value raises the type's
 /// restored error there (#1901).
 pub(super) fn env_unknown_name_check(parsed_impl: &ParsedImpl) -> Vec<String> {
-    Helpers::new(parsed_impl).live_check("self", "    ")
+    if parsed_impl.field_fallback.is_some() {
+        fallback::read(parsed_impl, "self", "name", "    ")
+    } else {
+        Helpers::new(parsed_impl).live_check("self", "    ")
+    }
 }
 
 /// The load check of an env class with `env(r_data_accessors)`.
@@ -640,11 +696,19 @@ pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<S
         "{} <- function(x, pattern = \"\") {{",
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
-    lines.push(h.dollar_names_guard("x"));
-    lines.push(format!(
-        "  grep(pattern, c({}, ls({})), value = TRUE)",
-        h.fields, class_name
-    ));
+    if parsed_impl.field_fallback.is_some() {
+        lines.extend(fallback::completion(
+            parsed_impl,
+            "x",
+            &format!(", ls({class_name})"),
+        ));
+    } else {
+        lines.push(h.dollar_names_guard("x"));
+        lines.push(format!(
+            "  grep(pattern, c({}, ls({})), value = TRUE)",
+            h.fields, class_name
+        ));
+    }
     lines.push("}".to_string());
     lines
 }
@@ -693,6 +757,12 @@ pub(super) fn check_collisions(parsed_impl: &ParsedImpl) -> syn::Result<()> {
         _ if !parsed_impl.r_data_accessors.enabled() => return Ok(()),
         (ClassSystem::S3, true) => &["$", "[[", "names", "as.list", ".DollarNames", "$<-", "[[<-"],
         (ClassSystem::S3, false) => &["$", "[[", "names", "as.list", ".DollarNames"],
+        (ClassSystem::S4, true) if parsed_impl.field_fallback.is_some() => {
+            &["$", "[[", "names", "as.list", ".DollarNames", "$<-", "[[<-"]
+        }
+        (ClassSystem::S4, false) if parsed_impl.field_fallback.is_some() => {
+            &["$", "[[", "names", "as.list", ".DollarNames"]
+        }
         (ClassSystem::S4, true) => &["$", ".DollarNames", "$<-"],
         (ClassSystem::S4, false) => &["$", ".DollarNames"],
         _ => return Ok(()),

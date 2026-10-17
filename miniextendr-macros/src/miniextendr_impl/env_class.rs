@@ -240,30 +240,26 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
-    if fields {
-        lines.extend(super::field_syntax::env_field_branch(parsed_impl));
-    }
-    let method_lookup = format!(".miniextendr_env_method(self, name, {class_name})");
-    if fields {
-        lines.push(format!("  obj <- {method_lookup}"));
-        lines.push("  if (is.null(obj)) {".to_string());
-        lines.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
-        lines.push("  }".to_string());
-        lines.push("  obj".to_string());
-    } else {
-        lines.push(format!("  {method_lookup}"));
-    }
+    lines.extend(reader_body(parsed_impl));
     lines.push("}".to_string());
-    if class_has_no_rd {
-        lines.push("#' @noRd".to_string());
-        lines.push("#' @export".to_string());
-    } else if !should_export {
-        lines.push("#' @export".to_string());
+    if parsed_impl.field_fallback.is_none() {
+        if class_has_no_rd {
+            lines.push("#' @noRd".to_string());
+            lines.push("#' @export".to_string());
+        } else if !should_export {
+            lines.push("#' @export".to_string());
+        } else {
+            lines.extend(super::field_syntax::page_lines(parsed_impl, &[]));
+            lines.push("#' @export".to_string());
+        }
+        lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
     } else {
-        lines.extend(super::field_syntax::page_lines(parsed_impl, &[]));
-        lines.push("#' @export".to_string());
+        lines.extend(super::field_syntax::additional_readers(
+            parsed_impl,
+            !class_has_no_rd && should_export,
+            true,
+        ));
     }
-    lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
     if fields {
         lines.extend(super::field_syntax::env_dollar_names(
             parsed_impl,
@@ -285,4 +281,25 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 #[cfg(test)]
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     generate_env_class(parsed_impl).render()
+}
+
+/// Shared by `$` and the fallback-enabled `[[` reader after index validation.
+pub(super) fn reader_body(parsed_impl: &ParsedImpl) -> Vec<String> {
+    let fields = parsed_impl.r_data_accessors.enabled();
+    let class_name = parsed_impl.class_name();
+    let mut lines = Vec::new();
+    if fields {
+        lines.extend(super::field_syntax::env_field_branch(parsed_impl));
+    }
+    let method_lookup = format!(".miniextendr_env_method(self, name, {class_name})");
+    if fields {
+        lines.push(format!("  obj <- {method_lookup}"));
+        lines.push("  if (is.null(obj)) {".to_string());
+        lines.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
+        lines.push("  }".to_string());
+        lines.push("  obj".to_string());
+    } else {
+        lines.push(format!("  {method_lookup}"));
+    }
+    lines
 }

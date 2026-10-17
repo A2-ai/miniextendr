@@ -747,6 +747,58 @@ The derive checks the written type. It cannot inspect aliases or fields
 inside user-defined wrappers; those must provide their own rooting or use
 `Sidecar<T>`.
 
+### Dynamic field-name fallbacks
+
+For a field-backed object that also exposes computed names (for example,
+table columns), add paths to the inherent class impl:
+
+```rust
+#[miniextendr(s3(
+    r_data_accessors = "get",
+    fallback = "Self::column",
+    fallback_names = "Self::column_names"
+))]
+impl Results {
+    // The class's public constructor/methods go here.
+}
+
+impl Results {
+    fn column(&self, name: &str) -> Option<Vec<f64>> {
+        self.columns.get(name).cloned()
+    }
+    fn column_names(&self) -> Vec<String> {
+        self.columns.keys().cloned().collect()
+    }
+}
+```
+
+The same options work under `s4(...)` and `env(...)`. Both paths follow
+`#[r_data(get = "Self::f")]`; a free function taking `&Results` also works.
+Here `columns` is a `BTreeMap<String, Vec<f64>>` stored in `Results`.
+Keep the functions in an ordinary Rust impl, or mark them
+`#[miniextendr(ignore)]` if they share an exported impl.
+
+Fields win over the fallback. A non-field name reaches the fallback only
+after borrowing the live Rust value; restored objects raise their usual
+refusal before the function runs. `Some(value)` converts with `IntoR`,
+including a successful `NULL` result. `None` raises `miniextendr_no_field`
+with the type's `field_error` classes and `no_field_hint`; it never becomes
+scalar `NA`. This unknown-name rule also applies with `lookup = "list"`,
+whose numeric and missing-index rules stay unchanged.
+
+`$` and `[[` match exact names only. Positions in `[[` count fields, and
+`names()` / `as.list()` contain fields only. S4 and env fallback classes
+also receive these positional and collection readers. Assignment keeps
+the normal field rules and never writes through the fallback. Env method
+names keep their existing priority over fallback names.
+
+`fallback_names` is optional. Completion offers fields followed by its
+returned names and filters both with `pattern`; without the path it offers
+fields only (env classes also retain their method names). A restored
+object completes to `character(0)`, including without
+`restored(refuse = "every_read")`. Repeat the same fallback settings on
+each annotated impl block, as with other class settings.
+
 ### `Sidecar<T>`: values the pointer roots
 
 A `Sidecar<T>` field's value lives in the pointer's `prot` list ("SEXP Layout"

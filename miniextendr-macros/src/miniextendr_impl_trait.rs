@@ -420,6 +420,14 @@ pub fn expand_miniextendr_impl_trait(
     let attr_tokens = TokenStream::from(attr.clone());
     let impl_attrs: ImplAttrs = syn::parse_macro_input!(attr as ImplAttrs);
     let impl_item = syn::parse_macro_input!(item as ItemImpl);
+    if let Some(fallback) = &impl_attrs.field_fallback {
+        return syn::Error::new_spanned(
+            &fallback.get,
+            "field fallbacks belong on the inherent class impl, not a trait impl",
+        )
+        .into_compile_error()
+        .into();
+    }
 
     // Validate: must be a trait impl, not inherent impl
     let (trait_path, concrete_type) = match extract_trait_and_type(&impl_item) {

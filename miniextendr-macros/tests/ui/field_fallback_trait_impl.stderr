@@ -1,0 +1,5 @@
+error: field fallbacks belong on the inherent class impl, not a trait impl
+ --> tests/ui/field_fallback_trait_impl.rs:6:47
+  |
+6 | #[miniextendr(s3(r_data_accessors, fallback = "Self::column"))]
+  |                                               ^^^^^^^^^^^^^^

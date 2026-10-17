@@ -16,6 +16,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_abstract: false,
         r_data_accessors: RDataAccessors::Off,
         field_lookup: FieldLookup::default(),
+        field_fallback: None,
         strict: false,
         // The impl keeps the checks, whatever the `no-preconditions-default`
         // feature of this build says, so the snapshots are the same under both.
@@ -9853,3 +9854,101 @@ fn ignored_methods_keep_rust_only_signatures() {
         }
     }
 }
+
+// region: field-name fallbacks (#2150)
+#[test]
+fn field_fallback_options_and_settings() {
+    for system in ["s3", "s4", "env"] {
+        let attrs: ImplAttrs = syn::parse_str(&format!(
+            "{system}(r_data_accessors = \"get\", fallback = \"Self::column\", fallback_names = \"Self::columns\")"
+        )).unwrap();
+        let parsed = ParsedImpl::parse(attrs, syn::parse_quote!(impl Engine {})).unwrap();
+        let settings = parsed.class_settings();
+        assert!(
+            settings.contains("fallback = \"Self :: column\""),
+            "{settings}"
+        );
+        assert!(
+            settings.contains("fallback_names = \"Self :: columns\""),
+            "{settings}"
+        );
+        let code = field_syntax::fallback_wrapper(&parsed).to_string();
+        assert!(code.contains("Engine :: column (& data , name)"), "{code}");
+        assert!(code.contains("Engine :: columns (& data)"), "{code}");
+        assert!(
+            code.contains("Option :: None => :: miniextendr_api :: SEXP :: nil ()"),
+            "{code}"
+        );
+        assert!(code.contains("numArgs : 2"), "{code}");
+        assert!(code.contains("with_r_unwind_protect"), "{code}");
+        assert!(code.contains("deferred_condition :: finish"), "{code}");
+        let wrapper = match parsed.class_system {
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            _ => unreachable!(),
+        };
+        assert!(
+            wrapper.contains("if (is.null(.val)) .rdata_no_field_Engine("),
+            "{wrapper}"
+        );
+        assert!(
+            wrapper.contains("if (is.null(.val)) return(character(0))"),
+            "{wrapper}"
+        );
+        assert!(wrapper.contains(".miniextendr_field_at("), "{wrapper}");
+    }
+}
+
+#[test]
+fn field_fallback_options_reject_incomplete_or_invalid_paths() {
+    for (input, expected) in [
+        (
+            r#"s3(fallback = "Self::column")"#,
+            "requires `r_data_accessors`",
+        ),
+        (
+            r#"s3(r_data_accessors, fallback_names = "Self::names")"#,
+            "requires `fallback`",
+        ),
+        (
+            r#"s3(r_data_accessors, fallback = "Self::column()")"#,
+            "must be a function path",
+        ),
+        (
+            r#"s3(r_data_accessors, fallback = "a", fallback = "b")"#,
+            "given twice",
+        ),
+        (
+            r#"s4(r_data_accessors, fallback = "a", fallback_names = "b", fallback_names = "c")"#,
+            "given twice",
+        ),
+        (
+            r#"r6(r_data_accessors, fallback = "a")"#,
+            "unknown r6 option",
+        ),
+        (
+            r#"s7(r_data_accessors, fallback = "a")"#,
+            "unknown s7 option",
+        ),
+    ] {
+        assert!(parse_attrs_err(input).contains(expected), "{input}");
+    }
+}
+
+#[test]
+fn fallback_s4_readers_reject_inherent_generic_collisions() {
+    for generic in ["[[", "names", "as.list", "[[<-"] {
+        let attrs: ImplAttrs =
+            syn::parse_str(r#"s4(r_data_accessors, fallback = "Self::column")"#).unwrap();
+        let item = syn::parse_quote! {
+            impl Engine {
+                #[miniextendr(s4(generic = #generic))]
+                pub fn custom(&self) -> i32 { 1 }
+            }
+        };
+        let error = ParsedImpl::parse(attrs, item).unwrap_err().to_string();
+        assert!(error.contains("would get two"), "{generic}: {error}");
+    }
+}
+// endregion

@@ -6246,3 +6246,27 @@ pub fn gc_stress_converted_references() {
         assert_eq!(text.matches("borrowed-").count(), 3);
     }
 }
+
+/// Keep a fallback's transient ALTSTRING name rooted across its allocation.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_field_fallbacks() {
+    unsafe {
+        miniextendr_api::expression::r_eval_str_global(
+            r#"
+            local({
+                x <- miniextendr::new_fallbacks3()
+                namespace <- asNamespace("miniextendr")
+                callback_name <- grep(
+                    "^C_miniextendr__mx_rdata_fallback_FallbackS3_",
+                    ls(namespace, all.names = TRUE), value = TRUE
+                )[[1L]]
+                callback <- base::get(callback_name, envir = namespace, inherits = FALSE)
+                value <- .Call(callback, x, miniextendr:::rooted_uncached_strings())[[1L]]
+                stopifnot(grepl("^borrowed-[0-9]+-x{300}$", value, perl = TRUE))
+                stopifnot(identical(x$column, 7:8), is.null(x$null))
+            })
+        "#,
+        )
+        .expect("fallback borrow and return remain rooted");
+    }
+}
