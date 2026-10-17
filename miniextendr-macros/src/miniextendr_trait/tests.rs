@@ -649,6 +649,25 @@ fn metadata_macros_do_not_collide_for_same_named_traits_in_separate_modules() {
     assert_ne!(export(), export());
 }
 
+/// A declaration's shim expands in the declaring crate but runs in the
+/// implementing package: its conversion failure reads that package's classes
+/// when it fails, never ones written where the trait was declared.
+#[test]
+fn declaration_shim_conversion_errors_take_the_implementers_class() {
+    let declaration: ItemTrait = syn::parse_quote! {
+        pub trait Counter {
+            fn add(&mut self, n: i32);
+        }
+    };
+    let text = generate_trait_abi(&declaration).to_string();
+    let read = ":: miniextendr_api :: trait_abi :: conversion_error_class ()";
+    assert_eq!(text.matches(read).count(), 1, "{text}");
+    assert!(
+        !text.contains("& [] , :: miniextendr_api :: __mx_conversion_err_parts"),
+        "{text}"
+    );
+}
+
 #[test]
 fn declaration_shims_live_on_the_trait_and_are_excluded_from_trait_objects() {
     let declaration: ItemTrait = syn::parse_quote! {

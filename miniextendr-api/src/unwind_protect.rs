@@ -848,6 +848,12 @@ where
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind` — the
 /// outer guard will catch them.
 ///
+/// An `arg_error!` raised by the implementation gets the implementing
+/// package's `conversion_error_class` here, in place of its class marker, as
+/// the shim's own conversion failures do
+/// ([`crate::trait_abi::conversion_error_class`]): the consumer's R helper
+/// would otherwise fill in the consumer's.
+///
 /// # PROTECT note
 ///
 /// The returned SEXP is unprotected. The View method wrapper must not call any
@@ -875,8 +881,17 @@ where
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
+                let (kind, mut parts) = cond.into_parts();
+                // An `arg_error!` in the implementation takes the implementing
+                // package's classes, as from its own `.Call` wrapper: this
+                // copy of the crate is that package's, while the consumer's R
+                // helper would put the consumer's in place of the marker.
+                parts.class = crate::condition::resolve_conversion_error_class_marker(
+                    parts.class,
+                    crate::condition::crate_conversion_error_class(),
+                );
                 // SAFETY: on the R main thread inside R_UnwindProtect.
-                unsafe { crate::error_value::rust_condition_value(cond, None) }
+                unsafe { crate::error_value::condition_parts_value(kind, parts, None) }
             } else {
                 // Generic panic path — fold the hook-captured `(at file:line)` into
                 // the message (this shim runs on the panicking thread).

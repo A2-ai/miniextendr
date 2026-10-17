@@ -471,8 +471,8 @@ pub fn counter_raise_warning_without_call(counter_sexp: SEXP, msg: String) {
 ///
 /// Verifies that a producer-side `arg_error!()` reaches the consumer as an
 /// argument error: `e$kind == "conversion"`, `e$param`, the consumer wrapper's
-/// call, and the consumer crate's `conversion_error_class` (none here), since
-/// the consumer's wrapper raises it (#1740).
+/// call, and the implementing package's `conversion_error_class`, as from that
+/// package's own wrapper for the method.
 /// @param counter_sexp An ExternalPtr to any type implementing Counter
 /// @param mode The value reported as a bad `mode` argument
 /// @export

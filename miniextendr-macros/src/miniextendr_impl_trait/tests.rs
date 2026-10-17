@@ -3115,3 +3115,28 @@ fn generic_impl_vtable_keeps_declared_slots_when_an_impl_hides_an_r_wrapper() {
     assert!(output.contains("as Imported < i32 > > :: read"), "{output}");
     assert!(output.contains("read : __vtshim_"), "{output}");
 }
+
+/// A generic trait's shims are written at the impl, and read the implementing
+/// package's classes at run time as a declaration's shims do.
+#[test]
+fn generic_impl_shims_take_the_implementers_class_at_run_time() {
+    let abi = syn::parse_quote! {
+        abi Generic true "test-only-tag" { pub add: ::miniextendr_api::abi::mx_meth }
+    };
+    let mut method = make_test_method("add", true);
+    method.sig = syn::parse_quote!(fn add(&mut self, k: i32));
+    method.is_mut = true;
+    let output = vtable::generate_impl_vtable(
+        &abi,
+        &syn::parse_quote!(Host),
+        &syn::parse_quote!(Imported<i32>),
+        &[method],
+        &[syn::parse_quote!(
+            fn add(n: ());
+        )],
+    )
+    .unwrap()
+    .to_string();
+    let read = ":: miniextendr_api :: trait_abi :: conversion_error_class ()";
+    assert_eq!(output.matches(read).count(), 1, "{output}");
+}
