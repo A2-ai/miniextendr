@@ -6313,3 +6313,56 @@ pub fn gc_stress_quoted_method_view() -> i32 {
         <i32 as miniextendr_api::TryFromSexp>::try_from_sexp(result).expect("integer capture")
     }
 }
+
+/// Forward captured promises while only RCall owns its fresh arguments.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_lazy_dots_forward() {
+    use miniextendr_api::expression::{RCall, r_eval_str};
+    use miniextendr_api::{LazyDots, TryFromSexp};
+    unsafe {
+        let frame = OwnedProtect::new(
+            r_eval_str(
+                r#"local({
+                    original <- 41L
+                    (function(...) environment())(
+                        x = original, ignored = stop("must stay lazy")
+                    )
+                })"#,
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .expect("capture dots"),
+        );
+        let env = frame.get();
+        let rest = LazyDots::from_wrapper_arg(&env);
+        let target = OwnedProtect::new(
+            r_eval_str(
+                r#"function(values, label, x, ...) {
+                    stopifnot(identical(values, 1:3), identical(label, "rooted"))
+                    list(x, substitute(list(...)))
+                }"#,
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .expect("forwarding target"),
+        );
+        for catch_error in [false, true] {
+            let call = RCall::from_sexp(target.get())
+                .arg_value(vec![1_i32, 2, 3])
+                .named_value("label", String::from("rooted"));
+            let result = OwnedProtect::new(if catch_error {
+                rest.try_forward(call).expect("forward succeeds")
+            } else {
+                rest.forward(call)
+            });
+            assert_eq!(i32::try_from_sexp(result.get().vector_elt(0)).unwrap(), 41);
+            assert!(result.get().vector_elt(1).is_language());
+        }
+        let fail = r_eval_str(
+            r#"function(...) stop("forwarded failure")"#,
+            miniextendr_api::sys::R_BaseEnv,
+        )
+        .expect("failure target");
+        let failure = RCall::from_sexp(fail);
+        let err = rest.try_forward(failure).expect_err("stop raises");
+        assert!(err.message().contains("forwarded failure"));
+    }
+}

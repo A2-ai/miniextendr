@@ -155,7 +155,36 @@ subset.mx_lazy <- function(x, subset, ...) {
 - **Forcing an empty element** raises `argument "..k" is missing, with no default` (classes `evalError`, `missingArgError` from R 4.6, `simpleError` before), with the generated function's own call as its call. A body that accepts empty arguments checks `is_missing_arg(i)` first.
 - **Conditions.** `force(i)` evaluates through `eval_with_handlers` (see [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md)): the caller's `withCallingHandlers()` / `suppressWarnings()` see what forcing signals, and an error, or the exit of a `tryCatch()` handler, unwinds through the Rust frames (running their destructors) and carries on in R as the original condition. `try_force(i)` evaluates through `try_eval_with_handlers`: warnings and messages still reach the caller's handlers, any other exit unwinds as under `force(i)`, and an R error comes back as `Err(REvalError)` for the body to handle (an empty element included).
 - **Caching.** Forced values are not cached in Rust: R stores a promise's value in the promise, so forcing an element twice evaluates it once. The count and the expressions are read once per `LazyDots` value: the first `is_missing_arg` / `expr` call evaluates `substitute(list(...))` in the frame and the value keeps the list, so a loop over the elements copies the expressions once.
-- **R versions.** Every method runs a base R call in the frame (`...length()`, `...names()`, `substitute(list(...))`, `..k`) through `eval_with_handlers`, so the same code runs on R 4.4 and later. It uses neither R 4.6's dots C API nor the non-API promise accessors; #1898 tracks moving to that API, and a per-element `env(i)`, once a build can target R 4.6.
+- **R versions.** Inspection and forcing use base R calls in the frame (`...length()`, `...names()`, `substitute(list(...))`, `..k`) through `eval_with_handlers`, so the same code runs on R 4.4 and later. It uses neither R 4.6's dots C API nor the non-API promise accessors; #1898 tracks moving to that API, and a per-element `env(i)`, once a build can target R 4.6.
+
+### Forwarding to another R function
+
+`LazyDots::forward(call)` appends `...` to an `RCall` and evaluates it in
+the captured wrapper frame. The callee receives the original promises,
+including their names, empty slots, expressions and environments. It decides
+what to force. A namespaced data-masking function can therefore receive column
+expressions that have no value in the caller:
+
+```rust
+let call = unsafe { RCall::namespaced("dplyr", "group_by")? }
+    .arg_value(plain_data_frame);
+let grouped = rest.forward(call);
+```
+
+The builder roots the callable and leading arguments without binding them into
+the frame. A leading argument's name cannot replace a variable used by a
+forwarded promise. For a supplied R closure, use `RCall::from_sexp`; a bare
+`RCall::new("fun")` name is looked up in the wrapper's environment.
+
+`forward` preserves the caller's condition handlers, including error
+handlers. `try_forward(call) -> Result<SEXP, REvalError>` keeps warnings and
+messages visible but catches an R error in Rust, like `try_force`. Other R
+exits unwind Rust destructors. Both return an unprotected value on success;
+root it before allocating again, or return it directly to R.
+
+Forwarding to `NextMethod()` also preserves an active S3 method's dispatch
+context. This requires a captured S3 method frame; forwarding from an
+ordinary function or another class system does not create S3 dispatch.
 
 Where it is accepted:
 

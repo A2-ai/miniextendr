@@ -34,6 +34,8 @@
 //! | [`expr(i)`](LazyDots::expr) | element `i` of `substitute(list(...))` | nothing |
 //! | [`force(i)`](LazyDots::force) | `..k` (`k = i + 1`) | element `i` |
 //! | [`try_force(i)`](LazyDots::try_force) | `..k`, with an R error returned as `Err` | element `i` |
+//! | [`forward(call)`](LazyDots::forward) | `fun(leading_args, ...)` | only what the callee forces |
+//! | [`try_forward(call)`](LazyDots::try_forward) | the same, with an R error returned as `Err` | only what the callee forces |
 //!
 //! Indices are 0-based, as in [`List::get_index`](crate::List::get_index):
 //! element `i` is R's `..k` with `k = i + 1`. An index past the end panics
@@ -114,7 +116,7 @@ use std::cell::{Cell, OnceCell};
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 
-use crate::expression::{REvalError, eval_with_handlers, try_eval_with_handlers};
+use crate::expression::{RCall, REvalError, eval_with_handlers, try_eval_with_handlers};
 use crate::from_r::charsxp_to_str;
 use crate::gc_protect::OwnedProtect;
 use crate::sexp_ext::PairListExt;
@@ -325,6 +327,53 @@ impl<'a> LazyDots<'a> {
         self.check_index(i);
         // SAFETY: as in `force`.
         unsafe { try_eval_with_handlers(dot_symbol(i), self.env) }
+    }
+
+    /// Append these dots to a call and evaluate it without first forcing them.
+    ///
+    /// An R call built as `fun(leading_args)` runs as `fun(leading_args, ...)`
+    /// in the captured wrapper frame. R forwards the original promises: names,
+    /// empty elements, expressions and their environments survive, and the
+    /// callee chooses which elements to evaluate.
+    ///
+    /// The builder roots the callable and leading arguments. It installs no
+    /// bindings in the frame, so a named leading argument cannot overwrite a
+    /// binding used by a forwarded promise. Use [`RCall::namespaced`] for a
+    /// target such as `dplyr::group_by`, or [`RCall::from_sexp`] for a closure;
+    /// a bare [`RCall::new`] name is looked up in the wrapper's environment.
+    ///
+    /// `forward` keeps the caller's condition handlers, as [`Self::force`]
+    /// does. Errors and other R exits unwind Rust destructors before returning
+    /// to R. Use [`Self::try_forward`] to catch an R error in Rust.
+    ///
+    /// The result is unprotected. Root it before an operation that may allocate,
+    /// or return it directly to R.
+    ///
+    /// ```ignore
+    /// let call = unsafe { RCall::namespaced("dplyr", "group_by")? }
+    ///     .arg_value(plain_data_frame);
+    /// let grouped = rest.forward(call);
+    /// ```
+    pub fn forward(&self, call: RCall) -> SEXP {
+        // SAFETY: LazyDots borrows a rooted wrapper frame on R's main thread.
+        // RCall roots its callable and arguments; the interned symbol is immortal.
+        unsafe {
+            call.arg(crate::sys::Rf_install(c"...".as_ptr()))
+                .eval_with_handlers(self.env)
+        }
+    }
+
+    /// [`Self::forward`], with an R error returned as `Err(REvalError)`.
+    ///
+    /// Warnings and messages still reach the caller's handlers. Other exits,
+    /// including a warning handler or restart that leaves the call, unwind as
+    /// under [`Self::forward`]. The successful result is unprotected.
+    pub fn try_forward(&self, call: RCall) -> Result<SEXP, REvalError> {
+        // SAFETY: as in forward; only the error-catching policy differs.
+        unsafe {
+            call.arg(crate::sys::Rf_install(c"...".as_ptr()))
+                .try_eval_with_handlers(self.env)
+        }
     }
 
     /// Panic on an index past the end, as slice indexing does.

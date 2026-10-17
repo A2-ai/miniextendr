@@ -5,6 +5,7 @@
 \alias{new_lazydotss3}
 \alias{lazy_s3_report.LazyDotsS3}
 \alias{lazy_s3_sum.LazyDotsS3}
+\alias{lazy_s3_sum_forward.LazyDotsS3}
 \title{LazyDotsS3 S3 Class}
 \usage{
 new_lazydotss3(base)
@@ -12,6 +13,8 @@ new_lazydotss3(base)
 \method{lazy_s3_report}{LazyDotsS3}(x, ...)
 
 \method{lazy_s3_sum}{LazyDotsS3}(x, ...)
+
+\method{lazy_s3_sum_forward}{LazyDotsS3}(x, fun, ...)
 
 LazyDotsS3
 }
@@ -21,6 +24,8 @@ LazyDotsS3
 \item{x}{An object.}
 
 \item{...}{Additional arguments.}
+
+\item{fun}{An R function.}
 }
 \description{
 S3 class whose methods take \code{LazyDots}. Exported: roxygen2 wants every S3
@@ -35,4 +40,8 @@ Describe the dots, forcing nothing.
 S3 generic for \code{lazy_s3_sum}
 
 \code{base} plus the elements that are not empty.
+
+S3 generic for \code{lazy_s3_sum_forward}
+
+Forward expressions to an R function through this class's dispatch.
 }

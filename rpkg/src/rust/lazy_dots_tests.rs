@@ -408,6 +408,13 @@ impl LazyDotsEnv {
     pub fn sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
     }
+
+    /// Forward expressions to an R function through this class's dispatch.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn sum_forward(&self, fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
+    }
 }
 
 /// R6 class whose methods take `LazyDots`.
@@ -434,6 +441,13 @@ impl LazyDotsR6 {
     /// @param ... Numbers; empty ones are skipped.
     pub fn sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
+    }
+
+    /// Forward expressions to an R function through this class's dispatch.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn sum_forward(&self, fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
     }
 }
 
@@ -463,6 +477,13 @@ impl LazyDotsS3 {
     /// @param ... Numbers; empty ones are skipped.
     pub fn lazy_s3_sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
+    }
+
+    /// Forward expressions to an R function through this class's dispatch.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn lazy_s3_sum_forward(&self, fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
     }
 }
 
@@ -495,6 +516,13 @@ impl LazyDotsS4 {
     pub fn lazy_sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
     }
+
+    /// Forward expressions to an R function through this class's dispatch.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn lazy_sum_forward(&self, fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
+    }
 }
 
 /// S7 class whose methods take `LazyDots`.
@@ -522,6 +550,13 @@ impl LazyDotsS7 {
     pub fn lazy_s7_sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
     }
+
+    /// Forward expressions to an R function through this class's dispatch.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn lazy_s7_sum_forward(&self, fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
+    }
 }
 
 /// vctrs class: vctrs impls take no instance methods (MXL120), so `LazyDots`
@@ -543,6 +578,13 @@ impl LazyDotsVctrs {
         describe(&rest)
     }
 
+    /// Forward expressions from a vctrs static helper.
+    /// @param fun An R function.
+    /// @param ... Forwarded promises.
+    pub fn forward(fun: SEXP, rest: LazyDots) -> SEXP {
+        lazy_dots_forward(fun, rest)
+    }
+
     /// `format()` that tags each value with the dots it got, forcing none of
     /// them: `<value>|<descriptions>`.
     /// @param x The vctrs payload.
@@ -552,6 +594,67 @@ impl LazyDotsVctrs {
         let tag = describe(&rest).join(",");
         x.iter().map(|v| format!("{v}|{tag}")).collect()
     }
+}
+
+// endregion
+
+// region: forwarding captured promises
+
+/// Forward the captured dots to a supplied closure without forcing them.
+/// @param fun An R function.
+/// @param ... Forwarded promises.
+#[miniextendr(noexport)]
+pub fn lazy_dots_forward(fun: SEXP, rest: LazyDots) -> SEXP {
+    assert!(fun.is_function(), "fun must be an R function");
+    let _sentinel = DropSentinel;
+    rest.forward(unsafe { RCall::from_sexp(fun) })
+}
+
+/// Catch a forwarded R error in Rust, returning its original condition.
+/// @param fun An R function.
+/// @param ... Forwarded promises.
+#[miniextendr(noexport)]
+pub fn lazy_dots_try_forward(fun: SEXP, rest: LazyDots) -> SEXP {
+    assert!(fun.is_function(), "fun must be an R function");
+    let _sentinel = DropSentinel;
+    match rest.try_forward(unsafe { RCall::from_sexp(fun) }) {
+        Ok(value) => value,
+        Err(err) => err.condition(),
+    }
+}
+
+/// Add rooted leading arguments before forwarding the promises.
+/// @param fun An R function.
+/// @param ... Forwarded promises.
+#[miniextendr(noexport)]
+pub fn lazy_dots_forward_values(fun: SEXP, rest: LazyDots) -> SEXP {
+    assert!(fun.is_function(), "fun must be an R function");
+    let call = unsafe { RCall::from_sexp(fun) }
+        .arg_value(vec![1_i32, 2, 3])
+        .named_value("label", String::from("from Rust"));
+    rest.forward(call)
+}
+
+/// A namespaced data-masking target must receive expressions, not values.
+/// @param data A data frame.
+/// @param ... Grouping expressions.
+#[miniextendr(noexport)]
+pub fn lazy_dots_group_by(data: SEXP, rest: LazyDots) -> SEXP {
+    let call = unsafe { RCall::namespaced("dplyr", "group_by") }
+        .expect("dplyr is installed")
+        .arg(data);
+    rest.forward(call)
+}
+
+/// Forward the same dots twice; R's promises cache their forced values.
+/// @param fun An R function.
+/// @param ... Forwarded promises.
+#[miniextendr(noexport)]
+pub fn lazy_dots_forward_twice(fun: SEXP, rest: LazyDots) -> SEXP {
+    assert!(fun.is_function(), "fun must be an R function");
+    let first = unsafe { OwnedProtect::new(rest.forward(RCall::from_sexp(fun))) };
+    let second = unsafe { OwnedProtect::new(rest.forward(RCall::from_sexp(fun))) };
+    List::from_raw_values(vec![first.get(), second.get()]).as_sexp()
 }
 
 // endregion
