@@ -44,6 +44,8 @@ Any compiling command (`devtools-document`, `rcmdinstall`, `cargo build`, `R CMD
 ## Gctorture fixtures
 Any new path storing SEXPs across allocations (typical: `Vec<SEXP>` / sidecar fields / generic-list buffers / `from_raw_pairs`/`from_raw_values` inputs) needs a no-arg `gc_stress_<feature>()` exported wrapper in `src/rust/gc_stress_fixtures.rs`. The fast gctorture sweep only exercises no-arg exports. The gctorture blocks in `tests/testthat/` are opt-in (`skip_gc_stress_if_disabled()` in `tests/testthat/helper-gc-stress.R`): run `just devtools-test-stress` before committing such a change, since plain `just devtools-test` skips them. See `docs/GCTORTURE_TESTING.md` and #430.
 
+Keep forced GC scoped to the operations under test: collect results while `gctorture(TRUE)` is active, then disable it before testthat assertions. Assertion machinery allocates heavily and can turn a seconds-long constructor regression into minutes without adding constructor coverage. Always retain an exit handler that disables GC torture on failure.
+
 ## Connection ownership in progress fixtures
 
 `RTerm` preserves an R connection but does not close it. When a fixture creates
