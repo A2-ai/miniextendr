@@ -32,4 +32,16 @@ Arguments of \code{GrowableVec$from_vec()}:
 \describe{
 \item{\code{data}}{Integer vector of initial elements.}
 }
+
+Extend the collection with items from a vector.
+
+The items are moved into the collection.
+
+Get the current length of the collection.
+
+Optional - returns -1 if not implemented.
+
+Check if the collection is empty.
+
+Returns false when length is unknown.
 }

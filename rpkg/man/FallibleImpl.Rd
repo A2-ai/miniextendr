@@ -25,4 +25,8 @@ FallibleImpl
 Create a new FallibleImpl.
 
 Get value via inherent method.
+
+Get a value -- should succeed.
+
+Deliberately panic.
 }

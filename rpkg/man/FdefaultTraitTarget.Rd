@@ -27,4 +27,12 @@ FdefaultTraitTarget
 Creates the probe.
 
 Returns the probe's tag (always 0).
+
+Logical identity; under \code{coerce-default} it also accepts integer \code{0L}/\code{1L}.
+
+Same as \code{coerce_flag}, with \code{no_coerce} in the impl.
+
+i64 identity; under \code{strict-default} it rejects logical and raw input.
+
+Same as \code{strict_i64}, with \code{no_strict} in the impl.
 }

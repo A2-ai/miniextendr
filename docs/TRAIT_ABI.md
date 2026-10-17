@@ -8,10 +8,16 @@ An annotated implementation inherits `#[miniextendr(r_name = "...")]` and
 `#[miniextendr(skip)]` from the trait declaration. This also applies to impls
 with method bodies, generic traits and traits with associated types. An
 explicit `r_name` on an impl method overrides the inherited R name; a method
-skipped by the declaration stays skipped. Other method options, docs and
-parameter attributes belong to explicit implementation methods. An omitted
-default method, of a generic trait or not, uses its declaration's docs and
-parameter names.
+skipped by the declaration stays skipped. Other method options and parameter
+attributes belong to explicit implementation methods. The declaration's docs
+document every method that has none of its own: an omitted default method, of
+a generic trait or not, a method an empty impl registers
+(`impl RDebug for Point {}` documents `debug_str()` with `RDebug`'s docs), and
+an implementation method written without a doc comment. A method the impl
+documents keeps its own docs. Declaration docs are the trait's rustdoc, so
+their `[...]` links lose their brackets on the R page whatever the
+implementing crate's `roxygen_prose_links`: a bracket there names a Rust item
+or is plain text.
 
 Every implementation takes the declaration's parameter names, so a trait
 method has the same R formals and argument errors in every package that

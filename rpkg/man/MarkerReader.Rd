@@ -31,4 +31,22 @@ MarkerReader
 Env class whose \code{MarkerArgs} trait methods take the reading markers.
 
 Create a reader.
+
+The number read, returned as the marker: \code{NA} when it reads as missing.
+
+How many values read as missing.
+
+The label read, \code{"<NA>"} for \code{NA}.
+
+\code{"null"} for \code{NULL}, else the labels joined by commas (\code{"<NA>"} for \code{NA}).
+
+\code{"absent"} when omitted, else the number read.
+
+The address parsed, formatted back.
+
+How many addresses were parsed.
+
+The numbers read, returned as the marker.
+
+The number read; the implementation refuses \code{NA} with \code{no_na}.
 }

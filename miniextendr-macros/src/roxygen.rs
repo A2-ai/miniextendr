@@ -353,6 +353,20 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute], page: RdPage) ->
     roxygen_tags_from_attrs_impl(attrs, page)
 }
 
+/// Roxygen tags from a trait declaration's docs, for the wrappers of an
+/// implementation whose method has none of its own (an inherited default, a
+/// method an empty impl registers, a written method without a doc comment).
+///
+/// The docs are the trait's rustdoc, written where the trait is declared,
+/// often in another crate, so every `[...]` loses its brackets whatever the
+/// implementing crate's [`ProseLinks`] setting, as in a block with no page
+/// ([`RdPage::Suppressed`]): in rustdoc a bracket names a Rust item or is
+/// plain text (`slot [4]`), not an R topic the implementing package can
+/// resolve.
+pub(crate) fn declaration_roxygen_tags(attrs: &[syn::Attribute]) -> Vec<String> {
+    roxygen_tags_with(attrs, ProseLinks::Strip, RdPage::Suppressed)
+}
+
 /// Extract roxygen tags for an impl-block method.
 ///
 /// Identical to [`roxygen_tags_from_attrs`] — leading prose is promoted to

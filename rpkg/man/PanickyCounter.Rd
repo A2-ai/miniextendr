@@ -38,4 +38,12 @@ Get value.
 Add (may panic).
 
 \code{PanickyCounter$new_panicky()} is another name for the constructor \code{PanickyCounter$new()}.
+
+Get the current value.
+
+Increment the counter by 1.
+
+Add n to the counter (checked - may panic on overflow).
+
+Static method: Returns the default initial value for this counter type.
 }

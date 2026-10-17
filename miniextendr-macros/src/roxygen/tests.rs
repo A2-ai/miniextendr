@@ -1637,6 +1637,25 @@ fn test_normalize_for_comparison() {
 
 // region: comma-list @param dedup (duplicated \argument Rd entries, #1261 item 2)
 
+/// A trait declaration's rustdoc documents an implementation's wrappers with
+/// every link's brackets gone, whatever the implementing crate's
+/// `roxygen_prose_links`: a bracket there is a Rust item or plain text.
+#[test]
+fn declaration_tags_keep_no_links() {
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = " Round-trip through slot [4], see [`Foo`]."]),
+        syn::parse_quote!(#[doc = ""]),
+        syn::parse_quote!(#[doc = " @return The value, see [other_fn()]."]),
+    ];
+    assert_eq!(
+        declaration_roxygen_tags(&attrs),
+        [
+            "@description Round-trip through slot 4, see `Foo`.",
+            "@return The value, see other_fn().",
+        ]
+    );
+}
+
 /// A trait impl's `@param` tags take the trait's parameter names: each name
 /// of a comma list maps on its own, names swap, and the description stays.
 #[test]

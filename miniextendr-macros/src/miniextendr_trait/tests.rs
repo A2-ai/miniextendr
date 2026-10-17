@@ -649,6 +649,35 @@ fn metadata_macros_do_not_collide_for_same_named_traits_in_separate_modules() {
     assert_ne!(export(), export());
 }
 
+/// The declaration's metadata carries each method's docs, for the wrappers of
+/// a populated impl and of an empty one.
+#[test]
+fn trait_metadata_carries_method_docs() {
+    let declaration: ItemTrait = syn::parse_quote! {
+        pub trait Counter {
+            /// Add to the counter.
+            fn add(&mut self, n: i32);
+            /// The value.
+            fn value(&self) -> i32 { 0 }
+        }
+    };
+    let text = generate_trait_abi(&declaration).to_string();
+    // The populated-impl arm's required and default entries.
+    for entry in [
+        "# [doc = r\" Add to the counter.\"] fn add (n : ()) ;",
+        "# [doc = r\" The value.\"] fn value (& self) -> i32 { }",
+    ] {
+        assert!(text.contains(entry), "{entry}: {text}");
+    }
+    // The empty-impl arm's `method { ... }` entries.
+    for entry in [
+        "method { r_name = add ; # [doc = r\" Add to the counter.\"] fn add",
+        "method { r_name = value ; # [doc = r\" The value.\"] fn value",
+    ] {
+        assert!(text.contains(entry), "{entry}: {text}");
+    }
+}
+
 /// A declaration's shim expands in the declaring crate but runs in the
 /// implementing package: its conversion failure reads that package's classes
 /// when it fails, never ones written where the trait was declared.
