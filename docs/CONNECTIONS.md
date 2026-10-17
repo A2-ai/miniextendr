@@ -95,7 +95,6 @@ pub trait RConnectionImpl: Sized + 'static {
     fn seek(&mut self, where_: f64, origin: i32, rw: i32) -> f64 { /* raises */ }
     fn truncate(&mut self) { /* raises */ }
     fn flush(&mut self) -> i32 { 0 }
-    fn vfprintf(&mut self, fmt: *const c_char, ap: *mut c_void) -> i32 { -1 }
 }
 ```
 
@@ -112,7 +111,10 @@ pub trait RConnectionImpl: Sized + 'static {
 | `seek` | `seek(conn, where, origin)` | Previous position | See origin codes below; the default raises "'seek' not enabled for this connection" |
 | `truncate` | `truncate(conn)` | (none) | The default raises "truncation not enabled for this connection" |
 | `flush` | `flush(conn)` | 0 | R ignores the value |
-| `vfprintf` | Formatted print (rarely needed) | Characters written, or -1 | R typically uses `write` |
+
+R's `dummy_vfprintf` callback handles formatted output such as `writeLines()`.
+It formats the platform-specific `va_list`, grows its buffer for long output,
+and forwards the complete byte sequence to the connection's `write` callback.
 
 ### Seek Origin Codes
 
@@ -190,10 +192,10 @@ build()
 [Connection created in CLOSED state]
   |
   v
-open() callback  <-- triggered by open(conn) or auto-open
+builder invokes open() callback
   |
   v
-[OPEN state]
+[OPEN state returned to R]
   |  read() / write() / seek() / flush() / fgetc()
   v
 close() callback  <-- triggered by close(conn) or auto-close
@@ -210,7 +212,7 @@ destroy() callback  <-- triggered by garbage collection
 
 Key points:
 
-- `R_new_custom_connection` creates connections in the **CLOSED** state. R opens them automatically on first use.
+- `R_new_custom_connection` creates a connection in the **CLOSED** state, then `build()` invokes its `open()` callback before returning it to R.
 - `close()` is called before `destroy()`. Your close handler should release resources; destroy is for final cleanup.
 - `destroy()` is always called, even if the connection was never opened.
 - Your Rust type is dropped after `destroy()` returns, even if `destroy()` panics.
@@ -440,8 +442,8 @@ unsafe {
 
 ### Panic Safety
 
-Ordinary I/O callbacks (`read`, `write`, `fgetc`, `seek`, `truncate`, `flush`,
-`vfprintf`) run under `R_UnwindProtect`. Rust panics and `error!` conditions
+Ordinary I/O callbacks (`read`, `write`, `fgetc`, `seek`, `truncate`, `flush`)
+run under `R_UnwindProtect`. Rust panics and `error!` conditions
 become R errors after Rust destructors run. They do not become EOF or a
 successful short write. The connection can still be closed after an error;
 the framework does not roll back changes already made by the stream.
@@ -521,6 +523,11 @@ Return value (or an R error after Rust unwinding)
 Each trampoline is a generic `unsafe extern "C-unwind" fn` parameterized by `T: RConnectionImpl`. When you call `build::<T>(state)`, the compiler generates concrete function pointers for your specific type. The guard catches Rust panics and R exits before returning to C.
 
 The `private` field of the `Rconn` struct stores a `Box::into_raw(Box::new(state))` pointer. Trampolines cast this back to `&mut T` via `get_state()`.
+
+Formatted writes are the exception: the builder preserves R's
+`dummy_vfprintf` callback instead of installing a Rust trampoline. This keeps
+the non-portable `va_list` on the C side while R forwards the formatted bytes
+through the installed Rust `write` trampoline.
 
 ## Complete Examples
 
@@ -856,7 +863,7 @@ Never retain an RNG-state guard for the connection's entire lifetime.
 ## Limitations
 
 - **Experimental API.** R may change the connection ABI in any release. The compile-time version check catches this, but you may need to update miniextendr when upgrading R.
-- **No `vfprintf` by default.** The `vfprintf` callback receives raw C varargs (`va_list`), which are not portable in Rust. The default returns -1. R rarely calls this -- it prefers the `write` callback.
+- **Formatted output stays in R.** The builder preserves R's `dummy_vfprintf` callback because C `va_list` values are not portable Rust inputs. Implement `write`; R formats and forwards the complete output to it.
 - **Not `Send`/`Sync`.** Connections run on the main R thread. Your `RConnectionImpl` type does not need to be thread-safe.
 - **GC protection.** The SEXP returned by `build()` must be protected from R's garbage collector if you store it. Returning it directly from a `#[miniextendr]` function handles this automatically.
 - **No stat support.** R's connection C API does not include a `stat` callback (file size, modification time, etc.). If you need stat-like information, track it in your `RConnectionImpl` type or query it through a separate `#[miniextendr]` function.
