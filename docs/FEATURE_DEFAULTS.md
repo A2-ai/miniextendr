@@ -54,9 +54,11 @@ default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
 codegen semantics crate-wide, so no PR-gating job ever builds or runs the R
 wrappers they generate. Their only runtime coverage is the scheduled
 `feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`),
-which rebuilds rpkg with one feature bundle on top of the detected base set and
-re-runs `tests/testthat/test-feature-defaults.R` against it. The `coerce-default`
-leg also runs the coercion regression suites.
+which rebuilds rpkg with one feature bundle on top of the detected base set,
+regenerates `NAMESPACE` and `man/` for that build (the committed ones are the
+default build's), and re-runs `tests/testthat/test-feature-defaults.R` against it. The
+`worker-default`, `r6-default` and `s7-default` legs run the full suite, and the
+`coerce-default` leg also runs the coercion regression suites.
 
 ### Hardcoded Defaults (No Longer Feature-Controlled)
 
