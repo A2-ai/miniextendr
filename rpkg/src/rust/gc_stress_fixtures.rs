@@ -6414,3 +6414,19 @@ pub fn gc_stress_foreign_callback() {
         assert_eq!(result.get().vector_elt(0).as_slice::<i32>(), &[42]);
     }
 }
+
+/// Nested borrowed wrappers retain every uncached ALTSTRING child.
+/// @noRd
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_rooted_wrappers() {
+    use miniextendr_api::{Missing, StrVec, TryFromRoot};
+    use std::borrow::Cow;
+    unsafe {
+        let scope = miniextendr_api::ProtectScope::new();
+        let strings = scope.protect(GcTransientBorrowString.into_sexp());
+        assert!(crate::rooted_wrapper_tests::rooted_wrapper_strings_survive(
+            Missing::<Result<StrVec<'_>, ()>>::try_from_root(strings).unwrap(),
+            <Result<Cow<'_, str>, ()>>::try_from_root(strings).unwrap(),
+        ));
+    }
+}

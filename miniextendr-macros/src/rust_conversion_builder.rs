@@ -1870,8 +1870,8 @@ fn expected_arm(ty: &syn::Type) -> TokenStream {
         let (left, right) = (expected_arm(left), expected_arm(right));
         return quote! { #arm::Either(&#left, &#right) };
     }
-    if let Some(inner) =
-        crate::type_inspect::option_inner_type(ty).or_else(|| unit_result_ok_type(ty))
+    if let Some(inner) = crate::type_inspect::option_inner_type(ty)
+        .or_else(|| crate::type_inspect::unit_result_ok_type(ty))
     {
         let inner = expected_arm(inner);
         return quote! { #arm::Nullable(&#inner) };
@@ -1897,22 +1897,6 @@ fn names_impl_trait(ty: &syn::Type) -> bool {
         })
     }
     scan(quote! { #ty })
-}
-
-/// `T` for a `Result<T, ()>` type, which reads `NULL` as `Err(())`.
-fn unit_result_ok_type(ty: &syn::Type) -> Option<&syn::Type> {
-    let syn::Type::Path(tp) = ty else {
-        return None;
-    };
-    let seg = tp.path.segments.last()?;
-    if seg.ident != "Result" {
-        return None;
-    }
-    let ok = crate::type_inspect::first_type_argument(seg)?;
-    match crate::type_inspect::second_type_argument(seg)? {
-        syn::Type::Tuple(unit) if unit.elems.is_empty() => Some(ok),
-        _ => None,
-    }
 }
 
 // endregion

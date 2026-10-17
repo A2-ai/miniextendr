@@ -4,7 +4,7 @@ use super::{
     NativeBorrow, SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str,
     map_strsxp_with, map_vecsxp_batched,
 };
-use crate::{RCow, RNativeType, Root, SEXP, SEXPTYPE, SexpExt, StrVec};
+use crate::{Missing, RCow, RNativeType, Root, SEXP, SEXPTYPE, SexpExt, StrVec};
 use std::borrow::Cow;
 
 /// Convert an R value while retaining its root's lifetime in the result.
@@ -18,6 +18,9 @@ use std::borrow::Cow;
 /// scalars, vectors or strings before dispatch, then borrow inside the worker.
 /// Nested shared-reference `Vec` inputs retain every list element in the root's
 /// protection scope, even when an ALTREP accessor does not cache that element.
+/// `Missing<T>` and `Result<T, ()>` preserve that lifetime and alias metadata,
+/// including nested wrappers. Only the missing-argument sentinel is absent for
+/// `Missing`; only `NULL` is `Err(())` for `Result`. Other values convert as `T`.
 /// Reference aliases and custom reference converters select this path with
 /// `#[miniextendr(convert)]` on the parameter, or `#[miniextendr(convert(param))]`
 /// on an inherent or trait impl method. Other aliases can use this trait
@@ -57,6 +60,18 @@ use std::borrow::Cow;
 /// use miniextendr_api::{Root, TryFromRoot};
 /// fn escape<'a>(root: Root<'a>) -> Vec<Vec<&'static [i32]>> {
 ///     Vec::try_from_root(root).unwrap()
+/// }
+/// ```
+/// ```compile_fail
+/// use miniextendr_api::{Missing, Root, StrVec, TryFromRoot};
+/// fn escape<'a>(root: Root<'a>) -> Missing<StrVec<'static>> {
+///     Missing::try_from_root(root).unwrap()
+/// }
+/// ```
+/// ```compile_fail
+/// use miniextendr_api::{RCow, Root, TryFromRoot};
+/// fn escape<'a>(root: Root<'a>) -> Result<RCow<'static, i32>, ()> {
+///     Result::try_from_root(root).unwrap()
 /// }
 /// ```
 pub trait TryFromRoot<'a>: Sized {
@@ -134,6 +149,44 @@ impl<'a> TryFromRoot<'a> for Cow<'a, str> {
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
         <&str>::try_from_root(root).map(Cow::Borrowed)
+    }
+}
+
+/// An omitted argument remains distinct from `NULL`. Present values keep
+/// their root and the inner conversion's error and native-borrow semantics.
+impl<'a, T: TryFromRoot<'a>> TryFromRoot<'a> for Missing<T>
+where
+    T::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+    const NATIVE_BORROW: Option<NativeBorrow> = T::NATIVE_BORROW;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        if crate::missing::is_missing_arg(root.get()) {
+            Ok(Missing::Absent)
+        } else {
+            T::try_from_root(root)
+                .map(Missing::Present)
+                .map_err(Into::into)
+        }
+    }
+}
+
+/// `NULL` is `Err(())`; conversion failures are errors of the conversion,
+/// never values of the returned `Result`.
+impl<'a, T: TryFromRoot<'a>> TryFromRoot<'a> for Result<T, ()>
+where
+    T::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+    const NATIVE_BORROW: Option<NativeBorrow> = T::NATIVE_BORROW;
+
+    fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(Err(()))
+        } else {
+            T::try_from_root(root).map(Ok).map_err(Into::into)
+        }
     }
 }
 

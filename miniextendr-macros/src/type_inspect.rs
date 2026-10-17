@@ -325,6 +325,22 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
 
 // endregion
 
+/// `T` for a `Result<T, ()>` type, which reads `NULL` as `Err(())`.
+pub(crate) fn unit_result_ok_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(tp) = ty else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Result" {
+        return None;
+    }
+    let ok = first_type_argument(seg)?;
+    match second_type_argument(seg)? {
+        syn::Type::Tuple(unit) if unit.elems.is_empty() => Some(ok),
+        _ => None,
+    }
+}
+
 // region: borrowed vector views (#1427)
 
 /// Conversions selected from the rooted call argument rather than a raw SEXP.
@@ -345,6 +361,13 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
         || seg.ident == "RFunction"
     {
         return true;
+    }
+    if seg.ident == "Missing" || unit_result_ok_type(ty).is_some() {
+        // The wrapper adds no storage of its own: the inner conversion still
+        // borrows this call's root. Shared references inside these wrappers
+        // stay on the main thread too; there is no worker-owned staging path.
+        return first_type_argument(seg)
+            .is_some_and(|inner| is_rooted_view(inner) || is_rooted_reference(inner));
     }
     if seg.ident == "Option" {
         return first_type_argument(seg).is_some_and(|inner| {
@@ -1640,5 +1663,34 @@ pub(crate) fn self_ref_mutability(ty: &syn::Type) -> Option<bool> {
         Some(reference.mutability.is_some())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod rooted_wrapper_tests {
+    use super::*;
+
+    #[test]
+    fn wrappers_keep_the_rooted_leaf_and_main_thread_selection() {
+        for spelling in [
+            "Missing<StrVec<'_>>",
+            "miniextendr_api::Missing<Result<RCow<'_, i32>, ()>>",
+            "Result<Cow<'_, [i32]>, ()>",
+            "Missing<Result<&[i32], ()>>",
+            "Result<Missing<Vec<Option<Cow<'_, str>>>>, ()>",
+            "Missing<Option<RFunction<'_>>>",
+        ] {
+            let ty: syn::Type = syn::parse_str(spelling).unwrap();
+            assert!(is_rooted_view(&ty), "{spelling}");
+            assert!(is_main_thread_bound_input(&ty), "{spelling}");
+        }
+        for spelling in [
+            "Missing<i32>",
+            "Result<Vec<i32>, ()>",
+            "Missing<&mut [i32]>",
+        ] {
+            let ty: syn::Type = syn::parse_str(spelling).unwrap();
+            assert!(!is_rooted_view(&ty), "{spelling}");
+        }
     }
 }

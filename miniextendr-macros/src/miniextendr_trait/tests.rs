@@ -432,7 +432,7 @@ fn extract_method_info_extracts_params() {
 }
 
 /// A `Missing<T>` argument crosses the View's vtable call through
-/// `missing_to_sexp` (absent → R's missing-argument sentinel), every other
+/// the missing-argument sentinel when absent, every other
 /// argument through `to_sexp`; `Missing` has no `IntoR` (#1551).
 #[test]
 fn view_method_passes_missing_args_as_the_sentinel() {
@@ -443,7 +443,8 @@ fn view_method_passes_missing_args_as_the_sentinel() {
     let info = extract_method_info(&method).unwrap().unwrap();
     let view = generate_view_method(&info).unwrap().to_string();
     assert!(
-        view.contains(":: miniextendr_api :: trait_abi :: missing_to_sexp (level)"),
+        view.contains("match level")
+            && view.contains(":: miniextendr_api :: SEXP :: missing_arg ()"),
         "{view}"
     );
     assert!(

@@ -1000,8 +1000,15 @@ references and slices into owned values or a `Vec`; the worker borrows the
 copy. Mutable references (`&mut [T]`, `Option<&mut [T]>`) and reference
 containers other than `Vec` still convert through `TryFromSexp` with an
 unconstrained lifetime (#1427).
-`Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning
-one, have no rooted conversion yet (#2038).
+`Missing<T>` and `Result<T, ()>` also convert through `TryFromRoot` when
+`T` does, including nested combinations. An omitted argument is
+`Missing::Absent`; `NULL` is `Result::Err(())`. Every other input goes to the
+inner converter, so a wrong type remains a conversion error. Their shared
+borrows retain the inner alias checks against mutable arguments. Generated
+parameters using these wrappers around a view or shared reference stay on the
+main thread and reject `'static` just like the bare view.
+`Either` of a view and trait methods returning borrowed views still need
+support (#2038).
 
 ---
 

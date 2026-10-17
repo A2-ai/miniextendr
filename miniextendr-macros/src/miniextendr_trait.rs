@@ -768,6 +768,31 @@ fn trait_abi_tag_path(trait_name: &syn::Ident, methods: &[MethodInfo]) -> String
     tag
 }
 
+/// Encode argument-only wrappers before the View calls its vtable. Missing
+/// values use R's sentinel; unit errors use NULL, including nested wrappers.
+/// Neither wrapper has an ordinary IntoR impl for these semantics.
+fn view_argument_to_sexp(ty: &syn::Type, value: TokenStream) -> TokenStream {
+    if let Some(inner) = crate::miniextendr_fn::get_missing_inner_type(ty) {
+        let present = view_argument_to_sexp(inner, quote::quote! { __mx_value });
+        quote::quote! {
+            match #value {
+                ::miniextendr_api::Missing::Present(__mx_value) => #present,
+                ::miniextendr_api::Missing::Absent => ::miniextendr_api::SEXP::missing_arg(),
+            }
+        }
+    } else if let Some(inner) = crate::type_inspect::unit_result_ok_type(ty) {
+        let present = view_argument_to_sexp(inner, quote::quote! { __mx_value });
+        quote::quote! {
+            match #value {
+                ::core::result::Result::Ok(__mx_value) => #present,
+                ::core::result::Result::Err(()) => ::miniextendr_api::SEXP::nil(),
+            }
+        }
+    } else {
+        quote::quote! { ::miniextendr_api::trait_abi::to_sexp(#value) }
+    }
+}
+
 /// Generate a method wrapper for the View struct.
 ///
 /// This creates a method on the View that calls through the vtable.
@@ -830,15 +855,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
                     quote::quote! { #marker::#accessor(&#name) }
                 };
             }
-            if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
-                quote::quote! {
-                    ::miniextendr_api::trait_abi::missing_to_sexp(#name)
-                }
-            } else {
-                quote::quote! {
-                    ::miniextendr_api::trait_abi::to_sexp(#name)
-                }
-            }
+            view_argument_to_sexp(ty, quote::quote! { #name })
         })
         .collect();
 
