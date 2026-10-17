@@ -36,7 +36,8 @@
 //! - `#[match_arg(rename = "name")]` - Rename a variant's choice string
 //! - `#[match_arg(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
 //! - `#[match_arg(alias = "name")]` - Another spelling of a variant's choice, matched only when
-//!   typed in full and listed nowhere the choices are (`MatchArg::ALIASES`, #1843). Repeatable,
+//!   typed in full (`MatchArg::ALIASES`, #1843). Listed in errors by default;
+//!   `listed = false` on the same attribute hides its aliases from errors. Repeatable,
 //!   variants only, never renamed by `rename_all`. An alias that is empty, `"NA"`, a choice,
 //!   given twice, or a prefix of another variant's choice is a compile error.
 
@@ -55,13 +56,14 @@ struct MatchArgAttrs {
     /// Applied to all variants that don't have an explicit `rename`.
     rename_all: Option<String>,
     /// Per-variant aliases, in written order: `#[match_arg(alias = "grey")]`,
-    /// repeatable. Each literal is kept for the span of its error.
-    aliases: Vec<syn::LitStr>,
+    /// repeatable. Each literal is kept for the span of its error, with its listing flag.
+    aliases: Vec<(syn::LitStr, bool)>,
 }
 
 /// Parse `#[match_arg(...)]` attributes from a list of `syn::Attribute`.
 ///
-/// Extracts `rename`, `rename_all` and `alias` keys. Validates that
+/// Extracts `rename`, `rename_all`, `alias` and `listed` keys. A listing flag
+/// applies only to aliases in the same attribute and defaults to `true`. Validates that
 /// `rename_all` uses one of the supported modes: `snake_case`, `kebab-case`,
 /// `lower`, `upper`. Returns `Err` for unknown attribute keys or unsupported
 /// `rename_all` values. Where `alias` may appear (variants only) is the
@@ -71,12 +73,19 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
 
     for attr in attrs {
         if attr.path().is_ident("match_arg") {
+            let mut aliases = Vec::new();
+            let mut listed: Option<syn::LitBool> = None;
             attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("rename") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.rename = Some(value.value());
                 } else if meta.path.is_ident("alias") {
-                    result.aliases.push(meta.value()?.parse()?);
+                    aliases.push(meta.value()?.parse::<syn::LitStr>()?);
+                } else if meta.path.is_ident("listed") {
+                    if listed.is_some() {
+                        return Err(meta.error("duplicate `listed` option"));
+                    }
+                    listed = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("rename_all") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     let val = value.value();
@@ -92,11 +101,23 @@ fn parse_match_arg_attrs(attrs: &[syn::Attribute]) -> syn::Result<MatchArgAttrs>
                     result.rename_all = Some(val);
                 } else {
                     return Err(meta.error(
-                        "unknown match_arg attribute; expected `rename`, `rename_all` or `alias`",
+                        "unknown match_arg attribute; expected `rename`, `rename_all`, `alias` or `listed`",
                     ));
                 }
                 Ok(())
             })?;
+            if let Some(listed) = &listed
+                && aliases.is_empty()
+            {
+                return Err(syn::Error::new_spanned(
+                    listed,
+                    "`listed` requires `alias = \"...\"` in the same #[match_arg(...)]",
+                ));
+            }
+            let listed = listed.is_none_or(|value| value.value);
+            result
+                .aliases
+                .extend(aliases.into_iter().map(|alias| (alias, listed)));
         }
     }
 
@@ -141,7 +162,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
 
     // Parse enum-level attributes
     let attrs = parse_match_arg_attrs(&input.attrs)?;
-    if let Some(alias) = attrs.aliases.first() {
+    if let Some((alias, _)) = attrs.aliases.first() {
         return Err(syn::Error::new_spanned(
             alias,
             "`alias` names another spelling of one choice: put \
@@ -175,8 +196,8 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let mut choice_names = Vec::new();
     let mut variant_idents = Vec::new();
-    // (alias literal, index of its variant's choice in `choice_names`)
-    let mut variant_aliases: Vec<(syn::LitStr, usize)> = Vec::new();
+    // (alias literal, index of its variant's choice in `choice_names`, listed)
+    let mut variant_aliases: Vec<(syn::LitStr, usize, bool)> = Vec::new();
 
     for variant in variants {
         // Only allow unit variants (fieldless)
@@ -201,7 +222,12 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
         };
 
         let at = choice_names.len();
-        variant_aliases.extend(var_attrs.aliases.into_iter().map(|alias| (alias, at)));
+        variant_aliases.extend(
+            var_attrs
+                .aliases
+                .into_iter()
+                .map(|(alias, listed)| (alias, at, listed)),
+        );
         choice_names.push(choice_name);
         variant_idents.push(&variant.ident);
     }
@@ -224,18 +250,23 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
     let choice_strs: Vec<&str> = choice_names.iter().map(|s| s.as_str()).collect();
     let alias_strs: Vec<String> = variant_aliases
         .iter()
-        .map(|(alias, _)| alias.value())
+        .map(|(alias, _, _)| alias.value())
         .collect();
     let alias_targets: Vec<&str> = variant_aliases
         .iter()
-        .map(|(_, at)| choice_names[*at].as_str())
+        .map(|(_, at, _)| choice_names[*at].as_str())
+        .collect();
+
+    let alias_listed: Vec<bool> = variant_aliases
+        .iter()
+        .map(|(_, _, listed)| *listed)
         .collect();
 
     Ok(quote! {
         impl #impl_generics ::miniextendr_api::match_arg::MatchArg for #name #ty_generics #where_clause {
             const CHOICES: &'static [&'static str] = &[#(#choice_strs),*];
-            const ALIASES: &'static [(&'static str, &'static str)] =
-                &[#((#alias_strs, #alias_targets)),*];
+            const ALIASES: &'static [(&'static str, &'static str, bool)] =
+                &[#((#alias_strs, #alias_targets, #alias_listed)),*];
 
             fn from_choice(choice: &str) -> ::core::option::Option<Self> {
                 match choice {
@@ -291,10 +322,10 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
 /// harmless. The wrappers writer applies the same
 /// rules to a hand-written `MatchArg::ALIASES`
 /// (`miniextendr_api::registry::match_arg_aliases_arg`).
-fn check_aliases(choices: &[String], aliases: &[(syn::LitStr, usize)]) -> syn::Result<()> {
+fn check_aliases(choices: &[String], aliases: &[(syn::LitStr, usize, bool)]) -> syn::Result<()> {
     let mut errors: Option<syn::Error> = None;
     let mut seen = std::collections::HashSet::new();
-    for (lit, at) in aliases {
+    for (lit, at, _) in aliases {
         let alias = lit.value();
         let target = &choices[*at];
         let problem = if alias.is_empty() {
@@ -442,7 +473,7 @@ mod tests {
     }
 
     /// `alias = "..."` fills `ALIASES` with (alias, the variant's choice after
-    /// renaming) pairs in written order, is repeatable, is not renamed by
+    /// renaming, listed) triples in written order, is repeatable, is not renamed by
     /// `rename_all`, and leaves `CHOICES` alone (#1843).
     #[test]
     fn test_aliases() {
@@ -465,12 +496,31 @@ mod tests {
         );
         assert!(
             code.contains(
-                r#"const ALIASES : & 'static [(& 'static str , & 'static str)] = & [("grey" , "gray") , ("Grau" , "gray") , ("Blue" , "navy")] ;"#
+                r#"const ALIASES : & 'static [(& 'static str , & 'static str , bool)] = & [("grey" , "gray" , true) , ("Grau" , "gray" , true) , ("Blue" , "navy" , true)] ;"#
             ),
             "{code}"
         );
         // An alias is not a choice: `from_choice` matches the choices only.
         assert!(!code.contains(r#""grey" => Some"#), "{code}");
+    }
+
+    #[test]
+    fn listed_applies_only_to_its_attribute_in_declaration_order() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[match_arg(rename_all = "lower")]
+            enum Shade {
+                #[match_arg(alias = "rouge")]
+                Red,
+                #[match_arg(alias = "grey", listed = false)]
+                #[match_arg(listed = true, alias = "Grau", alias = "gris")]
+                #[match_arg(alias = "ashen")]
+                Gray,
+            }
+        };
+        let code = derive_match_arg(input).unwrap().to_string();
+        assert!(code.contains(
+            r#"[("rouge" , "red" , true) , ("grey" , "gray" , false) , ("Grau" , "gray" , true) , ("gris" , "gray" , true) , ("ashen" , "gray" , true)]"#
+        ), "{code}");
     }
 
     /// Without aliases `ALIASES` is empty.
@@ -482,7 +532,7 @@ mod tests {
         let code = derive_match_arg(input).unwrap().to_string();
         assert!(
             code.contains(
-                r#"const ALIASES : & 'static [(& 'static str , & 'static str)] = & [] ;"#
+                r#"const ALIASES : & 'static [(& 'static str , & 'static str , bool)] = & [] ;"#
             ),
             "{code}"
         );

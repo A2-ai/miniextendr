@@ -6,6 +6,7 @@
 \alias{AliasPalette$paint}
 \alias{$.AliasPalette}
 \alias{[[.AliasPalette}
+\alias{AliasPalette$AliasChoice$inherited_color}
 \title{AliasPalette Class}
 \usage{
 AliasPalette
@@ -38,6 +39,16 @@ AliasPalette Class
 \item{\code{AliasPalette$paint()}}{
 Replace the colour and return it.
 
+\strong{Arguments:}
+\describe{
+\item{\code{color}}{One of "red", "gray", "blue".}
+}
+}
+}
+
+
+\describe{
+\item{\code{AliasPalette$AliasChoice$inherited_color()}}{
 \strong{Arguments:}
 \describe{
 \item{\code{color}}{One of "red", "gray", "blue".}

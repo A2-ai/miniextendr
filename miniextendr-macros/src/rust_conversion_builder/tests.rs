@@ -642,6 +642,11 @@ fn test_either_choice_err_arm_names_the_whole_parameter() {
             ", or a number",
         ),
     ] {
+        let aliases = if matches!(leaf, ChoiceLeaf::Literal { .. }) {
+            "& []"
+        } else {
+            "< Route as :: miniextendr_api :: MatchArg > :: ALIASES"
+        };
         let builder = RustConversionBuilder::new()
             .with_layered_choice("mode".to_string(), leaf)
             .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
@@ -649,7 +654,7 @@ fn test_either_choice_err_arm_names_the_whole_parameter() {
         assert!(s.contains("match_arg_either_or"), "{src}: {s}");
         assert!(
             s.contains(&format!(
-                "format ! (\"'{{}}' must be {{}}\" , \"mode\" , :: miniextendr_api :: match_arg :: choice_expectation ({choices} , {several} , \"{suffix}\"))"
+                "format ! (\"'{{}}' must be {{}}\" , \"mode\" , :: miniextendr_api :: match_arg :: choice_expectation ({choices} , {aliases} , {several} , \"{suffix}\"))"
             )),
             "{src}: {s}"
         );

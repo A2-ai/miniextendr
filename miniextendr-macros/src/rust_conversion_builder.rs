@@ -1573,19 +1573,22 @@ impl ArgContext {
             layers.nullable,
             "NULL",
         );
-        let (choices, several) = match leaf {
-            ChoiceLeaf::Literal { choices, several } => (quote! { &[#(#choices),*] }, *several),
+        let (choices, aliases, several) = match leaf {
+            ChoiceLeaf::Literal { choices, several } => {
+                (quote! { &[#(#choices),*] }, quote! { &[] }, *several)
+            }
             ChoiceLeaf::MatchArg | ChoiceLeaf::MatchArgSeveral => {
                 let choice_ty = LayeredValue::new(layers.value, leaf.clone()).choice_ty;
                 (
                     quote! { <#choice_ty as ::miniextendr_api::MatchArg>::CHOICES },
+                    quote! { <#choice_ty as ::miniextendr_api::MatchArg>::ALIASES },
                     *leaf == ChoiceLeaf::MatchArgSeveral,
                 )
             }
         };
         Some(Self {
             expected_at_run_time: Some(quote! {
-                ::miniextendr_api::match_arg::choice_expectation(#choices, #several, #suffix)
+                ::miniextendr_api::match_arg::choice_expectation(#choices, #aliases, #several, #suffix)
             }),
             ..Self::with_expectation(r_name, ty, None)
         })

@@ -13,11 +13,11 @@ pub enum Shade {
     Red,
     #[match_arg(alias = "grey", alias = "gr")]
     Gray,
-    #[match_arg(rename = "navy", alias = "Blue")]
+    #[match_arg(rename = "navy", alias = "Blue", listed = false)]
     Blue,
 }
 
-const _: () = assert!(Shade::ALIASES.len() == 3);
+const _: () = assert!(Shade::ALIASES.len() == 3 && Shade::ALIASES[0].2 && !Shade::ALIASES[2].2);
 
 #[miniextendr]
 pub fn alias_plain(#[miniextendr(match_arg)] color: Shade) -> String {

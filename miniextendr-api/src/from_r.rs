@@ -419,7 +419,10 @@ enum KindExpected {
     /// expectation of a nested `Either`.
     Noun(String),
     /// A `match_arg` choice, which reads only a string or factor.
-    Choices(&'static [&'static str]),
+    Choices(
+        &'static [&'static str],
+        &'static [(&'static str, &'static str, bool)],
+    ),
 }
 
 #[cfg(feature = "either")]
@@ -431,16 +434,18 @@ impl KindExpected {
         use crate::match_arg::choice_expectation;
         match (self, right) {
             (KindExpected::Noun(l), KindExpected::Noun(r)) => format!("{l} or {r}"),
-            (KindExpected::Choices(l), KindExpected::Noun(r)) => {
-                choice_expectation(l, false, &format!(", or {r}"))
+            (KindExpected::Choices(l, aliases), KindExpected::Noun(r)) => {
+                choice_expectation(l, aliases, false, &format!(", or {r}"))
             }
-            (KindExpected::Noun(l), KindExpected::Choices(r)) => {
-                format!("{l} or {}", choice_expectation(r, false, ""))
+            (KindExpected::Noun(l), KindExpected::Choices(r, aliases)) => {
+                format!("{l} or {}", choice_expectation(r, aliases, false, ""))
             }
-            (KindExpected::Choices(l), KindExpected::Choices(r)) => {
+            (KindExpected::Choices(l, la), KindExpected::Choices(r, ra)) => {
                 let mut both: Vec<&str> = l.to_vec();
                 both.extend(r.iter().filter(|c| !l.contains(c)));
-                choice_expectation(&both, false, "")
+                let mut aliases = la.to_vec();
+                aliases.extend(ra.iter().filter(|alias| !la.contains(alias)));
+                choice_expectation(&both, &aliases, false, "")
             }
         }
     }
@@ -449,8 +454,8 @@ impl KindExpected {
     fn text(&self) -> String {
         match self {
             KindExpected::Noun(noun) => noun.clone(),
-            KindExpected::Choices(choices) => {
-                crate::match_arg::choice_expectation(choices, false, "")
+            KindExpected::Choices(choices, aliases) => {
+                crate::match_arg::choice_expectation(choices, aliases, false, "")
             }
         }
     }
@@ -580,7 +585,8 @@ impl SexpError {
             SexpError::MatchArg(crate::match_arg::MatchArgError::InvalidType {
                 actual,
                 choices,
-            }) => Some((KindExpected::Choices(choices), *actual)),
+                aliases,
+            }) => Some((KindExpected::Choices(choices, aliases), *actual)),
             SexpError::EitherConversion {
                 left_error,
                 right_error,
@@ -598,7 +604,7 @@ impl SexpError {
     #[cfg(feature = "either")]
     fn arm_expectation(&self) -> Option<KindExpected> {
         match self {
-            SexpError::MatchArg(e) => Some(KindExpected::Choices(e.choices())),
+            SexpError::MatchArg(e) => Some(KindExpected::Choices(e.choices(), e.aliases())),
             _ => self.kind_mismatch().map(|(expected, _)| expected),
         }
     }

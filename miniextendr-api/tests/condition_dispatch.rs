@@ -149,6 +149,7 @@ fn builtin_reasons_keep_r_facing_wording() {
 #[test]
 fn choice_errors_keep_expectation_and_whole_message() {
     let err = MatchArgError::NoMatch {
+        aliases: &[],
         input: "bad".into(),
         choices: &["fast", "slow"],
     };

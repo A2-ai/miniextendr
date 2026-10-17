@@ -105,7 +105,7 @@ pub(crate) fn match_arg_values(
     quote! {{
         const fn __mx_choices<__MxChoice, __MxOutput, __MxFn, #(#generics),*>(
             _: &__MxFn,
-        ) -> (&'static [&'static str], &'static [(&'static str, &'static str)])
+        ) -> (&'static [&'static str], &'static [(&'static str, &'static str, bool)])
         where
             __MxChoice: ::miniextendr_api::match_arg::MatchArg,
             __MxFn: ::core::ops::FnOnce(#(#args),*) -> __MxOutput,

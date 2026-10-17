@@ -1,0 +1,23 @@
+error: expected boolean literal
+ --> tests/ui/match_arg_alias_listed.rs:6:42
+  |
+6 |     #[match_arg(alias = "oral", listed = "no")]
+  |                                          ^^^^
+
+error: expected boolean literal
+  --> tests/ui/match_arg_alias_listed.rs:12:42
+   |
+12 |     #[match_arg(alias = "oral", listed = 0)]
+   |                                          ^
+
+error: `listed` requires `alias = "..."` in the same #[match_arg(...)]
+  --> tests/ui/match_arg_alias_listed.rs:18:26
+   |
+18 |     #[match_arg(listed = false)]
+   |                          ^^^^^
+
+error: duplicate `listed` option
+  --> tests/ui/match_arg_alias_listed.rs:24:48
+   |
+24 |     #[match_arg(alias = "oral", listed = true, listed = false)]
+   |                                                ^^^^^^

@@ -22,16 +22,16 @@ use miniextendr_api::{
 };
 
 /// A choice type over arbitrary strings: `from_choice` is an exact lookup in
-/// `CHOICES`, as the derive's is, and the aliases are `(alias, choice)`
-/// pairs, as the derive writes them.
+/// `CHOICES`, as the derive's is, and the aliases are `(alias, choice, listed)`
+/// triples, as the derive writes them.
 macro_rules! choice_type {
-    ($name:ident, [$($choice:literal),+ $(,)?] $(, aliases = [$(($alias:literal, $target:literal)),+ $(,)?])?) => {
+    ($name:ident, [$($choice:literal),+ $(,)?] $(, aliases = [$(($alias:literal, $target:literal, $listed:literal)),+ $(,)?])?) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
         struct $name(usize);
 
         impl MatchArg for $name {
             const CHOICES: &'static [&'static str] = &[$($choice),+];
-            $(const ALIASES: &'static [(&'static str, &'static str)] = &[$(($alias, $target)),+];)?
+            $(const ALIASES: &'static [(&'static str, &'static str, bool)] = &[$(($alias, $target, $listed)),+];)?
 
             fn from_choice(choice: &str) -> Option<Self> {
                 Self::CHOICES.iter().position(|c| *c == choice).map($name)
@@ -54,12 +54,30 @@ choice_type!(WithEmpty, ["", "x"]);
 choice_type!(
     Shade,
     ["red", "gray", "blue"],
-    aliases = [("grey", "gray"), ("rouge", "red")]
+    aliases = [("grey", "gray", true), ("rouge", "red", true)]
 );
 choice_type!(
     QuotedAlias,
     ["say \"hi\"", "plain"],
-    aliases = [("hello \"you\"", "say \"hi\""), (r"c:\plain", "plain")]
+    aliases = [
+        ("hello \"you\"", "say \"hi\"", true),
+        (r"c:\plain", "plain", true)
+    ]
+);
+
+choice_type!(
+    UnlistedShade,
+    ["red", "gray", "blue"],
+    aliases = [("grey", "gray", false), ("rouge", "red", false)]
+);
+choice_type!(
+    MixedShade,
+    ["red", "gray", "blue"],
+    aliases = [
+        ("rouge", "red", true),
+        ("grey", "gray", false),
+        ("Grau", "gray", true)
+    ]
 );
 
 /// `c("a", "b")`: the formal the wrappers writer splices for a `match_arg`
@@ -375,7 +393,7 @@ fn match_arg_param_with_default_agrees_with_the_rotated_formal() {
 /// Aliases (#1843) on all three paths: an alias typed in full selects its
 /// choice; a prefix still matches the choices only, so a prefix of a choice
 /// keeps selecting it and a prefix of an alias is no match; the messages list
-/// the choices only.
+/// the choices and listed aliases.
 #[test]
 fn aliases_agree_with_the_wrapper_helper() {
     r_test_utils::with_r_thread(|| unsafe {
@@ -384,9 +402,9 @@ fn aliases_agree_with_the_wrapper_helper() {
 
         assert_eq!(
             r_aliases::<Shade>(),
-            r#", aliases = base::c("grey" = "gray", "rouge" = "red")"#
+            r#", aliases = base::c("grey" = "gray", "rouge" = "red"), alias_suffix = " (or \"grey\" for \"gray\", \"rouge\" for \"red\")""#
         );
-        let one_of = r#"'mode' should be one of "red", "gray", "blue""#;
+        let one_of = r#"'mode' should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#;
         let rows: &[(&str, Outcome)] = &[
             (r#""grey""#, ok("gray")),
             (r#""rouge""#, ok("red")),
@@ -431,13 +449,15 @@ fn aliases_agree_with_the_wrapper_helper() {
         );
         assert_eq!(
             agree_with_default::<Shade>(env, r#""gre""#, "blue", blue),
-            err(r#"'mode' should be one of "blue", "red", "gray""#)
+            err(
+                r#"'mode' should be one of "blue", "red", "gray" (or "grey" for "gray", "rouge" for "red")"#
+            )
         );
 
         // Escaped in the argument, matched unescaped.
         assert_eq!(
             r_aliases::<QuotedAlias>(),
-            r#", aliases = base::c("hello \"you\"" = "say \"hi\"", "c:\\plain" = "plain")"#
+            r#", aliases = base::c("hello \"you\"" = "say \"hi\"", "c:\\plain" = "plain"), alias_suffix = " (or \"hello \"you\"\" for \"say \"hi\"\", \"c:\\plain\" for \"plain\")""#
         );
         assert_eq!(
             agree::<QuotedAlias>(env, r#""hello \"you\"""#),
@@ -446,7 +466,9 @@ fn aliases_agree_with_the_wrapper_helper() {
         assert_eq!(agree::<QuotedAlias>(env, r#""c:\\plain""#), ok("plain"));
         assert_eq!(
             agree::<QuotedAlias>(env, r#""hello""#),
-            err(r#"'mode' should be one of "say "hi"", "plain""#)
+            err(
+                r#"'mode' should be one of "say "hi"", "plain" (or "hello "you"" for "say "hi"", "c:\plain" for "plain")"#
+            )
         );
     });
 }
@@ -496,14 +518,17 @@ fn several_ok_aliases_agree_with_the_wrapper_helper() {
             let rust = miniextendr_api::match_arg_vec_from_sexp::<Shade>(value.get());
             if expected.is_empty() {
                 assert_eq!(r[0], "error", "R helper on `{input}`: {r:?}");
+                let error = rust.expect_err("the invalid element must fail on the Rust side");
+                let clause = " (or \"grey\" for \"gray\", \"rouge\" for \"red\")";
+                assert!(r[1].ends_with(clause), "{r:?}");
                 assert!(
-                    rust.is_err(),
-                    "match_arg_vec_from_sexp on `{input}`: {rust:?}"
+                    error.arg_error("mode").message().ends_with(clause),
+                    "{error}"
                 );
                 if *input == r#"c("grey", "zzz")"# {
                     assert_eq!(
                         r[1],
-                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue""#
+                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#
                     );
                 }
             } else {
@@ -574,5 +599,65 @@ fn match_arg_from_sexp_takes_the_formal_default() {
                 .unwrap(),
             [WithEmpty(0), WithEmpty(1)]
         );
+    });
+}
+
+#[test]
+fn listed_aliases_are_advertised_by_default() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        assert_eq!(
+            agree::<Shade>(env.get(), r#""gre""#),
+            err(
+                r#"'mode' should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#
+            )
+        );
+    });
+}
+
+#[test]
+fn unlisted_and_mixed_aliases_keep_matching_without_leaking_into_messages() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        let env = env.get();
+        for input in [r#""gre""#, r#""bad""#, "NA_character_"] {
+            assert_eq!(
+                agree::<UnlistedShade>(env, input),
+                err(r#"'mode' should be one of "red", "gray", "blue""#)
+            );
+            assert_eq!(
+                agree::<MixedShade>(env, input),
+                err(
+                    r#"'mode' should be one of "red", "gray", "blue" (or "rouge" for "red", "Grau" for "gray")"#
+                )
+            );
+        }
+        assert_eq!(agree::<UnlistedShade>(env, r#""grey""#), ok("gray"));
+        assert_eq!(agree::<MixedShade>(env, r#""grey""#), ok("gray"));
+        assert_eq!(agree::<MixedShade>(env, r#""Grau""#), ok("gray"));
+        assert_eq!(
+            agree_with_default::<MixedShade>(env, r#""bad""#, "blue", MixedShade(2)),
+            err(
+                r#"'mode' should be one of "blue", "red", "gray" (or "rouge" for "red", "Grau" for "gray")"#
+            )
+        );
+        for input in [r#"c("grey", "bad")"#, r#"c("grey", NA)"#] {
+            let r = r_several_outcome::<UnlistedShade>(env, input);
+            assert!(!r[1].contains(" (or "), "{r:?}");
+            let r = r_several_outcome::<MixedShade>(env, input);
+            assert!(
+                r[1].ends_with(r#" (or "rouge" for "red", "Grau" for "gray")"#),
+                "{r:?}"
+            );
+            let value = OwnedProtect::new(r_eval_str(input, env).unwrap());
+            let e =
+                miniextendr_api::match_arg_vec_from_sexp::<MixedShade>(value.get()).unwrap_err();
+            assert!(
+                e.arg_error("mode")
+                    .message()
+                    .ends_with(r#" (or "rouge" for "red", "Grau" for "gray")"#),
+                "{e}"
+            );
+        }
     });
 }

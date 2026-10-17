@@ -1,22 +1,23 @@
 # Aliases for `match_arg` choices: `#[match_arg(alias = "grey")]` on
 # `Shade::Gray` lets a caller write "grey" for "gray". An alias selects its
 # choice only when typed in full, so "gr" stays the prefix of "gray" it was, and
-# it appears nowhere the choices are listed (formal, usage, messages).
+# errors list it by default while formals, usage and help list choices only.
 
 shades <- c("red", "gray", "blue")
 
 # A refused value is the argument error every choice check raises, listing the
-# choices only.
+# choices and advertised aliases.
 expect_choices_error <- function(expr, param, message) {
   e <- tryCatch(expr, error = identity)
   expect_s3_class(e, "rust_error")
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, param)
   expect_identical(conditionMessage(e), message)
-  expect_false(grepl("grey", conditionMessage(e), fixed = TRUE))
+  expect_false(grepl("Grau", conditionMessage(e), fixed = TRUE))
 }
 
-one_of <- "'color' should be one of \"red\", \"gray\", \"blue\""
+alias_clause <- " (or \"grey\" for \"gray\")"
+one_of <- paste0("'color' should be one of \"red\", \"gray\", \"blue\"", alias_clause)
 
 test_that("an alias typed in full selects its choice", {
   expect_identical(match_arg_alias_shade("grey"), "Gray")
@@ -75,7 +76,7 @@ test_that("several_ok maps the aliases element by element", {
   expect_choices_error(
     match_arg_alias_shades(c("grey", "zzz")),
     "colors",
-    "'colors' element 2 (\"zzz\") should be one of \"red\", \"gray\", \"blue\""
+    paste0("'colors' element 2 (\"zzz\") should be one of \"red\", \"gray\", \"blue\"", alias_clause)
   )
 })
 
@@ -85,7 +86,7 @@ test_that("a default = \"...\" parameter maps the alias, and its message follows
   expect_choices_error(
     match_arg_alias_shade_default("gre"),
     "color",
-    "'color' should be one of \"blue\", \"red\", \"gray\""
+    paste0("'color' should be one of \"blue\", \"red\", \"gray\"", alias_clause)
   )
 })
 
@@ -120,6 +121,48 @@ test_that("Either<Shade, f64> reads an alias as its choice", {
   expect_choices_error(
     match_arg_alias_shade_or_number(TRUE),
     "color",
+    paste0("'color' must be one of \"red\", \"gray\", \"blue\"", alias_clause, ", or a number: got logical")
+  )
+})
+
+test_that("listed and unlisted aliases share matching but not error visibility", {
+  expect_identical(match_arg_alias_shade("Grau"), "Gray")
+  expect_identical(match_arg_alias_shade_converted("Grau"), "Gray")
+  expect_identical(match_arg_alias_shades(c("grey", "Grau")), "Gray,Gray")
+  for (f in list(match_arg_alias_unlisted, match_arg_alias_unlisted_converted)) {
+    expect_identical(f("grey"), "Gray")
+    expect_identical(f("rouge"), "Red")
+    for (x in list("gre", "bad", NA_character_)) {
+      expect_choices_error(f(x), "color", "'color' should be one of \"red\", \"gray\", \"blue\"")
+    }
+  }
+  expect_identical(match_arg_alias_unlisted_several(c("grey", "rouge")), 2L)
+  expect_choices_error(
+    match_arg_alias_unlisted_several(c("grey", "bad")), "colors",
+    "'colors' element 2 (\"bad\") should be one of \"red\", \"gray\", \"blue\""
+  )
+  expect_false(any(grepl("alias_suffix", deparse(body(match_arg_alias_unlisted)), fixed = TRUE)))
+})
+
+test_that("Either expectations include only listed aliases", {
+  skip_if_not(exists("match_arg_alias_shade_either_converted"), "either feature not compiled in")
+  e <- tryCatch(match_arg_alias_shade_either_converted("gre"), error = identity)
+  expect_match(conditionMessage(e), alias_clause, fixed = TRUE)
+  e <- tryCatch(match_arg_alias_shade_either_converted(TRUE), error = identity)
+  expect_match(conditionMessage(e), alias_clause, fixed = TRUE)
+  expect_false(grepl("Grau", conditionMessage(e), fixed = TRUE))
+  expect_choices_error(
+    match_arg_alias_shades_or_number(TRUE), "colors",
+    paste0("'colors' must be one or more of \"red\", \"gray\", \"blue\"", alias_clause, ", or a number: got logical")
+  )
+  expect_choices_error(
+    match_arg_alias_unlisted_or_number(TRUE), "color",
     "'color' must be one of \"red\", \"gray\", \"blue\", or a number: got logical"
   )
+})
+
+test_that("inherited trait parameters keep alias visibility through private type aliases", {
+  p <- AliasPalette$new("red")
+  expect_identical(p$AliasChoice$inherited_color("Grau"), "Gray")
+  expect_choices_error(p$AliasChoice$inherited_color("gre"), "color", one_of)
 })

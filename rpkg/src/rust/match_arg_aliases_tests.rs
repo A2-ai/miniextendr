@@ -2,8 +2,8 @@
 //! on `Shade::Gray` lets a user write `"grey"` for the choice `"gray"`
 //! without making it a fourth choice. The alias is matched only when typed in
 //! full (`"gr"` stays the prefix of `"gray"`), on every parameter shape below
-//! and by the Rust matchers, and appears nowhere the choices are listed: the
-//! formal, the usage, the `@param` line and the errors.
+//! and by the Rust matchers. Errors list aliases unless `listed = false`;
+//! the formal, usage and `@param` line still list the choices only.
 
 use miniextendr_api::{MatchArg, Missing, SEXP, miniextendr};
 
@@ -13,6 +13,7 @@ use miniextendr_api::{MatchArg, Missing, SEXP, miniextendr};
 pub enum Shade {
     Red,
     #[match_arg(alias = "grey")]
+    #[match_arg(alias = "Grau", listed = false)]
     Gray,
     Blue,
 }
@@ -136,3 +137,87 @@ impl AliasPalette {
 }
 
 // endregion
+
+/// Aliases accepted without advertising their spellings in errors.
+#[derive(Copy, Clone, Debug, MatchArg)]
+#[match_arg(rename_all = "lower")]
+pub enum UnlistedShade {
+    #[match_arg(alias = "rouge", listed = false)]
+    Red,
+    #[match_arg(alias = "grey", listed = false)]
+    Gray,
+    Blue,
+}
+
+/// An unlisted alias matched by the R wrapper.
+/// @param color A colour.
+#[miniextendr(internal)]
+pub fn match_arg_alias_unlisted(#[miniextendr(match_arg)] color: UnlistedShade) -> String {
+    format!("{color:?}")
+}
+
+/// An unlisted alias matched by the derived Rust conversion.
+/// @param color A colour.
+#[miniextendr(internal)]
+pub fn match_arg_alias_unlisted_converted(color: UnlistedShade) -> String {
+    format!("{color:?}")
+}
+
+/// Several colours with unlisted aliases.
+/// @param colors One or more colours.
+#[miniextendr(internal)]
+pub fn match_arg_alias_unlisted_several(
+    #[miniextendr(match_arg, several_ok)] colors: Vec<UnlistedShade>,
+) -> usize {
+    colors.len()
+}
+
+/// An unlisted alias or a number.
+/// @param color A colour, or a number.
+#[cfg(feature = "either")]
+#[miniextendr(internal)]
+pub fn match_arg_alias_unlisted_or_number(
+    #[miniextendr(match_arg)] color: miniextendr_api::either_impl::Either<UnlistedShade, f64>,
+) -> String {
+    format!("{color:?}")
+}
+
+/// Either conversion without an R-side choice check.
+/// @param color A colour, or a number.
+#[cfg(feature = "either")]
+#[miniextendr(internal)]
+pub fn match_arg_alias_shade_either_converted(
+    color: miniextendr_api::either_impl::Either<Shade, f64>,
+) -> String {
+    format!("{color:?}")
+}
+
+/// Several colours or a number.
+/// @param colors One or more colours, or a number.
+#[cfg(feature = "either")]
+#[miniextendr(internal)]
+pub fn match_arg_alias_shades_or_number(
+    #[miniextendr(match_arg, several_ok)] colors: miniextendr_api::either_impl::Either<
+        Vec<Shade>,
+        f64,
+    >,
+) -> String {
+    format!("{colors:?}")
+}
+
+mod declaration {
+    // The impl must infer choice metadata; this private alias cannot be named there.
+    type PaletteColor = super::Shade;
+
+    #[miniextendr_api::miniextendr]
+    pub trait AliasChoice {
+        fn inherited_color(&self, #[miniextendr(match_arg)] color: PaletteColor) -> String {
+            format!("{color:?}")
+        }
+    }
+}
+
+impl declaration::AliasChoice for AliasPalette {}
+
+#[miniextendr(env)]
+impl declaration::AliasChoice for AliasPalette {}

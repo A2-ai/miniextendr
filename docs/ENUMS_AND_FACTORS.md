@@ -671,7 +671,7 @@ pub fn paint(#[miniextendr(match_arg)] color: Color) -> String { /* ... */ }
 paint(color = c("red", "gray", "blue"))   # the formal and the usage
 paint("grey")   # Gray
 paint("gr")     # Gray: a unique prefix of "gray", as before the alias
-paint("gre")    # Error: 'color' should be one of "red", "gray", "blue"
+paint("gre")    # Error: 'color' should be one of "red", "gray", "blue" (or "grey" for "gray")
 ```
 
 - An alias matches only when typed in full. Prefixes match the choices alone,
@@ -683,11 +683,15 @@ paint("gre")    # Error: 'color' should be one of "red", "gray", "blue"
   `Missing` and `Either` forms, `several_ok` element by element
   (`c("grey", "red")` is `Gray, Red`), the derived `TryFromSexp`, and
   `match_arg_param()` / `match_arg_param_with_default()`.
-- Nothing that lists the choices shows an alias: not the formal, the usage,
-  the `@param` line, the "should be one of" error or the `Either` error.
-- The wrapper passes them to its check as `aliases = base::c("grey" =
-  "gray")`. A type without aliases gets the same wrapper as before aliases
-  existed.
+- Errors list aliases by default, after the choices: `(or "grey" for "gray")`.
+  Several aliases follow variant order, then written order within each variant.
+  This includes `several_ok` and `Either` errors, on the R and Rust paths.
+- `#[match_arg(alias = "x", listed = false)]` still accepts `"x"` but leaves it
+  out of errors. `listed` applies only to aliases in that attribute, so separate
+  attributes can mix advertised and unadvertised spellings. It must be a boolean.
+- The formal, usage and `@param` line list choices only.
+- The wrapper passes an alias map and a preformatted error clause to its check.
+  A type without aliases needs neither; all-unlisted aliases need only the map.
 - The derive refuses, at the alias, one that is empty, `"NA"`, already a
   choice, given twice, or a prefix of another variant's choice (`alias =
   "re"` on `Gray` would change what `"re"`, today `"red"`, selects). A prefix
@@ -777,9 +781,9 @@ input, as a derived enum's does, so `Either<InterpChoice, String>` is refused
 like `Either<Route, String>` (see [Choice or Another
 Value](#choice-or-another-value-either-t-r)).
 
-[Aliases](#aliases) go in `MatchArg::ALIASES` as `(alias, choice)` pairs,
-`const ALIASES: &'static [(&'static str, &'static str)] = &[("nn",
-"nearest")];`, not in `from_choice`: the wrapper's check reads `ALIASES` and
+[Aliases](#aliases) go in `MatchArg::ALIASES` as `(alias, choice, listed)` triples,
+`const ALIASES: &'static [(&'static str, &'static str, bool)] = &[("nn",
+"nearest", true)];` (`false` keeps an alias out of errors), not in `from_choice`: the wrapper's check reads `ALIASES` and
 never reaches a `from_choice` that maps `"nn"`, so the two would disagree.
 The wrappers writer refuses the aliases the derive refuses, plus one whose
 choice is not in `CHOICES`, with an error naming the parameter's placeholder.

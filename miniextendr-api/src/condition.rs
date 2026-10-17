@@ -3009,7 +3009,10 @@ mod condition_macro_tests {
         // `one of ...` expectation just the input.
         use crate::match_arg::MatchArgError;
         const CHOICES: &[&str] = &["fast", "slow"];
-        let e = MatchArgError::IsNa { choices: CHOICES };
+        let e = MatchArgError::IsNa {
+            aliases: &[],
+            choices: CHOICES,
+        };
         let parts = crate::__mx_conversion_err_parts!(e.clone());
         assert_eq!(parts.message, r#"expected one of "fast", "slow", got NA"#);
         assert!(parts.class.is_empty());
@@ -3019,6 +3022,7 @@ mod condition_macro_tests {
             "NA is not allowed"
         );
         let e = MatchArgError::NoMatch {
+            aliases: &[],
             input: "zzz".into(),
             choices: CHOICES,
         };
@@ -3031,6 +3035,7 @@ mod condition_macro_tests {
             r#"got "zzz""#
         );
         let e = MatchArgError::InvalidType {
+            aliases: &[],
             actual: SEXPTYPE::REALSXP,
             choices: CHOICES,
         };
@@ -3043,6 +3048,7 @@ mod condition_macro_tests {
             "got numeric"
         );
         let e = MatchArgError::InvalidLength {
+            aliases: &[],
             actual: 2,
             choices: CHOICES,
         };
@@ -3068,6 +3074,7 @@ mod condition_macro_tests {
         use crate::from_r::SexpError;
         use crate::match_arg::MatchArgError;
         let e = MatchArgError::NoMatch {
+            aliases: &[],
             input: "zzz".into(),
             choices: &["fast", "slow"],
         };
@@ -3121,8 +3128,13 @@ mod condition_macro_tests {
                 actual,
             })
         };
-        let refused =
-            |actual, choices| SexpError::MatchArg(MatchArgError::InvalidType { actual, choices });
+        let refused = |actual, choices| {
+            SexpError::MatchArg(MatchArgError::InvalidType {
+                aliases: &[],
+                actual,
+                choices,
+            })
+        };
         const ROUTES: &[&str] = &["oral", "bolus"];
         const MODES: &[&str] = &["fast", "bolus"];
         // (error, reason with the expectation known, reason without it,
@@ -3183,6 +3195,7 @@ mod condition_macro_tests {
         // A string that matched no choice got further than a type error: its
         // reason, and no joined expectation.
         let no_match = SexpError::MatchArg(MatchArgError::NoMatch {
+            aliases: &[],
             input: "zzz".into(),
             choices: ROUTES,
         });
@@ -3261,6 +3274,7 @@ mod condition_macro_tests {
         const ROUTES: &[&str] = &["oral", "bolus"];
         let no_match = || {
             SexpError::MatchArg(MatchArgError::NoMatch {
+                aliases: &[],
                 input: "zzz".into(),
                 choices: ROUTES,
             })
@@ -3618,6 +3632,7 @@ mod condition_macro_tests {
         const CHOICES: &[&str] = &["fast", "slow"];
         let one_of = Some(r#"'mode' should be one of "fast", "slow""#.to_string());
         let no_match = MatchArgError::NoMatch {
+            aliases: &[],
             input: "zzz".into(),
             choices: CHOICES,
         };
@@ -3629,9 +3644,13 @@ mod condition_macro_tests {
             crate::__mx_conversion_arg_message!(SexpError::from(no_match), "mode"),
             one_of
         );
-        let na = MatchArgError::IsNa { choices: CHOICES };
+        let na = MatchArgError::IsNa {
+            aliases: &[],
+            choices: CHOICES,
+        };
         assert_eq!(crate::__mx_conversion_arg_message!(na, "mode"), one_of);
         let long = MatchArgError::InvalidLength {
+            aliases: &[],
             actual: 2,
             choices: CHOICES,
         };
@@ -3640,6 +3659,7 @@ mod condition_macro_tests {
             Some("'mode' must be of length 1")
         );
         let number = MatchArgError::InvalidType {
+            aliases: &[],
             actual: SEXPTYPE::REALSXP,
             choices: CHOICES,
         };
@@ -3658,6 +3678,34 @@ mod condition_macro_tests {
         );
     }
 
+    #[cfg(feature = "either")]
+    #[test]
+    fn either_choice_expectations_preserve_listed_aliases_on_both_arms() {
+        use crate::from_r::SexpError;
+        use crate::match_arg::MatchArgError;
+        let left = SexpError::MatchArg(MatchArgError::InvalidType {
+            actual: crate::SEXPTYPE::LGLSXP,
+            choices: &["red", "gray"],
+            aliases: &[("rouge", "red", true), ("grey", "gray", false)],
+        });
+        let right = SexpError::MatchArg(MatchArgError::InvalidType {
+            actual: crate::SEXPTYPE::LGLSXP,
+            choices: &["gray", "blue"],
+            aliases: &[("grey", "gray", true), ("navy", "blue", false)],
+        });
+        let error = SexpError::EitherConversion {
+            left_error: Box::new(left),
+            right_error: Box::new(right),
+        };
+        assert_eq!(
+            crate::__mx_conversion_expectation!(error),
+            Some(
+                r#"one of "red", "gray", "blue" (or "rouge" for "red", "grey" for "gray")"#
+                    .to_string()
+            )
+        );
+    }
+
     /// A choice error inside an `Either` leaves the message to the `Either`,
     /// which names both arms.
     #[cfg(feature = "either")]
@@ -3668,6 +3716,7 @@ mod condition_macro_tests {
 
         let either = SexpError::EitherConversion {
             left_error: Box::new(SexpError::from(MatchArgError::NoMatch {
+                aliases: &[],
                 input: "zzz".into(),
                 choices: &["fast", "slow"],
             })),
