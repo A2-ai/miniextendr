@@ -3582,7 +3582,7 @@ pub(super) struct ResolvedColumn {
     /// Column name in the companion struct / data frame.
     pub(super) col_name: syn::Ident,
     /// Element type (used as `Vec<Option<#ty>>`).
-    /// Coercion stores String for scalars or Vec<String> for list cells.
+    /// Coercion stores `String` for scalars or `Vec<String>` for list cells.
     pub(super) ty: syn::Type,
     /// Indices of variants that contain this field.
     pub(super) present_in: Vec<usize>,
