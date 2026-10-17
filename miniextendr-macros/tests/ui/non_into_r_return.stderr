@@ -9,6 +9,7 @@ help: the trait `IntoExternalPtr` is not implemented for `NotIntoR`
   |
 5 | struct NotIntoR;
   | ^^^^^^^^^^^^^^^
+  = note: an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = "r6")]` (any class system)
   = help: the following other types implement trait `IntoR`:
             &OsStr
             &Path

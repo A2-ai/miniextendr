@@ -65,8 +65,8 @@ pub enum ReturnHandling {
     /// handle on `Ok` (#1432, #1433).
     SelfHandleResult,
     /// `Option` sibling of [`SelfHandleResult`](Self::SelfHandleResult): the
-    /// call yields `Option<()>`; raise the absence error on `None`, return the
-    /// same handle on `Some`.
+    /// call yields `Option<()>`; `NULL` on `None`, as every `Option` return
+    /// gives, and the same handle on `Some`.
     SelfHandleOption,
     /// Returns an arbitrary type `T: IntoR` -- converts via `IntoR::into_sexp`.
     IntoR,
@@ -74,30 +74,26 @@ pub enum ReturnHandling {
     OptionUnit,
     /// Returns `Option<SEXP>` -- raises an error on `None`, otherwise passes through.
     OptionSexp,
-    /// Returns `Option<T>` where `Option<T>: IntoR` -- calls `IntoR::into_sexp` on the whole
-    /// `Option` value. Suitable when the type has a direct `impl IntoR for Option<T>` (e.g.,
-    /// `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`). `None` maps to whatever the `IntoR`
-    /// impl returns (typically NULL or NA).
-    ///
-    /// Use this variant explicitly via [`CWrapperContextBuilder::return_handling`] when
-    /// the type has a direct `IntoR` impl for the whole `Option`. The auto-detector
-    /// `detect_return_handling` conservatively returns `OptionIntoRUnwrap` instead
-    /// since it cannot resolve trait impls at macro expansion time.
-    #[allow(dead_code)]
-    // Used via explicit return_handling() call; auto-detect uses OptionIntoRUnwrap
+    /// Returns `Option<T>` -- calls `IntoR::into_sexp` on the whole `Option`, so `None`
+    /// becomes whatever `IntoR for Option<T>` gives: `NULL` for containers, references
+    /// and pointers, a typed `NA` for scalars. This is the one rule for an `Option<T>`
+    /// return from a standalone function, an inherent method and a trait method
+    /// (#1415, #2088); [`detect_return_handling`] picks it for every `Option<T>` but
+    /// the shapes below.
     OptionIntoR,
-    /// Returns `Option<T>` where `T: IntoR` -- unwraps the option first, then converts the
-    /// inner value via `IntoR::into_sexp`. Raises an error on `None`. Suitable when `T: IntoR`
-    /// but `Option<T>` doesn't have a direct `IntoR` impl (e.g., `Option<SomeExternalPtr>`).
-    OptionIntoRUnwrap,
+    /// Returns `Option<T>` under an explicit class wrap (`Option<WrapAs*<T>>` or
+    /// `wrap = "..."`): `Some` converts the class payload through `T: IntoR`, `None`
+    /// is `NULL`, as `IntoR for Option<T>` would give if it could exist (the orphan
+    /// rule refuses it in the class's crate). The R wrapper's class constructor lets
+    /// `NULL` through.
+    OptionClassPayload,
     /// Returns `Option<Self>` -- a lookup-shaped fallible constructor (e.g. `try_find`).
-    /// Raises an error on `None` (same as [`OptionIntoRUnwrap`](Self::OptionIntoRUnwrap)),
-    /// but wraps `Some(Self)` in an `ExternalPtr` via `ExternalPtr::new` (same as
-    /// [`ExternalPtr`](Self::ExternalPtr)) instead of routing it through `IntoR` (which
-    /// `Self` generally does not implement). The R-side wrapper mirrors this: a successful
-    /// return is treated exactly like a bare `Self` return (wrapped class object via
-    /// `ReturnStrategy::for_method` — see `ParsedMethod::returns_option_self`). Symmetric
-    /// with [`ResultExternalPtr`](Self::ResultExternalPtr).
+    /// A method-only shape: `Some(Self)` is wrapped in an `ExternalPtr` via
+    /// `ExternalPtr::new` (same as [`ExternalPtr`](Self::ExternalPtr)), since `Self`
+    /// generally has no `IntoR`, and the `Option<ExternalPtr<Self>>` converts as
+    /// any `Option` does: `None` is `NULL`. The R-side wrapper treats a non-`NULL`
+    /// value exactly like a bare `Self` return (wrapped class object via
+    /// `ReturnStrategy::for_method` — see `ParsedMethod::returns_option_self`).
     OptionExternalPtr,
     /// Returns `Result<(), E>` -- raises an error on `Err`, otherwise emits `R_NilValue`.
     ResultUnit,
@@ -855,13 +851,10 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::SelfHandleOption => {
-                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result: ::core::option::Option<()> = #call_expr;
                     if __result.is_none() {
-                        return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) };
+                        return ::miniextendr_api::SEXP::nil();
                     }
                     #self_sexp
                 }
@@ -910,37 +903,25 @@ impl CWrapperContext {
                     #conversion
                 }
             }
-            ReturnHandling::OptionIntoRUnwrap => {
-                // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
-                // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("`{fn_name}()` returned no value");
+            ReturnHandling::OptionClassPayload => {
+                // Option<Class> under an explicit class wrap: no `IntoR for Option<Class>`
+                // can exist, so convert Some's payload through `Class: IntoR`; None is NULL.
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident, true);
                 quote! {
-                    let __result = #call_expr;
-                    let #result_ident = match __result {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    };
-                    #conversion
+                    match #call_expr {
+                        ::core::option::Option::Some(#result_ident) => #conversion,
+                        ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
+                    }
                 }
             }
-            // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
-            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            // Option<Self>: wrap Some(Self) in an ExternalPtr like the bare-Self path;
+            // the Option<ExternalPtr<Self>> gives NULL for None.
             ReturnHandling::OptionExternalPtr => {
-                let error_msg = format!("`{fn_name}()` returned no value");
                 quote! {
                     let __result = #call_expr;
-                    let __result = match __result {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    };
                     ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::externalptr::ExternalPtr::new(__result)
+                        __result.map(::miniextendr_api::externalptr::ExternalPtr::new)
                     )
                 }
             }
@@ -1149,11 +1130,9 @@ impl CWrapperContext {
                 };
                 (worker, convert)
             }
-            ReturnHandling::OptionIntoRUnwrap => {
-                // For Option<T> where T: IntoR but Option<T>: IntoR is not available.
-                // Unwraps first (raises error on None), then converts T via IntoR.
-                let error_msg = format!("`{fn_name}()` returned no value");
-                // Return the Option from worker, check on main thread.
+            ReturnHandling::OptionClassPayload => {
+                // Option<Class> under an explicit class wrap: the worker returns the
+                // Option; the main thread converts Some's payload, None is NULL.
                 let worker = quote! { #call_expr };
                 let result_ident = format_ident!("__miniextendr_result");
                 let conversion = self.sexp_conversion_expr(&result_ident, true);
@@ -1161,31 +1140,23 @@ impl CWrapperContext {
                 let convert = quote! {
                     match __miniextendr_result {
                         ::core::option::Option::Some(#result_ident) => #unwind_fn(|| #conversion, ::core::option::Option::Some(__miniextendr_call)),
-                        ::core::option::Option::None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
+                        ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
                     }
                 };
                 (worker, convert)
             }
-            // Option<Self>: raise on None like OptionIntoRUnwrap, but wrap Some(Self) in an
-            // ExternalPtr like the bare-Self path rather than routing through IntoR.
+            // Option<Self>: wrap Some(Self) in an ExternalPtr like the bare-Self path;
+            // the Option<ExternalPtr<Self>> gives NULL for None.
             ReturnHandling::OptionExternalPtr => {
-                let error_msg = format!("`{fn_name}()` returned no value");
                 let worker = quote! { #call_expr };
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::option::Option::Some(v) => #unwind_fn(
-                            || ::miniextendr_api::into_r::IntoR::into_sexp(
-                                ::miniextendr_api::externalptr::ExternalPtr::new(v)
-                            ),
-                            ::core::option::Option::Some(__miniextendr_call),
+                    #unwind_fn(
+                        || ::miniextendr_api::into_r::IntoR::into_sexp(
+                            __miniextendr_result.map(::miniextendr_api::externalptr::ExternalPtr::new)
                         ),
-                        ::core::option::Option::None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
+                        ::core::option::Option::Some(__miniextendr_call),
+                    )
                 };
                 (worker, convert)
             }
@@ -1779,7 +1750,7 @@ impl CWrapperContextBuilder {
         // Detect return handling if not explicitly set
         let return_handling = self
             .return_handling
-            .unwrap_or_else(|| detect_return_handling(&self.output));
+            .unwrap_or_else(|| detect_return_handling(&self.output, None));
 
         CWrapperContext {
             fn_ident: self.fn_ident,
@@ -1816,31 +1787,27 @@ impl CWrapperContextBuilder {
     }
 }
 
-/// Detects the appropriate [`ReturnHandling`] strategy from a function's return type.
+/// Detects the [`ReturnHandling`] strategy from a return type: the one rule for
+/// standalone functions, inherent methods and trait methods.
 ///
-/// Inspects the `syn::ReturnType`:
 /// - No return type annotation (`Default`) maps to [`ReturnHandling::Unit`].
 /// - An explicit type is analyzed by [`detect_return_handling_from_type`].
-pub fn detect_return_handling(output: &syn::ReturnType) -> ReturnHandling {
+/// - `wrap` is the explicit class wrap (`WrapAs*<T>` marker or `wrap = "..."`
+///   attribute) when there is one: an `Option<Class>` under it converts its payload
+///   ([`ReturnHandling::OptionClassPayload`]), since no `IntoR for Option<Class>`
+///   can exist.
+pub fn detect_return_handling(
+    output: &syn::ReturnType,
+    wrap: Option<&crate::return_wrap::ReturnWrap>,
+) -> ReturnHandling {
     match output {
         syn::ReturnType::Default => ReturnHandling::Unit,
-        syn::ReturnType::Type(_, ty) => detect_return_handling_from_type(ty),
-    }
-}
-
-/// Detects [`ReturnHandling`] for the standalone-`#[miniextendr]`-fn path.
-///
-/// Identical to [`detect_return_handling`] except that general `Option<T>` maps to
-/// [`ReturnHandling::OptionIntoR`] (call `into_sexp` on the whole Option, matching the
-/// historical `analyze_return_type` behavior) rather than [`ReturnHandling::OptionIntoRUnwrap`]
-/// (the default that preserves impl-method behavior). Use this when building a
-/// [`CWrapperContext`] for a standalone function.
-pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnHandling {
-    let handling = detect_return_handling(output);
-    // Standalone fns' old path called into_sexp(whole_option), which is OptionIntoR semantics.
-    match handling {
-        ReturnHandling::OptionIntoRUnwrap => ReturnHandling::OptionIntoR,
-        other => other,
+        syn::ReturnType::Type(_, ty) => match detect_return_handling_from_type(ty) {
+            ReturnHandling::OptionIntoR if wrap.is_some_and(|wrap| wrap.is_optional_class()) => {
+                ReturnHandling::OptionClassPayload
+            }
+            handling => handling,
+        },
     }
 }
 
@@ -1850,16 +1817,13 @@ pub fn detect_return_handling_standalone_fn(output: &syn::ReturnType) -> ReturnH
 /// - `()` -> [`Unit`](ReturnHandling::Unit)
 /// - `Self` -> [`ExternalPtr`](ReturnHandling::ExternalPtr)
 /// - `SEXP` -> [`RawSexp`](ReturnHandling::RawSexp)
-/// - `Option<T>` -> recurses into `T` for `OptionUnit`, `OptionSexp`, `OptionExternalPtr`
-///   (`T = Self`), or `OptionIntoRUnwrap`
+/// - `Option<T>` -> [`OptionUnit`](ReturnHandling::OptionUnit) for `T = ()`,
+///   [`OptionSexp`](ReturnHandling::OptionSexp) for `T = SEXP`,
+///   [`OptionExternalPtr`](ReturnHandling::OptionExternalPtr) for `T = Self`, and
+///   [`OptionIntoR`](ReturnHandling::OptionIntoR) for every other `T`
 /// - `Result<T, E>` -> recurses into `T` for `ResultUnit`, `ResultSexp`, `ResultExternalPtr`
 ///   (`T = Self`), or `ResultIntoR`
 /// - Anything else -> [`IntoR`](ReturnHandling::IntoR)
-///
-/// Note: The default for `Option<T>` (non-unit, non-SEXP) is `OptionIntoRUnwrap` (unwrap
-/// first, error on `None`), which preserves the historical behavior for impl methods.
-/// Use [`ReturnHandling::OptionIntoR`] explicitly when the type has a direct
-/// `impl IntoR for Option<T>` (e.g., `Option<&T>`, `Option<Vec<T>>`, `Option<i32>`).
 fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     match ty {
         // Unit tuple ()
@@ -1922,10 +1886,10 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
                     {
                         ReturnHandling::OptionExternalPtr
                     }
-                    _ => ReturnHandling::OptionIntoRUnwrap,
+                    _ => ReturnHandling::OptionIntoR,
                 }
             } else {
-                ReturnHandling::OptionIntoRUnwrap
+                ReturnHandling::OptionIntoR
             }
         }
 

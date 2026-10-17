@@ -303,8 +303,26 @@ the moment it sees `NULL` instead.
 | `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
 | `Option<Vec<T>>` / `Option<Box<[T]>>` (any `T` with `Vec<T>: IntoR`) / `Option<[T; N]>` (any `T` with `&[T]: IntoR`) / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
 | `Option<AsNumeric>` / `Option<AsNumericVec>` / `Option<AsCharacter>` / `Option<AsCharacterVec>` | `NULL` | `is.null(x)` | `NA` is already `Some(marker(None))`; `NULL` is what the marker's `Option` reads as `None`. So switching a return from `Option<f64>` to `Option<AsNumeric>` changes `NA` to `NULL` |
-| `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
-| `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
+| `Option<&[T]>` | `NULL` | `is.null(x)` | `Some` converts as the slice does |
+| `Option<ExternalPtr<T>>` / a method's `Option<Self>` | `NULL` | `is.null(x)` | `Some` is the external pointer, which a method's R wrapper wraps in its class. This is how a class is returned optionally: no `IntoR for Option<Class>` can exist (the orphan rule), so `Option<Class>` doesn't compile, and an explicit class wrap (`Option<WrapAsR6<Class>>`, `wrap = "r6"`) is the other spelling |
+| `Nullable<T>` (any `T: IntoR`) | `NULL` | `is.null(x)` | Not an `Option`: a return type for "no value at all" whatever `T` is. `Some(v)` converts as `v`, so `Nullable<i32>` gives an integer or `NULL` where `Option<i32>` gives `NA_integer_`. `RIterator::next` / `nth` return it, so the end of iteration can't be mistaken for an `NA` item |
+| `Option<()>` / `Option<SEXP>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases these shapes as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
+
+One rule covers every `#[miniextendr]` return: a standalone function, an
+inherent method in any class system and a trait method convert an `Option<T>`
+the same way, through `IntoR for Option<T>` (#1415, #2088). `Some` of an empty
+container stays an empty vector/list. A method's own `Option<Self>` (a lookup
+constructor, or a fallible step such as `self -> Option<Self>` /
+`&mut self -> Option<&mut Self>`) follows the same rule: `None` is `NULL`.
+
+A method whose value the R wrapper wraps in a class (`Option<Vec<Class>>`,
+`Option<Vec<ExternalPtr<Class>>>`, `Option<Vec<Self>>`, an explicit
+`WrapAs*` / `wrap` return) gives `NULL` for `None`: the class wrap lets `NULL`
+through rather than constructing from it (or turning it into `list()`).
+`Option<Class>` with no explicit wrap has no conversion: a class can't have
+`IntoR for Option<Class>` (the orphan rule refuses it in the class's crate).
+Under an explicit wrap (`Option<WrapAsR6<Class>>`, `wrap = "r6"`) the macro
+converts the payload itself, and `None` is `NULL`.
 
 See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
 all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as

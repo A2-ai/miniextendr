@@ -1903,11 +1903,11 @@ fn test_tpie_self_return_rewrapped() {
 
     // The C wrapper hands both back as an `ExternalPtr`, as for bodies.
     assert!(matches!(
-        crate::c_wrapper_builder::detect_return_handling(&methods[0].sig.output),
+        crate::c_wrapper_builder::detect_return_handling(&methods[0].sig.output, None),
         crate::c_wrapper_builder::ReturnHandling::ExternalPtr
     ));
     assert!(matches!(
-        crate::c_wrapper_builder::detect_return_handling(&methods[1].sig.output),
+        crate::c_wrapper_builder::detect_return_handling(&methods[1].sig.output, None),
         crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr
     ));
     // A by-value `Self` parameter still names the concrete type.
@@ -2658,7 +2658,8 @@ fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImp
 
 /// A method with an `r_name` (the adapter traits' `r_clone`, `r_from_str`,
 /// #2020) is called by its Rust name, and the messages R sees name it by its
-/// R name: the `None` error and the receiver type check.
+/// R name: the `None` error (an `Option<()>` step's) and the receiver type
+/// check. An `Option<Self>` lookup's `None` is `NULL`, not an error.
 #[test]
 fn trait_method_messages_use_the_r_name() {
     let impl_item: syn::ItemImpl = syn::parse_quote! {
@@ -2666,17 +2667,22 @@ fn trait_method_messages_use_the_r_name() {
             #[miniextendr(r_name = "parse")]
             fn r_parse(s: &str) -> Option<Self> { unimplemented!() }
             #[miniextendr(r_name = "clone")]
-            fn r_clone(&self) -> Option<i32> { unimplemented!() }
+            fn r_clone(&self) -> Option<Self> { unimplemented!() }
+            #[miniextendr(r_name = "check")]
+            fn r_check(&self) -> Option<()> { unimplemented!() }
         }
     };
     let out = trait_impl_expansion(quote::quote!(env), impl_item);
     assert!(out.contains("< Meter as Scale > :: r_parse ("), "{out}");
     assert!(out.contains("< Meter as Scale > :: r_clone ("), "{out}");
-    assert!(out.contains("\"`parse()` returned no value\""), "{out}");
-    assert!(out.contains("\"`clone()` returned no value\""), "{out}");
+    assert!(out.contains("< Meter as Scale > :: r_check ("), "{out}");
+    assert!(out.contains("\"`check()` returned no value\""), "{out}");
+    assert!(!out.contains("`parse()` returned no value"), "{out}");
+    assert!(!out.contains("`clone()` returned no value"), "{out}");
     assert!(out.contains("\"Scale::clone()\""), "{out}");
     assert!(!out.contains("r_parse()"), "{out}");
     assert!(!out.contains("r_clone()"), "{out}");
+    assert!(!out.contains("r_check()"), "{out}");
 }
 
 /// A trait method's bare `preconditions` / `no_preconditions` and its

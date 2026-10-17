@@ -92,11 +92,11 @@ the enclosing method lives on an R6 class.
 \subsection{\code{R6CrossPlan$try_build()}}{
   Materialize this plan into an \code{R6CrossBoard}, or \code{None} when \code{fail} is set.
 
-Exercises the \verb{Option<Class>} cross-class return path: the C wrapper
-already unwraps \verb{Option<T>} and raises on \code{None}
-(\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful
-\code{.val} is a bare pointer wrapped with \code{R6CrossBoard}'s constructor,
-identical to the bare-class \code{build()} above.
+Exercises the optional cross-class return path, spelled
+\verb{Option<ExternalPtr<R6CrossBoard>>}: \code{None} is \code{NULL}, which the R
+wrapper passes through, and on \code{Some} the \code{.val} is a bare pointer
+wrapped with \code{R6CrossBoard}'s constructor, identical to the bare-class
+\code{build()} above.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$try_build(width, height, fail)}
@@ -199,10 +199,10 @@ method lives on an R6 class.
 \subsection{\code{R6CrossPlan$try_build_many()}}{
   Materialize this plan into \code{count} boards, or \code{None} when \code{fail} is set.
 
-Exercises the \verb{Option<Vec<Class>>} cross-class return path: the C
-wrapper unwraps and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}),
-so on \code{Some} the successful \code{.val} is the same bare list \code{build_many}
-produces, wrapped by the same \code{lapply} resolver.
+Exercises the \verb{Option<Vec<Class>>} cross-class return path: \code{None} is
+\code{NULL}, which the R wrapper passes through, and on \code{Some} the \code{.val} is
+the same bare list \code{build_many} produces, wrapped by the same \code{lapply}
+resolver.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$try_build_many(width, height, count, fail)}

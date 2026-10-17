@@ -3061,7 +3061,7 @@ fn result_self_static_wraps_like_constructor() {
     // C-wrapper return handling wraps `Ok(Self)` in an ExternalPtr, distinct
     // from the plain `Result<T, E> -> IntoR` path.
     assert!(matches!(
-        crate::c_wrapper_builder::detect_return_handling(&from_r.sig.output),
+        crate::c_wrapper_builder::detect_return_handling(&from_r.sig.output, None),
         ReturnHandling::ResultExternalPtr
     ));
 
@@ -3095,8 +3095,8 @@ fn result_self_static_wraps_like_constructor() {
 /// #1164: a static returning `Option<Self>` (e.g. `try_find`) must wrap its
 /// successful return exactly like a bare-`Self`-returning constructor (e.g.
 /// `new`) — a usable class object, not a bare `ExternalPtr`. The C wrapper
-/// still raises on `None` via the normal `Option` error path. Symmetric with
-/// the `Result<Self, E>` case above (audit A4).
+/// returns `NULL` for `None` (`OptionExternalPtr`). Symmetric with the
+/// `Result<Self, E>` case above (audit A4).
 #[test]
 fn option_self_static_wraps_like_constructor() {
     use crate::c_wrapper_builder::ReturnHandling;
@@ -3123,7 +3123,7 @@ fn option_self_static_wraps_like_constructor() {
     // C-wrapper return handling wraps `Some(Self)` in an ExternalPtr, distinct
     // from the plain `Option<T> -> IntoR` unwrap path.
     assert!(matches!(
-        crate::c_wrapper_builder::detect_return_handling(&try_find.sig.output),
+        crate::c_wrapper_builder::detect_return_handling(&try_find.sig.output, None),
         ReturnHandling::OptionExternalPtr
     ));
 
@@ -3391,6 +3391,82 @@ fn scalar_return_strategy_detects_external_ptr_handle_shapes() {
         crate::ReturnStrategy::for_method(null_on_err),
         crate::ReturnStrategy::Direct
     );
+}
+
+/// An `Option` method converts as a function's (#2088), so `.val` is `NULL`
+/// for `None`: every class system lets it through the cross-class wrap
+/// instead of constructing from it (or `lapply` turning it into `list()`).
+/// The wrap of a non-`Option` return is unguarded.
+#[test]
+fn optional_class_returns_let_null_through_in_every_class_system() {
+    let vctrs_attrs = || VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: None,
+    };
+    let statics: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn maybe_many() -> Option<Vec<Board>> { unimplemented!() }
+            pub fn many() -> Vec<Board> { unimplemented!() }
+            pub fn maybe_handle() -> Option<ExternalPtr<Board>> { unimplemented!() }
+            pub fn handle() -> ExternalPtr<Board> { unimplemented!() }
+            pub fn maybe_selves() -> Option<Vec<Self>> { unimplemented!() }
+            pub fn selves() -> Vec<Self> { unimplemented!() }
+        }
+    };
+    let instance: syn::ItemImpl = syn::parse_quote! {
+        impl Builder {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn maybe_many(&self) -> Option<Vec<Board>> { unimplemented!() }
+            pub fn many(&self) -> Vec<Board> { unimplemented!() }
+            pub fn maybe_handle(&self) -> Option<ExternalPtr<Board>> { unimplemented!() }
+            pub fn handle(&self) -> ExternalPtr<Board> { unimplemented!() }
+            pub fn maybe_selves(&self) -> Option<Vec<Self>> { unimplemented!() }
+            pub fn selves(&self) -> Vec<Self> { unimplemented!() }
+        }
+    };
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let mut wrappers = vec![];
+        for code in [&statics, &instance] {
+            // vctrs methods take no receiver (MXL120).
+            if system == ClassSystem::Vctrs && std::ptr::eq(code, &instance) {
+                continue;
+            }
+            wrappers.push(match system {
+                ClassSystem::Env => generate_env_r_wrapper(&parse_impl(system, code.clone())),
+                ClassSystem::R6 => generate_r6_r_wrapper(&parse_impl(system, code.clone())),
+                ClassSystem::S3 => generate_s3_r_wrapper(&parse_impl(system, code.clone())),
+                ClassSystem::S4 => generate_s4_r_wrapper(&parse_impl(system, code.clone())),
+                ClassSystem::S7 => generate_s7_r_wrapper(&parse_impl(system, code.clone())),
+                ClassSystem::Vctrs => {
+                    generate_vctrs_r_wrapper(&parse_impl_vctrs(vctrs_attrs(), code.clone()))
+                }
+            });
+        }
+        for wrapper in wrappers {
+            for marker in [
+                ".__MX_WRAP_LIST_RETURN_Board__(.val)",
+                ".__MX_WRAP_RETURN_Board__(.val)",
+                ".__MX_WRAP_LIST_RETURN_Builder__(.val)",
+            ] {
+                let all = wrapper.matches(marker).count();
+                let guarded = wrapper
+                    .matches(&format!("if (is.null(.val)) NULL else {marker}"))
+                    .count();
+                assert!(all > 0, "{system:?} {marker}:\n{wrapper}");
+                assert_eq!(all, 2 * guarded, "{system:?} {marker}:\n{wrapper}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -6269,8 +6345,9 @@ fn consuming_self_returning_self_writes_back_same_handle() {
     );
 }
 
-/// `self -> Result<Self, E>` / `Option<Self>` clone the stored value, overwrite
-/// on success, and raise on failure through the Result / Option error paths.
+/// `self -> Result<Self, E>` / `Option<Self>` clone the stored value and
+/// overwrite on success; `Err` raises through the Result error path and `None`
+/// gives `NULL`.
 #[test]
 fn consuming_self_fallible_clones_and_overwrites_on_success() {
     let parsed = parse_impl(ClassSystem::R6, consuming_builder_impl());
@@ -6286,7 +6363,7 @@ fn consuming_self_fallible_clones_and_overwrites_on_success() {
     );
     let tokens = c_wrapper_tokens(&parsed, "maybe_step");
     assert!(tokens.contains("clone_for_consuming"), "{tokens}");
-    assert!(tokens.contains("NONE_ERR"), "None must raise: {tokens}");
+    assert!(!tokens.contains("NONE_ERR"), "None gives NULL: {tokens}");
     for name in ["try_step", "maybe_step"] {
         let m = parsed.methods.iter().find(|m| m.ident == name).unwrap();
         assert_eq!(
@@ -6353,7 +6430,16 @@ fn fallible_self_ref_builders_use_self_handle() {
     let tokens = c_wrapper_tokens(&parsed, "checked_bump");
     assert!(tokens.contains("__mx_result_err_parts"), "{tokens}");
     let tokens = c_wrapper_tokens(&parsed, "maybe_bump");
-    assert!(tokens.contains("NONE_ERR"), "{tokens}");
+    assert!(!tokens.contains("NONE_ERR"), "None gives NULL: {tokens}");
+    // The receiver doesn't stand in for `None`'s `NULL`.
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    let maybe_bump = &wrapper[wrapper.find("maybe_bump.").expect("maybe_bump method")..];
+    let guard = maybe_bump.find("if (is.null(.val)) return(NULL)");
+    let chain = maybe_bump.find("\n  x\n");
+    assert!(
+        guard.is_some() && guard < chain,
+        "guard before the receiver: {maybe_bump}"
+    );
 }
 
 /// The former escape hatch (`constructor` on a `self` method) is a clear error
@@ -7145,10 +7231,15 @@ fn s7_conversion_marker_and_attribute_spellings_emit_identical_r_wrappers() {
             without_source_positions(generate_s7_r_wrapper(&typed)),
             without_source_positions(generate_s7_r_wrapper(&attributed))
         );
-        assert!(
-            generate_s7_r_wrapper(&typed)
-                .contains("invisible(.__MX_CLASS_REF_Source__(.ptr = .val))")
-        );
+        // An `Option` converts as a function's: `None` is NULL, which the
+        // constructor lets through.
+        let construct = ".__MX_CLASS_REF_Source__(.ptr = .val)";
+        let expected = if container.starts_with("Option") {
+            format!("invisible(if (is.null(.val)) NULL else {construct})")
+        } else {
+            format!("invisible({construct})")
+        };
+        assert!(generate_s7_r_wrapper(&typed).contains(&expected));
     }
 }
 

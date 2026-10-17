@@ -167,13 +167,10 @@ test_that("R6 builder try_build() wraps a usable classed object on Some", {
   expect_equal(board$signature(), "4x5@7")
 })
 
-test_that("R6 builder try_build() raises a rust_error on None", {
+test_that("R6 builder try_build() gives NULL on None", {
   plan <- R6CrossPlan$new(7L)
 
-  expect_error(
-    plan$try_build(4L, 5L, TRUE),
-    class = "rust_error"
-  )
+  expect_null(plan$try_build(4L, 5L, TRUE))
 })
 
 test_that("R6 builder checked_build() wraps a usable classed object on Ok", {
@@ -207,13 +204,10 @@ test_that("S7 method returning an Option<R6 class> wraps with the R6 constructor
   expect_equal(board$signature(), "4x5@7")
 })
 
-test_that("S7 method returning an Option<R6 class> raises a rust_error on None", {
+test_that("S7 method returning an Option<R6 class> gives NULL on None", {
   plan <- S7CrossPlan(7L)
 
-  expect_error(
-    s7_try_build_r6(plan, 4L, 5L, TRUE),
-    class = "rust_error"
-  )
+  expect_null(s7_try_build_r6(plan, 4L, 5L, TRUE))
 })
 
 test_that("R6 builder build_many() wraps every element of a Vec<Class> return", {
@@ -285,13 +279,10 @@ test_that("R6 builder try_build_many() wraps a usable classed list on Some", {
   expect_equal(boards[[1L]]$signature(), "4x5@7")
 })
 
-test_that("R6 builder try_build_many() raises a rust_error on None", {
+test_that("R6 builder try_build_many() gives NULL on None", {
   plan <- R6CrossPlan$new(7L)
 
-  expect_error(
-    plan$try_build_many(4L, 5L, 2L, TRUE),
-    class = "rust_error"
-  )
+  expect_null(plan$try_build_many(4L, 5L, 2L, TRUE))
 })
 
 test_that("R6 builder checked_build_many() wraps a usable classed list on Ok", {
@@ -408,10 +399,10 @@ test_that("S3 consuming `self -> Result<Self, E>` leaves the object untouched on
   expect_equal(total(new_consumingbuilder() |> try_amount(2L) |> try_amount(3L)), 5L)
 })
 
-test_that("S3 consuming `self -> Option<Self>` raises on None and keeps the value", {
+test_that("S3 consuming `self -> Option<Self>` gives NULL on None and keeps the value", {
   b <- new_consumingbuilder() |> maybe_amount(60L)
   expect_equal(total(b), 60L)
-  expect_error(maybe_amount(b, 50L), "returned no value")
+  expect_null(maybe_amount(b, 50L))
   expect_equal(total(b), 60L)
 })
 
@@ -423,7 +414,7 @@ test_that("fallible in-place `&mut self -> Result<&mut Self, E>` returns the sam
   expect_equal(total(b), 4L)
   expect_identical(maybe_bump(b, 6L), b)
   expect_equal(total(b), 10L)
-  expect_error(maybe_bump(b, 100L), "returned no value")
+  expect_null(maybe_bump(b, 100L))
   expect_equal(total(b), 10L)
 })
 

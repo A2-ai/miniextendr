@@ -12,7 +12,7 @@ use miniextendr_api::prelude::*;
 // 1. Define the adapter trait
 #[miniextendr]
 pub trait RIterator {
-    fn next_item(&mut self) -> Option<f64>;
+    fn next_item(&mut self) -> Nullable<f64>;
     fn size_hint(&self) -> Vec<i32>;
     fn collect_rest(&mut self) -> Vec<f64>;
 }
@@ -35,8 +35,9 @@ impl FloatIter {
 // 3. Implement the adapter
 #[miniextendr]
 impl RIterator for FloatIter {
-    fn next_item(&mut self) -> Option<f64> {
-        self.inner.next()
+    fn next_item(&mut self) -> Nullable<f64> {
+        // `NULL` in R at the end; an `Option<f64>` would give `NA_real_`.
+        Nullable(self.inner.next())
     }
 
     fn size_hint(&self) -> Vec<i32> {
@@ -68,6 +69,7 @@ it <- range_iter(0, 10, 0.5)
 it$next_item()   # 0
 it$next_item()   # 0.5
 it$collect_rest() # c(1, 1.5, 2, ..., 9.5)
+it$next_item()   # NULL (exhausted)
 ```
 
 ---

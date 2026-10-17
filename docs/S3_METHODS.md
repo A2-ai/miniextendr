@@ -206,8 +206,9 @@ handle errors with "was consumed". See
 
 **Fallible in-place steps.** `&mut self -> Result<&mut Self, E>` and
 `-> Option<&mut Self>` are recognised as in-place builders as well: `Ok` /
-`Some` hands back the same handle, `Err` / `None` raises through the normal
-`Result` / `Option` error paths.
+`Some` hands back the same handle, `Err` raises through the normal `Result`
+error path, and `None` gives `NULL`. `None` doesn't stop a pipe: the next step
+receives `NULL`. Return `Result` from a step whose failure must stop it.
 
 > The generated generic is named after the Rust method (`set_name`,
 > `set_loud`, `build`), so pick method names that don't collide with existing

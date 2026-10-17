@@ -339,23 +339,28 @@ impl R6CrossPlan {
 
     /// Materialize this plan into an `R6CrossBoard`, or `None` when `fail` is set.
     ///
-    /// Exercises the `Option<Class>` cross-class return path: the C wrapper
-    /// already unwraps `Option<T>` and raises on `None`
-    /// (`ReturnHandling::OptionIntoRUnwrap`), so on `Some` the successful
-    /// `.val` is a bare pointer wrapped with `R6CrossBoard`'s constructor,
-    /// identical to the bare-class `build()` above.
+    /// Exercises the optional cross-class return path, spelled
+    /// `Option<ExternalPtr<R6CrossBoard>>`: `None` is `NULL`, which the R
+    /// wrapper passes through, and on `Some` the `.val` is a bare pointer
+    /// wrapped with `R6CrossBoard`'s constructor, identical to the bare-class
+    /// `build()` above.
     /// @param width Board width.
     /// @param height Board height.
     /// @param fail When true, returns `None` instead of a board.
-    pub fn try_build(&self, width: i32, height: i32, fail: bool) -> Option<R6CrossBoard> {
+    pub fn try_build(
+        &self,
+        width: i32,
+        height: i32,
+        fail: bool,
+    ) -> Option<miniextendr_api::ExternalPtr<R6CrossBoard>> {
         if fail {
             return None;
         }
-        Some(R6CrossBoard {
+        Some(miniextendr_api::ExternalPtr::new(R6CrossBoard {
             width,
             height,
             seed: self.seed,
-        })
+        }))
     }
 
     /// Materialize this plan into an `R6CrossBoard`, or an `Err` message when
@@ -423,10 +428,10 @@ impl R6CrossPlan {
 
     /// Materialize this plan into `count` boards, or `None` when `fail` is set.
     ///
-    /// Exercises the `Option<Vec<Class>>` cross-class return path: the C
-    /// wrapper unwraps and raises on `None` (`ReturnHandling::OptionIntoRUnwrap`),
-    /// so on `Some` the successful `.val` is the same bare list `build_many`
-    /// produces, wrapped by the same `lapply` resolver.
+    /// Exercises the `Option<Vec<Class>>` cross-class return path: `None` is
+    /// `NULL`, which the R wrapper passes through, and on `Some` the `.val` is
+    /// the same bare list `build_many` produces, wrapped by the same `lapply`
+    /// resolver.
     /// @param width Board width.
     /// @param height Board height.
     /// @param count Number of boards to build.
@@ -600,20 +605,25 @@ impl S7CrossPlan {
     ///
     /// Mixed-system container return: proves the target-keyed resolver picks
     /// the R6 constructor for the `Some` arm even though this method lives on
-    /// an S7 class, mirroring [`Self::s7_build_r6`] but through the
-    /// `Option<Class>` cross-class return path.
+    /// an S7 class, mirroring [`Self::s7_build_r6`] but through the optional
+    /// cross-class return path (`Option<ExternalPtr<R6CrossBoard>>`).
     /// @param width Board width.
     /// @param height Board height.
     /// @param fail When true, returns `None` instead of a board.
-    pub fn s7_try_build_r6(&self, width: i32, height: i32, fail: bool) -> Option<R6CrossBoard> {
+    pub fn s7_try_build_r6(
+        &self,
+        width: i32,
+        height: i32,
+        fail: bool,
+    ) -> Option<miniextendr_api::ExternalPtr<R6CrossBoard>> {
         if fail {
             return None;
         }
-        Some(R6CrossBoard {
+        Some(miniextendr_api::ExternalPtr::new(R6CrossBoard {
             width,
             height,
             seed: self.seed,
-        })
+        }))
     }
 
     /// Materialize this plan into `count` `R6CrossBoard`s (S7 source, R6

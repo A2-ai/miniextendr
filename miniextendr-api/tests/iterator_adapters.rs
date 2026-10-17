@@ -12,15 +12,15 @@ fn blanket_iterator_accepts_arbitrary_items_and_bounds_consumption() {
             .map(|(i, s)| (i, s.to_owned())),
     );
     assert_eq!(iter.collect_n(-1), []);
-    assert_eq!(iter.nth(-1), None);
+    assert_eq!(iter.nth(-1).0, None);
     assert_eq!(iter.size_hint(), (4, Some(4)));
     assert_eq!(
         iter.collect_n(2),
         [(0, "a".to_owned()), (1, "b".to_owned())]
     );
     assert_eq!(iter.skip(1), 1);
-    assert_eq!(iter.next(), Some((3, "d".to_owned())));
-    assert_eq!(iter.next(), None);
+    assert_eq!(iter.next().0, Some((3, "d".to_owned())));
+    assert_eq!(iter.next().0, None);
 }
 
 #[test]
@@ -36,10 +36,10 @@ fn blanket_iterator_uses_specialized_nth() {
         }
     }
     let iter = RefCell::new(Specialized);
-    assert_eq!(iter.nth(17), Some(17));
+    assert_eq!(iter.nth(17).0, Some(17));
     let range = RefCell::new(0..42);
     assert_eq!(range.count(), 42);
-    assert_eq!(range.next(), None);
+    assert_eq!(range.next().0, None);
 }
 
 #[test]
@@ -162,5 +162,28 @@ fn tuple_iterator_results_cross_the_trait_abi_conversion_layer() {
             <(i64, Option<i64>)>::try_from_sexp(hint).unwrap(),
             (0, None)
         );
+    });
+}
+
+#[test]
+fn scalar_iterator_ends_with_null_not_na() {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::trait_abi::conv::to_sexp;
+    use miniextendr_api::{SEXPTYPE, SexpExt};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        // An `NA` item converts as an item; only the end is `NULL`.
+        let iter = RefCell::new([i32::MIN, 1].into_iter());
+        let na = scope.protect(to_sexp(iter.next())).get();
+        assert_eq!(na.type_of(), SEXPTYPE::INTSXP);
+        assert_eq!(Option::<i32>::try_from_sexp(na).unwrap(), None);
+        let one = scope.protect(to_sexp(iter.next())).get();
+        assert_eq!(i32::try_from_sexp(one).unwrap(), 1);
+        let done = scope.protect(to_sexp(iter.next())).get();
+        assert_eq!(done.type_of(), SEXPTYPE::NILSXP);
+        let past = scope.protect(to_sexp(iter.nth(3))).get();
+        assert_eq!(past.type_of(), SEXPTYPE::NILSXP);
     });
 }

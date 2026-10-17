@@ -42,5 +42,6 @@ if the iterator is exhausted).
 
 Get the \code{n}th element (0-indexed), consuming elements up to and including it.
 
-Returns None if the iterator has fewer than \code{n + 1} elements.
+Returns \code{Nullable(None)} (\code{NULL} in R) if \code{n} is negative or the
+iterator has fewer than \code{n + 1} elements.
 }

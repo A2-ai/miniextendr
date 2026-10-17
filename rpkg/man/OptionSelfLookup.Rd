@@ -36,7 +36,7 @@ The entry's label.
 
 Look up a known entry by id — the \verb{Option<Self>} lookup-shaped
 fallible constructor (#1164). Returns the entry for ids 1..=3;
-\code{None} (raised as an R error) otherwise.
+\code{None} (\code{NULL} in R) otherwise.
 
 \describe{
 \item{\code{id}}{Integer id to look up.}

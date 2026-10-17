@@ -117,12 +117,12 @@ impl WrapFactory {
     pub fn boards(&self) -> Vec<WrapAsR6<WrapBoard>> {
         vec![self.build(1, 2), self.build(3, 4)]
     }
-    /// Optional method returns retain the boundary error on None.
+    /// Optional method returns give `NULL` for `None`, like every `Option` return.
     /// @param present Whether to return a vector.
     pub fn optional_boards(&self, present: bool) -> Option<Vec<WrapAsR6<WrapBoard>>> {
         present.then(|| self.boards())
     }
-    /// Ordinary optional class returns retain the boundary's None error.
+    /// An optional class return gives `NULL` for `None`.
     /// @param present Whether to return a board.
     pub fn optional_board(&self, present: bool) -> Option<WrapAsR6<WrapBoard>> {
         present.then(|| self.build(6, 7))
@@ -201,7 +201,7 @@ mod vctrs {
     }
 }
 
-/// Explicit optional class returns raise on None, including free functions.
+/// Explicit optional class returns give `NULL` for `None`, free functions included.
 /// @param present Whether to return a vector of boards.
 #[miniextendr]
 pub fn wrapped_optional_boards(present: bool) -> Option<Vec<WrapAsR6<WrapBoard>>> {

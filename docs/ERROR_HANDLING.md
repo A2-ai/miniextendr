@@ -337,7 +337,7 @@ The transport intercepts three failure modes:
 |---------|-----------|---------|
 | Rust panic | `"panic"` | `panic!("oops")` |
 | `Result::Err` | `"result_err"` | `Err("bad input".to_string())` |
-| `Option::None` | `"none_err"` | Returning `None` from `-> Option<T>` |
+| `Option::None` | `"none_err"` | Returning `None` from `-> Option<()>` or `-> Option<SEXP>` (any other `Option<T>`, a method's `Option<Self>` included, converts `None` to `NULL` / `NA`) |
 
 **Not affected**: `Result<T, ()>` (unit error type) always returns `NULL` on `Err(())`,
 since a unit error is a deliberate sentinel, not a failure.

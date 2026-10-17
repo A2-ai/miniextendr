@@ -107,6 +107,9 @@ use crate::strvec::StrVecBuilder;
 /// let result = "hello".try_into_sexp();
 /// assert!(result.is_ok());
 /// ```
+#[diagnostic::on_unimplemented(
+    note = "an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = \"r6\")]` (any class system)"
+)]
 pub trait IntoR {
     /// The error type for fallible conversions.
     ///
@@ -1204,6 +1207,43 @@ where
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
         unsafe { self.map(<[T]>::into_vec).into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Option<&[T]>` to R as the slice converts: `Some` → the R vector
+/// `&[T]` produces, `None` → NULL.
+impl<'a, T> IntoR for Option<&'a [T]>
+where
+    &'a [T]: IntoR,
+{
+    type Error = <&'a [T] as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(v) => v.try_into_sexp(),
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        match self {
+            Some(v) => unsafe { v.try_into_sexp_unchecked() },
+            None => Ok(crate::SEXP::nil()),
+        }
+    }
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => crate::SEXP::nil(),
+        }
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => crate::SEXP::nil(),
+        }
     }
 }
 
