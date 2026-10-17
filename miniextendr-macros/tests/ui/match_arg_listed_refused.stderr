@@ -1,0 +1,11 @@
+error: expected `listed = true` or `listed = false`
+  --> tests/ui/match_arg_listed_refused.rs:10:42
+   |
+10 |     #[match_arg(alias = "oral", listed = "no")]
+   |                                          ^^^^
+
+error: `listed` applies to the aliases of its own #[match_arg(...)], and this one has none: write it next to `alias = "..."`
+  --> tests/ui/match_arg_listed_refused.rs:19:17
+   |
+19 |     #[match_arg(listed = false)]
+   |                 ^^^^^^

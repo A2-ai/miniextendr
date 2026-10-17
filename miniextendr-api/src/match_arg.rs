@@ -51,7 +51,10 @@
 //!
 //! [`MatchArg::ALIASES`] (`#[match_arg(alias = "grey")]` on a variant) adds
 //! other spellings of a choice, matched only when typed in full, by every
-//! matcher on both sides, and listed nowhere the choices are.
+//! matcher on both sides. An error that lists the choices names them after
+//! the choices (`(or "grey" for "gray")`), unless an alias opts out with
+//! `listed = false`; the formal, the usage and the `@param` line list the
+//! choices only.
 //!
 //! `several_ok` parameters are validated strictly on the R side: every element
 //! has to match a choice, and `NULL` selects every choice (the same fallback
@@ -75,25 +78,31 @@ pub trait MatchArg: Sized + Copy + 'static {
     /// The first choice is the default when the R argument is `NULL`.
     const CHOICES: &'static [&'static str];
 
-    /// Other spellings of a choice, as `(alias, choice)` pairs: `("grey",
-    /// "gray")` lets a user write `"grey"` for the choice `"gray"` (#1843).
+    /// Other spellings of a choice: [`MatchArgAlias::new("grey",
+    /// "gray")`](MatchArgAlias::new) lets a user write `"grey"` for the choice
+    /// `"gray"` (#1843).
     ///
     /// An alias selects its choice only when typed in full: a prefix matches
     /// the choices alone, so `"gr"` stays the prefix of `"gray"` it was. Every
     /// matcher reads it, the generated wrapper's check and the Rust side
     /// alike ([`match_arg_from_sexp`], [`match_arg_param`],
-    /// [`match_arg_vec_from_sexp`] element by element, the `Either` arm), and
-    /// nothing that lists the choices does: the R formal, the `@param` line
-    /// and the error messages name `CHOICES` only.
+    /// [`match_arg_vec_from_sexp`] element by element, the `Either` arm).
+    ///
+    /// Every error that lists the choices names the listed aliases after
+    /// them, `'color' should be one of "red", "gray", "blue" (or "grey" for
+    /// "gray")`, on both sides (#2148). An alias built with
+    /// [`MatchArgAlias::unlisted`] is matched the same way and named by no
+    /// error. The R formal, the usage and the `@param` line list `CHOICES`
+    /// only.
     ///
     /// `#[derive(MatchArg)]` fills it from `#[match_arg(alias = "...")]` on a
-    /// variant. A hand-written impl lists its aliases here, not in
-    /// [`from_choice`](Self::from_choice), which the R-side check never
-    /// reaches. The wrappers writer refuses, for a type used as a `match_arg`
-    /// parameter, an alias that is empty, `"NA"`, a choice, repeated, or a
-    /// prefix of a choice other than its own, and a target that is not a
-    /// choice.
-    const ALIASES: &'static [(&'static str, &'static str)] = &[];
+    /// variant (`listed = false` for an unlisted one). A hand-written impl
+    /// lists its aliases here, not in [`from_choice`](Self::from_choice),
+    /// which the R-side check never reaches. The wrappers writer refuses, for
+    /// a type used as a `match_arg` parameter, an alias that is empty, `"NA"`,
+    /// a choice, repeated, or a prefix of a choice other than its own, and a
+    /// target that is not a choice.
+    const ALIASES: &'static [MatchArgAlias] = &[];
 
     /// Convert a choice string to the corresponding enum variant.
     ///
@@ -105,13 +114,57 @@ pub trait MatchArg: Sized + Copy + 'static {
     fn to_choice(self) -> &'static str;
 }
 
-/// The words after `'<param>' ` in a `match_arg` argument error, shared by
-/// the wrappers preamble's `.miniextendr_match_arg` /
-/// `.miniextendr_match_arg_several` ([`crate::registry::ARG_CHECK_HELPERS`],
-/// built with `concat!`) and [`MatchArgError::arg_error`], so R and Rust word
-/// these errors from one source (#1741). The generated conversion of a
-/// `match_arg` type words its error with `arg_error` too (#1767). It expands
-/// to string literals.
+/// One entry of [`MatchArg::ALIASES`]: `alias`, another spelling of the
+/// choice `choice`, and whether the errors that list the choices name it.
+///
+/// ```ignore
+/// const ALIASES: &'static [MatchArgAlias] = &[
+///     MatchArgAlias::new("oral", "extravascular"),
+///     MatchArgAlias::unlisted("ev", "extravascular"),
+/// ];
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MatchArgAlias {
+    /// The other spelling, matched only when typed in full.
+    pub alias: &'static str,
+    /// The choice it selects, one of [`MatchArg::CHOICES`].
+    pub choice: &'static str,
+    /// Whether an error that lists the choices names this alias after them
+    /// (`(or "oral" for "extravascular")`, #2148).
+    pub listed: bool,
+}
+
+impl MatchArgAlias {
+    /// A listed alias, what `#[match_arg(alias = "...")]` makes: the errors
+    /// that list the choices name it.
+    pub const fn new(alias: &'static str, choice: &'static str) -> Self {
+        Self {
+            alias,
+            choice,
+            listed: true,
+        }
+    }
+
+    /// An unlisted alias, what `#[match_arg(alias = "...", listed = false)]`
+    /// makes: matched like any alias, named by no error.
+    pub const fn unlisted(alias: &'static str, choice: &'static str) -> Self {
+        Self {
+            alias,
+            choice,
+            listed: false,
+        }
+    }
+}
+
+/// The words of a `match_arg` argument error, shared by the wrappers
+/// preamble's `.miniextendr_match_arg` / `.miniextendr_match_arg_several`
+/// ([`crate::registry::ARG_CHECK_HELPERS`], built with `concat!`) and
+/// [`MatchArgError::arg_error`], so R and Rust word these errors from one
+/// source (#1741). The generated conversion of a `match_arg` type words its
+/// error with `arg_error` too (#1767). `or` and `alias_for` are the words of
+/// the clause naming the listed aliases ([`listed_aliases_clause`], #2148),
+/// which the wrappers writer renders in Rust and passes to the R helpers as
+/// their `listed` argument. It expands to string literals.
 macro_rules! match_arg_wording {
     (not_character) => {
         "must be NULL or a character vector"
@@ -122,6 +175,12 @@ macro_rules! match_arg_wording {
     (not_a_choice) => {
         "should be one of"
     };
+    (or) => {
+        "or"
+    };
+    (alias_for) => {
+        "for"
+    };
 }
 // The R helpers (host-only) read it from here; this module uses it in place.
 #[cfg(not(target_arch = "wasm32"))]
@@ -129,9 +188,9 @@ pub(crate) use match_arg_wording;
 
 /// Error type for `MatchArg` conversion failures.
 ///
-/// Every variant carries the type's choices, so an error can say what the
-/// value must be (`'mode' should be one of "fast", "slow"`) whichever way it
-/// was wrong.
+/// Every variant carries the type's choices and aliases, so an error can say
+/// what the value must be (`'mode' should be one of "fast", "slow" (or
+/// "quick" for "fast")`) whichever way it was wrong.
 #[derive(Debug, Clone)]
 pub enum MatchArgError {
     /// The SEXP was not a character or factor type.
@@ -140,6 +199,8 @@ pub enum MatchArgError {
         actual: SEXPTYPE,
         /// The valid choices.
         choices: &'static [&'static str],
+        /// The type's aliases ([`MatchArg::ALIASES`]).
+        aliases: &'static [MatchArgAlias],
     },
     /// The input had length != 1.
     InvalidLength {
@@ -147,11 +208,15 @@ pub enum MatchArgError {
         actual: usize,
         /// The valid choices.
         choices: &'static [&'static str],
+        /// The type's aliases ([`MatchArg::ALIASES`]).
+        aliases: &'static [MatchArgAlias],
     },
     /// The input was NA.
     IsNa {
         /// The valid choices.
         choices: &'static [&'static str],
+        /// The type's aliases ([`MatchArg::ALIASES`]).
+        aliases: &'static [MatchArgAlias],
     },
     /// No choice matched the input.
     NoMatch {
@@ -159,26 +224,74 @@ pub enum MatchArgError {
         input: String,
         /// The valid choices.
         choices: &'static [&'static str],
+        /// The type's aliases ([`MatchArg::ALIASES`]).
+        aliases: &'static [MatchArgAlias],
     },
 }
 
 impl MatchArgError {
+    /// [`InvalidType`](Self::InvalidType) for the choices of `T`.
+    fn invalid_type<T: MatchArg>(actual: SEXPTYPE) -> Self {
+        MatchArgError::InvalidType {
+            actual,
+            choices: T::CHOICES,
+            aliases: T::ALIASES,
+        }
+    }
+
+    /// [`InvalidLength`](Self::InvalidLength) for the choices of `T`.
+    fn invalid_length<T: MatchArg>(actual: usize) -> Self {
+        MatchArgError::InvalidLength {
+            actual,
+            choices: T::CHOICES,
+            aliases: T::ALIASES,
+        }
+    }
+
+    /// [`IsNa`](Self::IsNa) for the choices of `T`.
+    fn is_na<T: MatchArg>() -> Self {
+        MatchArgError::IsNa {
+            choices: T::CHOICES,
+            aliases: T::ALIASES,
+        }
+    }
+
+    /// [`NoMatch`](Self::NoMatch) of `input` for the choices of `T`.
+    fn no_match<T: MatchArg>(input: &str) -> Self {
+        MatchArgError::NoMatch {
+            input: input.to_string(),
+            choices: T::CHOICES,
+            aliases: T::ALIASES,
+        }
+    }
+
     /// The choices the value should have been one of.
     pub fn choices(&self) -> &'static [&'static str] {
         match self {
             MatchArgError::InvalidType { choices, .. }
             | MatchArgError::InvalidLength { choices, .. }
-            | MatchArgError::IsNa { choices }
+            | MatchArgError::IsNa { choices, .. }
             | MatchArgError::NoMatch { choices, .. } => choices,
         }
     }
 
-    /// What the value must be, in R terms: `one of "fast", "slow"`. An
-    /// `Either` whose arms both refused a value names a `match_arg` arm with
-    /// it (`'x' must be one of "oral", "bolus", or a single double: got
-    /// logical`, #1594).
+    /// The aliases of the choices, listed and unlisted.
+    pub fn aliases(&self) -> &'static [MatchArgAlias] {
+        match self {
+            MatchArgError::InvalidType { aliases, .. }
+            | MatchArgError::InvalidLength { aliases, .. }
+            | MatchArgError::IsNa { aliases, .. }
+            | MatchArgError::NoMatch { aliases, .. } => aliases,
+        }
+    }
+
+    /// What the value must be, in R terms: `one of "fast", "slow"`, with the
+    /// listed aliases after the choices (`one of "fast", "slow" (or "quick"
+    /// for "fast")`). An `Either` whose arms both refused a value names a
+    /// `match_arg` arm with it (`'x' must be one of "oral", "bolus", or a
+    /// single double: got logical`, #1594).
     pub fn expectation(&self) -> String {
-        one_of(self.choices())
+        one_of(self.choices(), self.aliases())
     }
 
     /// The argument error the generated wrapper's `match_arg` check
@@ -188,11 +301,12 @@ impl MatchArgError {
     /// - [`InvalidType`](Self::InvalidType): `'mode' must be NULL or a character vector`
     /// - [`InvalidLength`](Self::InvalidLength): `'mode' must be of length 1`
     /// - [`IsNa`](Self::IsNa), [`NoMatch`](Self::NoMatch): `'mode' should be
-    ///   one of "fast", "safe"`
+    ///   one of "fast", "safe"`, then the listed aliases (`'mode' should be
+    ///   one of "fast", "safe" (or "quick" for "fast")`, #2148)
     ///
-    /// The choices are quoted as R's `dQuote(choices, FALSE)` quotes them,
-    /// without escapes. [`match_arg_param`] returns it; [`ArgError::raise`]
-    /// raises it as that condition. The generated conversion of a `match_arg`
+    /// The choices and the aliases are quoted as R's `dQuote(choices,
+    /// FALSE)` quotes them, without escapes. [`match_arg_param`] returns it;
+    /// [`ArgError::raise`] raises it as that condition. The generated conversion of a `match_arg`
     /// type, with or without `#[miniextendr(match_arg)]`, raises its message
     /// too (#1767).
     pub fn arg_error(&self, param: &str) -> ArgError {
@@ -202,14 +316,21 @@ impl MatchArgError {
     /// The message of [`arg_error`](Self::arg_error), with the choices listed
     /// in the order of `formal`, the choices of the parameter's R formal:
     /// `T::CHOICES`, or those of a `default = "..."` parameter, which lists
-    /// its default first ([`match_arg_param_with_default`]).
+    /// its default first ([`match_arg_param_with_default`]). The listed
+    /// aliases follow in the order of `T::CHOICES` whatever the formal, as
+    /// the wrappers writer renders them for the R check.
     pub(crate) fn arg_message(&self, param: &str, formal: &[&str]) -> String {
         let what = match self {
             MatchArgError::InvalidType { .. } => match_arg_wording!(not_character).to_string(),
             MatchArgError::InvalidLength { .. } => match_arg_wording!(not_scalar).to_string(),
             MatchArgError::IsNa { .. } | MatchArgError::NoMatch { .. } => {
-                let quoted: Vec<String> = formal.iter().map(|c| format!("\"{c}\"")).collect();
-                format!("{} {}", match_arg_wording!(not_a_choice), quoted.join(", "))
+                let quoted: Vec<String> = formal.iter().map(|c| r_quote(c)).collect();
+                format!(
+                    "{} {}{}",
+                    match_arg_wording!(not_a_choice),
+                    quoted.join(", "),
+                    listed_aliases_clause(self.choices(), self.aliases(), r_quote)
+                )
             }
         };
         format!("'{param}' {what}")
@@ -238,22 +359,79 @@ impl MatchArgError {
 /// `one of "fast", "slow"`: what a `match_arg` / `choices` value must be, in
 /// the words of a conversion's argument error that names it beside other
 /// accepted values (`'x' must be one of "oral", "bolus", or a single double:
-/// got logical`, #1594).
-pub fn one_of(choices: &[&str]) -> String {
-    choice_expectation(choices, false, "")
+/// got logical`, #1594). The listed `aliases` follow the choices (`one of
+/// "fast", "slow" (or "quick" for "fast")`).
+pub fn one_of(choices: &[&str], aliases: &[MatchArgAlias]) -> String {
+    choice_expectation(choices, aliases, false, "")
 }
 
 /// `one of "fast", "slow"<suffix>`, or `one or more of "fast", "slow"<suffix>`
-/// for a `several_ok` parameter (`several`), quoted as [`one_of`] quotes.
+/// for a `several_ok` parameter (`several`), quoted as [`one_of`] quotes, the
+/// listed `aliases` between the choices and the suffix (`one of "fast",
+/// "slow" (or "quick" for "fast"), or a number`).
 /// The generated argument error of a `match_arg` / `choices` parameter on
 /// `Either<T, R>` passes the other accepted values as `suffix`
 /// (`, or a data frame`), in the words of its `@param` line; an `Either`
 /// whose arms both refused a value joins them with it too.
 #[doc(hidden)]
-pub fn choice_expectation(choices: &[&str], several: bool, suffix: &str) -> String {
+pub fn choice_expectation(
+    choices: &[&str],
+    aliases: &[MatchArgAlias],
+    several: bool,
+    suffix: &str,
+) -> String {
     let quoted: Vec<String> = choices.iter().map(|c| format!("{c:?}")).collect();
     let lead = if several { "one or more of" } else { "one of" };
-    format!("{lead} {}{suffix}", quoted.join(", "))
+    let listed = listed_aliases_clause(choices, aliases, |s| format!("{s:?}"));
+    format!("{lead} {}{listed}{suffix}", quoted.join(", "))
+}
+
+/// `"x"`: a string quoted as R's `dQuote(x, FALSE)` quotes it, without
+/// escapes, as the `match_arg` check's message quotes the choices.
+pub(crate) fn r_quote(s: &str) -> String {
+    format!("\"{s}\"")
+}
+
+/// The text that names the listed aliases after the choices of a message: a
+/// space, then `(or "oral" for "extravascular", "grey" for "gray")`; `""`
+/// when no alias is listed (#2148). The aliases follow the order of their
+/// choices in `choices` (`MatchArg::CHOICES`, the order of the variants),
+/// then their order in `aliases`. `quote` quotes each alias and choice, as
+/// the message quotes the choices before it.
+///
+/// Every error that lists the choices appends it: [`MatchArgError`]'s
+/// messages, [`choice_expectation`], and the wrappers preamble's checks, to
+/// which the wrappers writer passes it as their `listed` argument
+/// ([`crate::registry::match_arg_aliases_arg`]), so R and Rust word it alike.
+pub(crate) fn listed_aliases_clause(
+    choices: &[&str],
+    aliases: &[MatchArgAlias],
+    quote: impl Fn(&str) -> String,
+) -> String {
+    let mut listed: Vec<&MatchArgAlias> = aliases.iter().filter(|a| a.listed).collect();
+    if listed.is_empty() {
+        return String::new();
+    }
+    // Stable: aliases of one choice keep their order. A target that is no
+    // choice (a hand-written impl the writer refuses) goes last.
+    listed.sort_by_key(|a| {
+        choices
+            .iter()
+            .position(|choice| *choice == a.choice)
+            .unwrap_or(usize::MAX)
+    });
+    let pairs: Vec<String> = listed
+        .iter()
+        .map(|a| {
+            format!(
+                "{} {} {}",
+                quote(a.alias),
+                match_arg_wording!(alias_for),
+                quote(a.choice)
+            )
+        })
+        .collect();
+    format!(" ({} {})", match_arg_wording!(or), pairs.join(", "))
 }
 
 /// The text is complete on its own, for a conversion outside an argument:
@@ -319,10 +497,15 @@ pub fn escape_r_string(s: &str) -> String {
 /// the same at compile time, with the same words; the wrappers writer checks
 /// a hand-written impl with this ([`crate::registry::match_arg_aliases_arg`]).
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn alias_problems(choices: &[&str], aliases: &[(&str, &str)]) -> Vec<String> {
+pub(crate) fn alias_problems(choices: &[&str], aliases: &[MatchArgAlias]) -> Vec<String> {
     let mut problems = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for &(alias, target) in aliases {
+    for &MatchArgAlias {
+        alias,
+        choice: target,
+        ..
+    } in aliases
+    {
         if alias.is_empty() {
             problems
                 .push("an alias can't be empty: the empty string matches no choice".to_string());
@@ -378,16 +561,9 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
 /// `Vec<Option<&str>>` conversions we delegate to — other variants are
 /// unreachable in this context.
 fn sexp_err_to_match_arg_err<T: MatchArg>(e: SexpError) -> MatchArgError {
-    let choices = <T as MatchArg>::CHOICES;
     match e {
-        SexpError::Type(t) => MatchArgError::InvalidType {
-            actual: t.actual,
-            choices,
-        },
-        SexpError::Length(l) => MatchArgError::InvalidLength {
-            actual: l.actual,
-            choices,
-        },
+        SexpError::Type(t) => MatchArgError::invalid_type::<T>(t.actual),
+        SexpError::Length(l) => MatchArgError::invalid_length::<T>(l.actual),
         other => unreachable!("unexpected SexpError from string conversion: {other}"),
     }
 }
@@ -426,10 +602,7 @@ fn first_choice<T: MatchArg>(formal: &[&str]) -> Result<T, MatchArgError> {
     formal
         .first()
         .and_then(|choice| T::from_choice(choice))
-        .ok_or(MatchArgError::NoMatch {
-            input: String::new(),
-            choices: <T as MatchArg>::CHOICES,
-        })
+        .ok_or_else(|| MatchArgError::no_match::<T>(""))
 }
 
 /// `NA` as a choice: `pmatch()`, and so the wrapper's check, matches it as
@@ -438,9 +611,7 @@ fn first_choice<T: MatchArg>(formal: &[&str]) -> Result<T, MatchArgError> {
 /// maps it: the wrapper looks aliases up with `match()`, which never matches
 /// `NA` to `"NA"`.
 fn match_na<T: MatchArg>() -> Result<T, MatchArgError> {
-    match_string::<T>("NA", &[]).map_err(|_| MatchArgError::IsNa {
-        choices: <T as MatchArg>::CHOICES,
-    })
+    match_string::<T>("NA", &[]).map_err(|_| MatchArgError::is_na::<T>())
 }
 
 /// Whether the `len` strings `label(i)` (`None` for `NA`) are `formal`, in
@@ -479,10 +650,7 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
         return first_choice::<T>(formal);
     }
     if len != 1 {
-        return Err(MatchArgError::InvalidLength {
-            actual: len,
-            choices: <T as MatchArg>::CHOICES,
-        });
+        return Err(MatchArgError::invalid_length::<T>(len));
     }
     match factor_label(sexp, levels, 0) {
         Some(label) => match_choice::<T>(label),
@@ -520,7 +688,6 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
 /// permutation of `T::CHOICES`: its first element is what `NULL` and the
 /// formal itself select. Matching a string does not depend on the order.
 fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgError> {
-    let choices = <T as MatchArg>::CHOICES;
     let sexptype = sexp.type_of();
     if sexptype == SEXPTYPE::NILSXP {
         return first_choice::<T>(formal);
@@ -529,10 +696,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
         return factor_to_choice::<T>(sexp, formal);
     }
     if sexptype != SEXPTYPE::STRSXP {
-        return Err(MatchArgError::InvalidType {
-            actual: sexptype,
-            choices,
-        });
+        return Err(MatchArgError::invalid_type::<T>(sexptype));
     }
     let len = sexp.len();
     // `identical(arg, choices)` compares attributes too: a named vector of
@@ -546,10 +710,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
         return first_choice::<T>(formal);
     }
     if len != 1 {
-        return Err(MatchArgError::InvalidLength {
-            actual: len,
-            choices,
-        });
+        return Err(MatchArgError::invalid_length::<T>(len));
     }
     match label(0) {
         Some(input) => match_choice::<T>(input),
@@ -791,11 +952,8 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
 }
 
 /// [`match_choice`] with the aliases `aliases`.
-fn match_string<T: MatchArg>(input: &str, aliases: &[(&str, &str)]) -> Result<T, MatchArgError> {
-    let no_match = || MatchArgError::NoMatch {
-        input: input.to_string(),
-        choices: <T as MatchArg>::CHOICES,
-    };
+fn match_string<T: MatchArg>(input: &str, aliases: &[MatchArgAlias]) -> Result<T, MatchArgError> {
+    let no_match = || MatchArgError::no_match::<T>(input);
     // `pmatch()` matches the empty string to nothing, not even to an empty
     // choice; without this every choice would be a partial match.
     if input.is_empty() {
@@ -809,8 +967,8 @@ fn match_string<T: MatchArg>(input: &str, aliases: &[(&str, &str)]) -> Result<T,
 
     // An alias, typed in full only: a prefix of an alias is not one, so an
     // alias never makes a prefix of the choices ambiguous.
-    if let Some((_, choice)) = aliases.iter().find(|(alias, _)| *alias == input) {
-        return T::from_choice(choice).ok_or_else(no_match);
+    if let Some(alias) = aliases.iter().find(|alias| alias.alias == input) {
+        return T::from_choice(alias.choice).ok_or_else(no_match);
     }
 
     // Unique partial match (like R's match.arg)
@@ -887,12 +1045,7 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
     if sexp.type_of() == SEXPTYPE::NILSXP {
         return <T as MatchArg>::CHOICES
             .iter()
-            .map(|c| {
-                T::from_choice(c).ok_or(MatchArgError::NoMatch {
-                    input: (*c).to_string(),
-                    choices: <T as MatchArg>::CHOICES,
-                })
-            })
+            .map(|c| T::from_choice(c).ok_or_else(|| MatchArgError::no_match::<T>(c)))
             .collect();
     }
 
@@ -902,10 +1055,8 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
         .map_err(sexp_err_to_match_arg_err::<T>)?
         .into_iter()
         .map(|opt| {
-            opt.ok_or(MatchArgError::IsNa {
-                choices: <T as MatchArg>::CHOICES,
-            })
-            .and_then(match_choice::<T>)
+            opt.ok_or_else(MatchArgError::is_na::<T>)
+                .and_then(match_choice::<T>)
         })
         .collect()
 }
@@ -939,20 +1090,94 @@ mod tests {
     #[test]
     fn choice_expectation_names_the_choices_and_the_rest() {
         use super::{choice_expectation, one_of};
-        assert_eq!(choice_expectation(&["fast"], false, ""), r#"one of "fast""#);
         assert_eq!(
-            choice_expectation(&["fast", "slow"], false, ", or a data frame"),
+            choice_expectation(&["fast"], &[], false, ""),
+            r#"one of "fast""#
+        );
+        assert_eq!(
+            choice_expectation(&["fast", "slow"], &[], false, ", or a data frame"),
             r#"one of "fast", "slow", or a data frame"#
         );
         assert_eq!(
-            choice_expectation(&["fast", "slow"], true, ", or a number"),
+            choice_expectation(&["fast", "slow"], &[], true, ", or a number"),
             r#"one or more of "fast", "slow", or a number"#
         );
         assert_eq!(
-            choice_expectation(&[r#"say "hi""#, "bye"], false, ""),
+            choice_expectation(&[r#"say "hi""#, "bye"], &[], false, ""),
             r#"one of "say \"hi\"", "bye""#
         );
-        assert_eq!(one_of(&["fast", "slow"]), r#"one of "fast", "slow""#);
+        assert_eq!(one_of(&["fast", "slow"], &[]), r#"one of "fast", "slow""#);
+    }
+
+    /// The listed aliases go between the choices and the other accepted
+    /// values, in the order of their choices, then their own (#2148); an
+    /// unlisted alias is left out, and a type whose aliases are all unlisted
+    /// reads as one without aliases.
+    #[test]
+    fn choice_expectation_lists_the_listed_aliases() {
+        use super::{MatchArgAlias, choice_expectation, one_of};
+        let choices = ["extravascular", "iv_bolus", "gray"];
+        let aliases = [
+            MatchArgAlias::new("grey", "gray"),
+            MatchArgAlias::unlisted("ev", "extravascular"),
+            MatchArgAlias::new("oral", "extravascular"),
+            MatchArgAlias::new("Grau", "gray"),
+        ];
+        assert_eq!(
+            one_of(&choices, &aliases),
+            r#"one of "extravascular", "iv_bolus", "gray" (or "oral" for "extravascular", "grey" for "gray", "Grau" for "gray")"#
+        );
+        assert_eq!(
+            choice_expectation(&choices, &aliases[..2], true, ", or a number"),
+            r#"one or more of "extravascular", "iv_bolus", "gray" (or "grey" for "gray"), or a number"#
+        );
+        assert_eq!(
+            one_of(&choices, &[MatchArgAlias::unlisted("ev", "extravascular")]),
+            one_of(&choices, &[])
+        );
+        // Quoted as the choices are.
+        assert_eq!(
+            one_of(
+                &[r#"say "hi""#],
+                &[MatchArgAlias::new("hello", r#"say "hi""#)]
+            ),
+            r#"one of "say \"hi\"" (or "hello" for "say \"hi\"")"#
+        );
+    }
+
+    /// The `match_arg` check's message quotes the aliases as it quotes the
+    /// choices, without escapes, and keeps them in the order of `CHOICES`
+    /// when a `default = "..."` formal moves a choice to the front.
+    #[test]
+    fn arg_message_lists_the_listed_aliases() {
+        use super::{MatchArgAlias, MatchArgError};
+        static ALIASES: [MatchArgAlias; 3] = [
+            MatchArgAlias::new("grey", "gray"),
+            MatchArgAlias::new("rouge", "red"),
+            MatchArgAlias::unlisted("hello", r#"say "hi""#),
+        ];
+        let e = MatchArgError::NoMatch {
+            input: "zzz".to_string(),
+            choices: &["red", "gray", r#"say "hi""#],
+            aliases: &ALIASES,
+        };
+        assert_eq!(
+            e.arg_message("color", &["gray", "red", r#"say "hi""#]),
+            r#"'color' should be one of "gray", "red", "say "hi"" (or "rouge" for "red", "grey" for "gray")"#
+        );
+        assert_eq!(
+            e.to_string(),
+            r#"expected one of "red", "gray", "say \"hi\"" (or "rouge" for "red", "grey" for "gray"), got "zzz""#
+        );
+        let long = MatchArgError::InvalidLength {
+            actual: 2,
+            choices: &["red"],
+            aliases: &ALIASES,
+        };
+        assert_eq!(
+            long.arg_message("color", &["red"]),
+            "'color' must be of length 1"
+        );
     }
 
     /// A `default = "..."` formal: the default first, the rest in their

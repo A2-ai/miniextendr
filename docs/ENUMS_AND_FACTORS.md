@@ -659,6 +659,7 @@ choice without making it a choice of its own. It is repeatable, and
 pub enum Color {
     Red,
     #[match_arg(alias = "grey")]
+    #[match_arg(alias = "gris", listed = false)]
     Gray,
     Blue,
 }
@@ -670,8 +671,9 @@ pub fn paint(#[miniextendr(match_arg)] color: Color) -> String { /* ... */ }
 ```r
 paint(color = c("red", "gray", "blue"))   # the formal and the usage
 paint("grey")   # Gray
+paint("gris")   # Gray
 paint("gr")     # Gray: a unique prefix of "gray", as before the alias
-paint("gre")    # Error: 'color' should be one of "red", "gray", "blue"
+paint("gre")    # Error: 'color' should be one of "red", "gray", "blue" (or "grey" for "gray")
 ```
 
 - An alias matches only when typed in full. Prefixes match the choices alone,
@@ -683,11 +685,27 @@ paint("gre")    # Error: 'color' should be one of "red", "gray", "blue"
   `Missing` and `Either` forms, `several_ok` element by element
   (`c("grey", "red")` is `Gray, Red`), the derived `TryFromSexp`, and
   `match_arg_param()` / `match_arg_param_with_default()`.
-- Nothing that lists the choices shows an alias: not the formal, the usage,
-  the `@param` line, the "should be one of" error or the `Either` error.
-- The wrapper passes them to its check as `aliases = base::c("grey" =
-  "gray")`. A type without aliases gets the same wrapper as before aliases
-  existed.
+- Every error that lists the choices names the aliases after them:
+  `(or "grey" for "gray")`, several joined as `(or "oral" for
+  "extravascular", "grey" for "gray")`, in the order of the variants, then
+  as written on a variant. That is the "should be one of" error of the
+  wrapper's check and of `several_ok`, the error of the derived
+  `TryFromSexp` and of `match_arg_param()` /
+  `match_arg_param_with_default()`, and the `Either` error (`'color' must be
+  one of "red", "gray", "blue" (or "grey" for "gray"), or a number: got
+  logical`). A `default = "..."` moves its choice to the front of the list,
+  not its aliases.
+- `listed = false` keeps the aliases of its own `#[match_arg(...)]` out of
+  every error; they are matched as before. A type whose aliases are all
+  unlisted gets the errors of a type without aliases. `listed` without an
+  alias in the same attribute, given twice, or with a value other than
+  `true` / `false` is a compile error.
+- The formal, the usage and the `@param` line list the choices only.
+- The wrapper passes the aliases to its check as `aliases = base::c("grey" =
+  "gray")`, and the clause that names the listed ones as `listed = " (or
+  \"grey\" for \"gray\")"`, rendered in Rust by the code that words the
+  Rust-side errors, so R and Rust word it alike. A type without aliases
+  gets the same wrapper as before aliases existed.
 - The derive refuses, at the alias, one that is empty, `"NA"`, already a
   choice, given twice, or a prefix of another variant's choice (`alias =
   "re"` on `Gray` would change what `"re"`, today `"red"`, selects). A prefix
@@ -777,10 +795,18 @@ input, as a derived enum's does, so `Either<InterpChoice, String>` is refused
 like `Either<Route, String>` (see [Choice or Another
 Value](#choice-or-another-value-either-t-r)).
 
-[Aliases](#aliases) go in `MatchArg::ALIASES` as `(alias, choice)` pairs,
-`const ALIASES: &'static [(&'static str, &'static str)] = &[("nn",
-"nearest")];`, not in `from_choice`: the wrapper's check reads `ALIASES` and
-never reaches a `from_choice` that maps `"nn"`, so the two would disagree.
+[Aliases](#aliases) go in `MatchArg::ALIASES`, not in `from_choice`: the
+wrapper's check reads `ALIASES` and never reaches a `from_choice` that maps
+`"nn"`, so the two would disagree. `MatchArgAlias::new` makes a listed
+alias, `MatchArgAlias::unlisted` one the errors don't name:
+
+```rust
+const ALIASES: &'static [MatchArgAlias] = &[
+    MatchArgAlias::new("nn", "nearest"),
+    MatchArgAlias::unlisted("straight", "linear"),
+];
+```
+
 The wrappers writer refuses the aliases the derive refuses, plus one whose
 choice is not in `CHOICES`, with an error naming the parameter's placeholder.
 `rpkg/src/rust/match_arg_foreign_tests.rs` is the reference fixture.

@@ -4,7 +4,8 @@
 //! without the attribute, whose message the conversion arm takes from
 //! `__mx_conversion_arg_message!` (#1767), and `match_arg_param_with_default`
 //! for a `default = "..."` parameter, against the formal the wrappers writer
-//! builds for it (#1767).
+//! builds for it (#1767). With aliases, both name the listed ones after the
+//! choices, from the clause the wrappers writer passes the R helper (#2148).
 //!
 //! The R side is the preamble source itself (`registry::ARG_CHECK_HELPERS`),
 //! evaluated in a fresh environment, so the comparison is against the text the
@@ -14,6 +15,7 @@ mod r_test_utils;
 
 use miniextendr_api::expression::r_eval_str;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
+use miniextendr_api::match_arg::MatchArgAlias;
 use miniextendr_api::registry::{ARG_CHECK_HELPERS, match_arg_aliases_arg, match_arg_formal};
 use miniextendr_api::sys::R_GlobalEnv;
 use miniextendr_api::{
@@ -22,16 +24,16 @@ use miniextendr_api::{
 };
 
 /// A choice type over arbitrary strings: `from_choice` is an exact lookup in
-/// `CHOICES`, as the derive's is, and the aliases are `(alias, choice)`
-/// pairs, as the derive writes them.
+/// `CHOICES`, as the derive's is, and the aliases are `new(alias, choice)`
+/// (listed) or `unlisted(alias, choice)` entries, as the derive writes them.
 macro_rules! choice_type {
-    ($name:ident, [$($choice:literal),+ $(,)?] $(, aliases = [$(($alias:literal, $target:literal)),+ $(,)?])?) => {
+    ($name:ident, [$($choice:literal),+ $(,)?] $(, aliases = [$($kind:ident($alias:literal, $target:literal)),+ $(,)?])?) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
         struct $name(usize);
 
         impl MatchArg for $name {
             const CHOICES: &'static [&'static str] = &[$($choice),+];
-            $(const ALIASES: &'static [(&'static str, &'static str)] = &[$(($alias, $target)),+];)?
+            $(const ALIASES: &'static [MatchArgAlias] = &[$(MatchArgAlias::$kind($alias, $target)),+];)?
 
             fn from_choice(choice: &str) -> Option<Self> {
                 Self::CHOICES.iter().position(|c| *c == choice).map($name)
@@ -51,15 +53,38 @@ choice_type!(Quoted, ["say \"hi\"", r"c:\path", "plain"]);
 choice_type!(Single, ["only"]);
 choice_type!(WithEmpty, ["", "x"]);
 // Aliases (#1843): "gr" is a unique prefix of "gray" and must stay one.
+// Written out of the order of their choices, which the messages follow
+// (#2148).
 choice_type!(
     Shade,
     ["red", "gray", "blue"],
-    aliases = [("grey", "gray"), ("rouge", "red")]
+    aliases = [new("grey", "gray"), new("rouge", "red")]
 );
 choice_type!(
     QuotedAlias,
     ["say \"hi\"", "plain"],
-    aliases = [("hello \"you\"", "say \"hi\""), (r"c:\plain", "plain")]
+    aliases = [
+        new("hello \"you\"", "say \"hi\""),
+        new(r"c:\plain", "plain")
+    ]
+);
+// Every alias unlisted: the messages of a type without aliases.
+choice_type!(
+    QuietShade,
+    ["red", "gray", "blue"],
+    aliases = [unlisted("grey", "gray"), unlisted("rouge", "red")]
+);
+// Listed and unlisted aliases, several on one choice.
+choice_type!(
+    MixedShade,
+    ["red", "gray", "blue"],
+    aliases = [
+        unlisted("grey", "gray"),
+        new("Grau", "gray"),
+        new("bleu", "blue"),
+        new("gris", "gray"),
+        unlisted("rouge", "red"),
+    ]
 );
 
 /// `c("a", "b")`: the formal the wrappers writer splices for a `match_arg`
@@ -68,8 +93,9 @@ fn r_formal<T: MatchArg>(preferred: &str) -> String {
     match_arg_formal(T::CHOICES, preferred, "test")
 }
 
-/// `, aliases = base::c(...)`, or nothing: the argument the wrappers writer
-/// splices into the check of a `match_arg` parameter of type `T` (#1843).
+/// `, aliases = base::c(...)` (and `, listed = "..."` when an alias is
+/// listed), or nothing: the arguments the wrappers writer splices into the
+/// check of a `match_arg` parameter of type `T` (#1843, #2148).
 fn r_aliases<T: MatchArg>() -> String {
     match_arg_aliases_arg(T::CHOICES, T::ALIASES, "test")
 }
@@ -374,8 +400,9 @@ fn match_arg_param_with_default_agrees_with_the_rotated_formal() {
 
 /// Aliases (#1843) on all three paths: an alias typed in full selects its
 /// choice; a prefix still matches the choices only, so a prefix of a choice
-/// keeps selecting it and a prefix of an alias is no match; the messages list
-/// the choices only.
+/// keeps selecting it and a prefix of an alias is no match; the messages name
+/// the listed aliases after the choices, in the order of the choices
+/// (#2148).
 #[test]
 fn aliases_agree_with_the_wrapper_helper() {
     r_test_utils::with_r_thread(|| unsafe {
@@ -384,9 +411,9 @@ fn aliases_agree_with_the_wrapper_helper() {
 
         assert_eq!(
             r_aliases::<Shade>(),
-            r#", aliases = base::c("grey" = "gray", "rouge" = "red")"#
+            r#", aliases = base::c("grey" = "gray", "rouge" = "red"), listed = " (or \"rouge\" for \"red\", \"grey\" for \"gray\")""#
         );
-        let one_of = r#"'mode' should be one of "red", "gray", "blue""#;
+        let one_of = r#"'mode' should be one of "red", "gray", "blue" (or "rouge" for "red", "grey" for "gray")"#;
         let rows: &[(&str, Outcome)] = &[
             (r#""grey""#, ok("gray")),
             (r#""rouge""#, ok("red")),
@@ -419,7 +446,8 @@ fn aliases_agree_with_the_wrapper_helper() {
         }
 
         // A `default = "..."` formal: the aliases are matched the same way,
-        // and the message follows the formal's order.
+        // and the message lists the choices in the formal's order, the
+        // aliases in the order of `CHOICES`.
         let blue = Shade(2);
         assert_eq!(
             agree_with_default::<Shade>(env, r#""grey""#, "blue", blue),
@@ -431,13 +459,22 @@ fn aliases_agree_with_the_wrapper_helper() {
         );
         assert_eq!(
             agree_with_default::<Shade>(env, r#""gre""#, "blue", blue),
-            err(r#"'mode' should be one of "blue", "red", "gray""#)
+            err(
+                r#"'mode' should be one of "blue", "red", "gray" (or "rouge" for "red", "grey" for "gray")"#
+            )
+        );
+        assert_eq!(
+            agree_with_default::<Shade>(env, r#""gre""#, "gray", Shade(1)),
+            err(
+                r#"'mode' should be one of "gray", "red", "blue" (or "rouge" for "red", "grey" for "gray")"#
+            )
         );
 
-        // Escaped in the argument, matched unescaped.
+        // Escaped in the arguments, matched unescaped, and quoted in the
+        // message as the choices are, without escapes.
         assert_eq!(
             r_aliases::<QuotedAlias>(),
-            r#", aliases = base::c("hello \"you\"" = "say \"hi\"", "c:\\plain" = "plain")"#
+            r#", aliases = base::c("hello \"you\"" = "say \"hi\"", "c:\\plain" = "plain"), listed = " (or \"hello \"you\"\" for \"say \"hi\"\", \"c:\\plain\" for \"plain\")""#
         );
         assert_eq!(
             agree::<QuotedAlias>(env, r#""hello \"you\"""#),
@@ -446,8 +483,78 @@ fn aliases_agree_with_the_wrapper_helper() {
         assert_eq!(agree::<QuotedAlias>(env, r#""c:\\plain""#), ok("plain"));
         assert_eq!(
             agree::<QuotedAlias>(env, r#""hello""#),
-            err(r#"'mode' should be one of "say "hi"", "plain""#)
+            err(
+                r#"'mode' should be one of "say "hi"", "plain" (or "hello "you"" for "say "hi"", "c:\plain" for "plain")"#
+            )
         );
+    });
+}
+
+/// A type whose aliases are all unlisted matches them, and words its
+/// messages exactly as a type without aliases (#2148): the writer passes no
+/// `listed` for it.
+#[test]
+fn unlisted_aliases_agree_with_the_wrapper_helper() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        let env = env.get();
+
+        assert_eq!(
+            r_aliases::<QuietShade>(),
+            r#", aliases = base::c("grey" = "gray", "rouge" = "red")"#
+        );
+        let one_of = r#"'mode' should be one of "red", "gray", "blue""#;
+        let rows: &[(&str, Outcome)] = &[
+            (r#""grey""#, ok("gray")),
+            (r#""rouge""#, ok("red")),
+            (r#""gr""#, ok("gray")),
+            (r#""gre""#, err(one_of)),
+            (r#""zzz""#, err(one_of)),
+            ("NA_character_", err(one_of)),
+            (r#"c("grey", "red")"#, err("'mode' must be of length 1")),
+        ];
+        for (input, expected) in rows {
+            assert_eq!(
+                &agree::<QuietShade>(env, input),
+                expected,
+                "QuietShade on `{input}`"
+            );
+        }
+        assert_eq!(
+            agree_with_default::<QuietShade>(env, r#""zzz""#, "gray", QuietShade(1)),
+            err(r#"'mode' should be one of "gray", "red", "blue""#)
+        );
+    });
+}
+
+/// Listed and unlisted aliases together: every alias is matched, and only
+/// the listed ones are named, in the order of their choices, then as
+/// written.
+#[test]
+fn mixed_aliases_agree_with_the_wrapper_helper() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        let env = env.get();
+
+        let one_of = r#"'mode' should be one of "red", "gray", "blue" (or "Grau" for "gray", "gris" for "gray", "bleu" for "blue")"#;
+        let rows: &[(&str, Outcome)] = &[
+            (r#""grey""#, ok("gray")),
+            (r#""Grau""#, ok("gray")),
+            (r#""gris""#, ok("gray")),
+            (r#""rouge""#, ok("red")),
+            (r#""bleu""#, ok("blue")),
+            (r#""gre""#, err(one_of)),
+            (r#"factor("zzz")"#, err(one_of)),
+            ("NA_character_", err(one_of)),
+            ("1L", err("'mode' must be NULL or a character vector")),
+        ];
+        for (input, expected) in rows {
+            assert_eq!(
+                &agree::<MixedShade>(env, input),
+                expected,
+                "MixedShade on `{input}`"
+            );
+        }
     });
 }
 
@@ -475,12 +582,44 @@ unsafe fn r_several_outcome<T: MatchArg>(env: SEXP, input: &str) -> Outcome {
 
 /// `several_ok` maps aliases element by element, in the R helper and in
 /// `match_arg_vec_from_sexp` alike (#1843). The two word a refusal
-/// differently (#1806), so a refusal is compared as a refusal only.
+/// differently (#1806), so a refusal is compared as a refusal, and by the
+/// clause naming the listed aliases that both end on (#2148).
 #[test]
 fn several_ok_aliases_agree_with_the_wrapper_helper() {
     r_test_utils::with_r_thread(|| unsafe {
         let env = helpers_env();
         let env = env.get();
+
+        // What the conversion of a `several_ok` parameter reports.
+        let rust_message = |input: &str| {
+            let value = OwnedProtect::new(r_eval_str(input, env).expect("evaluates"));
+            let e = miniextendr_api::match_arg_vec_from_sexp::<MixedShade>(value.get())
+                .expect_err("refused");
+            miniextendr_api::__mx_conversion_arg_message!(SexpError::from(e), "mode")
+                .expect("a match_arg error words the whole argument error")
+        };
+        let clause = r#" (or "Grau" for "gray", "gris" for "gray", "bleu" for "blue")"#;
+        assert_eq!(
+            r_several_outcome::<MixedShade>(env, r#"c("grey", "zzz")"#),
+            [
+                "error".to_string(),
+                format!(
+                    r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue"{clause}"#
+                )
+            ]
+        );
+        assert_eq!(
+            rust_message(r#"c("grey", "zzz")"#),
+            format!(r#"'mode' should be one of "red", "gray", "blue"{clause}"#)
+        );
+        assert_eq!(
+            r_several_outcome::<QuietShade>(env, r#"c("grey", "zzz")"#),
+            [
+                "error",
+                r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue""#
+            ]
+        );
+
         let rows: &[(&str, &[&str])] = &[
             (r#"c("grey", "red")"#, &["gray", "red"]),
             (r#"c("rouge", "gr", "grey")"#, &["red", "gray", "gray"]),
@@ -503,7 +642,7 @@ fn several_ok_aliases_agree_with_the_wrapper_helper() {
                 if *input == r#"c("grey", "zzz")"# {
                     assert_eq!(
                         r[1],
-                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue""#
+                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue" (or "rouge" for "red", "grey" for "gray")"#
                     );
                 }
             } else {

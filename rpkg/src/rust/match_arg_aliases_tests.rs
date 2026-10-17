@@ -2,8 +2,10 @@
 //! on `Shade::Gray` lets a user write `"grey"` for the choice `"gray"`
 //! without making it a fourth choice. The alias is matched only when typed in
 //! full (`"gr"` stays the prefix of `"gray"`), on every parameter shape below
-//! and by the Rust matchers, and appears nowhere the choices are listed: the
-//! formal, the usage, the `@param` line and the errors.
+//! and by the Rust matchers. Every error that lists the choices names it
+//! after them, `(or "grey" for "gray")`, unless it says `listed = false`
+//! (#2148); the formal, the usage and the `@param` line list the choices
+//! only.
 
 use miniextendr_api::{MatchArg, Missing, SEXP, miniextendr};
 
@@ -111,6 +113,102 @@ pub fn match_arg_alias_shade_or_number(
         miniextendr_api::either_impl::Either::Right(n) => format!("number:{n}"),
     }
 }
+
+// region: listed and unlisted aliases (#2148)
+
+/// A dosing route: `"oral"` and `"infusion"` are listed aliases, `"ev"` an
+/// unlisted one.
+#[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum Route {
+    #[match_arg(alias = "oral")]
+    #[match_arg(alias = "ev", listed = false)]
+    Extravascular,
+    IvBolus,
+    #[match_arg(alias = "infusion")]
+    IvInfusion,
+}
+
+/// `route` matched by the generated wrapper.
+///
+/// @param route A dosing route.
+#[miniextendr(internal)]
+pub fn match_arg_alias_route(#[miniextendr(match_arg)] route: Route) -> String {
+    format!("{route:?}")
+}
+
+/// Several routes, each matched on its own.
+///
+/// @param routes One or more dosing routes.
+#[miniextendr(internal)]
+pub fn match_arg_alias_routes(#[miniextendr(match_arg, several_ok)] routes: Vec<Route>) -> String {
+    routes
+        .iter()
+        .map(|route| format!("{route:?}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// `route` converted by `Route`'s own `TryFromSexp`, with no `match_arg`
+/// check in the wrapper.
+///
+/// @param route A dosing route.
+#[miniextendr(internal)]
+pub fn match_arg_alias_route_converted(route: Route) -> String {
+    format!("{route:?}")
+}
+
+/// `route` matched by the body with `match_arg_param()`.
+///
+/// @param route A dosing route.
+#[miniextendr(internal)]
+pub fn match_arg_alias_route_param(route: SEXP) -> String {
+    let route: Route =
+        miniextendr_api::match_arg_param(route, "route").unwrap_or_else(|e| e.raise());
+    format!("{route:?}")
+}
+
+/// A dosing route or a number.
+///
+/// @param route A dosing route, or a number.
+#[cfg(feature = "either")]
+#[miniextendr(internal)]
+pub fn match_arg_alias_route_or_number(
+    #[miniextendr(match_arg)] route: miniextendr_api::either_impl::Either<Route, f64>,
+) -> String {
+    match route {
+        miniextendr_api::either_impl::Either::Left(route) => format!("{route:?}"),
+        miniextendr_api::either_impl::Either::Right(n) => format!("number:{n}"),
+    }
+}
+
+/// A colour whose one alias is unlisted: its errors read as without aliases.
+#[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
+#[match_arg(rename_all = "lower")]
+pub enum QuietShade {
+    Red,
+    #[match_arg(alias = "grey", listed = false)]
+    Gray,
+    Blue,
+}
+
+/// `color` matched by the generated wrapper.
+///
+/// @param color A colour.
+#[miniextendr(internal)]
+pub fn match_arg_alias_quiet_shade(#[miniextendr(match_arg)] color: QuietShade) -> String {
+    format!("{color:?}")
+}
+
+/// `color` converted by `QuietShade`'s own `TryFromSexp`.
+///
+/// @param color A colour.
+#[miniextendr(internal)]
+pub fn match_arg_alias_quiet_shade_converted(color: QuietShade) -> String {
+    format!("{color:?}")
+}
+
+// endregion
 
 // region: an impl-block method
 

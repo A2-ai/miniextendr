@@ -282,10 +282,15 @@ effective default**. Details:
   the R formal default is substituted in `write_r_wrappers_to_file`. Adding
   `default = "\"Variant\""` alongside `match_arg` rotates that choice to
   position 0 so it becomes the `match.arg` default. `#[match_arg(alias =
-  "grey")]` on a variant (`MatchArg::ALIASES`) accepts another spelling,
-  typed in full only, and lists it nowhere; the writer passes it to the
-  check as `aliases = base::c(...)` (#1843). Literal `choices(...)` lists
-  take no aliases (#1873).
+  "grey")]` on a variant (`MatchArg::ALIASES`, `MatchArgAlias` entries)
+  accepts another spelling, typed in full only; the writer passes it to the
+  check as `aliases = base::c(...)` (#1843). Every error that lists the
+  choices names the listed aliases after them, `(or "grey" for "gray")`:
+  `match_arg::listed_aliases_clause` renders it for the Rust errors and, as
+  the check's `listed = "..."` argument, for the R ones (#2148).
+  `listed = false` in the alias's own attribute (`MatchArgAlias::unlisted`)
+  keeps it out; the formal, usage and `@param` line never show aliases.
+  Literal `choices(...)` lists take no aliases (#1873).
 - Invalid combinations are compile errors (`validate_per_param_attr_conflicts`
   in `miniextendr-macros/src/miniextendr_fn.rs`): `choices` + `default`
   (choices derives its default from the first choice), `coerce` + `choices`,

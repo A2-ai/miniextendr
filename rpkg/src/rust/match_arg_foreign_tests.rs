@@ -6,12 +6,13 @@
 //! would have generated (`MatchArg`, `TryFromSexp`, `IntoR`) by hand. Every
 //! `match_arg` feature then works unchanged: the `match.arg()` prelude, the
 //! choices spliced into the R formal default, `several_ok`, factor input, the
-//! `Vec<T>` return path, and the auto-injected `@param` choices doc.
+//! `Vec<T>` return path, the auto-injected `@param` choices doc, and aliases
+//! (`MatchArg::ALIASES`, one listed in the errors and one not, #2148).
 //!
 //! `wrapped` below stands in for that foreign crate: plain Rust, no
 //! miniextendr types anywhere.
 
-use miniextendr_api::match_arg::MatchArg;
+use miniextendr_api::match_arg::{MatchArg, MatchArgAlias};
 use miniextendr_api::{IntoR, SEXP, SexpError, TryFromSexp, miniextendr};
 
 /// Stand-in for a library crate that knows nothing about R.
@@ -37,6 +38,11 @@ pub struct InterpChoice(pub wrapped::Interp);
 
 impl MatchArg for InterpChoice {
     const CHOICES: &'static [&'static str] = &["linear", "cubic", "nearest"];
+    // `"nn"` is named in the errors, `"straight"` only matched (#2148).
+    const ALIASES: &'static [MatchArgAlias] = &[
+        MatchArgAlias::unlisted("straight", "linear"),
+        MatchArgAlias::new("nn", "nearest"),
+    ];
 
     fn from_choice(choice: &str) -> Option<Self> {
         let inner = match choice {
