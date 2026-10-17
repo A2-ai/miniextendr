@@ -203,6 +203,7 @@ impl ErrPartsMode {
 /// [`CWrapperContextBuilder`] and consumed by [`CWrapperContext::generate`], which emits
 /// both the `extern "C-unwind"` wrapper and the corresponding `R_CallMethodDef` constant.
 pub struct CWrapperContext {
+    formal_names: crate::r_wrapper_builder::FormalNames,
     /// Identifier of the original Rust function or method being wrapped.
     pub fn_ident: syn::Ident,
     /// The name R calls the item by, for the messages the wrapper raises
@@ -320,6 +321,7 @@ impl CWrapperContext {
     /// to configure the context, then call [`CWrapperContextBuilder::build`] to finalize.
     pub fn builder(fn_ident: syn::Ident, c_ident: syn::Ident) -> CWrapperContextBuilder {
         CWrapperContextBuilder {
+            formal_names: crate::r_wrapper_builder::FormalNames::default(),
             fn_ident,
             r_name: None,
             c_ident,
@@ -489,7 +491,8 @@ impl CWrapperContext {
 
     /// Configure argument conversion once for both metadata and value conversion.
     fn conversion_builder(&self) -> crate::RustConversionBuilder {
-        let mut builder = crate::RustConversionBuilder::new();
+        let mut builder =
+            crate::RustConversionBuilder::new().with_formal_names(self.formal_names.clone());
         if self.inferred_signature.is_some() {
             builder = builder.with_inferred_types();
         }
@@ -534,7 +537,9 @@ impl CWrapperContext {
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
                 && let Some(borrow) = builder.native_borrow_metadata(pt, sexp_ident)
             {
-                let name = crate::naming::ident_name(&pat_ident.ident);
+                let name = self
+                    .formal_names
+                    .resolve(&crate::naming::ident_name(&pat_ident.ident));
                 metadata.push(borrow);
                 args.push(quote! { (#sexp_ident, #name) });
             }
@@ -1460,6 +1465,7 @@ impl CWrapperContext {
 /// Optional fields like `thread_strategy` and `return_handling` are auto-detected from
 /// the function signature if not explicitly set.
 pub struct CWrapperContextBuilder {
+    formal_names: crate::r_wrapper_builder::FormalNames,
     /// Rust function/method identifier (set at construction).
     fn_ident: syn::Ident,
     /// R-facing name for raised messages. Defaults to `fn_ident`.
@@ -1527,6 +1533,11 @@ pub struct CWrapperContextBuilder {
 }
 
 impl CWrapperContextBuilder {
+    pub(crate) fn formal_names(mut self, names: crate::r_wrapper_builder::FormalNames) -> Self {
+        self.formal_names = names;
+        self
+    }
+
     /// Sets the name R calls the item by, used in the messages the wrapper
     /// raises in place of the Rust identifier. Share the resolved name with
     /// the R wrapper generator, including renames and postfixes.
@@ -1794,6 +1805,7 @@ impl CWrapperContextBuilder {
             .unwrap_or_else(|| detect_return_handling(&self.output));
 
         CWrapperContext {
+            formal_names: self.formal_names,
             fn_ident: self.fn_ident,
             r_name: self.r_name,
             c_ident: self.c_ident,

@@ -20,10 +20,9 @@
 //! can leave it out, and the author R code spliced into a wrapper (`r_entry`,
 //! `r_on_exit`, `r_post_checks`, parameter defaults) is qualified the same way.
 //!
-//! Only undotted names can collide. A formal is a Rust parameter name without
-//! its leading underscores and without `r#`, and a Rust identifier cannot
-//! contain `.`, so no formal is named `is.character`, `match.call`, `on.exit`,
-//! `.Call` or `.miniextendr_arg_error`. Those calls are never qualified.
+//! Explicit parameter formals may contain dots. Qualify dotted base callees
+//! too; formal validation reserves the framework's own dotted bindings and
+//! helper prefixes.
 //!
 //! Only the colliding calls are qualified because `::` costs time on every
 //! call: the byte compiler compiles `base::f(x)` as a call to the `::`
@@ -41,24 +40,34 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::ops::Range;
 
-/// The undotted base functions that generated wrapper text calls by their bare
+/// The base functions that generated wrapper text calls by their bare
 /// names.
 ///
 /// A call to one of these is qualified when a formal of the wrapper has the
 /// same name. The `generated_callees_are_listed` test checks the generated
 /// wrappers in the macro snapshots and the tracked cross-package wrapper
-/// files, and fails on an undotted callee that is missing here.
+/// files, and fails on a callee that is missing here.
 pub(crate) const BASE_CALLEES: &[&str] = &[
+    ".Call",
+    ".subset2",
     "NextMethod",
     "UseMethod",
     "all",
     "anyNA",
+    "as.character",
+    "as.complex",
+    "as.double",
+    "as.integer",
+    "as.list",
+    "as.list.environment",
+    "as.logical",
+    "as.numeric",
+    "as.raw",
     "attr",
     "c",
-    // The empty completion of a restored pointer under
-    // `restored(refuse = "every_read")` (#1901).
     "character",
     "class",
+    "do.call",
     "double",
     "emptyenv",
     "environment",
@@ -69,6 +78,25 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "identical",
     "inherits",
     "invisible",
+    "is.atomic",
+    "is.character",
+    "is.complex",
+    "is.data.frame",
+    "is.double",
+    "is.environment",
+    "is.factor",
+    "is.finite",
+    "is.function",
+    "is.integer",
+    "is.list",
+    "is.logical",
+    "is.matrix",
+    "is.na",
+    "is.null",
+    "is.numeric",
+    "is.primitive",
+    "is.raw",
+    "is.vector",
     "isTRUE",
     "lapply",
     "length",
@@ -76,12 +104,14 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "local",
     "ls",
     "match",
+    "match.call",
     "missing",
     "names",
-    // The argument count an `NArgs` parameter receives (#1860).
     "nargs",
+    "new.env",
+    "on.exit",
+    "parent.frame",
     "paste0",
-    // The list lookup of the S3 field methods (#1891).
     "pmatch",
     "quote",
     "return",
@@ -93,6 +123,9 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "structure",
     "substitute",
     "switch",
+    "sys.call",
+    "sys.function",
+    "sys.parent",
     "topenv",
     "trunc",
     "typeof",
@@ -109,11 +142,20 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
 /// pooled across its methods. A method whose sibling has a colliding formal is
 /// then qualified too, which calls the same function.
 pub(crate) fn formal_names<'a>(
-    signatures: impl IntoIterator<Item = &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>>,
+    signatures: impl IntoIterator<
+        Item = (
+            &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+            crate::r_wrapper_builder::FormalNames,
+        ),
+    >,
 ) -> BTreeSet<String> {
     signatures
         .into_iter()
-        .flat_map(|inputs| crate::r_wrapper_builder::r_formal_names(inputs).map(|(name, _)| name))
+        .flat_map(|(inputs, names)| {
+            crate::r_wrapper_builder::r_formal_names(inputs, &names)
+                .map(|(name, _)| name)
+                .collect::<Vec<_>>()
+        })
         .collect()
 }
 

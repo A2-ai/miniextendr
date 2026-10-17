@@ -76,7 +76,7 @@ pub(crate) fn native_borrow_checks<'a>(
 /// the method's return has been converted.
 pub(crate) fn argument(
     name: &syn::Ident,
-    diagnostic_name: &str,
+    r_name: &str,
     ty: &syn::Type,
     impl_ty: &impl quote::ToTokens,
     index: usize,
@@ -85,7 +85,6 @@ pub(crate) fn argument(
 ) -> TokenStream {
     let target = target.filter(|_| crate::type_inspect::self_ref_mutability(ty).is_none());
     let input = quote! { unsafe { *#argv.add(#index) } };
-    let r_name = crate::r_wrapper_builder::normalize_r_arg_string(diagnostic_name);
     if let Some(param) = crate::type_inspect::unevaluated_param(ty) {
         let slot = format_ident!(
             "__mx_capture_{}",
@@ -95,7 +94,7 @@ pub(crate) fn argument(
         let binding = crate::rust_conversion_builder::unevaluated_binding(
             name,
             &slot,
-            &r_name,
+            r_name,
             ty,
             param,
             &crate::crate_config::conversion_error_class(),
@@ -170,7 +169,7 @@ pub(crate) fn argument(
         };
     }
     let err_arm = crate::rust_conversion_builder::shim_conversion_err_arm(
-        &r_name,
+        r_name,
         ty,
         (!rooted).then_some(&read_ty),
         target.filter(|_| !rooted),

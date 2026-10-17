@@ -1,6 +1,5 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 5893
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Documented S7 Class
@@ -18,7 +17,7 @@ Documented <- S7::new_class("Documented",
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   }, setter = function(self, value) {
-    .val <- .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr)
+    .val <- .Call(C_miniextendr_macros_Documented__set_count, .call = NULL, self@.ptr, value)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     self
   })

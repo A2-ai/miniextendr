@@ -9,13 +9,22 @@ fn parse_inputs(s: &str) -> syn::punctuated::Punctuated<syn::FnArg, syn::token::
 fn test_normalize_arg_ident() {
     // Leading underscores are stripped
     let ident = syn::Ident::new("_x", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "x");
+    assert_eq!(
+        normalize_r_arg_string(&crate::naming::ident_name(&ident)),
+        "x"
+    );
 
     let ident = syn::Ident::new("__private", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "private");
+    assert_eq!(
+        normalize_r_arg_string(&crate::naming::ident_name(&ident)),
+        "private"
+    );
 
     let ident = syn::Ident::new("value", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "value");
+    assert_eq!(
+        normalize_r_arg_string(&crate::naming::ident_name(&ident)),
+        "value"
+    );
 }
 
 #[test]
@@ -92,25 +101,31 @@ fn test_dots_position_after_receiver() {
     let builder = RArgumentBuilder::new(&inputs);
     assert_eq!(builder.build_formals(), "n, ..., flag");
     assert_eq!(builder.build_call_args(), "n, list(...), flag");
-    let builder = RArgumentBuilder::new(&inputs).skip_first();
-    assert_eq!(builder.build_formals(), "n, ..., flag");
-    assert_eq!(builder.build_call_args(), "n, list(...), flag");
-
-    let inputs = parse_inputs("x: i32, n: i32, rest: &Dots, flag: bool");
-    let builder = RArgumentBuilder::new(&inputs).skip_first();
-    assert_eq!(builder.build_formals(), "n, ..., flag");
-    assert_eq!(builder.build_call_args(), "n, list(...), flag");
 }
 
 /// `check_r_formals` skips the dots wherever they sit (their formal is
 /// `...`) and still checks the formals after them.
 #[test]
 fn check_r_formals_skips_dots_at_any_position() {
-    check_r_formals(&parse_inputs("x: i32, r#in: &Dots, flag: bool"), &[]).expect("accepted");
-    check_r_formals(&parse_inputs("r#if: &Dots, x: i32"), &[]).expect("accepted");
-    let err = check_r_formals(&parse_inputs("x: i32, rest: &Dots, r#in: i32"), &[])
-        .expect_err("`in` after the dots is still refused")
-        .to_string();
+    check_r_formals(
+        &parse_inputs("x: i32, r#in: &Dots, flag: bool"),
+        &Default::default(),
+        &[],
+    )
+    .expect("accepted");
+    check_r_formals(
+        &parse_inputs("r#if: &Dots, x: i32"),
+        &Default::default(),
+        &[],
+    )
+    .expect("accepted");
+    let err = check_r_formals(
+        &parse_inputs("x: i32, rest: &Dots, r#in: i32"),
+        &Default::default(),
+        &[],
+    )
+    .expect_err("`in` after the dots is still refused")
+    .to_string();
     assert!(
         err.contains("becomes the R argument `in`, which is an R reserved word"),
         "{err}"
@@ -118,9 +133,9 @@ fn check_r_formals_skips_dots_at_any_position() {
 }
 
 #[test]
-fn test_skip_first() {
+fn test_receiver_is_not_an_argument() {
     let inputs = parse_inputs("&self, x: i32, y: f64");
-    let builder = RArgumentBuilder::new(&inputs).skip_first();
+    let builder = RArgumentBuilder::new(&inputs);
     assert_eq!(builder.build_formals(), "x, y");
     assert_eq!(builder.build_call_args(), "x, y");
 }
@@ -430,10 +445,10 @@ fn snapshot_formals_and_call_args() {
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
-    // With skip_first (method receiver)
+    // Method receiver is skipped automatically
     output.push_str("\n# Skip first (method)\n");
     let inputs = parse_inputs("&self, x: i32, y: f64");
-    let builder = RArgumentBuilder::new(&inputs).skip_first();
+    let builder = RArgumentBuilder::new(&inputs);
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
@@ -493,30 +508,24 @@ fn snapshot_formals_and_call_args() {
 #[test]
 fn snapshot_nargs_formals_and_call_args() {
     let mut output = String::new();
-    for (label, sig, skip_first) in [
-        ("NArgs first", "n: NArgs, x: SEXP, i: Missing<SEXP>", false),
+    for (label, sig) in [
+        ("NArgs first", "n: NArgs, x: SEXP, i: Missing<SEXP>"),
         (
             "NArgs between (with dots and a defaulted formal)",
             "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, n: miniextendr_api::NArgs, _dots: &Dots, drop: Missing<SEXP>",
-            false,
         ),
         (
             "NArgs last (replacement method, value before it)",
             "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, value: SEXP, _nargs: NArgs",
-            false,
         ),
         (
             "NArgs on a method (receiver skipped)",
             "&self, i: i32, nargs: NArgs",
-            true,
         ),
     ] {
         output.push_str(&format!("# {label}\n"));
         let inputs = parse_inputs(sig);
-        let mut builder = RArgumentBuilder::new(&inputs);
-        if skip_first {
-            builder = builder.skip_first();
-        }
+        let builder = RArgumentBuilder::new(&inputs);
         output.push_str(&format!("formals: {}\n", builder.build_formals()));
         output.push_str(&format!("call_args: {}\n\n", builder.build_call_args()));
     }
@@ -530,14 +539,16 @@ fn snapshot_nargs_formals_and_call_args() {
 #[test]
 fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
     let inputs = parse_inputs("x: SEXP, nargs: NArgs");
-    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    let names: Vec<String> = r_formal_names(&inputs, &Default::default())
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(names, ["x"]);
-    check_r_formals(&inputs, &[]).expect("NArgs takes no formal name");
+    check_r_formals(&inputs, &Default::default(), &[]).expect("NArgs takes no formal name");
     let call = format!(
         ".Call(C_f, {})",
         RArgumentBuilder::new(&inputs).build_call_args()
     );
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Default::default())]);
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
         ".Call(C_f, x, nargs())"
@@ -550,7 +561,7 @@ fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
         ".Call(C_f, {})",
         RArgumentBuilder::new(&inputs).build_call_args()
     );
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Default::default())]);
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
         ".Call(C_f, x, nargs, base::nargs())"
@@ -558,7 +569,8 @@ fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
 
     // Two parameters that both become `n` still collide; `NArgs` is neither.
     let inputs = parse_inputs("n: i32, _n: NArgs");
-    check_r_formals(&inputs, &[]).expect("NArgs is no formal, so no collision");
+    check_r_formals(&inputs, &Default::default(), &[])
+        .expect("NArgs is no formal, so no collision");
 }
 // endregion
 
@@ -1130,41 +1142,27 @@ fn match_arg_statement_several_either_caller() {
 #[test]
 fn snapshot_lazy_dots_formals_and_call_args() {
     let mut output = String::new();
-    for (label, sig, skip_first) in [
-        ("LazyDots first", "rest: LazyDots, x: i32", false),
-        (
-            "LazyDots between",
-            "x: i32, rest: LazyDots<'_>, flag: bool",
-            false,
-        ),
-        (
-            "LazyDots last",
-            "x: SEXP, rest: miniextendr_api::LazyDots",
-            false,
-        ),
+    for (label, sig) in [
+        ("LazyDots first", "rest: LazyDots, x: i32"),
+        ("LazyDots between", "x: i32, rest: LazyDots<'_>, flag: bool"),
+        ("LazyDots last", "x: SEXP, rest: miniextendr_api::LazyDots"),
         (
             "the `[` method: Missing formals, LazyDots and NArgs",
             "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, drop: Missing<SEXP>, rest: LazyDots, nargs: NArgs",
-            false,
         ),
         (
             "`drop` after the dots (base `[`'s `x[i, j, ..., drop]` order)",
             "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, rest: LazyDots, drop: Missing<SEXP>",
-            false,
         ),
         (
             "LazyDots on a method (receiver skipped)",
             "&self, n: i32, rest: LazyDots",
-            true,
         ),
-        ("&Dots unchanged", "x: i32, rest: &Dots", false),
+        ("&Dots unchanged", "x: i32, rest: &Dots"),
     ] {
         output.push_str(&format!("# {label}\n"));
         let inputs = parse_inputs(sig);
-        let mut builder = RArgumentBuilder::new(&inputs);
-        if skip_first {
-            builder = builder.skip_first();
-        }
+        let builder = RArgumentBuilder::new(&inputs);
         output.push_str(&format!("formals: {}\n", builder.build_formals()));
         output.push_str(&format!("call_args: {}\n\n", builder.build_call_args()));
     }
@@ -1178,12 +1176,14 @@ fn snapshot_lazy_dots_formals_and_call_args() {
 #[test]
 fn lazy_dots_is_no_named_formal_for_the_name_checks_and_shadowing() {
     let inputs = parse_inputs("x: SEXP, environment: LazyDots");
-    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    let names: Vec<String> = r_formal_names(&inputs, &Default::default())
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(names, ["x"]);
     let inputs = parse_inputs("environment: SEXP, rest: LazyDots");
     let call_args = RArgumentBuilder::new(&inputs).build_call_args();
     assert_eq!(call_args, "environment, environment()");
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Default::default())]);
     let text = format!(".Call(C_f, .call = environment(), {call_args})");
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&text, &formals),

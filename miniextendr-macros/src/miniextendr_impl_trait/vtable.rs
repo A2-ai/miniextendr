@@ -175,7 +175,12 @@ pub(super) fn generate_vtable_static(
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(
         &r_wrapper_string,
-        &crate::r_shadowing::formal_names(methods_owned.iter().map(|m| &m.sig.inputs)),
+        &crate::r_shadowing::formal_names(methods_owned.iter().map(|m| {
+            (
+                &m.sig.inputs,
+                crate::r_wrapper_builder::FormalNames::from_params(&m.per_param),
+            )
+        })),
     );
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
@@ -447,8 +452,35 @@ fn generate_concrete_vtable_shims(
             .count();
         let expected_argc = param_count as i32;
 
-        let diagnostic_names = declared_param_names(declaration, method_ident)
-            .expect("trait metadata includes each callback's argument names");
+        // ABI errors use declaration names, as the declaration-site shims do.
+        // Wrapper-specific conversions still use the impl's resolved formals.
+        let mut declaration_sig = declaration
+            .iter()
+            .find(|declared| declared.sig.ident == *method_ident)
+            .expect("trait metadata includes each callback's arguments")
+            .sig
+            .clone();
+        let mut params = std::collections::HashMap::new();
+        crate::miniextendr_fn::take_method_param_attrs(
+            &mut declaration_sig,
+            &mut params,
+            &mut Default::default(),
+        )
+        .expect("declaration parameter options were validated at definition");
+        let formal_names = crate::r_wrapper_builder::FormalNames::from_params(&params);
+        let diagnostic_names: Vec<_> = declaration_sig
+            .inputs
+            .iter()
+            .filter_map(|arg| {
+                let syn::FnArg::Typed(arg) = arg else {
+                    return None;
+                };
+                let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                    unreachable!("metadata has named arguments")
+                };
+                Some(formal_names.resolve(&crate::naming::ident_name(&name.ident)))
+            })
+            .collect();
 
         // Generate argument extraction (concrete types, no generics)
         let arg_extractions: Vec<TokenStream> = method
@@ -1458,7 +1490,9 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Build the wrapper using the builder infrastructure
     // Use custom call_method_def_ident to avoid collisions with inherent impl methods
     // Messages R sees name the method as R calls it (`r_name`).
+    let formal_names = crate::r_wrapper_builder::FormalNames::from_params(&method.per_param);
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident.clone())
+        .formal_names(formal_names.clone())
         .r_name(method.r_entry_name(class_system, type_ident, trait_name))
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
@@ -1482,7 +1516,7 @@ pub(super) fn generate_trait_method_c_wrapper(
             (
                 crate::externalptr_args::handle_ident(name),
                 *mutable,
-                crate::naming::ident_name(name),
+                formal_names.resolve(&crate::naming::ident_name(name)),
             )
         })
         .collect();

@@ -19,6 +19,7 @@ use syn::spanned::Spanned;
 /// - Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 /// - Default → TryFromSexp
 pub struct RustConversionBuilder {
+    names: crate::r_wrapper_builder::FormalNames,
     /// Infer copied trait signature types from a concrete method item.
     inferred_types: bool,
     /// Enable coercion for all parameters
@@ -56,6 +57,7 @@ impl RustConversionBuilder {
     /// `conversion_error_class` from the manifest (empty when unset).
     pub fn new() -> Self {
         Self {
+            names: crate::r_wrapper_builder::FormalNames::default(),
             inferred_types: false,
             coerce_all: false,
             coerce_params: Vec::new(),
@@ -68,6 +70,14 @@ impl RustConversionBuilder {
             conversion_error_class: crate::crate_config::conversion_error_class(),
             self_type: None,
         }
+    }
+
+    pub(crate) fn with_formal_names(
+        mut self,
+        names: crate::r_wrapper_builder::FormalNames,
+    ) -> Self {
+        self.names = names;
+        self
     }
 
     pub(crate) fn with_inferred_types(mut self) -> Self {
@@ -466,8 +476,7 @@ impl RustConversionBuilder {
         let ty = &resolved_ty;
         // The R formal's name (`_x` → `x`, `r#type` → `type`): what a
         // conversion condition names in its message and in `e$param`.
-        let r_name =
-            crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(ident));
+        let r_name = self.names.resolve(&crate::naming::ident_name(ident));
         // What a conversion failure of this argument says (#1591): the R-facing
         // expectation (coerce-widened like the R-side check), `e$param` and
         // `e$rust_type`.

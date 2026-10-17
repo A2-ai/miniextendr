@@ -1638,6 +1638,7 @@ pub(crate) fn push_fn_param_tags(
         tags.extend(call_line);
         return match_arg_doc_placeholders;
     }
+    let names = parsed.formal_names();
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -1658,7 +1659,7 @@ pub(crate) fn push_fn_param_tags(
             continue;
         }
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        let r_name = names.resolve(&rust_name);
         if param_documented(tags, &r_name) {
             continue;
         }

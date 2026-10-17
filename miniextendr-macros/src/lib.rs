@@ -1030,8 +1030,12 @@ fn expand_miniextendr(
     // the new value last, as `value` (#1853). Checked on the R formals, so a
     // trailing condition-call marker doesn't hide the parameter before it.
     if let Some(generic) = &s3_generic
-        && let Err(err) =
-            miniextendr_fn::check_replacement_value_param(generic, inputs, rust_ident.span())
+        && let Err(err) = miniextendr_fn::check_replacement_value_param(
+            generic,
+            inputs,
+            &parsed.formal_names(),
+            rust_ident.span(),
+        )
     {
         return err.into_compile_error().into();
     }
@@ -1418,13 +1422,21 @@ fn expand_miniextendr(
         c_wrapper_builder = c_wrapper_builder.strict();
     }
 
-    let c_wrapper = c_wrapper_builder.build().generate();
+    let c_wrapper = c_wrapper_builder
+        .formal_names(parsed.formal_names())
+        .build()
+        .generate();
 
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
-    let mut arg_builder = RArgumentBuilder::new(inputs);
+    let formal_names = parsed.formal_names();
+    let mut arg_builder = RArgumentBuilder::new(inputs).with_formal_names(formal_names.clone());
     // Add user-specified parameter defaults before resolving choice formals.
-    let mut merged_defaults = parsed.param_defaults();
+    let mut merged_defaults: ::std::collections::HashMap<_, _> = parsed
+        .param_defaults()
+        .into_iter()
+        .map(|(name, value)| (formal_names.resolve(&name), value))
+        .collect();
     // For match_arg params, always use the choices placeholder as the formal
     // default — the write-time pass replaces it with `c("a", "b", ...)`.
     // If the user supplied `default = "\"X\""`, capture X as `preferred_default`
@@ -1436,7 +1448,7 @@ fn expand_miniextendr(
     // preferred_default_unquoted_or_empty)
     let mut match_arg_placeholders: Vec<(String, String, String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
+        let r_name = formal_names.resolve(match_arg_param);
         let preferred = match merged_defaults.get(&r_name) {
             Some(raw) => crate::match_arg_keys::extract_match_arg_default(raw),
             None => String::new(),
@@ -1466,7 +1478,7 @@ fn expand_miniextendr(
     // pattern); an `Option<T>` choices param defaults to `NULL` instead
     // (#1473), and a `no_default` one gets none (#1828).
     for (param_name, choices) in parsed.choices_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
+        let r_name = formal_names.resolve(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
         let formal = match parsed.param_attrs(param_name) {
@@ -1719,8 +1731,7 @@ fn expand_miniextendr(
             {
                 let rust_name = crate::naming::ident_name(&pat_ident.ident);
                 if parsed.has_match_arg_attr(&rust_name) {
-                    let r_name =
-                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    let r_name = formal_names.resolve(&rust_name);
                     return Some((r_name, rust_name, pt.ty.as_ref()));
                 }
             }
@@ -1768,8 +1779,7 @@ fn expand_miniextendr(
                 if let Some(attrs) = parsed.param_attrs(&rust_name)
                     && let Some(choices) = attrs.choices.as_ref()
                 {
-                    let r_name =
-                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    let r_name = formal_names.resolve(&rust_name);
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
                     let choices_expr = format!("c({})", quoted.join(", "));
@@ -1817,15 +1827,17 @@ fn expand_miniextendr(
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
         // holds Rust names; normalize to R names.
         let precondition_opts = r_preconditions::PreconditionOptions {
+            names: formal_names.clone(),
             coerce_all,
             coerce_params: coerce_params_list
                 .iter()
-                .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
+                .map(|p| formal_names.resolve(p))
                 .collect(),
             explicit: parsed.explicit_checks(),
             unchecked: r_preconditions::unchecked_params(
                 inputs,
                 |name| parsed.param_attrs(name).and_then(|a| a.preconditions),
+                &formal_names,
                 preconditions,
                 None,
                 crate_config.preconditions,
@@ -1913,8 +1925,10 @@ fn expand_miniextendr(
         )
     };
     // Use a raw string literal for better readability in macro expansion
-    let r_wrapper_str =
-        r_wrapper_raw_literal(&r_wrapper_string, &r_shadowing::formal_names([inputs]));
+    let r_wrapper_str = r_wrapper_raw_literal(
+        &r_wrapper_string,
+        &r_shadowing::formal_names([(inputs, formal_names)]),
+    );
 
     // endregion
 

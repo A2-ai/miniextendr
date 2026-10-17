@@ -1,0 +1,29 @@
+error: parameters `renamed` and `x` both become the R argument `x` (the R name drops leading underscores), and R rejects a repeated argument name. Rename one of them.
+ --> tests/ui/formal_names.rs:4:57
+  |
+4 | fn duplicate(#[miniextendr(formal = "x")] renamed: i32, x: i32) {}
+  |                                                         ^
+
+error: parameter `value` becomes the R argument `.call`, which is reserved for generated wrapper bindings. Choose another formal name.
+ --> tests/ui/formal_names.rs:7:46
+  |
+7 | fn reserved(#[miniextendr(formal = ".call")] value: i32) {}
+  |                                              ^^^^^
+
+error: parameter `value` becomes the R argument `not a name`, which is not a syntactic R argument name. Choose a letter or dot followed by letters, digits, dots or underscores.
+  --> tests/ui/formal_names.rs:10:49
+   |
+10 | fn syntax(#[miniextendr(formal = "not a name")] value: i32) {}
+   |                                                 ^^^^^
+
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `default`, `several_ok`) do not apply to a `Call` parameter: it is bound from the call slot, not from an R argument
+  --> tests/ui/formal_names.rs:13:56
+   |
+13 | fn no_call_formal(#[miniextendr(formal = "call.expr")] value: miniextendr_api::Call) {}
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to the `NArgs` parameter `value`: it is no R argument, the generated wrapper fills it with `nargs()`
+  --> tests/ui/formal_names.rs:16:57
+   |
+16 | fn no_count_formal(#[miniextendr(formal = "arg.count")] value: miniextendr_api::NArgs) {}
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

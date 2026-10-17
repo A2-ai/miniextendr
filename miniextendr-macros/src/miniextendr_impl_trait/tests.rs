@@ -3677,3 +3677,51 @@ fn tpie_carries_no_call_to_inherited_methods() {
 }
 
 // endregion
+
+#[test]
+fn explicit_formals_reach_every_trait_wrapper() {
+    let declared: syn::TraitItemFn = syn::parse_quote! {
+        fn inspect(&self, #[miniextendr(formal = "conf.int", default = "FALSE")] flag: bool) -> bool;
+    };
+    let mut implementation: syn::ItemImpl = syn::parse_quote! {
+        impl Inspect for Named {
+            /// @param conf.int Include intervals.
+            fn inspect(&self, enabled: bool) -> bool { enabled }
+        }
+    };
+    vtable::inherit_method_metadata(&mut implementation, std::slice::from_ref(&declared)).unwrap();
+    let methods = vtable::extract_methods(
+        &implementation,
+        crate::roxygen::RdPage::Rendered,
+        &[declared],
+    )
+    .unwrap();
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let wrapper = page_tag_wrapper(system, &methods).unwrap();
+        for expected in ["conf.int = FALSE", "is.logical(conf.int)", "\"conf.int\""] {
+            assert!(
+                wrapper.contains(expected),
+                "{system:?}: {expected}\n{wrapper}"
+            );
+        }
+        assert!(!wrapper.contains("@param enabled"), "{wrapper}");
+        let native = vtable::generate_trait_method_c_wrapper(
+            &methods[0],
+            &format_ident!("Named"),
+            &syn::parse_quote!(Named),
+            &format_ident!("Inspect"),
+            &syn::parse_quote!(Inspect),
+            system,
+            false,
+        )
+        .to_string();
+        assert!(native.contains("\"conf.int\""), "{native}");
+    }
+}

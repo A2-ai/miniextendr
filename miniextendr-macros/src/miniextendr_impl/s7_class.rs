@@ -848,7 +848,11 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         {
             let ctx = MethodContext::new(setter_method, type_ident);
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
-            let setter_call = ctx.instance_call_null_attr("self@.ptr");
+            let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
+                .null_call_attribution(ctx.call_attribution)
+                .with_self("self@.ptr")
+                .with_args(&["value"])
+                .build();
             let setter_call = ctx.condition_inline_block(&setter_call, "self");
             let call_option =
                 if ctx.call_attribution == crate::r_wrapper_builder::CallAttribution::NoCall {

@@ -406,6 +406,13 @@ pub(crate) fn validate_per_param_attr_conflicts(
     ty: Option<&syn::Type>,
     span: proc_macro2::Span,
 ) -> syn::Result<()> {
+    if attr.formal.is_some() && is_dots {
+        return Err(syn::Error::new(
+            span,
+            "formal cannot rename dots; their R formal is always ...",
+        ));
+    }
+
     if attr.has_convert {
         validate_convert_param(
             ty.expect("parameter validation requires its type"),
@@ -583,6 +590,7 @@ pub(crate) fn no_default_conflict(
 /// several attributes gets them merged ([`PerParamMiniextendrAttr::merge`]).
 #[derive(Default)]
 pub(crate) struct PerParamMiniextendrAttr {
+    pub formal: Option<String>,
     /// Whether `coerce` was present, enabling automatic type coercion for this parameter
     /// (e.g., `i32` to `u16`, `f64` to `f32`).
     pub has_coerce: bool,
@@ -620,6 +628,11 @@ impl PerParamMiniextendrAttr {
     /// `preconditions` / `no_preconditions` wins, and the checks merge (one
     /// `message` per check; the error says which).
     pub(crate) fn merge(&mut self, other: PerParamMiniextendrAttr) -> Result<(), String> {
+        if let Some(formal) = other.formal
+            && self.formal.replace(formal).is_some()
+        {
+            return Err("formal is specified more than once for this parameter".to_owned());
+        }
         if other.preconditions.is_some() {
             self.preconditions = other.preconditions;
         }
@@ -676,6 +689,9 @@ pub(crate) fn parse_per_param_attr(
     };
 
     for meta in &metas {
+        if meta.path().is_ident("formal") && !matches!(meta, syn::Meta::NameValue(_)) {
+            return Err(syn::Error::new_spanned(meta, "write formal = \"name\""));
+        }
         match meta {
             syn::Meta::Path(path) => {
                 if path.is_ident("coerce") {
@@ -706,7 +722,25 @@ pub(crate) fn parse_per_param_attr(
                 // Other paths (like `strict`) are function-level, ignore here
             }
             syn::Meta::NameValue(nv) => {
-                if nv.path.is_ident("default")
+                if nv.path.is_ident("formal") {
+                    let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(value),
+                        ..
+                    }) = &nv.value
+                    else {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "formal must be a string literal",
+                        ));
+                    };
+                    if result.formal.replace(value.value()).is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "formal is specified more than once for this parameter",
+                        ));
+                    }
+                    is_per_param = true;
+                } else if nv.path.is_ident("default")
                     && let syn::Expr::Lit(syn::ExprLit {
                         lit: syn::Lit::Str(lit_str),
                         ..
@@ -901,6 +935,7 @@ pub(crate) fn take_method_param_attrs(
         per_param.insert(
             name,
             ParamAttrs {
+                formal: options.formal,
                 coerce: options.has_coerce,
                 convert: options.has_convert,
                 match_arg: options.has_match_arg,
@@ -1639,6 +1674,8 @@ pub(crate) struct MiniextendrFunctionParsed {
 /// through multiple side-tables.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct ParamAttrs {
+    /// Explicit syntactic R formal; the Rust binding and native symbol stay unchanged.
+    pub formal: Option<String>,
     pub coerce: bool,
     pub convert: bool,
     pub match_arg: bool,
@@ -1686,10 +1723,10 @@ pub(crate) struct ParamAttrs {
 }
 
 impl ParamAttrs {
-    /// Whether `default = "..."` is this parameter's only option: all that a
-    /// `Missing<Quoted>` / `Missing<Quosure>` parameter takes (#1835).
-    pub(crate) fn is_default_only(&self) -> bool {
+    /// Naming and omission options do not force an unevaluated promise.
+    fn preserves_capture(&self, missing: bool) -> bool {
         let ParamAttrs {
+            formal: _,
             coerce,
             convert,
             match_arg,
@@ -1703,7 +1740,7 @@ impl ParamAttrs {
             checks,
             preconditions,
         } = self;
-        default.is_some()
+        (missing || default.is_none())
             && !coerce
             && !convert
             && !match_arg
@@ -1968,15 +2005,11 @@ pub(crate) fn per_param_in_signature_order<'a>(
 pub(crate) fn explicit_checks_by_r_name(
     per_param: &std::collections::HashMap<String, ParamAttrs>,
 ) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
     per_param
         .iter()
         .filter(|(_, a)| !a.checks.is_empty())
-        .map(|(name, a)| {
-            (
-                crate::r_wrapper_builder::normalize_r_arg_string(name),
-                a.checks.clone(),
-            )
-        })
+        .map(|(name, a)| (names.resolve(name), a.checks.clone()))
         .collect()
 }
 
@@ -2025,8 +2058,8 @@ fn validate_convert_param(ty: &syn::Type, conflicting: bool) -> syn::Result<()> 
 }
 
 /// Validate unevaluated markers identically in functions and methods.
-/// Only a default-only Missing marker can have parameter options; no check
-/// or coercion may force its promise before capture.
+/// Formal names and defaults on Missing markers only change the R signature;
+/// no check or coercion may force a promise before capture.
 pub(crate) fn check_unevaluated_params<'a>(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     attrs: impl Fn(&str) -> Option<&'a ParamAttrs>,
@@ -2053,12 +2086,10 @@ pub(crate) fn check_unevaluated_params<'a>(
         };
         let marker = param.kind.name();
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let default_only = param.optional
-            && attrs(&rust_name).map_or_else(
-                || defaults.contains_key(&rust_name),
-                ParamAttrs::is_default_only,
-            );
-        if (attrs(&rust_name).is_some() || defaults.contains_key(&rust_name)) && !default_only {
+        let options = attrs(&rust_name);
+        if options.is_some_and(|options| !options.preserves_capture(param.optional))
+            || (!param.optional && defaults.contains_key(&rust_name))
+        {
             let hint = if param.optional {
                 format!(
                     "`Missing<{marker}>` takes `default` alone, which only writes the \
@@ -2079,7 +2110,11 @@ pub(crate) fn check_unevaluated_params<'a>(
         }
         // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
         // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
-        unevaluated_r_names.push(crate::r_wrapper_builder::normalize_r_arg_string(&rust_name));
+        unevaluated_r_names.push(
+            options
+                .and_then(|options| options.formal.clone())
+                .unwrap_or_else(|| crate::r_wrapper_builder::normalize_r_arg_string(&rust_name)),
+        );
     }
     Ok(unevaluated_r_names)
 }
@@ -2276,6 +2311,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             // them when a parameter carries several; keep every other attribute.
             let param_attr = take_param_attrs(&mut pat_type.attrs)?;
             let PerParamMiniextendrAttr {
+                formal: had_formal,
                 has_coerce: had_coerce_attr,
                 has_convert: had_convert,
                 has_match_arg: had_match_arg_attr,
@@ -2287,6 +2323,12 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 preconditions: had_preconditions,
             } = param_attr;
 
+            if is_extern && had_formal.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    "formal requires a generated R wrapper; remove extern",
+                ));
+            }
             if is_extern && had_convert {
                 return Err(syn::Error::new_spanned(
                     &pat_type.ty,
@@ -2377,6 +2419,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 
             // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
             let per_param_combined = PerParamMiniextendrAttr {
+                formal: had_formal.clone(),
                 has_coerce: had_coerce_attr,
                 has_convert: had_convert,
                 has_match_arg: had_match_arg_attr,
@@ -2396,7 +2439,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             )?;
 
             // Record per-parameter attrs in one entry instead of five side-tables.
-            if had_coerce_attr
+            if had_formal.is_some()
+                || had_coerce_attr
                 || had_convert
                 || had_match_arg_attr
                 || had_several_ok
@@ -2406,6 +2450,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 || preconditions.is_some()
             {
                 let entry = per_param.entry(param_name.clone()).or_default();
+                entry.formal = had_formal;
                 entry.checks = had_checks;
                 entry.coerce = had_coerce_attr;
                 entry.convert = had_convert;
@@ -2482,7 +2527,11 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         }
 
         let dots = find_dots_param(&item.sig.inputs)?;
-        crate::r_wrapper_builder::check_r_formals(&item.sig.inputs, &[])?;
+        crate::r_wrapper_builder::check_r_formals(
+            &item.sig.inputs,
+            &crate::r_wrapper_builder::FormalNames::from_params(&per_param),
+            &[],
+        )?;
         let inputs = peeled_inputs(&item.sig.inputs, &param_markers)?;
 
         Ok(Self {
@@ -2523,6 +2572,10 @@ impl MiniextendrFunctionParsed {
     /// Check if a parameter is the dots (`...`) param, whose R formal is `...`.
     pub(crate) fn is_dots_param(&self, ident: &syn::Ident) -> bool {
         self.dots_ident() == Some(ident)
+    }
+
+    pub(crate) fn formal_names(&self) -> crate::r_wrapper_builder::FormalNames {
+        crate::r_wrapper_builder::FormalNames::from_params(&self.per_param)
     }
 
     /// Whether a parameter carried any per-parameter `#[miniextendr(...)]`
@@ -3435,6 +3488,7 @@ pub(crate) fn typed_list_on_lazy_dots(
 pub(crate) fn check_replacement_value_param(
     generic: &str,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    names: &crate::r_wrapper_builder::FormalNames,
     fallback: proc_macro2::Span,
 ) -> syn::Result<()> {
     use syn::spanned::Spanned;
@@ -3458,9 +3512,7 @@ pub(crate) fn check_replacement_value_param(
         Some((idx, _)) if Some(idx) == dots_index(inputs) => "the last R argument is `...`".into(),
         Some((_, pat_type)) => match pat_type.pat.as_ref() {
             syn::Pat::Ident(pat_ident) => {
-                let formal = crate::r_wrapper_builder::normalize_r_arg_string(
-                    &crate::naming::ident_name(&pat_ident.ident),
-                );
+                let formal = names.resolve(&crate::naming::ident_name(&pat_ident.ident));
                 if formal == "value" {
                     return Ok(());
                 }

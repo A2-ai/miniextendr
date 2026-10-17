@@ -142,6 +142,7 @@ impl RAssertion {
 /// failures can carry contextual diagnostics.
 #[derive(Clone, Default)]
 pub struct PreconditionOptions {
+    pub(crate) names: crate::r_wrapper_builder::FormalNames,
     /// `coerce` knob is active for all parameters (`coerce_all`).
     pub coerce_all: bool,
     /// R-normalized names of parameters with a per-param `coerce` attribute.
@@ -214,6 +215,7 @@ pub(crate) fn resolve_item_type_checks(
 pub(crate) fn unchecked_params(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     param: impl Fn(&str) -> Option<bool>,
+    names: &crate::r_wrapper_builder::FormalNames,
     item: Option<bool>,
     impl_level: Option<bool>,
     crate_default: Option<bool>,
@@ -235,7 +237,7 @@ pub(crate) fn unchecked_params(
                 crate_default,
                 cfg!(feature = "no-preconditions-default"),
             );
-            (!keep).then(|| crate::r_wrapper_builder::normalize_r_arg_string(&name))
+            (!keep).then(|| names.resolve(&name))
         })
         .collect()
 }
@@ -1338,7 +1340,9 @@ pub fn build_precondition_checks(
         };
 
         // Use the R-normalized name for the check (matches the R formal)
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        let r_name = opts
+            .names
+            .resolve(&crate::naming::ident_name(&pat_ident.ident));
         let explicit = opts.explicit.get(&r_name);
 
         // The class checks first, so a value of the wrong class gets their
@@ -2087,7 +2091,14 @@ mod tests {
     ) -> PreconditionOutput {
         let sig: syn::Signature = syn::parse_str(sig).unwrap();
         let unchecked = if no_type_checks {
-            unchecked_params(&sig.inputs, |_| Some(false), None, None, None)
+            unchecked_params(
+                &sig.inputs,
+                |_| Some(false),
+                &Default::default(),
+                None,
+                None,
+                None,
+            )
         } else {
             HashSet::new()
         };
@@ -2174,6 +2185,7 @@ mod tests {
         let unchecked = unchecked_params(
             &sig.inputs,
             |name| (name == "xs").then_some(false),
+            &Default::default(),
             None,
             None,
             Some(true),
@@ -2195,7 +2207,14 @@ mod tests {
         );
         // The set holds R names: `_n` is the R formal `n`.
         let sig: syn::Signature = syn::parse_str("fn f(_n: i32)").unwrap();
-        let unchecked = unchecked_params(&sig.inputs, |_| None, Some(false), None, None);
+        let unchecked = unchecked_params(
+            &sig.inputs,
+            |_| None,
+            &Default::default(),
+            Some(false),
+            None,
+            None,
+        );
         assert_eq!(unchecked, ["n".to_string()].into_iter().collect());
     }
 
@@ -2211,7 +2230,14 @@ mod tests {
             explicit: [("x".to_string(), no_na()), ("y".to_string(), no_na())]
                 .into_iter()
                 .collect(),
-            unchecked: unchecked_params(&sig.inputs, |_| None, Some(false), None, None),
+            unchecked: unchecked_params(
+                &sig.inputs,
+                |_| None,
+                &Default::default(),
+                Some(false),
+                None,
+                None,
+            ),
             ..Default::default()
         };
         let guards = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None);

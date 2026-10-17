@@ -61,12 +61,9 @@ use crate::r_class_formatter::class_ref_or_verbatim;
 /// `obj$prop <- "bad"` bypassed the R-level type check the standalone setter
 /// enforces.
 ///
-/// R6 active bindings always receive the assigned value through a formal
-/// named `value`, while the Rust setter's parameter may have any name, so the
-/// first non-receiver parameter (the only one the binding forwards — see the
-/// `.with_args(&["value"])` call site) is renamed to `value` before the
-/// checks are built. Any additional parameters are ignored: the binding never
-/// passes them, and checks referencing their names would error at runtime.
+/// The active binding defaults to `value`. An explicit formal on the Rust
+/// setter names the binding too. Normalize the first non-receiver parameter
+/// to `value` here, retaining its explicit formal and checks.
 ///
 /// `impl_preconditions` is the impl block's `preconditions` /
 /// `no_preconditions`; with the setter's own spellings (the method's, the
@@ -597,13 +594,32 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         let setter = parsed_impl.find_setter_for_prop(&prop_name);
 
         if let Some(setter_method) = setter {
-            // Combined getter/setter active binding
-            // Format: name = function(value) { if (missing(value)) getter else setter }
+            // Assignment is positional. Honor an explicit setter formal in the
+            // binding too, so its guards and native errors use the same name.
+            let value = setter_method
+                .sig
+                .inputs
+                .iter()
+                .find_map(|arg| match arg {
+                    syn::FnArg::Typed(arg) => Some(arg),
+                    _ => None,
+                })
+                .and_then(|arg| {
+                    let syn::Pat::Ident(name) = arg.pat.as_ref() else {
+                        return None;
+                    };
+                    setter_method
+                        .method_attrs
+                        .per_param
+                        .get(&crate::naming::ident_name(&name.ident))
+                        .and_then(|attrs| attrs.formal.as_deref())
+                })
+                .unwrap_or("value");
             lines.push(format!(
-                "{}$set(\"active\", \"{}\", function(value) {{",
+                "{}$set(\"active\", \"{}\", function({value}) {{",
                 class_name, prop_name
             ));
-            lines.push("  if (missing(value)) {".to_string());
+            lines.push(format!("  if (missing({value})) {{"));
 
             // Getter call — same condition re-raise guard as the
             // getter-only active binding path below.
@@ -638,7 +654,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let setter_call = crate::r_wrapper_builder::DotCallBuilder::new(setter_c_ident)
                 .with_call_attribution(setter_ctx.call_attribution)
                 .with_self("private$.ptr")
-                .with_args(&["value"])
+                .with_args(&[value])
                 .build();
             lines.push(format!("    .val <- {}", setter_call));
             lines.extend(setter_ctx.condition_check_lines("    "));

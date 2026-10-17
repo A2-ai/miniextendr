@@ -445,7 +445,11 @@ fn check_trait_method_formals(
                 format!("is the receiver of the generated {system} trait method"),
             ));
         }
-        crate::r_wrapper_builder::check_r_formals(&method.sig.inputs, &reserved)?;
+        crate::r_wrapper_builder::check_r_formals(
+            &method.sig.inputs,
+            &crate::r_wrapper_builder::FormalNames::from_params(&method.per_param),
+            &reserved,
+        )?;
     }
     Ok(())
 }

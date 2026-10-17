@@ -260,7 +260,7 @@ fn snapshot_shadowed_formals() {
          shadowed <- function({r_formals}) {{\n  {}\n}}",
         body.join("\n  ")
     );
-    let names = formal_names([&inputs]);
+    let names = formal_names([(&inputs, Default::default())]);
     insta::assert_snapshot!(qualify_shadowed_calls(&wrapper, &names));
 }
 
@@ -273,16 +273,19 @@ fn formal_names_pool_signatures_and_skip_receivers_and_dots() {
     let method = parse_inputs("&self, _length: f64, r#c: i32, dots: &Dots");
     let other = parse_inputs("list: i32");
     assert_eq!(
-        formal_names([&method, &other]),
+        formal_names([(&method, Default::default()), (&other, Default::default())]),
         formals(&["c", "length", "list"])
     );
     // The dots are skipped wherever they sit; the formal after them counts.
     let mid_dots = parse_inputs("&self, n: i32, rest: &Dots, r#c: bool");
-    assert_eq!(formal_names([&mid_dots]), formals(&["c", "n"]));
+    assert_eq!(
+        formal_names([(&mid_dots, Default::default())]),
+        formals(&["c", "n"])
+    );
 }
 
-/// Formals come from Rust identifiers through `normalize_r_arg_string`, which
-/// never produces a `.`. That is why dotted callees need no qualification.
+/// Implicit formals come from Rust identifiers through `normalize_r_arg_string`, which
+/// never produces a `.`. Explicit formals are resolved separately.
 #[test]
 fn normalized_formals_never_contain_a_dot() {
     for rust in ["_x", "__x", "_", "x_y", "__"] {
@@ -291,7 +294,8 @@ fn normalized_formals_never_contain_a_dot() {
     }
     for rust in ["r#type", "r#in", "_r"] {
         let ident: syn::Ident = syn::parse_str(rust).unwrap();
-        let formal = crate::r_wrapper_builder::normalize_r_arg_ident(&ident).to_string();
+        let formal =
+            crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(&ident));
         assert!(!formal.contains('.'), "{rust} -> {formal}");
     }
 }
@@ -360,7 +364,7 @@ fn processed_text() -> Vec<(String, String)> {
     out
 }
 
-/// Every undotted name that processed text calls without a namespace is a
+/// Every callable name that processed text calls without a namespace is a
 /// [`BASE_CALLEES`] entry, a keyword, or a name the same segment binds with
 /// `<-`. A new unqualified callee in generated code fails here until it is
 /// added to the table, so a formal of that name cannot shadow it unnoticed.
@@ -380,7 +384,13 @@ fn generated_callees_are_listed() {
             .collect();
         for ident in &idents {
             let name = &text[ident.clone()];
-            if name.contains('.') || !is_call(&text, ident.end) || is_accessed(&text, ident.start) {
+            if name.starts_with(".miniextendr_")
+                || name.starts_with(".mx_")
+                || name.starts_with(".__MX_")
+                || name.starts_with(".rdata_")
+                || !is_call(&text, ident.end)
+                || is_accessed(&text, ident.start)
+            {
                 continue;
             }
             if BASE_CALLEES.contains(&name) {
@@ -413,12 +423,45 @@ fn generated_callees_are_listed() {
 }
 
 #[test]
-fn base_callees_are_sorted_undotted_and_unique() {
+fn base_callees_are_sorted_and_unique() {
     let mut sorted = BASE_CALLEES.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted, BASE_CALLEES);
-    assert!(BASE_CALLEES.iter().all(|name| !name.contains('.')));
 }
 
 // endregion
+
+#[test]
+fn explicit_formals_qualify_dotted_base_calls() {
+    let inputs = parse_inputs("character: String, frame: String");
+    let params = [
+        (
+            "character".to_owned(),
+            crate::miniextendr_fn::ParamAttrs {
+                formal: Some("is.character".to_owned()),
+                ..Default::default()
+            },
+        ),
+        (
+            "frame".to_owned(),
+            crate::miniextendr_fn::ParamAttrs {
+                formal: Some("parent.frame".to_owned()),
+                ..Default::default()
+            },
+        ),
+    ]
+    .into_iter()
+    .collect();
+    let names = formal_names([(
+        &inputs,
+        crate::r_wrapper_builder::FormalNames::from_params(&params),
+    )]);
+    assert_eq!(
+        qualify_shadowed_calls(
+            "is.character(is.character); parent.frame(); base::is.character(x)",
+            &names
+        ),
+        "base::is.character(is.character); base::parent.frame(); base::is.character(x)"
+    );
+}

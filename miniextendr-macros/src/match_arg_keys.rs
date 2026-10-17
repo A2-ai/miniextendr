@@ -89,11 +89,18 @@ pub(crate) fn extract_match_arg_default(raw: &str) -> String {
 
 /// Derive a safe Rust ident from a write-time placeholder string.
 ///
-/// Strips surrounding underscores and turns every `.` into `_`, so a placeholder
-/// like `.__MX_MATCH_ARG_CHOICES_foo_bar__` becomes an ident suffix that quotes
-/// cleanly in emitted code.
+/// Escape underscores and dots distinctly so dotted formals cannot collide
+/// with Rust-style spellings. The fixed leading dot is not part of the ident.
 pub(crate) fn placeholder_ident_suffix(placeholder: &str) -> String {
-    placeholder.trim_matches('_').replace('.', "_")
+    placeholder
+        .trim_start_matches('.')
+        .chars()
+        .map(|c| match c {
+            '_' => "__".to_owned(),
+            '.' => "_dot_".to_owned(),
+            _ => c.to_string(),
+        })
+        .collect()
 }
 
 /// The choice registration referenced by its parameter documentation too.
@@ -183,6 +190,7 @@ pub(crate) fn method_entries(
     inherited_callable: Option<&proc_macro2::TokenStream>,
 ) -> proc_macro2::TokenStream {
     let mut out = proc_macro2::TokenStream::new();
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
 
     // Signature order, so the emitted items don't follow the map's order.
     for (rust_name, attrs) in
@@ -209,7 +217,7 @@ pub(crate) fn method_entries(
             ))
         };
 
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
 
         // Placeholder that the write-time substitution pass replaces with the
         // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.

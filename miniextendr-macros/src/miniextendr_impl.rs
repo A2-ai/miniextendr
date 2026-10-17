@@ -4071,6 +4071,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
     let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
         .r_name(method.r_entry_name(parsed_impl))
         .inputs(method.sig.inputs.clone())
+        .formal_names(crate::r_wrapper_builder::FormalNames::from_params(
+            &method.method_attrs.per_param,
+        ))
         .output(method.sig.output.clone())
         .pre_call(pre_call)
         .post_conversion(post_conversion)
@@ -4951,7 +4954,11 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
             }
             _ => Vec::new(),
         };
-        crate::r_wrapper_builder::check_r_formals(&m.sig.inputs, &reserved)?;
+        crate::r_wrapper_builder::check_r_formals(
+            &m.sig.inputs,
+            &crate::r_wrapper_builder::FormalNames::from_params(&m.method_attrs.per_param),
+            &reserved,
+        )?;
     }
     Ok(())
 }
@@ -4977,6 +4984,7 @@ fn check_s3_replacement_methods(parsed: &ParsedImpl) -> syn::Result<()> {
         crate::miniextendr_fn::check_replacement_value_param(
             &generic,
             &m.sig.inputs,
+            &crate::r_wrapper_builder::FormalNames::from_params(&m.method_attrs.per_param),
             m.ident.span(),
         )?;
     }
@@ -5239,8 +5247,12 @@ pub fn expand_impl(
 
     // Every part is qualified against the formals pooled over the whole block
     // (the constructor included).
-    let formals =
-        crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs));
+    let formals = crate::r_shadowing::formal_names(parsed.included_methods().map(|m| {
+        (
+            &m.sig.inputs,
+            crate::r_wrapper_builder::FormalNames::from_params(&m.method_attrs.per_param),
+        )
+    }));
     let r_part = |lines: &[String]| crate::r_wrapper_raw_literal(&lines.join("\n"), &formals);
     let class_parts = |class: &ClassWrapper, defines: &[String]| {
         let head = r_part(&class.head);

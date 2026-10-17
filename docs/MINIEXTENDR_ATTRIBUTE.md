@@ -716,10 +716,11 @@ pub fn get_record() -> MyStruct { /* ... */ }
 
 #### Parameter Attributes
 
-Written on a single parameter of a standalone function:
+Written on a parameter of a standalone function or a class or trait method:
 
 | Attribute | Effect |
 |-----------|--------|
+| `formal = "..."` | Explicit R argument name, including dots; leaves the Rust binding unchanged |
 | `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
 | `default = "..."` | R formal default (an R expression) |
 | `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices (none under `no_default`) and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)). The type's aliases (`#[match_arg(alias = "grey")]` on a variant) are accepted when typed in full and listed in errors by default; `listed = false` hides an alias from errors ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#aliases)) |
@@ -734,6 +735,35 @@ Written on a single parameter of a standalone function:
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 | `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
+
+Use `formal` for R conventions such as `conf.int`, `na.rm` and `.data`:
+
+```rust
+#[miniextendr]
+pub fn interval(
+    #[miniextendr(formal = "conf.int", default = "FALSE")] conf_int: bool,
+    #[miniextendr(formal = "conf.level", default = "0.95")] conf_level: f64,
+) -> f64 {
+    if conf_int { conf_level } else { 0.0 }
+}
+```
+
+R sees `interval(conf.int = FALSE, conf.level = 0.95)`. Argument checks,
+conversion conditions (including `param`), choice matching and generated
+help use those names. Write author tags as `@param conf.int ...`.
+Method-level options that select a parameter still use its Rust binding.
+`formal` can accompany `Quoted` or `Quosure` without forcing the promise;
+`Missing<...>` forwarding uses the declared formal too.
+
+Explicit names must be syntactic ASCII R names and unique within the wrapper.
+R reserved words, `...` / `..1`-style dots lookups, receiver bindings and the
+framework's `.call`, `.val`, `.ptr`, `.mx_*`, `.miniextendr_*`, `.rdata_*`
+and `.__MX_*` names are rejected. Dotted base function names are allowed:
+the generator qualifies calls they would shadow. Without `formal`, the
+existing rule only strips leading underscores; it does not replace underscores
+with dots. Parameters that create no named R formal (dots, `Call`, `NArgs`)
+cannot use this option. S7 property callbacks retain S7's required `self` /
+`value` adapter signature and forward the value positionally.
 
 ```rust
 #[miniextendr]

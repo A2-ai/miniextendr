@@ -187,8 +187,13 @@ fn find_dots_param_by_type_at_any_position() {
 fn replacement_method_takes_value_last() {
     use crate::miniextendr_fn::check_replacement_value_param;
     let check = |generic: &str, sig: &str| {
-        check_replacement_value_param(generic, &inputs_of(sig), proc_macro2::Span::call_site())
-            .map_err(|err| err.to_string())
+        check_replacement_value_param(
+            generic,
+            &inputs_of(sig),
+            &Default::default(),
+            proc_macro2::Span::call_site(),
+        )
+        .map_err(|err| err.to_string())
     };
     for (generic, sig) in [
         ("$<-", "x: List, name: &str, value: SEXP"),
@@ -3298,4 +3303,139 @@ fn convert_params_are_consumed_and_validate_the_reference_shape() {
             .expect("must reject");
         assert!(err.to_string().contains(expected), "{err}");
     }
+}
+
+#[test]
+fn explicit_formals_preserve_bindings_defaults_and_capture() {
+    use crate::r_wrapper_builder::RArgumentBuilder;
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn f(
+            #[miniextendr(formal = "conf.int", default = "FALSE")] conf_int: bool,
+            #[miniextendr(formal = ".data")] data: Missing<i32>,
+            #[miniextendr(formal = "quoted.expr")] expr: Quoted,
+            #[miniextendr(formal = "quoted.maybe", default = "stop('never')")] maybe: Missing<Quosure>,
+        ) {}
+    }).unwrap();
+    let names = parsed.formal_names();
+    let defaults = parsed
+        .param_defaults()
+        .into_iter()
+        .map(|(name, value)| (names.resolve(&name), value))
+        .collect();
+    let builder = RArgumentBuilder::new(parsed.inputs())
+        .with_formal_names(names)
+        .with_defaults(defaults);
+    let formals = builder.build_formals();
+    assert!(formals.contains("conf.int = FALSE"), "{formals}");
+    assert!(
+        formals.contains("quoted.maybe = stop('never')"),
+        "{formals}"
+    );
+    let args = builder.build_call_args();
+    for expected in [
+        "conf.int",
+        "missing(.data)",
+        "substitute(quoted.expr)",
+        "missing(quoted.maybe)",
+        "rlang::enquo(quoted.maybe)",
+    ] {
+        assert!(args.contains(expected), "{expected}: {args}");
+    }
+    let capture_names = crate::miniextendr_fn::check_unevaluated_params(
+        parsed.inputs(),
+        |name| parsed.param_attrs(name),
+        &parsed.param_defaults(),
+    )
+    .unwrap();
+    assert_eq!(capture_names, ["quoted.expr", "quoted.maybe"]);
+}
+
+#[test]
+fn explicit_formals_reject_invalid_names_collisions_and_bad_options() {
+    for formal in [
+        "",
+        "has space",
+        "a-b",
+        "_x",
+        ".1",
+        "...",
+        "..1",
+        "if",
+        "NA",
+        ".call",
+        ".val",
+        ".ptr",
+        ".mx_g",
+        ".miniextendr_arg_error",
+        ".__MX_CHOICES__",
+        ".rdata_get_Foo",
+    ] {
+        let tokens = quote::quote! { fn f(#[miniextendr(formal = #formal)] arg: i32) {} };
+        assert!(
+            syn::parse2::<MiniextendrFunctionParsed>(tokens).is_err(),
+            "{formal}"
+        );
+    }
+    for tokens in [
+        quote::quote! { fn f(#[miniextendr(formal = "other")] arg: i32, other: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal = "a.b")] a: i32, #[miniextendr(formal = "a.b")] b: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal = 1)] arg: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal)] arg: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal("a.b"))] arg: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal = "a.b", formal = "a.c")] arg: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal = "a.b")] #[miniextendr(formal = "a.c")] arg: i32) {} },
+        quote::quote! { fn f(#[miniextendr(formal = "rest")] rest: &Dots) {} },
+    ] {
+        assert!(
+            syn::parse2::<MiniextendrFunctionParsed>(tokens.clone()).is_err(),
+            "{tokens}"
+        );
+    }
+    for formal in [
+        "conf.int",
+        "na.rm",
+        ".data",
+        ".keep",
+        "x",
+        "is.character",
+        ".Call",
+    ] {
+        let tokens = quote::quote! { fn f(#[miniextendr(formal = #formal)] arg: i32) {} };
+        assert!(
+            syn::parse2::<MiniextendrFunctionParsed>(tokens).is_ok(),
+            "{formal}"
+        );
+    }
+}
+
+#[test]
+fn replacement_methods_validate_the_explicit_formal() {
+    for (rust, formal, valid) in [
+        ("replacement", "value", true),
+        ("value", "replacement", false),
+    ] {
+        let ident = syn::Ident::new(rust, proc_macro2::Span::call_site());
+        let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+            fn f(x: SEXP, #[miniextendr(formal = #formal)] #ident: SEXP) {}
+        })
+        .unwrap();
+        let result = crate::miniextendr_fn::check_replacement_value_param(
+            "$<-",
+            parsed.inputs(),
+            &parsed.formal_names(),
+            proc_macro2::Span::call_site(),
+        );
+        assert_eq!(result.is_ok(), valid);
+    }
+}
+
+#[test]
+fn dotted_choice_names_have_distinct_rust_registration_symbols() {
+    use crate::match_arg_keys::{choices_entry_ident, choices_placeholder};
+    let names: std::collections::HashSet<_> =
+        ["conf.int", "conf_int", "conf_dot_int", ".data", "data"]
+            .into_iter()
+            .map(|name| choices_entry_ident(&choices_placeholder("C_probe", name)).to_string())
+            .collect();
+    assert_eq!(names.len(), 5);
 }

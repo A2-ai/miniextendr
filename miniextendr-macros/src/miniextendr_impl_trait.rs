@@ -1102,7 +1102,12 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(
         &r_wrapper_string,
-        &crate::r_shadowing::formal_names(methods.iter().map(|m| &m.sig.inputs)),
+        &crate::r_shadowing::formal_names(methods.iter().map(|m| {
+            (
+                &m.sig.inputs,
+                crate::r_wrapper_builder::FormalNames::from_params(&m.per_param),
+            )
+        })),
     );
     let source_start = type_ident.span().start();
     let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());

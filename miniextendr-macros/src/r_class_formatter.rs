@@ -166,9 +166,10 @@ pub(crate) fn choice_param_doc_map(
     c_ident: &str,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashMap<String, String> {
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
     let mut out = std::collections::HashMap::new();
     for (rust_name, attrs) in per_param {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
         let doc = if attrs.match_arg {
             match_arg_param_doc_placeholder(c_ident, &r_name)
         } else if let Some(doc) = attrs.literal_choices_doc() {
@@ -210,6 +211,7 @@ pub(crate) fn build_match_arg_prelude(
     c_ident: &str,
     attribution: crate::r_wrapper_builder::CallAttribution,
 ) -> Vec<String> {
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
     use crate::miniextendr_fn::per_param_in_signature_order;
     let mut lines = Vec::new();
 
@@ -217,7 +219,7 @@ pub(crate) fn build_match_arg_prelude(
         if !attrs.match_arg {
             continue;
         }
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
         let placeholder = match_arg_placeholder(c_ident, &r_name);
         let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &r_name);
         lines.push(attribution.match_arg_statement(&r_name, &placeholder, Some(&aliases), attrs));
@@ -227,7 +229,7 @@ pub(crate) fn build_match_arg_prelude(
         let Some(choices) = attrs.choices.as_ref() else {
             continue;
         };
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
         lines.push(attribution.match_arg_statement(&r_name, &choices_expr, None, attrs));
@@ -242,10 +244,11 @@ pub(crate) fn build_match_arg_prelude(
 pub(crate) fn match_arg_skip_set(
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashSet<String> {
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
     let mut s = std::collections::HashSet::new();
     for (rust_name, attrs) in per_param {
         if attrs.match_arg || attrs.choices.is_some() {
-            s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
+            s.insert(names.resolve(rust_name));
         }
     }
     s
@@ -274,17 +277,20 @@ pub(crate) fn build_method_precondition_checks(
     impl_level: Option<bool>,
     call: Option<&str>,
 ) -> Vec<String> {
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
     let opts = crate::r_preconditions::PreconditionOptions {
+        names: names.clone(),
         coerce_all,
         coerce_params: per_param
             .iter()
             .filter(|(_, attrs)| attrs.coerce)
-            .map(|(name, _)| crate::r_wrapper_builder::normalize_r_arg_string(name))
+            .map(|(name, _)| names.resolve(name))
             .collect(),
         explicit: crate::miniextendr_fn::explicit_checks_by_r_name(per_param),
         unchecked: crate::r_preconditions::unchecked_params(
             inputs,
             |name| per_param.get(name).and_then(|a| a.preconditions),
+            &names,
             method_level,
             impl_level,
             crate::crate_config::preconditions_default(),
@@ -318,14 +324,18 @@ pub(crate) fn effective_r_defaults(
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
 ) -> std::collections::HashMap<String, String> {
-    let mut defaults = param_defaults.clone();
+    let names = crate::r_wrapper_builder::FormalNames::from_params(per_param);
+    let mut defaults: std::collections::HashMap<_, _> = param_defaults
+        .iter()
+        .map(|(name, value)| (names.resolve(name), value.clone()))
+        .collect();
     // match_arg → unconditionally splice the placeholder (overriding any user
     // default, which is captured separately for write-time rotation).
     for (rust_name, attrs) in per_param {
         if !attrs.match_arg {
             continue;
         }
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
         // `Option<T>` (#1473): the formal is NULL (no choice); `no_default`
         // (#1828, refused with `defaults(p = ...)`): none. The prelude spells
         // the choices out through the placeholder either way.
@@ -340,7 +350,7 @@ pub(crate) fn effective_r_defaults(
         let Some(choices) = attrs.choices.as_ref() else {
             continue;
         };
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = names.resolve(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         if let Some(default) = attrs.choice_formal(&format!("c({})", quoted.join(", "))) {
             defaults.entry(r_name).or_insert(default);
@@ -403,6 +413,9 @@ impl<'a> MethodContext<'a> {
             |name| method.method_attrs.per_param.get(name),
         );
         let arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
+            .with_formal_names(crate::r_wrapper_builder::FormalNames::from_params(
+                &method.method_attrs.per_param,
+            ))
             .with_defaults(effective_defaults);
         let params = arg_builder.build_formals();
         let args = arg_builder.build_call_args();
@@ -423,6 +436,9 @@ impl<'a> MethodContext<'a> {
     /// Keep base-R captures in the caller behind class dispatch.
     pub(crate) fn with_capture_env(mut self, env: crate::r_wrapper_builder::CaptureEnv) -> Self {
         self.args = crate::r_wrapper_builder::RArgumentBuilder::new(&self.method.sig.inputs)
+            .with_formal_names(crate::r_wrapper_builder::FormalNames::from_params(
+                &self.method.method_attrs.per_param,
+            ))
             .with_capture_env(env)
             .build_call_args();
         self

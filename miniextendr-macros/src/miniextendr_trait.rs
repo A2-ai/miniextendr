@@ -967,7 +967,9 @@ fn generate_method_shim(
         .map(|(i, (name, ty))| {
             crate::trait_self_ref::argument(
                 name,
-                &crate::naming::ident_name(name),
+                &method
+                    .formal_names
+                    .resolve(&crate::naming::ident_name(name)),
                 ty,
                 &impl_t,
                 i,
@@ -983,7 +985,15 @@ fn generate_method_shim(
             .iter()
             .zip(&method.param_types)
             .enumerate()
-            .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+            .map(|(index, (name, ty))| {
+                (
+                    index,
+                    method
+                        .formal_names
+                        .resolve(&crate::naming::ident_name(name)),
+                    ty,
+                )
+            }),
         &argv,
         None,
     );
@@ -1003,7 +1013,9 @@ fn generate_method_shim(
             (
                 crate::trait_self_ref::handle_ident(name),
                 *mutable,
-                crate::naming::ident_name(name),
+                method
+                    .formal_names
+                    .resolve(&crate::naming::ident_name(name)),
             )
         })
         .collect();
@@ -1168,6 +1180,8 @@ struct MethodInfo {
     param_types: Vec<syn::Type>,
     /// Parameter names (excluding the self receiver). Uses `arg{i}` for unnamed patterns.
     param_names: Vec<syn::Ident>,
+    /// R names for diagnostics; Rust signatures keep their original bindings.
+    formal_names: crate::r_wrapper_builder::FormalNames,
     /// Return type. `None` when the method returns `()` (unit type or no return annotation).
     return_type: Option<syn::Type>,
     /// Override the R-facing method name (from `#[miniextendr(r_name = "...")]`).
@@ -1554,6 +1568,9 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<Option<MethodIn
         method.sig.ident.span(),
     )?;
 
+    let formal_names = crate::r_wrapper_builder::FormalNames::from_params(&per_param);
+    crate::r_wrapper_builder::check_r_formals(&parameter_sig.inputs, &formal_names, &[])?;
+
     // Check for receiver
     let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
         if let syn::FnArg::Receiver(_) = arg {
@@ -1695,6 +1712,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<Option<MethodIn
         owner_receiver: crate::trait_receiver::owner_receiver(&method.sig),
         param_types,
         param_names,
+        formal_names,
         return_type,
         r_name,
     }))

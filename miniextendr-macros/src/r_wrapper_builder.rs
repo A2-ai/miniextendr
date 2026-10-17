@@ -13,8 +13,9 @@
 //!
 //! ```ignore
 //! // Build R function signature
-//! let formals = build_r_formals_from_sig(&method.sig, &defaults);
-//! let call_args = build_r_call_args_from_sig(&method.sig);
+//! let arguments = RArgumentBuilder::new(&method.sig.inputs).with_defaults(defaults);
+//! let formals = arguments.build_formals();
+//! let call_args = arguments.build_call_args();
 //!
 //! // Build .Call() invocation
 //! let call = DotCallBuilder::new("C_MyType__method")
@@ -30,31 +31,8 @@
 //!     .build();
 //! ```
 
-/// Normalizes Rust argument identifiers for R.
-///
-/// - Leading `_` → stripped (Rust convention for unused params)
-/// - Leading `__` → stripped
-/// - Otherwise → unchanged
-///
-/// # Examples
-/// - `_x` → `x`
-/// - `_to` → `to`
-/// - `__field` → `field`
-/// - `value` → `value`
-///
-/// Note: We strip underscores rather than prefixing "unused" because R callers
-/// (like vctrs) may use named arguments that must match the original name.
-pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new(
-        &normalize_r_arg_string(&crate::naming::ident_name(rust_ident)),
-        rust_ident.span(),
-    )
-}
-
-/// String form of [`normalize_r_arg_ident`] that skips the `syn::Ident` round-trip.
-///
-/// Most callers feed the result into `format!`/`HashMap` keys and immediately
-/// `.to_string()` the returned ident — this avoids that allocation pair.
+/// Drop leading underscores from an implicit R formal. Explicit formals are
+/// resolved by [FormalNames] and keep their spelling.
 pub fn normalize_r_arg_string(name: &str) -> String {
     let normalized = name.trim_start_matches('_');
     if normalized.is_empty() {
@@ -64,9 +42,39 @@ pub fn normalize_r_arg_string(name: &str) -> String {
     }
 }
 
+/// Explicit R formal spellings, keyed by the unchanged Rust parameter name.
+/// All wrapper generators resolve names through this map.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct FormalNames(std::collections::HashMap<String, String>);
+
+impl FormalNames {
+    pub(crate) fn from_params(
+        params: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    ) -> Self {
+        Self(
+            params
+                .iter()
+                .filter_map(|(name, attrs)| {
+                    attrs
+                        .formal
+                        .as_ref()
+                        .map(|formal| (name.clone(), formal.clone()))
+                })
+                .collect(),
+        )
+    }
+
+    pub(crate) fn resolve(&self, rust_name: &str) -> String {
+        self.0
+            .get(rust_name)
+            .cloned()
+            .unwrap_or_else(|| normalize_r_arg_string(rust_name))
+    }
+}
+
 /// Check the R formals a signature produces, before any wrapper is generated.
 ///
-/// Each parameter becomes the formal [`normalize_r_arg_string`] gives it; the
+/// Explicit formals keep their spelling; implicit names drop leading underscores. The
 /// `&Dots` parameter becomes `...`, wherever it sits, and is skipped. A formal must be an R
 /// name (not a reserved word such as `if` or `in`, not starting with a digit),
 /// distinct from the others (`x` and `_x` both become `x`), and not one of the
@@ -79,10 +87,11 @@ pub fn normalize_r_arg_string(name: &str) -> String {
 /// by name, so the R formal has to stay the parameter's own name.
 pub(crate) fn check_r_formals(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    names: &FormalNames,
     reserved: &[(String, String)],
 ) -> syn::Result<()> {
     let mut seen: std::collections::HashMap<String, &syn::Ident> = std::collections::HashMap::new();
-    for (formal, ident) in r_formal_names(inputs) {
+    for (formal, ident) in r_formal_names(inputs, names) {
         let problem = if crate::naming::is_r_reserved_word(&formal) {
             Some(format!(
                 "is an R reserved word, so the generated R wrapper would not parse. \
@@ -94,6 +103,23 @@ pub(crate) fn check_r_formals(
                  Rename the parameter so that, without its leading underscores, it \
                  starts with a letter"
                     .to_string(),
+            )
+        } else if (names.0.contains_key(&crate::naming::ident_name(ident))
+            && !crate::naming::is_syntactic_r_name(&formal))
+            || formal == "..."
+            || formal.strip_prefix("..").is_some_and(|suffix| {
+                !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+            })
+        {
+            Some("is not a syntactic R argument name. Choose a letter or dot followed by letters, digits, dots or underscores".to_owned())
+        } else if matches!(formal.as_str(), ".call" | ".val" | ".ptr")
+            || formal.starts_with(".mx_")
+            || formal.starts_with(".miniextendr_")
+            || formal.starts_with(".__MX_")
+            || formal.starts_with(".rdata_")
+        {
+            Some(
+                "is reserved for generated wrapper bindings. Choose another formal name".to_owned(),
             )
         } else {
             reserved
@@ -122,16 +148,17 @@ pub(crate) fn check_r_formals(
 }
 
 /// The R formal each parameter of a signature becomes, with the parameter's
-/// ident: [`normalize_r_arg_string`] of its name. The `&Dots` / `LazyDots`
+/// ident, resolved through [FormalNames]. The `&Dots` / `LazyDots`
 /// parameter becomes `...` wherever it sits and is skipped, as are receivers,
 /// non-ident patterns and an `NArgs` parameter, which is no formal (#1860).
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
 /// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
 /// they would shadow, so the two agree on what each formal is named.
-pub(crate) fn r_formal_names(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-) -> impl Iterator<Item = (String, &syn::Ident)> {
+pub(crate) fn r_formal_names<'a>(
+    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    names: &'a FormalNames,
+) -> impl Iterator<Item = (String, &'a syn::Ident)> {
     let dots_index = crate::miniextendr_fn::dots_index(inputs);
     inputs.iter().enumerate().filter_map(move |(idx, input)| {
         let syn::FnArg::Typed(pat_type) = input else {
@@ -144,10 +171,7 @@ pub(crate) fn r_formal_names(
             return None;
         };
         let ident = &pat_ident.ident;
-        Some((
-            normalize_r_arg_string(&crate::naming::ident_name(ident)),
-            ident,
-        ))
+        Some((names.resolve(&crate::naming::ident_name(ident)), ident))
     })
 }
 
@@ -211,6 +235,7 @@ impl CaptureEnv {
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
     capture_env: CaptureEnv,
+    names: FormalNames,
     /// The function's input parameters from the parsed Rust signature.
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     /// Position of the `&Dots` / `LazyDots` parameter in `inputs` (receiver
@@ -219,9 +244,6 @@ pub struct RArgumentBuilder<'a> {
     dots_index: Option<usize>,
     /// Which `...` type it is: what the call arguments pass at its position.
     dots_kind: Option<crate::miniextendr_fn::DotsKind>,
-    /// If true, skip the first parameter (used for `self`/`&self` in method wrappers,
-    /// since the self argument is handled separately by [`DotCallBuilder::with_self`]).
-    skip_first: bool,
     /// Parameter default values from `#[miniextendr(default = "...")]` attributes.
     /// Keys are normalized R parameter names, values are R expressions emitted verbatim
     /// (e.g., `"1L"`, `"c(1, 2, 3)"`, `"NULL"`).
@@ -229,6 +251,11 @@ pub struct RArgumentBuilder<'a> {
 }
 
 impl<'a> RArgumentBuilder<'a> {
+    pub(crate) fn with_formal_names(mut self, names: FormalNames) -> Self {
+        self.names = names;
+        self
+    }
+
     /// Create a new builder for the given function inputs.
     pub fn new(inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> Self {
         let dots_index = crate::miniextendr_fn::dots_index(inputs);
@@ -239,9 +266,9 @@ impl<'a> RArgumentBuilder<'a> {
         Self {
             inputs,
             capture_env: CaptureEnv::Caller,
+            names: FormalNames::default(),
             dots_index,
             dots_kind,
-            skip_first: false,
             defaults: std::collections::HashMap::new(),
         }
     }
@@ -261,12 +288,6 @@ impl<'a> RArgumentBuilder<'a> {
         self
     }
 
-    /// Skip the first parameter (for instance methods with `self`).
-    pub fn skip_first(mut self) -> Self {
-        self.skip_first = true;
-        self
-    }
-
     /// Build R formal parameters string (for function signature).
     ///
     /// # Returns
@@ -278,11 +299,6 @@ impl<'a> RArgumentBuilder<'a> {
         let mut formals = Vec::new();
 
         for (idx, input) in self.inputs.iter().enumerate() {
-            // Skip first if requested (for self in methods)
-            if self.skip_first && idx == 0 {
-                continue;
-            }
-
             let pat_type = match input {
                 syn::FnArg::Typed(pt) => pt,
                 syn::FnArg::Receiver(_) => continue, // Skip self receivers
@@ -302,26 +318,28 @@ impl<'a> RArgumentBuilder<'a> {
             }
 
             // Extract and normalize argument name
-            let arg_ident = match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
+            let r_name = match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => self
+                    .names
+                    .resolve(&crate::naming::ident_name(&pat_ident.ident)),
                 _ => continue,
             };
 
             // Check for user-specified default value
-            if let Some(default_val) = self.defaults.get(&arg_ident.to_string()) {
+            if let Some(default_val) = self.defaults.get(&r_name) {
                 // User provided default via #[miniextendr(default = "...")]
                 // Output directly as string - supports R-style defaults like "1L", "c(1,2,3)"
-                formals.push(format!("{} = {}", arg_ident, default_val));
+                formals.push(format!("{} = {}", r_name, default_val));
                 continue;
             }
 
             // Add default for unit types
             match pat_type.ty.as_ref() {
                 syn::Type::Tuple(t) if t.elems.is_empty() => {
-                    formals.push(format!("{} = NULL", arg_ident));
+                    formals.push(format!("{} = NULL", r_name));
                 }
                 _ => {
-                    formals.push(arg_ident.to_string());
+                    formals.push(r_name);
                 }
             }
         }
@@ -349,11 +367,6 @@ impl<'a> RArgumentBuilder<'a> {
         let mut call_args = Vec::new();
 
         for (idx, input) in self.inputs.iter().enumerate() {
-            // Skip first if requested (for self in methods)
-            if self.skip_first && idx == 0 {
-                continue;
-            }
-
             let syn::FnArg::Typed(pat_type) = input else {
                 continue;
             };
@@ -381,8 +394,10 @@ impl<'a> RArgumentBuilder<'a> {
             }
 
             // Extract and normalize argument name
-            let arg_ident = match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
+            let r_name = match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => self
+                    .names
+                    .resolve(&crate::naming::ident_name(&pat_ident.ident)),
                 _ => continue,
             };
 
@@ -393,11 +408,7 @@ impl<'a> RArgumentBuilder<'a> {
             // an omitted argument with a default, so the default is never
             // evaluated.
             if let Some(param) = crate::type_inspect::unevaluated_param(pat_type.ty.as_ref()) {
-                call_args.push(
-                    param
-                        .kind
-                        .r_call_arg(&arg_ident.to_string(), self.capture_env.r_expr()),
-                );
+                call_args.push(param.kind.r_call_arg(&r_name, self.capture_env.r_expr()));
                 continue;
             }
 
@@ -408,12 +419,12 @@ impl<'a> RArgumentBuilder<'a> {
             if is_missing_type(pat_type.ty.as_ref()) {
                 call_args.push(format!(
                     "if (missing({p})) quote(expr=) else {p}",
-                    p = arg_ident
+                    p = r_name
                 ));
                 continue;
             }
 
-            call_args.push(arg_ident.to_string());
+            call_args.push(r_name);
         }
 
         call_args
@@ -431,9 +442,10 @@ pub(crate) fn build_choice_omission_prelude<'a>(
     defaults: &std::collections::HashMap<String, String>,
     param_attrs: impl Fn(&str) -> Option<&'a crate::miniextendr_fn::ParamAttrs>,
 ) -> Vec<String> {
-    r_formal_names(inputs)
+    r_formal_names(inputs, &FormalNames::default())
         .filter_map(|(name, ident)| {
             let attrs = param_attrs(&crate::naming::ident_name(ident))?;
+            let name = attrs.formal.clone().unwrap_or(name);
             if !attrs.is_choice() || !attrs.omittable || attrs.several_ok || attrs.no_default {
                 return None;
             }
@@ -443,41 +455,6 @@ pub(crate) fn build_choice_omission_prelude<'a>(
             ))
         })
         .collect()
-}
-
-/// Build R formal parameters from a Rust function signature, with optional defaults.
-///
-/// Automatically skips `self`/`&self` receivers. `Missing<T>` parameters without
-/// user-provided defaults appear as bare formals (no default value); the
-/// `R_MissingArg` sentinel forwarding is emitted inline in the `.Call()` args
-/// (see [`RArgumentBuilder::build_call_args_vec`]).
-///
-/// Returns a comma-separated string of R formals, e.g., `"x, y = NULL, ..."`.
-pub(crate) fn build_r_formals_from_sig(
-    sig: &syn::Signature,
-    defaults: &std::collections::HashMap<String, String>,
-) -> String {
-    let mut builder = RArgumentBuilder::new(&sig.inputs);
-    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-        builder = builder.skip_first();
-    }
-    builder = builder.with_defaults(defaults.clone());
-    builder.build_formals()
-}
-
-/// Build R `.Call()` arguments from a Rust function signature.
-///
-/// Automatically skips `self`/`&self` receivers (those are passed separately
-/// via [`DotCallBuilder::with_self`]). `&Dots` becomes `list(...)`, `LazyDots`
-/// `environment()`.
-///
-/// Returns a comma-separated string of R call arguments, e.g., `"x, y, list(...)"`.
-pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
-    let mut builder = RArgumentBuilder::new(&sig.inputs);
-    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-        builder = builder.skip_first();
-    }
-    builder.build_call_args()
 }
 
 // region: Missing<T> detection for automatic defaults

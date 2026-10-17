@@ -5884,8 +5884,8 @@ fn snapshot_s7_documented_props() {
             #[miniextendr(s7(getter))]
             pub fn count(&self) -> i32 { unimplemented!() }
 
-            #[miniextendr(s7(setter))]
-            pub fn count(&mut self, value: i32) { unimplemented!() }
+            #[miniextendr(s7(setter, prop = "count"))]
+            pub fn set_count(&mut self, value: i32) { unimplemented!() }
         }
     };
     let parsed = parse_impl(ClassSystem::S7, item_impl);
@@ -10622,5 +10622,80 @@ fn method_dots_documentation_uses_the_r_formal() {
                 parsed.methods[0].doc_tags
             );
         }
+    }
+}
+
+#[test]
+fn explicit_formals_reach_every_inherent_wrapper() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Named {
+                    /// @param start.at Initial value.
+                    pub fn new(#[miniextendr(formal = "start.at", default = "1L")] start: i32) -> Self { unimplemented!() }
+                    /// @param conf.int Include intervals.
+                    pub fn inspect(&self, #[miniextendr(formal = "conf.int", default = "FALSE")] conf_int: bool) -> bool { conf_int }
+                    pub fn choose(&self, #[miniextendr(formal = "pick.mode", match_arg)] mode: Mode) {}
+                    pub fn capture(&self, #[miniextendr(formal = "quoted.expr")] expr: Quoted) {}
+                }
+            },
+        );
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        for expected in [
+            "start.at = 1L",
+            "conf.int = FALSE",
+            "is.logical(conf.int)",
+            "\"conf.int\"",
+            "pick.mode <- .miniextendr_match_arg(pick.mode,",
+            "substitute(quoted.expr)",
+        ] {
+            assert!(
+                wrapper.contains(expected),
+                "{system:?}: {expected}\n{wrapper}"
+            );
+        }
+        assert!(
+            !wrapper.contains("@param conf_int"),
+            "{system:?}: {wrapper}"
+        );
+        let tokens = c_wrapper_tokens(&parsed, "inspect");
+        assert!(tokens.contains("\"conf.int\""), "{system:?}: {tokens}");
+        assert!(tokens.contains("conf_int"), "{tokens}");
+    }
+}
+
+#[test]
+fn explicit_formals_cannot_hide_class_bindings() {
+    for (system, formal) in [
+        (ClassSystem::R6, "self"),
+        (ClassSystem::R6, "private"),
+        (ClassSystem::S3, "x"),
+        (ClassSystem::S4, "x"),
+        (ClassSystem::S7, ".mx_self"),
+    ] {
+        let code = syn::parse_quote! {
+            impl Named {
+                pub fn new() -> Self { Self }
+                pub fn inspect(&self, #[miniextendr(formal = #formal)] input: i32) {}
+            }
+        };
+        assert!(
+            check_method_formals(&parse_impl(system, code)).is_err(),
+            "{system:?}: {formal}"
+        );
     }
 }

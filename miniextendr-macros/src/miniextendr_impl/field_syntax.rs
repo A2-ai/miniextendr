@@ -191,9 +191,12 @@ fn param_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String>
         .constructor()
         .filter(|_| parsed_impl.class_system != ClassSystem::Env)
         .map(|ctor| {
-            crate::r_wrapper_builder::r_formal_names(&ctor.sig.inputs)
-                .map(|(name, _)| name)
-                .collect()
+            crate::r_wrapper_builder::r_formal_names(
+                &ctor.sig.inputs,
+                &crate::r_wrapper_builder::FormalNames::from_params(&ctor.method_attrs.per_param),
+            )
+            .map(|(name, _)| name)
+            .collect()
         })
         .unwrap_or_default();
     params
