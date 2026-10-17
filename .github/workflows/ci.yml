@@ -1561,7 +1561,8 @@ jobs:
   # r6-default, s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
   # builds — let alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
-  # features on top of the auto-detected base set and runs testthat against it.
+  # features on top of the auto-detected base set, regenerates NAMESPACE and
+  # man/ for that build, and runs testthat against it.
   #
   # The extras, worker-default, r6-default, and s7-default legs run the full
   # suite. extras/worker-default features are additive/transparent; the class
@@ -1639,7 +1640,7 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: rpkg
-          extra-packages: any::testthat
+          extra-packages: any::testthat, any::roxygen2
           needs: check
 
       - name: Install Rust toolchain
@@ -1685,6 +1686,24 @@ jobs:
         # picks up CARGO_FEATURES from the environment.
         run: R CMD INSTALL rpkg
 
+      # The committed NAMESPACE and man/ are the default build's
+      # (wrappers-sync-check regenerates them from that build). A leg can
+      # generate different R code: r6-default / s7-default turn FdefaultProbe
+      # into an R6 / S7 class. That class has no `$` / `[[` S3 methods, so the
+      # default NAMESPACE declares methods the leg's build doesn't define and
+      # every fresh R process that loads the package warns; the S7 class also
+      # exports a generic and a method shortcut that the default man/ has no
+      # page for. Write the NAMESPACE and man/ the leg's own wrappers produce,
+      # as a package built with these features would ship, and install again
+      # so the installed copy (the one run_isolated() and callr children load)
+      # carries them. Nothing under src/rust changed, so the second install
+      # neither recompiles nor relinks.
+      - name: Regenerate NAMESPACE and man/ for the leg's build, then reinstall
+        run: |
+          Rscript -e 'roxygen2::roxygenise("rpkg")'
+          git status --short -- rpkg/NAMESPACE rpkg/man
+          R CMD INSTALL rpkg
+
       - name: Run tests
         working-directory: rpkg
         shell: bash
@@ -1708,6 +1727,7 @@ jobs:
             echo ""
             echo '```'
             echo "CARGO_FEATURES=\"$CARGO_FEATURES\" R CMD INSTALL rpkg"
+            echo "Rscript -e 'roxygen2::roxygenise(\"rpkg\")' && R CMD INSTALL rpkg"
             echo "cd rpkg && Rscript -e 'testthat::test_local(filter = \"${{ matrix.filter }}\")'  # empty filter = full suite"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
