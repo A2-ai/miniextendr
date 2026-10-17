@@ -57,9 +57,13 @@ test_that("serialize converts worker results on the R thread", {
 test_that("the serialized return boundary survives GC stress", {
   skip_if_missing_feature("serde")
   skip_on_cran()
+  # Torture only the code under test: the expectations run with gctorture off,
+  # because testthat under gctorture(TRUE) takes minutes on Windows (#1800).
   gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  expect_identical(miniextendr:::gc_stress_serialized_return(),
-                   list(value = 41L, label = "value-41"))
-  expect_identical(serialized_trait_view(41L), c(41L, 42L))
+  res <- tryCatch(
+    list(miniextendr:::gc_stress_serialized_return(), serialized_trait_view(41L)),
+    finally = gctorture(FALSE)
+  )
+  expect_identical(res[[1]], list(value = 41L, label = "value-41"))
+  expect_identical(res[[2]], c(41L, 42L))
 })

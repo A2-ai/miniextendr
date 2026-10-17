@@ -605,12 +605,21 @@ expand-rpkg *cargo_flags:
 # R_LIBS_SITE = rv's library, and configure inherits them, as under
 # `R CMD INSTALL rpkg`.
 #
+# The bash that runs configure is the recipe shell's own bash, handed to R as
+# MX_BASH (a Windows-style path via cygpath when available). Neither a bare
+# "bash" nor Sys.which("bash") is safe on Windows: CreateProcess searches
+# System32 before PATH and finds the WSL launcher (System32\bash.exe), which
+# fails on runners with no distribution installed.
+#
 # See docs/CRAN_COMPATIBILITY.md for the full table.
 [doc("Run rpkg's configure (source mode, or tarball mode when inst/vendor.tar.xz exists)")]
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi
-    Rscript -e 'setwd("rpkg"); quit(status = system2("bash", "./configure"))'
+    MX_BASH="$(command -v bash)" && \
+    if command -v cygpath >/dev/null 2>&1; then MX_BASH="$(cygpath -m "$MX_BASH")"; fi && \
+    export MX_BASH && \
+    Rscript -e 'setwd("rpkg"); quit(status = system2(Sys.getenv("MX_BASH"), "./configure"))'
 
 # Checks that rpkg/src/Makevars and rpkg/src/rust/.cargo/config.toml both
 # exist and are newer than their source inputs (configure.ac, Makevars.in,

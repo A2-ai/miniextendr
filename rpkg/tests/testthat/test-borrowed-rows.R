@@ -19,9 +19,9 @@ test_that("gc_stress_borrowed_rows survives gctorture(TRUE)", {
     exists("gc_stress_borrowed_rows", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_borrowed_rows not compiled (serde feature missing)"
   )
+  # Torture only the fixture: the expectation runs with gctorture off, because
+  # testthat under gctorture(TRUE) takes minutes on Windows (#1800).
   old <- gctorture(TRUE)
-  on.exit(gctorture(old), add = TRUE)
-
-  n <- miniextendr:::gc_stress_borrowed_rows()
+  n <- tryCatch(miniextendr:::gc_stress_borrowed_rows(), finally = gctorture(old))
   expect_equal(n, 10L)
 })
