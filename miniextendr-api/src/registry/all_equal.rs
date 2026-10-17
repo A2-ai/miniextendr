@@ -1,4 +1,4 @@
-//! Write-time class resolution for fieldwise comparisons.
+//! Write-time class resolution for fieldwise and exact comparisons.
 
 /// One field compared by R's own `all.equal` method.
 pub struct AllEqualField {
@@ -12,21 +12,33 @@ pub struct AllEqualField {
     pub type_path: fn() -> &'static str,
 }
 
-/// A fieldwise comparison registered by `#[derive(AllEqual)]`.
+/// The comparison selected by the derive or trait adapter.
+#[derive(Clone, Copy)]
+pub enum AllEqualComparison {
+    /// Convert the fields and dispatch to their R comparison methods.
+    Fieldwise {
+        /// Formal defaults: tolerance, scale, check.attributes, check.names.
+        defaults: [Option<&'static str>; 4],
+        /// Unskipped fields in source order.
+        fields: &'static [AllEqualField],
+    },
+    /// Rust PartialEq, accepting but ignoring R comparison settings.
+    Exact,
+}
+
+/// A comparison registered by `#[derive(AllEqual)]` or `RPartialEq`.
 pub struct AllEqualEntry {
     /// Canonical identity, matching the inherent class's type_path.
     pub type_path: fn() -> &'static str,
-    /// The derive's type spelling, for diagnostics.
+    /// The registration's type spelling, for diagnostics.
     pub rust_type: &'static str,
-    /// Native callback returning the converted fields as a protected list.
+    /// Native callback: field list for Fieldwise, TRUE or differences for Exact.
     pub c_name: &'static str,
-    /// Formal defaults: tolerance, scale, check.attributes, check.names.
-    pub defaults: [Option<&'static str>; 4],
-    /// Unskipped fields in source order.
-    pub fields: &'static [AllEqualField],
-    /// Derive source file.
+    /// Field conversion metadata or exact Rust comparison.
+    pub comparison: AllEqualComparison,
+    /// Registration source file.
     pub source_file: &'static str,
-    /// Derive source line.
+    /// Registration source line.
     pub source_line: u32,
 }
 
@@ -82,8 +94,12 @@ fn render(
     classes: &HashMap<&'static str, MergedClass>,
 ) -> String {
     let name = class.r_class_name;
+    let provider = match entry.comparison {
+        AllEqualComparison::Fieldwise { .. } => "derive AllEqual",
+        AllEqualComparison::Exact => "RPartialEq",
+    };
     let mut lines = vec![format!(
-        "# Generated from Rust derive AllEqual on `{}` ({}:{})",
+        "# Generated from Rust {provider} on `{}` ({}:{})",
         entry.rust_type, entry.source_file, entry.source_line
     )];
     if class.documented {
@@ -96,10 +112,20 @@ fn render(
         lines.extend([
             format!("#' @rdname {}", class.topic),
             "#' @param target,current Objects to compare.".into(),
-            "#' @param ... Additional arguments passed to each field's all.equal method.".into(),
-            "#' @param tolerance,scale,check.attributes,check.names Comparison settings. Field overrides take precedence over supplied arguments and struct defaults; unset settings preserve each field method's default.".into(),
-            "#' @return TRUE when every compared field is equal; otherwise all differences, prefixed by field name or label.".into(),
         ]);
+        match entry.comparison {
+            AllEqualComparison::Fieldwise { .. } => lines.extend([
+                "#' @param ... Additional arguments passed to each field's all.equal method.".into(),
+                "#' @param tolerance,scale,check.attributes,check.names Comparison settings. Field overrides take precedence over supplied arguments and struct defaults; unset settings preserve each field method's default.".into(),
+                "#' @return TRUE when every compared field is equal; otherwise all differences, prefixed by field name or label.".into(),
+            ]),
+            AllEqualComparison::Exact => lines.extend([
+                "#' @param tolerance Accepted for compatibility; ignored by this exact Rust PartialEq comparison.".into(),
+                "#' @param ... Additional arguments, accepted but ignored by this exact comparison.".into(),
+                "#' @return TRUE when the Rust values compare equal; otherwise a diagnostic naming the type, with Debug details when available.".into(),
+                "#' @details Equality is exact. Use Rust's `#[derive(AllEqual)]` instead when fields should use R's approximate comparison and tolerance.".into(),
+            ]),
+        }
     } else {
         lines.push("#' @noRd".into());
     }
@@ -108,11 +134,16 @@ fn render(
         "current".to_string(),
         "...".to_string(),
     ];
-    for (setting, default) in SETTINGS.iter().zip(entry.defaults) {
-        formals.push(default.map_or_else(
-            || setting.to_string(),
-            |value| format!("{setting} = {value}"),
-        ));
+    match entry.comparison {
+        AllEqualComparison::Fieldwise { defaults, .. } => {
+            for (setting, default) in SETTINGS.iter().zip(defaults) {
+                formals.push(default.map_or_else(
+                    || setting.to_string(),
+                    |value| format!("{setting} = {value}"),
+                ));
+            }
+        }
+        AllEqualComparison::Exact => formals.push("tolerance".into()),
     }
     let formals = formals.join(", ");
     match class.class_system {
@@ -144,66 +175,76 @@ fn render(
     lines.extend([
         "  if (!base::identical(base::class(target), base::class(current)))".into(),
         "    return(base::sprintf(\"target is %s, current is %s\", base::data.class(target), base::data.class(current)))".into(),
-        format!("  .val <- .Call({}, target)", entry.c_name),
     ]);
-    guard(&mut lines);
-    lines.push("  .target <- .val".into());
-    lines.push(format!("  .val <- .Call({}, current)", entry.c_name));
-    guard(&mut lines);
-    lines.push("  .current <- .val".into());
-    // R's promoted S4 generic delegates ordinary values to base::all.equal;
-    // calling the base closure directly would skip a nested S4 method.
-    lines.push("  .compare <- methods::getGeneric(\"all.equal\")".into());
-    lines.push("  if (base::is.null(.compare)) .compare <- base::all.equal".into());
-    lines.push("  .args <- base::list(...)".into());
-    for (setting, default) in SETTINGS.iter().zip(entry.defaults) {
-        let assignment = format!(".args[{}] <- base::list({setting})", literal(setting));
-        lines.push(if default.is_some() {
-            format!("  {assignment}")
-        } else {
-            format!("  if (!missing({setting})) {assignment}")
-        });
-    }
-    lines.push("  .out <- base::character()".into());
-    for (i, field) in entry.fields.iter().enumerate() {
-        lines.push("  .field_args <- .args".into());
-        for (setting, value) in SETTINGS.iter().zip(field.settings) {
-            if let Some(value) = value {
-                lines.push(format!(
-                    "  .field_args[{}] <- base::list({value})",
-                    literal(setting)
-                ));
-            }
+    match entry.comparison {
+        AllEqualComparison::Exact => {
+            lines.push(format!(
+                "  .val <- .Call({}, environment(), target, current)",
+                entry.c_name
+            ));
+            guard(&mut lines);
+            lines.push("  .val".into());
         }
-        let target = wrap_field(
-            (field.type_path)(),
-            &format!(".target[[{}L]]", i + 1),
-            classes,
-        );
-        let current = wrap_field(
-            (field.type_path)(),
-            &format!(".current[[{}L]]", i + 1),
-            classes,
-        );
-        lines.push(format!("  .diff <- base::do.call(.compare, base::c(base::list(target = {target}, current = {current}), .field_args), quote = TRUE)"));
-        let prefix = field.label.map_or_else(
-            || {
-                if field.name.bytes().all(|byte| byte.is_ascii_digit()) {
-                    literal(&format!("Component {}: ", field.name))
+        AllEqualComparison::Fieldwise { defaults, fields } => {
+            lines.push(format!("  .val <- .Call({}, target)", entry.c_name));
+            guard(&mut lines);
+            lines.push("  .target <- .val".into());
+            lines.push(format!("  .val <- .Call({}, current)", entry.c_name));
+            guard(&mut lines);
+            lines.push("  .current <- .val".into());
+            // R's promoted S4 generic delegates ordinary values to base::all.equal;
+            // calling the base closure directly would skip a nested S4 method.
+            lines.push("  .compare <- methods::getGeneric(\"all.equal\")".into());
+            lines.push("  if (base::is.null(.compare)) .compare <- base::all.equal".into());
+            lines.push("  .args <- base::list(...)".into());
+            for (setting, default) in SETTINGS.iter().zip(defaults) {
+                let assignment = format!(".args[{}] <- base::list({setting})", literal(setting));
+                lines.push(if default.is_some() {
+                    format!("  {assignment}")
                 } else {
-                    format!(
-                        "base::paste0(\"Component \", base::dQuote({}), \": \")",
-                        literal(field.name)
-                    )
+                    format!("  if (!missing({setting})) {assignment}")
+                });
+            }
+            lines.push("  .out <- base::character()".into());
+            for (i, field) in fields.iter().enumerate() {
+                lines.push("  .field_args <- .args".into());
+                for (setting, value) in SETTINGS.iter().zip(field.settings) {
+                    if let Some(value) = value {
+                        lines.push(format!(
+                            "  .field_args[{}] <- base::list({value})",
+                            literal(setting)
+                        ));
+                    }
                 }
-            },
-            |label| literal(&format!("{label}: ")),
-        );
-        lines.push(format!(
-            "  if (!base::isTRUE(.diff)) .out <- base::c(.out, base::paste0({prefix}, .diff))"
-        ));
+                let target = wrap_field(
+                    (field.type_path)(),
+                    &format!(".target[[{}L]]", i + 1),
+                    classes,
+                );
+                let current = wrap_field(
+                    (field.type_path)(),
+                    &format!(".current[[{}L]]", i + 1),
+                    classes,
+                );
+                lines.push(format!("  .diff <- base::do.call(.compare, base::c(base::list(target = {target}, current = {current}), .field_args), quote = TRUE)"));
+                let prefix = field.label.map_or_else(
+                    || {
+                        if field.name.bytes().all(|byte| byte.is_ascii_digit()) {
+                            literal(&format!("Component {}: ", field.name))
+                        } else {
+                            format!(
+                                "base::paste0(\"Component \", base::dQuote({}), \": \")",
+                                literal(field.name)
+                            )
+                        }
+                    },
+                    |label| literal(&format!("{label}: ")),
+                );
+                lines.push(format!("  if (!base::isTRUE(.diff)) .out <- base::c(.out, base::paste0({prefix}, .diff))"));
+            }
+            lines.push("  if (base::length(.out)) .out else TRUE".into());
+        }
     }
-    lines.push("  if (base::length(.out)) .out else TRUE".into());
     lines.push(
         if matches!(class.class_system, "s4" | "s7") {
             "})"
@@ -235,7 +276,7 @@ pub(super) fn fragments(
             continue;
         }
         let Some(class) = classes.get(ty) else {
-            errors.push(format!("miniextendr: #[derive(AllEqual)] on `{}` ({}:{}) requires an inherent #[miniextendr] class impl", entry.rust_type, entry.source_file, entry.source_line));
+            errors.push(format!("miniextendr: all.equal provider on `{}` ({}:{}) requires an inherent #[miniextendr] class impl", entry.rust_type, entry.source_file, entry.source_line));
             continue;
         };
         fragments.push(WrapperFragment {
@@ -260,13 +301,15 @@ mod tests {
             type_path: || "Fit",
             rust_type: "Fit",
             c_name: "C_Fit",
-            defaults: [Some("1e-6"), None, None, None],
-            fields: &[AllEqualField {
-                name: "estimate",
-                label: Some("Estimate"),
-                settings: [Some("0"), None, None, None],
-                type_path: || "f64",
-            }],
+            comparison: AllEqualComparison::Fieldwise {
+                defaults: [Some("1e-6"), None, None, None],
+                fields: &[AllEqualField {
+                    name: "estimate",
+                    label: Some("Estimate"),
+                    settings: [Some("0"), None, None, None],
+                    type_path: || "f64",
+                }],
+            },
             source_file: "fit.rs",
             source_line: 1,
         }
@@ -323,6 +366,25 @@ mod tests {
                 .unwrap()
                 .contains("more than one")
         );
+    }
+    #[test]
+    fn exact_comparison_uses_shared_dispatch_and_rejects_fieldwise_provider() {
+        for system in ["env", "r6", "s3", "s4", "s7", "vctrs"] {
+            let classes = HashMap::from([("Fit", class(system))]);
+            let mut exact = entry();
+            exact.comparison = AllEqualComparison::Exact;
+            let rendered = render(&exact, &classes["Fit"], &classes);
+            assert!(rendered.contains("function(target, current, ..., tolerance)"));
+            assert!(rendered.contains(".Call(C_Fit, environment(), target, current)"));
+            assert!(rendered.contains("ignored by this exact Rust PartialEq comparison"));
+            assert!(!rendered.contains(".field_args"));
+            assert!(
+                fragments(&[entry(), exact], &classes)
+                    .err()
+                    .unwrap()
+                    .contains("more than one all.equal provider")
+            );
+        }
     }
     #[test]
     fn comparison_docs_respect_class_pages() {

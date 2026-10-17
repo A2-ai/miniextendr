@@ -137,7 +137,7 @@ use syn::ItemTrait;
 ///
 /// # Arguments
 ///
-/// * `attr` - Attribute arguments (currently unused, reserved for future options)
+/// * `attr` - Internal adapter protocol options
 /// * `item` - The trait definition token stream
 ///
 /// # Returns
@@ -156,10 +156,21 @@ use syn::ItemTrait;
 /// - Methods have unsupported signatures
 /// - Methods are async
 pub fn expand_trait(
-    _attr: proc_macro::TokenStream,
+    attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let trait_item = syn::parse_macro_input!(item as ItemTrait);
+
+    // Internal declaration marker; aliases carry it through the metadata macro.
+    let partial_eq = !attr.is_empty();
+    if partial_eq {
+        let marker = syn::parse_macro_input!(attr as syn::Ident);
+        if marker != "__partial_eq" {
+            return syn::Error::new_spanned(marker, "unknown trait option")
+                .into_compile_error()
+                .into();
+        }
+    }
 
     // Validate trait constraints
     if let Err(e) = validate_trait(&trait_item) {
@@ -167,7 +178,7 @@ pub fn expand_trait(
     }
 
     // Generate the expanded code
-    let expanded = generate_trait_abi(&trait_item);
+    let expanded = generate_trait_abi(&trait_item, partial_eq);
 
     expanded.into()
 }
@@ -278,7 +289,25 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
 /// - View struct (skipped for generic traits)
 /// - Method shims (with trait type params threaded through)
 /// - Vtable builder (with trait type params threaded through)
-fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
+fn generate_trait_abi(trait_item: &ItemTrait, partial_eq: bool) -> TokenStream {
+    if partial_eq {
+        let valid = trait_item.generics.params.is_empty()
+            && trait_item.items.len() == 1
+            && matches!(&trait_item.items[0], syn::TraitItem::Fn(method)
+                if method.sig.ident == "r_eq"
+                && method.sig.inputs.len() == 2
+                && method.sig.generics.params.is_empty()
+                && matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_none())
+                && matches!(method.sig.inputs.last(), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if reference.mutability.is_none() && matches!(&*reference.elem, syn::Type::Path(path) if path.path.is_ident("Self"))))
+                && matches!(&method.sig.output, syn::ReturnType::Type(_, ty) if matches!(&**ty, syn::Type::Path(path) if path.path.is_ident("bool"))));
+        if !valid {
+            return syn::Error::new_spanned(
+                trait_item,
+                "__partial_eq requires fn r_eq(&self, other: &Self) -> bool",
+            )
+            .into_compile_error();
+        }
+    }
     let trait_name = &trait_item.ident;
     let vis = &trait_item.vis;
 
@@ -618,8 +647,9 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     }
     // The impl receives the exact declaration layout and fingerprint, never
     // a guessed path to companion items. No caller-scope types occur here.
+    let protocol = partial_eq.then(|| quote::quote!([partial_eq]));
     let abi_metadata = quote::quote! {
-        abi #trait_name #has_generics #tag_path { #(#vtable_fields),* }
+        abi #trait_name #has_generics #tag_path #protocol { #(#vtable_fields),* }
     };
     let empty_impl_arm = if !has_generics && assoc_types.is_empty() {
         quote::quote! {

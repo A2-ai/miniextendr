@@ -934,7 +934,7 @@ pub mod markers;
 
 /// Built-in adapter traits for std library traits.
 ///
-/// Provides [`RDebug`], [`RDisplay`], [`RHash`], [`ROrd`], [`RPartialOrd`],
+/// Provides [`RDebug`], [`RDisplay`], [`RHash`], [`ROrd`], [`RPartialEq`], [`RPartialOrd`],
 /// [`RError`], [`RFromStr`], [`RClone`], [`RCopy`], [`RDefault`], [`RIterator`],
 /// [`RExtend`], [`RFromIter`], [`RToVec`], and [`RMakeIter`] with blanket
 /// implementations where possible. Methods that share a name with a std
@@ -945,6 +945,7 @@ pub mod markers;
 /// [`RDisplay`]: adapter_traits::RDisplay
 /// [`RHash`]: adapter_traits::RHash
 /// [`ROrd`]: adapter_traits::ROrd
+/// [`RPartialEq`]: adapter_traits::RPartialEq
 /// [`RPartialOrd`]: adapter_traits::RPartialOrd
 /// [`RError`]: adapter_traits::RError
 /// [`RFromStr`]: adapter_traits::RFromStr
@@ -959,7 +960,7 @@ pub mod markers;
 pub mod adapter_traits;
 pub use adapter_traits::{
     RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,
-    RIterator, RMakeIter, ROrd, RPartialOrd, RToVec,
+    RIterator, RMakeIter, ROrd, RPartialEq, RPartialOrd, RToVec,
 };
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"

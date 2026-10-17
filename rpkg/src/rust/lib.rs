@@ -305,6 +305,7 @@ mod panic_location_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
 mod param_check_tests;
+mod partial_eq_tests;
 mod pipe_builder_tests;
 mod precondition_bench_fixtures;
 mod precondition_marker_tests;

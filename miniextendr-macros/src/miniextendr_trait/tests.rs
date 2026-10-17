@@ -214,7 +214,7 @@ fn generate_produces_tag_constant() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("TAG_Counter"));
@@ -231,7 +231,7 @@ fn generate_produces_vtable_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterVTable"));
@@ -250,7 +250,7 @@ fn generate_produces_view_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterView"));
@@ -267,7 +267,7 @@ fn generate_produces_vtable_builder() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("__Counter_build_vtable"));
@@ -283,7 +283,7 @@ fn generate_excludes_static_methods_from_vtable() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     // vtable should contain `value` but not `create`
@@ -302,7 +302,7 @@ fn generate_preserves_original_trait() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     // Original trait should be in output (pass-through)
@@ -316,7 +316,7 @@ fn view_keeps_typed_runtime_storage_and_forwards_its_owner() {
     let item: ItemTrait = syn::parse_quote! {
         pub trait Counter { fn value(&self) -> i32; }
     };
-    let output = generate_trait_abi(&item).to_string();
+    let output = generate_trait_abi(&item, false).to_string();
     assert!(
         output.contains("TraitViewData < CounterVTable >"),
         "{output}"
@@ -464,7 +464,7 @@ fn tpie_macro_forwards_no_preconditions() {
             fn scaled(&self, k: f64) -> f64;
         }
     };
-    let out = generate_trait_abi(&trait_item).to_string();
+    let out = generate_trait_abi(&trait_item, false).to_string();
     assert!(
         out.contains("$ noexport : tt , $ no_preconditions : tt)"),
         "{out}"
@@ -509,7 +509,7 @@ fn trait_method_rejects_precondition_markers() {
 #[test]
 fn owner_interface_tags_distinguish_calling_conventions_and_method_order() {
     fn tag_expression(item: ItemTrait) -> String {
-        let generated: syn::File = syn::parse2(generate_trait_abi(&item)).unwrap();
+        let generated: syn::File = syn::parse2(generate_trait_abi(&item, false)).unwrap();
         generated
             .items
             .iter()
@@ -614,7 +614,7 @@ fn every_trait_exports_its_metadata_under_the_traits_name() {
             fn hidden(&self, value: Self::Item);
         } },
     ] {
-        let output = generate_trait_abi(&trait_item);
+        let output = generate_trait_abi(&trait_item, false);
         let file: syn::File = syn::parse2(output.clone()).unwrap();
         let exports: Vec<_> = file
             .items
@@ -637,7 +637,7 @@ fn every_trait_exports_its_metadata_under_the_traits_name() {
 fn metadata_macros_do_not_collide_for_same_named_traits_in_separate_modules() {
     let trait_item = syn::parse_quote! { pub trait Repeated { fn value(&self) -> i32; } };
     let export = || {
-        let file: syn::File = syn::parse2(generate_trait_abi(&trait_item)).unwrap();
+        let file: syn::File = syn::parse2(generate_trait_abi(&trait_item, false)).unwrap();
         file.items
             .into_iter()
             .find_map(|item| match item {
@@ -658,7 +658,7 @@ fn declaration_shims_live_on_the_trait_and_are_excluded_from_trait_objects() {
             fn default_value(&self, value: LocalType) -> i32 { value.0 }
         }
     };
-    let file: syn::File = syn::parse2(generate_trait_abi(&declaration)).unwrap();
+    let file: syn::File = syn::parse2(generate_trait_abi(&declaration, false)).unwrap();
     let declared = file
         .items
         .iter()
@@ -783,7 +783,26 @@ fn skipped_methods_keep_rust_only_signatures() {
             }
         };
         validate_trait(&item).unwrap();
-        let output = generate_trait_abi(&item);
+        let output = generate_trait_abi(&item, false);
         assert!(!output.to_string().contains("compile_error"), "{output}");
     }
+}
+
+#[test]
+fn exact_comparison_protocol_belongs_to_the_declaration() {
+    let item: ItemTrait = syn::parse_quote! {
+        pub trait RPartialEq { fn r_eq(&self, other: &Self) -> bool; }
+    };
+    let ordinary = generate_trait_abi(&item, false).to_string();
+    let protocol = generate_trait_abi(&item, true).to_string();
+    assert!(!ordinary.contains("[partial_eq]"));
+    assert_eq!(protocol.matches("[partial_eq]").count(), 2);
+    let invalid: ItemTrait = syn::parse_quote! {
+        pub trait Bad { fn r_eq(&mut self, other: &Self) -> bool; }
+    };
+    assert!(
+        generate_trait_abi(&invalid, true)
+            .to_string()
+            .contains("__partial_eq requires")
+    );
 }

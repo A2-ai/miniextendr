@@ -1282,6 +1282,7 @@ fn trait_method_no_na_checks_the_converted_value() {
         &format_ident!("Dosing"),
         &syn::parse_quote!(Dosing),
         ClassSystem::Env,
+        false,
     )
     .to_string();
     for (binding, message) in [("d", "'d' must not be NA"), ("doses", "need doses")] {
@@ -3076,6 +3077,7 @@ fn trait_static_methods_keep_r_values_on_the_main_thread() {
             &format_ident!("Source"),
             &syn::parse_quote!(Source),
             ClassSystem::Env,
+            false,
         )
         .to_string();
         assert_eq!(
@@ -3471,4 +3473,24 @@ fn trait_member_defaults_wait_for_the_class_topic() {
         .unwrap();
         assert!(!hidden.contains(PREFIX), "{system:?}: {hidden}");
     }
+}
+
+#[test]
+fn exact_comparison_missing_operand_is_a_diagnostic_not_a_macro_panic() {
+    let implementation: ItemImpl = syn::parse_quote! {
+        impl Equality for Item { fn r_eq(&self) -> bool { true } }
+    };
+    let methods =
+        super::vtable::extract_methods(&implementation, crate::roxygen::RdPage::Rendered, &[])
+            .unwrap();
+    let output = super::vtable::generate_trait_method_c_wrapper(
+        &methods[0],
+        &format_ident!("Item"),
+        &format_ident!("RPartialEq"),
+        &syn::parse_quote!(Equality),
+        ClassSystem::S3,
+        true,
+    )
+    .to_string();
+    assert!(output.contains("RPartialEq::r_eq requires an other argument"));
 }

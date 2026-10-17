@@ -212,6 +212,56 @@ impl<T: Ord> ROrd for T {
     }
 }
 
+/// Adapter for exact Rust equality through R's `all.equal()`.
+///
+/// Implemented for every `PartialEq` type. Register with
+/// `#[miniextendr(s3)] impl RPartialEq for MyType {}` (or any other class
+/// system). The generated method accepts `tolerance` and `...` but ignores
+/// them: equality follows Rust's `==`, including its NaN semantics.
+/// Choose [`AllEqual`](crate::AllEqual) for fieldwise R comparisons instead.
+/// Registering both mechanisms for one type is an error.
+#[miniextendr(__partial_eq)]
+pub trait RPartialEq {
+    /// Compare the Rust values exactly.
+    fn r_eq(&self, other: &Self) -> bool;
+}
+
+impl<T: PartialEq> RPartialEq for T {
+    fn r_eq(&self, other: &Self) -> bool {
+        PartialEq::eq(self, other)
+    }
+}
+
+/// Concrete-type probe used by generated exact-comparison callbacks.
+#[doc(hidden)]
+pub struct PartialEqProbe<T>(std::marker::PhantomData<fn() -> T>);
+impl<T> PartialEqProbe<T> {
+    /// Infer the concrete type without holding a reference.
+    pub fn new(_: &T) -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+impl<T: std::fmt::Debug> PartialEqProbe<T> {
+    /// Include Debug detail only on an unequal comparison.
+    pub fn differences(&self, target: &T, current: &T, name: &str) -> Vec<String> {
+        vec![
+            format!("Rust values of {name} differ"),
+            format!("target: {target:?}\ncurrent: {current:?}"),
+        ]
+    }
+}
+/// Fallback when the concrete comparison type has no Debug implementation.
+#[doc(hidden)]
+pub trait PartialEqFallback<T> {
+    /// Name the type without imposing a Debug bound.
+    fn differences(&self, target: &T, current: &T, name: &str) -> Vec<String>;
+}
+impl<T> PartialEqFallback<T> for PartialEqProbe<T> {
+    fn differences(&self, _: &T, _: &T, name: &str) -> Vec<String> {
+        vec![format!("Rust values of {name} differ")]
+    }
+}
+
 /// Adapter trait for [`std::cmp::PartialOrd`].
 ///
 /// Provides partial ordering comparison for R, handling incomparable values.

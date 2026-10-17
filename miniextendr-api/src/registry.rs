@@ -12,7 +12,7 @@ use linkme::distributed_slice;
 use std::os::raw::c_void;
 
 mod all_equal;
-pub use all_equal::{AllEqualEntry, AllEqualField, all_equal_getter_type};
+pub use all_equal::{AllEqualComparison, AllEqualEntry, AllEqualField, all_equal_getter_type};
 
 // region: Distributed Slices
 //

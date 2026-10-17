@@ -1066,6 +1066,13 @@ tolerances and nested class dispatch. Sidecar fields read their live slots;
 restored pointers are refused. See [Comparing pointer-backed objects](CLASS_SYSTEMS.md#comparing-pointer-backed-objects)
 for settings, field getters, skips, and testthat edition differences.
 
+For exact Rust `==`, register `#[miniextendr(s3)] impl RPartialEq for T {}`
+(or the matching class system) instead. The adapter is blanket over
+`T: PartialEq` and uses the same live-pointer checks. It returns `TRUE` or
+a diagnostic naming the type, with Debug details when available. Its
+`tolerance` and `...` arguments are accepted but ignored. Choose one
+comparison provider per type; registering both it and `AllEqual` is an error.
+
 ## Trait Implementations
 
 `ExternalPtr<T>` mirrors `Box<T>`'s ownership traits; the ones that read the

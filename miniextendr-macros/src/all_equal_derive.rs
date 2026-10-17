@@ -209,8 +209,10 @@ pub(crate) fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
                     type_path: ::core::any::type_name::<#name>,
                     rust_type: ::core::stringify!(#name),
                     c_name: #c_text,
-                    defaults: [#(#defaults),*],
-                    fields: &[#(#fields),*],
+                    comparison: ::miniextendr_api::registry::AllEqualComparison::Fieldwise {
+                        defaults: [#(#defaults),*],
+                        fields: &[#(#fields),*],
+                    },
                     source_file: ::core::file!(),
                     source_line: #line,
                 };

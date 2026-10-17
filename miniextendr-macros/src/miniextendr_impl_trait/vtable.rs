@@ -108,6 +108,7 @@ pub(super) fn generate_vtable_static(
                 trait_name,
                 trait_path,
                 impl_attrs.class_system,
+                abi.partial_eq,
             )
         })
         .collect();
@@ -135,21 +136,25 @@ pub(super) fn generate_vtable_static(
 
     // Generate R wrapper code string based on class system (only non-skipped methods)
     let methods_owned: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
-    let r_wrapper_string = match generate_trait_r_wrapper(
-        &type_ident,
-        trait_name,
-        &methods_owned,
-        &consts,
-        TraitWrapperOpts {
-            class_system: impl_attrs.class_system,
-            class_has_no_rd,
-            internal: impl_attrs.internal,
-            noexport: impl_attrs.noexport,
-            impl_preconditions: impl_attrs.preconditions,
-        },
-    ) {
-        Ok(s) => s,
-        Err(e) => return e.into_compile_error(),
+    let r_wrapper_string = if abi.partial_eq {
+        String::new()
+    } else {
+        match generate_trait_r_wrapper(
+            &type_ident,
+            trait_name,
+            &methods_owned,
+            &consts,
+            TraitWrapperOpts {
+                class_system: impl_attrs.class_system,
+                class_has_no_rd,
+                internal: impl_attrs.internal,
+                noexport: impl_attrs.noexport,
+                impl_preconditions: impl_attrs.preconditions,
+            },
+        ) {
+            Ok(s) => s,
+            Err(e) => return e.into_compile_error(),
+        }
     };
 
     // Generate constant name for R wrapper registration
@@ -201,7 +206,9 @@ pub(super) fn generate_vtable_static(
             Err(error) => return error.into_compile_error(),
         };
 
+    let comparison = partial_eq_registration(abi, concrete_type, &type_ident, &methods_owned);
     quote::quote! {
+        #comparison
         // Pass through the original impl block (with method attrs stripped)
         // — omitted when the body is empty (blanket impl covers it)
         #clean_impl_tokens
@@ -1334,6 +1341,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
     class_system: ClassSystem,
+    partial_eq: bool,
 ) -> TokenStream {
     use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
 
@@ -1525,6 +1533,30 @@ pub(super) fn generate_trait_method_c_wrapper(
         let call_expr = quote::quote! {
             <#type_ident as #trait_path>::#method_ident(#self_ref, #(#call_args),*)
         };
+        // The exact-comparison protocol exposes all.equal, while its trait ABI
+        // still returns bool. Use the ordinary borrow/unwind/condition boundary.
+        let call_expr = if partial_eq {
+            let Some(other) = call_args.first() else {
+                return syn::Error::new_spanned(
+                    &method.sig,
+                    "RPartialEq::r_eq requires an other argument",
+                )
+                .into_compile_error();
+            };
+            builder = builder.output(syn::parse_quote!(-> ::miniextendr_api::SEXP));
+            quote::quote! {
+                if #call_expr {
+                    ::miniextendr_api::IntoR::into_sexp(true)
+                } else {
+                    #[allow(unused_imports)]
+                    use ::miniextendr_api::adapter_traits::PartialEqFallback as _;
+                    let probe = ::miniextendr_api::adapter_traits::PartialEqProbe::new(#self_ref);
+                    ::miniextendr_api::IntoR::into_sexp(probe.differences(#self_ref, #other, ::core::stringify!(#type_ident)))
+                }
+            }
+        } else {
+            call_expr
+        };
         // Unwrap a visibility-marker newtype (#1213); the output type is peeled.
         let call_expr = crate::type_inspect::prepare_return_value(
             call_expr,
@@ -1664,4 +1696,41 @@ pub(super) fn generate_trait_const_c_wrapper(
         .call_method_def_ident(call_method_def_ident);
 
     builder.build().generate()
+}
+
+/// Register the adapter with the same canonical class resolver as AllEqual.
+pub(super) fn partial_eq_registration(
+    abi: &TraitAbiMetadata,
+    concrete_type: &syn::Type,
+    type_ident: &syn::Ident,
+    methods: &[TraitMethod],
+) -> TokenStream {
+    if !abi.partial_eq {
+        return TokenStream::new();
+    }
+    let Some(method) = methods
+        .iter()
+        .find(|method| method.ident == "r_eq" && !method.skip)
+    else {
+        return syn::Error::new_spanned(type_ident, "RPartialEq requires the r_eq wrapper")
+            .into_compile_error();
+    };
+    let c_name = method.c_wrapper_ident(type_ident, &abi.name).to_string();
+    let line = u32::try_from(type_ident.span().start().line).expect("source line fits u32");
+    quote::quote! {
+        const _: () = {
+            #[cfg(not(target_arch = "wasm32"))]
+            #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALL_EQUAL)]
+            #[linkme(crate = ::miniextendr_api::linkme)]
+            static COMPARISON: ::miniextendr_api::registry::AllEqualEntry =
+                ::miniextendr_api::registry::AllEqualEntry {
+                    type_path: ::core::any::type_name::<#concrete_type>,
+                    rust_type: ::core::stringify!(#type_ident),
+                    c_name: #c_name,
+                    comparison: ::miniextendr_api::registry::AllEqualComparison::Exact,
+                    source_file: ::core::file!(),
+                    source_line: #line,
+                };
+        };
+    }
 }

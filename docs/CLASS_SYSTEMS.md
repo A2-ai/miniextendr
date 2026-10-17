@@ -1215,10 +1215,49 @@ The default prefix follows base's list comparison, `Component “estimates”:`
 raises its usual classed restored-value error, including for fieldless structs
 and structs whose fields are all skipped.
 
-Testthat edition 2's `expect_equal()` calls `all.equal()` and uses this method.
-Edition 3 uses `waldo::compare()` instead: distinct external pointers remain
-different even when this method considers their values equal. To test the
-derive in either edition, write `expect_true(all.equal(x, y))`.
+For exact Rust equality, register the `RPartialEq` adapter instead:
+
+```rust
+use miniextendr_api::{ExternalPtr, RPartialEq, miniextendr};
+
+#[derive(ExternalPtr, PartialEq, Debug)]
+pub struct Key(i32);
+
+#[miniextendr(s3)]
+impl Key {
+    pub fn new(value: i32) -> Self { Self(value) }
+}
+#[miniextendr(s3)]
+impl RPartialEq for Key {}
+```
+
+The adapter is blanket-implemented for `T: PartialEq`. It registers `all.equal`
+in the same six class systems, using the inherent class's name and help topic.
+Empty impls, trait aliases, and explicit signatures with `blanket` work as for
+the other adapters. It returns `TRUE` when Rust's `==` holds, otherwise
+`"Rust values of <Type> differ"` and a Debug detail line when the type implements
+`Debug`. Debug formatting runs only on unequal values. NaN follows Rust
+`PartialEq` semantics and compares unequal even to itself.
+
+The exact method accepts `tolerance` and other `...` arguments without applying
+or forcing them, so edition-2 `expect_equal()` can call it normally. Use
+`AllEqual` for approximate numerical results or per-field comparison settings.
+Registering both providers for one canonical Rust type is an error when wrappers
+are written. Both methods reject restored pointers with the type's usual
+restored-value condition and return a diagnostic for a differently classed
+`current`.
+
+Testthat edition 2's `expect_equal()` calls its imported `base::all.equal()`:
+it uses the registered S3/S7 methods, but bypasses the promoted S4 generic and
+can report unequal S4 pointees as equal. Edition 3 uses `waldo::compare()`
+instead. Distinct external pointers normally remain different even when their
+Rust values are equal; waldo's R6 proxy omits the private environment holding
+`.ptr`, so it can report unequal R6 pointees as equal.
+
+To test either Rust comparison mechanism in either edition, explicitly write
+`expect_true(all.equal(x, y))`. For S4, that call must resolve to the promoted
+generic (`methods::getGeneric("all.equal")`), not `base::all.equal`.
+Neither mechanism changes testthat's or waldo's comparison rules.
 
 ## Conditional Methods
 

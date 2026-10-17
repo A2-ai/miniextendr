@@ -595,6 +595,7 @@ struct TraitAbiMetadata {
     name: syn::Ident,
     generic: bool,
     tag: syn::LitStr,
+    partial_eq: bool,
     fields: syn::FieldsNamed,
 }
 
@@ -611,6 +612,17 @@ impl syn::parse::Parse for TraitAbiMetadata {
             name: input.parse()?,
             generic: input.parse::<syn::LitBool>()?.value,
             tag: input.parse()?,
+            partial_eq: if input.peek(syn::token::Bracket) {
+                let protocol;
+                syn::bracketed!(protocol in input);
+                let marker: syn::Ident = protocol.parse()?;
+                if marker != "partial_eq" || !protocol.is_empty() {
+                    return Err(syn::Error::new_spanned(marker, "unknown trait protocol"));
+                }
+                true
+            } else {
+                false
+            },
             fields: input.parse()?,
         })
     }
@@ -1011,26 +1023,37 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let c_wrappers: Vec<TokenStream> = methods
         .iter()
         .map(|m| {
-            generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path, class_system)
+            generate_trait_method_c_wrapper(
+                m,
+                &type_ident,
+                trait_name,
+                trait_path,
+                class_system,
+                tpie_input.abi.partial_eq,
+            )
         })
         .collect();
 
     // Generate R wrappers
-    let r_wrapper_string = match generate_trait_r_wrapper(
-        &type_ident,
-        trait_name,
-        &methods,
-        &[], // no consts in TPIE
-        TraitWrapperOpts {
-            class_system,
-            class_has_no_rd: tpie_input.no_rd,
-            internal: tpie_input.internal,
-            noexport: tpie_input.noexport,
-            impl_preconditions: Some(!tpie_input.no_preconditions),
-        },
-    ) {
-        Ok(s) => s,
-        Err(e) => return e.into_compile_error().into(),
+    let r_wrapper_string = if tpie_input.abi.partial_eq {
+        String::new()
+    } else {
+        match generate_trait_r_wrapper(
+            &type_ident,
+            trait_name,
+            &methods,
+            &[], // no consts in TPIE
+            TraitWrapperOpts {
+                class_system,
+                class_has_no_rd: tpie_input.no_rd,
+                internal: tpie_input.internal,
+                noexport: tpie_input.noexport,
+                impl_preconditions: Some(!tpie_input.no_preconditions),
+            },
+        ) {
+            Ok(s) => s,
+            Err(e) => return e.into_compile_error().into(),
+        }
     };
 
     // Generate const names (same pattern as generate_vtable_static)
@@ -1067,7 +1090,10 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let source_col_lit =
         syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
+    let comparison =
+        vtable::partial_eq_registration(&tpie_input.abi, &concrete_type, &type_ident, &methods);
     let expanded = quote::quote! {
+        #comparison
         #vtable
         // C wrappers and call method defs for trait methods
         #(#c_wrappers)*
