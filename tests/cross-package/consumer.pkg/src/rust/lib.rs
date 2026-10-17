@@ -578,3 +578,40 @@ pub fn inherited_values(object: SEXP, values: SEXP) -> SEXP {
         result
     }
 }
+
+/// Read or evaluate a consumer capture in the producer.
+/// @param obj A producer counter.
+/// @param expr A base R expression.
+/// @param evaluate Whether to evaluate rather than return the expression.
+/// @export
+#[miniextendr]
+pub fn capture_quoted(obj: SEXP, expr: miniextendr_api::Quoted, evaluate: bool) -> SEXP {
+    let view = unsafe { shared_traits::CapturesView::from_sexp(obj) };
+    view.quoted(expr, evaluate)
+}
+
+/// Read or evaluate a consumer quosure in the producer.
+/// @param obj A producer counter.
+/// @param expr A tidy expression.
+/// @param evaluate Whether to evaluate rather than return the expression.
+/// @export
+#[miniextendr]
+pub fn capture_tidy(obj: SEXP, expr: miniextendr_api::Quosure, evaluate: bool) -> SEXP {
+    let view = unsafe { shared_traits::CapturesView::from_sexp(obj) };
+    view.tidy(expr, evaluate)
+}
+
+/// Test omitted captures across package boundaries.
+/// @param obj A producer counter.
+/// @param expr An optional base R expression.
+/// @param tidy An optional tidy expression.
+/// @export
+#[miniextendr]
+pub fn capture_absent(
+    obj: SEXP,
+    expr: miniextendr_api::Missing<miniextendr_api::Quoted>,
+    tidy: miniextendr_api::Missing<miniextendr_api::Quosure>,
+) -> Vec<bool> {
+    let view = unsafe { shared_traits::CapturesView::from_sexp(obj) };
+    view.absent(expr, tidy)
+}

@@ -2408,13 +2408,15 @@ impl ParsedMethod {
                 .unwrap_or_else(|| item.sig.ident.span()),
         )?;
 
-        // Missing<T> defaults are refused, except a single-choice match_arg rotation.
+        // Missing<T> defaults are refused, except unevaluated markers and a
+        // single-choice match_arg rotation.
         for arg in peeled_sig.inputs.iter() {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
                 let name = crate::naming::ident_name(&pat_ident.ident);
                 if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
+                    && crate::type_inspect::unevaluated_param(&pt.ty).is_none()
                     && param_defaults.contains_key(&name)
                     && !method_attrs
                         .per_param

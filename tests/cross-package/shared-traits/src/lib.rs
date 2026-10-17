@@ -130,3 +130,15 @@ mod aliased_signature {
 pub use aliased_signature::{
     AliasedValues as RenamedValues, AliasedValuesVTable, TAG_AliasedValues,
 };
+
+/// Captures passed through the ABI retain the consumer's expression and frame.
+#[miniextendr]
+pub trait Captures {
+    fn quoted(&self, expr: miniextendr_api::Quoted, evaluate: bool) -> miniextendr_api::SEXP;
+    fn tidy(&self, expr: miniextendr_api::Quosure, evaluate: bool) -> miniextendr_api::SEXP;
+    fn absent(
+        &self,
+        expr: miniextendr_api::Missing<miniextendr_api::Quoted>,
+        tidy: miniextendr_api::Missing<miniextendr_api::Quosure>,
+    ) -> Vec<bool>;
+}

@@ -1009,3 +1009,27 @@ impl shared_traits::RenamedValues<i32> for SimpleCounter {
 pub fn new_counter_external(initial: i32) -> SimpleCounter {
     SimpleCounter::create(initial)
 }
+
+#[miniextendr]
+impl shared_traits::Captures for SimpleCounter {
+    fn quoted(&self, expr: miniextendr_api::Quoted, evaluate: bool) -> SEXP {
+        if evaluate { expr.eval() } else { expr.expr() }
+    }
+    fn tidy(&self, expr: miniextendr_api::Quosure, evaluate: bool) -> SEXP {
+        if evaluate {
+            expr.eval_tidy(SEXP::nil())
+        } else {
+            expr.expr()
+        }
+    }
+    fn absent(
+        &self,
+        expr: miniextendr_api::Missing<miniextendr_api::Quoted>,
+        tidy: miniextendr_api::Missing<miniextendr_api::Quosure>,
+    ) -> Vec<bool> {
+        vec![
+            matches!(expr, miniextendr_api::Missing::Absent),
+            matches!(tidy, miniextendr_api::Missing::Absent),
+        ]
+    }
+}

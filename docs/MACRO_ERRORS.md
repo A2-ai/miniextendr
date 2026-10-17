@@ -534,9 +534,8 @@ parameter` (a default, coercion or check would force the argument; `default`
 alone is accepted on `Missing<Quoted>` / `Missing<Quosure>`, where it only
 writes the formal),
 `` `Checked<Quoted>` on parameter `x`: `Quoted` has no R-side type check to
-keep or drop `` and `` `Quoted` parameters are supported on
-standalone #[miniextendr] functions only `` (a class or trait method's wrapper
-forces its arguments). See [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#restrictions).
+keep or drop ``. These rules apply to functions and class or trait methods.
+See [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#restrictions).
 
 ### "per-parameter options (...) do not apply to the `NArgs` parameter `n`"
 

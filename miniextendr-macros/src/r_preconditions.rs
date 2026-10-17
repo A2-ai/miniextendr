@@ -1325,7 +1325,8 @@ pub fn build_precondition_checks(
         // `NArgs` is no R formal: the wrapper passes `nargs()`, which no
         // check needs to look at (#1860). Nor is a `LazyDots` parameter's name:
         // its formal is `...`, passed unforced as the wrapper's frame (#1892).
-        if crate::type_inspect::is_nargs_marker(&pt.ty)
+        if crate::type_inspect::unevaluated_param(&pt.ty).is_some()
+            || crate::type_inspect::is_nargs_marker(&pt.ty)
             || crate::type_inspect::is_lazy_dots_marker(&pt.ty)
         {
             continue;

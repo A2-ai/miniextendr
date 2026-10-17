@@ -21,9 +21,7 @@ calls built in Rust: [`eval_with_handlers`](#handler-keeping-evaluation).
 R's `...` has its own unevaluated form: a `LazyDots` parameter passes the
 wrapper's frame instead of `list(...)`, so the body reads the expressions
 (`expr(i)`), sees the empty elements and forces the elements it wants, each
-in its own environment (#1892). Unlike the markers above it is accepted on
-class methods too, since a promise keeps its environment when a method
-forwards it. See
+in its own environment (#1892). It is accepted on class methods too. See
 [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
 
 ## `Quoted`
@@ -83,6 +81,25 @@ pub fn my_tbl_subset(x: SEXP, subset: Quoted, _dots: ...) -> SEXP { /* ... */ }
 (`f <- function(x) keep_rows(df, x)`) passes the symbol `x`, evaluated in
 `f`'s frame. That is base R's semantics; use `Quosure` to forward through
 user-level functions.
+
+## Class and trait methods
+
+Both markers work on inherent methods and trait methods in the env, R6, S3,
+S4 and S7 class systems, and on vctrs static methods. Constructors and
+static methods use the same parameter rules. An omitted `Missing<..>`
+argument stays absent even when its formal has a default.
+
+The wrapper captures before Rust argument conversion. For `Quoted`, S4's
+inserted `.local` frame, S7's generic frame and R6's `$new` frame are
+transparent: `env()` is the caller that supplied the expression. Direct
+method calls and S7 shortcuts retain their own caller. User-written
+forwarding functions still follow base R's one-level substitution rules;
+`Quosure` supports rlang forwarding with `{{ expr }}` and injection with `!!value`.
+
+A generated trait View passes the capture itself through the SEXP ABI,
+without evaluating it or rebuilding it. The View roots its argument buffer
+while the producer shim borrows each capture, including across packages.
+The markers still cannot escape the call or move to another thread.
 
 ## `Quosure`
 
@@ -247,9 +264,7 @@ argument to act on:
   `Missing<..>` writes the formal only, above);
 - `Checked<Quoted>` / `Unchecked<..>`: the parameter has no R-side checks;
 - the marker anywhere but the whole type or `Missing<..>`'s type argument
-  (`Option<Quoted>`, `Vec<Quoted>`);
-- a class or trait method taking one (only standalone functions, standalone
-  S3 methods included, pass arguments unevaluated; methods are #1839).
+  (`Option<Quoted>`, `Vec<Quoted>`).
 
 A function taking either marker runs on R's main thread (also under
 `worker`), and a marker borrows the `.Call()` argument: it cannot be stored

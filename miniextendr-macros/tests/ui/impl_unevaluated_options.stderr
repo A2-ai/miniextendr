@@ -1,0 +1,23 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quoted` parameter: the wrapper passes the argument unevaluated, and each of them would force it. Use `Missing<Quoted>` for an optional argument
+ --> tests/ui/impl_unevaluated_options.rs:8:24
+  |
+8 |     fn required(&self, expr: miniextendr_api::Quoted) { let _ = expr; }
+  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `Quoted` / `Quosure` must be the parameter's whole type, or the type argument of `Missing<..>`: the wrapper passes the argument unevaluated only for those shapes
+  --> tests/ui/impl_unevaluated_options.rs:13:28
+   |
+13 |     fn nested(&self, expr: Option<miniextendr_api::Quoted>) { let _ = expr; }
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quosure` parameter: the wrapper passes the argument unevaluated, and each of them would force it. Use `Missing<Quosure>` for an optional argument
+  --> tests/ui/impl_unevaluated_options.rs:18:45
+   |
+18 |     fn checked(&self, #[miniextendr(no_na)] expr: miniextendr_api::Quosure);
+   |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quoted` parameter: the wrapper passes the argument unevaluated, and each of them would force it. `Missing<Quoted>` takes `default` alone, which only writes the formal and is never evaluated
+  --> tests/ui/impl_unevaluated_options.rs:25:49
+   |
+25 |         #[miniextendr(default = "NULL", no_na)] expr: miniextendr_api::Missing<miniextendr_api::Quoted>,
+   |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

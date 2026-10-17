@@ -990,68 +990,14 @@ fn expand_miniextendr(
         }
         call_marker = Some((pat_ident.ident.clone(), kind));
     }
-    // Unevaluated-argument markers (#1835): a `Quoted` / `Quosure` parameter
-    // stays an R formal, which the wrapper passes unevaluated
-    // (`RArgumentBuilder::build_call_args_vec`). Every per-parameter option
-    // would force it (a check, a coercion, a default evaluated in the wrapper's
-    // frame), and a marker in any other position than the whole type or
-    // `Missing<..>` would be converted as a forced value: all compile errors.
-    // One exception: `default` alone on `Missing<..>` only writes the formal
-    // (`x = NULL` in the usage). An omitted argument is still `missing()`, so
-    // the wrapper passes the missing-argument sentinel and never evaluates the
-    // default.
-    let mut unevaluated_r_names: Vec<String> = Vec::new();
-    for arg in all_inputs.iter() {
-        let syn::FnArg::Typed(pt) = arg else {
-            continue;
-        };
-        let Some(param) = crate::type_inspect::unevaluated_param(&pt.ty) else {
-            if crate::type_inspect::mentions_unevaluated_marker(&pt.ty) {
-                return syn::Error::new_spanned(
-                    &pt.ty,
-                    "`Quoted` / `Quosure` must be the parameter's whole type, or the type \
-                     argument of `Missing<..>`: the wrapper passes the argument unevaluated \
-                     only for those shapes",
-                )
-                .into_compile_error()
-                .into();
-            }
-            continue;
-        };
-        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
-            continue;
-        };
-        let marker = param.kind.name();
-        let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let default_only = param.optional
-            && parsed
-                .param_attrs(&rust_name)
-                .is_some_and(miniextendr_fn::ParamAttrs::is_default_only);
-        if parsed.has_param_attrs(&rust_name) && !default_only {
-            let hint = if param.optional {
-                format!(
-                    "`Missing<{marker}>` takes `default` alone, which only writes the \
-                     formal and is never evaluated"
-                )
-            } else {
-                format!("Use `Missing<{marker}>` for an optional argument")
-            };
-            return syn::Error::new_spanned(
-                pt,
-                format!(
-                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
-                     `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not \
-                     apply to a `{marker}` parameter: the wrapper passes the argument \
-                     unevaluated, and each of them would force it. {hint}"
-                ),
-            )
-            .into_compile_error()
-            .into();
-        }
-        // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
-        // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
-        unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
-    }
+    let unevaluated_r_names = match miniextendr_fn::check_unevaluated_params(
+        all_inputs,
+        |name| parsed.param_attrs(name),
+        &std::collections::HashMap::new(),
+    ) {
+        Ok(names) => names,
+        Err(err) => return err.into_compile_error().into(),
+    };
     // The argument-count marker (#1860): an `NArgs` parameter is no R formal;
     // the wrapper passes `nargs()` at its position and the C wrapper converts
     // it like any argument, so it stays in `inputs`. `RArgumentBuilder`,

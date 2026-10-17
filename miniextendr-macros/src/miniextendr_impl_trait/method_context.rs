@@ -177,6 +177,14 @@ impl<'a> TraitMethodContext<'a> {
         }
     }
 
+    /// Keep base-R captures in the caller behind class dispatch.
+    pub(crate) fn with_capture_env(mut self, env: crate::r_wrapper_builder::CaptureEnv) -> Self {
+        self.args = crate::r_wrapper_builder::RArgumentBuilder::new(&self.method.sig.inputs)
+            .with_capture_env(env)
+            .build_call_args();
+        self
+    }
+
     /// Set the `preconditions` decision inherited from the impl block; the
     /// twin of `MethodContext::with_impl_preconditions`.
     pub(super) fn with_impl_preconditions(mut self, impl_preconditions: Option<bool>) -> Self {

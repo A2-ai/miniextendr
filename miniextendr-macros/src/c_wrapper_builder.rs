@@ -517,12 +517,8 @@ impl CWrapperContext {
         for (param, markers) in &self.param_markers {
             builder = builder.with_param_markers(param.clone(), markers.clone());
         }
-        // A standalone fn's R wrapper passes `Quoted` / `Quosure` arguments
-        // unevaluated (#1835); a method's is generated per class system and
-        // does not, so there they stay a compile error.
-        match &self.type_context {
-            None => builder = builder.with_unevaluated_args(),
-            Some((_, self_type)) => builder = builder.with_self_type(self_type.clone()),
+        if let Some((_, self_type)) = &self.type_context {
+            builder = builder.with_self_type(self_type.clone());
         }
         builder
     }

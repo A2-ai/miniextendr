@@ -311,6 +311,7 @@ mod pipe_builder_tests;
 mod precondition_bench_fixtures;
 mod precondition_marker_tests;
 mod protect_pool_tests;
+mod quoted_method_tests;
 mod quoted_tests;
 mod r6_default_tests;
 mod r6_noexport_field_tests;

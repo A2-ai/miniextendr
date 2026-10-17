@@ -6292,3 +6292,24 @@ pub fn gc_stress_all_equal() {
         .expect("AllEqual fields and getter returns remain rooted");
     }
 }
+
+/// Transport borrowed captures through a trait View under GC pressure.
+#[miniextendr(noexport)]
+pub fn gc_stress_quoted_method_view() -> i32 {
+    use crate::quoted_method_tests::{MethodCaptureView, quoted_method_owner};
+    use miniextendr_api::{List, Quosure, Quoted, gc_protect::ProtectScope};
+    unsafe {
+        let scope = ProtectScope::new();
+        let object = scope.protect(quoted_method_owner()).get();
+        let view = MethodCaptureView::from_sexp(object);
+        let value = scope.protect(42_i32.into_sexp()).get();
+        let env = miniextendr_api::sys::R_GlobalEnv;
+        let capture = scope
+            .protect(List::from_raw_values(vec![value, env]).as_sexp())
+            .get();
+        let quoted = Quoted::from_wrapper_arg(&capture).expect("capture");
+        let tidy = Quosure::new(value, env, &scope);
+        let result = view.capture(quoted, tidy, 2);
+        <i32 as miniextendr_api::TryFromSexp>::try_from_sexp(result).expect("integer capture")
+    }
+}

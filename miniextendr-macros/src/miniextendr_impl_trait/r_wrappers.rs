@@ -935,6 +935,7 @@ fn generate_trait_s4_r_wrapper(
         let generic_name = method.r_entry_name(ClassSystem::S4, type_ident, trait_name);
         let receiver = method.receiver.as_deref().unwrap_or("x");
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
+            .with_capture_env(crate::r_wrapper_builder::CaptureEnv::S4)
             .with_impl_preconditions(impl_preconditions);
 
         // Build full parameter list (x first, then others, then ...)
@@ -1140,6 +1141,7 @@ fn generate_trait_s7_r_wrapper(
     for method in &instance_methods {
         let generic_name = method.r_entry_name(ClassSystem::S7, type_ident, trait_name);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
+            .with_capture_env(crate::r_wrapper_builder::CaptureEnv::S7)
             .with_impl_preconditions(impl_preconditions);
 
         // Build full parameter list (x first, then others, then ...)

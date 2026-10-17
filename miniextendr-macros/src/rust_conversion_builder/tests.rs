@@ -1010,7 +1010,7 @@ fn no_na_check_on_an_either_reads_the_input() {
 /// lifetimes are erased in the binding. No native-borrow query is emitted.
 #[test]
 fn test_unevaluated_params_bind_from_the_wrapper_argument() {
-    let builder = RustConversionBuilder::new().with_unevaluated_args();
+    let builder = RustConversionBuilder::new();
 
     let s = conversion_text(&builder, "_cond: Quoted<'a>");
     assert!(
@@ -1043,17 +1043,16 @@ fn test_unevaluated_params_bind_from_the_wrapper_argument() {
     }
 }
 
-/// Without `with_unevaluated_args` (a class or trait method, whose wrapper
-/// forces its arguments) a marker is a compile error.
+/// Methods use the same capture conversion while retaining their Self type.
 #[test]
-fn test_unevaluated_params_rejected_in_methods() {
-    let s = conversion_text(&RustConversionBuilder::new(), "cond: Quoted");
-    assert!(
-        s.contains(":: core :: compile_error ! (\"`Quoted` parameters are supported on standalone `#[miniextendr]` functions only"),
-        "{s}"
-    );
-    let s = conversion_text(&RustConversionBuilder::new(), "cols: Missing<Quosure>");
-    assert!(s.contains("`Quosure` parameters are supported"), "{s}");
+fn test_unevaluated_params_bind_in_methods() {
+    let builder = RustConversionBuilder::new().with_self_type(syn::parse_quote!(Table));
+    for source in ["cond: Quoted", "cols: Missing<Quosure>"] {
+        let s = conversion_text(&builder, source);
+        assert!(s.contains("from_wrapper_arg"), "{s}");
+        assert!(!s.contains("compile_error"), "{s}");
+        assert!(!s.contains("TryFromSexp"), "{s}");
+    }
 }
 
 /// `LazyDots` (#1892) binds from the frame the R wrapper passed, never through
@@ -1063,7 +1062,7 @@ fn test_unevaluated_params_rejected_in_methods() {
 fn test_lazy_dots_binds_from_the_wrapper_frame_in_every_context() {
     for builder in [
         RustConversionBuilder::new(),
-        RustConversionBuilder::new().with_unevaluated_args(),
+        RustConversionBuilder::new().with_self_type(syn::parse_quote!(Table)),
     ] {
         let s = conversion_text(&builder, "rest: LazyDots<'a>");
         assert_eq!(

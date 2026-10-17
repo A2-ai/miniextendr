@@ -288,6 +288,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // Without a constructor, `initialize` takes only the `.ptr` the factories
     // and other classes' methods wrap with `$new(.ptr = val)`.
     if let Some(ctx) = parsed_impl.constructor_context() {
+        let ctx = ctx.with_capture_env(crate::r_wrapper_builder::CaptureEnv::R6Constructor);
         lines.push(format!("    {}", ctx.source_comment(type_ident)));
         // Add inline roxygen documentation for initialize method
         // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)

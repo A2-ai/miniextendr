@@ -24,7 +24,9 @@ pub(crate) fn native_borrow_checks<'a>(
     let mut values = Vec::new();
     let mut metadata = Vec::new();
     for (index, name, ty) in args {
-        if crate::type_inspect::self_ref_mutability(ty).is_some() {
+        if crate::type_inspect::self_ref_mutability(ty).is_some()
+            || crate::type_inspect::unevaluated_param(ty).is_some()
+        {
             continue;
         }
         values.push(quote! { (*#argv.add(#index), #name) });
@@ -84,6 +86,26 @@ pub(crate) fn argument(
     let target = target.filter(|_| crate::type_inspect::self_ref_mutability(ty).is_none());
     let input = quote! { unsafe { *#argv.add(#index) } };
     let r_name = crate::r_wrapper_builder::normalize_r_arg_string(diagnostic_name);
+    if let Some(param) = crate::type_inspect::unevaluated_param(ty) {
+        let slot = format_ident!(
+            "__mx_capture_{}",
+            crate::naming::unraw(name),
+            span = proc_macro2::Span::mixed_site()
+        );
+        let binding = crate::rust_conversion_builder::unevaluated_binding(
+            name,
+            &slot,
+            &r_name,
+            ty,
+            param,
+            &crate::crate_config::conversion_error_class(),
+            &quote! { ::core::option::Option::None },
+        );
+        return quote! {
+            let #slot = #input;
+            #binding
+        };
+    }
     let (setup, binding, mut read_ty, mut conversion, rooted) = if let Some(mutable) =
         crate::type_inspect::self_ref_mutability(ty)
     {

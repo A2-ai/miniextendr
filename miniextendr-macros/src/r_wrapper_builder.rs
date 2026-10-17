@@ -165,6 +165,38 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// Dispatch frames that are transparent to a base-R argument capture.
+#[derive(Clone, Copy, Default)]
+pub(crate) enum CaptureEnv {
+    #[default]
+    Caller,
+    S4,
+    S7,
+    R6Constructor,
+}
+
+impl CaptureEnv {
+    fn r_expr(self) -> &'static str {
+        match self {
+            Self::Caller => "parent.frame()",
+            // setMethod inserts .local only when the method adds formals.
+            // A direct call to the stored method has no such frame.
+            Self::S4 => {
+                "if (identical(sys.function(), get0(\".local\", envir = parent.frame(), inherits = FALSE))) parent.frame(2L) else parent.frame()"
+            }
+            // S7's method parent is its generic, unlike S3's UseMethod.
+            // Fast-path shortcuts and direct method calls keep their caller.
+            Self::S7 => {
+                "if (inherits(sys.function(), \"S7_method\") && inherits(sys.function(sys.parent()), \"S7_generic\")) parent.frame(2L) else parent.frame()"
+            }
+            // An inherited initializer is called by the child's $new.
+            Self::R6Constructor => {
+                "if (inherits(environment(sys.function(sys.parent())), \"R6ClassGenerator\")) parent.frame(2L) else parent.frame()"
+            }
+        }
+    }
+}
+
 /// Builder for R function formal parameters and call arguments.
 ///
 /// Handles:
@@ -178,6 +210,7 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 ///   the call arguments, at its own position (#1860)
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
+    capture_env: CaptureEnv,
     /// The function's input parameters from the parsed Rust signature.
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     /// Position of the `&Dots` / `LazyDots` parameter in `inputs` (receiver
@@ -205,6 +238,7 @@ impl<'a> RArgumentBuilder<'a> {
         });
         Self {
             inputs,
+            capture_env: CaptureEnv::Caller,
             dots_index,
             dots_kind,
             skip_first: false,
@@ -218,6 +252,12 @@ impl<'a> RArgumentBuilder<'a> {
     /// values are R expression strings emitted verbatim into formals.
     pub fn with_defaults(mut self, defaults: std::collections::HashMap<String, String>) -> Self {
         self.defaults = defaults;
+        self
+    }
+
+    /// Select the caller behind a transparent dispatch frame.
+    pub(crate) fn with_capture_env(mut self, capture_env: CaptureEnv) -> Self {
+        self.capture_env = capture_env;
         self
     }
 
@@ -353,7 +393,11 @@ impl<'a> RArgumentBuilder<'a> {
             // an omitted argument with a default, so the default is never
             // evaluated.
             if let Some(param) = crate::type_inspect::unevaluated_param(pat_type.ty.as_ref()) {
-                call_args.push(param.kind.r_call_arg(&arg_ident.to_string()));
+                call_args.push(
+                    param
+                        .kind
+                        .r_call_arg(&arg_ident.to_string(), self.capture_env.r_expr()),
+                );
                 continue;
             }
 

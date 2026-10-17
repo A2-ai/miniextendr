@@ -34,10 +34,12 @@
 //! takes no R-side checks and none of the per-parameter options (`coerce`,
 //! `match_arg`, `choices`, `default`, `no_na`, `inherits`, ...), which are
 //! compile errors on it. A function taking one runs on R's main thread.
-//! It works on free functions, including standalone S3 methods
+//! It works on free functions and class or trait methods, including S3 methods
 //! (`#[miniextendr(s3(generic = "subset", class = "..."))]`): in a method
 //! reached through `UseMethod()`, `parent.frame()` is the generic's caller, as
-//! in base R's `subset.data.frame()`.
+//! in base R's `subset.data.frame()`. Generated S4/S7 method and R6 constructor
+//! wrappers skip their framework dispatch frame when capturing the caller.
+//! Trait Views forward the rooted capture unchanged across the SEXP ABI.
 //!
 //! A missing argument is a conversion error naming the parameter
 //! (`argument "cond" is missing, with no default`), like forcing it in R. Take
@@ -118,7 +120,7 @@ pub struct Quoted<'a> {
     expr: SEXP,
     env: SEXP,
     /// Borrows the `.Call()` argument that roots `expr` and `env`.
-    _arg: PhantomData<&'a SEXP>,
+    arg: &'a SEXP,
     /// R objects stay on R's main thread.
     _not_send: PhantomData<*const ()>,
 }
@@ -137,23 +139,30 @@ impl<'a> Quoted<'a> {
     /// R's main thread; `arg` stays rooted for `'a`.
     #[doc(hidden)]
     pub unsafe fn from_wrapper_arg(arg: &'a SEXP) -> Option<Self> {
-        let arg = *arg;
-        if arg == SEXP::missing_arg() {
+        let captured = *arg;
+        if captured == SEXP::missing_arg() {
             return None;
         }
         assert!(
-            arg.type_of() == SEXPTYPE::VECSXP
-                && arg.len() == 2
-                && arg.vector_elt(1).is_environment(),
+            captured.type_of() == SEXPTYPE::VECSXP
+                && captured.len() == 2
+                && captured.vector_elt(1).is_environment(),
             "a `Quoted` argument is passed as `list(substitute(x), parent.frame())`, got {}",
-            arg.type_of().type_name(),
+            captured.type_of().type_name(),
         );
         Some(Quoted {
-            expr: arg.vector_elt(0),
-            env: arg.vector_elt(1),
-            _arg: PhantomData,
+            expr: captured.vector_elt(0),
+            env: captured.vector_elt(1),
+            arg,
             _not_send: PhantomData,
         })
+    }
+
+    /// The already-rooted capture passed through a generated trait View.
+    /// This transports the expression and environment without evaluating it.
+    #[doc(hidden)]
+    pub fn as_wrapper_arg(&self) -> SEXP {
+        *self.arg
     }
 
     /// [`Self::from_wrapper_arg`] for a `Missing<Quoted>` parameter.

@@ -2024,6 +2024,66 @@ fn validate_convert_param(ty: &syn::Type, conflicting: bool) -> syn::Result<()> 
     Ok(())
 }
 
+/// Validate unevaluated markers identically in functions and methods.
+/// Only a default-only Missing marker can have parameter options; no check
+/// or coercion may force its promise before capture.
+pub(crate) fn check_unevaluated_params<'a>(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    attrs: impl Fn(&str) -> Option<&'a ParamAttrs>,
+    defaults: &std::collections::HashMap<String, String>,
+) -> syn::Result<Vec<String>> {
+    let mut unevaluated_r_names: Vec<String> = Vec::new();
+    for arg in inputs.iter() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let Some(param) = crate::type_inspect::unevaluated_param(&pt.ty) else {
+            if crate::type_inspect::mentions_unevaluated_marker(&pt.ty) {
+                return Err(syn::Error::new_spanned(
+                    &pt.ty,
+                    "`Quoted` / `Quosure` must be the parameter's whole type, or the type \
+                     argument of `Missing<..>`: the wrapper passes the argument unevaluated \
+                     only for those shapes",
+                ));
+            }
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let marker = param.kind.name();
+        let rust_name = crate::naming::ident_name(&pat_ident.ident);
+        let default_only = param.optional
+            && attrs(&rust_name).map_or_else(
+                || defaults.contains_key(&rust_name),
+                ParamAttrs::is_default_only,
+            );
+        if (attrs(&rust_name).is_some() || defaults.contains_key(&rust_name)) && !default_only {
+            let hint = if param.optional {
+                format!(
+                    "`Missing<{marker}>` takes `default` alone, which only writes the \
+                     formal and is never evaluated"
+                )
+            } else {
+                format!("Use `Missing<{marker}>` for an optional argument")
+            };
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not \
+                     apply to a `{marker}` parameter: the wrapper passes the argument \
+                     unevaluated, and each of them would force it. {hint}"
+                ),
+            ));
+        }
+        // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
+        // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
+        unevaluated_r_names.push(crate::r_wrapper_builder::normalize_r_arg_string(&rust_name));
+    }
+    Ok(unevaluated_r_names)
+}
+
 /// Check an impl or trait method's per-parameter attributes against its
 /// signature, now that it is known. Every parameter a method-level
 /// `match_arg(...)` / `choices(...)` / `no_default(...)` / `inherits(...)` /
@@ -2133,6 +2193,7 @@ pub(crate) fn finalize_method_param_attrs(
             .map_or(&[][..], |(_, m)| m.as_slice());
         check_param_preconditions(attrs, param_markers, &name, pt.ty.as_ref(), true)?;
     }
+    check_unevaluated_params(inputs, |name| per_param.get(name), defaults)?;
     Ok(())
 }
 

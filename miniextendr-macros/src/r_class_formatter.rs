@@ -420,6 +420,14 @@ impl<'a> MethodContext<'a> {
         }
     }
 
+    /// Keep base-R captures in the caller behind class dispatch.
+    pub(crate) fn with_capture_env(mut self, env: crate::r_wrapper_builder::CaptureEnv) -> Self {
+        self.args = crate::r_wrapper_builder::RArgumentBuilder::new(&self.method.sig.inputs)
+            .with_capture_env(env)
+            .build_call_args();
+        self
+    }
+
     /// Set the `preconditions` decision inherited from the surrounding
     /// `ImplAttrs`. Returns `self` so callers can chain on top of
     /// `MethodContext::new`.

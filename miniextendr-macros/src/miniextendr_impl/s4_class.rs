@@ -215,6 +215,7 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // match_arg'd params, and `match_arg_prelude()` emits the
         // `base::match.arg()` validation block injected below.
         let ctx = MethodContext::new(method, type_ident)
+            .with_capture_env(crate::r_wrapper_builder::CaptureEnv::S4)
             .with_impl_preconditions(parsed_impl.preconditions);
         let call = ctx.instance_call(&format!("{receiver}@ptr"));
         let full_params =

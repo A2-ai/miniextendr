@@ -510,9 +510,9 @@ impl UnevaluatedKind {
     /// The `.Call()` argument the R wrapper passes for parameter `p`: the
     /// missing-argument sentinel, as for `Missing<T>`, else the capture. Never
     /// forces `p`.
-    pub(crate) fn r_call_arg(self, p: &str) -> String {
+    pub(crate) fn r_call_arg(self, p: &str, env: &str) -> String {
         let capture = match self {
-            Self::Quoted => format!("list(substitute({p}), parent.frame())"),
+            Self::Quoted => format!("list(substitute({p}), {env})"),
             Self::Quosure => format!("rlang::enquo({p})"),
         };
         format!("if (missing({p})) quote(expr=) else {capture}")
@@ -1053,11 +1053,11 @@ mod tests {
     #[test]
     fn unevaluated_kind_r_call_args_never_force_the_argument() {
         assert_eq!(
-            UnevaluatedKind::Quoted.r_call_arg("cond"),
+            UnevaluatedKind::Quoted.r_call_arg("cond", "parent.frame()"),
             "if (missing(cond)) quote(expr=) else list(substitute(cond), parent.frame())"
         );
         assert_eq!(
-            UnevaluatedKind::Quosure.r_call_arg("cols"),
+            UnevaluatedKind::Quosure.r_call_arg("cols", "parent.frame()"),
             "if (missing(cols)) quote(expr=) else rlang::enquo(cols)"
         );
     }

@@ -813,6 +813,23 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         .iter()
         .zip(param_types.iter())
         .map(|(name, ty)| {
+            if let Some(param) = crate::type_inspect::unevaluated_param(ty) {
+                let marker = param.kind.api_path();
+                let accessor = match param.kind {
+                    crate::type_inspect::UnevaluatedKind::Quoted => quote::format_ident!("as_wrapper_arg"),
+                    crate::type_inspect::UnevaluatedKind::Quosure => quote::format_ident!("sexp"),
+                };
+                return if param.optional {
+                    quote::quote! {
+                        match #name {
+                            ::miniextendr_api::Missing::Present(value) => #marker::#accessor(&value),
+                            ::miniextendr_api::Missing::Absent => ::miniextendr_api::SEXP::missing_arg(),
+                        }
+                    }
+                } else {
+                    quote::quote! { #marker::#accessor(&#name) }
+                };
+            }
             if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
                 quote::quote! {
                     ::miniextendr_api::trait_abi::missing_to_sexp(#name)

@@ -16,6 +16,7 @@ Config/build/bootstrap: TRUE
 Encoding: UTF-8
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
+    rlang,
     methods
 Suggests:
     producer.pkg,

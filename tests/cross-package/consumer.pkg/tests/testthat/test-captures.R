@@ -1,0 +1,16 @@
+test_that("unevaluated captures survive a cross-package View call", {
+  object <- producer.pkg::new_counter(0L)
+  local_value <- 40L
+  expect_identical(capture_quoted(object, stop("not forced"), FALSE), quote(stop("not forced")))
+  expect_identical(capture_tidy(object, stop("not forced"), FALSE), quote(stop("not forced")))
+  expect_identical(capture_quoted(object, local_value + 2L, TRUE), 42L)
+  expect_identical(capture_tidy(object, local_value + 2L, TRUE), 42L)
+  forward <- function(expr) capture_tidy(object, {{ expr }}, TRUE)
+  expect_identical(forward(local_value + 2L), 42L)
+  expect_identical(capture_absent(object), c(TRUE, TRUE))
+  expect_identical(capture_absent(object, stop("not forced")), c(FALSE, TRUE))
+  expect_identical(capture_absent(object, tidy = stop("not forced")), c(TRUE, FALSE))
+  expect_identical(capture_absent(object, stop("not forced"), stop("not forced")), c(FALSE, FALSE))
+  expect_error(capture_quoted(object, evaluate = FALSE), class = "rust_error")
+  expect_error(capture_tidy(object, evaluate = FALSE), class = "rust_error")
+})

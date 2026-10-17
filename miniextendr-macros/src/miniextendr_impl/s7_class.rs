@@ -960,6 +960,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // Instance methods as S7 generics + methods
     // Skip methods that are property getters/setters (they're handled as S7 properties)
     for ctx in parsed_impl.instance_method_contexts() {
+        let ctx = ctx.with_capture_env(crate::r_wrapper_builder::CaptureEnv::S7);
         let method_ident = crate::naming::ident_name(&ctx.method.ident);
         if property_method_idents.contains(&method_ident) {
             continue;
