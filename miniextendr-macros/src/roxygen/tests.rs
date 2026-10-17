@@ -1761,7 +1761,7 @@ fn params_not_documented_elsewhere_for_own_page_tags() {
         tag_list(&["@name observed", "@title Observed values"]),
         // A field list without `params`: the arguments are not inherited.
         tag_list(&["@inherit observed return description"]),
-        // Only `...` is inherited, and `...` never gets a generated line.
+        // Only `...` is inherited; ordinary parameters still need their fillers.
         tag_list(&["@inheritDotParams observed"]),
         // Tag names match exactly, not by prefix.
         tag_list(&["@rdnamex observed", "@inheritParamsx observed"]),
@@ -1798,7 +1798,7 @@ fn generated_fn_param_tags_with_call(
 
 /// The same signature under each doc block: one argument the author
 /// documents, one plain, one `match_arg`, one `choices`, plus unnamed dots
-/// (never given a generated line).
+/// (documented as the R formal `...`).
 fn summary_fn(doc_tag: Option<&str>) -> proc_macro2::TokenStream {
     let doc_tag = doc_tag.map(|tag| quote::quote!(#[doc = #tag]));
     quote::quote! {
@@ -1832,6 +1832,7 @@ fn summary_filler_lines(mode_placeholder: &str) -> Vec<String> {
         "@param weights (no documentation available)".to_string(),
         format!("@param mode {mode_placeholder}"),
         "@param side One of \"low\", \"high\".".to_string(),
+        "@param ... Additional arguments.".to_string(),
     ]
     .into_iter()
     .map(|line| format!("{PARAM_FILLER_MARKER}{line}"))
@@ -2360,3 +2361,61 @@ fn blank_roxygen_lines_have_no_trailing_space() {
 }
 
 // endregion
+
+#[test]
+fn fn_param_tags_fill_dots_by_the_r_formal_name() {
+    for item in [
+        quote::quote!(
+            fn f(_: ...) {}
+        ),
+        quote::quote!(
+            fn f(sources: ...) {}
+        ),
+        quote::quote!(
+            fn f(rest: &Dots) {}
+        ),
+        quote::quote!(
+            fn f(rest: &Dots, flag: bool) {}
+        ),
+        quote::quote!(
+            fn f(rest: LazyDots) {}
+        ),
+    ] {
+        let (tags, _) = generated_fn_param_tags(item.clone());
+        let dots = format!("{PARAM_FILLER_MARKER}@param ... Additional arguments.");
+        assert!(
+            param_lines(&tags).contains(&dots.as_str()),
+            "{item}: {tags:?}"
+        );
+        assert!(
+            !tags
+                .iter()
+                .any(|tag| tag.contains("@param rest") || tag.contains("@param sources")),
+            "{tags:?}"
+        );
+    }
+}
+
+#[test]
+fn fn_param_tags_leave_inherited_dots_without_suppressing_other_fillers() {
+    let (tags, placeholders) =
+        generated_fn_param_tags(summary_fn(Some("@inheritDotParams summaries")));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(
+        summary_filler_lines(&mode_placeholder)
+            .into_iter()
+            .filter(|line| !line.contains("@param ...")),
+    );
+    assert_eq!(param_lines(&tags), expected);
+    assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
+}
+
+#[test]
+fn fn_param_tags_keep_explicit_grouped_dots_documentation() {
+    let (tags, _) = generated_fn_param_tags(quote::quote! {
+        /// @param x,... Values to inspect.
+        fn f(x: i32, rest: &Dots) {}
+    });
+    assert_eq!(param_lines(&tags), ["@param x,... Values to inspect."]);
+}

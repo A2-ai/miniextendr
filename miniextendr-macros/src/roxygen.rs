@@ -1553,12 +1553,15 @@ pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 /// write-time placeholder (the resolver registry needs one
 /// `MX_MATCH_ARG_PARAM_DOCS` entry each).
 ///
-/// Every non-dots parameter the author left undocumented gets, in order of
+/// Every ordinary parameter the author left undocumented gets, in order of
 /// preference:
 ///
 /// 1. `choices(...)`: the quoted list, "One of ..." / "One or more of ...";
 /// 2. `match_arg`: a placeholder the wrapper writer resolves (#210);
 /// 3. anything else: `(no documentation available)`.
+///
+/// Dots get `@param ... Additional arguments.`, irrespective of their Rust
+/// binding, unless the author documents `...` or uses `@inheritDotParams`.
 ///
 /// Each line carries [`PARAM_FILLER_MARKER`], so the wrapper registry decides
 /// whether it is written. Nothing is generated when the block takes its
@@ -1597,8 +1600,16 @@ pub(crate) fn push_fn_param_tags(
         let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
             continue;
         };
+        if parsed.is_dots_param(&pat_ident.ident) {
+            if !param_documented(tags, "...") && !has_roxygen_tag(tags, "inheritDotParams") {
+                tags.push(format!(
+                    "{PARAM_FILLER_MARKER}@param ... Additional arguments."
+                ));
+            }
+            continue;
+        }
         // `NArgs` is no R formal (#1860), so it gets no `@param`.
-        if parsed.is_dots_param(&pat_ident.ident) || crate::type_inspect::is_nargs_marker(&pt.ty) {
+        if crate::type_inspect::is_nargs_marker(&pt.ty) {
             continue;
         }
         let rust_name = crate::naming::ident_name(&pat_ident.ident);

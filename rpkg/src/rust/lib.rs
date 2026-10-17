@@ -214,6 +214,7 @@ mod default_tests;
 mod deferred_condition_tests;
 mod display_fromstr_tests;
 mod doc_attr_tests;
+mod dots_docs;
 mod dots_position_tests;
 mod dots_tests;
 #[cfg(feature = "either")]

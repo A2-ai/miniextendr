@@ -33,6 +33,14 @@ pub fn first_only(x: i32, _: ...) -> i32 {
 
 Don't write a bare `...` with no pattern. rustc rejects it before `#[miniextendr]` runs (the `varargs_without_pattern` lint, deny by default, [rust-lang/rust#145544](https://github.com/rust-lang/rust/issues/145544)) and suggests `_: ...`.
 
+### Documenting dots
+
+Write `/// @param ...` for the R formal, regardless of the Rust binding name.
+Standalone functions without that tag receive `Additional arguments.` as the
+default description. An author description on a shared page takes precedence.
+Use `@inheritDotParams function_name` to inherit the arguments of another
+function into the dots entry; the generated default does not block it.
+
 ### Dots Methods
 
 - `as_list(&self) -> List` - Fast unchecked conversion to List

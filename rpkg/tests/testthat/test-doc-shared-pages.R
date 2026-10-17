@@ -240,3 +240,56 @@ test_that("the own-page functions behave as documented", {
   expect_identical(own_page_round(c(1.2, 2.6), 0.5), c(1, 2.5))
   expect_identical(own_page_truncate(c(1.2, -2.6), 0.5), c(1, -2.5))
 })
+
+test_that("standalone dots get documentation for their R formal (#1819)", {
+  db <- shared_pages_rd_db()
+  for (name in c("dots_docs_unnamed", "dots_docs_named", "dots_docs_explicit", "dots_docs_lazy")) {
+    rd <- db[[paste0(name, ".Rd")]]
+    expect_false(is.null(rd), info = name)
+    args <- rd_argument_items(rd)
+    expect_identical(args[["..."]], "Additional arguments.", info = name)
+    expect_equal(sum(names(args) == "..."), 1L, info = name)
+    expect_false(any(c("sources", "rest") %in% names(args)), info = name)
+    expect_match(rd_section_text(rd, "\\usage"), "...", fixed = TRUE)
+  }
+  expect_identical(rd_argument_items(db[["dots_docs_explicit.Rd"]])[["enabled"]],
+                   "(no documentation available)")
+})
+
+test_that("shared and inherited dots keep the author's documentation (#1819)", {
+  db <- shared_pages_rd_db()
+  shared <- rd_argument_items(db[["dots_docs.Rd"]])
+  expect_identical(shared[["..."]],
+                   "Shared extra arguments, counted without inspecting their values.")
+  expect_length(shared, 1L)
+  inherited <- rd_argument_items(db[["dots_docs_inherited.Rd"]])
+  expect_match(inherited[["..."]], "Numbers to round.", fixed = TRUE)
+  expect_match(inherited[["..."]], "Positive step.", fixed = TRUE)
+  expect_false(grepl("Additional arguments.", inherited[["..."]], fixed = TRUE))
+  expect_identical(inherited[["label"]], "(no documentation available)")
+})
+
+test_that("dots fixture pages have no usage-documentation mismatches (#1819)", {
+  path <- getNamespaceInfo("miniextendr", "path")
+  problems <- if (dir.exists(file.path(path, "man"))) {
+    tools::checkDocFiles(dir = path)
+  } else {
+    tools::checkDocFiles(package = "miniextendr")
+  }
+  pages <- paste0(c("dots_docs", "dots_docs_unnamed", "dots_docs_named",
+                   "dots_docs_explicit", "dots_docs_lazy", "dots_docs_inherited"), ".Rd")
+  expect_length(intersect(pages, names(problems)), 0L)
+  expect_length(intersect(pages, names(attr(problems, "bad_lines"))), 0L)
+})
+
+test_that("documenting dots preserves their formals and evaluation behavior", {
+  expect_identical(dots_docs_unnamed(7L, extra = 1L), 7L)
+  expect_identical(dots_docs_named(a = 1L, b = 2L), 2L)
+  expect_identical(dots_docs_explicit(1L, 2L, enabled = TRUE), 2L)
+  expect_identical(dots_docs_explicit(1L, enabled = FALSE), 0L)
+  expect_identical(names(formals(dots_docs_explicit)), c("...", "enabled"))
+  expect_identical(dots_docs_lazy(stop("must stay unforced")), 1L)
+  expect_identical(dots_docs_inherited(3L, values = 1:2, step = 0.5), 3L)
+  expect_identical(dots_docs_group_first(1L, 2L), 2L)
+  expect_identical(dots_docs_group_second(1L, 2L), 2L)
+})
