@@ -129,18 +129,16 @@ test_that("use_local_miniextendr() adds .miniextendr-local to .gitignore and .Rb
   withr::local_options(usethis.quiet = TRUE)
   use_local_miniextendr(repo, path = pkg)
 
-  # .gitignore
-  gitignore <- file.path(pkg, ".gitignore")
-  if (file.exists(gitignore)) {
-    gi_lines <- readLines(gitignore, warn = FALSE)
-    expect_true(any(grepl(".miniextendr-local", gi_lines, fixed = TRUE)))
+  gi_lines <- readLines(file.path(pkg, ".gitignore"), warn = FALSE)
+  expect_true(".miniextendr-local" %in% gi_lines)
+
+  rbi_lines <- readLines(file.path(pkg, ".Rbuildignore"), warn = FALSE)
+  ignored <- function(path) {
+    any(vapply(rbi_lines, grepl, logical(1), x = path, perl = TRUE))
   }
-  # .Rbuildignore
-  rbi <- file.path(pkg, ".Rbuildignore")
-  if (file.exists(rbi)) {
-    rbi_lines <- readLines(rbi, warn = FALSE)
-    expect_true(any(grepl("miniextendr-local", rbi_lines, fixed = TRUE)))
-  }
+  expect_true(ignored(".miniextendr-local"))
+  expect_false(ignored("x.miniextendr-local"))
+  expect_false(ignored(".miniextendr-local.backup"))
 })
 
 test_that("old configure advice explicitly requests template replacement", {
