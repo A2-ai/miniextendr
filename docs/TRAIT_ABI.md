@@ -11,8 +11,22 @@ explicit `r_name` on an impl method overrides the inherited R name; a method
 skipped by the declaration stays skipped. Other method options, docs and
 parameter attributes belong to explicit implementation methods. An omitted
 default method, of a generic trait or not, uses its declaration's docs and
-parameter names. An implementation parameter written as a pattern (`_`, a
-tuple) takes the declaration's name in its R formal; a named one keeps its own.
+parameter names.
+
+Every implementation takes the declaration's parameter names, so a trait
+method has the same R formals and argument errors in every package that
+implements it. With `fn scale(&self, factor: f64)` declared and
+`fn scale(&self, k: f64)` implemented, the wrapper's formal is `factor`:
+`obj$Scale$scale(factor = 2)` works, `k = 2` is an unused argument, and
+argument errors say `'factor'` from the impl's wrapper and through the vtable.
+A declaration parameter written as a pattern (`_`) is `arg<i>` for every
+implementation. The impl's body keeps its own names; the wrappers call it
+positionally. Method options and docs may name a parameter either way:
+`defaults(k = "2")`, `no_na(k)` and `@param k` apply to `factor`, and the
+generated `@param` tag says `factor`. Naming one parameter both ways is an
+error, and so is the impl's name in R code the wrapper runs (`r_entry`,
+`r_post_checks`, `r_on_exit`, a `defaults(...)` value), where only `factor`
+is bound.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
@@ -60,7 +74,7 @@ inherited-default wrapper or empty impl ever calls one.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
-bindings in a generic implementation do not change those parameter names or
+bindings in an implementation do not change those parameter names or
 native-alias diagnostics. Custom `RConditionData` messages, classes and fields
 survive the View round trip; the outer wrapper supplies the consumer's call.
 

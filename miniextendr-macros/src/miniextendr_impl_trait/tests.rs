@@ -942,8 +942,122 @@ fn pattern_parameters_take_the_declarations_names() {
             })
             .collect()
     };
-    assert_eq!(names(&declaration), ["value", "other", "other_"]);
+    assert_eq!(names(&declaration), ["value", "pair", "other"]);
     assert_eq!(names(&[]), ["arg0", "other", "arg2"]);
+}
+
+/// A `Scale` impl's expansion under the impl options `attrs`, with the
+/// declaration naming `scaled`'s parameter `factor`.
+fn declared_scale_expansion(
+    attrs: proc_macro2::TokenStream,
+    impl_item: syn::ItemImpl,
+) -> syn::Result<String> {
+    let impl_attrs: ImplAttrs = syn::parse2(attrs).unwrap();
+    let declaration: Vec<syn::TraitItemFn> = vec![syn::parse_quote!(
+        fn scaled(factor: ());
+    )];
+    super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)?;
+    Ok(super::vtable::generate_vtable_static(
+        &impl_item,
+        &syn::parse_quote!(Scale),
+        &syn::parse_quote!(Meter),
+        &impl_attrs,
+        &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
+        &declaration,
+        &[],
+    )
+    .to_string())
+}
+
+/// Every impl's wrappers name a parameter as the trait declares it: the R
+/// formal, its default and checks, the argument errors and the `@param`
+/// docs, whatever the impl calls it.
+#[test]
+fn impl_parameters_take_the_declarations_names() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            /// @param k The factor.
+            #[miniextendr(defaults(k = "2"), no_na(k))]
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = declared_scale_expansion(quote::quote!(s3), impl_item).unwrap();
+    assert!(out.contains("#' @param factor The factor."), "{out}");
+    assert!(!out.contains("#' @param k"), "{out}");
+    assert!(
+        out.contains("scaled.Meter <- function(x, factor = 2, ...)"),
+        "{out}"
+    );
+    assert!(out.contains("if (!isTRUE(!anyNA(factor)))"), "{out}");
+    assert!(out.contains("x, factor)"), "{out}");
+    assert!(!out.contains("(\"k\""), "{out}");
+
+    // The options may name the parameter as the declaration does.
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(defaults(factor = "3"))]
+            fn scaled(&self, _: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = declared_scale_expansion(quote::quote!(s3), impl_item).unwrap();
+    assert!(
+        out.contains("scaled.Meter <- function(x, factor = 3, ...)"),
+        "{out}"
+    );
+}
+
+/// Naming a parameter both ways, or using the impl's name in R code the
+/// wrapper runs, where only the declaration's name is bound, is an error.
+#[test]
+fn impl_parameter_names_in_options_and_r_code_are_checked() {
+    let error = |attr: proc_macro2::TokenStream| -> String {
+        let impl_item: syn::ItemImpl = syn::parse_quote! {
+            impl Scale for Meter {
+                #attr
+                fn scaled(&self, _k: f64) -> f64 { unimplemented!() }
+            }
+        };
+        declared_scale_expansion(quote::quote!(env), impl_item)
+            .unwrap_err()
+            .to_string()
+    };
+    let twice = error(quote::quote!(#[miniextendr(defaults(_k = "2", factor = "3"))]));
+    assert_eq!(
+        twice,
+        "defaults(...) name the trait's parameter `factor` twice, as `_k` and `factor`"
+    );
+    let twice = error(quote::quote!(#[miniextendr(no_na(_k), no_na(factor))]));
+    assert!(twice.contains("parameter `factor` twice"), "{twice}");
+    for (attr, what) in [
+        (
+            quote::quote!(#[miniextendr(r_entry = "stopifnot(k > 0)")]),
+            "r_entry",
+        ),
+        (
+            quote::quote!(#[miniextendr(r_post_checks = "k <- k * 2")]),
+            "r_post_checks",
+        ),
+        (
+            quote::quote!(#[miniextendr(r_on_exit = "message(k)")]),
+            "r_on_exit",
+        ),
+    ] {
+        assert_eq!(
+            error(attr),
+            format!(
+                "{what} uses `k`, this impl's name for the trait's parameter `factor`; R \
+                 wrappers take the trait's parameter names, so write `factor`"
+            )
+        );
+    }
+    let docs = error(quote::quote!(
+        /// @param k Old name.
+        /// @param factor New name.
+    ));
+    assert!(
+        docs.contains("`@param k` documents the trait's parameter `factor`"),
+        "{docs}"
+    );
 }
 
 /// A trait method's `choices(...)` checks come out in signature order, not in

@@ -1637,6 +1637,42 @@ fn test_normalize_for_comparison() {
 
 // region: comma-list @param dedup (duplicated \argument Rd entries, #1261 item 2)
 
+/// A trait impl's `@param` tags take the trait's parameter names: each name
+/// of a comma list maps on its own, names swap, and the description stays.
+#[test]
+fn rename_param_tags_maps_each_name() {
+    let rename = |name: &str| match name {
+        "k" => Some("factor".to_string()),
+        "a" => Some("b".to_string()),
+        "b" => Some("a".to_string()),
+        _ => None,
+    };
+    let mut tags = vec![
+        "@param k The scale factor, k > 0.".to_string(),
+        "@param a,b,c Numeric scalars.".to_string(),
+        "@return The scaled value.".to_string(),
+    ];
+    rename_param_tags(&mut tags, rename).unwrap();
+    assert_eq!(
+        tags,
+        [
+            "@param factor The scale factor, k > 0.",
+            "@param b,a,c Numeric scalars.",
+            "@return The scaled value.",
+        ]
+    );
+    // A name the trait's parameter is already documented under is refused.
+    let mut tags = vec![
+        "@param k Old name.".to_string(),
+        "@param factor New name.".to_string(),
+    ];
+    let err = rename_param_tags(&mut tags, rename).unwrap_err();
+    assert!(
+        err.contains("`@param k` documents the trait's parameter `factor`"),
+        "{err}"
+    );
+}
+
 #[test]
 fn extract_param_names_splits_comma_list() {
     // A single `@param a,b,c desc` tag documents three names, not one.

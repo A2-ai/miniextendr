@@ -210,6 +210,17 @@ pub(crate) fn qualify_shadowed_calls<'t>(
     Cow::Owned(out)
 }
 
+/// Whether the R code `text` refers to the variable `name`: the name as an
+/// identifier outside strings, comments and backtick names, not after `::`,
+/// `:::`, `$` or `@`, and not as an argument name before a lone `=`.
+pub(crate) fn refers_to(text: &str, name: &str) -> bool {
+    identifiers(text).into_iter().any(|ident| {
+        text[ident.clone()] == *name
+            && !is_accessed(text, ident.start)
+            && !is_argument_name(text, ident.end)
+    })
+}
+
 // region: lexer
 
 /// Byte ranges of the R identifiers in `text`, skipping strings (`"..."`,
@@ -298,6 +309,13 @@ fn raw_string_end(text: &str, quote_at: usize) -> Option<usize> {
 /// spaces and `(`.
 fn is_call(text: &str, end: usize) -> bool {
     text[end..].trim_start_matches([' ', '\t']).starts_with('(')
+}
+
+/// Whether the identifier ending at `end` names an argument: followed by
+/// optional spaces and a lone `=`, not `==`.
+fn is_argument_name(text: &str, end: usize) -> bool {
+    let rest = text[end..].trim_start_matches([' ', '\t']);
+    rest.starts_with('=') && !rest.starts_with("==")
 }
 
 /// Whether the identifier starting at `start` follows `::`, `:::`, `$` or `@`,
