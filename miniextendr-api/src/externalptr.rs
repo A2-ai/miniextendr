@@ -797,10 +797,10 @@ unsafe fn env_binding(env: SEXP, name: &str) -> Option<SEXP> {
 pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
     unsafe {
         if sexp.is_environment() {
-            if let Some(direct) = env_binding(sexp, ".ptr") {
-                if direct.type_of() == SEXPTYPE::EXTPTRSXP {
-                    return Some(direct);
-                }
+            if let Some(direct) = env_binding(sexp, ".ptr")
+                && direct.type_of() == SEXPTYPE::EXTPTRSXP
+            {
+                return Some(direct);
             }
             // An active binding can return a fresh environment that is not
             // retained by its owner. Keep it rooted across the next lookup.
@@ -816,12 +816,11 @@ pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
             return (slot.type_of() == SEXPTYPE::EXTPTRSXP).then_some(slot);
         }
 
-        if sexp.type_of() == SEXPTYPE::VECSXP {
-            if let Some(elt) = list_element(sexp, ".ptr") {
-                if elt.type_of() == SEXPTYPE::EXTPTRSXP {
-                    return Some(elt);
-                }
-            }
+        if sexp.type_of() == SEXPTYPE::VECSXP
+            && let Some(elt) = list_element(sexp, ".ptr")
+            && elt.type_of() == SEXPTYPE::EXTPTRSXP
+        {
+            return Some(elt);
         }
 
         let attr = sexp.get_attr(Rf_install(c".ptr".as_ptr()));
