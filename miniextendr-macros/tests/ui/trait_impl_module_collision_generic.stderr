@@ -1,0 +1,10 @@
+error[E0428]: the name `__mx_unique_trait_impl_$CRATE_Counter_FOR_Host` is defined multiple times
+  --> tests/ui/trait_impl_module_collision_generic.rs:22:34
+   |
+13 |     impl Counter<i32> for crate::Host { fn first(&self) -> i32 { 1 } }
+   |                                  ---- previous definition of the macro `__mx_unique_trait_impl_$CRATE_Counter_FOR_Host` here
+...
+22 |     impl Counter<i32> for crate::Host { fn second(&self) -> i32 { 2 } }
+   |                                  ^^^^ `__mx_unique_trait_impl_$CRATE_Counter_FOR_Host` redefined here
+   |
+   = note: `__mx_unique_trait_impl_$CRATE_Counter_FOR_Host` must be defined only once in the macro namespace of this module

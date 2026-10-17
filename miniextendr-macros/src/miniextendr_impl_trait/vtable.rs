@@ -328,6 +328,18 @@ pub(super) fn generate_impl_vtable(
         syn::Type::Path(path) => path.path.segments.last().unwrap().ident.clone(),
         _ => format_ident!("Unknown"),
     };
+    // `no_mangle` statics in different modules can pass cargo check and only
+    // collide at link time. An exported macro occupies one crate-wide namespace:
+    // a second impl with the same vtable name gets E0428 at both source sites.
+    // Do not make the ABI symbol unique instead: the two R trait namespaces
+    // would still overwrite each other (#2003).
+    let mut guard_name = crate::naming::trait_impl_guard_ident(trait_name, &type_name);
+    guard_name.set_span(type_ident.span());
+    let uniqueness_guard = quote::quote_spanned! {type_ident.span()=>
+        #[doc(hidden)]
+        #[macro_export]
+        macro_rules! #guard_name { () => {}; }
+    };
     let mut concrete_methods = Vec::new();
     let mut initializers = Vec::new();
     for field in &fields.named {
@@ -367,6 +379,8 @@ pub(super) fn generate_impl_vtable(
         pub static #static_name: #layout_name = #layout_name {
             #(#initializers),*
         };
+
+        #uniqueness_guard
     })
 }
 

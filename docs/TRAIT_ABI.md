@@ -41,6 +41,17 @@ no default body is copied into the impl. Explicit overrides keep their own
 signature, body and wrapper options. Static defaults get R wrappers too.
 The exported vtable static symbols used by webR remain unchanged.
 
+Each exported vtable's name must be unique within the implementing crate.
+Two traits named `Counter` from different modules implemented for one `Host`,
+or one trait implemented for two module-local types named `Host`, would share
+the same exported symbol and R trait namespace. These impls fail during
+compilation with E0428 on `__mx_unique_trait_impl_<crate>_Counter_FOR_Host`;
+the diagnostic points to both impl sites. Rename one of the original traits
+or types. Renaming only a trait import or setting an R class override does
+not change this ABI name. Case-distinct Rust names remain distinct. The check
+applies to populated, empty and generic trait impls, including impls whose R
+wrappers are hidden.
+
 Inherited defaults and empty annotated impls infer argument types from the
 concrete trait method. Private declaration-local aliases therefore need no
 imports in the impl module, even across crates or when that module defines a

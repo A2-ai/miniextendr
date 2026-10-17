@@ -297,6 +297,16 @@ pub(crate) fn vtable_static_ident(trait_name: &syn::Ident, type_name: &str) -> s
     quote::format_ident!("__VTABLE_{prefix}_{trait_name}_FOR_{type_name}")
 }
 
+/// Crate-wide macro sentinel for the exported trait-impl vtable's name.
+/// Unlike the vtable item, an exported macro is checked across modules before
+/// linking. Keep its inputs identical to `vtable_static_ident`: an impl-local
+/// suffix would hide the collision while the R trait namespace still overlaps.
+pub(crate) fn trait_impl_guard_ident(trait_name: &syn::Ident, type_name: &str) -> syn::Ident {
+    let prefix = crate_prefix();
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("__mx_unique_trait_impl_{prefix}_{trait_name}_FOR_{type_name}")
+}
+
 /// Trait tag, shared by the declaration and both impl expansion paths.
 pub(crate) fn trait_tag_ident(trait_name: &syn::Ident) -> syn::Ident {
     let trait_name = unraw(trait_name);
@@ -580,6 +590,10 @@ mod tests {
             "__VTABLE_miniextendr_macros_Resettable_FOR_Counter"
         );
         assert_eq!(
+            trait_impl_guard_ident(&tr, "Counter").to_string(),
+            "__mx_unique_trait_impl_miniextendr_macros_Resettable_FOR_Counter"
+        );
+        assert_eq!(
             vtshim_ident(&ty, &tr, &m).to_string(),
             "__vtshim_miniextendr_macros_Counter__Resettable__reset"
         );
@@ -597,6 +611,14 @@ mod tests {
         assert_ne!(
             vtable_static_ident(&upper, "Foo"),
             vtable_static_ident(&upper, "foo")
+        );
+        assert_ne!(
+            trait_impl_guard_ident(&upper, "Foo"),
+            trait_impl_guard_ident(&lower, "Foo")
+        );
+        assert_ne!(
+            trait_impl_guard_ident(&upper, "Foo"),
+            trait_impl_guard_ident(&upper, "foo")
         );
         assert_ne!(trait_tag_ident(&upper), trait_tag_ident(&lower));
         assert_ne!(
