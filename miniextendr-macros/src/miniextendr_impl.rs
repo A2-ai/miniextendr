@@ -3325,6 +3325,7 @@ impl ParsedImpl {
         };
         parsed.check_constructor_markers()?;
         parsed.reject_unsupported_describe_in()?;
+        parsed.reject_r6_method_no_rd()?;
         field_syntax::check_collisions(&parsed)?;
         Ok(parsed)
     }
@@ -3391,6 +3392,30 @@ impl ParsedImpl {
                     method.ident,
                 ),
             ));
+        }
+        Ok(())
+    }
+
+    /// A public R6 method's block is folded into the class block by roxygen2.
+    /// Its `@noRd` would therefore suppress the whole class page (#1820).
+    fn reject_r6_method_no_rd(&self) -> syn::Result<()> {
+        if self.class_system != ClassSystem::R6 {
+            return Ok(());
+        }
+        for method in self.public_instance_methods() {
+            if crate::roxygen::has_roxygen_tag(&method.doc_tags, "noRd") {
+                return Err(syn::Error::new_spanned(
+                    &method.ident,
+                    format!(
+                        "`@noRd` is not supported on the public R6 method `{}`: roxygen2 \
+                         merges its documentation into the class block, so it would suppress \
+                         the whole class's help page. Remove the method's `@noRd`, or put \
+                         `@noRd` / `#[miniextendr(r6, noexport)]` on the impl block to suppress \
+                         the whole class's documentation.",
+                        method.ident,
+                    ),
+                ));
+            }
         }
         Ok(())
     }

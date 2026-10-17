@@ -10508,3 +10508,91 @@ fn lambda_callbacks_transport_conditions_with_their_call_policy() {
 }
 
 // endregion
+
+#[test]
+fn r6_public_method_no_rd_is_rejected() {
+    for method_attrs in [
+        quote::quote!(),
+        quote::quote!(#[miniextendr(r_name = "renamed")]),
+        quote::quote!(#[miniextendr(r6(setter, prop = "value"))]),
+    ] {
+        let item: syn::ItemImpl = syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> Self { unimplemented!() }
+                /// @noRd
+                #method_attrs
+                pub fn set_value(&mut self, value: i32) {}
+            }
+        };
+        let error = ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), item)
+            .expect_err("a public method's @noRd must not suppress the class page")
+            .to_string();
+        assert!(error.contains("public R6 method `set_value`"), "{error}");
+        assert!(error.contains("whole class's help page"), "{error}");
+        assert!(error.contains("impl block"), "{error}");
+    }
+}
+
+#[test]
+fn r6_no_rd_check_only_applies_to_documented_public_instance_methods() {
+    let item: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+
+            /// @noRd
+            pub fn helper() -> i32 { 1 }
+
+            /// @noRd
+            #[miniextendr(r6(private))]
+            pub fn private_value(&self) -> i32 { 1 }
+
+            /// @noRd
+            #[miniextendr(r6(active))]
+            pub fn active_value(&self) -> i32 { 1 }
+
+            /// @noRd
+            #[miniextendr(r6(ignore))]
+            pub fn ignored(&self) {}
+
+            /// @noRd
+            fn private_by_visibility(&self) {}
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains(
+            "#' @noRd\n#' @name Counter$helper\n#' @rdname Counter\nCounter$helper <- function()"
+        ),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("Counter$set(\"private\", \"private_value\""),
+        "{wrapper}"
+    );
+
+    let item: syn::ItemImpl = syn::parse_quote! {
+        /// @noRd
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn value(&self) -> i32 { 1 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item);
+    assert!(generate_r6_r_wrapper(&parsed).contains("#' @noRd"));
+
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let item: syn::ItemImpl = syn::parse_quote! {
+            impl Counter {
+                /// @noRd
+                pub fn value(&self) -> i32 { 1 }
+            }
+        };
+        parse_impl(system, item);
+    }
+}

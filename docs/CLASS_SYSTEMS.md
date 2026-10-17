@@ -1563,6 +1563,12 @@ Methods section). A method-level `@rdname` there would fail with "Block must
 contain only one @rdname", so the generator drops it; R6 static methods
 (`Class$fn`) split like any other.
 
+A public R6 instance method cannot carry `@noRd`: roxygen2 would apply it
+to the entire class and remove its help page. The macro rejects that tag
+on the method. Remove it to keep the public method documented, or put
+`@noRd` / `noexport` on the impl block to suppress the whole class page.
+R6 static methods can still use `@noRd` independently.
+
 ### Impl-block doc tags
 
 Roxygen tags on the **impl block's own** `///` comment describe the class, so
