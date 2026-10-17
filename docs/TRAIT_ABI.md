@@ -63,9 +63,19 @@ Argument conversion failures from either shim path carry `kind = "conversion"`,
 bindings in a generic implementation do not change those parameter names or
 native-alias diagnostics. Custom `RConditionData` messages, classes and fields
 survive the View round trip; the outer wrapper supplies the consumer's call.
-The shim uses the `conversion_error_class` configuration of the crate where it
-is generated (the declaration crate for non-generic traits, the implementation
-crate for generic traits).
+
+An argument error takes the `conversion_error_class` of the package that
+implements the method, on every path: the impl's own `.Call` wrapper, a call
+through the vtable from another package, and an `arg_error!` in the
+implementation. A shim reads it when a conversion fails
+(`trait_abi::conversion_error_class()`), and `with_r_unwind_protect_shim` puts
+it in place of `arg_error!`'s class marker. Neither the declaring crate's
+classes nor the calling package's appear. This works because the shim runs in
+the implementing package's shared object: a declaration's shims are
+monomorphised for the implementing type there, a generic trait's shims are
+written at the impl, and every package links its own copy of
+`miniextendr-api`, whose registry holds the classes its `miniextendr_init!`
+registered.
 
 ## Key Concepts
 

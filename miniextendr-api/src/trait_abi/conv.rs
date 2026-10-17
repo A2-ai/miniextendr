@@ -238,4 +238,21 @@ pub fn check_arity(argc: i32, expected: i32, method_name: &str) {
         "{method_name}: expected {expected} arguments, got {argc}"
     );
 }
+
+/// The implementing package's `conversion_error_class`, for a shim's failed
+/// argument conversion.
+///
+/// A shim runs in the package that implements the trait: the declaration's
+/// shims are monomorphised for the implementing type there, a generic
+/// trait's shims are written at the impl, and a vtable's function pointers
+/// point into that package's shared object. Every package links its own copy
+/// of this crate, so this reads the classes that package's
+/// `miniextendr_init!` registered, whichever package calls through the
+/// vtable, and the class matches the impl's own `.Call` wrapper. It is read
+/// only when a conversion fails.
+#[doc(hidden)]
+#[inline]
+pub fn conversion_error_class() -> &'static [&'static str] {
+    crate::registry::conversion_error_class()
+}
 // endregion
