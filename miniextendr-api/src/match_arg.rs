@@ -178,6 +178,17 @@ pub enum MatchArgError {
         /// Aliases and whether each is listed in the error.
         aliases: &'static [(&'static str, &'static str, bool)],
     },
+    /// An element of a `several_ok` input matched no choice.
+    InvalidElement {
+        /// The 1-based position of the invalid element.
+        index: usize,
+        /// The invalid string, or `None` for `NA_character_`.
+        input: Option<String>,
+        /// The valid choices.
+        choices: &'static [&'static str],
+        /// Aliases and whether each is listed in the error.
+        aliases: &'static [(&'static str, &'static str, bool)],
+    },
 }
 
 impl MatchArgError {
@@ -187,7 +198,8 @@ impl MatchArgError {
             MatchArgError::InvalidType { choices, .. }
             | MatchArgError::InvalidLength { choices, .. }
             | MatchArgError::IsNa { choices, .. }
-            | MatchArgError::NoMatch { choices, .. } => choices,
+            | MatchArgError::NoMatch { choices, .. }
+            | MatchArgError::InvalidElement { choices, .. } => choices,
         }
     }
 
@@ -197,7 +209,8 @@ impl MatchArgError {
             Self::InvalidType { aliases, .. }
             | Self::InvalidLength { aliases, .. }
             | Self::IsNa { aliases, .. }
-            | Self::NoMatch { aliases, .. } => aliases,
+            | Self::NoMatch { aliases, .. }
+            | Self::InvalidElement { aliases, .. } => aliases,
         }
     }
 
@@ -217,6 +230,8 @@ impl MatchArgError {
     /// - [`InvalidLength`](Self::InvalidLength): `'mode' must be of length 1`
     /// - [`IsNa`](Self::IsNa), [`NoMatch`](Self::NoMatch): `'mode' should be
     ///   one of "fast", "safe"`
+    /// - [`InvalidElement`](Self::InvalidElement): `'mode' element 2 ("zzz")`
+    ///   `should be one of "fast", "safe"`
     ///
     /// The choices are quoted as R's `dQuote(choices, FALSE)` quotes them,
     /// without escapes. [`match_arg_param`] returns it; [`ArgError::raise`]
@@ -235,7 +250,9 @@ impl MatchArgError {
         let what = match self {
             MatchArgError::InvalidType { .. } => match_arg_wording!(not_character).to_string(),
             MatchArgError::InvalidLength { .. } => match_arg_wording!(not_scalar).to_string(),
-            MatchArgError::IsNa { .. } | MatchArgError::NoMatch { .. } => {
+            MatchArgError::IsNa { .. }
+            | MatchArgError::NoMatch { .. }
+            | MatchArgError::InvalidElement { .. } => {
                 let quoted: Vec<String> = formal.iter().map(|c| format!("\"{c}\"")).collect();
                 format!(
                     "{} {}{}",
@@ -245,7 +262,13 @@ impl MatchArgError {
                 )
             }
         };
-        format!("'{param}' {what}")
+        match self {
+            MatchArgError::InvalidElement { index, input, .. } => {
+                let input = input.as_deref().unwrap_or("NA");
+                format!("'{param}' element {index} (\"{input}\") {what}")
+            }
+            _ => format!("'{param}' {what}"),
+        }
     }
 
     /// The reason of this error in R terms, after `<expected>: ` when an
@@ -264,6 +287,10 @@ impl MatchArgError {
             MatchArgError::InvalidLength { actual, .. } => format!("got length {actual}"),
             MatchArgError::IsNa { .. } => "NA is not allowed".to_string(),
             MatchArgError::NoMatch { input, .. } => format!("got {input:?}"),
+            MatchArgError::InvalidElement { index, input, .. } => match input {
+                Some(input) => format!("element {index}: got {input:?}"),
+                None => format!("element {index}: NA is not allowed"),
+            },
         }
     }
 }
@@ -338,6 +365,9 @@ impl std::fmt::Display for MatchArgError {
             MatchArgError::IsNa { .. } => write!(f, "expected {expected}, got NA"),
             MatchArgError::NoMatch { input, .. } => {
                 write!(f, "expected {expected}, got {input:?}")
+            }
+            MatchArgError::InvalidElement { .. } => {
+                write!(f, "expected {expected}, {}", self.r_reason(true))
             }
         }
     }
@@ -956,7 +986,10 @@ impl<T: MatchArg> crate::newtype::IntoRVecElement for T {
 /// NULL input returns all variants. The R prelude's strict `several_ok`
 /// helper maps `NULL` the same way and rejects any element that matches no
 /// choice before the value reaches this function, so the per-element check
-/// here is the second line of defence, not the only one (#1472). Under an
+/// here is the second line of defence, not the only one (#1472). An invalid
+/// element retains its 1-based position and value in
+/// [`MatchArgError::InvalidElement`], whose argument message agrees with the
+/// R helper's (#1806). Under an
 /// `Either<Vec<T>, R>` parameter (#1612), `match_arg_either_or` calls it
 /// only for character or factor input, so `NULL` never reaches it there.
 ///
@@ -977,17 +1010,31 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
             .collect();
     }
 
-    // STRSXP path — delegate type check + per-element NA handling
-    // to Vec<Option<&str>>. `None` means NA_character_ (IsNa error).
+    // Preserve the first invalid element's position, as the R helper does.
+    // NA matches the string "NA" without applying aliases, just as in the
+    // scalar matcher and R's pmatch().
     <Vec<Option<&'static str>> as TryFromSexp>::try_from_sexp(sexp)
         .map_err(sexp_err_to_match_arg_err::<T>)?
         .into_iter()
-        .map(|opt| {
-            opt.ok_or(MatchArgError::IsNa {
-                choices: <T as MatchArg>::CHOICES,
-                aliases: <T as MatchArg>::ALIASES,
+        .enumerate()
+        .map(|(i, opt)| {
+            let matched = match opt {
+                Some(input) => match_choice::<T>(input),
+                None => match_na::<T>(),
+            };
+            matched.map_err(|error| {
+                let input = match error {
+                    MatchArgError::NoMatch { input, .. } => Some(input),
+                    MatchArgError::IsNa { .. } => None,
+                    _ => unreachable!("element matching only returns choice errors"),
+                };
+                MatchArgError::InvalidElement {
+                    index: i + 1,
+                    input,
+                    choices: <T as MatchArg>::CHOICES,
+                    aliases: <T as MatchArg>::ALIASES,
+                }
             })
-            .and_then(match_choice::<T>)
         })
         .collect()
 }
@@ -995,6 +1042,27 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
 #[cfg(test)]
 mod tests {
     use super::escape_r_string;
+
+    #[test]
+    fn element_errors_keep_positions_in_standalone_and_nested_messages() {
+        use super::MatchArgError;
+        for (input, reason) in [
+            (Some("bad".to_owned()), r#"element 3: got "bad""#),
+            (Some("NA".to_owned()), r#"element 3: got "NA""#),
+            (None, "element 3: NA is not allowed"),
+        ] {
+            let error = MatchArgError::InvalidElement {
+                index: 3,
+                input,
+                choices: &["Fast", "Safe"],
+                aliases: &[],
+            };
+            let full = format!(r#"expected one of "Fast", "Safe", {reason}"#);
+            assert_eq!(error.r_reason(true), reason);
+            assert_eq!(error.r_reason(false), full);
+            assert_eq!(error.to_string(), full);
+        }
+    }
 
     #[test]
     fn every_choice_error_retains_alias_visibility() {
@@ -1024,6 +1092,18 @@ mod tests {
             },
             MatchArgError::NoMatch {
                 input: "bad".into(),
+                choices: CHOICES,
+                aliases: ALIASES,
+            },
+            MatchArgError::InvalidElement {
+                index: 2,
+                input: Some("bad".into()),
+                choices: CHOICES,
+                aliases: ALIASES,
+            },
+            MatchArgError::InvalidElement {
+                index: 2,
+                input: None,
                 choices: CHOICES,
                 aliases: ALIASES,
             },

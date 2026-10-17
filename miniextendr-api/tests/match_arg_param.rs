@@ -495,54 +495,116 @@ unsafe fn r_several_outcome<T: MatchArg>(env: SEXP, input: &str) -> Outcome {
     Vec::<String>::try_from_sexp(value).expect("a character vector")
 }
 
-/// `several_ok` maps aliases element by element, in the R helper and in
-/// `match_arg_vec_from_sexp` alike (#1843). The two word a refusal
-/// differently (#1806), so a refusal is compared as a refusal only.
+/// Compare the complete several-ok outcome, including the conversion arm's
+/// whole-argument wording, against the actual R helper.
+///
+/// # Safety
+///
+/// R main thread; env holds the helpers.
+unsafe fn agree_several<T: MatchArg>(env: SEXP, input: &str) -> Outcome {
+    let r = unsafe { r_several_outcome::<T>(env, input) };
+    let value = unsafe { OwnedProtect::new(r_eval_str(input, env).expect("evaluates")) };
+    let rust = match miniextendr_api::match_arg_vec_from_sexp::<T>(value.get()) {
+        Ok(choices) => std::iter::once("ok".to_owned())
+            .chain(
+                choices
+                    .into_iter()
+                    .map(|choice| choice.to_choice().to_owned()),
+            )
+            .collect(),
+        Err(error) => {
+            let message = error.arg_error("mode").message().to_owned();
+            let error = SexpError::from(error);
+            assert_eq!(
+                miniextendr_api::__mx_conversion_arg_message!(error, "mode"),
+                Some(message.clone()),
+                "the generated conversion must preserve the element error"
+            );
+            vec!["error".to_owned(), message]
+        }
+    };
+    assert_eq!(rust, r, "{} on {input}", std::any::type_name::<T>());
+    r
+}
+
+/// The first invalid element, its 1-based position, raw spelling and listed
+/// aliases agree with the R helper, including NA's printed spelling (#1806).
 #[test]
-fn several_ok_aliases_agree_with_the_wrapper_helper() {
+fn several_ok_agrees_with_the_wrapper_helper() {
     r_test_utils::with_r_thread(|| unsafe {
         let env = helpers_env();
         let env = env.get();
-        let rows: &[(&str, &[&str])] = &[
-            (r#"c("grey", "red")"#, &["gray", "red"]),
-            (r#"c("rouge", "gr", "grey")"#, &["red", "gray", "gray"]),
-            (r#""grey""#, &["gray"]),
-            ("NULL", &["red", "gray", "blue"]),
-            (r#"c("grey", "zzz")"#, &[]),
-            (r#"c("gre", "red")"#, &[]),
-            (r#"c("grey", NA)"#, &[]),
-        ];
-        for (input, expected) in rows {
-            let r = r_several_outcome::<Shade>(env, input);
+        for input in [
+            r#"c("grey", "red")"#,
+            r#"c("rouge", "gr", "grey")"#,
+            r#""grey""#,
+            "NULL",
+            r#"c("grey", "zzz")"#,
+            r#"c("gre", "red")"#,
+            r#"c("grey", NA)"#,
+            r#"c(NA, "grey")"#,
+            r#"c("red", "gray", "zzz")"#,
+            r#"c("red", "zzz", "bad")"#,
+            r#"c("red", "")"#,
+            r#"c("red", "NA")"#,
+            r#"c("red", "bad \"quoted\"")"#,
+            r#"c("red", "c:\\bad")"#,
+            r#"c("red", "\u00e9chec")"#,
+            r#"c("red", "bad\nvalue")"#,
+            "TRUE",
+            "1",
+            "list('red')",
+        ] {
+            agree_several::<Shade>(env, input);
+            agree_several::<UnlistedShade>(env, input);
+            agree_several::<MixedShade>(env, input);
+        }
+        assert_eq!(
+            agree_several::<Shade>(env, r#"c("grey", "zzz")"#),
+            [
+                "error",
+                r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#
+            ]
+        );
+        assert_eq!(
+            agree_several::<Shade>(env, r#"c("grey", NA)"#),
+            [
+                "error",
+                r#"'mode' element 2 ("NA") should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#
+            ]
+        );
+        assert_eq!(
+            agree_several::<Shade>(env, r#"c("rouge", "gr", "grey")"#),
+            ["ok", "red", "gray", "gray"]
+        );
+        assert_eq!(
+            agree_several::<Fill>(env, r#"c("error", "dr")"#),
+            [
+                "error",
+                r#"'mode' element 2 ("dr") should be one of "drop", "draw", "error""#
+            ]
+        );
+        // R's pmatch treats NA as the string "NA".
+        assert_eq!(
+            agree_several::<NaPrefixed>(env, r#"c("other", NA)"#),
+            ["ok", "other", "NAME"]
+        );
+        for input in [r#"c("plain", "hello")"#, r#"c("plain", "hello \"you\"")"#] {
+            agree_several::<QuotedAlias>(env, input);
+        }
+
+        for (input, expected) in [
+            (r#"c("red", "zzz")"#, Some("zzz")),
+            (r#"c("red", "NA")"#, Some("NA")),
+            (r#"c("red", NA)"#, None),
+        ] {
             let value = OwnedProtect::new(r_eval_str(input, env).expect("evaluates"));
-            let rust = miniextendr_api::match_arg_vec_from_sexp::<Shade>(value.get());
-            if expected.is_empty() {
-                assert_eq!(r[0], "error", "R helper on `{input}`: {r:?}");
-                let error = rust.expect_err("the invalid element must fail on the Rust side");
-                let clause = " (or \"grey\" for \"gray\", \"rouge\" for \"red\")";
-                assert!(r[1].ends_with(clause), "{r:?}");
-                assert!(
-                    error.arg_error("mode").message().ends_with(clause),
-                    "{error}"
-                );
-                if *input == r#"c("grey", "zzz")"# {
-                    assert_eq!(
-                        r[1],
-                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue" (or "grey" for "gray", "rouge" for "red")"#
-                    );
+            match miniextendr_api::match_arg_vec_from_sexp::<Shade>(value.get()) {
+                Err(MatchArgError::InvalidElement { index, input, .. }) => {
+                    assert_eq!(index, 2);
+                    assert_eq!(input.as_deref(), expected);
                 }
-            } else {
-                let want: Vec<String> = std::iter::once("ok")
-                    .chain(expected.iter().copied())
-                    .map(String::from)
-                    .collect();
-                assert_eq!(r, want, "R helper on `{input}`");
-                let got: Vec<&str> = rust
-                    .unwrap_or_else(|e| panic!("match_arg_vec_from_sexp on `{input}`: {e}"))
-                    .into_iter()
-                    .map(MatchArg::to_choice)
-                    .collect();
-                assert_eq!(&got, expected, "match_arg_vec_from_sexp on `{input}`");
+                other => panic!("expected an indexed error, got {other:?}"),
             }
         }
     });
@@ -592,7 +654,7 @@ fn match_arg_from_sexp_takes_the_formal_default() {
         let several = eval(r#"c("x", "")"#);
         assert!(matches!(
             miniextendr_api::match_arg_vec_from_sexp::<WithEmpty>(several.get()),
-            Err(MatchArgError::NoMatch { .. })
+            Err(MatchArgError::InvalidElement { index: 2, .. })
         ));
         assert_eq!(
             miniextendr_api::match_arg_vec_from_sexp::<WithEmpty>(miniextendr_api::SEXP::nil())

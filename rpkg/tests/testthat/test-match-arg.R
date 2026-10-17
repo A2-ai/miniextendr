@@ -358,6 +358,37 @@ test_that("match_arg_auto_doc_modes several_ok accepts subsets", {
   expect_error(match_arg_auto_doc_modes("nope"), "should be one of")
 })
 
+test_that("several_ok Rust conversion names the same invalid element as R (#1806)", {
+  # Bypass the R prelude so the generated C wrapper's own decoder sees the
+  # invalid value, then raise its tagged condition through the ordinary helper.
+  call <- quote(match_arg_auto_doc_modes(x))
+  for (x in list(
+    c("Fast", "zzz"),
+    c("zzz", "Fast"),
+    c("Fast", "Safe", "zzz"),
+    c("Fast", "zzz", "also wrong"),
+    c("Fast", NA_character_),
+    c("Fast", "NA"),
+    c("Fast", ""),
+    c("Fast", "bad \"quoted\""),
+    c("Fast", "c:\\bad"),
+    c("Fast", "bad\nvalue")
+  )) {
+    r <- tryCatch(match_arg_auto_doc_modes(x), error = identity)
+    value <- .Call(miniextendr:::C_miniextendr_match_arg_auto_doc_modes, call, x)
+    expect_s3_class(value, "rust_condition_value")
+    rust <- tryCatch(
+      miniextendr:::.miniextendr_raise_condition(value, call),
+      error = identity
+    )
+    expect_identical(conditionMessage(rust), conditionMessage(r))
+    expect_identical(class(rust), class(r))
+    expect_identical(rust$param, "modes")
+    expect_identical(rust$kind, "conversion")
+    expect_identical(conditionCall(rust), conditionCall(r))
+  }
+})
+
 test_that("match_arg enum with variants named like associated items round-trips (#1730)", {
   expect_equal(match_arg_on_failure_choices(), c("error", "value", "output"))
   expect_equal(match_arg_on_failure("error"), "error")
