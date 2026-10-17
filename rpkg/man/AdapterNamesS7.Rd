@@ -41,5 +41,12 @@ Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Create a new instance with default values.
+
+Parse a string into this type.
+
+Returns \code{Some(value)} on success, \code{None} on parse failure, which R
+receives as \code{NULL}.
 }
 \keyword{internal}

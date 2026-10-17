@@ -28,4 +28,11 @@ AdapterNamesS3
 S3 generic for \code{hash}
 
 S3 generic for \code{clone}
+
+Create a new instance with default values.
+
+Parse a string into this type.
+
+Returns \code{Some(value)} on success, \code{None} on parse failure, which R
+receives as \code{NULL}.
 }

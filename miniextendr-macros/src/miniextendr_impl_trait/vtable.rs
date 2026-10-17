@@ -86,9 +86,14 @@ pub(super) fn generate_vtable_static(
         Err(e) => return e.into_compile_error(),
     };
     for method in &mut all_methods {
-        method.inherited_signature = defaults
+        let inherited = defaults
             .iter()
-            .any(|default| default.sig.ident == method.ident);
+            .find(|default| default.sig.ident == method.ident);
+        method.inherited_signature = inherited.is_some();
+        // An inherited default is documented by the declaration's rustdoc.
+        if let Some(default) = inherited {
+            method.doc_tags = crate::roxygen::declaration_roxygen_tags(&default.attrs);
+        }
     }
     let consts = extract_consts(impl_item);
 
@@ -887,8 +892,8 @@ pub(super) fn extract_methods(
             // The author's tags; the R wrapper generators pick the `@param`
             // lines and the page tags from them (every tag but `@title` and a
             // bare `@export` on blocks without `\usage`,
-            // `r_wrappers::forwarded_body_tag`). An `@param` documents the
-            // parameter under the declaration's name too.
+            // `r_wrappers::forwarded_body_tag`). The impl's `@param` names a
+            // parameter as the impl does: it documents the declaration's name.
             let mut doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs, impl_page);
             crate::roxygen::rename_param_tags(&mut doc_tags, |name| {
                 renamed
@@ -897,6 +902,15 @@ pub(super) fn extract_methods(
                     .map(RenamedParam::formal)
             })
             .map_err(|message| syn::Error::new(span, message))?;
+            // A method without docs of its own has the declaration's, which
+            // already use the declaration's names.
+            if doc_tags.is_empty()
+                && let Some(declared) = declaration
+                    .iter()
+                    .find(|declared| declared.sig.ident == method.sig.ident)
+            {
+                doc_tags = crate::roxygen::declaration_roxygen_tags(&declared.attrs);
+            }
 
             // Validate and peel a return-visibility marker (#1213): the
             // codegen sees the inner type, `.0` unwraps the value.

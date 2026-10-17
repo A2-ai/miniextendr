@@ -3424,3 +3424,105 @@ fn generic_impl_shims_take_the_implementers_class_at_run_time() {
     let read = ":: miniextendr_api :: trait_abi :: conversion_error_class ()";
     assert_eq!(output.matches(read).count(), 1, "{output}");
 }
+
+/// The declaration's docs document a method an empty impl registers: the
+/// trait's metadata carries them in each `method { ... }` entry.
+#[test]
+fn tpie_methods_carry_the_declarations_docs() {
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Point;
+        trait_path = RDebug;
+        class_system = env;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = false;
+        abi RDebug false "test-only-tag" {
+            pub debug_str: ::miniextendr_api::abi::mx_meth,
+        }
+        method { r_name = debug_str; #[doc = " Get a compact debug string."] fn debug_str(&self) -> String; }
+        method { r_name = bare; fn bare(&self) -> i32; }
+    };
+    let docs = |method: &TpieMethod| {
+        crate::roxygen::roxygen_tags_from_attrs(&method.docs, crate::roxygen::RdPage::Rendered)
+    };
+    assert_eq!(
+        docs(&input.methods[0]),
+        ["@description Get a compact debug string."]
+    );
+    assert_eq!(input.methods[0].sig.ident, "debug_str");
+    assert!(docs(&input.methods[1]).is_empty());
+}
+
+/// A method the impl writes keeps its own docs; one written without docs has
+/// the declaration's, as an inherited default does.
+#[test]
+fn undocumented_impl_methods_take_the_declarations_docs() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+            /// Own docs.
+            fn unit(&self) -> String { unimplemented!() }
+        }
+    };
+    let declaration: Vec<syn::TraitItemFn> = vec![
+        syn::parse_quote!(
+            /// Scale the value.
+            ///
+            /// @param factor The factor.
+            fn scaled(factor: ());
+        ),
+        syn::parse_quote!(
+            /// Declared docs.
+            fn unit();
+        ),
+    ];
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(
+        methods[0].doc_tags,
+        ["@description Scale the value.", "@param factor The factor."]
+    );
+    assert_eq!(methods[1].doc_tags, ["@description Own docs."]);
+}
+
+/// The declaration's docs already name its parameters: an undocumented impl
+/// method that swaps the names gets them as written, not renamed back.
+#[test]
+fn declaration_docs_are_not_renamed_for_an_impl() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Pick for Pair {
+            fn pick(&self, a: i32, b: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let declaration: Vec<syn::TraitItemFn> = vec![syn::parse_quote!(
+        /// Pick one.
+        ///
+        /// @param b First.
+        /// @param a Second.
+        fn pick(b: (), a: ());
+    )];
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(
+        methods[0].doc_tags,
+        [
+            "@description Pick one.",
+            "@param b First.",
+            "@param a Second."
+        ]
+    );
+    // The impl's own `@param a` is the declaration's `b`.
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Pick for Pair {
+            /// @param a The first.
+            fn pick(&self, a: i32, b: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(methods[0].doc_tags, ["@param b The first."]);
+}

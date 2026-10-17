@@ -35,4 +35,8 @@ Create a gauge holding \code{value}.
 }
 
 \code{CaseGauge$new_case_gauge()} is another name for the constructor \code{CaseGauge$new()}.
+
+The reading.
+
+The negated reading.
 }
