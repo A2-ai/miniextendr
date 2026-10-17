@@ -178,13 +178,13 @@ impl RawHeader {
                 actual: self.elem_size as usize,
             });
         }
-        if let Some(count) = expected_count {
-            if self.elem_count as usize != count {
-                return Err(RawError::LengthMismatch {
-                    expected: count,
-                    actual: self.elem_count as usize,
-                });
-            }
+        if let Some(count) = expected_count
+            && self.elem_count as usize != count
+        {
+            return Err(RawError::LengthMismatch {
+                expected: count,
+                actual: self.elem_count as usize,
+            });
         }
         Ok(())
     }
@@ -379,7 +379,7 @@ fn align_slice<T: Pod>(bytes: &[u8]) -> Result<Vec<T>, RawError> {
         // Zero-sized types
         return Ok(Vec::new());
     }
-    if bytes.len() % elem_size != 0 {
+    if !bytes.len().is_multiple_of(elem_size) {
         return Err(RawError::LengthMismatch {
             expected: bytes.len() - (bytes.len() % elem_size) + elem_size,
             actual: bytes.len(),
