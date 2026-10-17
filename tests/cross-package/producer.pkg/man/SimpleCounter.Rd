@@ -41,24 +41,78 @@ SimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
+SimpleCounter Class
+}
+\section{Methods}{
+
+\describe{
+\item{\code{SimpleCounter$get_value()}}{
 Get current value (inherent method)
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$panic_plain()}}{
 Panic with a plain message so the consumer can test rust_error class layering.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$error_with_class()}}{
 Use error!() with a custom class so the consumer can test user-class layering.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_error()}}{
 Bare error!() — no user class, so the consumer verifies plain rust_error.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_warning()}}{
 warning!() — consumer verifies rust_warning + e$kind round-trip.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_message()}}{
 message!() — consumer verifies rust_message + e$kind round-trip.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_condition_classed()}}{
 condition!() with a custom class — consumer verifies catchability + kind.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_error_with_data()}}{
 Raise an error with structured data fields — tests ConditionData
 round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$Counter$raise_arg_error()}}{
 arg_error!() — consumer verifies kind, param and its own crate classes.
+}
+}
 
+
+\describe{
+\item{\code{SimpleCounter$AliasedValues$echo()}}{
 Return the supplied values unchanged.
 }
+}
+}
+

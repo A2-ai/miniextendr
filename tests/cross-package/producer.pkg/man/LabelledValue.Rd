@@ -27,16 +27,28 @@ LabelledValue
 }
 \description{
 Labels kept in a sidecar, reached through the \code{Tagged} trait.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{LabelledValue$new()}}{
 Create a LabelledValue with one label
 
+\strong{Arguments:}
 \describe{
 \item{\code{first}}{The first label}
 }
+}
+}
 
-Arguments of \code{LabelledValue$Tagged$add_label()}:
 
+\describe{
+\item{\code{LabelledValue$Tagged$add_label()}}{
+\strong{Arguments:}
 \describe{
 \item{\code{label}}{The label to append}
 }
 }
+}
+}
+

@@ -37,14 +37,41 @@ SharedData
 }
 \description{
 A point with label using Env-style class system.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{SharedData$new()}}{
 Create a new SharedData
+}
+}
 
+
+\describe{
+\item{\code{SharedData$get_x()}}{
 Get the x coordinate
+}
+}
 
+
+\describe{
+\item{\code{SharedData$get_y()}}{
 Get the y coordinate
+}
+}
 
+
+\describe{
+\item{\code{SharedData$get_label()}}{
 Get the label
+}
+}
 
+
+\describe{
+\item{\code{SharedData$create()}}{
 \code{SharedData$create()} is another name for the constructor \code{SharedData$new()}.
 }
+}
+}
+

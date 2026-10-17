@@ -37,14 +37,41 @@ EnvPoint
 }
 \description{
 A 2D point using the default Env-style class system.
+}
+\section{Methods}{
 
+\describe{
+\item{\code{EnvPoint$new()}}{
 Create a new point
+}
+}
 
+
+\describe{
+\item{\code{EnvPoint$x()}}{
 Get x coordinate
+}
+}
 
+
+\describe{
+\item{\code{EnvPoint$y()}}{
 Get y coordinate
+}
+}
 
+
+\describe{
+\item{\code{EnvPoint$distance_from_origin()}}{
 Calculate distance from origin
+}
+}
 
+
+\describe{
+\item{\code{EnvPoint$add()}}{
 Add another point's coordinates
 }
+}
+}
+

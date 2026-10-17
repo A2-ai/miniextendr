@@ -33,7 +33,21 @@ DoubleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-Get the current value (inherent method)
+DoubleCounter Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{DoubleCounter$get_value()}}{
+Get the current value (inherent method)
+}
+}
+
+
+\describe{
+\item{\code{DoubleCounter$create()}}{
 \code{DoubleCounter$create()} is another name for the constructor \code{DoubleCounter$new()}.
 }
+}
+}
+

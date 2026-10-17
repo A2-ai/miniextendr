@@ -41,7 +41,21 @@ StatefulCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-Get current value (inherent method)
+StatefulCounter Class
+}
+\section{Methods}{
 
+\describe{
+\item{\code{StatefulCounter$get_value()}}{
+Get current value (inherent method)
+}
+}
+
+
+\describe{
+\item{\code{StatefulCounter$history_len()}}{
 Get how many history entries exist
 }
+}
+}
+
