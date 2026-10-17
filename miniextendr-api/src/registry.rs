@@ -2169,25 +2169,22 @@ fn resolve_generic_doc_markers(content: String) -> String {
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with(MARKER_PREFIX) {
-            if let Some((_kind, generic, _class, _export, _dispatch, _no_dots)) =
+        if trimmed.starts_with(MARKER_PREFIX)
+            && let Some((_kind, generic, _class, _export, _dispatch, _no_dots)) =
                 parse_generic_doc_marker(trimmed)
-            {
-                if first_seen.insert(generic.clone()) {
-                    // First occurrence: replace with synthesised block
-                    if let Some((kind, classes, export, dispatch, no_dots)) =
-                        by_generic.get(&generic)
-                    {
-                        let block = synthesise_generic_doc_block(
-                            kind, &generic, classes, *export, dispatch, *no_dots,
-                        );
-                        result.push_str(&block);
-                        result.push('\n');
-                    }
+        {
+            if first_seen.insert(generic.clone()) {
+                // First occurrence: replace with synthesised block
+                if let Some((kind, classes, export, dispatch, no_dots)) = by_generic.get(&generic) {
+                    let block = synthesise_generic_doc_block(
+                        kind, &generic, classes, *export, dispatch, *no_dots,
+                    );
+                    result.push_str(&block);
+                    result.push('\n');
                 }
-                // Subsequent occurrences: drop the line entirely (no push)
-                continue;
             }
+            // Subsequent occurrences: drop the line entirely (no push)
+            continue;
         }
         result.push_str(line);
         result.push('\n');
@@ -2294,13 +2291,13 @@ fn resolve_inherited_param_markers(content: String) -> String {
             while j < lines.len() {
                 let next = lines[j].trim();
                 if next.starts_with("#'") {
-                    if let Some(param_rest) = next.strip_prefix("#' @param ") {
-                        if let Some(param_name) = param_rest.split_whitespace().next() {
-                            class_method_params
-                                .entry((class_name.clone(), String::new()))
-                                .or_default()
-                                .insert(param_name.to_string());
-                        }
+                    if let Some(param_rest) = next.strip_prefix("#' @param ")
+                        && let Some(param_name) = param_rest.split_whitespace().next()
+                    {
+                        class_method_params
+                            .entry((class_name.clone(), String::new()))
+                            .or_default()
+                            .insert(param_name.to_string());
                     }
                     j += 1;
                 } else {
@@ -2325,13 +2322,13 @@ fn resolve_inherited_param_markers(content: String) -> String {
         let raw = lines[i];
         let trimmed = raw.trim();
         // Detect R6Class definition: `ClassName <- R6::R6Class("ClassName",`
-        if trimmed.contains("R6::R6Class(\"") {
-            if let Some(start) = trimmed.find("R6::R6Class(\"") {
-                let rest = &trimmed[start + "R6::R6Class(\"".len()..];
-                if let Some(end) = rest.find('"') {
-                    current_class = Some(rest[..end].to_string());
-                    current_method = None;
-                }
+        if trimmed.contains("R6::R6Class(\"")
+            && let Some(start) = trimmed.find("R6::R6Class(\"")
+        {
+            let rest = &trimmed[start + "R6::R6Class(\"".len()..];
+            if let Some(end) = rest.find('"') {
+                current_class = Some(rest[..end].to_string());
+                current_method = None;
             }
         }
         // Detect method source comment: `    # ClassName::method_name (file:line)`
@@ -2345,15 +2342,14 @@ fn resolve_inherited_param_markers(content: String) -> String {
                 }
             }
             // Detect indented method @param: `    #' @param name ...`
-            if let Some(ref method) = current_method.clone() {
-                if let Some(rest) = raw.strip_prefix("    #' @param ") {
-                    if let Some(param_name) = rest.split_whitespace().next() {
-                        class_method_params
-                            .entry((cls.clone(), method.clone()))
-                            .or_default()
-                            .insert(param_name.to_string());
-                    }
-                }
+            if let Some(ref method) = current_method.clone()
+                && let Some(rest) = raw.strip_prefix("    #' @param ")
+                && let Some(param_name) = rest.split_whitespace().next()
+            {
+                class_method_params
+                    .entry((cls.clone(), method.clone()))
+                    .or_default()
+                    .insert(param_name.to_string());
             }
         }
         i += 1;
@@ -2365,34 +2361,34 @@ fn resolve_inherited_param_markers(content: String) -> String {
         let trimmed = line.trim();
         // Marker format: `    #' .__MX_INHERITED_PARAM__(class="...", parent="...", method="...", param="...")`
         let inner = trimmed.strip_prefix("#' ").unwrap_or(trimmed);
-        if inner.starts_with(MARKER_PREFIX) {
-            if let Some((_class, parent, method, param)) = parse_inherited_param_marker(inner) {
-                // Check if parent is in-package and has the param documented:
-                // Either at method level (parent, method) or class level (parent, "").
-                let parent_method_key = (parent.clone(), method.clone());
-                let parent_class_key = (parent.clone(), String::new());
-                let documented_in_method = class_method_params
-                    .get(&parent_method_key)
-                    .map(|s| s.contains(&param))
-                    .unwrap_or(false);
-                let documented_at_class = class_method_params
-                    .get(&parent_class_key)
-                    .map(|s| s.contains(&param))
-                    .unwrap_or(false);
+        if inner.starts_with(MARKER_PREFIX)
+            && let Some((_class, parent, method, param)) = parse_inherited_param_marker(inner)
+        {
+            // Check if parent is in-package and has the param documented:
+            // Either at method level (parent, method) or class level (parent, "").
+            let parent_method_key = (parent.clone(), method.clone());
+            let parent_class_key = (parent.clone(), String::new());
+            let documented_in_method = class_method_params
+                .get(&parent_method_key)
+                .map(|s| s.contains(&param))
+                .unwrap_or(false);
+            let documented_at_class = class_method_params
+                .get(&parent_class_key)
+                .map(|s| s.contains(&param))
+                .unwrap_or(false);
 
-                if documented_in_method || documented_at_class {
-                    // Parent is documented in-package → drop this line entirely.
-                    // roxygen2 8.0.0 inherits the parent method's @param.
-                    continue;
-                } else {
-                    // Parent not found or param not documented → keep fallback.
-                    // Reconstruct indentation from the original line.
-                    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                    result.push_str(&indent);
-                    result.push_str(&format!("#' @param {} (no documentation available)", param));
-                    result.push('\n');
-                    continue;
-                }
+            if documented_in_method || documented_at_class {
+                // Parent is documented in-package → drop this line entirely.
+                // roxygen2 8.0.0 inherits the parent method's @param.
+                continue;
+            } else {
+                // Parent not found or param not documented → keep fallback.
+                // Reconstruct indentation from the original line.
+                let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+                result.push_str(&indent);
+                result.push_str(&format!("#' @param {} (no documentation available)", param));
+                result.push('\n');
+                continue;
             }
         }
         result.push_str(line);

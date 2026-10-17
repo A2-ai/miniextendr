@@ -123,7 +123,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:
 | `r-check-*` | R CMD check on all platforms |
 | `r-tests` | R test suite |
 | `cran-check` | Strict CRAN-like check |
-| `msrv` | Minimum supported Rust version (1.85) |
+| `msrv` | Minimum supported Rust version (1.88) |
 
 ## Release Checklist
 

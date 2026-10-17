@@ -161,13 +161,11 @@ impl TryRng for RRng {
     #[inline]
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
         // Fill using u64 values for efficiency
-        let mut chunks = dest.chunks_exact_mut(8);
-        for chunk in chunks.by_ref() {
-            let val = self.try_next_u64()?;
-            chunk.copy_from_slice(&val.to_le_bytes());
+        let (chunks, remainder) = dest.as_chunks_mut::<8>();
+        for chunk in chunks {
+            *chunk = self.try_next_u64()?.to_le_bytes();
         }
         // Handle remainder
-        let remainder = chunks.into_remainder();
         if !remainder.is_empty() {
             let val = self.try_next_u64()?;
             let bytes = val.to_le_bytes();
@@ -526,7 +524,7 @@ mod tests {
         }
 
         fn random_bool(&self) -> bool {
-            self.next() % 2 == 0
+            self.next().is_multiple_of(2)
         }
 
         fn gen_range_f64(&self, low: f64, high: f64) -> f64 {

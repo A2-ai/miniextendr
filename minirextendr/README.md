@@ -21,7 +21,7 @@ devtools::install("minirextendr")
 
 ## Requirements
 
-- Rust toolchain (>= 1.85) on `PATH`
+- Rust toolchain (>= 1.88) on `PATH`
 - `autoconf`
 - A working R build toolchain
 

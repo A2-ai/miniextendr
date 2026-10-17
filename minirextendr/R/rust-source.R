@@ -320,7 +320,7 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
     "Depends: ", mx_r_depends_entry(), "\n",
     "Description: Auto-generated package for inline Rust compilation.\n",
     "License: MIT\n",
-    "SystemRequirements: Rust (>= 1.85)\n",
+    "SystemRequirements: Rust (>= 1.88)\n",
     "Encoding: UTF-8\n",
     "Config/build/bootstrap: TRUE\n"
   )

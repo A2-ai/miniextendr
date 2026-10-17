@@ -197,7 +197,7 @@ test_that("miniextendr_validate returns FALSE when configure.ac is missing", {
   writeLines(paste0(
     "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
     "Config/build/bootstrap: TRUE\n",
-    "SystemRequirements: Rust (>= 1.85)\n"
+    "SystemRequirements: Rust (>= 1.88)\n"
   ), file.path(tmp, "DESCRIPTION"))
 
   expect_message(
@@ -242,7 +242,7 @@ test_that("miniextendr_validate warns on AC_INIT mismatch", {
   writeLines(paste0(
     "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
     "Config/build/bootstrap: TRUE\n",
-    "SystemRequirements: Rust (>= 1.85)\n"
+    "SystemRequirements: Rust (>= 1.88)\n"
   ), file.path(tmp, "DESCRIPTION"))
 
   # AC_INIT with wrong package name
@@ -275,7 +275,7 @@ test_that("miniextendr_validate records a missing Rust toolchain as an issue", {
   writeLines(paste0(
     "Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
     "Config/build/bootstrap: TRUE\n",
-    "SystemRequirements: Rust (>= 1.85)\n"
+    "SystemRequirements: Rust (>= 1.88)\n"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([testpkg], [0.0.1])\nCARGO_FEATURES=\n",
     file.path(tmp, "configure.ac"))

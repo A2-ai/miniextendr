@@ -128,7 +128,7 @@ test_that("miniextendr_validate returns TRUE for well-formed package (Fixture A)
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
@@ -149,7 +149,7 @@ test_that("miniextendr_validate warns about missing Config/build/bootstrap (Fixt
   dir.create(tmp)
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
@@ -174,7 +174,7 @@ test_that("miniextendr_validate reports missing configure.ac as an issue (Fixtur
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
   writeLines(c(
@@ -197,7 +197,7 @@ test_that("miniextendr_validate detects missing miniextendr-api in Cargo.toml", 
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
@@ -221,7 +221,7 @@ test_that("miniextendr_status smoke test returns expected structure (Fixture A)"
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
@@ -245,7 +245,7 @@ test_that("miniextendr_doctor smoke test returns expected structure (Fixture A)"
   writeLines(c(
     "Package: mypkg", "Version: 0.1.0",
     "Config/build/bootstrap: TRUE",
-    "SystemRequirements: Rust (>= 1.85)"
+    "SystemRequirements: Rust (>= 1.88)"
   ), file.path(tmp, "DESCRIPTION"))
   writeLines("AC_INIT([mypkg], [0.1.0])", file.path(tmp, "configure.ac"))
   dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
