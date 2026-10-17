@@ -1,0 +1,5 @@
+error: an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold its safety preconditions. Expose a safe fn that checks them and calls this one in an `unsafe` block, or drop `#[miniextendr]` to keep it Rust-only
+ --> tests/ui/unsafe_wrapper_fn.rs:4:5
+  |
+4 | pub unsafe fn unchecked(value: i32) -> i32 {
+  |     ^^^^^^

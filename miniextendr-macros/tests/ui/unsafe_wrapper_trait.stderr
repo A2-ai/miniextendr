@@ -1,0 +1,17 @@
+error: an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold its safety preconditions. Expose a safe fn that checks them and calls this one in an `unsafe` block, or mark it `#[miniextendr(skip)]` to keep it Rust-only
+ --> tests/ui/unsafe_wrapper_trait.rs:5:5
+  |
+5 |     unsafe fn read(&self) -> i32;
+  |     ^^^^^^
+
+error: an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold its safety preconditions. Expose a safe fn that checks them and calls this one in an `unsafe` block, or mark it `#[miniextendr(skip)]` to keep it Rust-only
+  --> tests/ui/unsafe_wrapper_trait.rs:10:5
+   |
+10 |     unsafe fn echo(&self, value: T) -> T { value }
+   |     ^^^^^^
+
+error: an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold its safety preconditions. Expose a safe fn that checks them and calls this one in an `unsafe` block, or mark it `#[miniextendr(skip)]` to keep it Rust-only
+  --> tests/ui/unsafe_wrapper_trait.rs:15:5
+   |
+15 |     unsafe fn create() -> i32 { 1 }
+   |     ^^^^^^

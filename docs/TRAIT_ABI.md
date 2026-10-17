@@ -51,6 +51,13 @@ native-borrow metadata included. The signature helper neither calls the method
 nor constructs argument values, and adds no conversion bounds to the trait
 itself.
 
+A trait method must be safe unless the declaration marks it
+`#[miniextendr(skip)]`: a skipped method gets no vtable slot or R wrapper, so
+it may be `unsafe`, and an annotated impl inherits the `skip`. The declaration
+rejects any other `unsafe fn` (see
+[`unsafe fn`](MINIEXTENDR_ATTRIBUTE.md#unsafe-fn)), so no vtable shim,
+inherited-default wrapper or empty impl ever calls one.
+
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
 bindings in a generic implementation do not change those parameter names or
