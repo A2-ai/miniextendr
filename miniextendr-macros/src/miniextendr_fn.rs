@@ -75,6 +75,18 @@ impl CoercionMapping {
 
 // region: Type inspection helpers
 
+/// Generated R entry points cannot require a caller to uphold Rust safety
+/// preconditions. Raw extern registration has its own explicit contract.
+pub(crate) fn require_safe_wrapper(sig: &syn::Signature) -> syn::Result<()> {
+    if let Some(unsafety) = sig.unsafety {
+        return Err(syn::Error::new_spanned(
+            unsafety,
+            "unsafe functions and methods cannot have generated R wrappers; provide a safe Rust adapter that validates the safety preconditions before calling the unsafe function",
+        ));
+    }
+    Ok(())
+}
+
 /// Check if a type path ends with the given identifier (e.g., "Dots", "Missing").
 ///
 /// Handles fully-qualified paths like `miniextendr_api::dots::Dots` as well as
@@ -2152,6 +2164,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         // For extern functions, #[export_name] can be used as an alternative to #[no_mangle].
         let is_extern = item.sig.abi.is_some();
         if !is_extern {
+            require_safe_wrapper(&item.sig)?;
             for attr in &item.attrs {
                 if attr.path().is_ident("export_name") {
                     return Err(syn::Error::new_spanned(

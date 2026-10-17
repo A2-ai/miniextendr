@@ -1462,6 +1462,10 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         })?;
     }
 
+    if !skip {
+        crate::miniextendr_fn::require_safe_wrapper(&method.sig)?;
+    }
+
     // Check for receiver
     let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
         if let syn::FnArg::Receiver(_) = arg {
