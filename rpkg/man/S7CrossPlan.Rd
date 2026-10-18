@@ -90,8 +90,8 @@ or \code{None} when \code{fail} is set.
 
 Mixed-system container return: proves the target-keyed resolver picks
 the R6 constructor for the \code{Some} arm even though this method lives on
-an S7 class, mirroring \code{Self::s7_build_r6} but through the
-\verb{Option<Class>} cross-class return path.
+an S7 class, mirroring \code{Self::s7_build_r6} but through the optional
+cross-class return path (\verb{Option<ExternalPtr<R6CrossBoard>>}).
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

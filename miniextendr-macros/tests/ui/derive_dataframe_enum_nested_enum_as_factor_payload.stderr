@@ -4,6 +4,7 @@ error[E0277]: the trait bound `FactorOptionVec<Status>: IntoR` is not satisfied
 12 | #[derive(DataFrameRow)]
    |          ^^^^^^^^^^^^ the trait `IntoR` is not implemented for `FactorOptionVec<Status>`
    |
+   = note: an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = "r6")]` (any class system)
 help: the trait `IntoR` is conditionally implemented for `FactorOptionVec<T>`
   --> $WORKSPACE/miniextendr-api/src/factor.rs
    |

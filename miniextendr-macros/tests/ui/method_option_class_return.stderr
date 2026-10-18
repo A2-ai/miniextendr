@@ -1,0 +1,17 @@
+error[E0277]: the trait bound `Option<Board>: IntoR` is not satisfied
+  --> tests/ui/method_option_class_return.rs:14:1
+   |
+14 | #[miniextendr(r6)]
+   | ^^^^^^^^^^^^^^^^^^ the trait `IntoExternalPtr` is not implemented for `Option<Board>`
+   |
+   = note: an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = "r6")]` (any class system)
+help: the following other types implement trait `IntoExternalPtr`
+  --> tests/ui/method_option_class_return.rs:8:10
+   |
+ 8 | #[derive(ExternalPtr)]
+   |          ^^^^^^^^^^^ `Board`
+...
+11 | #[derive(ExternalPtr)]
+   |          ^^^^^^^^^^^ `Plan`
+   = note: required for `Option<Board>` to implement `IntoR`
+   = note: this error originates in the attribute macro `miniextendr` which comes from the expansion of the derive macro `ExternalPtr` (in Nightly builds, run with -Z macro-backtrace for more info)

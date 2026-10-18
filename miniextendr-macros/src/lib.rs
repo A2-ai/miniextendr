@@ -1354,8 +1354,8 @@ fn expand_miniextendr(
         None => fn_call_expr,
     };
 
-    // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
-    // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
+    // Determine return handling: the rule methods share (`detect_return_handling`),
+    // and unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
     let return_pref_is_set = !matches!(return_pref, crate::miniextendr_fn::ReturnPref::Auto);
     let fn_return_handling = if unwrap_in_r && crate::return_type_analysis::output_is_result(output)
     {
@@ -1378,13 +1378,7 @@ fn expand_miniextendr(
         }
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
-        let auto = if return_wrap.is_some() {
-            // Explicit class returns unwrap Option before converting its payload.
-            // Arbitrary Option<Class> / Option<Vec<Class>> have no IntoR impl.
-            c_wrapper_builder::detect_return_handling(output)
-        } else {
-            c_wrapper_builder::detect_return_handling_standalone_fn(output)
-        };
+        let auto = c_wrapper_builder::detect_return_handling(output, return_wrap.as_ref());
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
         // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
         // variants have no bare T to wrap and now hard-error instead of silently ignoring
@@ -2139,7 +2133,7 @@ fn return_pref_names(pref: crate::miniextendr_fn::ReturnPref) -> (&'static str, 
 
 /// Human-readable description of a [`ReturnHandling`](c_wrapper_builder::ReturnHandling)
 /// category, for the `apply_return_pref` compile error. Only describes the categories
-/// [`c_wrapper_builder::detect_return_handling_standalone_fn`] can actually produce;
+/// [`c_wrapper_builder::detect_return_handling`] can actually produce;
 /// the wildcard arm covers variants that never reach `apply_return_pref` as `auto`
 /// (`IntoR` itself, method-only `SelfHandle`, and the `As*Of` variants `apply_return_pref`
 /// produces as *output*, never takes as input).
@@ -2153,7 +2147,7 @@ fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) 
         }
         ReturnHandling::OptionUnit => "`Option<()>`",
         ReturnHandling::OptionSexp => "`Option<SEXP>`",
-        ReturnHandling::OptionIntoR | ReturnHandling::OptionIntoRUnwrap => "`Option<T>`",
+        ReturnHandling::OptionIntoR | ReturnHandling::OptionClassPayload => "`Option<T>`",
         ReturnHandling::ResultUnit => "`Result<(), E>`",
         ReturnHandling::ResultSexp => "`Result<SEXP, E>`",
         ReturnHandling::ResultIntoR => "`Result<T, E>`",

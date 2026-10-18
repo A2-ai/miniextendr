@@ -1302,7 +1302,7 @@ struct ExtraBounds {
 /// - Methods returning `Self` → `__ImplT: IntoR`
 /// - Methods with `&Self` params → `__ImplT: TypedExternal + Send + 'static`
 /// - Methods returning types with `Self::AssocType` or trait type params →
-///   full rewritten return type `: IntoR` (e.g., `Option<<__ImplT as RIterator>::Item>: IntoR`)
+///   full rewritten return type `: IntoR` (e.g., `Nullable<<__ImplT as RIterator>::Item>: IntoR`)
 /// - Methods with trait type params in params →
 ///   full param type `: TryFromSexp` (e.g., `Vec<T>: TryFromSexp`)
 fn compute_extra_bounds(

@@ -287,6 +287,7 @@ mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
 mod option_self_tests;
+mod optional_container_return_tests;
 #[cfg(feature = "either")]
 mod optional_input_tests;
 #[cfg(feature = "ordered-float")]
@@ -340,6 +341,7 @@ mod s7_conversion_marker_tests;
 mod s7_dispatch_tests;
 mod s7_nonsyntactic_tests;
 mod s7_tests;
+mod scalar_option_return_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]
 mod serde_error_tests;

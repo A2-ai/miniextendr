@@ -10,5 +10,5 @@ wrapped_optional_boards(present)
 \item{present}{Whether to return a vector of boards.}
 }
 \description{
-Explicit optional class returns raise on None, including free functions.
+Explicit optional class returns give \code{NULL} for \code{None}, free functions included.
 }

@@ -21,7 +21,7 @@
 // assert, independent of *-default features.
 
 use miniextendr_api::adapter_traits::RIterator;
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::{ExternalPtr, Nullable, miniextendr};
 use std::cell::RefCell;
 use std::fmt;
 use std::str::FromStr;
@@ -232,8 +232,8 @@ pub struct IntVecIter(RefCell<std::vec::IntoIter<i32>>);
 impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     type Item = i32;
 
-    fn next(&self) -> Option<Self::Item> {
-        self.0.borrow_mut().next()
+    fn next(&self) -> Nullable<Self::Item> {
+        Nullable(self.0.borrow_mut().next())
     }
 
     fn size_hint(&self) -> (i64, Option<i64>) {
@@ -243,7 +243,7 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
 
     fn count(&self) -> i64 {
         let mut count = 0i64;
-        while self.next().is_some() {
+        while self.next().0.is_some() {
             count += 1;
         }
         count
@@ -252,7 +252,7 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     fn collect_n(&self, n: i32) -> Vec<Self::Item> {
         let mut result = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            match self.next() {
+            match self.next().0 {
                 Some(item) => result.push(item),
                 None => break,
             }
@@ -263,7 +263,7 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
     fn skip(&self, n: i32) -> i32 {
         let mut skipped = 0i32;
         for _ in 0..n {
-            if self.next().is_none() {
+            if self.next().0.is_none() {
                 break;
             }
             skipped += 1;
@@ -271,12 +271,14 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
         skipped
     }
 
-    fn nth(&self, n: i32) -> Option<Self::Item> {
+    fn nth(&self, n: i32) -> Nullable<Self::Item> {
         if n < 0 {
-            return None;
+            return Nullable(None);
         }
         for _ in 0..n {
-            self.next()?;
+            if self.next().0.is_none() {
+                return Nullable(None);
+            }
         }
         self.next()
     }
@@ -387,8 +389,8 @@ pub struct IterableVecIter(RefCell<std::vec::IntoIter<i32>>);
 impl RIterator for IterableVecIter {
     type Item = i32;
 
-    fn next(&self) -> Option<i32> {
-        self.0.borrow_mut().next()
+    fn next(&self) -> Nullable<i32> {
+        Nullable(self.0.borrow_mut().next())
     }
 
     fn size_hint(&self) -> (i64, Option<i64>) {
@@ -429,7 +431,7 @@ impl IterableVec {
 impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
     type Item = i32;
 
-    fn next(&self) -> Option<Self::Item> {
+    fn next(&self) -> Nullable<Self::Item> {
         unreachable!()
     }
 
@@ -443,7 +445,7 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
 impl IterableVecIter {
     fn collect_all(&self) -> Vec<i32> {
         let mut result = Vec::new();
-        while let Some(item) = RIterator::next(self) {
+        while let Some(item) = RIterator::next(self).0 {
             result.push(item);
         }
         result

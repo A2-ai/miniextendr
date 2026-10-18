@@ -241,6 +241,7 @@ impl<'a> TraitMethodContext<'a> {
             .with_raise_default(raise_default)
             .with_strategy(crate::ReturnStrategy::ReturnSelf)
             .with_class_name(self.type_ident.to_string())
+            .with_nullable(self.method.returns_option_self())
             .with_indent(2);
         match class_system {
             ClassSystem::Env => builder.build(),

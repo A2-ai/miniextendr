@@ -41,6 +41,7 @@
 //! `RExtend<T>` and the associated-type `RIterator`. An explicit impl-level
 //! `r_name` overrides the declaration's name for that implementation.
 
+use crate::Nullable;
 use crate::miniextendr;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::{Debug, Display};
@@ -240,8 +241,7 @@ pub trait RPartialOrd {
     /// - `Some(-1)` if `self < other`
     /// - `Some(0)` if `self == other`
     /// - `Some(1)` if `self > other`
-    /// - `None` if values are incomparable (in R, an error: `` `partial_cmp()`
-    ///   returned no value``)
+    /// - `None` if values are incomparable (in R, `NA`)
     #[miniextendr(r_name = "partial_cmp")]
     fn r_partial_cmp(&self, other: &Self) -> Option<i32>;
 }
@@ -364,7 +364,7 @@ pub trait RFromStr: Sized {
     /// Parse a string into this type.
     ///
     /// Returns `Some(value)` on success, `None` on parse failure, which R
-    /// raises as `` `from_str()` returned no value``.
+    /// receives as `NULL`.
     #[miniextendr(r_name = "from_str")]
     fn r_from_str(s: &str) -> Option<Self>;
 }
@@ -531,6 +531,7 @@ impl<T: Copy> RCopy for T {
 /// # Example
 ///
 /// ```rust,ignore
+/// use miniextendr_api::Nullable;
 /// use miniextendr_api::adapter_traits::RIterator;
 /// use std::cell::RefCell;
 ///
@@ -550,7 +551,7 @@ impl<T: Copy> RCopy for T {
 /// impl miniextendr_api::adapter_traits::RIterator for MyIter {
 ///     type Item = i32;
 ///
-///     fn next(&self) -> Option<i32> {
+///     fn next(&self) -> Nullable<i32> {
 ///         self.0.next()
 ///     }
 ///
@@ -570,7 +571,7 @@ impl<T: Copy> RCopy for T {
 ///         self.0.skip(n)
 ///     }
 ///
-///     fn nth(&self, n: i32) -> Option<i32> {
+///     fn nth(&self, n: i32) -> Nullable<i32> {
 ///         self.0.nth(n)
 ///     }
 /// }
@@ -583,7 +584,7 @@ impl<T: Copy> RCopy for T {
 /// it$RIterator$next_item()   # 2L
 /// it$RIterator$size_hint()   # list(1L, 1L) - one element remaining
 /// it$RIterator$collect_n(5L) # 3L
-/// it$RIterator$next_item()   # error: returned no value (exhausted)
+/// it$RIterator$next_item()   # NULL (exhausted)
 /// ```
 ///
 /// # Design Note
@@ -603,10 +604,11 @@ pub trait RIterator {
 
     /// Get the next element from the iterator.
     ///
-    /// Returns `Some(item)` if there are more elements, `None` if exhausted,
-    /// which R raises as `` `next_item()` returned no value``.
+    /// Returns `Nullable(Some(item))` while there are elements, and
+    /// `Nullable(None)` once exhausted, which R receives as `NULL` whatever
+    /// the item type: an `NA` could be an item, `NULL` never is.
     #[miniextendr(r_name = "next_item")]
-    fn next(&self) -> Option<Self::Item>;
+    fn next(&self) -> Nullable<Self::Item>;
 
     /// Get the estimated number of remaining elements.
     ///
@@ -619,7 +621,7 @@ pub trait RIterator {
     /// **Warning:** This exhausts the iterator.
     fn count(&self) -> i64 {
         let mut count = 0i64;
-        while self.next().is_some() {
+        while self.next().0.is_some() {
             count += 1;
         }
         count
@@ -631,7 +633,7 @@ pub trait RIterator {
     fn collect_n(&self, n: i32) -> Vec<Self::Item> {
         let mut result = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            match self.next() {
+            match self.next().0 {
                 Some(item) => result.push(item),
                 None => break,
             }
@@ -646,7 +648,7 @@ pub trait RIterator {
     fn skip(&self, n: i32) -> i32 {
         let mut skipped = 0i32;
         for _ in 0..n {
-            if self.next().is_none() {
+            if self.next().0.is_none() {
                 break;
             }
             skipped += 1;
@@ -656,13 +658,16 @@ pub trait RIterator {
 
     /// Get the `n`th element (0-indexed), consuming elements up to and including it.
     ///
-    /// Returns None if the iterator has fewer than `n + 1` elements.
-    fn nth(&self, n: i32) -> Option<Self::Item> {
+    /// Returns `Nullable(None)` (`NULL` in R) if `n` is negative or the
+    /// iterator has fewer than `n + 1` elements.
+    fn nth(&self, n: i32) -> Nullable<Self::Item> {
         if n < 0 {
-            return None;
+            return Nullable(None);
         }
         for _ in 0..n {
-            self.next()?;
+            if self.next().0.is_none() {
+                return Nullable(None);
+            }
         }
         self.next()
     }
@@ -671,8 +676,8 @@ pub trait RIterator {
 impl<I: Iterator> RIterator for std::cell::RefCell<I> {
     type Item = I::Item;
 
-    fn next(&self) -> Option<Self::Item> {
-        self.borrow_mut().next()
+    fn next(&self) -> Nullable<Self::Item> {
+        Nullable(self.borrow_mut().next())
     }
 
     fn size_hint(&self) -> (i64, Option<i64>) {
@@ -701,9 +706,12 @@ impl<I: Iterator> RIterator for std::cell::RefCell<I> {
             .expect("skipped count is bounded by n")
     }
 
-    fn nth(&self, n: i32) -> Option<Self::Item> {
-        let n = usize::try_from(n).ok()?;
-        self.borrow_mut().nth(n)
+    fn nth(&self, n: i32) -> Nullable<Self::Item> {
+        Nullable(
+            usize::try_from(n)
+                .ok()
+                .and_then(|n| self.borrow_mut().nth(n)),
+        )
     }
 }
 
@@ -1179,8 +1187,8 @@ mod tests {
     impl RIterator for TestIter {
         type Item = i32;
 
-        fn next(&self) -> Option<Self::Item> {
-            self.0.borrow_mut().next()
+        fn next(&self) -> Nullable<Self::Item> {
+            Nullable(self.0.borrow_mut().next())
         }
 
         fn size_hint(&self) -> (i64, Option<i64>) {
@@ -1192,11 +1200,11 @@ mod tests {
     #[test]
     fn test_riterator_next() {
         let it = TestIter::new(vec![1, 2, 3]);
-        assert_eq!(it.next(), Some(1));
-        assert_eq!(it.next(), Some(2));
-        assert_eq!(it.next(), Some(3));
-        assert_eq!(it.next(), None);
-        assert_eq!(it.next(), None); // Stays exhausted
+        assert_eq!(it.next().0, Some(1));
+        assert_eq!(it.next().0, Some(2));
+        assert_eq!(it.next().0, Some(3));
+        assert_eq!(it.next().0, None);
+        assert_eq!(it.next().0, None); // Stays exhausted
     }
 
     #[test]
@@ -1215,7 +1223,7 @@ mod tests {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
         assert_eq!(it.count(), 5);
         // Iterator is now exhausted
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().0, None);
     }
 
     #[test]
@@ -1232,7 +1240,7 @@ mod tests {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
         let skipped = it.skip(2);
         assert_eq!(skipped, 2);
-        assert_eq!(it.next(), Some(3));
+        assert_eq!(it.next().0, Some(3));
 
         // Skip more than remaining
         let skipped = it.skip(10);
@@ -1243,24 +1251,24 @@ mod tests {
     fn test_riterator_nth() {
         let it = TestIter::new(vec![10, 20, 30, 40, 50]);
         // Get element at index 2 (third element)
-        assert_eq!(it.nth(2), Some(30));
+        assert_eq!(it.nth(2).0, Some(30));
         // Iterator has consumed 0, 1, 2 - next is index 3
-        assert_eq!(it.next(), Some(40));
+        assert_eq!(it.next().0, Some(40));
 
         // Negative index returns None
         let it2 = TestIter::new(vec![1, 2, 3]);
-        assert_eq!(it2.nth(-1), None);
+        assert_eq!(it2.nth(-1).0, None);
     }
 
     #[test]
     fn test_riterator_empty() {
         let it = TestIter::new(vec![]);
-        assert_eq!(it.next(), None);
+        assert_eq!(it.next().0, None);
         assert_eq!(it.size_hint(), (0, Some(0)));
         assert_eq!(it.count(), 0);
         assert_eq!(it.collect_n(5), Vec::<i32>::new());
         assert_eq!(it.skip(5), 0);
-        assert_eq!(it.nth(0), None);
+        assert_eq!(it.nth(0).0, None);
     }
 
     // Tests for RExtend
@@ -1433,8 +1441,8 @@ mod tests {
     impl RIterator for TestCollectionIter {
         type Item = i32;
 
-        fn next(&self) -> Option<i32> {
-            self.0.borrow_mut().next()
+        fn next(&self) -> Nullable<i32> {
+            Nullable(self.0.borrow_mut().next())
         }
 
         fn size_hint(&self) -> (i64, Option<i64>) {
@@ -1454,10 +1462,10 @@ mod tests {
         let coll = TestCollection(vec![1, 2, 3]);
         let iter = coll.make_iter();
 
-        assert_eq!(iter.next(), Some(1));
-        assert_eq!(iter.next(), Some(2));
-        assert_eq!(iter.next(), Some(3));
-        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next().0, Some(1));
+        assert_eq!(iter.next().0, Some(2));
+        assert_eq!(iter.next().0, Some(3));
+        assert_eq!(iter.next().0, None);
     }
 
     #[test]
@@ -1469,10 +1477,10 @@ mod tests {
         let iter2 = coll.make_iter();
 
         // Consuming one doesn't affect the other
-        assert_eq!(iter1.next(), Some(1));
-        assert_eq!(iter1.next(), Some(2));
+        assert_eq!(iter1.next().0, Some(1));
+        assert_eq!(iter1.next().0, Some(2));
 
-        assert_eq!(iter2.next(), Some(1)); // iter2 starts fresh
+        assert_eq!(iter2.next().0, Some(1)); // iter2 starts fresh
         assert_eq!(iter2.size_hint(), (2, Some(2))); // 2 remaining in iter2
     }
 }

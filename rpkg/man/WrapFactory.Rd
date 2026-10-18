@@ -86,13 +86,13 @@ Preserve error transport before constructing the R6 object.
 
 Wrap each returned board independently.
 
-Optional method returns retain the boundary error on None.
+Optional method returns give \code{NULL} for \code{None}, like every \code{Option} return.
 
 \describe{
 \item{\code{present}}{Whether to return a vector.}
 }
 
-Ordinary optional class returns retain the boundary's None error.
+An optional class return gives \code{NULL} for \code{None}.
 
 \describe{
 \item{\code{present}}{Whether to return a board.}

@@ -126,7 +126,7 @@ test_that("an env class without a constructor is made by its factories", {
   expect_identical(obj$value(), 3L)
   expect_identical(NoCtorEnv$parse("0")$value(), 0L)
   expect_error(NoCtorEnv$of(-1L), "negative value")
-  expect_error(NoCtorEnv$parse("x"))
+  expect_null(NoCtorEnv$parse("x"))
 })
 
 test_that("an R6 class without a constructor is made by its factories", {

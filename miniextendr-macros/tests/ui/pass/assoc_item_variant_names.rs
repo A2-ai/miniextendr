@@ -179,8 +179,8 @@ impl Describe for Mode {
 impl miniextendr_api::adapter_traits::RIterator for Mode {
     type Item = i32;
 
-    fn next(&self) -> Option<i32> {
-        None
+    fn next(&self) -> miniextendr_api::Nullable<i32> {
+        miniextendr_api::Nullable(None)
     }
 
     #[miniextendr(skip)]
