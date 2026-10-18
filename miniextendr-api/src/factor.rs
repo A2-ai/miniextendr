@@ -434,13 +434,13 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 /// Convert an R factor SEXP to a Vec of enum values. Every `NA` and every
 /// code outside the levels is reported, with its position.
 #[inline]
-pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
-    validate_factor_levels(sexp, T::CHOICES)?;
+pub(crate) fn factor_vec_from_sexp<T: UnitEnumFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
+    validate_factor_levels(sexp, T::FACTOR_LEVELS)?;
     read_factor_codes(sexp, |idx| {
         if idx.is_na() {
             return Err("NA is not allowed".to_string());
         }
-        T::from_level_index(idx).ok_or_else(|| code_not_a_level(idx))
+        T::from_factor_index(idx).ok_or_else(|| code_not_a_level(idx))
     })
 }
 
@@ -484,7 +484,10 @@ pub fn unit_factor_option_vec_from_sexp<T: UnitEnumFactor>(
 
 // region: Newtype wrappers (for orphan rule workaround)
 
-/// Wrapper for `Vec<T: RFactor>` enabling `IntoR`/`TryFromSexp`.
+/// Wrapper for `Vec<T: UnitEnumFactor>` enabling `IntoR`/`TryFromSexp`.
+///
+/// Accepts both `RFactor` types and unit-only `DataFrameRow` enums. Values are
+/// moved during conversion; neither `Copy` nor `Clone` is required.
 #[derive(Debug, Clone)]
 pub struct FactorVec<T>(pub Vec<T>);
 
@@ -519,7 +522,7 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
     }
 }
 
-impl<T: RFactor> IntoR for FactorVec<T> {
+impl<T: UnitEnumFactor> IntoR for FactorVec<T> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         Ok(self.into_sexp())
@@ -528,14 +531,14 @@ impl<T: RFactor> IntoR for FactorVec<T> {
         self.try_into_sexp()
     }
     fn into_sexp(self) -> SEXP {
-        let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
+        let indices: Vec<i32> = self.0.into_iter().map(T::to_factor_index).collect();
         // build_factor_with_levels protects the levels STRSXP across the
         // build_factor allocation — see "PROTECT discipline against R-devel GC".
-        build_factor_with_levels(&indices, T::CHOICES)
+        build_factor_with_levels(&indices, T::FACTOR_LEVELS)
     }
 }
 
-impl<T: RFactor> TryFromSexp for FactorVec<T> {
+impl<T: UnitEnumFactor> TryFromSexp for FactorVec<T> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -607,8 +610,7 @@ impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
 /// that only need to participate as factor columns in data frames.
 ///
 /// Implemented automatically by `#[derive(DataFrameRow)]` on unit-only enums.
-/// The blanket `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>` in
-/// `miniextendr-api` provides the actual SEXP conversion used by the
+/// `FactorVec<T>` and `FactorOptionVec<T>` provide the SEXP conversion used by the
 /// companion struct's `into_data_frame` method.
 ///
 /// # Safety contract

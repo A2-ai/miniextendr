@@ -202,6 +202,7 @@ mod dataframe_option_scalar_tests;
 mod dataframe_rayon_tests;
 mod dataframe_reader_enum_roundtrip_test;
 mod dataframe_reader_roundtrip_test;
+mod dataframe_struct_factor_test;
 mod dataframe_struct_flatten_test;
 #[cfg(feature = "datafusion")]
 mod datafusion_tests;

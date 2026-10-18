@@ -1,0 +1,36 @@
+error[E0277]: the trait bound `FactorVec<Payload>: IntoR` is not satisfied
+  --> tests/ui/derive_dataframe_struct_as_factor_payload.rs:11:12
+   |
+11 |     value: Payload,
+   |            ^^^^^^^ the trait `IntoR` is not implemented for `FactorVec<Payload>`
+   |
+help: the trait `IntoR` is conditionally implemented for `FactorVec<T>`
+  --> $WORKSPACE/miniextendr-api/src/factor.rs
+   |
+   | impl<T: UnitEnumFactor> IntoR for FactorVec<T> {
+   | ^^^^^^^^--------------^^^^^^^^^^^^^^^^^^^^^^^^
+   |         |
+   |         unsatisfied requirement introduced here: `Payload: UnitEnumFactor`
+   |         unsatisfied requirement introduced here: `Payload: UnitEnumFactor`
+
+error[E0277]: the trait bound `Payload: UnitEnumFactor` is not satisfied
+  --> tests/ui/derive_dataframe_struct_as_factor_payload.rs:11:12
+   |
+11 |     value: Payload,
+   |            ^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `RFactor` is not implemented for `Payload`
+  --> tests/ui/derive_dataframe_struct_as_factor_payload.rs:4:1
+   |
+ 4 | enum Payload {
+   | ^^^^^^^^^^^^
+help: the trait `TryFromSexp` is conditionally implemented for `FactorVec<T>`
+  --> $WORKSPACE/miniextendr-api/src/factor.rs
+   |
+   | impl<T: UnitEnumFactor> TryFromSexp for FactorVec<T> {
+   | ^^^^^^^^--------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |         |
+   |         unsatisfied requirement introduced here: `Payload: UnitEnumFactor`
+   |         unsatisfied requirement introduced here: `Payload: UnitEnumFactor`
+   = note: required for `Payload` to implement `UnitEnumFactor`
+   = note: required for `FactorVec<Payload>` to implement `TryFromSexp`

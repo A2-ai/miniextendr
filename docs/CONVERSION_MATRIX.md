@@ -426,7 +426,7 @@ or missing-value sentinel, so they do not implement `RNativeType` or `IsNA`.
 
 #### Nested `DataFrameRow` enum fields
 
-When an enum variant field is itself a `DataFrameRow` enum, it flattens into prefixed columns at `into_dataframe()` time. The companion struct holds `Vec<Option<Inner>>` and calls `Inner::to_dataframe(dense_rows)` → `into_named_columns()` → scatter to full-length column via `scatter_column`.
+When an enum variant field is itself a `DataFrameRow` enum, it flattens into prefixed columns at `into_dataframe()` time. The companion struct holds `Vec<Option<Inner>>` and calls `Inner::to_dataframe(dense_rows)` → `into_named_columns()` → scatter to full-length column via `scatter_column`, which keeps each column's attributes (a factor column of the inner type stays a factor, `NA` in absent-variant rows).
 
 | Mode | Rust field annotation | Companion struct type | R column(s) | NA behavior |
 |------|-----------------------|-----------------------|-------------|-------------|
