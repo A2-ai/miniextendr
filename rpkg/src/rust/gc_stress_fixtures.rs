@@ -6430,3 +6430,39 @@ pub fn gc_stress_rooted_wrappers() {
         ));
     }
 }
+
+/// Prepared Either branches retain their source until references are formed.
+/// @noRd
+#[cfg(feature = "either")]
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_prepared_either() {
+    use miniextendr_api::from_r::prepared::assert_no_aliases;
+    use miniextendr_api::{Either, TryFromSexp};
+    unsafe {
+        let scope = miniextendr_api::ProtectScope::new();
+        let root = scope.protect(8_i32.into_sexp());
+        let choice = <Either<i32, &mut i32>>::__mx_prepare(root).unwrap();
+        let mutable = <&mut i32>::__mx_prepare(root).unwrap();
+        let strings = scope.protect(GcTransientBorrowString.into_sexp());
+        let text = <Either<i32, &str>>::__mx_prepare(strings).unwrap();
+        assert_no_aliases(&[
+            ("choice", choice.borrows()),
+            ("mutable", mutable.borrows()),
+            ("text", text.borrows()),
+        ]);
+        // ALTSTRING does not cache its child; preparation must retain that
+        // child independently of the source vector until the borrowed read.
+        miniextendr_api::sys::R_gc();
+        let Either::Right(text) = text.finish() else {
+            panic!("borrowed string right")
+        };
+        assert!(text.starts_with("borrowed-"));
+        assert_eq!(text.len(), 318);
+        let Either::Left(value) = choice.finish() else {
+            panic!("owned left")
+        };
+        *mutable.finish() += 1;
+        assert_eq!(value, 8);
+        assert_eq!(i32::try_from_sexp(root.get()).unwrap(), 9);
+    }
+}

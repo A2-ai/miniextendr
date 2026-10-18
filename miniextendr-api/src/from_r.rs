@@ -811,6 +811,9 @@ impl From<SexpNaError> for SexpError {
 pub mod borrow;
 pub use borrow::NativeBorrow;
 
+#[doc(hidden)]
+pub mod prepared;
+
 /// TryFrom-style trait for converting SEXP to Rust types.
 ///
 /// Inbound counterpart of [`crate::into_r::IntoR`]. Strict by construction
@@ -836,6 +839,30 @@ pub trait TryFromSexp: Sized {
     /// Conversions that retain native references must describe their leaf and
     /// forward this metadata through their containers.
     const NATIVE_BORROW: Option<NativeBorrow> = None;
+
+    /// Prepare this conversion without retaining native Rust references.
+    ///
+    /// Owned converters run once. A borrowing converter must override this
+    /// hook, validate its input, and retain raw pointers in a deferred
+    /// `Prepared` value instead. The default refuses it before conversion.
+    /// Preparation runs on R's thread under the caller's unwind boundary.
+    /// This is not yet used by generated wrappers (#1504).
+    #[doc(hidden)]
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        assert!(
+            Self::NATIVE_BORROW.is_none(),
+            "borrowing converter `{}` must implement TryFromSexp::__mx_prepare",
+            core::any::type_name::<Self>(),
+        );
+        // The rooted hook also retains transient ALTSTRING scalar children.
+        unsafe { Self::__mx_try_from_rooted(root) }
+            .map(|value| prepared::Prepared::ready(root, value))
+    }
 
     /// Whether this conversion accepts only character input: every value it
     /// converts, other than `NULL`, is a character vector or a factor.
@@ -1308,6 +1335,27 @@ where
 
     type Error = SexpTypeError;
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        let input = root.get();
+        let actual = input.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        let len = input.len();
+        let pointer = unsafe { crate::sys::DATAPTR_RO(input).cast::<T>() };
+        Ok(unsafe {
+            prepared::Prepared::native(root, pointer, len, false, move || r_slice(pointer, len))
+        })
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -1353,6 +1401,27 @@ where
 
     type Error = SexpTypeError;
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        let input = root.get();
+        let actual = input.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        let len = input.len();
+        let pointer = unsafe { T::dataptr_mut(input) };
+        Ok(unsafe {
+            prepared::Prepared::native(root, pointer, len, true, move || r_slice_mut(pointer, len))
+        })
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -1391,6 +1460,21 @@ where
 
     type Error = SexpError;
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(prepared::Prepared::ready(root, None))
+        } else {
+            <&[T]>::__mx_prepare(root)
+                .map(|value| unsafe { value.map(Some) })
+                .map_err(Into::into)
+        }
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
@@ -1419,6 +1503,21 @@ where
     const NATIVE_BORROW: Option<NativeBorrow> = <&mut [T] as TryFromSexp>::NATIVE_BORROW;
 
     type Error = SexpError;
+
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(prepared::Prepared::ready(root, None))
+        } else {
+            <&mut [T]>::__mx_prepare(root)
+                .map(|value| unsafe { value.map(Some) })
+                .map_err(Into::into)
+        }
+    }
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1469,6 +1568,21 @@ where
         match self {
             Ok(v) => T::__mx_input_has_na(v, input),
             Err(()) => false,
+        }
+    }
+
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(prepared::Prepared::ready(root, Err(())))
+        } else {
+            <T>::__mx_prepare(root)
+                .map(|value| unsafe { value.map(Ok) })
+                .map_err(Into::into)
         }
     }
 

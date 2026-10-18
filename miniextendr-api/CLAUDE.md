@@ -80,3 +80,14 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 - **Borrowed R callbacks (#1947):** `RFunction<'a>` retains a `Root<'a>`, never a raw unconstrained lifetime or an owned preserve. `Option` accepts only NULL as absence; closure, builtin and special are all callable. `call()` delegates to the existing rooted `RCall` builder and keeps its evaluator/foreign-frame contracts. Plain validator strings convert to `SexpError::Condition(RError)`.
 
 - **Foreign callback exits (#1946):** public unsafe `unwind_protect::call_unwinding` (also in `expression`) retains the existing boundary/token contract. Catch inside the callback, return normally through all foreign frames, then resume the opaque payload in the same framework call and thread. Do not add a nested boundary or re-signal a replacement condition.
+
+- **Selected-branch borrow preparation (#1504, in progress):**
+  `from_r::prepared` and `TryFromSexp::__mx_prepare` run owned converters
+  once and defer native scalar/slice references until all selected byte ranges
+  have passed preflight. `Either` tries the right preparation only when the
+  left fails; never combine both alternatives' metadata or run a borrowed
+  converter speculatively. Capture original raw pointers, including mutable
+  provenance, and retain source/ALTSTRING child roots through materialization.
+  This runtime layer is not yet wired into generated wrappers; collection
+  preparation and mixed `TryFromRoot`/`TryFromSexp` composition remain in
+  #1504/#2038. Do not treat the static wrapper guard as branch-aware.

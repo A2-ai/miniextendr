@@ -143,6 +143,15 @@ where
         }
     }
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        crate::from_r::prepared::either(|| L::__mx_prepare(root), || R::__mx_prepare(root))
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Try L first
@@ -216,6 +225,19 @@ where
         match self {
             Some(either) => <Either<L, R> as TryFromSexp>::__mx_input_has_na(either, input),
             None => false,
+        }
+    }
+
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(crate::from_r::prepared::Prepared::ready(root, None))
+        } else {
+            <Either<L, R>>::__mx_prepare(root).map(|value| unsafe { value.map(Some) })
         }
     }
 

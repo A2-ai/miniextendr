@@ -110,6 +110,37 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                let input = root.get();
+                let actual = input.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = input.len();
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                let pointer = unsafe { crate::sys::DATAPTR_RO(input).cast::<$t>() };
+                Ok(unsafe {
+                    crate::from_r::prepared::Prepared::native(root, pointer, 1, false, move || {
+                        &*pointer
+                    })
+                })
+            }
+
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let actual = sexp.type_of();
@@ -179,6 +210,37 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                let input = root.get();
+                let actual = input.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = input.len();
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                let pointer = unsafe { <$t as RNativeType>::dataptr_mut(input) };
+                Ok(unsafe {
+                    crate::from_r::prepared::Prepared::native(root, pointer, 1, true, move || {
+                        &mut *pointer
+                    })
+                })
+            }
+
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let actual = sexp.type_of();
@@ -229,6 +291,19 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                if root.get().type_of() == SEXPTYPE::NILSXP {
+                    Ok(crate::from_r::prepared::Prepared::ready(root, None))
+                } else {
+                    <&'a $t>::__mx_prepare(root).map(|value| unsafe { value.map(Some) })
+                }
+            }
+
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 if sexp.type_of() == SEXPTYPE::NILSXP {
@@ -252,6 +327,19 @@ macro_rules! impl_ref_conversions_for {
             const NATIVE_BORROW: Option<NativeBorrow> = <&'a mut $t as TryFromSexp>::NATIVE_BORROW;
 
             type Error = SexpError;
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                if root.get().type_of() == SEXPTYPE::NILSXP {
+                    Ok(crate::from_r::prepared::Prepared::ready(root, None))
+                } else {
+                    <&'a mut $t>::__mx_prepare(root).map(|value| unsafe { value.map(Some) })
+                }
+            }
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

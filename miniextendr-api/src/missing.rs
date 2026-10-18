@@ -272,6 +272,24 @@ where
         matches!(self, Missing::Present(v) if v.__mx_input_has_na(input))
     }
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if is_missing_arg(root.get()) {
+            Ok(crate::from_r::prepared::Prepared::ready(
+                root,
+                Missing::Absent,
+            ))
+        } else {
+            T::__mx_prepare(root)
+                .map(|value| unsafe { value.map(Missing::Present) })
+                .map_err(Into::into)
+        }
+    }
+
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if is_missing_arg(sexp) {
             Ok(Missing::Absent)
