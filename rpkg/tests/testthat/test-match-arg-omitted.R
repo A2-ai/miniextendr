@@ -17,6 +17,14 @@ expect_choice_error <- function(expr, param, choices) {
   }
 }
 
+# A failed argument check of #1591 for `param`, whatever its wording.
+expect_arg_error <- function(expr, param) {
+  e <- tryCatch(expr, error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, param)
+}
+
 modes <- c("Fast", "Safe", "Debug")
 
 test_that("Missing<Option<T>> match_arg: choices formal, omitted is Absent, NULL is Present(None)", {
@@ -26,8 +34,8 @@ test_that("Missing<Option<T>> match_arg: choices formal, omitted is Absent, NULL
   expect_equal(match_arg_omitted_mode("Sa"), "Safe")
   expect_equal(match_arg_omitted_mode("Debug"), "Debug")
   expect_equal(match_arg_omitted_mode(factor("Fast")), "Fast")
-  # The formal default is documentation only: passing it is a supplied value.
-  expect_equal(match_arg_omitted_mode(modes), "Fast")
+  # Passing the formal default whole means the same as omitting it (#2152).
+  expect_equal(match_arg_omitted_mode(modes), "absent")
   expect_choice_error(match_arg_omitted_mode("nope"), "mode", modes)
 })
 
@@ -63,16 +71,50 @@ test_that("choices() on Missing<Option<String>> / Missing<Vec<String>>", {
   expect_equal(choices_omitted_colors(c("re", "bl")), "red, blue")
 })
 
-test_that("omission passes through a caller only without a default", {
+test_that("omission passes through a caller without a default, or with the wrapper's own", {
   forward <- function(mode) match_arg_omitted_mode(mode)
   expect_equal(forward(), "absent")
   expect_equal(forward("Sa"), "Safe")
   via_dots <- function(...) match_arg_omitted_mode(...)
   expect_equal(via_dots(), "absent")
   expect_equal(via_dots(mode = NULL), "null")
-  # A caller formal with a default hands the default over as a value.
+  # A caller formal with a default hands the default over as a value: the
+  # wrapper's own formal reads as omitted (#2152), any other default is
+  # matched.
   with_default <- function(mode = c("Fast", "Safe", "Debug")) match_arg_omitted_mode(mode)
-  expect_equal(with_default(), "Fast")
+  expect_equal(with_default(), "absent")
+  with_subset <- function(mode = c("Fast", "Safe")) match_arg_omitted_mode(mode)
+  expect_arg_error(with_subset(), "mode")
+})
+
+test_that("a single choice reads its formal passed whole as omitted (#2152)", {
+  colors <- c("red", "green", "blue")
+  expect_equal(match_arg_omitted_plain(modes), "absent")
+  expect_equal(choices_omitted_color(colors), "absent")
+  # identical() compares attributes and order: a named copy or another order
+  # is not the formal, and is refused for its length; a factor reads as its
+  # labels, the whole vector, so as the first choice.
+  expect_arg_error(match_arg_omitted_plain(stats::setNames(modes, modes)), "mode")
+  expect_arg_error(match_arg_omitted_plain(rev(modes)), "mode")
+  expect_equal(match_arg_omitted_plain(factor(modes, levels = modes)), "Fast")
+  # A several_ok list reads the whole vector as every choice.
+  expect_equal(match_arg_omitted_modes(modes), "Fast, Safe, Debug")
+  expect_equal(match_arg_omitted_modes_boxed(modes), "3 modes")
+  expect_equal(choices_omitted_colors(colors), "red, green, blue")
+  # Without `Missing`, and under `no_default` (no vector in the formal), the
+  # whole vector is the first choice, as for base `match.arg()`.
+  expect_equal(match_arg_refuse_null(modes), "Fast")
+  expect_equal(match_arg_no_default_mode(modes), "Fast")
+  expect_equal(choices_no_default_color(colors), "red")
+  # On an R6 method, under `Option` and without it.
+  obj <- R6MatchArgCounter$new("Safe")
+  expect_equal(obj$peek(modes), "current:Safe")
+  expect_equal(eval(formals(obj$peek_plain)$mode), modes)
+  expect_equal(obj$peek_plain(), "current:Safe")
+  expect_equal(obj$peek_plain(modes), "current:Safe")
+  expect_equal(obj$peek_plain(NULL), "Fast")
+  expect_equal(obj$peek_plain("De"), "Debug")
+  expect_arg_error(obj$peek_plain(rev(modes)), "mode")
 })
 
 test_that("R6 method with Missing<Option<T>> match_arg", {
@@ -108,16 +150,17 @@ test_that("the auto-generated @param line says that omitting means no choice", {
   }
   # Each standalone fixture documents its own page (#1289); the R6 method has
   # its own argument list.
-  expect_match(rd_text("match_arg_omitted_plain"), "\"Debug\"; omitting the argument means no choice.", fixed = TRUE)
+  omitted_or_whole <- "omitting the argument or passing the whole list means no choice."
+  expect_match(rd_text("match_arg_omitted_plain"), paste0("\"Debug\"; ", omitted_or_whole), fixed = TRUE)
   expect_match(
     rd_text("match_arg_omitted_modes"),
     "One or more of \"Fast\", \"Safe\", \"Debug\"; omitting the argument means no choice.",
     fixed = TRUE
   )
-  expect_match(rd_text("choices_omitted_color"), "\"blue\", or NULL; omitting the argument means no choice.", fixed = TRUE)
+  expect_match(rd_text("choices_omitted_color"), paste0("\"blue\", or NULL; ", omitted_or_whole), fixed = TRUE)
   expect_match(
     rd_text("R6MatchArgCounter"),
-    "\"Debug\", or NULL; omitting the argument means no choice.",
+    paste0("\"Debug\", or NULL; ", omitted_or_whole),
     fixed = TRUE
   )
 })
@@ -142,6 +185,12 @@ expect_omitted_report <- function(f) {
     "mode=Safe;modes=Debug,Fast;level=high"
   )
   expect_equal(f(mode = factor("Debug")), "mode=Debug;modes=absent;level=absent")
+  # The formals passed whole: the single choices read as omitted, the
+  # several_ok list as every choice (#2152).
+  expect_equal(
+    f(mode = modes, modes = modes, level = levels),
+    "mode=absent;modes=Fast,Safe,Debug;level=absent"
+  )
   expect_choice_error(f(mode = "nope"), "mode", modes)
   expect_choice_error(f(modes = c("Fast", "zzz")), "modes", modes)
   expect_choice_error(f(level = "max"), "level", levels)
@@ -186,6 +235,7 @@ test_that("vctrs constructor, static method and format method with omittable cho
   expect_equal(vctrs::vec_data(new_vctrsomitscale(NULL)), -1)
   expect_equal(vctrs::vec_data(new_vctrsomitscale("Sa")), 2)
   expect_equal(vctrs::vec_data(new_vctrsomitscale(factor("Debug"))), 3)
+  expect_equal(vctrs::vec_data(new_vctrsomitscale(modes)), 0)
   expect_choice_error(new_vctrsomitscale("nope"), "mode", modes)
 
   expect_omitted_formals(vctrsomitscale_omit_pick)
@@ -196,6 +246,7 @@ test_that("vctrs constructor, static method and format method with omittable cho
   expect_equal(eval(formals(getS3method("format", "VctrsOmitScale"))$style), styles)
   expect_equal(format(v), "2")
   expect_equal(format(v, style = "lo"), "long:2")
+  expect_equal(format(v, style = styles), "2")
   expect_choice_error(format(v, style = "wide"), "style", styles)
 })
 
@@ -211,10 +262,12 @@ expect_omitted_grades <- function(grade, grades) {
   expect_equal(grade(), "absent")
   expect_equal(grade(grade = NULL), "null")
   expect_equal(grade(grade = "mi"), "mid")
+  expect_equal(grade(grade = levels), "absent")
   expect_choice_error(grade(grade = "max"), "grade", levels)
   expect_equal(grades(), "absent")
   expect_equal(grades(grades = NULL), "low,mid,high")
   expect_equal(grades(grades = c("hi", "lo")), "high,low")
+  expect_equal(grades(grades = levels), "low,mid,high")
   expect_choice_error(grades(grades = c("low", "max")), "grades", levels)
 }
 
@@ -272,6 +325,7 @@ test_that("static trait methods with an omittable choice on every class system",
     expect_equal(f(), "absent")
     expect_equal(f(NULL), "null")
     expect_equal(f("mi"), "mid")
+    expect_equal(f(levels), "absent")
     expect_choice_error(f("max"), "grade", levels)
   }
 })
@@ -305,7 +359,7 @@ test_that("method choice params get the choice text as their @param line", {
     expect_length(page, 1L)
     page[[1L]]
   }
-  omittable_levels <- "One of \"low\", \"mid\", \"high\"; omitting the argument means no choice."
+  omittable_levels <- "One of \"low\", \"mid\", \"high\"; omitting the argument or passing the whole list means no choice."
   # `level` is a `choices(...)` param of the inherent S3 / S7 / vctrs methods
   # (an S4 method has no usage entry, so no argument docs);
   # `grade` / `grades` those of the S3 trait methods (documented on the S3
@@ -317,7 +371,7 @@ test_that("method choice params get the choice text as their @param line", {
     page <- rd_text(topic)
     expect_match(
       page,
-      "One of \"low\", \"mid\", \"high\", or NULL; omitting the argument means no choice.",
+      "One of \"low\", \"mid\", \"high\", or NULL; omitting the argument or passing the whole list means no choice.",
       fixed = TRUE
     )
     expect_match(
@@ -329,7 +383,7 @@ test_that("method choice params get the choice text as their @param line", {
   # Env trait methods and the S3 / S7 / env statics have no usage entry: their
   # prose, the author's @param and the choice text go into a \describe list.
   # The S4 static is a plain function: its choice text is its @param line.
-  grade_text <- "One of \"low\", \"mid\", \"high\", or NULL; omitting the argument means no choice."
+  grade_text <- "One of \"low\", \"mid\", \"high\", or NULL; omitting the argument or passing the whole list means no choice."
   env_page <- rd_text("OmitPickEnv")
   for (text in c(
     "Pick one grade, or none.",

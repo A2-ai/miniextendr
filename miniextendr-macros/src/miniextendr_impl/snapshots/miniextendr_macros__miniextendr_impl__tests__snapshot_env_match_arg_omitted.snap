@@ -24,14 +24,14 @@ Picker$new <- function() {
 #'
 #' \describe{
 #'   \item{\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}
-#'   \item{\code{color}}{One of "red", "green"; omitting the argument means no choice.}
+#'   \item{\code{color}}{One of "red", "green"; omitting the argument or passing the whole list means no choice.}
 #' }
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
-  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
-  if (!missing(color)) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
-  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), .mx_self, if (missing(mode)) quote(expr=) else mode, if (missing(color)) quote(expr=) else color)
+  if (!missing(mode) && !identical(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
+  if (!missing(color) && !identical(color, c("red", "green"))) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
+  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), .mx_self, if (missing(mode) || identical(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__)) quote(expr=) else mode, if (missing(color) || identical(color, c("red", "green"))) quote(expr=) else color)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

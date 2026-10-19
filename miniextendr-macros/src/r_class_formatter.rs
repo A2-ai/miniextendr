@@ -192,7 +192,8 @@ pub(crate) fn choice_param_doc_map(
 /// (every element must match, `NULL` selects all; #1472). An `Either` layer,
 /// over a scalar or a `several_ok` list (#1612), guards either helper with
 /// `is.character(x) || is.factor(x)`, so everything else reaches the `R`
-/// arm; `Missing` adds `!missing(x)` (#1551). For `match_arg` the
+/// arm; `Missing` adds `!missing(x)` (#1551), and for a single choice
+/// `!identical(x, <choices>)` (#2152). For `match_arg` the
 /// choice list is the write-time placeholder (`c_ident` keys it, the same one
 /// `effective_r_defaults` puts in the formal); for `choices(...)` it is the
 /// literal.
@@ -395,7 +396,11 @@ impl<'a> MethodContext<'a> {
             &c_ident,
         );
         let arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
-            .with_defaults(effective_defaults);
+            .with_defaults(effective_defaults)
+            .with_absent_formals(crate::miniextendr_fn::absent_formals_by_r_name(
+                &method.method_attrs.per_param,
+                &c_ident,
+            ));
         let params = arg_builder.build_formals();
         let args = arg_builder.build_call_args();
         Self {

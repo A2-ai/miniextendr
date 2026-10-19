@@ -7,7 +7,7 @@
 match_arg_omitted_refuse_null(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
+\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 An omittable mode whose explicit \code{NULL} is refused: omitting the argument

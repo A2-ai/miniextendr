@@ -31,15 +31,15 @@ OmitPickS7_omit_grades(.mx_self, grades = c("low", "mid", "high"), ...)
 
 \item{.mx_self}{A \code{OmitPickS7} object.}
 
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
+\item{mode}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument or passing the whole list means no choice.}
 
 \item{modes}{One or more of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
 
-\item{level}{One of "low", "mid", "high"; omitting the argument means no choice.}
+\item{level}{One of "low", "mid", "high"; omitting the argument or passing the whole list means no choice.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
-\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument or passing the whole list means no choice.}
 
 \item{grades}{One or more of "low", "mid", "high"; omitting the argument means no choice.}
 }
@@ -72,6 +72,6 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 Pick the default grade, or none.
 
 \describe{
-\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument or passing the whole list means no choice.}
 }
 }

@@ -7,7 +7,7 @@
 match_arg_either_route_refuse_null(route = c("oral", "bolus", "infusion"))
 }
 \arguments{
-\item{route}{One of "oral", "bolus", "infusion", or a data frame; omitting the argument means no choice.}
+\item{route}{One of "oral", "bolus", "infusion", or a data frame; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 A route name or data frame whose omission is reported and whose explicit

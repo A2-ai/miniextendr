@@ -1309,8 +1309,43 @@ fn choice_trait_method() -> TraitMethod {
     method
 }
 
-const LEVEL_DOC: &str =
-    "#' @param level One of \"low\", \"high\", or NULL; omitting the argument means no choice.";
+/// The choice vector of an omittable `choices(...)` parameter reads as
+/// omitted in every class system (#2152): the prelude skips the check for
+/// it, and the `.Call()` argument forwards the sentinel for it.
+#[test]
+fn trait_method_choice_formal_reads_as_omitted() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    for class_system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let result = generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            &[choice_trait_method()],
+            &[],
+            opts(class_system, false, false, false),
+        )
+        .unwrap();
+        for line in [
+            "if (!missing(level) && !identical(level, c(\"low\", \"high\")) && !is.null(level)) \
+             level <- .miniextendr_match_arg(level, c(\"low\", \"high\"), \"level\"",
+            "if (missing(level) || identical(level, c(\"low\", \"high\"))) quote(expr=) else level",
+        ] {
+            assert!(
+                result.contains(line),
+                "{class_system:?}: missing `{line}` in:\n{result}"
+            );
+        }
+    }
+}
+
+const LEVEL_DOC: &str = "#' @param level One of \"low\", \"high\", or NULL; omitting the argument or passing the whole list means no choice.";
 
 /// The S3 method block of a trait method documents every formal of its
 /// `\usage` the doc comment leaves out, a `choices(...)` param with the same
@@ -1374,7 +1409,7 @@ fn s7_trait_shortcut_documents_choice_params() {
 }
 
 /// The `\describe{}` item of the `level` choice parameter.
-const LEVEL_ITEM: &str = "#'   \\item{\\code{level}}{One of \"low\", \"high\", or NULL; omitting the argument means no choice.}";
+const LEVEL_ITEM: &str = "#'   \\item{\\code{level}}{One of \"low\", \"high\", or NULL; omitting the argument or passing the whole list means no choice.}";
 
 /// [`choice_trait_method`] with `doc_tags`.
 fn choice_trait_method_with(tags: &[&str]) -> TraitMethod {

@@ -7,7 +7,7 @@
 choices_omitted_color(color = c("red", "green", "blue"))
 }
 \arguments{
-\item{color}{One of "red", "green", "blue", or NULL; omitting the argument means no choice.}
+\item{color}{One of "red", "green", "blue", or NULL; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 Omittable optional inline choice on a \verb{Missing<Option<String>>}.
