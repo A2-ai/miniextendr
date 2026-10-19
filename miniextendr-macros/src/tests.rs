@@ -1452,6 +1452,92 @@ fn parsed_fn_precondition_skips_use_r_names() {
 
 // endregion
 
+// region: the formal of a `Missing<..>` choice reads as omitted (#2152)
+
+/// Only a single-choice `Missing<..>` parameter with a formal reads a value
+/// `identical()` to it as omitted: through its placeholder for `match_arg`,
+/// its literal vector for `choices(...)`. The `.Call()` argument forwards the
+/// sentinel for it, and the prelude check skips it.
+#[test]
+fn parsed_fn_absent_formals() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            #[miniextendr(match_arg)] mode: Missing<Mode>,
+            #[miniextendr(match_arg)] opt: Missing<Option<Mode>>,
+            #[miniextendr(match_arg)] either: Missing<Either<Mode, DataFrame>>,
+            #[miniextendr(choices("red", "green"))] color: Missing<String>,
+            #[miniextendr(match_arg, several_ok)] modes: Missing<Vec<Mode>>,
+            #[miniextendr(match_arg, no_default)] bare: Missing<Mode>,
+            #[miniextendr(match_arg)] plain: Mode,
+            #[miniextendr(match_arg)] nullable: Option<Mode>,
+        ) {}
+    });
+    let absent = parsed.absent_formals("C_f");
+    let placeholder = |p: &str| crate::match_arg_keys::choices_placeholder("C_f", p);
+    let mut want = std::collections::HashMap::new();
+    for p in ["mode", "opt", "either"] {
+        want.insert(p.to_string(), placeholder(p));
+    }
+    want.insert("color".to_string(), "c(\"red\", \"green\")".to_string());
+    assert_eq!(absent, want);
+
+    let call_args = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_absent_formals(absent)
+        .build_call_args_vec();
+    assert_eq!(
+        call_args,
+        [
+            format!(
+                "if (missing(mode) || identical(mode, {})) quote(expr=) else mode",
+                placeholder("mode")
+            ),
+            format!(
+                "if (missing(opt) || identical(opt, {})) quote(expr=) else opt",
+                placeholder("opt")
+            ),
+            format!(
+                "if (missing(either) || identical(either, {})) quote(expr=) else either",
+                placeholder("either")
+            ),
+            "if (missing(color) || identical(color, c(\"red\", \"green\"))) quote(expr=) else color"
+                .to_string(),
+            "if (missing(modes)) quote(expr=) else modes".to_string(),
+            "if (missing(bare)) quote(expr=) else bare".to_string(),
+            "plain".to_string(),
+            "nullable".to_string(),
+        ]
+    );
+
+    // The prelude skips the check for the same value, and only there.
+    let attribution = crate::r_wrapper_builder::CallAttribution::Wrapper;
+    let statement = |p: &str| {
+        let attrs = parsed.param_attrs(p).unwrap();
+        let choices = attrs.choice_list("C_f", p).unwrap();
+        attribution.match_arg_statement(p, &choices, None, attrs)
+    };
+    assert_eq!(
+        statement("opt"),
+        format!(
+            "if (!missing(opt) && !identical(opt, {ch}) && !is.null(opt)) \
+             opt <- .miniextendr_match_arg(opt, {ch}, \"opt\")",
+            ch = placeholder("opt")
+        )
+    );
+    assert_eq!(
+        statement("color"),
+        "if (!missing(color) && !identical(color, c(\"red\", \"green\"))) \
+         color <- .miniextendr_match_arg(color, c(\"red\", \"green\"), \"color\")"
+    );
+    for p in ["modes", "bare"] {
+        assert!(
+            statement(p).starts_with(&format!("if (!missing({p})) ")),
+            "{p}"
+        );
+    }
+}
+
+// endregion
+
 // region: `no_default` on a choice parameter (#1828)
 
 /// `no_default` reads the same in one attribute or its own, on `match_arg`

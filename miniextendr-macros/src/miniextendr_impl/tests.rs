@@ -5296,6 +5296,74 @@ fn snapshot_env_match_arg_omitted() {
     insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
 }
 
+/// The formal of a single-choice `Missing<..>` parameter reads as omitted in
+/// every class system (#2152): the prelude skips the check for a value
+/// `identical()` to it, and the `.Call()` argument forwards the sentinel for
+/// it. A `several_ok` list keeps the plain forwarding.
+#[test]
+fn method_choice_formal_reads_as_omitted_in_each_class_system() {
+    let placeholder =
+        crate::match_arg_keys::choices_placeholder("C_miniextendr_macros_Picker__pick", "mode");
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        // A vctrs impl takes static methods only.
+        let code = if system == ClassSystem::Vctrs {
+            syn::parse_quote! {
+                impl Picker {
+                    #[miniextendr(match_arg(mode), choices(color = "red, green"))]
+                    pub fn pick(mode: Missing<Mode>, color: Missing<Either<String, f64>>) -> String {
+                        unimplemented!()
+                    }
+                    #[miniextendr(match_arg_several_ok(modes))]
+                    pub fn pick_many(modes: Missing<Vec<Mode>>) -> String { unimplemented!() }
+                }
+            }
+        } else {
+            syn::parse_quote! {
+                impl Picker {
+                    #[miniextendr(match_arg(mode), choices(color = "red, green"))]
+                    pub fn pick(&self, mode: Missing<Mode>, color: Missing<Either<String, f64>>) -> String {
+                        unimplemented!()
+                    }
+                    #[miniextendr(match_arg_several_ok(modes))]
+                    pub fn pick_many(&self, modes: Missing<Vec<Mode>>) -> String { unimplemented!() }
+                }
+            }
+        };
+        let parsed = parse_impl(system, code);
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        for line in [
+            format!(
+                "if (!missing(mode) && !identical(mode, {placeholder})) \
+                 mode <- .miniextendr_match_arg(mode, {placeholder}, \"mode\""
+            ),
+            format!("if (missing(mode) || identical(mode, {placeholder})) quote(expr=) else mode"),
+            "if (!missing(color) && !identical(color, c(\"red\", \"green\")) && \
+             (is.character(color) || is.factor(color))) color <- .miniextendr_match_arg(color"
+                .to_string(),
+            "if (missing(color) || identical(color, c(\"red\", \"green\"))) quote(expr=) else color"
+                .to_string(),
+            "if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes".to_string(),
+            "if (missing(modes)) quote(expr=) else modes".to_string(),
+        ] {
+            assert!(wrapper.contains(&line), "{system:?}: missing `{line}` in:\n{wrapper}");
+        }
+    }
+}
+
 /// `no_default(p)` on a method's choice parameters (#1828): each formal is the
 /// bare name, while the prelude still spells the choice list out (the
 /// placeholder for `match_arg`) and the `.Call()` still forwards the
@@ -5438,7 +5506,7 @@ fn method_choice_params_get_choice_text() {
             }
         }
     };
-    let color = "@param color One of \"red\", \"green\"; omitting the argument means no choice.";
+    let color = "@param color One of \"red\", \"green\"; omitting the argument or passing the whole list means no choice.";
     let tags = "@param tags One or more of \"a\", \"b\".";
     let mode = "@param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__";
     for (class_system, wrapper) in [
@@ -5472,7 +5540,7 @@ fn method_choice_params_get_choice_text() {
         .and_then(|rest| rest.split("Picker$pick <- function(").next())
         .expect("Picker$pick block");
     for item in [
-        "\\item{\\code{color}}{One of \"red\", \"green\"; omitting the argument means no choice.}",
+        "\\item{\\code{color}}{One of \"red\", \"green\"; omitting the argument or passing the whole list means no choice.}",
         "\\item{\\code{tags}}{One or more of \"a\", \"b\".}",
         "\\item{\\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}",
     ] {
@@ -5505,7 +5573,7 @@ fn constructor_choice_params_get_choice_text() {
     };
     let lines = [
         "#' @param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__new_mode__",
-        "#' @param color One of \"red\", \"green\"; omitting the argument means no choice.",
+        "#' @param color One of \"red\", \"green\"; omitting the argument or passing the whole list means no choice.",
         "#' @param size (undocumented)",
     ];
     let mut vctrs_attrs = default_impl_attrs(ClassSystem::Vctrs);

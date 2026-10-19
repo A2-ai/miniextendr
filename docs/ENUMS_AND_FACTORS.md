@@ -337,37 +337,50 @@ pub fn run(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
 
 ```r
 run <- function(mode = c("Fast", "Safe", "Debug")) {
-  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
-  .Call(C_mypkg_run, .call = sys.call(), if (missing(mode)) quote(expr=) else mode)
+  if (!missing(mode) && !identical(mode, c("Fast", "Safe", "Debug")) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  .Call(C_mypkg_run, .call = sys.call(), if (missing(mode) || identical(mode, c("Fast", "Safe", "Debug"))) quote(expr=) else mode)
 }
 
-run()             # Missing::Absent
-run(NULL)         # Missing::Present(None)
-run("Sa")         # Missing::Present(Some(Safe))
-run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
+run()                               # Missing::Absent
+run(c("Fast", "Safe", "Debug"))     # Missing::Absent, the formal passed whole
+run(NULL)                           # Missing::Present(None)
+run("Sa")                           # Missing::Present(Some(Safe))
+run("X")                            # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
 
 The wrapper skips the check for an omitted argument and forwards R's
 missing-argument sentinel to Rust (the same `quote(expr=)` forwarding every
 `Missing<T>` parameter uses), so the formal default is only documentation.
-Explicit `NULL` is `Present(None)`, exactly as for any `Missing<Option<T>>`;
-collapse the two with `mode.into_option().flatten()` when the difference does
-not matter. The auto-generated `@param` line ends in ", or NULL; omitting the
-argument means no choice".
+Passing that default explicitly means the same as leaving it out (#2152): a
+value `identical()` to the formal, such as the usage line pasted back,
+skips the check and reaches Rust as `Absent` too. `identical()` compares
+attributes, so a named or classed copy of the vector is not the formal, and
+the check reads it as any other value: a named copy is refused for its
+length, and a factor of the choices reads as its labels, the whole vector, so
+as the first choice. Explicit `NULL` is `Present(None)`, exactly as for any
+`Missing<Option<T>>`; collapse the two with `mode.into_option().flatten()`
+when the difference does not matter. The auto-generated `@param` line ends in
+", or NULL; omitting the argument or passing the whole list means no choice".
 
 The other forms follow the same rule, `Missing<X>` behaves like `X` for every
-supplied value and adds `Absent` for an omitted one:
+supplied value and adds `Absent` for an omitted one, and for its formal passed
+whole when it takes a single choice. A `several_ok` list reads its whole
+vector as every choice, omittable or not:
 
-| Parameter type | Formal | Omitted | `NULL` | `"Sa"` |
-|----------------|--------|---------|--------|--------|
-| `Mode` | choices | `Fast` (first) | `Fast` | `Safe` |
-| `Option<Mode>` | `NULL` | `None` | `None` | `Some(Safe)` |
-| `Missing<Mode>` | choices | `Absent` | `Present(Fast)` | `Present(Safe)` |
-| `Missing<Option<Mode>>` | choices | `Absent` | `Present(None)` | `Present(Some(Safe))` |
-| `Missing<Vec<Mode>>` (`several_ok`) | choices | `Absent` | `Present` (all) | `Present(vec![Safe])` |
-| `Either<Mode, R>` | choices | `Left(Fast)` (first) | `Right(..)` (converted to `R`; a `DataFrame` refuses it) | `Left(Safe)` |
-| `Missing<Either<Mode, R>>` | choices | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(Safe))` |
-| `Missing<Either<Vec<Mode>, R>>` (`several_ok`) | choices | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(vec![Safe]))` |
+| Parameter type | Formal | Omitted | Choice vector | `NULL` | `"Sa"` |
+|----------------|--------|---------|---------------|--------|--------|
+| `Mode` | choices | `Fast` (first) | `Fast` (first) | `Fast` | `Safe` |
+| `Option<Mode>` | `NULL` | `None` | `Some(Fast)` (first) | `None` | `Some(Safe)` |
+| `Missing<Mode>` | choices | `Absent` | `Absent` | `Present(Fast)` | `Present(Safe)` |
+| `Missing<Option<Mode>>` | choices | `Absent` | `Absent` | `Present(None)` | `Present(Some(Safe))` |
+| `Missing<Vec<Mode>>` (`several_ok`) | choices | `Absent` | `Present` (all) | `Present` (all) | `Present(vec![Safe])` |
+| `Either<Mode, R>` | choices | `Left(Fast)` (first) | `Left(Fast)` (first) | `Right(..)` (converted to `R`; a `DataFrame` refuses it) | `Left(Safe)` |
+| `Missing<Either<Mode, R>>` | choices | `Absent` | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(Safe))` |
+| `Missing<Either<Vec<Mode>, R>>` (`several_ok`) | choices | `Absent` | `Present(Left(..))` (all) | `Present(Right(..))` (converted to `R`) | `Present(Left(vec![Safe]))` |
+
+A choice type with a single variant has the vector `c("Only")` as its formal,
+so under `Missing<..>` every value that matches it, `"Only"` or a prefix such
+as `"On"`, reaches Rust as `Absent` (#2182).
 
 To refuse an explicit `NULL` in any of these forms, with your own message, see
 [Refusing an Explicit `NULL`](#refusing-an-explicit-null).
@@ -384,13 +397,15 @@ take the string forms (`Missing<String>`, `Missing<Option<String>>`,
 argument crosses the trait ABI of a `#[miniextendr]` trait as R's
 missing-argument sentinel, so a cross-package call sees `Absent` too.
 
-A hand-written R function in front of such a wrapper passes omission on only
-if its own formal has no default: `run <- function(mode) run_impl(mode)`
-reaches Rust as `Absent` when called as `run()`, while
-`function(mode = c("Fast", "Safe")) run_impl(mode)` hands the default vector
-over as a supplied value (R's `missing()` does not see through a formal with a
-default). To give the generated wrapper itself a bare formal, use
-`no_default` (below).
+A hand-written R function in front of such a wrapper passes omission on if
+its own formal has no default: `run <- function(mode) run_impl(mode)`
+reaches Rust as `Absent` when called as `run()`. With a default, `run()`
+hands that default over as a supplied value (R's `missing()` does not see
+through a formal with a default). It still reaches Rust as `Absent` when it
+is the wrapper's own formal, the same choices in the same order
+(`function(mode = c("Fast", "Safe", "Debug")) run_impl(mode)`), and any other
+default (`c("Fast", "Safe")`) is matched as a value. To give the generated
+wrapper itself a bare formal, use `no_default` (below).
 
 #### Without a Default: `no_default`
 
@@ -424,7 +439,10 @@ run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 
 Only the formal changes, and with it the usage line (`run(mode)`) and
 `args(run)`. The prelude, the choice list, partial matching and factor input
-stay as they were, since the helpers take the choice list as an argument. An
+stay as they were, since the helpers take the choice list as an argument.
+With no vector in the formal, the whole choice vector passed explicitly is
+matched like any value (`run(c("Fast", "Safe", "Debug"))` is
+`Present(Fast)`, as for a plain `Mode`). An
 omitted `Missing<..>` argument still reaches Rust as `Absent`, so the function
 words its own refusal (here with `arg_error!`, the argument error the
 wrapper's own checks raise; see
@@ -611,8 +629,8 @@ pub fn set_rule(
 ```r
 set_rule <- function(rule = c("include", "exclude", "auto")) {
   if (!isTRUE(missing(rule) || !inherits(rule, "NULL"))) .miniextendr_arg_error("rule", message = "`rule` can't be NULL; use \"auto\" to reset it.")
-  if (!missing(rule) && (is.character(rule) || is.factor(rule))) rule <- .miniextendr_match_arg(rule, c("include", "exclude", "auto"), "rule")
-  .Call(C_mypkg_set_rule, .call = sys.call(), if (missing(rule)) quote(expr=) else rule)
+  if (!missing(rule) && !identical(rule, c("include", "exclude", "auto")) && (is.character(rule) || is.factor(rule))) rule <- .miniextendr_match_arg(rule, c("include", "exclude", "auto"), "rule")
+  .Call(C_mypkg_set_rule, .call = sys.call(), if (missing(rule) || identical(rule, c("include", "exclude", "auto"))) quote(expr=) else rule)
 }
 ```
 

@@ -39,7 +39,8 @@
 //! A `Missing<..>` around the parameter type (`Missing<T>`,
 //! `Missing<Option<T>>`, `Missing<Vec<T>>` for `several_ok`) keeps the choice
 //! vector as the R formal and reports an omitted argument as
-//! `Missing::Absent` (#1551); the C wrapper decodes it with
+//! `Missing::Absent` (#1551), as it does that formal passed whole for a
+//! single choice (#2152); the C wrapper decodes it with
 //! [`match_arg_missing_or`] around the decoder of the inner type.
 //!
 //! With the `either` feature, `Either<T, R>` takes a choice or a value of
@@ -844,7 +845,12 @@ pub fn match_arg_null_or<U, E>(
 /// missing-argument sentinel (`if (missing(x)) quote(expr=) else x`), so
 /// `#[miniextendr(match_arg)] mode: Missing<Option<Mode>>` reaches Rust as
 /// `Absent` when omitted, `Present(None)` for `NULL`, and
-/// `Present(Some(mode))` for a matched choice. The C wrapper decodes it with
+/// `Present(Some(mode))` for a matched choice. A single-choice parameter
+/// treats its formal passed whole the same way (#2152): for a value
+/// `identical()` to the choice vector the wrapper skips the check and forwards
+/// the sentinel (`if (missing(x) || identical(x, c(...))) quote(expr=) else
+/// x`), so it is `Absent` too; a `several_ok` list reads that vector as every
+/// choice. The C wrapper decodes it with
 /// `match_arg_missing_or(sexp, match_arg_option_from_sexp::<Mode>)`.
 pub fn match_arg_missing_or<U, E>(
     sexp: SEXP,

@@ -25,11 +25,11 @@ EitherRouteS3
 
 \item{route}{One of "oral", "bolus", "infusion", or a data frame.}
 
-\item{level}{One of "low", "mid", "high", or a number; omitting the argument means no choice.}
+\item{level}{One of "low", "mid", "high", or a number; omitting the argument or passing the whole list means no choice.}
 
 \item{...}{Additional arguments passed to methods}
 
-\item{grade}{One of "low", "mid", "high", or a number; omitting the argument means no choice.}
+\item{grade}{One of "low", "mid", "high", or a number; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 S3 generic for \code{plan_s3}

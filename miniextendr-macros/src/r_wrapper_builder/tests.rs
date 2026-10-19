@@ -1047,10 +1047,13 @@ fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
     for (ty, want) in [
         ("Mode", ""),
         ("Option<Mode>", ", or NULL for no choice"),
-        ("Missing<Mode>", "; omitting the argument means no choice"),
+        (
+            "Missing<Mode>",
+            "; omitting the argument or passing the whole list means no choice",
+        ),
         (
             "Missing<Option<Mode>>",
-            ", or NULL; omitting the argument means no choice",
+            ", or NULL; omitting the argument or passing the whole list means no choice",
         ),
         ("Either<Mode, DataFrame>", ", or a data frame"),
         (
@@ -1059,11 +1062,16 @@ fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
         ),
         (
             "Missing<Option<Either<Mode, DataFrame>>>",
-            ", a data frame, or NULL; omitting the argument means no choice",
+            ", a data frame, or NULL; omitting the argument or passing the whole list means no choice",
         ),
     ] {
         assert_eq!(choice_attrs(ty, false).choice_doc_suffix(), want, "{ty}");
     }
+    // A `several_ok` list reads its whole vector as every choice (#2152).
+    assert_eq!(
+        choice_attrs("Missing<Vec<Mode>>", true).choice_doc_suffix(),
+        "; omitting the argument means no choice"
+    );
 }
 
 /// A `match_arg` parameter's statement ends in `, <aliases placeholder>`,
