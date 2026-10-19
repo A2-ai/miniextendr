@@ -1860,7 +1860,11 @@ fields are a fixed set of active bindings or properties. The fallback is part
 of the class one impl block defines, as the constructor is (see
 [Multiple Impl Blocks](#multiple-impl-blocks)): give it on the block with the
 constructor, and spell the same `r_data_accessors` options without it on the
-others.
+others. A fallback on another block stops the install with the "two impl
+blocks each define the class" error; two blocks that both give one don't
+compile, since each emits the fallback's `.Call` entry
+(`C_<crate>__mx_rdata_fallback_<Type>`, "defined multiple times" or "symbol
+... is already defined").
 
 #### A restored pointer
 
