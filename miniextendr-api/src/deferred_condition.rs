@@ -58,6 +58,13 @@
 //! Rust that calls back into another `#[miniextendr]` function) flush only
 //! what they queued themselves.
 //!
+//! # Capturing a block's conditions
+//!
+//! [`capture`] runs a closure and returns what it queued instead of
+//! signalling it, for code whose diagnostics the caller already has (a
+//! replay of the steps that built a saved object). Conditions queued outside
+//! the closure are untouched.
+//!
 //! # Warning placement
 //!
 //! Conditions queued before a failure still signal. If a body must not warn on
@@ -176,6 +183,40 @@ pub fn defer_condition(payload: impl RConditionData) {
         data: payload.data(),
         call: payload.call(),
     });
+}
+
+/// Run `f` and return the conditions it queued, oldest first, instead of
+/// signalling them when the guarded call returns.
+///
+/// For code that queues diagnostics a caller already has: replaying the
+/// steps that built a saved object repeats warnings the object recorded.
+/// `capture(f).0` discards them; each [`RCondition`](enum@RCondition) can also be inspected,
+/// queued again with [`RCondition::defer`] or raised with
+/// [`RCondition::raise`].
+///
+/// ```ignore
+/// use miniextendr_api::deferred_condition::capture;
+///
+/// let (rebuilt, warnings) = capture(|| rebuild(&snapshot));
+/// debug_assert_eq!(warnings.len(), snapshot.warnings.len());
+/// ```
+///
+/// - Conditions queued before the block, or by enclosing calls, stay queued.
+/// - Conditions a nested `#[miniextendr]` call queued were signalled when
+///   that call returned, as always.
+/// - If `f` unwinds (`error!`, `Err` through a nested raise, an R error), the
+///   block's conditions stay queued and follow the usual rules: a Rust
+///   failure signals them, an R-origin error discards them. To keep them on
+///   failure too, catch the failure inside the block:
+///   `capture(|| catch_condition(|| rebuild(&snapshot)))` (see
+///   [`catch_condition`](crate::condition::catch_condition)).
+/// - Where deferred conditions are suppressed (finalizers, see the
+///   [module docs](self#threads-and-boundaries)), nothing is queued and the
+///   vector is empty.
+pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<RCondition>) {
+    let start = mark();
+    let value = f();
+    (value, take_pending(start))
 }
 
 /// Queue an already-built condition payload. Used by the `defer_*!` macros.
@@ -509,6 +550,60 @@ mod tests {
             let outer_taken = take_pending(outer);
             assert_eq!(outer_taken.len(), 1);
             assert_eq!(outer_taken.into_iter().next().unwrap().message(), "outer");
+        });
+    }
+
+    #[test]
+    fn capture_takes_only_the_block_s_conditions() {
+        with_empty_queue(|| {
+            let outer = mark();
+            crate::defer_warning!("before");
+            let (value, captured) = capture(|| {
+                crate::defer_warning!(class = "replayed", "inside {}", 1);
+                let ((), nested) = capture(|| crate::defer_message!("nested"));
+                assert_eq!(nested.len(), 1);
+                assert_eq!(nested[0].message(), "nested");
+                crate::defer_condition!("last");
+                7
+            });
+            assert_eq!(value, 7);
+            let parts: Vec<_> = captured.into_iter().map(RCondition::into_parts).collect();
+            assert_eq!(parts.len(), 2);
+            assert_eq!(parts[0].0, kind::WARNING);
+            assert_eq!(parts[0].1.message, "inside 1");
+            assert_eq!(parts[0].1.class, vec!["replayed"]);
+            assert_eq!(parts[1].0, kind::CONDITION);
+            let remaining = take_pending(outer);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(remaining[0].message(), "before");
+        });
+    }
+
+    #[test]
+    fn capture_leaves_the_queue_on_unwind() {
+        with_empty_queue(|| {
+            let start = mark();
+            let caught = crate::condition::catch_condition(|| {
+                capture(|| {
+                    crate::defer_warning!("queued before the error");
+                    crate::error!("failed");
+                })
+            });
+            assert_eq!(caught.unwrap_err().message(), "failed");
+            let remaining = take_pending(start);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(remaining[0].message(), "queued before the error");
+
+            // Catching inside the capture keeps the block's conditions with it.
+            let (outcome, captured) = capture(|| {
+                crate::condition::catch_condition(|| {
+                    crate::defer_warning!("kept");
+                    crate::error!("failed");
+                })
+            });
+            assert_eq!(outcome.unwrap_err().message(), "failed");
+            assert_eq!(captured.len(), 1);
+            assert!(take_pending(start).is_empty());
         });
     }
 
