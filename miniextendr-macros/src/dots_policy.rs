@@ -15,6 +15,9 @@
 //! | `data` | anything, unchecked | reads them |
 //!
 //! `empty` and `forward` refuse an unnamed argument too: the list holds names.
+//! That includes a generic's argument passed by position, whose position
+//! stands for an allowed name; the message then says to pass the allowed names
+//! by name (matching positions is #2185).
 //! `class = "..."` (or `class = ["...", ...]`) puts the package's classes in
 //! front of the refusal's own.
 //!

@@ -2784,7 +2784,9 @@ const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a 
 # meant, or NA. That is the one name it is a prefix of, else the first one
 # closest by edit distance (a swap of two neighbours counts as one edit), at
 # most a third of its length in edits but at least one, and fewer than its
-# length. The condition is an argument error (`kind = "conversion"`,
+# length. An unnamed argument is refused even where its position stands for
+# an allowed name, so when `allow` is not empty the message says to pass those
+# names by name. The condition is an argument error (`kind = "conversion"`,
 # `param = "..."`) classed `miniextendr_error_unused_argument` after the
 # attribute's own `class`. `call` is the wrapper's call by default; a
 # `call = caller` wrapper passes `.mx_call`, an S3 method its frame (resolved
@@ -2825,6 +2827,13 @@ const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a 
   hint <- !is.na(suggestion)
   what[hint] <- sprintf("%s (did you mean '%s'?)", what[hint], suggestion[hint])
   message <- sprintf("unused argument%s %s", if (length(bad) > 1L) "s" else "", paste(what, collapse = ", "))
+  if (any(unnamed) && length(allow)) {
+    allowed <- sprintf("'%s'", allow)
+    if (length(allowed) > 1L) {
+      allowed <- paste(paste(allowed[-length(allowed)], collapse = ", "), "or", allowed[[length(allowed)]])
+    }
+    message <- sprintf("%s; pass %s by name", message, allowed)
+  }
   stop(structure(
     list(message = message, call = call, kind = "conversion", param = "...", argument = argument, suggestion = suggestion),
     class = c(class, "miniextendr_error_unused_argument", .miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")

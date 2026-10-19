@@ -71,6 +71,28 @@ test_that("empty(allow = ...) takes the names base R passes", {
   expect_identical(caught(as.data.frame(fit, TRUE))$argument, "..1")
 })
 
+test_that("a positional extra is refused even where its position stands for an allowed name", {
+  # The method's only formal is `x`, so the generic's `row.names` and
+  # `optional` given by position reach `...` unnamed. The allow list holds
+  # names, so both are refused and the message says to name them.
+  fit <- mx_dots_fit(4)
+  e <- caught(as.data.frame(fit, NULL, TRUE))
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(e$argument, c("..1", "..2"))
+  expect_identical(e$suggestion, c(NA_character_, NA_character_))
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "unused arguments '..1' (unnamed), '..2' (unnamed); ",
+      "pass 'row.names', 'optional' or 'stringsAsFactors' by name"
+    )
+  )
+  expect_identical(
+    as.data.frame(fit, row.names = NULL, optional = TRUE),
+    data.frame(estimate = 4)
+  )
+})
+
 test_that("forward(allow = ...) passes the listed names and refuses the rest", {
   expect_equal(mx_dots_forward(2), 2)
   expect_equal(mx_dots_forward(2, scale = 3, shift = 1), 7)
@@ -81,7 +103,12 @@ test_that("forward(allow = ...) passes the listed names and refuses the rest", {
   # A unique prefix of a listed name is suggested.
   expect_identical(caught(mx_dots_forward(2, sh = 1))$suggestion, "shift")
   # An unnamed argument is refused: the list holds names.
-  expect_identical(caught(mx_dots_forward(2, 3))$argument, "..1")
+  e <- caught(mx_dots_forward(2, 3))
+  expect_identical(e$argument, "..1")
+  expect_identical(
+    conditionMessage(e),
+    "unused argument '..1' (unnamed); pass 'scale' or 'shift' by name"
+  )
 })
 
 test_that("dots = data checks nothing", {
