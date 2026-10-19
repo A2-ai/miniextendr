@@ -818,11 +818,7 @@ fn computed_getter_path(get: &syn::LitStr, struct_name: &Ident) -> syn::Result<s
             format!("`get` must be a path to the getter function, e.g. `Self::f`: {err}"),
         )
     })?;
-    if let Some(first) = path.segments.first_mut()
-        && first.ident == "Self"
-    {
-        first.ident = Ident::new(&struct_name.to_string(), first.ident.span());
-    }
+    crate::util::resolve_self(&mut path, struct_name);
     Ok(path)
 }
 

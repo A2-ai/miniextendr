@@ -674,7 +674,11 @@ them (by the exact name, never a prefix; on an S3 bare pointer `[[` also
 takes a whole-number position, and an unknown name is an error unless
 `lookup = "list"` reads `NULL`), `$<-` / `[[<-` methods that write them in place
 and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
-class (`r_data_accessors = "get"` for the readers only). Under that S3, S4
+class (`r_data_accessors = "get"` for the readers only). With
+`fallback = "Self::f"` next to the option, a name no field has is read by
+`fn f(&self, name: &str) -> Option<T>` on the Rust value, and
+`fallback_names = "Self::g"` adds `g(&self) -> Vec<String>` to the
+completions (#2150). Under that S3, S4
 or env field syntax the `MyType_get_*()` / `MyType_set_*()` functions are
 internal, for the package's own R code; otherwise they are exported. vctrs
 classes get only those functions. See `CLASS_SYSTEMS.md`, "Direct Field

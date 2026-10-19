@@ -211,6 +211,21 @@ pub(crate) fn sidecar_live_c_name(type_name: &str) -> String {
     format!("C_{prefix}__mx_rdata_live_{type_name}")
 }
 
+/// `C_<crate>__mx_rdata_fallback_<Type>` — the field fallback of an S3, S4
+/// or env class with `r_data_accessors` (`fallback = "Self::f"`, #2150),
+/// which the impl block that has it emits.
+pub(crate) fn sidecar_fallback_c_name(type_name: &str) -> String {
+    let prefix = crate_prefix();
+    format!("C_{prefix}__mx_rdata_fallback_{type_name}")
+}
+
+/// `C_<crate>__mx_rdata_names_<Type>` — the names the field fallback
+/// answers, for `.DollarNames()` (`fallback_names = "Self::g"`, #2150).
+pub(crate) fn sidecar_fallback_names_c_name(type_name: &str) -> String {
+    let prefix = crate_prefix();
+    format!("C_{prefix}__mx_rdata_names_{type_name}")
+}
+
 /// The R helpers `#[derive(ExternalPtr)]` emits for a type's sidecar fields
 /// and the `$` / `[[` field methods of `r_data_accessors` call (#1848).
 #[derive(Debug, Clone, Copy)]

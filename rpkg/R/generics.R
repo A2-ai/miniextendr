@@ -70,6 +70,12 @@ NULL
 #' @name key_count
 NULL
 
+#' Count the columns of an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name n_columns
+NULL
+
 #' Add a tag to an object
 #' @param x An object.
 #' @param ... Additional arguments.

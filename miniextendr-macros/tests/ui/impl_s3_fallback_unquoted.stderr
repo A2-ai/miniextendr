@@ -1,0 +1,5 @@
+error: `fallback` takes a path to a function in a string: `fallback = "Self::column"`
+  --> tests/ui/impl_s3_fallback_unquoted.rs:21:47
+   |
+21 | #[miniextendr(s3(r_data_accessors, fallback = Self::column))]
+   |                                               ^^^^

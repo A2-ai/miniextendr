@@ -1,0 +1,8 @@
+error[E0308]: mismatched types
+  --> tests/ui/impl_s3_fallback_not_an_option.rs:23:47
+   |
+23 | #[miniextendr(s3(r_data_accessors, fallback = "Self::column"))]
+   |                                               ^^^^^^^^^^^^^^ expected `Vec<f64>`, found `Option<_>`
+   |
+   = note: expected struct `Vec<f64>`
+                found enum `Option<_>`

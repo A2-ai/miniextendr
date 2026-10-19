@@ -1,0 +1,5 @@
+error: `fallback_names` lists the names `fallback` answers, for `.DollarNames()`; add `fallback = "Self::f"`
+  --> tests/ui/impl_s3_fallback_names_without_fallback.rs:22:36
+   |
+22 | #[miniextendr(s3(r_data_accessors, fallback_names = "Self::column_names"))]
+   |                                    ^^^^^^^^^^^^^^

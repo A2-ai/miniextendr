@@ -230,7 +230,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 (
                     "name",
                     if fields {
-                        "A method or field name."
+                        super::field_syntax::env_name_param(parsed_impl)
                     } else {
                         "Method name for dispatch."
                     },
