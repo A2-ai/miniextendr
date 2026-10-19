@@ -28,6 +28,9 @@
 //! `None` becomes `Null`, not a typed `NA`: the serializer never sees the
 //! inner type of an absent `Option`. A `Vec<Option<T>>` therefore becomes a
 //! list with `NULL` holes, exactly as [`RSerializer::to_sexp`] renders it.
+//! For the same reason an empty sequence becomes an empty list. A field under
+//! [`as_character`], [`as_integer`], [`as_double`] or [`as_logical`]
+//! (`#[serde(serialize_with = ...)]`) is always that atomic vector instead.
 //!
 //! [`RSerializer::to_sexp`]: super::ser::RSerializer::to_sexp
 
@@ -153,6 +156,228 @@ fn key_string(key: RValue) -> Result<String, RSerdeError> {
 
 // endregion
 
+// region: Atomic field helpers (#2164)
+
+/// The atomic R type an `as_*` helper gives a field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Atomic {
+    Logical,
+    Integer,
+    Double,
+    Character,
+}
+
+/// The newtype names the helpers serialize through, one per [`Atomic`].
+/// [`RValueSerializer`] and [`RSerializer`](super::RSerializer) recognise
+/// them; any other serializer sees a transparent newtype.
+const ATOMIC_MARKERS: [(&str, Atomic); 4] = [
+    ("$miniextendr::as_logical", Atomic::Logical),
+    ("$miniextendr::as_integer", Atomic::Integer),
+    ("$miniextendr::as_double", Atomic::Double),
+    ("$miniextendr::as_character", Atomic::Character),
+];
+
+impl Atomic {
+    /// The type a newtype marker `name` stands for.
+    pub(crate) fn from_marker(name: &str) -> Option<Self> {
+        ATOMIC_MARKERS
+            .iter()
+            .find(|(marker, _)| *marker == name)
+            .map(|(_, atomic)| *atomic)
+    }
+
+    fn marker(self) -> &'static str {
+        ATOMIC_MARKERS
+            .iter()
+            .find(|(_, atomic)| *atomic == self)
+            .map(|(marker, _)| *marker)
+            .expect("every Atomic has a marker")
+    }
+
+    fn helper(self) -> &'static str {
+        match self {
+            Atomic::Logical => "as_logical",
+            Atomic::Integer => "as_integer",
+            Atomic::Double => "as_double",
+            Atomic::Character => "as_character",
+        }
+    }
+
+    fn what(self) -> &'static str {
+        match self {
+            Atomic::Logical => "a logical",
+            Atomic::Integer => "an integer that fits an R integer",
+            Atomic::Double => "a number",
+            Atomic::Character => "a string",
+        }
+    }
+
+    /// The field's usual serialization, `value`, as one vector of this type:
+    /// an atomic vector of it as it is (an integer one widened for
+    /// [`Atomic::Double`]), `NULL` (a `None`) as one `NA`, and an unnamed
+    /// list (an empty sequence, or one with `None` holes) element by element,
+    /// each `NULL` or a scalar of the type.
+    pub(crate) fn coerce(self, value: RValue) -> Result<RValue, RSerdeError> {
+        let mut out = AtomicVec::new(self);
+        match value {
+            RValue::List(items) => {
+                for (i, (name, item)) in items.into_iter().enumerate() {
+                    // A struct or map field, or a nested sequence, is no element.
+                    let element = matches!(item, RValue::Null) || scalar_kind(&item).is_some();
+                    if name.is_some() || !element {
+                        return Err(self.error(Some(i)));
+                    }
+                    out.push(item).map_err(|()| self.error(Some(i)))?;
+                }
+            }
+            other => out.push(other).map_err(|()| self.error(None))?,
+        }
+        Ok(out.finish())
+    }
+
+    fn error(self, element: Option<usize>) -> RSerdeError {
+        let place = match element {
+            Some(i) => format!("element {} of the field", i + 1),
+            None => "the field".to_string(),
+        };
+        RSerdeError::Message(format!(
+            "`{}`: {place} is not {} or `None`",
+            self.helper(),
+            self.what()
+        ))
+    }
+}
+
+/// The vector [`Atomic::coerce`] builds.
+enum AtomicVec {
+    Logical(Vec<Option<bool>>),
+    Integer(Vec<Option<i32>>),
+    Double(Vec<f64>),
+    Character(Vec<Option<String>>),
+}
+
+impl AtomicVec {
+    fn new(atomic: Atomic) -> Self {
+        match atomic {
+            Atomic::Logical => AtomicVec::Logical(Vec::new()),
+            Atomic::Integer => AtomicVec::Integer(Vec::new()),
+            Atomic::Double => AtomicVec::Double(Vec::new()),
+            Atomic::Character => AtomicVec::Character(Vec::new()),
+        }
+    }
+
+    /// Append `value`'s elements: `NULL` is one `NA`.
+    fn push(&mut self, value: RValue) -> Result<(), ()> {
+        use crate::altrep_traits::NA_REAL;
+        match (self, value) {
+            (AtomicVec::Logical(out), RValue::Null) => out.push(None),
+            (AtomicVec::Integer(out), RValue::Null) => out.push(None),
+            (AtomicVec::Double(out), RValue::Null) => out.push(NA_REAL),
+            (AtomicVec::Character(out), RValue::Null) => out.push(None),
+            (AtomicVec::Logical(out), RValue::Logical(v)) => out.extend(v),
+            (AtomicVec::Integer(out), RValue::Integer(v)) => out.extend(v),
+            (AtomicVec::Double(out), RValue::Double(v)) => out.extend(v),
+            (AtomicVec::Double(out), RValue::Integer(v)) => {
+                out.extend(v.into_iter().map(|x| x.map_or(NA_REAL, f64::from)));
+            }
+            (AtomicVec::Character(out), RValue::Character(v)) => out.extend(v),
+            _ => return Err(()),
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> RValue {
+        match self {
+            AtomicVec::Logical(v) => RValue::Logical(v),
+            AtomicVec::Integer(v) => RValue::Integer(v),
+            AtomicVec::Double(v) => RValue::Double(v),
+            AtomicVec::Character(v) => RValue::Character(v),
+        }
+    }
+}
+
+/// Serialize a field as an R `logical` vector, for
+/// `#[serde(serialize_with = "miniextendr_api::serde::as_logical")]`.
+///
+/// See [`as_character`]: the same rules, for `bool`s.
+pub fn as_logical<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: ?Sized + Serialize,
+    S: ser::Serializer,
+{
+    serializer.serialize_newtype_struct(Atomic::Logical.marker(), value)
+}
+
+/// Serialize a field as an R `integer` vector, for
+/// `#[serde(serialize_with = "miniextendr_api::serde::as_integer")]`.
+///
+/// See [`as_character`]: the same rules, for integers. A value outside R's
+/// integer range (or `i32::MIN`, R's `NA`) is an error, not a double.
+pub fn as_integer<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: ?Sized + Serialize,
+    S: ser::Serializer,
+{
+    serializer.serialize_newtype_struct(Atomic::Integer.marker(), value)
+}
+
+/// Serialize a field as an R `double` vector, for
+/// `#[serde(serialize_with = "miniextendr_api::serde::as_double")]`.
+///
+/// See [`as_character`]: the same rules, for numbers; integers widen.
+pub fn as_double<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: ?Sized + Serialize,
+    S: ser::Serializer,
+{
+    serializer.serialize_newtype_struct(Atomic::Double.marker(), value)
+}
+
+/// Serialize a field as an R `character` vector, for
+/// `#[serde(serialize_with = "miniextendr_api::serde::as_character")]`.
+///
+/// serde gives a serializer no element type, so an empty `Vec<String>`
+/// becomes `list()` and a `Vec<Option<String>>` with a `None` a list with a
+/// `NULL` hole (see the [module docs](self)). With this helper the field is
+/// always a character vector:
+///
+/// | Field | Without | With `as_character` |
+/// |---|---|---|
+/// | `vec![]` | `list()` | `character(0)` |
+/// | `vec!["a", "b"]` | `c("a", "b")` | `c("a", "b")` |
+/// | `vec![Some("a"), None]` | `list("a", NULL)` | `c("a", NA)` |
+/// | `None` (an `Option` field) | `NULL` | `NA_character_` |
+///
+/// The field may be a sequence or a single value; each element must be a
+/// string (or `char`) or `None`, else serialization fails with an error
+/// naming the element. Serializers other than miniextendr's (`serde_json`,
+/// ...) see the field as it is: the helper serializes through a newtype
+/// they pass through.
+///
+/// ```
+/// use miniextendr_api::RValue;
+/// use miniextendr_api::serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct NotFound {
+///     #[serde(serialize_with = "miniextendr_api::serde::as_character")]
+///     nearest: Vec<String>,
+/// }
+///
+/// let v = RValue::from_serde(&NotFound { nearest: vec![] }).unwrap();
+/// let RValue::List(fields) = v else { unreachable!() };
+/// assert!(matches!(&fields[0].1, RValue::Character(c) if c.is_empty()));
+/// ```
+pub fn as_character<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: ?Sized + Serialize,
+    S: ser::Serializer,
+{
+    serializer.serialize_newtype_struct(Atomic::Character.marker(), value)
+}
+
+// endregion
+
 // region: serde::Serializer for RValueSerializer
 
 impl ser::Serializer for RValueSerializer {
@@ -254,10 +479,13 @@ impl ser::Serializer for RValueSerializer {
 
     fn serialize_newtype_struct<T: ?Sized + Serialize>(
         self,
-        _name: &'static str,
+        name: &'static str,
         value: &T,
     ) -> Result<RValue, RSerdeError> {
-        value.serialize(self)
+        match Atomic::from_marker(name) {
+            Some(atomic) => atomic.coerce(value.serialize(self)?),
+            None => value.serialize(self),
+        }
     }
 
     fn serialize_newtype_variant<T: ?Sized + Serialize>(
@@ -852,6 +1080,112 @@ mod tests {
                 .collect(),
             other => panic!("expected a list, got {other:?}"),
         }
+    }
+
+    #[derive(Serialize)]
+    struct Typed {
+        #[serde(serialize_with = "as_character")]
+        names: Vec<String>,
+        #[serde(serialize_with = "as_character")]
+        holes: Vec<Option<String>>,
+        #[serde(serialize_with = "as_character")]
+        absent: Option<String>,
+        #[serde(serialize_with = "as_integer")]
+        counts: Vec<i64>,
+        #[serde(serialize_with = "as_double")]
+        values: Vec<Option<i32>>,
+        #[serde(serialize_with = "as_logical")]
+        flags: Vec<bool>,
+    }
+
+    #[test]
+    fn atomic_helpers_type_empty_and_holed_sequences() {
+        let empty = Typed {
+            names: vec![],
+            holes: vec![],
+            absent: None,
+            counts: vec![],
+            values: vec![],
+            flags: vec![],
+        };
+        let v = to_rvalue(&empty).unwrap();
+        let fields = named(&v);
+        assert!(matches!(fields[0].1, RValue::Character(c) if c.is_empty()));
+        assert!(matches!(fields[1].1, RValue::Character(c) if c.is_empty()));
+        assert!(matches!(fields[2].1, RValue::Character(c) if c == &[None]));
+        assert!(matches!(fields[3].1, RValue::Integer(c) if c.is_empty()));
+        assert!(matches!(fields[4].1, RValue::Double(c) if c.is_empty()));
+        assert!(matches!(fields[5].1, RValue::Logical(c) if c.is_empty()));
+
+        let full = Typed {
+            names: vec!["a".into(), "b".into()],
+            holes: vec![Some("a".into()), None],
+            absent: Some("x".into()),
+            counts: vec![1, 2],
+            values: vec![Some(1), None],
+            flags: vec![true],
+        };
+        let v = to_rvalue(&full).unwrap();
+        let fields = named(&v);
+        assert!(
+            matches!(fields[0].1, RValue::Character(c) if c == &[Some("a".to_string()), Some("b".to_string())])
+        );
+        assert!(matches!(fields[1].1, RValue::Character(c) if c == &[Some("a".to_string()), None]));
+        assert!(matches!(fields[2].1, RValue::Character(c) if c == &[Some("x".to_string())]));
+        assert!(matches!(fields[3].1, RValue::Integer(c) if c == &[Some(1), Some(2)]));
+        match fields[4].1 {
+            RValue::Double(c) => {
+                assert_eq!(c[0], 1.0);
+                assert!(c[1].is_na());
+            }
+            other => panic!("expected a double vector, got {other:?}"),
+        }
+        assert!(matches!(fields[5].1, RValue::Logical(c) if c == &[Some(true)]));
+    }
+
+    #[test]
+    fn atomic_helpers_refuse_other_elements() {
+        #[derive(Serialize)]
+        struct Wide {
+            #[serde(serialize_with = "as_integer")]
+            counts: Vec<i64>,
+        }
+        let err = to_rvalue(&Wide {
+            counts: vec![1, 1 << 40],
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`as_integer`: element 2 of the field is not an integer"),
+            "{err}"
+        );
+
+        #[derive(Serialize)]
+        struct Nested {
+            #[serde(serialize_with = "as_character")]
+            groups: Vec<Vec<String>>,
+        }
+        let err = to_rvalue(&Nested {
+            groups: vec![vec!["a".into(), "b".into()]],
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("element 1 of the field is not a string"),
+            "{err}"
+        );
+
+        #[derive(Serialize)]
+        struct Numbers {
+            #[serde(serialize_with = "as_character")]
+            ids: Vec<i32>,
+        }
+        let err = to_rvalue(&Numbers { ids: vec![1] }).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`as_character`: the field is not a string"),
+            "{err}"
+        );
     }
 
     #[test]

@@ -236,8 +236,11 @@ overwrite).
 
 There is no escape hatch, deliberately: `message` and `call` are what R's
 `conditionMessage()` / `conditionCall()` read, and `kind` is the framework's
-transport tag, so a field with one of those names is a naming clash to fix
-where the payload is built (a different key, `#[serde(rename)]` on a derived
+transport tag: it records which path raised the condition (`"error"` for
+`error!`, `"result_err"` for a `Result`'s `Err`, `"panic"`, `"conversion"`,
+...), not what the condition is, so one condition class raised from two
+paths has two `kind`s; match conditions on their class. A field with one of
+those names is therefore a naming clash to fix where the payload is built (a different key, `#[serde(rename)]` on a derived
 struct, a rename in your `RConditionData::data()` impl). Renaming every field
 with a prefix to rescue one would make `e$<name>` access inconsistent across
 conditions. When the payload is an error type's own serde shape that other
@@ -735,11 +738,16 @@ e$value; e$max
   non-empty homogeneous `Vec<T>` as atomic vectors, nested structs as named
   lists, `None` as `NULL`. An empty `Vec<T>` arrives as `list()`, since serde
   gives no element type for an empty sequence, so `e$columns` is `list()` when
-  empty and a character vector otherwise. Derive `RConditionData` (above)
-  for fields that must keep their type when empty: it converts each field
-  with `RValue::from`, and an empty `Vec<String>` becomes `character(0)`. The reserved names above apply to the payload fields; a
-  clash raises a `rust_error` describing it, exactly as for `data()`, with
-  the exceptions below.
+  empty and a character vector otherwise; a `Vec<Option<String>>` with a
+  `None` is a list with a `NULL` hole. Give such a field its R type with
+  `#[serde(serialize_with = "miniextendr_api::serde::as_character")]` (or
+  `as_integer`, `as_double`, `as_logical`): it is then always that vector
+  type, `character(0)` when empty, a `None` element `NA`, the same field
+  `error!(data = ...)` gives for the data (#2164). Other serializers see the
+  field unchanged. Deriving `RConditionData` (above) instead converts each
+  field with `RValue::from`. The reserved names above apply to the payload
+  fields; a clash raises a `rust_error` describing it, exactly as for
+  `data()`, with the exceptions below.
 - `serde_error(..)` needs a `Result` return type and cannot be combined with
   `unwrap_in_r`; both are compile errors, as is the bare `serde_error` flag.
 

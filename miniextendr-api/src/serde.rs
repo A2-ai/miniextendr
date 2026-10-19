@@ -60,6 +60,15 @@
 //! - `Vec<String>` → `character` vector
 //! - `Vec<struct>` → list of lists
 //!
+//! An empty `Vec<T>` has no element to dispatch on and becomes `list()`, and a
+//! `Vec<Option<T>>` with a `None` a list with a `NULL` hole. A field under
+//! [`as_character`](crate::serde::as_character),
+//! [`as_integer`](crate::serde::as_integer),
+//! [`as_double`](crate::serde::as_double) or
+//! [`as_logical`](crate::serde::as_logical)
+//! (`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`) is
+//! always that atomic vector: `character(0)` when empty, `NA` for `None`.
+//!
 //! # NA Roundtrip
 //!
 //! NA values are preserved through `Option<T>`:
@@ -262,6 +271,8 @@ pub use de::RDeserializer;
 pub use error::RSerdeError;
 #[cfg(feature = "serde_json")]
 pub use json_string::{AsJson, AsJsonPretty, AsJsonVec, FromJson};
-pub use rvalue_ser::{RValueSerializer, to_rvalue};
+pub use rvalue_ser::{
+    RValueSerializer, as_character, as_double, as_integer, as_logical, to_rvalue,
+};
 pub use ser::RSerializer;
 pub use traits::{AsSerialize, RDeserializeNative, RSerializeNative, from_r, to_r};
