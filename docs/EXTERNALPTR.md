@@ -979,15 +979,29 @@ impl Model {
   argument, the R accessor of a struct field. The framework installs the
   value it returns in the restored pointer itself, finalizer included, so the
   later calls, and every R name bound to the object, see a live pointer. A
-  `Sidecar` accessor reads the saved slot as before, without rebuilding.
+  `Sidecar` accessor reads (or writes) the saved slot of its field's name,
+  without rebuilding.
 - **What the hook reads.** The type's generated `Sidecar` getters take the
   `Saved` handle like a live one (`Self::values(saved)`). Only `Sidecar`
   fields have a slot in the save: a struct field or a `Computed` field is
   gone with the Rust value, so a type whose rebuild needs one keeps it in a
-  `Sidecar` instead. `Saved::as_sexp()` is the restored pointer.
-- **The saved slots stay.** The `Sidecar` values in the struct the hook
-  returns are dropped, not written: fill them with `Sidecar::default()` or
-  any placeholder.
+  `Sidecar` instead. `Saved::as_sexp()` is the restored pointer, and
+  `Saved::version()` the crate version that saved it.
+- **By field name.** A save names its slots after the `Sidecar` fields, so
+  the hook reads each field by name, whatever fields the saving version
+  had or in what order (#2187). A field added since that version has no
+  slot: `Self::try_values(saved)` (generated for every `Sidecar` field of a
+  type with a hook) returns `None`, and the plain getter raises
+  `miniextendr_restored_missing_slot`, with the field's name in `e$field`.
+  `Saved::has("values")` says the same for a name. A slot whose field is
+  gone is ignored. A save from before slots were named is read by position.
+- **What the rebuilt object holds.** The pointer is laid out as this
+  version's. A field the save has keeps its saved slot: the hook's
+  `Sidecar::new(..)` value for it is a placeholder and is dropped. A field
+  the save lacks takes the value the hook put in its struct, so give it the
+  real value (`Sidecar::new(Self::try_values(saved).unwrap_or_default())`).
+  A hook that recomputes a field and wants the object to hold the new value
+  returns it as `Sidecar::replace(value)`, which replaces the saved slot.
 - **Nested objects.** A `Sidecar<SEXP>` can hold another object's pointer.
   Converting it in the hook (`ExternalPtr::<Inner>::try_from_sexp(..)`)
   rebuilds that one too, in its own pointer, when its type has a hook. A hook
@@ -1011,12 +1025,18 @@ impl Model {
   construction, whose warnings were signalled once already, drops them with
   `deferred_condition::capture(|| ..).0`.
 - **Another version's save** is refused as before
-  (`miniextendr_restored_other_version`), and the hook does not run: the
-  slots are positional, and the hook cannot know another version's layout.
+  (`miniextendr_restored_other_version`), and the hook does not run, unless
+  the type opts in with `any_version` next to the hook:
+  `#[externalptr(r6, rebuild = Self::from_saved, any_version)]`. The hook
+  then rebuilds a save by any version of the crate that names its slots,
+  on the object's first use of any kind (a `Sidecar` read included, since
+  the slots are laid out anew). The hook decides what to accept: it reads
+  `saved.version()`, checks the fields, and returns an `Err` to refuse. A
+  save by another version without slot names stays refused: its layout is
+  unknown.
 
-Reading a save across versions is deliberately not supported for now
-(#1854). A type whose `Sidecar` fields hold too little to rebuild from
-needs the value itself in the save, a serde snapshot (#2186).
+A type whose `Sidecar` fields hold too little to rebuild from needs the
+value itself in the save, a serde snapshot (#2186).
 
 **webR:** the round trip has not been tested there. Nothing in it is
 platform-specific (R serializes the pointer's tag and `prot` the same way),
@@ -1031,7 +1051,7 @@ EXTPTRSXP
   addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
             └→ RefCell<T> (the Rust value and its borrow flag)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
-  prot  → VECSXP[2 + T::R_SLOT_COUNT]
+  prot  → VECSXP[2 + T::R_SLOT_COUNT], named "", "", then the Sidecar fields' names
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
             [1] → user-protected SEXP (set via set_protected)
             [2..] → one value per Sidecar<T> field

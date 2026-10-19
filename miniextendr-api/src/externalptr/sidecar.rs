@@ -14,8 +14,9 @@
 //! The type is named in one place (this module) and re-exported from
 //! [`crate::externalptr`]; its final name is #1857.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -208,6 +209,9 @@ pub struct Sidecar<T> {
 struct Pending<T> {
     value: T,
     root: Option<Arc<PendingRoot>>,
+    /// Made by [`Sidecar::replace`]: in a struct a rebuild hook returns, the
+    /// value replaces the slot the save kept (#2187).
+    replace: bool,
 }
 
 /// Only the pool key crosses threads, as with an owning `ExternalPtr`.
@@ -226,8 +230,39 @@ impl<T> Sidecar<T> {
     /// in an `ExternalPtr`.
     pub fn new(value: T) -> Self {
         Self {
-            pending: RefCell::new(Some(Pending { value, root: None })),
+            pending: RefCell::new(Some(Pending {
+                value,
+                root: None,
+                replace: false,
+            })),
         }
+    }
+
+    /// A sidecar field holding `value`, which replaces the slot a save kept
+    /// when a rebuild hook (`#[externalptr(rebuild = path)]`) returns it.
+    ///
+    /// A rebuilt object keeps each slot its save has: the hook's
+    /// [`Sidecar::new`] values are placeholders for those fields, and fill only
+    /// the fields the save lacks. A hook that recomputes a field's value, and
+    /// wants the object to hold the new value rather than the saved one,
+    /// returns it as `Sidecar::replace(value)`. Anywhere else it is
+    /// `Sidecar::new(value)`.
+    pub fn replace(value: T) -> Self {
+        Self {
+            pending: RefCell::new(Some(Pending {
+                value,
+                root: None,
+                replace: true,
+            })),
+        }
+    }
+
+    /// Whether the pending value was made by [`Sidecar::replace`].
+    fn replaces_saved(&self) -> bool {
+        self.pending
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.replace)
     }
 
     /// Drops a pending value, which a write to the slot supersedes.
@@ -242,7 +277,7 @@ impl<T: IntoR> Sidecar<T> {
     /// On R's main thread. `set_vector_elt` allocates nothing, so the value
     /// fresh from `into_sexp()` needs no protection.
     fn flush_into(&self, prot: SEXP, index: usize) {
-        let Some(Pending { value, root }) = self.pending.borrow_mut().take() else {
+        let Some(Pending { value, root, .. }) = self.pending.borrow_mut().take() else {
             return;
         };
         prot.set_vector_elt(prot_index(index), value.into_sexp());
@@ -274,10 +309,11 @@ where
         let root = Arc::new(PendingRoot(super::root_owned(
             prot.vector_elt(prot_index(index)),
         )));
-        let value = convert_slot::<T>(prot, index, name, owner_type);
+        let value = convert_slot::<T>(prot, prot_index(index), name, owner_type);
         *self.pending.borrow_mut() = Some(Pending {
             value,
             root: Some(root),
+            replace: false,
         });
         true
     }
@@ -308,12 +344,13 @@ impl<T> fmt::Debug for Sidecar<T> {
     }
 }
 
-/// Slot `index` of `prot`, converted to `T`.
-fn convert_slot<T: TryFromSexp>(prot: SEXP, index: usize, name: &str, owner_type: &str) -> T
+/// The element of `prot` at `at`, the slot of `Sidecar` field `name`,
+/// converted to `T`.
+fn convert_slot<T: TryFromSexp>(prot: SEXP, at: R_xlen_t, name: &str, owner_type: &str) -> T
 where
     <T as TryFromSexp>::Error: fmt::Display,
 {
-    let slot = prot.vector_elt(prot_index(index));
+    let slot = prot.vector_elt(at);
     match T::try_from_sexp(slot) {
         Ok(value) => value,
         Err(err) => panic!(
@@ -357,6 +394,8 @@ pub trait SidecarField {
     ) -> bool;
     /// Drops a pending value, which a write to the slot supersedes.
     fn __mx_discard_pending(&self);
+    /// Whether the pending value was made by [`Sidecar::replace`].
+    fn __mx_replaces_saved(&self) -> bool;
 }
 
 impl<T: IntoR + TryFromSexp> SidecarField for Sidecar<T>
@@ -379,6 +418,10 @@ where
 
     fn __mx_discard_pending(&self) {
         self.discard_pending();
+    }
+
+    fn __mx_replaces_saved(&self) -> bool {
+        self.replaces_saved()
     }
 }
 
@@ -442,6 +485,7 @@ pub(super) unsafe fn init_sidecars<T: TypedExternal>(any_raw: *mut Box<dyn Any>,
         .expect("ExternalPtr stores a T at construction")
         .borrow();
     let prot = unsafe { R_ExternalPtrProtected(owner) };
+    unsafe { name_slots::<T>(prot) };
     flush_sidecars(&*value, prot);
 }
 
@@ -462,6 +506,7 @@ pub(crate) unsafe fn init_erased_sidecars<T: TypedExternal>(value: &T, owner: SE
         // reachable through the already-rooted owner.
         crate::sys::R_SetExternalPtrProtected_unchecked(owner, prot);
         prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id);
+        name_slots::<T>(prot);
         flush_sidecars(value, prot);
     }
 }
@@ -506,17 +551,51 @@ where
 {
     assert_main_thread(name, O::TYPE_NAME);
     // SAFETY (both arms): on R's main thread; the handle's EXTPTRSXP is live
-    // and was built for an `O`, so its `prot` list has the slot.
-    let prot = match ptr.__mx_read() {
+    // and was built for an `O`.
+    match ptr.__mx_read() {
         super::SidecarRead::Live(value) => {
             let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
             field(&value).flush_into(prot, index);
-            prot
+            convert_slot::<T>(prot, prot_index(index), name, O::TYPE_NAME)
         }
-        // A rebuild hook reads what the save kept; nothing is pending.
-        super::SidecarRead::Saved(sexp) => unsafe { R_ExternalPtrProtected(sexp) },
-    };
-    convert_slot::<T>(prot, index, name, O::TYPE_NAME)
+        // A rebuild hook reads what the save kept, by the field's name;
+        // nothing is pending.
+        super::SidecarRead::Saved(sexp) => {
+            let prot = unsafe { R_ExternalPtrProtected(sexp) };
+            match saved_slot(prot, index, name) {
+                Some(at) => convert_slot::<T>(prot, at, name, O::TYPE_NAME),
+                None => missing_slot::<O>(name),
+            }
+        }
+    }
+}
+
+/// `T`'s `Sidecar` field `index`, named `name`, as the save `saved` kept it,
+/// or `None` when the save has no slot for it: a field added after the
+/// version that saved the object.
+///
+/// Called by the `try_<field>` getters `#[derive(ExternalPtr)]` generates for
+/// a type with a rebuild hook.
+///
+/// # Panics
+///
+/// Off R's main thread, naming the field; or when the slot does not convert
+/// to `T`.
+#[doc(hidden)]
+pub fn sidecar_try_saved<O, T>(
+    saved: &super::Saved<'_, O>,
+    index: usize,
+    name: &'static str,
+) -> Option<T>
+where
+    O: TypedExternal,
+    T: TryFromSexp,
+    <T as TryFromSexp>::Error: fmt::Display,
+{
+    assert_main_thread(name, O::TYPE_NAME);
+    // SAFETY: on R's main thread; `saved` holds a live EXTPTRSXP.
+    let prot = unsafe { R_ExternalPtrProtected(saved.as_sexp()) };
+    saved_slot(prot, index, name).map(|at| convert_slot::<T>(prot, at, name, O::TYPE_NAME))
 }
 
 /// Stores `value` in `T`'s `Sidecar` field `index` of the object `ptr` holds,
@@ -550,10 +629,84 @@ pub fn sidecar_set<O, T>(
 
 // endregion
 
+// region: Slot names (#2187)
+
+thread_local! {
+    /// Each type's slot names, preserved for the session and shared by every
+    /// protection list of the type: `""` for the type ID and the user slot,
+    /// then the `Sidecar` fields' Rust names, in slot order.
+    static SLOT_NAMES: RefCell<HashMap<TypeId, SEXP>> = RefCell::new(HashMap::new());
+}
+
+/// Names `prot`'s slots after `T`'s `Sidecar` fields. A save then keeps the
+/// names, so the version that reads it finds each field by name
+/// ([`saved_slot`]), whatever fields it added, removed or reordered since.
+/// The names vector is the type's own, built once; this allocates only the
+/// attribute's cell.
+///
+/// # Safety
+///
+/// On R's main thread, with `prot` a rooted protection list built for a `T`.
+pub(crate) unsafe fn name_slots<T: TypedExternal>(prot: SEXP) {
+    let cached = SLOT_NAMES.with_borrow(|names| names.get(&TypeId::of::<T>()).copied());
+    let names = cached.unwrap_or_else(|| {
+        // Preserved before it is filled, so the CHARSXPs it receives are
+        // reachable as they are made.
+        let names =
+            unsafe { crate::sys::Rf_allocVector(SEXPTYPE::STRSXP, super::prot_vec_len::<T>()) };
+        unsafe { crate::sys::R_PreserveObject(names) };
+        for (index, name) in T::SIDECAR_NAMES.iter().enumerate() {
+            names.set_string_elt(prot_index(index), SEXP::charsxp(name));
+        }
+        SLOT_NAMES.with_borrow_mut(|cache| cache.insert(TypeId::of::<T>(), names));
+        names
+    });
+    prot.set_names(names);
+}
+
+/// The position in the saved protection list `prot` of `Sidecar` field
+/// `index`, named `name`: found by name when the save carries slot names,
+/// else by position (a save by this version made before slots were named).
+/// `None` when the save has no slot for the field.
+pub(crate) fn saved_slot(prot: SEXP, index: usize, name: &str) -> Option<R_xlen_t> {
+    let names = prot.get_attr(SEXP::names_symbol());
+    if names.type_of() == SEXPTYPE::STRSXP && names.xlength() == prot.xlength() {
+        (PROT_VEC_LEN..names.xlength()).find(|&at| names.string_elt_str(at) == Some(name))
+    } else {
+        Some(prot_index(index)).filter(|&at| at < prot.xlength())
+    }
+}
+
+/// Whether the saved protection list `prot` carries slot names.
+pub(crate) fn has_slot_names(prot: SEXP) -> bool {
+    let names = prot.get_attr(SEXP::names_symbol());
+    names.type_of() == SEXPTYPE::STRSXP && names.xlength() == prot.xlength()
+}
+
+/// Raises the classed error for a read of `Sidecar` field `name` that a save
+/// of an `O` has no slot for.
+fn missing_slot<O: TypedExternal>(name: &str) -> ! {
+    RCondition::Error {
+        message: format!(
+            "the saved `{}` has no `{name}` field: the version that saved it did not have it",
+            O::TYPE_NAME
+        ),
+        class: vec![super::RESTORED_MISSING_SLOT_CLASS.to_owned()],
+        data: Some(vec![(
+            "field".to_owned(),
+            crate::RValue::Character(vec![Some(name.to_owned())]),
+        )]),
+        call: ConditionCall::Inherit,
+    }
+    .raise()
+}
+
+// endregion
+
 // region: The R accessors
 
 /// The protection-list position of `Sidecar` field `index`.
-fn prot_index(index: usize) -> R_xlen_t {
+pub(super) fn prot_index(index: usize) -> R_xlen_t {
     let index = R_xlen_t::try_from(index).expect("sidecar index exceeds R_xlen_t::MAX");
     PROT_VEC_LEN + index
 }
@@ -750,13 +903,24 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
     require_live: bool,
 ) -> (SEXP, Option<&'a RefCell<T>>) {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
-    let prot = unsafe { R_ExternalPtrProtected(x) };
     let mut any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     // A reader that needs the value rebuilds a restored pointer first, when
     // the type has a hook; a `Sidecar` read takes the saved slot as it is.
-    if any_raw.is_null() && require_live && unsafe { super::rebuild_restored::<T>(x, receiver) } {
+    // Another version's save, under `any_version`, is rebuilt by any reader:
+    // the rebuild lays its slots out as this version's (#2187).
+    if any_raw.is_null()
+        && (require_live
+            || T::REBUILDS_ANY_VERSION
+                && matches!(
+                    unsafe { super::classify_null_address::<T>(x) },
+                    super::NullAddress::OtherVersion { .. }
+                ))
+        && unsafe { super::rebuild_restored::<T>(x, receiver) }
+    {
         any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     }
+    // Read after a rebuild, which gives the pointer a new list (#2187).
+    let prot = unsafe { R_ExternalPtrProtected(x) };
     let live = if any_raw.is_null() {
         if require_live
             || !unsafe { super::stored_type_id_symbol(x) }.is_some_and(is_type_id_symbol::<T>)
@@ -776,7 +940,11 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
             None => refuse_other_type::<T>(receiver, Refused::OtherType),
         }
     };
-    if !usize::try_from(prot_index(T::R_SLOT_COUNT)).is_ok_and(|len| len <= prot.len()) {
+    // A save read by name may hold fewer slots than the type has fields:
+    // its reads look the field up ([`saved_slot`]).
+    if (live.is_some() || !has_slot_names(prot))
+        && !usize::try_from(prot_index(T::R_SLOT_COUNT)).is_ok_and(|len| len <= prot.len())
+    {
         panic!(
             "ExternalPtr<{}> has no sidecar slots: its protection list was not built by `ExternalPtr`",
             T::TYPE_NAME
@@ -918,13 +1086,19 @@ pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
 #[doc(hidden)]
 pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize, require_live: bool) -> SEXP {
     let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
-    if let Some(cell) = live {
-        super::borrow_value(cell).__mx_visit_sidecars(&mut |i, _, field| {
-            if i == index {
-                field.__mx_flush(prot, i);
-            }
-        });
-    }
+    let Some(cell) = live else {
+        // A restored pointer: the slot of the field's name (#2187).
+        let name = T::SIDECAR_NAMES[index];
+        return match saved_slot(prot, index, name) {
+            Some(at) => prot.vector_elt(at),
+            None => missing_slot::<T>(name),
+        };
+    };
+    super::borrow_value(cell).__mx_visit_sidecars(&mut |i, _, field| {
+        if i == index {
+            field.__mx_flush(prot, i);
+        }
+    });
     prot.vector_elt(prot_index(index))
 }
 
@@ -955,13 +1129,20 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
     require_live: bool,
 ) {
     let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
-    if let Some(cell) = live {
-        super::borrow_value_mut(cell).__mx_visit_sidecars(&mut |i, _, field| {
-            if i == index {
-                field.__mx_discard_pending();
-            }
-        });
-    }
+    let Some(cell) = live else {
+        // A restored pointer: the slot of the field's name (#2187).
+        let name = T::SIDECAR_NAMES[index];
+        match saved_slot(prot, index, name) {
+            Some(at) => prot.set_vector_elt(at, value),
+            None => missing_slot::<T>(name),
+        }
+        return;
+    };
+    super::borrow_value_mut(cell).__mx_visit_sidecars(&mut |i, _, field| {
+        if i == index {
+            field.__mx_discard_pending();
+        }
+    });
     prot.set_vector_elt(prot_index(index), value);
 }
 
