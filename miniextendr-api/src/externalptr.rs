@@ -555,11 +555,32 @@ unsafe fn clear_moved_out(sexp: SEXP) {
     unsafe { R_SetExternalPtrProtected(sexp, SEXP::nil()) };
 }
 
-/// Rewrites the version in the type ID a restored pointer keeps in `prot[0]`
-/// (`crate@version::module::Type`), so the pointer reads as a save by
-/// `version` of its crate. For tests of the other-version refusal; the
-/// pointer must have no address (restored by `readRDS()` / `unserialize()`),
-/// since a live one is checked by `Any::downcast`, not by the ID.
+/// Test support: make a restored pointer read as a save by another version of
+/// its crate, so a package can test its handling of
+/// `miniextendr_restored_other_version` (#1872) without building two
+/// versions.
+///
+/// It rewrites the version in the type ID a restored pointer keeps in
+/// `prot[0]` (`crate@version::module::Type`) to `version`. The pointer must
+/// have no address, as one restored by `readRDS()` / `unserialize()` has: a
+/// live pointer is checked by `Any::downcast`, not by the ID. Call it from a
+/// test-only `#[miniextendr]` function:
+///
+/// ```ignore
+/// /// @param x A pointer restored by `unserialize()`.
+/// #[miniextendr(noexport)]
+/// pub fn rewrite_saved_version(x: SEXP, version: String) {
+///     // SAFETY: R's main thread; `x` is an external pointer.
+///     unsafe { miniextendr_api::externalptr::rewrite_stored_version_for_tests(x, &version) };
+/// }
+/// ```
+///
+/// ```r
+/// back <- unserialize(serialize(obj, NULL))
+/// rewrite_saved_version(back, "0.0.1")
+/// tryCatch(method(back), miniextendr_restored_other_version = function(e) e$saved_version)
+/// #> [1] "0.0.1"
+/// ```
 ///
 /// # Panics
 ///
@@ -569,7 +590,6 @@ unsafe fn clear_moved_out(sexp: SEXP) {
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `EXTPTRSXP`.
-#[doc(hidden)]
 pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
     assert!(
         unsafe { R_ExternalPtrAddr(sexp) }.is_null(),
