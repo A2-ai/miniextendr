@@ -151,11 +151,15 @@ impl ser::Serializer for RSerializer {
 
     fn serialize_newtype_struct<T: ?Sized + Serialize>(
         self,
-        _name: &'static str,
+        name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error> {
-        // Newtype struct is transparent
-        value.serialize(self)
+        // A field under `as_character` & co. (#2164) becomes one vector of
+        // that type; any other newtype struct is transparent.
+        match super::rvalue_ser::Atomic::from_marker(name) {
+            Some(atomic) => Ok(atomic.coerce(super::to_rvalue(value)?)?.into_sexp()),
+            None => value.serialize(self),
+        }
     }
 
     fn serialize_newtype_variant<T: ?Sized + Serialize>(

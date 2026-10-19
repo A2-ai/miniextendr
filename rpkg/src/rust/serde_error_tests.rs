@@ -252,3 +252,75 @@ impl SerdeChecker {
 }
 
 // endregion
+
+// region: Fields typed with the atomic helpers (#2164)
+
+/// A lookup failure whose sequence fields keep their R type when empty or
+/// with `None` holes (`miniextendr_api::serde::as_character` & co.).
+#[derive(Debug, Serialize)]
+#[serde(crate = "crate::serde", tag = "kind", rename_all = "snake_case")]
+pub enum LookupError {
+    NotFound {
+        #[serde(serialize_with = "miniextendr_api::serde::as_character")]
+        nearest: Vec<Option<String>>,
+        #[serde(serialize_with = "miniextendr_api::serde::as_integer")]
+        ranks: Vec<i32>,
+        #[serde(serialize_with = "miniextendr_api::serde::as_double")]
+        scores: Vec<Option<f64>>,
+        #[serde(serialize_with = "miniextendr_api::serde::as_logical")]
+        exact: Vec<Option<bool>>,
+    },
+}
+
+impl std::fmt::Display for LookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LookupError::NotFound { nearest, .. } => {
+                write!(f, "not found; {} near names", nearest.len())
+            }
+        }
+    }
+}
+
+impl std::error::Error for LookupError {}
+
+/// The fields of a lookup failure for `nearest`: its ranks, a score per name
+/// (`NA` for an `NA` name) and whether each is exact (`NA` likewise).
+fn lookup_fields(nearest: &[Option<String>]) -> (Vec<i32>, Vec<Option<f64>>, Vec<Option<bool>>) {
+    let ranks = (1..).take(nearest.len()).collect();
+    let scores = nearest.iter().map(|n| n.as_ref().map(|_| 0.5)).collect();
+    let exact = nearest.iter().map(|n| n.as_ref().map(|_| false)).collect();
+    (ranks, scores, exact)
+}
+
+/// A lookup failure through the serde path.
+/// @param nearest Names near the one looked up.
+#[miniextendr]
+pub fn serde_err_lookup(nearest: Vec<Option<String>>) -> Result<(), LookupError> {
+    let (ranks, scores, exact) = lookup_fields(&nearest);
+    Err(LookupError::NotFound {
+        nearest,
+        ranks,
+        scores,
+        exact,
+    })
+}
+
+/// The same lookup failure through `error!`, for comparing the fields.
+/// @param nearest Names near the one looked up.
+#[miniextendr]
+pub fn serde_err_lookup_macro(nearest: Vec<Option<String>>) {
+    let (ranks, scores, exact) = lookup_fields(&nearest);
+    miniextendr_api::error!(
+        class = ["miniextendr_error_not_found", "miniextendr_error"],
+        data = [
+            ("nearest", nearest),
+            ("ranks", ranks),
+            ("scores", scores),
+            ("exact", exact),
+        ],
+        "lookup failed"
+    );
+}
+
+// endregion

@@ -158,3 +158,26 @@ test_that("skip works on an S3 method too", {
   expect_equal(e$line, 1L)
   expect_equal(sum(names(e) == "message"), 1L)
 })
+
+test_that("as_character & co. give a serde field the error! path's R type (#2164)", {
+  for (nearest in list(character(0), c("a", "b"), c("a", NA))) {
+    serde <- tryCatch(serde_err_lookup(nearest), error = identity)
+    macro <- tryCatch(serde_err_lookup_macro(nearest), error = identity)
+    expect_s3_class(serde, "miniextendr_error_not_found")
+    for (field in c("nearest", "ranks", "scores", "exact")) {
+      expect_identical(serde[[field]], macro[[field]], label = paste0("serde$", field))
+    }
+  }
+  e <- tryCatch(serde_err_lookup(character(0)), error = identity)
+  expect_identical(e$nearest, character(0))
+  expect_identical(e$ranks, integer(0))
+  expect_identical(e$scores, double(0))
+  expect_identical(e$exact, logical(0))
+  e <- tryCatch(serde_err_lookup(c("a", NA)), error = identity)
+  expect_identical(e$nearest, c("a", NA))
+  expect_identical(e$scores, c(0.5, NA))
+  expect_identical(e$exact, c(FALSE, NA))
+  # `kind` names the path that raised the condition, not what it is.
+  expect_identical(e$kind, "result_err")
+  expect_identical(tryCatch(serde_err_lookup_macro("a"), error = identity)$kind, "error")
+})
