@@ -1481,8 +1481,9 @@ pub(crate) struct ParamAttrs {
     pub optional: bool,
     /// `Missing<..>` layer of a `match_arg` / `choices` parameter (#1551): the
     /// R formal keeps the choice vector, the prelude skips the check for an
-    /// omitted argument, and Rust sees `Missing::Absent`. Set by
-    /// [`classify_choice_param`].
+    /// omitted argument, and Rust sees `Missing::Absent`; a single choice reads
+    /// its formal passed whole the same way ([`Self::absent_formal`], #2152).
+    /// Set by [`classify_choice_param`].
     pub omittable: bool,
     /// `no_default` on a `match_arg` / `choices` parameter (#1828): the R
     /// formal is the bare name instead of the choice vector (or `NULL`), so
@@ -1563,16 +1564,51 @@ impl ParamAttrs {
         }
     }
 
+    /// The value that reads as omitted (#2152): `choices`, which is then the
+    /// formal ([`Self::choice_formal`]), for a single-choice `Missing<..>`
+    /// parameter. Its wrapper skips the check for a value `identical()` to
+    /// it and forwards the missing-argument sentinel in its place, so passing
+    /// the default shown in the usage line reaches Rust as `Missing::Absent`,
+    /// like leaving it out. `None` for every other parameter: a `several_ok`
+    /// list reads the whole vector as every choice, a parameter without
+    /// `Missing` reads it as the first choice, and a `no_default` one has no
+    /// vector in its formal.
+    pub(crate) fn absent_formal<'c>(&self, choices: &'c str) -> Option<&'c str> {
+        (self.is_choice() && self.omittable && !self.several_ok && !self.no_default)
+            .then_some(choices)
+    }
+
+    /// The R expression for this parameter's choice list, as its formal and
+    /// its prelude check spell it: the write-time placeholder of a
+    /// `match_arg` parameter (keyed by the C wrapper `c_ident` and the R name
+    /// `r_name`), `c("a", "b")` for `choices(...)`, `None` for any other
+    /// parameter.
+    pub(crate) fn choice_list(&self, c_ident: &str, r_name: &str) -> Option<String> {
+        if self.match_arg {
+            return Some(crate::match_arg_keys::choices_placeholder(c_ident, r_name));
+        }
+        let quoted: Vec<String> = self
+            .choices
+            .as_ref()?
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect();
+        Some(format!("c({})", quoted.join(", ")))
+    }
+
     /// The text after the quoted choice list in the auto-generated `@param`
     /// line (`One of "a", "b"<suffix>.`): the other accepted values, then an
     /// omission note. `, or NULL for no choice` for `Option<T>`,
     /// `, or a data frame` for `Either<T, DataFrame>`,
     /// `, a data frame, or NULL for no choice` for both,
-    /// `, or NULL; omitting the argument means no choice` for
-    /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
-    /// `Missing<T>`, and nothing for a plain choice. Under `no_default`
-    /// (#1828) the omission note goes (the author documents what omission
-    /// means) and the rest stays.
+    /// `, or NULL; omitting the argument or passing the whole list means no
+    /// choice` for `Missing<Option<T>>`, `; omitting the argument or passing
+    /// the whole list means no choice` for `Missing<T>` (#2152; see
+    /// [`Self::absent_formal`]), and nothing for a plain choice. A
+    /// `Missing<Vec<T>>` `several_ok` list, whose whole vector selects every
+    /// choice, says only `; omitting the argument means no choice`. Under
+    /// `no_default` (#1828) the omission note goes (the author documents what
+    /// omission means) and the rest stays.
     pub(crate) fn choice_doc_suffix(&self) -> String {
         let null_word = if self.omittable {
             "NULL"
@@ -1582,7 +1618,11 @@ impl ParamAttrs {
         let mut suffix =
             choice_alternatives_suffix(self.either_noun.as_deref(), self.optional, null_word);
         if self.omittable && !self.no_default {
-            suffix.push_str("; omitting the argument means no choice");
+            suffix.push_str(if self.several_ok {
+                "; omitting the argument means no choice"
+            } else {
+                "; omitting the argument or passing the whole list means no choice"
+            });
         }
         suffix
     }
@@ -1796,6 +1836,27 @@ pub(crate) fn explicit_checks_by_r_name(
                 crate::r_wrapper_builder::normalize_r_arg_string(name),
                 a.checks.clone(),
             )
+        })
+        .collect()
+}
+
+/// The parameters of `per_param` (keyed by Rust name) whose wrapper reads a
+/// value `identical()` to the formal as omitted
+/// ([`ParamAttrs::absent_formal`], #2152), as R name → formal: the
+/// `match_arg` placeholder keyed by the C wrapper `c_ident`, or the literal
+/// `choices(...)` vector. For
+/// [`crate::r_wrapper_builder::RArgumentBuilder::with_absent_formals`].
+pub(crate) fn absent_formals_by_r_name(
+    per_param: &std::collections::HashMap<String, ParamAttrs>,
+    c_ident: &str,
+) -> std::collections::HashMap<String, String> {
+    per_param
+        .iter()
+        .filter_map(|(name, a)| {
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(name);
+            let choices = a.choice_list(c_ident, &r_name)?;
+            let formal = a.absent_formal(&choices)?.to_string();
+            Some((r_name, formal))
         })
         .collect()
 }
@@ -2264,6 +2325,15 @@ impl MiniextendrFunctionParsed {
     /// (`Option` / `Missing`, #1473 / #1551) from here.
     pub(crate) fn param_attrs(&self, param_name: &str) -> Option<&ParamAttrs> {
         self.per_param.get(param_name)
+    }
+
+    /// The parameters that read a value `identical()` to their formal as
+    /// omitted, keyed by R name (see [`absent_formals_by_r_name`]).
+    pub(crate) fn absent_formals(
+        &self,
+        c_ident: &str,
+    ) -> std::collections::HashMap<String, String> {
+        absent_formals_by_r_name(&self.per_param, c_ident)
     }
 
     /// The `inherits` / `not_inherits` / `no_na` checks of every parameter,

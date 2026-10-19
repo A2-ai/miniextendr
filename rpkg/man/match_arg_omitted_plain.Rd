@@ -7,7 +7,7 @@
 match_arg_omitted_plain(mode = c("Fast", "Safe", "Debug"))
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
+\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 Omittable mode without \code{Option}: \code{NULL} selects the first choice, as for a

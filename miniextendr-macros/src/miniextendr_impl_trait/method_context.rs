@@ -120,8 +120,9 @@ pub(super) struct TraitMethodContext<'a> {
     pub(super) params: String,
     /// R call arguments string (without defaults), used inside `.Call()`
     /// expressions. `Missing<T>` parameters are forwarded as
-    /// `if (missing(p)) quote(expr=) else p` — see
-    /// `r_wrapper_builder::RArgumentBuilder::build_call_args_vec`. Before this
+    /// `if (missing(p)) quote(expr=) else p` (a single-choice one also
+    /// forwards the sentinel for a value `identical()` to its formal, #2152)
+    /// — see `r_wrapper_builder::RArgumentBuilder::build_call_args_vec`. Before this
     /// context existed, trait methods built call args via
     /// `collect_param_idents` instead, which skipped that forwarding entirely.
     pub(super) args: String,
@@ -154,7 +155,10 @@ impl<'a> TraitMethodContext<'a> {
         );
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(
+            &method.sig,
+            crate::miniextendr_fn::absent_formals_by_r_name(&method.per_param, &c_ident),
+        );
         Self {
             method,
             type_ident,

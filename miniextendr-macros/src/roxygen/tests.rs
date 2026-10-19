@@ -1999,7 +1999,7 @@ fn fn_param_tags_describe_layered_choices() {
             ),
             format!(
                 "{PARAM_FILLER_MARKER}@param side One of \"low\", \"high\", or NULL; omitting the \
-                 argument means no choice."
+                 argument or passing the whole list means no choice."
             ),
         ],
         "got {tags:?}"

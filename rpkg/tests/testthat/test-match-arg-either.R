@@ -71,6 +71,13 @@ test_that("Missing<Either<T, R>> and Missing<Option<Either<T, R>>> report omissi
   expect_equal(match_arg_either_route_omitted_optional(NULL), "null")
   expect_equal(match_arg_either_route_omitted_optional("inf"), "Infusion")
   expect_equal(match_arg_either_route_omitted_optional(doses), "frame:2x2")
+
+  # The formal passed whole reads as omitted (#2152); without `Missing` it is
+  # the first choice.
+  expect_equal(match_arg_either_route_omitted(routes), "absent")
+  expect_equal(match_arg_either_route_omitted_optional(routes), "absent")
+  expect_equal(match_arg_either_route_refuse_null(routes), "absent")
+  expect_equal(match_arg_either_route(routes), "Oral")
 })
 
 test_that("not_inherits(\"NULL\") on Missing<Either<T, DataFrame>> refuses NULL with its own message", {
@@ -163,6 +170,9 @@ expect_route_level <- function(f) {
   expect_equal(f(doses, level = 2.5), "route=frame:2x2;level=number:2.5")
   expect_choice_error(f("iv"), "route", routes)
   expect_choice_error(f(level = "max"), "level", levels)
+  # The omittable level reads its formal passed whole as omitted (#2152); the
+  # plain `Either` route reads it as the first choice.
+  expect_equal(f(routes, level = levels), "route=Oral;level=absent")
   # NULL is not a choice: it goes to the `DataFrame` arm, which rejects it.
   expect_error(f(NULL), "route")
 }
@@ -195,6 +205,7 @@ test_that("S7 constructor, method and shortcut with Either choice parameters", {
   expect_equal(route_given(EitherRouteS7(start = "inf")), "Infusion")
   expect_equal(route_given(EitherRouteS7(start = factor("oral"))), "Oral")
   expect_equal(route_given(EitherRouteS7(start = doses)), "frame:2x2")
+  expect_equal(route_given(EitherRouteS7(start = routes)), "absent")
   expect_choice_error(EitherRouteS7(start = "iv"), "start", routes)
 
   h <- EitherRouteS7()
@@ -222,6 +233,7 @@ expect_either_grade <- function(grade) {
   expect_equal(grade(), "absent")
   expect_equal(grade(grade = "hi"), "level:high")
   expect_equal(grade(grade = 4), "number:4")
+  expect_equal(grade(grade = levels), "absent")
   expect_choice_error(grade(grade = "max"), "grade", levels)
 }
 
@@ -253,14 +265,14 @@ test_that("method Either choice params name the other kind in their @param line"
     expect_length(page, 1L)
     page[[1L]]
   }
-  level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice."
+  level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument or passing the whole list means no choice."
   for (topic in c("EitherRouteS3", "EitherRouteS7", "EitherRouteVctrs")) {
     expect_match(rd_text(topic), level_or_number, fixed = TRUE)
   }
   # The S7 constructor's `start` (inlined in `new_class()`).
   expect_match(
     rd_text("EitherRouteS7"),
-    "\"infusion\", or a data frame; omitting the argument means no choice.",
+    "\"infusion\", or a data frame; omitting the argument or passing the whole list means no choice.",
     fixed = TRUE
   )
 })
