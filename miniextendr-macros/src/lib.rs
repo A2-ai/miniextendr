@@ -1517,7 +1517,9 @@ fn expand_miniextendr(
             merged_defaults.entry(r_name).or_insert(formal);
         }
     }
-    arg_builder = arg_builder.with_defaults(merged_defaults);
+    arg_builder = arg_builder
+        .with_defaults(merged_defaults)
+        .with_absent_formals(parsed.absent_formals(&c_ident.to_string()));
 
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
@@ -1755,7 +1757,8 @@ fn expand_miniextendr(
             // `c("a", "b", ...)`; it substitutes every occurrence). Strict
             // several_ok (#1472): every element must match; NULL selects every
             // choice. `Option<T>` (#1473): NULL means no choice and skips the
-            // check; `Missing<T>` (#1551) skips it for an omitted argument. The
+            // check; `Missing<T>` (#1551) skips it for an omitted argument and,
+            // for a single choice, for the formal passed whole (#2152). The
             // helpers read a factor as its labels (#1552). Under `call = caller`
             // every form raises with `.mx_call` (#1548).
             let placeholder =

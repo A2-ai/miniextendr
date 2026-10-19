@@ -26,7 +26,7 @@ EitherRouteS7_plan_s7(
 EitherRouteS7_either_grade(.mx_self, grade = c("low", "mid", "high"), ...)
 }
 \arguments{
-\item{start}{One of "oral", "bolus", "infusion", or a data frame; omitting the argument means no choice.}
+\item{start}{One of "oral", "bolus", "infusion", or a data frame; omitting the argument or passing the whole list means no choice.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
@@ -36,9 +36,9 @@ EitherRouteS7_either_grade(.mx_self, grade = c("low", "mid", "high"), ...)
 
 \item{route}{One of "oral", "bolus", "infusion", or a data frame.}
 
-\item{level}{One of "low", "mid", "high", or a number; omitting the argument means no choice.}
+\item{level}{One of "low", "mid", "high", or a number; omitting the argument or passing the whole list means no choice.}
 
-\item{grade}{One of "low", "mid", "high", or a number; omitting the argument means no choice.}
+\item{grade}{One of "low", "mid", "high", or a number; omitting the argument or passing the whole list means no choice.}
 }
 \description{
 What the constructor was given.

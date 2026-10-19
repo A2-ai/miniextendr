@@ -53,13 +53,25 @@ impl R6MatchArgCounter {
     }
 
     /// Omittable optional mode (#1551): the formal keeps the choice vector,
-    /// an omitted argument reports the current mode, `NULL` reports `"null"`.
+    /// an omitted argument (or that vector passed whole, #2152) reports the
+    /// current mode, `NULL` reports `"null"`.
     #[miniextendr(match_arg(mode))]
     pub fn peek(&self, mode: Missing<Option<ImplMode>>) -> String {
         match mode {
             Missing::Absent => format!("current:{:?}", self.mode),
             Missing::Present(None) => "null".to_string(),
             Missing::Present(Some(m)) => format!("{m:?}"),
+        }
+    }
+
+    /// Omittable mode without `Option`: an omitted argument, or the whole
+    /// choice vector (#2152), reports the current mode; `NULL` is the first
+    /// choice.
+    #[miniextendr(match_arg(mode))]
+    pub fn peek_plain(&self, mode: Missing<ImplMode>) -> String {
+        match mode {
+            Missing::Absent => format!("current:{:?}", self.mode),
+            Missing::Present(m) => format!("{m:?}"),
         }
     }
 

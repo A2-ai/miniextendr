@@ -15,6 +15,7 @@ independently of the derived-enum path used by match_arg.
     \item \href{#method-R6MatchArgCounter-mode}{\code{R6MatchArgCounter$mode()}}
     \item \href{#method-R6MatchArgCounter-record}{\code{R6MatchArgCounter$record()}}
     \item \href{#method-R6MatchArgCounter-peek}{\code{R6MatchArgCounter$peek()}}
+    \item \href{#method-R6MatchArgCounter-peek_plain}{\code{R6MatchArgCounter$peek_plain()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -73,7 +74,8 @@ independently of the derived-enum path used by match_arg.
 \if{latex}{\out{\hypertarget{method-R6MatchArgCounter-peek}{}}}
 \subsection{\code{R6MatchArgCounter$peek()}}{
   Omittable optional mode (#1551): the formal keeps the choice vector,
-an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
+an omitted argument (or that vector passed whole, #2152) reports the
+current mode, \code{NULL} reports \code{"null"}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6MatchArgCounter$peek(mode = c("Fast", "Safe", "Debug"))}
@@ -82,7 +84,28 @@ an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument or passing the whole list means no choice.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6MatchArgCounter-peek_plain"></a>}}
+\if{latex}{\out{\hypertarget{method-R6MatchArgCounter-peek_plain}{}}}
+\subsection{\code{R6MatchArgCounter$peek_plain()}}{
+  Omittable mode without \code{Option}: an omitted argument, or the whole
+choice vector (#2152), reports the current mode; \code{NULL} is the first
+choice.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6MatchArgCounter$peek_plain(mode = c("Fast", "Safe", "Debug"))}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug"; omitting the argument or passing the whole list means no choice.}
     }
     \if{html}{\out{</div>}}
   }
