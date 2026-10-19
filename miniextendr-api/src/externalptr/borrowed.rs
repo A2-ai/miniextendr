@@ -20,9 +20,62 @@ mod sealed {
 /// holds the borrow. Implementations are sealed because the owner and data
 /// must describe the same allocation.
 pub trait SidecarOwner<T: TypedExternal + ?Sized>: sealed::Owner {
-    /// The value, borrowed shared, with its R object.
+    /// The value, borrowed shared, with its R object; or, for a [`Saved`]
+    /// handle, the restored pointer alone.
     #[doc(hidden)]
-    fn __mx_read(&self) -> ExternalPtrRef<'_, T>;
+    fn __mx_read(&self) -> SidecarRead<'_, T>;
+}
+
+/// What a [`SidecarOwner`] gives the generated getters.
+#[doc(hidden)]
+pub enum SidecarRead<'a, T: TypedExternal + ?Sized> {
+    /// A live value, whose pending `Sidecar` values the getter flushes first.
+    Live(ExternalPtrRef<'a, T>),
+    /// A pointer restored from a saved session: its slots hold the saved
+    /// values, and there is no value yet.
+    Saved(SEXP),
+}
+
+/// What a save of a `T` kept, handed to the type's rebuild hook
+/// (`#[externalptr(rebuild = path)]`) when a pointer restored from a saved
+/// session is first used.
+///
+/// The type's generated `Sidecar` getters read the saved values through it,
+/// as through a live handle: `Self::keys(saved)`. Only `Sidecar` fields have
+/// a slot in the save; a struct field or a `Computed` field is gone with the
+/// Rust value, so a type whose rebuild needs one keeps it in a `Sidecar`.
+pub struct Saved<'a, T: TypedExternal + ?Sized> {
+    sexp: SEXP,
+    _marker: PhantomData<&'a T>,
+}
+
+impl<T: TypedExternal + ?Sized> Saved<'_, T> {
+    /// The handle over `sexp`, a pointer for a `T` restored without its
+    /// value.
+    ///
+    /// # Safety
+    ///
+    /// `sexp` must be a live `EXTPTRSXP` built by `ExternalPtr` for a `T` by
+    /// this version of its crate, rooted for the handle's lifetime.
+    pub(crate) unsafe fn new(sexp: SEXP) -> Self {
+        Self {
+            sexp,
+            _marker: PhantomData,
+        }
+    }
+
+    /// The restored external pointer.
+    pub fn as_sexp(&self) -> SEXP {
+        self.sexp
+    }
+}
+
+impl<T: TypedExternal + ?Sized> fmt::Debug for Saved<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Saved")
+            .field("type", &T::TYPE_NAME)
+            .finish()
+    }
 }
 
 /// A handle accepted by generated sidecar setters: an
@@ -276,19 +329,26 @@ impl<T: TypedExternal> sealed::Owner for super::ExternalPtr<T> {}
 impl<T: TypedExternal + ?Sized> sealed::Owner for ExternalPtrRef<'_, T> {}
 impl<T: TypedExternal + ?Sized> sealed::Owner for ExternalPtrMut<'_, T> {}
 
+impl<T: TypedExternal + ?Sized> sealed::Owner for Saved<'_, T> {}
+
 impl<T: TypedExternal> SidecarOwner<T> for super::ExternalPtr<T> {
-    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
-        self.borrow()
+    fn __mx_read(&self) -> SidecarRead<'_, T> {
+        SidecarRead::Live(self.borrow())
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrRef<'_, T> {
-    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
-        self.rb()
+    fn __mx_read(&self) -> SidecarRead<'_, T> {
+        SidecarRead::Live(self.rb())
     }
 }
 impl<T: TypedExternal + ?Sized> SidecarOwner<T> for ExternalPtrMut<'_, T> {
-    fn __mx_read(&self) -> ExternalPtrRef<'_, T> {
-        self.rb()
+    fn __mx_read(&self) -> SidecarRead<'_, T> {
+        SidecarRead::Live(self.rb())
+    }
+}
+impl<T: TypedExternal + ?Sized> SidecarOwner<T> for Saved<'_, T> {
+    fn __mx_read(&self) -> SidecarRead<'_, T> {
+        SidecarRead::Saved(self.sexp)
     }
 }
 impl<T: TypedExternal> SidecarOwnerMut<T> for super::ExternalPtr<T> {

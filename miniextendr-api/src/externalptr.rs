@@ -540,6 +540,106 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEX
     })
 }
 
+/// The message of a refused rebuild: the restored refusal's, then the cause's.
+fn rebuild_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> String {
+    match T::RESTORED_ERROR_MESSAGE {
+        Some(message) => format!("{message} (rebuilding it failed: {cause})"),
+        None => format!(
+            "this `{type_name}` object was restored from a saved session and rebuilding it \
+             failed: {cause}"
+        ),
+    }
+}
+
+std::thread_local! {
+    /// The pointers whose rebuild hook is running on this thread: a hook that
+    /// reaches its own object again finds it refused, not rebuilt twice.
+    static REBUILDING: RefCell<Vec<SEXP>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Rebuilds the value of `sexp`, a pointer without an address, when `T`
+/// has a rebuild hook (`#[externalptr(rebuild = path)]`) and this version of
+/// its crate saved it, and installs it in `sexp`. Returns whether `sexp`
+/// holds a value now; `false` leaves the caller to refuse the pointer as
+/// before (another version saved it, another type, no hook, or the hook is
+/// already running for `sexp`).
+///
+/// The saved `Sidecar` slots stay as they are: the hook reads them through
+/// [`Saved`], and the `Sidecar` values in the struct it returns are dropped,
+/// not written. A failing hook (an `Err`, or a condition it raises) installs
+/// nothing and raises the restored refusal of `T` (its classes, then
+/// [`RESTORED_NO_VALUE_CLASS`] and [`RESTORED_CLASS`]), the cause as
+/// `e$parent`; the next use tries again. Any other unwind (an R error, a
+/// plain panic) carries on.
+///
+/// # Safety
+///
+/// On R's main thread, with `sexp` a valid `EXTPTRSXP` whose address is NULL,
+/// rooted for the call; `receiver` is the object the user called on.
+#[cold]
+pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> bool {
+    if !T::REBUILDS {
+        return false;
+    }
+    if unsafe { classify_null_address::<T>(sexp) } != NullAddress::Restored {
+        return false;
+    }
+    if REBUILDING.with_borrow(|running| running.contains(&sexp)) {
+        return false;
+    }
+    struct Running(SEXP);
+    impl Drop for Running {
+        fn drop(&mut self) {
+            REBUILDING.with_borrow_mut(|running| running.retain(|&s| s != self.0));
+        }
+    }
+    REBUILDING.with_borrow_mut(|running| running.push(sexp));
+    let running = Running(sexp);
+    // SAFETY: `sexp` is a pointer this version built for a `T` (classified
+    // above), rooted by the caller for the hook's duration.
+    let saved = unsafe { Saved::<T>::new(sexp) };
+    let outcome = crate::condition::catch_condition(|| T::__mx_rebuild(&saved));
+    drop(running);
+    match outcome {
+        Ok(Ok(value)) => {
+            // SAFETY: on R's main thread; `sexp` still has no address (the
+            // hook could not install one: a reentrant use was refused).
+            unsafe { install_rebuilt(sexp, value) };
+            true
+        }
+        Ok(Err(cause)) | Err(cause) => {
+            let name = receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
+            RCondition::Error {
+                message: rebuild_failed_message::<T>(&name, cause.message()),
+                class: restored_classes_of::<T>(RESTORED_NO_VALUE_CLASS),
+                data: None,
+                call: ConditionCall::Inherit,
+            }
+            .with_parent(cause)
+            .raise()
+        }
+    }
+}
+
+/// Puts the rebuilt `value` in `sexp`, a restored pointer for a `T`, as
+/// construction puts a new value in a new pointer: the finalizer first
+/// (R does not save it), then the address. The saved `Sidecar` slots are
+/// kept: `value`'s pending `Sidecar` values are dropped, not written.
+///
+/// # Safety
+///
+/// On R's main thread, with `sexp` a valid `EXTPTRSXP` for a `T` whose
+/// address is NULL.
+unsafe fn install_rebuilt<T: TypedExternal>(sexp: SEXP, value: T) {
+    discard_pending_sidecars(&value);
+    let (_, any_raw) = ExternalPtr::<T>::erase(value);
+    // Own the allocation until the finalizer that frees it is registered.
+    let allocation = unsafe { Box::from_raw(any_raw) };
+    unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
+    let any_raw = Box::into_raw(allocation);
+    unsafe { R_SetExternalPtrAddr(sexp, any_raw.cast()) };
+}
+
 /// Empties the pointer a value was moved out of (`into_raw` / `into_inner`):
 /// the address, so the finalizer is a no-op, and the tag and protection list
 /// too, so the pointer reads as empty (the plain `null external pointer`
@@ -709,6 +809,27 @@ pub trait TypedExternal: 'static {
     #[doc(hidden)]
     #[inline]
     fn __mx_visit_sidecars(&self, _visit: &mut dyn FnMut(usize, &'static str, &dyn SidecarField)) {}
+
+    /// Whether a pointer of this type that this version of its crate saved
+    /// is rebuilt on first use after `readRDS()`, by [`Self::__mx_rebuild`],
+    /// instead of refused.
+    ///
+    /// `#[derive(ExternalPtr)]` sets it with `#[externalptr(rebuild = path)]`.
+    #[doc(hidden)]
+    const REBUILDS: bool = false;
+
+    /// Rebuilds the value of a pointer of this type restored from a saved
+    /// session, from what the save kept. `#[derive(ExternalPtr)]` emits it for
+    /// `#[externalptr(rebuild = path)]`: it calls `path` and turns its `Err`
+    /// into a condition.
+    #[doc(hidden)]
+    fn __mx_rebuild(saved: &Saved<'_, Self>) -> Result<Self, RCondition>
+    where
+        Self: Sized,
+    {
+        let _ = saved;
+        unreachable!("`{}` has no rebuild hook", Self::TYPE_NAME)
+    }
 }
 
 /// Marker trait for types that should be converted to R as ExternalPtr.
@@ -893,13 +1014,22 @@ unsafe fn list_element(sexp: SEXP, name: &str) -> Option<SEXP> {
 /// hand-off.
 #[inline]
 pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
-    if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
-        return sexp;
+    let ptr = if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
+        sexp
+    } else {
+        match unsafe { unwrap_class_handle(sexp) } {
+            Some(inner) => inner,
+            None => receiver_not_a_handle::<T>(sexp),
+        }
+    };
+    // A pointer restored from a saved session gets its value back here when
+    // the type has a rebuild hook, before the receiver is borrowed.
+    // SAFETY: on R's main thread; `ptr` is a valid EXTPTRSXP reachable from
+    // `sexp`, which the call's frame roots.
+    if T::REBUILDS && unsafe { R_ExternalPtrAddr(ptr) }.is_null() {
+        unsafe { rebuild_restored::<T>(ptr, sexp) };
     }
-    match unsafe { unwrap_class_handle(sexp) } {
-        Some(inner) => inner,
-        None => receiver_not_a_handle::<T>(sexp),
-    }
+    ptr
 }
 
 /// The typed handle of an instance-method receiver, for `self: ExternalPtr<Self>`
@@ -2073,6 +2203,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
         );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
+            // SAFETY: on R's main thread with a valid EXTPTRSXP, which the
+            // caller roots.
+            if unsafe { rebuild_restored::<T>(sexp, sexp) } {
+                return unsafe { Self::wrap_sexp_with_error(sexp) };
+            }
             // SAFETY: on R's main thread with a valid EXTPTRSXP.
             return Err(match unsafe { classify_null_address::<T>(sexp) } {
                 NullAddress::Foreign => TypeMismatchError::NullPointer,
@@ -2990,7 +3125,9 @@ mod altrep_helpers;
 pub use altrep_helpers::*;
 
 mod borrowed;
-pub use borrowed::{ExternalPtrMut, ExternalPtrRef, SidecarOwner, SidecarOwnerMut};
+pub use borrowed::{
+    ExternalPtrMut, ExternalPtrRef, Saved, SidecarOwner, SidecarOwnerMut, SidecarRead,
+};
 
 mod sidecar;
 pub use sidecar::*;

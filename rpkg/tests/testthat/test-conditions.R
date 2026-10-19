@@ -346,3 +346,43 @@ test_that("issue #1103: NA scalar field is present as NA, not dropped", {
 })
 
 # endregion
+
+# region: Cause chains (RCondition::with_parent)
+
+test_that("with_parent puts the cause in e$parent, unsignalled and with its own classes", {
+  expect_identical(miniextendr:::test_condition_with_parent("12"), 12L)
+  e <- tryCatch(miniextendr:::test_condition_with_parent("x"), pkg_error_load = function(e) e)
+  expect_identical(conditionMessage(e), "could not load the setting")
+  expect_false(inherits(e, "pkg_error_parse"))
+  expect_identical(
+    class(e$parent),
+    c("pkg_error_parse", "rust_error", "simpleError", "error", "condition")
+  )
+  expect_identical(conditionMessage(e$parent), "not a number: x")
+  expect_identical(e$parent$line, "x")
+  expect_identical(conditionCall(e$parent), conditionCall(e))
+  # A handler for the cause's class doesn't catch the raised condition.
+  expect_error(
+    tryCatch(miniextendr:::test_condition_with_parent("x"), pkg_error_parse = function(e) "caught"),
+    class = "pkg_error_load"
+  )
+})
+
+test_that("a cause can be any kind, report no call, and have its own parent", {
+  e <- tryCatch(miniextendr:::test_condition_with_parent_chain(), pkg_top = function(e) e)
+  expect_identical(conditionMessage(e), "top")
+  # The second with_parent replaced the first and the `parent` data field.
+  middle <- e$parent
+  expect_s3_class(middle, c("pkg_middle", "warning"))
+  expect_identical(conditionMessage(middle), "middle")
+  expect_null(conditionCall(middle))
+  expect_identical(middle$step, 2L)
+  expect_null(middle[[".mx_parent"]])
+  root <- middle$parent
+  expect_s3_class(root, c("pkg_root", "message"))
+  # A message condition ends in a newline, as base R's message() writes it.
+  expect_identical(conditionMessage(root), "root\n")
+  expect_null(root$parent)
+})
+
+# endregion
