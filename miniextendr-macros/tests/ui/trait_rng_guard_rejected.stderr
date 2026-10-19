@@ -1,0 +1,5 @@
+error: a trait method cannot take `&RngGuard`: its arguments cross the trait ABI as R values, and the guard is none. Load the state in the body with `with_rng(|rng| ...)` instead of the `rng` option, or take the guard on an inherent impl method or a standalone function
+  --> tests/ui/trait_rng_guard_rejected.rs:10:25
+   |
+10 |     fn draw(&self, rng: &miniextendr_api::RngGuard) -> f64;
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^

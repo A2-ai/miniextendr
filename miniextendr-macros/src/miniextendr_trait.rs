@@ -261,8 +261,10 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
     }
     // If receiver is None or FnArg::Typed (no self), it's a static method - allowed
 
-    // The unforced dots (#1892) cannot cross the vtable.
+    // The unforced dots (#1892) cannot cross the vtable, nor can the RNG
+    // guard (#2002).
     crate::miniextendr_fn::refuse_lazy_dots_in_trait_method(&method.sig.inputs)?;
+    crate::miniextendr_fn::refuse_rng_guard_in_trait_method(&method.sig.inputs)?;
 
     Ok(())
 }

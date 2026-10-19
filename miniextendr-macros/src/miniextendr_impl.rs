@@ -617,6 +617,10 @@ pub struct ParsedMethod {
     /// Whether this method accepts dots, either from raw `...` rewritten to
     /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
     pub has_dots: bool,
+    /// Where the `&RngGuard` parameter (#2002) sat among the parameters of
+    /// [`Self::sig`], which no longer holds it: it is no R formal, and the C
+    /// wrapper passes the `rng` wrapper's guard at that position.
+    pub rng_guard: Option<usize>,
 }
 
 /// R6-specific per-method markers, separated from [`MethodAttrs`] so the
@@ -2486,6 +2490,14 @@ impl ParsedMethod {
                 .unwrap_or_else(|| item.sig.ident.span()),
         )?;
 
+        // The RNG guard (#2002): a `&RngGuard` parameter needs `rng` and takes
+        // no option, which the method-level forms would name.
+        crate::miniextendr_fn::check_rng_guard_params(
+            &peeled_sig.inputs,
+            method_attrs.rng,
+            |name| method_attrs.per_param.contains_key(name) || param_defaults.contains_key(name),
+        )?;
+
         // Validate: Missing<T> parameters must not have defaults
         for arg in peeled_sig.inputs.iter() {
             if let syn::FnArg::Typed(pt) = arg
@@ -2545,6 +2557,21 @@ impl ParsedMethod {
         // Return-visibility marker (#1213): validate, record, and strip it from
         // the signature the codegen sees (whose parameters are already peeled).
         let mut sig = Self::sig_without_env(&peeled_sig);
+        // The RNG guard leaves the signature every R-side consumer and the
+        // argument conversion see; the C wrapper puts the guard back in the
+        // call at its position.
+        let rng_guard = sig.inputs.iter().position(|arg| {
+            matches!(arg, syn::FnArg::Typed(pt) if crate::type_inspect::is_rng_guard_param(&pt.ty))
+        });
+        if rng_guard.is_some() {
+            sig.inputs = std::mem::take(&mut sig.inputs)
+                .into_iter()
+                .filter(|arg| {
+                    !matches!(arg, syn::FnArg::Typed(pt)
+                        if crate::type_inspect::is_rng_guard_param(&pt.ty))
+                })
+                .collect();
+        }
         let visibility_marker = match &item.sig.output {
             syn::ReturnType::Type(_, ty) => {
                 if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return") {
@@ -2586,6 +2613,7 @@ impl ParsedMethod {
             method_attrs,
             param_defaults,
             has_dots,
+            rng_guard,
         })
     }
 
@@ -3826,6 +3854,7 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         || method.env.is_instance()
         || method.has_dots
         || method.method_attrs.check_interrupt
+        || method.rng_guard.is_some()
         || crate::type_inspect::signature_holds_r_values(&method.sig)
     {
         ThreadStrategy::MainThread
@@ -3835,8 +3864,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         ThreadStrategy::MainThread
     };
 
-    // Build rust argument names from the signature
-    let rust_args: Vec<syn::Ident> = method
+    // Build rust arguments from the signature, with the `rng` wrapper's guard
+    // back at the `&RngGuard` parameter's position (#2002)
+    let mut rust_args: Vec<TokenStream> = method
         .sig
         .inputs
         .iter()
@@ -3844,12 +3874,16 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
-                Some(pat_ident.ident.clone())
+                let ident = &pat_ident.ident;
+                Some(quote! { #ident })
             } else {
                 None
             }
         })
         .collect();
+    if let Some(index) = method.rng_guard {
+        rust_args.insert(index, crate::type_inspect::rng_guard_arg());
+    }
 
     /// How a consuming (`self` by value) receiver is handled (#1432).
     #[derive(Clone, Copy, PartialEq, Eq)]

@@ -23,6 +23,24 @@ test_that("rand_rrng_uniform is reproducible under set.seed (uses R's RNG, not a
   expect_false(identical(a, rand_rrng_uniform(10L)))
 })
 
+test_that("an RRng from the guard saves the state it advanced", {
+  skip_if_missing_feature("rand")
+  # `random::<f64>()` takes 64 bits: two `unif_rand()` draws per value.
+  set.seed(42)
+  x <- c(rand_rrng_uniform(3L), runif(1L))
+  set.seed(42)
+  invisible(runif(6L))
+  expect_identical(x[[4]], runif(1L))
+})
+
+test_that("an RRng from with_rng draws rnorm()'s values", {
+  skip_if_missing_feature("rand")
+  set.seed(5)
+  x <- c(rand_rrng_with_rng_normal(4L), rnorm(4L))
+  set.seed(5)
+  expect_identical(x, rnorm(8L))
+})
+
 test_that("rand_rrng_range respects bounds and R's RNG", {
   skip_if_missing_feature("rand")
   set.seed(1)
@@ -52,6 +70,9 @@ test_that("rand_rdistributions_sample exercises all four trait methods", {
   expect_true(v[[4]] >= 0 && v[[4]] < 1) # uniform_f64
   set.seed(7)
   expect_identical(rand_rdistributions_sample(), v)
+  # R's own functions draw the same values from the same seed.
+  set.seed(7)
+  expect_identical(v, c(rnorm(1L), rexp(1L), sample.int(100L, 1L) - 1, runif(1L)))
 })
 
 # =============================================================================

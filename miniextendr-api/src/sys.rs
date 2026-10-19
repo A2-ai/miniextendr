@@ -1605,7 +1605,9 @@ unsafe extern "C-unwind" {
     /// Save the current RNG state from R's global state.
     ///
     /// Must be called before using `unif_rand()`, `norm_rand()`, etc.
-    /// The state is restored with `PutRNGstate()`.
+    /// The state is restored with `PutRNGstate()`. The safe forms are
+    /// [`RngGuard`](crate::rng::RngGuard), [`with_rng`](crate::rng::with_rng)
+    /// and `#[miniextendr(rng)]`.
     ///
     /// # Example
     ///
@@ -1629,21 +1631,24 @@ unsafe extern "C-unwind" {
     ///
     /// # Important
     ///
-    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after. The safe
+    /// form is [`RngGuard::unif_rand`](crate::rng::RngGuard::unif_rand).
     pub fn unif_rand() -> f64;
 
     /// Generate a standard normal random number (mean 0, sd 1).
     ///
     /// # Important
     ///
-    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after. The safe
+    /// form is [`RngGuard::norm_rand`](crate::rng::RngGuard::norm_rand).
     pub fn norm_rand() -> f64;
 
     /// Generate an exponential random number with rate 1.
     ///
     /// # Important
     ///
-    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after. The safe
+    /// form is [`RngGuard::exp_rand`](crate::rng::RngGuard::exp_rand).
     pub fn exp_rand() -> f64;
 
     /// Generate a uniform random index in [0, dn).
@@ -1652,7 +1657,8 @@ unsafe extern "C-unwind" {
     ///
     /// # Important
     ///
-    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after. The safe
+    /// form is [`RngGuard::unif_index`](crate::rng::RngGuard::unif_index).
     pub fn R_unif_index(dn: f64) -> f64;
 
     /// Get the current discrete uniform sample method.

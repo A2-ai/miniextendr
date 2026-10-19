@@ -152,8 +152,10 @@
 //!
 //! # RNG in Parallel Code
 //!
-//! `RRng` (with `rand` feature) calls R's RNG APIs, which cannot be called from
-//! Rayon threads. For parallel RNG, use chunk-based seeding for reproducibility:
+//! R's RNG is one global state on R's main thread. Its draws are methods on
+//! `RngGuard`, and `RRng` (with the `rand` feature) borrows a guard; both are
+//! `!Send` and `!Sync`, so a Rayon closure that draws from them does not
+//! compile. For parallel RNG, use chunk-based seeding for reproducibility:
 //!
 //! ```ignore
 //! use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
@@ -167,10 +169,11 @@
 //!     }
 //! });
 //!
-//! // PANIC: RRng cannot be used inside closures (calls R APIs)
-//! with_r_vec(len, |chunk, _| {
-//!     let mut rng = RRng::new();  // PANICS! R API not available
-//!     for slot in chunk { *slot = rng.uniform_f64(); }
+//! // DOES NOT COMPILE: the guard is `!Sync`, so the closure is not `Send`
+//! with_rng(|guard| {
+//!     with_r_vec(len, |chunk, _| {
+//!         for slot in chunk { *slot = guard.unif_rand(); }
+//!     })
 //! });
 //! ```
 //!
@@ -192,7 +195,8 @@
 //! - **`with_r_thread()`** - routing only works from the worker thread
 //! - **`with_r_vec()`**, **`with_r_matrix()`**, etc. - these use `with_r_thread` internally
 //! - **`.into_sexp()`** on any type - routes to main thread, fails on Rayon threads
-//! - **`RRng`** and R's RNG functions - call R APIs internally
+//! - **R's RNG functions** (`sys::unif_rand` etc.) - call R APIs internally
+//!   (`RngGuard` and `RRng` are `!Send`, so their draws don't compile there)
 //! - **`TryFromSexp::try_from_sexp()`** - may call R for error messages
 //!
 //! **The golden rule**: Inside Rayon parallel code, use only pure Rust operations

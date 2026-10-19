@@ -1071,10 +1071,23 @@ fn expand_miniextendr(
     {
         return err.into_compile_error().into();
     }
+    // The RNG guard (#2002): a `&RngGuard` parameter needs `rng`, whose
+    // wrapper passes the guard it holds; it is no R formal either.
+    if let Err(err) =
+        miniextendr_fn::check_rng_guard_params(all_inputs, rng, |name| parsed.has_param_attrs(name))
+    {
+        return err.into_compile_error().into();
+    }
+    let has_rng_guard = all_inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(pt) if crate::type_inspect::is_rng_guard_param(&pt.ty))
+    });
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
         .filter(|arg| match arg {
-            syn::FnArg::Typed(pt) => crate::type_inspect::call_marker(&pt.ty).is_none(),
+            syn::FnArg::Typed(pt) => {
+                crate::type_inspect::call_marker(&pt.ty).is_none()
+                    && !crate::type_inspect::is_rng_guard_param(&pt.ty)
+            }
             syn::FnArg::Receiver(_) => true,
         })
         .cloned()
@@ -1101,7 +1114,8 @@ fn expand_miniextendr(
 
     // Calling the Rust function: each R-backed parameter by name, a `Call` /
     // `CallerCall` marker from the C wrapper's `__miniextendr_call` slot (the
-    // R wrapper's `.call = ...` argument, so a `CallerCall` sees `.mx_call`).
+    // R wrapper's `.call = ...` argument, so a `CallerCall` sees `.mx_call`),
+    // the RNG guard from the `rng` wrapper.
     let rust_inputs: Vec<proc_macro2::TokenStream> = all_inputs
         .iter()
         .filter_map(|arg| {
@@ -1109,6 +1123,9 @@ fn expand_miniextendr(
                 && let syn::Pat::Ident(p) = pt.pat.as_ref()
             {
                 let ident = &p.ident;
+                if crate::type_inspect::is_rng_guard_param(&pt.ty) {
+                    return Some(crate::type_inspect::rng_guard_arg());
+                }
                 return Some(match crate::type_inspect::call_marker(&pt.ty) {
                     Some(r_wrapper_builder::CallAttribution::Caller) => quote::quote! {
                         ::miniextendr_api::CallerCall::from_sexp(__miniextendr_call)
@@ -1307,9 +1324,11 @@ fn expand_miniextendr(
     //   has_main_thread_bound_return, has_dots, check_interrupt
     // A `Quoted` / `Quosure` parameter (also under `Missing<..>`, which
     // `is_main_thread_bound_input` does not look into) holds R objects and
-    // evaluates R code (#1835).
+    // evaluates R code (#1835). The RNG guard (#2002) is `!Send` and its
+    // draws read R's RNG state.
     let requires_main_thread = returns_sexp
         || has_sexp_inputs
+        || has_rng_guard
         || !unevaluated_r_names.is_empty()
         || has_main_thread_bound_return
         || has_dots

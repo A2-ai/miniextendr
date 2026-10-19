@@ -447,6 +447,67 @@ fn lazy_dots_parameter_checks() {
     }
 }
 
+/// The RNG guard (#2002): `&RngGuard` needs `rng`, appears at most once,
+/// takes no per-parameter option, and no other shape names the guard; trait
+/// methods take none.
+#[test]
+fn rng_guard_parameter_checks() {
+    use crate::miniextendr_fn::{check_rng_guard_params, refuse_rng_guard_in_trait_method};
+    let check = |sig: &str, rng: bool, with_options: &[&str]| {
+        check_rng_guard_params(&inputs_of(sig), rng, |name| with_options.contains(&name))
+            .map_err(|err| err.to_string())
+    };
+    for sig in [
+        "rng: &RngGuard, n: i32",
+        "n: i32, rng: &'a miniextendr_api::RngGuard, x: f64",
+        "&self, rng: &::miniextendr_api::rng::RngGuard",
+        "n: i32",
+    ] {
+        assert_eq!(check(sig, true, &[]), Ok(()), "{sig}");
+    }
+    assert_eq!(check("n: i32", false, &[]), Ok(()));
+    assert_eq!(check("n: i32, rng: &RngGuard", true, &["n"]), Ok(()));
+
+    let msg = check("n: i32, rng: &RngGuard", false, &[]).expect_err("no rng");
+    assert!(
+        msg.starts_with("a `&RngGuard` parameter needs `#[miniextendr(rng)]`"),
+        "{msg}"
+    );
+    let msg = check("a: &RngGuard, b: &RngGuard", true, &[]).expect_err("two guards");
+    assert!(
+        msg.starts_with("a `#[miniextendr]` function takes at most one `&RngGuard` parameter"),
+        "{msg}"
+    );
+    let msg = check("n: i32, rng: &RngGuard", true, &["rng"]).expect_err("an option");
+    assert!(
+        msg.contains("do not apply to the `&RngGuard` parameter `rng`: it is no R argument"),
+        "{msg}"
+    );
+    for sig in [
+        "rng: &mut RngGuard",
+        "rng: RngGuard",
+        "rng: Option<&RngGuard>",
+    ] {
+        let msg = check(sig, true, &[]).expect_err(sig);
+        assert!(
+            msg.starts_with("take the RNG guard as `&RngGuard`"),
+            "{sig}: {msg}"
+        );
+    }
+
+    // Trait methods, in any shape.
+    assert!(refuse_rng_guard_in_trait_method(&inputs_of("&self, x: i32")).is_ok());
+    for sig in ["&self, rng: &RngGuard", "rng: &mut RngGuard"] {
+        let msg = refuse_rng_guard_in_trait_method(&inputs_of(sig))
+            .expect_err(sig)
+            .to_string();
+        assert!(
+            msg.starts_with("a trait method cannot take `&RngGuard`"),
+            "{msg}"
+        );
+    }
+}
+
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
 /// next to an explicit `&Dots`, are compile errors.
 #[test]

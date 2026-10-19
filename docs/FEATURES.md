@@ -789,11 +789,12 @@ is required.
 
 ### `rand`
 
-Wraps R's built-in RNG with the `rand` crate's `RngCore` trait, allowing use of
+Wraps R's built-in RNG with the `rand` crate's RNG traits, allowing use of
 any `rand`-compatible distribution with R's RNG state.
 
 **Provides:**
-- `RRng` -- R's RNG implementing `rand::RngCore`
+- `RRng` -- R's RNG implementing `rand::TryRng` (and so `rand::Rng`); made by
+  `guard.rng()` from an `RngGuard`, which it borrows
 - `RDistributions` -- direct access to R's native distributions (Normal, Uniform, etc.)
 
 **Adapter traits:** `RRngOps`, `RDistributionOps`

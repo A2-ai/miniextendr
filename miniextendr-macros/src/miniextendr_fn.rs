@@ -3140,6 +3140,93 @@ pub(crate) fn check_lazy_dots_params(
     Ok(())
 }
 
+/// Check the RNG guard parameters of a signature (#2002): `&RngGuard` is
+/// filled by a `#[miniextendr(rng)]` wrapper (`rng`) with the guard it holds,
+/// so it needs `rng`, takes no per-parameter option (`has_options`, keyed by
+/// Rust name: it is no R argument) and appears at most once. Any other shape
+/// that names `RngGuard` (`&mut RngGuard`, by value, inside another type) is
+/// refused: the wrapper lends its guard for the call.
+///
+/// Shared by standalone functions (`lib.rs`) and inherent methods
+/// (`ParsedMethod::from_impl_item`). Every error points at the parameter.
+pub(crate) fn check_rng_guard_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    rng: bool,
+    has_options: impl Fn(&str) -> bool,
+) -> syn::Result<()> {
+    let mut first: Option<&syn::PatType> = None;
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        if !crate::type_inspect::is_rng_guard_param(&pt.ty) {
+            if crate::type_inspect::mentions_rng_guard(&pt.ty) {
+                return Err(syn::Error::new_spanned(
+                    &pt.ty,
+                    "take the RNG guard as `&RngGuard`: a `#[miniextendr(rng)]` wrapper lends \
+                     its guard for the call, so `&mut RngGuard`, `RngGuard` by value or a guard \
+                     inside another type is no parameter it can fill",
+                ));
+            }
+            continue;
+        }
+        if first.is_some() {
+            return Err(syn::Error::new_spanned(
+                pt,
+                "a `#[miniextendr]` function takes at most one `&RngGuard` parameter: every \
+                 one would receive the same guard",
+            ));
+        }
+        if !rng {
+            return Err(syn::Error::new_spanned(
+                pt,
+                "a `&RngGuard` parameter needs `#[miniextendr(rng)]`: the `rng` wrapper loads \
+                 R's RNG state and passes its guard here. Add `rng` to the `#[miniextendr(...)]` \
+                 options, or call `with_rng(|rng| ...)` in the body",
+            ));
+        }
+        if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            && has_options(&crate::naming::ident_name(&pat_ident.ident))
+        {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
+                     `preconditions`) do not apply to the `&RngGuard` parameter `{}`: it is no \
+                     R argument, the `rng` wrapper passes its guard",
+                    pat_ident.ident
+                ),
+            ));
+        }
+        first = Some(pt);
+    }
+    Ok(())
+}
+
+/// Refuse an `RngGuard` parameter on a trait method (#2002), in any shape:
+/// the trait declaration and a trait impl. A trait method's arguments cross
+/// the vtable as values its shim converts with `TryFromSexp`, and the guard is
+/// no R value.
+pub(crate) fn refuse_rng_guard_in_trait_method(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> syn::Result<()> {
+    for arg in inputs {
+        if let syn::FnArg::Typed(pt) = arg
+            && crate::type_inspect::mentions_rng_guard(&pt.ty)
+        {
+            return Err(syn::Error::new_spanned(
+                &pt.ty,
+                "a trait method cannot take `&RngGuard`: its arguments cross the trait ABI as \
+                 R values, and the guard is none. Load the state in the body with \
+                 `with_rng(|rng| ...)` instead of the `rng` option, or take the guard on an \
+                 inherent impl method or a standalone function",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Refuse a `LazyDots` parameter on a trait method (#1892), in any shape:
 /// the trait declaration (`#[miniextendr_trait]`) and a trait impl. A trait
 /// method's arguments cross the vtable as values its shim converts with

@@ -154,6 +154,12 @@ NULL
 #' @name pm_s3_draw
 NULL
 
+#' Draw uniforms from R's RNG, via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name rng_s3_unif
+NULL
+
 #' Reseed with a `Checked` parameter, via S3 dispatch
 #' @param x An object.
 #' @param ... Additional arguments.

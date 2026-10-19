@@ -53,13 +53,14 @@ pub(crate) struct ExternalArg {
 }
 
 /// Names that are never an external value behind `&` / `&mut`: R's native
-/// borrows, `&str` / `&Path`, the dots, and containers with conversions of
-/// their own.
+/// borrows, `&str` / `&Path`, the dots, the RNG guard an `rng` wrapper passes
+/// (#2002), and containers with conversions of their own.
 const NOT_EXTERNAL: &[&str] = &[
     "str",
     "Path",
     "Dots",
     "LazyDots",
+    "RngGuard",
     "SEXP",
     "i32",
     "f64",

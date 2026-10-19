@@ -35,6 +35,15 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{RebuildR6}.
 
 An R6 class whose Rust state is rebuilt from its saved recipe.
 }
+\section{Active bindings}{
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{values}}{The recipe, kept by a save (active binding).}
+
+    \item{\code{total}}{The Rust state, rebuilt from the recipe (active binding).}
+  }
+  \if{html}{\out{</div>}}
+}
 \section{Methods}{
 \subsection{Public methods}{
   \itemize{

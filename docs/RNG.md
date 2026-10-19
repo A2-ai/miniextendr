@@ -5,33 +5,39 @@ Safe access to R's random number generators from Rust.
 ## Overview
 
 R's RNG maintains internal state that must be synchronized with R's `.Random.seed`
-variable. Before calling any RNG function, you must call `GetRNGstate()` to load
-the state. After generating random numbers, you must call `PutRNGstate()` to save
-it back -- even if an error occurs. miniextendr provides two approaches: a proc-macro
-attribute (recommended) and manual RAII guards.
+variable. Before drawing, `GetRNGstate()` loads the state; after drawing,
+`PutRNGstate()` saves it back -- even if an error occurs. miniextendr does both for
+you, and hands you an `RngGuard`: the proof that the state is loaded on R's main
+thread. Every draw is a safe method on the guard, named after R's C function.
+
+There are two ways to get a guard: the `#[miniextendr(rng)]` attribute
+(recommended for functions R calls) and `with_rng` / `RngGuard::new` for
+everything else.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [The `#[miniextendr(rng)]` Attribute](#the-miniextendr-rng-attribute)
-- [Manual Control: RngGuard and with_rng](#manual-control-rngguard-and-with-rng)
-- [Available RNG Functions](#available-rng-functions)
+- [Manual Control: with_rng and RngGuard](#manual-control-with-rng-and-rngguard)
+- [Drawing from the Guard](#drawing-from-the-guard)
+- [`rand` integration (`feature = "rand"`)](#rand-integration-feature-rand)
 - [Combining with Other Attributes](#combining-with-other-attributes)
 - [R Longjumps and Safety](#r-longjumps-and-safety)
 - [Parallel Code (Rayon)](#parallel-code-rayon)
 
 ## Quick Start
 
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::sys::unif_rand;
+use miniextendr_api::{RngGuard, miniextendr};
 
 #[miniextendr(rng)]
-pub fn random_sample(n: i32) -> Vec<f64> {
-    (0..n).map(|_| unsafe { unif_rand() }).collect()
+pub fn random_sample(n: i32, rng: &RngGuard) -> Vec<f64> {
+    (0..n).map(|_| rng.unif_rand()).collect()
 }
 ```
 
-From R:
+From R, the guard is no argument:
 
 ```r
 set.seed(42)
@@ -39,164 +45,203 @@ random_sample(5)
 #> [1] 0.9148060 0.9370754 0.2861395 0.8304476 0.6417455
 ```
 
+These are the values `runif(5)` gives after `set.seed(42)`.
+
 ## The `#[miniextendr(rng)]` Attribute
 
-The recommended approach. Works on standalone functions, impl methods, and trait methods.
+The recommended approach for a function R calls. Works on standalone functions and
+on impl methods in every class system (env, R6, S3, S4, S7, vctrs).
+
+The wrapper loads the state before the call and saves it after. A parameter of
+type `&RngGuard`, at any position, receives the guard the wrapper holds. It is no R
+argument: it is not in the R function's formals, its usage line or its `@param`
+list. A `&RngGuard` parameter on a function without `rng` is a compile error,
+since nothing has loaded the state for it.
 
 ### Standalone Functions
 
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::sys::{unif_rand, norm_rand, exp_rand};
+use miniextendr_api::{RngGuard, miniextendr};
 
 #[miniextendr(rng)]
-pub fn uniform_sample(n: i32) -> Vec<f64> {
-    (0..n).map(|_| unsafe { unif_rand() }).collect()
+pub fn uniform_sample(n: i32, rng: &RngGuard) -> Vec<f64> {
+    (0..n).map(|_| rng.unif_rand()).collect()
 }
 
 #[miniextendr(rng)]
-pub fn normal_sample(n: i32) -> Vec<f64> {
-    (0..n).map(|_| unsafe { norm_rand() }).collect()
+pub fn normal_sample(rng: &RngGuard, n: i32) -> Vec<f64> {
+    (0..n).map(|_| rng.norm_rand()).collect()
 }
 ```
 
 ### Impl Methods
 
+<!-- docs-examples-check -->
 ```rust
-#[miniextendr]
+use miniextendr_api::{ExternalPtr, RngGuard, miniextendr};
+
+#[derive(ExternalPtr)]
+pub struct MySampler {
+    scale: f64,
+}
+
+#[miniextendr(env)]
 impl MySampler {
-    #[miniextendr(rng)]
-    fn sample_uniform(&self, n: i32) -> Vec<f64> {
-        (0..n).map(|_| unsafe { unif_rand() }).collect()
+    pub fn new(scale: f64) -> Self {
+        MySampler { scale }
     }
 
     #[miniextendr(rng)]
-    fn static_sample(n: i32) -> Vec<f64> {
-        (0..n).map(|_| unsafe { unif_rand() }).collect()
+    pub fn sample_uniform(&self, n: i32, rng: &RngGuard) -> Vec<f64> {
+        (0..n).map(|_| self.scale * rng.unif_rand()).collect()
+    }
+
+    #[miniextendr(rng)]
+    pub fn static_sample(n: i32, rng: &RngGuard) -> Vec<f64> {
+        (0..n).map(|_| rng.unif_rand()).collect()
     }
 }
 ```
+
+In R these are `sampler$sample_uniform(n)` and `MySampler$static_sample(n)`.
 
 ### Trait Methods
 
-```rust
-#[miniextendr(env)]
-impl MyTrait for MyStruct {
-    #[miniextendr(rng)]
-    fn random_value(&self) -> f64 {
-        unsafe { unif_rand() }
-    }
-}
-```
+`rng` also works on a method of a `#[miniextendr] impl Trait for Type` block: the
+wrapper R calls loads and saves the state around it. A trait method takes no
+`&RngGuard` parameter (a compile error): its arguments cross the trait ABI as R
+values, and the guard is none. Draw inside `with_rng` in the method body instead,
+without `rng` on the method (#2196 tracks taking the guard there).
 
 ### Generated Code Pattern
 
 The attribute generates code that:
 
-1. Calls `GetRNGstate()` at the start
-2. Wraps the function body in `catch_unwind`
-3. Calls `PutRNGstate()` after `catch_unwind` (runs on both success AND panic)
-4. Then handles the result (returns value or re-panics)
+1. Enters an outer `with_r_unwind_protect` guard and calls `GetRNGstate()`
+2. Runs the body under an inner guard, returning tagged conditions on Rust panics
+3. Protects that result while `PutRNGstate()` saves the state
+4. Returns the value or tagged condition for the R wrapper to handle
 
-This explicit placement ensures `PutRNGstate()` is called before any error
-handling, which is robust in the presence of R longjumps when combined with
-`with_r_unwind_protect`.
+Both RNG calls can raise R errors, so both run inside the outer guard. Saving runs
+on successful returns and caught Rust panics. R-origin nonlocal exits propagate
+through the guards; they do not run the remaining body or save step. The guard
+passed to a `&RngGuard` parameter does not save the state when it drops: step 3
+does.
 
-## Manual Control: RngGuard and with_rng
+A function or method that takes the guard always runs on R's main thread, whatever
+`worker` or `worker-default` says: the guard is `!Send`.
+
+**Inside an `rng` function, draw from the `&RngGuard` parameter; don't call
+`with_rng`.** A nested `GetRNGstate()` reloads `.Random.seed`, which still holds
+the state from before the call, so the draws would repeat.
+
+## Manual Control: with_rng and RngGuard
 
 For internal helper functions or code that needs finer control over RNG scope.
 
-### RngGuard
+### with_rng
 
-RAII guard that calls `GetRNGstate()` on creation and `PutRNGstate()` on drop.
+Runs a closure with the state loaded and passes it the guard:
 
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::rng::RngGuard;
-use miniextendr_api::sys::unif_rand;
+use miniextendr_api::with_rng;
 
-fn generate_random() -> f64 {
-    // SAFETY: this helper is called on R's main thread.
-    let _guard = unsafe { RngGuard::new() };
-    unsafe { unif_rand() }
-    // PutRNGstate() called automatically when _guard drops
+fn ten_uniforms() -> Vec<f64> {
+    with_rng(|rng| (0..10).map(|_| rng.unif_rand()).collect())
 }
 ```
 
-### with_rng
+`with_rng` loads the state when it is called, not earlier, so a `set.seed()` that
+ran in R before the call decides the draws. It saves the state when the closure
+returns or panics, and panics itself when called off R's main thread.
 
-Convenience function that wraps a closure in an `RngGuard` scope.
+### RngGuard
 
+`RngGuard::new()` calls `GetRNGstate()`, and dropping the guard calls
+`PutRNGstate()`:
+
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::rng::with_rng;
-use miniextendr_api::sys::unif_rand;
+use miniextendr_api::RngGuard;
 
-let values = with_rng(|| {
-    (0..10).map(|_| unsafe { unif_rand() }).collect::<Vec<_>>()
-});
+fn generate_random() -> f64 {
+    // SAFETY: this helper is called on R's main thread.
+    let rng = unsafe { RngGuard::new() };
+    rng.unif_rand()
+    // PutRNGstate() called automatically when `rng` drops
+}
 ```
 
-`RngGuard::new()` is `unsafe` because only the caller can prove it is running
-on R's main thread. `with_rng` performs that check at runtime and panics when
-called elsewhere. Both forms still rely on Rust destructors, so neither is a
-replacement for `#[miniextendr(rng)]` at an R-facing boundary.
+`RngGuard::new()` is `unsafe` because only the caller can prove it is running on
+R's main thread. `with_rng` performs that check at runtime. Both forms still rely
+on Rust destructors, so neither is a replacement for `#[miniextendr(rng)]` at an
+R-facing boundary.
 
 ### When to Use Manual vs Attribute
 
 | Scenario | Use |
 |----------|-----|
-| Function exposed to R | `#[miniextendr(rng)]` |
-| Internal helper (not `#[miniextendr]`) | `RngGuard` or `with_rng` |
-| Code already inside `with_r_unwind_protect` | `RngGuard` or `with_rng` |
+| Function exposed to R | `#[miniextendr(rng)]` with a `&RngGuard` parameter |
+| Internal helper (not `#[miniextendr]`) | `with_rng` or `RngGuard` |
+| Code already inside `with_r_unwind_protect` | `with_rng` or `RngGuard` |
 | Scoped RNG within a larger function | `RngGuard` |
 
-## Available RNG Functions
+## Drawing from the Guard
 
-After initializing RNG state (via attribute or guard), use these from `miniextendr_api::sys`:
+Each draw borrows the guard, so it can't run outside the guard's scope or on
+another thread:
 
-| Function | Distribution | Range |
-|----------|-------------|-------|
-| `unif_rand()` | Uniform | `[0, 1)` |
-| `norm_rand()` | Standard normal | `(-inf, inf)` |
-| `exp_rand()` | Standard exponential | `(0, inf)` |
-| `R_unif_index(n)` | Uniform integer | `[0, n)` |
+| Method | R's C function | Distribution | Same draw as |
+|--------|----------------|--------------|--------------|
+| `rng.unif_rand()` | `unif_rand()` | Uniform on `(0, 1)` | `runif(1)` |
+| `rng.norm_rand()` | `norm_rand()` | Standard normal | `rnorm(1)` |
+| `rng.exp_rand()` | `exp_rand()` | Standard exponential | `rexp(1)` |
+| `rng.unif_index(n)` | `R_unif_index(n)` | Uniform integer on `[0, n)`, as a double | `sample.int(n, 1) - 1` |
 
-All require `unsafe` because they access R's global RNG state.
-
+<!-- docs-examples-check -->
 ```rust
-use miniextendr_api::sys::{unif_rand, norm_rand, exp_rand, R_unif_index};
+use miniextendr_api::{RngGuard, miniextendr};
 
 #[miniextendr(rng)]
-pub fn rng_demo() -> Vec<f64> {
-    unsafe {
-        vec![
-            unif_rand(),           // Uniform on [0, 1)
-            norm_rand(),           // Standard normal
-            exp_rand(),            // Standard exponential
-            R_unif_index(100.0),   // Uniform integer on [0, 100)
-        ]
-    }
+pub fn rng_demo(rng: &RngGuard) -> Vec<f64> {
+    vec![
+        rng.unif_rand(),        // Uniform on (0, 1)
+        rng.norm_rand(),        // Standard normal
+        rng.exp_rand(),         // Standard exponential
+        rng.unif_index(100.0),  // Uniform integer on [0, 100)
+    ]
 }
 ```
+
+After `set.seed(1)`, `rng_demo()` returns
+`c(runif(1), rnorm(1), rexp(1), sample.int(100, 1) - 1)` as drawn after the same
+`set.seed(1)`.
+
+The raw functions are still in `miniextendr_api::sys` (`unsafe`, and they assume
+the state is loaded); the guard methods make them safe.
 
 ## `rand` integration (`feature = "rand"`)
 
 Enable `rand` when downstream Rust code expects a `rand` RNG, or when you want
-typed access to R's native distributions without calling the raw FFI yourself:
+typed access to R's native distributions through a trait:
 
 ```toml
 [dependencies]
 miniextendr-api = { version = "0.1", features = ["rand"] }
 ```
 
-`RRng` draws from R's RNG, so `set.seed()` remains reproducible. It still needs
-an initialized RNG scope:
+`RRng` draws from R's RNG, so `set.seed()` remains reproducible. It borrows a
+guard: `guard.rng()` makes one, and it can't outlive the guard.
 
 ```rust
-use miniextendr_api::{RDistributions, RRng};
+use miniextendr_api::{RDistributions, RngGuard, miniextendr};
 use miniextendr_api::rand::RngExt;
 
 #[miniextendr(rng)]
-pub fn rand_sample(n: i32) -> Vec<f64> {
-    let mut rng = RRng::new();
+pub fn rand_sample(n: i32, guard: &RngGuard) -> Vec<f64> {
+    let mut rng = guard.rng();
     (0..n)
         .map(|_| rng.random::<f64>())
         .chain([rng.standard_normal(), rng.standard_exp()])
@@ -205,9 +250,14 @@ pub fn rand_sample(n: i32) -> Vec<f64> {
 ```
 
 `RRng` supplies the generic `rand` interface; `RDistributions` calls R's
-`norm_rand`, `exp_rand`, `R_unif_index`, and `unif_rand` implementations
-directly. For large batches under `worker-thread`, generate the random values
-together: each individual R RNG call must cross back to the R thread.
+`norm_rand`, `exp_rand`, `R_unif_index`, and `unif_rand` implementations directly,
+so `standard_normal()` draws what `rnorm(1)` draws. `rand`'s own
+`random::<f64>()` takes 64 bits, two `unif_rand()` draws, so it does not match
+`runif()`.
+
+`RRng` is `!Send` and `!Sync`, like the guard it borrows: it can't move into a
+worker closure or a rayon task. Outside an `rng` function, make one inside
+`with_rng`: `with_rng(|guard| guard.rng().standard_normal())`.
 
 The same feature exposes `RRngOps` and `RDistributionOps` for exporting custom
 RNG and distribution objects through the trait ABI. `rand_distr` additionally
@@ -217,19 +267,20 @@ re-exports the `rand_distr` crate for its probability distributions.
 
 `rng` composes with other `#[miniextendr]` options:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{RngGuard, miniextendr};
+
 // RNG + interrupt checking
 #[miniextendr(rng, check_interrupt)]
-pub fn interruptible_random(n: i32) -> Vec<f64> {
-    (0..n).map(|_| unsafe { unif_rand() }).collect()
-}
-
-// RNG + explicit worker thread
-#[miniextendr(rng, worker)]
-pub fn worker_random(n: i32) -> Vec<f64> {
-    (0..n).map(|_| unsafe { unif_rand() }).collect()
+pub fn interruptible_random(n: i32, rng: &RngGuard) -> Vec<f64> {
+    (0..n).map(|_| rng.unif_rand()).collect()
 }
 ```
+
+Under the deprecated `worker` option the body runs on the worker thread, where no
+guard can go. A function that takes `&RngGuard` stays on R's main thread
+regardless.
 
 ## R Longjumps and Safety
 
@@ -237,9 +288,9 @@ pub fn worker_random(n: i32) -> Vec<f64> {
 (via `Rf_error`, etc.), the guard's destructor will NOT run unless the code is
 wrapped in `with_r_unwind_protect`.
 
-This is why **`#[miniextendr(rng)]` is preferred for R-exposed functions** -- it
-places `PutRNGstate()` explicitly after `catch_unwind`, outside the scope where
-a longjmp could skip it.
+This is why **`#[miniextendr(rng)]` is preferred for R-exposed functions** -- the
+outer unwind guard covers loading and saving the state, and `PutRNGstate()` runs
+after the body's own guard has turned a panic into a value.
 
 Summary:
 
@@ -250,9 +301,9 @@ Summary:
 
 ## Parallel Code (Rayon)
 
-R's RNG is **not thread-safe**. Calling `unif_rand()` and friends from Rayon
-threads will panic. For parallel random number generation, use a Rust RNG with
-deterministic per-chunk seeding:
+R's RNG is **not thread-safe**. A guard (and an `RRng` borrowing one) is `!Send`
+and `!Sync`, so a rayon closure that draws from it does not compile. For parallel
+random number generation, use a Rust RNG with deterministic per-chunk seeding:
 
 ```rust
 use miniextendr_api::rand::{RngExt, SeedableRng, rngs::StdRng};
