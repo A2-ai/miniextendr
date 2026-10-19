@@ -88,7 +88,7 @@ use `serialize`.
 | `Vec<i32>` | `integer` vector | Smart dispatch |
 | `Vec<f64>` | `numeric` vector | Smart dispatch |
 | `Vec<bool>` | `logical` vector | Smart dispatch |
-| empty `Vec<T>` | `list()` | No element type to dispatch on; see [typed fields](#typed-fields-as_character--co) |
+| empty `Vec<T>` | `list()` | No element type to dispatch on; see [typed fields](#typed-fields-as-character-co) |
 | `Vec<String>` | `character` vector | Smart dispatch |
 | `Vec<struct>` | `list` of lists | Heterogeneous |
 | `HashMap<String, T>` | named `list` | Keys become names |
@@ -403,7 +403,7 @@ become strings, data variants become `list(Variant = ...)`. `None` becomes
 type. For the same reason an empty sequence becomes `list()`, not
 `character(0)` or `numeric(0)`: serde hands the serializer no element type
 when there are no elements. Where a field must keep its R type when empty, use
-a [typed field](#typed-fields-as_character--co), the `IntoR` conversion (no
+a [typed field](#typed-fields-as-character-co), the `IntoR` conversion (no
 `serialize`) or, for condition data, `#[derive(RCondition)]`; each gives
 `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to
 turn a serde-tagged error enum into a classed R condition; see
