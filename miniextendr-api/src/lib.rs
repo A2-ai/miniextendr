@@ -231,6 +231,8 @@ pub use linkme;
 #[doc(hidden)]
 pub use miniextendr_macros::__mx_trait_impl_expand;
 #[doc(inline)]
+pub use miniextendr_macros::AllEqual;
+#[doc(inline)]
 pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]
 pub use miniextendr_macros::impl_typed_external;

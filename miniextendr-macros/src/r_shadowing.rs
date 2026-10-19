@@ -32,10 +32,11 @@
 //! every call about 475 ns (+44%). When no formal collides, the text is
 //! returned unchanged.
 //!
-//! Two generators do not finalize through here: the sidecar accessors of
-//! `#[derive(ExternalPtr)]` and the functions `#[derive(Vctrs)]` emits. Their
-//! formals are fixed (`x`, `value`, `to`, `...`), and none of them names a base
-//! function.
+//! Three generators do not finalize through here: the sidecar accessors of
+//! `#[derive(ExternalPtr)]`, the functions `#[derive(Vctrs)]` emits and the
+//! `all.equal()` methods of `#[derive(AllEqual)]`. Their formals are fixed
+//! (`x`, `value`, `to`, `target`, `current`, `tolerance`, `scale`, ...), and
+//! none of their bodies calls a function of one of those names.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;

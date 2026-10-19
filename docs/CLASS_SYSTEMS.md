@@ -2004,6 +2004,133 @@ conditionMessage(tryCatch(x$value, error = identity))
 
 ---
 
+## Comparing Objects: `all.equal()`
+
+Base R can't look inside a pointer-backed object, so without a method of
+the class's own, `all.equal()` finds any two objects of one class equal:
+`all.equal.default()` compares an external pointer only by its
+`data.class()`, and an R6 or S4 object leads it to the pointer again.
+`identical()` compares the pointers, so two objects are identical only when
+they are the same object. `#[derive(AllEqual)]` gives the class an
+`all.equal()` method that compares the Rust values field by field (#2149):
+
+```rust
+#[derive(ExternalPtr, AllEqual)]
+#[all_equal(tolerance = 1e-6)]                // the default of the method's `tolerance`
+pub struct Fit {
+    #[all_equal(label = "Estimates")]
+    estimates: Vec<f64>,                      // all.equal.numeric(), tolerance from the call or 1e-6
+    #[all_equal(tolerance = 0)]
+    iterations: i32,                          // always exact, whatever the call passes
+    model: ExternalPtr<Model>,                // Model's own all.equal() method
+    #[all_equal(skip)]
+    cache: RefCell<Option<Vec<f64>>>,
+}
+
+#[miniextendr(s3)]
+impl Fit { /* ... */ }
+```
+
+```r
+all.equal(fit_a, fit_b)
+#> [1] "Estimates: Mean relative difference: 2e-05"
+#> [2] "Component “model”: Component “weights”: Mean relative difference: 0.2"
+all.equal(fit_a, fit_b, tolerance = 1e-3)     # the call's tolerance replaces the struct's
+```
+
+### The method
+
+The method is `all.equal.<Class>(target, current, tolerance, scale, ...,
+check.attributes, check.names)`, with its own help page, registered for
+the class of the type's impl block:
+
+| Class system | Registration |
+|---|---|
+| env, R6, S3 | `S3method(all.equal, Class)` |
+| S4 | `S3method(all.equal, Class)`: R's S3 dispatch finds it for an S4 object, and so does every caller of `base::all.equal()`, testthat included, which an S4 `setMethod()` would not reach |
+| S7 | `S3method(all.equal, Class)` and `S7::method(all.equal, Class)`, since an S7 object's class attribute is `pkg::Class` |
+
+A type with the derive but no impl block with a class system, or with a
+vctrs class (whose objects are R vectors that `all.equal()` already
+compares), fails to install with a message naming the type.
+
+The method:
+
+1. returns base's one string, `"target is <class>, current is <class>"`,
+   when `current`'s `data.class()` differs from `target`'s;
+2. compares each field with `all.equal(target_field, current_field, ...)`,
+   so the field's own class picks the method: numbers keep R's tolerance,
+   lists and data frames use base's methods, and a field holding another
+   pointer class `T` uses `T`'s method;
+3. returns `TRUE` when every field is equal, otherwise every differing
+   field's messages in field order, each prefixed as `all.equal.list()`
+   prefixes a component (`Component “estimates”: `, `Component 1: ` for a
+   tuple field) or with the field's label (`Estimates: `).
+
+An object restored from a saved session is refused with the type's
+`miniextendr_restored_*` error, on the call as written.
+
+A field's R value is a clone converted with `IntoR` (so the field is
+`Clone + IntoR`), or:
+
+| Field | Value compared |
+|---|---|
+| `#[all_equal(with = "Self::f")]` | the getter's value, `fn(&Self) -> impl IntoR` |
+| a `Computed` field | its `#[r_data(get = "...")]` getter's value |
+| a `Sidecar<T>` field | its value in the pointer's protection list |
+| `ExternalPtr<T>`, `Option<ExternalPtr<T>>` | the pointer itself, not a clone (`NULL` for `None`) |
+| the `RSidecar` selector, `#[all_equal(skip)]` | not compared |
+
+A field whose type names a pointer class `T` of the package gets `T`'s R
+class, as the value of a method returning that type does, so `T`'s own
+method compares it:
+
+| Field type | R value compared |
+|---|---|
+| `T`, `ExternalPtr<T>` | an object of class `T` |
+| `Option<ExternalPtr<T>>` | an object of class `T`, or `NULL` |
+| `Vec<T>`, `Vec<ExternalPtr<T>>` | a list of objects of class `T`, compared by `all.equal.list()` |
+
+Give `T` the derive too: without an `all.equal()` method of its own, `T`
+is compared by `all.equal.default()`, which finds any two pointers equal.
+The derive reads the class from the field's type, so a pointer that a
+`with` getter or a `Computed` field returns, or a class of another package,
+reaches `all.equal()` as a bare pointer and compares equal to any other
+(#2191).
+
+### Settings
+
+`tolerance`, `scale`, `check_attributes` and `check_names` (the R
+arguments `check.attributes` and `check.names`) are formals of the method.
+
+- On the struct, `#[all_equal(...)]` sets a formal's default, which the
+  call replaces as any R default.
+- On a field, it fixes that field's argument: the call can't change it.
+- A setting nothing sets is not passed, so the field's own method keeps its
+  default, and a nested `AllEqual` type its own struct-level setting.
+
+So a field gets: its own setting, else the call's, else the struct's, else
+its method's default. The other arguments of the call reach every field
+through `...`. `tolerance` and `scale` come before `...`, as in
+`all.equal.numeric()`, so `all.equal(a, b, 1e-3)` passes a tolerance.
+
+A field also takes `skip` (alone), `label = "..."` and `with = "Self::f"`.
+An unknown option, `skip` with another option, a setting of the wrong kind
+and a field that is not `Clone + IntoR` (without `with`) are compile
+errors.
+
+### Testing with testthat
+
+- Edition 2's `expect_equal()` calls `all.equal()`, so it uses the method.
+- Edition 3's `expect_equal()` calls `waldo::compare()`, which never calls
+  `all.equal()`: it compares an S3, env, S4 or S7 object's pointers by
+  address, so two objects are different unless they are the same object, and
+  it finds two R6 objects equal whatever they hold. Test the method with
+  `expect_true(all.equal(a, b))`, or with `local_edition(2)`. A
+  `waldo::compare_proxy()` method for these classes is #2192.
+
+---
+
 ## Export Control
 
 Control R export visibility with `#[miniextendr(internal)]` and `#[miniextendr(noexport)]`.

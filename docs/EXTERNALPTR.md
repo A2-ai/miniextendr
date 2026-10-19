@@ -876,6 +876,16 @@ one explicitly, with a method that clones the struct into a new
 `ExternalPtr` (`ExternalPtr::new(self.clone())`); the `Sidecar` values are
 copied by the struct's `Clone`.
 
+### Comparing two objects
+
+`identical(x, y)` compares the pointers: it is `TRUE` only when `x` and `y`
+are the same object. `all.equal(x, y)` can't read the Rust values either, so
+without a method of the class it is `TRUE` for any two objects of one class
+(`all.equal.default()` compares an external pointer only by its
+`data.class()`). `#[derive(AllEqual)]` gives the class an `all.equal()`
+method that compares the struct field by field, each field with its own
+`all.equal()` method (`CLASS_SYSTEMS.md`, "Comparing Objects").
+
 ### Serialization
 
 `saveRDS()` writes an external pointer's tag and `prot` list but not its

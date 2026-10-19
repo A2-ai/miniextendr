@@ -199,6 +199,7 @@ mod return_type_analysis;
 mod roxygen;
 
 // Trait ABI support modules
+mod all_equal_derive;
 mod externalptr_derive;
 mod miniextendr_impl_trait;
 mod miniextendr_trait;
@@ -2651,6 +2652,104 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
     // marker (enabling the blanket `IntoR`); only the struct-level
     // `prefer = "native"` dispatch path suppresses it (#1283).
     externalptr_derive::derive_external_ptr(input, true)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive an `all.equal()` method for the R class of an `ExternalPtr` type,
+/// comparing the struct field by field (#2149).
+///
+/// Without it, `all.equal()` on two objects of a pointer-backed class
+/// returns `TRUE` whatever they hold: base R compares an external pointer
+/// only by its `data.class()`. The derived method compares each field with
+/// base `all.equal()` on the field's R value, so each field keeps its own
+/// method: numbers keep R's tolerance, lists and data frames use base's
+/// methods, and a field holding another pointer class `T` uses `T`'s own
+/// `all.equal()` method (another `AllEqual` type).
+///
+/// ```ignore
+/// #[derive(ExternalPtr, AllEqual)]
+/// #[all_equal(tolerance = 1e-6)]
+/// pub struct Fit {
+///     #[all_equal(label = "Estimates")]
+///     estimates: Vec<f64>,
+///     #[all_equal(tolerance = 0)]
+///     iterations: i32,
+///     model: ExternalPtr<Model>,
+///     #[all_equal(skip)]
+///     cache: RefCell<Option<Vec<f64>>>,
+/// }
+///
+/// #[miniextendr(s3)]
+/// impl Fit { /* ... */ }
+/// ```
+///
+/// ```r
+/// all.equal(fit_a, fit_b)                    # TRUE, or c("Estimates: Mean relative difference: 2e-05", ...)
+/// all.equal(fit_a, fit_b, tolerance = 1e-3)  # the call's tolerance replaces the struct's default
+/// ```
+///
+/// The type also needs `#[derive(ExternalPtr)]` and an impl block with a
+/// class system (`env`, `r6`, `s3`, `s4` or `s7`): the method is
+/// `all.equal.<Class>`, registered with `S3method()`, and for S7 also with
+/// `S7::method(all.equal, Class)`. Installing a package with the derive on a
+/// type without a class, or with a vctrs class (whose objects are R vectors
+/// that `all.equal()` already compares), fails with a message naming it.
+///
+/// # The comparison
+///
+/// The method is `all.equal.<Class>(target, current, tolerance, scale, ...,
+/// check.attributes, check.names)`, in `all.equal.numeric()`'s argument
+/// order. A `current` of another class gives base's
+/// `"target is <class>, current is <class>"`. Otherwise each compared field
+/// is compared with `all.equal(target_field, current_field, ...)`, and the
+/// result is `TRUE` or the messages of every differing field, in field
+/// order, each prefixed as `all.equal.list()` does (`Component “estimates”:
+/// ...`, `Component 1: ...` for a tuple field) or with the field's `label`.
+/// An object restored from a saved session (`readRDS()`) is refused with
+/// the usual `miniextendr_restored_*` error.
+///
+/// A field's R value is a clone converted with `IntoR`, or:
+///
+/// - `#[all_equal(with = "Self::f")]`: the value of a getter
+///   `fn(&Self) -> impl IntoR`;
+/// - a `Computed` field: the value of its `#[r_data(get = "...")]` getter;
+/// - a `Sidecar<T>` field: its value in the pointer's protection list;
+/// - an `ExternalPtr<T>` or `Option<ExternalPtr<T>>` field: the pointer
+///   itself, not a clone.
+///
+/// The `RSidecar` selector is not compared.
+///
+/// A field whose type names a pointer class `T` of the package (`T`,
+/// `ExternalPtr<T>`, `Option<ExternalPtr<T>>`, or a `Vec` of `T` or
+/// `ExternalPtr<T>`) has its value given `T`'s R class, as a method returning that type does, so `T`'s own
+/// method compares it: give `T` the derive too, since without a method of
+/// its own `T` is compared by `all.equal.default()`, which finds any two
+/// pointers equal. The derive can't see a getter's type, so a pointer a
+/// `with` getter or a `Computed` field returns stays bare, as does a class
+/// of another package (#2191).
+///
+/// # Settings
+///
+/// `tolerance`, `scale`, `check_attributes` and `check_names` (the R
+/// arguments `check.attributes` / `check.names`) are formals of the method.
+/// Each is passed to a field's `all.equal()` only when something sets it, so
+/// a field's own method otherwise keeps its default (a nested `AllEqual`
+/// type its own struct-level settings). Precedence: the field's
+/// `#[all_equal(...)]`, then the call, then the struct's `#[all_equal(...)]`
+/// (the formal's default), then the field's own method's default. Other
+/// arguments of the call are passed on to every field through `...`.
+///
+/// On the struct, `#[all_equal(...)]` takes the settings. On a field it
+/// takes the settings, which the call can't override, and:
+///
+/// - `skip`: the field is not compared (alone: it takes no other option);
+/// - `label = "..."`: the field's messages start with `"<label>: "`;
+/// - `with = "Self::f"`: the getter whose value is compared.
+#[proc_macro_derive(AllEqual, attributes(all_equal))]
+pub fn derive_all_equal(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    all_equal_derive::derive_all_equal(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

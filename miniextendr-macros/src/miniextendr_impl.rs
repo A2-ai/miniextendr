@@ -2904,7 +2904,7 @@ impl ParsedMethod {
     /// type of a `Vec<T>`: `ty` must be a `Vec` path whose single type
     /// argument is either a bare `syn::Type::Path` or an `ExternalPtr<...>`
     /// wrapping one (peeled by `inner_class_ident`, #1375).
-    fn vec_inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+    pub(crate) fn vec_inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
         let syn::Type::Path(p) = ty else {
             return None;
         };
@@ -2944,7 +2944,7 @@ impl ParsedMethod {
     ///   identically to a bare `T` at the value level (`IntoR for
     ///   ExternalPtr<T>` already produces a bare `EXTPTRSXP`), so the handle
     ///   is peeled with the same helper the explicit `wrap` path uses.
-    fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
+    pub(crate) fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
         let syn::Type::Path(p) = crate::type_inspect::peel_external_ptr(ty) else {
             return None;
         };
