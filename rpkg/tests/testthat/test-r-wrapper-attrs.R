@@ -85,3 +85,23 @@ test_that("@exportS3Method registers a delayed method without exporting it (#194
   x <- structure(list(a = 1:2, b = c("u", "v")), class = "mx_delayed_rows")
   expect_equal(tibble::as_tibble(x), data.frame(a = 1:2, b = c("u", "v")))
 })
+
+test_that("s3(generic = \"pkg::generic\") registers the method lazily (#2154)", {
+  expect_false("dplyr_reconstruct.mx_delayed_rows" %in% getNamespaceExports("miniextendr"))
+  s3 <- getNamespaceInfo("miniextendr", "S3methods")
+  row <- s3[s3[, 1L] == "dplyr_reconstruct", , drop = FALSE]
+  # Columns: generic, class, method, and the package whose loading registers it.
+  expect_equal(unlist(row[, c(1L, 2L, 4L)]), c("dplyr_reconstruct", "mx_delayed_rows", "dplyr"))
+  skip_if_not_installed("callr")
+  # Loading the package must neither need nor load dplyr (only in Suggests).
+  loaded <- callr::r(function() {
+    library(miniextendr)
+    "dplyr" %in% loadedNamespaces()
+  }, libpath = .libPaths())
+  expect_false(loaded)
+  skip_if_not_installed("dplyr")
+  x <- structure(list(a = 1:2), class = "mx_delayed_rows")
+  data <- data.frame(a = 2L)
+  # dplyr's default method would give `data` the template's class.
+  expect_identical(dplyr::dplyr_reconstruct(data, x), data)
+})

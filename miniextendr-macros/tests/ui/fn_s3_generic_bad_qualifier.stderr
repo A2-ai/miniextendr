@@ -1,0 +1,5 @@
+error: `dplyr:::dplyr_reconstruct`: a method registers on an exported generic; name it `pkg::generic`, not `pkg:::generic`
+ --> tests/ui/fn_s3_generic_bad_qualifier.rs:5:28
+  |
+5 | #[miniextendr(s3(generic = "dplyr:::dplyr_reconstruct", class = "foo"))]
+  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -621,10 +621,11 @@ fn generate_trait_s3_r_wrapper(
     // report the generic's call, resolved from the method frame on a raise
     // (#1851).
     for method in &instance_methods {
-        let generic_name = method
+        let qualified_generic = method
             .generic
             .clone()
             .unwrap_or_else(|| method.r_method_name());
+        let (generic_package, generic_name) = crate::naming::split_generic(&qualified_generic);
         let receiver = method.receiver.as_deref().unwrap_or("x");
         let s3_method_name = format!("{}.{}", generic_name, type_str);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
@@ -683,7 +684,7 @@ fn generate_trait_s3_r_wrapper(
             lines.extend(generic_roxygen);
 
             // S3 generic definition
-            lines.push(emit_s3_generic_guard(generic_name.as_str()));
+            lines.push(emit_s3_generic_guard(generic_name));
             lines.push(String::new());
         }
 
@@ -708,9 +709,15 @@ fn generate_trait_s3_r_wrapper(
             None,
             Some(&s3_method_name),
         ));
-        let mut method_roxygen = RoxygenBuilder::new()
-            .export()
-            .method(&generic_name, &type_str);
+        // A method on `pkg::generic` registers through `@exportS3Method`, so
+        // `pkg` may stay in Suggests (#2154).
+        let mut method_roxygen = match generic_package {
+            Some(package) => RoxygenBuilder::new().custom(format!(
+                "@exportS3Method {package}::{generic_name} {type_str}"
+            )),
+            None => RoxygenBuilder::new().export(),
+        }
+        .method(generic_name, &type_str);
         if method.generic.is_some() && !joins_author_topic(method, &type_str) {
             method_roxygen = method_roxygen.custom(format!("@param {receiver} An object"));
             if !method.no_dispatch_dots {
@@ -732,24 +739,28 @@ fn generate_trait_s3_r_wrapper(
             crate::naming::r_def_name(&s3_method_name),
             full_params
         ));
-        ctx.emit_method_prelude(&mut lines, "  ", &generic_name);
+        ctx.emit_method_prelude(&mut lines, "  ", generic_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
         finish_instance_body(&mut lines, method, receiver);
         lines.push("}".to_string());
 
         // Additionally register as S7 method if the generic is S7
-        // This ensures S7 dispatch works when the generic was defined by an S7 class
-        lines.push(format!(
-            "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
-        ));
-        // Both sides of the registration are R symbols: quote operator names
-        // such as `[` so the emitted line parses (#1475).
-        let generic_symbol = crate::naming::r_def_name(&generic_name);
-        let method_symbol = crate::naming::r_def_name(&s3_method_name);
-        lines.push(format!(
-            "  S7::method({generic_symbol}, S7::new_S3_class(\"{type_str}\")) <- {method_symbol}"
-        ));
-        lines.push("}".to_string());
+        // This ensures S7 dispatch works when the generic was defined by an S7 class.
+        // A `pkg::generic` belongs to another package, which may not be
+        // installed at build time, so it is registered as an S3 method only.
+        if generic_package.is_none() {
+            lines.push(format!(
+                "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
+            ));
+            // Both sides of the registration are R symbols: quote operator names
+            // such as `[` so the emitted line parses (#1475).
+            let generic_symbol = crate::naming::r_def_name(generic_name);
+            let method_symbol = crate::naming::r_def_name(&s3_method_name);
+            lines.push(format!(
+                "  S7::method({generic_symbol}, S7::new_S3_class(\"{type_str}\")) <- {method_symbol}"
+            ));
+            lines.push("}".to_string());
+        }
         lines.push(String::new());
     }
 

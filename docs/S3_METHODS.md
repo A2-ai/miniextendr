@@ -474,6 +474,41 @@ What the macro does:
 
 Your Rust function receives exactly the arguments R dispatches with. For most S3 generics that is `(x, ...)`, so the first param is typed (`SEXP`, or a concrete type with `TryFromSexp`) and the last is `_dots: ...` to absorb the R-level `...`. If the generic takes more positional arguments (`vec_cast(x, to, ...)`), list them in order.
 
+### Generics from a Suggests package
+
+A method for a generic in a package your package only suggests must be
+registered lazily: R registers it when that package's namespace loads, so
+your package loads without it. Name the generic with its package:
+
+```rust
+/// @param data The data frame a dplyr verb returned.
+/// @param template The object the verb started from.
+#[miniextendr(s3(generic = "dplyr::dplyr_reconstruct", class = "my_rows"))]
+pub fn dplyr_reconstruct_my_rows(data: SEXP, template: SEXP) -> SEXP { /* … */ }
+```
+
+The wrapper is still named `dplyr_reconstruct.my_rows`. In place of
+`@method` + `@export`, it carries `#' @exportS3Method dplyr::dplyr_reconstruct
+my_rows`, which roxygen2 turns into `S3method(dplyr::dplyr_reconstruct,
+my_rows)`. The same spelling works for an impl method,
+`#[miniextendr(s3(generic = "dplyr::dplyr_reconstruct"))]`, under the S3
+class system and in trait impls (#2154).
+
+A bare vctrs generic (`vec_ptype2`, `vec_cast`, ...) gets an automatic
+`@importFrom vctrs <generic>`, so vctrs must be in Imports. Spell it
+`vctrs::vec_ptype2` to register lazily instead, with vctrs in Suggests.
+
+The generic needs a valid R package name and one `::`; `pkg:::generic`,
+`a::b::c` and `::generic` are compile errors.
+
+Naming the wrapper yourself also still works, as `r_name` plus a roxygen tag:
+
+```rust
+/// @exportS3Method tibble::as_tibble
+#[miniextendr(r_name = "as_tibble.my_rows")]
+pub fn as_tibble_my_rows(x: NamedList, _dots: &Dots) -> BuiltDataFrame { /* … */ }
+```
+
 ### Operator generics (`[`, `[[`, `$`, `==`, ...)
 
 The generic name can be any R generic, including the operators:
@@ -771,9 +806,9 @@ The wrapper name becomes `vec_ptype2.percent.percent`, and the roxygen becomes `
 
 ### vctrs `@importFrom`
 
-The macro recognizes the vctrs generic names (`vec_ptype_abbr`, `vec_proxy`, `vec_restore`, `vec_ptype2`, `vec_cast`, etc.) and auto-injects `#' @importFrom vctrs <generic>` into the roxygen block. This forces vctrs to load before your method is registered, which is necessary for `R_GetCCallable` lookups (vctrs registers its native generics via ccallable).
+The macro recognizes the vctrs generic names (`vec_ptype_abbr`, `vec_proxy`, `vec_restore`, `vec_ptype2`, `vec_cast`, etc.) and auto-injects `#' @importFrom vctrs <generic>` into the roxygen block. This forces vctrs to load before your method is registered, which is necessary for `R_GetCCallable` lookups (vctrs registers its native generics via ccallable). A generic spelled with its package, `vctrs::vec_ptype2`, gets no import: it is registered lazily (see [Generics from a Suggests package](#generics-from-a-suggests-package)).
 
-For non-vctrs generics from other packages (e.g., `tibble::tbl_sum`), add the import manually:
+For non-vctrs generics from other packages (e.g., `tibble::tbl_sum`), add the import manually, or name the generic with its package (`s3(generic = "tibble::tbl_sum", ...)`) to register the method lazily:
 
 ```rust
 /// @importFrom tibble tbl_sum

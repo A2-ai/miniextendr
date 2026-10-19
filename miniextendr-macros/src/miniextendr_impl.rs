@@ -1723,7 +1723,7 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.generic = Some(value.value());
+                            method_attrs.generic = Some(crate::naming::parse_generic(&value)?);
                         } else if inner.path.is_ident("receiver") {
                             let value: syn::LitStr = inner.value()?.parse()?;
                             let name = crate::naming::parse_r_receiver(&value)?;

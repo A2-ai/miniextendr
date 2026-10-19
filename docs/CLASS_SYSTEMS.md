@@ -536,7 +536,10 @@ show(g)         # Gene TP53 on chr17
 
 `s3(generic = "...")` and `s4(generic = "...")` add a method to a generic that
 already exists: base's `print`, `format` or `summary`, `methods::show`, the
-primitive `length`, or a generic of an imported package. The method's receiver
+primitive `length`, or a generic of an imported package. An S3 generic of a
+suggested package is named with its package, `s3(generic = "dplyr::dplyr_reconstruct")`,
+and the method is registered when that package loads
+([S3_METHODS.md](S3_METHODS.md#generics-from-a-suggests-package)). The method's receiver
 formal is `x`; when the generic names its first argument differently, say so
 with `receiver`, and drop the `...` the wrapper otherwise appends with
 `no_dots` when the generic has none:

@@ -119,13 +119,24 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     for ctx in parsed_impl.instance_method_contexts() {
         let ctx = ctx.with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
         lines.push(ctx.source_comment(type_ident));
-        let generic_name = ctx.generic_name();
+        let qualified_generic = ctx.generic_name();
+        let (generic_package, generic_name) = crate::naming::split_generic(&qualified_generic);
         // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
         let method_class_suffix = ctx
             .class_suffix()
             .map(|s| s.to_string())
             .unwrap_or_else(|| class_name.clone());
         let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
+        // `@export` on the method gives `S3method(generic, Class)`. A method on
+        // `pkg::generic` registers through `@exportS3Method pkg::generic Class`
+        // instead: R applies `S3method(pkg::generic, Class)` once `pkg`'s
+        // namespace loads, so `pkg` may stay in Suggests (#2154).
+        let registration = match generic_package {
+            Some(package) => {
+                format!("#' @exportS3Method {package}::{generic_name} {method_class_suffix}")
+            }
+            None => "#' @export".to_string(),
+        };
         let receiver = ctx.method.method_attrs.receiver.as_deref().unwrap_or("x");
         let full_params = ctx.s3_method_formals(); // x, params, ... (`value` last for `*<-`)
 
@@ -186,7 +197,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                     lines.push(format!("#' @export {}", generic_name));
                 }
             }
-            lines.push(emit_s3_generic_guard(&generic_name));
+            lines.push(emit_s3_generic_guard(generic_name));
             lines.push(String::new());
         }
 
@@ -199,21 +210,20 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             // no `noexport` attr still registers dispatch as before, since
             // `should_register_s3method` is `true` whenever `noexport` isn't set).
             // @export on S3 methods produces S3method() in NAMESPACE (not export()).
-            lines.push(format!("#' @method {} {}", generic_name, class_name));
+            lines.push(format!("#' @method {generic_name} {method_class_suffix}"));
             if should_register_s3method {
-                lines.push("#' @export".to_string());
+                lines.push(registration);
             }
         } else {
-            let qualified_name = format!("{}.{}", generic_name, class_name);
             let mx_doc = ctx.choice_param_docs();
             let method_doc =
-                MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
+                MethodDocBuilder::new(&class_name, generic_name, type_ident, &ctx.method.doc_tags)
                     .with_source_method(&ctx.method.ident)
                     .with_r_params(&ctx.params)
                     .with_choice_param_docs(&mx_doc)
-                    .with_r_name(qualified_name);
+                    .with_r_name(s3_method_name.clone());
             lines.extend(method_doc.build());
-            lines.push(format!("#' @method {} {}", generic_name, class_name));
+            lines.push(format!("#' @method {generic_name} {method_class_suffix}"));
             // roxygen2 can't parse generic blocks wrapped in if (!exists(...)),
             // so @param x/@param ... must also appear on the method block. On
             // an author topic (method-level `@rdname` / `@describeIn`) the
@@ -230,7 +240,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 }
             }
             if should_register_s3method {
-                lines.push("#' @export".to_string());
+                lines.push(registration);
             }
         }
         lines.push(format!(
@@ -239,8 +249,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             full_params
         ));
 
-        let what = format!("{}.{}", generic_name, class_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what, &full_params);
+        ctx.emit_method_prelude(&mut lines, "  ", &s3_method_name, &full_params);
 
         let call = ctx.instance_call(receiver);
         let strategy = crate::ReturnStrategy::for_method(ctx.method);

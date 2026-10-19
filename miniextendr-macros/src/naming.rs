@@ -498,6 +498,63 @@ pub(crate) fn r_string_escape(s: &str) -> String {
 
 // endregion
 
+// region: package-qualified generics (#2154)
+
+/// A `generic = "..."` value split into its package and the generic's own
+/// name: `"dplyr::dplyr_reconstruct"` is `(Some("dplyr"), "dplyr_reconstruct")`,
+/// `"print"` is `(None, "print")`. The value must have passed
+/// [`parse_generic`].
+pub(crate) fn split_generic(generic: &str) -> (Option<&str>, &str) {
+    match generic.split_once("::") {
+        Some((package, name)) => (Some(package), name),
+        None => (None, generic),
+    }
+}
+
+/// Parse a `generic = "..."` value. A generic may name its package,
+/// `pkg::generic`, with a valid R package name (ASCII letters, digits and
+/// `.`; at least two characters; starts with a letter; doesn't end in `.`)
+/// and one `::`.
+pub(crate) fn parse_generic(value: &syn::LitStr) -> syn::Result<String> {
+    let generic = value.value();
+    let error = |message: String| Err(syn::Error::new(value.span(), message));
+    if generic.contains(":::") {
+        return error(format!(
+            "`{generic}`: a method registers on an exported generic; name it `pkg::generic`, \
+             not `pkg:::generic`"
+        ));
+    }
+    let Some((package, name)) = generic.split_once("::") else {
+        return Ok(generic);
+    };
+    if name.contains("::") {
+        return error(format!(
+            "`{generic}`: a generic takes one `pkg::` qualifier"
+        ));
+    }
+    if name.is_empty() {
+        return error(format!("`{generic}`: no generic name after `{package}::`"));
+    }
+    if !is_r_package_name(package) {
+        return error(format!(
+            "`{generic}`: `{package}` is not an R package name; a package name has only ASCII \
+             letters, digits and `.`, at least two characters, starts with a letter and \
+             doesn't end in `.`"
+        ));
+    }
+    Ok(generic)
+}
+
+/// Whether `name` is a valid R package name ("Writing R Extensions", 1.1.1).
+fn is_r_package_name(name: &str) -> bool {
+    name.len() >= 2
+        && name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && !name.ends_with('.')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+}
+
+// endregion
+
 /// Parse a dispatch receiver that is safe to emit as a bare R symbol.
 pub(crate) fn parse_r_receiver(value: &syn::LitStr) -> syn::Result<String> {
     let name = value.value();
@@ -706,5 +763,36 @@ mod tests {
         // A backslash next to a backtick: each is escaped once, in order.
         assert_eq!(r_def_name(r"x\`y"), r"`x\\\`y`");
         assert_eq!(r_def_name(r"%\%"), r"`%\\%`");
+    }
+
+    #[test]
+    fn package_qualified_generics() {
+        let parse = |s: &str| parse_generic(&syn::LitStr::new(s, proc_macro2::Span::call_site()));
+        for ok in [
+            "print",
+            "[[",
+            "dplyr::dplyr_reconstruct",
+            "data.table::as.data.table",
+        ] {
+            assert_eq!(parse(ok).unwrap(), ok);
+        }
+        assert_eq!(
+            split_generic("vctrs::vec_ptype2"),
+            (Some("vctrs"), "vec_ptype2")
+        );
+        assert_eq!(split_generic("format"), (None, "format"));
+        for (bad, why) in [
+            ("dplyr:::dplyr_reconstruct", "not `pkg:::generic`"),
+            ("a::b::c", "one `pkg::` qualifier"),
+            ("dplyr::", "no generic name"),
+            ("::print", "not an R package name"),
+            ("x::print", "not an R package name"),
+            ("2pkg::print", "not an R package name"),
+            ("pkg.::print", "not an R package name"),
+            ("my_pkg::print", "not an R package name"),
+        ] {
+            let message = parse(bad).unwrap_err().to_string();
+            assert!(message.contains(why), "{bad}: {message}");
+        }
     }
 }

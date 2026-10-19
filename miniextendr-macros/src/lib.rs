@@ -1099,8 +1099,11 @@ fn expand_miniextendr(
     // the new value last, as `value` (#1853). Checked on the R formals, so a
     // trailing condition-call marker doesn't hide the parameter before it.
     if let Some(generic) = &s3_generic
-        && let Err(err) =
-            miniextendr_fn::check_replacement_value_param(generic, inputs, rust_ident.span())
+        && let Err(err) = miniextendr_fn::check_replacement_value_param(
+            crate::naming::split_generic(generic).1,
+            inputs,
+            rust_ident.span(),
+        )
     {
         return err.into_compile_error().into();
     }
@@ -1209,6 +1212,8 @@ fn expand_miniextendr(
     };
     let r_wrapper_ident_str: String;
     let s3_method_comment: String;
+    // The registration tag of a method on a package-qualified generic (#2154).
+    let mut s3_qualified_registration: Option<String> = None;
 
     if is_s3_method {
         // For S3 methods, function name is generic.class
@@ -1216,17 +1221,23 @@ fn expand_miniextendr(
         let generic = s3_generic
             .clone()
             .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
+        let (package, generic) = crate::naming::split_generic(&generic);
         // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
         // validates that s3(...) always has class specified
         let class = s3_class.as_ref().expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
-        // Add @importFrom for vctrs generics so roxygen registers the dependency
-        let import_comment = if crate::vctrs_generics::is_vctrs_generic(&generic) {
-            format!("#' @importFrom vctrs {}\n", generic)
-        } else {
-            String::new()
-        };
+        // Add @importFrom for vctrs generics so roxygen registers the dependency.
+        // A qualified `vctrs::` generic registers lazily instead, so vctrs may
+        // stay in Suggests.
+        let import_comment =
+            if package.is_none() && crate::vctrs_generics::is_vctrs_generic(generic) {
+                format!("#' @importFrom vctrs {}\n", generic)
+            } else {
+                String::new()
+            };
         s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
+        s3_qualified_registration =
+            package.map(|package| format!("#' @exportS3Method {package}::{generic} {class}\n"));
     } else if let Some(ref custom_name) = fn_r_name {
         r_wrapper_ident_str = custom_name.clone();
         s3_method_comment = String::new();
@@ -1734,7 +1745,11 @@ fn expand_miniextendr(
         && !internal
         && !noexport
     {
-        "#' @export\n".to_string()
+        // A method on `pkg::generic` registers through `@exportS3Method
+        // pkg::generic class`: roxygen2 writes `S3method(pkg::generic, class)`,
+        // which R applies once `pkg`'s namespace loads, so `pkg` may stay in
+        // Suggests (#2154).
+        s3_qualified_registration.unwrap_or_else(|| "#' @export\n".to_string())
     } else {
         String::new()
     };

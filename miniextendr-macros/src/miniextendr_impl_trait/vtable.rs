@@ -986,7 +986,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         && inner.path.is_ident("generic")
                     {
                         let value: syn::LitStr = inner.value()?.parse()?;
-                        if generic.replace(value.value()).is_some() {
+                        if generic
+                            .replace(crate::naming::parse_generic(&value)?)
+                            .is_some()
+                        {
                             return Err(inner.error("generic may be specified only once"));
                         }
                     } else if (meta.path.is_ident("s3") || meta.path.is_ident("s4"))

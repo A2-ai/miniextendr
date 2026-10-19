@@ -469,6 +469,15 @@ for `roxygen_prose_links`,
 Standalone S3 methods are always named `generic.class`, so there is nothing for
 a postfix to append to. Rename through `generic` instead.
 
+### "a method registers on an exported generic; name it `pkg::generic`", "a generic takes one `pkg::` qualifier", "`pkg` is not an R package name"
+
+A `generic = "..."` value may name the generic's package, `pkg::generic`
+(#2154). The package must be a valid R package name (ASCII letters, digits and
+`.`; at least two characters; starts with a letter; doesn't end in `.`),
+followed by one `::` and the generic's name. `pkg:::generic`, `a::b::c`,
+`::generic` and `pkg::` are refused. See
+[S3_METHODS.md](S3_METHODS.md#generics-from-a-suggests-package).
+
 ### "`call = caller` attributes conditions to the wrapper's caller, which is only meaningful for a package-internal entry point"
 
 `#[miniextendr(call = caller)]` makes the generated wrapper report its caller's
