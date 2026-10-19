@@ -12,6 +12,18 @@ pub(crate) fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute>
         .collect()
 }
 
+/// Rewrites a leading `Self` in `path` to `type_ident`: a path an attribute
+/// names (`#[r_data(get = "Self::f")]`, `fallback = "Self::f"`) is called
+/// from a free function the macro emits outside any impl, where `Self` means
+/// nothing.
+pub(crate) fn resolve_self(path: &mut syn::Path, type_ident: &syn::Ident) {
+    if let Some(first) = path.segments.first_mut()
+        && first.ident == "Self"
+    {
+        first.ident = syn::Ident::new(&type_ident.to_string(), first.ident.span());
+    }
+}
+
 /// Format a human-readable source location note from a syntax span.
 ///
 /// Column is reported as 1-based for consistency with editor displays.

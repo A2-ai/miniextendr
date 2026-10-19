@@ -463,7 +463,9 @@ pub struct ClassBlockEntry {
     pub demoted: Option<&'static ClassBlockEntry>,
     /// What this block has that only the defining block may: `"a
     /// constructor"` (or `` "the inferred constructor `name`" ``), `"S7
-    /// properties"`.
+    /// properties"`, `"the field fallback"` (`s3(r_data_accessors, fallback
+    /// = ...)`, whose `.Call` entry the block emits and whose field methods
+    /// call it).
     pub defines: &'static [&'static str],
     /// The class definition as this block would write it: the class's
     /// roxygen block (with the [`CLASS_DOCS_MARKER`] and

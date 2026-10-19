@@ -16,6 +16,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_abstract: false,
         r_data_accessors: RDataAccessors::Off,
         field_lookup: FieldLookup::default(),
+        field_fallback: None,
         strict: false,
         // The impl keeps the checks, whatever the `no-preconditions-default`
         // feature of this build says, so the snapshots are the same under both.
@@ -8597,6 +8598,308 @@ fn env_field_methods() {
     assert!(getters.contains(dollar_names), "{getters}");
     assert!(!getters.contains("`$<-.Engine`"), "{getters}");
 }
+
+// region: field fallback (#2150)
+
+/// An `impl Engine {}` with the given impl attributes, for the field
+/// fallback's tests.
+fn fallback_impl(attrs: &str) -> ParsedImpl {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new() -> Self { Engine }
+        }
+    };
+    let mut attrs: ImplAttrs = syn::parse_str(attrs).unwrap();
+    attrs.preconditions = Some(true);
+    ParsedImpl::parse(attrs, item_impl).unwrap()
+}
+
+/// The fallback's read of `name` on `receiver`, as the readers emit it.
+fn fallback_read(receiver: &str, name: &str, indent: &str) -> String {
+    let entry = crate::naming::sidecar_fallback_c_name("Engine");
+    format!(
+        "{indent}.val <- .Call({entry}, {receiver}, {name}, environment())\n\
+         {indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n\
+         {indent}if (!identical(.val, environment())) return(.val)\n"
+    )
+}
+
+#[test]
+fn parse_field_fallback_option() {
+    for (attrs, system) in [
+        (
+            "s3(r_data_accessors = \"get\", fallback = \"Self::column\", fallback_names = \"Self::column_names\")",
+            ClassSystem::S3,
+        ),
+        (
+            "s4(fallback_names = \"Self::column_names\", fallback = \"Self::column\", r_data_accessors)",
+            ClassSystem::S4,
+        ),
+        (
+            "env(r_data_accessors, fallback = \"Self::column\", fallback_names = \"Self::column_names\",)",
+            ClassSystem::Env,
+        ),
+    ] {
+        let parsed: ImplAttrs = syn::parse_str(attrs).unwrap();
+        assert_eq!(parsed.class_system, system, "{attrs}");
+        let fallback = parsed.field_fallback.expect(attrs);
+        assert_eq!(fallback.get.value(), "Self::column", "{attrs}");
+        assert_eq!(
+            fallback.names.map(|names| names.value()).as_deref(),
+            Some("Self::column_names"),
+            "{attrs}"
+        );
+    }
+    let parsed: ImplAttrs =
+        syn::parse_str("s3(r_data_accessors, fallback = \"column_of\")").unwrap();
+    let fallback = parsed.field_fallback.unwrap();
+    assert_eq!(fallback.get.value(), "column_of");
+    assert!(fallback.names.is_none());
+    let parsed: ImplAttrs = syn::parse_str("s3(r_data_accessors)").unwrap();
+    assert!(parsed.field_fallback.is_none());
+}
+
+#[test]
+fn parse_field_fallback_option_refusals() {
+    for (attrs, expected) in [
+        (
+            "s3(fallback = \"Self::column\")",
+            "readers of `s3(r_data_accessors)`; add `r_data_accessors`",
+        ),
+        (
+            "env(fallback = \"Self::column\")",
+            "readers of `env(r_data_accessors)`; add `r_data_accessors`",
+        ),
+        (
+            "s3(r_data_accessors, fallback_names = \"Self::column_names\")",
+            "add `fallback = \"Self::f\"`",
+        ),
+        (
+            "s3(r_data_accessors, fallback = Self::column)",
+            "`fallback` takes a path to a function in a string: `fallback = \"Self::column\"`",
+        ),
+        (
+            "s3(r_data_accessors, fallback)",
+            "`fallback` takes a path to a function in a string",
+        ),
+        (
+            "s4(r_data_accessors, fallback = \"Self::column\", fallback_names = 1)",
+            "`fallback_names` takes a path to a function in a string: `fallback_names = \"Self::column_names\"`",
+        ),
+        (
+            "s3(r_data_accessors, fallback = \"not a path\")",
+            "`fallback` must be a path to a function, e.g. `Self::column`",
+        ),
+        (
+            "s3(r_data_accessors, fallback = \"Self::a\", fallback = \"Self::b\")",
+            "`fallback` is given twice",
+        ),
+        (
+            "r6(r_data_accessors, fallback = \"Self::column\")",
+            "`fallback` applies to the `$` / `[[` readers of `s3(r_data_accessors)`",
+        ),
+        (
+            "s7(r_data_accessors, fallback_names = \"Self::column_names\")",
+            "`fallback_names` applies to the `$` / `[[` readers",
+        ),
+        (
+            "vctrs(fallback = \"Self::column\")",
+            "a vctr is an R vector with no external pointer",
+        ),
+    ] {
+        let err = parse_attrs_err(attrs);
+        assert!(err.contains(expected), "{attrs}: {err}");
+    }
+    assert!(parse_attrs_err("s4(r_data_accesors)").contains("fallback = \"Self::f\""));
+}
+
+/// The fallback is no class setting the blocks of a type repeat: one block
+/// has it, as one has the constructor, and that block's field methods call
+/// it (#1776).
+#[test]
+fn field_fallback_is_a_class_definition() {
+    let with = fallback_impl("s3(r_data_accessors, fallback = \"Self::column\")");
+    let without = fallback_impl("s3(r_data_accessors)");
+    assert_eq!(with.class_settings(), without.class_settings());
+    assert_eq!(
+        with.class_definitions(),
+        ["a constructor", "the field fallback"]
+    );
+    assert_eq!(without.class_definitions(), ["a constructor"]);
+}
+
+/// On an S3 bare pointer a name no field has goes to the fallback, whose
+/// `None` raises `miniextendr_no_field`; a list or environment receiver
+/// keeps its own elements, a position counts the fields only, `names()`,
+/// `as.list()` and the writes stay the fields', and `.DollarNames()` adds
+/// the fallback's names on the bare pointer.
+#[test]
+fn s3_field_methods_with_a_fallback() {
+    let wrapper = generate_s3_r_wrapper(&fallback_impl(
+        "s3(r_data_accessors, fallback = \"Self::column\", fallback_names = \"Self::column_names\")",
+    ));
+    let dollar = format!(
+        "  if (is.na(match(name, .rdata_fields_Engine))) {{\n    if (typeof(x) == \"externalptr\") {{\n{}      .rdata_no_field_Engine(name, environment(), \"Engine\")\n    }}\n    if (is.list(x)) return(.subset2(x, name))\n    return(NextMethod())\n  }}\n",
+        fallback_read("x", "name", "      ")
+    );
+    assert!(wrapper.contains(&dollar), "{wrapper}");
+    let subset = format!(
+        "    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n{}        .rdata_no_field_Engine(i, environment(), \"Engine\")\n      }}\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(",
+        fallback_read("x", "i", "        ")
+    );
+    assert!(wrapper.contains(&subset), "{wrapper}");
+    let names_entry = crate::naming::sidecar_fallback_names_c_name("Engine");
+    assert!(
+        wrapper.contains(&format!(
+            ".DollarNames.Engine <- function(x, pattern = \"\") {{\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  .val <- if (typeof(x) == \"externalptr\") .Call({names_entry}, x) else names(x)\n  if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n  grep(pattern, unique(c(.rdata_fields_Engine, .val)), value = TRUE)\n}}\n"
+        )),
+        "{wrapper}"
+    );
+    // The writes, `names()` and `as.list()` are those of a class without it.
+    let plain = generate_s3_r_wrapper(&fallback_impl("s3(r_data_accessors)"));
+    for generic in ["names", "as.list", "$<-", "[[<-"] {
+        let def = format!(
+            "{} <- function(",
+            crate::naming::r_def_name(&format!("{generic}.Engine"))
+        );
+        let method = |w: &str| {
+            let start = w.find(&def).unwrap_or_else(|| panic!("{def}: {w}"));
+            let end = w[start..].find("\n}\n").unwrap() + start;
+            w[start..end].to_string()
+        };
+        assert_eq!(method(&wrapper), method(&plain), "{generic}");
+    }
+    assert!(
+        wrapper.contains("#' @param name A field name, exactly; on the pointer itself another name is read through the class's fallback, an error when it has no value for it."),
+        "{wrapper}"
+    );
+    assert_eq!(wrapper.matches("#' @param name ").count(), 2, "{wrapper}");
+    assert!(!plain.contains("fallback"), "{plain}");
+}
+
+/// Without `fallback_names`, `.DollarNames()` offers the fields only.
+#[test]
+fn s3_field_methods_with_a_fallback_and_no_names() {
+    let wrapper = generate_s3_r_wrapper(&fallback_impl(
+        "s3(r_data_accessors, fallback = \"Self::column\")",
+    ));
+    assert!(
+        wrapper.contains("  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("__mx_rdata_names_"), "{wrapper}");
+}
+
+/// Under `lookup = "list"` the fallback's `None` reads `NULL`, as an unknown
+/// name does; `NA` reads `NULL` without asking it.
+#[test]
+fn s3_field_methods_with_a_fallback_under_list_lookup() {
+    let wrapper = generate_s3_r_wrapper(&fallback_impl(
+        "s3(r_data_accessors = \"get\", lookup = \"list\", fallback = \"Self::column\")",
+    ));
+    let dollar = format!(
+        "    if (typeof(x) == \"externalptr\") {{\n{}      return(NULL)\n    }}\n",
+        fallback_read("x", "name", "      ")
+    );
+    assert!(wrapper.contains(&dollar), "{wrapper}");
+    let subset = format!(
+        "    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n        if (!is.na(i)) {{\n{}        }}\n        return(NULL)\n      }}\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n",
+        fallback_read("x", "i", "          ")
+    );
+    assert!(wrapper.contains(&subset), "{wrapper}");
+    assert!(!wrapper.contains(".rdata_no_field_Engine"), "{wrapper}");
+    assert!(
+        wrapper.contains("#' @param name A field name, exactly; on the pointer itself another name is read through the class's fallback, `NULL` when it has no value for it."),
+        "{wrapper}"
+    );
+}
+
+/// S4: `$` asks the fallback after the liveness check, then raises
+/// `miniextendr_no_field`; `.DollarNames()` adds the fallback's names.
+#[test]
+fn s4_field_methods_with_a_fallback() {
+    let wrapper = generate_s4_r_wrapper(&fallback_impl(
+        "s4(r_data_accessors, fallback = \"Self::column\", fallback_names = \"Self::column_names\")",
+    ));
+    let dollar = format!(
+        "  if (is.na(match(name, .rdata_fields_Engine))) {{\n    if (.rdata_every_read_Engine) {{\n      .val <- .rdata_live_Engine(x@ptr, TRUE)\n      if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n    }}\n{}    .rdata_no_field_Engine(name, environment(), \"Engine\")\n  }}\n",
+        fallback_read("x@ptr", "name", "    ")
+    );
+    assert!(wrapper.contains(&dollar), "{wrapper}");
+    let names_entry = crate::naming::sidecar_fallback_names_c_name("Engine");
+    assert!(
+        wrapper.contains(&format!(
+            "  .val <- .Call({names_entry}, x@ptr)\n  if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n  grep(pattern, unique(c(.rdata_fields_Engine, .val)), value = TRUE)\n}}\n"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @param name A field name, or a name the class's fallback reads."),
+        "{wrapper}"
+    );
+}
+
+/// env: `$` tries the fields, then the methods, then the fallback on the
+/// bare pointer, whose `None` reads `NULL`; `.DollarNames()` lists the
+/// fallback's names after the methods.
+#[test]
+fn env_field_methods_with_a_fallback() {
+    let wrapper = generate_env_r_wrapper(&fallback_impl(
+        "env(r_data_accessors, fallback = \"Self::column\", fallback_names = \"Self::column_names\")",
+    ));
+    let lookup = format!(
+        "  obj <- .miniextendr_env_method(self, name, Engine)\n  if (is.null(obj)) {{\n    if (.rdata_every_read_Engine) {{\n      .val <- .rdata_live_Engine(self, TRUE)\n      if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n    }}\n    if (typeof(self) == \"externalptr\") {{\n{}    }}\n  }}\n  obj\n}}\n",
+        fallback_read("self", "name", "      ")
+    );
+    assert!(wrapper.contains(&lookup), "{wrapper}");
+    let names_entry = crate::naming::sidecar_fallback_names_c_name("Engine");
+    assert!(
+        wrapper.contains(&format!(
+            "  .val <- if (typeof(x) == \"externalptr\") .Call({names_entry}, x)\n  if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n  grep(pattern, unique(c(.rdata_fields_Engine, ls(Engine), .val)), value = TRUE)\n}}"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(
+            "#' @param name A method or field name, or a name the class's fallback reads."
+        ),
+        "{wrapper}"
+    );
+}
+
+/// The `.Call` entries: the value borrowed through `sidecar_r_struct`, the
+/// path's `Self` resolved, `None` handed back as the method's sentinel, and
+/// the names entry's `character(0)` for a pointer without its Rust value.
+#[test]
+fn field_fallback_c_entries() {
+    let entries = field_syntax::fallback_c_entries(&fallback_impl(
+        "s3(r_data_accessors, fallback = \"Self::column\", fallback_names = \"Self::column_names\")",
+    ))
+    .to_string();
+    let entry = crate::naming::sidecar_fallback_c_name("Engine");
+    let names = crate::naming::sidecar_fallback_names_c_name("Engine");
+    for expected in [
+        format!(
+            "fn {entry} (x : :: miniextendr_api :: SEXP , name : :: miniextendr_api :: SEXP , none : :: miniextendr_api :: SEXP ,)"
+        ),
+        format!("fn {names} (x : :: miniextendr_api :: SEXP ,)"),
+        "sidecar_r_struct :: < Engine > (x)".to_string(),
+        "match Engine :: column (__mx_value , & __mx_name)".to_string(),
+        ":: core :: option :: Option :: None => none".to_string(),
+        "sidecar_r_live :: < Engine > (x , false)".to_string(),
+        "Engine :: column_names (__mx_value)".to_string(),
+        "__MX_CALL_DEF_RDATA_FALLBACK_Engine".to_string(),
+        "__MX_CALL_DEF_RDATA_NAMES_Engine".to_string(),
+        "numArgs : 3".to_string(),
+        "numArgs : 1".to_string(),
+    ] {
+        assert!(entries.contains(&expected), "{expected}: {entries}");
+    }
+    assert!(!entries.contains("Self ::"), "{entries}");
+    assert!(field_syntax::fallback_c_entries(&fallback_impl("s3(r_data_accessors)")).is_empty());
+}
+
+// endregion
 
 /// A method on a generic the field methods define is refused; in the
 /// getters-only form a `$<-` / `[[<-` method is the point.

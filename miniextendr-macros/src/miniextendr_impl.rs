@@ -358,6 +358,93 @@ pub enum FieldLookup {
     List,
 }
 
+/// The fallback of the field readers of `s3(r_data_accessors)`,
+/// `s4(r_data_accessors)` and `env(r_data_accessors)` (#2150):
+/// `fallback = "Self::column"`, and optionally
+/// `fallback_names = "Self::column_names"`, in the path style of
+/// `#[r_data(get = "Self::f")]`.
+///
+/// `fallback` names a `fn(&Self, name: &str) -> Option<T>`, `T: IntoR`,
+/// which the readers call on the live Rust value for a name no field has, on
+/// the bare pointer (an S3 or env object's classed pointer, an S4 object's
+/// `ptr`); a list or environment carrying the pointer in `.ptr` keeps its own
+/// elements for those names. Fields win, a `[[` position counts the fields
+/// only, `names()` / `as.list()` stay the fields, and an assignment to a name
+/// no field has is refused as before. `None` reads what an unknown name
+/// reads without the fallback: `miniextendr_no_field` on S3 (default lookup)
+/// and S4, `NULL` under `lookup = "list"` and on an env class (whose `$`
+/// tries the methods before the fallback). The macro handles the `Option`
+/// itself, so `Some(x)` reads `x` and a scalar `T` is never `NA` for `None`.
+///
+/// `fallback_names` names a `fn(&Self) -> Vec<String>`: `.DollarNames()`
+/// offers its names after the fields (after the methods on an env class).
+/// Without it, completion offers the fields only.
+///
+/// The impl expansion emits one `.Call` entry for each
+/// (`field_syntax::fallback_c_entries`), so only one impl block of a type
+/// carries the option: it is not a class setting the blocks repeat
+/// ([`ParsedImpl::class_settings`]) but part of the class that block defines
+/// ([`ParsedImpl::class_definitions`]), next to the constructor.
+#[derive(Debug, Clone)]
+pub struct FieldFallback {
+    /// `fallback = "Self::column"`: the path, as written.
+    pub get: syn::LitStr,
+    /// `fallback_names = "Self::column_names"`, as written.
+    pub names: Option<syn::LitStr>,
+}
+
+/// Parses the value of a `fallback` / `fallback_names` key inside `s3(...)` /
+/// `s4(...)` / `env(...)`, after the key: `= "path"`, where the path names a
+/// function (a leading `Self` is the impl's type).
+fn parse_fallback_value(
+    content: syn::parse::ParseStream,
+    key: &syn::Ident,
+) -> syn::Result<syn::LitStr> {
+    let example = if key == "fallback" {
+        "Self::column"
+    } else {
+        "Self::column_names"
+    };
+    if !content.peek(syn::Token![=]) {
+        return Err(syn::Error::new(
+            key.span(),
+            format!("`{key}` takes a path to a function in a string: `{key} = \"{example}\"`"),
+        ));
+    }
+    let _: syn::Token![=] = content.parse()?;
+    if !content.peek(syn::LitStr) {
+        return Err(content.error(format!(
+            "`{key}` takes a path to a function in a string: `{key} = \"{example}\"`"
+        )));
+    }
+    let value: syn::LitStr = content.parse()?;
+    if let Err(err) = value.parse::<syn::Path>() {
+        return Err(syn::Error::new_spanned(
+            &value,
+            format!("`{key}` must be a path to a function, e.g. `{example}`: {err}"),
+        ));
+    }
+    Ok(value)
+}
+
+/// The error for `fallback` / `fallback_names` under a class system without
+/// field syntax: R6 active bindings and S7 properties are a fixed set of
+/// names, and a vctr has no pointer.
+fn no_field_fallback_error(key: &syn::Ident, system: &str) -> syn::Error {
+    let why = match system {
+        "r6" => "an R6 object's `$` reads its environment, whose active bindings are fixed",
+        "s7" => "S7 properties are a fixed set, read with `@`",
+        _ => "a vctr is an R vector with no external pointer",
+    };
+    syn::Error::new(
+        key.span(),
+        format!(
+            "`{key}` applies to the `$` / `[[` readers of `s3(r_data_accessors)`, \
+             `s4(r_data_accessors)` and `env(r_data_accessors)`; {why}"
+        ),
+    )
+}
+
 /// Parses an `r_data_accessors` key inside `s3(...)` / `s4(...)` / `env(...)`
 /// / `r6(...)` / `s7(...)`, after the key: nothing, or `= "get"` (S3, S4 and
 /// env only).
@@ -850,6 +937,10 @@ pub struct ParsedImpl {
     /// `s3(r_data_accessors, lookup = "list")`: how the S3 readers look a
     /// field up (see [`FieldLookup`]).
     pub field_lookup: FieldLookup,
+    /// `fallback = "Self::f"` (and `fallback_names`) on an S3, S4 or env
+    /// class with `r_data_accessors`: what the readers call for a name no
+    /// field has (see [`FieldFallback`], #2150).
+    pub field_fallback: Option<FieldFallback>,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
     /// The impl block's `preconditions` / `no_preconditions`, inherited by
@@ -923,6 +1014,9 @@ pub struct ImplAttrs {
     pub r_data_accessors: RDataAccessors,
     /// How the S3 readers look a field up (`lookup = "list"`, #1921).
     pub field_lookup: FieldLookup,
+    /// What the S3, S4 and env readers call for a name no field has
+    /// (`fallback = "Self::f"`, #2150).
+    pub field_fallback: Option<FieldFallback>,
     // endregion
     // region: Strict conversion mode
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
@@ -986,6 +1080,8 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_abstract = false;
         let mut r_data_accessors = RDataAccessors::Off;
         let mut field_lookup: Option<(FieldLookup, proc_macro2::Span)> = None;
+        let mut fallback: Option<(syn::LitStr, proc_macro2::Span)> = None;
+        let mut fallback_names: Option<(syn::LitStr, proc_macro2::Span)> = None;
         let mut strict: Option<bool> = None;
         let mut preconditions: Option<bool> = None;
         let mut internal = false;
@@ -1053,6 +1149,9 @@ impl syn::parse::Parse for ImplAttrs {
                                  record for its own fields. Use the standalone \
                                  `Type_get_<field>()` / `Type_set_<field>()`",
                             ));
+                        }
+                        if key == "fallback" || key == "fallback_names" {
+                            return Err(no_field_fallback_error(&key, "vctrs"));
                         }
                         let _: syn::Token![=] = content.parse()?;
                         let key_str = key.to_string();
@@ -1167,6 +1266,9 @@ impl syn::parse::Parse for ImplAttrs {
                                 r_data_accessors =
                                     parse_r_data_accessors_value(&content, &key, ClassSystem::R6)?;
                             }
+                            "fallback" | "fallback_names" => {
+                                return Err(no_field_fallback_error(&key, "r6"));
+                            }
                             _ => {
                                 return Err(syn::Error::new(
                                     key.span(),
@@ -1227,6 +1329,9 @@ impl syn::parse::Parse for ImplAttrs {
                             "r_data_accessors" => {
                                 r_data_accessors =
                                     parse_r_data_accessors_value(&content, &key, ClassSystem::S7)?;
+                            }
+                            "fallback" | "fallback_names" => {
+                                return Err(no_field_fallback_error(&key, "s7"));
                             }
                             _ => {
                                 return Err(syn::Error::new(
@@ -1323,6 +1428,19 @@ impl syn::parse::Parse for ImplAttrs {
                         } else if key == "r_data_accessors" {
                             r_data_accessors =
                                 parse_r_data_accessors_value(&content, &key, parsed_system)?;
+                        } else if key == "fallback" || key == "fallback_names" {
+                            let slot = if key == "fallback" {
+                                &mut fallback
+                            } else {
+                                &mut fallback_names
+                            };
+                            if slot.is_some() {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!("`{key}` is given twice"),
+                                ));
+                            }
+                            *slot = Some((parse_fallback_value(&content, &key)?, key.span()));
                         } else {
                             let lookup = if parsed_system == ClassSystem::S3 {
                                 ", lookup = \"list\""
@@ -1334,7 +1452,8 @@ impl syn::parse::Parse for ImplAttrs {
                                 format!(
                                     "unknown {ident_str} option: {key} (expected \
                                      r_data_accessors, or r_data_accessors = \"get\" for \
-                                     getters only{lookup})"
+                                     getters only{lookup}, fallback = \"Self::f\", \
+                                     fallback_names = \"Self::g\")"
                                 ),
                             ));
                         }
@@ -1349,6 +1468,27 @@ impl syn::parse::Parse for ImplAttrs {
                             span,
                             "`lookup` sets how the readers of `s3(r_data_accessors)` look a \
                              field up; add `r_data_accessors` (or `r_data_accessors = \"get\"`)",
+                        ));
+                    }
+                    if let Some((_, span)) = &fallback
+                        && !r_data_accessors.enabled()
+                    {
+                        return Err(syn::Error::new(
+                            *span,
+                            format!(
+                                "`fallback` answers the names no field has for the `$` / `[[` \
+                                 readers of `{ident_str}(r_data_accessors)`; add \
+                                 `r_data_accessors` (or `r_data_accessors = \"get\"`)"
+                            ),
+                        ));
+                    }
+                    if let Some((_, span)) = &fallback_names
+                        && fallback.is_none()
+                    {
+                        return Err(syn::Error::new(
+                            *span,
+                            "`fallback_names` lists the names `fallback` answers, for \
+                             `.DollarNames()`; add `fallback = \"Self::f\"`",
                         ));
                     }
                 }
@@ -1373,6 +1513,10 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             field_lookup: field_lookup.map(|(lookup, _)| lookup).unwrap_or_default(),
+            field_fallback: fallback.map(|(get, _)| FieldFallback {
+                get,
+                names: fallback_names.map(|(names, _)| names),
+            }),
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             preconditions,
             internal,
@@ -3198,6 +3342,7 @@ impl ParsedImpl {
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
             field_lookup: attrs.field_lookup,
+            field_fallback: attrs.field_fallback,
             strict: attrs.strict,
             preconditions: attrs.preconditions,
             internal: attrs.internal,
@@ -3290,7 +3435,9 @@ impl ParsedImpl {
     /// options, `class = "..."`, `internal` / `noexport`, and the `@noRd` /
     /// `@keywords internal` tags. They shape the members each block
     /// generates, so the wrapper writer refuses blocks that differ. The
-    /// per-method defaults (`strict`, `preconditions`) may differ.
+    /// per-method defaults (`strict`, `preconditions`) may differ. A field
+    /// fallback (`fallback = "..."`, #2150) is no setting: one block has it,
+    /// as one has the constructor ([`class_definitions`](Self::class_definitions)).
     pub fn class_settings(&self) -> String {
         let mut options: Vec<String> = Vec::new();
         match self.class_system {
@@ -3373,9 +3520,11 @@ impl ParsedImpl {
     }
 
     /// What this impl block has that only one block of a type may: the
-    /// constructor and S7 properties. The wrapper writer defines the class
-    /// from the block that has them (#1776); the impl docs of every block
-    /// merge into the class's roxygen block ([`ClassWrapper::class_docs`]).
+    /// constructor, S7 properties and the field fallback (#2150). The
+    /// wrapper writer defines the class from the block that has them (#1776),
+    /// so the field methods that call the fallback are that block's; the
+    /// impl docs of every block merge into the class's roxygen block
+    /// ([`ClassWrapper::class_docs`]).
     pub fn class_definitions(&self) -> Vec<String> {
         let mut definitions = Vec::new();
         if self.declared_constructor().is_some() {
@@ -3390,6 +3539,9 @@ impl ParsedImpl {
             })
         {
             definitions.push("S7 properties".to_string());
+        }
+        if self.field_fallback.is_some() {
+            definitions.push("the field fallback".to_string());
         }
         definitions
     }
@@ -5168,6 +5320,9 @@ pub fn expand_impl(
         .included_methods()
         .map(|m| generate_method_c_wrapper(&parsed, m))
         .collect();
+    // The `.Call` entries of the field fallback (#2150), which this block's
+    // field methods call; only the block that defines the class has one.
+    let fallback_entries = field_syntax::fallback_c_entries(&parsed);
 
     // The R wrapper, in the parts the wrapper writer merges per type (#1776).
     let class = generate_class_wrapper(&parsed);
@@ -5283,6 +5438,7 @@ pub fn expand_impl(
 
         // C wrappers and call method defs
         #(#c_wrappers)*
+        #fallback_entries
 
         // Forwarding trait impls for as.<class>() coercion methods
         #trait_impls

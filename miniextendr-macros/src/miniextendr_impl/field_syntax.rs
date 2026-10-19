@@ -41,6 +41,18 @@
 //! index is looked at. Every replacement method puts `value` last and
 //! returns the object (#1853).
 //!
+//! A field fallback (`fallback = "Self::f"`, #2150; see
+//! [`FieldFallback`](super::FieldFallback)) answers the names no field has
+//! on the bare pointer, through a `.Call` entry the impl block emits
+//! ([`fallback_c_entries`]): `$` and `[[` by name on an S3 object, `$` on an
+//! S4 object, and `$` / `[[` on an env object after its methods. The
+//! fallback's `None` reads what an unknown name reads without it. Fields win,
+//! a position counts the fields only, `names()`, `as.list()` and the writes
+//! don't see it, and a list or environment receiver keeps its own elements
+//! for those names. With `fallback_names = "Self::g"`, `.DollarNames()`
+//! offers the fallback's names after the fields (and an env class's
+//! methods).
+//!
 //! `.DollarNames()` is registered with `@exportS3Method utils::.DollarNames`
 //! (`S3method(utils::.DollarNames, Class)`): the `@method` + `@export` pair
 //! writes an unqualified `S3method(.DollarNames, Class)`, which fails to load
@@ -65,6 +77,12 @@ struct Helpers {
     /// The liveness check of `restored(refuse = "every_read")` (#1901), a
     /// stub that is never called without it.
     live: String,
+    /// The `.Call` entry of the impl's `fallback = "..."` (#2150), for a
+    /// name no field has ([`fallback_c_entries`]).
+    fallback: Option<String>,
+    /// The `.Call` entry of its `fallback_names = "..."`, for
+    /// `.DollarNames()`.
+    fallback_names: Option<String>,
 }
 
 impl Helpers {
@@ -78,7 +96,58 @@ impl Helpers {
             error_class: rdata_helper_name(RDataHelper::ErrorClass, &type_name),
             every_read: rdata_helper_name(RDataHelper::EveryRead, &type_name),
             live: rdata_helper_name(RDataHelper::Live, &type_name),
+            fallback: parsed_impl
+                .field_fallback
+                .as_ref()
+                .map(|_| crate::naming::sidecar_fallback_c_name(&type_name)),
+            fallback_names: parsed_impl
+                .field_fallback
+                .as_ref()
+                .and_then(|fallback| fallback.names.as_ref())
+                .map(|_| crate::naming::sidecar_fallback_names_c_name(&type_name)),
         }
+    }
+
+    /// The fallback's read of `name`, a name no field has, on the bare
+    /// pointer `receiver` (#2150): the method returns the value the fallback
+    /// has for it. The method passes its own frame (`environment()`) as the
+    /// value of `None`, which the entry hands back untouched, so no value the
+    /// fallback computes can be taken for it; the lines after these decide
+    /// what `None` reads. Nothing without a fallback.
+    fn fallback_read(&self, receiver: &str, name: &str, indent: &str) -> Vec<String> {
+        let Some(entry) = &self.fallback else {
+            return Vec::new();
+        };
+        let mut lines = vec![format!(
+            "{indent}.val <- .Call({entry}, {receiver}, {name}, environment())"
+        )];
+        lines.extend(guard(indent));
+        lines.push(format!(
+            "{indent}if (!identical(.val, environment())) return(.val)"
+        ));
+        lines
+    }
+
+    /// The call of the impl's `fallback_names` entry (#2150) on the bare
+    /// pointer `receiver`, for `.DollarNames()`; `None` without one. The
+    /// entry gives `character(0)` for a pointer without its Rust value, so
+    /// completion still never raises on a restored object.
+    fn fallback_names_call(&self, receiver: &str) -> Option<String> {
+        let entry = self.fallback_names.as_ref()?;
+        Some(format!(".Call({entry}, {receiver})"))
+    }
+
+    /// The last lines of a `.DollarNames()` with a `fallback_names` (#2150):
+    /// `value`, which reads the fallback's names (or a list's own), bound to
+    /// `.val` and checked, then `pattern` over `known` and `.val`, each name
+    /// once (a name the fallback shares with a field reads the field).
+    fn dollar_names_with_fallback(value: &str, known: &str) -> Vec<String> {
+        let mut lines = vec![format!("  .val <- {value}")];
+        lines.extend(guard("  "));
+        lines.push(format!(
+            "  grep(pattern, unique(c({known}, .val)), value = TRUE)"
+        ));
+        lines
     }
 
     /// Under `restored(refuse = "every_read")` (#1901), the check a read
@@ -282,7 +351,36 @@ pub(super) fn s3_field_methods(
     let dots = ("...", "Additional arguments.");
     // One text per name for the page: roxygen2 keeps the last `@param` of a
     // name on a page, so the reader's and the writer's blocks say the same.
+    let fallback = h.fallback.is_some();
     let (name, i) = match parsed_impl.field_lookup {
+        FieldLookup::Strict if fallback => (
+            (
+                "name",
+                "A field name, exactly; on the pointer itself another name is read through \
+                 the class's fallback, an error when it has no value for it.",
+            ),
+            (
+                "i",
+                "A field name, exactly; `[[` on the pointer itself also takes a whole-number \
+                 position in the field order and reads another name through the class's \
+                 fallback. On a list or an environment carrying the pointer, any other index \
+                 goes to the object's own `[[` / `[[<-`, which matches names exactly.",
+            ),
+        ),
+        FieldLookup::List if fallback => (
+            (
+                "name",
+                "A field name, exactly; on the pointer itself another name is read through \
+                 the class's fallback, `NULL` when it has no value for it.",
+            ),
+            (
+                "i",
+                "A field name, exactly; `[[` on the pointer itself also takes a position in \
+                 the field order, as for a list, and reads another name through the class's \
+                 fallback. On a list or an environment carrying the pointer, any other index \
+                 goes to the object's own `[[` / `[[<-`, which matches names exactly.",
+            ),
+        ),
         FieldLookup::Strict => (
             (
                 "name",
@@ -321,14 +419,22 @@ pub(super) fn s3_field_methods(
     lines.push(format!("{} <- function(x, name) {{", def("$")));
     lines.extend(h.every_read_check());
     lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
-    match parsed_impl.field_lookup {
-        FieldLookup::Strict => lines.push(format!(
-            "    if (typeof(x) == \"externalptr\") {}(name, environment(), {class_lit})",
-            h.no_field
-        )),
-        FieldLookup::List => {
-            lines.push("    if (typeof(x) == \"externalptr\") return(NULL)".to_string())
-        }
+    // What an unknown name reads on the bare pointer, and what the
+    // fallback's `None` reads (#2150).
+    let unknown = |name: &str| match parsed_impl.field_lookup {
+        FieldLookup::Strict => format!("{}({name}, environment(), {class_lit})", h.no_field),
+        FieldLookup::List => "return(NULL)".to_string(),
+    };
+    if fallback {
+        lines.push("    if (typeof(x) == \"externalptr\") {".to_string());
+        lines.extend(h.fallback_read("x", "name", "      "));
+        lines.push(format!("      {}", unknown("name")));
+        lines.push("    }".to_string());
+    } else {
+        lines.push(format!(
+            "    if (typeof(x) == \"externalptr\") {}",
+            unknown("name")
+        ));
     }
     lines.push("    if (is.list(x)) return(.subset2(x, name))".to_string());
     lines.push("    return(NextMethod())".to_string());
@@ -366,10 +472,20 @@ pub(super) fn s3_field_methods(
     match parsed_impl.field_lookup {
         FieldLookup::List => {
             lines.push("    if (is.character(i) && length(i) == 1L) {".to_string());
-            lines.push(format!(
-                "      if (is.na(match(i, {}))) return(NULL)",
-                h.fields
-            ));
+            if fallback {
+                // `NA` reads NULL, as without the fallback.
+                lines.push(format!("      if (is.na(match(i, {}))) {{", h.fields));
+                lines.push("        if (!is.na(i)) {".to_string());
+                lines.extend(h.fallback_read("x", "i", "          "));
+                lines.push("        }".to_string());
+                lines.push("        return(NULL)".to_string());
+                lines.push("      }".to_string());
+            } else {
+                lines.push(format!(
+                    "      if (is.na(match(i, {}))) return(NULL)",
+                    h.fields
+                ));
+            }
             lines.push(
                 "    } else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {".to_string(),
             );
@@ -382,10 +498,18 @@ pub(super) fn s3_field_methods(
         }
         FieldLookup::Strict => {
             lines.push("    if (is.character(i) && length(i) == 1L && !is.na(i)) {".to_string());
-            lines.push(format!(
-                "      if (is.na(match(i, {}))) {}(i, environment(), {class_lit})",
-                h.fields, h.no_field
-            ));
+            if fallback {
+                lines.push(format!("      if (is.na(match(i, {}))) {{", h.fields));
+                lines.extend(h.fallback_read("x", "i", "        "));
+                lines.push(format!("        {}", unknown("i")));
+                lines.push("      }".to_string());
+            } else {
+                lines.push(format!(
+                    "      if (is.na(match(i, {}))) {}",
+                    h.fields,
+                    unknown("i")
+                ));
+            }
             lines.push(
                 "    } else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {"
                     .to_string(),
@@ -458,10 +582,18 @@ pub(super) fn s3_field_methods(
         def(".DollarNames")
     ));
     lines.push(h.dollar_names_guard("x"));
-    lines.push(format!(
-        "  grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
-        h.fields
-    ));
+    match h.fallback_names_call("x") {
+        // The fallback's names follow the fields on the bare pointer, where
+        // `$` reads them (#2150).
+        Some(call) => lines.extend(Helpers::dollar_names_with_fallback(
+            &format!("if (typeof(x) == \"externalptr\") {call} else names(x)"),
+            &h.fields,
+        )),
+        None => lines.push(format!(
+            "  grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
+            h.fields
+        )),
+    }
     lines.push("}".to_string());
     lines.push(String::new());
 
@@ -549,7 +681,14 @@ pub(super) fn s4_field_methods(
         }
     };
     let x = ("x", "An object.");
-    let name = ("name", "A field name.");
+    let name = (
+        "name",
+        if h.fallback.is_some() {
+            "A field name, or a name the class's fallback reads."
+        } else {
+            "A field name."
+        },
+    );
     let value = ("value", "The new value of the field.");
 
     doc(&mut lines, "$", &[x, name]);
@@ -558,6 +697,7 @@ pub(super) fn s4_field_methods(
     ));
     lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
     lines.extend(h.live_check("x@ptr", "    "));
+    lines.extend(h.fallback_read("x@ptr", "name", "    "));
     lines.push(format!(
         "    {}(name, environment(), {class_lit})",
         h.no_field
@@ -575,7 +715,10 @@ pub(super) fn s4_field_methods(
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
     lines.push(h.dollar_names_guard("x@ptr"));
-    lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields));
+    match h.fallback_names_call("x@ptr") {
+        Some(call) => lines.extend(Helpers::dollar_names_with_fallback(&call, &h.fields)),
+        None => lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields)),
+    }
     lines.push("}".to_string());
     lines.push(String::new());
 
@@ -617,9 +760,28 @@ pub(super) fn env_field_branch(parsed_impl: &ParsedImpl) -> Vec<String> {
 /// The check in an env class's `$.Class` before it returns `NULL` for a name
 /// that is neither a field nor a method: under `restored(refuse =
 /// "every_read")` a pointer without its Rust value raises the type's
-/// restored error there (#1901).
+/// restored error there (#1901). With a `fallback` (#2150) the bare pointer
+/// then asks it, after the fields and the methods, so a value of the
+/// fallback never hides a method; its `None` reads `NULL`, as an unknown
+/// name does.
 pub(super) fn env_unknown_name_check(parsed_impl: &ParsedImpl) -> Vec<String> {
-    Helpers::new(parsed_impl).live_check("self", "    ")
+    let h = Helpers::new(parsed_impl);
+    let mut lines = h.live_check("self", "    ");
+    if h.fallback.is_some() {
+        lines.push("    if (typeof(self) == \"externalptr\") {".to_string());
+        lines.extend(h.fallback_read("self", "name", "      "));
+        lines.push("    }".to_string());
+    }
+    lines
+}
+
+/// The `@param name` text of an env class's `$.Class`.
+pub(super) fn env_name_param(parsed_impl: &ParsedImpl) -> &'static str {
+    if parsed_impl.field_fallback.is_some() {
+        "A method or field name, or a name the class's fallback reads."
+    } else {
+        "A method or field name."
+    }
 }
 
 /// The load check of an env class with `env(r_data_accessors)`.
@@ -641,10 +803,18 @@ pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<S
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
     lines.push(h.dollar_names_guard("x"));
-    lines.push(format!(
-        "  grep(pattern, c({}, ls({})), value = TRUE)",
-        h.fields, class_name
-    ));
+    match h.fallback_names_call("x") {
+        // The fallback's names follow the methods, which `$` tries first
+        // (#2150).
+        Some(call) => lines.extend(Helpers::dollar_names_with_fallback(
+            &format!("if (typeof(x) == \"externalptr\") {call}"),
+            &format!("{}, ls({class_name})", h.fields),
+        )),
+        None => lines.push(format!(
+            "  grep(pattern, c({}, ls({})), value = TRUE)",
+            h.fields, class_name
+        )),
+    }
     lines.push("}".to_string());
     lines
 }
@@ -749,4 +919,166 @@ pub(super) fn check_collisions(parsed_impl: &ParsedImpl) -> syn::Result<()> {
         ));
     }
     Ok(())
+}
+
+/// The `.Call` entries of the impl's field fallback (#2150): `fallback =
+/// "Self::f"` as `C_<crate>__mx_rdata_fallback_<Type>(x, name, none)`, and
+/// `fallback_names = "Self::g"` as `C_<crate>__mx_rdata_names_<Type>(x)`.
+/// Nothing without a fallback.
+///
+/// They are the sidecar getters' kind (`externalptr_derive`): no call slot
+/// (#344, #348), the body under `with_r_unwind_protect`, so a panic or the
+/// function's own `rust_error!(class = ...)` reaches R as a tagged condition
+/// the method raises on its call, and the deferred conditions signalled at
+/// the call. They borrow the value through `sidecar_r_struct`, as a struct
+/// field's getter does: a restored pointer raises the type's restored error
+/// before the function runs, a pointer of another type the receiver error,
+/// and a running method holding the value mutably
+/// `miniextendr_borrow_conflict`.
+///
+/// `none` is the value of `None`: the method passes its own frame, which the
+/// entry returns untouched, so the entry holds no R value across an
+/// allocation and the method tells `None` from any value with
+/// `identical()`. `Some(v)` converts `v` with `IntoR`, so `Some(None)` of an
+/// `Option<Option<i32>>` reads `NA`. The names entry gives `character(0)`
+/// for a pointer without its Rust value, since `.DollarNames()` never
+/// raises; a live one calls the function on the value.
+///
+/// The paths resolve a leading `Self` to the impl's type, since the entries
+/// are free functions; a function of the wrong signature is reported at the
+/// attribute's string.
+pub(super) fn fallback_c_entries(parsed_impl: &ParsedImpl) -> proc_macro2::TokenStream {
+    use quote::{format_ident, quote, quote_spanned};
+
+    let Some(fallback) = &parsed_impl.field_fallback else {
+        return proc_macro2::TokenStream::new();
+    };
+    let ty = &parsed_impl.type_ident;
+    let type_name = crate::naming::ident_name(ty);
+    let cfg_attrs = &parsed_impl.cfg_attrs;
+    let path = |lit: &syn::LitStr| {
+        let mut path: syn::Path = lit
+            .parse()
+            .expect("the impl attribute parser checked the path");
+        crate::util::resolve_self(&mut path, ty);
+        path
+    };
+
+    let get = path(&fallback.get);
+    let span = fallback.get.span();
+    // The `Option` and the conversion are spanned at the attribute's string,
+    // so a function that returns no `Option`, or an `Option` of a type
+    // without `IntoR`, is reported there.
+    let value = quote_spanned! {span=>
+        match #get(__mx_value, &__mx_name) {
+            ::core::option::Option::Some(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
+            ::core::option::Option::None => none,
+        }
+    };
+    let c_ident = format_ident!("{}", crate::naming::sidecar_fallback_c_name(&type_name));
+    let def_ident = format_ident!("__MX_CALL_DEF_RDATA_FALLBACK_{type_name}");
+    let registration = crate::call_method_def::call_method_def(&def_ident, &c_ident, 3);
+    let doc = format!(
+        "Generated fallback of the field methods of Rust type `{type_name}` (`fallback = {:?}`).",
+        fallback.get.value()
+    );
+    let mut entries = quote! {
+        #(#cfg_attrs)*
+        #[doc = #doc]
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        #[allow(non_snake_case)]
+        pub unsafe extern "C-unwind" fn #c_ident(
+            x: ::miniextendr_api::SEXP,
+            name: ::miniextendr_api::SEXP,
+            none: ::miniextendr_api::SEXP,
+        ) -> ::miniextendr_api::SEXP {
+            let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+            let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                || {
+                    // The readers pass one name, a string.
+                    let __mx_name: ::std::string::String =
+                        match ::miniextendr_api::TryFromSexp::try_from_sexp(name) {
+                            ::core::result::Result::Ok(name) => name,
+                            ::core::result::Result::Err(err) => {
+                                ::core::panic!("the field fallback takes one name: {err}")
+                            }
+                        };
+                    let __mx_data =
+                        unsafe { ::miniextendr_api::externalptr::sidecar_r_struct::<#ty>(x) };
+                    let __mx_value: &#ty = &__mx_data;
+                    #value
+                },
+                ::core::option::Option::None,
+            );
+            unsafe {
+                ::miniextendr_api::deferred_condition::finish(
+                    __miniextendr_deferred_mark,
+                    __miniextendr_value,
+                    ::core::option::Option::None,
+                )
+            }
+        }
+
+        #(#cfg_attrs)*
+        #[doc(hidden)]
+        #registration
+    };
+
+    if let Some(names) = &fallback.names {
+        let names_path = path(names);
+        let span = names.span();
+        let value = quote_spanned! {span=>
+            let __mx_names: ::std::vec::Vec<::std::string::String> = #names_path(__mx_value);
+        };
+        let c_ident = format_ident!(
+            "{}",
+            crate::naming::sidecar_fallback_names_c_name(&type_name)
+        );
+        let def_ident = format_ident!("__MX_CALL_DEF_RDATA_NAMES_{type_name}");
+        let registration = crate::call_method_def::call_method_def(&def_ident, &c_ident, 1);
+        let doc = format!(
+            "Generated completions of the field fallback of Rust type `{type_name}` \
+             (`fallback_names = {:?}`).",
+            names.value()
+        );
+        entries.extend(quote! {
+            #(#cfg_attrs)*
+            #[doc = #doc]
+            #[doc(hidden)]
+            #[unsafe(no_mangle)]
+            #[allow(non_snake_case)]
+            pub unsafe extern "C-unwind" fn #c_ident(
+                x: ::miniextendr_api::SEXP,
+            ) -> ::miniextendr_api::SEXP {
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || {
+                        use ::miniextendr_api::into_r::IntoR;
+                        if !unsafe { ::miniextendr_api::externalptr::sidecar_r_live::<#ty>(x, false) } {
+                            return ::std::vec::Vec::<::std::string::String>::new().into_sexp();
+                        }
+                        let __mx_data =
+                            unsafe { ::miniextendr_api::externalptr::sidecar_r_struct::<#ty>(x) };
+                        let __mx_value: &#ty = &__mx_data;
+                        #value
+                        __mx_names.into_sexp()
+                    },
+                    ::core::option::Option::None,
+                );
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        ::core::option::Option::None,
+                    )
+                }
+            }
+
+            #(#cfg_attrs)*
+            #[doc(hidden)]
+            #registration
+        });
+    }
+    entries
 }
