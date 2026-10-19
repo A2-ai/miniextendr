@@ -5538,6 +5538,99 @@ fn method_choice_formal_reads_as_omitted_in_each_class_system() {
     }
 }
 
+/// `defaults(p = ...)` on a method's `Missing<T>` parameter (#2161) in every
+/// class system: the formal shows the default, the `.Call()` argument tests
+/// `missing()` only (no `identical()` against the default), and the
+/// undocumented parameter gets the omission note.
+#[test]
+fn method_missing_default_in_each_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        // A vctrs impl takes static methods only.
+        let code = if system == ClassSystem::Vctrs {
+            syn::parse_quote! {
+                impl Fitter {
+                    #[miniextendr(defaults(tol = "1e-8", weights = "NULL"))]
+                    pub fn fit(tol: Missing<f64>, weights: Missing<Option<Vec<f64>>>) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            }
+        } else {
+            syn::parse_quote! {
+                impl Fitter {
+                    #[miniextendr(defaults(tol = "1e-8", weights = "NULL"))]
+                    pub fn fit(&self, tol: Missing<f64>, weights: Missing<Option<Vec<f64>>>) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            }
+        };
+        let parsed = parse_impl(system, code);
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        for line in [
+            "tol = 1e-8, weights = NULL",
+            "if (missing(tol)) quote(expr=) else tol, if (missing(weights)) quote(expr=) else weights",
+        ] {
+            assert!(
+                wrapper.contains(line),
+                "{system:?}: missing `{line}` in:\n{wrapper}"
+            );
+        }
+        assert!(!wrapper.contains("identical("), "{system:?}:\n{wrapper}");
+        // An S4 method has no usage entry, so no argument docs.
+        assert_eq!(
+            wrapper
+                .matches(crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC)
+                .count(),
+            if system == ClassSystem::S4 { 0 } else { 2 },
+            "{system:?}:\n{wrapper}"
+        );
+    }
+}
+
+/// A method's choice parameter under `Missing<..>` refuses a default, as on a
+/// standalone function (#2161).
+#[test]
+fn method_missing_choice_refuses_default() {
+    for item_impl in [
+        syn::parse_quote! {
+            impl S {
+                #[miniextendr(match_arg(mode), defaults(mode = "\"Safe\""))]
+                pub fn pick(&self, mode: Missing<Mode>) {}
+            }
+        },
+        syn::parse_quote! {
+            impl S {
+                #[miniextendr(choices(level = "low, high"), defaults(level = "\"low\""))]
+                pub fn pick(&self, level: Missing<String>) {}
+            }
+        },
+    ] {
+        let err = ParsedImpl::parse(default_impl_attrs(ClassSystem::Env), item_impl)
+            .expect_err("rejected")
+            .to_string();
+        assert!(err.starts_with("`Missing<..>` parameter `"), "{err}");
+        assert!(
+            err.contains("with match_arg/choices cannot have a default"),
+            "{err}"
+        );
+    }
+}
+
 /// `no_default(p)` on a method's choice parameters (#1828): each formal is the
 /// bare name, while the prelude still spells the choice list out (the
 /// placeholder for `match_arg`) and the `.Call()` still forwards the

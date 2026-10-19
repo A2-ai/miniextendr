@@ -284,10 +284,19 @@ impl<'a> TraitMethodContext<'a> {
     }
 
     /// R-param-name → auto-generated `@param` text of this method's choice
-    /// params (`One of "a", "b".` for `choices(...)`). See
-    /// `r_class_formatter::choice_param_doc_map`.
+    /// params (`One of "a", "b".` for `choices(...)`) and of its `Missing<..>`
+    /// params with a default (#2161). See
+    /// `r_class_formatter::choice_param_doc_map` and
+    /// `miniextendr_fn::missing_default_param_docs`.
     pub(super) fn choice_param_docs(&self) -> std::collections::HashMap<String, String> {
-        crate::r_class_formatter::choice_param_doc_map(&self.c_ident, &self.method.per_param)
+        let mut docs =
+            crate::r_class_formatter::choice_param_doc_map(&self.c_ident, &self.method.per_param);
+        docs.extend(crate::miniextendr_fn::missing_default_param_docs(
+            &self.method.sig.inputs,
+            &self.method.per_param,
+            &self.method.param_defaults,
+        ));
+        docs
     }
 
     /// Build R prelude lines validating `match_arg`/`choices` params. See

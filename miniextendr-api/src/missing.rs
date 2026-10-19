@@ -34,7 +34,7 @@
 //! - `NULL` (explicitly passed `NULL`)
 //! - A value (explicitly passed a non-NULL value)
 //!
-//! # How it works: the `quote(expr=)` trick
+//! # How it works: the `quote(expr=)` sentinel
 //!
 //! In regular R functions, you detect missing arguments with `missing()`:
 //!
@@ -46,26 +46,51 @@
 //! my_func(5)  # 5
 //! ```
 //!
-//! However, `.Call()` (the FFI boundary) forces argument evaluation. Without a
-//! default value, R errors before the call even reaches Rust:
+//! However, `.Call()` (the FFI boundary) forces argument evaluation, so an
+//! omitted argument errors before the call even reaches Rust:
 //!
 //! ```r
 //! wrapper <- function(x) .Call(rust_fn, x)
 //! wrapper()  # Error: argument "x" is missing, with no default
 //! ```
 //!
-//! The generated R wrappers use `quote(expr=)` as the default for `Missing<T>` parameters:
+//! The generated R wrapper tests `missing()` at the argument position of the
+//! `.Call()`:
 //!
 //! ```r
-//! wrapper <- function(x = quote(expr=)) .Call(rust_fn, x)
+//! wrapper <- function(x) .Call(rust_fn, if (missing(x)) quote(expr=) else x)
 //! ```
 //!
-//! `quote(expr=)` is an R idiom that captures the "missing" state - calling `quote()`
-//! without providing its `expr` argument returns `SEXP::missing_arg()`. This allows:
+//! `quote(expr=)` is an R idiom for the "missing" state: calling `quote()`
+//! without its `expr` argument returns `SEXP::missing_arg()`. The call
+//! proceeds, the sentinel passes through `.Call()`, and `Missing<T>` reads it
+//! as `Missing::Absent`. Only the argument position may hold the sentinel: a
+//! variable bound to it errors on lookup.
 //!
-//! 1. The call to proceed without error
-//! 2. `SEXP::missing_arg()` to be passed through `.Call()` to Rust
-//! 3. `Missing<T>` to detect it as `Missing::Absent`
+//! # A default on `Missing<T>`
+//!
+//! `#[miniextendr(default = "...")]` on a `Missing<T>` parameter (or
+//! `defaults(x = "...")` on a method) only writes the formal, so the usage
+//! line shows the value the function stands for when the argument is left
+//! out:
+//!
+//! ```r
+//! wrapper <- function(tol = 1e-8) .Call(rust_fn, if (missing(tol)) quote(expr=) else tol)
+//! ```
+//!
+//! `missing(tol)` is `TRUE` for an omitted argument even when the formal has
+//! a default, so an omitted argument still reaches Rust as `Missing::Absent`
+//! and the default is never evaluated. The Rust code decides what absence
+//! means; the default in the formal documents it.
+//!
+//! A supplied value is always `Missing::Present`, even one `identical()` to
+//! the default: R's `missing(x)` is `FALSE` once the caller supplies `x`, and
+//! a caller who writes `wrapper(tol = 1e-8)` may mean that value. A caller
+//! forwarding its own formal, `function(tol = 1e-8) wrapper(tol)`, hands its
+//! default over as a value too. This differs from a single-choice
+//! `match_arg` / `choices` parameter under `Missing<..>`, whose formal is the
+//! whole choice vector: that vector is never one valid choice, so passing it
+//! whole reads as omitted. Such a choice parameter takes no `default`.
 
 use crate::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};

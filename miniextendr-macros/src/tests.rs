@@ -1599,6 +1599,72 @@ fn parsed_fn_absent_formals() {
 
 // endregion
 
+// region: a default on a `Missing<T>` parameter (#2161)
+
+/// `default = "..."` on a `Missing<T>` parameter only writes the formal: the
+/// call argument still tests `missing()` first, with no `identical()`
+/// against the default, so an omitted argument is `Absent` and every supplied
+/// value `Present`. The generated `@param` text says what omission means.
+#[test]
+fn parsed_fn_missing_default() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            #[miniextendr(default = "1e-8")] tol: Missing<f64>,
+            #[miniextendr(default = "NULL")] weights: Missing<Option<Vec<f64>>>,
+            #[miniextendr(default = "getOption(\"pkg.n\", 3L)")] n: Missing<i32>,
+            plain: Missing<f64>,
+        ) {}
+    });
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_defaults(parsed.param_defaults())
+        .with_absent_formals(parsed.absent_formals("C_f"));
+    assert_eq!(
+        builder.build_formals(),
+        "tol = 1e-8, weights = NULL, n = getOption(\"pkg.n\", 3L), plain"
+    );
+    assert_eq!(
+        builder.build_call_args_vec(),
+        [
+            "if (missing(tol)) quote(expr=) else tol",
+            "if (missing(weights)) quote(expr=) else weights",
+            "if (missing(n)) quote(expr=) else n",
+            "if (missing(plain)) quote(expr=) else plain",
+        ]
+    );
+    let docs = parsed.missing_default_param_docs();
+    let mut names: Vec<&str> = docs.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["n", "tol", "weights"]);
+    assert!(
+        docs.values()
+            .all(|doc| doc == crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC)
+    );
+}
+
+/// A `match_arg` parameter under `Missing<..>` still refuses a `default`: an
+/// omitted argument is `Absent`, so the default would pick no choice. (A
+/// standalone `choices(...)` parameter refuses `default` in any form.)
+#[test]
+fn parsed_fn_missing_choice_refuses_default() {
+    for tokens in [
+        quote::quote! { fn f(#[miniextendr(match_arg, default = "\"Safe\"")] mode: Missing<Mode>) {} },
+        quote::quote! { fn f(#[miniextendr(match_arg, default = "NULL")] mode: Missing<Option<Mode>>) {} },
+        quote::quote! {
+            fn f(#[miniextendr(match_arg, default = "\"x\"")] mode: Missing<Either<Mode, DataFrame>>) {}
+        },
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(
+            err.starts_with(
+                "`Missing<..>` parameter `mode` with match_arg/choices cannot have a default"
+            ),
+            "{err}"
+        );
+    }
+}
+
+// endregion
+
 // region: `no_default` on a choice parameter (#1828)
 
 /// `no_default` reads the same in one attribute or its own, on `match_arg`

@@ -387,7 +387,12 @@ To refuse an explicit `NULL` in any of these forms, with your own message, see
 
 `choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
 has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
-it cannot carry a `default = "..."`. Impl methods of every class system take
+it cannot carry a `default = "..."` (nor `defaults(p = "...")` on a method), a
+compile error. Other `Missing<T>` parameters take one (#2161), but here it
+would mean nothing: an omitted argument reaches Rust as `Absent`, so a default
+picks no choice, and the formal already shows the choices, which the
+`identical()` check above compares with. Drop `Missing` to make a choice the
+default (`default = "\"Safe\""` on `Mode`), or drop the default. Impl methods of every class system take
 the same types through the method-level `match_arg(p)` /
 `match_arg_several_ok(p)` / `choices(p = "...")` attributes; trait methods
 accept `choices(p = "...")` / `choices_several_ok(p = "...")` only, so they

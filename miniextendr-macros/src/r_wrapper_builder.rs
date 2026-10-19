@@ -378,9 +378,11 @@ impl<'a> RArgumentBuilder<'a> {
             // sentinel, produced *at the argument position*. A binding holding
             // the sentinel errors on symbol lookup ("argument is missing, with
             // no default"), so the former `if (missing(x)) x <- quote(expr=)`
-            // prelude broke every truly-missing call. (`Missing<T>` + user
-            // default is rejected at macro parse time, so no default-shadowing
-            // concern here.) A single-choice parameter also forwards the
+            // prelude broke every truly-missing call. A `default` on it
+            // (#2161) only writes the formal: `missing()` is `TRUE` for an
+            // omitted argument with a default, so the default is never
+            // evaluated, and a supplied value, the default's own included, is
+            // `Present`. A single-choice parameter also forwards the
             // sentinel for a value `identical()` to its formal (#2152), which
             // its prelude check skipped: the default shown in the usage line
             // means the same as leaving it out.

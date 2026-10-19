@@ -276,6 +276,7 @@ mod match_arg_tests;
 #[cfg(feature = "md5")]
 mod md5_adapter_tests;
 mod misc_tests;
+mod missing_default_tests;
 mod missing_tests;
 mod multi_para_doc_demo;
 #[cfg(feature = "nalgebra")]

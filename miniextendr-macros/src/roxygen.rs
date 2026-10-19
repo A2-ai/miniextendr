@@ -1571,7 +1571,10 @@ pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 ///
 /// 1. `choices(...)`: the quoted list, "One of ..." / "One or more of ...";
 /// 2. `match_arg`: a placeholder the wrapper writer resolves (#210);
-/// 3. anything else: `(no documentation available)`.
+/// 3. a `Missing<..>` parameter with a default:
+///    [`MISSING_DEFAULT_PARAM_DOC`](crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC)
+///    (#2161);
+/// 4. anything else: `(no documentation available)`.
 ///
 /// Each line carries [`PARAM_FILLER_MARKER`], so the wrapper registry decides
 /// whether it is written. Nothing is generated when the block takes its
@@ -1596,6 +1599,7 @@ pub(crate) fn push_fn_param_tags(
     call_param_doc: Option<&str>,
 ) -> Vec<(String, String)> {
     let mut match_arg_doc_placeholders = Vec::new();
+    let missing_default_docs = parsed.missing_default_param_docs();
     let call_line = call_param_doc
         .filter(|_| !param_documented(tags, ".call"))
         .map(|doc| format!("@param .call {doc}"));
@@ -1631,6 +1635,8 @@ pub(crate) fn push_fn_param_tags(
                 "{PARAM_FILLER_MARKER}@param {r_name} {doc_placeholder}"
             ));
             match_arg_doc_placeholders.push((doc_placeholder, rust_name));
+        } else if let Some(doc) = missing_default_docs.get(&r_name) {
+            tags.push(format!("{PARAM_FILLER_MARKER}@param {r_name} {doc}"));
         } else {
             tags.push(format!(
                 "{PARAM_FILLER_MARKER}@param {r_name} (no documentation available)"

@@ -1309,6 +1309,82 @@ fn choice_trait_method() -> TraitMethod {
     method
 }
 
+/// `defaults(p = ...)` on a trait method's `Missing<T>` parameter (#2161):
+/// the formal shows the default, the `.Call()` argument tests `missing()`
+/// only, and the undocumented parameter gets the omission note, in every
+/// class system. A choice parameter under `Missing<..>` refuses a default,
+/// which the trait path accepted before #2161 for `choices(...)` (its
+/// default then replaced the formal that #2152 compares with).
+#[test]
+fn trait_method_missing_default() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(defaults(tol = "1e-8"))]
+            fn fit(&self, tol: Missing<f64>) -> f64 {
+                unimplemented!()
+            }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
+    for class_system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let result = generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &methods,
+            &[],
+            opts(class_system, false, false, false),
+        )
+        .unwrap();
+        assert!(result.contains("tol = 1e-8"), "{class_system:?}:\n{result}");
+        assert!(
+            result.contains("if (missing(tol)) quote(expr=) else tol"),
+            "{class_system:?}:\n{result}"
+        );
+        assert!(
+            !result.contains("identical("),
+            "{class_system:?}:\n{result}"
+        );
+        // R6 trait methods and S4 methods document no arguments (see the
+        // choice docs below).
+        if !matches!(class_system, ClassSystem::R6 | ClassSystem::S4) {
+            assert!(
+                result.contains(crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC),
+                "{class_system:?}:\n{result}"
+            );
+        }
+    }
+
+    let Err(err) = super::vtable::extract_methods(
+        &syn::parse_quote! {
+            impl Bar for Foo {
+                #[miniextendr(choices(level = "low, high"), defaults(level = "\"low\""))]
+                fn pick(&self, level: Missing<String>) -> String {
+                    unimplemented!()
+                }
+            }
+        },
+        crate::roxygen::RdPage::Rendered,
+        &[],
+    ) else {
+        panic!("must be rejected");
+    };
+    let err = err.to_string();
+    assert!(
+        err.starts_with(
+            "`Missing<..>` parameter `level` with match_arg/choices cannot have a default"
+        ),
+        "{err}"
+    );
+}
+
 /// The choice vector of an omittable `choices(...)` parameter reads as
 /// omitted in every class system (#2152): the prelude skips the check for
 /// it, and the `.Call()` argument forwards the sentinel for it.

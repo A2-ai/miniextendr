@@ -2478,8 +2478,9 @@ impl ParsedMethod {
         // non-macro attribute"). The surface is instead method-level:
         // `#[miniextendr(match_arg(p), choices(q = "a, b"))]`. Every named param
         // must exist on the signature, so typos fail at compile time; `Option<T>`
-        // scalar match_arg/choices params are the optional form (#1473);
-        // `Missing<T>` ones and defaults on `Option<T>` are rejected.
+        // scalar match_arg/choices params are the optional form (#1473) and
+        // `Missing<..>` ones the omittable form (#1551), and neither takes a
+        // default. Any other `Missing<T>` parameter does (#2161).
         crate::miniextendr_fn::finalize_method_param_attrs(
             &mut method_attrs.per_param,
             &peeled_sig.inputs,
@@ -2497,30 +2498,6 @@ impl ParsedMethod {
             method_attrs.rng,
             |name| method_attrs.per_param.contains_key(name) || param_defaults.contains_key(name),
         )?;
-
-        // Validate: Missing<T> parameters must not have defaults
-        for arg in peeled_sig.inputs.iter() {
-            if let syn::FnArg::Typed(pt) = arg
-                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-            {
-                let name = crate::naming::ident_name(&pat_ident.ident);
-                if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
-                    && param_defaults.contains_key(&name)
-                {
-                    let span = method_attrs.defaults_span.unwrap_or(item.sig.ident.span());
-                    return Err(syn::Error::new(
-                        span,
-                        format!(
-                            "`Missing<T>` parameter `{}` cannot have a default value. \
-                             `Missing<T>` detects omitted arguments via `missing()` in R, \
-                             which is incompatible with default values in the R function signature. \
-                             Use `Option<T>` with a default instead.",
-                            name
-                        ),
-                    ));
-                }
-            }
-        }
 
         // Consuming `self` receivers (#1432): supported for every return shape
         // (see `ReceiverKind::Value`). Two things stay rejected: a receiver type
