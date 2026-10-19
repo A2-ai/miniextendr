@@ -61,6 +61,7 @@ keep_rows(df, b > limit)     # `b` is a column, `limit` the caller's variable
 | `as_name()` | `Some(name)` for a symbol (`x`) or a single string (`"x"`), else `None` |
 | `eval()` | `eval(expr, env)` |
 | `eval_in(data)` | `eval(expr, data, env)`: `data` a list or data frame (its named elements in front of `env`, the first of two same-named ones winning), an environment (used as is) or `NULL` (`env`). Anything else panics. |
+| `try_eval_in(data)` | `eval_in(data)` with an R error returned as `Err(REvalError)` ([below](#an-r-error-returned-as-err)) |
 
 `as_name()` borrows the symbol's or string's characters, which R keeps for
 the call. The evaluated values are unprotected: protect one before the next
@@ -361,10 +362,42 @@ evaluation runs inside R's `tryCatch()`, so a `stop()` at the top of the
 expression has no `call()`
 ([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)).
 
+`Quoted::try_eval_in(data)` and `Quosure::try_eval_tidy(data)` are
+`eval_in()` and `eval_tidy()` evaluated this way, with the same data mask
+(#2163). With `REvalError::reraise()` a `subset()` method can explain the
+errors it understands and leave every other one as R raised it:
+
+```rust
+let keep = match subset.try_eval_in(table) {
+    Ok(keep) => keep,
+    Err(e) => {
+        // `unknown_columns` (the package's): the names in the expression
+        // that are neither columns nor variables
+        let unknown = unknown_columns(&subset, table);
+        if unknown.is_empty() {
+            // SAFETY: inside the `#[miniextendr]` call.
+            unsafe { e.reraise() }
+        }
+        rust_error!(class = "pkg_unknown_column", "no column `{}`", unknown.join("`, `"))
+    }
+};
+```
+
+`reraise()` signals the caught condition object itself, through base
+`stop(cond)` evaluated as `eval_with_handlers` evaluates it: the caller's
+handlers see it and the exit leaves through the Rust frames, under the two
+rules above. Its classes, message and fields are R's; its call is
+`e.call()`, so an error at the top of the expression reports no call rather
+than R's `tryCatch()` frame. `rust_error!(class = e.reraise_class(..), "{e}")`
+raises the package's own condition instead
+([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own)).
+`reraise()` is `unsafe` because the unwind must reach a miniextendr boundary.
+
 ## Tests
 
 `rpkg/src/rust/quoted_tests.rs` (fixtures, including the `subset()` method,
-the `quoted_try_*` fixtures of `try_eval_with_handlers`, the role map
+the `quoted_try_*` fixtures of `try_eval_with_handlers`, `try_eval_in()` and
+`reraise()` (`quoted_try_subset()`), the role map
 `quosure_roles()`, `gc_stress_quoted()` and `gc_stress_quosure_args()`) and
 `rpkg/tests/testthat/test-quoted.R`; the rlang and tidyselect blocks skip when
 those packages are not installed. `miniextendr-api/tests/pairlist_quosure.rs`

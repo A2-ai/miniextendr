@@ -16,6 +16,7 @@
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use miniextendr_api::expression::{RCall, try_eval_with_handlers};
+use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::prelude::{Call, List, OwnedProtect, PairListExt, SEXP, SexpExt};
 use miniextendr_api::{
@@ -167,6 +168,14 @@ fn true_rows(keep: SEXP) -> Vec<i32> {
 pub fn quosure_eval_tidy(data: SEXP, x: Quosure) -> SEXP {
     let _sentinel = DropSentinel;
     x.eval_tidy(data)
+}
+
+/// `rlang::eval_tidy(x, data)` through `Quosure::try_eval_tidy` (#2163): the
+/// value or the caught error's parts, as `quoted_try_call()`.
+#[miniextendr(noexport)]
+pub fn quosure_try_eval_tidy(data: SEXP, x: Quosure) -> SEXP {
+    let _sentinel = DropSentinel;
+    caught_parts(x.try_eval_tidy(data))
 }
 
 /// The quosure's expression.
@@ -329,6 +338,95 @@ pub fn quoted_try_eval(expr: Quoted) -> SEXP {
     // SAFETY: R's main thread, inside the `.Call()`; the expression and its
     // environment are rooted by the `.Call()` argument.
     caught_parts(unsafe { try_eval_with_handlers(expr.expr(), expr.env()) })
+}
+
+/// `cond` with `data` as a data mask through `Quoted::try_eval_in` (#2163):
+/// the value or the caught error's parts, as `quoted_try_call()`.
+#[miniextendr(noexport)]
+pub fn quoted_try_rows(data: SEXP, cond: Quoted) -> SEXP {
+    let _sentinel = DropSentinel;
+    caught_parts(cond.try_eval_in(data))
+}
+
+/// Call `f()` through `RCall::try_eval_with_handlers` and raise a caught
+/// error again as R raised it (`REvalError::reraise`, #2163).
+#[miniextendr(noexport)]
+pub fn quoted_try_call_reraise_as_is(f: SEXP) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: as `quoted_try_call`.
+    match unsafe { RCall::from_sexp(f).try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv) } {
+        Ok(value) => value,
+        // SAFETY: inside the `.Call()`.
+        Err(e) => unsafe { e.reraise() },
+    }
+}
+
+/// Evaluate `expr` in the caller's frame through `try_eval_with_handlers`
+/// and raise a caught error again as R raised it (`REvalError::reraise`,
+/// #2163).
+#[miniextendr(noexport)]
+pub fn quoted_try_eval_reraise(expr: Quoted) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: as `quoted_try_eval`.
+    match unsafe { try_eval_with_handlers(expr.expr(), expr.env()) } {
+        Ok(value) => value,
+        // SAFETY: inside the `.Call()`.
+        Err(e) => unsafe { e.reraise() },
+    }
+}
+
+/// The rows of `x` where `subset` is `TRUE`, as `quoted_rows()`, with an
+/// error explained when `subset` names a column `x` doesn't have: class
+/// `mx_unknown_column`. Any other error is raised again as R raised it
+/// (`Quoted::try_eval_in`, `REvalError::reraise`, #2163).
+#[miniextendr(noexport)]
+pub fn quoted_try_subset(x: SEXP, subset: Quoted) -> Vec<i32> {
+    let _sentinel = DropSentinel;
+    let keep = match subset.try_eval_in(x) {
+        Ok(keep) => keep,
+        Err(e) => {
+            let unknown = unknown_columns(&subset, x);
+            if unknown.is_empty() {
+                // SAFETY: inside the `.Call()`.
+                unsafe { e.reraise() }
+            }
+            rust_error!(
+                class = "mx_unknown_column",
+                "no column `{}` in the table",
+                unknown.join("`, `")
+            )
+        }
+    };
+    // SAFETY: the value is rooted before the next allocation.
+    let keep = unsafe { OwnedProtect::new(keep) };
+    true_rows(keep.get())
+}
+
+/// The names `subset` uses that are neither columns of `x` nor visible from
+/// where it was written: `all.vars()` less `names(x)` and what `exists()`
+/// finds.
+fn unknown_columns(subset: &Quoted, x: SEXP) -> Vec<String> {
+    // SAFETY: R's main thread, inside the `.Call()`; `RCall` roots its
+    // arguments, and each result is read before the next allocation.
+    unsafe {
+        let vars = RCall::new("all.vars")
+            .quoted_arg(subset.expr())
+            .eval_base()
+            .expect("all.vars() of an expression");
+        let vars: Vec<String> = TryFromSexp::try_from_sexp(vars).expect("all.vars() gives strings");
+        let columns: Vec<String> = TryFromSexp::try_from_sexp(x.get_names()).unwrap_or_default();
+        vars.into_iter()
+            .filter(|var| !columns.contains(var))
+            .filter(|var| {
+                let found = RCall::new("exists")
+                    .arg(SEXP::scalar_string_from_str(var))
+                    .named_arg("envir", subset.env())
+                    .eval_base()
+                    .expect("exists() of a name");
+                !found.as_logical().unwrap_or(false)
+            })
+            .collect()
+    }
 }
 
 // endregion

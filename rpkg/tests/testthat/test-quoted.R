@@ -693,6 +693,98 @@ test_that("try_eval_with_handlers: repeated errors and exits leave the session u
   expect_identical(miniextendr:::quoted_try_call(function() 1 + 1), list(value = 2))
 })
 
+test_that("try_eval_in(): the data mask of eval_in(), an R error as Err (#2163)", {
+  tbl <- data.frame(a = 1:5, b = c(2, 4, 6, 8, 10))
+  limit <- 5
+  expect_identical(miniextendr:::quoted_try_rows(tbl, b > limit), list(value = tbl$b > limit))
+  res <- miniextendr:::quoted_try_rows(tbl, missing_col > 1)
+  expect_match(res$message, "missing_col")
+  expect_identical(res$classes, c("simpleError", "error", "condition"))
+  # Evaluated at the top of the mask: no call (R's would be the tryCatch() frame's).
+  expect_null(res$call)
+  # The caller's handlers still see a warning.
+  seen <- 0L
+  res <- withCallingHandlers(
+    miniextendr:::quoted_try_rows(tbl, {
+      warning("careful")
+      a > 2
+    }),
+    warning = function(w) {
+      seen <<- seen + 1L
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(seen, 1L)
+  expect_identical(res, list(value = tbl$a > 2))
+  expect_error(miniextendr:::quoted_try_rows(1:3, a), "must be a list")
+})
+
+test_that("reraise() raises the caught condition as R raised it (#2163)", {
+  check_input <- function(x) {
+    stop(errorCondition("bad input", class = "my_input_error", data = list(x = x), call = sys.call()))
+  }
+  before <- drops()
+  e <- tryCatch(miniextendr:::quoted_try_call_reraise_as_is(function() check_input(1L)), error = identity)
+  expect_identical(class(e), c("my_input_error", "error", "condition"))
+  expect_identical(conditionMessage(e), "bad input")
+  expect_identical(conditionCall(e), quote(check_input(1L)))
+  expect_identical(e$data, list(x = 1L))
+  expect_identical(drops() - before, 1L)
+  # A stop() at the top of the evaluation: no call, not R's tryCatch() frame.
+  e <- tryCatch(miniextendr:::quoted_try_eval_reraise(stop("top")), error = identity)
+  expect_identical(class(e), c("simpleError", "error", "condition"))
+  expect_identical(conditionMessage(e), "top")
+  expect_null(conditionCall(e))
+  expect_error(miniextendr:::quoted_try_eval_reraise(stop("top")), "^top$")
+  e <- tryCatch(miniextendr:::quoted_try_eval_reraise(check_input(4L)), error = identity)
+  expect_identical(conditionCall(e), quote(check_input(4L)))
+  # withCallingHandlers() sees it once, then tryCatch() catches it.
+  seen <- 0L
+  e <- tryCatch(
+    withCallingHandlers(
+      miniextendr:::quoted_try_call_reraise_as_is(function() check_input(2L)),
+      my_input_error = function(e) seen <<- seen + 1L
+    ),
+    error = identity
+  )
+  expect_identical(seen, 1L)
+  expect_s3_class(e, "my_input_error")
+  # Uncaught, R prints it with its own call.
+  expect_error(
+    miniextendr:::quoted_try_call_reraise_as_is(function() check_input(3L)),
+    class = "my_input_error"
+  )
+  expect_identical(miniextendr:::quoted_try_call_reraise_as_is(function() 42L), 42L)
+})
+
+test_that("a subset() method explains an unknown column and re-raises the rest (#2163)", {
+  tbl <- data.frame(a = 1:5, b = c(2, 4, 6, 8, 10))
+  limit <- 5
+  expect_identical(miniextendr:::quoted_try_subset(tbl, b > limit), 3:5)
+  before <- drops()
+  e <- tryCatch(miniextendr:::quoted_try_subset(tbl, bb > limit), error = identity)
+  expect_s3_class(e, "mx_unknown_column")
+  expect_identical(conditionMessage(e), "no column `bb` in the table")
+  expect_identical(drops() - before, 1L)
+  e <- tryCatch(
+    miniextendr:::quoted_try_subset(tbl, a > stop(errorCondition("no limit", class = "my_limit_error"))),
+    error = identity
+  )
+  expect_identical(class(e), c("my_limit_error", "error", "condition"))
+  expect_identical(drops() - before, 2L)
+})
+
+test_that("try_eval_tidy(): eval_tidy() with an R error as Err (#2163)", {
+  skip_if_not_installed("rlang")
+  tbl <- data.frame(a = 1:5)
+  a <- 100
+  expect_identical(miniextendr:::quosure_try_eval_tidy(tbl, a), list(value = 1:5))
+  expect_identical(miniextendr:::quosure_try_eval_tidy(tbl, .env$a), list(value = 100))
+  res <- miniextendr:::quosure_try_eval_tidy(tbl, .data$zz)
+  expect_true("error" %in% res$classes)
+  expect_match(res$message, "zz")
+})
+
 # endregion
 
 # region: pairlists and quosures in a call (#1903)
@@ -876,10 +968,17 @@ test_that("try_eval_with_handlers survives gctorture", {
     )
     r <- tryCatch(miniextendr:::quoted_try_call_reraise(function() stop("gc")), error = identity)
     top <- miniextendr:::quoted_try_eval(stop("top"))
+    again <- tryCatch(
+      miniextendr:::quoted_try_call_reraise_as_is(function() stop(errorCondition("gc", class = "mx_gc"))),
+      error = identity
+    )
+    masked <- miniextendr:::quoted_try_rows(data.frame(a = 1:3), zz > 1)
     if (identical(e$message, "gc") && identical(e$classes, c("mx_gc", "error", "condition")) &&
         inherits(w, "warning") && identical(v, list(value = "value")) &&
         inherits(r, "mx_reraised") && identical(conditionMessage(r), "gc") &&
-        identical(top$message, "top") && is.null(top$call)) {
+        identical(top$message, "top") && is.null(top$call) &&
+        identical(class(again), c("mx_gc", "error", "condition")) &&
+        grepl("zz", masked$message)) {
       ok <- ok + 1L
     }
   }
