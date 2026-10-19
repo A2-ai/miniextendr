@@ -940,9 +940,83 @@ fields included: a reloaded object is refused, not recovered
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.
 
+#### Rebuilding after a reload: `rebuild = path`
+
+A type whose `Sidecar` fields hold everything its Rust value is built from
+can be rebuilt instead of refused. `#[externalptr(rebuild = path)]` names a
+hook, `fn(&Saved<'_, Self>) -> Result<Self, E>`, which the first use that
+needs the value calls on a pointer this version of the crate saved:
+
+```rust
+use miniextendr_api::externalptr::{RSidecar, Saved, Sidecar};
+
+#[derive(ExternalPtr)]
+#[externalptr(r6, rebuild = Self::from_saved)]
+pub struct Model {
+    #[r_data]
+    _r: RSidecar,
+    /// The recipe: a save keeps it.
+    #[r_data]
+    pub values: Sidecar<Vec<f64>>,
+    /// Rust state, rebuilt from the recipe.
+    total: f64,
+}
+
+impl Model {
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, ModelError> {
+        let values = Self::values(saved); // the saved slot
+        Ok(Model {
+            _r: RSidecar,
+            total: values.iter().sum(),
+            values: Sidecar::default(), // placeholder: the saved slot stays
+        })
+    }
+}
+```
+
+- **Where.** Every path that refuses a restored pointer above rebuilds it
+  first: a method (any receiver), an `ExternalPtr<T>` / `&T` / `&mut T`
+  argument, the R accessor of a struct field. The framework installs the
+  value it returns in the restored pointer itself, finalizer included, so the
+  later calls, and every R name bound to the object, see a live pointer. A
+  `Sidecar` accessor reads the saved slot as before, without rebuilding.
+- **What the hook reads.** The type's generated `Sidecar` getters take the
+  `Saved` handle like a live one (`Self::values(saved)`). Only `Sidecar`
+  fields have a slot in the save: a struct field or a `Computed` field is
+  gone with the Rust value, so a type whose rebuild needs one keeps it in a
+  `Sidecar` instead. `Saved::as_sexp()` is the restored pointer.
+- **The saved slots stay.** The `Sidecar` values in the struct the hook
+  returns are dropped, not written: fill them with `Sidecar::default()` or
+  any placeholder.
+- **Nested objects.** A `Sidecar<SEXP>` can hold another object's pointer.
+  Converting it in the hook (`ExternalPtr::<Inner>::try_from_sexp(..)`)
+  rebuilds that one too, in its own pointer, when its type has a hook. A hook
+  that reaches its own object again finds it refused, not rebuilt twice.
+- **Failure.** An `Err` (or a condition the hook raises with `error!`)
+  installs nothing, and the next use tries again. The caller gets the
+  type's restored refusal: the `restored(class = ...)` classes, then
+  `miniextendr_restored_no_value` and `miniextendr_restored`, with the
+  cause's message appended (``this `Model` object was restored from a saved
+  session and rebuilding it failed: <cause>``, or `<restored message>
+  (rebuilding it failed: <cause>)`). The cause is the condition object
+  `e$parent`, with its own classes and fields, as `rlang::abort(parent = )`
+  chains errors: an `E` that implements `RConditionData` (a
+  `#[derive(RCondition)]` type, `RError`) keeps its classes, any other `E`
+  gives its `Debug` text. The cause's classes stay out of the refusal's, so
+  a handler for them does not catch a reload failure; branch on
+  `inherits(e$parent, "pkg_error_config")`. An R error inside the hook
+  carries on as itself.
+- **Conditions the hook queues** (`defer_warning!` & co.) are signalled when
+  the call that triggered the rebuild returns. A hook that replays the
+  construction, whose warnings were signalled once already, drops them with
+  `deferred_condition::capture(|| ..).0`.
+- **Another version's save** is refused as before
+  (`miniextendr_restored_other_version`), and the hook does not run: the
+  slots are positional, and the hook cannot know another version's layout.
+
 Reading a save across versions is deliberately not supported for now
-(#1854); rebuilding the Rust value of a restored object, eagerly at
-`readRDS()` time or from a per-type hook, is the open design #1418.
+(#1854). A type whose `Sidecar` fields hold too little to rebuild from
+needs the value itself in the save, a serde snapshot (#2186).
 
 **webR:** the round trip has not been tested there. Nothing in it is
 platform-specific (R serializes the pointer's tag and `prot` the same way),

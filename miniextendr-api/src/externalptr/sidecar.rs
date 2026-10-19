@@ -505,12 +505,17 @@ where
     <T as TryFromSexp>::Error: fmt::Display,
 {
     assert_main_thread(name, O::TYPE_NAME);
-    let value = ptr.__mx_read();
-    // SAFETY: on R's main thread; the handle's EXTPTRSXP is live and was
-    // built for an `O`, so its `prot` list has the slot.
-    let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
-    field(&value).flush_into(prot, index);
-    drop(value);
+    // SAFETY (both arms): on R's main thread; the handle's EXTPTRSXP is live
+    // and was built for an `O`, so its `prot` list has the slot.
+    let prot = match ptr.__mx_read() {
+        super::SidecarRead::Live(value) => {
+            let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
+            field(&value).flush_into(prot, index);
+            prot
+        }
+        // A rebuild hook reads what the save kept; nothing is pending.
+        super::SidecarRead::Saved(sexp) => unsafe { R_ExternalPtrProtected(sexp) },
+    };
     convert_slot::<T>(prot, index, name, O::TYPE_NAME)
 }
 
@@ -746,7 +751,12 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
 ) -> (SEXP, Option<&'a RefCell<T>>) {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
     let prot = unsafe { R_ExternalPtrProtected(x) };
-    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    let mut any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    // A reader that needs the value rebuilds a restored pointer first, when
+    // the type has a hook; a `Sidecar` read takes the saved slot as it is.
+    if any_raw.is_null() && require_live && unsafe { super::rebuild_restored::<T>(x, receiver) } {
+        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    }
     let live = if any_raw.is_null() {
         if require_live
             || !unsafe { super::stored_type_id_symbol(x) }.is_some_and(is_type_id_symbol::<T>)
@@ -818,7 +828,10 @@ pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> RefMut<'a, 
 /// ([`sidecar_receiver`]).
 unsafe fn sidecar_r_cell<'a, T: TypedExternal>(receiver: SEXP) -> &'a RefCell<T> {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
-    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    let mut any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    if any_raw.is_null() && unsafe { super::rebuild_restored::<T>(x, receiver) } {
+        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    }
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
         unsafe { refuse_restored::<T>(x, receiver) };

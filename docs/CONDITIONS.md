@@ -228,11 +228,12 @@ live `SEXP` or arbitrary `IntoR` value cannot ride along.
 
 `message`, `call` and `kind` are the condition's own slots (the R helper
 splices `data` over them with `utils::modifyList`, on every transport,
-the raising guards included, #1315), so they are **rejected**
-as field names: at compile time when the name is a literal or a bare
-identifier (`data = ("kind", 1)`, `data = { kind = 1 }`), at runtime otherwise
-(a plain `rust_error` explaining the clash, instead of the former silent
-overwrite).
+the raising guards included, #1315), and `.mx_parent` carries a cause
+attached with [`with_parent`](#chaining-a-cause-with-parent), so they are
+**rejected** as field names: at compile time when the name is a literal or a
+bare identifier (`data = ("kind", 1)`, `data = { kind = 1 }`), at runtime
+otherwise (a plain `rust_error` explaining the clash, instead of the former
+silent overwrite).
 
 There is no escape hatch, deliberately: `message` and `call` are what R's
 `conditionMessage()` / `conditionCall()` read, and `kind` is the framework's
@@ -865,8 +866,9 @@ any condition the function raises; `e.call()` is the call R recorded, there
 for a message that wants it. Fields of the caught condition other than its
 message (`rlang`'s `body` or `parent`, say) are not copied; read them from
 `e.condition()` and attach the ones a handler needs with `data =`. A `data =`
-value can't be an R object, so the caught condition itself can't be kept as
-the new one's `parent` yet (#1874).
+value can't be an R object, so the caught R condition itself can't be kept as
+the new one's `parent` yet (#1874); a condition raised in Rust can, with
+[`with_parent`](#chaining-a-cause-with-parent).
 
 To raise the caught condition itself, unchanged (R's classes and fields, no
 `rust_error` class, R's call), use `unsafe { e.reraise() }` inside the
@@ -877,6 +879,70 @@ To raise the caught condition itself, unchanged (R's classes and fields, no
 `REvalError` is `!Send`: dropping it releases the condition's root, which
 must happen on R's main thread. Convert it to an `RError` (the third form), or
 keep the `String` from `message()`, to carry the failure to a worker thread.
+
+## Chaining a cause: `with_parent`
+
+`RCondition::with_parent(cause)` attaches another `RCondition` as the cause,
+the way `rlang::abort(parent = )` chains conditions. R gets the cause as the
+field `e$parent`: a condition object with its own classes, message and fields,
+built like the raised condition but never signalled. A cause can have its own
+parent, so the chain is `e$parent$parent` and so on.
+
+```rust
+use miniextendr_api::condition::{catch_condition, ConditionCall, RCondition};
+use miniextendr_api::{error, miniextendr};
+
+fn parse_line(line: &str) -> i32 {
+    line.trim().parse().unwrap_or_else(|_| {
+        error!(class = "pkg_error_parse", data = ("line", line), "not a number: {line}")
+    })
+}
+
+#[miniextendr]
+pub fn load_setting(line: &str) -> i32 {
+    match catch_condition(|| parse_line(line)) {
+        Ok(value) => value,
+        Err(cause) => RCondition::Error {
+            message: "could not load the setting".into(),
+            class: vec!["pkg_error_load".into()],
+            data: None,
+            call: ConditionCall::Inherit,
+        }
+        .with_parent(cause)
+        .raise(),
+    }
+}
+```
+
+```r
+e <- tryCatch(load_setting("x"), pkg_error_load = function(e) e)
+conditionMessage(e)
+# [1] "could not load the setting"
+class(e$parent)
+# [1] "pkg_error_parse" "rust_error" "simpleError" "error" "condition"
+e$parent$line
+# [1] "x"
+```
+
+- **Classes stay apart.** The cause's classes are not added to the raised
+  condition's, so a handler for `pkg_error_parse` does not catch
+  `load_setting()`'s error. Code that cares about the cause tests it:
+  `inherits(e$parent, "pkg_error_parse")`.
+- **Call.** The cause reports the same call as the raised condition, or none
+  when the cause was raised with `call = none`.
+- **Any kind.** The raised condition and its cause can each be an error,
+  warning, message or plain condition.
+- **One parent.** A second `with_parent` replaces the first, and the cause
+  replaces a `data` field the condition names `parent`.
+- **Transport.** The cause travels in the reserved data field `.mx_parent`
+  (see [Reserved names](#reserved-names)), so it goes wherever the
+  condition's other `data` fields go.
+- **Only Rust conditions.** The cause is an `RCondition`. An R condition
+  caught as `REvalError` can't be a parent yet (#1874).
+
+A `#[externalptr(rebuild = ..)]` hook's error reaches R this way: a failed
+rebuild is refused with the hook's error as `e$parent`
+([EXTERNALPTR.md](EXTERNALPTR.md)).
 
 ## Conditions without a call
 

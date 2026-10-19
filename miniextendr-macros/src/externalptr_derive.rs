@@ -249,6 +249,9 @@ struct ExternalPtrAttrs {
     /// `field_error(class = ..., message = ...)`: the field readers' own
     /// errors (#1899, #1920).
     field_error: FieldErrorOptions,
+    /// `rebuild = path`: the hook that rebuilds a pointer restored from a
+    /// saved session (#2146).
+    rebuild: Option<syn::Path>,
 }
 
 /// `#[externalptr(field_error(class = ..., message = ..., no_field_hint = ...))]`.
@@ -279,10 +282,13 @@ struct FieldErrorOptions {
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
 /// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "..."))]`
+/// - `#[externalptr(rebuild = Self::from_saved)]`, the rebuild hook of a
+///   pointer restored from a saved session (#2146).
 fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
     let mut restored: Option<RestoredOptions> = None;
     let mut field_error: Option<FieldErrorOptions> = None;
+    let mut rebuild: Option<syn::Path> = None;
 
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
@@ -312,11 +318,22 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs>
                         }
                         field_error = Some(parse_field_error_options(&meta)?);
                     }
+                    "rebuild" => {
+                        if rebuild.is_some() {
+                            return Err(meta.error("`rebuild = ...` is given twice"));
+                        }
+                        rebuild = Some(meta.value()?.parse::<syn::Path>().map_err(|e| {
+                            syn::Error::new(
+                                e.span(),
+                                "`rebuild` takes the path of a function `fn(&Saved<'_, Self>) -> Result<Self, E>`, e.g. `rebuild = Self::from_saved`",
+                            )
+                        })?);
+                    }
                     _ => {
                         return Err(syn::Error::new_spanned(
                             &meta.path,
                             format!(
-                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)` or `field_error(class = ..., message = ...)`",
+                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)`, `field_error(class = ..., message = ...)` or `rebuild = path`",
                                 ident_str
                             ),
                         ));
@@ -331,6 +348,7 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs>
         class_system,
         restored: restored.unwrap_or_default(),
         field_error: field_error.unwrap_or_default(),
+        rebuild,
     })
 }
 
@@ -2201,6 +2219,7 @@ fn generate_typed_external(
     info: &SidecarInfo,
     restored: &RestoredOptions,
     field_error: &FieldErrorOptions,
+    rebuild: Option<&syn::Path>,
     display_name: Option<&str>,
 ) -> TokenStream {
     let name = &input.ident;
@@ -2240,6 +2259,34 @@ fn generate_typed_external(
         quote::quote! {
             const FIELD_ERROR_MESSAGE: ::core::option::Option<&'static str> =
                 ::core::option::Option::Some(#message);
+        }
+    });
+    // `#[externalptr(rebuild = path)]` (#2146): a restored pointer is
+    // rebuilt by `path` on first use. Its `Err` becomes the condition the
+    // refusal carries as `e$parent`, through the probe a `Result` return
+    // uses: an `RConditionData` error keeps its classes and fields.
+    let rebuild = rebuild.map(|path| {
+        let prefix = crate::miniextendr_fn::default_serde_error_prefix();
+        let call = quote::quote_spanned! {syn::spanned::Spanned::span(path)=> #path(saved) };
+        quote::quote! {
+            const REBUILDS: bool = true;
+
+            fn __mx_rebuild(
+                saved: &::miniextendr_api::externalptr::Saved<'_, Self>,
+            ) -> ::core::result::Result<Self, ::miniextendr_api::condition::RCondition> {
+                match #call {
+                    ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
+                    ::core::result::Result::Err(e) => {
+                        let parts = ::miniextendr_api::__mx_result_err_parts!(e, #prefix);
+                        ::core::result::Result::Err(::miniextendr_api::condition::RCondition::Error {
+                            message: parts.message,
+                            class: parts.class,
+                            data: parts.data,
+                            call: parts.call,
+                        })
+                    }
+                }
+            }
         }
     });
     let sidecars: Vec<_> = sidecar_slots(info).collect();
@@ -2284,6 +2331,7 @@ fn generate_typed_external(
             #restored_message
             #field_error_class
             #field_error_message
+            #rebuild
         }
     }
 }
@@ -2322,6 +2370,7 @@ pub(crate) fn generate_altrep_storage(
         &info,
         &RestoredOptions::default(),
         &FieldErrorOptions::default(),
+        None,
         Some(class_name),
     );
     let accessors = generate_sidecar_rust_accessors(input, &info);
@@ -2463,13 +2512,20 @@ pub fn derive_external_ptr(
         class_system,
         restored,
         field_error,
+        rebuild,
     } = parse_externalptr_attrs(&input)?;
 
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external =
-        generate_typed_external(&input, &sidecar_info, &restored, &field_error, None);
+    let typed_external = generate_typed_external(
+        &input,
+        &sidecar_info,
+        &restored,
+        &field_error,
+        rebuild.as_ref(),
+        None,
+    );
     let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (

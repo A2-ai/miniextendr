@@ -382,6 +382,81 @@ impl RCondition {
         }
     }
 
+    /// This condition with `parent` as its cause, as `rlang::abort(parent = )`
+    /// chains conditions.
+    ///
+    /// R gets the cause as the field `e$parent`: a condition object with its
+    /// own classes, message and fields (and its own parent, if it has one),
+    /// built like the condition itself but not signalled. The cause's classes
+    /// stay out of this condition's class vector, so a handler written for
+    /// the cause's class does not catch this condition; code that wants the
+    /// cause branches on it: `inherits(e$parent, "pkg_error_config")`.
+    ///
+    /// The cause reports the same call as this condition, or none when it was
+    /// raised with `call = none`. A second `with_parent` replaces the first,
+    /// and the cause replaces a `data` field this condition names `parent`.
+    ///
+    /// ```ignore
+    /// match catch_condition(|| rebuild(&saved)) {
+    ///     Ok(value) => value,
+    ///     Err(cause) => RCondition::Error {
+    ///         message: format!("could not rebuild: {}", cause.message()),
+    ///         class: vec!["pkg_error_rebuild".into()],
+    ///         data: None,
+    ///         call: ConditionCall::Inherit,
+    ///     }
+    ///     .with_parent(cause)
+    ///     .raise(),
+    /// }
+    /// ```
+    pub fn with_parent(mut self, parent: RCondition) -> Self {
+        let encoded = parent.into_tagged_rvalue();
+        let data = match &mut self {
+            RCondition::Error { data, .. }
+            | RCondition::Warning { data, .. }
+            | RCondition::Message { data, .. }
+            | RCondition::Condition { data, .. }
+            | RCondition::Conversion { data, .. } => data,
+        };
+        let fields = data.get_or_insert_with(Vec::new);
+        fields.retain(|(name, _)| name != PARENT_FIELD);
+        fields.push((PARENT_FIELD.to_owned(), encoded));
+        self
+    }
+
+    /// The condition as the tagged value the R raise helper reads (`error`,
+    /// `kind`, `class`, `call`, `data`), in [`RValue`](crate::RValue) form so
+    /// it can travel inside another condition's data ([`Self::with_parent`]).
+    fn into_tagged_rvalue(self) -> crate::RValue {
+        use crate::RValue;
+        let (kind, parts) = self.into_parts();
+        let text = |value: String| RValue::Character(vec![Some(value)]);
+        let class = if parts.class.is_empty() {
+            RValue::Null
+        } else {
+            RValue::Character(parts.class.into_iter().map(Some).collect())
+        };
+        let call = match parts.call {
+            ConditionCall::Inherit => RValue::Null,
+            ConditionCall::None => RValue::Logical(vec![Some(false)]),
+        };
+        let data = parts.data.map_or(RValue::Null, |fields| {
+            RValue::List(
+                fields
+                    .into_iter()
+                    .map(|(name, value)| (Some(name), value))
+                    .collect(),
+            )
+        });
+        RValue::List(vec![
+            (Some("error".to_owned()), text(parts.message)),
+            (Some("kind".to_owned()), text(kind.to_owned())),
+            (Some("class".to_owned()), class),
+            (Some("call".to_owned()), call),
+            (Some("data".to_owned()), data),
+        ])
+    }
+
     /// Whether the condition reports a call.
     #[doc(hidden)]
     pub fn call(&self) -> ConditionCall {
@@ -498,14 +573,14 @@ macro_rules! __mx_condition_field_name {
     (lit $name:literal) => {{
         const _: () = ::core::assert!(
             !$crate::condition::is_reserved_condition_field($name),
-            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots; rename the field"
+            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` carries its parent; rename the field"
         );
         ($name).to_string()
     }};
     (ident $name:ident) => {{
         const _: () = ::core::assert!(
             !$crate::condition::is_reserved_condition_field(::core::stringify!($name)),
-            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots; rename the field"
+            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` carries its parent; rename the field"
         );
         ::core::stringify!($name).to_string()
     }};
@@ -1319,8 +1394,12 @@ pub const fn is_reserved_condition_field(name: &str) -> bool {
         }
         true
     }
-    eq(name, "message") || eq(name, "call") || eq(name, "kind")
+    eq(name, "message") || eq(name, "call") || eq(name, "kind") || eq(name, PARENT_FIELD)
 }
+
+/// The `data` field under which [`RCondition::with_parent`] sends a cause to
+/// R; the raise helper turns it into the condition object `e$parent`.
+const PARENT_FIELD: &str = ".mx_parent";
 
 /// Runtime half of the reserved-name check, for computed field names (the
 /// macros' `expr` path and [`RConditionData::data`] on user types). Panics
@@ -1331,7 +1410,7 @@ pub fn check_condition_field_name(name: String) -> String {
     if is_reserved_condition_field(&name) {
         panic!(
             "condition data field `{name}` is reserved: `message`, `call` and `kind` are the \
-             condition's own slots; rename the field."
+             condition's own slots, and `.mx_parent` carries its parent; rename the field."
         );
     }
     name

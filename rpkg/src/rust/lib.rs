@@ -321,6 +321,7 @@ mod raw_ident_tests;
 mod rayon_tests;
 mod rdata_fallback_tests;
 mod rdata_sidecar_tests;
+mod rebuild_tests;
 mod receiver_formals_tests;
 mod receiver_tests;
 mod refcount_protect_tests;
