@@ -126,7 +126,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
 
         let what = format!("{}${}", class_name, method_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &ctx.params);
 
         let call = ctx.instance_call(".mx_self");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -176,7 +176,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
 
         let what = format!("{}${}", class_name, method_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &ctx.params);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

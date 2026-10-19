@@ -1090,7 +1090,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push(format!(
             "S7::method({generic_symbol}, {signature}) <- function({method_formals}) {{"
         ));
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &method_formals);
         lines.extend(body_lines);
         lines.push("}".to_string());
         if let S7GenericTarget::BaseOperator(op) = &target {
@@ -1194,7 +1194,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             lines.push(format!(
                 "{shortcut_name} <- function({shortcut_formals}) {{"
             ));
-            ctx.emit_method_prelude(&mut lines, "  ", &what);
+            ctx.emit_method_prelude(&mut lines, "  ", &what, &shortcut_formals);
             lines.extend(shortcut_body);
             lines.push("}".to_string());
             lines.push(String::new());
@@ -1237,7 +1237,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             ctx.params
         ));
 
-        ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
+        ctx.emit_method_prelude(&mut lines, "  ", &fn_name, &ctx.params);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())

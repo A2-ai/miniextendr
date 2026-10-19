@@ -1,5 +1,5 @@
-error: dots expects `typed_list!(...)` macro
+error: dots expects `typed_list!(...)`, `empty`, `empty(allow = ["name", ...])`, `forward(allow = ["name", ...])` or `data`
  --> tests/ui/fn_dots_wrong_macro.rs:5:22
   |
 5 | #[miniextendr(dots = vec!(i32))]
-  |                      ^^^
+  |                      ^^^^^^^^^

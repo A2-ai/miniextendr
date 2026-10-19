@@ -1,4 +1,4 @@
-error: dots expects `typed_list!(...)` macro
+error: dots expects `typed_list!(...)`, `empty`, `empty(allow = ["name", ...])`, `forward(allow = ["name", ...])` or `data`
  --> tests/ui/fn_dots_non_macro_expr.rs:5:22
   |
 5 | #[miniextendr(dots = "x")]

@@ -1,0 +1,41 @@
+error: `forward` passes the names it lists: `forward(allow = ["name", ...])`; `data` passes every argument
+ --> tests/ui/fn_dots_policy_bad_spelling.rs:6:22
+  |
+6 | #[miniextendr(dots = forward)]
+  |                      ^^^^^^^
+
+error: "a" is listed twice
+ --> tests/ui/fn_dots_policy_bad_spelling.rs:9:42
+  |
+9 | #[miniextendr(dots = empty(allow = ["a", "a", 1, "..."], keep = "b"))]
+  |                                          ^^^
+
+error: expected a string literal
+ --> tests/ui/fn_dots_policy_bad_spelling.rs:9:47
+  |
+9 | #[miniextendr(dots = empty(allow = ["a", "a", 1, "..."], keep = "b"))]
+  |                                               ^
+
+error: `...` is not an argument name; list the names `...` takes
+ --> tests/ui/fn_dots_policy_bad_spelling.rs:9:50
+  |
+9 | #[miniextendr(dots = empty(allow = ["a", "a", 1, "..."], keep = "b"))]
+  |                                                  ^^^^^
+
+error: unknown option; expected `allow = ["name", ...]` or `class = "..."`
+ --> tests/ui/fn_dots_policy_bad_spelling.rs:9:58
+  |
+9 | #[miniextendr(dots = empty(allow = ["a", "a", 1, "..."], keep = "b"))]
+  |                                                          ^^^^
+
+error: `data` takes no options: it passes every argument unchecked
+  --> tests/ui/fn_dots_policy_bad_spelling.rs:12:22
+   |
+12 | #[miniextendr(dots = data(allow = "x"))]
+   |                      ^^^^^^^^^^^^^^^^^
+
+error: dots expects `typed_list!(...)`, `empty`, `empty(allow = ["name", ...])`, `forward(allow = ["name", ...])` or `data`
+  --> tests/ui/fn_dots_policy_bad_spelling.rs:15:22
+   |
+15 | #[miniextendr(dots = nothing)]
+   |                      ^^^^^^^

@@ -335,7 +335,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             formals
         ));
 
-        ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
+        ctx.emit_method_prelude(&mut lines, "  ", &fn_name, &formals);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

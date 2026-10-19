@@ -161,6 +161,7 @@ mod c_wrapper_builder;
 mod call_method_def;
 mod cfg_gates;
 mod deprecation;
+mod dots_policy;
 mod externalptr_args;
 mod list_macro;
 mod match_arg_keys;
@@ -506,6 +507,9 @@ pub(crate) fn build_dots_validation_stmt(
 ///   options for the serde-classed `Err` arm. The path itself is automatic under the
 ///   API crate's `serde` feature for every `Result<T, E>` with `E: Serialize + Display`.
 /// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
+/// - `#[miniextendr(dots = empty | empty(allow = [..]) | forward(allow = [..]) | data)]` —
+///   what `...` takes; the R wrapper refuses the other arguments before
+///   evaluating any, with a "did you mean" suggestion
 /// - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
 /// - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper
 ///
@@ -762,6 +766,7 @@ fn expand_miniextendr(
         s3_generic,
         s3_class,
         dots_spec,
+        dots_policy,
         dots_span,
         lifecycle,
         strict,
@@ -1128,6 +1133,13 @@ fn expand_miniextendr(
     }
     if dots_spec.is_some()
         && let Some(err) = miniextendr_fn::typed_list_on_lazy_dots(all_inputs, dots_span)
+    {
+        return err.into_compile_error().into();
+    }
+    // `dots = empty | forward(..) | data` (#2157): a standalone wrapper's
+    // `...` is the function's own dots parameter.
+    if let Some(policy) = &dots_policy
+        && let Err(err) = policy.check_signature(has_dots, has_dots)
     {
         return err.into_compile_error().into();
     }
@@ -1846,10 +1858,17 @@ fn expand_miniextendr(
             .join("\n  ")
     };
 
+    // `dots = empty | forward(..)` (#2157): refuse what `...` doesn't take,
+    // ahead of the argument checks, so a misspelt argument is reported before
+    // the missing one it was meant to be.
+    let dots_check = dots_policy
+        .as_ref()
+        .and_then(|policy| policy.r_check(&formals_joined, call_attribution.r_check_call()));
+
     // Combine all preludes: call attribution (`.mx_call` under `call = caller`,
     // first so the R-side checks below can raise with it, #1548), r_entry,
-    // on.exit, lifecycle, static preconditions, match.arg, choices,
-    // r_post_checks. (Missing<T> forwarding lives inline in the `.Call()` args
+    // on.exit, lifecycle, the `...` check, static preconditions, match.arg,
+    // choices, r_post_checks. (Missing<T> forwarding lives inline in the `.Call()` args
     // — see `build_call_args_vec` — because a prelude binding of the missing
     // sentinel errors on lookup.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
@@ -1867,6 +1886,9 @@ fn expand_miniextendr(
         }
         if let Some(ref lc) = lifecycle_prelude {
             parts.push(lc.as_str());
+        }
+        if let Some(ref check) = dots_check {
+            parts.push(check.as_str());
         }
         if !precondition_prelude.is_empty() {
             parts.push(&precondition_prelude);

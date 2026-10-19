@@ -429,7 +429,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // The same prelude as a public method, so a private one keeps its
         // lifecycle notice and its argument checks.
         let what = format!("{}${}", class_name, r_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &ctx.params);
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -556,7 +556,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
 
         let what = format!("{}${}", class_name, r_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &ctx.params);
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -705,7 +705,7 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
 
         let what = format!("{}${}", class_name, method_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &ctx.params);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

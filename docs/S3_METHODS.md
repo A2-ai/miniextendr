@@ -112,6 +112,15 @@ in `<-`) gets the `...` before its last parameter, which must be `value`:
 `` `[[<-.Person` <- function(x, i, ..., value) ``. See
 [Replacement and extraction generics](#replacement-and-extraction-generics).
 
+R puts every argument the method has no formal for into that `...`, so a
+misspelt one is dropped without a word: `format(p, widht = 10)` formats at the
+default width. `#[miniextendr(s3(generic = "format"), dots = empty)]` makes the
+method refuse it, before evaluating anything:
+`unused argument 'widht' (did you mean 'width'?)`. `empty(allow = [..])`
+takes names a caller in base R passes, and `forward(allow = [..])` names the
+method reads from its own `&Dots` parameter. See
+[What `...` takes](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role).
+
 ### Constructor
 
 The constructor is always the method returning `Self`. It generates a function named

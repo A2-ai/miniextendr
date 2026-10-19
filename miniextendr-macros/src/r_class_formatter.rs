@@ -594,7 +594,7 @@ impl<'a> MethodContext<'a> {
         )
     }
 
-    /// Emit the 6-step method prelude into `lines`, each line prefixed with `indent`.
+    /// Emit the 7-step method prelude into `lines`, each line prefixed with `indent`.
     ///
     /// The prelude is the standardised sequence that appears at the top of every
     /// generated R method body, in order:
@@ -602,9 +602,13 @@ impl<'a> MethodContext<'a> {
     /// 1. `r_entry` — user code injected before any checks
     /// 2. `r_on_exit` — `on.exit(...)` cleanup
     /// 3. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
-    /// 4. `precondition_checks` — one `isTRUE()` guard per check on typed params
-    /// 5. `match_arg_prelude` — `base::match.arg(param)` validation
-    /// 6. `r_post_checks` — user code after all checks, before `.Call()`
+    /// 4. the `...` check of `dots = empty | forward(..)` (#2157,
+    ///    [`DotsPolicy::r_check`](crate::dots_policy::DotsPolicy::r_check)),
+    ///    which reads the wrapper's `formals` (the R formals list of the
+    ///    `function()` the prelude opens) and is skipped when they have no `...`
+    /// 5. `precondition_checks` — one `isTRUE()` guard per check on typed params
+    /// 6. `match_arg_prelude` — `base::match.arg(param)` validation
+    /// 7. `r_post_checks` — user code after all checks, before `.Call()`
     ///
     /// (`Missing<T>` forwarding is not a prelude step: it lives inline in the
     /// `.Call()` args — see `build_call_args_vec` — because a binding of the
@@ -613,7 +617,13 @@ impl<'a> MethodContext<'a> {
     /// `what` is the human-readable method label passed to `lifecycle_prelude`
     /// (e.g., `"Type.method"` for S3/S4, `"Type$method"` for Env/R6/S7).
     /// `indent` is the per-line prefix (e.g., `"  "` for 2-space, `"      "` for 6-space).
-    pub fn emit_method_prelude(&self, lines: &mut Vec<String>, indent: &str, what: &str) {
+    pub fn emit_method_prelude(
+        &self,
+        lines: &mut Vec<String>,
+        indent: &str,
+        what: &str,
+        formals: &str,
+    ) {
         let m = self.method;
         if let Some(ref entry) = m.method_attrs.r_entry {
             for line in entry.lines() {
@@ -625,6 +635,14 @@ impl<'a> MethodContext<'a> {
         }
         if let Some(prelude) = m.lifecycle_prelude(what) {
             lines.push(format!("{}{}", indent, prelude));
+        }
+        if let Some(check) = m
+            .method_attrs
+            .dots_policy
+            .as_ref()
+            .and_then(|policy| policy.r_check(formals, self.call_attribution.r_check_call()))
+        {
+            lines.push(format!("{}{}", indent, check));
         }
         for check in self.precondition_checks() {
             lines.push(format!("{}{}", indent, check));

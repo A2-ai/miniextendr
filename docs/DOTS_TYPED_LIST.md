@@ -155,6 +155,76 @@ Where it is accepted:
 
 `rpkg/src/rust/lazy_dots_tests.rs` has the fixtures (the readers and forcers, `subset.mx_lazy`, `update.mx_lazy`, `` `[.mx_lazy_grid` `` and one class per class system), and `rpkg/tests/testthat/test-lazy-dots.R` tests them.
 
+## Refusing unused arguments: the `dots` role
+
+An S3 method takes `...` because its generic does, and R puts every argument the method has no formal for into it. A method that reads none of them loses a misspelt argument without a word: `confint(fit, levle = 0.9)` returns the 95% interval, and `predict(fit, nwedata = nd)` predicts at the observed points. `#[miniextendr(dots = ...)]` says which arguments `...` takes. The generated wrapper refuses the others before it evaluates anything, all in one error, each with the name it most likely meant:
+
+| `dots =` | `...` takes | The Rust function |
+|---|---|---|
+| `empty` | nothing | reads no dots |
+| `empty(allow = ["row.names", "optional"])` | the listed names | ignores them |
+| `forward(allow = ["digits"])` | the listed names | reads them from its `...` parameter |
+| `data` | anything (no check) | reads them |
+
+```rust
+/// @param x A `fit`.
+/// @param digits Significant digits.
+/// @param ... Must be empty.
+/// @export
+#[miniextendr(s3(generic = "format", class = "fit"), dots = empty)]
+pub fn format_fit(x: List, #[miniextendr(default = "3L")] digits: i32, _dots: ...) -> String {
+    /* ... */
+}
+
+/// `data.frame()` calls `as.data.frame(x, optional = TRUE, stringsAsFactors = ...)`.
+/// @param x A `fit`.
+/// @param ... `row.names`, `optional` and `stringsAsFactors`, ignored.
+/// @export
+#[miniextendr(
+    s3(generic = "as.data.frame", class = "fit"),
+    dots = empty(allow = ["row.names", "optional", "stringsAsFactors"])
+)]
+pub fn as_data_frame_fit(x: List, _dots: ...) -> BuiltDataFrame { /* ... */ }
+```
+
+```r
+format(fit, digts = 2)
+#> Error in format(fit, digts = 2) :
+#>   unused argument 'digts' (did you mean 'digits'?)
+format(fit, digts = 2, 3, zzz = 1)
+#> Error in format(fit, digts = 2, 3, zzz = 1) :
+#>   unused arguments 'digts' (did you mean 'digits'?), '..2' (unnamed), 'zzz'
+```
+
+- **Where the check runs.** First in the wrapper body, after the lifecycle notice and before the argument checks, so a misspelt argument is reported before the missing one it was meant to be. It reads `...length()` and `...names()` only, so no argument is forced: `format(fit, digts = stop("boom"))` reports `digts`. When `...` is empty the cost is one `...length()` call.
+- **What is refused.** Every unnamed argument (the allow-list holds names), and every name not in `allow`. Partial matching does not apply: `opt = TRUE` is not `optional`.
+- **Known limitation: positional extras.** An unnamed argument is refused even when its position stands for an allowed name. A method whose only formal is `x` receives the generic's later arguments in `...` when the caller passes them by position, so with the `as.data.frame` method above `as.data.frame(fit, NULL, TRUE)` is refused, while `as.data.frame(fit, row.names = NULL, optional = TRUE)` works. When `allow` is not empty, the message says so:
+
+  ```r
+  as.data.frame(fit, NULL, TRUE)
+  #> Error in as.data.frame(fit, NULL, TRUE) :
+  #>   unused arguments '..1' (unnamed), '..2' (unnamed); pass 'row.names', 'optional' or 'stringsAsFactors' by name
+  ```
+
+  Matching positional extras to the allowed names is tracked in [#2185](https://github.com/A2-ai/miniextendr/issues/2185). Until then, a method that must take its generic's arguments by position uses `dots = data`.
+- **The suggestion.** It is taken from the wrapper's formals and the allowed names. It is the one name the argument is a prefix of. Otherwise it is the first closest name by edit distance, where swapping two neighbouring characters counts as one edit. The distance must be at most a third of the argument's length, but at least one edit, and fewer edits than the argument has characters. If no name qualifies, there is no suggestion.
+- **The condition** is an argument error ([CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body)), carrying:
+  - **Classes:** `miniextendr_error_unused_argument`, then the crate's `conversion_error_class`, `rust_error` and the base classes. `class = "pkg_unused_argument"` (or `class = ["a", "b"]`) in `empty(..)` / `forward(..)` puts the package's own classes in front.
+  - **Fields:**
+    - `kind = "conversion"`;
+    - `param = "..."`;
+    - `argument`: each refused argument, `..<i>` for an unnamed one at position `i` of `...`;
+    - `suggestion`: one entry per argument, `NA` where there is none.
+  - **Call:** the wrapper's call, the generic's for an S3 method, `.mx_call` under `call = caller`, or none under `call = none`.
+- **Which `...`.**
+  - A standalone function's `...` is its own dots parameter (`_: ...`, `&Dots` or `LazyDots`), so every role needs one. An S3 method takes one anyway.
+  - An impl-block method of an S3, S4 or S7 class gets the generic's dispatch `...` without one, and `empty` checks that `...` (unless `s3(no_dots)` / `s7(no_dots)` removes it). So does a vctrs protocol method.
+  - R6 and env methods, and static methods, have only the formals of the Rust signature.
+  - `forward` and `data` hand the arguments to the function, so they need its dots parameter.
+- **Scope.** The attribute is per function or method; there is no crate-level default. The generated `[[` / `as.list` field readers and trait-ABI methods don't take it yet (#2174, #2175).
+
+`rpkg/src/rust/dots_policy_tests.rs` has the fixtures (standalone S3 methods, a plain function with a required argument, `forward` with a package class, an impl-block S3 method and an R6 method), and `rpkg/tests/testthat/test-dots-policy.R` tests them.
+
 ## typed_list! Macro
 
 The `typed_list!` macro creates a `TypedListSpec` for validating list structure.

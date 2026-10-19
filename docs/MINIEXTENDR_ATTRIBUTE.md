@@ -1047,6 +1047,7 @@ pub fn parse_data_unwrap(s: String) -> Result<i32, String> {
 | `c_symbol = "..."` | Custom C function name |
 | `lifecycle = "..."` | Mark as deprecated/experimental/superseded |
 | `dots = typed_list!(...)` | Validate `...` arguments (see [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md)) |
+| `dots = empty` / `empty(allow = [..])` / `forward(allow = [..])` / `data` | What `...` takes; the wrapper refuses the other arguments before evaluating any, with a "did you mean" suggestion (see [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role)) |
 
 ```rust
 #[miniextendr(check_interrupt, rng)]
