@@ -1,0 +1,5 @@
+error: `fallback` must be a path to a function, e.g. `Self::column`: unexpected token
+  --> tests/ui/impl_s3_fallback_not_a_path.rs:16:47
+   |
+16 | #[miniextendr(s3(r_data_accessors, fallback = "the column"))]
+   |                                               ^^^^^^^^^^^^

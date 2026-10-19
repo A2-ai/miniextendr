@@ -1,0 +1,5 @@
+error: `fallback` applies to the `$` / `[[` readers of `s3(r_data_accessors)`, `s4(r_data_accessors)` and `env(r_data_accessors)`; an R6 object's `$` reads its environment, whose active bindings are fixed
+  --> tests/ui/impl_r6_fallback.rs:22:36
+   |
+22 | #[miniextendr(r6(r_data_accessors, fallback = "Self::column"))]
+   |                                    ^^^^^^^^

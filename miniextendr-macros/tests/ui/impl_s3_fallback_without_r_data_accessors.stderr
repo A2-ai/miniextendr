@@ -1,0 +1,5 @@
+error: `fallback` answers the names no field has for the `$` / `[[` readers of `s3(r_data_accessors)`; add `r_data_accessors` (or `r_data_accessors = "get"`)
+  --> tests/ui/impl_s3_fallback_without_r_data_accessors.rs:22:18
+   |
+22 | #[miniextendr(s3(fallback = "Self::column"))]
+   |                  ^^^^^^^^
