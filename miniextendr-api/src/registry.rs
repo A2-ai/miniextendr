@@ -2985,6 +2985,10 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 /// For a replacement generic R's call is
 /// `` `$<-.cls`(`*tmp*`, name, value = <value>) ``: the result is the
 /// assignment as written, `x$name <- value`, which never deparses the value.
+/// `rbind()` and `cbind()` dispatch from C (`do_bind`) without binding
+/// `.Generic`, and call the method as `rbind(deparse.level, ...)`; when the
+/// method's caller is base's `rbind` / `cbind` closure, the result is that
+/// closure's call, the user's `rbind(x, y)` (#2162).
 /// No comment inside: the text is inlined into another function. A macro,
 /// not a `const`, because `concat!` takes literals only.
 macro_rules! frame_call_helper_fn {
@@ -2996,6 +3000,15 @@ macro_rules! frame_call_helper_fn {
   if (i == 0L) return(NULL)
   call <- sys.call(i)
   generic <- env[[".Generic"]]
+  if (is.null(generic) && length(call) == 3L && identical(call[[2L]], quote(deparse.level)) && identical(call[[3L]], quote(...))) {
+    bind <- if (identical(call[[1L]], quote(rbind))) base::rbind else if (identical(call[[1L]], quote(cbind))) base::cbind
+    p <- sys.parents()[[i]]
+    if (!is.null(bind) && p > 0L && identical(sys.function(p), bind)) {
+      user <- sys.call(p)
+      user[[1L]] <- call[[1L]]
+      return(user)
+    }
+  }
   if (!is.character(generic) || length(generic) != 1L) return(call)
   if (length(call) > 1L && identical(call[[2L]], quote(`*tmp*`))) {
     call[[2L]] <- as.name(names(formals(sys.function(i)))[[1L]])
@@ -3025,8 +3038,10 @@ const FRAME_CALL_HELPER: &str = concat!(
 # `names<-`, ...), which R calls as `` `$<-.cls`(`*tmp*`, name, value = <v>) ``,
 # the result is the assignment as written, `x$name <- value`, with the
 # method's first formal as the receiver and the symbol `value` in place of the
-# value, so a large value is never deparsed into the call. A method called
-# directly by name has no `.Generic` and keeps its own call. The frame is
+# value, so a large value is never deparsed into the call. `rbind()` and
+# `cbind()` dispatch from C and call the method as `rbind(deparse.level, ...)`;
+# the result is the user's call to base's `rbind` / `cbind` instead. A method
+# called directly by name has no `.Generic` and keeps its own call. The frame is
 # looked up among the live frames, so the helper serves the method's own
 # checks, the raise helper and the conditions deferred while the method's
 # `.Call()` runs; a frame that is no longer live gives NULL.

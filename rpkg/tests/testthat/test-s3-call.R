@@ -70,6 +70,26 @@ test_that("a group generic method names the operator's call", {
   expect_equal(conditionCall(e), quote(Ops.mx_rec(x, 1)))
 })
 
+test_that("an rbind() / cbind() method names the user's call (#2162)", {
+  # R's `do_bind` calls the method as `rbind(deparse.level, ...)`.
+  x <- mx_rec()
+  e <- caught(rbind(x, x))
+  expect_s3_class(e, "rust_error")
+  expect_match(conditionMessage(e), "can't be bound into rows")
+  expect_equal(conditionCall(e), quote(rbind(x, x)))
+  bind_rows <- function(a) rbind(a, a)
+  e <- caught(bind_rows(x))
+  expect_equal(conditionCall(e), quote(rbind(a, a)))
+  w <- warned(cbind(x, 1))
+  expect_s3_class(w, "rust_warning")
+  expect_equal(conditionCall(w), quote(cbind(x, 1)))
+  expect_identical(suppressWarnings(cbind(x, 1)), 2L)
+  # Called directly, the method reports its own call.
+  e <- caught(rbind.mx_rec(x, x))
+  expect_equal(conditionCall(e), quote(rbind.mx_rec(x, x)))
+  expect_s3_checks_clean()
+})
+
 # endregion
 
 # region: extraction generics

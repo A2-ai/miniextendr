@@ -164,6 +164,33 @@ pub fn ops_mx_rec(_e1: SEXP, _e2: SEXP) -> Result<SEXP, String> {
 
 // endregion
 
+// region: standalone methods on rbind() / cbind()
+
+/// `rbind(rec, rec)`: always an error. `rbind()` dispatches from C and calls
+/// the method as `rbind(deparse.level, ...)`; the error reports the user's
+/// `rbind(rec, rec)` instead (#2162).
+///
+/// @param ... The objects to bind.
+/// @export
+#[miniextendr(s3(generic = "rbind", class = "mx_rec"))]
+pub fn rbind_mx_rec(_dots: &Dots) -> Result<SEXP, String> {
+    Err("an mx_rec can't be bound into rows".to_string())
+}
+
+/// `cbind(rec, 1)`: a deferred warning, reported with the user's
+/// `cbind(rec, 1)`, then the number of objects bound.
+///
+/// @param ... The objects to bind.
+/// @return The number of objects bound.
+/// @export
+#[miniextendr(s3(generic = "cbind", class = "mx_rec"))]
+pub fn cbind_mx_rec(dots: &Dots) -> i32 {
+    defer_warning!("cbind() drops the mx_rec class");
+    i32::try_from(dots.len()).unwrap_or(i32::MAX)
+}
+
+// endregion
+
 // region: standalone methods on extraction generics
 
 /// The names of the fields `i` selects, through `[`: `rec[2]`. A position
