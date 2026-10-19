@@ -321,13 +321,14 @@ pub struct MatchArgChoicesEntry {
     /// so `.miniextendr_match_arg()` picks it for `NULL` and for the omitted
     /// argument.
     pub preferred_default: &'static str,
-    /// Placeholder for the trailing `aliases =` argument of the parameter's
-    /// `.miniextendr_match_arg` / `.miniextendr_match_arg_several` call, e.g.
+    /// Placeholder for the trailing `aliases =` (and `listed =`) arguments
+    /// of the parameter's `.miniextendr_match_arg` /
+    /// `.miniextendr_match_arg_several` call, e.g.
     /// `".__MX_MATCH_ARG_ALIASES_run_mode__"`. The writer replaces `, ` and
     /// it with [`match_arg_aliases_arg`]: nothing for a type without aliases.
     pub aliases_placeholder: &'static str,
     /// The parameter type's `MatchArg::ALIASES`, unescaped.
-    pub aliases: &'static [(&'static str, &'static str)],
+    pub aliases: &'static [crate::match_arg::MatchArgAlias],
 }
 
 /// Entry for replacing match_arg `@param` doc placeholders with human-readable
@@ -1875,7 +1876,7 @@ pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) ->
     format!("c({})", quoted.join(", "))
 }
 
-/// The trailing argument a `match_arg` parameter's check passes to
+/// The trailing arguments a `match_arg` parameter's check passes to
 /// `.miniextendr_match_arg` / `.miniextendr_match_arg_several` for the
 /// type's `MatchArg::ALIASES` (#1843), which the wrappers writer splices in
 /// place of `, <placeholder>`: `, aliases = base::c("grey" = "gray")`, each
@@ -1885,6 +1886,13 @@ pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) ->
 /// the shadowing pass, which would otherwise qualify it for a parameter
 /// named `c`.
 ///
+/// When an alias is listed, `, listed = " (or \"grey\" for \"gray\")"`
+/// follows: the clause the check's message appends after the choices,
+/// rendered here by the same function as the Rust side's messages
+/// (`match_arg::listed_aliases_clause`), so the two word it alike (#2148). A
+/// type whose aliases are all unlisted passes no `listed`, and its check
+/// words its message as without aliases.
+///
 /// Aliases a hand-written impl got wrong (empty, `"NA"`, a choice, repeated,
 /// a prefix of another choice, or naming no choice; the rules
 /// `#[derive(MatchArg)]` enforces at compile time) panic with the
@@ -1893,10 +1901,10 @@ pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) ->
 #[doc(hidden)]
 pub fn match_arg_aliases_arg(
     choices: &[&str],
-    aliases: &[(&str, &str)],
+    aliases: &[crate::match_arg::MatchArgAlias],
     placeholder: &str,
 ) -> String {
-    use crate::match_arg::{alias_problems, escape_r_string};
+    use crate::match_arg::{alias_problems, escape_r_string, listed_aliases_clause, r_quote};
     if aliases.is_empty() {
         return String::new();
     }
@@ -1910,15 +1918,20 @@ pub fn match_arg_aliases_arg(
     }
     let pairs: Vec<String> = aliases
         .iter()
-        .map(|(alias, choice)| {
+        .map(|alias| {
             format!(
                 "\"{}\" = \"{}\"",
-                escape_r_string(alias),
-                escape_r_string(choice)
+                escape_r_string(alias.alias),
+                escape_r_string(alias.choice)
             )
         })
         .collect();
-    format!(", aliases = base::c({})", pairs.join(", "))
+    let mut arg = format!(", aliases = base::c({})", pairs.join(", "));
+    let listed = listed_aliases_clause(choices, aliases, r_quote);
+    if !listed.is_empty() {
+        arg.push_str(&format!(", listed = \"{}\"", escape_r_string(&listed)));
+    }
+    arg
 }
 
 /// `content` with one `match_arg` parameter's placeholders resolved from its
@@ -2735,8 +2748,9 @@ const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks o
 /// no PR numbers (#1832): `.miniextendr_arg_error` is #1591, the `call`
 /// argument a `call = caller` wrapper passes is #1548, the frame an S3 method
 /// passes there and the `NULL` of `call = none` are #1851, the strict
-/// `several_ok` match is #1472, reading a factor as its labels is #1552, and
-/// the `aliases` argument ([`match_arg_aliases_arg`]) is #1843.
+/// `several_ok` match is #1472, reading a factor as its labels is #1552, the
+/// `aliases` argument ([`match_arg_aliases_arg`]) is #1843, and the `listed`
+/// argument, the clause naming the listed aliases, is #2148.
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub const ARG_CHECK_HELPERS: [&str; 3] =
@@ -2851,11 +2865,13 @@ const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
 # position, and `NULL` selects every choice, like an omitted argument does. A
 # factor is read as its labels. `aliases`, a named character vector
 # (`c(grey = "gray")`), maps each element typed exactly as an alias to its
-# choice first; a prefix of an alias is not one. The error is an argument error
-# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
-# call, not this helper; a `call = caller` wrapper passes its caller's matched
-# call.
-.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL) {
+# choice first; a prefix of an alias is not one. `listed` is the text the
+# message names the listed aliases with after the choices
+# (` (or "grey" for "gray")`, empty when none is listed). The error is an
+# argument error (`.miniextendr_arg_error`) attributed to `call`: by default
+# the wrapper's own call, not this helper; a `call = caller` wrapper passes
+# its caller's matched call.
+.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL, listed = "") {
   if (is.null(arg)) return(choices)
   if (is.factor(arg)) arg <- as.character(arg)
   if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
@@ -2871,7 +2887,7 @@ const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
   if (length(bad)) {
     .miniextendr_arg_error(arg_name, sprintf("element %d (\"%s\") "#,
     crate::match_arg::match_arg_wording!(not_a_choice),
-    r#" %s", bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = ", ")), call)
+    r#" %s%s", bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = ", "), listed), call)
   }
   choices[i]
 }
@@ -2890,10 +2906,11 @@ const MATCH_ARG_HELPER: &str = concat!(
 # that matches a choice exactly or as a unique prefix. A factor is read as its
 # labels. `aliases`, a named character vector (`c(grey = "gray")`), maps a
 # string typed exactly as an alias to its choice; a prefix of an alias is not
-# one, and the message lists the choices only. The Rust side's
-# `match_arg_param()` gives a body the same results and messages for a choice
-# argument it matches itself.
-.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL) {
+# one. `listed` is the text the message names the listed aliases with after
+# the choices (` (or "grey" for "gray")`, empty when none is listed). The
+# Rust side's `match_arg_param()` gives a body the same results and messages
+# for a choice argument it matches itself.
+.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL, listed = "") {
   if (is.null(arg)) return(choices[[1L]])
   if (is.factor(arg)) arg <- as.character(arg)
   if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
@@ -2908,7 +2925,7 @@ const MATCH_ARG_HELPER: &str = concat!(
   if (is.na(i) || i == 0L) {
     .miniextendr_arg_error(arg_name, sprintf(""#,
     crate::match_arg::match_arg_wording!(not_a_choice),
-    r#" %s", paste(dQuote(choices, FALSE), collapse = ", ")), call)
+    r#" %s%s", paste(dQuote(choices, FALSE), collapse = ", "), listed), call)
   }
   choices[[i]]
 }
@@ -3972,6 +3989,7 @@ pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::match_arg::MatchArgAlias;
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
@@ -5522,7 +5540,7 @@ mod tests {
 
     fn aliases_entry(
         choices: &'static [&'static str],
-        aliases: &'static [(&'static str, &'static str)],
+        aliases: &'static [MatchArgAlias],
     ) -> MatchArgChoicesEntry {
         MatchArgChoicesEntry {
             placeholder: ".__MX_MATCH_ARG_CHOICES_f_mode__",
@@ -5535,7 +5553,8 @@ mod tests {
 
     /// A type without aliases gets the check it had before aliases existed;
     /// one with aliases gets the `aliases =` argument, after the others
-    /// (#1843).
+    /// (#1843), then the clause naming the listed ones (#2148), which a type
+    /// whose aliases are all unlisted does without.
     #[test]
     fn splice_match_arg_entry_writes_the_aliases_argument() {
         assert_eq!(
@@ -5546,11 +5565,30 @@ mod tests {
         assert_eq!(
             splice_match_arg_entry(
                 ALIASES_CHECK,
-                &aliases_entry(&["red", "gray"], &[("grey", "gray"), ("rouge", "red")])
+                &aliases_entry(&["red", "gray"], {
+                    const LISTED: &[MatchArgAlias] = &[
+                        MatchArgAlias::new("grey", "gray"),
+                        MatchArgAlias::new("rouge", "red"),
+                    ];
+                    LISTED
+                })
             ),
             "f <- function(mode = c(\"red\", \"gray\")) {\n  \
              mode <- .miniextendr_match_arg(mode, c(\"red\", \"gray\"), \"mode\", \
-             aliases = base::c(\"grey\" = \"gray\", \"rouge\" = \"red\"))\n}"
+             aliases = base::c(\"grey\" = \"gray\", \"rouge\" = \"red\"), \
+             listed = \" (or \\\"rouge\\\" for \\\"red\\\", \\\"grey\\\" for \\\"gray\\\")\")\n}"
+        );
+        assert_eq!(
+            splice_match_arg_entry(
+                ALIASES_CHECK,
+                &aliases_entry(&["red", "gray"], {
+                    const UNLISTED: &[MatchArgAlias] = &[MatchArgAlias::unlisted("grey", "gray")];
+                    UNLISTED
+                })
+            ),
+            "f <- function(mode = c(\"red\", \"gray\")) {\n  \
+             mode <- .miniextendr_match_arg(mode, c(\"red\", \"gray\"), \"mode\", \
+             aliases = base::c(\"grey\" = \"gray\"))\n}"
         );
         // With a call argument before it, as under `call = caller`.
         let caller = ALIASES_CHECK.replace("\"mode\", .__MX", "\"mode\", .mx_call, .__MX");
@@ -5560,17 +5598,21 @@ mod tests {
         );
     }
 
-    /// Aliases and choices are escaped for an R string literal.
+    /// Aliases and choices are escaped for an R string literal, and so is
+    /// the clause, which quotes them as the R check quotes the choices.
     #[test]
     fn match_arg_aliases_arg_escapes() {
         assert_eq!(match_arg_aliases_arg(&["a"], &[], "p"), "");
         assert_eq!(
             match_arg_aliases_arg(
                 &["say \"hi\"", r"c:\path"],
-                &[("hello", "say \"hi\""), (r"d:\", r"c:\path")],
+                &[
+                    MatchArgAlias::unlisted("hello", "say \"hi\""),
+                    MatchArgAlias::new(r"d:\", r"c:\path")
+                ],
                 "p"
             ),
-            r#", aliases = base::c("hello" = "say \"hi\"", "d:\\" = "c:\\path")"#
+            r#", aliases = base::c("hello" = "say \"hi\"", "d:\\" = "c:\\path"), listed = " (or \"d:\\\" for \"c:\\path\")""#
         );
     }
 
@@ -5579,7 +5621,7 @@ mod tests {
     /// at once.
     #[test]
     fn match_arg_aliases_arg_refuses_bad_aliases() {
-        let refused = |aliases: &'static [(&'static str, &'static str)]| {
+        let refused = |aliases: &'static [MatchArgAlias]| {
             std::panic::catch_unwind(|| {
                 match_arg_aliases_arg(&["red", "gray", "green"], aliases, ".__MX_ALIASES_p__")
             })
@@ -5588,15 +5630,16 @@ mod tests {
             .map(|m| *m)
             .unwrap()
         };
-        let message = refused(&[
-            ("", "red"),
-            ("NA", "red"),
-            ("red", "gray"),
-            ("grey", "gray"),
-            ("grey", "gray"),
-            ("blue", "navy"),
-            ("gr", "green"),
-        ]);
+        const BAD: &[MatchArgAlias] = &[
+            MatchArgAlias::new("", "red"),
+            MatchArgAlias::new("NA", "red"),
+            MatchArgAlias::new("red", "gray"),
+            MatchArgAlias::new("grey", "gray"),
+            MatchArgAlias::unlisted("grey", "gray"),
+            MatchArgAlias::new("blue", "navy"),
+            MatchArgAlias::new("gr", "green"),
+        ];
+        let message = refused(BAD);
         assert!(message.contains(".__MX_ALIASES_p__"), "{message}");
         for problem in [
             "an alias can't be empty",
@@ -5610,7 +5653,11 @@ mod tests {
         }
         // A prefix of its own choice only is fine.
         assert_eq!(
-            match_arg_aliases_arg(&["red", "gray"], &[("gr", "gray")], "p"),
+            match_arg_aliases_arg(
+                &["red", "gray"],
+                &[MatchArgAlias::unlisted("gr", "gray")],
+                "p"
+            ),
             r#", aliases = base::c("gr" = "gray")"#
         );
     }

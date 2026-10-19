@@ -3063,6 +3063,9 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 ///
 /// - `#[match_arg(rename = "name")]` - Rename a variant's choice string
 /// - `#[match_arg(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
+/// - `#[match_arg(alias = "name")]` - Another spelling of a variant's choice, matched when typed
+///   in full; the errors that list the choices name it after them (`(or "name" for "choice")`)
+/// - `#[match_arg(alias = "name", listed = false)]` - The same, named by no error
 ///
 /// # Requirements
 ///

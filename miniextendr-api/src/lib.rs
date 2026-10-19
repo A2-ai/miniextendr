@@ -1247,9 +1247,9 @@ pub mod match_arg;
 #[cfg(feature = "either")]
 pub use match_arg::match_arg_either_or;
 pub use match_arg::{
-    MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp, match_arg_missing_or,
-    match_arg_null_or, match_arg_option_from_sexp, match_arg_param, match_arg_param_with_default,
-    match_arg_vec_from_sexp, match_arg_vec_into_sexp,
+    MatchArg, MatchArgAlias, MatchArgError, choices_sexp, match_arg_from_sexp,
+    match_arg_missing_or, match_arg_null_or, match_arg_option_from_sexp, match_arg_param,
+    match_arg_param_with_default, match_arg_vec_from_sexp, match_arg_vec_into_sexp,
 };
 
 /// Factor support for enum ↔ R factor conversions.

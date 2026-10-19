@@ -1518,9 +1518,11 @@ impl ArgContext {
     /// `@param` line: `'route' must be one of "oral", "bolus", or a data
     /// frame` (`one or more of` for `several_ok`, `, a data frame, or NULL`
     /// under `Option`). The choices are `MatchArg::CHOICES` for a `match_arg`
-    /// type and the literal list for `choices(...)`; the `R` arm is named by
-    /// its `@param` noun ([`crate::type_inspect::r_value_noun`]). The error
-    /// then supplies only the reason (`got integer`).
+    /// type, followed by its listed `MatchArg::ALIASES` (`(or "po" for
+    /// "oral")`, #2148), and the literal list for `choices(...)`, which has
+    /// no aliases; the `R` arm is named by its `@param` noun
+    /// ([`crate::type_inspect::r_value_noun`]). The error then supplies only
+    /// the reason (`got integer`).
     fn either_choice(r_name: &str, ty: &syn::Type, leaf: &ChoiceLeaf) -> Option<Self> {
         let layers = crate::type_inspect::choice_layers(ty);
         let right = layers.either_right?;
@@ -1529,19 +1531,22 @@ impl ArgContext {
             layers.nullable,
             "NULL",
         );
-        let (choices, several) = match leaf {
-            ChoiceLeaf::Literal { choices, several } => (quote! { &[#(#choices),*] }, *several),
+        let (choices, aliases, several) = match leaf {
+            ChoiceLeaf::Literal { choices, several } => {
+                (quote! { &[#(#choices),*] }, quote! { &[] }, *several)
+            }
             ChoiceLeaf::MatchArg | ChoiceLeaf::MatchArgSeveral => {
                 let choice_ty = LayeredValue::new(layers.value, leaf.clone()).choice_ty;
                 (
                     quote! { <#choice_ty as ::miniextendr_api::MatchArg>::CHOICES },
+                    quote! { <#choice_ty as ::miniextendr_api::MatchArg>::ALIASES },
                     *leaf == ChoiceLeaf::MatchArgSeveral,
                 )
             }
         };
         Some(Self {
             expected_at_run_time: Some(quote! {
-                ::miniextendr_api::match_arg::choice_expectation(#choices, #several, #suffix)
+                ::miniextendr_api::match_arg::choice_expectation(#choices, #aliases, #several, #suffix)
             }),
             ..Self::with_expectation(r_name, ty, None)
         })

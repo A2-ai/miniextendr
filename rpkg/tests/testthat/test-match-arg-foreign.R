@@ -32,6 +32,20 @@ test_that("hand-written MatchArg newtype: several_ok and Vec<T> return", {
   expect_error(foreign_enum_interps(c("spline", "bogus")), "should be one of")
 })
 
+test_that("hand-written MatchArg newtype: ALIASES, listed and unlisted", {
+  expect_equal(foreign_enum_interp("nn"), "Nearest")
+  expect_equal(foreign_enum_interp("straight"), "Linear")
+  expect_equal(foreign_enum_interps(c("straight", "nn")), c("linear", "nearest"))
+  # Only the listed alias is named.
+  expect_error(
+    foreign_enum_interp("spline"),
+    "'method' should be one of \"linear\", \"cubic\", \"nearest\" (or \"nn\" for \"nearest\")",
+    fixed = TRUE
+  )
+  # Still not part of the formal.
+  expect_equal(formals(foreign_enum_interp)$method, quote(c("linear", "cubic", "nearest")))
+})
+
 test_that("hand-written MatchArg newtype: scalar return renders the choice string", {
   expect_identical(foreign_enum_default(), "cubic")
 })

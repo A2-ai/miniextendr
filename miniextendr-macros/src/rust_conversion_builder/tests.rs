@@ -581,16 +581,18 @@ fn test_literal_expectation_arm_has_no_whole_message_probe() {
 
 /// A choice parameter with an `Either<.., R>` layer is refused against the
 /// whole parameter, in the words of its `@param` line: the choices
-/// (`MatchArg::CHOICES` of a `match_arg` type, the literal list of
-/// `choices(...)`, `one or more of` for `several_ok`), then the `R` arm's
-/// noun and `NULL` under `Option`. The error supplies only the reason.
+/// (`MatchArg::CHOICES` of a `match_arg` type with its `MatchArg::ALIASES`,
+/// the literal list of `choices(...)` with none, `one or more of` for
+/// `several_ok`), then the `R` arm's noun and `NULL` under `Option`. The
+/// error supplies only the reason.
 #[test]
 fn test_either_choice_err_arm_names_the_whole_parameter() {
     let literal = |several| ChoiceLeaf::Literal {
         choices: vec!["low".into(), "mid".into()],
         several,
     };
-    let routes = "< Route as :: miniextendr_api :: MatchArg > :: CHOICES";
+    let routes = "< Route as :: miniextendr_api :: MatchArg > :: CHOICES , \
+                  < Route as :: miniextendr_api :: MatchArg > :: ALIASES";
     for (src, leaf, choices, several, suffix) in [
         (
             "mode: Either<Route, DataFrame>",
@@ -623,21 +625,21 @@ fn test_either_choice_err_arm_names_the_whole_parameter() {
         (
             "mode: Either<String, f64>",
             literal(false),
-            "& [\"low\" , \"mid\"]",
+            "& [\"low\" , \"mid\"] , & []",
             false,
             ", or a number",
         ),
         (
             "mode: Option<Either<String, f64>>",
             literal(false),
-            "& [\"low\" , \"mid\"]",
+            "& [\"low\" , \"mid\"] , & []",
             false,
             ", a number, or NULL",
         ),
         (
             "mode: Missing<Either<Vec<String>, f64>>",
             literal(true),
-            "& [\"low\" , \"mid\"]",
+            "& [\"low\" , \"mid\"] , & []",
             true,
             ", or a number",
         ),
