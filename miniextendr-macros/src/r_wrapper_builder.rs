@@ -13,8 +13,8 @@
 //!
 //! ```ignore
 //! // Build R function signature
-//! let formals = build_r_formals_from_sig(&method.sig, &defaults);
-//! let call_args = build_r_call_args_from_sig(&method.sig, absent_formals);
+//! let formals = build_r_formals_from_sig(&method.sig, &r_formals, &defaults);
+//! let call_args = build_r_call_args_from_sig(&method.sig, &r_formals, absent_formals);
 //!
 //! // Build .Call() invocation
 //! let call = DotCallBuilder::new("C_MyType__method")
@@ -30,7 +30,8 @@
 //!     .build();
 //! ```
 
-/// Normalizes Rust argument identifiers for R.
+/// Normalizes a Rust argument name (its [`crate::naming::ident_name`], no
+/// `r#`) for R.
 ///
 /// - Leading `_` → stripped (Rust convention for unused params)
 /// - Leading `__` → stripped
@@ -44,17 +45,9 @@
 ///
 /// Note: We strip underscores rather than prefixing "unused" because R callers
 /// (like vctrs) may use named arguments that must match the original name.
-pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new(
-        &normalize_r_arg_string(&crate::naming::ident_name(rust_ident)),
-        rust_ident.span(),
-    )
-}
-
-/// String form of [`normalize_r_arg_ident`] that skips the `syn::Ident` round-trip.
 ///
-/// Most callers feed the result into `format!`/`HashMap` keys and immediately
-/// `.to_string()` the returned ident — this avoids that allocation pair.
+/// This is the R formal of a parameter without a declared `formal = ".."`
+/// only: R-facing names come from [`Formals::of`], which applies it.
 pub fn normalize_r_arg_string(name: &str) -> String {
     let normalized = name.trim_start_matches('_');
     if normalized.is_empty() {
@@ -64,74 +57,272 @@ pub fn normalize_r_arg_string(name: &str) -> String {
     }
 }
 
+/// The R formal of each parameter of one signature (#1842).
+///
+/// A parameter declared with `formal = "conf.int"` (a standalone function's
+/// per-parameter option, a method's `formal(conf_int = "conf.int")`) has that
+/// formal; every other one has [`normalize_r_arg_string`] of its Rust name.
+/// [`Formals::of`] is the one place that rule lives: every site that writes a
+/// parameter's name into R text (the formals, the `.Call()` arguments, the
+/// argument checks and their errors, `e$param` of a conversion error, the
+/// `@param` lines) asks it. Maps keyed by Rust name (the per-parameter
+/// options) stay keyed by Rust name, and so do the `match_arg` placeholders,
+/// which the wrapper writer replaces before R reads them.
+///
+/// A declared formal may hold a `.`, which no Rust identifier can, so it is
+/// only ever a string: never an identifier, and never part of one.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Formals {
+    /// The declared formals, keyed by Rust parameter name
+    /// ([`crate::naming::ident_name`]), each with the literal that declared
+    /// it (where its errors point).
+    declared: std::collections::HashMap<String, syn::LitStr>,
+}
+
+impl Formals {
+    /// The formals the per-parameter options of one signature declare.
+    pub(crate) fn from_param_attrs(
+        per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    ) -> Self {
+        Self {
+            declared: per_param
+                .iter()
+                .filter_map(|(name, attrs)| Some((name.clone(), attrs.formal.clone()?)))
+                .collect(),
+        }
+    }
+
+    /// The R formal of the parameter whose Rust name is `rust_name`: its
+    /// declared formal, else the name without leading underscores.
+    pub(crate) fn of(&self, rust_name: &str) -> String {
+        match self.declared.get(rust_name) {
+            Some(formal) => formal.value(),
+            None => normalize_r_arg_string(rust_name),
+        }
+    }
+
+    /// [`Self::of`] the parameter `ident` (`r#` dropped).
+    pub(crate) fn of_ident(&self, ident: &syn::Ident) -> String {
+        self.of(&crate::naming::ident_name(ident))
+    }
+
+    /// The literal that declared the formal of `rust_name`, if one did.
+    pub(crate) fn declared(&self, rust_name: &str) -> Option<&syn::LitStr> {
+        self.declared.get(rust_name)
+    }
+
+    /// `map` with each key, a Rust parameter name, replaced by that
+    /// parameter's R formal: for maps keyed by Rust name (a function's
+    /// `default = ".."`, a method's `defaults(p = "..")`) that feed a builder
+    /// keyed by R formal.
+    pub(crate) fn rekey<V>(
+        &self,
+        map: impl IntoIterator<Item = (String, V)>,
+    ) -> std::collections::HashMap<String, V> {
+        map.into_iter()
+            .map(|(rust_name, value)| (self.of(&rust_name), value))
+            .collect()
+    }
+}
+
+/// The R names a declared formal must not take, beyond R's own syntax rules:
+/// the names the generated wrapper binds or reads in the function's frame
+/// (#1842). Another dotted name is the framework's only when it starts with
+/// one of [`FRAMEWORK_FORMAL_PREFIXES`].
+const FRAMEWORK_FORMALS: &[(&str, &str)] = &[
+    (
+        ".call",
+        "is the call the generated wrapper passes to `.Call()`",
+    ),
+    (
+        ".val",
+        "is where the generated wrapper keeps the result of `.Call()`",
+    ),
+    (
+        ".ptr",
+        "is the pointer argument of a generated class constructor",
+    ),
+    (
+        ".Generic",
+        "is bound by R's S3 dispatch in a method's frame",
+    ),
+    (".Class", "is bound by R's S3 dispatch in a method's frame"),
+    (".Method", "is bound by R's S3 dispatch in a method's frame"),
+    (".Group", "is bound by R's S3 dispatch in a method's frame"),
+    (
+        ".GenericCallEnv",
+        "is bound by R's S3 dispatch in a method's frame",
+    ),
+    (
+        ".GenericDefEnv",
+        "is bound by R's S3 dispatch in a method's frame",
+    ),
+];
+
+/// Prefixes of the R names the framework generates (locals such as
+/// `.mx_call` and `.mx_self`, the wrappers preamble's `.miniextendr_*`
+/// helpers, the `.rdata_*` helpers `#[derive(ExternalPtr)]` writes for a
+/// sidecar, the write-time `.__MX_*` placeholders): a declared formal starting
+/// with one is refused.
+const FRAMEWORK_FORMAL_PREFIXES: &[&str] = &[".mx_", ".miniextendr_", ".rdata_", ".__MX_"];
+
+/// Why `formal` can't be a declared formal, or `None` when it can: it must be
+/// a syntactic R name ([`crate::naming::is_syntactic_r_name`]: letters,
+/// digits, `.` and `_`, not starting with a digit, `_` or `.` and a digit, and
+/// not a reserved word), not `...` or `..1` (R's dots), and none of the names
+/// the generated wrapper binds itself ([`FRAMEWORK_FORMALS`],
+/// [`FRAMEWORK_FORMAL_PREFIXES`]).
+pub(crate) fn declared_formal_problem(formal: &str) -> Option<String> {
+    if formal.is_empty() {
+        return Some("is empty".to_string());
+    }
+    if formal.starts_with("..") {
+        return Some(
+            "is R's `...` or one of its elements (`..1`, `..2`, ...), not an argument name"
+                .to_string(),
+        );
+    }
+    if crate::naming::is_r_reserved_word(formal) {
+        return Some("is an R reserved word".to_string());
+    }
+    if !crate::naming::is_syntactic_r_name(formal) {
+        return Some(
+            "is not a syntactic R name: it must start with a letter, or with a `.` that is not \
+             followed by a digit, and hold only ASCII letters, digits, `.` and `_`"
+                .to_string(),
+        );
+    }
+    if let Some((_, role)) = FRAMEWORK_FORMALS.iter().find(|(name, _)| *name == formal) {
+        return Some(format!("{role}, so the generated wrapper can't take it"));
+    }
+    FRAMEWORK_FORMAL_PREFIXES
+        .iter()
+        .find(|prefix| formal.starts_with(*prefix))
+        .map(|prefix| {
+            format!(
+                "starts with `{prefix}`, a prefix of the names the framework generates, so \
+                 the generated wrapper can't take it"
+            )
+        })
+}
+
 /// Check the R formals a signature produces, before any wrapper is generated.
 ///
-/// Each parameter becomes the formal [`normalize_r_arg_string`] gives it; the
-/// `&Dots` parameter becomes `...`, wherever it sits, and is skipped. A formal must be an R
-/// name (not a reserved word such as `if` or `in`, not starting with a digit),
-/// distinct from the others (`x` and `_x` both become `x`), and not one of the
+/// Each parameter becomes its formal ([`Formals::of`]: the declared
+/// `formal = ".."`, else [`normalize_r_arg_string`] of its name); the `&Dots`
+/// parameter becomes `...`, wherever it sits, and is skipped. A formal must be
+/// an R name (not a reserved word such as `if` or `in`, not starting with a
+/// digit; a declared one must pass [`declared_formal_problem`]), distinct
+/// from the others (`x` and `_x` both become `x`), and not one of the
 /// `reserved` names the generated wrapper binds itself (a method's receiver,
 /// R6's `self` and `private`), each paired with what it is. Any of these would
 /// break the wrapper: a parse error in the wrappers file, or a parameter that
 /// hides the object the method works on.
 ///
 /// Every case is a compile error rather than a rename: callers pass arguments
-/// by name, so the R formal has to stay the parameter's own name.
+/// by name, so the R formal has to stay the parameter's own name unless the
+/// author declares another. An error points at the declaring literal for a
+/// declared formal, else at the parameter. Every problem of the signature is
+/// reported, in one combined error.
 pub(crate) fn check_r_formals(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    formals: &Formals,
     reserved: &[(String, String)],
 ) -> syn::Result<()> {
+    let mut errors: Option<syn::Error> = None;
+    let mut push = |error: syn::Error| match errors.as_mut() {
+        Some(all) => all.combine(error),
+        None => errors = Some(error),
+    };
     let mut seen: std::collections::HashMap<String, &syn::Ident> = std::collections::HashMap::new();
-    for (formal, ident) in r_formal_names(inputs) {
-        let problem = if crate::naming::is_r_reserved_word(&formal) {
-            Some(format!(
-                "is an R reserved word, so the generated R wrapper would not parse. \
-                 Rename the parameter (for example `{formal}_`)"
+    for (formal, ident) in r_formal_names(inputs, formals) {
+        let declared = formals.declared(&crate::naming::ident_name(ident));
+        let problem = if let Some(lit) = declared {
+            declared_formal_problem(&formal).map(|problem| (lit.span(), problem))
+        } else if crate::naming::is_r_reserved_word(&formal) {
+            Some((
+                ident.span(),
+                format!(
+                    "is an R reserved word, so the generated R wrapper would not parse. \
+                     Rename the parameter (for example `{formal}_`)"
+                ),
             ))
         } else if formal.starts_with(|c: char| c.is_ascii_digit()) {
-            Some(
+            Some((
+                ident.span(),
                 "starts with a digit, so the generated R wrapper would not parse. \
                  Rename the parameter so that, without its leading underscores, it \
                  starts with a letter"
                     .to_string(),
-            )
+            ))
         } else {
+            None
+        };
+        let problem = problem.or_else(|| {
             reserved
                 .iter()
                 .find(|(name, _)| *name == formal)
-                .map(|(_, role)| format!("{role}. Rename the parameter"))
-        };
-        if let Some(problem) = problem {
-            return Err(syn::Error::new(
-                ident.span(),
-                format!("parameter `{ident}` becomes the R argument `{formal}`, which {problem}."),
+                .map(|(_, role)| {
+                    let fix = if declared.is_some() {
+                        "Declare another formal"
+                    } else {
+                        "Rename the parameter"
+                    };
+                    (
+                        declared.map_or(ident.span(), syn::LitStr::span),
+                        format!("{role}. {fix}"),
+                    )
+                })
+        });
+        if let Some((span, problem)) = problem {
+            let becomes = if declared.is_some() {
+                "is declared as"
+            } else {
+                "becomes"
+            };
+            push(syn::Error::new(
+                span,
+                format!(
+                    "parameter `{ident}` {becomes} the R argument `{formal}`, which {problem}."
+                ),
             ));
+            continue;
         }
         if let Some(first) = seen.insert(formal.clone(), ident) {
-            return Err(syn::Error::new(
-                ident.span(),
+            let span = declared.map_or(ident.span(), syn::LitStr::span);
+            let how = if declared.is_some()
+                || formals
+                    .declared(&crate::naming::ident_name(first))
+                    .is_some()
+            {
+                "a declared `formal` names the R argument"
+            } else {
+                "the R name drops leading underscores"
+            };
+            push(syn::Error::new(
+                span,
                 format!(
                     "parameters `{first}` and `{ident}` both become the R argument `{formal}` \
-                     (the R name drops leading underscores), and R rejects a repeated argument \
-                     name. Rename one of them."
+                     ({how}), and R rejects a repeated argument name. Rename one of them."
                 ),
             ));
         }
     }
-    Ok(())
+    errors.map_or(Ok(()), Err)
 }
 
 /// The R formal each parameter of a signature becomes, with the parameter's
-/// ident: [`normalize_r_arg_string`] of its name. The `&Dots` / `LazyDots`
-/// parameter becomes `...` wherever it sits and is skipped, as are receivers,
-/// non-ident patterns and an `NArgs` parameter, which is no formal (#1860).
+/// ident: [`Formals::of`] its name. The `&Dots` / `LazyDots` parameter becomes
+/// `...` wherever it sits and is skipped, as are receivers, non-ident patterns
+/// and an `NArgs` parameter, which is no formal (#1860).
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
 /// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
 /// they would shadow, so the two agree on what each formal is named.
-pub(crate) fn r_formal_names(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-) -> impl Iterator<Item = (String, &syn::Ident)> {
+pub(crate) fn r_formal_names<'a>(
+    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    formals: &'a Formals,
+) -> impl Iterator<Item = (String, &'a syn::Ident)> {
     let dots_index = crate::miniextendr_fn::dots_index(inputs);
     inputs.iter().enumerate().filter_map(move |(idx, input)| {
         let syn::FnArg::Typed(pat_type) = input else {
@@ -144,10 +335,7 @@ pub(crate) fn r_formal_names(
             return None;
         };
         let ident = &pat_ident.ident;
-        Some((
-            normalize_r_arg_string(&crate::naming::ident_name(ident)),
-            ident,
-        ))
+        Some((formals.of_ident(ident), ident))
     })
 }
 
@@ -168,7 +356,8 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 /// Builder for R function formal parameters and call arguments.
 ///
 /// Handles:
-/// - Underscore normalization (`_x` → `x`)
+/// - R formals: the declared `formal = ".."` (#1842), else the Rust name
+///   without leading underscores (`_x` → `x`)
 /// - Unit type defaults (`()` → `= NULL`)
 /// - Dots: the `&Dots` parameter is `...` in the formals and `list(...)` in
 ///   the call arguments, at its own position in the signature; a `LazyDots`
@@ -190,13 +379,16 @@ pub struct RArgumentBuilder<'a> {
     /// since the self argument is handled separately by [`DotCallBuilder::with_self`]).
     skip_first: bool,
     /// Parameter default values from `#[miniextendr(default = "...")]` attributes.
-    /// Keys are normalized R parameter names, values are R expressions emitted verbatim
-    /// (e.g., `"1L"`, `"c(1, 2, 3)"`, `"NULL"`).
+    /// Keys are R formals ([`Formals::of`]), values are R expressions emitted
+    /// verbatim (e.g., `"1L"`, `"c(1, 2, 3)"`, `"NULL"`).
     defaults: std::collections::HashMap<String, String>,
     /// The single-choice `Missing<..>` parameters that read a value
-    /// `identical()` to their formal as omitted (#2152), R name → formal (see
+    /// `identical()` to their formal as omitted (#2152), R formal → the
+    /// formal's default (see
     /// [`crate::miniextendr_fn::ParamAttrs::absent_formal`]).
     absent_formals: std::collections::HashMap<String, String>,
+    /// The R formal of each parameter (#1842).
+    formals: Formals,
 }
 
 impl<'a> RArgumentBuilder<'a> {
@@ -214,12 +406,22 @@ impl<'a> RArgumentBuilder<'a> {
             skip_first: false,
             defaults: std::collections::HashMap::new(),
             absent_formals: std::collections::HashMap::new(),
+            formals: Formals::default(),
         }
     }
 
+    /// Name each parameter by its R formal (#1842): the declared
+    /// `formal = ".."`, else the normalized Rust name (the default). The
+    /// keys of [`Self::with_defaults`] and [`Self::with_absent_formals`] are
+    /// these formals.
+    pub fn with_formals(mut self, formals: Formals) -> Self {
+        self.formals = formals;
+        self
+    }
+
     /// Add the `Missing<..>` choice parameters that read a value `identical()`
-    /// to their formal as omitted (#2152), keyed by normalized R name, valued
-    /// by that formal (see
+    /// to their formal as omitted (#2152), keyed by R formal, valued by that
+    /// formal's default (see
     /// [`crate::miniextendr_fn::absent_formals_by_r_name`]).
     pub fn with_absent_formals(
         mut self,
@@ -231,8 +433,9 @@ impl<'a> RArgumentBuilder<'a> {
 
     /// Add parameter defaults from `#[miniextendr(default = "...")]` attributes.
     ///
-    /// Keys are normalized R parameter names (after underscore stripping),
-    /// values are R expression strings emitted verbatim into formals.
+    /// Keys are R formals (see [`Self::with_formals`]; without a declared
+    /// formal, the Rust name without leading underscores), values are R
+    /// expression strings emitted verbatim into formals.
     pub fn with_defaults(mut self, defaults: std::collections::HashMap<String, String>) -> Self {
         self.defaults = defaults;
         self
@@ -278,27 +481,27 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
-            // Extract and normalize argument name
-            let arg_ident = match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
+            // The parameter's R formal (#1842)
+            let formal = match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => self.formals.of_ident(&pat_ident.ident),
                 _ => continue,
             };
 
             // Check for user-specified default value
-            if let Some(default_val) = self.defaults.get(&arg_ident.to_string()) {
+            if let Some(default_val) = self.defaults.get(&formal) {
                 // User provided default via #[miniextendr(default = "...")]
                 // Output directly as string - supports R-style defaults like "1L", "c(1,2,3)"
-                formals.push(format!("{} = {}", arg_ident, default_val));
+                formals.push(format!("{} = {}", formal, default_val));
                 continue;
             }
 
             // Add default for unit types
             match pat_type.ty.as_ref() {
                 syn::Type::Tuple(t) if t.elems.is_empty() => {
-                    formals.push(format!("{} = NULL", arg_ident));
+                    formals.push(format!("{} = NULL", formal));
                 }
                 _ => {
-                    formals.push(arg_ident.to_string());
+                    formals.push(formal);
                 }
             }
         }
@@ -357,9 +560,9 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
-            // Extract and normalize argument name
-            let arg_ident = match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
+            // The parameter's R formal (#1842)
+            let formal = match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => self.formals.of_ident(&pat_ident.ident),
                 _ => continue,
             };
 
@@ -370,7 +573,7 @@ impl<'a> RArgumentBuilder<'a> {
             // an omitted argument with a default, so the default is never
             // evaluated.
             if let Some(param) = crate::type_inspect::unevaluated_param(pat_type.ty.as_ref()) {
-                call_args.push(param.kind.r_call_arg(&arg_ident.to_string()));
+                call_args.push(param.kind.r_call_arg(&formal));
                 continue;
             }
 
@@ -387,11 +590,11 @@ impl<'a> RArgumentBuilder<'a> {
             // its prelude check skipped: the default shown in the usage line
             // means the same as leaving it out.
             if is_missing_type(pat_type.ty.as_ref()) {
-                let p = arg_ident;
-                call_args.push(match self.absent_formals.get(&p.to_string()) {
-                    Some(formal) => {
+                let p = formal;
+                call_args.push(match self.absent_formals.get(&p) {
+                    Some(absent) => {
                         format!(
-                            "if (missing({p}) || identical({p}, {formal})) quote(expr=) else {p}"
+                            "if (missing({p}) || identical({p}, {absent})) quote(expr=) else {p}"
                         )
                     }
                     None => format!("if (missing({p})) quote(expr=) else {p}"),
@@ -399,7 +602,7 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
-            call_args.push(arg_ident.to_string());
+            call_args.push(formal);
         }
 
         call_args
@@ -414,11 +617,14 @@ impl<'a> RArgumentBuilder<'a> {
 /// (see [`RArgumentBuilder::build_call_args_vec`]).
 ///
 /// Returns a comma-separated string of R formals, e.g., `"x, y = NULL, ..."`.
+/// `formals` names each parameter (see [`RArgumentBuilder::with_formals`]),
+/// and `defaults` is keyed by those formals.
 pub(crate) fn build_r_formals_from_sig(
     sig: &syn::Signature,
+    formals: &Formals,
     defaults: &std::collections::HashMap<String, String>,
 ) -> String {
-    let mut builder = RArgumentBuilder::new(&sig.inputs);
+    let mut builder = RArgumentBuilder::new(&sig.inputs).with_formals(formals.clone());
     if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
         builder = builder.skip_first();
     }
@@ -435,11 +641,15 @@ pub(crate) fn build_r_formals_from_sig(
 /// [`RArgumentBuilder::with_absent_formals`]).
 ///
 /// Returns a comma-separated string of R call arguments, e.g., `"x, y, list(...)"`.
+/// `formals` names each parameter, as in [`build_r_formals_from_sig`].
 pub(crate) fn build_r_call_args_from_sig(
     sig: &syn::Signature,
+    formals: &Formals,
     absent_formals: std::collections::HashMap<String, String>,
 ) -> String {
-    let mut builder = RArgumentBuilder::new(&sig.inputs).with_absent_formals(absent_formals);
+    let mut builder = RArgumentBuilder::new(&sig.inputs)
+        .with_formals(formals.clone())
+        .with_absent_formals(absent_formals);
     if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
         builder = builder.skip_first();
     }

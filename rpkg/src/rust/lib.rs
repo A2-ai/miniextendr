@@ -39,6 +39,7 @@
 //! - [`default_tests`]: Default parameter value tests
 //! - [`binding_hygiene_tests`]: Parameters named like generated wrapper and trait-shim bindings (#1677)
 //! - [`receiver_formals_tests`]: Parameters named like receivers, and methods on other packages' generics (#1677)
+//! - [`formal_name_tests`]: Parameters with a declared R formal such as `row.names` (#1842)
 //! - [`externalptr_tests`]: ExternalPtr functionality tests
 //! - [`externalptr_identity_tests`]: ExternalPtr identity preservation tests
 //! - [`visibility_tests`]: R return value visibility tests
@@ -236,6 +237,7 @@ mod fast_fixtures;
 mod feature_default_fixtures;
 mod ffi_guard_tests;
 mod fixed_array_tests;
+mod formal_name_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod glob_import_tests;

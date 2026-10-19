@@ -310,7 +310,8 @@ fn param_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String>
         .constructor()
         .filter(|_| parsed_impl.class_system != ClassSystem::Env)
         .map(|ctor| {
-            crate::r_wrapper_builder::r_formal_names(&ctor.sig.inputs)
+            let formals = ctor.formals();
+            crate::r_wrapper_builder::r_formal_names(&ctor.sig.inputs, &formals)
                 .map(|(name, _)| name)
                 .collect()
         })

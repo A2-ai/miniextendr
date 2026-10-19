@@ -1,4 +1,4 @@
-error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to the `LazyDots` parameter `rest`: it is R's `...`, which the wrapper passes unforced
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`, `formal`) do not apply to the `LazyDots` parameter `rest`: it is R's `...`, which the wrapper passes unforced
  --> tests/ui/fn_lazy_dots_param_attrs.rs:9:57
   |
 9 | pub fn coerced_lazy_dots(x: i32, #[miniextendr(coerce)] rest: LazyDots) -> i32 {

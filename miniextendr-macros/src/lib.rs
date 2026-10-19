@@ -543,6 +543,40 @@ pub(crate) fn build_dots_validation_stmt(
 /// - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
 /// - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper
 ///
+/// ## Declared R formals (`formal`)
+///
+/// A parameter's R formal is its name without leading underscores. For an R
+/// name that is no Rust identifier (`row.names`, `na.rm`, `.data`), declare it
+/// with `formal`, on the parameter of a function or with `formal(p = "..")` on
+/// an impl method. It combines with the other per-parameter options:
+///
+/// ```ignore
+/// #[miniextendr(s3(generic = "as.data.frame", class = "fit"))]
+/// pub fn as_data_frame_fit(
+///     x: List,
+///     #[miniextendr(formal = "row.names", default = "NULL")] row_names: Option<String>,
+///     #[miniextendr(default = "FALSE")] optional: bool,
+///     _dots: ...
+/// ) -> BuiltDataFrame { /* ... */ }
+/// // as.data.frame.fit <- function(x, row.names = NULL, optional = FALSE, ...)
+///
+/// #[miniextendr(r6)]
+/// impl Tally {
+///     #[miniextendr(formal(na_rm = "na.rm"), defaults(na_rm = "FALSE"))]
+///     pub fn add(&mut self, by: f64, na_rm: bool) -> f64 { /* ... */ }
+/// }
+/// ```
+///
+/// Every R-facing name uses the formal: the usage, the `.Call()` arguments,
+/// the argument checks and their `e$param` (a failed conversion's too), the
+/// `match_arg` prelude and the generated `@param` lines; the method-level
+/// options keep the Rust name as their key. The formal must be a syntactic R
+/// name, not a reserved word, `...` or `..1`, not a name the generated wrapper
+/// uses itself (`.call`, `.val`, `.ptr`, the S3 dispatch variables, names
+/// starting `.mx_`, `.miniextendr_`, `.rdata_` or `.__MX_`, a method's
+/// receiver), and distinct from the other formals. The dots, an `NArgs`
+/// parameter, S7 property accessors and trait methods take no `formal`.
+///
 /// # Impl blocks (class systems)
 ///
 /// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block.
@@ -934,6 +968,9 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     let generics = parsed.generics();
     let has_dots = parsed.has_dots();
     let dots_ident = parsed.dots_ident().cloned();
+    // The R formal of each parameter (#1842): what every R-facing name below
+    // is written as.
+    let formals = parsed.formals();
 
     // Fail fast on invalid extern "C-unwind" signatures *before* any codegen,
     // so we never emit a wrapper that would be discarded by the surfaced error.
@@ -979,8 +1016,8 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                 pt,
                 format!(
                     "per-parameter options (`coerce`, `match_arg`, `choices`, `default`, \
-                     `several_ok`) do not apply to a `{marker}` parameter: it is bound from \
-                     the call slot, not from an R argument"
+                     `several_ok`, `formal`) do not apply to a `{marker}` parameter: it is \
+                     bound from the call slot, not from an R argument"
                 ),
             )
             .into_compile_error()
@@ -1069,11 +1106,11 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         };
         let marker = param.kind.name();
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let default_only = param.optional
-            && parsed
-                .param_attrs(&rust_name)
-                .is_some_and(miniextendr_fn::ParamAttrs::is_default_only);
-        if parsed.has_param_attrs(&rust_name) && !default_only {
+        // `formal` only names the argument (#1842), so it applies.
+        if parsed
+            .param_attrs(&rust_name)
+            .is_some_and(|attrs| !attrs.leaves_argument_unforced(param.optional))
+        {
             let hint = if param.optional {
                 format!(
                     "`Missing<{marker}>` takes `default` alone, which only writes the \
@@ -1088,7 +1125,8 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                     "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
                      `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not \
                      apply to a `{marker}` parameter: the wrapper passes the argument \
-                     unevaluated, and each of them would force it. {hint}"
+                     unevaluated, and each of them would force it (`formal`, which only \
+                     names it, does apply). {hint}"
                 ),
             )
             .into_compile_error()
@@ -1096,7 +1134,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         }
         // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
         // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
-        unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
+        unevaluated_r_names.push(formals.of(&rust_name));
     }
     // The argument-count marker (#1860): an `NArgs` parameter is no R formal;
     // the wrapper passes `nargs()` at its position and the C wrapper converts
@@ -1146,6 +1184,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         && let Err(err) = miniextendr_fn::check_replacement_value_param(
             crate::naming::split_generic(generic).1,
             inputs,
+            &formals,
             rust_ident.span(),
         )
     {
@@ -1489,6 +1528,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                 seed,
                 all_inputs,
                 inputs,
+                &formals,
                 &unevaluated_r_names,
                 unit_return,
             ) {
@@ -1519,6 +1559,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             .cfg_attrs(cfg_attrs.clone())
             .vis(vis.clone())
             .generics(generics.clone())
+            .formals(formals.clone())
             .preserve_param_names();
 
     if uses_internal_c_wrapper {
@@ -1560,10 +1601,11 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
 
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
-    let mut arg_builder = RArgumentBuilder::new(inputs);
-    // Add user-specified parameter defaults. A `Missing<T>` default only
-    // writes the formal (#2161): the call argument tests `missing()` first.
-    let mut merged_defaults = parsed.param_defaults();
+    let mut arg_builder = RArgumentBuilder::new(inputs).with_formals(formals.clone());
+    // Add user-specified parameter defaults, keyed by R formal like the
+    // builder's. A `Missing<T>` default only writes the formal (#2161): the
+    // call argument tests `missing()` first.
+    let mut merged_defaults = formals.rekey(parsed.param_defaults());
     // For match_arg params, always use the choices placeholder as the formal
     // default — the write-time pass replaces it with `c("a", "b", ...)`.
     // If the user supplied `default = "\"X\""`, capture X as `preferred_default`
@@ -1575,12 +1617,15 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     // preferred_default_unquoted_or_empty)
     let mut match_arg_placeholders: Vec<(String, String, String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
+        let r_name = formals.of(match_arg_param);
         let preferred = match merged_defaults.get(&r_name) {
             Some(raw) => crate::match_arg_keys::extract_match_arg_default(raw),
             None => String::new(),
         };
-        let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
+        // The placeholders are keyed by the Rust name, never the formal
+        // (`match_arg_keys::param_key`).
+        let key = crate::match_arg_keys::param_key(match_arg_param);
+        let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &key);
         // `Option<T>` (#1473): the formal is `NULL` (no choice); `no_default`
         // (#1828, which `default` cannot join): no formal default. The prelude
         // spells the choices out through the same placeholder either way, so
@@ -1593,7 +1638,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             merged_defaults.insert(r_name.clone(), formal);
         }
         let aliases_placeholder =
-            crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), &r_name);
+            crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), &key);
         match_arg_placeholders.push((
             placeholder,
             aliases_placeholder,
@@ -1605,7 +1650,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     // pattern); an `Option<T>` choices param defaults to `NULL` instead
     // (#1473), and a `no_default` one gets none (#1828).
     for (param_name, choices) in parsed.choices_params() {
-        let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
+        let r_name = formals.of(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
         let formal = match parsed.param_attrs(param_name) {
@@ -1851,8 +1896,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             {
                 let rust_name = crate::naming::ident_name(&pat_ident.ident);
                 if parsed.has_match_arg_attr(&rust_name) {
-                    let r_name =
-                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    let r_name = formals.of(&rust_name);
                     return Some((r_name, rust_name, pt.ty.as_ref()));
                 }
             }
@@ -1874,9 +1918,10 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             // for a single choice, for the formal passed whole (#2152). The
             // helpers read a factor as its labels (#1552). Under `call = caller`
             // every form raises with `.mx_call` (#1548).
+            let key = crate::match_arg_keys::param_key(rust_name);
             let placeholder =
-                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), r_param);
-            let aliases = crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), r_param);
+                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &key);
+            let aliases = crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), &key);
             if let Some(attrs) = parsed.param_attrs(rust_name) {
                 lines.push(call_attribution.match_arg_statement(
                     r_param,
@@ -1901,8 +1946,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                 if let Some(attrs) = parsed.param_attrs(&rust_name)
                     && let Some(choices) = attrs.choices.as_ref()
                 {
-                    let r_name =
-                        r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    let r_name = formals.of(&rust_name);
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
                     let choices_expr = format!("c({})", quoted.join(", "));
@@ -1950,6 +1994,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         // its parameter has no type-derived check.
         let mut unchecked = r_preconditions::unchecked_params(
             inputs,
+            &formals,
             |name| parsed.param_attrs(name).and_then(|a| a.preconditions),
             preconditions,
             None,
@@ -1958,15 +2003,13 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         unchecked.extend(rng_seed_formal.iter().cloned());
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
-        // holds Rust names; normalize to R names.
+        // holds Rust names; the options are keyed by R formal.
         let precondition_opts = r_preconditions::PreconditionOptions {
             coerce_all,
-            coerce_params: coerce_params_list
-                .iter()
-                .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
-                .collect(),
+            coerce_params: coerce_params_list.iter().map(|p| formals.of(p)).collect(),
             explicit: parsed.explicit_checks(),
             unchecked,
+            formals: formals.clone(),
         };
         let precondition_output =
             r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
@@ -2066,8 +2109,10 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         )
     };
     // Use a raw string literal for better readability in macro expansion
-    let r_wrapper_str =
-        r_wrapper_raw_literal(&r_wrapper_string, &r_shadowing::formal_names([inputs]));
+    let r_wrapper_str = r_wrapper_raw_literal(
+        &r_wrapper_string,
+        &r_shadowing::formal_names([(inputs, formals.clone())]),
+    );
 
     // endregion
 

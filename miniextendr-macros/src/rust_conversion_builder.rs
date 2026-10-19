@@ -52,6 +52,9 @@ pub struct RustConversionBuilder {
     /// The impl's type, for `Self` in a method's borrowed external argument
     /// (`other: &Self`): the wrapper is a free function.
     self_type: Option<syn::Type>,
+    /// The R formal of each parameter (#1842): what a conversion condition
+    /// names the argument (see [`Self::with_formals`]).
+    formals: crate::r_wrapper_builder::Formals,
 }
 
 impl RustConversionBuilder {
@@ -67,6 +70,7 @@ impl RustConversionBuilder {
             layered_choice_params: Vec::new(),
             no_na_params: Vec::new(),
             param_markers: Vec::new(),
+            formals: crate::r_wrapper_builder::Formals::default(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
             unevaluated_args: false,
             self_type: None,
@@ -184,6 +188,14 @@ impl RustConversionBuilder {
     /// forward the call).
     pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
+        self
+    }
+
+    /// Name each argument by its R formal (#1842) in its conversion
+    /// condition: the message's `'<p>'` and `e$param`. Without a declared
+    /// formal, the Rust name without leading underscores.
+    pub fn with_formals(mut self, formals: crate::r_wrapper_builder::Formals) -> Self {
+        self.formals = formals;
         self
     }
 
@@ -524,10 +536,10 @@ impl RustConversionBuilder {
         // use the same spelling, so keep every temporary hygienic.
         let binding_span = proc_macro2::Span::mixed_site();
         let ty = pat_type.ty.as_ref();
-        // The R formal's name (`_x` → `x`, `r#type` → `type`): what a
-        // conversion condition names in its message and in `e$param`.
-        let r_name =
-            crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(ident));
+        // The R formal's name (`_x` → `x`, `r#type` → `type`, a declared
+        // `formal`, #1842): what a conversion condition names in its message
+        // and in `e$param`.
+        let r_name = self.formals.of_ident(ident);
         // What a conversion failure of this argument says (#1591): the R-facing
         // expectation (coerce-widened like the R-side check), `e$param` and
         // `e$rust_type`.

@@ -153,6 +153,10 @@ pub struct PreconditionOptions {
     /// dropped (each one resolved by [`resolve_type_checks`]). Their
     /// [`explicit`](Self::explicit) checks are still emitted.
     pub unchecked: HashSet<String>,
+    /// The R formal of each parameter (#1842): the name every check, every
+    /// argument error and every map above uses. Without a declared formal,
+    /// the Rust name without leading underscores.
+    pub formals: crate::r_wrapper_builder::Formals,
 }
 
 impl PreconditionOptions {
@@ -207,12 +211,14 @@ pub(crate) fn resolve_item_type_checks(
         .unwrap_or(!no_preconditions_default)
 }
 
-/// The R-normalized names of the parameters of `inputs` whose type-derived
-/// checks are dropped, given each one's rank-1 decision (`param`, keyed by
-/// Rust name) and the item, impl and crate defaults ([`resolve_type_checks`];
-/// the feature is this macro crate's `no-preconditions-default`).
+/// The R formals (`formals`) of the parameters of `inputs` whose
+/// type-derived checks are dropped, given each one's rank-1 decision
+/// (`param`, keyed by Rust name) and the item, impl and crate defaults
+/// ([`resolve_type_checks`]; the feature is this macro crate's
+/// `no-preconditions-default`).
 pub(crate) fn unchecked_params(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    formals: &crate::r_wrapper_builder::Formals,
     param: impl Fn(&str) -> Option<bool>,
     item: Option<bool>,
     impl_level: Option<bool>,
@@ -235,7 +241,7 @@ pub(crate) fn unchecked_params(
                 crate_default,
                 cfg!(feature = "no-preconditions-default"),
             );
-            (!keep).then(|| crate::r_wrapper_builder::normalize_r_arg_string(&name))
+            (!keep).then(|| formals.of(&name))
         })
         .collect()
 }
@@ -1336,8 +1342,8 @@ pub fn build_precondition_checks(
             continue;
         };
 
-        // Use the R-normalized name for the check (matches the R formal)
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        // The parameter's R formal (#1842): what the checks read and name
+        let r_name = opts.formals.of_ident(&pat_ident.ident);
         let explicit = opts.explicit.get(&r_name);
 
         // The class checks first, so a value of the wrong class gets their
@@ -2086,7 +2092,14 @@ mod tests {
     ) -> PreconditionOutput {
         let sig: syn::Signature = syn::parse_str(sig).unwrap();
         let unchecked = if no_type_checks {
-            unchecked_params(&sig.inputs, |_| Some(false), None, None, None)
+            unchecked_params(
+                &sig.inputs,
+                &Default::default(),
+                |_| Some(false),
+                None,
+                None,
+                None,
+            )
         } else {
             HashSet::new()
         };
@@ -2172,6 +2185,7 @@ mod tests {
         let sig: syn::Signature = syn::parse_str("fn f(n: i32, xs: Vec<f64>)").unwrap();
         let unchecked = unchecked_params(
             &sig.inputs,
+            &Default::default(),
             |name| (name == "xs").then_some(false),
             None,
             None,
@@ -2194,7 +2208,14 @@ mod tests {
         );
         // The set holds R names: `_n` is the R formal `n`.
         let sig: syn::Signature = syn::parse_str("fn f(_n: i32)").unwrap();
-        let unchecked = unchecked_params(&sig.inputs, |_| None, Some(false), None, None);
+        let unchecked = unchecked_params(
+            &sig.inputs,
+            &Default::default(),
+            |_| None,
+            Some(false),
+            None,
+            None,
+        );
         assert_eq!(unchecked, ["n".to_string()].into_iter().collect());
     }
 
@@ -2210,7 +2231,14 @@ mod tests {
             explicit: [("x".to_string(), no_na()), ("y".to_string(), no_na())]
                 .into_iter()
                 .collect(),
-            unchecked: unchecked_params(&sig.inputs, |_| None, Some(false), None, None),
+            unchecked: unchecked_params(
+                &sig.inputs,
+                &Default::default(),
+                |_| None,
+                Some(false),
+                None,
+                None,
+            ),
             ..Default::default()
         };
         let guards = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None);

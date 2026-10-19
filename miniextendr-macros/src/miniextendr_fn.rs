@@ -383,7 +383,7 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
 ///   and, with no `MatchArg` entry to resolve it, dangle in the R formals)
 /// - `no_default` on a parameter that is neither `match_arg` nor `choices`,
 ///   or together with `default` (#1828)
-/// - `default` on a `&Dots` parameter
+/// - `default` or `formal` on a `&Dots` parameter
 ///
 /// The type-dependent checks of a choice parameter live in
 /// [`classify_choice_param`], shared with the method paths.
@@ -490,6 +490,9 @@ pub(crate) fn validate_per_param_attr_conflicts(
             ),
         ));
     }
+    if is_dots && let Some(formal) = &attr.formal {
+        return Err(dots_formal_error(formal, param_name));
+    }
     Ok(())
 }
 
@@ -532,9 +535,37 @@ pub(crate) fn no_default_conflict(
     None
 }
 
+/// The error of a `formal` on the dots parameter (#1842), at the literal.
+pub(crate) fn dots_formal_error(formal: &syn::LitStr, param_name: &str) -> syn::Error {
+    syn::Error::new(
+        formal.span(),
+        format!(
+            "`formal` on the variadic (...) parameter `{param_name}`: its R formal is always \
+             `...`. Declare a named parameter for an argument with a dotted name"
+        ),
+    )
+}
+
 // endregion
 
 // region: Per-parameter attribute parsing
+
+/// The error of a `formal(...)` on a trait method (#1842), declared or
+/// implemented. A trait method's R formals are its declaration's parameter
+/// names, shared by every implementing type and the trait ABI's metadata;
+/// declared formals cover standalone functions and inherent impl methods.
+pub(crate) const TRAIT_FORMAL_UNSUPPORTED: &str = "`formal(...)` is not supported on trait \
+     methods: a trait method's R formals are the trait declaration's parameter names, which \
+     every implementing type shares. Declare the dotted name on a standalone function or an \
+     inherent impl method instead";
+
+/// The error of a `formal` whose value is no string literal (#1842).
+const FORMAL_NOT_STRING: &str =
+    "`formal` takes the R argument name as a string, e.g. `formal = \"conf.int\"`";
+
+/// The error of a second `formal` on one parameter (#1842).
+const FORMAL_TWICE: &str = "`formal` is given twice on this parameter; a parameter has one R \
+                            formal, so keep one of them";
 
 /// Parsed per-parameter `#[miniextendr(...)]` attribute content.
 ///
@@ -570,14 +601,24 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// `Some(true)` keeps its type-derived R-side checks, `Some(false)` drops
     /// them. The last one written wins.
     pub preconditions: Option<bool>,
+    /// `formal = "conf.int"`: the parameter's R formal (#1842), checked by
+    /// [`crate::r_wrapper_builder::check_r_formals`].
+    pub formal: Option<syn::LitStr>,
 }
 
 impl PerParamMiniextendrAttr {
     /// Merge the options of another attribute on the same parameter: flags
     /// add up, the first `default` / `choices(...)` wins, the last
     /// `preconditions` / `no_preconditions` wins, and the checks merge (one
-    /// `message` per check; the error says which).
+    /// `message` per check; the error says which). A second `formal` is an
+    /// error.
     pub(crate) fn merge(&mut self, other: PerParamMiniextendrAttr) -> Result<(), String> {
+        if let Some(formal) = other.formal {
+            if self.formal.is_some() {
+                return Err(FORMAL_TWICE.to_string());
+            }
+            self.formal = Some(formal);
+        }
         if other.preconditions.is_some() {
             self.preconditions = other.preconditions;
         }
@@ -605,7 +646,8 @@ impl PerParamMiniextendrAttr {
 /// options (like `strict`) with no per-parameter options. A malformed
 /// `inherits(...)` / `not_inherits(...)` / `no_na(...)` is an error, as is
 /// `preconditions = bool` / `no_preconditions = bool`, a function-level form
-/// the parameter spells bare.
+/// the parameter spells bare, and a `formal` that is not a string or is given
+/// twice.
 ///
 /// # Arguments
 ///
@@ -667,6 +709,19 @@ pub(crate) fn parse_per_param_attr(
                     }) = &nv.value
                 {
                     result.default_value = Some((lit_str.value(), attr.span()));
+                    is_per_param = true;
+                } else if nv.path.is_ident("formal") {
+                    // formal = "conf.int" (#1842): the parameter's R formal.
+                    let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(lit_str),
+                        ..
+                    }) = &nv.value
+                    else {
+                        return Err(syn::Error::new_spanned(&nv.value, FORMAL_NOT_STRING));
+                    };
+                    if result.formal.replace(lit_str.clone()).is_some() {
+                        return Err(syn::Error::new_spanned(nv, FORMAL_TWICE));
+                    }
                     is_per_param = true;
                 } else if let Some(check) = ClassCheck::of(&nv.path)
                     && let syn::Expr::Lit(syn::ExprLit {
@@ -1217,6 +1272,31 @@ pub(crate) fn parse_method_no_default(
     })
 }
 
+/// Parse a method-level `formal(conf_int = "conf.int", ...)` (#1842): the R
+/// formal of each named parameter, the method form of a standalone function's
+/// per-parameter `formal = ".."`. Shared by the inherent-impl parser only:
+/// trait methods take their formals from the trait declaration, and the
+/// trait parsers refuse it. A parameter named twice is an error;
+/// [`finalize_method_param_attrs`] refuses a name that is no parameter, and
+/// [`crate::r_wrapper_builder::check_r_formals`] checks each formal.
+pub(crate) fn parse_method_formal(
+    meta: &syn::meta::ParseNestedMeta,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|entry| {
+        let name = method_check_param(&entry)?;
+        let value = entry.value()?;
+        let value: syn::LitStr = value
+            .parse()
+            .map_err(|e| syn::Error::new(e.span(), FORMAL_NOT_STRING))?;
+        let attrs = per_param.entry(name).or_default();
+        if attrs.formal.replace(value).is_some() {
+            return Err(entry.error(FORMAL_TWICE));
+        }
+        Ok(())
+    })
+}
+
 /// The classes of a method-level `inherits` / `not_inherits` entry: a
 /// comma-separated, non-empty list.
 fn method_class_list(value: &syn::LitStr, check: ClassCheck) -> syn::Result<Vec<String>> {
@@ -1490,12 +1570,20 @@ pub(crate) struct ParamAttrs {
     /// `preconditions(x)` / `no_preconditions(x)`. `Some(true)` keeps them;
     /// `None` defers to the function, impl and crate defaults.
     pub preconditions: Option<bool>,
+    /// The declared R formal (#1842): a standalone function's
+    /// `formal = "conf.int"` or a method's `formal(conf_int = "conf.int")`,
+    /// with the literal that declared it. Read through
+    /// [`crate::r_wrapper_builder::Formals`], never directly.
+    pub formal: Option<syn::LitStr>,
 }
 
 impl ParamAttrs {
-    /// Whether `default = "..."` is this parameter's only option: all that a
-    /// `Missing<Quoted>` / `Missing<Quosure>` parameter takes (#1835).
-    pub(crate) fn is_default_only(&self) -> bool {
+    /// Whether this parameter's options leave its argument unforced, as a
+    /// `Quoted` / `Quosure` parameter needs (#1835): none but `formal`, which
+    /// only names it (#1842), and `default` when `default_ok` (a
+    /// `Missing<Quoted>` / `Missing<Quosure>` parameter, whose default only
+    /// writes the formal).
+    pub(crate) fn leaves_argument_unforced(&self, default_ok: bool) -> bool {
         let ParamAttrs {
             coerce,
             match_arg,
@@ -1508,8 +1596,9 @@ impl ParamAttrs {
             either_noun,
             checks,
             preconditions,
+            formal: _,
         } = self;
-        default.is_some()
+        (default_ok || default.is_none())
             && !coerce
             && !match_arg
             && !several_ok
@@ -1560,12 +1649,12 @@ impl ParamAttrs {
 
     /// The R expression for this parameter's choice list, as its formal and
     /// its prelude check spell it: the write-time placeholder of a
-    /// `match_arg` parameter (keyed by the C wrapper `c_ident` and the R name
-    /// `r_name`), `c("a", "b")` for `choices(...)`, `None` for any other
-    /// parameter.
-    pub(crate) fn choice_list(&self, c_ident: &str, r_name: &str) -> Option<String> {
+    /// `match_arg` parameter (keyed by the C wrapper `c_ident` and the
+    /// parameter's [`crate::match_arg_keys::param_key`] `key`), `c("a", "b")`
+    /// for `choices(...)`, `None` for any other parameter.
+    pub(crate) fn choice_list(&self, c_ident: &str, key: &str) -> Option<String> {
         if self.match_arg {
-            return Some(crate::match_arg_keys::choices_placeholder(c_ident, r_name));
+            return Some(crate::match_arg_keys::choices_placeholder(c_ident, key));
         }
         let quoted: Vec<String> = self
             .choices
@@ -1809,20 +1898,16 @@ pub(crate) fn per_param_in_signature_order<'a>(
 }
 
 /// The non-empty [`ParamAttrs::checks`] of `per_param` (keyed by Rust name),
-/// re-keyed by R-normalized parameter name for
+/// re-keyed by R formal ([`crate::r_wrapper_builder::Formals::of`]) for
 /// [`crate::r_preconditions::PreconditionOptions::explicit`].
 pub(crate) fn explicit_checks_by_r_name(
     per_param: &std::collections::HashMap<String, ParamAttrs>,
 ) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     per_param
         .iter()
         .filter(|(_, a)| !a.checks.is_empty())
-        .map(|(name, a)| {
-            (
-                crate::r_wrapper_builder::normalize_r_arg_string(name),
-                a.checks.clone(),
-            )
-        })
+        .map(|(name, a)| (formals.of(name), a.checks.clone()))
         .collect()
 }
 
@@ -1832,16 +1917,18 @@ pub(crate) fn explicit_checks_by_r_name(
 pub(crate) const MISSING_DEFAULT_PARAM_DOC: &str =
     "Omitting the argument means the function's own handling.";
 
-/// R name → [`MISSING_DEFAULT_PARAM_DOC`] for each `Missing<..>` parameter
-/// of `inputs` that has a formal default in `defaults` (looked up by R name,
-/// as [`crate::r_wrapper_builder::RArgumentBuilder::build_formals`] does) and
-/// is no choice parameter of `per_param`, whose own line names the choices.
+/// R formal → [`MISSING_DEFAULT_PARAM_DOC`] for each `Missing<..>` parameter
+/// of `inputs` that has a formal default in `defaults` (keyed by Rust name,
+/// as the per-parameter options are) and is no choice parameter of
+/// `per_param`, whose own line names the choices. The key is the formal
+/// `formals` gives the parameter, a declared `formal` included (#1842).
 /// `Missing<Quoted>` / `Missing<Quosure>` count too: their default is never
 /// evaluated either.
 pub(crate) fn missing_default_param_docs(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, ParamAttrs>,
     defaults: &std::collections::HashMap<String, String>,
+    formals: &crate::r_wrapper_builder::Formals,
 ) -> std::collections::HashMap<String, String> {
     inputs
         .iter()
@@ -1852,39 +1939,40 @@ pub(crate) fn missing_default_param_docs(
             let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
                 return None;
             };
+            let rust_name = crate::naming::ident_name(&pat_ident.ident);
             if !is_missing_type(pt.ty.as_ref())
-                || per_param
-                    .get(&crate::naming::ident_name(&pat_ident.ident))
-                    .is_some_and(ParamAttrs::is_choice)
+                || per_param.get(&rust_name).is_some_and(ParamAttrs::is_choice)
             {
                 return None;
             }
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident);
-            let r_name = r_name.to_string();
-            defaults
-                .contains_key(&r_name)
-                .then(|| (r_name, MISSING_DEFAULT_PARAM_DOC.to_string()))
+            defaults.contains_key(&rust_name).then(|| {
+                (
+                    formals.of(&rust_name),
+                    MISSING_DEFAULT_PARAM_DOC.to_string(),
+                )
+            })
         })
         .collect()
 }
 
 /// The parameters of `per_param` (keyed by Rust name) whose wrapper reads a
 /// value `identical()` to the formal as omitted
-/// ([`ParamAttrs::absent_formal`], #2152), as R name → formal: the
-/// `match_arg` placeholder keyed by the C wrapper `c_ident`, or the literal
-/// `choices(...)` vector. For
+/// ([`ParamAttrs::absent_formal`], #2152), as R formal → the formal's
+/// default: the `match_arg` placeholder keyed by the C wrapper `c_ident`, or
+/// the literal `choices(...)` vector. For
 /// [`crate::r_wrapper_builder::RArgumentBuilder::with_absent_formals`].
 pub(crate) fn absent_formals_by_r_name(
     per_param: &std::collections::HashMap<String, ParamAttrs>,
     c_ident: &str,
 ) -> std::collections::HashMap<String, String> {
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     per_param
         .iter()
         .filter_map(|(name, a)| {
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(name);
-            let choices = a.choice_list(c_ident, &r_name)?;
-            let formal = a.absent_formal(&choices)?.to_string();
-            Some((r_name, formal))
+            let key = crate::match_arg_keys::param_key(name);
+            let choices = a.choice_list(c_ident, &key)?;
+            let absent = a.absent_formal(&choices)?.to_string();
+            Some((formals.of(name), absent))
         })
         .collect()
 }
@@ -1893,8 +1981,9 @@ pub(crate) fn absent_formals_by_r_name(
 /// signature, now that it is known. Every parameter a method-level
 /// `match_arg(...)` / `choices(...)` / `no_default(...)` / `inherits(...)` /
 /// `not_inherits(...)` / `no_na(...)` / `preconditions(...)` /
-/// `no_preconditions(...)` names must exist (a typo would otherwise drop the
-/// check without a word); then a `no_default(p)` is refused on a parameter
+/// `no_preconditions(...)` / `formal(...)` names must exist (a typo would
+/// otherwise drop the option without a word); then a `formal` is refused on
+/// the `&Dots` parameter, whose formal is `...`, a `no_default(p)` on a parameter
 /// that is no choice or has a default ([`no_default_conflict`]), the
 /// choice parameters are classified (see [`classify_choice_param`]), a class
 /// in both `inherits` and `not_inherits` is refused
@@ -1946,6 +2035,22 @@ pub(crate) fn finalize_method_param_attrs(
             ),
         ));
     }
+    let mut unknown_formals: Vec<(&String, &syn::LitStr)> = per_param
+        .iter()
+        .filter(|(name, _)| !sig_names.contains(name.as_str()))
+        .filter_map(|(name, a)| Some((name, a.formal.as_ref()?)))
+        .collect();
+    unknown_formals.sort_by_key(|(name, _)| *name);
+    if let Some((name, formal)) = unknown_formals.first() {
+        return Err(syn::Error::new(
+            formal.span(),
+            format!(
+                "`formal({name} = {:?})` names a parameter this method doesn't have: there is \
+                 no `{name}`",
+                formal.value()
+            ),
+        ));
+    }
     // An `NArgs` parameter (#1860) takes no option: the method-level forms
     // name it like any parameter, and the wrapper, which never makes it a
     // formal, would silently drop them.
@@ -1967,6 +2072,11 @@ pub(crate) fn finalize_method_param_attrs(
         let Some(attrs) = per_param.get_mut(&name) else {
             continue;
         };
+        if let Some(formal) = &attrs.formal
+            && is_dots_type(pt.ty.as_ref())
+        {
+            return Err(dots_formal_error(formal, &name));
+        }
         let has_default = attrs.default.is_some() || defaults.contains_key(&name);
         if attrs.no_default
             && let Some(msg) = no_default_conflict(&name, attrs.is_choice(), has_default, true)
@@ -2096,6 +2206,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 has_no_default: had_no_default,
                 checks: had_checks,
                 preconditions: had_preconditions,
+                formal: had_formal,
             } = param_attr;
 
             // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566): the
@@ -2189,6 +2300,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 has_no_default: had_no_default,
                 checks: had_checks.clone(),
                 preconditions,
+                formal: had_formal.clone(),
             };
             validate_per_param_attr_conflicts(
                 &per_param_combined,
@@ -2205,8 +2317,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 || default_with_span.is_some()
                 || !had_checks.is_empty()
                 || preconditions.is_some()
+                || had_formal.is_some()
             {
                 let entry = per_param.entry(param_name.clone()).or_default();
+                entry.formal = had_formal;
                 entry.checks = had_checks;
                 entry.coerce = had_coerce_attr;
                 entry.match_arg = had_match_arg_attr;
@@ -2282,7 +2396,11 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         }
 
         let dots = find_dots_param(&item.sig.inputs)?;
-        crate::r_wrapper_builder::check_r_formals(&item.sig.inputs, &[])?;
+        crate::r_wrapper_builder::check_r_formals(
+            &item.sig.inputs,
+            &crate::r_wrapper_builder::Formals::from_param_attrs(&per_param),
+            &[],
+        )?;
         let inputs = peeled_inputs(&item.sig.inputs, &param_markers)?;
 
         Ok(Self {
@@ -2368,8 +2486,14 @@ impl MiniextendrFunctionParsed {
         self.per_param.get(param_name)
     }
 
+    /// The R formal of each parameter (#1842), from the declared
+    /// `formal = ".."` options.
+    pub(crate) fn formals(&self) -> crate::r_wrapper_builder::Formals {
+        crate::r_wrapper_builder::Formals::from_param_attrs(&self.per_param)
+    }
+
     /// The parameters that read a value `identical()` to their formal as
-    /// omitted, keyed by R name (see [`absent_formals_by_r_name`]).
+    /// omitted, keyed by R formal (see [`absent_formals_by_r_name`]).
     pub(crate) fn absent_formals(
         &self,
         c_ident: &str,
@@ -2378,12 +2502,13 @@ impl MiniextendrFunctionParsed {
     }
 
     /// The generated `@param` text of each `Missing<..>` parameter with a
-    /// default, keyed by R name (see [`missing_default_param_docs`]).
+    /// default, keyed by R formal (see [`missing_default_param_docs`]).
     pub(crate) fn missing_default_param_docs(&self) -> std::collections::HashMap<String, String> {
         missing_default_param_docs(
             &self.item.sig.inputs,
             &self.per_param,
             &self.param_defaults(),
+            &self.formals(),
         )
     }
 
@@ -2402,15 +2527,16 @@ impl MiniextendrFunctionParsed {
         crate::r_class_formatter::match_arg_skip_set(&self.per_param)
     }
 
-    /// Returns all parameter defaults as an owned map from R name to default
-    /// value string (the raw R expression used in the wrapper formals, e.g.
-    /// `"NULL"`, `"TRUE"`, `"\"Safe\""`); see [`defaults_by_r_name`].
+    /// Returns all parameter defaults as an owned map from Rust parameter
+    /// name to default value string (the raw R expression used in the wrapper
+    /// formals, e.g. `"NULL"`, `"TRUE"`, `"\"Safe\""`). The R wrapper keys
+    /// them by formal ([`crate::r_wrapper_builder::Formals::rekey`]), so a
+    /// default on `_seed` is the formal `seed`'s.
     pub(crate) fn param_defaults(&self) -> std::collections::HashMap<String, String> {
-        defaults_by_r_name(
-            self.per_param
-                .iter()
-                .filter_map(|(name, a)| Some((name, a.default.as_ref()?))),
-        )
+        self.per_param
+            .iter()
+            .filter_map(|(name, a)| a.default.as_ref().map(|d| (name.clone(), d.clone())))
+            .collect()
     }
     // endregion
 
@@ -3337,8 +3463,9 @@ pub(crate) fn check_nargs_params(
                 format!(
                     "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
                      `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
-                     `preconditions`) do not apply to the `NArgs` parameter `{ident}`: it is no \
-                     R argument, the generated wrapper fills it with `nargs()`"
+                     `preconditions`, `formal`) do not apply to the `NArgs` parameter \
+                     `{ident}`: it is no R argument, the generated wrapper fills it with \
+                     `nargs()`"
                 ),
             ));
         }
@@ -3388,8 +3515,8 @@ pub(crate) fn check_lazy_dots_params(
                 format!(
                     "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
                      `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
-                     `preconditions`) do not apply to the `LazyDots` parameter `{ident}`: it is \
-                     R's `...`, which the wrapper passes unforced"
+                     `preconditions`, `formal`) do not apply to the `LazyDots` parameter \
+                     `{ident}`: it is R's `...`, which the wrapper passes unforced"
                 ),
             ));
         }
@@ -3514,23 +3641,6 @@ fn parse_rng_seed(list: &syn::MetaList) -> syn::Result<syn::Ident> {
     })
 }
 
-/// Parameter defaults, given by Rust name, keyed by R name: the formal the
-/// wrapper builders look them up by, so a default on `_seed` is the formal
-/// `seed`'s.
-pub(crate) fn defaults_by_r_name<'a>(
-    defaults: impl IntoIterator<Item = (&'a String, &'a String)>,
-) -> std::collections::HashMap<String, String> {
-    defaults
-        .into_iter()
-        .map(|(name, default)| {
-            (
-                crate::r_wrapper_builder::normalize_r_arg_string(name),
-                default.clone(),
-            )
-        })
-        .collect()
-}
-
 /// Check `rng(seed = <param>)` (#2198) against a standalone function's
 /// signature and return the seed's R formal. Every problem is reported at
 /// once:
@@ -3542,12 +3652,14 @@ pub(crate) fn defaults_by_r_name<'a>(
 /// - the return can carry the `seed` attribute: a unit return
 ///   (`unit_return`) is `NULL`, which has none.
 ///
-/// The R name comes from the formal list (`r_formal_names`), so the prelude
-/// names the formal the wrapper has.
+/// The R name comes from the formal list (`r_formal_names` with `formals`),
+/// so the prelude names the formal the wrapper has, a declared `formal`
+/// included (#1842).
 pub(crate) fn check_rng_seed(
     seed: &syn::Ident,
     all_inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     r_inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    formals: &crate::r_wrapper_builder::Formals,
     unevaluated: &[String],
     unit_return: bool,
 ) -> syn::Result<String> {
@@ -3558,7 +3670,7 @@ pub(crate) fn check_rng_seed(
             syn::Pat::Ident(p) if crate::naming::ident_name(&p.ident) == rust_name
         ))
     });
-    let formal = crate::r_wrapper_builder::r_formal_names(r_inputs)
+    let formal = crate::r_wrapper_builder::r_formal_names(r_inputs, formals)
         .find(|(_, ident)| crate::naming::ident_name(ident) == rust_name)
         .map(|(r_name, _)| r_name)
         .filter(|r_name| !unevaluated.contains(r_name));
@@ -3672,7 +3784,8 @@ pub(crate) fn typed_list_on_lazy_dots(
 /// function, registered S3 methods included, to be `value`. The last
 /// non-receiver parameter of `inputs` that is an R formal (an `NArgs`
 /// parameter is none, #1860) must therefore become the R formal `value`
-/// (`_value` does too); a trailing `&Dots` is `...`, so it can't be last. Any
+/// (`_value` does too, as does a declared `formal = "value"`, `formals`); a
+/// trailing `&Dots` is `...`, so it can't be last. Any
 /// other generic passes. `fallback` spans the error when there is no
 /// parameter to point at.
 ///
@@ -3682,6 +3795,7 @@ pub(crate) fn typed_list_on_lazy_dots(
 pub(crate) fn check_replacement_value_param(
     generic: &str,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    formals: &crate::r_wrapper_builder::Formals,
     fallback: proc_macro2::Span,
 ) -> syn::Result<()> {
     use syn::spanned::Spanned;
@@ -3705,9 +3819,7 @@ pub(crate) fn check_replacement_value_param(
         Some((idx, _)) if Some(idx) == dots_index(inputs) => "the last R argument is `...`".into(),
         Some((_, pat_type)) => match pat_type.pat.as_ref() {
             syn::Pat::Ident(pat_ident) => {
-                let formal = crate::r_wrapper_builder::normalize_r_arg_string(
-                    &crate::naming::ident_name(&pat_ident.ident),
-                );
+                let formal = formals.of_ident(&pat_ident.ident);
                 if formal == "value" {
                     return Ok(());
                 }

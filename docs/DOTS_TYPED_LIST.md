@@ -188,7 +188,7 @@ An S3 method takes `...` because its generic does, and R puts every argument the
 | `forward(allow = ["digits"])` | the listed names | passes them on to another R function |
 | `data` | anything (no check) | reads them |
 
-An argument the function reads is a parameter, not a name in `...`: R then matches it by name or by position, as for any function. A dotted R name such as `row.names` can't be a parameter yet ([#1842](https://github.com/A2-ai/miniextendr/issues/1842)). Until it can, a function that reads one from `...` takes `dots = data` and checks its dots itself, since `forward` lets a positional value through without its name.
+An argument the function reads is a parameter, not a name in `...`: R then matches it by name or by position, as for any function. A dotted R name such as `row.names` is a parameter that declares its R name with `formal` ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#declared-r-formals-formal)): `#[miniextendr(formal = "row.names", default = "NULL")] row_names: Option<String>` on a function, `formal(row_names = "row.names")` on an impl method. `dots = data` is for names the function can't know in advance.
 
 ```rust
 /// @param x A `fit`.

@@ -372,6 +372,27 @@ fn view_method_without_arguments_or_result_opens_no_scope() {
 
 // region: MethodInfo extraction tests
 
+/// `formal` on a trait method declaration is refused (#1842): the
+/// declaration's parameter names are the R formals of every implementation.
+#[test]
+fn extract_method_info_refuses_formal() {
+    for attr in [
+        quote::quote!(#[miniextendr(formal(k = "k.factor"))]),
+        quote::quote!(#[miniextendr(formal = "k.factor")]),
+    ] {
+        let method: syn::TraitItemFn = syn::parse2(quote::quote! {
+            #attr
+            fn scaled(&self, k: f64) -> f64;
+        })
+        .unwrap();
+        let err = extract_method_info(&method).expect_err("refused");
+        assert_eq!(
+            err.to_string(),
+            crate::miniextendr_fn::TRAIT_FORMAL_UNSUPPORTED
+        );
+    }
+}
+
 #[test]
 fn extract_method_info_captures_name() {
     let method: syn::TraitItemFn = syn::parse2(quote::quote! {

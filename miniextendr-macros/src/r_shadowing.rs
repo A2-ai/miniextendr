@@ -20,10 +20,14 @@
 //! can leave it out, and the author R code spliced into a wrapper (`r_entry`,
 //! `r_on_exit`, `r_post_checks`, parameter defaults) is qualified the same way.
 //!
-//! Only undotted names can collide. A formal is a Rust parameter name without
-//! its leading underscores and without `r#`, and a Rust identifier cannot
-//! contain `.`, so no formal is named `is.character`, `match.call`, `on.exit`,
-//! `.Call` or `.miniextendr_arg_error`. Those calls are never qualified.
+//! A formal is a Rust parameter name without its leading underscores and
+//! without `r#`, unless the parameter declares its R name with `formal`
+//! (#1842). A Rust identifier cannot contain `.`, so only a declared formal can
+//! be named `is.character`, `match.call` or `.Call`: dotted base callees are
+//! listed and qualified like the others. A declared formal can't take a name
+//! of the framework's own (`.miniextendr_arg_error`, `.mx_self`, `.call`,
+//! `.Generic`; `r_wrapper_builder::declared_formal_problem`), so the calls to
+//! those are never qualified.
 //!
 //! Only the colliding calls are qualified because `::` costs time on every
 //! call: the byte compiler compiles `base::f(x)` as a call to the `::`
@@ -42,21 +46,25 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::ops::Range;
 
-/// The undotted base functions that generated wrapper text calls by their bare
-/// names.
+/// The base functions that generated wrapper text calls by their bare names.
 ///
 /// A call to one of these is qualified when a formal of the wrapper has the
 /// same name. The `generated_callees_are_listed` test checks the generated
 /// wrappers in the macro snapshots and the tracked cross-package wrapper
-/// files, and fails on an undotted callee that is missing here.
+/// files, and fails on a callee that is missing here and is not one of the
+/// framework's names a declared formal can't take.
 pub(crate) const BASE_CALLEES: &[&str] = &[
+    ".Call",
+    ".subset2",
     "NextMethod",
-    // The seed contract of `rng(seed = ..)` (#2198), with `assign`, `get`
-    // and `globalenv`.
+    // The seed contract of `rng(seed = ..)` (#2198), with `as.list`,
+    // `assign`, `get`, `globalenv` and `set.seed`.
     "RNGkind",
     "UseMethod",
     "all",
     "anyNA",
+    "as.list",
+    "as.list.environment",
     "assign",
     "attr",
     "c",
@@ -67,6 +75,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "double",
     "emptyenv",
     "environment",
+    "environmentName",
     "exists",
     "get",
     "get0",
@@ -76,6 +85,20 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "identical",
     "inherits",
     "invisible",
+    "is.atomic",
+    "is.character",
+    "is.complex",
+    "is.double",
+    "is.environment",
+    "is.factor",
+    "is.integer",
+    "is.list",
+    "is.logical",
+    "is.na",
+    "is.null",
+    "is.numeric",
+    "is.primitive",
+    "is.raw",
     "isTRUE",
     "lapply",
     "length",
@@ -87,12 +110,17 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "names",
     // The argument count an `NArgs` parameter receives (#1860).
     "nargs",
+    "new.env",
+    "on.exit",
+    // The environment a quoted argument is forwarded with.
+    "parent.frame",
     "paste0",
     // The list lookup of the S3 field methods (#1891).
     "pmatch",
     "quote",
     "return",
     "seq_along",
+    "set.seed",
     "simpleWarning",
     "sprintf",
     "standardGeneric",
@@ -100,6 +128,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "structure",
     "substitute",
     "switch",
+    "sys.call",
     "topenv",
     "trunc",
     "typeof",
@@ -109,19 +138,28 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "warning",
 ];
 
-/// The R formals of every wrapper built from `signatures`: the union of each
-/// signature's [`r_formal_names`](crate::r_wrapper_builder::r_formal_names).
+/// The R formals of every wrapper built from `signatures`, each a parameter
+/// list with the formals it declares: the union of each signature's
+/// [`r_formal_names`](crate::r_wrapper_builder::r_formal_names).
 ///
 /// An impl block or a trait impl is finalized as one text, so its formals are
 /// pooled across its methods. A method whose sibling has a colliding formal is
 /// then qualified too, which calls the same function.
 pub(crate) fn formal_names<'a>(
-    signatures: impl IntoIterator<Item = &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>>,
+    signatures: impl IntoIterator<
+        Item = (
+            &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+            crate::r_wrapper_builder::Formals,
+        ),
+    >,
 ) -> BTreeSet<String> {
-    signatures
-        .into_iter()
-        .flat_map(|inputs| crate::r_wrapper_builder::r_formal_names(inputs).map(|(name, _)| name))
-        .collect()
+    let mut out = BTreeSet::new();
+    for (inputs, formals) in signatures {
+        out.extend(
+            crate::r_wrapper_builder::r_formal_names(inputs, &formals).map(|(name, _)| name),
+        );
+    }
+    out
 }
 
 /// Write `base::` before every call in `text` to a [`BASE_CALLEES`] function

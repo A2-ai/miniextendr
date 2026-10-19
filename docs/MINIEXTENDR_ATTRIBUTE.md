@@ -726,6 +726,7 @@ Written on a single parameter of a standalone function:
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 | `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
+| `formal = "row.names"` | The parameter's R formal, for an R name that is no Rust identifier (see [Declared R formals](#declared-r-formals-formal)) |
 
 ```rust
 #[miniextendr]
@@ -992,10 +993,80 @@ class in both is a compile error.
 matched, so `NULL` gets your message instead of becoming the first choice; see
 [Refusing an Explicit `NULL`](ENUMS_AND_FACTORS.md#refusing-an-explicit-null).
 
+#### Declared R formals (`formal`)
+
+A parameter's R formal is its Rust name without leading underscores, so it
+can't be an R name with a `.` (`row.names`, `na.rm`, `conf.level`, `.data`).
+`formal = "..."` gives the parameter that name. It combines with the other
+parameter attributes, and an impl method spells it `formal(p = "...")`:
+
+```rust
+/// @param x A `fit`.
+/// @param row.names `NULL`, or the name of the one row.
+/// @param optional Ignored.
+/// @param ... Ignored.
+/// @export
+#[miniextendr(s3(generic = "as.data.frame", class = "fit"))]
+pub fn as_data_frame_fit(
+    x: List,
+    #[miniextendr(formal = "row.names", default = "NULL")] row_names: Option<String>,
+    #[miniextendr(default = "FALSE")] optional: bool,
+    _dots: ...
+) -> BuiltDataFrame { /* ... */ }
+
+#[miniextendr(r6)]
+impl Tally {
+    /// @param by.value The amount.
+    /// @param na.rm Whether an `NA` amount is skipped.
+    #[miniextendr(formal(by = "by.value", na_rm = "na.rm"), defaults(na_rm = "FALSE"))]
+    pub fn add(&mut self, by: f64, na_rm: bool) -> f64 { /* ... */ }
+}
+```
+
+```r
+as.data.frame.fit <- function(x, row.names = NULL, optional = FALSE, ...) {
+  # ...
+  if (!isTRUE(is.null(row.names) || is.character(row.names))) .miniextendr_arg_error("row.names", "must be NULL or character", environment())
+  # ...
+}
+```
+
+R matches the argument by its formal, by name, partial name or position:
+`as.data.frame(fit, NULL, TRUE)` passes `row.names` and `optional`. Everything
+R-facing uses the formal: the usage line, the `.Call()` arguments, a
+`Missing<T>` argument's forwarding, the `match_arg` / `choices` check, the
+argument checks and their errors (`e$param` is `"row.names"`, also for a
+conversion that fails in Rust), and the generated `@param` lines. Your own
+`@param` line names the formal (`@param row.names`). The Rust name stays the
+key of the method-level attributes (`formal(row_names = "row.names")`,
+`defaults(row_names = "NULL")`).
+
+The formal is checked when the function compiles; each error points at the
+string:
+
+- It must be a syntactic R name: letters, digits, `.` and `_`, starting with a
+  letter or with a `.` not followed by a digit, and not a reserved word (`if`,
+  `TRUE`, `NA_real_`, ...). `...`, `..1` are refused: the dots parameter is
+  always `...` and takes no `formal`.
+- It must not be a name the generated wrapper uses itself: `.call`, `.val`,
+  `.ptr`, the S3 dispatch variables (`.Generic`, `.Class`, `.Method`,
+  `.Group`, `.GenericCallEnv`, `.GenericDefEnv`), and names starting `.mx_`,
+  `.miniextendr_`, `.rdata_` or `.__MX_`; nor a method's receiver (`x`, or
+  R6's `self` and `private`).
+- It must differ from the other formals, declared or not.
+- `formal` is given once per parameter, as a string.
+
+An `NArgs` parameter (no formal) and the parameters of trait methods take no
+`formal`: a trait method's R formals are its declaration's parameter names,
+shared by every implementing type. Nor does an S7 property getter, setter or
+validator, whose arguments S7 fixes. An R6 setter's `set_*` method takes the
+declared formal; its active binding's formal stays `value`.
+
 #### Parameters named like a base function
 
 A parameter may share its name with a base function that generated wrappers
-call, such as `length`, `c`, `list`, `missing`, `attr` or `inherits`. The
+call, such as `length`, `c`, `list`, `missing`, `attr` or `inherits`, or,
+declared with `formal`, `is.null`, `sys.call` or `.Call`. The
 wrapper then writes each call to that function as `base::length(...)`, so
 omitting the argument, or passing a function there, affects only that argument:
 
@@ -1343,6 +1414,7 @@ impl Person {
 | `no_na(p(message = "..."))` | The same check, failing with your message |
 | `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 | `preconditions(p, q)` / `no_preconditions(p)` | The same for the named parameters only, over the method's own |
+| `formal(p = "p.name")` | The R formal of `p` ([Declared R formals](#declared-r-formals-formal)); not on trait methods or S7 property accessors |
 
 An S4 instance method uses `s4_<R method name>` as its default generic:
 `r#type` becomes `s4_type`, `r_name = "kind"` gives `s4_kind`, and

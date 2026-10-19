@@ -179,7 +179,9 @@ attr(x, "seed")                  # 42, with attribute kind = as.list(RNGkind())
 
 The draws are what `set.seed(42); rnorm(3)` gives. `<param>` names the seed
 parameter by its Rust name, and the wrapper uses its formal (`_seed` is
-`seed`). The option implies `rng`.
+`seed`; a declared `formal = "seed.value"` is `seed.value`, see
+[MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#declared-r-formals-formal)).
+The option implies `rng`.
 
 A package that uses `rng(seed = ..)` lists `stats` in `Imports:`, because the
 wrapper calls `stats::runif()`. Name the generic `stats::simulate`: the method

@@ -657,7 +657,8 @@ fn rng_guard_method_param_errors() {
 }
 
 /// A method-level default on a parameter with leading underscores is its
-/// formal's: the method's defaults are keyed by R name.
+/// formal's: the method's defaults are keyed by formal for the wrapper
+/// (`Formals::rekey`).
 #[test]
 fn method_default_on_an_underscored_param() {
     let parsed = parse_impl(
@@ -10662,6 +10663,445 @@ fn dots_policy_needs_a_dots_formal() {
     };
     let err = check(ClassSystem::S3, forward_no_dots).expect("refused");
     assert!(err.contains("`dots = forward` passes arguments"), "{err}");
+}
+
+// endregion
+
+// region: declared R formals (#1842)
+
+/// `text` without the write-time `.__MX_..__` placeholders, which the wrapper
+/// writer replaces before R reads the text, and which are keyed by Rust name.
+fn without_placeholders(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(".__MX_") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + ".__MX_".len()..];
+        let end = after
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(after.len());
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// No Rust parameter name (`fml_*`) reaches the R text of a class.
+fn assert_no_rust_names(wrapper: &str) {
+    let text = without_placeholders(wrapper);
+    assert!(!text.contains("fml_"), "a Rust name reached R:\n{wrapper}");
+}
+
+/// The impl every class system's test renders: a constructor and an instance
+/// method whose parameters declare dotted formals with `formal(...)`, next to
+/// a default, a `no_na` and a `match_arg`.
+fn formal_impl(type_name: &str, method_attrs: proc_macro2::TokenStream) -> syn::ItemImpl {
+    let ty = syn::Ident::new(type_name, proc_macro2::Span::call_site());
+    syn::parse_quote! {
+        impl #ty {
+            #[miniextendr(formal(fml_start = "start.value"))]
+            pub fn new(fml_start: f64) -> Self { unimplemented!() }
+            #[miniextendr(
+                #method_attrs
+                formal(fml_na_rm = "na.rm", fml_conf_level = "conf.level"),
+                formal(fml_trim_mode = "trim.mode"),
+                defaults(fml_na_rm = "FALSE"),
+                no_na(fml_conf_level),
+                match_arg(fml_trim_mode)
+            )]
+            pub fn summarise(
+                &self,
+                fml_na_rm: bool,
+                fml_conf_level: f64,
+                fml_trim_mode: Mode,
+            ) -> f64 {
+                unimplemented!()
+            }
+        }
+    }
+}
+
+/// `defaults(..)` on a `Missing<T>` parameter (#2161) whose `formal(..)` is
+/// declared, in every class system: the formal shows the default under the
+/// declared name, the `.Call()` argument tests `missing()` of it, and the
+/// omission note documents it.
+#[test]
+fn method_formal_missing_default_in_each_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        // A vctrs impl takes static methods only.
+        let code = if system == ClassSystem::Vctrs {
+            syn::parse_quote! {
+                impl FmlFitter {
+                    #[miniextendr(formal(fml_tol = "tol.abs"), defaults(fml_tol = "1e-8"))]
+                    pub fn fit(fml_tol: Missing<f64>) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            }
+        } else {
+            syn::parse_quote! {
+                impl FmlFitter {
+                    #[miniextendr(formal(fml_tol = "tol.abs"), defaults(fml_tol = "1e-8"))]
+                    pub fn fit(&self, fml_tol: Missing<f64>) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            }
+        };
+        let parsed = parse_impl(system, code);
+        check_method_formals(&parsed).unwrap();
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        for line in [
+            "tol.abs = 1e-8",
+            "if (missing(tol.abs)) quote(expr=) else tol.abs",
+        ] {
+            assert!(
+                wrapper.contains(line),
+                "{system:?}: missing `{line}` in:\n{wrapper}"
+            );
+        }
+        // An S4 method has no usage entry, so no argument docs.
+        if system != ClassSystem::S4 {
+            assert!(
+                wrapper.lines().any(|line| line.contains("tol.abs")
+                    && line.contains(crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC)),
+                "{system:?}: no omission note on `tol.abs`:\n{wrapper}"
+            );
+        }
+        assert_no_rust_names(&wrapper);
+    }
+}
+
+/// The method's argument checks and prelude name the formals.
+fn assert_formal_checks(wrapper: &str) {
+    for needle in [
+        "if (!isTRUE(is.logical(na.rm))) .miniextendr_arg_error(\"na.rm\", \"must be logical\"",
+        "anyNA(conf.level)",
+        ".miniextendr_arg_error(\"conf.level\"",
+        "trim.mode <- .miniextendr_match_arg(trim.mode, ",
+        ", \"trim.mode\"",
+    ] {
+        assert!(wrapper.contains(needle), "missing {needle:?}:\n{wrapper}");
+    }
+}
+
+#[test]
+fn env_method_formals_are_declared_names() {
+    let parsed = parse_impl(ClassSystem::Env, formal_impl("FmlEnv", quote::quote!()));
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("FmlEnv$new <- function(start.value)"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("FmlEnv$summarise <- function(na.rm = FALSE, conf.level, trim.mode = "),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(".mx_self, na.rm, conf.level, trim.mode)"),
+        "{wrapper}"
+    );
+    assert_formal_checks(&wrapper);
+    assert_no_rust_names(&wrapper);
+}
+
+#[test]
+fn r6_method_formals_are_declared_names() {
+    let parsed = parse_impl(ClassSystem::R6, formal_impl("FmlR6", quote::quote!()));
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("initialize = function(start.value, .ptr = NULL)"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(
+            "FmlR6$set(\"public\", \"summarise\", function(na.rm = FALSE, conf.level, \
+             trim.mode = "
+        ),
+        "{wrapper}"
+    );
+    assert_formal_checks(&wrapper);
+    assert_no_rust_names(&wrapper);
+}
+
+#[test]
+fn s3_method_formals_are_declared_names() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        formal_impl("FmlS3", quote::quote!(s3(generic = "summary"),)),
+    );
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("new_fmls3 <- function(start.value)"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("summary.FmlS3 <- function(x, na.rm = FALSE, conf.level, trim.mode = "),
+        "{wrapper}"
+    );
+    assert_formal_checks(&wrapper);
+    assert_no_rust_names(&wrapper);
+}
+
+#[test]
+fn s4_method_formals_are_declared_names() {
+    let parsed = parse_impl(ClassSystem::S4, formal_impl("FmlS4", quote::quote!()));
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s4_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("FmlS4 <- function(start.value)"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(
+            "methods::setMethod(\"s4_summarise\", \"FmlS4\", function(x, na.rm = FALSE, \
+             conf.level, trim.mode = "
+        ),
+        "{wrapper}"
+    );
+    assert_formal_checks(&wrapper);
+    assert_no_rust_names(&wrapper);
+}
+
+#[test]
+fn s7_method_formals_are_declared_names() {
+    let parsed = parse_impl(ClassSystem::S7, formal_impl("FmlS7", quote::quote!()));
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("constructor = function(start.value, .ptr = NULL)"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("function(x, na.rm = FALSE, conf.level, trim.mode = "),
+        "{wrapper}"
+    );
+    assert_formal_checks(&wrapper);
+    assert_no_rust_names(&wrapper);
+}
+
+#[test]
+fn vctrs_static_formals_are_declared_names() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl FmlVctrs {
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
+            #[miniextendr(formal(fml_scale_by = "scale.by"), defaults(fml_scale_by = "1"))]
+            pub fn scale(amounts: Vec<f64>, fml_scale_by: f64) -> Vec<f64> { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl_vctrs(
+        VctrsAttrs {
+            kind: VctrsKind::Vctr,
+            base: Some("double".to_string()),
+            inherit_base_type: Some(false),
+            ptype: None,
+            abbr: None,
+        },
+        item_impl,
+    );
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("fmlvctrs_scale <- function(amounts, scale.by = 1)"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("amounts, scale.by)"), "{wrapper}");
+    assert_no_rust_names(&wrapper);
+}
+
+/// A method on an existing generic with another receiver takes the generic's
+/// dotted arguments (the S3_METHODS.md example).
+#[test]
+fn s3_receiver_method_takes_dotted_formals() {
+    let parsed = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl FmlSummary {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(
+                    s3(generic = "summary", receiver = "object"),
+                    formal(fml_conf_int = "conf.int", fml_conf_level = "conf.level"),
+                    defaults(fml_conf_int = "FALSE", fml_conf_level = "0.95")
+                )]
+                pub fn summary(&self, fml_conf_int: bool, fml_conf_level: f64) -> Vec<f64> {
+                    unimplemented!()
+                }
+            }
+        },
+    );
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains(
+            "summary.FmlSummary <- function(object, conf.int = FALSE, conf.level = 0.95, ...)"
+        ),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("object, conf.int, conf.level)"),
+        "{wrapper}"
+    );
+    assert_no_rust_names(&wrapper);
+}
+
+/// An `as = ".."` coercion method takes its extra formals by their declared
+/// names, after `x`, with the generic's `...` last.
+#[test]
+fn as_coercion_formals_are_declared_names() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl FmlFit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(
+                as = "data.frame",
+                formal(fml_row_names = "row.names", fml_optional = "optional"),
+                defaults(fml_row_names = "NULL", fml_optional = "FALSE")
+            )]
+            pub fn as_data_frame(&self, fml_row_names: Option<Vec<String>>, fml_optional: bool) -> List {
+                unimplemented!()
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_as_coercion_methods(&parsed);
+    assert!(
+        wrapper.contains(
+            "as.data.frame.FmlFit <- function(x, row.names = NULL, optional = FALSE, ...)"
+        ),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("x, row.names, optional)"), "{wrapper}");
+    assert_no_rust_names(&wrapper);
+}
+
+/// The `set_*` method of an R6 setter takes the declared formal; its active
+/// binding's formal stays `value`, R6's, and so do the binding's checks.
+#[test]
+fn r6_setter_formal_names_the_method_not_the_binding() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl FmlTemp {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn celsius(&self) -> f64 { unimplemented!() }
+            #[miniextendr(r6(setter, prop = "celsius"), formal(fml_temp = "new.celsius"))]
+            pub fn set_celsius(&mut self, fml_temp: f64) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    check_method_formals(&parsed).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("FmlTemp$set(\"public\", \"set_celsius\", function(new.celsius)"),
+        "{wrapper}"
+    );
+    let active = wrapper
+        .split("$set(\"active\"")
+        .nth(1)
+        .expect("an active binding");
+    assert!(
+        active.contains(".miniextendr_arg_error(\"value\", \"must be double\")"),
+        "{active}"
+    );
+    assert!(!active.contains("new.celsius"), "{active}");
+    assert_no_rust_names(&wrapper);
+}
+
+/// The method-level refusals: an unknown parameter, `formal` twice, a value
+/// that is no string, the dots, and an S7 property accessor; and the
+/// signature checks (a declared formal shadowing the receiver).
+#[test]
+fn method_formal_refusals() {
+    let parse = |code: syn::ItemImpl| {
+        ParsedImpl::parse(default_impl_attrs(ClassSystem::S3), code).map(|_| ())
+    };
+    let err = parse(syn::parse_quote! {
+        impl FmlBad {
+            #[miniextendr(formal(fml_nope = "a.b"))]
+            pub fn f(&self, fml_x: i32) {}
+        }
+    })
+    .expect_err("unknown parameter");
+    assert_eq!(
+        err.to_string(),
+        "`formal(fml_nope = \"a.b\")` names a parameter this method doesn't have: there is no \
+         `fml_nope`"
+    );
+    for (code, message) in [
+        (
+            quote::quote! {
+                #[miniextendr(formal(fml_x = "a.b"), formal(fml_x = "c.d"))]
+                pub fn f(&self, fml_x: i32) {}
+            },
+            "`formal` is given twice on this parameter",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(formal(fml_x = 1))]
+                pub fn f(&self, fml_x: i32) {}
+            },
+            "`formal` takes the R argument name as a string",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(formal(rest = "rest"))]
+                pub fn f(&self, rest: &Dots) {}
+            },
+            "`formal` on the variadic (...) parameter `rest`",
+        ),
+    ] {
+        let err = parse(syn::parse_quote! { impl FmlBad { #code } }).expect_err(message);
+        assert!(err.to_string().contains(message), "{message}: {err}");
+    }
+
+    let s7 = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl FmlS7Prop {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(s7(setter, prop = "level"), formal(fml_v = "new.level"))]
+                pub fn set_level(&mut self, fml_v: f64) { unimplemented!() }
+            }
+        },
+    );
+    let err = check_method_formals(&s7).expect_err("S7 accessor");
+    assert!(
+        err.to_string()
+            .starts_with("`formal(...)` on an S7 property getter, setter or validator"),
+        "{err}"
+    );
+
+    let s3 = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl FmlRecv {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(formal(fml_x = "x"))]
+                pub fn f(&self, fml_x: i32) {}
+            }
+        },
+    );
+    let err = check_method_formals(&s3).expect_err("receiver");
+    assert_eq!(
+        err.to_string(),
+        "parameter `fml_x` is declared as the R argument `x`, which is the receiver of the \
+         generated S3 method. Declare another formal."
+    );
 }
 
 // endregion

@@ -1451,6 +1451,8 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
             } else if meta.path.is_ident("r_name") {
                 let value: syn::LitStr = meta.value()?.parse()?;
                 r_name = Some(value.value());
+            } else if meta.path.is_ident("formal") {
+                return Err(meta.error(crate::miniextendr_fn::TRAIT_FORMAL_UNSUPPORTED));
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait method; expected `skip` or `r_name`",

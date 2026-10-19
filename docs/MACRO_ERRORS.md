@@ -427,10 +427,59 @@ it rejects the names R cannot use:
   generic) or of an S7 one (its first dispatch argument, `x` by default), and
   R6's `self` and `private` inside the class (`initialize` and every method).
 
-Rename the Rust parameter. Env methods, Env and R6 trait methods and S7
-fast-path shortcuts take their receiver as `.mx_self`, which no Rust parameter
-can spell, so they reserve nothing; neither do static methods and constructors
-outside R6, which are plain functions.
+Rename the Rust parameter, or give it another R name with `formal = "..."`
+(see below). Env methods, Env and R6 trait methods and S7 fast-path shortcuts
+take their receiver as `.mx_self`, which no Rust parameter can spell and no
+`formal` may take, so they reserve nothing; neither do static methods and
+constructors outside R6, which are plain functions.
+
+### "parameter `conf_int` is declared as the R argument `conf int`, which ..."
+
+`formal = "..."` (an impl method's `formal(p = "...")`) names the parameter's R
+formal ([Declared R formals](MINIEXTENDR_ATTRIBUTE.md#declared-r-formals-formal)).
+The error points at the string, and names what is wrong with it:
+
+- it is not a syntactic R name (letters, digits, `.` and `_`, starting with a
+  letter or with a `.` not followed by a digit), or it is a reserved word;
+- it is `...` or `..1`: R's dots, which only the dots parameter becomes;
+- the generated wrapper uses the name itself: `.call`, `.val`, `.ptr`, an S3
+  dispatch variable (`.Generic`, `.Class`, ...), a name starting `.mx_`,
+  `.miniextendr_`, `.rdata_` or `.__MX_`, or a method's receiver.
+
+A declared formal equal to another formal is the "both become the R argument"
+error above, with "(a declared `formal` names the R argument)". Every problem
+of a signature is reported at once. Declare another name.
+
+### "`formal` is given twice on this parameter"
+
+A parameter has one R formal: keep one `formal = "..."` (or one
+`formal(p = "...")` entry for `p` on a method).
+
+### "`formal` takes the R argument name as a string, e.g. `formal = "conf.int"`"
+
+Quote the name: `formal = "na.rm"`, not `formal = na.rm`.
+
+### "`formal` on the variadic (...) parameter `rest`: its R formal is always `...`"
+
+The dots parameter (`...`, `&Dots`, `LazyDots`) is R's `...`. An argument with
+a dotted name is a parameter of its own, with `formal`.
+
+### "`formal(conf_levl = "conf.level")` names a parameter this method doesn't have"
+
+The key of a method-level `formal(...)` entry is the Rust parameter's name, as
+in `defaults(...)`. Fix the spelling.
+
+### "`formal(...)` on an S7 property getter, setter or validator"
+
+S7 calls a property's getter, setter and validator with fixed arguments
+(`self`, `value`), so a declared formal would name nothing. Drop it.
+
+### "`formal(...)` is not supported on trait methods"
+
+A trait method's R formals are its declaration's parameter names, which every
+implementing type shares and the trait ABI's metadata records; neither the
+`#[miniextendr]` trait nor a trait impl takes `formal`. Declare the dotted name
+on a standalone function or an inherent impl method.
 
 ### "`postfix` and `r_name` both set the R wrapper name"
 

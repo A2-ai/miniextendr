@@ -1,0 +1,11 @@
+error: `formal(...)` is not supported on trait methods: a trait method's R formals are the trait declaration's parameter names, which every implementing type shares. Declare the dotted name on a standalone function or an inherent impl method instead
+  --> tests/ui/trait_formal_refused.rs:11:19
+   |
+11 |     #[miniextendr(formal(conf_level = "conf.level"))]
+   |                   ^^^^^^
+
+error: `formal(...)` is not supported on trait methods: a trait method's R formals are the trait declaration's parameter names, which every implementing type shares. Declare the dotted name on a standalone function or an inherent impl method instead
+  --> tests/ui/trait_formal_refused.rs:22:19
+   |
+22 |     #[miniextendr(formal(x_factor = "x.factor"))]
+   |                   ^^^^^^

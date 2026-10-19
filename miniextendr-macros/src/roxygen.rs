@@ -1594,6 +1594,7 @@ pub(crate) fn push_fn_param_tags(
         tags.extend(call_line);
         return match_arg_doc_placeholders;
     }
+    let formals = parsed.formals();
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -1606,7 +1607,9 @@ pub(crate) fn push_fn_param_tags(
             continue;
         }
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        // The R formal, a declared `formal` included (#1842): the author's own
+        // `@param conf.int` documents `conf_int: f64` declared as `conf.int`.
+        let r_name = formals.of(&rust_name);
         if param_documented(tags, &r_name) {
             continue;
         }
@@ -1617,7 +1620,10 @@ pub(crate) fn push_fn_param_tags(
         {
             tags.push(format!("{PARAM_FILLER_MARKER}@param {r_name} {doc}"));
         } else if parsed.has_match_arg_attr(&rust_name) {
-            let doc_placeholder = crate::match_arg_keys::param_doc_placeholder(c_ident, &r_name);
+            let doc_placeholder = crate::match_arg_keys::param_doc_placeholder(
+                c_ident,
+                &crate::match_arg_keys::param_key(&rust_name),
+            );
             tags.push(format!(
                 "{PARAM_FILLER_MARKER}@param {r_name} {doc_placeholder}"
             ));
