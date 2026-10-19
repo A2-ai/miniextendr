@@ -2597,6 +2597,9 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
     /// at the start of the function and bind the result to `dots_typed`.
     pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
+    /// What the function's `...` takes: `dots = empty | empty(allow = [..]) |
+    /// forward(allow = [..]) | data` (#2157, [`crate::dots_policy`]).
+    pub(crate) dots_policy: Option<crate::dots_policy::DotsPolicy>,
     /// Span of the `dots = ...` attribute for error reporting.
     pub(crate) dots_span: Option<proc_macro2::Span>,
     /// Lifecycle specification for deprecation/experimental status.
@@ -3235,6 +3238,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut s3_generic = None;
         let mut s3_class = None;
         let mut dots_spec = None;
+        let mut dots_policy = None;
         let mut dots_span = None;
         let mut lifecycle = None;
         let mut strict: Option<bool> = None;
@@ -3401,24 +3405,16 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             }
                         };
                     } else if nv.path.is_ident("dots") {
-                        // dots = typed_list!(...) - capture the macro invocation
-                        // Store span for error reporting
+                        // `dots = typed_list!(...)`, or the role of `...`
+                        // (#2157). The span is kept for the signature checks.
                         dots_span = Some(nv.path.span());
-                        if let syn::Expr::Macro(expr_macro) = &nv.value {
-                            if expr_macro.mac.path.is_ident("typed_list") {
-                                // Capture the entire macro invocation as TokenStream
-                                dots_spec = Some(quote::quote!(#expr_macro));
-                            } else {
-                                return Err(syn::Error::new_spanned(
-                                    &expr_macro.mac.path,
-                                    "dots expects `typed_list!(...)` macro",
-                                ));
+                        match crate::dots_policy::parse_dots_attr(&nv.value)? {
+                            crate::dots_policy::DotsAttr::TypedList(spec) => {
+                                dots_spec = Some(spec);
                             }
-                        } else {
-                            return Err(syn::Error::new_spanned(
-                                &nv.value,
-                                "dots expects `typed_list!(...)` macro",
-                            ));
+                            crate::dots_policy::DotsAttr::Policy(policy) => {
+                                dots_policy = Some(policy);
+                            }
                         }
                     } else if nv.path.is_ident("lifecycle") {
                         // lifecycle = "stage"
@@ -3735,6 +3731,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             s3_generic,
             s3_class,
             dots_spec,
+            dots_policy,
             dots_span,
             lifecycle,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),

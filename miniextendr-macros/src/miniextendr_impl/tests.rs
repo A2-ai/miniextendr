@@ -9651,3 +9651,124 @@ fn static_methods_keep_r_values_on_the_main_thread() {
 }
 
 // endregion
+
+// region: `dots = empty | forward(..)` on methods (#2157)
+
+/// The check opens each class system's method body, after the lifecycle
+/// notice and before the argument checks, with the wrapper's own formals to
+/// suggest from; an S3 method reports the generic's call.
+#[test]
+fn dots_policy_check_in_each_class_system() {
+    let methods = |attr: proc_macro2::TokenStream| -> syn::ItemImpl {
+        syn::parse_quote! {
+            impl Fit {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(#attr, dots = empty(allow = ["optional"]))]
+                pub fn level(&self, level: f64) -> f64 { unimplemented!() }
+                #[miniextendr(dots = forward(allow = ["by"]))]
+                pub fn add(&self, rest: &Dots) -> f64 { unimplemented!() }
+            }
+        }
+    };
+    let check = |formals: &str, call: &str| {
+        format!(
+            "if (...length()) .miniextendr_check_dots(...names(), ...length(), {formals}, \
+             allow = \"optional\"{call})"
+        )
+    };
+    let forward = "if (...length()) .miniextendr_check_dots(...names(), ...length(), \
+                   character(), allow = \"by\"";
+
+    let s3 = generate_s3_r_wrapper(&parse_impl(
+        ClassSystem::S3,
+        methods(quote::quote!(s3(generic = "level"))),
+    ));
+    let line = format!(
+        "level.Fit <- function(x, level, ...) {{\n  {}\n  if (!isTRUE(is.double(level)))",
+        check("c(\"x\", \"level\")", ", call = environment()")
+    );
+    assert!(s3.contains(&line), "{s3}");
+
+    let s4 = generate_s4_r_wrapper(&parse_impl(
+        ClassSystem::S4,
+        methods(quote::quote!(s4(generic = "level"))),
+    ));
+    assert!(s4.contains(&check("c(\"x\", \"level\")", "")), "{s4}");
+
+    let s7 = generate_s7_r_wrapper(&parse_impl(
+        ClassSystem::S7,
+        methods(quote::quote!(s7(generic = "level"))),
+    ));
+    // The S7 method and its `Fit_level()` shortcut.
+    assert!(s7.contains(&check("c(\"x\", \"level\")", "")), "{s7}");
+    assert!(s7.contains(&check("\"level\"", "")), "{s7}");
+
+    // An R6 method has only the Rust signature's formals: `forward` reads the
+    // method's own `...`.
+    let r6: syn::ItemImpl = syn::parse_quote! {
+        impl Fit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(dots = forward(allow = ["by"]))]
+            pub fn add(&self, rest: &Dots) -> f64 { unimplemented!() }
+        }
+    };
+    let r6 = generate_r6_r_wrapper(&parse_impl(ClassSystem::R6, r6));
+    assert!(r6.contains(&format!("{forward})")), "{r6}");
+}
+
+/// `dots = empty` needs a `...` formal: the dispatch `...` of an S3, S4 or S7
+/// method, or the method's own; `forward` and `data` the method's own.
+#[test]
+fn dots_policy_needs_a_dots_formal() {
+    let check = |class_system: ClassSystem, item_impl: syn::ItemImpl| {
+        super::check_dots_policies(&parse_impl(class_system, item_impl))
+            .err()
+            .map(|e| e.to_string())
+    };
+    let empty_no_dots: syn::ItemImpl = syn::parse_quote! {
+        impl Fit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(dots = empty)]
+            pub fn level(&self) -> f64 { unimplemented!() }
+        }
+    };
+    for class_system in [ClassSystem::S3, ClassSystem::S4, ClassSystem::S7] {
+        assert_eq!(check(class_system, empty_no_dots.clone()), None);
+    }
+    for class_system in [ClassSystem::R6, ClassSystem::Env] {
+        let err = check(class_system, empty_no_dots.clone()).expect("refused");
+        assert!(
+            err.contains("`dots = empty` checks the R wrapper's `...`"),
+            "{err}"
+        );
+    }
+    // A static method is a plain function.
+    let static_empty: syn::ItemImpl = syn::parse_quote! {
+        impl Fit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(dots = empty)]
+            pub fn make(level: f64) -> f64 { unimplemented!() }
+        }
+    };
+    assert!(check(ClassSystem::S3, static_empty).is_some());
+    // `s3(no_dots)` drops the dispatch `...`.
+    let no_dispatch: syn::ItemImpl = syn::parse_quote! {
+        impl Fit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "level", no_dots), dots = empty)]
+            pub fn level(&self) -> f64 { unimplemented!() }
+        }
+    };
+    assert!(check(ClassSystem::S3, no_dispatch).is_some());
+    let forward_no_dots: syn::ItemImpl = syn::parse_quote! {
+        impl Fit {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(dots = forward(allow = ["by"]))]
+            pub fn level(&self) -> f64 { unimplemented!() }
+        }
+    };
+    let err = check(ClassSystem::S3, forward_no_dots).expect("refused");
+    assert!(err.contains("`dots = forward` passes arguments"), "{err}");
+}
+
+// endregion

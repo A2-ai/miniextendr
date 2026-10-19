@@ -1,0 +1,5 @@
+error: `dots = empty` checks the R wrapper's `...`, and this one has none: R already refuses an argument the function has no formal for
+  --> tests/ui/impl_method_dots_policy_no_dots.rs:18:26
+   |
+18 |     #[miniextendr(dots = empty)]
+   |                          ^^^^^

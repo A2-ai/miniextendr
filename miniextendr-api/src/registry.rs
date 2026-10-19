@@ -2766,6 +2766,72 @@ const ARG_ERROR_HELPER: &str = r#"# Internal helper: raise an argument error fro
 }
 "#;
 
+/// The check of `#[miniextendr(dots = empty | empty(allow = ..) | forward(allow
+/// = ..))]` (#2157): a wrapper with such an attribute calls it as
+/// `if (...length()) .miniextendr_check_dots(...names(), ...length(),
+/// <formals>, allow = .., class = .., call = ..)`, the statement
+/// `miniextendr-macros`' `dots_policy::DotsPolicy::r_check` writes. It builds
+/// its own condition, an argument error with two more fields, and depends only
+/// on the helpers every preamble has.
+#[cfg(not(target_arch = "wasm32"))]
+const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a wrapper's `...` that its
+# `dots = empty | empty(allow = ...) | forward(allow = ...)` attribute does not
+# take. The wrapper calls it only when `...length()` is nonzero, with
+# `...names()` and `...length()`, so no argument is forced. Every unnamed
+# argument and every name outside `allow` is refused, all in one condition:
+# `argument` holds each one (`..<i>` for an unnamed one, its position in
+# `...`) and `suggestion` the formal or allowed name each one most likely
+# meant, or NA. That is the one name it is a prefix of, else the first one
+# closest by edit distance (a swap of two neighbours counts as one edit), at
+# most a third of its length in edits but at least one, and fewer than its
+# length. The condition is an argument error (`kind = "conversion"`,
+# `param = "..."`) classed `miniextendr_error_unused_argument` after the
+# attribute's own `class`. `call` is the wrapper's call by default; a
+# `call = caller` wrapper passes `.mx_call`, an S3 method its frame (resolved
+# to the generic's call), a `call = none` wrapper NULL.
+.miniextendr_check_dots <- function(names, n, formals, allow = character(), class = character(), call = sys.call(-1L)) {
+  if (is.null(names)) names <- character(n)
+  names[is.na(names)] <- ""
+  bad <- which(!nzchar(names) | !(names %in% allow))
+  if (!length(bad)) return(invisible())
+  if (is.environment(call)) call <- .miniextendr_frame_call(call)
+  candidates <- c(formals, allow)
+  distance <- function(a, b) {
+    a <- strsplit(a, "", fixed = TRUE)[[1L]]
+    b <- strsplit(b, "", fixed = TRUE)[[1L]]
+    d <- matrix(0L, length(a) + 1L, length(b) + 1L)
+    d[, 1L] <- seq.int(0L, length(a))
+    d[1L, ] <- seq.int(0L, length(b))
+    for (i in seq_along(a)) for (j in seq_along(b)) {
+      d[i + 1L, j + 1L] <- min(d[i, j + 1L] + 1L, d[i + 1L, j] + 1L, d[i, j] + (a[[i]] != b[[j]]))
+      if (i > 1L && j > 1L && a[[i]] == b[[j - 1L]] && a[[i - 1L]] == b[[j]]) {
+        d[i + 1L, j + 1L] <- min(d[i + 1L, j + 1L], d[i - 1L, j - 1L] + 1L)
+      }
+    }
+    d[[length(a) + 1L, length(b) + 1L]]
+  }
+  suggest <- function(name) {
+    if (!nzchar(name) || !length(candidates)) return(NA_character_)
+    prefixed <- candidates[startsWith(candidates, name)]
+    if (length(prefixed) == 1L) return(prefixed)
+    edits <- vapply(candidates, distance, 0L, b = name, USE.NAMES = FALSE)
+    best <- which(edits == min(edits) & edits <= max(1L, nchar(name) %/% 3L) & edits < nchar(name))
+    if (length(best)) candidates[[best[[1L]]]] else NA_character_
+  }
+  unnamed <- !nzchar(names[bad])
+  argument <- ifelse(unnamed, paste0("..", bad), names[bad])
+  suggestion <- vapply(names[bad], suggest, "", USE.NAMES = FALSE)
+  what <- sprintf("'%s'%s", argument, ifelse(unnamed, " (unnamed)", ""))
+  hint <- !is.na(suggestion)
+  what[hint] <- sprintf("%s (did you mean '%s'?)", what[hint], suggestion[hint])
+  message <- sprintf("unused argument%s %s", if (length(bad) > 1L) "s" else "", paste(what, collapse = ", "))
+  stop(structure(
+    list(message = message, call = call, kind = "conversion", param = "...", argument = argument, suggestion = suggestion),
+    class = c(class, "miniextendr_error_unused_argument", .miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")
+  ))
+}
+"#;
+
 #[cfg(not(target_arch = "wasm32"))]
 const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
     r#"# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
@@ -3074,6 +3140,7 @@ fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::C
             FIELD_AT_HELPER,
         ),
         (uses(".miniextendr_env_method"), ENV_METHOD_HELPER),
+        (uses(".miniextendr_check_dots("), DOTS_CHECK_HELPER),
         (
             caller || scalar || several || uses(".miniextendr_arg_error"),
             ARG_ERROR_HELPER,
@@ -3934,6 +4001,14 @@ mod tests {
         assert!(scalar.contains(".miniextendr_arg_error <- function"));
         assert!(scalar.contains(".miniextendr_match_arg <- function"));
         assert!(!scalar.contains(".miniextendr_match_arg_several <- function"));
+
+        // The `...` check builds its own condition (#2157).
+        let dots = render(
+            "f <- function(x, ...) {\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\")\n}",
+        );
+        assert!(dots.contains(".miniextendr_check_dots <- function"));
+        assert!(!dots.contains(".miniextendr_arg_error <- function"));
+        assert!(!scalar.contains(".miniextendr_check_dots <- function"));
     }
 
     /// Run the class-ref placeholder resolver over `content` using `entries` as the registry.
@@ -5252,6 +5327,7 @@ mod tests {
             ("FIELD_AT_HELPER", FIELD_AT_HELPER),
             ("ENV_METHOD_HELPER", ENV_METHOD_HELPER),
             ("ARG_ERROR_HELPER", ARG_ERROR_HELPER),
+            ("DOTS_CHECK_HELPER", DOTS_CHECK_HELPER),
             ("MATCH_ARG_SEVERAL_HELPER", MATCH_ARG_SEVERAL_HELPER),
             ("MATCH_ARG_HELPER", MATCH_ARG_HELPER),
             ("the conversion_error_class binding", binding.as_str()),

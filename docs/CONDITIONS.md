@@ -1047,6 +1047,13 @@ passed as `.call`; for an S3 method, the generic's call; under
 (`tryCatch(pkg_error_argument = …)`) therefore catches the wrapper's checks and
 the body's alike.
 
+The `...` check of `dots = empty | forward(allow = [..])` raises this argument
+error too, with `param = "..."`, the class `miniextendr_error_unused_argument`
+(after the attribute's own `class`) in front of the crate's, and two more
+fields: `argument` (each refused argument, `..<i>` for an unnamed one) and
+`suggestion` (the name each one most likely meant, or `NA`)
+([DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role)).
+
 - **Grammar**: `arg_error!([call = none,] param = <expr>, <format>, <args>…)`.
   `param` is the argument's R name (anything `Into<String>`); a leading
   `call = none` raises it without a call, as for the other macros. There is no

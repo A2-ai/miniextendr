@@ -1,0 +1,11 @@
+error: `dots = empty` checks the R wrapper's `...`, and this one has none: R already refuses an argument the function has no formal for
+ --> tests/ui/fn_dots_policy_without_dots.rs:9:22
+  |
+9 | #[miniextendr(dots = empty)]
+  |                      ^^^^^
+
+error: `dots = forward` passes arguments to the function, which takes none: add a `...` parameter (`_: ...`, `&Dots` or `LazyDots`)
+  --> tests/ui/fn_dots_policy_without_dots.rs:14:22
+   |
+14 | #[miniextendr(dots = forward(allow = ["scale"]))]
+   |                      ^^^^^^^

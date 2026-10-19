@@ -240,7 +240,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
 
         let what = format!("{}.{}", generic_name, class_name);
-        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        ctx.emit_method_prelude(&mut lines, "  ", &what, &full_params);
 
         let call = ctx.instance_call(receiver);
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -289,7 +289,7 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             ctx.params
         ));
 
-        ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
+        ctx.emit_method_prelude(&mut lines, "  ", &fn_name, &ctx.params);
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

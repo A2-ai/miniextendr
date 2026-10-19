@@ -702,6 +702,11 @@ pub struct MethodAttrs {
     /// `dots_typed` binding is injected at the top of the method body. Per-method
     /// (dots apply to an individual signature), not an impl-block-level option.
     pub dots_spec: Option<proc_macro2::TokenStream>,
+    /// What the method's `...` takes: `dots = empty | empty(allow = [..]) |
+    /// forward(allow = [..]) | data` (#2157, [`crate::dots_policy`]), checked
+    /// in the R wrapper's prelude
+    /// ([`emit_method_prelude`](crate::r_class_formatter::MethodContext::emit_method_prelude)).
+    pub dots_policy: Option<crate::dots_policy::DotsPolicy>,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
     /// Build the `Err` arm's condition from the error's serde output
@@ -2041,18 +2046,19 @@ impl ParsedMethod {
                     // standalone-fn path (`miniextendr_fn.rs`): capture the
                     // `typed_list!(...)` spec so a `dots_typed` binding can be
                     // injected at the top of the method body in `from_impl_item`.
-                    let _: syn::Token![=] = meta.input.parse()?;
-                    let mac: syn::Macro = meta.input.parse()?;
-                    if !mac.path.is_ident("typed_list") {
-                        return Err(syn::Error::new_spanned(
-                            &mac.path,
-                            "dots expects `typed_list!(...)` macro",
-                        ));
+                    // Or the role of `...` (#2157), checked in the R wrapper.
+                    let value: syn::Expr = meta.value()?.parse()?;
+                    match crate::dots_policy::parse_dots_attr(&value)? {
+                        crate::dots_policy::DotsAttr::TypedList(spec) => {
+                            method_attrs.dots_spec = Some(spec);
+                        }
+                        crate::dots_policy::DotsAttr::Policy(policy) => {
+                            method_attrs.dots_policy = Some(policy);
+                        }
                     }
-                    method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
                     ));
                 }
                 Ok(())
@@ -4923,6 +4929,39 @@ fn check_s3_replacement_methods(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// Refuse a `dots = empty | forward(..) | data` (#2157) that describes a
+/// `...` the method's wrapper doesn't have
+/// ([`DotsPolicy::check_signature`](crate::dots_policy::DotsPolicy::check_signature)):
+/// `forward` and `data` need the method's own `...` parameter; `empty` the
+/// wrapper's `...` formal, which is that parameter or the dispatch `...` a
+/// method of a generic gets ([`has_dispatch_dots`]).
+fn check_dots_policies(parsed: &ParsedImpl) -> syn::Result<()> {
+    for m in &parsed.methods {
+        if let Some(policy) = &m.method_attrs.dots_policy {
+            policy.check_signature(
+                m.has_dots,
+                m.has_dots || has_dispatch_dots(parsed.class_system, m),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether the class system gives `m`'s R wrapper a `...` formal the Rust
+/// method doesn't take: the dispatch `...` of an S3, S4 or S7 instance method
+/// (unless `no_dispatch_dots` / `s7(no_dots)`), and of a vctrs protocol
+/// method. Env and R6 methods and every other static method have only the
+/// formals of the Rust signature.
+fn has_dispatch_dots(class_system: ClassSystem, m: &ParsedMethod) -> bool {
+    match class_system {
+        ClassSystem::Vctrs => m.method_attrs.vctrs_protocol.is_some(),
+        _ if !m.env.is_instance() => false,
+        ClassSystem::S3 | ClassSystem::S4 => !m.method_attrs.no_dispatch_dots,
+        ClassSystem::S7 => !m.method_attrs.s7.no_dots,
+        ClassSystem::Env | ClassSystem::R6 => false,
+    }
+}
+
 /// Validate the S7 dispatch arguments of every S7 instance method: an explicit
 /// `s7(dispatch = "...")`, and the pair S7 fixes for an `Ops` / `%*%`
 /// operator generic (`e1, e2` / `x, y`).
@@ -5326,6 +5365,8 @@ fn check_class_members(parsed: &ParsedImpl) -> syn::Result<()> {
     check_s4_generic_collisions(parsed)?;
     // A replacement method (`s3(generic = "[[<-")`) takes `value` last.
     check_s3_replacement_methods(parsed)?;
+    // `dots = empty | forward(..) | data` needs a `...` to describe (#2157).
+    check_dots_policies(parsed)?;
     // Detect S7 fast-path shortcut name collisions (#986). The shortcut
     // `<ClassName>_<method>` shares a namespace with the standalone functions
     // emitted for static methods — an `r_name` override (or a static method

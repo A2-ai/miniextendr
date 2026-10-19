@@ -176,6 +176,14 @@ fn good(x: i32, rest: &Dots, flag: bool) -> i32 { x }
 
 A `LazyDots` parameter is R's `...`, which the wrapper passes as its own frame; it is always present. `&LazyDots`, `Option<LazyDots>` and `Missing<LazyDots>` are refused (take `rest: LazyDots`), and so are a per-parameter option on it (`default`, `coerce`, `match_arg`, `no_na`, ...), `dots = typed_list!(..)` (which validates the forced `list(...)` of a `&Dots` parameter), a trait method taking it (its arguments cross the trait ABI as converted values) and an `extern "C-unwind"` function taking it (no generated wrapper passes the frame). See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
 
+### "dots expects `typed_list!(...)`, `empty`, `empty(allow = [...])`, `forward(allow = [...])` or `data`"
+
+`#[miniextendr(dots = ...)]` takes `typed_list!(..)` (validate the forced `list(...)`) or the role of `...` (#2157): `empty`, `empty(allow = ["name", ...])`, `forward(allow = ["name", ...])` or `data`. `empty(..)` and `forward(..)` take `allow` (a string or an array of distinct, non-empty strings, not `"..."`) and `class` (the package's classes for the refusal), each once. `forward` needs `allow`: with nothing listed it would take nothing, which is `empty`; `data` takes every argument, unchecked, and has no options. Every problem in one attribute is reported at once. See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role).
+
+### "`dots = empty` checks the R wrapper's `...`, and this one has none"
+
+`empty` checks the wrapper's `...` formal. A standalone function has one only when it takes a dots parameter (`_: ...`, `&Dots` or `LazyDots`). An S3, S4 or S7 instance method also has the generic's dispatch `...`, unless `s3(no_dots)` / `s7(no_dots)` removes it, and so does a vctrs protocol method. R6 and env methods, and static methods, have only their Rust parameters. Without a `...`, R already refuses an argument the function has no formal for. Similarly, "`dots = forward` (or `data`) passes arguments to the function, which takes none": both hand the arguments to the function, so add a dots parameter.
+
 ### "Rust's `...` is only valid as the last parameter"
 
 Rust's `...` parameter parses only in last position, so a function or method whose `...` has another parameter after it is not a function to `#[miniextendr]`. The parameter of type `&Dots` is R's `...` at its own position; write a dots parameter that is not last that way:
