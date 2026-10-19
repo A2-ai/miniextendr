@@ -1,0 +1,7 @@
+error: `reexport!` takes one or more `pkg::name` items, e.g. `reexport!(generics::tidy)`
+ --> tests/ui/reexport_empty.rs:5:1
+  |
+5 | reexport!();
+  | ^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `reexport` (in Nightly builds, run with -Z macro-backtrace for more info)

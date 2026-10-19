@@ -325,6 +325,7 @@ mod rdata_sidecar_tests;
 mod rebuild_tests;
 mod receiver_formals_tests;
 mod receiver_tests;
+mod reexport_tests;
 mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;

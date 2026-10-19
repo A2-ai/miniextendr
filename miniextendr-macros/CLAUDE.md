@@ -39,6 +39,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - `roxygen.rs` (+ dir) — doc-comment forwarding; class-system doc builders consume this.
 - `typed_external_macro.rs` — `TYPE_NAME_CSTR` / `TYPE_ID_CSTR` for R-visible type tags (display + errors).
 - `misplaced_dots.rs` — token-level detector for a Rust `...` parameter that is not last (`fn f(x: ..., y: T)` parses as no fn / impl / trait), used by `struct_enum_dispatch`'s fallback to name the `x: &Dots` spelling instead of the struct/enum message (#1737). Mirrored in `miniextendr-lint/src/misplaced_dots.rs`.
+- `reexport.rs` (+ `reexport/tests.rs`) — `reexport!(pkg::name, ...)` (#1910): one `ReexportEntry` per item in `registry::MX_REEXPORTS`, inside a `#[cfg(not(target_arch = "wasm32"))] const _`. The package and a syntactic name are identifiers joined by `.`, read with `Ident::parse_any` + `unraw` (a Rust keyword is an R name there); a non-syntactic name is a string literal. The items are split at top-level commas and parsed one by one, so every problem of an invocation is reported (`syn::Error::combine`), each on its tokens: `naming::is_r_package_name`, `naming::is_syntactic_r_name`, the string literal's character rule, one name from two packages. Collapsing sites and the cross-invocation refusals are the wrapper writer's (`registry::reexport_fragment` / `reexport_conflicts`).
 - `tests.rs` — UI tests in `tests/ui/*.stderr` snapshots; update when error messages change.
 
 ## Gotchas specific to this crate

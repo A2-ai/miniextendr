@@ -245,6 +245,8 @@ pub use miniextendr_macros::miniextendr_init;
 #[doc(inline)]
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
+pub use miniextendr_macros::reexport;
+#[doc(inline)]
 pub use miniextendr_macros::typed_dataframe;
 #[doc(inline)]
 pub use miniextendr_macros::typed_list;

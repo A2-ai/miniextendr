@@ -544,6 +544,7 @@ S3method(vec_restore,percent)
 S3method(vec_restore,shadowed_percent)
 S3method(vec_restore,shadowed_ratio)
 S3method(with_amount,ConsumingBuilder)
+export("%0%")
 export("%mx_cat%")
 export("%mx_scale%")
 export(AdapterNamesR6)
@@ -2576,6 +2577,7 @@ export(vec_opaque_split_1v1r)
 export(vec_opaque_split_1vnr)
 export(vec_opaque_split_nv1r)
 export(vec_opaque_split_nvnr)
+export(vec_ptype_abbr)
 export(vec_real_altrep)
 export(vec_width_align_nvnr)
 export(vec_width_split_1v1r)
@@ -2671,6 +2673,7 @@ importFrom(methods,
   setMethod
 )
 importFrom(vctrs,
+  "%0%",
   field,
   new_data_frame,
   new_list_of,

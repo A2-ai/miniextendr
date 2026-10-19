@@ -78,6 +78,8 @@ framework.
   the R call
 - **[Track Caller](TRACK_CALLER.md)** -- Panic source locations and generated
   wrapper behavior
+- **[Re-exports](S3_METHODS.md#re-exporting-the-generic)** -- `reexport!(pkg::name, ...)`
+  exports another package's function, such as the generic of your S3 methods
 
 ### Class systems
 

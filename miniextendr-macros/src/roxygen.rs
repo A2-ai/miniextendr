@@ -1140,7 +1140,7 @@ fn is_rust_path(dest: &str) -> bool {
 /// before the last `::`, and warns "refers to un-installed package" when no
 /// such package is installed. A target is rustdoc-only when that `pkg` is a
 /// Rust path root (`crate`, `self`, `Self`) or cannot be an R package name
-/// (`a::b`, `my_mod`; see [`is_r_package_name`]). Backticks around the target
+/// (`a::b`, `my_mod`; see [`crate::naming::is_r_package_name`]). Backticks around the target
 /// are ignored, as both readers do. Anything else may be an R link, so it is
 /// left alone: `[topic]`, `` [`topic`] ``, `[fn()]` and `[pkg::topic]`, which
 /// roxygen2 documents, and so `` [`Type::method`] `` (`Type` can be a package:
@@ -1154,20 +1154,7 @@ fn is_rustdoc_only_target(target: &str) -> bool {
     let Some((pkg, _)) = target.rsplit_once("::") else {
         return false;
     };
-    matches!(pkg, "crate" | "self" | "Self") || !is_r_package_name(pkg)
-}
-
-/// R's rule for a package name (Writing R Extensions, "The DESCRIPTION
-/// file"): ASCII letters, digits and `.`, at least two characters, starting
-/// with a letter and not ending in `.`.
-fn is_r_package_name(name: &str) -> bool {
-    let bytes = name.as_bytes();
-    bytes.len() >= 2
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[bytes.len() - 1] != b'.'
-        && bytes
-            .iter()
-            .all(|b| b.is_ascii_alphanumeric() || *b == b'.')
+    matches!(pkg, "crate" | "self" | "Self") || !crate::naming::is_r_package_name(pkg)
 }
 
 /// Check for conflicts between explicit `@title`/`@description` tags and implicit values.
