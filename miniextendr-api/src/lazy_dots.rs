@@ -34,6 +34,9 @@
 //! | [`expr(i)`](LazyDots::expr) | element `i` of `substitute(list(...))` | nothing |
 //! | [`force(i)`](LazyDots::force) | `..k` (`k = i + 1`) | element `i` |
 //! | [`try_force(i)`](LazyDots::try_force) | `..k`, with an R error returned as `Err` | element `i` |
+//! | [`forward(call)`](LazyDots::forward) | `f(<args>, ...)`, evaluated in the frame | what `f` forces |
+//! | [`try_forward(call)`](LazyDots::try_forward) | the same, with an R error returned as `Err` | what `f` forces |
+//! | [`next_method()`](LazyDots::next_method) | `NextMethod()` | what the next method forces |
 //!
 //! Indices are 0-based, as in [`List::get_index`](crate::List::get_index):
 //! element `i` is R's `..k` with `k = i + 1`. An index past the end panics
@@ -46,6 +49,33 @@
 //! `force(i)` evaluates `..k` in the wrapper's frame, which forces the
 //! element's promise in that environment, and `expr(i)` gives what the caller
 //! of `g` wrote.
+//!
+//! # Passing the dots on
+//!
+//! [`forward`](LazyDots::forward) evaluates an [`RCall`] in the wrapper's
+//! frame with `...` added last (or where [`RCall::dots`] put it), so R hands
+//! the callee each element as the promise it matched: unevaluated, with the
+//! environment it was written in. A data-masking function evaluates them
+//! itself, against its own data, as when R code writes `f(x, ...)`:
+//!
+//! ```ignore
+//! use miniextendr_api::{LazyDots, SEXP, expression::RCall, miniextendr};
+//!
+//! /// `group_by()` on the plain data frame inside the object.
+//! #[miniextendr(s3(generic = "group_by", class = "my_results"))]
+//! pub fn my_results_group_by(data: SEXP, rest: LazyDots) -> Result<SEXP, String> {
+//!     let plain = plain_frame(data); // the data frame inside the object
+//!     // `dplyr::group_by(plain, ...)`; dplyr is only suggested.
+//!     let group_by = unsafe { RCall::namespaced("dplyr", "group_by") }
+//!         .map_err(|e| e.to_string())?;
+//!     Ok(rest.forward(group_by.arg(plain)))
+//! }
+//! ```
+//!
+//! [`next_method`](LazyDots::next_method) evaluates `NextMethod()` in the
+//! frame. The frame is the S3 method's own, so R finds the dispatch it is in
+//! and calls the next method with the method's arguments, the dots passed on
+//! unevaluated.
 //!
 //! # Empty and missing elements
 //!
@@ -114,7 +144,7 @@ use std::cell::{Cell, OnceCell};
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 
-use crate::expression::{REvalError, eval_with_handlers, try_eval_with_handlers};
+use crate::expression::{RCall, REvalError, eval_with_handlers, try_eval_with_handlers};
 use crate::from_r::charsxp_to_str;
 use crate::gc_protect::OwnedProtect;
 use crate::sexp_ext::PairListExt;
@@ -327,6 +357,60 @@ impl<'a> LazyDots<'a> {
         unsafe { try_eval_with_handlers(dot_symbol(i), self.env) }
     }
 
+    /// Evaluate `call` in the generated wrapper's frame with the dots passed
+    /// on: `f(<args>, ...)`, so the callee gets each element as the promise R
+    /// matched, unevaluated, with the environment it was written in.
+    /// `...` goes last unless [`RCall::dots`] put it elsewhere. Nothing is
+    /// forced here; the callee forces what it reads, or evaluates the
+    /// expressions against its own data (a data-masking function).
+    ///
+    /// Evaluated with [`eval_with_handlers`], as `f(x, ...)` in the wrapper
+    /// would be: the caller's handlers see the callee's conditions, and an R
+    /// error unwinds through the Rust frames as the callee raised it.
+    ///
+    /// Arguments added with [`RCall::arg_value`] / [`RCall::named_value`] are
+    /// values. A symbol or call added with [`RCall::arg`] is evaluated in the
+    /// frame, where the wrapper's formals are bound, so pass a language
+    /// object with [`RCall::quoted_arg`]. A function named by a symbol
+    /// ([`RCall::new`]) is looked up from the frame, as code in the wrapper
+    /// would look it up: the package's namespace, its imports, then base and
+    /// the search path. Name a function from a package that is only
+    /// suggested with [`RCall::namespaced`].
+    ///
+    /// The value is unprotected.
+    pub fn forward(&self, call: RCall) -> SEXP {
+        let call = with_dots(call);
+        // SAFETY: as in `len`; the frame has a `...` binding.
+        unsafe { call.eval_with_handlers(self.env) }
+    }
+
+    /// [`Self::forward`], but an R error raised by the call comes back as
+    /// `Err(`[`REvalError`]`)` instead of unwinding.
+    ///
+    /// Evaluated with [`try_eval_with_handlers`]: warnings and messages still
+    /// reach the caller's handlers, and any other exit (a `tryCatch()`
+    /// handler's, a restart) unwinds as under [`Self::forward`].
+    pub fn try_forward(&self, call: RCall) -> Result<SEXP, REvalError> {
+        let call = with_dots(call);
+        // SAFETY: as in `forward`.
+        unsafe { call.try_eval_with_handlers(self.env) }
+    }
+
+    /// Call the next S3 method: `NextMethod()`, evaluated in the generated
+    /// wrapper's frame. The frame is the S3 method's own, so R finds the
+    /// dispatch it is in (`.Generic`, `.Class`) and calls the next method
+    /// with the method's arguments as R matched them, the dots passed on
+    /// unevaluated.
+    ///
+    /// Only an S3 method has a dispatch to continue: an `s3(...)` function or
+    /// an S3 (or vctrs) impl-block method. Anywhere else R raises its own
+    /// `NextMethod` error ("generic function not specified"). Conditions
+    /// behave as under [`Self::forward`]. The value is unprotected.
+    pub fn next_method(&self) -> SEXP {
+        // SAFETY: as in `len`.
+        unsafe { self.call_in_frame(c"NextMethod", None) }
+    }
+
     /// Panic on an index past the end, as slice indexing does.
     fn check_index(&self, i: usize) {
         let len = self.len();
@@ -391,6 +475,11 @@ impl std::fmt::Debug for LazyDots<'_> {
             .field("len", &self.len.get())
             .finish_non_exhaustive()
     }
+}
+
+/// `call` with `...` added last, unless it already passes the dots.
+fn with_dots(call: RCall) -> RCall {
+    if call.has_dots() { call } else { call.dots() }
 }
 
 /// The symbol `..k` for 0-based element `i` (`k = i + 1`).

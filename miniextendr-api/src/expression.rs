@@ -576,6 +576,31 @@ impl RCall {
         self.named_arg(name, value.into_sexp())
     }
 
+    /// Add R's `...` at this position: the dots of the frame the call is
+    /// evaluated in, each passed on as the promise R matched, unevaluated.
+    ///
+    /// Only [`LazyDots::forward`](crate::LazyDots::forward) /
+    /// [`try_forward`](crate::LazyDots::try_forward) evaluate a call in a
+    /// frame that has dots (the generated wrapper's), and they add `...` last
+    /// themselves, so this is for putting it elsewhere:
+    /// `RCall::new("f").dots().named_value("na.rm", true)` is
+    /// `f(..., na.rm = TRUE)`. Evaluated in an environment without dots, R
+    /// raises "'...' used in an incorrect context".
+    #[inline]
+    pub fn dots(self) -> Self {
+        // SAFETY: symbols are interned for the session and need no root.
+        self.arg(unsafe { dots_symbol() })
+    }
+
+    /// Whether the call passes `...` ([`dots`](Self::dots)).
+    pub(crate) fn has_dots(&self) -> bool {
+        // SAFETY: as in `dots`.
+        let dots = unsafe { dots_symbol() };
+        self.args
+            .iter()
+            .any(|(name, value)| name.is_none() && *value == dots)
+    }
+
     /// Add a positional argument passed as is: `quote(<value>)`.
     ///
     /// The call evaluates its arguments, so a symbol, a call or a quosure
@@ -852,6 +877,15 @@ impl RCall {
             Ok(RCall::from_sexp(fun_sexp))
         }
     }
+}
+
+/// The symbol `...`.
+///
+/// # Safety
+///
+/// R's main thread. Symbols are never collected.
+unsafe fn dots_symbol() -> SEXP {
+    unsafe { Rf_install(c"...".as_ptr()) }
 }
 
 /// Build and evaluate `target$name` — the R `$` extraction operator.

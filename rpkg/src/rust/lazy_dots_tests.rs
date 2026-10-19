@@ -210,6 +210,75 @@ pub fn lazy_dots_try_force(rest: LazyDots) -> SEXP {
 
 // endregion
 
+// region: passing the dots on (#2158)
+
+/// `fun(x, ...)`, evaluated in the wrapper's frame: `fun` gets the dots as
+/// the promises R matched, unevaluated.
+/// @param fun The function to call.
+/// @param x Its first argument.
+/// @param ... Passed on, unevaluated.
+#[miniextendr(noexport)]
+pub fn lazy_dots_forward(fun: SEXP, x: SEXP, rest: LazyDots) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: R's main thread; `fun` is a `.Call()` argument.
+    rest.forward(unsafe { RCall::from_sexp(fun) }.arg(x))
+}
+
+/// `fun(..., last = x)`: the dots put before a named argument.
+/// @param fun The function to call.
+/// @param x Its `last` argument.
+/// @param ... Passed on, unevaluated.
+#[miniextendr(noexport)]
+pub fn lazy_dots_forward_first(fun: SEXP, x: SEXP, rest: LazyDots) -> SEXP {
+    // SAFETY: as in `lazy_dots_forward`.
+    rest.forward(unsafe { RCall::from_sexp(fun) }.dots().named_arg("last", x))
+}
+
+/// `try_forward` of `fun(...)`: `"ok"`, or the R error's classes and message.
+/// @param fun The function to call.
+/// @param ... Passed on, unevaluated.
+#[miniextendr(noexport)]
+pub fn lazy_dots_try_forward(fun: SEXP, rest: LazyDots) -> Vec<String> {
+    let _sentinel = DropSentinel;
+    // SAFETY: as in `lazy_dots_forward`.
+    match rest.try_forward(unsafe { RCall::from_sexp(fun) }) {
+        Ok(_) => vec!["ok".to_string()],
+        Err(err) => {
+            let mut out = err.classes().to_vec();
+            out.push(err.message().to_string());
+            out
+        }
+    }
+}
+
+/// `dplyr::group_by(data, ...)`, the grouping expressions evaluated by dplyr
+/// against `data`; dplyr is only suggested.
+/// @param data A data frame.
+/// @param ... Grouping expressions.
+#[miniextendr(noexport)]
+pub fn lazy_dots_group_by(data: SEXP, rest: LazyDots) -> Result<SEXP, String> {
+    // SAFETY: R's main thread.
+    let group_by = unsafe { RCall::namespaced("dplyr", "group_by") }.map_err(|e| e.to_string())?;
+    Ok(rest.forward(group_by.arg(data)))
+}
+
+/// `format()` for a `mx_lazy_next` number: the next method's text in angle
+/// brackets, the dots (`digits = ..`) passed on by `NextMethod()`.
+/// @param x A number of class `mx_lazy_next`.
+/// @param ... Passed on to the next method.
+/// @export
+#[miniextendr(s3(generic = "format", class = "mx_lazy_next"))]
+pub fn format_mx_lazy_next(x: SEXP, rest: LazyDots) -> Vec<String> {
+    let _ = x;
+    let _sentinel = DropSentinel;
+    // A character vector; reading it allocates nothing.
+    let inner: Vec<String> =
+        TryFromSexp::try_from_sexp(rest.next_method()).expect("format() gives a character vector");
+    inner.into_iter().map(|s| format!("<{s}>")).collect()
+}
+
+// endregion
+
 // region: S3 methods
 
 /// Extra arguments refused by an `mx_lazy` method, before they are
@@ -463,6 +532,14 @@ impl LazyDotsS3 {
     /// @param ... Numbers; empty ones are skipped.
     pub fn lazy_s3_sum(&self, rest: LazyDots) -> f64 {
         self.base + sum_given(&rest)
+    }
+
+    /// The next `format()` method's text (the default's, for the pointer),
+    /// with the dots passed on by `NextMethod()` (#2158).
+    /// @param ... Passed on to the next method.
+    #[miniextendr(s3(generic = "format"))]
+    pub fn format(&self, rest: LazyDots) -> Vec<String> {
+        TryFromSexp::try_from_sexp(rest.next_method()).expect("format() gives a character vector")
     }
 }
 

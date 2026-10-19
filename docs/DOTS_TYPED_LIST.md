@@ -135,6 +135,9 @@ subset.mx_lazy <- function(x, subset, ...) {
 | `expr(i) -> SEXP` | element `i` of `substitute(list(...))` | nothing |
 | `force(i) -> SEXP` | `..k`, with `k = i + 1` | element `i` |
 | `try_force(i) -> Result<SEXP, REvalError>` | `..k`, an R error returned as `Err` | element `i` |
+| `forward(call) -> SEXP` | `f(<args>, ...)`, evaluated in the frame | what `f` forces |
+| `try_forward(call) -> Result<SEXP, REvalError>` | the same, an R error returned as `Err` | what `f` forces |
+| `next_method() -> SEXP` | `NextMethod()` | what the next method forces |
 
 - **Indices are 0-based**, as in `List::get_index`: element `i` is R's `..k` with `k = i + 1`. An index past the end panics before anything is forced, as slice indexing does.
 - **Forwarded dots.** Each element keeps the environment it was written in, also when another function passed its own dots on (`g <- function(...) f(x, ...)`): `force(i)` forces the element's promise there, and `expr(i)` gives what the caller of `g` wrote.
@@ -142,6 +145,25 @@ subset.mx_lazy <- function(x, subset, ...) {
 - **Forcing an empty element** raises `argument "..k" is missing, with no default` (classes `evalError`, `missingArgError` from R 4.6, `simpleError` before), with the generated function's own call as its call. A body that accepts empty arguments checks `is_missing_arg(i)` first.
 - **Conditions.** `force(i)` evaluates through `eval_with_handlers` (see [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md)): the caller's `withCallingHandlers()` / `suppressWarnings()` see what forcing signals, and an error, or the exit of a `tryCatch()` handler, unwinds through the Rust frames (running their destructors) and carries on in R as the original condition. `try_force(i)` evaluates through `try_eval_with_handlers`: warnings and messages still reach the caller's handlers, any other exit unwinds as under `force(i)`, and an R error comes back as `Err(REvalError)` for the body to handle (an empty element included).
 - **Caching.** Forced values are not cached in Rust: R stores a promise's value in the promise, so forcing an element twice evaluates it once. The count and the expressions are read once per `LazyDots` value: the first `is_missing_arg` / `expr` call evaluates `substitute(list(...))` in the frame and the value keeps the list, so a loop over the elements copies the expressions once.
+- **Passing the dots on.** `forward(call)` evaluates an `RCall` in the wrapper's frame with `...` added last, or where `RCall::dots()` put it (`RCall::new("f").dots().named_value("na.rm", true)` is `f(..., na.rm = TRUE)`). R hands the callee each element as the promise it matched: unevaluated, with the environment it was written in. A data-masking function such as `dplyr::group_by()` then evaluates the expressions against its own data, as when R code writes `f(x, ...)`. The function is looked up from the frame (the package namespace, its imports, base, the search path); name one from a suggested package with `RCall::namespaced("dplyr", "group_by")`. Arguments added with `arg_value` / `named_value` are values; a symbol or call added with `arg` is evaluated in the frame, where the wrapper's formals are bound, so pass a language object with `quoted_arg`. Conditions behave as under `force(i)` / `try_force(i)`.
+- **The next S3 method.** `next_method()` evaluates `NextMethod()` in the frame, which is the S3 method's own: R finds the dispatch it is in and calls the next method with the method's arguments as R matched them, the dots passed on unevaluated. Only an `s3(...)` function or an S3 / vctrs impl-block method has a dispatch to continue; anywhere else R raises its own `NextMethod` error.
+
+```rust
+use miniextendr_api::{LazyDots, SEXP, expression::RCall, miniextendr};
+
+/// `group_by()` on the plain data frame inside the object.
+/// @export
+#[miniextendr(s3(generic = "group_by", class = "my_results"))]
+pub fn my_results_group_by(data: SEXP, rest: LazyDots) -> Result<SEXP, String> {
+    let plain = plain_frame(data); // the data frame inside the object
+    let group_by = unsafe { RCall::namespaced("dplyr", "group_by") }
+        .map_err(|e| e.to_string())?;
+    Ok(rest.forward(group_by.arg(plain)))
+}
+```
+
+`group_by(results, ID, ANALYTE)` reaches `dplyr::group_by(plain, ID, ANALYTE)` with `ID` and `ANALYTE` unevaluated, so dplyr resolves them as columns of `plain`.
+
 - **R versions.** Every method runs a base R call in the frame (`...length()`, `...names()`, `substitute(list(...))`, `..k`) through `eval_with_handlers`, so the same code runs on R 4.4 and later. It uses neither R 4.6's dots C API nor the non-API promise accessors; #1898 tracks moving to that API, and a per-element `env(i)`, once a build can target R 4.6.
 
 Where it is accepted:
@@ -153,7 +175,7 @@ Where it is accepted:
 - A function with a `LazyDots` parameter runs on the R main thread, even under `worker`, and the value is `!Send`.
 - A function without one keeps its wrapper byte for byte.
 
-`rpkg/src/rust/lazy_dots_tests.rs` has the fixtures (the readers and forcers, `subset.mx_lazy`, `update.mx_lazy`, `` `[.mx_lazy_grid` `` and one class per class system), and `rpkg/tests/testthat/test-lazy-dots.R` tests them.
+`rpkg/src/rust/lazy_dots_tests.rs` has the fixtures (the readers and forcers, `subset.mx_lazy`, `update.mx_lazy`, `` `[.mx_lazy_grid` ``, the `forward` / `next_method` fixtures and one class per class system), and `rpkg/tests/testthat/test-lazy-dots.R` tests them.
 
 ## Refusing unused arguments: the `dots` role
 

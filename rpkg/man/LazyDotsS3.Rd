@@ -5,6 +5,7 @@
 \alias{new_lazydotss3}
 \alias{lazy_s3_report.LazyDotsS3}
 \alias{lazy_s3_sum.LazyDotsS3}
+\alias{format.LazyDotsS3}
 \title{LazyDotsS3 S3 Class}
 \usage{
 new_lazydotss3(base)
@@ -12,6 +13,8 @@ new_lazydotss3(base)
 \method{lazy_s3_report}{LazyDotsS3}(x, ...)
 
 \method{lazy_s3_sum}{LazyDotsS3}(x, ...)
+
+\method{format}{LazyDotsS3}(x, ...)
 
 LazyDotsS3
 }
@@ -35,4 +38,7 @@ Describe the dots, forcing nothing.
 S3 generic for \code{lazy_s3_sum}
 
 \code{base} plus the elements that are not empty.
+
+The next \code{format()} method's text (the default's, for the pointer),
+with the dots passed on by \code{NextMethod()} (#2158).
 }
