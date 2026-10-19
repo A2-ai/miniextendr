@@ -6,25 +6,26 @@
 //! - `RRngOps` (exposing a pure-Rust RNG to R via a trait impl)
 //! - `RDistributionOps` (exposing a rand_distr distribution to R)
 //!
-//! `RRng` does NOT manage R's RNG state itself — every fixture touching it
-//! carries `#[miniextendr(rng)]` so GetRNGstate/PutRNGstate bracket the call.
+//! `RRng` does NOT manage R's RNG state itself: it borrows an `RngGuard`
+//! (`guard.rng()`). The fixtures take the guard as the `&RngGuard` parameter
+//! of a `#[miniextendr(rng)]` function, or from `with_rng`.
 //! `SeededRng` / `SeededNormal` wrap a pure-Rust `StdRng` and need no
-//! bracketing (and are deliberately independent of `set.seed()`).
+//! guard (and are deliberately independent of `set.seed()`).
 
 use std::cell::RefCell;
 
 use miniextendr_api::rand::rngs::StdRng;
 use miniextendr_api::rand::{RngExt, SeedableRng};
-use miniextendr_api::rand_impl::{RDistributions, RRng};
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::rand_impl::RDistributions;
+use miniextendr_api::{ExternalPtr, RngGuard, miniextendr, with_rng};
 
 // region: RRng through the rand trait surface
 
 /// Sample n uniform values in [0, 1) from R's RNG via `RngExt::random`.
 /// @param n Integer number of values to generate.
 #[miniextendr(rng)]
-pub fn rand_rrng_uniform(n: i32) -> Vec<f64> {
-    let mut rng = RRng::new();
+pub fn rand_rrng_uniform(n: i32, guard: &RngGuard) -> Vec<f64> {
+    let mut rng = guard.rng();
     (0..n).map(|_| rng.random::<f64>()).collect()
 }
 
@@ -33,9 +34,20 @@ pub fn rand_rrng_uniform(n: i32) -> Vec<f64> {
 /// @param low Lower bound (inclusive).
 /// @param high Upper bound (exclusive).
 #[miniextendr(rng)]
-pub fn rand_rrng_range(n: i32, low: f64, high: f64) -> Vec<f64> {
-    let mut rng = RRng::new();
+pub fn rand_rrng_range(n: i32, low: f64, high: f64, guard: &RngGuard) -> Vec<f64> {
+    let mut rng = guard.rng();
     (0..n).map(|_| rng.random_range(low..high)).collect()
+}
+
+/// Sample n standard normal values from an `RRng` made inside `with_rng`, in
+/// a function without `rng`: `rnorm(n)` for the same seed.
+/// @param n Integer number of values to generate.
+#[miniextendr(no_worker)]
+pub fn rand_rrng_with_rng_normal(n: i32) -> Vec<f64> {
+    with_rng(|guard| {
+        let mut rng = guard.rng();
+        (0..n).map(|_| rng.standard_normal()).collect()
+    })
 }
 // endregion
 
@@ -44,8 +56,8 @@ pub fn rand_rrng_range(n: i32, low: f64, high: f64) -> Vec<f64> {
 /// Draw one value from each `RDistributions` method, in order:
 /// c(standard_normal, standard_exp, uniform_index(100), uniform_f64).
 #[miniextendr(rng)]
-pub fn rand_rdistributions_sample() -> Vec<f64> {
-    let mut rng = RRng::new();
+pub fn rand_rdistributions_sample(guard: &RngGuard) -> Vec<f64> {
+    let mut rng = guard.rng();
     vec![
         rng.standard_normal(),
         rng.standard_exp(),
@@ -143,10 +155,10 @@ impl miniextendr_api::rand_impl::RRngOps for SeededRng {
 ///   distribution).
 #[cfg(feature = "rand_distr")]
 #[miniextendr(rng)]
-pub fn rand_distr_normal(n: i32, mean: f64, sd: f64) -> Result<Vec<f64>, String> {
+pub fn rand_distr_normal(n: i32, mean: f64, sd: f64, guard: &RngGuard) -> Result<Vec<f64>, String> {
     use miniextendr_api::rand_distr::{Distribution, Normal};
     let normal = Normal::new(mean, sd).map_err(|e| format!("invalid normal parameters: {e}"))?;
-    let mut rng = RRng::new();
+    let mut rng = guard.rng();
     Ok((0..n).map(|_| normal.sample(&mut rng)).collect())
 }
 // endregion

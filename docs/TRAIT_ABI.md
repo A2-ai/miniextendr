@@ -249,6 +249,10 @@ parameter mutably, and the method gets a plain reference. An
 method reads it with `borrow()` / `borrow_mut()` (`EXTERNALPTR.md`,
 "Arguments").
 
+A trait method takes no `&RngGuard` (a compile error): the guard is no R value,
+so it can't cross. Draw inside `with_rng(|rng| ...)` in the body (`RNG.md`,
+"Trait Methods"; #2196).
+
 ### Failures
 
 The shim is the only check a caller that skips the View gets, so it checks

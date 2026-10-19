@@ -1,0 +1,5 @@
+error: a `&RngGuard` parameter needs `#[miniextendr(rng)]`: the `rng` wrapper loads R's RNG state and passes its guard here. Add `rng` to the `#[miniextendr(...)]` options, or call `with_rng(|rng| ...)` in the body
+  --> tests/ui/impl_rng_guard_without_rng.rs:19:20
+   |
+19 |     fn draw(&self, rng: &miniextendr_api::RngGuard) -> f64 {
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

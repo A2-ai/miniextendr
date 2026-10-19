@@ -86,8 +86,9 @@ unrestricted — and the conversions themselves have parallel variants
 
 ### Rayon rules
 
-- **Never call R from a rayon closure.** No R API, no `RRng` / R's RNG —
-  these panic on non-main threads. Use a Rust RNG crate (`rand`,
+- **Never call R from a rayon closure.** No R API, no R's RNG — the R API
+  panics on non-main threads, and `RngGuard` / `RRng` are `!Send`, so a
+  closure that draws from them does not compile. Use a Rust RNG crate (`rand`,
   `rand_chacha`), seeded per chunk via the `offset` argument for
   reproducibility.
 - **Chunk boundaries depend on thread count**, so chunk-seeded randomness

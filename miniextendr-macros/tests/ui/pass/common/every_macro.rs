@@ -15,8 +15,8 @@ use miniextendr_api::either_impl::Either;
 use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 use miniextendr_api::{
     Call, CallerCall, Checked, DataFrame, ExternalPtr, IntoR, LazyDots, List, MatchArg, Missing,
-    NArgs, Quoted, RCondition, RCow, Rcomplex, SEXP, StrVec, TryFromSexp, Unchecked, miniextendr,
-    typed_list,
+    NArgs, Quoted, RCondition, RCow, Rcomplex, RngGuard, SEXP, StrVec, TryFromSexp, Unchecked,
+    miniextendr, typed_list,
 };
 
 // region: standalone functions
@@ -85,6 +85,11 @@ pub fn strict_rows(
 #[miniextendr(coerce, check_interrupt, rng)]
 pub fn coerced(x: u16, xs: ::std::vec::Vec<u8>) -> f64 {
     f64::from(x) + xs.len() as f64
+}
+
+#[miniextendr(rng)]
+pub fn drawn(n: i32, rng: &RngGuard, scale: f64) -> f64 {
+    f64::from(n) * scale * rng.unif_rand()
 }
 
 #[miniextendr(unwrap_in_r)]
@@ -301,6 +306,14 @@ impl Counter {
     }
     pub fn origin() -> Self {
         Counter::new(0)
+    }
+    #[miniextendr(rng)]
+    pub fn jitter(&self, rng: &RngGuard) -> f64 {
+        f64::from(self.value) + rng.norm_rand()
+    }
+    #[miniextendr(rng)]
+    pub fn drawn_index(rng: &RngGuard, n: f64) -> f64 {
+        rng.unif_index(n)
     }
 }
 

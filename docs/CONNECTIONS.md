@@ -847,11 +847,13 @@ can stop partway through a sample: `FlatMap` retains the remaining bytes, so
 changing read sizes does not discard or redraw samples. Add `take(n)` to the
 sample iterator before encoding to make a finite stream.
 
-These examples own an independent Rust RNG. `RRng` instead uses R's global
-RNG state; a guard around the function that creates the connection does not
-cover reads performed later. A custom `RConnectionImpl::read` using `RRng`
-must acquire and release R's RNG state inside each guarded read callback.
-Never retain an RNG-state guard for the connection's entire lifetime.
+These examples own an independent Rust RNG. `RRng` instead draws from R's
+global RNG state and borrows an `RngGuard`, so it can't outlive the guard: the
+guard of the function that creates the connection does not cover reads
+performed later. A custom `RConnectionImpl::read` that draws from R's RNG
+loads the state inside each read callback, with `with_rng(|guard| ...)`
+(`guard.rng()` makes an `RRng` there). Never keep an `RngGuard` in the
+connection for its entire lifetime.
 
 ## Limitations
 

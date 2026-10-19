@@ -237,7 +237,7 @@ miniextendr-externalptr and miniextendr-ffi skills.
 | `unwrap_in_r` | `Result<T, E>` is passed to R as a list with an `$error` field instead of treating `Err` as a Rust-origin failure. Orthogonal to the tagged-condition transport (which only fires for panics and unwrapped errors). |
 | `worker` | Executes the Rust function on the worker thread (see `miniextendr-worker` skill). |
 | `check_interrupt` | Forces main-thread execution; inserts `R_CheckUserInterrupt` around the call. |
-| `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`. |
+| `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`. A `&RngGuard` parameter (no R formal) receives the guard; draw with `rng.unif_rand()` etc. `&RngGuard` without `rng` is a compile error. |
 | `dots = typed_list!(...)` | Validates `...` arguments; generates `dots_typed` parameter. See `miniextendr-dots` skill. |
 | `coerce_all` | Applies coercion mappings to all eligible types. |
 

@@ -15,16 +15,25 @@
 //!
 //! # Usage
 //!
+//! An [`RRng`] borrows an [`RngGuard`][crate::RngGuard], the proof that R's
+//! RNG state is loaded on R's main thread:
+//! [`RngGuard::rng`][crate::RngGuard::rng] makes one. Under
+//! `#[miniextendr(rng)]`, take the guard as a `&RngGuard` parameter (it is no R
+//! argument):
+//!
 //! ```ignore
-//! use miniextendr_api::rand_impl::RRng;
+//! use miniextendr_api::RngGuard;
 //! use rand::RngExt;
 //!
 //! #[miniextendr(rng)]
-//! fn random_gaussian(n: i32) -> Vec<f64> {
-//!     let mut rng = RRng::new();
+//! fn random_uniform(n: i32, guard: &RngGuard) -> Vec<f64> {
+//!     let mut rng = guard.rng();
 //!     (0..n).map(|_| rng.random::<f64>()).collect()
 //! }
 //! ```
+//!
+//! Elsewhere on R's main thread, [`with_rng`][crate::with_rng] hands a closure
+//! the guard: `with_rng(|guard| guard.rng().random::<f64>())`.
 //!
 //! # R's Native Distributions
 //!
@@ -32,54 +41,33 @@
 //! native distribution functions via the [`RDistributions`] trait:
 //!
 //! ```ignore
-//! use miniextendr_api::rand_impl::{RRng, RDistributions};
+//! use miniextendr_api::RngGuard;
+//! use miniextendr_api::rand_impl::RDistributions;
 //!
 //! #[miniextendr(rng)]
-//! fn efficient_normal(n: i32) -> Vec<f64> {
-//!     let mut rng = RRng::new();
+//! fn efficient_normal(n: i32, guard: &RngGuard) -> Vec<f64> {
+//!     let mut rng = guard.rng();
 //!     // Uses R's norm_rand() directly - no Box-Muller overhead
 //!     (0..n).map(|_| rng.standard_normal()).collect()
 //! }
 //! ```
 //!
 //! These are faster than going through `rand`'s generic distribution machinery
-//! because they use R's optimized C implementations directly.
+//! because they use R's optimized C implementations directly, and they draw
+//! what R's own `rnorm()` / `rexp()` / `sample()` draw for the same seed.
 //!
-//! # Safety
+//! # Threads
 //!
-//! [`RRng`] requires that R's RNG state has been initialized via `GetRNGstate()`.
-//! Use `#[miniextendr(rng)]` or [`RngGuard`][crate::RngGuard] to ensure this.
-//!
-//! # Performance Considerations
-//!
-//! **Thread-routing cost**: When `RRng` is used inside a `#[miniextendr]`-exported
-//! function running on the worker thread, each RNG call is routed back to the
-//! R main thread. This has implications:
-//!
-//! - **Small draws (tens to hundreds)**: Overhead is negligible
-//! - **Large draws (thousands+)**: Cross-thread roundtrips can dominate runtime
-//!
-//! For high-volume random number generation, consider:
-//!
-//! 1. **Batch generation**: Generate all needed random numbers in one call, then
-//!    process them on the worker thread
-//! 2. **Use Rust RNG**: For non-reproducibility-critical work, use `rand::rng()`
-//!    which doesn't require R thread access
-//!
-//! ```ignore
-//! #[miniextendr(rng)]
-//! fn efficient_simulation(n: i32) -> f64 {
-//!     let mut rng = RRng::new();
-//!     // Generate all random numbers first
-//!     let samples: Vec<f64> = (0..n).map(|_| rng.uniform_f64()).collect();
-//!     // Then do expensive computation without RNG calls
-//!     samples.iter().map(|x| expensive_function(*x)).sum()
-//! }
-//! ```
+//! [`RRng`] is `!Send` and `!Sync`, like the guard it borrows: R's RNG state
+//! belongs to R's main thread. It can't move into a worker closure or a rayon
+//! task. For parallel random numbers, seed a Rust RNG per chunk instead (the
+//! `rayon` feature's docs show how), or draw what you need from R first and
+//! hand the values over.
 
 use std::convert::Infallible;
 
 use crate::miniextendr;
+use crate::rng::RngGuard;
 use rand::TryRng;
 
 /// A wrapper around R's random number generator that implements `rand::Rng`.
@@ -87,59 +75,52 @@ use rand::TryRng;
 /// This allows using R's RNG with any `rand`-compatible code, ensuring
 /// reproducibility when seeds are set via `set.seed()` in R.
 ///
-/// # Requirements
-///
-/// R's RNG state must be initialized before using this type. Either:
-/// - Use `#[miniextendr(rng)]` attribute on the function
-/// - Create an [`RngGuard`][crate::RngGuard] before using `RRng`
+/// An `RRng` borrows the [`RngGuard`] it was made from ([`RngGuard::rng`]),
+/// so it draws only while R's RNG state is loaded, and only on R's main thread
+/// (`RRng` is `!Send` and `!Sync`).
 ///
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::rand_impl::RRng;
+/// use miniextendr_api::RngGuard;
 /// use rand::RngExt;
 ///
 /// #[miniextendr(rng)]
-/// fn random_sample(n: i32) -> Vec<f64> {
-///     let mut rng = RRng::new();
+/// fn random_sample(n: i32, guard: &RngGuard) -> Vec<f64> {
+///     let mut rng = guard.rng();
 ///     // Generate n random f64 values in [0, 1)
 ///     (0..n).map(|_| rng.random()).collect()
 /// }
 /// ```
-#[derive(Debug, Default)]
-pub struct RRng {
-    _private: (),
+#[derive(Debug)]
+pub struct RRng<'g> {
+    guard: &'g RngGuard,
 }
 
-impl RRng {
-    /// Create a new R RNG wrapper.
-    ///
-    /// # Safety Requirements
-    ///
-    /// R's RNG state must have been initialized via `GetRNGstate()` before
-    /// calling any methods on this type. Use `#[miniextendr(rng)]` or
-    /// [`RngGuard`][crate::RngGuard] to ensure this.
+impl RngGuard {
+    /// An [`RRng`] drawing from R's RNG through this guard, for `rand`'s
+    /// traits and [`RDistributions`].
     #[inline]
-    pub fn new() -> Self {
-        Self { _private: () }
+    pub fn rng(&self) -> RRng<'_> {
+        RRng { guard: self }
     }
 }
 
 /// Implement `TryRng` with `Error = Infallible` so the blanket impl provides `Rng`.
-impl TryRng for RRng {
+impl TryRng for RRng<'_> {
     type Error = Infallible;
 
     /// Generate a random u32 using R's RNG.
     ///
-    /// Uses `unif_rand()` to generate a value in [0, 1) and scales to u32 range.
+    /// Uses `unif_rand()` to generate a value in (0, 1) and scales to u32 range.
     #[inline]
     fn try_next_u32(&mut self) -> Result<u32, Infallible> {
-        // R's unif_rand() returns a value in [0, 1)
+        // R's unif_rand() returns a value in (0, 1)
         // Scale to full u32 range
-        let u = unsafe { crate::sys::unif_rand() };
+        let u = self.guard.unif_rand();
         // u * 2^32, but we need to be careful with floating point
         // Using the standard conversion: floor(u * (MAX + 1))
-        // SAFETY (lint): `u ∈ [0, 1)` so the product is in `[0, 2^32)`; the cast
+        // SAFETY (lint): `u ∈ (0, 1)` so the product is in `(0, 2^32)`; the cast
         // is the intended floor-to-u32 of a non-negative, in-range value.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let scaled = (u * (f64::from(u32::MAX) + 1.0)) as u32;
@@ -191,11 +172,12 @@ impl TryRng for RRng {
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::rand_impl::{RRng, RDistributions};
+/// use miniextendr_api::RngGuard;
+/// use miniextendr_api::rand_impl::RDistributions;
 ///
 /// #[miniextendr(rng)]
-/// fn sample_distributions() -> Vec<f64> {
-///     let mut rng = RRng::new();
+/// fn sample_distributions(guard: &RngGuard) -> Vec<f64> {
+///     let mut rng = guard.rng();
 ///     vec![
 ///         rng.standard_normal(),  // N(0, 1)
 ///         rng.standard_exp(),     // Exp(1)
@@ -223,21 +205,21 @@ pub trait RDistributions {
     /// and provides good uniformity without rejection sampling overhead.
     fn uniform_index(&mut self, n: usize) -> usize;
 
-    /// Generate a uniform random f64 in [0, 1).
+    /// Generate a uniform random f64 in (0, 1).
     ///
-    /// Uses R's `unif_rand()` directly with full f64 precision.
+    /// Uses R's `unif_rand()` directly: the value `runif(1)` draws.
     fn uniform_f64(&mut self) -> f64;
 }
 
-impl RDistributions for RRng {
+impl RDistributions for RRng<'_> {
     #[inline]
     fn standard_normal(&mut self) -> f64 {
-        unsafe { crate::sys::norm_rand() }
+        self.guard.norm_rand()
     }
 
     #[inline]
     fn standard_exp(&mut self) -> f64 {
-        unsafe { crate::sys::exp_rand() }
+        self.guard.exp_rand()
     }
 
     #[inline]
@@ -246,13 +228,13 @@ impl RDistributions for RRng {
         // the `as usize` cast floors it back into range. `n as f64` may lose
         // precision only for n > 2^53, which exceeds any realistic R length.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let idx = unsafe { crate::sys::R_unif_index(n as f64) as usize };
+        let idx = self.guard.unif_index(n as f64) as usize;
         idx
     }
 
     #[inline]
     fn uniform_f64(&mut self) -> f64 {
-        unsafe { crate::sys::unif_rand() }
+        self.guard.unif_rand()
     }
 }
 // endregion
@@ -490,14 +472,27 @@ mod tests {
     // Note: These tests require R to be initialized and RNG state loaded.
     // They're primarily for documentation/coverage purposes.
 
-    #[test]
-    fn rrng_can_be_created() {
-        let _rng = RRng::new();
+    /// Compiles only for a type that is not `Send`: for a `Send` type both
+    /// impls apply and the call below is ambiguous.
+    trait AmbiguousIfSend<A> {
+        fn some_item() {}
     }
+    impl<T: ?Sized> AmbiguousIfSend<()> for T {}
+    impl<T: ?Sized + Send> AmbiguousIfSend<u8> for T {}
 
+    /// Compiles only for a type that is not `Sync`.
+    trait AmbiguousIfSync<A> {
+        fn some_item() {}
+    }
+    impl<T: ?Sized> AmbiguousIfSync<()> for T {}
+    impl<T: ?Sized + Sync> AmbiguousIfSync<u8> for T {}
+
+    /// An `RRng` draws on the thread whose guard it borrows (#2005): it can't
+    /// move into a worker closure or a rayon task.
     #[test]
-    fn rrng_is_default() {
-        let _rng: RRng = Default::default();
+    fn rrng_is_neither_send_nor_sync() {
+        let _ = <RRng<'static> as AmbiguousIfSend<_>>::some_item;
+        let _ = <RRng<'static> as AmbiguousIfSync<_>>::some_item;
     }
 
     // Test RRngOps with a mock implementation

@@ -1,5 +1,6 @@
 # Tests for RNG (Random Number Generation) functionality
-# These test the #[miniextendr(rng)] attribute and manual RNG management
+# These test the #[miniextendr(rng)] attribute, the `&RngGuard` parameter it
+# fills (no R argument), and manual RNG management (RngGuard, with_rng)
 
 test_that("rng_uniform generates reproducible uniform random numbers", {
   set.seed(42)
@@ -169,6 +170,137 @@ test_that("Rust RNG matches R's RNG with same seed", {
 
   expect_equal(rust_vals, r_vals)
 })
+
+# region: guard draws (#2002)
+
+# `c(f(), base())` after one `set.seed()` equals base R's own sequence only if
+# `f` loaded the state the seed set and saved the state it advanced.
+
+test_that("guard draws are base R's draws, and the state is saved", {
+  set.seed(1)
+  x <- c(rng_uniform(5L), runif(5L))
+  set.seed(1)
+  expect_identical(x, runif(10L))
+
+  set.seed(1)
+  x <- c(rng_normal(5L), rnorm(5L))
+  set.seed(1)
+  expect_identical(x, rnorm(10L))
+
+  set.seed(1)
+  x <- c(rng_exponential(5L), rexp(5L))
+  set.seed(1)
+  expect_identical(x, rexp(10L))
+
+  # `unif_index(n)` is R_unif_index(n), the draw behind sample.int().
+  set.seed(1)
+  x <- c(rng_int(5L, 10) + 1L, sample.int(10L, 5L, replace = TRUE))
+  set.seed(1)
+  expect_identical(x, sample.int(10L, 10L, replace = TRUE))
+})
+
+test_that("a guard draw advances .Random.seed", {
+  set.seed(42)
+  before <- get(".Random.seed", envir = globalenv())
+  rng_uniform(1L)
+  expect_false(identical(before, get(".Random.seed", envir = globalenv())))
+})
+
+test_that("the guard parameter is no R formal", {
+  expect_identical(names(formals(rng_uniform)), "n")
+  expect_identical(names(formals(rng_normal)), "n")
+  expect_identical(names(formals(rng_int)), c("n", "max"))
+  expect_length(formals(rng_bool), 0L)
+})
+
+test_that("a guard parameter keeps a worker function on R's main thread", {
+  expect_true(rng_guard_worker_on_main())
+})
+
+test_that("with_rng loads the state when called and saves it", {
+  set.seed(42)
+  x <- c(rng_with_rng_test(5L), runif(5L))
+  set.seed(42)
+  expect_identical(x, runif(10L))
+})
+
+test_that("with_rng draws each kind as base R does", {
+  set.seed(7)
+  x <- rng_with_rng_each()
+  set.seed(7)
+  expect_identical(x, c(runif(1L), rnorm(1L), rexp(1L), sample.int(10L, 1L) - 1))
+})
+
+test_that("a guard from RngGuard::new draws and saves", {
+  set.seed(42)
+  x <- c(rng_guard_test(5L), runif(5L))
+  set.seed(42)
+  expect_identical(x, runif(10L))
+})
+
+test_that("env methods draw from the guard, instance and static", {
+  s <- RngSampler$new(1L)
+  set.seed(3)
+  x <- c(s$sample_uniform(4L), runif(2L))
+  set.seed(3)
+  expect_identical(x, runif(6L))
+  set.seed(3)
+  x <- s$sample_normal(4L)
+  set.seed(3)
+  expect_identical(x, rnorm(4L))
+  set.seed(3)
+  x <- RngSampler$static_sample(4L)
+  set.seed(3)
+  expect_identical(x, runif(4L))
+  expect_identical(names(formals(s$sample_uniform)), "n")
+  expect_identical(names(formals(RngSampler$static_sample)), "n")
+})
+
+test_that("an R6 method draws from the guard", {
+  obj <- miniextendr:::RngSamplerR6$new(2)
+  set.seed(3)
+  x <- obj$unif(4L)
+  set.seed(3)
+  expect_identical(x, 2 * runif(4L))
+  expect_identical(names(formals(obj$unif)), "n")
+})
+
+test_that("an S3 method draws from the guard", {
+  obj <- new_rngsamplers3(2)
+  set.seed(3)
+  x <- rng_s3_unif(obj, 4L)
+  set.seed(3)
+  expect_identical(x, 2 * runif(4L))
+})
+
+test_that("an S4 method draws from the guard", {
+  obj <- miniextendr:::RngSamplerS4(2)
+  set.seed(3)
+  x <- miniextendr:::s4_rng_unif(obj, 4L)
+  set.seed(3)
+  expect_identical(x, 2 * runif(4L))
+})
+
+test_that("an S7 method draws from the guard, through dispatch and the shortcut", {
+  obj <- miniextendr:::RngSamplerS7(2)
+  set.seed(3)
+  x <- miniextendr:::rng_s7_unif(obj, 4L)
+  set.seed(3)
+  expect_identical(x, 2 * runif(4L))
+  set.seed(3)
+  x <- miniextendr:::RngSamplerS7_rng_s7_unif(obj, 4L)
+  set.seed(3)
+  expect_identical(x, 2 * runif(4L))
+})
+
+test_that("a vctrs constructor draws from the guard", {
+  set.seed(3)
+  v <- miniextendr:::new_rngnoise(4L)
+  set.seed(3)
+  expect_identical(vctrs::vec_data(v), rnorm(4L))
+})
+
+# endregion
 
 # region: Upstream example-derived fixtures
 

@@ -86,6 +86,8 @@ impl RebuildR6 {
 }
 
 /// An R6 class whose Rust state is rebuilt from its saved recipe.
+/// @field values The recipe, kept by a save (active binding).
+/// @field total The Rust state, rebuilt from the recipe (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl RebuildR6 {
     /// Create a RebuildR6 from its values.

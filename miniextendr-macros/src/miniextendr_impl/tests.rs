@@ -485,6 +485,179 @@ fn impl_method_refuses_a_second_dots_parameter() {
 
 // endregion
 
+// region: The RNG guard parameter (#2002)
+
+/// Under `rng`, a `&RngGuard` parameter is no R formal in any class system,
+/// and the C wrapper passes a guard made at the call in its position, after
+/// the wrapper loaded the state.
+#[test]
+fn rng_guard_method_param_is_no_formal_in_every_class_system() {
+    let instance: syn::ItemImpl = syn::parse_quote! {
+        impl Sampler {
+            pub fn new() -> Self {
+                unimplemented!()
+            }
+
+            #[miniextendr(rng)]
+            pub fn draw(&self, n: i32, rng: &RngGuard, scale: f64) -> Vec<f64> {
+                unimplemented!()
+            }
+        }
+    };
+    for (system, generate) in [
+        (
+            ClassSystem::Env,
+            generate_env_r_wrapper as fn(&ParsedImpl) -> String,
+        ),
+        (ClassSystem::R6, generate_r6_r_wrapper),
+        (ClassSystem::S3, generate_s3_r_wrapper),
+        (ClassSystem::S4, generate_s4_r_wrapper),
+        (ClassSystem::S7, generate_s7_r_wrapper),
+    ] {
+        let parsed = parse_impl(system, instance.clone());
+        let method = parsed.methods.iter().find(|m| m.ident == "draw").unwrap();
+        assert_eq!(method.rng_guard, Some(1), "{system:?}");
+        let wrapper = generate(&parsed);
+        assert!(
+            wrapper.contains("n, scale)"),
+            "{system:?}: formals\n{wrapper}"
+        );
+        assert!(
+            !wrapper.contains("rng"),
+            "{system:?}: a guard formal\n{wrapper}"
+        );
+
+        let c_wrapper = c_wrapper_tokens(&parsed, "draw");
+        assert!(
+            c_wrapper.contains(
+                "self_ref . draw (n , & unsafe { :: miniextendr_api :: rng :: RngGuard :: \
+                 __mx_loaded_by_wrapper () } , scale)"
+            ),
+            "{system:?}: the call\n{c_wrapper}"
+        );
+        assert!(
+            !c_wrapper.contains("let rng"),
+            "{system:?}: no conversion for the guard\n{c_wrapper}"
+        );
+        let loaded = c_wrapper.find("GetRNGstate_unchecked").expect("loads");
+        let made = c_wrapper.find("__mx_loaded_by_wrapper").expect("made");
+        let saved = c_wrapper.find("PutRNGstate_unchecked").expect("saves");
+        assert!(loaded < made && made < saved, "{system:?}\n{c_wrapper}");
+    }
+
+    // vctrs impls take no instance methods: the constructor.
+    let vctrs: syn::ItemImpl = syn::parse_quote! {
+        impl Noise {
+            #[miniextendr(rng)]
+            pub fn new(rng: &RngGuard, n: i32) -> Vec<f64> {
+                unimplemented!()
+            }
+        }
+    };
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: None,
+    };
+    let parsed = parse_impl_vctrs(vctrs_attrs, vctrs);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+    assert!(wrapper.contains("new_noise <- function(n"), "{wrapper}");
+    assert!(!wrapper.contains("rng"), "{wrapper}");
+    let c_wrapper = c_wrapper_tokens(&parsed, "new");
+    assert!(
+        c_wrapper.contains(
+            "Noise :: new (& unsafe { :: miniextendr_api :: rng :: RngGuard :: \
+             __mx_loaded_by_wrapper () } , n)"
+        ),
+        "{c_wrapper}"
+    );
+}
+
+/// The guard keeps a static method on R's main thread under `worker`.
+#[test]
+fn rng_guard_keeps_a_worker_static_method_on_the_main_thread() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Sampler {
+                #[miniextendr(rng, env(worker))]
+                pub fn guarded(rng: &RngGuard, n: i32) -> Vec<f64> {
+                    unimplemented!()
+                }
+
+                #[miniextendr(rng, env(worker))]
+                pub fn unguarded(n: i32) -> Vec<f64> {
+                    unimplemented!()
+                }
+            }
+        },
+    );
+    assert!(!c_wrapper_tokens(&parsed, "guarded").contains("run_on_worker"));
+    assert!(c_wrapper_tokens(&parsed, "unguarded").contains("run_on_worker"));
+}
+
+/// A method's guard needs `rng`, and takes none of the method-level
+/// parameter options.
+#[test]
+fn rng_guard_method_param_errors() {
+    for (item_impl, expected) in [
+        (
+            syn::parse_quote! {
+                impl Sampler {
+                    pub fn draw(&self, rng: &RngGuard) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "a `&RngGuard` parameter needs `#[miniextendr(rng)]`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Sampler {
+                    #[miniextendr(rng, defaults(rng = "1"))]
+                    pub fn draw(&self, rng: &RngGuard) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "do not apply to the `&RngGuard` parameter `rng`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Sampler {
+                    #[miniextendr(rng, no_na(rng))]
+                    pub fn draw(&self, rng: &RngGuard) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "do not apply to the `&RngGuard` parameter `rng`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Sampler {
+                    #[miniextendr(rng)]
+                    pub fn draw(&self, rng: &mut RngGuard) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "take the RNG guard as `&RngGuard`",
+        ),
+    ] {
+        let err = ParsedImpl::parse(default_impl_attrs(ClassSystem::Env), item_impl)
+            .expect_err("a misused guard must error");
+        assert!(
+            err.to_string().contains(expected),
+            "unexpected error: {err}"
+        );
+    }
+}
+
+// endregion
+
 // region: Env class system tests
 
 #[test]

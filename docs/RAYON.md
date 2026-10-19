@@ -540,14 +540,16 @@ built.)
 
 ### Do NOT Use R's RNG in Parallel
 
-R's RNG (`RRng`, `unif_rand`, etc.) calls R APIs, which **panic** on Rayon
-threads. Use a pure Rust RNG instead:
+R's RNG is one global state on R's main thread. Its draws are methods on
+`RngGuard`, and `RRng` borrows a guard; both are `!Send` and `!Sync`, so a Rayon
+closure that draws from them does not compile. Use a pure Rust RNG instead:
 
 ```rust
-// WRONG: R's RNG calls R APIs - panics in parallel
-with_r_vec(len, |chunk, _| {
-    let mut rng = RRng::new();  // PANICS!
-    for slot in chunk { *slot = rng.uniform_f64(); }
+// WRONG: does not compile - the guard is `!Sync`, so the closure is not `Send`
+with_rng(|guard| {
+    with_r_vec(len, |chunk, _| {
+        for slot in chunk { *slot = guard.unif_rand(); }
+    })
 });
 
 // CORRECT: Rust RNG is thread-safe

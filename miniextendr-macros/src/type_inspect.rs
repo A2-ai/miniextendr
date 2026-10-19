@@ -324,6 +324,60 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
 
 // endregion
 
+// region: RNG guard parameter (#2002)
+
+/// Detect the RNG guard parameter type, `&RngGuard` (a shared reference to a
+/// path whose last segment is `RngGuard`, with no generic arguments, any
+/// lifetime). Under `#[miniextendr(rng)]` the parameter is no R formal: the
+/// wrapper has loaded R's RNG state and passes its guard at that position.
+pub(crate) fn is_rng_guard_param(ty: &syn::Type) -> bool {
+    let syn::Type::Reference(reference) = ty else {
+        return false;
+    };
+    reference.mutability.is_none()
+        && matches!(reference.elem.as_ref(), syn::Type::Path(p) if p.qself.is_none() && p
+            .path
+            .segments
+            .last()
+            .is_some_and(|seg| seg.ident == "RngGuard" && seg.arguments.is_none()))
+}
+
+/// Whether `ty` names `RngGuard` anywhere: a parameter that does without
+/// being [`is_rng_guard_param`] (`&mut RngGuard`, `RngGuard` by value,
+/// `Option<&RngGuard>`) is a shape the wrapper cannot fill.
+pub(crate) fn mentions_rng_guard(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(p) => p.path.segments.iter().any(|seg| {
+            seg.ident == "RngGuard"
+                || match &seg.arguments {
+                    syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(
+                        |arg| matches!(arg, syn::GenericArgument::Type(t) if mentions_rng_guard(t)),
+                    ),
+                    _ => false,
+                }
+        }),
+        syn::Type::Reference(r) => mentions_rng_guard(&r.elem),
+        syn::Type::Paren(p) => mentions_rng_guard(&p.elem),
+        syn::Type::Group(g) => mentions_rng_guard(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(mentions_rng_guard),
+        syn::Type::Array(a) => mentions_rng_guard(&a.elem),
+        syn::Type::Slice(s) => mentions_rng_guard(&s.elem),
+        _ => false,
+    }
+}
+
+/// The argument expression for an `&RngGuard` parameter: a borrow of a guard
+/// made at the call, which the wrapper has loaded the state for and saves
+/// itself (the guard saves nothing when it drops). No binding, so no user
+/// parameter name can capture it.
+pub(crate) fn rng_guard_arg() -> proc_macro2::TokenStream {
+    quote::quote! {
+        &unsafe { ::miniextendr_api::rng::RngGuard::__mx_loaded_by_wrapper() }
+    }
+}
+
+// endregion
+
 // region: borrowed vector views (#1427)
 
 /// Conversions selected from the rooted call argument rather than a raw SEXP.
@@ -940,9 +994,9 @@ mod tests {
     use super::{
         ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name,
         choice_layers, erase_lifetimes, is_lazy_dots_marker, is_main_thread_bound_input,
-        is_main_thread_bound_return, is_nargs_marker, match_arg_choices_ty, mentions_lazy_dots,
-        mentions_unevaluated_marker, peel_param_markers, r_value_noun, type_display,
-        unevaluated_param, visibility_marker_error,
+        is_main_thread_bound_return, is_nargs_marker, is_rng_guard_param, match_arg_choices_ty,
+        mentions_lazy_dots, mentions_rng_guard, mentions_unevaluated_marker, peel_param_markers,
+        r_value_noun, type_display, unevaluated_param, visibility_marker_error,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -1099,6 +1153,33 @@ mod tests {
         assert!(!is_nargs_marker(&ty("Nargs")));
         // A plain count: it does not pin the main thread.
         assert!(!is_main_thread_bound_input(&ty("NArgs")));
+    }
+
+    #[test]
+    fn rng_guard_param_is_a_shared_borrow_of_the_bare_type() {
+        for guard in [
+            "&RngGuard",
+            "&'a RngGuard",
+            "&miniextendr_api::RngGuard",
+            "&::miniextendr_api::rng::RngGuard",
+        ] {
+            assert!(is_rng_guard_param(&ty(guard)), "{guard}");
+            assert!(mentions_rng_guard(&ty(guard)), "{guard}");
+        }
+        // Shapes the wrapper cannot fill: named, so the macro refuses them.
+        for misplaced in [
+            "&mut RngGuard",
+            "RngGuard",
+            "Option<&RngGuard>",
+            "(i32, &RngGuard)",
+        ] {
+            assert!(!is_rng_guard_param(&ty(misplaced)), "{misplaced}");
+            assert!(mentions_rng_guard(&ty(misplaced)), "{misplaced}");
+        }
+        for other in ["&RngGuard<i32>", "&Guard", "&str", "SEXP"] {
+            assert!(!is_rng_guard_param(&ty(other)), "{other}");
+        }
+        assert!(!mentions_rng_guard(&ty("Vec<f64>")));
     }
 
     #[test]
