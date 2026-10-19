@@ -904,6 +904,10 @@ fields included: a reloaded object is refused, not recovered
   by mypkg 0.7.0; re-create it``, with `e$saved_version` and
   `e$current_version`. The `Sidecar` accessors refuse such a pointer too:
   slots are positional, and another version may lay them out differently.
+  To test this case without two builds, call
+  `miniextendr_api::externalptr::rewrite_stored_version_for_tests(x, "0.0.1")`
+  on a restored pointer from a test-only function: it makes the pointer read
+  as a save by that version (#2169).
 - Both carry the class `miniextendr_restored`. A pointer miniextendr did
   not build (R's `new("externalptr")`, another library's) keeps the plain
   errors, which name the receiver's R class (``this `myclass` object holds
