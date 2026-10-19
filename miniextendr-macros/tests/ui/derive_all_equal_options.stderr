@@ -1,0 +1,47 @@
+error: unknown `all_equal` option `tolerence`; a field takes `skip`, `label = "..."`, `with = "Self::f"`, `tolerance`, `scale`, `check_attributes` and `check_names`
+  --> tests/ui/derive_all_equal_options.rs:10:17
+   |
+10 |     #[all_equal(tolerence = 0)]
+   |                 ^^^^^^^^^
+
+error: `label` applies to a field; the struct's `#[all_equal(...)]` takes `tolerance`, `scale`, `check_attributes` and `check_names`
+  --> tests/ui/derive_all_equal_options.rs:15:13
+   |
+15 | #[all_equal(label = "Struct")]
+   |             ^^^^^
+
+error: `skip` leaves the field out of the comparison, so it takes no other option
+  --> tests/ui/derive_all_equal_options.rs:22:17
+   |
+22 |     #[all_equal(skip, label = "Value")]
+   |                 ^^^^
+
+error: `tolerance` takes a non-negative number, e.g. `tolerance = 1e-6`
+  --> tests/ui/derive_all_equal_options.rs:28:25
+   |
+28 | #[all_equal(tolerance = -1)]
+   |                         ^^
+
+error: `check_names` takes `true` or `false`
+  --> tests/ui/derive_all_equal_options.rs:35:31
+   |
+35 |     #[all_equal(check_names = "no")]
+   |                               ^^^^
+
+error: `tolerance` is given twice
+  --> tests/ui/derive_all_equal_options.rs:41:32
+   |
+41 |     #[all_equal(tolerance = 0, tolerance = 1)]
+   |                                ^^^^^^^^^
+
+error: `with` must be a path to a getter function, e.g. `Self::f`: unexpected token
+  --> tests/ui/derive_all_equal_options.rs:47:24
+   |
+47 |     #[all_equal(with = "not a path")]
+   |                        ^^^^^^^^^^^^
+
+error: `#[derive(AllEqual)]` has no field to compare: every field is skipped (`#[all_equal(skip)]`, or the `RSidecar` selector)
+  --> tests/ui/derive_all_equal_options.rs:52:8
+   |
+52 | struct NothingCompared {
+   |        ^^^^^^^^^^^^^^^

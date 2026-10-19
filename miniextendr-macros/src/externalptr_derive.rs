@@ -727,7 +727,7 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
 ///
 /// Returns `true` if the last path segment of the field's type is `RSidecar`,
 /// which acts as the selector marker enabling R sidecar accessor generation.
-fn is_rsidecar_type(field: &Field) -> bool {
+pub(crate) fn is_rsidecar_type(field: &Field) -> bool {
     if let syn::Type::Path(type_path) = &field.ty {
         type_path
             .path
@@ -755,7 +755,7 @@ fn is_pub(field: &Field) -> bool {
 /// - Conversion: a struct field, converted with the `IntoR`/`TryFromSexp` traits.
 /// - Computed: no field; a getter function of the Rust value, no setter.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum SlotKind {
+pub(crate) enum SlotKind {
     /// `Sidecar<T>` field: the value at this position among the type's
     /// `Sidecar` fields, kept in the external pointer's protection list
     /// (getter returns it, setter validates `value` as a `T` and stores it
@@ -781,15 +781,15 @@ enum SlotKind {
 ///
 /// Collected during struct field parsing and used to generate FFI getter/setter
 /// functions and R wrapper code for each public slot.
-struct SidecarSlot {
+pub(crate) struct SidecarSlot {
     /// Rust identifier of the field (e.g., `count`, `name`). The C symbols,
     /// the `R_CallMethodDef` statics and the Rust accessors are named by it.
-    name: Ident,
+    pub(crate) name: Ident,
     /// The field's R name: `#[r_data(name = "...")]`, else the Rust
     /// identifier (#1891). Every R-facing string uses it: `.rdata_fields_T`,
     /// the `$` switch labels, the R6 binding / S7 property, the standalone
     /// `T_get_<name>()` / `T_set_<name>()` and the setter's message.
-    r_name: String,
+    pub(crate) r_name: String,
     /// Rust type of the field, used in conversion-based getter/setter codegen.
     ty: syn::Type,
     /// The field's visibility, which its generated Rust accessors take.
@@ -797,7 +797,7 @@ struct SidecarSlot {
     /// Whether the field is `pub`. Only public fields get R accessor functions.
     is_public: bool,
     /// Determines the codegen strategy for reading/writing this slot.
-    kind: SlotKind,
+    pub(crate) kind: SlotKind,
     /// The Rust accessors of a `Sidecar<T>` field (`#[r_data(ref | mut)]`);
     /// unused by the other kinds.
     access: SidecarAccess,
@@ -813,13 +813,13 @@ struct SidecarSlot {
 ///
 /// Contains everything needed to generate sidecar accessor code: the
 /// selector presence, the list of typed slots, and the target class system.
-struct SidecarInfo {
+pub(crate) struct SidecarInfo {
     /// Whether the struct contains an `RSidecar`-typed field marked with `#[r_data]`.
     /// At most one selector is allowed per struct.
     has_selector: bool,
     /// The `#[r_data]` slot fields (excluding the RSidecar selector itself),
     /// each carrying its index, kind, and visibility.
-    slots: Vec<SidecarSlot>,
+    pub(crate) slots: Vec<SidecarSlot>,
     /// The R class system chosen via `#[externalptr(...)]`, controlling the
     /// style of generated R wrapper code.
     class_system: ClassSystem,
@@ -946,7 +946,10 @@ fn slot_kind_for_type(
 /// slot kind inferred from the field type.
 ///
 /// Returns `Err` if more than one `RSidecar` field is found.
-fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Result<SidecarInfo> {
+pub(crate) fn parse_sidecar_info(
+    input: &DeriveInput,
+    class_system: ClassSystem,
+) -> syn::Result<SidecarInfo> {
     let fields = match &input.data {
         syn::Data::Struct(data) => &data.fields,
         _ => {

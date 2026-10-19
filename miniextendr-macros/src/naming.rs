@@ -204,6 +204,13 @@ pub(crate) fn sidecar_setter_c_name(type_name: &str, field_name: &str) -> String
     format!("C_{prefix}__mx_rdata_set_{type_name}_{field_name}")
 }
 
+/// `C_<crate>__mx_all_equal_<Type>` — the field reader of the `all.equal()`
+/// method of `#[derive(AllEqual)]` (#2149).
+pub(crate) fn all_equal_c_name(type_name: &str) -> String {
+    let prefix = crate_prefix();
+    format!("C_{prefix}__mx_all_equal_{type_name}")
+}
+
 /// `C_<crate>__mx_rdata_live_<Type>` — the liveness check of a type with
 /// `#[externalptr(restored(refuse = "every_read"))]` (#1901).
 pub(crate) fn sidecar_live_c_name(type_name: &str) -> String {

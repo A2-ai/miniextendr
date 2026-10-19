@@ -121,6 +121,14 @@ pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 #[distributed_slice]
 pub static MX_SIDECAR_ACCESSORS: [SidecarAccessorsEntry];
 
+/// The `all.equal()` methods `#[derive(AllEqual)]` generates (#2149).
+/// **Host-only.** [`collect_r_wrappers`] names and registers each for the
+/// type's R class, which the type's impl block gives in its
+/// [`ClassNameEntry`]: the derive sits on the struct, a separate expansion.
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_ALL_EQUAL: [AllEqualEntry];
+
 /// The package crate's `conversion_error_class`. **Host-only.**
 ///
 /// `miniextendr_init!` emits one entry, with the classes it reads from the
@@ -549,6 +557,28 @@ pub struct SidecarAccessorsEntry {
 // SAFETY: &'static str fields and a u32 — immutable and valid for program lifetime.
 unsafe impl Sync for SidecarAccessorsEntry {}
 
+/// The `all.equal()` method `#[derive(AllEqual)]` generates for a type
+/// (#2149), without the parts that depend on the type's R class: its name,
+/// its title and its registration, which [`collect_r_wrappers`] adds.
+pub struct AllEqualEntry {
+    /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
+    pub rust_type: &'static str,
+    /// The method, `function(target, current, ...) { ... }`.
+    pub method: &'static str,
+    /// The roxygen lines of the method's page after its title: the
+    /// description, the arguments and the value.
+    pub docs: &'static str,
+    /// Source file of the derive (`file!()`).
+    pub source_file: &'static str,
+    /// Line of the derived type in `source_file`.
+    pub source_line: u32,
+    /// Column of the derived type, for the `# Generated from` header.
+    pub source_column: u32,
+}
+
+// SAFETY: &'static str fields and integers — immutable and valid for program lifetime.
+unsafe impl Sync for AllEqualEntry {}
+
 /// Build the `rust_type → ClassNameEntry` lookup used by every placeholder
 /// resolver in `write_r_wrappers_to_file`.
 ///
@@ -812,6 +842,98 @@ fn sidecar_accessor_fragments(
             }
         })
         .collect()
+}
+
+/// The `all.equal()` methods of `#[derive(AllEqual)]` as fragments (#2149):
+/// each named `all.equal.<Class>` for the R class of the type's
+/// [`ClassNameEntry`], on its own page, and registered with
+/// `S3method(all.equal, <Class>)`, which an env, R6, S3 or S4 object
+/// dispatches on (S4 through R's S3 dispatch on the S4 class, which also
+/// reaches callers of `base::all.equal()` such as testthat, where an S4
+/// method would not). An S7 object's class attribute is `pkg::Class`, so an
+/// S7 class also registers the method with `S7::method(all.equal, Class)`,
+/// followed by the unbinding every such replacement call on a base generic
+/// needs (see `miniextendr_macros`'s `s7_base_operator_unbind`).
+///
+/// The fragments are written with the trait impls, after every class
+/// definition, which the S7 registration names.
+///
+/// Every problem is collected into one message: a type no impl block gives
+/// an R class, and a vctrs class, whose objects are R vectors with no pointer
+/// to the Rust value.
+#[cfg(not(target_arch = "wasm32"))]
+fn all_equal_fragments(
+    entries: &[AllEqualEntry],
+    classes: &[ClassNameEntry],
+) -> Result<Vec<WrapperFragment>, String> {
+    let index = build_class_name_index(classes);
+    let mut errors = Vec::new();
+    let mut fragments = Vec::new();
+    for entry in entries {
+        let derive = format!(
+            "`#[derive(AllEqual)]` on `{}` ({}:{})",
+            entry.rust_type, entry.source_file, entry.source_line
+        );
+        match index.get(entry.rust_type) {
+            None => errors.push(format!(
+                "{derive}: no `#[miniextendr(env | r6 | s3 | s4 | s7)]` impl block gives the \
+                 type an R class, so there is no class to give the `all.equal()` method"
+            )),
+            Some(class) if class.class_system == "vctrs" => errors.push(format!(
+                "{derive}: the objects of a vctrs class are R vectors, not pointers to the Rust \
+                 value, and `all.equal()` already compares them"
+            )),
+            Some(class) => fragments.push(WrapperFragment {
+                priority: RWrapperPriority::TraitImpl,
+                source_file: entry.source_file,
+                source_line: entry.source_line,
+                content: std::borrow::Cow::Owned(all_equal_method(entry, class)),
+            }),
+        }
+    }
+    if errors.is_empty() {
+        Ok(fragments)
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+/// The text of one `#[derive(AllEqual)]` method: see [`all_equal_fragments`].
+#[cfg(not(target_arch = "wasm32"))]
+fn all_equal_method(entry: &AllEqualEntry, class: &ClassNameEntry) -> String {
+    let class_name = class.r_class_name;
+    let method = format!("all.equal.{class_name}");
+    // `all.equal.` makes the name start with a letter; a class name with
+    // other characters than R's name characters needs backticks.
+    let symbol = if class_name
+        .bytes()
+        .all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
+    {
+        method.clone()
+    } else {
+        format!("`{method}`")
+    };
+    let mut out = format!(
+        "# Generated from Rust derive `AllEqual` on `{}` ({}:{}:{})\n\
+         #' Compare two `{class_name}` objects\n\
+         #'\n\
+         {}\n\
+         #' @method all.equal {class_name}\n\
+         #' @export\n\
+         {symbol} <- {}",
+        entry.rust_type,
+        entry.source_file,
+        entry.source_line,
+        entry.source_column,
+        entry.docs.trim_matches('\n'),
+        entry.method.trim_matches('\n'),
+    );
+    if class.class_system == "s7" {
+        out.push_str(&format!(
+            "\nS7::method(all.equal, {class_name}) <- {symbol}\nbase::rm(list = \"all.equal\")"
+        ));
+    }
+    out
 }
 
 // region: impl blocks merged per type (#1776)
@@ -1437,6 +1559,10 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
             &MX_SIDECAR_ACCESSORS,
             &MX_CLASS_NAMES,
         ))
+        .chain(
+            all_equal_fragments(&MX_ALL_EQUAL, &MX_CLASS_NAMES)
+                .unwrap_or_else(|msg| panic!("{msg}")),
+        )
         .collect();
     sort_wrapper_entries(&mut entries);
 
@@ -4248,6 +4374,87 @@ mod tests {
         assert_eq!(
             sidecar_accessor_fragments(&accessors, &[])[0].content,
             "exported Fields"
+        );
+    }
+
+    /// The `all.equal()` method of `#[derive(AllEqual)]` takes the R class
+    /// of the type's impl block: an S3 method for every class system, and an
+    /// S7 class's own registration too (#2149).
+    #[test]
+    fn all_equal_methods_follow_the_class() {
+        let entry = |rust_type| AllEqualEntry {
+            rust_type,
+            method: "\nfunction(target, current, ...) TRUE\n",
+            docs: "#' Docs.",
+            source_file: "lib.rs",
+            source_line: 3,
+            source_column: 12,
+        };
+        let class = |rust_type, r_class_name, class_system| ClassNameEntry {
+            rust_type,
+            r_class_name,
+            class_system,
+            field_syntax: false,
+        };
+        let entries = [entry("Fit"), entry("Shape")];
+        let classes = [class("Fit", "fit_rec", "r6"), class("Shape", "Shape", "s7")];
+        let fragments = all_equal_fragments(&entries, &classes).unwrap();
+        assert!(
+            fragments
+                .iter()
+                .all(|f| f.priority == RWrapperPriority::TraitImpl)
+        );
+        assert_eq!(
+            fragments[0].content,
+            "# Generated from Rust derive `AllEqual` on `Fit` (lib.rs:3:12)\n\
+             #' Compare two `fit_rec` objects\n\
+             #'\n\
+             #' Docs.\n\
+             #' @method all.equal fit_rec\n\
+             #' @export\n\
+             all.equal.fit_rec <- function(target, current, ...) TRUE"
+        );
+        assert!(fragments[1].content.ends_with(
+            "all.equal.Shape <- function(target, current, ...) TRUE\n\
+             S7::method(all.equal, Shape) <- all.equal.Shape\n\
+             base::rm(list = \"all.equal\")"
+        ));
+
+        // A class name R can't read as a name is quoted.
+        let quoted = all_equal_fragments(&[entry("Fit")], &[class("Fit", "fit-rec", "s3")]);
+        assert!(
+            quoted.unwrap()[0]
+                .content
+                .contains("`all.equal.fit-rec` <- function")
+        );
+    }
+
+    /// A type without a class, and a vctrs class, are refused together.
+    #[test]
+    fn all_equal_methods_need_a_pointer_class() {
+        let entry = |rust_type, source_line| AllEqualEntry {
+            rust_type,
+            method: "function(target, current, ...) TRUE",
+            docs: "",
+            source_file: "lib.rs",
+            source_line,
+            source_column: 1,
+        };
+        let classes = [ClassNameEntry {
+            rust_type: "Rec",
+            r_class_name: "Rec",
+            class_system: "vctrs",
+            field_syntax: false,
+        }];
+        let Err(msg) = all_equal_fragments(&[entry("Loose", 1), entry("Rec", 2)], &classes) else {
+            panic!("expected the derives to be refused");
+        };
+        assert_eq!(
+            msg,
+            "`#[derive(AllEqual)]` on `Loose` (lib.rs:1): no `#[miniextendr(env | r6 | s3 | s4 | s7)]` \
+             impl block gives the type an R class, so there is no class to give the `all.equal()` method\n\
+             `#[derive(AllEqual)]` on `Rec` (lib.rs:2): the objects of a vctrs class are R vectors, \
+             not pointers to the Rust value, and `all.equal()` already compares them"
         );
     }
 
