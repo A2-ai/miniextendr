@@ -2785,32 +2785,38 @@ const ARG_ERROR_HELPER: &str = r#"# Internal helper: raise an argument error fro
 /// The check of `#[miniextendr(dots = empty | empty(allow = ..) | forward(allow
 /// = ..))]` (#2157): a wrapper with such an attribute calls it as
 /// `if (...length()) .miniextendr_check_dots(...names(), ...length(),
-/// <formals>, allow = .., class = .., call = ..)`, the statement
-/// `miniextendr-macros`' `dots_policy::DotsPolicy::r_check` writes. It builds
-/// its own condition, an argument error with two more fields, and depends only
-/// on the helpers every preamble has.
+/// <formals>, allow = .., forward = TRUE, class = .., call = ..)`, the
+/// statement `miniextendr-macros`' `dots_policy::DotsPolicy::r_check` writes
+/// (`forward = TRUE` for `forward` only). It builds its own condition, an
+/// argument error with two more fields, and depends only on the helpers every
+/// preamble has.
 #[cfg(not(target_arch = "wasm32"))]
 const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a wrapper's `...` that its
 # `dots = empty | empty(allow = ...) | forward(allow = ...)` attribute does not
 # take. The wrapper calls it only when `...length()` is nonzero, with
-# `...names()` and `...length()`, so no argument is forced. Every unnamed
-# argument and every name outside `allow` is refused, all in one condition:
-# `argument` holds each one (`..<i>` for an unnamed one, its position in
-# `...`) and `suggestion` the formal or allowed name each one most likely
-# meant, or NA. That is the one name it is a prefix of, else the first one
-# closest by edit distance (a swap of two neighbours counts as one edit), at
-# most a third of its length in edits but at least one, and fewer than its
-# length. An unnamed argument is refused even where its position stands for
-# an allowed name, so when `allow` is not empty the message says to pass those
-# names by name. The condition is an argument error (`kind = "conversion"`,
+# `...names()` and `...length()`, so no argument is forced. Every name outside
+# `allow` is refused. An unnamed argument stands for an allowed name given by
+# position: under `forward` (`forward = TRUE`) it passes, since the function
+# the dots go on to matches it by position itself; under `empty` nothing reads
+# it, so only the count matters, and the unnamed arguments past the number of
+# allowed names not given by name are refused. All of them go in one
+# condition: `argument` holds each one (`..<i>` for an unnamed one, its
+# position in `...`) and `suggestion` the formal or allowed name each one most
+# likely meant, or NA. That is the one name it is a prefix of, else the first
+# one closest by edit distance (a swap of two neighbours counts as one edit),
+# at most a third of its length in edits but at least one, and fewer than its
+# length. The condition is an argument error (`kind = "conversion"`,
 # `param = "..."`) classed `miniextendr_error_unused_argument` after the
 # attribute's own `class`. `call` is the wrapper's call by default; a
 # `call = caller` wrapper passes `.mx_call`, an S3 method its frame (resolved
 # to the generic's call), a `call = none` wrapper NULL.
-.miniextendr_check_dots <- function(names, n, formals, allow = character(), class = character(), call = sys.call(-1L)) {
+.miniextendr_check_dots <- function(names, n, formals, allow = character(), forward = FALSE, class = character(), call = sys.call(-1L)) {
   if (is.null(names)) names <- character(n)
   names[is.na(names)] <- ""
-  bad <- which(!nzchar(names) | !(names %in% allow))
+  unnamed <- !nzchar(names)
+  bad <- !unnamed & !(names %in% allow)
+  if (!forward) bad <- bad | (unnamed & cumsum(unnamed) > length(setdiff(allow, names)))
+  bad <- which(bad)
   if (!length(bad)) return(invisible())
   if (is.environment(call)) call <- .miniextendr_frame_call(call)
   candidates <- c(formals, allow)
@@ -2843,13 +2849,6 @@ const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a 
   hint <- !is.na(suggestion)
   what[hint] <- sprintf("%s (did you mean '%s'?)", what[hint], suggestion[hint])
   message <- sprintf("unused argument%s %s", if (length(bad) > 1L) "s" else "", paste(what, collapse = ", "))
-  if (any(unnamed) && length(allow)) {
-    allowed <- sprintf("'%s'", allow)
-    if (length(allowed) > 1L) {
-      allowed <- paste(paste(allowed[-length(allowed)], collapse = ", "), "or", allowed[[length(allowed)]])
-    }
-    message <- sprintf("%s; pass %s by name", message, allowed)
-  }
   stop(structure(
     list(message = message, call = call, kind = "conversion", param = "...", argument = argument, suggestion = suggestion),
     class = c(class, "miniextendr_error_unused_argument", .miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")

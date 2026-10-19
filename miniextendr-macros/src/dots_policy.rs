@@ -11,13 +11,18 @@
 //! |---|---|---|
 //! | `empty` | nothing | reads no dots |
 //! | `empty(allow = ["optional"])` | the listed names | ignores them |
-//! | `forward(allow = ["digits"])` | the listed names | reads them from its `...` parameter |
+//! | `forward(allow = ["digits"])` | the listed names | passes them on to another R function |
 //! | `data` | anything, unchecked | reads them |
 //!
-//! `empty` and `forward` refuse an unnamed argument too: the list holds names.
-//! That includes a generic's argument passed by position, whose position
-//! stands for an allowed name; the message then says to pass the allowed names
-//! by name (matching positions is #2185).
+//! An argument the function reads is a parameter, not a name in `...`: R then
+//! matches it by name or by position, as for any function.
+//!
+//! An unnamed argument in `...` is one of the generic's arguments given by
+//! position (#2185). Under `forward` it passes: the function the dots go on to
+//! matches it by position itself. Under `empty` nothing reads it, so only the
+//! count matters: up to the number of allowed names not given by name are
+//! taken, and the rest refused.
+//!
 //! `class = "..."` (or `class = ["...", ...]`) puts the package's classes in
 //! front of the refusal's own.
 //!
@@ -38,7 +43,7 @@ use syn::spanned::Spanned;
 pub(crate) enum DotsRole {
     /// `empty` / `empty(allow = [..])`: nothing, or names the function ignores.
     Empty,
-    /// `forward(allow = [..])`: the names the function reads.
+    /// `forward(allow = [..])`: the names the function passes on.
     Forward,
     /// `data`: anything; no check.
     Data,
@@ -304,6 +309,9 @@ impl DotsPolicy {
         if !self.allow.is_empty() {
             args.push(format!("allow = {}", r_chr(&self.allow)));
         }
+        if self.role == DotsRole::Forward {
+            args.push("forward = TRUE".to_string());
+        }
         if !self.class.is_empty() {
             args.push(format!("class = {}", r_chr(&self.class)));
         }
@@ -426,6 +434,14 @@ mod tests {
         );
         // No `...` formal: R refuses extra arguments itself.
         assert!(p.r_check("x, y", None).is_none());
+        // `forward` lets unnamed arguments through.
+        assert_eq!(
+            policy(syn::parse_quote!(forward(allow = ["digits", "nsmall"])))
+                .r_check("x, ...", None)
+                .unwrap(),
+            "if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\", \
+             allow = c(\"digits\", \"nsmall\"), forward = TRUE)"
+        );
         // `data` checks nothing.
         assert!(
             policy(syn::parse_quote!(data))

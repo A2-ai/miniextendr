@@ -11,6 +11,7 @@ MxDotsTally R6 Class
   \itemize{
     \item \href{#method-MxDotsTally-initialize}{\code{MxDotsTally$new()}}
     \item \href{#method-MxDotsTally-add}{\code{MxDotsTally$add()}}
+    \item \href{#method-MxDotsTally-format_args}{\code{MxDotsTally$format_args()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -36,16 +37,37 @@ MxDotsTally R6 Class
 \if{html}{\out{<a id="method-MxDotsTally-add"></a>}}
 \if{latex}{\out{\hypertarget{method-MxDotsTally-add}{}}}
 \subsection{\code{MxDotsTally$add()}}{
-  Add \code{by} (default 1) \code{times} times (default 1); returns the total.
+  Add \code{by} \code{times} times; returns the total.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{MxDotsTally$add(...)}
+    \preformatted{MxDotsTally$add(by = 1, times = 1)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{...}}{\code{by} and \code{times}.}
+      \item{\code{by}}{The step.}
+      \item{\code{times}}{How many steps.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-MxDotsTally-format_args"></a>}}
+\if{latex}{\out{\hypertarget{method-MxDotsTally-format_args}{}}}
+\subsection{\code{MxDotsTally$format_args()}}{
+  What \code{...} hands on, as the list the method would pass to \code{format()}
+with the total.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{MxDotsTally$format_args(...)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{...}}{\code{digits} and \code{nsmall}, passed on.}
     }
     \if{html}{\out{</div>}}
   }

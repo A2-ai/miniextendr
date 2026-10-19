@@ -10048,7 +10048,7 @@ fn dots_policy_check_in_each_class_system() {
         )
     };
     let forward = "if (...length()) .miniextendr_check_dots(...names(), ...length(), \
-                   character(), allow = \"by\"";
+                   character(), allow = \"by\", forward = TRUE";
 
     let s3 = generate_s3_r_wrapper(&parse_impl(
         ClassSystem::S3,
