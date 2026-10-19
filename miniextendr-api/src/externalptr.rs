@@ -378,6 +378,12 @@ pub const RESTORED_NO_VALUE_CLASS: &str = "miniextendr_restored_no_value";
 /// the condition carries `saved_version` and `current_version`.
 pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_version";
 
+/// The class of the error a rebuild hook gets when it reads a `Sidecar`
+/// field the save has no slot for: a field added after the version that
+/// saved the object (#2187). The condition carries `field`, the field's
+/// name. The `try_<field>` getters return `None` instead.
+pub const RESTORED_MISSING_SLOT_CLASS: &str = "miniextendr_restored_missing_slot";
+
 /// The class of the error for a receiver of a type's R accessors that carries
 /// no external pointer: neither a pointer nor an object holding one in
 /// `.ptr`, such as an object of the class an earlier release of a package
@@ -559,14 +565,17 @@ std::thread_local! {
 
 /// Rebuilds the value of `sexp`, a pointer without an address, when `T`
 /// has a rebuild hook (`#[externalptr(rebuild = path)]`) and this version of
-/// its crate saved it, and installs it in `sexp`. Returns whether `sexp`
-/// holds a value now; `false` leaves the caller to refuse the pointer as
-/// before (another version saved it, another type, no hook, or the hook is
-/// already running for `sexp`).
+/// its crate saved it, or another version did and `T` opts in with
+/// `any_version` (#2187) and the save carries slot names. Installs the value
+/// in `sexp`. Returns whether `sexp` holds a value now; `false` leaves the
+/// caller to refuse the pointer as before (another version saved it, another
+/// type, no hook, or the hook is already running for `sexp`).
 ///
-/// The saved `Sidecar` slots stay as they are: the hook reads them through
-/// [`Saved`], and the `Sidecar` values in the struct it returns are dropped,
-/// not written. A failing hook (an `Err`, or a condition it raises) installs
+/// The hook reads the saved `Sidecar` slots through [`Saved`], by field
+/// name. The installed pointer keeps each saved slot whose field `T` still
+/// has, unless the hook's struct replaces it ([`Sidecar::replace`]), and
+/// takes the value the hook's struct holds for a field the save lacks
+/// ([`install_rebuilt`]). A failing hook (an `Err`, or a condition it raises) installs
 /// nothing and raises the restored refusal of `T` (its classes, then
 /// [`RESTORED_NO_VALUE_CLASS`] and [`RESTORED_CLASS`]), the cause as
 /// `e$parent`; the next use tries again. Any other unwind (an R error, a
@@ -581,8 +590,12 @@ pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SE
     if !T::REBUILDS {
         return false;
     }
-    if unsafe { classify_null_address::<T>(sexp) } != NullAddress::Restored {
-        return false;
+    match unsafe { classify_null_address::<T>(sexp) } {
+        NullAddress::Restored => {}
+        NullAddress::OtherVersion { .. }
+            if T::REBUILDS_ANY_VERSION
+                && sidecar::has_slot_names(unsafe { R_ExternalPtrProtected(sexp) }) => {}
+        _ => return false,
     }
     if REBUILDING.with_borrow(|running| running.contains(&sexp)) {
         return false;
@@ -623,14 +636,22 @@ pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SE
 
 /// Puts the rebuilt `value` in `sexp`, a restored pointer for a `T`, as
 /// construction puts a new value in a new pointer: the finalizer first
-/// (R does not save it), then the address. The saved `Sidecar` slots are
-/// kept: `value`'s pending `Sidecar` values are dropped, not written.
+/// (R does not save it), then the address.
+///
+/// The pointer gets a protection list in this version's layout (#2187): its
+/// type ID and slot names, the saved user slot, and for each `Sidecar` field
+/// the saved slot of that name. `value`'s own pending value for the field
+/// is written instead when the save has no such slot, or when the hook made
+/// it with [`Sidecar::replace`]. `value`'s other pending values are dropped.
 ///
 /// # Safety
 ///
 /// On R's main thread, with `sexp` a valid `EXTPTRSXP` for a `T` whose
-/// address is NULL.
+/// address is NULL, rooted for the call.
 unsafe fn install_rebuilt<T: TypedExternal>(sexp: SEXP, value: T) {
+    if T::R_SLOT_COUNT > 0 {
+        unsafe { relayout_saved_slots(sexp, &value) };
+    }
     discard_pending_sidecars(&value);
     let (_, any_raw) = ExternalPtr::<T>::erase(value);
     // Own the allocation until the finalizer that frees it is registered.
@@ -638,6 +659,36 @@ unsafe fn install_rebuilt<T: TypedExternal>(sexp: SEXP, value: T) {
     unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
     let any_raw = Box::into_raw(allocation);
     unsafe { R_SetExternalPtrAddr(sexp, any_raw.cast()) };
+}
+
+/// Replaces the saved protection list of `sexp` with one in `T`'s layout:
+/// see [`install_rebuilt`]. `value`'s pending values for the fields the save
+/// lacks are written; the rest stay pending, for the caller to drop.
+///
+/// # Safety
+///
+/// As [`install_rebuilt`].
+unsafe fn relayout_saved_slots<T: TypedExternal>(sexp: SEXP, value: &T) {
+    let saved = unsafe { R_ExternalPtrProtected(sexp) };
+    let scope = unsafe { ProtectScope::new() };
+    let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
+    unsafe { scope.protect(prot) };
+    prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe { type_id_symbol::<T>() });
+    prot.set_vector_elt(PROT_USER_INDEX, saved.vector_elt(PROT_USER_INDEX));
+    unsafe { sidecar::name_slots::<T>(prot) };
+    // Attach before the missing fields convert, so what they write is
+    // rooted through `sexp`; the saved list stays rooted by `saved`'s
+    // protection until then.
+    unsafe { scope.protect(saved) };
+    unsafe { R_SetExternalPtrProtected(sexp, prot) };
+    value.__mx_visit_sidecars(&mut |index, name, field| match sidecar::saved_slot(
+        saved, index, name,
+    ) {
+        Some(at) if !field.__mx_replaces_saved() => {
+            prot.set_vector_elt(sidecar::prot_index(index), saved.vector_elt(at));
+        }
+        _ => field.__mx_flush(prot, index),
+    });
 }
 
 /// Empties the pointer a value was moved out of (`into_raw` / `into_inner`):
@@ -709,6 +760,59 @@ pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
     });
 }
 
+/// Lays the `Sidecar` slots of a restored pointer's save out as another
+/// version of its type might have saved them, for tests of reading a save by
+/// field name (#2187). Slot `i` of the new list holds the slot named
+/// `layout[i]` in the current save, or the string `"unknown"` for a name the
+/// save has no slot for. The list carries the names `layout` unless `named`
+/// is false, which gives a save made before slots were named.
+///
+/// # Panics
+///
+/// When `sexp` still has its Rust value, or its save carries no slot names.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+#[doc(hidden)]
+pub unsafe fn rewrite_saved_slots_for_tests(sexp: SEXP, layout: &[&str], named: bool) {
+    assert!(
+        unsafe { R_ExternalPtrAddr(sexp) }.is_null(),
+        "the pointer still has its Rust value: save and restore it first"
+    );
+    let saved = unsafe { R_ExternalPtrProtected(sexp) };
+    assert!(
+        sidecar::has_slot_names(saved),
+        "the save carries no slot names"
+    );
+    let names = saved.get_attr(SEXP::names_symbol());
+    let len = PROT_VEC_LEN
+        + R_xlen_t::try_from(layout.len()).expect("the layout length fits in R_xlen_t");
+    let scope = unsafe { ProtectScope::new() };
+    let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len) };
+    unsafe { scope.protect(prot) };
+    prot.set_vector_elt(PROT_TYPE_ID_INDEX, saved.vector_elt(PROT_TYPE_ID_INDEX));
+    prot.set_vector_elt(PROT_USER_INDEX, saved.vector_elt(PROT_USER_INDEX));
+    for (index, name) in layout.iter().enumerate() {
+        let found =
+            (PROT_VEC_LEN..names.xlength()).find(|&at| names.string_elt_str(at) == Some(name));
+        let slot = match found {
+            Some(at) => saved.vector_elt(at),
+            None => crate::into_r::IntoR::into_sexp("unknown"),
+        };
+        prot.set_vector_elt(sidecar::prot_index(index), slot);
+    }
+    if named {
+        let new_names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len) };
+        unsafe { scope.protect(new_names) };
+        for (index, name) in layout.iter().enumerate() {
+            new_names.set_string_elt(sidecar::prot_index(index), SEXP::charsxp(name));
+        }
+        prot.set_names(new_names);
+    }
+    unsafe { R_SetExternalPtrProtected(sexp, prot) };
+}
+
 // endregion
 
 // region: TypedExternalPtr Trait
@@ -754,6 +858,11 @@ pub trait TypedExternal: 'static {
     /// `#[derive(ExternalPtr)]` counts the type's `#[r_data]` fields of type
     /// `Sidecar<_>`.
     const R_SLOT_COUNT: usize = 0;
+
+    /// The Rust names of the `Sidecar` fields, in slot order: the names the
+    /// protection list carries, so a save is read back by field name (#2187).
+    #[doc(hidden)]
+    const SIDECAR_NAMES: &'static [&'static str] = &[];
 
     /// The package's condition classes for a pointer of this type restored
     /// from a saved session, in front of the `miniextendr_restored*` classes
@@ -817,6 +926,13 @@ pub trait TypedExternal: 'static {
     /// `#[derive(ExternalPtr)]` sets it with `#[externalptr(rebuild = path)]`.
     #[doc(hidden)]
     const REBUILDS: bool = false;
+
+    /// Whether [`Self::__mx_rebuild`] also rebuilds a pointer another
+    /// version of the crate saved, when the save carries slot names.
+    /// `#[derive(ExternalPtr)]` sets it with `any_version` next to
+    /// `rebuild = path` (#2187).
+    #[doc(hidden)]
+    const REBUILDS_ANY_VERSION: bool = false;
 
     /// Rebuilds the value of a pointer of this type restored from a saved
     /// session, from what the save kept. `#[derive(ExternalPtr)]` emits it for

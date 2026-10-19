@@ -182,6 +182,104 @@ impl RebuildPair {
 
 // endregion
 
+// region: RebuildLayout: a save read by field name (#2187)
+
+/// Whether `RebuildLayout`'s hook reads `added` with the plain getter, which
+/// raises for a save without the field, instead of `try_added`.
+static STRICT: AtomicBool = AtomicBool::new(false);
+
+/// An R6 class whose hook reads its save by field name, rebuilds a save by
+/// another version (`any_version`), defaults a field the save lacks, and
+/// replaces one it recomputes.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(r6, rebuild = Self::from_saved, any_version)]
+pub struct RebuildLayout {
+    #[r_data]
+    _r: RSidecar,
+
+    /// Kept from the save.
+    #[r_data]
+    pub label: Sidecar<String>,
+
+    /// Recomputed by the hook: the rebuilt object holds the new value.
+    #[r_data]
+    pub doubled: Sidecar<i32>,
+
+    /// Added after the first version; a save without it gets 7.
+    #[r_data]
+    pub added: Sidecar<i32>,
+
+    /// The Rust state: what the hook read, and the version that saved it.
+    pub summary: String,
+}
+
+impl RebuildLayout {
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RError> {
+        let label = Self::label(saved);
+        let added = if STRICT.load(Ordering::Relaxed) {
+            Self::added(saved)
+        } else {
+            Self::try_added(saved).unwrap_or(7)
+        };
+        let doubled = Self::try_doubled(saved).unwrap_or(0) * 2;
+        let version = saved.version().unwrap_or("none");
+        Ok(RebuildLayout {
+            _r: RSidecar,
+            summary: format!("{label}/{doubled}/{added}/{}/{version}", saved.has("added")),
+            label: Sidecar::new(String::new()),
+            doubled: Sidecar::replace(doubled),
+            added: Sidecar::new(added),
+        })
+    }
+}
+
+/// An R6 class rebuilt from a save of any layout.
+#[miniextendr(r6(r_data_accessors))]
+impl RebuildLayout {
+    /// Create a RebuildLayout.
+    /// @param label The label.
+    /// @param n The number the hook doubles on a rebuild.
+    pub fn new(label: String, n: i32) -> Self {
+        RebuildLayout {
+            _r: RSidecar,
+            label: Sidecar::new(label),
+            doubled: Sidecar::new(n),
+            added: Sidecar::new(1),
+            summary: "built".to_owned(),
+        }
+    }
+
+    /// What the hook read: `label/doubled/added/has added/saving version`.
+    pub fn summary(&self) -> String {
+        self.summary.clone()
+    }
+}
+
+/// Lays the save of a restored `RebuildLayout` out as `layout`, with slot
+/// names unless `named` is false.
+/// @param x The restored object's pointer.
+/// @param layout The field names, in slot order.
+/// @param named Whether the save carries slot names.
+#[miniextendr(noexport)]
+pub fn rebuild_rewrite_layout(x: SEXP, layout: Vec<String>, named: bool) {
+    let layout: Vec<&str> = layout.iter().map(String::as_str).collect();
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn); `x` is the
+    // caller's restored pointer, rooted by the call.
+    unsafe {
+        miniextendr_api::externalptr::rewrite_saved_slots_for_tests(x, &layout, named);
+    }
+}
+
+/// Turns `RebuildLayout`'s strict read of `added` (the plain getter) on or
+/// off.
+/// @param strict Whether the hook reads `added` with the plain getter.
+#[miniextendr(noexport)]
+pub fn rebuild_layout_strict(strict: bool) {
+    STRICT.store(strict, Ordering::Relaxed);
+}
+
+// endregion
+
 // region: gctorture
 
 /// Allocate garbage so a GC runs between the steps.
@@ -225,6 +323,40 @@ pub fn gc_stress_rebuild() {
         churn();
         assert_eq!(rebuilt.borrow().total, values.iter().sum::<f64>());
         assert_eq!(RebuildR6::values(&rebuilt), values);
+    }
+    // A save laid out by another version: the install builds a new
+    // protection list and converts the fields the save lacks.
+    for n in 1..=4 {
+        let ptr = ExternalPtr::new(RebuildLayout::new(format!("v{n}"), n));
+        // SAFETY: as above.
+        let bytes = unsafe {
+            OwnedProtect::new(
+                RCall::new("serialize")
+                    .arg(ptr.as_sexp())
+                    .arg(SEXP::nil())
+                    .eval_base()
+                    .expect("serialize"),
+            )
+        };
+        let back = unsafe {
+            OwnedProtect::new(
+                RCall::new("unserialize")
+                    .arg(bytes.get())
+                    .eval_base()
+                    .expect("unserialize"),
+            )
+        };
+        rebuild_rewrite_layout(
+            back.get(),
+            vec!["doubled".to_owned(), "gone".to_owned(), "label".to_owned()],
+            true,
+        );
+        churn();
+        let rebuilt = ExternalPtr::<RebuildLayout>::try_from_sexp(back.get()).expect("rebuilt");
+        churn();
+        assert_eq!(RebuildLayout::label(&rebuilt), format!("v{n}"));
+        assert_eq!(RebuildLayout::doubled(&rebuilt), n * 2);
+        assert_eq!(RebuildLayout::added(&rebuilt), 7);
     }
 }
 

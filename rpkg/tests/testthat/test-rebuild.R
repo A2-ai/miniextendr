@@ -5,7 +5,10 @@
 #
 # Fixtures: src/rust/rebuild_tests.rs. `RebuildR6` rebuilds its total from
 # its saved `values` and refuses a negative one; `RebuildPair` holds a
-# `RebuildR6` pointer and converts it in its own hook.
+# `RebuildR6` pointer and converts it in its own hook. `RebuildLayout`
+# reads its save by field name and takes saves by another version
+# (`any_version`, #2187); `rebuild_rewrite_layout()` lays a save out as
+# another version might have.
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -124,6 +127,69 @@ test_that("a save by another version is refused as before; the hook does not run
   before <- rebuilds()
   expect_error(back$sum(), class = "miniextendr_restored_other_version")
   expect_identical(rebuilds(), before)
+})
+
+test_that("a save is read by field name: reordered, removed and added fields", {
+  back <- reload(RebuildLayout$new("a", 3L))
+  rebuild_rewrite_layout(ptr_of(back), c("doubled", "gone", "label"), TRUE)
+  # A `Sidecar` read before the rebuild finds the slot by its name.
+  expect_identical(back$label, "a")
+  e <- tryCatch(back$added, error = identity)
+  expect_s3_class(e, "miniextendr_restored_missing_slot")
+  expect_identical(e$field, "added")
+  # The hook read `label` and `doubled` by name; `added` defaulted.
+  expect_match(back$summary(), "^a/6/7/false/[0-9.]+$")
+  # The installed object has this version's layout: `label` kept from the
+  # save, `doubled` replaced by the hook (`Sidecar::replace`), `added` filled
+  # from the hook's struct; the unknown slot is gone.
+  expect_identical(back$label, "a")
+  expect_identical(back$doubled, 6L)
+  expect_identical(back$added, 7L)
+  # It saves and reloads like any object.
+  again <- reload(back)
+  expect_match(again$summary(), "^a/12/7/true/[0-9.]+$")
+})
+
+test_that("a Sidecar write before the rebuild goes to the slot of its name", {
+  back <- reload(RebuildLayout$new("a", 3L))
+  rebuild_rewrite_layout(ptr_of(back), c("doubled", "label"), TRUE)
+  back$label <- "b"
+  expect_identical(back$label, "b")
+  expect_error(back$added <- 1L, class = "miniextendr_restored_missing_slot")
+  expect_match(back$summary(), "^b/6/7/false/")
+})
+
+test_that("a missing field read with the plain getter is the rebuild's cause", {
+  back <- reload(RebuildLayout$new("a", 3L))
+  rebuild_rewrite_layout(ptr_of(back), c("label", "doubled"), TRUE)
+  rebuild_layout_strict(TRUE)
+  on.exit(rebuild_layout_strict(FALSE), add = TRUE)
+  e <- tryCatch(back$summary(), error = identity)
+  expect_s3_class(e, "miniextendr_restored_no_value")
+  expect_s3_class(e$parent, "miniextendr_restored_missing_slot")
+  expect_identical(e$parent$field, "added")
+  expect_match(conditionMessage(e), "has no `added` field", fixed = TRUE)
+})
+
+test_that("any_version rebuilds a save by another version that carries slot names", {
+  back <- reload(RebuildLayout$new("old", 2L))
+  sidecar_rewrite_saved_version(ptr_of(back), "0.0.1")
+  # Any use rebuilds it, a `Sidecar` read included: its slots are re-laid out.
+  expect_identical(back$doubled, 4L)
+  expect_identical(back$summary(), "old/4/1/true/0.0.1")
+})
+
+test_that("any_version refuses another version's save without slot names", {
+  back <- reload(RebuildLayout$new("old", 2L))
+  rebuild_rewrite_layout(ptr_of(back), c("label", "doubled", "added"), FALSE)
+  sidecar_rewrite_saved_version(ptr_of(back), "0.0.1")
+  expect_error(back$summary(), class = "miniextendr_restored_other_version")
+})
+
+test_that("a save without slot names by this version is read by position", {
+  back <- reload(RebuildLayout$new("pos", 5L))
+  rebuild_rewrite_layout(ptr_of(back), c("label", "doubled", "added"), FALSE)
+  expect_match(back$summary(), "^pos/10/1/true/")
 })
 
 test_that("the rebuild survives gctorture", {

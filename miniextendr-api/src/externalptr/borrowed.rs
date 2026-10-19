@@ -44,6 +44,12 @@ pub enum SidecarRead<'a, T: TypedExternal + ?Sized> {
 /// as through a live handle: `Self::keys(saved)`. Only `Sidecar` fields have
 /// a slot in the save; a struct field or a `Computed` field is gone with the
 /// Rust value, so a type whose rebuild needs one keeps it in a `Sidecar`.
+///
+/// The save names its slots after the fields, so a field is read by name
+/// whatever fields the version that saved it had (#2187). A field the save
+/// lacks (added since) reads as `None` through the generated
+/// `Self::try_keys(saved)`; the plain getter raises the classed error
+/// [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS).
 pub struct Saved<'a, T: TypedExternal + ?Sized> {
     sexp: SEXP,
     _marker: PhantomData<&'a T>,
@@ -56,7 +62,7 @@ impl<T: TypedExternal + ?Sized> Saved<'_, T> {
     /// # Safety
     ///
     /// `sexp` must be a live `EXTPTRSXP` built by `ExternalPtr` for a `T` by
-    /// this version of its crate, rooted for the handle's lifetime.
+    /// some version of its crate, rooted for the handle's lifetime.
     pub(crate) unsafe fn new(sexp: SEXP) -> Self {
         Self {
             sexp,
@@ -67,6 +73,27 @@ impl<T: TypedExternal + ?Sized> Saved<'_, T> {
     /// The restored external pointer.
     pub fn as_sexp(&self) -> SEXP {
         self.sexp
+    }
+
+    /// Whether the save has a slot for the `Sidecar` field `field` (its Rust
+    /// name). The generated `Self::try_<field>(saved)` getters say the same
+    /// with the field's type, checked by the compiler.
+    pub fn has(&self, field: &str) -> bool {
+        // SAFETY: on R's main thread (a hook runs there); the pointer is live.
+        let prot = unsafe { crate::sys::R_ExternalPtrProtected(self.sexp) };
+        T::SIDECAR_NAMES
+            .iter()
+            .position(|name| *name == field)
+            .is_some_and(|index| super::sidecar::saved_slot(prot, index, field).is_some())
+    }
+
+    /// The version of the crate that saved the object, from the type ID the
+    /// save recorded: the current version for a save this version made, an
+    /// earlier (or later) one under `any_version`.
+    pub fn version(&self) -> Option<&'static str> {
+        // SAFETY: on R's main thread; the pointer is live.
+        let sym = unsafe { super::stored_type_id_symbol(self.sexp) }?;
+        super::split_type_id(super::symbol_name(sym)).1
     }
 }
 
