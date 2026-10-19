@@ -117,8 +117,9 @@ misspelt one is dropped without a word: `format(p, widht = 10)` formats at the
 default width. `#[miniextendr(s3(generic = "format"), dots = empty)]` makes the
 method refuse it, before evaluating anything:
 `unused argument 'widht' (did you mean 'width'?)`. `empty(allow = [..])`
-takes names a caller in base R passes, and `forward(allow = [..])` names the
-method reads from its own `&Dots` parameter. See
+takes names a caller in base R passes and the method ignores, and
+`forward(allow = [..])` names the method passes on to another R function. An
+argument the method reads is a parameter. See
 [What `...` takes](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role).
 
 ### Constructor

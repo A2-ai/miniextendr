@@ -4,14 +4,13 @@
 \alias{mx_dots_forward}
 \title{mx_dots_forward}
 \usage{
-mx_dots_forward(x, ...)
+mx_dots_forward(...)
 }
 \arguments{
-\item{x}{A number.}
-
-\item{...}{\code{scale} (default 1) and \code{shift} (default 0).}
+\item{...}{\code{digits} and \code{nsmall}, passed on.}
 }
 \description{
-\code{x * scale + shift}, with \code{scale} and \code{shift} passed in \code{...}; the
-function reads them, the refusal class is the package's own.
+What \code{...} hands on, as the list the function would pass to \code{format()}:
+\code{digits} and \code{nsmall} by name, or unnamed, for \code{format()} to match by
+position itself. The refusal class is the package's own.
 }

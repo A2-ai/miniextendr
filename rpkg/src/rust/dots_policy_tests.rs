@@ -64,18 +64,15 @@ pub fn mx_dots_predict(object: List, newdata: Vec<f64>, _dots: ...) -> Vec<f64> 
     newdata.iter().map(|x| x * estimate).collect()
 }
 
-/// `x * scale + shift`, with `scale` and `shift` passed in `...`; the
-/// function reads them, the refusal class is the package's own.
+/// What `...` hands on, as the list the function would pass to `format()`:
+/// `digits` and `nsmall` by name, or unnamed, for `format()` to match by
+/// position itself. The refusal class is the package's own.
 ///
-/// @param x A number.
-/// @param ... `scale` (default 1) and `shift` (default 0).
+/// @param ... `digits` and `nsmall`, passed on.
 /// @export
-#[miniextendr(dots = forward(allow = ["scale", "shift"], class = "mx_dots_unused"))]
-pub fn mx_dots_forward(x: f64, rest: &Dots) -> f64 {
-    let args = rest.as_list();
-    let scale: f64 = args.get_named("scale").unwrap_or(1.0);
-    let shift: f64 = args.get_named("shift").unwrap_or(0.0);
-    x * scale + shift
+#[miniextendr(dots = forward(allow = ["digits", "nsmall"], class = "mx_dots_unused"))]
+pub fn mx_dots_forward(rest: &Dots) -> List {
+    rest.as_list()
 }
 
 /// The names `...` passed to the function: `dots = data` checks nothing.
@@ -114,7 +111,8 @@ impl MxDotsCounter {
     }
 }
 
-/// A running total whose `add()` reads `by` and `times` from `...`.
+/// A running total. `add()` reads `by` and `times`, so they are parameters;
+/// `format_args()` hands its `...` on.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct MxDotsTally {
     total: f64,
@@ -126,15 +124,21 @@ impl MxDotsTally {
         MxDotsTally { total: 0.0 }
     }
 
-    /// Add `by` (default 1) `times` times (default 1); returns the total.
-    /// @param ... `by` and `times`.
-    #[miniextendr(dots = forward(allow = ["by", "times"]))]
-    pub fn add(&mut self, rest: &Dots) -> f64 {
-        let args = rest.as_list();
-        let by: f64 = args.get_named("by").unwrap_or(1.0);
-        let times: f64 = args.get_named("times").unwrap_or(1.0);
+    /// Add `by` `times` times; returns the total.
+    /// @param by The step.
+    /// @param times How many steps.
+    #[miniextendr(defaults(by = "1", times = "1"))]
+    pub fn add(&mut self, by: f64, times: f64) -> f64 {
         self.total += by * times;
         self.total
+    }
+
+    /// What `...` hands on, as the list the method would pass to `format()`
+    /// with the total.
+    /// @param ... `digits` and `nsmall`, passed on.
+    #[miniextendr(dots = forward(allow = ["digits", "nsmall"]))]
+    pub fn format_args(&self, rest: &Dots) -> List {
+        rest.as_list()
     }
 }
 
