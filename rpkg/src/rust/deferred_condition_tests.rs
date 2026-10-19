@@ -465,3 +465,73 @@ pub fn deferred_guard_connection() -> miniextendr_api::SEXP {
 }
 
 // endregion
+
+// region: Capturing and catching in Rust (#2179, #2180)
+
+/// `capture`: the block's warning and message come back as values, so only
+/// the warning queued outside it reaches R. With `requeue`, the captured
+/// conditions are queued again and reach R after it.
+/// @param requeue Whether to queue the captured conditions again.
+#[miniextendr]
+pub fn deferred_capture(requeue: bool) -> Vec<String> {
+    use miniextendr_api::deferred_condition::capture;
+    defer_warning!("outside");
+    let ((), captured) = capture(|| {
+        defer_warning!(class = "pkg_replayed", "replayed warning");
+        defer_message!("replayed message");
+    });
+    let messages = captured.iter().map(|c| c.message().to_string()).collect();
+    if requeue {
+        captured.into_iter().for_each(RCondition::defer);
+    }
+    messages
+}
+
+/// A step that queues a warning, then fails with `rust_error!` when `fail`.
+fn replay_step(fail: bool) -> i32 {
+    defer_warning!(class = "pkg_replayed", "replayed warning");
+    if fail {
+        rust_error!(
+            class = "pkg_step_failed",
+            data = ("step", 3),
+            "step 3 failed"
+        );
+    }
+    1
+}
+
+/// `catch_condition` inside `capture`: the step's failure becomes this
+/// function's own refusal, naming the cause, and the step's queued warning
+/// is dropped either way.
+/// @param fail Whether the step fails.
+#[miniextendr]
+pub fn caught_condition_refusal(fail: bool) -> i32 {
+    use miniextendr_api::condition::catch_condition;
+    use miniextendr_api::deferred_condition::capture;
+    let (outcome, _replayed) = capture(|| catch_condition(|| replay_step(fail)));
+    match outcome {
+        Ok(value) => value,
+        Err(RCondition::Error { message, class, .. }) => rust_error!(
+            class = "pkg_refused",
+            data = ("cause_class", class.join(" ")),
+            "refused: {message}"
+        ),
+        Err(other) => other.raise(),
+    }
+}
+
+/// `catch_condition` around R code: an R error is not a Rust condition, so
+/// it carries on to R unchanged. Returns `f()` as an integer.
+/// @param f An R function of no arguments.
+#[miniextendr]
+pub fn caught_condition_r_error(f: miniextendr_api::SEXP) -> i32 {
+    use miniextendr_api::condition::catch_condition;
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::sys;
+    let value =
+        catch_condition(|| unsafe { RCall::from_sexp(f).eval_with_handlers(sys::R_GlobalEnv) })
+            .unwrap_or_else(|condition| condition.raise());
+    i32::try_from_sexp(value).expect("integer")
+}
+
+// endregion

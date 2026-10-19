@@ -535,16 +535,52 @@ pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
     crate::registry::conversion_error_class()
 }
 
-/// Run `f`, returning a condition raised inside it (`error!()`, `warning!()`,
-/// `message!()`, `condition!()`) as `Err`; any other panic resumes unwinding.
+/// Run `f`, returning a condition raised inside it as `Err` instead of
+/// letting it reach R; any other unwind carries on.
+///
+/// For a body that turns another function's failure into its own result: a
+/// refusal that names the reason, a fallback, a retry.
+///
+/// ```ignore
+/// use miniextendr_api::condition::catch_condition;
+///
+/// match catch_condition(|| rebuild(&snapshot)) {
+///     Ok(object) => object,
+///     Err(cause) => error!(
+///         class = "pkg_error_rebuild",
+///         data = ("cause", cause.message().to_string()),
+///         "cannot rebuild the object: {}", cause.message()
+///     ),
+/// }
+/// ```
+///
+/// **Caught:** every [`RCondition`](enum@RCondition) payload, with its kind, classes, data
+/// and call choice: [`error!`](crate::error!) / [`rust_error!`](crate::rust_error!),
+/// [`warning!`](crate::warning!), [`message!`](crate::message!),
+/// [`condition!`](crate::condition!), [`RCondition::raise`], the argument and
+/// conversion errors ([`RCondition::arg_error`]) and the `ExternalPtr` type
+/// errors. An `Err` can be raised again with [`RCondition::raise`] or queued
+/// with [`RCondition::defer`].
+///
+/// **Resumed** unchanged, with [`std::panic::resume_unwind`]:
+/// - an R error, interrupt or other R exit crossing the Rust frames (R code
+///   run through [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
+///   or [`eval_with_handlers`](crate::expression::eval_with_handlers)), so
+///   R carries on to the context it was jumping to;
+/// - a plain `panic!()` or any other payload, which still becomes an R error
+///   at the boundary, with its source location.
+///
+/// Use [`try_eval_with_handlers`](crate::expression::try_eval_with_handlers)
+/// to get an R error back as a value.
+///
+/// Deferred conditions queued inside `f` stay queued (see
+/// [`deferred_condition::capture`](crate::deferred_condition::capture)). A
+/// caught raise still runs the panic hook: with `MINIEXTENDR_BACKTRACE=true`
+/// it prints the panic to stderr.
 ///
 /// Generated `#[miniextendr(worker)]` wrappers run the body through it on the
-/// worker thread. The payload is `Send`, so it crosses back to the main thread
-/// as a value and is raised there like on the main-thread path (class, data
-/// and call choice kept), rather than reaching `run_on_worker`'s panic
-/// handling, which keeps only a message. Generic panics are resumed untouched,
-/// so the worker's handling still folds in their source location.
-#[doc(hidden)]
+/// worker thread: the payload is `Send`, so it crosses back to the main
+/// thread as a value and is raised there with its class, data and call kept.
 pub fn catch_condition<T>(f: impl FnOnce() -> T) -> Result<T, RCondition> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(value) => Ok(value),
@@ -772,6 +808,12 @@ macro_rules! __mx_condition_parts {
 /// `c("name", "rust_error", "simpleError", "error", "condition")`. `class` also
 /// takes a vector (`class = ["pkg_error_missing_field", "pkg_error"]`, or any
 /// [`ConditionClass`] value) so handlers can catch the family or the member.
+///
+/// The framework layers (`rust_error`, `simpleError`, `error`, `condition`)
+/// always follow the user classes; no option leaves them out. Handlers and
+/// `inherits()` see the user classes as on an R `errorCondition()`; a test
+/// that compares the whole class vector with an R implementation's compares
+/// the leading classes instead.
 ///
 /// # Structured `data = ...` payloads
 ///
@@ -2816,6 +2858,62 @@ mod condition_macro_tests {
             // RValue has no PartialEq (f64); compare via Debug.
             assert_eq!(format!("{value:?}"), format!("{exp_value:?}"));
         }
+    }
+
+    /// `catch_condition` returns every condition kind as `Err` with its
+    /// classes and data, and the value on success.
+    #[test]
+    fn catch_condition_returns_each_kind() {
+        use super::catch_condition;
+        use crate::error_value::kind;
+        assert_eq!(catch_condition(|| 3).unwrap(), 3);
+        let error = catch_condition::<()>(|| {
+            crate::error!(
+                class = ["member", "family"],
+                data = ("n", 2),
+                "failed {}",
+                1
+            )
+        })
+        .unwrap_err();
+        let (error_kind, parts) = error.into_parts();
+        assert_eq!(error_kind, kind::ERROR);
+        assert_eq!(parts.message, "failed 1");
+        assert_eq!(parts.class, ["member", "family"]);
+        assert_data(&parts.data, &[("n", RValue::from(2))]);
+        let kinds = [
+            catch_condition::<()>(|| crate::warning!("w")),
+            catch_condition::<()>(|| crate::message!("m")),
+            catch_condition::<()>(|| crate::condition!("c")),
+            catch_condition::<()>(|| {
+                RCondition::arg_error("x", "bad".to_string(), super::ConditionCall::Inherit).raise()
+            }),
+        ]
+        .map(|caught| caught.unwrap_err().into_parts().0);
+        assert_eq!(
+            kinds,
+            [
+                kind::WARNING,
+                kind::MESSAGE,
+                kind::CONDITION,
+                kind::CONVERSION
+            ]
+        );
+    }
+
+    /// Any other payload, a plain `panic!()` included, resumes unchanged.
+    #[test]
+    fn catch_condition_resumes_other_panics() {
+        use super::catch_condition;
+        struct Foreign(u8);
+        let payload = std::panic::catch_unwind(|| catch_condition::<()>(|| panic!("plain")))
+            .expect_err("a plain panic must resume");
+        assert_eq!(payload.downcast_ref::<&str>(), Some(&"plain"));
+        let payload = std::panic::catch_unwind(|| {
+            catch_condition::<()>(|| std::panic::panic_any(Foreign(9)))
+        })
+        .expect_err("a foreign payload must resume");
+        assert_eq!(payload.downcast_ref::<Foreign>().map(|f| f.0), Some(9));
     }
 
     /// `arg_error!` (#1740): the conversion kind, the crate-class marker as

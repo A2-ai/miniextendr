@@ -85,6 +85,18 @@ class(e)
 `[&str; N]`, `Vec<String>`, slices. The same vector form is available on
 `warning!` and `condition!`.
 
+**The framework layers are part of the contract.** Every condition raised from
+Rust carries the user classes first, then the framework's layers: `rust_error`
+(so a handler can catch anything raised from Rust), `simpleError` (so code
+written for `stop()` errors keeps working), then `error` and `condition`. They
+cannot be left out. A Rust method that replaces an R one raising
+`errorCondition(class = "subscriptOutOfBoundsError")` therefore raises
+`c("subscriptOutOfBoundsError", "rust_error", "simpleError", "error", "condition")`
+where R raised `c("subscriptOutOfBoundsError", "error", "condition")`.
+`tryCatch(subscriptOutOfBoundsError = )`, `inherits()` and `expect_s3_class()`
+without `exact` treat the two alike; only a comparison of the whole class
+vector sees the difference, so compare the leading classes (below).
+
 ### Testing the class vector
 
 testthat's `expect_s3_class(e, c("pkg_error_missing_field", "rust_error", "error"))`
@@ -103,8 +115,8 @@ testthat::expect_s3_class(
 )
 ```
 
-When only the leading layers are yours to assert (the framework's tail may
-grow), compare the prefix instead:
+When only the leading layers are yours to assert, or a test should pass for
+an R and a Rust implementation of the same method, compare the prefix instead:
 
 ```r
 cls <- c("pkg_error_out_of_range", "pkg_error", "rust_error")
@@ -431,6 +443,26 @@ pub fn parse_trimmed(text: String) -> Result<i32, std::num::ParseIntError> {
 
 Here, `parse_trimmed(" bad ")` errors without warning;
 `parse_trimmed(" 42 ")` warns about the whitespace and returns `42L`.
+
+**Capturing a block's conditions.** `deferred_condition::capture(f)` runs `f`
+and returns what it queued, oldest first, instead of signalling it: for code
+whose diagnostics the caller already has, such as replaying the steps that
+built a saved object. `capture(f).0` discards them; each `RCondition` can also
+be inspected, queued again with `.defer()` or raised with `.raise()`.
+
+```rust
+use miniextendr_api::deferred_condition::capture;
+
+let (rebuilt, _replayed) = capture(|| rebuild(&snapshot));
+```
+
+Conditions queued before the block, or by enclosing calls, stay queued, and a
+nested `#[miniextendr]` call still signals its own when it returns. If `f`
+unwinds, its conditions stay queued and follow the rules below (a Rust failure
+signals them, an R-origin error discards them); to keep them on failure too,
+catch the failure inside the block with
+[`catch_condition`](#catching-a-condition-in-rust-catch-condition):
+`capture(|| catch_condition(|| rebuild(&snapshot)))`.
 
 **Where it works.** Every `#[miniextendr]` function and method, including
 `#[miniextendr(worker)]` bodies (the queue is a `Mutex`: the push happens on
@@ -800,6 +832,43 @@ must be skipped or renamed.
 - Choose `RConditionData` when the message or class vector needs to differ
   from the serde shape (it takes precedence); the serde path is the
   zero-boilerplate default for enums that are already serde-tagged.
+
+## Catching a condition in Rust: `catch_condition`
+
+`condition::catch_condition(f)` runs `f` and returns a condition raised inside
+it as `Err(RCondition)` instead of letting it reach R. Use it when a body turns
+another function's failure into its own result: a refusal that names the
+cause, a fallback, a retry.
+
+```rust
+use miniextendr_api::condition::{RCondition, catch_condition};
+use miniextendr_api::{miniextendr, rust_error};
+
+#[miniextendr]
+pub fn restore(path: &str) -> Restored {
+    match catch_condition(|| rebuild(path)) {
+        Ok(object) => object,
+        Err(RCondition::Error { message, class, .. }) => rust_error!(
+            class = "pkg_error_restore",
+            data = ("cause_class", class.join(" ")),
+            "cannot restore {path}: {message}"
+        ),
+        Err(other) => other.raise(),
+    }
+}
+```
+
+| Raised inside `f` | `catch_condition` |
+|---|---|
+| `error!` / `rust_error!`, `warning!`, `message!`, `condition!`, `RCondition::raise()` | `Err`, with the kind (the variant), classes, `data` and call choice |
+| an argument or conversion error (`arg_error!`, `RCondition::arg_error`), an `ExternalPtr` type error | `Err` (`RCondition::Conversion` / `Error`) |
+| an R error, interrupt or other R exit crossing the Rust frames (R code run through `eval_with_handlers`, `with_r_unwind_protect`, ...) | resumed: R carries on to where it was jumping |
+| a plain `panic!()` or any other payload | resumed: it becomes an R error at the boundary, with its source location |
+
+- An `Err` can be raised again with `.raise()` or queued with `.defer()`.
+- To get an R error back as a value, evaluate the R code with `try_eval_with_handlers` (or `RCall::try_eval_with_handlers`), which returns `Err(REvalError)`; `REvalError::reraise_class` gives the classes to raise it again as your own (next section).
+- Deferred conditions queued inside `f` stay queued; [`capture`](#deferred-conditions-a-warning-and-a-value) takes them.
+- A caught raise still runs the panic hook: with `MINIEXTENDR_BACKTRACE=true` it prints the panic to stderr.
 
 ## Raising a caught R error as your own
 

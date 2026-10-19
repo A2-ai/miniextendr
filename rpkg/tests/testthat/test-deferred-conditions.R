@@ -391,3 +391,46 @@ test_that("a derived struct takes a class vector, a fixed entry and leaves out a
   expect_identical(w$hint, "give it when grouping")
   expect_identical(w$param, "unit_table")
 })
+
+# region: capturing and catching in Rust (#2179, #2180)
+
+test_that("capture() takes the block's conditions; requeued ones signal after", {
+  out <- collect_conditions(deferred_capture(FALSE))
+  expect_identical(out$value, c("replayed warning", "replayed message"))
+  expect_identical(vapply(out$conditions, conditionMessage, ""), "outside")
+
+  out <- collect_conditions(deferred_capture(TRUE))
+  expect_identical(
+    vapply(out$conditions, conditionMessage, ""),
+    c("outside", "replayed warning", "replayed message\n")
+  )
+  expect_s3_class(out$conditions[[2]], "pkg_replayed")
+  expect_identical(deferred_pending_count(), 0L)
+})
+
+test_that("catch_condition() turns a raised error into the caller's own refusal", {
+  out <- collect_conditions(caught_condition_refusal(FALSE))
+  expect_identical(out$value, 1L)
+  expect_length(out$conditions, 0L)
+
+  out <- collect_conditions(tryCatch(caught_condition_refusal(TRUE), error = identity))
+  expect_length(out$conditions, 0L)
+  e <- out$value
+  expect_s3_class(e, c("pkg_refused", "rust_error", "simpleError", "error", "condition"), exact = TRUE)
+  expect_identical(conditionMessage(e), "refused: step 3 failed")
+  expect_identical(e$cause_class, "pkg_step_failed")
+  expect_identical(conditionCall(e), quote(caught_condition_refusal(TRUE)))
+  expect_identical(deferred_pending_count(), 0L)
+})
+
+test_that("catch_condition() lets an R error carry on to R", {
+  expect_identical(caught_condition_r_error(function() 4L), 4L)
+  e <- tryCatch(
+    caught_condition_r_error(function() stop(errorCondition("from R", class = "pkg_r_side"))),
+    error = identity
+  )
+  expect_s3_class(e, c("pkg_r_side", "error", "condition"), exact = TRUE)
+  expect_identical(conditionMessage(e), "from R")
+})
+
+# endregion
