@@ -3216,7 +3216,7 @@ pub(crate) fn refuse_rng_guard_in_trait_method(
             && crate::type_inspect::mentions_rng_guard(&pt.ty)
         {
             return Err(syn::Error::new_spanned(
-                &pt.ty,
+                arg,
                 "a trait method cannot take `&RngGuard`: its arguments cross the trait ABI as \
                  R values, and the guard is none. Load the state in the body with \
                  `with_rng(|rng| ...)` instead of the `rng` option, or take the guard on an \
