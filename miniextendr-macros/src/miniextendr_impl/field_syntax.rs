@@ -42,9 +42,9 @@
 //! returns the object (#1853).
 //!
 //! A field fallback (`fallback = "Self::f"`, #2150; see
-//! [`FieldFallback`](super::FieldFallback)) answers the names no field has
+//! `miniextendr_impl::FieldFallback`) answers the names no field has
 //! on the bare pointer, through a `.Call` entry the impl block emits
-//! ([`fallback_c_entries`]): `$` and `[[` by name on an S3 object, `$` on an
+//! (`fallback_c_entries`): `$` and `[[` by name on an S3 object, `$` on an
 //! S4 object, and `$` / `[[` on an env object after its methods. The
 //! fallback's `None` reads what an unknown name reads without it. Fields win,
 //! a position counts the fields only, `names()`, `as.list()` and the writes
