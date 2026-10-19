@@ -1563,16 +1563,27 @@ fn conversion_err_arm(
     let call = crate::naming::call_slot_ident();
     conversion_err_arm_with_call(
         ctx,
-        crate_class,
+        &class_slice(crate_class),
         &quote! { ::core::option::Option::Some(#call) },
         span,
     )
+}
+
+/// The `&[&str]` expression for classes the macro knows: the crate's
+/// `conversion_error_class`, read where it expands.
+pub(crate) fn class_slice(classes: &[String]) -> TokenStream {
+    quote! { &[#(#classes),*] }
 }
 
 /// Trait shims have no R call slot. They return the same structured argument
 /// error as C wrappers; a View re-panic attributes it to the consumer's call.
 /// `read_ty` supplies TryFromSexp expectations when the conversion uses that
 /// trait; rooted views instead derive their expectation from the error.
+///
+/// The class is the implementing package's, read when the conversion fails
+/// (`trait_abi::conversion_error_class`): a declaration's shims expand in the
+/// declaring crate, but run in the package that implements the trait, and
+/// raise what that package's own wrapper for the method raises.
 pub(crate) fn shim_conversion_err_arm(
     name: &str,
     ty: &syn::Type,
@@ -1587,15 +1598,16 @@ pub(crate) fn shim_conversion_err_arm(
     }
     conversion_err_arm_with_call(
         &ctx,
-        &crate::crate_config::conversion_error_class(),
+        &quote! { ::miniextendr_api::trait_abi::conversion_error_class() },
         &quote! { ::core::option::Option::None },
         ty.span(),
     )
 }
 
+/// `crate_class` is an `&[&str]` expression ([`conversion_value_tokens`]).
 fn conversion_err_arm_with_call(
     ctx: &ArgContext,
-    crate_class: &[String],
+    crate_class: &TokenStream,
     call: &TokenStream,
     span: proc_macro2::Span,
 ) -> TokenStream {
@@ -1710,7 +1722,9 @@ pub(crate) struct ConversionSubject<'a> {
 }
 
 /// The `conversion_condition_value(...)` expression for the error bound as
-/// `e` on `subject`, with the crate class and `call`.
+/// `e` on `subject`, with the crate class and `call`. `crate_class` is an
+/// expression of type `&[&str]`, evaluated only on the failure path: the
+/// literal classes ([`class_slice`]), or a shim's run-time read.
 ///
 /// With [`Expected::Literal`] (the macro knows the R-facing expectation,
 /// `'<p>' must be <expected>`) the prefix is that literal; with
@@ -1728,7 +1742,7 @@ pub(crate) struct ConversionSubject<'a> {
 /// Shared by the argument conversions and the sidecar setters.
 pub(crate) fn conversion_value_tokens(
     subject: &ConversionSubject,
-    crate_class: &[String],
+    crate_class: &TokenStream,
     call: &TokenStream,
     span: proc_macro2::Span,
 ) -> TokenStream {
@@ -1751,7 +1765,7 @@ pub(crate) fn conversion_value_tokens(
                 #prefix,
                 #param,
                 #rust_type,
-                &[#(#crate_class),*],
+                #crate_class,
                 ::miniextendr_api::__mx_conversion_err_parts!(#e, true),
                 ::core::option::Option::None,
                 #call,
@@ -1762,7 +1776,7 @@ pub(crate) fn conversion_value_tokens(
                 &::std::format!("'{}' must be {}", #quoted, #expr),
                 #param,
                 #rust_type,
-                &[#(#crate_class),*],
+                #crate_class,
                 ::miniextendr_api::__mx_conversion_err_parts!(#e, true),
                 #arg_message,
                 #call,
@@ -1784,7 +1798,7 @@ pub(crate) fn conversion_value_tokens(
                     ),
                     #param,
                     #rust_type,
-                    &[#(#crate_class),*],
+                    #crate_class,
                     ::miniextendr_api::__mx_conversion_err_parts!(#e, __mx_expected.is_some()),
                     #arg_message,
                     #call,

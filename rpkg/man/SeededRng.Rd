@@ -37,6 +37,12 @@ Arguments of \code{SeededRng$new()}:
 \item{\code{seed}}{Integer seed (absolute value is used).}
 }
 
+Generate a random f64 in [0, 1).
+
+Generate a random i32 covering the full i32 range.
+
+Generate a random boolean (50\% chance each).
+
 Arguments of \code{SeededRng$RRngOps$gen_range_f64()}:
 
 \describe{

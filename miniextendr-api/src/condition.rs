@@ -427,7 +427,10 @@ impl RCondition {
 /// the condition (a raising guard: an ALTREP `RUnwind` callback,
 /// [`crate::unwind_protect::with_r_unwind_protect_or_raise`]) Rust replaces it
 /// with the classes `miniextendr_init!` registered for the package
-/// ([`resolve_conversion_error_class_marker`]).
+/// ([`resolve_conversion_error_class_marker`]). So does a trait-ABI shim
+/// ([`crate::unwind_protect::with_r_unwind_protect_shim`]): the condition is
+/// raised by another package's wrapper, and takes the implementing package's
+/// classes, as from that package's own wrapper.
 #[doc(hidden)]
 pub const CONVERSION_ERROR_CLASS_MARKER: &str = ".miniextendr_conversion_error_class";
 

@@ -23,4 +23,14 @@ MyFloat
 }
 \description{
 MyFloat inherent methods: constructor and accessor.
+
+Compare with another value, returning None if incomparable.
+
+Returns:
+\itemize{
+\item \code{Some(-1)} if \code{self < other}
+\item \code{Some(0)} if \code{self == other}
+\item \code{Some(1)} if \code{self > other}
+\item \code{None} if values are incomparable (in R, an error: \verb{ `partial_cmp()` returned no value})
+}
 }

@@ -75,5 +75,7 @@ Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Static method: Returns the default initial value for this counter type.
 }
 \keyword{internal}

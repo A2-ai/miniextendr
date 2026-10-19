@@ -353,6 +353,20 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute], page: RdPage) ->
     roxygen_tags_from_attrs_impl(attrs, page)
 }
 
+/// Roxygen tags from a trait declaration's docs, for the wrappers of an
+/// implementation whose method has none of its own (an inherited default, a
+/// method an empty impl registers, a written method without a doc comment).
+///
+/// The docs are the trait's rustdoc, written where the trait is declared,
+/// often in another crate, so every `[...]` loses its brackets whatever the
+/// implementing crate's [`ProseLinks`] setting, as in a block with no page
+/// ([`RdPage::Suppressed`]): in rustdoc a bracket names a Rust item or is
+/// plain text (`slot [4]`), not an R topic the implementing package can
+/// resolve.
+pub(crate) fn declaration_roxygen_tags(attrs: &[syn::Attribute]) -> Vec<String> {
+    roxygen_tags_with(attrs, ProseLinks::Strip, RdPage::Suppressed)
+}
+
 /// Extract roxygen tags for an impl-block method.
 ///
 /// Identical to [`roxygen_tags_from_attrs`] — leading prose is promoted to
@@ -1420,6 +1434,61 @@ fn tag_documents_param(tag: &str, name: &str) -> bool {
         return false;
     };
     names_token.split(',').any(|n| n.trim() == name)
+}
+
+/// Rename what the `@param` tags in `tags` document: each name in a tag's
+/// name token (`a,b` in `@param a,b desc`) that `rename` maps is replaced,
+/// and the rest of the tag is kept as written. The names map at once, so two
+/// parameters can swap names.
+///
+/// A name a rename produces must then be documented once: `Err` names the
+/// tag that was renamed onto a name another tag already documents.
+pub(crate) fn rename_param_tags(
+    tags: &mut [String],
+    rename: impl Fn(&str) -> Option<String>,
+) -> Result<(), String> {
+    let mut renamed = Vec::new();
+    for tag in tags.iter_mut() {
+        // The name token's place in the tag, as `param_names_token` finds it.
+        let lead = tag.len() - tag.trim_start().len();
+        let Some(rest) = tag[lead..].strip_prefix("@param ") else {
+            continue;
+        };
+        let start = tag.len() - rest.trim_start().len();
+        let end = tag[start..]
+            .find(char::is_whitespace)
+            .map_or(tag.len(), |n| start + n);
+        let mut changed = false;
+        let names: Vec<String> = tag[start..end]
+            .split(',')
+            .map(|name| match rename(name) {
+                Some(new) => {
+                    changed = true;
+                    renamed.push((name.to_string(), new.clone()));
+                    new
+                }
+                None => name.to_string(),
+            })
+            .collect();
+        if changed {
+            tag.replace_range(start..end, &names.join(","));
+        }
+    }
+    for (old, new) in renamed {
+        let documented = tags
+            .iter()
+            .filter_map(|tag| param_names_token(tag))
+            .flat_map(|token| token.split(','))
+            .filter(|name| *name == new)
+            .count();
+        if documented > 1 {
+            return Err(format!(
+                "`@param {old}` documents the trait's parameter `{new}`, which another \
+                 `@param` documents too; keep one of them"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Returns the `@param` name token (e.g. `a,b,c` in `@param a,b,c desc`) of a

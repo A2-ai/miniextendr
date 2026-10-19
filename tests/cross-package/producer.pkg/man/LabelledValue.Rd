@@ -34,6 +34,8 @@ Create a LabelledValue with one label
 \item{\code{first}}{The first label}
 }
 
+The labels kept in the implementor's sidecar.
+
 Arguments of \code{LabelledValue$Tagged$add_label()}:
 
 \describe{

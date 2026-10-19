@@ -942,8 +942,122 @@ fn pattern_parameters_take_the_declarations_names() {
             })
             .collect()
     };
-    assert_eq!(names(&declaration), ["value", "other", "other_"]);
+    assert_eq!(names(&declaration), ["value", "pair", "other"]);
     assert_eq!(names(&[]), ["arg0", "other", "arg2"]);
+}
+
+/// A `Scale` impl's expansion under the impl options `attrs`, with the
+/// declaration naming `scaled`'s parameter `factor`.
+fn declared_scale_expansion(
+    attrs: proc_macro2::TokenStream,
+    impl_item: syn::ItemImpl,
+) -> syn::Result<String> {
+    let impl_attrs: ImplAttrs = syn::parse2(attrs).unwrap();
+    let declaration: Vec<syn::TraitItemFn> = vec![syn::parse_quote!(
+        fn scaled(factor: ());
+    )];
+    super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)?;
+    Ok(super::vtable::generate_vtable_static(
+        &impl_item,
+        &syn::parse_quote!(Scale),
+        &syn::parse_quote!(Meter),
+        &impl_attrs,
+        &syn::parse_quote!(abi Scale false "test-only-wrapper-tag" {}),
+        &declaration,
+        &[],
+    )
+    .to_string())
+}
+
+/// Every impl's wrappers name a parameter as the trait declares it: the R
+/// formal, its default and checks, the argument errors and the `@param`
+/// docs, whatever the impl calls it.
+#[test]
+fn impl_parameters_take_the_declarations_names() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            /// @param k The factor.
+            #[miniextendr(defaults(k = "2"), no_na(k))]
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = declared_scale_expansion(quote::quote!(s3), impl_item).unwrap();
+    assert!(out.contains("#' @param factor The factor."), "{out}");
+    assert!(!out.contains("#' @param k"), "{out}");
+    assert!(
+        out.contains("scaled.Meter <- function(x, factor = 2, ...)"),
+        "{out}"
+    );
+    assert!(out.contains("if (!isTRUE(!anyNA(factor)))"), "{out}");
+    assert!(out.contains("x, factor)"), "{out}");
+    assert!(!out.contains("(\"k\""), "{out}");
+
+    // The options may name the parameter as the declaration does.
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(defaults(factor = "3"))]
+            fn scaled(&self, _: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = declared_scale_expansion(quote::quote!(s3), impl_item).unwrap();
+    assert!(
+        out.contains("scaled.Meter <- function(x, factor = 3, ...)"),
+        "{out}"
+    );
+}
+
+/// Naming a parameter both ways, or using the impl's name in R code the
+/// wrapper runs, where only the declaration's name is bound, is an error.
+#[test]
+fn impl_parameter_names_in_options_and_r_code_are_checked() {
+    let error = |attr: proc_macro2::TokenStream| -> String {
+        let impl_item: syn::ItemImpl = syn::parse_quote! {
+            impl Scale for Meter {
+                #attr
+                fn scaled(&self, _k: f64) -> f64 { unimplemented!() }
+            }
+        };
+        declared_scale_expansion(quote::quote!(env), impl_item)
+            .unwrap_err()
+            .to_string()
+    };
+    let twice = error(quote::quote!(#[miniextendr(defaults(_k = "2", factor = "3"))]));
+    assert_eq!(
+        twice,
+        "defaults(...) name the trait's parameter `factor` twice, as `_k` and `factor`"
+    );
+    let twice = error(quote::quote!(#[miniextendr(no_na(_k), no_na(factor))]));
+    assert!(twice.contains("parameter `factor` twice"), "{twice}");
+    for (attr, what) in [
+        (
+            quote::quote!(#[miniextendr(r_entry = "stopifnot(k > 0)")]),
+            "r_entry",
+        ),
+        (
+            quote::quote!(#[miniextendr(r_post_checks = "k <- k * 2")]),
+            "r_post_checks",
+        ),
+        (
+            quote::quote!(#[miniextendr(r_on_exit = "message(k)")]),
+            "r_on_exit",
+        ),
+    ] {
+        assert_eq!(
+            error(attr),
+            format!(
+                "{what} uses `k`, this impl's name for the trait's parameter `factor`; R \
+                 wrappers take the trait's parameter names, so write `factor`"
+            )
+        );
+    }
+    let docs = error(quote::quote!(
+        /// @param k Old name.
+        /// @param factor New name.
+    ));
+    assert!(
+        docs.contains("`@param k` documents the trait's parameter `factor`"),
+        "{docs}"
+    );
 }
 
 /// A trait method's `choices(...)` checks come out in signature order, not in
@@ -3120,4 +3234,131 @@ fn generic_impl_vtable_keeps_declared_slots_when_an_impl_hides_an_r_wrapper() {
     .to_string();
     assert!(output.contains("as Imported < i32 > > :: read"), "{output}");
     assert!(output.contains("read : __vtshim_"), "{output}");
+}
+
+/// A generic trait's shims are written at the impl, and read the implementing
+/// package's classes at run time as a declaration's shims do.
+#[test]
+fn generic_impl_shims_take_the_implementers_class_at_run_time() {
+    let abi = syn::parse_quote! {
+        abi Generic true "test-only-tag" { pub add: ::miniextendr_api::abi::mx_meth }
+    };
+    let mut method = make_test_method("add", true);
+    method.sig = syn::parse_quote!(fn add(&mut self, k: i32));
+    method.is_mut = true;
+    let output = vtable::generate_impl_vtable(
+        &abi,
+        &syn::parse_quote!(Host),
+        &syn::parse_quote!(Imported<i32>),
+        &[method],
+        &[syn::parse_quote!(
+            fn add(n: ());
+        )],
+    )
+    .unwrap()
+    .to_string();
+    let read = ":: miniextendr_api :: trait_abi :: conversion_error_class ()";
+    assert_eq!(output.matches(read).count(), 1, "{output}");
+}
+
+/// The declaration's docs document a method an empty impl registers: the
+/// trait's metadata carries them in each `method { ... }` entry.
+#[test]
+fn tpie_methods_carry_the_declarations_docs() {
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Point;
+        trait_path = RDebug;
+        class_system = env;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = false;
+        abi RDebug false "test-only-tag" {
+            pub debug_str: ::miniextendr_api::abi::mx_meth,
+        }
+        method { r_name = debug_str; #[doc = " Get a compact debug string."] fn debug_str(&self) -> String; }
+        method { r_name = bare; fn bare(&self) -> i32; }
+    };
+    let docs = |method: &TpieMethod| {
+        crate::roxygen::roxygen_tags_from_attrs(&method.docs, crate::roxygen::RdPage::Rendered)
+    };
+    assert_eq!(
+        docs(&input.methods[0]),
+        ["@description Get a compact debug string."]
+    );
+    assert_eq!(input.methods[0].sig.ident, "debug_str");
+    assert!(docs(&input.methods[1]).is_empty());
+}
+
+/// A method the impl writes keeps its own docs; one written without docs has
+/// the declaration's, as an inherited default does.
+#[test]
+fn undocumented_impl_methods_take_the_declarations_docs() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+            /// Own docs.
+            fn unit(&self) -> String { unimplemented!() }
+        }
+    };
+    let declaration: Vec<syn::TraitItemFn> = vec![
+        syn::parse_quote!(
+            /// Scale the value.
+            ///
+            /// @param factor The factor.
+            fn scaled(factor: ());
+        ),
+        syn::parse_quote!(
+            /// Declared docs.
+            fn unit();
+        ),
+    ];
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(
+        methods[0].doc_tags,
+        ["@description Scale the value.", "@param factor The factor."]
+    );
+    assert_eq!(methods[1].doc_tags, ["@description Own docs."]);
+}
+
+/// The declaration's docs already name its parameters: an undocumented impl
+/// method that swaps the names gets them as written, not renamed back.
+#[test]
+fn declaration_docs_are_not_renamed_for_an_impl() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Pick for Pair {
+            fn pick(&self, a: i32, b: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let declaration: Vec<syn::TraitItemFn> = vec![syn::parse_quote!(
+        /// Pick one.
+        ///
+        /// @param b First.
+        /// @param a Second.
+        fn pick(b: (), a: ());
+    )];
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(
+        methods[0].doc_tags,
+        [
+            "@description Pick one.",
+            "@param b First.",
+            "@param a Second."
+        ]
+    );
+    // The impl's own `@param a` is the declaration's `b`.
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Pick for Pair {
+            /// @param a The first.
+            fn pick(&self, a: i32, b: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &declaration)
+            .unwrap();
+    assert_eq!(methods[0].doc_tags, ["@param b The first."]);
 }

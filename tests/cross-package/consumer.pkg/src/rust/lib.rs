@@ -103,8 +103,11 @@ impl Counter for DoubleCounter {
         self.value += 2; // Increments by 2, not 1!
     }
 
-    fn add(&mut self, n: i32) {
-        self.value += n;
+    // The trait calls the parameter `n`; this impl's own name doesn't reach R
+    // (test-parameter-names.R).
+    /// @param amount The amount to add.
+    fn add(&mut self, amount: i32) {
+        self.value += amount;
     }
 
     fn panic_plain(&self) {
@@ -471,8 +474,8 @@ pub fn counter_raise_warning_without_call(counter_sexp: SEXP, msg: String) {
 ///
 /// Verifies that a producer-side `arg_error!()` reaches the consumer as an
 /// argument error: `e$kind == "conversion"`, `e$param`, the consumer wrapper's
-/// call, and the consumer crate's `conversion_error_class` (none here), since
-/// the consumer's wrapper raises it (#1740).
+/// call, and the implementing package's `conversion_error_class`, as from that
+/// package's own wrapper for the method.
 /// @param counter_sexp An ExternalPtr to any type implementing Counter
 /// @param mode The value reported as a bad `mode` argument
 /// @export

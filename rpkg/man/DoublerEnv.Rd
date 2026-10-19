@@ -30,4 +30,10 @@ Create a new DoublerEnv.
 }
 
 Get the stored value.
+
+Instance method returning a plain scalar.
+
+Instance factory returning \code{Self} — must be re-wrapped into a classed object.
+
+Static factory returning \code{Self} — must be re-wrapped into a classed object.
 }

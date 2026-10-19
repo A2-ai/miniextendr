@@ -8,11 +8,31 @@ An annotated implementation inherits `#[miniextendr(r_name = "...")]` and
 `#[miniextendr(skip)]` from the trait declaration. This also applies to impls
 with method bodies, generic traits and traits with associated types. An
 explicit `r_name` on an impl method overrides the inherited R name; a method
-skipped by the declaration stays skipped. Other method options, docs and
-parameter attributes belong to explicit implementation methods. An omitted
-default method, of a generic trait or not, uses its declaration's docs and
-parameter names. An implementation parameter written as a pattern (`_`, a
-tuple) takes the declaration's name in its R formal; a named one keeps its own.
+skipped by the declaration stays skipped. Other method options and parameter
+attributes belong to explicit implementation methods. The declaration's docs
+document every method that has none of its own: an omitted default method, of
+a generic trait or not, a method an empty impl registers
+(`impl RDebug for Point {}` documents `debug_str()` with `RDebug`'s docs), and
+an implementation method written without a doc comment. A method the impl
+documents keeps its own docs. Declaration docs are the trait's rustdoc, so
+their `[...]` links lose their brackets on the R page whatever the
+implementing crate's `roxygen_prose_links`: a bracket there names a Rust item
+or is plain text.
+
+Every implementation takes the declaration's parameter names, so a trait
+method has the same R formals and argument errors in every package that
+implements it. With `fn scale(&self, factor: f64)` declared and
+`fn scale(&self, k: f64)` implemented, the wrapper's formal is `factor`:
+`obj$Scale$scale(factor = 2)` works, `k = 2` is an unused argument, and
+argument errors say `'factor'` from the impl's wrapper and through the vtable.
+A declaration parameter written as a pattern (`_`) is `arg<i>` for every
+implementation. The impl's body keeps its own names; the wrappers call it
+positionally. Method options and docs may name a parameter either way:
+`defaults(k = "2")`, `no_na(k)` and `@param k` apply to `factor`, and the
+generated `@param` tag says `factor`. Naming one parameter both ways is an
+error, and so is the impl's name in R code the wrapper runs (`r_entry`,
+`r_post_checks`, `r_on_exit`, a `defaults(...)` value), where only `factor`
+is bound.
 
 The declaration supplies this metadata through a hidden macro re-exported
 under the trait's name, in Rust's macro namespace. Implementers do not need
@@ -53,12 +73,22 @@ itself.
 
 Argument conversion failures from either shim path carry `kind = "conversion"`,
 `param` (the declaration's parameter name), and `rust_type`. Renamed or ignored
-bindings in a generic implementation do not change those parameter names or
+bindings in an implementation do not change those parameter names or
 native-alias diagnostics. Custom `RConditionData` messages, classes and fields
 survive the View round trip; the outer wrapper supplies the consumer's call.
-The shim uses the `conversion_error_class` configuration of the crate where it
-is generated (the declaration crate for non-generic traits, the implementation
-crate for generic traits).
+
+An argument error takes the `conversion_error_class` of the package that
+implements the method, on every path: the impl's own `.Call` wrapper, a call
+through the vtable from another package, and an `arg_error!` in the
+implementation. A shim reads it when a conversion fails
+(`trait_abi::conversion_error_class()`), and `with_r_unwind_protect_shim` puts
+it in place of `arg_error!`'s class marker. Neither the declaring crate's
+classes nor the calling package's appear. This works because the shim runs in
+the implementing package's shared object: a declaration's shims are
+monomorphised for the implementing type there, a generic trait's shims are
+written at the impl, and every package links its own copy of
+`miniextendr-api`, whose registry holds the classes its `miniextendr_init!`
+registered.
 
 ## Key Concepts
 

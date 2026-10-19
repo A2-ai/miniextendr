@@ -32,4 +32,31 @@ Arguments of \code{IntVecIter$new()}:
 \describe{
 \item{\code{data}}{Integer vector of elements to iterate over.}
 }
+
+Get the next element from the iterator.
+
+Returns \code{Some(item)} if there are more elements, \code{None} if exhausted,
+which R raises as \verb{ `next_item()` returned no value}.
+
+Get the estimated number of remaining elements.
+
+Returns \verb{(lower_bound, upper_bound)} where upper_bound is None if unknown.
+In R, this becomes \code{list(lower, upper)} where upper is NA if unknown.
+
+Consume the iterator and count remaining elements.
+
+\strong{Warning:} This exhausts the iterator.
+
+Collect up to \code{n} elements into a vector.
+
+Returns fewer than \code{n} elements if the iterator is exhausted first.
+
+Skip \code{n} elements from the iterator.
+
+Returns the number of elements actually skipped (may be less than \code{n}
+if the iterator is exhausted).
+
+Get the \code{n}th element (0-indexed), consuming elements up to and including it.
+
+Returns None if the iterator has fewer than \code{n + 1} elements.
 }
