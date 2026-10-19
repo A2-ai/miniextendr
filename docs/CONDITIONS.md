@@ -860,6 +860,12 @@ message (`rlang`'s `body` or `parent`, say) are not copied; read them from
 value can't be an R object, so the caught condition itself can't be kept as
 the new one's `parent` yet (#1874).
 
+To raise the caught condition itself, unchanged (R's classes and fields, no
+`rust_error` class, R's call), use `unsafe { e.reraise() }` inside the
+`#[miniextendr]` call: it signals the condition again through base
+`stop(cond)`, and the Rust frames drop their values on the way out (#2163,
+[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#an-r-error-returned-as-err)).
+
 `REvalError` is `!Send`: dropping it releases the condition's root, which
 must happen on R's main thread. Convert it to an `RError` (the third form), or
 keep the `String` from `message()`, to carry the failure to a worker thread.

@@ -214,15 +214,57 @@ impl<'a> Quoted<'a> {
     /// When `data` is not a list, a data frame, an environment or `NULL`.
     pub fn eval_in(&self, data: SEXP) -> SEXP {
         // SAFETY: as in `eval`; `data` is rooted by the caller.
+        unsafe { self.eval_masked(data, crate::expression::eval_with_handlers) }
+    }
+
+    /// [`eval_in`](Self::eval_in) with an R error returned as `Err`, as
+    /// [`try_eval_with_handlers`](crate::expression::try_eval_with_handlers)
+    /// returns it: the caller's handlers still see the expression's warnings
+    /// and messages. The mask and the rules for `data` are `eval_in`'s.
+    ///
+    /// A `subset()` method can explain a column that doesn't exist and leave
+    /// every other error as R raised it
+    /// ([`REvalError::reraise`](crate::expression::REvalError::reraise)):
+    ///
+    /// ```ignore
+    /// let keep = match subset.try_eval_in(table) {
+    ///     Ok(keep) => keep,
+    ///     // `unknown_column` compares the expression's names with the table's.
+    ///     Err(e) if unknown_column(&subset, table) => {
+    ///         rust_error!(class = "pkg_unknown_column", "{e}; the columns are ...")
+    ///     }
+    ///     // SAFETY: inside the `#[miniextendr]` call.
+    ///     Err(e) => unsafe { e.reraise() },
+    /// };
+    /// ```
+    ///
+    /// The value is unprotected: protect it before the next allocation.
+    ///
+    /// # Panics
+    ///
+    /// When `data` is not a list, a data frame, an environment or `NULL`.
+    pub fn try_eval_in(&self, data: SEXP) -> Result<SEXP, crate::expression::REvalError> {
+        // SAFETY: as in `eval`; `data` is rooted by the caller.
+        unsafe { self.eval_masked(data, crate::expression::try_eval_with_handlers) }
+    }
+
+    /// Evaluate the expression with `data` as a mask, as
+    /// [`eval_in`](Self::eval_in) describes, through `eval`.
+    ///
+    /// # Safety
+    ///
+    /// As `eval`'s: R's main thread, inside a miniextendr boundary; `data`
+    /// rooted by the caller.
+    unsafe fn eval_masked<R>(&self, data: SEXP, eval: unsafe fn(SEXP, SEXP) -> R) -> R {
         unsafe {
             match data.type_of() {
-                SEXPTYPE::ENVSXP => crate::expression::eval_with_handlers(self.expr, data),
-                SEXPTYPE::NILSXP => crate::expression::eval_with_handlers(self.expr, self.env),
+                SEXPTYPE::ENVSXP => eval(self.expr, data),
+                SEXPTYPE::NILSXP => eval(self.expr, self.env),
                 SEXPTYPE::VECSXP => {
                     // Rooted ahead of the evaluation's own protect frame, so an
                     // R exit leaves the protect stack as this guard expects.
                     let mask = OwnedProtect::new(data_mask(data, self.env));
-                    crate::expression::eval_with_handlers(self.expr, mask.get())
+                    eval(self.expr, mask.get())
                 }
                 other => panic!(
                     "`data` must be a list, a data frame, an environment or NULL, not {}",
@@ -604,10 +646,31 @@ impl<'a> Quosure<'a> {
     ///
     /// The value is unprotected: protect it before the next allocation.
     pub fn eval_tidy(&self, data: SEXP) -> SEXP {
-        use crate::sys::{R_BaseEnv, Rf_install, Rf_lang2, Rf_lang3};
         // SAFETY: a `Quosure` exists only inside a miniextendr boundary on
         // R's main thread (the `#[miniextendr]` call that received it, or
         // the caller of `from_sexp` / `new`); `data` is rooted by the caller.
+        unsafe { self.eval_tidy_with(data, crate::expression::eval_with_handlers) }
+    }
+
+    /// [`eval_tidy`](Self::eval_tidy) with an R error returned as `Err`, as
+    /// [`try_eval_with_handlers`](crate::expression::try_eval_with_handlers)
+    /// returns it: the caller's handlers still see the quosure's warnings and
+    /// messages. A missing rlang is an `Err` too.
+    ///
+    /// The value is unprotected: protect it before the next allocation.
+    pub fn try_eval_tidy(&self, data: SEXP) -> Result<SEXP, crate::expression::REvalError> {
+        // SAFETY: as in `eval_tidy`.
+        unsafe { self.eval_tidy_with(data, crate::expression::try_eval_with_handlers) }
+    }
+
+    /// `rlang::eval_tidy(quo, data)` evaluated by `eval`.
+    ///
+    /// # Safety
+    ///
+    /// As `eval_tidy`'s: R's main thread, inside a miniextendr boundary;
+    /// `data` rooted by the caller.
+    unsafe fn eval_tidy_with<R>(&self, data: SEXP, eval: unsafe fn(SEXP, SEXP) -> R) -> R {
+        use crate::sys::{R_BaseEnv, Rf_install, Rf_lang2, Rf_lang3};
         unsafe {
             let scope = ProtectScope::new();
             // `rlang::eval_tidy(quote(<quo>), quote(<data>))`; a missing rlang raises
@@ -623,7 +686,7 @@ impl<'a> Quosure<'a> {
             let quoted = scope.protect_raw(Rf_lang2(quote, self.quo));
             let data = scope.protect_raw(Rf_lang2(quote, data));
             let call = scope.protect_raw(Rf_lang3(fun, quoted, data));
-            crate::expression::eval_with_handlers(call, R_BaseEnv)
+            eval(call, R_BaseEnv)
         }
     }
 }

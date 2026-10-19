@@ -1187,6 +1187,9 @@ const EXIT_MESSAGE: &str =
 /// }
 /// ```
 ///
+/// [`reraise`](Self::reraise) raises the caught condition itself instead, as
+/// R raised it.
+///
 /// A `#[miniextendr]` function returning `Result<T, REvalError>` raises the
 /// caught message with the caught [specific classes](Self::specific_classes)
 /// (`REvalError` implements [`RConditionData`](crate::condition::RConditionData)).
@@ -1290,6 +1293,51 @@ impl REvalError {
     #[inline]
     pub fn condition(&self) -> SEXP {
         self.roots.vector_elt(0)
+    }
+
+    /// Raise the caught condition again, as R raised it: its classes, message
+    /// and fields are unchanged, and its call is [`call`](Self::call). So an
+    /// error raised at the top of the evaluated expression reports no call,
+    /// not R's `doTryCatch(...)` frame.
+    ///
+    /// Use it for the errors a body doesn't explain itself, next to a
+    /// package's own condition for the ones it does
+    /// ([`Quoted::try_eval_in`](crate::Quoted::try_eval_in) has an example).
+    /// Unlike `rust_error!(class = e.reraise_class(..), "{e}")`, the condition
+    /// gets no `rust_error` class and keeps R's call, not the wrapper's.
+    ///
+    /// The condition is signalled by base `stop(cond)`, evaluated as
+    /// [`eval_with_handlers`] evaluates: the caller's handlers see it, and the
+    /// exit stops at that evaluation's `R_UnwindProtect` frame and leaves as a
+    /// Rust unwind. The frames up to the `#[miniextendr]` boundary drop their
+    /// values, and the boundary hands the exit back to R, which goes on to the
+    /// caller's handler or to the top level. The same rules hold as for
+    /// [`eval_with_handlers`]: don't catch the unwind with
+    /// `std::panic::catch_unwind`, and don't call this from a `Drop`
+    /// implementation.
+    ///
+    /// # Safety
+    ///
+    /// As [`eval_with_handlers`]: R's main thread, inside a miniextendr
+    /// boundary (a `#[miniextendr]` function body, a
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
+    /// closure, ...).
+    pub unsafe fn reraise(self) -> ! {
+        unsafe {
+            let scope = ProtectScope::new();
+            let cond = scope.protect_raw(without_try_catch_frame_call(self.condition()));
+            // `stop(cond)` with the condition bound in a child of base, so a
+            // traceback shows `stop(cond)` rather than the deparsed object.
+            let env = scope.protect_raw(sys::R_NewEnv(R_BaseEnv, crate::Rboolean::FALSE, 1));
+            let cond_sym = RSymbol::from_cstr(c"cond").as_sexp();
+            REnv::from_sexp(env).define_symbol(cond_sym, cond);
+            let call = scope.protect_raw(sys::Rf_lang2(
+                RSymbol::from_cstr(c"stop").as_sexp(),
+                cond_sym,
+            ));
+            eval_with_handlers(call, env);
+        }
+        unreachable!("stop() returned without signalling an error")
     }
 
     /// Take a caught condition: read its classes, message and call, and root
@@ -1466,6 +1514,33 @@ fn is_try_catch_frame_call(call: SEXP) -> bool {
     call.type_of() == crate::SEXPTYPE::LANGSXP
         // SAFETY: `doTryCatch` is a literal without NUL; interning is main-thread work.
         && call.car() == unsafe { RSymbol::from_cstr(c"doTryCatch") }.as_sexp()
+}
+
+/// `cond`, or a shallow copy of it whose `call` element is `NULL` when that
+/// element is the [`tryCatch()` frame's call](is_try_catch_frame_call): the
+/// condition [`REvalError::reraise`] signals, with the call
+/// [`REvalError::call`] reports.
+///
+/// # Safety
+///
+/// R's main thread; `cond` rooted by the caller. The result is unprotected.
+unsafe fn without_try_catch_frame_call(cond: SEXP) -> SEXP {
+    unsafe {
+        if cond.type_of() != crate::SEXPTYPE::VECSXP {
+            return cond;
+        }
+        let names = string_vector(cond.get_names());
+        let Some(i) = names.iter().position(|name| name == "call") else {
+            return cond;
+        };
+        let i = isize::try_from(i).expect("list index exceeds isize::MAX");
+        if !is_try_catch_frame_call(cond.vector_elt(i)) {
+            return cond;
+        }
+        let copy = sys::Rf_shallow_duplicate(cond);
+        copy.set_vector_elt(i, SEXP::nil());
+        copy
+    }
 }
 
 // endregion

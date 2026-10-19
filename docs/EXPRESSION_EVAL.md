@@ -111,6 +111,7 @@ and what R reports about it:
 | `inherits(class)` | whether `classes()` contains `class` |
 | `condition()` | the condition object |
 | `reraise_class(own)` | `own`, then the specific classes: the `class =` for raising it again |
+| `reraise()` (`unsafe`) | raise the condition again as R raised it, with `call()` as its call; inside a miniextendr boundary |
 
 `Display` writes the message alone, and `REvalError` is a `std::error::Error`.
 
