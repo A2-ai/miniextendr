@@ -234,6 +234,9 @@ impl RebuildLayout {
 }
 
 /// An R6 class rebuilt from a save of any layout.
+/// @field label Kept from the save (active binding).
+/// @field doubled Recomputed by the hook: the rebuilt object holds the new value (active binding).
+/// @field added Added after the first version; a save without it gets 7 (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl RebuildLayout {
     /// Create a RebuildLayout.

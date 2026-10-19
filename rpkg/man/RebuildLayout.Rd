@@ -45,6 +45,17 @@ Getter and setter functions for \verb{#[r_data]} fields on \code{RebuildLayout}.
 
 An R6 class rebuilt from a save of any layout.
 }
+\section{Active bindings}{
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{label}}{Kept from the save (active binding).}
+
+    \item{\code{doubled}}{Recomputed by the hook: the rebuilt object holds the new value (active binding).}
+
+    \item{\code{added}}{Added after the first version; a save without it gets 7 (active binding).}
+  }
+  \if{html}{\out{</div>}}
+}
 \section{Methods}{
 \subsection{Public methods}{
   \itemize{
