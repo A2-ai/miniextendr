@@ -1241,9 +1241,11 @@ The blocks of a type follow four rules, checked when the wrapper writer
 assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the
 install with an error naming the blocks:
 
-- **One block defines the class.** Only one block may have the constructor and
-  S7 properties (`s7(getter)`, `s7(setter)`, `s7(validate)`). That block
-  defines the class; without one, the first block in source order does. The
+- **One block defines the class.** Only one block may have the constructor,
+  S7 properties (`s7(getter)`, `s7(setter)`, `s7(validate)`) and a field
+  fallback (`s3(r_data_accessors, fallback = "...")`, whose field methods
+  that block writes). That block defines the class; without one, the first
+  block in source order does. The
   constructor is decided for the type
   ([Constructor Patterns](#constructor-patterns)): a block's one method
   returning `Self` is the constructor when no block declares one, and a static
@@ -1719,11 +1721,13 @@ The rule for each receiver:
 
 | Receiver | `$` | `[[` by name | `[[` by position | `$<-` / `[[<-`, unknown name |
 |---|---|---|---|---|
-| S3 bare pointer | exact, else `miniextendr_no_field` | exact, else `miniextendr_no_field` | a whole number in range; out of range, `subscriptOutOfBoundsError`; a logical, `NA` or fraction, `notSubsettableError` | `miniextendr_no_field` |
-| S3 bare pointer, `lookup = "list"` | exact, else `NULL` | exact, else `NULL` | field order, as a list's (truncated, a logical too, `NA` is `NULL`); a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
+| S3 bare pointer | exact, else the fallback's value, else `miniextendr_no_field` | exact, else the fallback's value, else `miniextendr_no_field` | a whole number in range; out of range, `subscriptOutOfBoundsError`; a logical, `NA` or fraction, `notSubsettableError` | `miniextendr_no_field` |
+| S3 bare pointer, `lookup = "list"` | exact, else the fallback's value, else `NULL` | exact, else the fallback's value, else `NULL` | field order, as a list's (truncated, a logical too, `NA` is `NULL`); a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
 | S3 list or environment carrying `.ptr` | an exact field, else its own element by the exact name | an exact field, else its own `[[` with `exact = TRUE` | its own `[[` | its own |
-| env class | a field, then a method, else `NULL` | the same | none | `miniextendr_no_field` |
-| S4 | an exact field, else `miniextendr_no_field` | none | none | `miniextendr_no_field` |
+| env class | a field, then a method, then the fallback's value, else `NULL` | the same | none | `miniextendr_no_field` |
+| S4 | an exact field, else the fallback's value, else `miniextendr_no_field` | none | none | `miniextendr_no_field` |
+
+"The fallback's value" applies to a class with `fallback = "..."` (below).
 
 **`names()`, `as.list()` and `.DollarNames()`.** On an S3 bare pointer,
 `names(x)` is the field names in declared order (computed fields included)
@@ -1767,6 +1771,97 @@ Rust type. The readers are documented on the class's topic (or the impl's
 `@rdname`) under `#[miniextendr(internal)]` too, which only drops the exports
 (#1918).
 
+#### A fallback for names no field has
+
+A class whose fields are few but whose value answers many names, such as a
+results object whose users want its table's columns, names a Rust function
+the readers call for a name no field has (#2150):
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3)]
+pub struct Results {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data]
+    pub id: i32,
+    table: Vec<(String, Vec<f64>)>,
+}
+
+impl Results {
+    fn column(&self, name: &str) -> Option<Vec<f64>> {
+        self.table.iter().find(|(c, _)| c == name).map(|(_, v)| v.clone())
+    }
+    fn column_names(&self) -> Vec<String> {
+        self.table.iter().map(|(c, _)| c.clone()).collect()
+    }
+}
+
+#[miniextendr(s3(
+    r_data_accessors = "get",
+    fallback = "Self::column",
+    fallback_names = "Self::column_names",
+))]
+impl Results { /* ... */ }
+```
+
+```r
+x$id          # the field
+x$alpha       # column(x, "alpha"), when no field is named `alpha`
+x[["alpha"]]  # the same
+x$nope        # column() is None: miniextendr_no_field
+```
+
+`fallback` names a `fn(&Self, &str) -> Option<T>` with `T: IntoR`, and the
+optional `fallback_names` a `fn(&Self) -> Vec<String>`; both are paths as
+in `#[r_data(get = "Self::f")]` (a leading `Self` is the impl's type, a free
+function of the module works too), and neither needs `#[miniextendr]`. The
+same keys go under `s4(...)` and `env(...)`. The readers handle the
+`Option` themselves: `Some(v)` reads `v` converted with `IntoR`, so
+`Some(None)` of an `Option<Option<i32>>` reads `NA`, and `None` reads what a
+name no field has reads without a fallback:
+
+| Class | `None` reads |
+|---|---|
+| S3, the default lookup | `miniextendr_no_field`, with the type's `field_error(class = ...)` and `no_field_hint` |
+| S3, `lookup = "list"` | `NULL` (and `x[[NA_character_]]` is `NULL` without asking the fallback) |
+| S4 | `miniextendr_no_field` |
+| env | `NULL`; `$` tries the fields, then the methods, then the fallback, so a value of the fallback never hides a method |
+
+The fallback answers only what no field does:
+
+- **Fields win.** A field hides a fallback name of the same name, so adding a
+  field never changes what an existing name reads.
+- **No prefix matches**, of a field or of a fallback name.
+- **`[[` with a position counts the fields only**; `names()` and `as.list()`
+  stay the fields, so `as.list(x)` does not grow with the table.
+- **The writes are the fields' only.** `x$alpha <- v` and `x[["alpha"]] <- v`
+  raise `miniextendr_no_field`, as for any name that is not a field.
+- **The bare pointer only.** An S3 list or environment carrying the pointer in
+  `.ptr` keeps its own elements for the names no field has, as without a
+  fallback, and its `.DollarNames()` its own names.
+- **`.DollarNames(x, pattern)`** offers the fields, then (on an env class)
+  the methods, then `fallback_names()`, each name once, all filtered by
+  `pattern`. Without `fallback_names` it offers the fields only.
+
+The fallback runs on the live Rust value, borrowed as a field's getter
+borrows it: a restored pointer (`readRDS()`) raises the type's restored
+error before the function runs, even without `refuse = "every_read"`, and a
+running method holding the value mutably raises
+`miniextendr_borrow_conflict`. The function's own errors
+(`rust_error!(class = ...)`) reach R with their classes and the call as
+written (`x$alpha`). `.DollarNames()` never raises on a restored pointer: it
+returns `character(0)` under `refuse = "every_read"`, else the fields
+without the fallback's names.
+
+`fallback` needs `r_data_accessors`, `fallback_names` needs `fallback`, and
+both are compile errors under `r6(...)`, `s7(...)` and `vctrs(...)`, whose
+fields are a fixed set of active bindings or properties. The fallback is part
+of the class one impl block defines, as the constructor is (see
+[Multiple Impl Blocks](#multiple-impl-blocks)): give it on the block with the
+constructor, and spell the same `r_data_accessors` options without it on the
+others.
+
 #### A restored pointer
 
 `saveRDS()` keeps a pointer's `Sidecar` values but not its Rust value
@@ -1783,7 +1878,8 @@ methods pass a `require_live` flag to the same per-field accessor, so a read
 costs no extra `.Call()`, and `as.list()` refuses because its first read
 does. Only a read of a field reaches Rust: on a restored bare pointer
 `names()`, `.DollarNames()` and an unknown name (`NULL`) still answer,
-unless the type asks for `refuse = "every_read"` (below).
+unless the type asks for `refuse = "every_read"` (below), or, for the
+unknown name, has a field fallback, which needs the Rust value.
 
 A type names its own condition classes and message for every one of its
 restored refusals, the field methods and the methods that take the handle
@@ -1888,7 +1984,8 @@ conditionMessage(tryCatch(x$value, error = identity))
 | a pointer of another type under the class | `rust_error`, behind the type's `field_error(class = ...)` | every accessor |
 | a receiver of the class with no pointer | `miniextendr_no_handle`, behind the type's `field_error(class = ...)`, and `restored(class = ...)` for a list or environment | every accessor; every S3 reader under `refuse = "every_read"` |
 | `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
-| no such field (the message lists the fields, then the type's `field_error(no_field_hint = ...)`) | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead) |
+| no such field (the message lists the fields, then the type's `field_error(no_field_hint = ...)`) | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead); with a fallback, the reads when it has no value for the name |
+| the field fallback's own error | whatever the function raises (`rust_error!(class = ...)`) | the reads of a name no field has |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |
