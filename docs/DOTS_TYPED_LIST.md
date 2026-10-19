@@ -226,7 +226,7 @@ format(fit, digts = 2, zzz = 1)
   - An impl-block method of an S3, S4 or S7 class gets the generic's dispatch `...` without one, and `empty` checks that `...` (unless `s3(no_dots)` / `s7(no_dots)` removes it). So does a vctrs protocol method.
   - R6 and env methods, and static methods, have only the formals of the Rust signature.
   - `forward` and `data` hand the arguments to the function, so they need its dots parameter.
-- **Scope.** The attribute is per function or method; there is no crate-level default. The generated `[[` / `as.list` field readers and trait-ABI methods don't take it yet (#2174, #2175).
+- **Scope.** The attribute is per function or method; there is no crate-level default. The `[[` and `as.list()` field readers that `s3(r_data_accessors)` generates make the same check on a bare pointer, always, with no attribute; `[[` takes `exact` as a formal (see [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#field-syntax-on-s3-s4-and-env-classes)). Trait-ABI methods don't take it yet (#2175).
 
 `rpkg/src/rust/dots_policy_tests.rs` has the fixtures (standalone S3 methods, a plain function with a required argument, `forward` with a package class, an impl-block S3 method and an R6 method), and `rpkg/tests/testthat/test-dots-policy.R` tests them.
 

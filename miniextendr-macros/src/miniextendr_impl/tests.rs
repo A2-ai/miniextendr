@@ -8425,7 +8425,10 @@ fn s3_field_methods() {
         generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::GetSet));
     // R's formals, `value` last (#1853).
     assert_eq!(s3_method_formals(&wrapper, "$.Engine"), "x, name");
-    assert_eq!(s3_method_formals(&wrapper, "[[.Engine"), "x, i, ...");
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[.Engine"),
+        "x, i, ..., exact = TRUE"
+    );
     assert_eq!(s3_method_formals(&wrapper, "$<-.Engine"), "x, name, value");
     assert_eq!(
         s3_method_formals(&wrapper, "[[<-.Engine"),
@@ -8454,6 +8457,12 @@ fn s3_field_methods() {
 /// "every_read")` (#1901, #1919), on a pointer, list or environment receiver.
 const S3_EVERY_READ_CHECK: &str = "  if (.rdata_every_read_Engine && typeof(x) %in% c(\"externalptr\", \"list\", \"environment\")) {\n    .val <- .rdata_live_Engine(x, TRUE)\n";
 
+/// The first line of the S3 `[[`'s bare-pointer branch (#2174): `dots =
+/// empty`'s check over the formals `x, i, ..., exact = TRUE`, on the
+/// generic's call, so `exact` is taken and everything else in `...` is
+/// refused.
+const S3_SUBSET_DOTS_CHECK: &str = "    if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"x\", \"i\", \"exact\"), call = environment())\n";
+
 /// The S3 readers of `s3(r_data_accessors)` with the default lookup
 /// (#1921, #1922): on the bare pointer an exact name, else
 /// `miniextendr_no_field` naming the R class, and for `[[` a whole-number
@@ -8461,7 +8470,9 @@ const S3_EVERY_READ_CHECK: &str = "  if (.rdata_every_read_Engine && typeof(x) %
 /// list receiver's own elements by the exact name (`.subset2()` for `$`,
 /// `exact = TRUE` for `[[`); `names()`, `as.list()` and a `.DollarNames()`
 /// registered with `@exportS3Method utils::.DollarNames`, each reader
-/// starting with the `every_read` check. Nothing matches a prefix.
+/// starting with the `every_read` check. Nothing matches a prefix. `[[` and
+/// `as.list()` refuse any argument in `...` on the bare pointer, and only
+/// there (#2174).
 fn assert_s3_readers(wrapper: &str, class: &str) {
     let dollar = crate::naming::r_def_name(&format!("$.{class}"));
     let subset = crate::naming::r_def_name(&format!("[[.{class}"));
@@ -8477,13 +8488,13 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "{subset} <- function(x, i, ...) {{\n{S3_EVERY_READ_CHECK}"
+            "{subset} <- function(x, i, ..., exact = TRUE) {{\n{S3_EVERY_READ_CHECK}"
         )),
         "{wrapper}"
     );
     assert!(
         wrapper.contains(&format!(
-            "  if (typeof(x) == \"externalptr\") {{\n    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), \"{class}\")\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"{class}\", environment(), .rdata_error_class_Engine, strict = TRUE)\n  }} else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {{\n    return(NextMethod(exact = TRUE))\n  }}\n"
+            "  if (typeof(x) == \"externalptr\") {{\n{S3_SUBSET_DOTS_CHECK}    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), \"{class}\")\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"{class}\", environment(), .rdata_error_class_Engine, strict = TRUE)\n  }} else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {{\n    return(NextMethod(exact = TRUE))\n  }}\n"
         )),
         "{wrapper}"
     );
@@ -8517,7 +8528,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  }\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"),
+        wrapper.contains("  }\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\", call = environment())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"),
         "{wrapper}"
     );
     assert!(
@@ -8561,7 +8572,7 @@ fn s3_field_methods_list_lookup() {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    if (is.character(i) && length(i) == 1L) {\n      if (is.na(match(i, .rdata_fields_Engine))) return(NULL)\n    } else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {\n      if (is.na(i)) return(NULL)\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    } else .miniextendr_field_index_error(\"engine_rec\", environment(), .rdata_error_class_Engine)\n  } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {\n    return(NextMethod(exact = TRUE))\n  }\n"),
+        wrapper.contains(&format!("  if (typeof(x) == \"externalptr\") {{\n{S3_SUBSET_DOTS_CHECK}    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) return(NULL)\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n      if (is.na(i)) return(NULL)\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"engine_rec\", environment(), .rdata_error_class_Engine)\n  }} else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {{\n    return(NextMethod(exact = TRUE))\n  }}\n")),
         "{wrapper}"
     );
     for absent in [
@@ -8619,7 +8630,10 @@ fn s3_field_methods_getters_only() {
     let wrapper =
         generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::GetOnly));
     assert_eq!(s3_method_formals(&wrapper, "$.Engine"), "x, name");
-    assert_eq!(s3_method_formals(&wrapper, "[[.Engine"), "x, i, ...");
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[.Engine"),
+        "x, i, ..., exact = TRUE"
+    );
     assert_s3_readers(&wrapper, "Engine");
     assert!(!wrapper.contains("`$<-.Engine`"), "{wrapper}");
     assert!(!wrapper.contains("`[[<-.Engine`"), "{wrapper}");
@@ -8640,7 +8654,10 @@ fn s3_field_methods_without_a_constructor() {
     let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
     assert!(!wrapper.contains("new_engine_rec"), "{wrapper}");
     assert_eq!(s3_method_formals(&wrapper, "$.engine_rec"), "x, name");
-    assert_eq!(s3_method_formals(&wrapper, "[[.engine_rec"), "x, i, ...");
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[.engine_rec"),
+        "x, i, ..., exact = TRUE"
+    );
     assert_s3_readers(&wrapper, "engine_rec");
     assert!(!wrapper.contains("`$<-.engine_rec`"), "{wrapper}");
     // The methods document `x` on the class page.
@@ -8984,8 +9001,9 @@ fn s3_field_methods_with_a_fallback() {
         fallback_read("x", "name", "      ")
     );
     assert!(wrapper.contains(&dollar), "{wrapper}");
+    // The unused-argument check comes first, before the fallback (#2174).
     let subset = format!(
-        "    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n{}        .rdata_no_field_Engine(i, environment(), \"Engine\")\n      }}\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(",
+        "  if (typeof(x) == \"externalptr\") {{\n{S3_SUBSET_DOTS_CHECK}    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n{}        .rdata_no_field_Engine(i, environment(), \"Engine\")\n      }}\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(",
         fallback_read("x", "i", "        ")
     );
     assert!(wrapper.contains(&subset), "{wrapper}");
@@ -9044,7 +9062,7 @@ fn s3_field_methods_with_a_fallback_under_list_lookup() {
     );
     assert!(wrapper.contains(&dollar), "{wrapper}");
     let subset = format!(
-        "    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n        if (!is.na(i)) {{\n{}        }}\n        return(NULL)\n      }}\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n",
+        "  if (typeof(x) == \"externalptr\") {{\n{S3_SUBSET_DOTS_CHECK}    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) {{\n        if (!is.na(i)) {{\n{}        }}\n        return(NULL)\n      }}\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n",
         fallback_read("x", "i", "          ")
     );
     assert!(wrapper.contains(&subset), "{wrapper}");

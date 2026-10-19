@@ -1669,7 +1669,7 @@ still calls them, e.g. to read a saved object's `Sidecar` values (below).
 The field methods are documented on the class's page, or on the topic an
 `@rdname` in the impl block's doc comment names. On the author's topic they
 add no `@param` lines (the topic's own block documents `x`, `name`, `i`,
-`...`, `value` and `pattern`) and sort after its block (`@order NaN`). The
+`...`, `exact`, `value` and `pattern`) and sort after its block (`@order NaN`). The
 class's other members follow the same topic
 ([Multiple Impl Blocks](#multiple-impl-blocks)).
 
@@ -1728,6 +1728,34 @@ The rule for each receiver:
 | S4 | an exact field, else the fallback's value, else `miniextendr_no_field` | none | none | `miniextendr_no_field` |
 
 "The fallback's value" applies to a class with `fallback = "..."` (below).
+
+**An unused argument is refused on an S3 bare pointer.** `[[` and
+`as.list()` take `...` because their generics do, and on the bare pointer
+they read none of it. So there they refuse every argument in it, as a
+method with `#[miniextendr(dots = empty)]` does
+([DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role)):
+one `miniextendr_error_unused_argument` on the call as written, naming each
+argument (`..<i>` for an unnamed one) and the formal it most likely meant.
+The check reads only the names, so nothing in `...` is evaluated.
+
+```r
+x[["data", exatc = TRUE]]
+#> Error in x[["data", exatc = TRUE]] :
+#>   unused argument 'exatc' (did you mean 'exact'?)
+x[[1, 2]]
+#> Error in x[[1, 2]] : unused argument '..1' (unnamed)
+as.list(x, all.names = TRUE)
+#> Error in as.list(x, all.names = TRUE) : unused argument 'all.names'
+```
+
+`[[` takes `exact` as a formal after `...`, as `[[.data.frame` does
+(`function(x, i, ..., exact = TRUE)`), so `x[["data", exact = FALSE]]` is
+accepted. On the bare pointer it changes nothing, since field names always
+match exactly. A list or environment receiver hands its arguments on as
+before: `[[` to its own `[[`, with `exact = TRUE` whatever the call passed,
+and `as.list()` to the list's own or to `as.list.environment()`, which takes
+`all.names` and `sorted`. An env class's `[[` is its `$` (`function(self,
+name)`), which takes no `...`, so R refuses any further argument itself.
 
 **`names()`, `as.list()` and `.DollarNames()`.** On an S3 bare pointer,
 `names(x)` is the field names in declared order (computed fields included)
@@ -1990,6 +2018,7 @@ conditionMessage(tryCatch(x$value, error = identity))
 | `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
 | no such field (the message lists the fields, then the type's `field_error(no_field_hint = ...)`) | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead); with a fallback, the reads when it has no value for the name |
 | the field fallback's own error | whatever the function raises (`rust_error!(class = ...)`) | the reads of a name no field has |
+| an argument in `...` (the message names each one, and the formal it most likely meant) | `miniextendr_error_unused_argument`, then the crate's `conversion_error_class` and `rust_error` | `[[` and `as.list()` on an S3 bare pointer |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |

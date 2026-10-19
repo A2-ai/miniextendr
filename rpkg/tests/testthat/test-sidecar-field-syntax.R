@@ -13,8 +13,9 @@
 # on S4 and env classes. A name that is not a field falls through, by the
 # exact name, to a list or an environment receiver's own elements. A `[[`
 # index that is neither one name nor one position is refused by the
-# generated `[[` itself (#1920). A condition reports the call as written:
-# `x$data <- value`.
+# generated `[[` itself (#1920). On a bare pointer `[[` and `as.list()`
+# refuse an unused argument as `dots = empty` does, and `[[` takes `exact`
+# (#2174). A condition reports the call as written: `x$data <- value`.
 #
 # Fixtures: `SidecarS3`, `SidecarS3Get`, `SidecarComputed`, `SidecarHandmade`
 # (classed by `new_handmade_rec()` in `R/sidecar_handmade.R`), `SidecarStrict`
@@ -564,6 +565,76 @@ test_that("lookup = \"list\": `[[` takes a position as a list's does", {
     )
     expect_equal(conditionCall(e), read, label = deparse(read))
   }
+})
+
+# endregion
+
+# region: S3, unused arguments to `[[` and `as.list()` (#2174)
+
+test_that("S3: `[[` on the pointer refuses an unused argument, naming the formal it most likely meant", {
+  x <- new_sidecars3(1.5)
+  e <- caught(x[["data", exatc = TRUE]])
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_s3_class(e, "rust_error")
+  expect_identical(conditionMessage(e), "unused argument 'exatc' (did you mean 'exact'?)")
+  expect_identical(e$param, "...")
+  expect_identical(e$argument, "exatc")
+  expect_identical(e$suggestion, "exact")
+  expect_equal(conditionCall(e), quote(x[["data", exatc = TRUE]]))
+  # A second index is no argument of a field read.
+  e <- caught(x[[1, 2]])
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(conditionMessage(e), "unused argument '..1' (unnamed)")
+  expect_equal(conditionCall(e), quote(x[[1, 2]]))
+  # Every refused argument in one condition, and none of them forced.
+  e <- caught(x[["data", 2, zzz = stop("forced")]])
+  expect_identical(e$argument, c("..1", "zzz"))
+  expect_identical(e$suggestion, c(NA_character_, NA_character_))
+  # The other lookup refuses them too.
+  e <- caught(new_sidecars3get(2L)[["level", exatc = TRUE]])
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(e$suggestion, "exact")
+})
+
+test_that("S3: `[[` takes `exact`; a field name matches exactly whatever it says", {
+  x <- new_sidecars3(1.5)
+  expect_identical(x[["data", exact = FALSE]], 1.5)
+  expect_identical(x[["data", exact = TRUE]], 1.5)
+  expect_identical(x[[1, exact = FALSE]], 1.5)
+  expect_s3_class(caught(x[["da", exact = FALSE]]), "miniextendr_no_field")
+  expect_null(new_sidecars3get(2L)[["lev", exact = FALSE]])
+})
+
+test_that("S3: `as.list()` on the pointer refuses any argument", {
+  x <- new_sidecars3(1.5)
+  e <- caught(as.list(x, all.names = TRUE))
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(conditionMessage(e), "unused argument 'all.names'")
+  expect_identical(e$argument, "all.names")
+  expect_identical(e$suggestion, NA_character_)
+  expect_equal(conditionCall(e), quote(as.list(x, all.names = TRUE)))
+  expect_identical(caught(as.list(x, 1))$argument, "..1")
+  expect_identical(as.list(x), list(data = 1.5, tags = character()))
+})
+
+test_that("S3: a list or environment receiver hands the arguments on", {
+  # A list's own `[[` gets `exact = TRUE` whatever the call passed (#1922),
+  # and its own refusal of a second index.
+  l <- new_s3_list()
+  expect_identical(l[["note", exact = FALSE]], "plain")
+  expect_null(l[["not", exact = FALSE]])
+  e <- caught(l[["note", 2]])
+  expect_false(inherits(e, "miniextendr_error_unused_argument"))
+  expect_identical(conditionMessage(e), "incorrect number of subscripts")
+  expect_identical(as.list(l, all.names = TRUE), l)
+  # An environment's `as.list()` takes `all.names` and `sorted`.
+  env <- new.env()
+  env$.ptr <- new_sidecars3(1.5)
+  env$plain <- "binding"
+  class(env) <- "SidecarS3"
+  expect_identical(names(as.list(env, all.names = TRUE, sorted = TRUE)), c(".ptr", "plain"))
+  expect_identical(names(as.list(env)), "plain")
+  expect_identical(env[["plain", exact = FALSE]], "binding")
 })
 
 # endregion

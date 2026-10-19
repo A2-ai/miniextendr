@@ -42,15 +42,17 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @rdname Engine
 #' @param x An object.
 #' @param i A field name, exactly; `[[` on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own `[[` / `[[<-`, which matches names exactly.
-#' @param ... Additional arguments.
+#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
+#' @param exact Ignored on the pointer itself, whose field names match exactly. A list or an environment carrying the pointer reads its own elements with `exact = TRUE` whatever is passed.
 #' @method [[ Engine
 #' @export
-`[[.Engine` <- function(x, i, ...) {
+`[[.Engine` <- function(x, i, ..., exact = TRUE) {
   if (.rdata_every_read_Engine && typeof(x) %in% c("externalptr", "list", "environment")) {
     .val <- .rdata_live_Engine(x, TRUE)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   }
   if (typeof(x) == "externalptr") {
+    if (...length()) .miniextendr_check_dots(...names(), ...length(), c("x", "i", "exact"), call = environment())
     if (is.character(i) && length(i) == 1L && !is.na(i)) {
       if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), "Engine")
     } else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {
@@ -79,7 +81,7 @@ names.Engine <- function(x) {
 
 #' @rdname Engine
 #' @param x An object.
-#' @param ... Additional arguments.
+#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
 #' @method as.list Engine
 #' @export
 as.list.Engine <- function(x, ...) {
@@ -89,6 +91,7 @@ as.list.Engine <- function(x, ...) {
   }
   if (is.environment(x)) return(as.list.environment(x, ...))
   if (typeof(x) != "externalptr") return(NextMethod())
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), "x", call = environment())
   .out <- vector("list", length(.rdata_fields_Engine))
   names(.out) <- .rdata_fields_Engine
   for (.k in seq_along(.rdata_fields_Engine)) {
@@ -127,7 +130,7 @@ as.list.Engine <- function(x, ...) {
 #' @rdname Engine
 #' @param x An object.
 #' @param i A field name, exactly; `[[` on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own `[[` / `[[<-`, which matches names exactly.
-#' @param ... Additional arguments.
+#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
 #' @param value The new value of the field.
 #' @method [[<- Engine
 #' @export

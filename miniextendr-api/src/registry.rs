@@ -2913,7 +2913,9 @@ const ARG_ERROR_HELPER: &str = r#"# Internal helper: raise an argument error fro
 /// `if (...length()) .miniextendr_check_dots(...names(), ...length(),
 /// <formals>, allow = .., forward = TRUE, class = .., call = ..)`, the
 /// statement `miniextendr-macros`' `dots_policy::DotsPolicy::r_check` writes
-/// (`forward = TRUE` for `forward` only). It builds its own condition, an
+/// (`forward = TRUE` for `forward` only). The `[[`, `as.list()` and `[[<-`
+/// field methods of `s3(r_data_accessors)` and an env class's `[[` make the
+/// `empty` check on a bare pointer (#2174). It builds its own condition, an
 /// argument error with two more fields, and depends only on the helpers every
 /// preamble has.
 #[cfg(not(target_arch = "wasm32"))]

@@ -34,6 +34,10 @@
 //! helper is in the wrappers preamble (`miniextendr_api::registry`): one
 //! classed argument error for every refused argument, with the formal or
 //! listed name each one most likely meant.
+//!
+//! The `[[` and `as.list()` field readers of `s3(r_data_accessors)` make the
+//! `empty` check on a bare pointer with no attribute ([`DotsPolicy::empty`],
+//! #2174).
 
 use proc_macro2::{Span, TokenStream};
 use syn::spanned::Spanned;
@@ -253,6 +257,17 @@ fn string_list(expr: &syn::Expr, names: bool) -> syn::Result<Vec<String>> {
 }
 
 impl DotsPolicy {
+    /// `empty`, for generated code that has no attribute: the `[[` and
+    /// `as.list()` field readers of `s3(r_data_accessors)` (#2174).
+    pub(crate) fn empty() -> Self {
+        DotsPolicy {
+            role: DotsRole::Empty,
+            allow: Vec::new(),
+            class: Vec::new(),
+            span: Span::call_site(),
+        }
+    }
+
     /// Refuse a role the signature can't have, spanned on the attribute:
     /// `forward` and `data` hand the arguments to the Rust function, so it
     /// takes `...` (`_: ...`, `&Dots` or `LazyDots`); `wrapper_dots` says

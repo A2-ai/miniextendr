@@ -41,6 +41,15 @@
 //! index is looked at. Every replacement method puts `value` last and
 //! returns the object (#1853).
 //!
+//! The S3 `[[` and `as.list()` take `...` because their generics do, and
+//! read none of it on a bare pointer, so there they refuse every argument in
+//! it (#2174) with `dots = empty`'s check (`dots_policy`), on the generic's
+//! call and with the formal each one most likely meant: `x[["data", exatc =
+//! TRUE]]`, `x[[1, 2]]`, `as.list(x, all.names = TRUE)`. `[[` takes `exact`
+//! as a formal after `...`, as `[[.data.frame` does, so `exact = FALSE` is
+//! no extra argument; field names match exactly whatever it says. A list or
+//! environment receiver hands its dots on, as before.
+//!
 //! A field fallback (`fallback = "Self::f"`, #2150; see
 //! `miniextendr_impl::FieldFallback`) answers the names no field has
 //! on the bare pointer, through a `.Call` entry the impl block emits
@@ -200,6 +209,25 @@ fn guard(indent: &str) -> Vec<String> {
     crate::method_return_builder::condition_check_lines_with_default(indent, "environment()")
 }
 
+/// The formals of the S3 `[[` reader: `exact` after `...`, as
+/// `[[.data.frame` has it, so R matches it by name and `...` holds only
+/// what the reader refuses (#2174).
+const SUBSET_FORMALS: &str = "x, i, ..., exact = TRUE";
+
+/// The formals of the S3 `as.list()` reader, its generic's.
+const AS_LIST_FORMALS: &str = "x, ...";
+
+/// The check a reader with `formals` makes on the bare pointer (#2174):
+/// `dots = empty`'s statement ([`DotsPolicy::r_check`](crate::dots_policy::DotsPolicy::r_check)),
+/// which refuses every argument in `...` on the generic's call (the method's
+/// frame), with the formal each one most likely meant.
+fn dots_check(formals: &str, indent: &str) -> String {
+    let check = crate::dots_policy::DotsPolicy::empty()
+        .r_check(formals, Some("environment()"))
+        .expect("the readers take `...`");
+    format!("{indent}{check}")
+}
+
 /// The help topic of the field methods (and of the S3 class environment):
 /// the impl block's own `@rdname`, else the class page (#1900).
 pub(super) fn topic(parsed_impl: &ParsedImpl) -> String {
@@ -348,7 +376,18 @@ pub(super) fn s3_field_methods(
 
     let class_lit = format!("\"{}\"", crate::naming::r_string_escape(&class_name));
     let x = ("x", "An object.");
-    let dots = ("...", "Additional arguments.");
+    // One text for `[[`, `as.list()` and `[[<-`, which share the page.
+    let dots = (
+        "...",
+        "Passed on by a list or an environment carrying the pointer. On the pointer \
+         itself `[[` and `as.list()` take no further argument and refuse one.",
+    );
+    let exact = (
+        "exact",
+        "Ignored on the pointer itself, whose field names match exactly. A list or an \
+         environment carrying the pointer reads its own elements with `exact = TRUE` \
+         whatever is passed.",
+    );
     // One text per name for the page: roxygen2 keeps the last `@param` of a
     // name on a page, so the reader's and the writer's blocks say the same.
     let fallback = h.fallback.is_some();
@@ -451,20 +490,23 @@ pub(super) fn s3_field_methods(
     // as a list's `[[` does (`NA` reads NULL, since a character vector's
     // `[[NA]]` is `NA` where a list's is NULL; the rest through
     // `.miniextendr_field_at`) and reads NULL for an unknown name. Any other
-    // index raises the bad-index error there (#1920). A list or environment
-    // receiver reaches its own `[[` for everything but an exact field, with
-    // `exact = TRUE` whatever the call passed (#1922).
+    // index raises the bad-index error there (#1920). The bare pointer first
+    // refuses any argument in `...` (#2174); `exact` is a formal, ignored
+    // there. A list or environment receiver reaches its own `[[` for
+    // everything but an exact field, with its dots and `exact = TRUE`
+    // whatever the call passed (#1922).
     s3_method_doc(
         &mut lines,
         parsed_impl,
         "[[",
         on_page,
         register,
-        &[x, i, dots],
+        &[x, i, dots, exact],
     );
-    lines.push(format!("{} <- function(x, i, ...) {{", def("[[")));
+    lines.push(format!("{} <- function({SUBSET_FORMALS}) {{", def("[[")));
     lines.extend(h.every_read_check());
     lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
+    lines.push(dots_check(SUBSET_FORMALS, "    "));
     let field_at = format!(
         "      i <- .miniextendr_field_at({}, i, environment(), {})",
         h.fields, h.error_class
@@ -540,7 +582,8 @@ pub(super) fn s3_field_methods(
     // `NextMethod()` to `as.list.default()`, which can't coerce one.
     // `as.list()` reads every field through the getters, in declared order,
     // and keeps a NULL field (`out[k] <- list(.val)`; `out[[k]] <- NULL`
-    // would drop it).
+    // would drop it). It takes no argument there and refuses any in `...`
+    // (#2174); an environment's `as.list()` takes `all.names` / `sorted`.
     s3_method_doc(&mut lines, parsed_impl, "names", on_page, register, &[x]);
     lines.push(format!("{} <- function(x) {{", def("names")));
     lines.extend(h.every_read_check());
@@ -557,10 +600,14 @@ pub(super) fn s3_field_methods(
         register,
         &[x, dots],
     );
-    lines.push(format!("{} <- function(x, ...) {{", def("as.list")));
+    lines.push(format!(
+        "{} <- function({AS_LIST_FORMALS}) {{",
+        def("as.list")
+    ));
     lines.extend(h.every_read_check());
     lines.push("  if (is.environment(x)) return(as.list.environment(x, ...))".to_string());
     lines.push("  if (typeof(x) != \"externalptr\") return(NextMethod())".to_string());
+    lines.push(dots_check(AS_LIST_FORMALS, "  "));
     lines.push(format!("  .out <- vector(\"list\", length({}))", h.fields));
     lines.push(format!("  names(.out) <- {}", h.fields));
     lines.push(format!("  for (.k in seq_along({})) {{", h.fields));
