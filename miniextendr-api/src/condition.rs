@@ -370,8 +370,11 @@ impl RCondition {
         )
     }
 
-    /// The condition message.
-    #[doc(hidden)]
+    /// The condition message, as `conditionMessage()` would read it in R.
+    ///
+    /// Use it on a condition [`catch_condition`] caught or
+    /// [`capture`](crate::deferred_condition::capture) collected, for example
+    /// to put a cause's text into a new message.
     pub fn message(&self) -> &str {
         match self {
             RCondition::Error { message, .. }
@@ -457,8 +460,8 @@ impl RCondition {
         ])
     }
 
-    /// Whether the condition reports a call.
-    #[doc(hidden)]
+    /// Which call the condition reports when R raises it: see
+    /// [`ConditionCall`].
     pub fn call(&self) -> ConditionCall {
         match self {
             RCondition::Error { call, .. }
