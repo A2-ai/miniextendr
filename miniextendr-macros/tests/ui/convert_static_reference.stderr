@@ -1,0 +1,5 @@
+error: `convert` borrows only for the call; remove the `'static` lifetime
+ --> tests/ui/convert_static_reference.rs:4:47
+  |
+4 | pub fn escape(#[miniextendr(convert)] value: &'static Text) -> &'static str { value }
+  |                                               ^^^^^^^

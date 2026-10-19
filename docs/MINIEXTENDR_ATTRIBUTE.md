@@ -713,6 +713,7 @@ Written on a single parameter of a standalone function:
 | Attribute | Effect |
 |-----------|--------|
 | `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
+| `convert` | On a `&T` / `&mut T` (or an `Option` of either): convert through the reference's own `TryFromSexp` instead of borrowing an external value. For a type alias (`type Text = str`) or a custom `impl TryFromSexp for &MyView`, which the macro cannot tell from an `ExternalPtr` type; not with `coerce`, `match_arg` or `choices` (see [EXTERNALPTR.md](EXTERNALPTR.md#arguments)) |
 | `default = "..."` | R formal default (an R expression) |
 | `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices (none under `no_default`) and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)). The type's aliases (`#[match_arg(alias = "grey")]` on a variant) are accepted when typed in full and listed nowhere ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#aliases)) |
 | `choices("a", "b")` | Validate a string against a literal choice list (the formal is `c("a", "b")`; the same type layers and `no_default` as `match_arg`, no aliases) |
@@ -870,7 +871,7 @@ Impl and trait methods cannot carry parameter attributes, so the same options
 are method-level and name the parameter: `match_arg(p)`,
 `match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
 `no_default(p, q)`, `inherits(p = "cls_a, cls_b")`, `not_inherits(p = "cls_a, cls_b")`,
-`no_na(p, q)`. A message goes in parentheses after the parameter:
+`no_na(p, q)`, `convert(p, q)`. A message goes in parentheses after the parameter:
 `inherits(p(class = "cls_a, cls_b", message = "..."))`,
 `not_inherits(p(class = "cls_a, cls_b", message = "..."))`,
 `no_na(p(message = "..."), q)`. At method level the classes are one
@@ -1324,6 +1325,7 @@ impl Person {
 | `not_inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
+| `convert(p, q)` | Convert the reference parameters `p` and `q` through their own `TryFromSexp` instead of borrowing external values ([Parameter Attributes](#parameter-attributes)); also on trait impl methods |
 | `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 | `preconditions(p, q)` / `no_preconditions(p)` | The same for the named parameters only, over the method's own |
 
