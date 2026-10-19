@@ -2921,7 +2921,8 @@ const ARG_ERROR_HELPER: &str = r#"# Internal helper: raise an argument error fro
 #[cfg(not(target_arch = "wasm32"))]
 const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a wrapper's `...` that its
 # `dots = empty | empty(allow = ...) | forward(allow = ...)` attribute does not
-# take. The wrapper calls it only when `...length()` is nonzero, with
+# take, or that a generated field method or env class `[[` (`empty`) gets.
+# The wrapper calls it only when `...length()` is nonzero, with
 # `...names()` and `...length()`, so no argument is forced. Every name outside
 # `allow` is refused. An unnamed argument stands for an allowed name given by
 # position: under `forward` (`forward = TRUE`) it passes, since the function

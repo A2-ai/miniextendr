@@ -41,14 +41,17 @@
 //! index is looked at. Every replacement method puts `value` last and
 //! returns the object (#1853).
 //!
-//! The S3 `[[` and `as.list()` take `...` because their generics do, and
-//! read none of it on a bare pointer, so there they refuse every argument in
-//! it (#2174) with `dots = empty`'s check (`dots_policy`), on the generic's
-//! call and with the formal each one most likely meant: `x[["data", exatc =
-//! TRUE]]`, `x[[1, 2]]`, `as.list(x, all.names = TRUE)`. `[[` takes `exact`
-//! as a formal after `...`, as `[[.data.frame` does, so `exact = FALSE` is
-//! no extra argument; field names match exactly whatever it says. A list or
-//! environment receiver hands its dots on, as before.
+//! The S3 `[[`, `as.list()` and `[[<-` take `...` because their generics
+//! do, and read none of it on a bare pointer, so there they refuse every
+//! argument in it (#2174) with `dots = empty`'s check (`dots_policy`), on
+//! the generic's call, with the formal each one most likely meant and the
+//! type's `field_error` classes in front: `x[["data", exatc = TRUE]]`,
+//! `x[[1, 2]]`, `as.list(x, all.names = TRUE)`, `x[["data", 2]] <- v`. `[[`
+//! takes `exact` as a formal after `...`, as `[[.data.frame` does, so
+//! `exact = FALSE` is no extra argument; field names match exactly whatever
+//! it says. A list or environment receiver hands its dots on, as before. An
+//! env class's `[[` (`env_class.rs`) takes `exact` the same way and refuses
+//! the rest on every receiver, since nothing reads its dots.
 //!
 //! A field fallback (`fallback = "Self::f"`, #2150; see
 //! `miniextendr_impl::FieldFallback`) answers the names no field has
@@ -217,15 +220,37 @@ const SUBSET_FORMALS: &str = "x, i, ..., exact = TRUE";
 /// The formals of the S3 `as.list()` reader, its generic's.
 const AS_LIST_FORMALS: &str = "x, ...";
 
-/// The check a reader with `formals` makes on the bare pointer (#2174):
-/// `dots = empty`'s statement ([`DotsPolicy::r_check`](crate::dots_policy::DotsPolicy::r_check)),
-/// which refuses every argument in `...` on the generic's call (the method's
-/// frame), with the formal each one most likely meant.
-fn dots_check(formals: &str, indent: &str) -> String {
-    let check = crate::dots_policy::DotsPolicy::empty()
+/// The formals of the S3 `[[<-` writer, `value` last (#1853).
+const SUBSET_ASSIGN_FORMALS: &str = "x, i, ..., value";
+
+/// The formals of an env class's `[[`: its `$`'s, then `...` and `exact`,
+/// as the S3 `[[` has them (#2174).
+pub(super) const ENV_SUBSET_FORMALS: &str = "self, name, ..., exact = TRUE";
+
+/// The check a method with `formals` makes before it reads its index
+/// (#2174): `dots = empty`'s statement
+/// ([`DotsPolicy::r_check`](crate::dots_policy::DotsPolicy::r_check)), which
+/// refuses every argument in `...` on the generic's call (the method's
+/// frame), with the formal each one most likely meant. `class` is an R
+/// expression for the classes in front, the type's `field_error` classes.
+fn dots_check(formals: &str, class: Option<&str>, indent: &str) -> String {
+    let check = crate::dots_policy::DotsPolicy::empty(class.map(str::to_owned))
         .r_check(formals, Some("environment()"))
-        .expect("the readers take `...`");
+        .expect("the methods take `...`");
     format!("{indent}{check}")
+}
+
+/// The first line of an env class's `[[` (#2174): it takes no argument
+/// past `name` but `exact`, which it ignores (field and method names match
+/// exactly), and nothing reads its `...`, on any receiver. Under
+/// `env(r_data_accessors)` the refusal carries the type's `field_error`
+/// classes.
+pub(super) fn env_subset_dots_check(parsed_impl: &ParsedImpl) -> String {
+    let class = parsed_impl
+        .r_data_accessors
+        .enabled()
+        .then(|| Helpers::new(parsed_impl).error_class);
+    dots_check(ENV_SUBSET_FORMALS, class.as_deref(), "  ")
 }
 
 /// The help topic of the field methods (and of the S3 class environment):
@@ -379,8 +404,8 @@ pub(super) fn s3_field_methods(
     // One text for `[[`, `as.list()` and `[[<-`, which share the page.
     let dots = (
         "...",
-        "Passed on by a list or an environment carrying the pointer. On the pointer \
-         itself `[[` and `as.list()` take no further argument and refuse one.",
+        "Passed on by a list or an environment carrying the pointer; on the pointer \
+         itself any argument here is refused.",
     );
     let exact = (
         "exact",
@@ -506,7 +531,7 @@ pub(super) fn s3_field_methods(
     lines.push(format!("{} <- function({SUBSET_FORMALS}) {{", def("[[")));
     lines.extend(h.every_read_check());
     lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
-    lines.push(dots_check(SUBSET_FORMALS, "    "));
+    lines.push(dots_check(SUBSET_FORMALS, Some(&h.error_class), "    "));
     let field_at = format!(
         "      i <- .miniextendr_field_at({}, i, environment(), {})",
         h.fields, h.error_class
@@ -607,7 +632,7 @@ pub(super) fn s3_field_methods(
     lines.extend(h.every_read_check());
     lines.push("  if (is.environment(x)) return(as.list.environment(x, ...))".to_string());
     lines.push("  if (typeof(x) != \"externalptr\") return(NextMethod())".to_string());
-    lines.push(dots_check(AS_LIST_FORMALS, "  "));
+    lines.push(dots_check(AS_LIST_FORMALS, Some(&h.error_class), "  "));
     lines.push(format!("  .out <- vector(\"list\", length({}))", h.fields));
     lines.push(format!("  names(.out) <- {}", h.fields));
     lines.push(format!("  for (.k in seq_along({})) {{", h.fields));
@@ -678,7 +703,20 @@ pub(super) fn s3_field_methods(
         register,
         &[x, i, dots, value],
     );
-    lines.push(format!("{} <- function(x, i, ..., value) {{", def("[[<-")));
+    // The bare pointer refuses any argument in `...` (#2174): `x[["a", 2]] <-
+    // v` would otherwise write `a`. A list or environment receiver hands
+    // them to its own `[[<-`.
+    lines.push(format!(
+        "{} <- function({SUBSET_ASSIGN_FORMALS}) {{",
+        def("[[<-")
+    ));
+    lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
+    lines.push(dots_check(
+        SUBSET_ASSIGN_FORMALS,
+        Some(&h.error_class),
+        "    ",
+    ));
+    lines.push("  }".to_string());
     lines.push(format!("  if ({}) {{", not_a_field_name("i", &h.fields)));
     lines.push(format!(
         "    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {}(i, environment(), {class_lit})",

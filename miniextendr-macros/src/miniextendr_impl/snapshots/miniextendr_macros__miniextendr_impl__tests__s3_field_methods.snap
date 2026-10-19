@@ -42,7 +42,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @rdname Engine
 #' @param x An object.
 #' @param i A field name, exactly; `[[` on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own `[[` / `[[<-`, which matches names exactly.
-#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
+#' @param ... Passed on by a list or an environment carrying the pointer; on the pointer itself any argument here is refused.
 #' @param exact Ignored on the pointer itself, whose field names match exactly. A list or an environment carrying the pointer reads its own elements with `exact = TRUE` whatever is passed.
 #' @method [[ Engine
 #' @export
@@ -52,7 +52,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   }
   if (typeof(x) == "externalptr") {
-    if (...length()) .miniextendr_check_dots(...names(), ...length(), c("x", "i", "exact"), call = environment())
+    if (...length()) .miniextendr_check_dots(...names(), ...length(), c("x", "i", "exact"), class = .rdata_error_class_Engine, call = environment())
     if (is.character(i) && length(i) == 1L && !is.na(i)) {
       if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), "Engine")
     } else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {
@@ -81,7 +81,7 @@ names.Engine <- function(x) {
 
 #' @rdname Engine
 #' @param x An object.
-#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
+#' @param ... Passed on by a list or an environment carrying the pointer; on the pointer itself any argument here is refused.
 #' @method as.list Engine
 #' @export
 as.list.Engine <- function(x, ...) {
@@ -91,7 +91,7 @@ as.list.Engine <- function(x, ...) {
   }
   if (is.environment(x)) return(as.list.environment(x, ...))
   if (typeof(x) != "externalptr") return(NextMethod())
-  if (...length()) .miniextendr_check_dots(...names(), ...length(), "x", call = environment())
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), "x", class = .rdata_error_class_Engine, call = environment())
   .out <- vector("list", length(.rdata_fields_Engine))
   names(.out) <- .rdata_fields_Engine
   for (.k in seq_along(.rdata_fields_Engine)) {
@@ -130,11 +130,14 @@ as.list.Engine <- function(x, ...) {
 #' @rdname Engine
 #' @param x An object.
 #' @param i A field name, exactly; `[[` on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own `[[` / `[[<-`, which matches names exactly.
-#' @param ... Passed on by a list or an environment carrying the pointer. On the pointer itself `[[` and `as.list()` take no further argument and refuse one.
+#' @param ... Passed on by a list or an environment carrying the pointer; on the pointer itself any argument here is refused.
 #' @param value The new value of the field.
 #' @method [[<- Engine
 #' @export
 `[[<-.Engine` <- function(x, i, ..., value) {
+  if (typeof(x) == "externalptr") {
+    if (...length()) .miniextendr_check_dots(...names(), ...length(), c("x", "i", "value"), class = .rdata_error_class_Engine, call = environment())
+  }
   if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
     if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) .rdata_no_field_Engine(i, environment(), "Engine")
     return(NextMethod())

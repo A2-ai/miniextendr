@@ -48,7 +48,7 @@ TopicENV
 
 \method{$}{TopicENV}(self, name)
 
-\method{[[}{TopicENV}(self, name)
+\method{[[}{TopicENV}(self, name, ..., exact = TRUE)
 
 new_topics3(value)
 
@@ -90,6 +90,8 @@ topicvctrs_origin(offset)
 \item{...}{Additional arguments, documented by the topic.}
 
 \item{name}{A member name, documented by the topic.}
+
+\item{exact}{Ignored by an env class's \code{[[}, documented by the topic.}
 
 \item{value}{Initial value, documented by the topic.}
 

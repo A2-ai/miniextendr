@@ -1243,8 +1243,9 @@ impl MyClass { /* ... */ }
 
 `r_data_accessors` gives the class `$` / `[[` methods that read the `pub`
 `#[r_data]` fields of the type and `$<-` / `[[<-` methods that write them in
-place (S4: `$` and `$<-` only). On an S3 bare pointer `[[` and `as.list()`
-refuse an unused argument, as `dots = empty` does; `[[` takes `exact`.
+place (S4: `$` and `$<-` only). On an S3 bare pointer `[[`, `as.list()` and
+`[[<-` refuse an unused argument, as `dots = empty` does; `[[` takes `exact`,
+as an env class's `[[` does.
 `r_data_accessors = "get"` generates the
 reading methods only, for a class that keeps its own `$<-`. The type needs an
 `#[r_data] _r: RSidecar` selector and at least one `pub` `#[r_data]` field.

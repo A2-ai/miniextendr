@@ -25,5 +25,10 @@ Handle$id <- function() {
   .miniextendr_env_method(self, name, Handle)
 }
 #' @rdname Handle
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Handle` <- `$.Handle`
+`[[.Handle` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Handle)
+}

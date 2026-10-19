@@ -34,6 +34,18 @@ test_that("env method lookup preserves statics, indexing and missing names", {
   expect_null(a[["no_such_method"]])
 })
 
+test_that("env `[[` takes `exact` and refuses any other argument (#2174)", {
+  a <- SimpleCounter$new_counter(10L)
+  expect_identical(a[["get_value", exact = TRUE]](), 10L)
+  expect_identical(a[["get_value", exact = FALSE]](), 10L)
+  e <- tryCatch(a[["get_value", exatc = TRUE]], error = identity)
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(conditionMessage(e), "unused argument 'exatc' (did you mean 'exact'?)")
+  expect_equal(conditionCall(e), quote(a[["get_value", exatc = TRUE]]))
+  e <- tryCatch(a[["get_value", 2]], error = identity)
+  expect_identical(e$argument, "..1")
+})
+
 test_that("env method bodies and defaults keep their lexical environment", {
   lookup <- getFromNamespace(".miniextendr_env_method", "miniextendr")
   lexical <- list2env(

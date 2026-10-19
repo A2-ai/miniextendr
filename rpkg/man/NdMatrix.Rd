@@ -32,12 +32,16 @@ NdMatrix
 
 \method{$}{NdMatrix}(self, name)
 
-\method{[[}{NdMatrix}(self, name)
+\method{[[}{NdMatrix}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 NdMatrix methods: 2D numeric matrix operations, row/col access, and conversion.

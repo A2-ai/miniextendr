@@ -13,12 +13,16 @@ NoCtorEnv
 
 \method{$}{NoCtorEnv}(self, name)
 
-\method{[[}{NoCtorEnv}(self, name)
+\method{[[}{NoCtorEnv}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 Env class whose objects come from its factories.

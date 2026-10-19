@@ -123,7 +123,10 @@ Counter$inc <- function() {
 `$.Counter` <- function(self, name) {
   .miniextendr_env_method(self, name, Counter)
 }
-`[[.Counter` <- `$.Counter`
+`[[.Counter` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Counter)
+}
 ```
 
 The object *is* the external pointer: the constructor takes the `EXTPTRSXP`
@@ -141,8 +144,11 @@ source is in `miniextendr-api/src/registry.rs`). The helper fetches
 only `.mx_self`. That environment's parent is the method's original environment,
 the package namespace, so package objects used by method bodies and parameter
 defaults keep resolving there. The method stored in `Counter` is unchanged, and each
-returned closure keeps its own receiver alive. `[[` is aliased to the same
-dispatcher. A `&mut self` method returns `.mx_self`, so calls
+returned closure keeps its own receiver alive. `[[` does the same lookup. It
+also takes `exact`, as a list's `[[` does, and ignores it, since names
+match exactly; any other argument is refused as under `dots = empty`
+(`obj[["value", 2]]` is `unused argument '..1' (unnamed)`). A `&mut self`
+method returns `.mx_self`, so calls
 chain. Errors raised from Rust come back as a tagged value and are re-raised by
 `.miniextendr_raise_condition` with the call attributed to the user's frame
 (see `docs/CALL_ATTRIBUTION.md`).
@@ -1235,7 +1241,7 @@ that block names and titles the page, and they add no generated `@param`
 lines: a later `@param` would replace the topic's text for the same argument.
 The topic's block therefore documents every argument of the class's members,
 the generated ones included (`x`, `...`, an S7 shortcut's `.mx_self`, an S7
-constructor's `.ptr`, env's `self` and `name`, vctrs' `y` and `to`).
+constructor's `.ptr`, env's `self`, `name` and `exact`, vctrs' `y` and `to`).
 
 The blocks of a type follow four rules, checked when the wrapper writer
 assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`; a violation stops the
@@ -1729,14 +1735,16 @@ The rule for each receiver:
 
 "The fallback's value" applies to a class with `fallback = "..."` (below).
 
-**An unused argument is refused on an S3 bare pointer.** `[[` and
-`as.list()` take `...` because their generics do, and on the bare pointer
-they read none of it. So there they refuse every argument in it, as a
-method with `#[miniextendr(dots = empty)]` does
+**An unused argument is refused on an S3 bare pointer.** `[[`,
+`as.list()` and `[[<-` take `...` because their generics do, and on the
+bare pointer they read none of it. So there they refuse every argument in
+it, as a method with `#[miniextendr(dots = empty)]` does
 ([DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role)):
-one `miniextendr_error_unused_argument` on the call as written, naming each
-argument (`..<i>` for an unnamed one) and the formal it most likely meant.
-The check reads only the names, so nothing in `...` is evaluated.
+one `miniextendr_error_unused_argument` on the call as written, behind the
+type's `field_error(class = ...)` classes, naming each argument (`..<i>` for
+an unnamed one) and the formal it most likely meant. The check reads only
+the names, so nothing in `...` is evaluated, and a refused `[[<-` writes
+nothing.
 
 ```r
 x[["data", exatc = TRUE]]
@@ -1746,6 +1754,8 @@ x[[1, 2]]
 #> Error in x[[1, 2]] : unused argument '..1' (unnamed)
 as.list(x, all.names = TRUE)
 #> Error in as.list(x, all.names = TRUE) : unused argument 'all.names'
+x[["data", 2]] <- 3
+#> Error in x[["data", 2]] <- value : unused argument '..1' (unnamed)
 ```
 
 `[[` takes `exact` as a formal after `...`, as `[[.data.frame` does
@@ -1753,9 +1763,12 @@ as.list(x, all.names = TRUE)
 accepted. On the bare pointer it changes nothing, since field names always
 match exactly. A list or environment receiver hands its arguments on as
 before: `[[` to its own `[[`, with `exact = TRUE` whatever the call passed,
-and `as.list()` to the list's own or to `as.list.environment()`, which takes
-`all.names` and `sorted`. An env class's `[[` is its `$` (`function(self,
-name)`), which takes no `...`, so R refuses any further argument itself.
+`as.list()` to the list's own or to `as.list.environment()`, which takes
+`all.names` and `sorted`, and `[[<-` to its own `[[<-`. An env class's `[[`
+(`function(self, name, ..., exact = TRUE)`) takes `exact` too, ignored, and
+refuses every other argument on any receiver, since it hands none on; its
+`$<-` / `[[<-` (`function(x, name, value)`) have no `...`, so R refuses an
+extra argument there itself. S4 field syntax has no `[[`.
 
 **`names()`, `as.list()` and `.DollarNames()`.** On an S3 bare pointer,
 `names(x)` is the field names in declared order (computed fields included)
@@ -2018,7 +2031,7 @@ conditionMessage(tryCatch(x$value, error = identity))
 | `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
 | no such field (the message lists the fields, then the type's `field_error(no_field_hint = ...)`) | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead); with a fallback, the reads when it has no value for the name |
 | the field fallback's own error | whatever the function raises (`rust_error!(class = ...)`) | the reads of a name no field has |
-| an argument in `...` (the message names each one, and the formal it most likely meant) | `miniextendr_error_unused_argument`, then the crate's `conversion_error_class` and `rust_error` | `[[` and `as.list()` on an S3 bare pointer |
+| an argument in `...` (the message names each one, and the formal it most likely meant) | `miniextendr_error_unused_argument`, behind the type's `field_error(class = ...)`, then the crate's `conversion_error_class` and `rust_error` | `[[`, `as.list()` and `[[<-` on an S3 bare pointer; an env class's `[[` |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |

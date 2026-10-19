@@ -734,7 +734,14 @@ fn env_wrapper_full_snapshot() {
 
     // Verify $ dispatch
     assert!(wrapper.contains("`$.Counter` <- function(self, name)"));
-    assert!(wrapper.contains("`[[.Counter` <- `$.Counter`"));
+    // `[[` is the same lookup with `exact` (ignored), refusing every other
+    // argument (#2174).
+    assert!(
+        wrapper.contains(
+            "`[[.Counter` <- function(self, name, ..., exact = TRUE) {\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"self\", \"name\", \"exact\"), call = environment())\n  .miniextendr_env_method(self, name, Counter)\n}"
+        ),
+        "{wrapper}"
+    );
 }
 
 #[test]
@@ -8450,6 +8457,13 @@ fn s3_field_methods() {
         "{wrapper}"
     );
     assert_s3_readers(&wrapper, "Engine");
+    // The writer refuses any argument in `...` on the bare pointer too, with
+    // the type's `field_error` classes; a list or environment receiver hands
+    // them to its own `[[<-` (#2174).
+    assert!(
+        wrapper.contains("`[[<-.Engine` <- function(x, i, ..., value) {\n  if (typeof(x) == \"externalptr\") {\n    if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"x\", \"i\", \"value\"), class = .rdata_error_class_Engine, call = environment())\n  }\n  if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {\n"),
+        "{wrapper}"
+    );
     insta::assert_snapshot!(wrapper);
 }
 
@@ -8459,9 +8473,9 @@ const S3_EVERY_READ_CHECK: &str = "  if (.rdata_every_read_Engine && typeof(x) %
 
 /// The first line of the S3 `[[`'s bare-pointer branch (#2174): `dots =
 /// empty`'s check over the formals `x, i, ..., exact = TRUE`, on the
-/// generic's call, so `exact` is taken and everything else in `...` is
-/// refused.
-const S3_SUBSET_DOTS_CHECK: &str = "    if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"x\", \"i\", \"exact\"), call = environment())\n";
+/// generic's call and with the type's `field_error` classes in front, so
+/// `exact` is taken and everything else in `...` is refused.
+const S3_SUBSET_DOTS_CHECK: &str = "    if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"x\", \"i\", \"exact\"), class = .rdata_error_class_Engine, call = environment())\n";
 
 /// The S3 readers of `s3(r_data_accessors)` with the default lookup
 /// (#1921, #1922): on the bare pointer an exact name, else
@@ -8528,7 +8542,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  }\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\", call = environment())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"),
+        wrapper.contains("  }\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\", class = .rdata_error_class_Engine, call = environment())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"),
         "{wrapper}"
     );
     assert!(
@@ -8838,10 +8852,25 @@ fn env_field_methods() {
         wrapper.contains("#' @param name A method or field name."),
         "{wrapper}"
     );
+    // `[[` reads a field first too, after refusing every argument but
+    // `exact`, with the type's `field_error` classes (#2174).
+    assert!(
+        wrapper.contains("`[[.Engine` <- function(self, name, ..., exact = TRUE) {\n  if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"self\", \"name\", \"exact\"), class = .rdata_error_class_Engine, call = environment())\n  if (!(!is.character(name) || length(name) != 1L || is.na(match(name, .rdata_fields_Engine)))) {\n    .val <- .rdata_get_Engine(self, name)\n"),
+        "{wrapper}"
+    );
+    assert_eq!(
+        wrapper.matches(".rdata_get_Engine(self, name)").count(),
+        2,
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @param exact Ignored: names match exactly."),
+        "{wrapper}"
+    );
     // `.DollarNames` lists the fields, then the class's methods, since `$`
-    // reaches both; it follows the `[[` alias (and ends the wrapper in the
+    // reaches both; it follows `[[` (and ends the wrapper in the
     // getters-only form, so no trailing newline is expected).
-    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
+    let dollar_names = "  obj\n}\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 

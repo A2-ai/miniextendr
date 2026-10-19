@@ -16,7 +16,7 @@ FallbackEnv
 
 \method{$}{FallbackEnv}(self, name)
 
-\method{[[}{FallbackEnv}(self, name)
+\method{[[}{FallbackEnv}(self, name, ..., exact = TRUE)
 
 \method{.DollarNames}{FallbackEnv}(x, pattern = "")
 
@@ -28,6 +28,10 @@ FallbackEnv
 \item{self}{The object instance.}
 
 \item{name}{A method or field name, or a name the class's fallback reads.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 
 \item{x}{An object.}
 

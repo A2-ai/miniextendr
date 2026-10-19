@@ -16,7 +16,7 @@ SidecarPanicky
 
 \method{$}{SidecarPanicky}(self, name)
 
-\method{[[}{SidecarPanicky}(self, name)
+\method{[[}{SidecarPanicky}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{x}{The SidecarPanicky external pointer}
@@ -26,6 +26,10 @@ SidecarPanicky
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \value{
 The value of the \code{boom} field

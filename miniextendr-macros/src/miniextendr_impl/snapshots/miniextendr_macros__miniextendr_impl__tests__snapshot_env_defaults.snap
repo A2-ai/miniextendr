@@ -40,5 +40,10 @@ Widget$update <- function(step = 1L, verbose = FALSE) {
   .miniextendr_env_method(self, name, Widget)
 }
 #' @rdname Widget
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Widget` <- `$.Widget`
+`[[.Widget` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Widget)
+}

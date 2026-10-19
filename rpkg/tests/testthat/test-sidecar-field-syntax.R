@@ -13,8 +13,9 @@
 # on S4 and env classes. A name that is not a field falls through, by the
 # exact name, to a list or an environment receiver's own elements. A `[[`
 # index that is neither one name nor one position is refused by the
-# generated `[[` itself (#1920). On a bare pointer `[[` and `as.list()`
-# refuse an unused argument as `dots = empty` does, and `[[` takes `exact`
+# generated `[[` itself (#1920). On a bare pointer `[[`, `as.list()` and
+# `[[<-` refuse an unused argument as `dots = empty` does, with the type's
+# `field_error` classes, and `[[` takes `exact`, as an env class's `[[` does
 # (#2174). A condition reports the call as written: `x$data <- value`.
 #
 # Fixtures: `SidecarS3`, `SidecarS3Get`, `SidecarComputed`, `SidecarHandmade`
@@ -569,7 +570,7 @@ test_that("lookup = \"list\": `[[` takes a position as a list's does", {
 
 # endregion
 
-# region: S3, unused arguments to `[[` and `as.list()` (#2174)
+# region: S3, unused arguments to `[[`, `as.list()` and `[[<-` (#2174)
 
 test_that("S3: `[[` on the pointer refuses an unused argument, naming the formal it most likely meant", {
   x <- new_sidecars3(1.5)
@@ -615,6 +616,52 @@ test_that("S3: `as.list()` on the pointer refuses any argument", {
   expect_equal(conditionCall(e), quote(as.list(x, all.names = TRUE)))
   expect_identical(caught(as.list(x, 1))$argument, "..1")
   expect_identical(as.list(x), list(data = 1.5, tags = character()))
+})
+
+test_that("S3: `[[<-` on the pointer refuses an unused argument instead of writing", {
+  x <- new_sidecars3(1.5)
+  e <- caught(x[["data", 2]] <- 3)
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(conditionMessage(e), "unused argument '..1' (unnamed)")
+  expect_equal(conditionCall(e), quote(x[["data", 2]] <- value))
+  e <- caught(x[["data", vlaue = 2]] <- 3)
+  expect_identical(e$argument, "vlaue")
+  expect_identical(e$suggestion, "value")
+  # Nothing was written; a plain write still works.
+  expect_identical(x$data, 1.5)
+  x[["data"]] <- 4
+  expect_identical(x$data, 4)
+  # A list receiver's own `[[<-` gets the arguments and refuses them itself.
+  l <- new_s3_list()
+  e <- caught(l[["note", 2]] <- "x")
+  expect_false(inherits(e, "miniextendr_error_unused_argument"))
+  expect_identical(conditionMessage(e), "[[ ]] improper number of subscripts")
+})
+
+test_that("the refusal carries the type's `field_error` classes in front", {
+  in_front <- function(e, classes, label) {
+    expect_identical(
+      class(e)[seq_len(length(classes) + 1L)],
+      c(classes, "miniextendr_error_unused_argument"),
+      label = label
+    )
+  }
+  h <- new_handmade_rec(2L)
+  handmade <- c("handmade_error_field", "handmade_error")
+  for (read in alist(h[["id", exatc = TRUE]], h[[1, 2]], as.list(h, all.names = TRUE))) {
+    e <- caught(eval(read))
+    in_front(e, handmade, deparse(read))
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+  s <- new_strict_rec(2L)
+  in_front(caught(s[["steps", 2]]), c("strict_error_field", "strict_error"), "strict_rec")
+  f <- new_fallback_rec(7L)
+  fallback <- c("fallback_error_field", "fallback_error")
+  in_front(caught(f[["alpha", 2]]), fallback, "fallback `[[`")
+  in_front(caught(f[["id", 2]] <- 1L), fallback, "fallback `[[<-`")
+  # A type without the option gets the plain condition.
+  e <- caught(new_sidecars3(1.5)[["data", 2]])
+  expect_identical(class(e)[1], "miniextendr_error_unused_argument")
 })
 
 test_that("S3: a list or environment receiver hands the arguments on", {
@@ -742,6 +789,25 @@ test_that("env: a refused write reports the call; an unknown name is refused", {
   expect_equal(conditionCall(e), quote(x$nope <- value))
   expect_s3_class(caught(obj[["nope"]] <- 1), "miniextendr_no_field")
   expect_identical(obj$count, 3L)
+})
+
+test_that("env: `[[` takes `exact`, ignored, and refuses any other argument (#2174)", {
+  obj <- SidecarEnv$new(3L, 1.5, TRUE, "n")
+  expect_identical(obj[["count", exact = TRUE]], 3L)
+  expect_identical(obj[["count", exact = FALSE]], 3L)
+  expect_null(obj[["cou", exact = FALSE]])
+  expect_true(is.function(obj[["double_count", exact = FALSE]]))
+  e <- caught(obj[["count", exatc = TRUE]])
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(e$suggestion, "exact")
+  expect_equal(conditionCall(e), quote(obj[["count", exatc = TRUE]]))
+  expect_identical(caught(obj[["count", 2]])$argument, "..1")
+  # `$` and `[[` read the same, and a field error names the call as written.
+  expect_identical(obj[["name"]], obj$name)
+  back <- unserialize(serialize(obj, NULL))
+  e <- caught(back[["count"]])
+  expect_s3_class(e, "miniextendr_restored")
+  expect_equal(conditionCall(e), quote(back[["count"]]))
 })
 
 # endregion
