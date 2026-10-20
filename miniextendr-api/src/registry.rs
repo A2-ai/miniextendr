@@ -3675,8 +3675,8 @@ fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::C
 /// items are available because stub.c force-loads the whole user crate.
 ///
 /// `r_dir` is the package's `R/` directory. With it, the `reexport!` names
-/// are also checked against the package's hand-written R files
-/// ([`hand_written_r_files`]); without it, only against the wrappers.
+/// are also checked against the package's hand-written R files (the code
+/// files R installs from `R/`); without it, only against the wrappers.
 ///
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
