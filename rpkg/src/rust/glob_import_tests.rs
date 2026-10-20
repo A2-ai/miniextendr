@@ -191,10 +191,14 @@ impl std::fmt::Display for GlobSerdeError {
     }
 }
 
+/// The serde-classed error's options as a named shape (#2207).
+#[cfg(feature = "serde")]
+const GLOB_SHAPE: condition::SerdeErrorShape = condition::SerdeErrorShape::new().prefix("glob");
+
 /// Refuse `code` with a serde-classed error.
 /// @param code An integer.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, serde_error(prefix = "glob"))]
+#[miniextendr(noexport, serde_error(shape = GLOB_SHAPE, as_integer("code")))]
 pub fn glob_import_serde(code: i32) -> Result<i32, GlobSerdeError> {
     Err(GlobSerdeError::Refused { code })
 }

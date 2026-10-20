@@ -1,0 +1,18 @@
+error[E0080]: evaluation panicked: SerdeErrorShape: field `n` is in both `as_integer` and `as_double`; a field has one R type
+  --> tests/ui/serde_error_shape_conflicts.rs:11:40
+   |
+11 |   pub const TWO_TYPES: SerdeErrorShape = SerdeErrorShape::new()
+   |  ________________________________________^
+12 | |     .as_character(&["rule"])
+13 | |     .as_integer(&["n"])
+14 | |     .as_double(&["n"]);
+   | |______________________^ evaluation of `TWO_TYPES` failed here
+
+error[E0080]: evaluation panicked: SerdeErrorShape: field `message` is in both `skip` and `as_character`; a skipped field has no R type
+  --> tests/ui/serde_error_shape_conflicts.rs:17:48
+   |
+17 |   pub const SKIPPED_AND_TYPED: SerdeErrorShape = SerdeErrorShape::new()
+   |  ________________________________________________^
+18 | |     .skip(&["message"])
+19 | |     .as_character(&["message"]);
+   | |_______________________________^ evaluation of `SKIPPED_AND_TYPED` failed here

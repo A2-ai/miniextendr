@@ -178,6 +178,14 @@ const ATOMIC_MARKERS: [(&str, Atomic); 4] = [
 ];
 
 impl Atomic {
+    /// Every type, in the order of `condition::SerdeErrorShape`'s `as_*` lists.
+    pub(crate) const ALL: [Atomic; 4] = [
+        Atomic::Logical,
+        Atomic::Integer,
+        Atomic::Double,
+        Atomic::Character,
+    ];
+
     /// The type a newtype marker `name` stands for.
     pub(crate) fn from_marker(name: &str) -> Option<Self> {
         ATOMIC_MARKERS
@@ -194,7 +202,8 @@ impl Atomic {
             .expect("every Atomic has a marker")
     }
 
-    fn helper(self) -> &'static str {
+    /// The helper's name, which is also the `serde_error` option's.
+    pub(crate) fn helper(self) -> &'static str {
         match self {
             Atomic::Logical => "as_logical",
             Atomic::Integer => "as_integer",
@@ -218,6 +227,15 @@ impl Atomic {
     /// list (an empty sequence, or one with `None` holes) element by element,
     /// each `NULL` or a scalar of the type.
     pub(crate) fn coerce(self, value: RValue) -> Result<RValue, RSerdeError> {
+        self.try_coerce(value).map_err(|element| {
+            RSerdeError::Message(format!("`{}`: {}", self.helper(), self.mismatch(element)))
+        })
+    }
+
+    /// [`Atomic::coerce`], failing with the element that doesn't fit (`None`
+    /// for the value as a whole). The `serde_error` boundary options call it
+    /// on a payload field that is already serialized.
+    pub(crate) fn try_coerce(self, value: RValue) -> Result<RValue, Option<usize>> {
         let mut out = AtomicVec::new(self);
         match value {
             RValue::List(items) => {
@@ -225,26 +243,24 @@ impl Atomic {
                     // A struct or map field, or a nested sequence, is no element.
                     let element = matches!(item, RValue::Null) || scalar_kind(&item).is_some();
                     if name.is_some() || !element {
-                        return Err(self.error(Some(i)));
+                        return Err(Some(i));
                     }
-                    out.push(item).map_err(|()| self.error(Some(i)))?;
+                    out.push(item).map_err(|()| Some(i))?;
                 }
             }
-            other => out.push(other).map_err(|()| self.error(None))?,
+            other => out.push(other).map_err(|()| None)?,
         }
         Ok(out.finish())
     }
 
-    fn error(self, element: Option<usize>) -> RSerdeError {
+    /// Why [`Atomic::try_coerce`] failed: `element` of the field (or the
+    /// field) is not of this type.
+    pub(crate) fn mismatch(self, element: Option<usize>) -> String {
         let place = match element {
             Some(i) => format!("element {} of the field", i + 1),
             None => "the field".to_string(),
         };
-        RSerdeError::Message(format!(
-            "`{}`: {place} is not {} or `None`",
-            self.helper(),
-            self.what()
-        ))
+        format!("{place} is not {} or `None`", self.what())
     }
 }
 

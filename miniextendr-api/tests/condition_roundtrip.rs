@@ -6,6 +6,11 @@
 
 mod r_test_utils;
 
+/// The marker type of a crate that declares no `serde_error_shape!`, for the
+/// `Err` probe's marker argument (resolved only under `serde`).
+#[cfg(feature = "serde")]
+enum NoShapes {}
+
 #[test]
 fn condition_data_roundtrip_scalars_and_vecs() {
     r_test_utils::with_r_thread(|| unsafe {
@@ -263,7 +268,7 @@ fn result_err_parts_roundtrip() {
             .class(["pkg_too_large", "pkg_error"])
             .data("rule", 3)
             .data("max", 100.0);
-        let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error");
+        let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error", NoShapes);
         let sexp = result_err_condition_value(parts, None);
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
             RCondition::Error {
@@ -286,7 +291,7 @@ fn result_err_parts_roundtrip() {
         // arm (family class, text unquoted); otherwise the Debug fallback keeps
         // the historical rendering.
         let plain = String::from("boom");
-        let parts = miniextendr_api::__mx_result_err_parts!(plain, "pkg_error");
+        let parts = miniextendr_api::__mx_result_err_parts!(plain, "pkg_error", NoShapes);
         if cfg!(feature = "serde") {
             assert_eq!(parts.message, "boom");
             assert_eq!(parts.class, ["pkg_error"]);
@@ -430,7 +435,7 @@ fn no_call_marker_roundtrip() {
 
         // A `Result` error built with `without_call()` carries the marker.
         let err = RError::new("data problem").without_call();
-        let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error");
+        let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error", NoShapes);
         let sexp = result_err_condition_value(parts, Some(call.get()));
         assert!(sexp.vector_elt(3).is_logical());
         assert_eq!(

@@ -359,10 +359,15 @@ impl ::core::fmt::Display for ShadowedSerdeError {
     }
 }
 
+/// The serde-classed error's options as a named shape (#2207).
+#[cfg(feature = "serde")]
+const SHADOWED_SHAPE: miniextendr_api::condition::SerdeErrorShape =
+    miniextendr_api::condition::SerdeErrorShape::new().prefix("shadowed");
+
 /// Refuse `code` with a serde-classed error.
 /// @param code An integer.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, serde_error(prefix = "shadowed"))]
+#[miniextendr(noexport, serde_error(shape = SHADOWED_SHAPE, as_integer("code")))]
 pub fn shadowed_std_names_serde(code: i32) -> ::core::result::Result<i32, ShadowedSerdeError> {
     ::core::result::Result::Err(ShadowedSerdeError::Refused { code })
 }

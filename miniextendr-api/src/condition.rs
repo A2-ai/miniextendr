@@ -1425,21 +1425,26 @@ pub const RESERVED_CONDITION_FIELDS: &[&str] = &["message", "call", "kind"];
 /// # }
 /// ```
 pub const fn is_reserved_condition_field(name: &str) -> bool {
-    const fn eq(a: &str, b: &str) -> bool {
-        let (a, b) = (a.as_bytes(), b.as_bytes());
-        if a.len() != b.len() {
+    str_eq(name, "message")
+        || str_eq(name, "call")
+        || str_eq(name, "kind")
+        || str_eq(name, PARENT_FIELD)
+}
+
+/// `a == b`, usable in `const fn`.
+const fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
             return false;
         }
-        let mut i = 0;
-        while i < a.len() {
-            if a[i] != b[i] {
-                return false;
-            }
-            i += 1;
-        }
-        true
+        i += 1;
     }
-    eq(name, "message") || eq(name, "call") || eq(name, "kind") || eq(name, PARENT_FIELD)
+    true
 }
 
 /// The `data` field under which [`RCondition::with_parent`] sends a cause to
@@ -1858,6 +1863,10 @@ pub struct ErrParts {
 
 /// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionData`.
 ///
+/// Under the `serde` feature a declared-shape stage runs before this one: a
+/// shape that `serde_error_shape!` declared for `E` wins over the impl (see
+/// `ErrShapeDeclared`).
+///
 /// The generated code calls `(&e).__mx_classed_parts()` with both first-stage
 /// traits in scope. Method resolution tries the receiver type `&E` by value
 /// first, which only this impl (on `E`, taking `&self`) satisfies; the
@@ -1900,7 +1909,7 @@ impl<E> ErrPartsUnclassed for &E {
 
 /// Second stage, preferred arm: `E: Serialize + Display` under the `serde`
 /// feature, classed via [`serde_err_parts`] with the defaults (`kind` tag,
-/// the `<crate>_error` prefix the macro passes in, no skip / rename).
+/// the `<crate>_error` prefix the macro passes in, no shapes).
 /// `#[miniextendr(serde_error(..))]` bypasses the probe with explicit options.
 ///
 /// The trait exists without the feature so the generated `use` resolves; it
@@ -1914,7 +1923,7 @@ pub trait ErrPartsSerde {
 impl<E: ::serde::Serialize + std::fmt::Display> ErrPartsSerde for E {
     #[track_caller]
     fn __mx_fallback_parts(&self, prefix: &str) -> ErrParts {
-        serde_err_parts(self, "kind", prefix, &[], &[])
+        serde_err_parts(self, prefix, &[])
     }
 }
 
@@ -1938,20 +1947,27 @@ impl<E: std::fmt::Debug> ErrPartsDebug for &E {
 
 /// Internal: the `Err(e)` probe used by generated wrappers. Not public API.
 ///
-/// `$prefix` is the family class for the serde arm (`<crate>_error`, computed
-/// by the macro from `CARGO_CRATE_NAME` at expansion time).
+/// `$prefix` is the family class for the serde arms (`<crate>_error`, computed
+/// by the macro from `CARGO_CRATE_NAME` at expansion time). `$marker` is the
+/// calling crate's marker type (`crate::__MiniextendrInitMarker`), under which
+/// [`serde_error_shape!`](crate::serde_error_shape) declarations are looked up
+/// first, under the `serde` feature: a declared shape wins over the stages
+/// below (the `ErrShapeDeclared` probe).
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_result_err_parts {
-    ($e:expr, $prefix:expr) => {{
+    ($e:expr, $prefix:expr, $marker:ty) => {{
         #[allow(unused_imports)]
         use $crate::condition::{
             ErrPartsClassed as _, ErrPartsDebug as _, ErrPartsSerde as _, ErrPartsUnclassed as _,
         };
         match &$e {
-            __mx_e => match __mx_e.__mx_classed_parts() {
+            __mx_e => match $crate::__mx_declared_err_parts!(__mx_e, $prefix, $marker) {
                 ::core::option::Option::Some(parts) => parts,
-                ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
+                ::core::option::Option::None => match __mx_e.__mx_classed_parts() {
+                    ::core::option::Option::Some(parts) => parts,
+                    ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
+                },
             },
         }
     }};
@@ -2389,15 +2405,447 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 
 // endregion
 
+// region: SerdeErrorShape — `serde_error` options as a shared const (#2207)
+
+/// The options of `#[miniextendr(serde_error(..))]` as a value: declared once,
+/// shared by every function that returns one error type.
+///
+/// ```
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// pub const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+///     .prefix("engine")
+///     .skip(&["message"])
+///     .as_character(&["rule", "column"])
+///     .as_integer(&["n"]);
+/// ```
+///
+/// Declare it for the error type with
+/// [`serde_error_shape!`](crate::serde_error_shape), and every
+/// `#[miniextendr]` function or method of the crate that returns that type
+/// uses it, without naming it:
+///
+/// ```ignore
+/// miniextendr_api::serde_error_shape!(EngineError = ENGINE);
+///
+/// #[miniextendr]
+/// pub fn check(x: f64) -> Result<f64, EngineError> { /* ... */ }
+/// ```
+///
+/// A function can override it for itself: with options of its own, or with
+/// another shape named by path, which applies after the declared one:
+///
+/// ```ignore
+/// #[miniextendr(serde_error(as_double("n")))]
+/// pub fn rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+///
+/// #[miniextendr(serde_error(shape = STRICT, as_double("n")))]
+/// pub fn strict_rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+/// ```
+///
+/// The path resolves where the function is defined (`STRICT`,
+/// `crate::errors::STRICT`, or `Self::SHAPE` on a method for an associated
+/// const of its type), so a misspelt one is a compile error. The options act
+/// on the serde-classed `Err` arm, which needs the `serde` feature.
+///
+/// # Options
+///
+/// One method per `serde_error` option. Fields are named as the error
+/// serializes them, before any `rename`:
+///
+/// - [`tag`](Self::tag): the internally tagged discriminator field consumed
+///   as the variant; `"kind"` when unset.
+/// - [`prefix`](Self::prefix): the family class; `<crate>_error`, from the
+///   function's crate, when unset.
+/// - [`skip`](Self::skip): fields to drop.
+/// - [`rename`](Self::rename): `(from, to)` pairs; field `from` reaches R as
+///   `e$to`.
+/// - [`as_character`](Self::as_character), [`as_integer`](Self::as_integer),
+///   [`as_double`](Self::as_double), [`as_logical`](Self::as_logical): the
+///   field's usual serialization as one vector of that R type, as the
+///   `miniextendr_api::serde::as_character` & co. field helpers give it from
+///   the error type's own `#[serde(serialize_with = ..)]`: `character(0)` for
+///   an empty sequence, `NA` for a `None` element. A value that doesn't fit
+///   (a string under `as_integer`) raises an R error naming the field and the
+///   option.
+///
+/// A field that a variant doesn't carry is a no-op for that variant, so one
+/// shape covers an enum whose variants differ.
+///
+/// # Precedence
+///
+/// Shapes apply in order: the one declared for the error type, then
+/// `serde_error(shape = ..)`, then the function's own options; for a field
+/// set by more than one, the later wins. A later `skip` drops a field an
+/// earlier shape types or renames, and a later `as_*` or `rename` keeps a
+/// field an earlier shape skips. A type and a new name compose: the
+/// function's `rename(n = "count")` keeps the shape's `as_integer(&["n"])`.
+/// A later `tag` or `prefix` replaces an earlier one.
+///
+/// # Contradictions don't compile
+///
+/// Each method checks its fields against the options already set and panics
+/// during const evaluation, so a `const` holding a contradictory shape is a
+/// compile error (E0080) naming the field:
+///
+/// - a field in two `as_*` lists;
+/// - a field skipped and also typed or renamed;
+/// - a field listed twice, renamed twice, or two renames onto one name;
+/// - a `rename` target that is one of the condition's own slots (`message`,
+///   `call`, `kind`);
+/// - an empty list or name, and an option set twice.
+///
+/// ```compile_fail,E0080
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+///     .as_integer(&["n"])
+///     .as_double(&["n"]);
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SerdeErrorShape {
+    tag: Option<&'static str>,
+    prefix: Option<&'static str>,
+    skip: &'static [&'static str],
+    rename: &'static [(&'static str, &'static str)],
+    /// The `as_*` lists, in [`SHAPE_TYPE_OPTIONS`] order.
+    types: [&'static [&'static str]; 4],
+}
+
+/// The `as_*` options, in the order of [`SerdeErrorShape`]'s type lists.
+const SHAPE_TYPE_OPTIONS: [&str; 4] = ["as_logical", "as_integer", "as_double", "as_character"];
+
+impl SerdeErrorShape {
+    /// The discriminator field when no shape names one.
+    #[cfg(feature = "serde")]
+    const DEFAULT_TAG: &'static str = "kind";
+
+    /// A shape that sets nothing.
+    pub const fn new() -> Self {
+        SerdeErrorShape {
+            tag: None,
+            prefix: None,
+            skip: &[],
+            rename: &[],
+            types: [&[]; 4],
+        }
+    }
+
+    /// The internally tagged discriminator field (`#[serde(tag = "...")]`),
+    /// consumed as the variant.
+    #[track_caller]
+    pub const fn tag(mut self, tag: &'static str) -> Self {
+        self.tag = Some(scalar_option("tag", self.tag, tag));
+        self
+    }
+
+    /// The family class: conditions get `c("<prefix>_<variant>", "<prefix>")`.
+    #[track_caller]
+    pub const fn prefix(mut self, prefix: &'static str) -> Self {
+        self.prefix = Some(scalar_option("prefix", self.prefix, prefix));
+        self
+    }
+
+    /// Drop these payload fields.
+    #[track_caller]
+    pub const fn skip(mut self, fields: &'static [&'static str]) -> Self {
+        check_field_list("skip", self.skip.is_empty(), fields);
+        let mut i = 0;
+        while i < fields.len() {
+            let name = fields[i];
+            if let Some(option) = self.type_option(name) {
+                conflict(name, option, "skip", "a skipped field has no R type");
+            }
+            if self.renames(name) {
+                conflict(name, "rename", "skip", "a skipped field has no name");
+            }
+            i += 1;
+        }
+        self.skip = fields;
+        self
+    }
+
+    /// Splice field `from` as `to`, for each `(from, to)` pair.
+    #[track_caller]
+    pub const fn rename(mut self, pairs: &'static [(&'static str, &'static str)]) -> Self {
+        if !self.rename.is_empty() {
+            set_twice("rename");
+        }
+        if pairs.is_empty() {
+            fail(ShapeMessage::new().push("`rename` needs at least one pair"));
+        }
+        let mut i = 0;
+        while i < pairs.len() {
+            let (from, to) = pairs[i];
+            if from.is_empty() || to.is_empty() {
+                fail(ShapeMessage::new().push("`rename` has an empty name"));
+            }
+            if is_reserved_condition_field(to) {
+                fail(ShapeMessage::new().push("`rename` target `").push(to).push(
+                    "` is reserved: `message`, `call` and `kind` are the condition's own slots",
+                ));
+            }
+            let mut j = 0;
+            while j < i {
+                if str_eq(pairs[j].0, from) {
+                    fail(
+                        ShapeMessage::new()
+                            .push("field `")
+                            .push(from)
+                            .push("` is renamed twice"),
+                    );
+                }
+                if str_eq(pairs[j].1, to) {
+                    fail(
+                        ShapeMessage::new()
+                            .push("two `rename` pairs target `")
+                            .push(to)
+                            .push("`; R would read only the first"),
+                    );
+                }
+                j += 1;
+            }
+            if const_contains(self.skip, from) {
+                conflict(from, "skip", "rename", "a skipped field has no name");
+            }
+            i += 1;
+        }
+        self.rename = pairs;
+        self
+    }
+
+    /// Give these fields an R `logical` vector.
+    #[track_caller]
+    pub const fn as_logical(self, fields: &'static [&'static str]) -> Self {
+        self.with_type(0, fields)
+    }
+
+    /// Give these fields an R `integer` vector; a value outside R's integer
+    /// range is an error, not a double.
+    #[track_caller]
+    pub const fn as_integer(self, fields: &'static [&'static str]) -> Self {
+        self.with_type(1, fields)
+    }
+
+    /// Give these fields an R `double` vector; integers widen.
+    #[track_caller]
+    pub const fn as_double(self, fields: &'static [&'static str]) -> Self {
+        self.with_type(2, fields)
+    }
+
+    /// Give these fields an R `character` vector.
+    #[track_caller]
+    pub const fn as_character(self, fields: &'static [&'static str]) -> Self {
+        self.with_type(3, fields)
+    }
+
+    #[track_caller]
+    const fn with_type(mut self, index: usize, fields: &'static [&'static str]) -> Self {
+        let option = SHAPE_TYPE_OPTIONS[index];
+        check_field_list(option, self.types[index].is_empty(), fields);
+        let mut i = 0;
+        while i < fields.len() {
+            let name = fields[i];
+            if const_contains(self.skip, name) {
+                conflict(name, "skip", option, "a skipped field has no R type");
+            }
+            if let Some(other) = self.type_option(name) {
+                conflict(name, other, option, "a field has one R type");
+            }
+            i += 1;
+        }
+        self.types[index] = fields;
+        self
+    }
+
+    /// The `as_*` option that lists `name`.
+    const fn type_option(&self, name: &str) -> Option<&'static str> {
+        let mut i = 0;
+        while i < self.types.len() {
+            if const_contains(self.types[i], name) {
+                return Some(SHAPE_TYPE_OPTIONS[i]);
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// Whether a `rename` pair renames `name`.
+    const fn renames(&self, name: &str) -> bool {
+        let mut i = 0;
+        while i < self.rename.len() {
+            if str_eq(self.rename[i].0, name) {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+}
+
+impl Default for SerdeErrorShape {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// `tag` / `prefix`: set once, never empty.
+#[track_caller]
+const fn scalar_option(
+    option: &str,
+    current: Option<&'static str>,
+    value: &'static str,
+) -> &'static str {
+    if current.is_some() {
+        set_twice(option);
+    }
+    if value.is_empty() {
+        fail(
+            ShapeMessage::new()
+                .push("`")
+                .push(option)
+                .push("` must not be empty"),
+        );
+    }
+    value
+}
+
+/// A field list: set once, not empty, each name non-empty and listed once.
+#[track_caller]
+const fn check_field_list(option: &str, unset: bool, fields: &[&str]) {
+    if !unset {
+        set_twice(option);
+    }
+    if fields.is_empty() {
+        fail(
+            ShapeMessage::new()
+                .push("`")
+                .push(option)
+                .push("` needs at least one field"),
+        );
+    }
+    let mut i = 0;
+    while i < fields.len() {
+        if fields[i].is_empty() {
+            fail(
+                ShapeMessage::new()
+                    .push("`")
+                    .push(option)
+                    .push("` has an empty field name"),
+            );
+        }
+        let mut j = 0;
+        while j < i {
+            if str_eq(fields[j], fields[i]) {
+                fail(
+                    ShapeMessage::new()
+                        .push("field `")
+                        .push(fields[i])
+                        .push("` is listed twice in `")
+                        .push(option)
+                        .push("`"),
+                );
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+}
+
+#[track_caller]
+const fn set_twice(option: &str) -> ! {
+    fail(
+        ShapeMessage::new()
+            .push("`")
+            .push(option)
+            .push("` is set twice; set each option once"),
+    )
+}
+
+#[track_caller]
+const fn conflict(name: &str, first: &str, second: &str, why: &str) -> ! {
+    fail(
+        ShapeMessage::new()
+            .push("field `")
+            .push(name)
+            .push("` is in both `")
+            .push(first)
+            .push("` and `")
+            .push(second)
+            .push("`; ")
+            .push(why),
+    )
+}
+
+const fn const_contains(list: &[&str], name: &str) -> bool {
+    let mut i = 0;
+    while i < list.len() {
+        if str_eq(list[i], name) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// A const-evaluation panic message. `const fn` can't `format!`, so the parts
+/// are copied into a fixed buffer.
+struct ShapeMessage {
+    buf: [u8; 256],
+    len: usize,
+}
+
+impl ShapeMessage {
+    const fn new() -> Self {
+        ShapeMessage {
+            buf: [0; 256],
+            len: 0,
+        }
+        .push("SerdeErrorShape: ")
+    }
+
+    const fn push(mut self, text: &str) -> Self {
+        let bytes = text.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() && self.len < self.buf.len() {
+            self.buf[self.len] = bytes[i];
+            self.len += 1;
+            i += 1;
+        }
+        self
+    }
+}
+
+/// Panic with `message`. `#[track_caller]` here and on every caller puts the
+/// compile error at the user's `const`, not in this crate.
+#[track_caller]
+const fn fail(message: ShapeMessage) -> ! {
+    let (text, _) = message.buf.split_at(message.len);
+    match core::str::from_utf8(text) {
+        Ok(text) => panic!("{}", text),
+        // The buffer ended inside a long field name's character.
+        Err(_) => {
+            panic!("SerdeErrorShape: contradictory options; a field name is too long to quote")
+        }
+    }
+}
+
+// endregion
+
 // region: Serde-tagged Result errors (#[miniextendr(serde_error)])
 
 /// Build the `Err`-arm parts from the error's serde shape.
 ///
-/// Reached two ways: automatically, for every `Result<T, E>` whose `E` is
-/// `Serialize + Display` without an [`RConditionData`] impl (the
-/// [`ErrPartsSerde`] probe arm, defaults only), or explicitly through
-/// `#[miniextendr(serde_error(tag = .., prefix = .., skip(..), rename(..)))]`,
-/// which carries the options and always takes this path.
+/// Reached three ways: for a `Result<T, E>` whose `E` has a shape declared
+/// by [`serde_error_shape!`](crate::serde_error_shape) (the
+/// [`ErrShapeDeclared`] probe arm, that one shape); automatically, for every
+/// other `E` that is `Serialize + Display` without an [`RConditionData`] impl
+/// (the [`ErrPartsSerde`] probe arm, no shapes); or explicitly through
+/// `#[miniextendr(serde_error(..))]`, whose options arrive as `shapes`: the
+/// declared shape first (one that sets nothing when there is none), then the
+/// named `shape = ..`, then the function's own options as an inline const,
+/// each applied in order (see [`SerdeErrorShape`], "Precedence").
+/// `prefix` is the macro's `<crate>_error`, used when no shape sets one.
 ///
 /// Message from `Display`; classes `[<prefix>_<variant>, <prefix>]` when the
 /// serialized value carries a variant, `[<prefix>]` otherwise; data from the
@@ -2408,9 +2856,13 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 /// `docs/CONDITIONS.md`, "Classed `Result` errors".
 ///
 /// Field control, applied to the payload fields before the reserved-name
-/// check (`serde_error(skip(..), rename(..))`, #1457):
+/// check (`serde_error(skip(..), rename(..), as_*(..))`, #1457, #2207):
 ///
 /// - `skip`: fields with these names are dropped.
+/// - `as_character` / `as_integer` / `as_double` / `as_logical`: the field's
+///   value becomes one vector of that type, through the same conversion as
+///   the `serde::as_*` field helpers; a value that doesn't fit panics, naming
+///   the field and the option.
 /// - `rename`: `(from, to)` pairs; a field named `from` is spliced as `to`.
 /// - A remaining field named `message` whose value is the single string equal
 ///   to the `Display` output is dropped: it duplicates the condition's own
@@ -2435,12 +2887,16 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 #[track_caller]
 pub fn serde_err_parts<E: ?Sized + ::serde::Serialize + std::fmt::Display>(
     e: &E,
-    tag: &str,
     prefix: &str,
-    skip: &[&str],
-    rename: &[(&str, &str)],
+    shapes: &[&SerdeErrorShape],
 ) -> ErrParts {
     let message = e.to_string();
+    let tag = shapes
+        .iter()
+        .rev()
+        .find_map(|s| s.tag)
+        .unwrap_or(SerdeErrorShape::DEFAULT_TAG);
+    let prefix = shapes.iter().rev().find_map(|s| s.prefix).unwrap_or(prefix);
     let (member, fields) = match crate::serde::rvalue_ser::tagged_parts(e, tag) {
         Ok(parts) => parts,
         Err(err) => panic!(
@@ -2454,27 +2910,76 @@ pub fn serde_err_parts<E: ?Sized + ::serde::Serialize + std::fmt::Display>(
         class.push(format!("{prefix}_{member}"));
     }
     class.push(prefix.to_string());
-    let fields: ConditionData = fields
-        .into_iter()
-        .filter_map(|(name, value)| {
-            if skip.contains(&name.as_str()) {
-                return None;
-            }
-            if let Some((_, to)) = rename.iter().find(|(from, _)| *from == name) {
-                return Some(((*to).to_string(), value));
-            }
-            let echoes_display = name == "message"
-                && matches!(&value, crate::RValue::Character(v)
-                    if v.len() == 1 && v[0].as_deref() == Some(message.as_str()));
-            (!echoes_display).then_some((name, value))
-        })
-        .collect();
-    check_distinct_field_names(&fields, rename);
+    let mut renames = Vec::new();
+    let mut data: ConditionData = Vec::with_capacity(fields.len());
+    for (name, value) in fields {
+        let Some(field) = FieldShape::resolve(shapes, &name) else {
+            continue;
+        };
+        let value = match field.atomic {
+            None => value,
+            Some(atomic) => match atomic.try_coerce(value) {
+                Ok(value) => value,
+                Err(element) => panic!(
+                    "#[miniextendr(serde_error)]: `{}` on condition data field `{name}` failed: \
+                     {}; the original error was: {message}",
+                    atomic.helper(),
+                    atomic.mismatch(element)
+                ),
+            },
+        };
+        if let Some((from, to)) = field.rename {
+            renames.push((from, to));
+            data.push((to.to_string(), value));
+            continue;
+        }
+        let echoes_display = name == "message"
+            && matches!(&value, crate::RValue::Character(v)
+                if v.len() == 1 && v[0].as_deref() == Some(message.as_str()));
+        if !echoes_display {
+            data.push((name, value));
+        }
+    }
+    check_distinct_field_names(&data, &renames);
     ErrParts {
         message,
         class,
-        data: check_condition_data((!fields.is_empty()).then_some(fields)),
+        data: check_condition_data((!data.is_empty()).then_some(data)),
         call: ConditionCall::Inherit,
+    }
+}
+
+/// What the shapes, applied in order, give one payload field.
+#[cfg(feature = "serde")]
+#[derive(Default)]
+struct FieldShape {
+    atomic: Option<crate::serde::rvalue_ser::Atomic>,
+    rename: Option<(&'static str, &'static str)>,
+}
+
+#[cfg(feature = "serde")]
+impl FieldShape {
+    /// `None` when the last shape that names the field skips it. A later
+    /// `skip` drops what earlier shapes set; a later type or rename replaces
+    /// that setting and keeps the field.
+    fn resolve(shapes: &[&SerdeErrorShape], name: &str) -> Option<Self> {
+        let mut skipped = false;
+        let mut field = FieldShape::default();
+        for shape in shapes {
+            if shape.skip.contains(&name) {
+                skipped = true;
+                field = FieldShape::default();
+            }
+            if let Some(i) = shape.types.iter().position(|list| list.contains(&name)) {
+                skipped = false;
+                field.atomic = Some(crate::serde::rvalue_ser::Atomic::ALL[i]);
+            }
+            if let Some(&pair) = shape.rename.iter().find(|(from, _)| *from == name) {
+                skipped = false;
+                field.rename = Some(pair);
+            }
+        }
+        (!skipped).then_some(field)
     }
 }
 
@@ -2510,6 +3015,226 @@ fn check_distinct_field_names(fields: &[(String, crate::RValue)], rename: &[(&st
             renames.join(" and ")
         );
     }
+}
+
+// endregion
+
+// region: Declared shapes — one SerdeErrorShape per error type (#2207)
+
+/// The [`SerdeErrorShape`] declared for the error type `Self` by the crate
+/// whose marker type is `M`. Implemented by
+/// [`serde_error_shape!`](crate::serde_error_shape), not by hand.
+///
+/// `M` is a type local to the declaring crate (`miniextendr_init!` defines it
+/// at the crate root). That is what lets an R-facing crate declare a shape
+/// for an error type from a crate that doesn't depend on miniextendr: the
+/// orphan rule accepts `impl ForeignTrait<LocalType> for ForeignType`. It also
+/// scopes the declaration to the crate: another crate returning the same type
+/// looks up its own declaration.
+///
+/// The supertraits make a declaration for a type that can't be serialized, or
+/// has no `Display` for the condition message, an error at the declaration.
+#[cfg(feature = "serde")]
+pub trait SerdeErrorShapeFor<M>: ::serde::Serialize + std::fmt::Display {
+    /// The declared shape.
+    const SHAPE: &'static SerdeErrorShape;
+}
+
+/// Declare the [`SerdeErrorShape`] of an error type once, for every
+/// `#[miniextendr]` function and method of this crate that returns it.
+///
+/// ```ignore
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// pub const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+///     .prefix("engine")
+///     .as_character(&["rule"])
+///     .as_integer(&["n"]);
+///
+/// miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
+///
+/// // Both raise with ENGINE's field types; neither names it.
+/// #[miniextendr]
+/// pub fn check(x: f64) -> Result<f64, engine::Error> { /* ... */ }
+///
+/// #[miniextendr]
+/// pub fn rate(x: f64) -> Result<f64, engine::Error> { /* ... */ }
+/// ```
+///
+/// The right-hand side is any constant expression of type
+/// `SerdeErrorShape`: a path, as above, or the builder chain itself. The type
+/// must be `Serialize + Display` and may come from any crate, including one
+/// that can't depend on miniextendr. The declaration goes anywhere in the
+/// crate that calls `miniextendr_init!`, which defines the marker type it is
+/// keyed by (see [`SerdeErrorShapeFor`]); it applies to that crate's
+/// functions only.
+///
+/// # Precedence
+///
+/// Every `Err` of the type, from a function with or without
+/// `#[miniextendr(serde_error(..))]`, is classed through serde with the
+/// declared shape applied first. A function's `serde_error(shape = X)` applies
+/// next and its own options last; for a field set more than once, the later
+/// setting wins, by the rules under [`SerdeErrorShape`], "Precedence".
+///
+/// The declaration also wins over an [`RConditionData`] impl of the type: it is
+/// the R-facing crate's choice for its own functions, where the impl is the
+/// error crate's general one.
+///
+/// # One declaration per type
+///
+/// A second declaration for a type in the same crate is the compiler's
+/// conflicting-implementations error:
+///
+/// ```compile_fail,E0119
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// miniextendr_api::miniextendr_init!(pkg);
+///
+/// const A: SerdeErrorShape = SerdeErrorShape::new().prefix("a");
+/// const B: SerdeErrorShape = SerdeErrorShape::new().prefix("b");
+///
+/// miniextendr_api::serde_error_shape!(String = A);
+/// miniextendr_api::serde_error_shape!(String = B);
+///
+/// fn main() {}
+/// ```
+#[cfg(feature = "serde")]
+#[macro_export]
+// `crate::` is meant: the marker is the calling crate's.
+#[allow(clippy::crate_in_macro_def)]
+macro_rules! serde_error_shape {
+    ($error:ty = $shape:expr $(,)?) => {
+        impl $crate::condition::SerdeErrorShapeFor<crate::__MiniextendrInitMarker> for $error {
+            const SHAPE: &'static $crate::condition::SerdeErrorShape = &$shape;
+        }
+    };
+}
+
+/// Declare the `SerdeErrorShape` of an error type once, for every
+/// `#[miniextendr]` function and method of this crate that returns it. Needs
+/// the `serde` feature, without which a declaration is a compile error.
+#[cfg(not(feature = "serde"))]
+#[macro_export]
+macro_rules! serde_error_shape {
+    ($($input:tt)*) => {
+        ::core::compile_error!(
+            "`serde_error_shape!` needs the `serde` feature of miniextendr-api; \
+             enable it to class errors through serde"
+        );
+    };
+}
+
+/// The receiver of the declared-shape probe: the error, and the marker `M` of
+/// the crate whose declaration to look up.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub struct DeclaredShapeProbe<'a, M, E>(pub &'a E, pub std::marker::PhantomData<fn() -> M>);
+
+/// Declared-shape probe, preferred arm: `E` has a shape declared under `M`.
+///
+/// The generated code calls `(&probe).__mx_declared_parts(..)` with both
+/// traits in scope. This impl, on the probe taking `&self`, matches the
+/// receiver `&DeclaredShapeProbe` by value; [`ErrShapeUndeclared`] on
+/// `&DeclaredShapeProbe` needs one more auto-ref and is only reached when
+/// nothing is declared.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub trait ErrShapeDeclared {
+    /// The parts under the declared shape, for an `Err` arm without
+    /// `serde_error(..)`. The call to [`serde_err_parts`] lives here, where
+    /// `E: Serialize + Display` holds, so an undeclared `E` needn't be.
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts>;
+    /// The declared shape, first in `serde_error(..)`'s shape list.
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape;
+}
+
+#[cfg(feature = "serde")]
+impl<M, E: SerdeErrorShapeFor<M>> ErrShapeDeclared for DeclaredShapeProbe<'_, M, E> {
+    #[track_caller]
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts> {
+        Some(serde_err_parts(self.0, prefix, &[E::SHAPE]))
+    }
+
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape {
+        E::SHAPE
+    }
+}
+
+/// Declared-shape probe, fallback arm: no declaration. No parts, and a shape
+/// that sets nothing.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub trait ErrShapeUndeclared {
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts>;
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape;
+}
+
+#[cfg(feature = "serde")]
+impl<M, E> ErrShapeUndeclared for &DeclaredShapeProbe<'_, M, E> {
+    fn __mx_declared_parts(&self, _prefix: &str) -> Option<ErrParts> {
+        None
+    }
+
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape {
+        const NONE: &SerdeErrorShape = &SerdeErrorShape::new();
+        NONE
+    }
+}
+
+/// Internal: the declared-shape stage of [`crate::__mx_result_err_parts!`].
+/// Without the `serde` feature it is `None` and `$marker` is never resolved,
+/// so a crate without `miniextendr_init!` (a test crate) still compiles.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_err_parts {
+    ($e:ident, $prefix:expr, $marker:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ErrShapeDeclared as _, ErrShapeUndeclared as _};
+        (&$crate::condition::DeclaredShapeProbe::<$marker, _>($e, ::core::marker::PhantomData))
+            .__mx_declared_parts($prefix)
+    }};
+}
+
+/// Internal: the declared-shape stage of [`crate::__mx_result_err_parts!`];
+/// nothing can be declared without the `serde` feature.
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_err_parts {
+    ($e:ident, $prefix:expr, $marker:ty) => {
+        ::core::option::Option::None::<$crate::condition::ErrParts>
+    };
+}
+
+/// Internal: the shape `serde_error_shape!` declared for the type of `$e`
+/// under `$marker`, or one that sets nothing. It leads the shape list of a
+/// `#[miniextendr(serde_error(..))]` `Err` arm.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_serde_shape {
+    ($e:expr, $marker:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ErrShapeDeclared as _, ErrShapeUndeclared as _};
+        (&$crate::condition::DeclaredShapeProbe::<$marker, _>(&$e, ::core::marker::PhantomData))
+            .__mx_declared_shape()
+    }};
+}
+
+/// Internal: without the `serde` feature, a shape that sets nothing.
+/// `serde_error(..)` needs the feature anyway: its `serde_err_parts` call
+/// reports that, and `$marker` is never resolved.
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_serde_shape {
+    ($e:expr, $marker:ty) => {{
+        const NONE: &$crate::condition::SerdeErrorShape =
+            &$crate::condition::SerdeErrorShape::new();
+        NONE
+    }};
 }
 
 // endregion
@@ -2843,6 +3568,11 @@ mod condition_macro_tests {
     use super::{ConditionData, RCondition};
     use crate::RValue;
 
+    /// The marker type of a crate that declares no `serde_error_shape!`, for
+    /// the `Err` probe's marker argument (resolved only under `serde`).
+    #[cfg(feature = "serde")]
+    enum NoShapes {}
+
     /// Catch the `panic_any(RCondition)` raised by a macro invocation and
     /// return the payload. No R runtime needed — the macros panic before any
     /// R API call.
@@ -3044,7 +3774,7 @@ mod condition_macro_tests {
 
     #[cfg(feature = "serde")]
     mod serde_err_parts {
-        use super::super::serde_err_parts;
+        use super::super::{SerdeErrorShape, serde_err_parts};
         use crate::RValue;
         use ::serde::Serialize;
 
@@ -3088,13 +3818,8 @@ mod condition_macro_tests {
 
         #[test]
         fn internally_tagged_variant_becomes_member_class_and_fields_become_data() {
-            let parts = serde_err_parts(
-                &Tagged::MissingField { field: "id".into() },
-                "kind",
-                "engine",
-                &[],
-                &[],
-            );
+            let parts =
+                serde_err_parts(&Tagged::MissingField { field: "id".into() }, "engine", &[]);
             assert_eq!(parts.message, "field `id` is missing");
             assert_eq!(parts.class, ["engine_missing_field", "engine"]);
             let data = parts.data.expect("fields become data");
@@ -3107,14 +3832,14 @@ mod condition_macro_tests {
 
         #[test]
         fn unit_variant_has_classes_but_no_data() {
-            let parts = serde_err_parts(&Tagged::Io, "kind", "engine", &[], &[]);
+            let parts = serde_err_parts(&Tagged::Io, "engine", &[]);
             assert_eq!(parts.class, ["engine_io", "engine"]);
             assert!(parts.data.is_none());
         }
 
         #[test]
         fn value_without_variant_gets_only_the_family_class() {
-            let parts = serde_err_parts(&Plain { code: 3 }, "kind", "engine", &[], &[]);
+            let parts = serde_err_parts(&Plain { code: 3 }, "engine", &[]);
             assert_eq!(parts.message, "plain 3");
             assert_eq!(parts.class, ["engine"]);
             let data = parts.data.expect("struct fields become data");
@@ -3124,9 +3849,10 @@ mod condition_macro_tests {
         #[test]
         fn reserved_payload_field_is_rejected() {
             let err = std::panic::AssertUnwindSafe(Clash::Bad { kind: "x".into() });
-            let payload =
-                std::panic::catch_unwind(move || serde_err_parts(&err.0, "type", "p", &[], &[]))
-                    .expect_err("must panic");
+            let payload = std::panic::catch_unwind(move || {
+                serde_err_parts(&err.0, "p", &[&SerdeErrorShape::new().tag("type")])
+            })
+            .expect_err("must panic");
             let msg = payload
                 .downcast_ref::<String>()
                 .cloned()
@@ -3189,9 +3915,7 @@ mod condition_macro_tests {
                 &Wrapped::Echo {
                     message: "boom".into(),
                 },
-                "kind",
                 "p",
-                &[],
                 &[],
             );
             assert_eq!(parts.message, "boom");
@@ -3206,7 +3930,7 @@ mod condition_macro_tests {
                 line: 3,
             });
             let msg = panic_message(move || {
-                serde_err_parts(&err.0, "kind", "p", &[], &[]);
+                serde_err_parts(&err.0, "p", &[]);
             });
             assert!(msg.contains("reserved"), "{msg}");
             assert!(msg.contains("`message`"), "{msg}");
@@ -3219,10 +3943,8 @@ mod condition_macro_tests {
                     message: "unexpected token".into(),
                     line: 3,
                 },
-                "kind",
                 "p",
-                &["message", "absent"],
-                &[],
+                &[&SerdeErrorShape::new().skip(&["message", "absent"])],
             );
             assert_eq!(parts.message, "line 3: unexpected token");
             assert_eq!(parts.class, ["p_parse", "p"]);
@@ -3233,10 +3955,8 @@ mod condition_macro_tests {
                 &Wrapped::Echo {
                     message: "boom".into(),
                 },
-                "kind",
                 "p",
-                &["message"],
-                &[],
+                &[&SerdeErrorShape::new().skip(&["message"])],
             );
             assert!(parts.data.is_none());
 
@@ -3244,7 +3964,7 @@ mod condition_macro_tests {
             // name still fails the reserved-name check.
             let err = std::panic::AssertUnwindSafe(Wrapped::Bad { call: "f()".into() });
             let msg = panic_message(move || {
-                serde_err_parts(&err.0, "kind", "p", &["message"], &[]);
+                serde_err_parts(&err.0, "p", &[&SerdeErrorShape::new().skip(&["message"])]);
             });
             assert!(msg.contains("`call`"), "{msg}");
         }
@@ -3256,10 +3976,8 @@ mod condition_macro_tests {
                     message: "unexpected token".into(),
                     line: 3,
                 },
-                "kind",
                 "p",
-                &[],
-                &[("message", "detail"), ("absent", "other")],
+                &[&SerdeErrorShape::new().rename(&[("message", "detail"), ("absent", "other")])],
             );
             assert_eq!(names(&parts), ["detail", "line"]);
             let data = parts.data.expect("data");
@@ -3274,10 +3992,8 @@ mod condition_macro_tests {
                 &Wrapped::Echo {
                     message: "boom".into(),
                 },
-                "kind",
                 "p",
-                &[],
-                &[("message", "detail")],
+                &[&SerdeErrorShape::new().rename(&[("message", "detail")])],
             );
             assert_eq!(names(&parts), ["detail"]);
         }
@@ -3288,22 +4004,26 @@ mod condition_macro_tests {
         /// its text unquoted.
         #[test]
         fn err_parts_probe_classes_serialize_display_types() {
-            let parts = crate::__mx_result_err_parts!(Tagged::Io, "p");
+            let parts = crate::__mx_result_err_parts!(Tagged::Io, "p", super::NoShapes);
             assert_eq!(parts.message, "io");
             assert_eq!(parts.class, ["p_io", "p"]);
             assert!(parts.data.is_none());
 
-            let parts =
-                crate::__mx_result_err_parts!(Tagged::MissingField { field: "id".into() }, "p");
+            let parts = crate::__mx_result_err_parts!(
+                Tagged::MissingField { field: "id".into() },
+                "p",
+                super::NoShapes
+            );
             assert_eq!(parts.class, ["p_missing_field", "p"]);
             assert_eq!(names(&parts), ["field"]);
 
-            let parts = crate::__mx_result_err_parts!(String::from("bad input"), "p");
+            let parts =
+                crate::__mx_result_err_parts!(String::from("bad input"), "p", super::NoShapes);
             assert_eq!(parts.message, "bad input");
             assert_eq!(parts.class, ["p"]);
             assert!(parts.data.is_none());
 
-            let parts = crate::__mx_result_err_parts!("static text", "p");
+            let parts = crate::__mx_result_err_parts!("static text", "p", super::NoShapes);
             assert_eq!(parts.message, "static text");
             assert_eq!(parts.class, ["p"]);
         }
@@ -3317,7 +4037,11 @@ mod condition_macro_tests {
                 line: 3,
             });
             let msg = panic_message(move || {
-                serde_err_parts(&err.0, "kind", "p", &[], &[("message", "line")]);
+                serde_err_parts(
+                    &err.0,
+                    "p",
+                    &[&SerdeErrorShape::new().rename(&[("message", "line")])],
+                );
             });
             assert!(msg.contains("field `line` appears twice"), "{msg}");
             assert!(msg.contains("`rename(message = \"line\")`"), "{msg}");
@@ -3327,10 +4051,8 @@ mod condition_macro_tests {
                 &Wrapped::Echo {
                     message: "boom".into(),
                 },
-                "kind",
                 "p",
-                &[],
-                &[("message", "line")],
+                &[&SerdeErrorShape::new().rename(&[("message", "line")])],
             );
             assert_eq!(names(&parts), ["line"]);
         }
@@ -3341,10 +4063,8 @@ mod condition_macro_tests {
         fn rename_target_is_checked_per_variant_after_skip() {
             let parts = serde_err_parts(
                 &Wrapped::Bad { call: "f()".into() },
-                "kind",
                 "p",
-                &[],
-                &[("call", "line")],
+                &[&SerdeErrorShape::new().rename(&[("call", "line")])],
             );
             assert_eq!(names(&parts), ["line"]);
 
@@ -3353,10 +4073,10 @@ mod condition_macro_tests {
                     message: "unexpected token".into(),
                     line: 3,
                 },
-                "kind",
                 "p",
-                &["line"],
-                &[("message", "line")],
+                &[&SerdeErrorShape::new()
+                    .skip(&["line"])
+                    .rename(&[("message", "line")])],
             );
             assert_eq!(names(&parts), ["line"]);
             let data = parts.data.expect("data");
@@ -3367,12 +4087,340 @@ mod condition_macro_tests {
         }
     }
 
+    /// `SerdeErrorShape`'s const checks (#2207). Called at run time here, the
+    /// same panics a `const` turns into a compile error.
+    mod serde_error_shape_checks {
+        use super::super::SerdeErrorShape;
+
+        fn panic_message(f: impl FnOnce() -> SerdeErrorShape + std::panic::UnwindSafe) -> String {
+            let payload = std::panic::catch_unwind(f).expect_err("must panic");
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default()
+        }
+
+        #[test]
+        fn a_consistent_shape_builds_in_a_const() {
+            const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+                .tag("type")
+                .prefix("engine")
+                .skip(&["message"])
+                .rename(&[("source", "cause")])
+                .as_character(&["rule", "column", "source"])
+                .as_integer(&["n"])
+                .as_double(&["rate"])
+                .as_logical(&["exact"]);
+            assert_ne!(ENGINE, SerdeErrorShape::new());
+            assert_eq!(SerdeErrorShape::default(), SerdeErrorShape::new());
+        }
+
+        #[test]
+        fn a_field_in_two_type_lists_is_refused() {
+            let msg = panic_message(|| {
+                SerdeErrorShape::new()
+                    .as_integer(&["rule", "n"])
+                    .as_double(&["n"])
+            });
+            assert_eq!(
+                msg,
+                "SerdeErrorShape: field `n` is in both `as_integer` and `as_double`; a field has \
+                 one R type"
+            );
+        }
+
+        #[test]
+        fn a_skipped_field_takes_no_type_or_name() {
+            let msg = panic_message(|| SerdeErrorShape::new().skip(&["n"]).as_integer(&["n"]));
+            assert!(
+                msg.contains("field `n` is in both `skip` and `as_integer`"),
+                "{msg}"
+            );
+            let msg = panic_message(|| SerdeErrorShape::new().as_logical(&["n"]).skip(&["n"]));
+            assert!(
+                msg.contains("field `n` is in both `as_logical` and `skip`"),
+                "{msg}"
+            );
+            let msg = panic_message(|| {
+                SerdeErrorShape::new()
+                    .skip(&["message"])
+                    .rename(&[("message", "detail")])
+            });
+            assert!(
+                msg.contains("field `message` is in both `skip` and `rename`"),
+                "{msg}"
+            );
+            let msg = panic_message(|| {
+                SerdeErrorShape::new()
+                    .rename(&[("message", "detail")])
+                    .skip(&["message"])
+            });
+            assert!(
+                msg.contains("field `message` is in both `rename` and `skip`"),
+                "{msg}"
+            );
+        }
+
+        #[test]
+        fn rename_mirrors_the_attribute_grammar() {
+            let msg = panic_message(|| SerdeErrorShape::new().rename(&[("detail", "kind")]));
+            assert!(msg.contains("target `kind` is reserved"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().rename(&[("a", "b"), ("a", "c")]));
+            assert!(msg.contains("field `a` is renamed twice"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().rename(&[("a", "b"), ("c", "b")]));
+            assert!(msg.contains("two `rename` pairs target `b`"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().rename(&[("a", "")]));
+            assert!(msg.contains("`rename` has an empty name"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().rename(&[]));
+            assert!(msg.contains("`rename` needs at least one pair"), "{msg}");
+        }
+
+        #[test]
+        fn lists_and_options_are_set_once_and_not_empty() {
+            let msg = panic_message(|| SerdeErrorShape::new().skip(&["a"]).skip(&["b"]));
+            assert!(msg.contains("`skip` is set twice"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().as_double(&["a"]).as_double(&["b"]));
+            assert!(msg.contains("`as_double` is set twice"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().prefix("a").prefix("b"));
+            assert!(msg.contains("`prefix` is set twice"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().tag(""));
+            assert!(msg.contains("`tag` must not be empty"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().as_character(&[]));
+            assert!(
+                msg.contains("`as_character` needs at least one field"),
+                "{msg}"
+            );
+            let msg = panic_message(|| SerdeErrorShape::new().skip(&[""]));
+            assert!(msg.contains("`skip` has an empty field name"), "{msg}");
+            let msg = panic_message(|| SerdeErrorShape::new().as_integer(&["n", "n"]));
+            assert!(
+                msg.contains("field `n` is listed twice in `as_integer`"),
+                "{msg}"
+            );
+        }
+
+        /// The message buffer is 256 bytes; a name it cuts inside a
+        /// character falls back to a message without the name.
+        #[test]
+        fn a_long_field_name_still_panics_with_a_message() {
+            // "SerdeErrorShape: field `" is 24 bytes; the buffer ends inside `é`.
+            let name: &'static str = Box::leak(format!("{}é", "x".repeat(231)).into_boxed_str());
+            let names: &'static [&'static str] = Box::leak(Box::new([name]));
+            let msg = panic_message(move || SerdeErrorShape::new().as_integer(names).skip(names));
+            assert_eq!(
+                msg,
+                "SerdeErrorShape: contradictory options; a field name is too long to quote"
+            );
+        }
+    }
+
+    /// The `as_*` options and shape precedence at the condition boundary
+    /// (#2207), on a hand-written `Serialize` that uses no field helper.
+    #[cfg(feature = "serde")]
+    mod serde_error_shape {
+        use super::super::{SHAPE_TYPE_OPTIONS, SerdeErrorShape, serde_err_parts};
+        use crate::RValue;
+        use crate::serde::rvalue_ser::Atomic;
+
+        /// The shape of an error type in a crate that can't depend on
+        /// miniextendr: internally tagged by hand.
+        struct Engine {
+            rule: Vec<String>,
+            n: u32,
+            rate: i64,
+            flags: Vec<Option<bool>>,
+        }
+
+        impl ::serde::Serialize for Engine {
+            fn serialize<S: ::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                use ::serde::ser::SerializeStruct;
+                let mut st = s.serialize_struct("Engine", 5)?;
+                st.serialize_field("kind", "rule")?;
+                st.serialize_field("rule", &self.rule)?;
+                st.serialize_field("n", &self.n)?;
+                st.serialize_field("rate", &self.rate)?;
+                st.serialize_field("flags", &self.flags)?;
+                st.end()
+            }
+        }
+
+        impl std::fmt::Display for Engine {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("rule failed")
+            }
+        }
+
+        fn engine() -> Engine {
+            Engine {
+                rule: Vec::new(),
+                n: 3,
+                rate: 5,
+                flags: vec![Some(true), None],
+            }
+        }
+
+        fn field<'a>(parts: &'a super::super::ErrParts, name: &str) -> &'a RValue {
+            parts
+                .data
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, v)| v)
+                .unwrap_or_else(|| panic!("no field `{name}` in {:?}", parts.data))
+        }
+
+        fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+            let payload = std::panic::catch_unwind(f).expect_err("must panic");
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default()
+        }
+
+        #[test]
+        fn atomic_order_matches_the_shape_lists() {
+            for (atomic, option) in Atomic::ALL.iter().zip(SHAPE_TYPE_OPTIONS) {
+                assert_eq!(atomic.helper(), option);
+            }
+        }
+
+        #[test]
+        fn without_options_the_fields_keep_their_usual_serialization() {
+            let parts = serde_err_parts(&engine(), "p", &[]);
+            assert_eq!(parts.class, ["p_rule", "p"]);
+            assert!(matches!(field(&parts, "rule"), RValue::List(v) if v.is_empty()));
+            assert!(matches!(field(&parts, "n"), RValue::Integer(v) if v == &[Some(3)]));
+            assert!(matches!(field(&parts, "flags"), RValue::List(v) if v.len() == 2));
+        }
+
+        #[test]
+        fn each_type_option_gives_its_vector() {
+            const SHAPE: SerdeErrorShape = SerdeErrorShape::new()
+                .as_character(&["rule"])
+                .as_double(&["n"])
+                .as_integer(&["rate"])
+                .as_logical(&["flags"]);
+            let parts = serde_err_parts(&engine(), "p", &[&SHAPE]);
+            assert!(matches!(field(&parts, "rule"), RValue::Character(v) if v.is_empty()));
+            assert!(matches!(field(&parts, "n"), RValue::Double(v) if v == &[3.0]));
+            assert!(matches!(field(&parts, "rate"), RValue::Integer(v) if v == &[Some(5)]));
+            assert!(matches!(
+                field(&parts, "flags"),
+                RValue::Logical(v) if v == &[Some(true), None]
+            ));
+        }
+
+        #[test]
+        fn a_value_that_does_not_fit_names_the_field_and_the_option() {
+            let shape = SerdeErrorShape::new().as_integer(&["rate"]);
+            let err = std::panic::AssertUnwindSafe(Engine {
+                rate: 1 << 40,
+                ..engine()
+            });
+            let msg = panic_message(move || {
+                serde_err_parts(&err.0, "p", &[&shape]);
+            });
+            assert_eq!(
+                msg,
+                "#[miniextendr(serde_error)]: `as_integer` on condition data field `rate` \
+                 failed: the field is not an integer that fits an R integer or `None`; the \
+                 original error was: rule failed"
+            );
+
+            let shape = SerdeErrorShape::new().as_logical(&["rule"]);
+            let err = std::panic::AssertUnwindSafe(Engine {
+                rule: vec!["a".into(), "b".into()],
+                ..engine()
+            });
+            let msg = panic_message(move || {
+                serde_err_parts(&err.0, "p", &[&shape]);
+            });
+            assert!(
+                msg.contains(
+                    "`as_logical` on condition data field `rule` failed: the field is not a logical"
+                ),
+                "{msg}"
+            );
+        }
+
+        /// The keys are the names as the error serializes them: an `as_*`
+        /// option and a `rename` of one field compose.
+        #[test]
+        fn type_and_rename_compose_on_the_serialized_name() {
+            let shape = SerdeErrorShape::new()
+                .rename(&[("rule", "rules")])
+                .as_character(&["rule"]);
+            let parts = serde_err_parts(&engine(), "p", &[&shape]);
+            assert!(matches!(field(&parts, "rules"), RValue::Character(v) if v.is_empty()));
+        }
+
+        /// The function's options (the last shape) win for each setting of a
+        /// field; what only the named shape sets stays.
+        #[test]
+        fn later_shapes_win_per_field() {
+            let named = SerdeErrorShape::new()
+                .tag("type")
+                .prefix("engine")
+                .skip(&["n"])
+                .as_integer(&["rate"])
+                .rename(&[("rule", "rules")])
+                .as_character(&["rule"]);
+            let own = SerdeErrorShape::new().tag("kind").as_double(&["n", "rate"]);
+            let parts = serde_err_parts(&engine(), "p", &[&named, &own]);
+            assert_eq!(parts.class, ["engine_rule", "engine"]);
+            assert!(matches!(field(&parts, "n"), RValue::Double(v) if v == &[3.0]));
+            assert!(matches!(field(&parts, "rate"), RValue::Double(v) if v == &[5.0]));
+            assert!(matches!(field(&parts, "rules"), RValue::Character(v) if v.is_empty()));
+
+            // A later `skip` drops a field the earlier shape typed; a later
+            // `rename` keeps the earlier type.
+            let named = SerdeErrorShape::new()
+                .as_integer(&["n"])
+                .as_double(&["rate"]);
+            let own = SerdeErrorShape::new()
+                .prefix("own")
+                .skip(&["rate"])
+                .rename(&[("n", "count")]);
+            let parts = serde_err_parts(&engine(), "p", &[&named, &own]);
+            assert_eq!(parts.class, ["own_rule", "own"]);
+            let names: Vec<&str> = parts
+                .data
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect();
+            assert_eq!(names, ["rule", "count", "flags"]);
+            assert!(matches!(field(&parts, "count"), RValue::Integer(v) if v == &[Some(3)]));
+
+            // A later rename keeps a field an earlier shape skipped.
+            let named = SerdeErrorShape::new().skip(&["n"]);
+            let own = SerdeErrorShape::new().rename(&[("n", "count")]);
+            let parts = serde_err_parts(&engine(), "p", &[&named, &own]);
+            assert!(matches!(field(&parts, "count"), RValue::Integer(v) if v == &[Some(3)]));
+        }
+
+        /// A field the payload lacks is a no-op, as for `skip` / `rename`.
+        #[test]
+        fn a_field_the_payload_lacks_is_a_no_op() {
+            let shape = SerdeErrorShape::new()
+                .as_character(&["column"])
+                .as_integer(&["absent"]);
+            let parts = serde_err_parts(&engine(), "p", &[&shape]);
+            assert_eq!(parts.data.as_deref().unwrap_or_default().len(), 4);
+        }
+    }
+
     #[test]
     fn rerror_reserved_field_rejected_at_err_arm() {
         use super::RError;
         let err = std::panic::AssertUnwindSafe(RError::new("m").data("kind", 2));
-        let payload = std::panic::catch_unwind(move || crate::__mx_result_err_parts!(err.0, "p"))
-            .expect_err("must panic");
+        let payload =
+            std::panic::catch_unwind(move || crate::__mx_result_err_parts!(err.0, "p", NoShapes))
+                .expect_err("must panic");
         let msg = payload
             .downcast_ref::<String>()
             .cloned()
@@ -3389,7 +4437,7 @@ mod condition_macro_tests {
         let e = RError::new("m")
             .class(["member", "family"])
             .data("input", 1);
-        let parts = crate::__mx_result_err_parts!(e, "p");
+        let parts = crate::__mx_result_err_parts!(e, "p", NoShapes);
         assert_eq!(parts.message, "m");
         assert_eq!(parts.class, ["member", "family"]);
         assert_eq!(parts.data.expect("data")[0].0, "input");
@@ -3401,7 +4449,7 @@ mod condition_macro_tests {
     fn err_parts_probe_falls_back_to_debug() {
         #[derive(Debug)]
         struct Opaque;
-        let parts = crate::__mx_result_err_parts!(Opaque, "p");
+        let parts = crate::__mx_result_err_parts!(Opaque, "p", NoShapes);
         assert_eq!(parts.message, "Opaque");
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
@@ -4529,10 +5577,10 @@ mod condition_macro_tests {
         assert_eq!(RConditionData::call(&plain), ConditionCall::Inherit);
         let callless = plain.clone().without_call();
         assert_eq!(RConditionData::call(&callless), ConditionCall::None);
-        let parts = crate::__mx_result_err_parts!(callless, "pkg_error");
+        let parts = crate::__mx_result_err_parts!(callless, "pkg_error", NoShapes);
         assert_eq!(parts.call, ConditionCall::None);
         assert_eq!(parts.class, vec!["c"]);
-        let parts = crate::__mx_result_err_parts!(plain, "pkg_error");
+        let parts = crate::__mx_result_err_parts!(plain, "pkg_error", NoShapes);
         assert_eq!(parts.call, ConditionCall::Inherit);
     }
 

@@ -2293,6 +2293,7 @@ fn generate_typed_external(
     // which the saved slot names make safe to read.
     let rebuild = rebuild.map(|path| {
         let prefix = crate::miniextendr_fn::default_serde_error_prefix();
+        let marker = crate::miniextendr_fn::init_marker_path();
         let call = quote::quote_spanned! {syn::spanned::Spanned::span(path)=> #path(saved) };
         let any_version = any_version.then(|| {
             quote::quote! { const REBUILDS_ANY_VERSION: bool = true; }
@@ -2307,7 +2308,7 @@ fn generate_typed_external(
                 match #call {
                     ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
                     ::core::result::Result::Err(e) => {
-                        let parts = ::miniextendr_api::__mx_result_err_parts!(e, #prefix);
+                        let parts = ::miniextendr_api::__mx_result_err_parts!(e, #prefix, #marker);
                         ::core::result::Result::Err(::miniextendr_api::condition::RCondition::Error {
                             message: parts.message,
                             class: parts.class,

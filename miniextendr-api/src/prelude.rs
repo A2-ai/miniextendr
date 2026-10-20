@@ -245,7 +245,9 @@ pub use rand_distr;
 
 // --- serde (direct R serialization) ---
 #[cfg(feature = "serde")]
-pub use crate::serde::{AsSerialize, RDeserializeNative, RSerializeNative};
+pub use crate::serde::{AsSerialize, RDeserializeNative, RSerializeNative, SerdeErrorShape};
+// Unconditional: without `serde` the macro is a compile error saying so.
+pub use crate::serde_error_shape;
 #[cfg(feature = "serde")]
 pub use serde;
 

@@ -74,6 +74,7 @@
 //!
 //! ```no_run
 //! use miniextendr_api::{defer_warning, miniextendr};
+//! # miniextendr_api::miniextendr_init!(pkg);
 //!
 //! #[miniextendr]
 //! pub fn parse_trimmed(text: String) -> Result<i32, std::num::ParseIntError> {
@@ -84,6 +85,7 @@
 //!     }
 //!     Ok(value)
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! Here, parsing `" bad "` returns an error without a warning; parsing `" 42 "`

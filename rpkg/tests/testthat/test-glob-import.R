@@ -19,4 +19,5 @@ test_that("a serde-classed error compiles under a glob import", {
   e <- tryCatch(serde(3L), error = function(e) e)
   expect_s3_class(e, "glob_refused")
   expect_equal(conditionMessage(e), "refused with 3")
+  expect_identical(e$code, 3L)
 })

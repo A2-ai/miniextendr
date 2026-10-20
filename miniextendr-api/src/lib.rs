@@ -980,6 +980,12 @@ extern crate self as miniextendr_api;
 #[cfg(feature = "macro-coverage")]
 #[doc(hidden)]
 pub mod macro_coverage;
+
+/// The crate-root marker `miniextendr_init!` defines in a package crate, for
+/// the `#[miniextendr]` items of `macro_coverage`: under `serde` their `Err`
+/// arms look up `serde_error_shape!` declarations by it. None is declared.
+#[cfg(all(feature = "macro-coverage", feature = "serde"))]
+enum __MiniextendrInitMarker {}
 // endregion
 
 // region: Optional integrations with external crates (feature-gated)
