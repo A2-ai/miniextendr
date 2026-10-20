@@ -762,15 +762,32 @@ Without the API crate's `serde` feature nothing is classed through serde, so
 a declared shape would silently do nothing. Enable the feature, or drop the
 declaration.
 
+### "`serde_condition!` needs the `serde` feature of miniextendr-api; enable it to class errors through serde"
+
+`serde_condition!(&err)` builds the condition a function returning
+`Err(err)` raises through serde, which needs the API crate's `serde` feature
+(#2217). Enable the feature, or build the `RCondition` another way: from an
+`RConditionData` type, return it as `Err` directly.
+
+### "the trait bound `MyError: serde::Serialize` is not satisfied" at `serde_condition!`
+
+error[E0277], "required by a bound in `__mx_serde_condition_arg`": the error
+given to `serde_condition!` must be `serde::Serialize + Display`, the serde
+path the macro runs. An "expected `&_`, found `MyError`" mismatch there means
+the error was passed by value: the macro takes a reference,
+`serde_condition!(&err)`.
+
 ### "cannot find type `__MiniextendrInitMarker` in the crate root"
 
 Under the API crate's `serde` feature, the `Err` arm of every
 `#[miniextendr]` function or method returning a `Result` looks up a shape
 declared with `serde_error_shape!`, keyed by a marker type that
-`miniextendr_init!` defines at the crate root; `serde_error_shape!` names the
-marker too. Call `miniextendr_api::miniextendr_init!()` at the crate root
-(`lib.rs`), as every R package does, not inside a module. A doctest with such
-a function needs it as well, at the top level next to a `fn main() {}`.
+`miniextendr_init!` defines at the crate root; `serde_error_shape!` and
+`serde_condition!` name the marker too, and so does a rebuild hook's `Err`
+(`#[externalptr(rebuild = path)]`). Call `miniextendr_api::miniextendr_init!()`
+at the crate root (`lib.rs`), as every R package does, not inside a module. A
+doctest with such a function needs it as well, at the top level next to a
+`fn main() {}`.
 
 ### "tuple field 0 of variant `E::Raw` needs a `data` name"
 

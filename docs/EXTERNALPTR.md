@@ -1043,12 +1043,45 @@ impl Model {
   session and rebuilding it failed: <cause>``, or `<restored message>
   (rebuilding it failed: <cause>)`). The cause is the condition object
   `e$parent`, with its own classes and fields, as `rlang::abort(parent = )`
-  chains errors: an `E` that implements `RConditionData` (a
-  `#[derive(RCondition)]` type, `RError`) keeps its classes, any other `E`
-  gives its `Debug` text. The cause's classes stay out of the refusal's, so
-  a handler for them does not catch a reload failure; branch on
-  `inherits(e$parent, "pkg_error_config")`. An R error inside the hook
+  chains errors. It is built from the `Err` as a `#[miniextendr]` function
+  returning `Result<T, E>` builds its error
+  ([CONDITIONS.md](CONDITIONS.md#classed-result-errors-with-rconditiondata-and-rerror)):
+  an `E` that implements `RConditionData` (a `#[derive(RCondition)]` type,
+  `RError`, an `RCondition` itself) keeps its classes, message and fields;
+  under the `serde` feature a `Serialize + Display` `E` is classed from its
+  serde shape, the one `serde_error_shape!` declares for it if any; any
+  other `E` gives its `Debug` text. The cause's classes stay out of the
+  refusal's, so a handler for them does not catch a reload failure; branch
+  on `inherits(e$parent, "pkg_error_config")`. An R error inside the hook
   carries on as itself.
+- **A hook with several kinds of failure** returns `Result<Self,
+  RCondition>` (#2217). A condition `catch_condition` caught passes through
+  `?`, and `serde_condition!(&err)` turns a serde error into the condition
+  a function returning `Err(err)` raises, with the crate's declared shape
+  ([CONDITIONS.md](CONDITIONS.md#a-serde-error-as-an-rcondition)):
+
+  ```rust
+  fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
+      let values = Self::values(saved);
+      catch_condition(|| check_recipe(&values))?; // raises error!(class = .., data = ..)
+      let engine = engine::Engine::fit(&values)
+          .map_err(|e| miniextendr_api::serde_condition!(&e))?;
+      Ok(Model { engine, values: Sidecar::default() })
+  }
+  ```
+
+  Either way `e$parent` has the condition's classes, message and fields.
+  It is an error whatever kind the `RCondition` was built with, as any
+  `Err` is. A hook that converts another restored pointer inside
+  `catch_condition` and returns the refusal it caught gives the whole
+  chain: `e$parent` is the inner refusal, `e$parent$parent` its cause.
+- **Without raising.** `ExternalPtr::<T>::wrap_sexp_with_error(x)` returns
+  a failed rebuild as `Err(TypeMismatchError::RebuildFailed { condition })`:
+  the refusal above as a value, its cause in it (#2217). A check that must
+  not raise (is the object live? fall back to plain data?) needs no
+  `catch_condition`; `condition.raise()` raises it. An `ExternalPtr<T>` /
+  `&T` / `&mut T` argument and `ExternalPtr::<T>::try_from_sexp` raise it,
+  as a method on the object does.
 - **Conditions the hook queues** (`defer_warning!` & co.) are signalled when
   the call that triggered the rebuild returns. A hook that replays the
   construction, whose warnings were signalled once already, drops them with
