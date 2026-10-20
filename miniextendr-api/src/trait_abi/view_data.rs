@@ -2,7 +2,6 @@
 
 use crate::SEXP;
 use crate::externalptr::{root_owned, unroot_owned};
-use crate::gc_protect::OwnedProtect;
 use crate::protect_pool::ProtectKey;
 use std::ffi::c_void;
 
@@ -32,12 +31,7 @@ impl<V> TraitViewData<V> {
     /// Calls must respect Rust's aliasing rules. Construction, use and drop
     /// must run on R's main thread, inside an R unwind boundary when allocating.
     pub unsafe fn new(data: *mut c_void, vtable: *const c_void, owner: Option<SEXP>) -> Self {
-        let owner = owner.map(|owner| {
-            // The pool can allocate while it grows. Protect the owner until
-            // it holds its own root, then leave the caller's stack unchanged.
-            let guard = unsafe { OwnedProtect::new(owner) };
-            (owner, root_owned(guard.get()))
-        });
+        let owner = owner.map(|owner| (owner, root_owned(owner)));
         Self {
             data,
             vtable: vtable.cast(),

@@ -71,7 +71,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`] | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **VECSXP pool** | [`protect_pool`] | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`] | Until released or the pool drops | Any order | Values a struct owns; many values; cross-call roots |
 //! | **R ownership** | [`ExternalPtr`](struct@ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! Quick guide:
@@ -86,14 +86,18 @@
 //! } // UNPROTECT(n) called automatically
 //! ```
 //!
-//! **R objects surviving across `.Call`s** -> [`ProtectPool`] or `R_PreserveObject`
+//! **Values a struct owns, many values, or any drop order** -> [`ProtectPool`]
 //! ```ignore
-//! // ProtectPool: O(1) insert/release with generational keys
-//! let mut pool = unsafe { ProtectPool::new(16) };
-//! let key = unsafe { pool.insert(backing_vec) };
-//! // ... use across multiple .Calls ...
-//! unsafe { pool.release(key) };
+//! // The per-call root set: keep each value until the pool drops.
+//! let mut roots = ProtectPool::new(ProtectPool::DEFAULT_CAPACITY);
+//! let ids = roots.root(vec![1, 2, 3]);
+//!
+//! // Or release one value at a time, in any order, even across `.Call`s.
+//! let key = roots.insert(backing_vec);
+//! roots.release(key);
 //! ```
+//!
+//! **One long-lived object** -> [`Preserved`] (one `R_PreserveObject` root)
 //!
 //! **Rust data owned by R** -> [`ExternalPtr`](struct@ExternalPtr)
 //! ```ignore

@@ -13,9 +13,11 @@ balance `PROTECT`/`UNPROTECT` calls.
 | Strategy | Scope | Max Size | Release Order | Use Case |
 |----------|-------|----------|---------------|----------|
 | [PROTECT stack](#protectscope) | Within `.Call` | ~50k (ppsize) | LIFO | Temporary allocations |
-| [ProtectPool](#protectpool) | Cross-`.Call` | Unlimited | Any order | Cross-call, many objects (10.1 ns/op) |
-| [Preserve list](#preserve-list) (`Preserved`) | Cross-`.Call` | Unlimited | Any order | Few long-lived R objects |
+| [ProtectPool](#protectpool) | Until released or the pool drops | Unlimited | Any order | Values a struct owns, many values, cross-call roots (10.1 ns/op) |
+| [Preserve list](#preserve-list) (`Preserved`) | Cross-`.Call` | Unlimited | Any order, O(n) release | One long-lived R object |
 | [Refcount arenas](#refcount-arenas) | Flexible | Unlimited | Any order | Legacy - see ProtectPool |
+
+See [When to Use What](#when-to-use-what) for the decision tree.
 
 ### PROTECT Stack Types
 
@@ -41,6 +43,13 @@ unsafe fn my_call(x: SEXP, y: SEXP) -> SEXP {
     result.get()
 } // UNPROTECT(3) called automatically
 ```
+
+`UNPROTECT(n)` pops the top `n` entries of R's protect stack, whoever pushed
+them, so scopes must drop in LIFO order: don't protect through a scope while a
+scope or guard made after it is alive, and drop it after every such scope or
+guard. `ProtectScope::new` is `unsafe` and its caller promises this. A scope
+moved into a struct is easy to drop out of order; give the struct a
+[`ProtectPool`](#a-struct-that-owns-its-roots) instead.
 
 ### Allocation Helpers
 
@@ -227,8 +236,70 @@ If they need to survive further allocations, protect them explicitly.
 ## ProtectPool
 
 A VECSXP-backed pool that stores protected SEXPs in a single R list, with
-slot management and generational key tracking on the Rust side. Designed for
-cross-`.Call` protection of many objects with any-order release.
+slot management and generational key tracking on the Rust side. It has two
+uses:
+
+- **The per-call root set.** `pool.root(value)` converts a value, roots it
+  until the pool drops, and returns the object. A struct can own the pool and
+  drop in any order relative to other pools, scopes and guards, and the pool
+  takes no protect-stack entry per value.
+- **The cross-call pool.** `pool.insert(sexp)` returns a key, and
+  `pool.release(key)` frees the slot in O(1), in any order and across `.Call`
+  boundaries. Every owning `ExternalPtr` is rooted in one such process-wide
+  pool.
+
+Its functions are safe to call on R's main thread, the contract of
+`Preserved` and the other owned roots; the type is `!Send + !Sync`.
+
+### A struct that owns its roots
+
+Code that keeps intermediate R objects alive until its `.Call` returns
+(attribute vectors, results of R calls, sliced columns) used to move a
+`ProtectScope` into a struct:
+
+```rust
+// Before: unsafe at every site, and unsound if dropped out of order.
+pub(crate) struct Columns {
+    scope: ProtectScope,
+    cols: Vec<(String, SEXP)>,
+}
+
+impl Columns {
+    pub(crate) fn keep(&mut self, sexp: SEXP) -> SEXP {
+        unsafe { self.scope.protect_raw(sexp) }
+    }
+}
+```
+
+Two such structs dropped in creation order break the stack: the first one's
+`UNPROTECT(n)` pops the second one's entries, which are on top, and leaves
+its own behind. Own a `ProtectPool` instead:
+
+```rust
+// After: safe, and any drop order.
+pub(crate) struct Columns {
+    roots: ProtectPool,
+    cols: Vec<(String, SEXP)>,
+}
+
+impl Columns {
+    pub(crate) fn new() -> Self {
+        Self {
+            roots: ProtectPool::new(ProtectPool::DEFAULT_CAPACITY),
+            cols: Vec::new(),
+        }
+    }
+
+    pub(crate) fn keep(&mut self, value: impl IntoR) -> SEXP {
+        self.roots.root(value)
+    }
+}
+```
+
+Dropping the pool releases its backing list, and with it every value, whatever
+order the structs drop in. `root` (and `insert`) accept a fresh, unprotected
+object: when the pool is full, the object stays on the protect stack while the
+pool grows, so the allocation that grows it cannot collect it.
 
 ### Architecture
 
@@ -254,6 +325,7 @@ operations are no-ops rather than crashes.
 | Method | Description |
 |--------|-------------|
 | `ProtectPool::new(capacity)` | Create a pool with an initial VECSXP capacity (grows automatically) |
+| `pool.root(value)` | Convert an `IntoR` value, root it until the pool drops, and return the SEXP |
 | `pool.insert(sexp)` | Protect a SEXP, returning a `ProtectKey` |
 | `pool.get(key)` | Retrieve the SEXP for a key, or `None` if the key is stale |
 | `pool.replace(key, sexp)` | Overwrite an existing slot in-place (pool equivalent of `R_Reprotect`) |
@@ -262,8 +334,9 @@ operations are no-ops rather than crashes.
 | `pool.contains_key(key)` | Check whether a key is currently valid |
 
 `ProtectKey` is 8 bytes (4-byte slot index + 4-byte generation) and is
-`Copy`. Dropping a key without calling `release` leaks protection but does
-not crash.
+`Copy`. Dropping a key without calling `release` keeps the value rooted until
+the pool drops. A key does not record its pool: use it only with the pool that
+returned it.
 
 `ProtectPool` is `!Send + !Sync` — all operations must occur on the R main
 thread.
@@ -272,9 +345,10 @@ thread.
 
 10.1 ns/op for a single insert+release pair. Zero R allocation per insert —
 the backing VECSXP is allocated once at pool creation; inserts reuse existing
-slots. Contrast with `preserve` (Preserve List), which allocates one CONSXP
-per insert (~28.9 ns/op). See `analysis/gc-protection-benchmarks-results.md`
-for full benchmark data.
+slots. Contrast with R's precious list (`Preserved`), which allocates one
+CONSXP per preserve and searches the list on release (13 ns/op for one
+preserve+release, O(n²) when many objects are released in insertion order).
+See `analysis/gc-protection-benchmarks-results.md` for full benchmark data.
 
 Automatic growth doubles the backing VECSXP when slots are exhausted.
 Growth copies existing slot contents, releases the old VECSXP via
@@ -285,7 +359,7 @@ Growth copies existing slot contents, releases the old VECSXP via
 ```rust
 use miniextendr_api::protect_pool::{ProtectPool, ProtectKey};
 
-unsafe fn build_cross_call_state() -> (ProtectPool, ProtectKey, ProtectKey) {
+fn build_cross_call_state() -> (ProtectPool, ProtectKey, ProtectKey) {
     let mut pool = ProtectPool::new(16);
 
     let s1 = SEXP::scalar_integer(42);
@@ -297,7 +371,7 @@ unsafe fn build_cross_call_state() -> (ProtectPool, ProtectKey, ProtectKey) {
     (pool, k1, k2)
 }
 
-unsafe fn use_cross_call_state(pool: &mut ProtectPool, k1: ProtectKey, k2: ProtectKey) {
+fn use_cross_call_state(pool: &mut ProtectPool, k1: ProtectKey, k2: ProtectKey) {
     // Retrieve — returns None if the key is stale
     let s1 = pool.get(k1).expect("k1 should still be valid");
 
@@ -311,18 +385,18 @@ unsafe fn use_cross_call_state(pool: &mut ProtectPool, k1: ProtectKey, k2: Prote
 
 | | `ProtectScope` | `ProtectPool` | Preserve List |
 |---|---|---|---|
-| Scope | Within one `.Call` | Cross-`.Call` | Cross-`.Call` |
-| Release order | LIFO (drop) | Any order | Any order |
-| Per-op cost | 7.4 ns | 10.1 ns | 28.9 ns (CONSXP per insert) |
-| R allocation per insert | None | None | One CONSXP |
+| Scope | Within one `.Call` | Until released or the pool drops | Cross-`.Call` |
+| Release order | LIFO (drop) | Any order | Any order, O(n) search |
+| Per-op cost | 7.4 ns | 10.1 ns | 13 ns single; O(n²) in bulk |
+| R allocation per insert | None | None (except growth) | One CONSXP |
 | Max objects | ~50k (ppsize) | Unlimited (grows) | Unlimited |
-| Key safety | Lifetime-bound (`Root<'scope>`) | Generational (stale = no-op) | Manual |
+| Key safety | Lifetime-bound (`Root<'scope>`) | Generational (stale = no-op) | One handle per root (`Preserved`) |
 
 Use `ProtectScope` for temporaries that live only within a single `.Call`
-invocation. Use `ProtectPool` when protected objects must outlive a `.Call`
-boundary, you have many objects or high insert/release churn, and you need
-any-order release. Use the Preserve List when you have a small number of
-long-lived objects that are rarely released (e.g., cached lookup tables).
+invocation. Use `ProtectPool` for values a struct owns, for many values, or
+for values released in any order, within a call or across calls. Use the
+Preserve List for one long-lived object (e.g., a cached lookup table, the data
+a Rust value keeps).
 
 ## Preserve List
 
@@ -350,10 +424,10 @@ then drops it and releases the root. `BuiltDataFrame`, `BuiltList`,
 `NamedListBuilder`, `REvalError`, `LazyDots` and the `DataFrameShape`
 sentinel each hold one.
 
-Cost is the ~28.9 ns/op figure in the [Performance](#performance) comparison
-above: each insert allocates one CONSXP, and `R_ReleaseObject` searches R's
-precious list from the head, one step per object preserved after this one and
-not yet released. Releasing many objects, or releasing them out of insertion
+Cost is the precious-list figure in the [Performance](#performance)
+comparison above: each preserve allocates one CONSXP, and `R_ReleaseObject`
+searches R's precious list from the head, one step per object preserved after
+this one and not yet released. Releasing many objects, or releasing them out of insertion
 order, degrades as the list grows. (Starting R with `R_HASH_PRECIOUS` set
 splits the list into 1069 hashed buckets.) `ProtectPool` exists precisely to
 avoid this: it wraps a *single* `R_PreserveObject` call around a whole VECSXP
@@ -366,16 +440,58 @@ churn or object count, prefer `ProtectPool`.
 
 ## When to Use What
 
+```text
+Is the SEXP returned straight to R, with no allocation in between?
+  → No protection needed.
+A temporary within one call, released with the call's other temporaries?
+  → ProtectScope (or OwnedProtect for one value; ReprotectSlot to replace
+    one value in a loop).
+Many values, values dropped in any order, or values a struct owns?
+  → ProtectPool: `root(value)` keeps each until the pool drops;
+    `insert` / `release` frees them one at a time, across calls too.
+One long-lived object, such as a field of a value R owns?
+  → Preserved.
+```
+
 | Scenario | Use |
 |----------|-----|
 | Multiple values, known at function start | `ProtectScope` |
 | Single value, simple case | `OwnedProtect` |
 | Accumulator loop, repeated replacement | `ReprotectSlot` |
-| One or a few SEXPs a Rust value keeps beyond the `.Call` | `Preserved` |
-| Many SEXPs that must outlive a `.Call`, any-order release | `ProtectPool` |
+| Values a struct owns, or several roots that drop in any order | `ProtectPool::root` |
+| Many SEXPs that must outlive a `.Call`, any-order release | `ProtectPool::insert` / `release` |
+| One SEXP a Rust value keeps beyond the `.Call` | `Preserved` |
 | Building typed vectors from iterators | `scope.collect()` |
 | Building lists with unknown length | `ListAccumulator` |
 | Building string vectors | `StrVecBuilder` |
+
+### The `Protector` trait
+
+Code that allocates several intermediate SEXPs can take `&mut impl Protector`
+and let its caller pick the backend:
+
+```rust
+fn ids_and_labels(roots: &mut impl Protector) -> (SEXP, SEXP) {
+    let ids = roots.protect(vec![1, 2, 3].into_sexp());
+    // `ids` stays rooted while the next conversion allocates.
+    let labels = roots.protect(vec!["a", "b", "c"].into_sexp());
+    (ids, labels) // both rooted until `roots` drops
+}
+```
+
+`protect(&mut self, sexp) -> SEXP` is safe. It roots `sexp` until the
+protector drops; there is no individual release through the trait. The two
+implementations:
+
+- `ProtectScope`. `ProtectScope::new` is `unsafe`: its caller promises the
+  main thread and LIFO order, so protecting through a constructed scope is
+  safe.
+- `ProtectPool`, whose functions are safe on R's main thread.
+
+There is no precious-list `Protector`. `Preserved` is a handle for one object;
+preserving values one by one in bulk is the O(n²) release pattern the pool
+exists to avoid. `OwnedProtect` is one protect-stack entry, not a precious-list
+root.
 
 ## Protection Patterns by R Type
 
@@ -448,34 +564,10 @@ for i in 0..n {
 R's default `--max-ppsize` is 50000. Unbounded patterns can overflow this limit
 with large inputs. Bounded patterns handle any size.
 
-## ProtectPool
-
-For objects that must survive across multiple `.Call` invocations:
-
-```rust
-use miniextendr_api::protect_pool::ProtectPool;
-
-// Pool backed by a VECSXP with generational keys (O(1) insert/release).
-let mut pool = unsafe { ProtectPool::new(16) };
-let key = unsafe { pool.insert(my_sexp) };
-
-// Later, release it (no LIFO constraint)
-unsafe { pool.release(key); }
-```
-
-`ProtectPool` keeps protected SEXPs in a VECSXP backing slot, indexed by
-generational keys (slotmap-style). Single VECSXP protect via
-`R_PreserveObject` on construction; per-insert is a slot write with no R
-allocation.
-
-Use `ProtectPool` (or `R_PreserveObject` directly) when you need to keep R
-objects alive across function calls (e.g., cached lookup tables).
-
 ## Refcount Arenas
 
-For scenarios involving many SEXPs (hundreds to millions), the PROTECT stack
-is too limited (~50k) and `R_PreserveObject`/`R_ReleaseObject` has O(n)
-release cost. Refcount arenas provide O(1) protect/unprotect with reference
+Legacy: new code uses `ProtectPool`, which has the same VECSXP backing without
+the counts. Refcount arenas provide O(1) protect/unprotect with reference
 counting backed by a VECSXP:
 
 ```rust
@@ -507,20 +599,6 @@ These are the only two flavors instantiated anywhere in the tree; a HashMap-
 and ahash-backed variant family existed previously but was removed for having
 zero production or test consumers (see `refcount_protect.rs`'s module docs for
 the tracking issue if you need to re-add one).
-
-### Choosing a Strategy
-
-```text
-Need GC protection?
-├─ Within a single .Call?
-│  ├─ 1 value → OwnedProtect
-│  ├─ Few values (< 100) → ProtectScope
-│  └─ Accumulator loop → ReprotectSlot
-├─ Across .Call invocations?
-│  └─ Small number (< 10) → Preserved or ProtectPool
-└─ Many values (100+) / hot loop with many SEXPs?
-   └─ ThreadLocalArena (or RefCountedArena for a non-thread-local instance)
-```
 
 ## Borrowing transient ALTREP elements
 

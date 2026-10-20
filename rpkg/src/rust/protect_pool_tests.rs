@@ -7,51 +7,47 @@ use miniextendr_api::protect_pool::ProtectPool;
 /// Create a pool, insert a value, retrieve it, release it, verify stale key returns None.
 #[miniextendr]
 pub fn protect_pool_roundtrip() -> bool {
-    unsafe {
-        let mut pool = ProtectPool::new(4);
-        let sexp = SEXP::scalar_integer(42);
-        let key = pool.insert(sexp);
+    let mut pool = ProtectPool::new(4);
+    let sexp = SEXP::scalar_integer(42);
+    let key = pool.insert(sexp);
 
-        // Should retrieve the value
-        let got = pool.get(key);
-        if got.is_none() {
-            return false;
-        }
-
-        // Release
-        pool.release(key);
-
-        // Stale key should return None
-        pool.get(key).is_none()
+    // Should retrieve the value
+    let got = pool.get(key);
+    if got.is_none() {
+        return false;
     }
+
+    // Release
+    pool.release(key);
+
+    // Stale key should return None
+    pool.get(key).is_none()
 }
 
 /// Test that pool handles multiple inserts and releases.
 #[miniextendr]
 pub fn protect_pool_multi() -> i32 {
-    unsafe {
-        let mut pool = ProtectPool::new(8);
-        let s1 = SEXP::scalar_integer(1);
-        let s2 = SEXP::scalar_integer(2);
-        let s3 = SEXP::scalar_integer(3);
+    let mut pool = ProtectPool::new(8);
+    let s1 = SEXP::scalar_integer(1);
+    let s2 = SEXP::scalar_integer(2);
+    let s3 = SEXP::scalar_integer(3);
 
-        let k1 = pool.insert(s1);
-        let k2 = pool.insert(s2);
-        let k3 = pool.insert(s3);
+    let k1 = pool.insert(s1);
+    let k2 = pool.insert(s2);
+    let k3 = pool.insert(s3);
 
-        // Release middle one
-        pool.release(k2);
+    // Release middle one
+    pool.release(k2);
 
-        let mut count = 0;
-        if pool.get(k1).is_some() {
-            count += 1;
-        }
-        if pool.get(k2).is_none() {
-            count += 1; // released, should be None
-        }
-        if pool.get(k3).is_some() {
-            count += 1;
-        }
-        count
+    let mut count = 0;
+    if pool.get(k1).is_some() {
+        count += 1;
     }
+    if pool.get(k2).is_none() {
+        count += 1; // released, should be None
+    }
+    if pool.get(k3).is_some() {
+        count += 1;
+    }
+    count
 }

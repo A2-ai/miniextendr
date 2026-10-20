@@ -590,7 +590,7 @@ CHARSXP and is valid only while that CHARSXP remains reachable. At a generated
 made permanent through symbols, as described in [CACHED_SEXPS.md](CACHED_SEXPS.md),
 can be treated as session-long values.
 
-**Recommended pattern:** Use `OwnedProtect` or `ProtectScope` for RAII-based SEXP protection. Never store raw SEXPs in long-lived Rust structures without protection.
+**Recommended pattern:** Use `OwnedProtect` or `ProtectScope` for RAII-based SEXP protection within a call. A Rust structure that keeps SEXPs owns a `ProtectPool` and roots each with `root`, or holds a `Preserved` for one long-lived object. Never store raw SEXPs in long-lived Rust structures without protection.
 
 See [GC_PROTECT.md](GC_PROTECT.md) for the full GC protection toolkit and [SAFETY.md](SAFETY.md) for safety invariants.
 
