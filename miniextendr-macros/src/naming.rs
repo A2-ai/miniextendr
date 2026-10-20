@@ -558,14 +558,6 @@ pub(crate) fn parse_generic(value: &syn::LitStr) -> syn::Result<String> {
     Ok(generic)
 }
 
-/// Whether `name` is a valid R package name ("Writing R Extensions", 1.1.1).
-fn is_r_package_name(name: &str) -> bool {
-    name.len() >= 2
-        && name.starts_with(|c: char| c.is_ascii_alphabetic())
-        && !name.ends_with('.')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
-}
-
 // endregion
 
 /// Parse a dispatch receiver that is safe to emit as a bare R symbol.
