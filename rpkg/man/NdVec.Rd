@@ -31,12 +31,16 @@ NdVec
 
 \method{$}{NdVec}(self, name)
 
-\method{[[}{NdVec}(self, name)
+\method{[[}{NdVec}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 NdVec methods: 1D numeric array operations, slicing, and conversion.

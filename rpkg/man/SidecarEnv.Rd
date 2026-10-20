@@ -17,7 +17,7 @@ SidecarEnv
 
 \method{$}{SidecarEnv}(self, name)
 
-\method{[[}{SidecarEnv}(self, name)
+\method{[[}{SidecarEnv}(self, name, ..., exact = TRUE)
 
 \method{.DollarNames}{SidecarEnv}(x, pattern = "")
 
@@ -29,6 +29,10 @@ SidecarEnv
 \item{self}{The object instance.}
 
 \item{name}{A method or field name.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 
 \item{x}{An object.}
 

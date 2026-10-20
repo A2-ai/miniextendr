@@ -59,5 +59,10 @@ Picker$pick_many <- function(modes) {
   .miniextendr_env_method(self, name, Picker)
 }
 #' @rdname Picker
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Picker` <- `$.Picker`
+`[[.Picker` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Picker)
+}

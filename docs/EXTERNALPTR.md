@@ -674,7 +674,10 @@ them (by the exact name, never a prefix; on an S3 bare pointer `[[` also
 takes a whole-number position, and an unknown name is an error unless
 `lookup = "list"` reads `NULL`), `$<-` / `[[<-` methods that write them in place
 and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
-class (`r_data_accessors = "get"` for the readers only). With
+class (`r_data_accessors = "get"` for the readers only). On an S3 bare
+pointer `[[`, `as.list()` and `[[<-` refuse an unused argument, as
+`dots = empty` does, and `[[` takes `exact`; so does an env class's `[[`
+(#2174). With
 `fallback = "Self::f"` next to the option, a name no field has is read by
 `fn f(&self, name: &str) -> Option<T>` on the Rust value, and
 `fallback_names = "Self::g"` adds `g(&self) -> Vec<String>` to the

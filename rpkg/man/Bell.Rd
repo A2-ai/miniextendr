@@ -15,12 +15,16 @@ Bell
 
 \method{$}{Bell}(self, name)
 
-\method{[[}{Bell}(self, name)
+\method{[[}{Bell}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 A bell that has not rung yet.

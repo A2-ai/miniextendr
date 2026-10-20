@@ -14,12 +14,16 @@ MarkedEnv
 
 \method{$}{MarkedEnv}(self, name)
 
-\method{[[}{MarkedEnv}(self, name)
+\method{[[}{MarkedEnv}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 Env class with a marked constructor.

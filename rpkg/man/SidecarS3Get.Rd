@@ -15,7 +15,7 @@ new_sidecars3get(level)
 
 \method{$}{SidecarS3Get}(x, name)
 
-\method{[[}{SidecarS3Get}(x, i, ...)
+\method{[[}{SidecarS3Get}(x, i, ..., exact = TRUE)
 
 \method{names}{SidecarS3Get}(x)
 
@@ -37,6 +37,8 @@ SidecarS3Get
 \item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a position in the field order, as for a list. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
 \item{...}{Additional arguments.}
+
+\item{exact}{Ignored on the pointer itself, whose field names match exactly. A list or an environment carrying the pointer reads its own elements with \code{exact = TRUE} whatever is passed.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
 

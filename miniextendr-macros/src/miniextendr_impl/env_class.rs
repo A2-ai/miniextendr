@@ -28,7 +28,8 @@ use super::ParsedImpl;
 ///   in the class environment, binding `.mx_self` for instance methods, and supporting
 ///   trait namespace environments (nested envs with `.__mx_instance__` attributes),
 ///   through the package's shared `.miniextendr_env_method` helper
-/// - `[[.ClassName` alias: delegates to `$.ClassName`
+/// - `[[.ClassName`: the same lookup, with `exact` (ignored) and a `...` that
+///   refuses every argument (#2174)
 /// - With `env(r_data_accessors)`: a field branch at the top of `$.ClassName`
 ///   (a `#[r_data]` field wins over a method of the same name),
 ///   `.DollarNames.ClassName` (the fields, then the methods; #1885), and,
@@ -239,31 +240,51 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         ));
         lines.push("#' @export".to_string());
     }
-    lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
+    // The lookup `$` and `[[` share. `[[` is its own function, not an alias
+    // of `$`, so that each method's frame names its own generic for
+    // `.miniextendr_frame_call`.
+    let mut lookup = Vec::new();
     if fields {
-        lines.extend(super::field_syntax::env_field_branch(parsed_impl));
+        lookup.extend(super::field_syntax::env_field_branch(parsed_impl));
     }
     let method_lookup = format!(".miniextendr_env_method(self, name, {class_name})");
     if fields {
-        lines.push(format!("  obj <- {method_lookup}"));
-        lines.push("  if (is.null(obj)) {".to_string());
-        lines.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
-        lines.push("  }".to_string());
-        lines.push("  obj".to_string());
+        lookup.push(format!("  obj <- {method_lookup}"));
+        lookup.push("  if (is.null(obj)) {".to_string());
+        lookup.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
+        lookup.push("  }".to_string());
+        lookup.push("  obj".to_string());
     } else {
-        lines.push(format!("  {method_lookup}"));
+        lookup.push(format!("  {method_lookup}"));
     }
+    lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
+    lines.extend(lookup.iter().cloned());
     lines.push("}".to_string());
+    // `[[` takes `exact`, as a list's does, and ignores it: names match
+    // exactly. Nothing reads its `...`, so every argument there is refused
+    // (#2174).
     if class_has_no_rd {
         lines.push("#' @noRd".to_string());
         lines.push("#' @export".to_string());
     } else if !should_export {
         lines.push("#' @export".to_string());
     } else {
-        lines.extend(super::field_syntax::page_lines(parsed_impl, &[]));
+        lines.extend(super::field_syntax::page_lines(
+            parsed_impl,
+            &[
+                ("...", "Refused: `[[` takes one name."),
+                ("exact", "Ignored: names match exactly."),
+            ],
+        ));
         lines.push("#' @export".to_string());
     }
-    lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
+    lines.push(format!(
+        "`[[.{class_name}` <- function({}) {{",
+        super::field_syntax::ENV_SUBSET_FORMALS
+    ));
+    lines.push(super::field_syntax::env_subset_dots_check(parsed_impl));
+    lines.extend(lookup);
+    lines.push("}".to_string());
     if fields {
         lines.extend(super::field_syntax::env_dollar_names(
             parsed_impl,

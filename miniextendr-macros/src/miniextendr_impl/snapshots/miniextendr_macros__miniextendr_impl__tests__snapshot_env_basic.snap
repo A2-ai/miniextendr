@@ -79,5 +79,10 @@ Counter$from_string <- function(s) {
   .miniextendr_env_method(self, name, Counter)
 }
 #' @rdname Counter
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Counter` <- `$.Counter`
+`[[.Counter` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Counter)
+}

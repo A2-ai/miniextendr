@@ -14,12 +14,16 @@ Collections
 
 \method{$}{Collections}(self, name)
 
-\method{[[}{Collections}(self, name)
+\method{[[}{Collections}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 Collections Class

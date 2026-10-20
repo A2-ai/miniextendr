@@ -46,7 +46,7 @@ SidecarRawSexp
 
 \method{$}{SidecarRawSexp}(self, name)
 
-\method{[[}{SidecarRawSexp}(self, name)
+\method{[[}{SidecarRawSexp}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{x}{The SidecarRawSexp external pointer}
@@ -56,6 +56,10 @@ SidecarRawSexp
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \value{
 The value of the \code{int_vec} field

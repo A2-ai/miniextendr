@@ -11,7 +11,7 @@
 \usage{
 \method{$}{handmade_rec}(x, name)
 
-\method{[[}{handmade_rec}(x, i, ...)
+\method{[[}{handmade_rec}(x, i, ..., exact = TRUE)
 
 \method{names}{handmade_rec}(x)
 
@@ -28,7 +28,9 @@ new_handmade_rec(id)
 
 \item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
-\item{...}{Additional arguments.}
+\item{...}{Passed on by a list or an environment carrying the pointer; on the pointer itself any argument here is refused.}
+
+\item{exact}{Ignored on the pointer itself, whose field names match exactly. A list or an environment carrying the pointer reads its own elements with \code{exact = TRUE} whatever is passed.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
 

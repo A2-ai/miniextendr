@@ -14,7 +14,7 @@ new_fallback_list(level)
 
 \method{$}{fallback_list}(x, name)
 
-\method{[[}{fallback_list}(x, i, ...)
+\method{[[}{fallback_list}(x, i, ..., exact = TRUE)
 
 \method{names}{fallback_list}(x)
 
@@ -33,7 +33,9 @@ fallback_list
 
 \item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a position in the field order, as for a list, and reads another name through the class's fallback. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
-\item{...}{Additional arguments.}
+\item{...}{Passed on by a list or an environment carrying the pointer; on the pointer itself any argument here is refused.}
+
+\item{exact}{Ignored on the pointer itself, whose field names match exactly. A list or an environment carrying the pointer reads its own elements with \code{exact = TRUE} whatever is passed.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
 }

@@ -18,7 +18,7 @@ RawIdentEnv
 
 \method{$}{RawIdentEnv}(self, name)
 
-\method{[[}{RawIdentEnv}(self, name)
+\method{[[}{RawIdentEnv}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{x}{The RawIdentEnv external pointer}
@@ -28,6 +28,10 @@ RawIdentEnv
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \value{
 The value of the \code{type} field

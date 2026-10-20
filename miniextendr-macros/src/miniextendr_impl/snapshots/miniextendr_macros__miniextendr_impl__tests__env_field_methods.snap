@@ -53,8 +53,25 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
   obj
 }
 #' @rdname Engine
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Engine` <- `$.Engine`
+`[[.Engine` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), class = .rdata_error_class_Engine, call = environment())
+  if (!(!is.character(name) || length(name) != 1L || is.na(match(name, .rdata_fields_Engine)))) {
+    .val <- .rdata_get_Engine(self, name)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+    return(.val)
+  }
+  obj <- .miniextendr_env_method(self, name, Engine)
+  if (is.null(obj)) {
+    if (.rdata_every_read_Engine) {
+      .val <- .rdata_live_Engine(self, TRUE)
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+    }
+  }
+  obj
+}
 #' @rdname Engine
 #' @param x An object.
 #' @param pattern A regular expression; the names matching it are the completions.

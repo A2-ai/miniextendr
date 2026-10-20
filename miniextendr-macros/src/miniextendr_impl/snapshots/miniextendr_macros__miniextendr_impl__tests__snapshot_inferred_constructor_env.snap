@@ -57,5 +57,10 @@ Reading$from_value <- function(value) {
   .miniextendr_env_method(self, name, Reading)
 }
 #' @rdname Reading
+#' @param ... Refused: `[[` takes one name.
+#' @param exact Ignored: names match exactly.
 #' @export
-`[[.Reading` <- `$.Reading`
+`[[.Reading` <- function(self, name, ..., exact = TRUE) {
+  if (...length()) .miniextendr_check_dots(...names(), ...length(), c("self", "name", "exact"), call = environment())
+  .miniextendr_env_method(self, name, Reading)
+}

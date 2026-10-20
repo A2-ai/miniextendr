@@ -17,12 +17,16 @@ SelfArgCounter
 
 \method{$}{SelfArgCounter}(self, name)
 
-\method{[[}{SelfArgCounter}(self, name)
+\method{[[}{SelfArgCounter}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 SelfArgCounter inherent methods (constructor and getter).

@@ -18,7 +18,7 @@ RebuildPair
 
 \method{$}{RebuildPair}(self, name)
 
-\method{[[}{RebuildPair}(self, name)
+\method{[[}{RebuildPair}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{x}{The RebuildPair external pointer}
@@ -28,6 +28,10 @@ RebuildPair
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \value{
 The value of the \code{inner} field

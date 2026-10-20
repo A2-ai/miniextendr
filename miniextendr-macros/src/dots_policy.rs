@@ -34,6 +34,11 @@
 //! helper is in the wrappers preamble (`miniextendr_api::registry`): one
 //! classed argument error for every refused argument, with the formal or
 //! listed name each one most likely meant.
+//!
+//! Generated methods that have no attribute make the `empty` check too
+//! ([`DotsPolicy::empty`], #2174): the `[[`, `as.list()` and `[[<-` field
+//! methods of `s3(r_data_accessors)` on a bare pointer, with the type's
+//! `field_error` classes, and an env class's `[[`.
 
 use proc_macro2::{Span, TokenStream};
 use syn::spanned::Spanned;
@@ -68,6 +73,11 @@ pub(crate) struct DotsPolicy {
     pub(crate) allow: Vec<String>,
     /// The package's classes for the refusal, in front of its own.
     pub(crate) class: Vec<String>,
+    /// The package's classes as an R expression the wrapper evaluates, in
+    /// place of `class`: the field methods pass the type's `field_error`
+    /// classes, a variable of the derive's helpers (#2174). The attribute
+    /// never sets it.
+    pub(crate) class_expr: Option<String>,
     /// The attribute value, for diagnostics about the signature.
     pub(crate) span: Span,
 }
@@ -99,6 +109,7 @@ pub(crate) fn parse_dots_attr(value: &syn::Expr) -> syn::Result<DotsAttr> {
                 role,
                 allow: Vec::new(),
                 class: Vec::new(),
+                class_expr: None,
                 span: value.span(),
             })),
             None => Err(syn::Error::new_spanned(path, EXPECTED)),
@@ -128,6 +139,7 @@ pub(crate) fn parse_dots_attr(value: &syn::Expr) -> syn::Result<DotsAttr> {
                 role,
                 allow,
                 class,
+                class_expr: None,
                 span: value.span(),
             }))
         }
@@ -253,6 +265,20 @@ fn string_list(expr: &syn::Expr, names: bool) -> syn::Result<Vec<String>> {
 }
 
 impl DotsPolicy {
+    /// `empty`, for generated code that has no attribute, with the refusal's
+    /// classes as an R expression ([`class_expr`](Self::class_expr)): the
+    /// field methods of `s3(r_data_accessors)` and an env class's `[[`
+    /// (#2174).
+    pub(crate) fn empty(class_expr: Option<String>) -> Self {
+        DotsPolicy {
+            role: DotsRole::Empty,
+            allow: Vec::new(),
+            class: Vec::new(),
+            class_expr,
+            span: Span::call_site(),
+        }
+    }
+
     /// Refuse a role the signature can't have, spanned on the attribute:
     /// `forward` and `data` hand the arguments to the Rust function, so it
     /// takes `...` (`_: ...`, `&Dots` or `LazyDots`); `wrapper_dots` says
@@ -312,7 +338,9 @@ impl DotsPolicy {
         if self.role == DotsRole::Forward {
             args.push("forward = TRUE".to_string());
         }
-        if !self.class.is_empty() {
+        if let Some(class) = &self.class_expr {
+            args.push(format!("class = {class}"));
+        } else if !self.class.is_empty() {
             args.push(format!("class = {}", r_chr(&self.class)));
         }
         if let Some(call) = call {
@@ -454,6 +482,23 @@ mod tests {
                 .r_check("x, mode = c(\"a\", \"b\"), ...", None)
                 .unwrap(),
             "if (...length()) .miniextendr_check_dots(...names(), ...length(), c(\"x\", \"mode\"))"
+        );
+    }
+
+    #[test]
+    fn r_check_takes_classes_as_an_r_expression() {
+        // The field methods pass the type's `field_error` classes, a variable
+        // of the derive's helpers, unquoted (#2174).
+        let p = DotsPolicy::empty(Some(".rdata_error_class_T".to_string()));
+        assert_eq!(
+            p.r_check("x, i, ..., exact = TRUE", Some("environment()"))
+                .unwrap(),
+            "if (...length()) .miniextendr_check_dots(...names(), ...length(), \
+             c(\"x\", \"i\", \"exact\"), class = .rdata_error_class_T, call = environment())"
+        );
+        assert_eq!(
+            DotsPolicy::empty(None).r_check("x, ...", None).unwrap(),
+            "if (...length()) .miniextendr_check_dots(...names(), ...length(), \"x\")"
         );
     }
 }

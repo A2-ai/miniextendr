@@ -13,12 +13,16 @@ EnvPipeBuilder
 
 \method{$}{EnvPipeBuilder}(self, name)
 
-\method{[[}{EnvPipeBuilder}(self, name)
+\method{[[}{EnvPipeBuilder}(self, name, ..., exact = TRUE)
 }
 \arguments{
 \item{self}{The object instance.}
 
 \item{name}{Method name for dispatch.}
+
+\item{...}{Refused: \code{[[} takes one name.}
+
+\item{exact}{Ignored: names match exactly.}
 }
 \description{
 Env builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.

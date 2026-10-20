@@ -148,6 +148,15 @@ test_that("S3: a list carrying the pointer keeps its own elements for other name
   expect_identical(utils::.DollarNames(l), c("id", "columns", ".ptr", "note"))
 })
 
+test_that("S3: `[[` refuses an unused argument before it asks the fallback (#2174)", {
+  x <- new_fallback_rec(7L)
+  e <- caught(x[["alpha", exatc = TRUE]])
+  expect_s3_class(e, "miniextendr_error_unused_argument")
+  expect_identical(e$suggestion, "exact")
+  expect_equal(conditionCall(e), quote(x[["alpha", exatc = TRUE]]))
+  expect_identical(x[["alpha", exact = FALSE]], c(1, 2))
+})
+
 # endregion
 
 # region: S3, a list's lookup and a scalar fallback
