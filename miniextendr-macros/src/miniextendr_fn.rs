@@ -391,7 +391,6 @@ pub(crate) fn validate_per_param_attr_conflicts(
     attr: &PerParamMiniextendrAttr,
     param_name: &str,
     is_dots: bool,
-    ty: Option<&syn::Type>,
     span: proc_macro2::Span,
 ) -> syn::Result<()> {
     if attr.has_no_default
@@ -487,25 +486,6 @@ pub(crate) fn validate_per_param_attr_conflicts(
             span,
             format!(
                 "variadic (...) parameter `{}` cannot have a default value",
-                param_name
-            ),
-        ));
-    }
-    // `Missing<Quoted>` / `Missing<Quosure>` takes a `default` that only
-    // writes the formal: the wrapper tests `missing()` before it captures the
-    // argument, so the default is never evaluated (#1835).
-    if let Some(ty) = ty
-        && is_missing_type(ty)
-        && crate::type_inspect::unevaluated_param(ty).is_none()
-        && attr.default_value.is_some()
-    {
-        return Err(syn::Error::new(
-            span,
-            format!(
-                "`Missing<T>` parameter `{}` cannot have a default value. \
-                 `Missing<T>` detects omitted arguments via `missing()` in R, \
-                 which is incompatible with default values in the R function signature. \
-                 Use `Option<T>` with `#[miniextendr(default = \"...\")]` instead.",
                 param_name
             ),
         ));
@@ -1709,9 +1689,9 @@ pub(crate) fn choice_alternatives_suffix(
 /// `Either`, which follow the scalar `Either` rule. A bare
 /// `Option<Vec<T>>` stays rejected: its `NULL` already means every choice,
 /// while under `Either` it goes to `R`. `has_default` says whether the
-/// parameter carries a `default` (a choice with a `NULL` formal, `Option<..>`
-/// without `Missing`, cannot; the `Missing<T>` + default conflict is reported
-/// by the callers' own check).
+/// parameter carries a `default`, which a choice with a `NULL` formal
+/// (`Option<..>` without `Missing`) cannot, nor one under `Missing<..>`
+/// ([`missing_choice_default_msg`]).
 pub(crate) fn classify_choice_param(
     attrs: &mut ParamAttrs,
     param_name: &str,
@@ -1797,6 +1777,12 @@ pub(crate) fn classify_choice_param(
             optional_choice_default_msg(param_name),
         ));
     }
+    if layers.missing && has_default {
+        return Err(syn::Error::new(
+            ty.span(),
+            missing_choice_default_msg(param_name),
+        ));
+    }
     attrs.optional = layers.nullable;
     attrs.omittable = layers.missing;
     attrs.either_noun = layers.either_right.map(crate::type_inspect::r_value_noun);
@@ -1836,6 +1822,48 @@ pub(crate) fn explicit_checks_by_r_name(
                 crate::r_wrapper_builder::normalize_r_arg_string(name),
                 a.checks.clone(),
             )
+        })
+        .collect()
+}
+
+/// The generated `@param` text of an undocumented `Missing<..>` parameter
+/// with a formal default (#2161): the default only shows in the usage line,
+/// and an omitted argument still reaches Rust as `Missing::Absent`.
+pub(crate) const MISSING_DEFAULT_PARAM_DOC: &str =
+    "Omitting the argument means the function's own handling.";
+
+/// R name → [`MISSING_DEFAULT_PARAM_DOC`] for each `Missing<..>` parameter
+/// of `inputs` that has a formal default in `defaults` (looked up by R name,
+/// as [`crate::r_wrapper_builder::RArgumentBuilder::build_formals`] does) and
+/// is no choice parameter of `per_param`, whose own line names the choices.
+/// `Missing<Quoted>` / `Missing<Quosure>` count too: their default is never
+/// evaluated either.
+pub(crate) fn missing_default_param_docs(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    per_param: &std::collections::HashMap<String, ParamAttrs>,
+    defaults: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String> {
+    inputs
+        .iter()
+        .filter_map(|arg| {
+            let syn::FnArg::Typed(pt) = arg else {
+                return None;
+            };
+            let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+                return None;
+            };
+            if !is_missing_type(pt.ty.as_ref())
+                || per_param
+                    .get(&crate::naming::ident_name(&pat_ident.ident))
+                    .is_some_and(ParamAttrs::is_choice)
+            {
+                return None;
+            }
+            let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident);
+            let r_name = r_name.to_string();
+            defaults
+                .contains_key(&r_name)
+                .then(|| (r_name, MISSING_DEFAULT_PARAM_DOC.to_string()))
         })
         .collect()
 }
@@ -1956,6 +1984,20 @@ pub(crate) fn finalize_method_param_attrs(
         check_param_preconditions(attrs, param_markers, &name, pt.ty.as_ref(), true)?;
     }
     Ok(())
+}
+
+/// A `default` on a choice parameter under `Missing<..>` (#2161). An omitted
+/// argument reaches Rust as `Missing::Absent`, so the default would pick no
+/// choice; on a `choices(...)` list it would also replace the formal, the
+/// choice vector that [`ParamAttrs::absent_formal`] compares a supplied value
+/// with (#2152).
+fn missing_choice_default_msg(param_name: &str) -> String {
+    format!(
+        "`Missing<..>` parameter `{param_name}` with match_arg/choices cannot have a default; \
+         an omitted argument reaches Rust as `Missing::Absent`, so a default picks no choice, \
+         and the formal already shows the choices. Drop the `Missing` to make a choice the \
+         default, or drop the default"
+    )
 }
 
 fn optional_choice_default_msg(param_name: &str) -> String {
@@ -2152,7 +2194,6 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 &per_param_combined,
                 &param_name,
                 is_dots_type(&inner_ty),
-                Some(&inner_ty),
                 pat_type.ty.span(),
             )?;
 
@@ -2334,6 +2375,16 @@ impl MiniextendrFunctionParsed {
         c_ident: &str,
     ) -> std::collections::HashMap<String, String> {
         absent_formals_by_r_name(&self.per_param, c_ident)
+    }
+
+    /// The generated `@param` text of each `Missing<..>` parameter with a
+    /// default, keyed by R name (see [`missing_default_param_docs`]).
+    pub(crate) fn missing_default_param_docs(&self) -> std::collections::HashMap<String, String> {
+        missing_default_param_docs(
+            &self.item.sig.inputs,
+            &self.per_param,
+            &self.param_defaults(),
+        )
     }
 
     /// The `inherits` / `not_inherits` / `no_na` checks of every parameter,

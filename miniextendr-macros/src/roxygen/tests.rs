@@ -2012,6 +2012,35 @@ fn fn_param_tags_describe_layered_choices() {
     );
 }
 
+/// An undocumented `Missing<..>` parameter with a default (#2161) gets the
+/// omission note, `Missing<Quoted>` included; one without a default, or one
+/// the author documents, does not.
+#[test]
+fn fn_param_tags_describe_missing_defaults() {
+    let (tags, _) = generated_fn_param_tags(quote::quote! {
+        /// @param n How many.
+        fn fit(
+            #[miniextendr(default = "1e-8")] tol: Missing<f64>,
+            #[miniextendr(default = "NULL")] weights: Missing<Option<Vec<f64>>>,
+            #[miniextendr(default = "TRUE")] cond: Missing<Quoted>,
+            #[miniextendr(default = "3L")] n: Missing<i32>,
+            start: Missing<f64>,
+        ) {}
+    });
+    let note = crate::miniextendr_fn::MISSING_DEFAULT_PARAM_DOC;
+    assert_eq!(
+        param_lines(&tags),
+        vec![
+            "@param n How many.".to_string(),
+            format!("{PARAM_FILLER_MARKER}@param tol {note}"),
+            format!("{PARAM_FILLER_MARKER}@param weights {note}"),
+            format!("{PARAM_FILLER_MARKER}@param cond {note}"),
+            format!("{PARAM_FILLER_MARKER}@param start (no documentation available)"),
+        ],
+        "got {tags:?}"
+    );
+}
+
 #[test]
 fn describe_in_topic_is_the_first_word() {
     assert_eq!(

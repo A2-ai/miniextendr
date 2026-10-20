@@ -1,0 +1,5 @@
+error: `Missing<..>` parameter `x` with match_arg/choices cannot have a default; an omitted argument reaches Rust as `Missing::Absent`, so a default picks no choice, and the formal already shows the choices. Drop the `Missing` to make a choice the default, or drop the default
+ --> tests/ui/match_arg_missing_with_default.rs:9:53
+  |
+9 |     #[miniextendr(match_arg, default = "\"a\"")] x: miniextendr_api::Missing<String>,
+  |                                                     ^^^^^^^^^^^^^^^

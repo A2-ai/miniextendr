@@ -1483,7 +1483,8 @@ fn expand_miniextendr(
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
     let mut arg_builder = RArgumentBuilder::new(inputs);
-    // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
+    // Add user-specified parameter defaults. A `Missing<T>` default only
+    // writes the formal (#2161): the call argument tests `missing()` first.
     let mut merged_defaults = parsed.param_defaults();
     // For match_arg params, always use the choices placeholder as the formal
     // default — the write-time pass replaces it with `c("a", "b", ...)`.

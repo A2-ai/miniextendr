@@ -432,10 +432,19 @@ impl<'a> MethodContext<'a> {
     }
 
     /// Build the R-param-name → `@param` text map for this method's
-    /// `match_arg` / `choices` params ([`choice_param_doc_map`]). Pass to
-    /// `MethodDocBuilder::with_choice_param_docs`.
+    /// `match_arg` / `choices` params ([`choice_param_doc_map`]) and its
+    /// `Missing<..>` params with a default
+    /// ([`missing_default_param_docs`](crate::miniextendr_fn::missing_default_param_docs),
+    /// #2161). Pass to `MethodDocBuilder::with_choice_param_docs`.
     pub fn choice_param_docs(&self) -> std::collections::HashMap<String, String> {
-        choice_param_doc_map(&self.c_ident, &self.method.method_attrs.per_param)
+        let per_param = &self.method.method_attrs.per_param;
+        let mut docs = choice_param_doc_map(&self.c_ident, per_param);
+        docs.extend(crate::miniextendr_fn::missing_default_param_docs(
+            &self.method.sig.inputs,
+            per_param,
+            &self.method.param_defaults,
+        ));
+        docs
     }
 
     /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`

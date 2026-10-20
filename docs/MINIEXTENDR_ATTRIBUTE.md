@@ -713,7 +713,7 @@ Written on a single parameter of a standalone function:
 | Attribute | Effect |
 |-----------|--------|
 | `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
-| `default = "..."` | R formal default (an R expression) |
+| `default = "..."` | R formal default (an R expression). On a `Missing<T>` parameter it only writes the formal (#2161): an omitted argument is still `Absent` and the default is never evaluated, while a supplied value is `Present`, even one `identical()` to the default, as R's `missing()` says. The generated `@param` line reads "Omitting the argument means the function's own handling." Not on a `Missing<..>` `match_arg` / `choices` parameter (see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)) |
 | `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices (none under `no_default`) and an omitted argument is `Absent`, as is the formal's own vector passed whole unless `several_ok`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)). The type's aliases (`#[match_arg(alias = "grey")]` on a variant) are accepted when typed in full, and the errors name them after the choices unless `listed = false` ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#aliases)) |
 | `choices("a", "b")` | Validate a string against a literal choice list (the formal is `c("a", "b")`; the same type layers and `no_default` as `match_arg`, no aliases) |
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
@@ -1307,7 +1307,7 @@ impl Person {
 | `no_dots` | S3/S4 with `generic`: no `...` after the parameters (`show(object)`, `length(x)`); S7: see below |
 | `class = "..."` | Override S3 class suffix |
 | `as = "..."` | Generate `as.<target>()` coercion method |
-| `defaults(p = "val")` | R-side parameter defaults |
+| `defaults(p = "val")` | R-side parameter defaults (on `Missing<T>`, as `default = "..."` above) |
 | `worker` / `no_worker` | Thread override |
 | `check_interrupt` | Insert interrupt check |
 | `coerce` / `no_coerce` | Type coercion override |
