@@ -859,8 +859,9 @@ pub trait TypedExternal: 'static {
     /// `Sidecar<_>`.
     const R_SLOT_COUNT: usize = 0;
 
-    /// The Rust names of the `Sidecar` fields, in slot order: the names the
-    /// protection list carries, so a save is read back by field name (#2187).
+    /// The R names of the `Sidecar` fields (`#[r_data(name = "..")]`, else
+    /// the Rust field name), in slot order: the names the protection list
+    /// carries, so a save is read back by field name (#2187, #2215).
     #[doc(hidden)]
     const SIDECAR_NAMES: &'static [&'static str] = &[];
 

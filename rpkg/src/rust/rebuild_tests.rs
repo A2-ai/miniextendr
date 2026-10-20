@@ -283,6 +283,88 @@ pub fn rebuild_layout_strict(strict: bool) {
 
 // endregion
 
+// region: RebuildRenamed: a save names its slots by the R names (#2215)
+
+/// An R6 class whose `Sidecar` field has an R name other than its Rust name.
+/// A save names the slot `n.rows`, the R name, so a version that renames the
+/// Rust field reads every earlier save.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(r6, rebuild = Self::from_saved, any_version)]
+pub struct RebuildRenamed {
+    #[r_data]
+    _r: RSidecar,
+
+    /// `n.rows` in R and in a save.
+    #[r_data(name = "n.rows")]
+    pub r_rows: Sidecar<i32>,
+
+    /// Kept from the save.
+    #[r_data]
+    pub label: Sidecar<String>,
+
+    /// What the hook read.
+    pub summary: String,
+}
+
+impl RebuildRenamed {
+    /// Reads the field by its R name three ways: `has()`, the plain getter
+    /// and `try_r_rows()`. A save without the slot reads `-1`.
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RError> {
+        let rows = if saved.has("n.rows") {
+            Self::r_rows(saved)
+        } else {
+            -1
+        };
+        let tried = Self::try_r_rows(saved);
+        Ok(RebuildRenamed {
+            _r: RSidecar,
+            summary: format!("{rows}/{tried:?}/{}", saved.has("r_rows")),
+            r_rows: Sidecar::new(rows),
+            label: Sidecar::new(String::new()),
+        })
+    }
+}
+
+/// An R6 class whose `Sidecar` field's R name differs from its Rust name.
+/// @field n.rows The rows, `r_rows` in Rust (active binding).
+/// @field label Kept from the save (active binding).
+#[miniextendr(r6(r_data_accessors))]
+impl RebuildRenamed {
+    /// Create a RebuildRenamed.
+    /// @param rows The rows.
+    /// @param label The label.
+    pub fn new(rows: i32, label: String) -> Self {
+        RebuildRenamed {
+            _r: RSidecar,
+            r_rows: Sidecar::new(rows),
+            label: Sidecar::new(label),
+            summary: "built".to_owned(),
+        }
+    }
+
+    /// What the hook read: `rows/try_r_rows()/has("r_rows")`.
+    pub fn summary(&self) -> String {
+        self.summary.clone()
+    }
+}
+
+unsafe extern "C-unwind" {
+    fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
+}
+
+/// The slot names of the protection list of `x`, an external pointer.
+/// @param x An external pointer `ExternalPtr` built.
+#[miniextendr(noexport)]
+pub fn rebuild_slot_names(x: SEXP) -> Vec<String> {
+    use miniextendr_api::SexpExt;
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn); `x` is the
+    // caller's pointer, rooted by the call, and its list by `x`.
+    let prot = unsafe { R_ExternalPtrProtected(x) };
+    Vec::<String>::try_from_sexp(prot.get_attr(SEXP::names_symbol())).expect("slot names")
+}
+
+// endregion
+
 // region: gctorture
 
 /// Allocate garbage so a GC runs between the steps.

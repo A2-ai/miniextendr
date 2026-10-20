@@ -160,22 +160,31 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// Use the accessors on R's main thread only. Off the main thread an
 /// accessor panics with a clear message before it touches R.
 ///
-/// # A save stores the values by position
+/// # A save names the values by their R names
 ///
-/// A saved object (`saveRDS()`, `serialize()`) stores its sidecar values by
-/// position: one slot per `Sidecar` field, in the order the fields appear in
-/// the struct, with no field names. After a reload, the standalone R
-/// accessors, the R6 bindings and the S7 properties read each field from its
-/// position. So reordering, adding, removing or retyping `Sidecar` fields
-/// changes how an old save is read, and within one version of the crate
-/// nothing detects it: a field can read another field's value.
+/// A saved object (`saveRDS()`, `serialize()`) stores one slot per `Sidecar`
+/// field, named after the field's R name: the `#[r_data(name = "..")]` value,
+/// else the Rust field name (#2187, #2215). After a reload, the standalone R
+/// accessors, the R6 bindings, the S7 properties and a rebuild hook
+/// (`#[externalptr(rebuild = path)]`, through [`super::Saved`]) find each
+/// field's slot by that name. So the R name is the save format:
 ///
-/// Bump the crate's version (the `version` in its `Cargo.toml`, which the
-/// stored type ID records) whenever the `Sidecar` fields change. A save from
-/// another version is then refused with the classed
-/// `miniextendr_restored_other_version` error (#1872). `#[repr(C)]` doesn't
-/// help: it fixes the struct's memory layout, which a save never stores, and
-/// the slot positions follow the source order either way.
+/// - Reordering, adding or removing `Sidecar` fields keeps earlier saves
+///   readable. A field the save has no slot for raises the classed
+///   [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS)
+///   error (or reads as `None` through a hook's `Self::try_<field>(saved)`).
+/// - Renaming the Rust field keeps them readable too, as long as the R name
+///   stays: a field without `name = ..` keeps its old ident as
+///   `#[r_data(name = "old")]`.
+/// - Renaming the R name orphans the field's slot in every earlier save: the
+///   field reads as one the save lacks.
+/// - Retyping a field keeps its name, so an earlier save's slot is read as the
+///   new type; a getter that can't convert it panics naming the field.
+///
+/// A save from another version of the crate (the `version` in its
+/// `Cargo.toml`, which the stored type ID records) is refused with the classed
+/// `miniextendr_restored_other_version` error (#1872), unless the type
+/// rebuilds it (`rebuild = path, any_version`).
 ///
 /// # Methods that need sidecar values take a view
 ///
@@ -634,7 +643,7 @@ pub fn sidecar_set<O, T>(
 thread_local! {
     /// Each type's slot names, preserved for the session and shared by every
     /// protection list of the type: `""` for the type ID and the user slot,
-    /// then the `Sidecar` fields' Rust names, in slot order.
+    /// then the `Sidecar` fields' R names, in slot order.
     static SLOT_NAMES: RefCell<HashMap<TypeId, SEXP>> = RefCell::new(HashMap::new());
 }
 
