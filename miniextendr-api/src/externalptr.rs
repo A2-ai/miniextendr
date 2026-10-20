@@ -563,11 +563,23 @@ std::thread_local! {
     static REBUILDING: RefCell<Vec<SEXP>> = const { RefCell::new(Vec::new()) };
 }
 
+/// [`try_rebuild_restored`], raising the refusal of a failed rebuild: for
+/// the paths that refuse a restored pointer by raising (a method's receiver,
+/// the R field accessors).
+///
+/// # Safety
+///
+/// As [`try_rebuild_restored`].
+#[cold]
+pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> bool {
+    unsafe { try_rebuild_restored::<T>(sexp, receiver) }.unwrap_or_else(|refusal| refusal.raise())
+}
+
 /// Rebuilds the value of `sexp`, a pointer without an address, when `T`
 /// has a rebuild hook (`#[externalptr(rebuild = path)]`) and this version of
 /// its crate saved it, or another version did and `T` opts in with
 /// `any_version` (#2187) and the save carries slot names. Installs the value
-/// in `sexp`. Returns whether `sexp` holds a value now; `false` leaves the
+/// in `sexp`. Returns whether `sexp` holds a value now; `Ok(false)` leaves the
 /// caller to refuse the pointer as before (another version saved it, another
 /// type, no hook, or the hook is already running for `sexp`).
 ///
@@ -575,30 +587,34 @@ std::thread_local! {
 /// name. The installed pointer keeps each saved slot whose field `T` still
 /// has, unless the hook's struct replaces it ([`Sidecar::replace`]), and
 /// takes the value the hook's struct holds for a field the save lacks
-/// ([`install_rebuilt`]). A failing hook (an `Err`, or a condition it raises) installs
-/// nothing and raises the restored refusal of `T` (its classes, then
-/// [`RESTORED_NO_VALUE_CLASS`] and [`RESTORED_CLASS`]), the cause as
-/// `e$parent`; the next use tries again. Any other unwind (an R error, a
-/// plain panic) carries on.
+/// ([`install_rebuilt`]). A failing hook (an `Err`, or a condition it raises)
+/// installs nothing, and the next use tries again. It returns the restored
+/// refusal of `T` as `Err` (its classes, then [`RESTORED_NO_VALUE_CLASS`] and
+/// [`RESTORED_CLASS`], the cause as `e$parent`), for the caller to raise
+/// ([`rebuild_restored`]) or return ([`ExternalPtr::wrap_sexp_with_error`],
+/// #2217). Any other unwind (an R error, a plain panic) carries on.
 ///
 /// # Safety
 ///
 /// On R's main thread, with `sexp` a valid `EXTPTRSXP` whose address is NULL,
 /// rooted for the call; `receiver` is the object the user called on.
 #[cold]
-pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> bool {
+pub(crate) unsafe fn try_rebuild_restored<T: TypedExternal>(
+    sexp: SEXP,
+    receiver: SEXP,
+) -> Result<bool, RCondition> {
     if !T::REBUILDS {
-        return false;
+        return Ok(false);
     }
     match unsafe { classify_null_address::<T>(sexp) } {
         NullAddress::Restored => {}
         NullAddress::OtherVersion { .. }
             if T::REBUILDS_ANY_VERSION
                 && sidecar::has_slot_names(unsafe { R_ExternalPtrProtected(sexp) }) => {}
-        _ => return false,
+        _ => return Ok(false),
     }
     if REBUILDING.with_borrow(|running| running.contains(&sexp)) {
-        return false;
+        return Ok(false);
     }
     struct Running(SEXP);
     impl Drop for Running {
@@ -618,18 +634,17 @@ pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SE
             // SAFETY: on R's main thread; `sexp` still has no address (the
             // hook could not install one: a reentrant use was refused).
             unsafe { install_rebuilt(sexp, value) };
-            true
+            Ok(true)
         }
         Ok(Err(cause)) | Err(cause) => {
             let name = receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
-            RCondition::Error {
+            Err(RCondition::Error {
                 message: rebuild_failed_message::<T>(&name, cause.message()),
                 class: restored_classes_of::<T>(RESTORED_NO_VALUE_CLASS),
                 data: None,
                 call: ConditionCall::Inherit,
             }
-            .with_parent(cause)
-            .raise()
+            .with_parent(cause))
         }
     }
 }
@@ -2299,6 +2314,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// This is used by the [`TryFromSexp`] trait implementation.
     ///
+    /// A pointer restored from a saved session is rebuilt first when `T` has
+    /// a rebuild hook (`#[externalptr(rebuild = path)]`). A failed rebuild is
+    /// returned, not raised (#2217): [`TypeMismatchError::RebuildFailed`]
+    /// holds the refusal a use of the object raises, with the hook's cause as
+    /// `e$parent`. So a check that must not raise (is the object live? fall
+    /// back to plain data?) needs no
+    /// [`catch_condition`](crate::condition::catch_condition):
+    ///
+    /// ```ignore
+    /// match unsafe { ExternalPtr::<Model>::wrap_sexp_with_error(x) } {
+    ///     Ok(model) => Some(model),
+    ///     Err(TypeMismatchError::RebuildFailed { .. }) => None,
+    ///     Err(other) => panic!("{other}"),
+    /// }
+    /// ```
+    ///
+    /// The [`TryFromSexp`] conversion, behind every `ExternalPtr<T>` / `&T` /
+    /// `&mut T` argument, raises the refusal ([`RCondition::raise`]), as a
+    /// method on the object does. An R error or a plain panic inside the hook
+    /// carries on as itself here too.
+    ///
     /// # Safety
     ///
     /// Same as [`wrap_sexp`](Self::wrap_sexp).
@@ -2315,8 +2351,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if any_raw.is_null() {
             // SAFETY: on R's main thread with a valid EXTPTRSXP, which the
             // caller roots.
-            if unsafe { rebuild_restored::<T>(sexp, sexp) } {
-                return unsafe { Self::wrap_sexp_with_error(sexp) };
+            match unsafe { try_rebuild_restored::<T>(sexp, sexp) } {
+                Ok(true) => return unsafe { Self::wrap_sexp_with_error(sexp) },
+                Ok(false) => {}
+                Err(condition) => return Err(TypeMismatchError::RebuildFailed { condition }),
             }
             // SAFETY: on R's main thread with a valid EXTPTRSXP.
             return Err(match unsafe { classify_null_address::<T>(sexp) } {
@@ -2706,12 +2744,23 @@ pub enum TypeMismatchError {
         /// ([`TypedExternal::RESTORED_ERROR_MESSAGE`]).
         package_message: Option<&'static str>,
     },
+    /// A pointer restored from a saved session whose rebuild hook
+    /// (`#[externalptr(rebuild = path)]`) failed (#2217). Nothing was
+    /// installed; the next use tries again.
+    RebuildFailed {
+        /// The restored refusal a use of the object raises: the package's
+        /// classes, [`RESTORED_NO_VALUE_CLASS`] and [`RESTORED_CLASS`], the
+        /// message naming the cause, and the hook's condition as `e$parent`.
+        /// Raise it with [`RCondition::raise`].
+        condition: RCondition,
+    },
 }
 
 impl TypeMismatchError {
     /// The condition classes of the error about a restored pointer: the
     /// package's classes, then the specific class, then [`RESTORED_CLASS`];
-    /// `None` for the other variants.
+    /// `None` for the other variants (a failed rebuild's classes are its
+    /// `condition`'s).
     pub fn restored_classes(&self) -> Option<Vec<&'static str>> {
         let (package_classes, specific) = match self {
             Self::Restored {
@@ -2720,7 +2769,10 @@ impl TypeMismatchError {
             Self::OtherVersion {
                 package_classes, ..
             } => (package_classes, RESTORED_OTHER_VERSION_CLASS),
-            Self::NullPointer | Self::InvalidTypeId | Self::Mismatch { .. } => return None,
+            Self::NullPointer
+            | Self::InvalidTypeId
+            | Self::Mismatch { .. }
+            | Self::RebuildFailed { .. } => return None,
         };
         Some(
             package_classes
@@ -2765,6 +2817,7 @@ impl fmt::Display for TypeMismatchError {
                     type_name, crate_name, saved, current,
                 )),
             },
+            Self::RebuildFailed { condition } => f.write_str(condition.message()),
         }
     }
 }

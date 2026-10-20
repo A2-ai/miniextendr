@@ -7,7 +7,7 @@
 
 use miniextendr_api::RValue;
 use miniextendr_api::condition::{
-    ConditionData, ErrParts, RConditionData, SerdeErrorShape, serde_err_parts,
+    ConditionData, ErrParts, RCondition, RConditionData, SerdeErrorShape, serde_err_parts,
 };
 
 // Defines this crate's marker type, `__MiniextendrInitMarker`, at the root.
@@ -114,4 +114,100 @@ fn serde_error_options_apply_after_the_declared_shape() {
     assert_eq!(declared, &SerdeErrorShape::new());
     let parts = serde_err_parts(&e, "pkg_error", &[declared, &OWN]);
     assert_eq!(parts.class, ["pkg_error_exceeded", "pkg_error"]);
+}
+
+/// A `Serialize + Display` error without a declared shape or an
+/// `RConditionData` impl.
+struct Overdrawn {
+    by: u32,
+}
+
+impl serde::Serialize for Overdrawn {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = s.serialize_struct("Overdrawn", 2)?;
+        st.serialize_field("kind", "overdrawn")?;
+        st.serialize_field("by", &self.by)?;
+        st.end()
+    }
+}
+
+impl std::fmt::Display for Overdrawn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "overdrawn by {}", self.by)
+    }
+}
+
+/// The parts an entry point's `Err(e)` arm builds in this crate.
+macro_rules! entry_point_parts {
+    ($e:expr) => {
+        miniextendr_api::__mx_result_err_parts!(
+            $e,
+            concat!(env!("CARGO_CRATE_NAME"), "_error"),
+            crate::__MiniextendrInitMarker
+        )
+    };
+}
+
+/// `serde_condition!` (#2217) builds what an entry point returning `Err(e)`
+/// raises: same message, classes, fields and call choice, as an error.
+fn assert_entry_point_condition(condition: &RCondition, parts: &ErrParts) {
+    assert!(
+        matches!(condition, RCondition::Error { .. }),
+        "{condition:?}"
+    );
+    assert_eq!(RConditionData::message(condition), parts.message);
+    assert_eq!(condition.class(), parts.class);
+    assert_eq!(
+        format!("{:?}", condition.data()),
+        format!("{:?}", parts.data)
+    );
+    assert_eq!(condition.call(), parts.call);
+}
+
+#[test]
+fn serde_condition_applies_the_declared_shape() {
+    let quota = Quota { n: 3 };
+    let condition = miniextendr_api::serde_condition!(&quota);
+    assert_eq!(condition.class(), ["quota_exceeded", "quota"]);
+    assert_eq!(condition.message(), "quota exceeded by 3");
+    let data = condition.data().expect("data");
+    assert_eq!(data[0].0, "n");
+    assert!(matches!(&data[0].1, RValue::Double(v) if v == &[3.0]));
+    assert_entry_point_condition(&condition, &entry_point_parts!(quota));
+
+    // A type from another crate, declared here.
+    let text = String::from("boom");
+    let condition = miniextendr_api::serde_condition!(&text);
+    assert_eq!(condition.class(), ["text"]);
+    assert_entry_point_condition(&condition, &entry_point_parts!(text));
+}
+
+#[test]
+fn serde_condition_without_a_declaration_takes_the_crate_family_class() {
+    let e = Overdrawn { by: 4 };
+    let condition = miniextendr_api::serde_condition!(&e);
+    assert_eq!(
+        condition.class(),
+        [
+            "serde_error_shape_declared_error_overdrawn",
+            "serde_error_shape_declared_error"
+        ]
+    );
+    assert_eq!(condition.message(), "overdrawn by 4");
+    assert_entry_point_condition(&condition, &entry_point_parts!(e));
+}
+
+#[test]
+fn serde_condition_is_in_the_prelude() {
+    use miniextendr_api::prelude::serde_condition;
+    let condition = serde_condition!(&Overdrawn { by: 1 });
+    assert_eq!(condition.message(), "overdrawn by 1");
+}
+
+#[test]
+fn serde_condition_takes_a_temporary() {
+    let by = std::hint::black_box(2);
+    let condition = miniextendr_api::serde_condition!(&Overdrawn { by });
+    assert_eq!(condition.message(), "overdrawn by 2");
 }
