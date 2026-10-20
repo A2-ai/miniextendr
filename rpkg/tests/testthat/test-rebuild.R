@@ -8,7 +8,8 @@
 # `RebuildR6` pointer and converts it in its own hook. `RebuildLayout`
 # reads its save by field name and takes saves by another version
 # (`any_version`, #2187); `rebuild_rewrite_layout()` lays a save out as
-# another version might have.
+# another version might have. `RebuildRenamed`'s field is `r_rows` in Rust
+# and `n.rows` in R, the name its save uses (#2215).
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -190,6 +191,44 @@ test_that("a save without slot names by this version is read by position", {
   back <- reload(RebuildLayout$new("pos", 5L))
   rebuild_rewrite_layout(ptr_of(back), c("label", "doubled", "added"), FALSE)
   expect_match(back$summary(), "^pos/10/1/true/")
+})
+
+test_that("a save names its slots by the fields' R names (#2215)", {
+  back <- reload(RebuildRenamed$new(3L, "a"))
+  # `r_rows` in Rust is `n.rows` in R, and in the save.
+  expect_identical(rebuild_slot_names(ptr_of(back)), c("", "", "n.rows", "label"))
+  # The R accessors read the saved slot by that name.
+  expect_identical(back$n.rows, 3L)
+  # So does the hook: `has("n.rows")`, the plain getter and `try_r_rows()`;
+  # `has()` does not know the Rust name.
+  expect_identical(back$summary(), "3/Some(3)/false")
+  expect_identical(back$n.rows, 3L)
+  again <- reload(back)
+  expect_identical(rebuild_slot_names(ptr_of(again)), c("", "", "n.rows", "label"))
+  expect_identical(again$n.rows, 3L)
+})
+
+test_that("a version that renamed the Rust field reads an earlier save (#2215)", {
+  # The version that saved it had the field after `label`, under another
+  # Rust name with the same R name, `n.rows`: its save is laid out
+  # `label`, `n.rows`.
+  back <- reload(RebuildRenamed$new(5L, "old"))
+  rebuild_rewrite_layout(ptr_of(back), c("label", "n.rows"), TRUE)
+  sidecar_rewrite_saved_version(ptr_of(back), "0.0.1")
+  expect_identical(back$summary(), "5/Some(5)/false")
+  expect_identical(back$n.rows, 5L)
+  expect_identical(back$label, "old")
+})
+
+test_that("a save under another R name has no slot for the field (#2215)", {
+  back <- reload(RebuildRenamed$new(5L, "old"))
+  rebuild_rewrite_layout(ptr_of(back), c("r_rows", "label"), TRUE)
+  e <- tryCatch(back$n.rows, error = identity)
+  expect_s3_class(e, "miniextendr_restored_missing_slot")
+  expect_identical(e$field, "n.rows")
+  expect_identical(back$summary(), "-1/None/false")
+  expect_identical(back$n.rows, -1L)
+  expect_identical(back$label, "old")
 })
 
 test_that("the rebuild survives gctorture", {

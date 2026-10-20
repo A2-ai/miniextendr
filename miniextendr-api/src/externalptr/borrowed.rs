@@ -45,8 +45,10 @@ pub enum SidecarRead<'a, T: TypedExternal + ?Sized> {
 /// a slot in the save; a struct field or a `Computed` field is gone with the
 /// Rust value, so a type whose rebuild needs one keeps it in a `Sidecar`.
 ///
-/// The save names its slots after the fields, so a field is read by name
-/// whatever fields the version that saved it had (#2187). A field the save
+/// The save names its slots after the fields' R names (the
+/// `#[r_data(name = "..")]` value, else the Rust field name), so a field is
+/// read by name whatever fields the version that saved it had (#2187,
+/// #2215). A field the save
 /// lacks (added since) reads as `None` through the generated
 /// `Self::try_keys(saved)`; the plain getter raises the classed error
 /// [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS).
@@ -75,9 +77,15 @@ impl<T: TypedExternal + ?Sized> Saved<'_, T> {
         self.sexp
     }
 
-    /// Whether the save has a slot for the `Sidecar` field `field` (its Rust
-    /// name). The generated `Self::try_<field>(saved)` getters say the same
+    /// Whether the save has a slot for the `Sidecar` field `field`, given by
+    /// its R name: the `#[r_data(name = "..")]` value, else the Rust field
+    /// name. The generated `Self::try_<field>(saved)` getters say the same
     /// with the field's type, checked by the compiler.
+    ///
+    /// The R name is the save format (#2215): a save names each slot after
+    /// it. Renaming the Rust field keeps earlier saves readable; renaming the
+    /// R name orphans the field's slot in every earlier save, which then
+    /// reads as a field the save lacks.
     pub fn has(&self, field: &str) -> bool {
         // SAFETY: on R's main thread (a hook runs there); the pointer is live.
         let prot = unsafe { crate::sys::R_ExternalPtrProtected(self.sexp) };

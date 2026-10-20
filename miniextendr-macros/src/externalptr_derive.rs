@@ -111,11 +111,17 @@
 //! list, the `$` / `[[` labels, the R6 binding / S7 property and the
 //! standalone `Type_get_keys()` / `Type_set_keys()` use it; the C symbols and
 //! the Rust accessors keep the Rust identifier. The name must be a syntactic
-//! R name, unique in the type, and not `.ptr`.
+//! R name, unique in the type, and not `.ptr`. A `Sidecar` field's R name is
+//! also the save format (#2215): a save names the field's slot after it
+//! (`SIDECAR_NAMES`), and a reload or a rebuild hook finds the slot by it. So
+//! renaming the Rust field keeps earlier saves readable (give it the old
+//! ident as its `name` if it had none), while renaming the R name orphans
+//! the slot in every earlier save.
 //!
 //! Scalar, conversion and computed values come from the Rust struct, behind
 //! the pointer's address, which `saveRDS` does not write. The R accessors of
-//! a `Sidecar` field read and write the protection list by slot index: the
+//! a `Sidecar` field read and write the protection list by slot index (a
+//! restored pointer's by the field's R name, #2187): the
 //! setter validates the value with `TryFromSexp::<T>` and stores the value R
 //! gave, and the standalone accessors keep working on a pointer `readRDS()`
 //! brought back without an address (checked by the type ID in `prot[0]`).
@@ -808,7 +814,9 @@ pub(crate) struct SidecarSlot {
     /// The field's R name: `#[r_data(name = "...")]`, else the Rust
     /// identifier (#1891). Every R-facing string uses it: `.rdata_fields_T`,
     /// the `$` switch labels, the R6 binding / S7 property, the standalone
-    /// `T_get_<name>()` / `T_set_<name>()` and the setter's message.
+    /// `T_get_<name>()` / `T_set_<name>()` and the setter's message. A
+    /// `Sidecar` field's save slot is named by it too (`SIDECAR_NAMES`, the
+    /// name the accessors and `__mx_visit_sidecars` pass, #2215).
     pub(crate) r_name: String,
     /// Rust type of the field, used in conversion-based getter/setter codegen.
     ty: syn::Type,
@@ -2321,15 +2329,15 @@ fn generate_typed_external(
         }
     });
     let sidecars: Vec<_> = sidecar_slots(info).collect();
+    // A save names its slots by the fields' R names (#2215), so renaming a
+    // Rust field keeps every earlier save readable.
     let r_slot_count = (!sidecars.is_empty()).then(|| {
         let count = sidecars.len();
-        let names = sidecars
-            .iter()
-            .map(|&(_, slot)| crate::naming::ident_name(&slot.name));
+        let names = sidecars.iter().map(|&(_, slot)| slot.r_name.as_str());
         let visits = sidecars.iter().map(|&(index, slot)| {
             let field = &slot.name;
-            let field_name = crate::naming::ident_name(field);
-            quote::quote! { visit(#index, #field_name, &self.#field); }
+            let r_name = slot.r_name.as_str();
+            quote::quote! { visit(#index, #r_name, &self.#field); }
         });
         quote::quote! {
             const R_SLOT_COUNT: usize = #count;
@@ -2437,6 +2445,9 @@ fn generate_sidecar_rust_accessors(
             let inner = sidecar_inner_type(&slot.ty).expect("a Sidecar slot has an inner type");
             let field = &slot.name;
             let field_name = crate::naming::ident_name(field);
+            // The accessors are named by the Rust field; the save, and the
+            // messages R users read, by its R name (#2215).
+            let r_name = slot.r_name.as_str();
             let vis = &slot.vis;
             let allow = (!matches!(vis, Visibility::Public(_)))
                 .then(|| quote::quote! { #[allow(dead_code)] });
@@ -2445,8 +2456,9 @@ fn generate_sidecar_rust_accessors(
                 let try_getter = quote::format_ident!("try_{}", field_name);
                 let doc = format!(
                     "The value of the `{field_name}` sidecar field as the save `saved` kept \
-                     it, for a rebuild hook; `None` when the version that saved the object \
-                     had no such field. On R's main thread."
+                     it, in the slot of its R name `{r_name}`, for a rebuild hook; `None` when \
+                     the version that saved the object had no slot of that name. On R's main \
+                     thread."
                 );
                 methods.push(quote::quote! {
                     #[doc = #doc]
@@ -2455,7 +2467,7 @@ fn generate_sidecar_rust_accessors(
                         saved: &::miniextendr_api::externalptr::Saved<'_, Self>,
                     ) -> ::core::option::Option<#inner> {
                         ::miniextendr_api::externalptr::sidecar_try_saved::<Self, #inner>(
-                            saved, #index, #field_name,
+                            saved, #index, #r_name,
                         )
                     }
                 });
@@ -2472,7 +2484,7 @@ fn generate_sidecar_rust_accessors(
                     #allow
                     #vis fn #field(ptr: &impl ::miniextendr_api::externalptr::SidecarOwner<Self>) -> #inner {
                         ::miniextendr_api::externalptr::sidecar_get::<Self, #inner>(
-                            ptr, #index, #field_name, |this: &Self| &this.#field,
+                            ptr, #index, #r_name, |this: &Self| &this.#field,
                         )
                     }
                 });
@@ -2489,7 +2501,7 @@ fn generate_sidecar_rust_accessors(
                     #allow
                     #vis fn #setter(ptr: &mut impl ::miniextendr_api::externalptr::SidecarOwnerMut<Self>, value: #inner) {
                         ::miniextendr_api::externalptr::sidecar_set::<Self, #inner>(
-                            ptr, #index, #field_name, |this: &Self| &this.#field, value,
+                            ptr, #index, #r_name, |this: &Self| &this.#field, value,
                         )
                     }
                 });
@@ -2844,8 +2856,9 @@ mod tests {
 
     /// `#[r_data(name = "...")]` renames the R field: the R6 binding, the S7
     /// property and its `@prop` entry, the standalone accessors and the field
-    /// list use the R name; the C symbols, the `CallDef` statics and the Rust
-    /// accessors keep the Rust identifier (#1891).
+    /// list use the R name, and so does a save's slot name (#2215); the C
+    /// symbols, the `CallDef` statics and the Rust accessors keep the Rust
+    /// identifier (#1891).
     #[test]
     fn r_data_name_renames_the_r_field_only() {
         let input: syn::DeriveInput = syn::parse_str(
@@ -2900,11 +2913,12 @@ mod tests {
             out.contains("__MX_CALL_DEF_RDATA_GET_Engine_n_rows"),
             "{out}"
         );
-        // The Rust accessors and the visitor hook keep the Rust name.
+        // The Rust accessors keep the Rust name; the visitor hook, which
+        // names the save's slots, passes the R name (#2215).
         assert!(out.contains("pub fn r_keys (ptr :"), "{out}");
         assert!(out.contains("pub fn set_r_keys (ptr :"), "{out}");
         assert!(
-            out.contains("visit (0usize , \"r_keys\" , & self . r_keys)"),
+            out.contains("visit (0usize , \"keys\" , & self . r_keys)"),
             "{out}"
         );
         // The setter's message names the R field.
@@ -3236,7 +3250,7 @@ mod tests {
         );
 
         let input: syn::DeriveInput = syn::parse_str(
-            "#[externalptr(rebuild = Self::from_saved, any_version)] struct E { #[r_data] keys: Sidecar<Vec<i32>>, #[r_data] n: Sidecar<i32> }",
+            "#[externalptr(rebuild = Self::from_saved, any_version)] struct E { #[r_data] keys: Sidecar<Vec<i32>>, #[r_data(name = \"n.rows\")] r_rows: Sidecar<i32> }",
         )
         .unwrap();
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
@@ -3244,10 +3258,17 @@ mod tests {
             out.contains("const REBUILDS_ANY_VERSION : bool = true ;"),
             "{out}"
         );
+        // A save names its slots by the R names (#2215): `name = ..`, else
+        // the ident. The visitor, which flushes, loads and lays out a
+        // rebuild's slots, and every accessor pass the same name.
         assert!(
             out.contains(
-                "const SIDECAR_NAMES : & 'static [& 'static str] = & [\"keys\" , \"n\"] ;"
+                "const SIDECAR_NAMES : & 'static [& 'static str] = & [\"keys\" , \"n.rows\"] ;"
             ),
+            "{out}"
+        );
+        assert!(
+            out.contains("visit (1usize , \"n.rows\" , & self . r_rows) ;"),
             "{out}"
         );
         assert!(
@@ -3256,10 +3277,21 @@ mod tests {
             ),
             "{out}"
         );
+        // The getters keep the Rust names.
+        assert!(out.contains("fn try_r_rows (saved"), "{out}");
         assert!(
-            out.contains("sidecar_try_saved :: < Self , i32 > (saved , 1usize , \"n\" ,)"),
+            out.contains("sidecar_try_saved :: < Self , i32 > (saved , 1usize , \"n.rows\" ,)"),
             "{out}"
         );
+        assert!(
+            out.contains("sidecar_get :: < Self , i32 > (ptr , 1usize , \"n.rows\" ,"),
+            "{out}"
+        );
+        assert!(
+            out.contains("sidecar_set :: < Self , i32 > (ptr , 1usize , \"n.rows\" ,"),
+            "{out}"
+        );
+        assert!(!out.contains("\"r_rows\""), "{out}");
 
         // Without a hook there is no `Saved` handle to read, so no `try_` getters.
         let input: syn::DeriveInput =

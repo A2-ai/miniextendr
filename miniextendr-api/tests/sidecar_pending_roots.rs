@@ -1,4 +1,6 @@
-//! Values extracted from a sidecar keep their R owner through moves and clones.
+//! Pending sidecar values keep their R object alive from construction, and
+//! values extracted from a sidecar keep it through moves and clones, until a
+//! slot holds it (#1961, #2216).
 mod r_test_utils;
 
 use miniextendr_api::externalptr::Sidecar;
@@ -88,43 +90,44 @@ fn dropping_or_replacing_the_last_pending_copy_releases_the_slot() {
     });
 }
 
-#[derive(Clone)]
-struct CollectOnFlush(SEXP);
-
-impl miniextendr_api::TryFromSexp for CollectOnFlush {
-    type Error = std::convert::Infallible;
-    fn try_from_sexp(value: SEXP) -> Result<Self, Self::Error> {
-        Ok(Self(value))
-    }
-}
-
-impl IntoR for CollectOnFlush {
-    type Error = std::convert::Infallible;
-    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        collect();
-        Ok(self.0)
-    }
-}
-
-#[derive(ExternalPtr)]
-struct CollectingHost {
-    #[r_data]
-    value: Sidecar<CollectOnFlush>,
-}
-
 #[test]
-fn a_pending_root_survives_conversion_into_the_new_slot() {
+fn a_fresh_value_is_rooted_from_construction() {
     r_test_utils::with_r_thread(|| {
         let drops = Arc::new(AtomicUsize::new(0));
         let payload = ExternalPtr::new(Payload(Arc::clone(&drops)));
-        let owner = ExternalPtr::new(CollectingHost {
-            value: Sidecar::new(CollectOnFlush(payload.as_sexp())),
-        });
+        let pending = Sidecar::<SEXP>::new(payload.as_sexp());
+        let replacing = Sidecar::<SEXP>::replace(payload.as_sexp());
         drop(payload);
-        let value = ExternalPtr::into_inner(owner);
-        let back = ExternalPtr::new(value);
+        collect();
         assert_eq!(drops.load(Ordering::SeqCst), 0);
-        drop(back);
+        drop(pending);
+        collect();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        let copy = replacing.clone();
+        drop(replacing);
+        collect();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        drop(copy);
+        collect();
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    });
+}
+
+#[test]
+fn a_fresh_value_stays_rooted_while_its_struct_is_wrapped() {
+    r_test_utils::with_r_thread(|| {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let payload = ExternalPtr::new(Payload(Arc::clone(&drops)));
+        let value = Host {
+            value: Sidecar::new(payload.as_sexp()),
+        };
+        drop(payload);
+        collect();
+        let owner = ExternalPtr::new(value);
+        collect();
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        assert!(unsafe { ExternalPtr::<Payload>::wrap_sexp(Host::value(&owner)) }.is_some());
+        drop(owner);
         collect();
         assert_eq!(drops.load(Ordering::SeqCst), 1);
     });
@@ -147,64 +150,24 @@ impl IntoR for RejectReload {
 }
 
 #[derive(ExternalPtr)]
-struct FailingHost {
-    #[r_data]
-    value: Sidecar<SEXP>,
+struct RejectingHost {
     #[r_data]
     rejects: Sidecar<RejectReload>,
-    drops: Arc<AtomicUsize>,
 }
 
-impl Drop for FailingHost {
-    fn drop(&mut self) {
-        self.drops.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
+/// A slot moves out and back as its R object: only a getter converts it.
 #[test]
-fn failed_extraction_does_not_leave_a_self_rooting_partial_load() {
+fn extraction_moves_slots_without_converting_them() {
     r_test_utils::with_r_thread(|| {
-        let drops = Arc::new(AtomicUsize::new(0));
-        let mut owner = ExternalPtr::new(FailingHost {
-            value: Sidecar::new(SEXP::nil()),
+        let owner = ExternalPtr::new(RejectingHost {
             rejects: Sidecar::new(RejectReload),
-            drops: Arc::clone(&drops),
         });
-        let sexp = owner.as_sexp();
-        FailingHost::set_value(&mut owner, sexp);
+        let back = ExternalPtr::new(ExternalPtr::into_inner(owner));
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                ExternalPtr::into_inner(owner)
+                RejectingHost::rejects(&back)
             }))
             .is_err()
         );
-        collect();
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-    });
-}
-
-#[test]
-fn failed_extraction_preserves_values_that_were_already_pending() {
-    r_test_utils::with_r_thread(|| {
-        let drops = Arc::new(AtomicUsize::new(0));
-        let mut owner = ExternalPtr::new(FailingHost {
-            value: Sidecar::new(SEXP::nil()),
-            rejects: Sidecar::new(RejectReload),
-            drops: Arc::new(AtomicUsize::new(0)),
-        });
-        owner.borrow_mut().value = ExternalPtr::into_inner(host(&drops)).value;
-        let alias = unsafe { ExternalPtr::<FailingHost>::wrap_sexp(owner.as_sexp()) }.unwrap();
-        assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                ExternalPtr::into_inner(alias)
-            }))
-            .is_err()
-        );
-        collect();
-        assert_eq!(drops.load(Ordering::SeqCst), 0);
-        assert!(unsafe { ExternalPtr::<Payload>::wrap_sexp(FailingHost::value(&owner)) }.is_some());
-        drop(owner);
-        collect();
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
     });
 }

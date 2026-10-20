@@ -1626,7 +1626,10 @@ the setter's `'table' must be ...` message. The Rust side keeps the Rust
 identifier: `MyConfig::r_table(&ptr)`, and the C symbols. The name must be a
 syntactic R name (`n.rows` is fine, `n rows` and `for` are not), unique among
 the type's R names, and not `.ptr`, which is the element that carries the
-pointer in a list or environment receiver.
+pointer in a list or environment receiver. A `Sidecar` field's R name also
+names its slot in a save: renaming the Rust field keeps earlier saves
+readable, renaming the R name does not (`EXTERNALPTR.md`, "A save names
+`Sidecar` values by their R names", #2215).
 
 #### Computed fields
 

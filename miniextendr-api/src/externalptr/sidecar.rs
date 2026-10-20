@@ -18,6 +18,7 @@ use std::any::{Any, TypeId};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fmt;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::{
@@ -109,16 +110,23 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - `Sidecar<SEXP>`, `Sidecar<List>` and `Sidecar<DataFrame>` keep an
 ///   arbitrary R object unconverted. The getter returns a view that the slot
 ///   roots only until the next write to that field; don't hold it across one.
-/// - A pending `SEXP` (one passed to [`Sidecar::new`]) is not rooted until
-///   the struct is wrapped: keep it protected until `ExternalPtr::new`
-///   returns (or until `trait_abi::ccall::mx_wrap` returns for erased storage).
+/// - [`Sidecar::new`] and [`Sidecar::replace`] convert their value with
+///   `IntoR` at once and root the R object it gives until a slot holds it
+///   (#2216). A fresh `SEXP` or list passed to them is safe from that moment;
+///   it needs its own protection only before the call.
 ///
 /// # Lifecycle
 ///
 /// - **Pending.** [`Sidecar::new(v)`](Sidecar::new) and [`Default`]
-///   (`Sidecar::new(T::default())`) hold `v` as a pending value in the
-///   struct. That is the only state a `Sidecar` has: before the struct is
-///   wrapped, after `*ptr = Engine::new(..)`, after `ExternalPtr::into_inner`.
+///   (`Sidecar::new(T::default())`) convert `v` to its R object and hold it
+///   as a pending value in the struct, rooted in a main-thread pool until a
+///   slot holds it or the last copy drops. That is the only state a `Sidecar`
+///   has: before the struct is wrapped, after `*ptr = Engine::new(..)`, after
+///   `ExternalPtr::into_inner`. They run on R's main thread, or on the
+///   managed worker, which hands the conversion to the main thread as
+///   `ExternalPtr::new` does; any other thread panics. Like an owning
+///   `ExternalPtr`, the last copy of a pending value must be dropped on R's
+///   main thread or its managed worker.
 /// - **Flushed when wrapped.** `ExternalPtr::new` and the trait ABI's `mx_wrap`
 ///   move every pending value into the pointer's protection list. From then
 ///   on the value lives in R only, and the field is empty.
@@ -131,16 +139,13 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///   `saveRDS()` before any access writes the old slot value.
 /// - **Loaded when the value leaves its pointer.** `ExternalPtr::into_inner`
 ///   and `into_raw` read each slot of the pointer being consumed back into its
-///   field as a pending value (unless one is pending already), so wrapping
-///   the value again keeps the values. Loaded values retain a pool root to
-///   their R slot until they are flushed or dropped, including across clones.
-///   Like an owning `ExternalPtr`, the last loaded copy must be dropped on
-///   R's main thread or its managed worker.
+///   field as a pending value (unless one is pending already), rooted as a
+///   new one is, so wrapping the value again keeps the values.
 /// - **A `self -> Self` method** leaves the values in the pointer across the
 ///   call; the write-back flushes only what the method set with
 ///   `Sidecar::new`. `Self { n: .., ..self }` keeps the values,
 ///   `Self::new(..)` replaces them.
-/// - **Clone.** `Sidecar::clone` (for `T: Clone`) copies the pending value,
+/// - **Clone.** `Sidecar::clone` shares the pending R object and its root,
 ///   which is none once the struct is wrapped. `ExternalPtr::clone` and
 ///   `clone_from` copy the slot values as R objects, so the two pointers
 ///   share them until one side writes the field: every write replaces the
@@ -160,22 +165,31 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// Use the accessors on R's main thread only. Off the main thread an
 /// accessor panics with a clear message before it touches R.
 ///
-/// # A save stores the values by position
+/// # A save names the values by their R names
 ///
-/// A saved object (`saveRDS()`, `serialize()`) stores its sidecar values by
-/// position: one slot per `Sidecar` field, in the order the fields appear in
-/// the struct, with no field names. After a reload, the standalone R
-/// accessors, the R6 bindings and the S7 properties read each field from its
-/// position. So reordering, adding, removing or retyping `Sidecar` fields
-/// changes how an old save is read, and within one version of the crate
-/// nothing detects it: a field can read another field's value.
+/// A saved object (`saveRDS()`, `serialize()`) stores one slot per `Sidecar`
+/// field, named after the field's R name: the `#[r_data(name = "..")]` value,
+/// else the Rust field name (#2187, #2215). After a reload, the standalone R
+/// accessors, the R6 bindings, the S7 properties and a rebuild hook
+/// (`#[externalptr(rebuild = path)]`, through [`super::Saved`]) find each
+/// field's slot by that name. So the R name is the save format:
 ///
-/// Bump the crate's version (the `version` in its `Cargo.toml`, which the
-/// stored type ID records) whenever the `Sidecar` fields change. A save from
-/// another version is then refused with the classed
-/// `miniextendr_restored_other_version` error (#1872). `#[repr(C)]` doesn't
-/// help: it fixes the struct's memory layout, which a save never stores, and
-/// the slot positions follow the source order either way.
+/// - Reordering, adding or removing `Sidecar` fields keeps earlier saves
+///   readable. A field the save has no slot for raises the classed
+///   [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS)
+///   error (or reads as `None` through a hook's `Self::try_<field>(saved)`).
+/// - Renaming the Rust field keeps them readable too, as long as the R name
+///   stays: a field without `name = ..` keeps its old ident as
+///   `#[r_data(name = "old")]`.
+/// - Renaming the R name orphans the field's slot in every earlier save: the
+///   field reads as one the save lacks.
+/// - Retyping a field keeps its name, so an earlier save's slot is read as the
+///   new type; a getter that can't convert it panics naming the field.
+///
+/// A save from another version of the crate (the `version` in its
+/// `Cargo.toml`, which the stored type ID records) is refused with the classed
+/// `miniextendr_restored_other_version` error (#1872), unless the type
+/// rebuilds it (`rebuild = path, any_version`).
 ///
 /// # Methods that need sidecar values take a view
 ///
@@ -200,15 +214,18 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// root it. Use `Sidecar<SEXP>`.
 pub struct Sidecar<T> {
     /// The value the field holds while it is not in a pointer's slot.
-    pending: RefCell<Option<Pending<T>>>,
+    pending: RefCell<Option<Pending>>,
+    /// The field's type: its accessors convert the slot to it, and the
+    /// struct's auto traits follow it as if it held a `T`.
+    _value: PhantomData<T>,
 }
 
-/// Keep the input slot alive while a converted view travels outside its owner.
-/// The value drops before its root, including when conversion unwinds.
+/// A value on its way into a slot: its R object, rooted from the moment the
+/// `Sidecar` holds it until a slot owns the GC edge (#2216).
 #[derive(Clone)]
-struct Pending<T> {
-    value: T,
-    root: Option<Arc<PendingRoot>>,
+struct Pending {
+    sexp: SEXP,
+    root: Arc<PendingRoot>,
     /// Made by [`Sidecar::replace`]: in a struct a rebuild hook returns, the
     /// value replaces the slot the save kept (#2187).
     replace: bool,
@@ -225,17 +242,19 @@ impl Drop for PendingRoot {
     }
 }
 
-impl<T> Sidecar<T> {
+impl<T: IntoR + 'static> Sidecar<T> {
     /// A sidecar field holding `value`, pending until the struct is wrapped
     /// in an `ExternalPtr`.
+    ///
+    /// Converts `value` with `IntoR` and roots the R object until a slot
+    /// holds it, so a fresh R value is safe from here on.
+    ///
+    /// # Panics
+    ///
+    /// Off R's main thread and its managed worker, before converting; or
+    /// when the conversion fails.
     pub fn new(value: T) -> Self {
-        Self {
-            pending: RefCell::new(Some(Pending {
-                value,
-                root: None,
-                replace: false,
-            })),
-        }
+        Self::pending(value, false)
     }
 
     /// A sidecar field holding `value`, which replaces the slot a save kept
@@ -246,17 +265,38 @@ impl<T> Sidecar<T> {
     /// the fields the save lacks. A hook that recomputes a field's value, and
     /// wants the object to hold the new value rather than the saved one,
     /// returns it as `Sidecar::replace(value)`. Anywhere else it is
-    /// `Sidecar::new(value)`.
+    /// `Sidecar::new(value)`. Converts and roots `value` as
+    /// [`Sidecar::new`] does, with the same panics.
     pub fn replace(value: T) -> Self {
-        Self {
-            pending: RefCell::new(Some(Pending {
-                value,
-                root: None,
-                replace: true,
-            })),
-        }
+        Self::pending(value, true)
     }
 
+    /// Converts `value` and roots its R object on R's main thread: inline
+    /// there, through the main thread from the managed worker (#2216).
+    fn pending(value: T, replace: bool) -> Self {
+        assert!(
+            crate::worker::is_r_main_thread() || crate::worker::has_worker_context(),
+            "`Sidecar::{}` converts its value on R's main thread: call it there or on \
+             the managed worker, not from a thread the package spawned",
+            if replace { "replace" } else { "new" },
+        );
+        // `root_owned` roots the fresh object across the pool's growth.
+        let (sexp, key) = crate::worker::with_r_thread(move || {
+            let sexp = value.into_sexp();
+            (sexp, super::root_owned(sexp))
+        });
+        Self {
+            pending: RefCell::new(Some(Pending {
+                sexp,
+                root: Arc::new(PendingRoot(key)),
+                replace,
+            })),
+            _value: PhantomData,
+        }
+    }
+}
+
+impl<T> Sidecar<T> {
     /// Whether the pending value was made by [`Sidecar::replace`].
     fn replaces_saved(&self) -> bool {
         self.pending
@@ -269,67 +309,49 @@ impl<T> Sidecar<T> {
     fn discard_pending(&self) {
         *self.pending.borrow_mut() = None;
     }
-}
 
-impl<T: IntoR> Sidecar<T> {
     /// Moves a pending value into slot `index` of `prot`, if there is one.
-    ///
-    /// On R's main thread. `set_vector_elt` allocates nothing, so the value
-    /// fresh from `into_sexp()` needs no protection.
+    /// On R's main thread; `set_vector_elt` allocates nothing.
     fn flush_into(&self, prot: SEXP, index: usize) {
-        let Some(Pending { value, root, .. }) = self.pending.borrow_mut().take() else {
+        let Some(Pending { sexp, root, .. }) = self.pending.borrow_mut().take() else {
             return;
         };
-        prot.set_vector_elt(prot_index(index), value.into_sexp());
-        // The new slot owns the GC edge now. Keep the old root through IntoR,
-        // which can allocate or panic even when T is an R-backed view.
+        prot.set_vector_elt(prot_index(index), sexp);
+        // The slot owns the GC edge now.
         drop(root);
     }
-}
 
-impl<T: TryFromSexp> Sidecar<T>
-where
-    <T as TryFromSexp>::Error: fmt::Display,
-{
     /// Reads slot `index` of `prot` back into the field as its pending value,
     /// unless one is pending already. On R's main thread.
-    fn load_from(
-        &self,
-        prot: SEXP,
-        index: usize,
-        name: &'static str,
-        owner_type: &'static str,
-    ) -> bool {
+    fn load_from(&self, prot: SEXP, index: usize) {
         if self.pending.borrow().is_some() {
-            return false;
+            return;
         }
-        // The old owner still roots the slot across pool growth and conversion.
-        // Root the slot itself, not the old protection list, so independent
-        // pending fields do not retain one another's values.
-        let root = Arc::new(PendingRoot(super::root_owned(
-            prot.vector_elt(prot_index(index)),
-        )));
-        let value = convert_slot::<T>(prot, prot_index(index), name, owner_type);
+        // The old owner still roots the slot while the pool grows. Root the
+        // slot itself, not the old protection list, so independent pending
+        // fields do not retain one another's values.
+        let sexp = prot.vector_elt(prot_index(index));
         *self.pending.borrow_mut() = Some(Pending {
-            value,
-            root: Some(root),
+            sexp,
+            root: Arc::new(PendingRoot(super::root_owned(sexp))),
             replace: false,
         });
-        true
     }
 }
 
-impl<T: Clone> Clone for Sidecar<T> {
-    /// A `Sidecar` holding a copy of this field's pending value, if any. The
-    /// value in a pointer's slot is not copied: clone the `ExternalPtr`.
+impl<T> Clone for Sidecar<T> {
+    /// A `Sidecar` sharing this field's pending R object, and its root, if
+    /// any. The value in a pointer's slot is not copied: clone the
+    /// `ExternalPtr`.
     fn clone(&self) -> Self {
         Self {
             pending: RefCell::new(self.pending.borrow().clone()),
+            _value: PhantomData,
         }
     }
 }
 
-impl<T: Default> Default for Sidecar<T> {
+impl<T: Default + IntoR + 'static> Default for Sidecar<T> {
     /// `Sidecar::new(T::default())`.
     fn default() -> Self {
         Self::new(T::default())
@@ -384,36 +406,21 @@ pub trait SidecarField {
     /// Moves a pending value into slot `index` of `prot`.
     fn __mx_flush(&self, prot: SEXP, index: usize);
     /// Reads slot `index` of `prot` back into the field as its pending value,
-    /// unless one is pending already. Returns whether a value was loaded.
-    fn __mx_load(
-        &self,
-        prot: SEXP,
-        index: usize,
-        name: &'static str,
-        owner_type: &'static str,
-    ) -> bool;
+    /// unless one is pending already.
+    fn __mx_load(&self, prot: SEXP, index: usize);
     /// Drops a pending value, which a write to the slot supersedes.
     fn __mx_discard_pending(&self);
     /// Whether the pending value was made by [`Sidecar::replace`].
     fn __mx_replaces_saved(&self) -> bool;
 }
 
-impl<T: IntoR + TryFromSexp> SidecarField for Sidecar<T>
-where
-    <T as TryFromSexp>::Error: fmt::Display,
-{
+impl<T> SidecarField for Sidecar<T> {
     fn __mx_flush(&self, prot: SEXP, index: usize) {
         self.flush_into(prot, index);
     }
 
-    fn __mx_load(
-        &self,
-        prot: SEXP,
-        index: usize,
-        name: &'static str,
-        owner_type: &'static str,
-    ) -> bool {
-        self.load_from(prot, index, name, owner_type)
+    fn __mx_load(&self, prot: SEXP, index: usize) {
+        self.load_from(prot, index);
     }
 
     fn __mx_discard_pending(&self) {
@@ -436,34 +443,7 @@ pub(crate) fn flush_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
 /// leaving, back into its `Sidecar` field as a pending value (unless one is
 /// pending already). On R's main thread.
 pub(crate) fn load_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
-    // If a later conversion fails, the value stays inside its old pointer.
-    // Roll back only fields loaded by this attempt: their roots could otherwise
-    // keep that pointer alive forever when a sidecar refers back to its owner.
-    struct LoadGuard<'a, T: TypedExternal> {
-        value: &'a T,
-        loaded: Vec<bool>,
-        committed: bool,
-    }
-    impl<T: TypedExternal> Drop for LoadGuard<'_, T> {
-        fn drop(&mut self) {
-            if !self.committed {
-                self.value.__mx_visit_sidecars(&mut |index, _, field| {
-                    if self.loaded[index] {
-                        field.__mx_discard_pending();
-                    }
-                });
-            }
-        }
-    }
-    let mut guard = LoadGuard {
-        value,
-        loaded: vec![false; T::R_SLOT_COUNT],
-        committed: false,
-    };
-    value.__mx_visit_sidecars(&mut |index, name, field| {
-        guard.loaded[index] = field.__mx_load(prot, index, name, T::TYPE_NAME);
-    });
-    guard.committed = true;
+    value.__mx_visit_sidecars(&mut |index, _, field| field.__mx_load(prot, index));
 }
 
 /// Drops every pending value of `value`'s `Sidecar` fields.
@@ -496,14 +476,14 @@ pub(super) unsafe fn init_sidecars<T: TypedExternal>(any_raw: *mut Box<dyn Any>,
 /// # Safety
 /// On R's main thread inside an R unwind boundary. `owner` must be the
 /// caller-rooted external pointer owning `value`, with its finalizer already
-/// registered. Pending R-backed values must remain rooted until this returns.
+/// registered.
 pub(crate) unsafe fn init_erased_sidecars<T: TypedExternal>(value: &T, owner: SEXP) {
     unsafe {
         let type_id = super::type_id_symbol_unchecked::<T>();
         let prot =
             crate::sys::Rf_allocVector_unchecked(SEXPTYPE::VECSXP, super::prot_vec_len::<T>());
-        // Attach before conversions allocate: each flushed slot is then
-        // reachable through the already-rooted owner.
+        // Attach before the next allocation (the slot names' attribute cell):
+        // the owner roots `prot` from here on.
         crate::sys::R_SetExternalPtrProtected_unchecked(owner, prot);
         prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id);
         name_slots::<T>(prot);
@@ -634,7 +614,7 @@ pub fn sidecar_set<O, T>(
 thread_local! {
     /// Each type's slot names, preserved for the session and shared by every
     /// protection list of the type: `""` for the type ID and the user slot,
-    /// then the `Sidecar` fields' Rust names, in slot order.
+    /// then the `Sidecar` fields' R names, in slot order.
     static SLOT_NAMES: RefCell<HashMap<TypeId, SEXP>> = RefCell::new(HashMap::new());
 }
 

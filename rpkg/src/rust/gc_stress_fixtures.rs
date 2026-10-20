@@ -5321,8 +5321,8 @@ impl ViewArgProbe for ViewArgHost {
 /// of `gctorture(TRUE)` do not; without that root it would drop the host,
 /// and a weak reference reports this before the View reads the freed host.
 ///
-/// The host's `keepalive` sidecar starts as a pending value that only a
-/// temporary root protects. `mx_wrap` must move it into the receiver's
+/// The host's `keepalive` sidecar starts as a pending value, rooted only
+/// until it sits in a slot. `mx_wrap` must move it into the receiver's
 /// protection list, so it survives the collection through the View's root.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
@@ -6060,3 +6060,131 @@ pub fn gc_stress_struct_factor() {
         }
     }
 }
+
+// region: pending Sidecar values are rooted (#2216)
+
+/// A host whose `Sidecar<SEXP>` holds a fresh list, rebuilt from its saved
+/// `tag` by a hook that returns a fresh list as `Sidecar::replace`.
+#[derive(miniextendr_api::ExternalPtr)]
+#[externalptr(rebuild = Self::from_saved)]
+pub struct SidecarPendingHost {
+    #[r_data]
+    items: miniextendr_api::externalptr::Sidecar<SEXP>,
+    #[r_data]
+    tag: miniextendr_api::externalptr::Sidecar<i32>,
+}
+
+impl SidecarPendingHost {
+    /// The rebuild hook: a fresh list for `tag + 1` replaces the saved one.
+    /// The list is reachable only through the returned struct while the GC
+    /// runs, and while the install allocates the new protection list.
+    fn from_saved(
+        saved: &miniextendr_api::externalptr::Saved<'_, Self>,
+    ) -> Result<Self, miniextendr_api::condition::RError> {
+        use miniextendr_api::externalptr::Sidecar;
+        let tag = Self::tag(saved) + 1;
+        let host = SidecarPendingHost {
+            items: Sidecar::replace(pending_list(tag)),
+            tag: Sidecar::replace(tag),
+        };
+        churn_pending_shapes();
+        Ok(host)
+    }
+}
+
+/// A fresh `list()` of 4 integer vectors, each `rep(tag, 8)`. Rooted only
+/// while it is built: the caller gets it unprotected.
+fn pending_list(tag: i32) -> SEXP {
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn or its rebuild).
+    unsafe {
+        let scope = miniextendr_api::gc_protect::ProtectScope::new();
+        let list = scope.alloc_vecsxp(4).get();
+        for i in 0..4 {
+            list.set_vector_elt(i, vec![tag; 8].into_sexp());
+        }
+        list
+    }
+}
+
+/// Allocates lists of `pending_list`'s shape, holding `-1`: under
+/// `gctorture(TRUE)` a collected pending list's nodes are reused by them, so
+/// a read of the pending value finds `-1` instead of its tag.
+fn churn_pending_shapes() {
+    for _ in 0..8 {
+        let _garbage = pending_list(-1);
+    }
+}
+
+/// Panics unless `list` is `pending_list(tag)`'s value.
+fn check_pending_list(list: SEXP, tag: i32, path: &str) {
+    use miniextendr_api::TryFromSexp;
+    assert_eq!(
+        list.type_of(),
+        SEXPTYPE::VECSXP,
+        "{path}: the pending list was collected (the slot holds another object)"
+    );
+    assert_eq!(list.len(), 4, "{path}: the pending list was collected");
+    for i in 0..4 {
+        let values = Vec::<i32>::try_from_sexp(list.vector_elt(i))
+            .unwrap_or_else(|e| panic!("{path}: the pending list was collected: {e}"));
+        assert_eq!(
+            values, [tag; 8],
+            "{path}: the pending list was collected and its nodes reused"
+        );
+    }
+}
+
+/// Builds `SidecarPendingHost`s whose `Sidecar<SEXP>` holds a fresh list,
+/// churns the GC, wraps them and reads the list back; then saves one,
+/// reloads it, and rebuilds it through the hook, which returns another
+/// fresh list as `Sidecar::replace`. Each pending list is reachable only
+/// through its `Sidecar` until it sits in a slot: `ExternalPtr::new`
+/// allocates the protection list and the pointer before writing it, and the
+/// rebuild allocates the new protection list first. No arguments — picked
+/// up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+// Stays on R's main thread under `worker-default`: it holds R values.
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_sidecar_pending() {
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::externalptr::{ExternalPtr, Sidecar};
+
+    for tag in 1..=2 {
+        let host = SidecarPendingHost {
+            items: Sidecar::new(pending_list(tag)),
+            tag: Sidecar::new(tag),
+        };
+        churn_pending_shapes();
+        let ptr = ExternalPtr::new(host);
+        churn_pending_shapes();
+        check_pending_list(SidecarPendingHost::items(&ptr), tag, "construction");
+
+        // SAFETY: on R's main thread; each value is rooted before the next
+        // call allocates.
+        let bytes = unsafe {
+            OwnedProtect::new(
+                RCall::new("serialize")
+                    .arg(ptr.as_sexp())
+                    .arg(SEXP::nil())
+                    .eval_base()
+                    .expect("serialize"),
+            )
+        };
+        drop(ptr);
+        let back = unsafe {
+            OwnedProtect::new(
+                RCall::new("unserialize")
+                    .arg(bytes.get())
+                    .eval_base()
+                    .expect("unserialize"),
+            )
+        };
+        let rebuilt =
+            ExternalPtr::<SidecarPendingHost>::try_from_sexp(back.get()).expect("rebuilt");
+        churn_pending_shapes();
+        check_pending_list(SidecarPendingHost::items(&rebuilt), tag + 1, "rebuild");
+        assert_eq!(SidecarPendingHost::tag(&rebuilt), tag + 1);
+    }
+}
+
+// endregion

@@ -698,7 +698,9 @@ Access via Sidecar".
 string (the field list, the `$` / `[[` labels, the R6 binding or S7 property,
 `MyType_get_keys()` / `MyType_set_keys()`, the setter's message); the Rust
 accessors (`MyType::r_keys(&ptr)`) and the C symbols keep the Rust
-identifier. The name must be syntactic, unique in the type and not `.ptr`. A
+identifier. The name must be syntactic, unique in the type and not `.ptr`.
+A `Sidecar` field's R name is also its name in a save (below), so renaming
+the Rust field is safe for saves and renaming the R name is not (#2215). A
 `Computed` field must be `pub`, and is refused under `#[externalptr(r6)]` /
 `#[externalptr(s7)]`, whose bindings and properties need a setter (#1888).
 
@@ -807,11 +809,15 @@ view receiver (#1880). High-level ALTREP data traits also receive only
 
 How the value moves:
 
-- `Sidecar::new(v)` holds `v` as a *pending* value in the struct. Wrapping
-  the struct (`ExternalPtr::new` and the other constructors, or the trait
-  ABI's `mx_wrap` for erased storage) moves every pending value into the
-  pointer's `prot` list. From then on the value lives
-  in R only and the field is empty.
+- `Sidecar::new(v)` converts `v` to its R object at once and holds it as a
+  *pending* value in the struct, rooted until a slot holds it (#2216), so a
+  fresh `SEXP` or list passed to it is safe from that moment. Wrapping the
+  struct (`ExternalPtr::new` and the other constructors, or the trait ABI's
+  `mx_wrap` for erased storage) moves every pending value into the
+  pointer's `prot` list. From then on the value lives in R only and the
+  field is empty. `Sidecar::new` and `Sidecar::replace` run on R's main
+  thread, or on the managed worker (a `worker` constructor), which hands
+  the conversion to the main thread; any other thread panics.
 - Every accessor, Rust or R, first moves a pending value of its field into
   the `prot` list. So `*ptr.borrow_mut() = MyType::new(..)` takes
   effect at the next access from either side; a `saveRDS()` before any access
@@ -827,12 +833,11 @@ How the value moves:
 - `ExternalPtr::clone` and `clone_from` copy the struct and share the slot
   values as R objects, which are immutable: a later write to a field on
   either side replaces that side's slot only. `MyType::clone()` on the bare
-  struct copies pending values only.
+  struct shares its pending R objects only.
 - A private `Sidecar<T>` gets private accessors and no R accessor. That is how
   Rust keeps an R value (`Sidecar<Option<List>>`, `Sidecar<SEXP>`) alive for
   as long as the object. A `Sidecar<SEXP>` getter returns a view the slot
-  roots until the next write to that field; a pending `SEXP` passed to
-  `Sidecar::new` is not rooted until the struct is wrapped.
+  roots until the next write to that field.
 - The accessors run on R's main thread only. Off it (a `worker` method, a
   thread the package spawned) an accessor panics with a message naming the
   field and the type.
@@ -846,27 +851,36 @@ The `Sidecar` values are what a save keeps: `saveRDS()` writes them with
 the pointer and the struct's other fields are lost ("Serialization" below).
 They are also shared by every R name bound to the pointer ("Copies" below).
 
-#### A save stores `Sidecar` values by position
+#### A save names `Sidecar` values by their R names
 
-A saved object (`saveRDS()`, `serialize()`) stores its `Sidecar` values by
-position: one slot per `Sidecar` field, in the order the fields appear in the
-struct. After a reload, the R accessors that read a save (`Type_get_f()` and
-the R6 / S7 fields; the `$` / `[[` methods of `s3(r_data_accessors)` & co.
-refuse a restored pointer instead) read each field from its position. No
-field names are stored.
+A saved object (`saveRDS()`, `serialize()`) stores one slot per `Sidecar`
+field, named after the field's R name: the `#[r_data(name = "...")]` value,
+else the Rust field name (#2187, #2215). After a reload, the R accessors that
+read a save (`Type_get_f()` and the R6 / S7 fields; the `$` / `[[` methods of
+`s3(r_data_accessors)` & co. refuse a restored pointer instead) and a rebuild
+hook ("Rebuilding after a reload" below) find each field's slot by that name.
+A field the save has no slot for raises `miniextendr_restored_missing_slot`,
+with the field's R name in `e$field`.
 
-So reordering, adding, removing or retyping `Sidecar` fields changes how an
-old save is read. Within one version of the crate nothing detects it: a field
-can read another field's value, or fail with an error that has nothing to do
-with the change.
+So the R name is the save format:
 
-Bump the crate's version (`version` in the package's `src/rust/Cargo.toml`,
-which the type ID in `prot[0]` records) whenever the `Sidecar` fields change.
-A save from another version is then refused with the
-`miniextendr_restored_other_version` error ("Serialization" below, #1872).
+- Reordering, adding or removing `Sidecar` fields keeps earlier saves
+  readable: each field finds its own slot, and a slot whose field is gone is
+  ignored.
+- Renaming the Rust field keeps them readable as long as the R name stays.
+  A field without `name = ...` keeps its old R name with
+  `#[r_data(name = "old_name")]`, which also keeps its R accessors.
+- Renaming the R name orphans the field's slot in every earlier save: the
+  field reads as one the save lacks.
+- Retyping a field keeps its name, so an earlier save's slot is read as the
+  new type. A Rust getter that can't convert it raises an error naming the
+  field; the R accessors return the saved value as it is.
 
-`#[repr(C)]` doesn't help. It fixes the Rust struct's memory layout, which a
-save never stores; the slot positions follow the source order either way.
+A save from another version of the crate (`version` in the package's
+`src/rust/Cargo.toml`, which the type ID in `prot[0]` records) is refused
+with the `miniextendr_restored_other_version` error ("Serialization" below,
+#1872), unless the type rebuilds it (`rebuild = path, any_version`). A save
+made before slots were named is read by position.
 
 ### Copies
 
@@ -1000,14 +1014,16 @@ impl Model {
   gone with the Rust value, so a type whose rebuild needs one keeps it in a
   `Sidecar` instead. `Saved::as_sexp()` is the restored pointer, and
   `Saved::version()` the crate version that saved it.
-- **By field name.** A save names its slots after the `Sidecar` fields, so
-  the hook reads each field by name, whatever fields the saving version
-  had or in what order (#2187). A field added since that version has no
-  slot: `Self::try_values(saved)` (generated for every `Sidecar` field of a
-  type with a hook) returns `None`, and the plain getter raises
-  `miniextendr_restored_missing_slot`, with the field's name in `e$field`.
-  `Saved::has("values")` says the same for a name. A slot whose field is
-  gone is ignored. A save from before slots were named is read by position.
+- **By field name.** A save names its slots after the `Sidecar` fields' R
+  names (`#[r_data(name = "...")]`, else the Rust field name), so the hook
+  reads each field by name, whatever fields the saving version had or in
+  what order (#2187, #2215). A field added since that version has no slot:
+  `Self::try_values(saved)` (generated for every `Sidecar` field of a type
+  with a hook, named after the Rust field) returns `None`, and the plain
+  getter raises `miniextendr_restored_missing_slot`, with the field's R name
+  in `e$field`. `Saved::has("values")` says the same for an R name. A slot
+  whose field is gone is ignored. A save from before slots were named is
+  read by position.
 - **What the rebuilt object holds.** The pointer is laid out as this
   version's. A field the save has keeps its saved slot: the hook's
   `Sidecar::new(..)` value for it is a placeholder and is dropped. A field
