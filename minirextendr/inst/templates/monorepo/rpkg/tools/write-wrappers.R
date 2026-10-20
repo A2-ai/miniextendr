@@ -9,7 +9,9 @@
 # R_init_<pkg>; MINIEXTENDR_WRAPPER_GEN=1 keeps that to routine registration.
 # Both writers are registered routines that walk the package's
 # #[distributed_slice] tables, and each replaces its file only when the content
-# changed, so an unchanged file keeps its mtime. Base R only.
+# changed, so an unchanged file keeps its mtime. The wrapper writer also gets
+# the package's R/ directory, to check the names reexport!() re-exports against
+# the hand-written R files there. Base R only.
 #
 # A release tarball (one carrying inst/vendor.tar.xz) ships the wrappers its
 # NAMESPACE and man/ were documented from. When this build generates different
@@ -39,7 +41,8 @@ if (release_tarball && file.exists(wrappers)) {
 }
 
 lib <- dyn.load(shlib)
-invisible(.Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), destination))
+invisible(.Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib),
+                c(destination, file.path(root, "R"))))
 if (!identical(destination, wrappers) &&
     !identical(readLines(wrappers), readLines(destination))) {
   stop("This build generated different R wrappers than the ", package,

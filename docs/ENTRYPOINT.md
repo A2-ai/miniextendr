@@ -134,7 +134,7 @@ loading the freshly-built shared object back into R:
 1. The staticlib is linked into the package's shared object (`<pkg>.so`/`.dll`),
    which carries every linkme entry (force-loaded via `stub.c`)
 2. R loads it via `dyn.load()` (with `MINIEXTENDR_WRAPPER_GEN=1`, so `R_init`
-   takes a minimal path) and calls `miniextendr_write_wrappers(path)`
+   takes a minimal path) and calls `miniextendr_write_wrappers(c(path, r_dir))`
 3. The function reads the linkme slices and writes R wrapper code to a file
 4. `roxygen2::roxygenise()` generates NAMESPACE exports from the wrappers
 

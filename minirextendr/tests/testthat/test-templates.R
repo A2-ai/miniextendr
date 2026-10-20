@@ -353,6 +353,59 @@ test_that("write-wrappers.R keeps a release tarball's differing wrappers and sto
   expect_identical(readLines(wrappers), generated)
 })
 
+# write-wrappers.R passes the package's R/ directory to the wrapper writer, so
+# a name reexport!() re-exports and a hand-written R file defines stops the
+# install (#2205): the file's function would hide the imported one in the
+# namespace and be exported instead. A writer called with the wrappers path
+# alone, as an older tools/write-wrappers.R calls it, reads only the wrappers.
+test_that("an install stops on a reexport!() name a hand-written R file defines", {
+  skip_e2e()
+  miniextendr_path <- find_miniextendr_repo()
+
+  tmp <- tempfile("rpkg-reexport-check-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  pkg_path <- file.path(tmp, "reexcheck")
+
+  # The check is in miniextendr-api, so build against this checkout's crates,
+  # not the git main the scaffold depends on.
+  suppressWarnings(suppressMessages({
+    usethis::create_package(pkg_path, open = FALSE)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
+    use_local_miniextendr(miniextendr_path, path = pkg_path)
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
+  }))
+  write(c("", "miniextendr_api::reexport!(stats::median);"),
+        file.path(pkg_path, "src", "rust", "lib.rs"), append = TRUE)
+  hand_written <- file.path(pkg_path, "R", "stats.R")
+  writeLines("median <- function(x, ...) x", hand_written)
+
+  err <- tryCatch(suppressWarnings(install_to_templib(pkg_path, tmp)),
+                  error = conditionMessage)
+  expect_match(err, "re-exports `stats::median` (", fixed = TRUE)
+  expect_match(err, "and the package also binds `median` (a function in R/stats.R)",
+               fixed = TRUE)
+  expect_match(err, "rename the package's `median` in R/stats.R.", fixed = TRUE)
+
+  writeLines("my_median <- function(x, ...) x", hand_written)
+  install_to_templib(pkg_path, tmp)
+  wrappers <- file.path(pkg_path, "R", "reexcheck-wrappers.R")
+  expect_true("stats::median" %in% readLines(wrappers))
+
+  writeLines("median <- function(x, ...) x", hand_written)
+  shlib <- file.path(pkg_path, "src", paste0("reexcheck", .Platform$dynlib.ext))
+  out <- system2(
+    file.path(R.home("bin"), "Rscript"),
+    c("-e", shQuote(sprintf(
+      "lib <- dyn.load('%s'); invisible(.Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '%s'))",
+      shlib, wrappers
+    ))),
+    env = "MINIEXTENDR_WRAPPER_GEN=1", stdout = TRUE, stderr = TRUE
+  )
+  expect_null(attr(out, "status"))
+})
+
 test_that("rpkg scaffolding with external cargo dependency works", {
   skip_e2e()
   miniextendr_path <- find_miniextendr_repo()
