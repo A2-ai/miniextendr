@@ -880,7 +880,8 @@ A save from another version of the crate (`version` in the package's
 `src/rust/Cargo.toml`, which the type ID in `prot[0]` records) is refused
 with the `miniextendr_restored_other_version` error ("Serialization" below,
 #1872), unless the type rebuilds it (`rebuild = path, any_version`). A save
-made before slots were named is read by position.
+made before slots were named is read by position, except by a type that
+rebuilds any version's save, which refuses it (below).
 
 ### Copies
 
@@ -951,8 +952,9 @@ fields included: a reloaded object is refused, not recovered
   `refuse = "every_read"` makes every S3 reader refuse first, before the
   name or position is looked at: `names()`, `as.list()`, an unknown name
   and a position too, on the bare pointer and on a list or environment
-  carrying it in `.ptr`, with `.DollarNames()` returning `character(0)`
-  (`CLASS_SYSTEMS.md`, "A restored pointer").
+  carrying it in `.ptr`. `.DollarNames()` still lists the fields, so
+  completion neither raises nor rebuilds the object (`CLASS_SYSTEMS.md`,
+  "A restored pointer").
 - A receiver of the class that carries no pointer at all (a list without
   `.ptr`, e.g. an older format of the same class) raises
   `miniextendr_no_handle` (``this `myclass` object holds no pointer``)
@@ -961,8 +963,13 @@ fields included: a reloaded object is refused, not recovered
   environment receiver also gets the `restored(class = ...)` classes and
   the `restored(message = ...)` text, the shape a save in an older format
   has; an atomic vector given the class was never saved and gets neither.
-  Otherwise `field_error(message = "...")` replaces the message of this
-  refusal and of the two above.
+  `restored(no_handle = "...")` gives that list or environment its own
+  message, one that says why it holds no pointer (``this engine was saved
+  by an older release, which kept no engine; build a new one``), in place
+  of the restored message; the package's own code can reuse it as
+  `TypedExternal::NO_HANDLE_MESSAGE`. Otherwise
+  `field_error(message = "...")` replaces the message of this refusal and
+  of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.
@@ -1023,7 +1030,7 @@ impl Model {
   getter raises `miniextendr_restored_missing_slot`, with the field's R name
   in `e$field`. `Saved::has("values")` says the same for an R name. A slot
   whose field is gone is ignored. A save from before slots were named is
-  read by position.
+  read by position, unless the type rebuilds any version's save (below).
 - **What the rebuilt object holds.** The pointer is laid out as this
   version's. A field the save has keeps its saved slot: the hook's
   `Sidecar::new(..)` value for it is a placeholder and is dropped. A field
@@ -1048,7 +1055,10 @@ impl Model {
   gives its `Debug` text. The cause's classes stay out of the refusal's, so
   a handler for them does not catch a reload failure; branch on
   `inherits(e$parent, "pkg_error_config")`. An R error inside the hook
-  carries on as itself.
+  carries on as itself. `restored(rebuild_failed = "...")` words this
+  refusal instead, each `%s` in it replaced by the cause's message:
+  `restored(rebuild_failed = "this model could not be rebuilt (%s); fit it
+  again")`. It needs the hook next to it, and the `%s`.
 - **Conditions the hook queues** (`defer_warning!` & co.) are signalled when
   the call that triggered the rebuild returns. A hook that replays the
   construction, whose warnings were signalled once already, drops them with
@@ -1061,8 +1071,17 @@ impl Model {
   on the object's first use of any kind (a `Sidecar` read included, since
   the slots are laid out anew). The hook decides what to accept: it reads
   `saved.version()`, checks the fields, and returns an `Err` to refuse. A
-  save by another version without slot names stays refused: its layout is
-  unknown.
+  save without slot names is refused, because its values can't be matched
+  to fields: another version's with `miniextendr_restored_other_version`,
+  this version's with `miniextendr_restored_unnamed_slots` (and
+  `miniextendr_restored`, behind the `restored(class = ...)` classes),
+  ``this `Model` object was saved before saves named their fields, so its
+  saved values can't be matched to fields; re-create it``, or the type's
+  `restored(message = ...)`. For such a save `Saved::has()` is false for
+  every field and the `try_` getters return `None`. Under `any_version` a
+  slot read or write on another version's save rebuilds first, so a test
+  that edits a save's slots does it before
+  `rewrite_stored_version_for_tests` marks the save as another version's.
 
 A type whose `Sidecar` fields hold too little to rebuild from needs the
 value itself in the save, a serde snapshot (#2186).

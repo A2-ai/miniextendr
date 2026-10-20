@@ -47,7 +47,6 @@ methods::setMethod("$", "Engine", function(x, name) {
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
 .DollarNames.Engine <- function(x, pattern = "") {
-  if (.rdata_every_read_Engine && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))
   grep(pattern, .rdata_fields_Engine, value = TRUE)
 }
 

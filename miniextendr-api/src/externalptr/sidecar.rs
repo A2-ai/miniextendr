@@ -189,7 +189,11 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// A save from another version of the crate (the `version` in its
 /// `Cargo.toml`, which the stored type ID records) is refused with the classed
 /// `miniextendr_restored_other_version` error (#1872), unless the type
-/// rebuilds it (`rebuild = path, any_version`).
+/// rebuilds it (`rebuild = path, any_version`). A save made before slots
+/// were named is read by position, except by a type with `any_version`,
+/// which reads by name only and refuses such a save with the classed
+/// [`RESTORED_UNNAMED_SLOTS_CLASS`](super::RESTORED_UNNAMED_SLOTS_CLASS)
+/// error (#2218).
 ///
 /// # Methods that need sidecar values take a view
 ///
@@ -542,7 +546,7 @@ where
         // nothing is pending.
         super::SidecarRead::Saved(sexp) => {
             let prot = unsafe { R_ExternalPtrProtected(sexp) };
-            match saved_slot(prot, index, name) {
+            match saved_slot::<O>(prot, index, name) {
                 Some(at) => convert_slot::<T>(prot, at, name, O::TYPE_NAME),
                 None => missing_slot::<O>(name),
             }
@@ -575,7 +579,7 @@ where
     assert_main_thread(name, O::TYPE_NAME);
     // SAFETY: on R's main thread; `saved` holds a live EXTPTRSXP.
     let prot = unsafe { R_ExternalPtrProtected(saved.as_sexp()) };
-    saved_slot(prot, index, name).map(|at| convert_slot::<T>(prot, at, name, O::TYPE_NAME))
+    saved_slot::<O>(prot, index, name).map(|at| convert_slot::<T>(prot, at, name, O::TYPE_NAME))
 }
 
 /// Stores `value` in `T`'s `Sidecar` field `index` of the object `ptr` holds,
@@ -644,14 +648,23 @@ pub(crate) unsafe fn name_slots<T: TypedExternal>(prot: SEXP) {
     prot.set_names(names);
 }
 
-/// The position in the saved protection list `prot` of `Sidecar` field
+/// The position in the saved protection list `prot` of `T`'s `Sidecar` field
 /// `index`, named `name`: found by name when the save carries slot names,
 /// else by position (a save by this version made before slots were named).
-/// `None` when the save has no slot for the field.
-pub(crate) fn saved_slot(prot: SEXP, index: usize, name: &str) -> Option<R_xlen_t> {
+/// A type that rebuilds saves by any version (`any_version`) reads by name
+/// only (#2218), so a save without names has no slot for any field; its
+/// readers refuse such a save first ([`refuses_unnamed`]). `None` when the
+/// save has no slot for the field.
+pub(crate) fn saved_slot<T: TypedExternal + ?Sized>(
+    prot: SEXP,
+    index: usize,
+    name: &str,
+) -> Option<R_xlen_t> {
     let names = prot.get_attr(SEXP::names_symbol());
     if names.type_of() == SEXPTYPE::STRSXP && names.xlength() == prot.xlength() {
         (PROT_VEC_LEN..names.xlength()).find(|&at| names.string_elt_str(at) == Some(name))
+    } else if T::REBUILDS_ANY_VERSION {
+        None
     } else {
         Some(prot_index(index)).filter(|&at| at < prot.xlength())
     }
@@ -661,6 +674,15 @@ pub(crate) fn saved_slot(prot: SEXP, index: usize, name: &str) -> Option<R_xlen_
 pub(crate) fn has_slot_names(prot: SEXP) -> bool {
     let names = prot.get_attr(SEXP::names_symbol());
     names.type_of() == SEXPTYPE::STRSXP && names.xlength() == prot.xlength()
+}
+
+/// Whether `T` refuses the save `prot` for carrying no slot names (#2218):
+/// a type that rebuilds saves by any version (`any_version`, #2187) reads a
+/// save by slot name only, and a save made before slots were named would
+/// otherwise be read by position, a shifted slot as the wrong field. A type
+/// without `Sidecar` fields reads no slot, and names none.
+pub(crate) fn refuses_unnamed<T: TypedExternal + ?Sized>(prot: SEXP) -> bool {
+    T::REBUILDS_ANY_VERSION && T::R_SLOT_COUNT > 0 && !has_slot_names(prot)
 }
 
 /// Raises the classed error for a read of `Sidecar` field `name` that a save
@@ -780,8 +802,9 @@ fn refusal_message<T: TypedExternal>(receiver: SEXP, refused: Refused) -> String
 /// an environment, the shape an earlier release of a package may have
 /// written to disk, its restored classes
 /// ([`TypedExternal::RESTORED_ERROR_CLASS`]) in front of those: a package
-/// refuses such a save as it refuses a restored pointer, with its restored
-/// message ([`TypedExternal::RESTORED_ERROR_MESSAGE`]) when it sets one.
+/// refuses such a save as it refuses a restored pointer, with its no-handle
+/// message ([`TypedExternal::NO_HANDLE_MESSAGE`], #2218), else its restored
+/// message ([`TypedExternal::RESTORED_ERROR_MESSAGE`]), when it sets one.
 /// Another receiver (an atomic vector given the class) was never saved, so
 /// it gets neither (#1919).
 #[cold]
@@ -792,16 +815,30 @@ fn refuse_no_handle<T: TypedExternal>(receiver: SEXP) -> ! {
     } else {
         &[]
     };
-    let message = match T::RESTORED_ERROR_MESSAGE {
-        Some(message) if saved_shape => message.to_owned(),
-        _ => refusal_message::<T>(receiver, Refused::NoPointer),
-    };
+    let message =
+        match saved_no_handle_message(saved_shape, T::NO_HANDLE_MESSAGE, T::RESTORED_ERROR_MESSAGE)
+        {
+            Some(message) => message.to_owned(),
+            None => refusal_message::<T>(receiver, Refused::NoPointer),
+        };
     std::panic::panic_any(RCondition::Error {
         message,
         class: no_handle_classes(restored, T::FIELD_ERROR_CLASS),
         data: None,
         call: ConditionCall::Inherit,
     })
+}
+
+/// The package's message for a receiver that carries no pointer, when it is
+/// a list or an environment (`saved_shape`), the shape an earlier release
+/// may have saved: the no-handle message, else the restored message. `None`
+/// leaves the receiver refusal's own wording ([`refusal_message`]).
+fn saved_no_handle_message(
+    saved_shape: bool,
+    no_handle: Option<&'static str>,
+    restored: Option<&'static str>,
+) -> Option<&'static str> {
+    saved_shape.then(|| no_handle.or(restored)).flatten()
 }
 
 /// The classes of [`refuse_no_handle`]: `restored`, then `field_error`, then
@@ -869,6 +906,10 @@ pub fn sidecar_require_live(flag: SEXP) -> bool {
 /// error. With `require_live` (the field methods of `r_data_accessors`)
 /// every restored pointer is refused through [`refuse_restored`], so a save
 /// by this version gets [`RESTORED_NO_VALUE_CLASS`](super::RESTORED_NO_VALUE_CLASS).
+/// A type with `any_version` refuses a save without slot names
+/// ([`refuses_unnamed`]) with
+/// [`RESTORED_UNNAMED_SLOTS_CLASS`](super::RESTORED_UNNAMED_SLOTS_CLASS)
+/// rather than read it by position (#2218).
 ///
 /// # Panics
 ///
@@ -909,6 +950,11 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
             // raises its own error here.
             unsafe { refuse_restored::<T>(x, receiver) };
             refuse_other_type::<T>(receiver, Refused::NullPointer);
+        }
+        // A save this version made before slots were named (a rebuild
+        // refuses one with `require_live`).
+        if refuses_unnamed::<T>(prot) {
+            super::refuse_unnamed_slots::<T>(receiver);
         }
         None
     } else {
@@ -1027,7 +1073,9 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
 /// type is refused too, so the result is always `true`. Without it
 /// (`.DollarNames()`, which serves completion and never raises) the answer
 /// is whether `x` carries a pointer with an address: a list or an
-/// environment without one, or an atomic vector, has none.
+/// environment without one, or an atomic vector, has none. It never
+/// rebuilds a restored pointer: completion then lists the type's field
+/// names, which need no value (#2218).
 ///
 /// # Safety
 ///
@@ -1069,7 +1117,7 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize, require_liv
     let Some(cell) = live else {
         // A restored pointer: the slot of the field's name (#2187).
         let name = T::SIDECAR_NAMES[index];
-        return match saved_slot(prot, index, name) {
+        return match saved_slot::<T>(prot, index, name) {
             Some(at) => prot.vector_elt(at),
             None => missing_slot::<T>(name),
         };
@@ -1112,7 +1160,7 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
     let Some(cell) = live else {
         // A restored pointer: the slot of the field's name (#2187).
         let name = T::SIDECAR_NAMES[index];
-        match saved_slot(prot, index, name) {
+        match saved_slot::<T>(prot, index, name) {
             Some(at) => prot.set_vector_elt(at, value),
             None => missing_slot::<T>(name),
         }
@@ -1130,7 +1178,27 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
 
 #[cfg(test)]
 mod tests {
-    use super::no_handle_classes;
+    use super::{no_handle_classes, saved_no_handle_message};
+
+    /// A list or environment without a pointer gets the type's no-handle
+    /// message, else its restored message (#2218); another receiver keeps
+    /// the receiver refusal's wording.
+    #[test]
+    fn saved_no_handle_message_prefers_the_no_handle_reason() {
+        assert_eq!(
+            saved_no_handle_message(true, Some("no engine"), Some("saved")),
+            Some("no engine")
+        );
+        assert_eq!(
+            saved_no_handle_message(true, None, Some("saved")),
+            Some("saved")
+        );
+        assert_eq!(saved_no_handle_message(true, None, None), None);
+        assert_eq!(
+            saved_no_handle_message(false, Some("no engine"), Some("saved")),
+            None
+        );
+    }
 
     /// A parent class both lists share follows both specific classes.
     #[test]

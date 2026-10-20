@@ -8854,7 +8854,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") {{\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n}}\n"
+            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") {{\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(grep(pattern, .rdata_fields_Engine, value = TRUE))\n  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n}}\n"
         )),
         "{wrapper}"
     );
@@ -9119,7 +9119,7 @@ fn s4_field_methods() {
     assert!(wrapper.contains("#' @exportMethod $<-"), "{wrapper}");
     // `.DollarNames` is an S3 method on the S4 class, registered with the
     // qualified generic; it lists the fields only (an S4 object is no list).
-    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))\n  grep(pattern, .rdata_fields_Engine, value = TRUE)\n}\n";
+    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  grep(pattern, .rdata_fields_Engine, value = TRUE)\n}\n";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
     insta::assert_snapshot!(wrapper);
@@ -9173,7 +9173,7 @@ fn env_field_methods() {
     // `.DollarNames` lists the fields, then the class's methods, since `$`
     // reaches both; it follows `[[` (and ends the wrapper in the
     // getters-only form, so no trailing newline is expected).
-    let dollar_names = "  obj\n}\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
+    let dollar_names = "  obj\n}\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 
@@ -9342,7 +9342,7 @@ fn s3_field_methods_with_a_fallback() {
     let names_entry = crate::naming::sidecar_fallback_names_c_name("Engine");
     assert!(
         wrapper.contains(&format!(
-            ".DollarNames.Engine <- function(x, pattern = \"\") {{\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  .val <- if (typeof(x) == \"externalptr\") .Call({names_entry}, x) else names(x)\n  if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n  grep(pattern, unique(c(.rdata_fields_Engine, .val)), value = TRUE)\n}}\n"
+            ".DollarNames.Engine <- function(x, pattern = \"\") {{\n  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(grep(pattern, .rdata_fields_Engine, value = TRUE))\n  .val <- if (typeof(x) == \"externalptr\") .Call({names_entry}, x) else names(x)\n  if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, environment()))\n  grep(pattern, unique(c(.rdata_fields_Engine, .val)), value = TRUE)\n}}\n"
         )),
         "{wrapper}"
     );
