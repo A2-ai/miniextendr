@@ -603,6 +603,25 @@ The `.without_call()` builder raises the error with no call
 `Display` (the message) but not `std::error::Error`, which keeps the blanket
 `From<E: Error>` coherent; it works with `#[miniextendr(unwrap_in_r)]` too.
 
+An `RCondition` is a classed error too (#2217). Returned as `Err`, it raises
+its message, classes, fields and call choice as given, as an R error whatever
+variant it is (`kind` is `"result_err"`). That is how a body hands on a
+condition [`catch_condition`](#catching-a-condition-in-rust-catch-condition)
+caught, with `?`, or one [`serde_condition!`](#a-serde-error-as-an-rcondition)
+built; a rebuild hook's `Err(RCondition)` becomes the refusal's `e$parent` the
+same way ([EXTERNALPTR.md](EXTERNALPTR.md)). A condition with a cause, such
+as a caught refusal of a restored object, keeps it as `e$parent`:
+
+```rust
+use miniextendr_api::condition::{RCondition, catch_condition};
+
+#[miniextendr]
+pub fn load(path: &str) -> Result<f64, RCondition> {
+    let config = catch_condition(|| read_config(path))?; // raises error!(class = .., data = ..)
+    Ok(config.scale)
+}
+```
+
 ### Deriving `RCondition`
 
 `#[derive(RCondition)]` writes the impl above from the type's shape, and a
@@ -937,6 +956,46 @@ pub fn strict_rate(x: f64) -> Result<f64, engine::Error> { /* ... */ }
   takes one `as_*` option and can't be both skipped and typed; both are
   compile errors, every conflict reported at once.
 
+#### A serde error as an `RCondition`
+
+Code that is not an entry point gets the same condition with
+`serde_condition!(&err)`: the `RCondition` a `#[miniextendr]` function of
+the crate raises for `Err(err)`, as a value (#2217). A rebuild hook whose
+failures come from more than one place returns `Result<Self, RCondition>`
+and uses it for its serde errors:
+
+```rust
+use miniextendr_api::condition::RCondition;
+use miniextendr_api::externalptr::Saved;
+
+miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
+
+impl Model {
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
+        let engine = engine::Engine::fit(&Self::values(saved))
+            .map_err(|e| miniextendr_api::serde_condition!(&e))?;
+        Ok(Model { engine, values: Sidecar::default() })
+    }
+}
+```
+
+- It runs the `Err` arm's own steps on the error, in order: the shape
+  `serde_error_shape!` declared for the type in this crate, else the type's
+  `RConditionData` impl, else its serde shape with the `<crate>_error`
+  family class (`CARGO_CRATE_NAME` of the crate that invokes it). The result
+  is an `RCondition::Error` with that message, classes, fields and call
+  choice.
+- It takes a reference to the error, of a type that is `Serialize +
+  Display`; both are checked. Pass one reference: an error you hold as
+  `&E` goes in as it is, `serde_condition!(e)`. `&e` would be a `&&E`,
+  which compiles (`&E` is `Serialize + Display` too) but skips the
+  declared shape and the `RConditionData` impl. A function's own `serde_error(..)` options do
+  not apply, since there is no function: declare the shape for the type.
+- The declared shape is looked up under the marker type `miniextendr_init!`
+  defines at the crate root, as for an `Err` arm, so the crate must call it.
+- It needs the API crate's `serde` feature; without it the macro is a compile
+  error saying so. It is re-exported from the prelude.
+
 ## Catching a condition in Rust: `catch_condition`
 
 `condition::catch_condition(f)` runs `f` and returns a condition raised inside
@@ -969,7 +1028,10 @@ pub fn restore(path: &str) -> Restored {
 | an R error, interrupt or other R exit crossing the Rust frames (R code run through `eval_with_handlers`, `with_r_unwind_protect`, ...) | resumed: R carries on to where it was jumping |
 | a plain `panic!()` or any other payload | resumed: it becomes an R error at the boundary, with its source location |
 
-- An `Err` can be raised again with `.raise()` or queued with `.defer()`.
+- An `Err` can be raised again with `.raise()` or queued with `.defer()`, or
+  passed on with `?` from a function or rebuild hook returning
+  `Result<_, RCondition>`, which raises it as an error with its classes and
+  fields ([above](#classed-result-errors-with-rconditiondata-and-rerror)).
 - To get an R error back as a value, evaluate the R code with `try_eval_with_handlers` (or `RCall::try_eval_with_handlers`), which returns `Err(REvalError)`; `REvalError::reraise_class` gives the classes to raise it again as your own (next section).
 - Deferred conditions queued inside `f` stay queued; [`capture`](#deferred-conditions-a-warning-and-a-value) takes them.
 - A caught raise still runs the panic hook: with `MINIEXTENDR_BACKTRACE=true` it prints the panic to stderr.

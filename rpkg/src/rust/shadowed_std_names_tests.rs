@@ -4,8 +4,8 @@
 //! every macro the UI tests' crate can compile; this module covers the paths
 //! that need features that crate lacks: a worker wrapper (`worker-thread`),
 //! the Vctrs derive (`vctrs`), the parallel `DataFrameRow` methods (`rayon`)
-//! and the serde-classed `Result` error (`serde`). Keep the shadow list in
-//! step with the UI fixture's.
+//! and the serde-classed `Result` error and `serde_condition!` (`serde`).
+//! Keep the shadow list in step with the UI fixture's.
 #![allow(dead_code, unused_macros, non_camel_case_types)]
 // Exercises the deprecated `worker` option (#2117).
 #![allow(deprecated)]
@@ -370,4 +370,17 @@ const SHADOWED_SHAPE: miniextendr_api::condition::SerdeErrorShape =
 #[miniextendr(noexport, serde_error(shape = SHADOWED_SHAPE, as_integer("code")))]
 pub fn shadowed_std_names_serde(code: i32) -> ::core::result::Result<i32, ShadowedSerdeError> {
     ::core::result::Result::Err(ShadowedSerdeError::Refused { code })
+}
+
+/// Refuse `code` with the condition `serde_condition!` builds from the same
+/// error (#2217), returned as `Err(RCondition)`.
+/// @param code An integer.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport)]
+pub fn shadowed_std_names_serde_condition(
+    code: i32,
+) -> ::core::result::Result<i32, miniextendr_api::condition::RCondition> {
+    ::core::result::Result::Err(miniextendr_api::serde_condition!(
+        &ShadowedSerdeError::Refused { code }
+    ))
 }
