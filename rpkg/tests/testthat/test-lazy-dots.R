@@ -240,6 +240,91 @@ test_that("try_force() returns an R error as a value and keeps the caller's hand
 
 # endregion
 
+# region: passing the dots on
+
+test_that("forward() passes the dots on unevaluated, in their own environment", {
+  before <- drops()
+  # The callee sees the expressions as written, and nothing was forced.
+  expect_identical(
+    miniextendr:::lazy_dots_forward(function(x, ...) substitute(list(...)), 1, a = foo + 1, stop("no")),
+    quote(list(a = foo + 1, stop("no")))
+  )
+  expect_identical(
+    miniextendr:::lazy_dots_forward(function(x, ...) ...length(), 1, stop("not forced"), )
+    , 2L
+  )
+  expect_identical(drops() - before, 2L)
+  # A data-masking callee evaluates them against its own data ...
+  expect_identical(
+    miniextendr:::lazy_dots_forward(
+      function(df, ...) eval(substitute(list(...)), df),
+      data.frame(ID = 1:2),
+      id = ID * 10L
+    ),
+    list(id = c(10L, 20L))
+  )
+  # ... and a forced element in the environment it was written in.
+  y <- 5
+  g <- function(...) miniextendr:::lazy_dots_forward(function(x, ...) list(...), 0, ...)
+  expect_identical(g(a = y + 1), list(a = 6))
+})
+
+test_that("RCall::dots() puts the dots where the call says", {
+  expect_identical(
+    miniextendr:::lazy_dots_forward_first(function(..., last) c(names(list(...)), last), "L", a = 1, b = 2),
+    c("a", "b", "L")
+  )
+})
+
+test_that("forward() keeps the caller's handlers; try_forward() returns the error", {
+  seen <- NULL
+  out <- withCallingHandlers(
+    miniextendr:::lazy_dots_forward(function(x, ...) {
+      warning("careful")
+      x
+    }, 7),
+    warning = function(w) {
+      seen <<- conditionMessage(w)
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(out, 7)
+  expect_identical(seen, "careful")
+
+  # forward(): the callee's error unwinds as it was raised, through the Rust
+  # frames.
+  before <- drops()
+  e <- tryCatch(
+    miniextendr:::lazy_dots_forward(function(x, ...) stop(errorCondition("boom", class = "mx_fwd_boom")), 1),
+    error = identity
+  )
+  expect_s3_class(e, "mx_fwd_boom")
+  expect_identical(drops() - before, 1L)
+
+  # try_forward(): the error comes back as a value.
+  expect_identical(
+    miniextendr:::lazy_dots_try_forward(function(...) stop(errorCondition("boom", class = "mx_fwd_boom")), 1),
+    c("mx_fwd_boom", "error", "condition", "boom")
+  )
+  expect_identical(miniextendr:::lazy_dots_try_forward(function(...) ..1, 5), "ok")
+})
+
+test_that("forward() reaches a suggested package's data-masking function", {
+  skip_if_not_installed("dplyr")
+  out <- miniextendr:::lazy_dots_group_by(data.frame(ID = c(1, 1, 2), v = 1:3), ID, big = v > 1)
+  expect_identical(dplyr::group_vars(out), c("ID", "big"))
+})
+
+test_that("next_method() continues the S3 dispatch with the dots", {
+  x <- structure(pi, class = "mx_lazy_next")
+  expect_identical(format(x, digits = 3), "<3.14>")
+  expect_identical(format(x, nsmall = 2), paste0("<", format(pi, nsmall = 2), ">"))
+  # An impl-block S3 method: the default method formats the pointer.
+  expect_match(format(new_lazydotss3(1)), "^<pointer: ")
+})
+
+# endregion
+
 # region: S3 methods
 
 lazy_tbl <- structure(
@@ -388,7 +473,12 @@ test_that("the LazyDots fixtures hold their values under gctorture", {
       identical(
         update(lazy_tbl, select = , filter = y),
         list(steps = c("select", "filter"), empty = c(TRUE, FALSE), values = list(NULL, 2))
-      )
+      ),
+      identical(
+        miniextendr:::lazy_dots_forward(function(x, ...) list(x, ...), paste0("a", y), b = y),
+        list("a2", b = 2)
+      ),
+      identical(format(structure(pi, class = "mx_lazy_next"), digits = 3), "<3.14>")
     )
   }
   gctorture(TRUE)
