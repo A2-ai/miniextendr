@@ -34,15 +34,15 @@ pub struct MxDotsRow {
 }
 
 /// A fit as a one-row data frame. `data.frame()` calls this with
-/// `optional = TRUE, stringsAsFactors = FALSE`, so `...` takes those and
-/// `row.names`, and ignores them.
+/// `optional = TRUE, stringsAsFactors = FALSE` (and, from R 4.7,
+/// `validRN = FALSE`), so `...` takes those and `row.names`, and ignores them.
 ///
 /// @param x A `mx_dots_fit`.
-/// @param ... `row.names`, `optional` and `stringsAsFactors`, ignored.
+/// @param ... `row.names`, `optional`, `stringsAsFactors` and `validRN`, ignored.
 /// @export
 #[miniextendr(
     s3(generic = "as.data.frame", class = "mx_dots_fit"),
-    dots = empty(allow = ["row.names", "optional", "stringsAsFactors"])
+    dots = empty(allow = ["row.names", "optional", "stringsAsFactors", "validRN"])
 )]
 pub fn as_data_frame_mx_dots_fit(x: List, _dots: ...) -> BuiltDataFrame {
     let estimate: f64 = x.get_named("estimate").unwrap_or(f64::NAN);
