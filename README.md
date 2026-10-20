@@ -122,6 +122,21 @@ just devtools-test
 just cross-test
 ```
 
+## CI and release gates
+
+`CI Success`, the aggregate job of [`ci.yml`](.github/workflows/ci.yml), is the
+merge gate. That is maintainer policy: GitHub does not require the check on
+`main` yet ([#1391](https://github.com/A2-ai/miniextendr/issues/1391)), so an
+enabled merge button proves nothing. A green `CI Success` also does not mean
+every check ran: on pull requests, webR, heap checking and the extra R
+versions run only under a label. The GC-stress shards additionally require
+`MX_GC_STRESS_CI=true` and are currently disabled pending #2070. The macOS
+check, feature-runtime legs and full gctorture sweep do not run on PRs.
+Windows has no gate ([#1654](https://github.com/A2-ai/miniextendr/issues/1654)).
+The [Maintainer Guide](docs/MAINTAINER.md#ci-and-release-gates) classifies
+every workflow as merge-blocking, release-blocking or informational and lists
+the pre-tag checklist.
+
 ## Documentation
 
 - `docs/README.md` - docs index for architecture, build system, features, and
