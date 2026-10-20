@@ -29,7 +29,7 @@ with Rust backends powered by the miniextendr framework. It provides:
 
 Before you begin, ensure you have:
 
-- **Rust** (1.85+): Install from [rustup.rs](https://rustup.rs)
+- **Rust** (1.88+): Install from [rustup.rs](https://rustup.rs)
 - **R** (4.0+): Install from [CRAN](https://cran.r-project.org)
 - **autoconf**: Required for generating `configure` scripts
 - **R development tools**: `install.packages("devtools")`
@@ -37,7 +37,7 @@ Before you begin, ensure you have:
 Verify your setup:
 
 ```{bash}
-rustc --version   # Should be 1.85+
+rustc --version   # Should be 1.88+
 R --version       # Should be 4.0+
 autoconf --version
 ```
@@ -315,8 +315,8 @@ miniextendr_status()
 miniextendr_doctor()
 #> ── miniextendr doctor ────────────────────────────────
 #> ── Toolchain ──
-#> ✔ Rust compiler: rustc 1.85.0
-#> ✔ Cargo: cargo 1.85.0
+#> ✔ Rust compiler: rustc 1.88.0
+#> ✔ Cargo: cargo 1.88.0
 #> ✔ autoconf: autoconf 2.72
 #> ...
 ```

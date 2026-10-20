@@ -351,10 +351,10 @@ impl TypedList {
                 }
                 let name_ptr = name_sexp.r_char();
                 let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
-                if let Ok(s) = name_cstr.to_str() {
-                    if s == name {
-                        return Ok(self.inner.as_sexp().vector_elt(i));
-                    }
+                if let Ok(s) = name_cstr.to_str()
+                    && s == name
+                {
+                    return Ok(self.inner.as_sexp().vector_elt(i));
                 }
             }
         }
@@ -643,14 +643,14 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
 
 /// Check length constraint.
 fn check_length(name: &str, expected: Option<usize>, actual: isize) -> Result<(), TypedListError> {
-    if let Some(exp) = expected {
-        if actual != exp as isize {
-            return Err(TypedListError::WrongLen {
-                name: name.to_string(),
-                expected: exp,
-                actual,
-            });
-        }
+    if let Some(exp) = expected
+        && actual != exp as isize
+    {
+        return Err(TypedListError::WrongLen {
+            name: name.to_string(),
+            expected: exp,
+            actual,
+        });
     }
     Ok(())
 }

@@ -678,6 +678,55 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
+  # MSRV: the workspace still builds on its declared rust-version
+  # ===========================================================================
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same trick as rust-lint: cargo check never links libR, so a dummy
+      # R_HOME satisfies build.rs without installing R.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      # [workspace.package] rust-version is the single source of the floor.
+      - name: Read rust-version
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv
+          cache-on-failure: true
+
+      # rust-toolchain.toml floats on stable; RUSTUP_TOOLCHAIN overrides it.
+      - name: Check on the declared rust-version
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Print the sccache server log
+        if: always()
+        uses: ./.github/actions/sccache-log
+
+  # ===========================================================================
   # Rust tests (cargo test) — runs independently of R CMD check
   # ===========================================================================
   rust-tests:
@@ -2207,6 +2256,7 @@ jobs:
       - docs-link-check
       - docs-examples-check
       - rust-lint
+      - msrv
       - rust-tests
       - changes
       - r-check-linux

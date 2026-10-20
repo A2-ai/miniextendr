@@ -91,7 +91,7 @@ How the framework crates resolve (read from `configure.ac`):
   The unpinned `git = …` in `Cargo.toml` only decides resolution when the lock
   is regenerated — see "Known gap".
 
-**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`)
+**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.88`)
 and network access. `cargo-revendor` is not needed.
 `autoconf` is **not** needed — `configure` is committed.
 

@@ -168,10 +168,10 @@ impl TryCoerce<f64> for BigInt {
         const MIN_SAFE: i64 = -(1 << 53);
 
         // Try to fit in i64 first for the range check
-        if let Ok(i) = i64::try_from(self.clone()) {
-            if (MIN_SAFE..=MAX_SAFE).contains(&i) {
-                return Ok(i as f64);
-            }
+        if let Ok(i) = i64::try_from(self.clone())
+            && (MIN_SAFE..=MAX_SAFE).contains(&i)
+        {
+            return Ok(i as f64);
         }
 
         // For larger values, convert and check round-trip
@@ -180,10 +180,10 @@ impl TryCoerce<f64> for BigInt {
             .parse::<f64>()
             .map_err(|_| CoerceError::Overflow)?;
         let roundtrip = BigInt::from_str(&format!("{:.0}", f));
-        if let Ok(rt) = roundtrip {
-            if rt == self {
-                return Ok(f);
-            }
+        if let Ok(rt) = roundtrip
+            && rt == self
+        {
+            return Ok(f);
         }
         Err(CoerceError::PrecisionLoss)
     }

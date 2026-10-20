@@ -4,13 +4,13 @@ This guide walks you through creating your first R package with a Rust backend u
 
 ## Prerequisites
 
-- **Rust** (1.85+): Install from [rustup.rs](https://rustup.rs)
+- **Rust** (1.88+): Install from [rustup.rs](https://rustup.rs)
 - **R** (4.0+): Install from [CRAN](https://cran.r-project.org)
 - **R development tools**: `install.packages("devtools")`
 
 Verify your setup:
 ```bash
-rustc --version   # Should be 1.85+
+rustc --version   # Should be 1.88+
 R --version       # Should be 4.0+
 ```
 
