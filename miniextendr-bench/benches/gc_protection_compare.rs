@@ -987,9 +987,9 @@ mod real_pool {
     fn real_protect_pool(bencher: Bencher) {
         let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
-        let mut pool = unsafe { ProtectPool::new(16) };
+        let mut pool = ProtectPool::new(16);
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             let key = pool.insert(sexp);
             pool.release(key);
         });
@@ -1028,9 +1028,9 @@ mod real_pool {
     #[divan::bench(args = [100, 1_000, 10_000])]
     fn real_pool_batch(bencher: Bencher, n: usize) {
         let sexps = unsafe { prealloc_sexps(n) };
-        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
+        let mut pool = ProtectPool::new(n.max(16));
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             let mut keys = Vec::with_capacity(n);
             for &s in &sexps {
                 keys.push(pool.insert(s));
@@ -1074,8 +1074,8 @@ mod generation_check {
     fn get_valid_keys(bencher: Bencher, n: usize) {
         let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
-        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
-        let keys: Vec<_> = (0..n).map(|_| unsafe { pool.insert(sexp) }).collect();
+        let mut pool = ProtectPool::new(n.max(16));
+        let keys: Vec<_> = (0..n).map(|_| pool.insert(sexp)).collect();
 
         bencher.bench_local(|| {
             for &key in &keys {
@@ -1084,7 +1084,7 @@ mod generation_check {
         });
 
         for key in keys {
-            unsafe { pool.release(key) };
+            pool.release(key);
         }
         unsafe { R_ReleaseObject(sexp) };
     }
@@ -1093,11 +1093,11 @@ mod generation_check {
     fn get_stale_keys(bencher: Bencher, n: usize) {
         let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
-        let mut pool = unsafe { ProtectPool::new(n.max(16)) };
+        let mut pool = ProtectPool::new(n.max(16));
         let stale_keys: Vec<_> = (0..n)
             .map(|_| {
-                let key = unsafe { pool.insert(sexp) };
-                unsafe { pool.release(key) };
+                let key = pool.insert(sexp);
+                pool.release(key);
                 key
             })
             .collect();
@@ -1123,25 +1123,25 @@ mod replace_vs_reinsert {
     #[divan::bench(args = [1_000, 10_000])]
     fn pool_replace(bencher: Bencher, n: usize) {
         let sexps = unsafe { prealloc_sexps(n) };
-        let mut pool = unsafe { ProtectPool::new(16) };
-        let key = unsafe { pool.insert(sexps[0]) };
+        let mut pool = ProtectPool::new(16);
+        let key = pool.insert(sexps[0]);
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             for &s in &sexps[1..] {
                 pool.replace(key, s);
             }
         });
 
-        unsafe { pool.release(key) };
+        pool.release(key);
         unsafe { release_prealloc(&sexps) };
     }
 
     #[divan::bench(args = [1_000, 10_000])]
     fn pool_release_insert(bencher: Bencher, n: usize) {
         let sexps = unsafe { prealloc_sexps(n) };
-        let mut pool = unsafe { ProtectPool::new(16) };
+        let mut pool = ProtectPool::new(16);
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             let mut key = pool.insert(sexps[0]);
             for &s in &sexps[1..] {
                 pool.release(key);
@@ -1166,9 +1166,9 @@ mod real_pool_growth {
     fn presized(bencher: Bencher, n: usize) {
         let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
-        let mut pool = unsafe { ProtectPool::new(n) };
+        let mut pool = ProtectPool::new(n);
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             let mut keys = Vec::with_capacity(n);
             for _ in 0..n {
                 keys.push(pool.insert(sexp));
@@ -1187,7 +1187,7 @@ mod real_pool_growth {
         let sexp = unsafe { raw_ffi::Rf_ScalarInteger(42) };
         unsafe { R_PreserveObject(sexp) };
 
-        bencher.bench_local(|| unsafe {
+        bencher.bench_local(|| {
             let mut pool = ProtectPool::new(16);
             let mut keys = Vec::with_capacity(n);
             for _ in 0..n {

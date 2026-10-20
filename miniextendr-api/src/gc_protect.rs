@@ -14,6 +14,8 @@
 //! - [`OwnedProtect`] — single-value RAII protect/unprotect
 //! - [`Root`] — lifetime-tied handle to a protected SEXP
 //! - [`ReprotectSlot`] — `PROTECT_WITH_INDEX` + `REPROTECT` for mutable slots
+//! - [`Protector`] — the trait over `ProtectScope` and
+//!   [`ProtectPool`](crate::protect_pool::ProtectPool)
 //!
 //! # Protection Strategies in miniextendr
 //!
@@ -22,7 +24,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Until released or the pool drops | Any order | Values a struct owns; many values; cross-call roots |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use Each
@@ -33,9 +35,11 @@
 //! - Protection is short-lived (within a single function)
 //!
 //! **Use [`ProtectPool`](crate::protect_pool::ProtectPool) when:**
-//! - Objects must survive across multiple `.Call` invocations
-//! - You need to release protections in arbitrary order
-//! - O(1) insert/release with generational keys
+//! - A struct owns the values, or they may be dropped in any order relative to
+//!   other roots: the per-call root set, `pool.root(value)`
+//! - There are many values: no protect-stack entry per value
+//! - Objects must survive across multiple `.Call` invocations, released one at
+//!   a time in any order (O(1) insert/release with generational keys)
 //!
 //! **Use [`ExternalPtr`](struct@crate::ExternalPtr) when:**
 //! - You want R to own a Rust value
@@ -57,10 +61,12 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │  ProtectPool (objects surviving across .Calls)                  │
+//! │  ProtectPool (a root set; any drop order)                       │
+//! │  ├── pool.root(value)         // keep until the pool drops      │
 //! │  ├── pool.insert(sexp)        // O(1), generational key         │
-//! │  ├── ... multiple .Calls ...  // object stays protected         │
-//! │  └── pool.release(key)        // O(1) remove                    │
+//! │  ├── ... allocations, .Calls ... // objects stay rooted         │
+//! │  ├── pool.release(key)        // O(1) remove                    │
+//! │  └── drop(pool)               // releases everything left       │
 //! └─────────────────────────────────────────────────────────────────┘
 //!
 //! ┌─────────────────────────────────────────────────────────────────┐
@@ -183,52 +189,70 @@ type NoSendSync = PhantomData<Rc<()>>;
 
 // region: Protector trait
 
-/// A scope-like GC protection backend.
+/// A scope-like GC protection backend: everything it protects stays rooted
+/// until the protector drops.
 ///
-/// Functions that allocate multiple intermediate SEXPs can take `&mut impl Protector`
-/// to be generic over the protection mechanism. All protected SEXPs stay protected
-/// until the protector itself is dropped — there is no individual release via this
-/// trait.
+/// Code that allocates several intermediate SEXPs can take `&mut impl Protector`
+/// and leave the choice of backend to its caller. There is no individual
+/// release through this trait; for that, use
+/// [`ProtectPool::insert`](crate::protect_pool::ProtectPool::insert) and
+/// [`ProtectPool::release`](crate::protect_pool::ProtectPool::release).
 ///
-/// For individual release by key, use [`ProtectPool::insert`](crate::protect_pool::ProtectPool::insert)
-/// and [`ProtectPool::release`](crate::protect_pool::ProtectPool::release) directly.
+/// # Which backend
+///
+/// - A temporary within one call: [`ProtectScope`], R's protect stack. The
+///   cheapest; its values unprotect together, in LIFO order with the rest of
+///   the stack.
+/// - Many values, any drop order, or owned by a struct:
+///   [`ProtectPool`](crate::protect_pool::ProtectPool), one R list that the
+///   pool preserves. No protect-stack entry per value, and dropping it
+///   releases everything it holds whatever the order.
+/// - One long-lived object: [`Preserved`](crate::Preserved), a handle, not a
+///   `Protector`.
+///
+/// There is no precious-list `Protector`. `R_PreserveObject` per value allocates
+/// a cell each time, and `R_ReleaseObject` scans the precious list from its
+/// head, so releasing many values (above all in insertion order) is O(n²), the
+/// pattern the pool exists to avoid. [`OwnedProtect`] is a single
+/// protect-stack entry, not a precious-list root.
 ///
 /// # Safety
 ///
-/// Implementations must ensure that the returned SEXP remains protected from GC
-/// for at least as long as the protector is alive. Callers must not use the
-/// returned SEXP after the protector is dropped.
-///
-/// All methods must be called from the R main thread.
-pub trait Protector {
-    /// Protect a SEXP from garbage collection.
+/// Implementations must keep every SEXP passed to
+/// [`protect`](Self::protect) reachable by R's collector for as long as the
+/// protector lives: safe code relies on that to hold the returned SEXP across
+/// allocations.
+pub unsafe trait Protector {
+    /// Root `sexp` until the protector drops, and return it.
     ///
-    /// Returns the same SEXP (for convenience in chaining). The SEXP is now
-    /// protected and will remain so until the protector is dropped.
-    ///
-    /// The key (if any) is managed internally — use the pool's direct API
-    /// (`insert`/`release`) if you need individual release.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread. `sexp` must be a valid SEXP.
-    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP;
+    /// `sexp` may be a fresh, unprotected object. Call it on R's main thread,
+    /// where the protector was made (both implementations are `!Send`).
+    fn protect(&mut self, sexp: SEXP) -> SEXP;
 }
 
-impl Protector for ProtectScope {
+// SAFETY: `ProtectScope::new` is `unsafe`: its caller promised to use and drop
+// the scope on R's main thread and to keep R's protect stack LIFO around it (no
+// protection through the scope while a younger scope or guard is alive). Under
+// that promise, protecting through `&mut ProtectScope` pushes one entry that
+// the scope's `UNPROTECT(n)` pops at drop, so the value stays rooted for the
+// scope's whole life. `Rf_protect` keeps a fresh object reachable before
+// anything else allocates.
+unsafe impl Protector for ProtectScope {
     #[inline]
-    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
+    fn protect(&mut self, sexp: SEXP) -> SEXP {
+        // SAFETY: see the impl's SAFETY comment.
         unsafe { self.protect_raw(sexp) }
     }
 }
 
-impl Protector for crate::protect_pool::ProtectPool {
+// SAFETY: `ProtectPool::insert` stores `sexp` in the pool's preserved list,
+// which roots it until its slot is released or replaced, and this impl keeps
+// no key to do either: the value stays rooted until the pool drops. An insert
+// that grows the pool keeps `sexp` on the protect stack across the allocation.
+unsafe impl Protector for crate::protect_pool::ProtectPool {
     #[inline]
-    unsafe fn protect(&mut self, sexp: SEXP) -> SEXP {
-        // Key is intentionally discarded — Protector is scope-like (all released
-        // on drop). For individual release, use pool.insert()/pool.release() directly.
-        unsafe { self.insert(sexp) };
-        sexp
+    fn protect(&mut self, sexp: SEXP) -> SEXP {
+        self.root(sexp)
     }
 }
 
@@ -289,7 +313,17 @@ impl ProtectScope {
     ///
     /// # Safety
     ///
-    /// Must be called from the R main thread.
+    /// - Use and drop the scope on R's main thread.
+    /// - Keep R's protect stack LIFO around it. The scope unprotects with
+    ///   `UNPROTECT(n)`, which pops the top `n` entries of the stack whoever
+    ///   pushed them. So don't protect through this scope while a scope or
+    ///   guard made after it is alive, and drop it after every such scope or
+    ///   guard. A scope moved into a struct is easy to drop out of this order;
+    ///   a [`ProtectPool`](crate::ProtectPool) owned by a struct has no such
+    ///   rule.
+    ///
+    /// The [`Protector`] impl relies on this promise to make protecting
+    /// through a constructed scope safe.
     #[inline]
     pub unsafe fn new() -> Self {
         Self {
@@ -1053,18 +1087,16 @@ impl ChildRoots {
         if !parent.is_altrep() {
             return child;
         }
-        // A new pool or pool growth can allocate before retaining the child.
-        let child = unsafe { OwnedProtect::new(child) };
         let mut children = self.0.borrow_mut();
         let pool = children.get_or_insert_with(|| {
-            Box::new(unsafe {
-                crate::protect_pool::ProtectPool::new(
-                    crate::protect_pool::ProtectPool::DEFAULT_CAPACITY,
-                )
-            })
+            // Creating the pool allocates before it retains the child. Its
+            // inserts keep the child reachable while the pool grows.
+            let _child = unsafe { OwnedProtect::new(child) };
+            Box::new(crate::protect_pool::ProtectPool::new(
+                crate::protect_pool::ProtectPool::DEFAULT_CAPACITY,
+            ))
         });
-        unsafe { pool.insert(child.get()) };
-        child.get()
+        pool.root(child)
     }
 }
 

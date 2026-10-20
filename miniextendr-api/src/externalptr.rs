@@ -29,7 +29,7 @@
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
 //! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
-//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **VECSXP pool** | [`protect_pool`](crate::protect_pool) | Until released or the pool drops | Any order | Values a struct owns; many values; cross-call roots |
 //! | **R ownership** | [`ExternalPtr`](struct@crate::externalptr::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
 //! ## When to Use ExternalPtr
@@ -44,7 +44,7 @@
 //! - Protection is short-lived (within a single `.Call`)
 //!
 //! **Use [`ProtectPool`] instead when:**
-//! - You need R objects (not Rust values) to survive across `.Call`s
+//! - You need R objects (not Rust values) kept alive by a struct, or across `.Call`s
 //! - You need arbitrary-order release of protections
 //!
 //! ## How ExternalPtr Protection Works
@@ -1390,20 +1390,20 @@ thread_local! {
 
 /// Root an owning handle's `EXTPTRSXP` in the main-thread pool.
 ///
-/// Must run on R's main thread with `sexp` already protected by the caller (the
-/// pool may allocate while growing). Both hold inside
+/// Must run on R's main thread, which holds inside
 /// `create_extptr_sexp[_unchecked]` and `TraitViewData::new`, whose trait views
-/// root their receiver here too.
+/// root their receiver here too. `sexp` may be fresh: it stays reachable while
+/// the first call creates the pool and while the pool grows.
 #[inline]
 pub(crate) fn root_owned(sexp: SEXP) -> ProtectKey {
     EXTPTR_ROOTS.with_borrow_mut(|slot| {
         let pool = slot.get_or_insert_with(|| {
-            // SAFETY: on R's main thread (caller contract); R is initialized
-            // (we are mid-`create_extptr_sexp`, allocating R objects).
-            ManuallyDrop::new(unsafe { ProtectPool::new(ProtectPool::DEFAULT_CAPACITY) })
+            // SAFETY: on R's main thread (caller contract). Creating the pool
+            // allocates before it holds `sexp`.
+            let _sexp = unsafe { crate::OwnedProtect::new(sexp) };
+            ManuallyDrop::new(ProtectPool::new(ProtectPool::DEFAULT_CAPACITY))
         });
-        // SAFETY: on R's main thread; `sexp` is live (protected by the caller).
-        unsafe { pool.insert(sexp) }
+        pool.insert(sexp)
     })
 }
 
@@ -1415,8 +1415,7 @@ pub(crate) fn root_owned(sexp: SEXP) -> ProtectKey {
 pub(crate) fn unroot_owned(key: ProtectKey) {
     EXTPTR_ROOTS.with_borrow_mut(|slot| {
         if let Some(pool) = slot.as_mut() {
-            // SAFETY: on R's main thread.
-            unsafe { pool.release(key) };
+            pool.release(key);
         }
     });
 }
@@ -1444,11 +1443,9 @@ impl PoolRoot {
     ///
     /// Must run on R's main thread.
     pub(crate) unsafe fn new(sexp: SEXP) -> Self {
-        // The pool can allocate while it grows.
-        let guard = unsafe { crate::OwnedProtect::new(sexp) };
         Self {
             sexp,
-            key: root_owned(guard.get()),
+            key: root_owned(sexp),
             _not_send: PhantomData,
         }
     }
@@ -1515,9 +1512,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     #[inline]
     pub(crate) unsafe fn rooted(mut self) -> Self {
         debug_assert!(self.root.is_none());
-        // The pool can allocate while it grows.
-        let guard = unsafe { crate::OwnedProtect::new(self.sexp) };
-        self.root = Some(root_owned(guard.get()));
+        self.root = Some(root_owned(self.sexp));
         self
     }
 
@@ -1642,8 +1637,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Root the owning handle for its whole Rust lifetime so it survives R
         // allocations while held (e.g. element-by-element in a `Vec`) before
         // reaching R (#836). The pool gives O(1) any-order release — see the
-        // `EXTPTR_ROOTS` docs for why that beats `R_PreserveObject` here. `sexp`
-        // is still protected, so the pool may safely allocate while growing.
+        // `EXTPTR_ROOTS` docs for why that beats `R_PreserveObject` here.
         // Must happen here, on the main thread, because `new` returns the SEXP
         // to the *calling* thread (possibly the worker) where R API is gone.
         let root = root_owned(sexp);
@@ -1691,8 +1685,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Root the owning handle (see `create_extptr_sexp` for the rationale).
         // `root_owned` uses the pool's checked FFI, which runs inline here
-        // because the unchecked constructors are main-thread-by-contract; `sexp`
-        // is still protected, covering any allocation inside a pool grow.
+        // because the unchecked constructors are main-thread-by-contract.
         let root = root_owned(sexp);
 
         (sexp, root)

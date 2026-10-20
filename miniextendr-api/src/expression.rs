@@ -512,26 +512,18 @@ impl RCall {
 
     /// Root an argument for the builder's lifetime, unless it is a symbol.
     ///
-    /// The temporary stack root covers `ProtectPool::insert` if growing the
-    /// backing VECSXP allocates. The pool then owns the lasting root.
-    ///
-    /// # Safety
-    ///
-    /// R's main thread.
+    /// `value` may be fresh: the pool keeps it reachable while it grows.
     #[inline]
-    unsafe fn root(&mut self, value: SEXP) {
+    fn root(&mut self, value: SEXP) {
         if needs_root(value) {
-            unsafe {
-                let value_guard = OwnedProtect::new(value);
-                self.roots.insert(value_guard.get());
-            }
+            self.roots.root(value);
         }
     }
 
     /// Add a positional argument.
     #[inline]
     pub fn arg(mut self, value: SEXP) -> Self {
-        unsafe { self.root(value) };
+        self.root(value);
         self.args.push((None, value));
         self
     }
@@ -544,7 +536,7 @@ impl RCall {
     #[inline]
     pub fn named_arg(mut self, name: &str, value: SEXP) -> Self {
         let c_name = CString::new(name).expect("argument name must not contain null bytes");
-        unsafe { self.root(value) };
+        self.root(value);
         self.args.push((Some(c_name), value));
         self
     }
