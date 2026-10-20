@@ -7,7 +7,7 @@
 rarray_matrix_dims(x)
 }
 \arguments{
-\item{x}{(no documentation available)}
+\item{x}{An R vector or matrix accepted by the selected helper.}
 }
 \description{
 Get dimensions of a matrix as integer vector.
