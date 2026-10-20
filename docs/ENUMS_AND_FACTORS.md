@@ -362,10 +362,14 @@ as the first choice. Explicit `NULL` is `Present(None)`, exactly as for any
 when the difference does not matter. The auto-generated `@param` line ends in
 ", or NULL; omitting the argument or passing the whole list means no choice".
 
-The other forms follow the same rule, `Missing<X>` behaves like `X` for every
-supplied value and adds `Absent` for an omitted one, and for its formal passed
-whole when it takes a single choice. A `several_ok` list reads its whole
-vector as every choice, omittable or not:
+Every form follows one rule. Without `Missing`, the whole choice vector reads
+the way `match.arg()` reads it, as the first choice. `Missing<X>` behaves like
+`X` for every supplied value, and reports `Absent` for an omitted argument and
+for its formal passed whole, since passing the formal is the same call as
+leaving it out. So in one package, `c("Fast", "Safe", "Debug")` reaches a
+`Mode` parameter as `Fast` and a `Missing<Mode>` parameter as `Absent`: the
+parameter's type decides, not the call. A `several_ok` list is the
+exception: it reads its whole vector as every choice, omittable or not:
 
 | Parameter type | Formal | Omitted | Choice vector | `NULL` | `"Sa"` |
 |----------------|--------|---------|---------------|--------|--------|
