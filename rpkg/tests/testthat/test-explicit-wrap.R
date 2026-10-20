@@ -59,11 +59,18 @@ test_that("worker returns produce usable explicitly selected objects", {
 test_that("cross-class and trait factory wrapping survives GC stress", {
   skip_on_cran()
   factory <- WrapFactory$new()
+  # Torture only the code under test: the expectations run with gctorture off,
+  # because testthat under gctorture(TRUE) takes minutes on Windows (#1800).
   gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  board <- factory$build(3L, 4L)
-  expect_identical(board$dimensions(), c(3L, 4L))
-  expect_identical(WrapBoard$WrapBoardFactory$copy_board(board)$dimensions(), c(3L, 4L))
+  dims <- tryCatch(
+    {
+      board <- factory$build(3L, 4L)
+      list(board$dimensions(), WrapBoard$WrapBoardFactory$copy_board(board)$dimensions())
+    },
+    finally = gctorture(FALSE)
+  )
+  expect_identical(dims[[1]], c(3L, 4L))
+  expect_identical(dims[[2]], c(3L, 4L))
 })
 
 test_that("explicit free-function class containers unwrap before converting", {
