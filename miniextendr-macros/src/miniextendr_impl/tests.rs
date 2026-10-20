@@ -6577,7 +6577,12 @@ fn method_serde_error_selects_serde_err_parts() {
         tokens.contains("SerdeErrorShape::new().prefix(\"engine\");"),
         "{tokens}"
     );
-    assert!(tokens.contains("&[&__MX_SERDE_ERROR_SHAPE])"), "{tokens}");
+    assert!(
+        tokens.contains(
+            "__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker),&__MX_SERDE_ERROR_SHAPE])"
+        ),
+        "{tokens}"
+    );
 
     let tokens = flat("check_unit");
     assert!(
@@ -6594,7 +6599,10 @@ fn method_serde_error_selects_serde_err_parts() {
 
     // A named shape, alone and before the method's own options (#2207).
     let tokens = flat("shaped");
-    assert!(tokens.contains("&[&ENGINE])"), "{tokens}");
+    assert!(
+        tokens.contains("__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker),&ENGINE])"),
+        "{tokens}"
+    );
     assert!(!tokens.contains("__MX_SERDE_ERROR_SHAPE"), "{tokens}");
     let tokens = flat("shaped_own");
     assert!(
@@ -6602,17 +6610,27 @@ fn method_serde_error_selects_serde_err_parts() {
         "{tokens}"
     );
     assert!(
-        tokens.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+        tokens.contains("__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker),&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
         "{tokens}"
     );
     // `Self::` names the impl's type: the C wrapper is a free function.
     let tokens = flat("shaped_self");
-    assert!(tokens.contains("&[&Checker::SHAPE])"), "{tokens}");
+    assert!(
+        tokens.contains(
+            "__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker),&Checker::SHAPE])"
+        ),
+        "{tokens}"
+    );
 
-    // No attribute: the probe, with the crate prefix for its serde arm.
+    // No attribute: the probe, with the crate prefix for its serde arms and
+    // the crate marker a declared shape is keyed by.
     for name in ["plain", "probe"] {
         let tokens = c_wrapper_tokens(&parsed, name);
         assert!(tokens.contains("__mx_result_err_parts"), "{name}: {tokens}");
+        assert!(
+            tokens.contains("__MiniextendrInitMarker"),
+            "{name}: marker: {tokens}"
+        );
         assert!(
             tokens.contains("_error\""),
             "{name}: prefix literal: {tokens}"
@@ -6649,7 +6667,7 @@ fn method_serde_error_as_options_and_refusals() {
             "{attr}: {tokens}"
         );
         assert!(
-            tokens.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+            tokens.contains("__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker),&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
             "{attr}: {tokens}"
         );
     }

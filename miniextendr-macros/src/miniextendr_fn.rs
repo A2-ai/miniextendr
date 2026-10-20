@@ -3239,6 +3239,21 @@ pub(crate) fn default_serde_error_prefix() -> String {
     format!("{krate}_error")
 }
 
+/// The marker type `miniextendr_init!` defines at the crate root. A
+/// `serde_error_shape!` declaration is an impl keyed by it, which is what lets
+/// a crate declare a shape for an error type from another crate (#2207).
+pub(crate) fn init_marker_ident() -> syn::Ident {
+    syn::Ident::new("__MiniextendrInitMarker", proc_macro2::Span::call_site())
+}
+
+/// `crate::__MiniextendrInitMarker`, as the generated `Err` arms pass it to
+/// the API's probe macros. Those resolve it only under the API's `serde`
+/// feature, where a shape can be declared.
+pub(crate) fn init_marker_path() -> proc_macro2::TokenStream {
+    let marker = init_marker_ident();
+    quote::quote!(crate::#marker)
+}
+
 /// Parse `serde_error(shape = .., tag = "...", prefix = "...", skip(...), rename(...), as_*(...))`
 /// given as a `Meta::List`.
 pub(crate) fn parse_serde_error_list(list: &syn::MetaList) -> syn::Result<SerdeErrorSpec> {

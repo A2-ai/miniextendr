@@ -2174,19 +2174,24 @@ fn err_parts_mode_expr_selects_the_serde_path() {
     use crate::miniextendr_fn::{FieldType, SerdeErrorSpec};
 
     // No options: the runtime probe, handed the `<crate>_error` prefix for
-    // its serde arm.
+    // its serde arms and the crate marker that declared shapes are keyed by.
     let mode = ErrPartsMode::from_spec(None);
     let ErrPartsMode::Probe { prefix } = &mode else {
         panic!("no spec must select the probe: {mode:?}");
     };
     assert!(prefix.ends_with("_error"), "{prefix}");
     let probe = normalize_tokens(mode.expr());
-    assert!(probe.contains("__mx_result_err_parts!(e,\""), "{probe}");
-    assert!(probe.contains(&format!("\"{prefix}\"")), "{probe}");
+    assert!(
+        probe.contains(&format!(
+            "__mx_result_err_parts!(e,\"{prefix}\",crate::__MiniextendrInitMarker)"
+        )),
+        "{probe}"
+    );
     assert!(!probe.contains("serde_err_parts"), "{probe}");
 
     // The function's own options become an inline const shape, the last one
-    // `serde_err_parts` applies; the crate prefix is the fallback.
+    // `serde_err_parts` applies, after the shape declared for the error type;
+    // the crate prefix is the fallback.
     let spec = SerdeErrorSpec {
         tag: Some("type".into()),
         prefix: Some("engine".into()),
@@ -2199,6 +2204,8 @@ fn err_parts_mode_expr_selects_the_serde_path() {
         ],
         ..SerdeErrorSpec::default()
     };
+    const DECLARED: &str =
+        "::miniextendr_api::__mx_declared_serde_shape!(e,crate::__MiniextendrInitMarker)";
     let mode = ErrPartsMode::from_spec(Some(&spec));
     let ErrPartsMode::Serde { prefix, spec: kept } = &mode else {
         panic!("a spec must select serde_err_parts: {mode:?}");
@@ -2217,7 +2224,7 @@ fn err_parts_mode_expr_selects_the_serde_path() {
     );
     assert!(
         serde.contains(&format!(
-            "::miniextendr_api::condition::serde_err_parts(&e,\"{prefix}\",&[&__MX_SERDE_ERROR_SHAPE])"
+            "::miniextendr_api::condition::serde_err_parts(&e,\"{prefix}\",&[{DECLARED},&__MX_SERDE_ERROR_SHAPE])"
         )),
         "{serde}"
     );
@@ -2232,12 +2239,12 @@ fn err_parts_mode_expr_selects_the_serde_path() {
     assert!(!serde.contains("const"), "{serde}");
     assert!(
         serde.contains(&format!(
-            "serde_err_parts(&e,\"{prefix}\",&[&crate::errors::ENGINE])"
+            "serde_err_parts(&e,\"{prefix}\",&[{DECLARED},&crate::errors::ENGINE])"
         )),
         "{serde}"
     );
 
-    // Both: the named shape first, the function's options after it.
+    // Both: the declared shape, the named shape, then the function's options.
     let spec = SerdeErrorSpec {
         shape: Some(syn::parse_quote!(ENGINE)),
         types: vec![(FieldType::Double, "n".into())],
@@ -2249,7 +2256,7 @@ fn err_parts_mode_expr_selects_the_serde_path() {
         "{serde}"
     );
     assert!(
-        serde.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+        serde.contains(&format!("&[{DECLARED},&ENGINE,&__MX_SERDE_ERROR_SHAPE])")),
         "{serde}"
     );
 }

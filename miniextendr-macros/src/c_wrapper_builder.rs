@@ -134,17 +134,19 @@ pub enum ReturnHandling {
 /// (message, class vector, structured data).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrPartsMode {
-    /// Autoref-specialisation probe (`__mx_result_err_parts!`): `RConditionData`
-    /// when the error type implements it; else, under the API crate's `serde`
-    /// feature, the serde shape for an `E: Serialize + Display` with `prefix`
-    /// (`<crate>_error`) as the family class; `Debug` otherwise.
+    /// Autoref-specialisation probe (`__mx_result_err_parts!`): under the API
+    /// crate's `serde` feature, the shape `serde_error_shape!` declared for the
+    /// error type in this crate, if any; else `RConditionData` when the error
+    /// type implements it; else, under `serde`, the serde shape for an
+    /// `E: Serialize + Display` with `prefix` (`<crate>_error`) as the family
+    /// class; `Debug` otherwise.
     Probe { prefix: String },
     /// `#[miniextendr(serde_error(..))]`: serialize the error with serde; the enum
     /// variant becomes the member class `<prefix>_<variant>`, the payload fields
     /// become the condition's data. `prefix` is the crate default (`<crate>_error`);
-    /// the spec's named `shape` and its own options (`tag`, `prefix`, `skip`,
-    /// `rename`, `as_*`) reach `serde_err_parts` as `SerdeErrorShape`s, applied
-    /// in that order.
+    /// the shape declared for the error type, the spec's named `shape` and its
+    /// own options (`tag`, `prefix`, `skip`, `rename`, `as_*`) reach
+    /// `serde_err_parts` as `SerdeErrorShape`s, applied in that order.
     Serde {
         prefix: String,
         spec: crate::miniextendr_fn::SerdeErrorSpec,
@@ -168,15 +170,19 @@ impl ErrPartsMode {
     pub fn expr(&self) -> TokenStream {
         match self {
             ErrPartsMode::Probe { prefix } => {
-                quote! { ::miniextendr_api::__mx_result_err_parts!(e, #prefix) }
+                let marker = crate::miniextendr_fn::init_marker_path();
+                quote! { ::miniextendr_api::__mx_result_err_parts!(e, #prefix, #marker) }
             }
             ErrPartsMode::Serde { prefix, spec } => {
-                // The user's path keeps its span: a misspelt or mistyped shape
-                // is reported on it.
-                let mut shapes: Vec<TokenStream> = spec
-                    .shape
-                    .iter()
-                    .map(|path| quote::quote_spanned!(syn::spanned::Spanned::span(path)=> &#path))
+                // The shape declared for the error type comes first. The
+                // user's path keeps its span: a misspelt or mistyped shape is
+                // reported on it.
+                let marker = crate::miniextendr_fn::init_marker_path();
+                let declared = quote! { ::miniextendr_api::__mx_declared_serde_shape!(e, #marker) };
+                let mut shapes: Vec<TokenStream> = std::iter::once(declared)
+                    .chain(spec.shape.iter().map(
+                        |path| quote::quote_spanned!(syn::spanned::Spanned::span(path)=> &#path),
+                    ))
                     .collect();
                 let call = |shapes: &[TokenStream]| {
                     quote! {

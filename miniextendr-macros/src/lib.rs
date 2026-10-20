@@ -514,13 +514,15 @@ pub(crate) fn build_dots_validation_stmt(
 ///   payload fields that atomic R type, as the `serde::as_*` field helpers would from the
 ///   error type itself; like `skip` and `rename` they name fields as the error serializes
 ///   them, before any rename. A field takes one `as_*` option and is not also skipped
-///   (compile errors, all reported at once). `shape = PATH` names a
-///   `miniextendr_api::condition::SerdeErrorShape` const holding any of these options, so
-///   the functions returning one error type share them:
-///   `serde_error(shape = ENGINE, as_double("n"))` applies `ENGINE`, then the function's
-///   own options, which win for a field set by both. The path resolves from the
-///   function's module (`Self::X` on a method names the impl's type); a misspelt one is
-///   a compile error.
+///   (compile errors, all reported at once). A
+///   `miniextendr_api::condition::SerdeErrorShape` const holds any of these options;
+///   `miniextendr_api::serde_error_shape!(Error = ENGINE)` declares it once for an error
+///   type, and every function or method of the crate returning that type applies it
+///   first, with or without this attribute. `shape = PATH` names another one per
+///   function: `serde_error(shape = STRICT, as_double("n"))` applies the declared shape,
+///   then `STRICT`, then the function's own options; the later wins for a field set more
+///   than once. The path resolves from the function's module (`Self::X` on a method
+///   names the impl's type); a misspelt one is a compile error.
 /// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
 /// - `#[miniextendr(dots = empty | empty(allow = [..]) | forward(allow = [..]) | data)]` —
 ///   what `...` takes; the R wrapper refuses the other arguments before
@@ -3810,6 +3812,11 @@ pub fn impl_typed_external(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// The generated function calls `miniextendr_api::init::package_init` which
 /// handles panic hooks, runtime init, locale assertion, ALTREP setup, trait ABI
 /// registration, routine registration, and symbol locking.
+///
+/// Call it at the crate root: it also defines the crate's marker type, under
+/// which `serde_error_shape!` declarations are keyed and which, with the API's
+/// `serde` feature, every `#[miniextendr]` function or method returning a
+/// `Result` names.
 #[proc_macro]
 pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let pkg_name: syn::Ident = if input.is_empty() {
@@ -3859,8 +3866,15 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     // `.miniextendr_conversion_error_class`: the R-side argument checks raise
     // with the classes the conversion arms of this crate carry (#1591).
     let conversion_error_class = crate::crate_config::conversion_error_class();
+    let init_marker = crate::miniextendr_fn::init_marker_ident();
 
     let expanded = quote::quote! {
+        /// The crate's marker type. A `serde_error_shape!` declaration is an
+        /// impl keyed by it, and the generated `Err` arms look the declaration
+        /// up under it, so the macro must be called at the crate root.
+        #[doc(hidden)]
+        pub enum #init_marker {}
+
         /// The package crate's `conversion_error_class`, read by the
         /// wrapper-generation pass and the raising guards (host-only; the
         /// `wasm_registry.rs` snapshot carries it to wasm32).

@@ -80,6 +80,12 @@ unsafe extern "C-unwind" fn R_init_mypkg(dll: *mut DllInfo) {
 7. **Lock down symbols**: `R_useDynamicSymbols(dll, FALSE)` and
    `R_forceSymbols(dll, TRUE)`
 
+The macro also defines the crate's marker type, `__MiniextendrInitMarker`, at
+the crate root. A shape declared with `serde_error_shape!` is a trait impl
+keyed by it, and under the `serde` feature every generated `Err` arm names it,
+so call the macro at the crate root (`lib.rs`), not inside a module. See
+[CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes).
+
 ## The `stub.c` File
 
 R's build system requires at least one `.c` file in `src/` to invoke the

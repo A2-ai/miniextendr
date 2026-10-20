@@ -322,6 +322,17 @@ NULL
 #' @name rule_check
 NULL
 
+# QuotaChecker fixture generic (a shape declared for the error type with
+# `serde_error_shape!`, on an S3 method without an attribute, #2207). Exported
+# by the auto-generated wrappers under @rdname QuotaChecker, aliased here for
+# R CMD check.
+
+#' Check a quota, raising a classed error whose fields take their R types from the shape declared for its type
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name quota_check
+NULL
+
 # DeferredCounter fixture generics (deferred conditions from S3 methods,
 # #1448). Exported by the auto-generated wrappers under @rdname
 # DeferredCounter, aliased here for R CMD check.

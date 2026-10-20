@@ -1863,6 +1863,10 @@ pub struct ErrParts {
 
 /// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionData`.
 ///
+/// Under the `serde` feature a declared-shape stage runs before this one: a
+/// shape that `serde_error_shape!` declared for `E` wins over the impl (see
+/// `ErrShapeDeclared`).
+///
 /// The generated code calls `(&e).__mx_classed_parts()` with both first-stage
 /// traits in scope. Method resolution tries the receiver type `&E` by value
 /// first, which only this impl (on `E`, taking `&self`) satisfies; the
@@ -1943,20 +1947,27 @@ impl<E: std::fmt::Debug> ErrPartsDebug for &E {
 
 /// Internal: the `Err(e)` probe used by generated wrappers. Not public API.
 ///
-/// `$prefix` is the family class for the serde arm (`<crate>_error`, computed
-/// by the macro from `CARGO_CRATE_NAME` at expansion time).
+/// `$prefix` is the family class for the serde arms (`<crate>_error`, computed
+/// by the macro from `CARGO_CRATE_NAME` at expansion time). `$marker` is the
+/// calling crate's marker type (`crate::__MiniextendrInitMarker`), under which
+/// [`serde_error_shape!`](crate::serde_error_shape) declarations are looked up
+/// first, under the `serde` feature: a declared shape wins over the stages
+/// below (the `ErrShapeDeclared` probe).
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_result_err_parts {
-    ($e:expr, $prefix:expr) => {{
+    ($e:expr, $prefix:expr, $marker:ty) => {{
         #[allow(unused_imports)]
         use $crate::condition::{
             ErrPartsClassed as _, ErrPartsDebug as _, ErrPartsSerde as _, ErrPartsUnclassed as _,
         };
         match &$e {
-            __mx_e => match __mx_e.__mx_classed_parts() {
+            __mx_e => match $crate::__mx_declared_err_parts!(__mx_e, $prefix, $marker) {
                 ::core::option::Option::Some(parts) => parts,
-                ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
+                ::core::option::Option::None => match __mx_e.__mx_classed_parts() {
+                    ::core::option::Option::Some(parts) => parts,
+                    ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
+                },
             },
         }
     }};
@@ -2409,18 +2420,31 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 ///     .as_integer(&["n"]);
 /// ```
 ///
-/// A function names it by path and may add options of its own:
+/// Declare it for the error type with
+/// [`serde_error_shape!`](crate::serde_error_shape), and every
+/// `#[miniextendr]` function or method of the crate that returns that type
+/// uses it, without naming it:
 ///
 /// ```ignore
-/// #[miniextendr(serde_error(shape = ENGINE))]
-/// pub fn check(x: f64) -> Result<f64, EngineError> { /* ... */ }
+/// miniextendr_api::serde_error_shape!(EngineError = ENGINE);
 ///
-/// #[miniextendr(serde_error(shape = ENGINE, as_double("n")))]
-/// pub fn rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+/// #[miniextendr]
+/// pub fn check(x: f64) -> Result<f64, EngineError> { /* ... */ }
 /// ```
 ///
-/// The path resolves where the function is defined (`ENGINE`,
-/// `crate::errors::ENGINE`, or `Self::SHAPE` on a method for an associated
+/// A function can override it for itself: with options of its own, or with
+/// another shape named by path, which applies after the declared one:
+///
+/// ```ignore
+/// #[miniextendr(serde_error(as_double("n")))]
+/// pub fn rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+///
+/// #[miniextendr(serde_error(shape = STRICT, as_double("n")))]
+/// pub fn strict_rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+/// ```
+///
+/// The path resolves where the function is defined (`STRICT`,
+/// `crate::errors::STRICT`, or `Self::SHAPE` on a method for an associated
 /// const of its type), so a misspelt one is a compile error. The options act
 /// on the serde-classed `Err` arm, which needs the `serde` feature.
 ///
@@ -2450,12 +2474,13 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 ///
 /// # Precedence
 ///
-/// `serde_error(shape = ENGINE, ..)` applies the shape, then the function's
-/// own options; for a field set by both, the function wins. The function's
-/// `skip` drops a field the shape types or renames, and its `as_*` or
-/// `rename` keeps a field the shape skips. A type and a new name compose: the
+/// Shapes apply in order: the one declared for the error type, then
+/// `serde_error(shape = ..)`, then the function's own options; for a field
+/// set by more than one, the later wins. A later `skip` drops a field an
+/// earlier shape types or renames, and a later `as_*` or `rename` keeps a
+/// field an earlier shape skips. A type and a new name compose: the
 /// function's `rename(n = "count")` keeps the shape's `as_integer(&["n"])`.
-/// The function's `tag` or `prefix` replaces the shape's.
+/// A later `tag` or `prefix` replaces an earlier one.
 ///
 /// # Contradictions don't compile
 ///
@@ -2811,12 +2836,15 @@ const fn fail(message: ShapeMessage) -> ! {
 
 /// Build the `Err`-arm parts from the error's serde shape.
 ///
-/// Reached two ways: automatically, for every `Result<T, E>` whose `E` is
-/// `Serialize + Display` without an [`RConditionData`] impl (the
-/// [`ErrPartsSerde`] probe arm, no shapes), or explicitly through
+/// Reached three ways: for a `Result<T, E>` whose `E` has a shape declared
+/// by [`serde_error_shape!`](crate::serde_error_shape) (the
+/// [`ErrShapeDeclared`] probe arm, that one shape); automatically, for every
+/// other `E` that is `Serialize + Display` without an [`RConditionData`] impl
+/// (the [`ErrPartsSerde`] probe arm, no shapes); or explicitly through
 /// `#[miniextendr(serde_error(..))]`, whose options arrive as `shapes`: the
-/// named `shape = ..` first, then the function's own options as an inline
-/// const, each applied in order (see [`SerdeErrorShape`], "Precedence").
+/// declared shape first (one that sets nothing when there is none), then the
+/// named `shape = ..`, then the function's own options as an inline const,
+/// each applied in order (see [`SerdeErrorShape`], "Precedence").
 /// `prefix` is the macro's `<crate>_error`, used when no shape sets one.
 ///
 /// Message from `Display`; classes `[<prefix>_<variant>, <prefix>]` when the
@@ -2987,6 +3015,226 @@ fn check_distinct_field_names(fields: &[(String, crate::RValue)], rename: &[(&st
             renames.join(" and ")
         );
     }
+}
+
+// endregion
+
+// region: Declared shapes — one SerdeErrorShape per error type (#2207)
+
+/// The [`SerdeErrorShape`] declared for the error type `Self` by the crate
+/// whose marker type is `M`. Implemented by
+/// [`serde_error_shape!`](crate::serde_error_shape), not by hand.
+///
+/// `M` is a type local to the declaring crate (`miniextendr_init!` defines it
+/// at the crate root). That is what lets an R-facing crate declare a shape
+/// for an error type from a crate that doesn't depend on miniextendr: the
+/// orphan rule accepts `impl ForeignTrait<LocalType> for ForeignType`. It also
+/// scopes the declaration to the crate: another crate returning the same type
+/// looks up its own declaration.
+///
+/// The supertraits make a declaration for a type that can't be serialized, or
+/// has no `Display` for the condition message, an error at the declaration.
+#[cfg(feature = "serde")]
+pub trait SerdeErrorShapeFor<M>: ::serde::Serialize + std::fmt::Display {
+    /// The declared shape.
+    const SHAPE: &'static SerdeErrorShape;
+}
+
+/// Declare the [`SerdeErrorShape`] of an error type once, for every
+/// `#[miniextendr]` function and method of this crate that returns it.
+///
+/// ```ignore
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// pub const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+///     .prefix("engine")
+///     .as_character(&["rule"])
+///     .as_integer(&["n"]);
+///
+/// miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
+///
+/// // Both raise with ENGINE's field types; neither names it.
+/// #[miniextendr]
+/// pub fn check(x: f64) -> Result<f64, engine::Error> { /* ... */ }
+///
+/// #[miniextendr]
+/// pub fn rate(x: f64) -> Result<f64, engine::Error> { /* ... */ }
+/// ```
+///
+/// The right-hand side is any constant expression of type
+/// `SerdeErrorShape`: a path, as above, or the builder chain itself. The type
+/// must be `Serialize + Display` and may come from any crate, including one
+/// that can't depend on miniextendr. The declaration goes anywhere in the
+/// crate that calls `miniextendr_init!`, which defines the marker type it is
+/// keyed by (see [`SerdeErrorShapeFor`]); it applies to that crate's
+/// functions only.
+///
+/// # Precedence
+///
+/// Every `Err` of the type, from a function with or without
+/// `#[miniextendr(serde_error(..))]`, is classed through serde with the
+/// declared shape applied first. A function's `serde_error(shape = X)` applies
+/// next and its own options last; for a field set more than once, the later
+/// setting wins, by the rules under [`SerdeErrorShape`], "Precedence".
+///
+/// The declaration also wins over an [`RConditionData`] impl of the type: it is
+/// the R-facing crate's choice for its own functions, where the impl is the
+/// error crate's general one.
+///
+/// # One declaration per type
+///
+/// A second declaration for a type in the same crate is the compiler's
+/// conflicting-implementations error:
+///
+/// ```compile_fail,E0119
+/// use miniextendr_api::condition::SerdeErrorShape;
+///
+/// miniextendr_api::miniextendr_init!(pkg);
+///
+/// const A: SerdeErrorShape = SerdeErrorShape::new().prefix("a");
+/// const B: SerdeErrorShape = SerdeErrorShape::new().prefix("b");
+///
+/// miniextendr_api::serde_error_shape!(String = A);
+/// miniextendr_api::serde_error_shape!(String = B);
+///
+/// fn main() {}
+/// ```
+#[cfg(feature = "serde")]
+#[macro_export]
+// `crate::` is meant: the marker is the calling crate's.
+#[allow(clippy::crate_in_macro_def)]
+macro_rules! serde_error_shape {
+    ($error:ty = $shape:expr $(,)?) => {
+        impl $crate::condition::SerdeErrorShapeFor<crate::__MiniextendrInitMarker> for $error {
+            const SHAPE: &'static $crate::condition::SerdeErrorShape = &$shape;
+        }
+    };
+}
+
+/// Declare the `SerdeErrorShape` of an error type once, for every
+/// `#[miniextendr]` function and method of this crate that returns it. Needs
+/// the `serde` feature, without which a declaration is a compile error.
+#[cfg(not(feature = "serde"))]
+#[macro_export]
+macro_rules! serde_error_shape {
+    ($($input:tt)*) => {
+        ::core::compile_error!(
+            "`serde_error_shape!` needs the `serde` feature of miniextendr-api; \
+             enable it to class errors through serde"
+        );
+    };
+}
+
+/// The receiver of the declared-shape probe: the error, and the marker `M` of
+/// the crate whose declaration to look up.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub struct DeclaredShapeProbe<'a, M, E>(pub &'a E, pub std::marker::PhantomData<fn() -> M>);
+
+/// Declared-shape probe, preferred arm: `E` has a shape declared under `M`.
+///
+/// The generated code calls `(&probe).__mx_declared_parts(..)` with both
+/// traits in scope. This impl, on the probe taking `&self`, matches the
+/// receiver `&DeclaredShapeProbe` by value; [`ErrShapeUndeclared`] on
+/// `&DeclaredShapeProbe` needs one more auto-ref and is only reached when
+/// nothing is declared.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub trait ErrShapeDeclared {
+    /// The parts under the declared shape, for an `Err` arm without
+    /// `serde_error(..)`. The call to [`serde_err_parts`] lives here, where
+    /// `E: Serialize + Display` holds, so an undeclared `E` needn't be.
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts>;
+    /// The declared shape, first in `serde_error(..)`'s shape list.
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape;
+}
+
+#[cfg(feature = "serde")]
+impl<M, E: SerdeErrorShapeFor<M>> ErrShapeDeclared for DeclaredShapeProbe<'_, M, E> {
+    #[track_caller]
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts> {
+        Some(serde_err_parts(self.0, prefix, &[E::SHAPE]))
+    }
+
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape {
+        E::SHAPE
+    }
+}
+
+/// Declared-shape probe, fallback arm: no declaration. No parts, and a shape
+/// that sets nothing.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub trait ErrShapeUndeclared {
+    fn __mx_declared_parts(&self, prefix: &str) -> Option<ErrParts>;
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape;
+}
+
+#[cfg(feature = "serde")]
+impl<M, E> ErrShapeUndeclared for &DeclaredShapeProbe<'_, M, E> {
+    fn __mx_declared_parts(&self, _prefix: &str) -> Option<ErrParts> {
+        None
+    }
+
+    fn __mx_declared_shape(&self) -> &'static SerdeErrorShape {
+        const NONE: &SerdeErrorShape = &SerdeErrorShape::new();
+        NONE
+    }
+}
+
+/// Internal: the declared-shape stage of [`crate::__mx_result_err_parts!`].
+/// Without the `serde` feature it is `None` and `$marker` is never resolved,
+/// so a crate without `miniextendr_init!` (a test crate) still compiles.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_err_parts {
+    ($e:ident, $prefix:expr, $marker:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ErrShapeDeclared as _, ErrShapeUndeclared as _};
+        (&$crate::condition::DeclaredShapeProbe::<$marker, _>($e, ::core::marker::PhantomData))
+            .__mx_declared_parts($prefix)
+    }};
+}
+
+/// Internal: the declared-shape stage of [`crate::__mx_result_err_parts!`];
+/// nothing can be declared without the `serde` feature.
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_err_parts {
+    ($e:ident, $prefix:expr, $marker:ty) => {
+        ::core::option::Option::None::<$crate::condition::ErrParts>
+    };
+}
+
+/// Internal: the shape `serde_error_shape!` declared for the type of `$e`
+/// under `$marker`, or one that sets nothing. It leads the shape list of a
+/// `#[miniextendr(serde_error(..))]` `Err` arm.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_serde_shape {
+    ($e:expr, $marker:ty) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ErrShapeDeclared as _, ErrShapeUndeclared as _};
+        (&$crate::condition::DeclaredShapeProbe::<$marker, _>(&$e, ::core::marker::PhantomData))
+            .__mx_declared_shape()
+    }};
+}
+
+/// Internal: without the `serde` feature, a shape that sets nothing.
+/// `serde_error(..)` needs the feature anyway: its `serde_err_parts` call
+/// reports that, and `$marker` is never resolved.
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_declared_serde_shape {
+    ($e:expr, $marker:ty) => {{
+        const NONE: &$crate::condition::SerdeErrorShape =
+            &$crate::condition::SerdeErrorShape::new();
+        NONE
+    }};
 }
 
 // endregion
@@ -3319,6 +3567,11 @@ impl<E: std::error::Error> AsRError<E> {
 mod condition_macro_tests {
     use super::{ConditionData, RCondition};
     use crate::RValue;
+
+    /// The marker type of a crate that declares no `serde_error_shape!`, for
+    /// the `Err` probe's marker argument (resolved only under `serde`).
+    #[cfg(feature = "serde")]
+    enum NoShapes {}
 
     /// Catch the `panic_any(RCondition)` raised by a macro invocation and
     /// return the payload. No R runtime needed — the macros panic before any
@@ -3751,22 +4004,26 @@ mod condition_macro_tests {
         /// its text unquoted.
         #[test]
         fn err_parts_probe_classes_serialize_display_types() {
-            let parts = crate::__mx_result_err_parts!(Tagged::Io, "p");
+            let parts = crate::__mx_result_err_parts!(Tagged::Io, "p", super::NoShapes);
             assert_eq!(parts.message, "io");
             assert_eq!(parts.class, ["p_io", "p"]);
             assert!(parts.data.is_none());
 
-            let parts =
-                crate::__mx_result_err_parts!(Tagged::MissingField { field: "id".into() }, "p");
+            let parts = crate::__mx_result_err_parts!(
+                Tagged::MissingField { field: "id".into() },
+                "p",
+                super::NoShapes
+            );
             assert_eq!(parts.class, ["p_missing_field", "p"]);
             assert_eq!(names(&parts), ["field"]);
 
-            let parts = crate::__mx_result_err_parts!(String::from("bad input"), "p");
+            let parts =
+                crate::__mx_result_err_parts!(String::from("bad input"), "p", super::NoShapes);
             assert_eq!(parts.message, "bad input");
             assert_eq!(parts.class, ["p"]);
             assert!(parts.data.is_none());
 
-            let parts = crate::__mx_result_err_parts!("static text", "p");
+            let parts = crate::__mx_result_err_parts!("static text", "p", super::NoShapes);
             assert_eq!(parts.message, "static text");
             assert_eq!(parts.class, ["p"]);
         }
@@ -4161,8 +4418,9 @@ mod condition_macro_tests {
     fn rerror_reserved_field_rejected_at_err_arm() {
         use super::RError;
         let err = std::panic::AssertUnwindSafe(RError::new("m").data("kind", 2));
-        let payload = std::panic::catch_unwind(move || crate::__mx_result_err_parts!(err.0, "p"))
-            .expect_err("must panic");
+        let payload =
+            std::panic::catch_unwind(move || crate::__mx_result_err_parts!(err.0, "p", NoShapes))
+                .expect_err("must panic");
         let msg = payload
             .downcast_ref::<String>()
             .cloned()
@@ -4179,7 +4437,7 @@ mod condition_macro_tests {
         let e = RError::new("m")
             .class(["member", "family"])
             .data("input", 1);
-        let parts = crate::__mx_result_err_parts!(e, "p");
+        let parts = crate::__mx_result_err_parts!(e, "p", NoShapes);
         assert_eq!(parts.message, "m");
         assert_eq!(parts.class, ["member", "family"]);
         assert_eq!(parts.data.expect("data")[0].0, "input");
@@ -4191,7 +4449,7 @@ mod condition_macro_tests {
     fn err_parts_probe_falls_back_to_debug() {
         #[derive(Debug)]
         struct Opaque;
-        let parts = crate::__mx_result_err_parts!(Opaque, "p");
+        let parts = crate::__mx_result_err_parts!(Opaque, "p", NoShapes);
         assert_eq!(parts.message, "Opaque");
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
@@ -5319,10 +5577,10 @@ mod condition_macro_tests {
         assert_eq!(RConditionData::call(&plain), ConditionCall::Inherit);
         let callless = plain.clone().without_call();
         assert_eq!(RConditionData::call(&callless), ConditionCall::None);
-        let parts = crate::__mx_result_err_parts!(callless, "pkg_error");
+        let parts = crate::__mx_result_err_parts!(callless, "pkg_error", NoShapes);
         assert_eq!(parts.call, ConditionCall::None);
         assert_eq!(parts.class, vec!["c"]);
-        let parts = crate::__mx_result_err_parts!(plain, "pkg_error");
+        let parts = crate::__mx_result_err_parts!(plain, "pkg_error", NoShapes);
         assert_eq!(parts.call, ConditionCall::Inherit);
     }
 

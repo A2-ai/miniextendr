@@ -613,7 +613,9 @@ already classed from its serde shape, so the bare `#[miniextendr(serde_error)]`
 flag, `serde_error = true`, `serde_error = false` and an empty `serde_error()`
 would switch nothing on or off. The attribute only carries options: write
 `serde_error(shape = ENGINE)`, options such as
-`serde_error(prefix = "..", skip(..), as_character(..))`, or drop it. See
+`serde_error(prefix = "..", skip(..), as_character(..))`, or drop it. To give
+every function returning a type the same options, declare them once with
+`serde_error_shape!(Error = ENGINE)` instead. See
 [CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
 
 ### "`serde_error` cannot be used with `unwrap_in_r`"
@@ -656,8 +658,8 @@ one place.
 Each `as_*` option gives a payload field one atomic R type, so a field may be
 named by only one of them. Keep the one you want. Within one function every
 conflict is reported at once, each on the name that repeats an earlier option.
-To give a field a different type than a shared shape does, name it in the
-function's own options: those apply after the shape and win
+To give a field a different type than a declared or named shape does, name
+it in the function's own options: those apply after the shapes and win
 ([CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes)).
 
 ### "serde_error names `message` in both skip and as_character; a skipped field has no R type"
@@ -686,6 +688,40 @@ field in two `as_*` lists, a field skipped and also typed or renamed, a field
 listed or renamed twice, two renames onto one name, a reserved `rename`
 target, an empty list or name, and an option set twice (list every field in
 one call).
+
+### "conflicting implementations of trait `SerdeErrorShapeFor<__MiniextendrInitMarker>` for type `engine::Error`"
+
+error[E0119]: a second `serde_error_shape!` for a type the crate already
+declared a shape for. A declaration is a trait impl keyed by the crate's
+marker type, so a type gets one per crate; the first declaration is marked
+"first implementation here". Keep one. A function that needs other options
+names them itself, `serde_error(as_double("n"))` or
+`serde_error(shape = OTHER)`; they apply after the declared shape
+([CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes)).
+
+### "the trait bound `engine::Error: serde::Serialize` is not satisfied" at `serde_error_shape!`
+
+error[E0277] on the type in a `serde_error_shape!` declaration, "required by a
+bound in `SerdeErrorShapeFor`". The declared shape is applied on the serde
+path, so the type must be `serde::Serialize + Display`; the declaration checks
+both. Implement them for the type, or class it with `RConditionData`
+instead.
+
+### "`serde_error_shape!` needs the `serde` feature of miniextendr-api; enable it to class errors through serde"
+
+Without the API crate's `serde` feature nothing is classed through serde, so
+a declared shape would silently do nothing. Enable the feature, or drop the
+declaration.
+
+### "cannot find type `__MiniextendrInitMarker` in the crate root"
+
+Under the API crate's `serde` feature, the `Err` arm of every
+`#[miniextendr]` function or method returning a `Result` looks up a shape
+declared with `serde_error_shape!`, keyed by a marker type that
+`miniextendr_init!` defines at the crate root; `serde_error_shape!` names the
+marker too. Call `miniextendr_api::miniextendr_init!()` at the crate root
+(`lib.rs`), as every R package does, not inside a module. A doctest with such
+a function needs it as well, at the top level next to a `fn main() {}`.
 
 ### "tuple field 0 of variant `E::Raw` needs a `data` name"
 

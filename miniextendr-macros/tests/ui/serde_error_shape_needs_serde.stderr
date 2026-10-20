@@ -1,0 +1,7 @@
+error: `serde_error_shape!` needs the `serde` feature of miniextendr-api; enable it to class errors through serde
+ --> tests/ui/serde_error_shape_needs_serde.rs:5:1
+  |
+5 | miniextendr_api::serde_error_shape!(String = miniextendr_api::condition::SerdeErrorShape::new());
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `miniextendr_api::serde_error_shape` (in Nightly builds, run with -Z macro-backtrace for more info)
