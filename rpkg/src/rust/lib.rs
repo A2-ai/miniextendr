@@ -45,6 +45,7 @@
 //! - [`identical_tests`]: R identical() comparison tests
 //! - [`factor_tests`]: R factor handling tests
 //! - [`rng_tests`]: R random number generator tests
+//! - [`rng_seed_tests`]: `rng(seed = ..)`, the `stats::simulate()` seed contract (#2198)
 //! - [`rmath_tests`]: `Rmath.h` distribution routines (`sys::Rf_pnorm5`, ...) through `.Call`
 //! - [`lbfgsb_tests`]: R's L-BFGS-B optimiser (`sys::lbfgsb`) with Rust callbacks through `.Call`
 //! - [`blas_lapack_tests`]: R's BLAS/LAPACK (`sys::dgemm_`, `sys::dgesv_`, `linalg`) through `.Call`
@@ -331,6 +332,7 @@ mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rmath_tests;
+mod rng_seed_tests;
 mod rng_tests;
 mod rooted_view_tests;
 mod roxygen_carry_tests;

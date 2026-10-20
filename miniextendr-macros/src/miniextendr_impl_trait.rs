@@ -159,7 +159,7 @@ struct TraitMethod {
     /// Explicit class-system return wrapping.
     return_wrap: Option<crate::return_wrap::ReturnWrap>,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`.
-    /// Keys are parameter names, values are R expressions used as default values.
+    /// Keys are R names, values are R expressions used as default values.
     param_defaults: std::collections::HashMap<String, String>,
     /// The author's roxygen tags from the method's doc comment. The wrapper
     /// generators forward the `@param` lines and the page tags (see

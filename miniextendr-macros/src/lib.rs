@@ -503,6 +503,19 @@ pub(crate) fn build_dots_validation_stmt(
 /// - `#[miniextendr(check_interrupt)]` — check for a user interrupt once, before the
 ///   arguments are converted and the body runs
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(rng)]` — load R's RNG state before the body and save it after;
+///   a `&RngGuard` parameter (no R argument) receives the guard to draw from
+/// - `#[miniextendr(rng(seed = <param>))]` — `rng`, plus the seed contract of
+///   `stats::simulate()` in the R wrapper (#2198), for standalone functions and
+///   `s3(...)` methods. `<param>` names the seed parameter by its Rust name.
+///   After the argument checks the wrapper creates `.Random.seed` if it is
+///   missing; with a non-`NULL` seed it calls `set.seed(seed)` (which validates
+///   it, so the parameter has no R-side type check) and puts the session's
+///   `.Random.seed` back on exit, also after an error or a panic. The result
+///   gets a `seed` attribute: the seed with `kind = as.list(RNGkind())`, or the
+///   pre-draw `.Random.seed` for `seed = NULL`; a value that can't carry
+///   attributes is left as it is. A unit return, an impl or trait method, and a
+///   name that is no evaluated R argument are compile errors.
 /// - `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
 ///   (requires the API `serde` feature); composes with return visibility markers
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
@@ -740,24 +753,33 @@ fn expand_miniextendr(
 
     // Try to parse as function first
     if syn::parse::<syn::ItemFn>(item.clone()).is_ok() {
-        // Continue with function handling below
+        expand_fn(attr.into(), item.into())
     } else if syn::parse::<syn::ItemImpl>(item.clone()).is_ok() {
         // Delegate to impl block parser
-        return miniextendr_impl::expand_impl(attr, item);
+        miniextendr_impl::expand_impl(attr, item)
     } else if syn::parse::<syn::ItemTrait>(item.clone()).is_ok() {
         // Delegate to trait ABI generator
-        return miniextendr_trait::expand_trait(attr, item);
+        miniextendr_trait::expand_trait(attr, item)
     } else {
         // Delegate to struct/enum dispatch (handles ALTREP, ExternalPtr, list, dataframe, factor, match_arg)
-        return struct_enum_dispatch::expand_struct_or_enum(attr, item);
+        struct_enum_dispatch::expand_struct_or_enum(attr, item)
     }
+}
 
+/// `#[miniextendr]` on a function. It reads `proc_macro2` tokens and returns
+/// the token type its caller asks for: `proc_macro`'s from the attribute, or
+/// `proc_macro2`'s in the unit tests, which run outside a proc macro.
+fn expand_fn<T: From<proc_macro2::TokenStream>>(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> T {
     let MiniextendrFnAttrs {
         force_worker,
         force_invisible,
         check_interrupt,
         coerce_all,
         rng,
+        rng_seed,
         unwrap_in_r,
         serialize,
         wrap,
@@ -784,9 +806,15 @@ fn expand_miniextendr(
         r_entry,
         r_post_checks,
         r_on_exit,
-    } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
+    } = match syn::parse2(attr) {
+        Ok(attrs) => attrs,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
-    let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
+    let mut parsed = match syn::parse2::<MiniextendrFunctionParsed>(item) {
+        Ok(parsed) => parsed,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     // Reject async functions
     if let Some(asyncness) = &parsed.item().sig.asyncness {
@@ -1435,6 +1463,29 @@ fn expand_miniextendr(
         }
     };
 
+    // `rng(seed = <param>)` (#2198): the R formal the seed contract reads,
+    // once the parameter and the return are known to suit it.
+    let rng_seed_formal = match &rng_seed {
+        Some(seed) => {
+            use c_wrapper_builder::ReturnHandling;
+            let unit_return = matches!(
+                fn_return_handling,
+                ReturnHandling::Unit | ReturnHandling::ResultUnit | ReturnHandling::OptionUnit
+            );
+            match miniextendr_fn::check_rng_seed(
+                seed,
+                all_inputs,
+                inputs,
+                &unevaluated_r_names,
+                unit_return,
+            ) {
+                Ok(formal) => Some(formal),
+                Err(err) => return err.into_compile_error().into(),
+            }
+        }
+        None => None,
+    };
+
     let thread_strategy = if use_main_thread {
         c_wrapper_builder::ThreadStrategy::MainThread
     } else {
@@ -1637,6 +1688,16 @@ fn expand_miniextendr(
             .map_or_else(|| ".val".to_owned(), |wrap| wrap.r_expression(".val", None));
         let final_return = if is_invisible_return_type {
             format!("invisible({final_return})")
+        } else {
+            final_return
+        };
+        // `rng(seed = ..)` (#2198): the result records the seed, after its
+        // condition check and before any wrap.
+        let final_return = if rng_seed_formal.is_some() {
+            format!(
+                "{}\n  {final_return}",
+                r_wrapper_builder::RngSeedContract::ATTRIBUTE
+            )
         } else {
             final_return
         };
@@ -1872,6 +1933,16 @@ fn expand_miniextendr(
     // beyond `anyNA()`, such as `"NA"` for `AsNumeric`, except on an
     // `Either`, which has no R guard and is checked only in Rust.)
     let precondition_prelude = {
+        // `set.seed()` validates the seed of `rng(seed = ..)` (#2198), so
+        // its parameter has no type-derived check.
+        let mut unchecked = r_preconditions::unchecked_params(
+            inputs,
+            |name| parsed.param_attrs(name).and_then(|a| a.preconditions),
+            preconditions,
+            None,
+            crate_config.preconditions,
+        );
+        unchecked.extend(rng_seed_formal.iter().cloned());
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
         // holds Rust names; normalize to R names.
@@ -1882,13 +1953,7 @@ fn expand_miniextendr(
                 .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
                 .collect(),
             explicit: parsed.explicit_checks(),
-            unchecked: r_preconditions::unchecked_params(
-                inputs,
-                |name| parsed.param_attrs(name).and_then(|a| a.preconditions),
-                preconditions,
-                None,
-                crate_config.preconditions,
-            ),
+            unchecked,
         };
         let precondition_output =
             r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
@@ -1910,10 +1975,15 @@ fn expand_miniextendr(
     // Combine all preludes: call attribution (`.mx_call` under `call = caller`,
     // first so the R-side checks below can raise with it, #1548), r_entry,
     // on.exit, lifecycle, the `...` check, static preconditions, match.arg,
-    // choices, r_post_checks. (Missing<T> forwarding lives inline in the `.Call()` args
-    // — see `build_call_args_vec` — because a prelude binding of the missing
+    // choices, r_post_checks, and last the seed contract of `rng(seed = ..)`
+    // (#2198), so that a refused argument changes no RNG state. (Missing<T>
+    // forwarding lives inline in the `.Call()` args — see
+    // `build_call_args_vec` — because a prelude binding of the missing
     // sentinel errors on lookup.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
+    let rng_seed_prelude = rng_seed_formal
+        .as_deref()
+        .map(|formal| r_wrapper_builder::RngSeedContract { formal }.prelude("  "));
     let attribution_prelude = call_attribution.prelude(call_formal.is_some());
     let combined_prelude = {
         let mut parts = Vec::new();
@@ -1943,6 +2013,9 @@ fn expand_miniextendr(
         }
         if let Some(ref post) = r_post_checks {
             parts.push(post.as_str());
+        }
+        if let Some(ref seed) = rng_seed_prelude {
+            parts.push(seed.as_str());
         }
         if parts.is_empty() {
             None
@@ -2081,7 +2154,7 @@ fn expand_miniextendr(
         c_ident, r_wrapper_generator
     );
 
-    let expanded: proc_macro::TokenStream = quote::quote! {
+    let expanded: T = quote::quote! {
         // rust function with doc link to R wrapper
         #[doc = #fn_r_wrapper_doc]
         #original_item

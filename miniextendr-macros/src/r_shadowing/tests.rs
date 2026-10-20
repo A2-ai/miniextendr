@@ -312,6 +312,7 @@ fn processed_text() -> Vec<(String, String)> {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let mut out = Vec::new();
     for dir in [
+        "src/snapshots",
         "src/miniextendr_impl/snapshots",
         "src/r_wrapper_builder/snapshots",
     ] {

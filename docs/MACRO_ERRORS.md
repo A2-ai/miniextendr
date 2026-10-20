@@ -784,6 +784,43 @@ itself (`@export tidy`, `@rawNamespace export(tidy)`, the workaround before
 Hand-written R files are not read: a function of the same name there is not
 refused.
 
+### "`rng(seed = sed)` names no parameter of this function"
+
+`rng(seed = <param>)` (#2198) names the parameter whose value the wrapper
+passes to `set.seed()`, by its Rust name: `rng(seed = _seed)` for a parameter
+`_seed` (the R formal `seed`). Fix the name, or add the parameter. See
+[Seeded Simulation](RNG.md#seeded-simulation-rng-seed).
+
+### "`rng(seed = rng)` needs an R argument the wrapper evaluates"
+
+The seed parameter must be an R formal the wrapper evaluates, since it passes
+the value to `set.seed()`: not the `...`, an `NArgs` or a `Call` / `CallerCall`
+parameter, the `&RngGuard`, or a `Quoted` / `Quosure` argument (`set.seed()`
+would force it). Name the seed argument itself.
+
+### "`rng(seed = ..)` records the seed in the result's `seed` attribute, and a unit return is `NULL`, which can't carry one"
+
+The seed contract gives the result a `seed` attribute, and a function
+returning `()` (or `Result<(), E>`, `Option<()>`, `Invisible<()>`) returns
+`NULL`. Return the simulated values, or use plain `rng`. Reported with the
+other `rng(seed = ..)` problems of the function at once.
+
+### "`rng(seed = ..)` is for standalone functions and their `s3(...)` methods, not an impl method"
+
+The seed contract is written into the R wrapper of a standalone function or an
+`s3(...)` method; impl methods (every class system) and trait methods ("not a
+trait method") refuse it. Write `rng` on the method, or give the seeded draws a
+standalone function, for a `simulate()` method
+`#[miniextendr(rng(seed = seed), s3(generic = "simulate", class = ".."))]`.
+
+### "unknown `rng(...)` option; expected `seed = <parameter>`"
+
+`rng(...)` takes one option, `seed`. The same family covers `` `rng(...)`
+takes `seed = <parameter>` `` (`rng()` is empty: write `rng` alone for the RNG
+state without the seed contract), `` `rng(seed = ..)` names the seed parameter
+by its Rust name, as an identifier `` (`rng(seed = "seed")`: drop the quotes)
+and `` `seed` is set more than once ``.
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

@@ -1044,6 +1044,7 @@ pub fn parse_data_unwrap(s: String) -> Result<i32, String> {
 |-----------|--------|
 | `check_interrupt` | Insert `R_CheckUserInterrupt()` before call |
 | `rng` | Manage R's RNG state (`GetRNGstate`/`PutRNGstate`); a `&RngGuard` parameter receives the guard (no R argument; see [RNG.md](RNG.md)) |
+| `rng(seed = <param>)` | `rng`, plus the seed contract of `stats::simulate()` in the R wrapper: `set.seed()` with the parameter's value (by Rust name), the session's `.Random.seed` put back on exit, and a `seed` attribute on the result. Standalone functions and `s3(...)` methods only (see [Seeded Simulation](RNG.md#seeded-simulation-rng-seed)) |
 | `c_symbol = "..."` | Custom C function name |
 | `lifecycle = "..."` | Mark as deprecated/experimental/superseded |
 | `dots = typed_list!(...)` | Validate `...` arguments (see [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md)) |
@@ -1052,6 +1053,17 @@ pub fn parse_data_unwrap(s: String) -> Result<i32, String> {
 ```rust
 #[miniextendr(check_interrupt, rng)]
 pub fn long_simulation(n: i32, rng: &RngGuard) -> Vec<f64> { /* ... */ }
+
+// `simulate(fit, nsim, seed = 42)` draws from `set.seed(42)`, then the
+// session's stream is put back.
+#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "my_fit"))]
+pub fn simulate_my_fit(
+    _object: SEXP,
+    #[miniextendr(default = "1")] nsim: usize,
+    #[miniextendr(default = "NULL")] _seed: Option<i64>,
+    _dots: &Dots,
+    rng: &RngGuard,
+) -> Vec<f64> { /* ... */ }
 
 #[miniextendr(lifecycle = "deprecated")]
 pub fn old_api() -> i32 { 0 }
@@ -1104,6 +1116,7 @@ fn_name <- function(formals) {
   on.exit(...)         # r_on_exit
   # missing defaults, lifecycle, preconditions, match.arg
   # r_post_checks code
+  # the seed contract of rng(seed = ..)
   .Call(C_mypkg_fn_name, ...)
 }
 ```
@@ -1313,7 +1326,7 @@ impl Person {
 | `coerce` / `no_coerce` | Type coercion override |
 | `wrap = "r6"` | Explicitly wrap the return in R6 (also `s7`, `s4`, `s3`, `env`, `vctrs`); see explicit cross-class return wrapping above |
 | `serialize` | Convert the complete return value through `AsSerialize<T>` |
-| `rng` | RNG state management; a `&RngGuard` parameter receives the guard |
+| `rng` | RNG state management; a `&RngGuard` parameter receives the guard. `rng(seed = ..)` is for standalone functions only (a compile error here) |
 | `unwrap_in_r` | Return `Result<T, E>` as a list with `$value`/`$error` instead of raising on `Err` |
 | `r_name = "..."` | Override R method name |
 | `r_entry = "..."` | Inject R code at method entry |

@@ -2402,14 +2402,15 @@ impl MiniextendrFunctionParsed {
         crate::r_class_formatter::match_arg_skip_set(&self.per_param)
     }
 
-    /// Returns all parameter defaults as an owned map from parameter name to
-    /// default value string (the raw R expression used in the wrapper formals,
-    /// e.g. `"NULL"`, `"TRUE"`, `"\"Safe\""`).
+    /// Returns all parameter defaults as an owned map from R name to default
+    /// value string (the raw R expression used in the wrapper formals, e.g.
+    /// `"NULL"`, `"TRUE"`, `"\"Safe\""`); see [`defaults_by_r_name`].
     pub(crate) fn param_defaults(&self) -> std::collections::HashMap<String, String> {
-        self.per_param
-            .iter()
-            .filter_map(|(name, a)| a.default.as_ref().map(|d| (name.clone(), d.clone())))
-            .collect()
+        defaults_by_r_name(
+            self.per_param
+                .iter()
+                .filter_map(|(name, a)| Some((name, a.default.as_ref()?))),
+        )
     }
     // endregion
 
@@ -2603,8 +2604,8 @@ const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, n
      preconditions, no_preconditions, internal, noexport, export, call_arg";
 
 /// Comma-separated list of fn-level nested options, for error messages.
-const FN_NESTED_OPTIONS_HELP: &str =
-    "`s3(...)`, `lifecycle(...)`, `defaults(...)`, `r_on_exit(...)`, `serde_error(...)`";
+const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`, `r_on_exit(...)`, \
+     `serde_error(...)`, `rng(seed = ...)`";
 
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
@@ -2619,6 +2620,9 @@ const FN_NESTED_OPTIONS_HELP: &str =
 /// - `worker`: opt into worker-thread execution (default is main thread)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
+/// - `rng(seed = <param>)`: `rng`, plus the seed contract of `stats::simulate()`
+///   in the R wrapper (#2198); `<param>` names the parameter, by its Rust
+///   name, whose value goes to `set.seed()`
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `prefer = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 /// - `no_preconditions` / `preconditions` (bare or `= true/false`): drop or
@@ -2661,8 +2665,14 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) check_interrupt: bool,
     /// Enable automatic coercion for all parameters that support it.
     pub(crate) coerce_all: bool,
-    /// Enable RNG state management (GetRNGstate/PutRNGstate).
+    /// Enable RNG state management (GetRNGstate/PutRNGstate). Also set by
+    /// `rng(seed = ..)`.
     pub(crate) rng: bool,
+    /// `rng(seed = <param>)` (#2198): the parameter, by its Rust name, whose
+    /// value the R wrapper passes to `set.seed()` before the call and records
+    /// in the result's `seed` attribute, as `stats:::simulate.lm` does
+    /// ([`check_rng_seed`] checks it against the signature).
+    pub(crate) rng_seed: Option<syn::Ident>,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
     /// Serialize the complete return value through `AsSerialize<T>`.
@@ -3279,6 +3289,138 @@ pub(crate) fn refuse_rng_guard_in_trait_method(
     Ok(())
 }
 
+/// Parse `rng(seed = <param>)` (#2198): the parameter, by its Rust name, whose
+/// value the wrapper passes to `set.seed()`.
+fn parse_rng_seed(list: &syn::MetaList) -> syn::Result<syn::Ident> {
+    let mut seed: Option<syn::Ident> = None;
+    list.parse_nested_meta(|meta| {
+        if !meta.path.is_ident("seed") {
+            return Err(meta.error("unknown `rng(...)` option; expected `seed = <parameter>`"));
+        }
+        let value = meta.value()?;
+        let ident: syn::Ident = value.parse().map_err(|err| {
+            syn::Error::new(
+                err.span(),
+                "`rng(seed = ..)` names the seed parameter by its Rust name, as an \
+                 identifier: `rng(seed = seed)`",
+            )
+        })?;
+        if seed.replace(ident).is_some() {
+            return Err(meta.error("`seed` is set more than once"));
+        }
+        Ok(())
+    })?;
+    seed.ok_or_else(|| {
+        syn::Error::new_spanned(
+            list,
+            "`rng(...)` takes `seed = <parameter>`; write `rng` alone for the RNG state \
+             without the seed contract",
+        )
+    })
+}
+
+/// Parameter defaults, given by Rust name, keyed by R name: the formal the
+/// wrapper builders look them up by, so a default on `_seed` is the formal
+/// `seed`'s.
+pub(crate) fn defaults_by_r_name<'a>(
+    defaults: impl IntoIterator<Item = (&'a String, &'a String)>,
+) -> std::collections::HashMap<String, String> {
+    defaults
+        .into_iter()
+        .map(|(name, default)| {
+            (
+                crate::r_wrapper_builder::normalize_r_arg_string(name),
+                default.clone(),
+            )
+        })
+        .collect()
+}
+
+/// Check `rng(seed = <param>)` (#2198) against a standalone function's
+/// signature and return the seed's R formal. Every problem is reported at
+/// once:
+/// - `seed` names a parameter of `all_inputs`, by its Rust name;
+/// - the parameter is an R argument the wrapper evaluates: one of the formals
+///   of `r_inputs` (the signature without the condition-call marker and the
+///   RNG guard), not `...`, an `NArgs` or a `Quoted` / `Quosure` argument
+///   (`unevaluated`, by R name), since `set.seed()` forces it;
+/// - the return can carry the `seed` attribute: a unit return
+///   (`unit_return`) is `NULL`, which has none.
+///
+/// The R name comes from the formal list (`r_formal_names`), so the prelude
+/// names the formal the wrapper has.
+pub(crate) fn check_rng_seed(
+    seed: &syn::Ident,
+    all_inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    r_inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    unevaluated: &[String],
+    unit_return: bool,
+) -> syn::Result<String> {
+    let rust_name = crate::naming::ident_name(seed);
+    let is_param = all_inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(pt) if matches!(
+            pt.pat.as_ref(),
+            syn::Pat::Ident(p) if crate::naming::ident_name(&p.ident) == rust_name
+        ))
+    });
+    let formal = crate::r_wrapper_builder::r_formal_names(r_inputs)
+        .find(|(_, ident)| crate::naming::ident_name(ident) == rust_name)
+        .map(|(r_name, _)| r_name)
+        .filter(|r_name| !unevaluated.contains(r_name));
+
+    let mut errors: Vec<syn::Error> = Vec::new();
+    if !is_param {
+        errors.push(syn::Error::new_spanned(
+            seed,
+            format!(
+                "`rng(seed = {rust_name})` names no parameter of this function; name the \
+                 parameter whose value goes to `set.seed()`, by its Rust name"
+            ),
+        ));
+    } else if formal.is_none() {
+        errors.push(syn::Error::new_spanned(
+            seed,
+            format!(
+                "`rng(seed = {rust_name})` needs an R argument the wrapper evaluates: it passes \
+                 the value to `set.seed()`. `{rust_name}` is not one (`...`, `NArgs`, a `Call` \
+                 marker, the `&RngGuard` or a `Quoted` / `Quosure` argument)"
+            ),
+        ));
+    }
+    if unit_return {
+        errors.push(syn::Error::new_spanned(
+            seed,
+            "`rng(seed = ..)` records the seed in the result's `seed` attribute, and a unit \
+             return is `NULL`, which can't carry one; return the simulated values",
+        ));
+    }
+    match errors.into_iter().reduce(|mut all, error| {
+        all.combine(error);
+        all
+    }) {
+        Some(error) => Err(error),
+        None => Ok(formal.expect("checked above")),
+    }
+}
+
+/// Refuse `rng(seed = ..)` on an impl or trait method (#2198), spanned on the
+/// option: the seed contract is written in the R wrapper of a standalone
+/// function or an `s3(...)` method. `meta` is `rng`, followed by its
+/// parenthesized options.
+pub(crate) fn refuse_rng_seed_on_method(
+    meta: &syn::meta::ParseNestedMeta<'_>,
+    method: &str,
+) -> syn::Result<()> {
+    let content;
+    syn::parenthesized!(content in meta.input);
+    let _: proc_macro2::TokenStream = content.parse()?;
+    Err(meta.error(format!(
+        "`rng(seed = ..)` is for standalone functions and their `s3(...)` methods, not {method}; \
+         write `rng` here, or give the seeded draws a standalone function \
+         (`#[miniextendr(rng(seed = seed), s3(generic = \"simulate\", class = \"..\"))]`)"
+    )))
+}
+
 /// Refuse a `LazyDots` parameter on a trait method (#1892), in any shape:
 /// the trait declaration (`#[miniextendr_trait]`) and a trait impl. A trait
 /// method's arguments cross the vtable as values its shim converts with
@@ -3437,6 +3579,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut check_interrupt = false;
         let mut coerce_all: Option<bool> = None;
         let mut rng = false;
+        let mut rng_seed = None;
         let mut unwrap_in_r = false;
         let mut serialize = false;
         let mut wrap = None;
@@ -3794,6 +3937,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         r_on_exit = Some(ROnExit { expr, add, after });
                     } else if list.path.is_ident("serde_error") {
                         serde_error = Some(parse_serde_error_list(&list)?);
+                    } else if list.path.is_ident("rng") {
+                        rng_seed = Some(parse_rng_seed(&list)?);
                     } else if let Some(ident) = list.path.get_ident() {
                         // Bool-flag parenthesized form (e.g. `strict(true)`) is not
                         // supported — write `strict` alone or `strict = true` instead.
@@ -3927,7 +4072,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             force_invisible,
             check_interrupt,
             coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),
-            rng,
+            rng: rng || rng_seed.is_some(),
+            rng_seed,
             unwrap_in_r,
             serialize,
             wrap,

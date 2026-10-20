@@ -656,6 +656,70 @@ fn rng_guard_method_param_errors() {
     }
 }
 
+/// A method-level default on a parameter with leading underscores is its
+/// formal's: the method's defaults are keyed by R name.
+#[test]
+fn method_default_on_an_underscored_param() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Sampler {
+                pub fn new() -> Self {
+                    unimplemented!()
+                }
+
+                #[miniextendr(defaults(_n = "1L"))]
+                pub fn draw(&self, _n: i32) -> i32 {
+                    unimplemented!()
+                }
+            }
+        },
+    );
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert!(wrapper.contains("function(n = 1L)"), "{wrapper}");
+}
+
+/// `rng(seed = ..)` is for standalone functions and their `s3(...)` methods
+/// (#2198): an impl method refuses it in both option forms, spanned on the
+/// option.
+#[test]
+fn rng_seed_refused_on_impl_methods() {
+    for (system, item_impl) in [
+        (
+            ClassSystem::Env,
+            syn::parse_quote! {
+                impl Sampler {
+                    #[miniextendr(rng(seed = seed))]
+                    pub fn draw(&self, seed: Option<i64>, rng: &RngGuard) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+        ),
+        (
+            ClassSystem::R6,
+            syn::parse_quote! {
+                impl Sampler {
+                    #[miniextendr(r6(rng(seed = seed)))]
+                    pub fn draw(&self, seed: Option<i64>) -> f64 {
+                        unimplemented!()
+                    }
+                }
+            },
+        ),
+    ] {
+        let err = ParsedImpl::parse(default_impl_attrs(system), item_impl)
+            .expect_err("`rng(seed = ..)` on a method must error");
+        assert!(
+            err.to_string().starts_with(
+                "`rng(seed = ..)` is for standalone functions and their `s3(...)` methods, \
+                 not an impl method"
+            ),
+            "{system:?}: {err}"
+        );
+    }
+}
+
 // endregion
 
 // region: Env class system tests

@@ -1,0 +1,29 @@
+---
+source: miniextendr-macros/src/tests.rs
+expression: wrapper
+---
+
+#' @title simulate.mx_fit
+#' .__MX_PARAM_FILLER__ @param object (no documentation available)
+#' .__MX_PARAM_FILLER__ @param nsim (no documentation available)
+#' .__MX_PARAM_FILLER__ @param seed (no documentation available)
+#' @method simulate mx_fit
+#' @export
+simulate.mx_fit <- function(object, nsim = 1, seed = NULL, ...) {
+  if (!isTRUE(is.numeric(nsim) || is.logical(nsim) || is.raw(nsim))) .miniextendr_arg_error("nsim", "must be numeric, logical, or raw", environment())
+  if (!isTRUE(length(nsim) == 1L)) .miniextendr_arg_error("nsim", "must have length 1", environment())
+  if (!isTRUE(is.raw(nsim) || nsim >= 0)) .miniextendr_arg_error("nsim", "must be non-negative", environment())
+  if (!exists(".Random.seed", envir = globalenv(), inherits = FALSE)) stats::runif(1)
+  if (is.null(seed)) {
+    .mx_rng_state <- get(".Random.seed", envir = globalenv())
+  } else {
+    .mx_r_seed <- get(".Random.seed", envir = globalenv())
+    on.exit(assign(".Random.seed", .mx_r_seed, envir = globalenv()), add = TRUE)
+    set.seed(seed)
+    .mx_rng_state <- structure(seed, kind = as.list(RNGkind()))
+  }
+  .val <- .Call(C_miniextendr_macros_simulate_mx_fit, .call = environment(), object, nsim, seed, list(...))
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  if (!is.null(.val) && (is.atomic(.val) || is.list(.val))) attr(.val, "seed") <- .mx_rng_state
+  .val
+}

@@ -1,0 +1,17 @@
+error: `rng(seed = sed)` names no parameter of this function; name the parameter whose value goes to `set.seed()`, by its Rust name
+ --> tests/ui/fn_rng_seed_rejected.rs:9:26
+  |
+9 | #[miniextendr(rng(seed = sed))]
+  |                          ^^^
+
+error: `rng(seed = ..)` records the seed in the result's `seed` attribute, and a unit return is `NULL`, which can't carry one; return the simulated values
+ --> tests/ui/fn_rng_seed_rejected.rs:9:26
+  |
+9 | #[miniextendr(rng(seed = sed))]
+  |                          ^^^
+
+error: `rng(seed = rng)` needs an R argument the wrapper evaluates: it passes the value to `set.seed()`. `rng` is not one (`...`, `NArgs`, a `Call` marker, the `&RngGuard` or a `Quoted` / `Quosure` argument)
+  --> tests/ui/fn_rng_seed_rejected.rs:14:26
+   |
+14 | #[miniextendr(rng(seed = rng))]
+   |                          ^^^

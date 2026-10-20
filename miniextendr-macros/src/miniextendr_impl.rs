@@ -612,7 +612,8 @@ pub struct ParsedMethod {
     /// via its `per_param_match_arg` / `per_param_choices` / `per_param_several_ok`
     /// fields — see [`MethodAttrs`] for the parsing surface.
     pub method_attrs: MethodAttrs,
-    /// Parameter default values from `#[miniextendr(default = "...")]`
+    /// Parameter default values from `#[miniextendr(defaults(...))]`, keyed
+    /// by R name.
     pub param_defaults: std::collections::HashMap<String, String>,
     /// Whether this method accepts dots, either from raw `...` rewritten to
     /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
@@ -1709,6 +1710,12 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("no_coerce") {
                             coerce = Some(false);
                         } else if inner.path.is_ident("rng") {
+                            if inner.input.peek(syn::token::Paren) {
+                                return crate::miniextendr_fn::refuse_rng_seed_on_method(
+                                    &inner,
+                                    "an impl method",
+                                );
+                            }
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
@@ -1979,6 +1986,12 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("no_coerce") {
                     coerce = Some(false);
                 } else if meta.path.is_ident("rng") {
+                    if meta.input.peek(syn::token::Paren) {
+                        return crate::miniextendr_fn::refuse_rng_seed_on_method(
+                            &meta,
+                            "an impl method",
+                        );
+                    }
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
@@ -2588,7 +2601,7 @@ impl ParsedMethod {
             vis: item.vis.clone(),
             doc_tags,
             method_attrs,
-            param_defaults,
+            param_defaults: crate::miniextendr_fn::defaults_by_r_name(&param_defaults),
             has_dots,
             rng_guard,
         })
