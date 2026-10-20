@@ -1,0 +1,26 @@
+---
+source: miniextendr-macros/src/tests.rs
+expression: wrapper
+---
+
+#' @title seeded_draws
+#' .__MX_PARAM_FILLER__ @param n (no documentation available)
+#' .__MX_PARAM_FILLER__ @param seed (no documentation available)
+#' @export
+seeded_draws <- function(n, seed = NULL) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  if (!exists(".Random.seed", envir = globalenv(), inherits = FALSE)) stats::runif(1)
+  if (is.null(seed)) {
+    .mx_rng_state <- get(".Random.seed", envir = globalenv())
+  } else {
+    .mx_r_seed <- get(".Random.seed", envir = globalenv())
+    on.exit(assign(".Random.seed", .mx_r_seed, envir = globalenv()), add = TRUE)
+    set.seed(seed)
+    .mx_rng_state <- structure(seed, kind = as.list(RNGkind()))
+  }
+  .val <- .Call(C_miniextendr_macros_seeded_draws, .call = sys.call(), n, seed)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  if (!is.null(.val) && (is.atomic(.val) || is.list(.val))) attr(.val, "seed") <- .mx_rng_state
+  .val
+}

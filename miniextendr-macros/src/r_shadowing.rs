@@ -51,9 +51,13 @@ use std::ops::Range;
 /// files, and fails on an undotted callee that is missing here.
 pub(crate) const BASE_CALLEES: &[&str] = &[
     "NextMethod",
+    // The seed contract of `rng(seed = ..)` (#2198), with `assign`, `get`
+    // and `globalenv`.
+    "RNGkind",
     "UseMethod",
     "all",
     "anyNA",
+    "assign",
     "attr",
     "c",
     // The empty completion of a restored pointer under
@@ -64,8 +68,10 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "emptyenv",
     "environment",
     "exists",
+    "get",
     "get0",
     "getOption",
+    "globalenv",
     "grep",
     "identical",
     "inherits",

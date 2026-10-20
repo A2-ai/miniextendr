@@ -795,7 +795,7 @@ pub(super) fn extract_methods(
                 unwrap_in_r: attrs.unwrap_in_r,
                 serialize: attrs.serialize,
                 return_wrap,
-                param_defaults: attrs.defaults,
+                param_defaults: crate::miniextendr_fn::defaults_by_r_name(&attrs.defaults),
                 doc_tags,
                 skip: attrs.skip,
                 r_name: attrs.r_name,
@@ -1024,6 +1024,12 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
             } else if meta.path.is_ident("check_interrupt") {
                 check_interrupt = true;
             } else if meta.path.is_ident("rng") {
+                if meta.input.peek(syn::token::Paren) {
+                    return crate::miniextendr_fn::refuse_rng_seed_on_method(
+                        &meta,
+                        "a trait method",
+                    );
+                }
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
                 unwrap_in_r = true;

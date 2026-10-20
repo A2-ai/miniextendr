@@ -18,6 +18,7 @@ everything else.
 
 - [Quick Start](#quick-start)
 - [The `#[miniextendr(rng)]` Attribute](#the-miniextendr-rng-attribute)
+- [Seeded Simulation: `rng(seed = ..)`](#seeded-simulation-rng-seed)
 - [Manual Control: with_rng and RngGuard](#manual-control-with-rng-and-rngguard)
 - [Drawing from the Guard](#drawing-from-the-guard)
 - [`rand` integration (`feature = "rand"`)](#rand-integration-feature-rand)
@@ -113,6 +114,8 @@ wrapper R calls loads and saves the state around it. A trait method takes no
 `&RngGuard` parameter (a compile error): its arguments cross the trait ABI as R
 values, and the guard is none. Draw inside `with_rng` in the method body instead,
 without `rng` on the method (#2196 tracks taking the guard there).
+`rng(seed = ..)` is refused on trait and impl methods alike (a compile error):
+see [Seeded Simulation](#seeded-simulation-rng-seed).
 
 ### Generated Code Pattern
 
@@ -135,6 +138,98 @@ A function or method that takes the guard always runs on R's main thread, whatev
 **Inside an `rng` function, draw from the `&RngGuard` parameter; don't call
 `with_rng`.** A nested `GetRNGstate()` reloads `.Random.seed`, which still holds
 the state from before the call, so the draws would repeat.
+
+## Seeded Simulation: `rng(seed = ..)`
+
+A `simulate()` method takes a `seed`. With one, it draws from `set.seed(seed)`
+and then puts the session's random stream back, so the caller's next `rnorm()`
+continues where it was; the result records the seed in its `seed` attribute.
+`#[miniextendr(rng(seed = <param>))]` writes that contract into the generated R
+wrapper, in the order `stats:::simulate.lm` uses, so the body only draws:
+
+<!-- docs-examples-check -->
+```rust
+use miniextendr_api::dots::Dots;
+use miniextendr_api::{RngGuard, SEXP, miniextendr};
+
+/// @param object A `my_fit`.
+/// @param nsim Number of draws.
+/// @param seed `NULL`, or a seed for `set.seed()`.
+/// @param ... Unused.
+#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "my_fit"))]
+pub fn simulate_my_fit(
+    _object: SEXP,
+    #[miniextendr(default = "1")] nsim: usize,
+    #[miniextendr(default = "NULL")] _seed: Option<i64>,
+    _dots: &Dots,
+    rng: &RngGuard,
+) -> Vec<f64> {
+    (0..nsim).map(|_| rng.norm_rand()).collect()
+}
+```
+
+```r
+fit <- structure(list(), class = "my_fit")
+set.seed(1)
+before <- .Random.seed
+x <- simulate(fit, nsim = 3, seed = 42)
+identical(.Random.seed, before)  # TRUE: the session's stream is back
+attr(x, "seed")                  # 42, with attribute kind = as.list(RNGkind())
+```
+
+The draws are what `set.seed(42); rnorm(3)` gives. `<param>` names the seed
+parameter by its Rust name, and the wrapper uses its formal (`_seed` is
+`seed`). The option implies `rng`.
+
+After the argument checks, the wrapper runs:
+
+```r
+if (!exists(".Random.seed", envir = globalenv(), inherits = FALSE)) stats::runif(1)
+if (is.null(seed)) {
+  .mx_rng_state <- get(".Random.seed", envir = globalenv())
+} else {
+  .mx_r_seed <- get(".Random.seed", envir = globalenv())
+  on.exit(assign(".Random.seed", .mx_r_seed, envir = globalenv()), add = TRUE)
+  set.seed(seed)
+  .mx_rng_state <- structure(seed, kind = as.list(RNGkind()))
+}
+.val <- .Call(...)
+# ... the result's condition check ...
+if (!is.null(.val) && (is.atomic(.val) || is.list(.val))) attr(.val, "seed") <- .mx_rng_state
+.val
+```
+
+The contract, as `stats::simulate()` has it:
+
+- `.Random.seed` is created when it is missing. A refused argument changes no
+  RNG state: the argument checks come first.
+- With a seed, the session's `.Random.seed` is put back on exit, also when the
+  body returns an error or panics after drawing. The C wrapper loads the state
+  after `set.seed()` and saves it inside `.Call()`, before `on.exit()` restores
+  the session's state. With `seed = NULL` the draws continue the session's
+  stream and stay drawn, as under plain `rng`.
+- `set.seed()` validates the seed: the wrapper passes the value through, and a
+  bad seed is R's own error. So the seed parameter has no type check of its own
+  in the wrapper, and its Rust conversion runs after `set.seed()`. Give it a
+  type that takes the seeds callers pass: `Option<i64>` takes `NULL`, `42` and
+  `42L`, while `Option<i32>` takes integers only, so `seed = 42` would fail its
+  conversion.
+- The `seed` attribute is the seed with attribute `kind = as.list(RNGkind())`,
+  or with `seed = NULL` the `.Random.seed` from before the draws. A result that
+  can't carry attributes (`NULL`, an environment, an external pointer, a
+  function) is left as it is.
+
+The body gets the seed parameter like any other, and draws through
+`&RngGuard`. `rng(seed = ..)` is for standalone functions and their `s3(...)`
+methods; impl and trait methods refuse it with a compile error. It is also a
+compile error when the name is no parameter, when the parameter is no R argument
+the wrapper evaluates (`...`, `NArgs`, a `Call` marker, the `&RngGuard`, a
+`Quoted` / `Quosure` argument), and when the function returns `()` (or
+`Result<(), E>`, `Option<()>`), whose `NULL` can't carry the attribute.
+
+Use it for an R-facing function whose caller passes a seed, as `simulate()`
+methods do. A function without a seed argument needs only `rng`: the caller's
+own `set.seed()` decides its draws.
 
 ## Manual Control: with_rng and RngGuard
 

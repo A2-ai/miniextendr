@@ -508,6 +508,222 @@ fn rng_guard_parameter_checks() {
     }
 }
 
+// region: rng(seed = ..) (#2198)
+
+/// The R wrapper text of an expansion: the string literal that defines a
+/// function.
+fn r_wrapper_text(tokens: proc_macro2::TokenStream) -> Option<String> {
+    tokens.into_iter().find_map(|tree| match tree {
+        proc_macro2::TokenTree::Group(group) => r_wrapper_text(group.stream()),
+        proc_macro2::TokenTree::Literal(lit) => {
+            syn::parse2::<syn::LitStr>(proc_macro2::TokenTree::Literal(lit).into())
+                .ok()
+                .map(|lit| lit.value())
+                .filter(|text| text.contains(" <- function("))
+        }
+        _ => None,
+    })
+}
+
+/// The `#[miniextendr]` R wrapper of the function `item`.
+fn fn_r_wrapper(attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream) -> String {
+    let expanded: proc_macro2::TokenStream = super::expand_fn(attr, item);
+    r_wrapper_text(expanded.clone()).unwrap_or_else(|| panic!("no R wrapper in\n{expanded}"))
+}
+
+/// The `compile_error!` messages `#[miniextendr]` gives for the function
+/// `item`.
+fn fn_compile_errors(
+    attr: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> Vec<String> {
+    fn messages(tokens: proc_macro2::TokenStream, out: &mut Vec<String>) {
+        let mut after_compile_error = false;
+        for tree in tokens {
+            match tree {
+                proc_macro2::TokenTree::Ident(ident) => {
+                    after_compile_error = ident == "compile_error";
+                }
+                proc_macro2::TokenTree::Group(group) if after_compile_error => {
+                    let lit: syn::LitStr = syn::parse2(group.stream()).expect("a message");
+                    out.push(lit.value());
+                    after_compile_error = false;
+                }
+                proc_macro2::TokenTree::Group(group) => messages(group.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    let expanded: proc_macro2::TokenStream = super::expand_fn(attr, item);
+    let mut out = Vec::new();
+    messages(expanded, &mut out);
+    out
+}
+
+/// Under `rng(seed = <param>)` a standalone wrapper writes the seed contract
+/// of `stats::simulate()`: the prelude after the argument checks, with no
+/// type check on the seed (`set.seed()` validates it), and the `seed`
+/// attribute after the result's condition check.
+#[test]
+fn rng_seed_standalone_wrapper() {
+    let wrapper = fn_r_wrapper(
+        quote::quote!(rng(seed = seed)),
+        quote::quote! {
+            pub fn seeded_draws(
+                n: i32,
+                #[miniextendr(default = "NULL")] seed: Option<i64>,
+                rng: &RngGuard,
+            ) -> Vec<f64> {
+                unimplemented!()
+            }
+        },
+    );
+    insta::assert_snapshot!(wrapper);
+    let at = |needle: &str| {
+        wrapper
+            .find(needle)
+            .unwrap_or_else(|| panic!("no `{needle}` in\n{wrapper}"))
+    };
+    assert!(at(".miniextendr_arg_error(\"n\"") < at("if (!exists(\".Random.seed\""));
+    assert!(at("set.seed(seed)") < at(".val <- .Call("));
+    assert!(at("\"rust_condition_value\"") < at("attr(.val, \"seed\") <-"));
+    assert!(
+        !wrapper.contains(".miniextendr_arg_error(\"seed\""),
+        "the seed has no type check\n{wrapper}"
+    );
+}
+
+/// The same contract on an `s3(...)` method, the `simulate()` method's shape.
+#[test]
+fn rng_seed_s3_method_wrapper() {
+    let wrapper = fn_r_wrapper(
+        quote::quote!(rng(seed = seed), s3(generic = "simulate", class = "mx_fit")),
+        quote::quote! {
+            pub fn simulate_mx_fit(
+                _object: SEXP,
+                #[miniextendr(default = "1")] nsim: usize,
+                #[miniextendr(default = "NULL")] seed: Option<i64>,
+                _dots: &Dots,
+                rng: &RngGuard,
+            ) -> Vec<f64> {
+                unimplemented!()
+            }
+        },
+    );
+    insta::assert_snapshot!(wrapper);
+    assert!(
+        wrapper.contains("simulate.mx_fit <- function(object, nsim = 1, seed = NULL, ...)"),
+        "{wrapper}"
+    );
+}
+
+/// Plain `rng` keeps its wrapper: no seed contract.
+#[test]
+fn rng_without_seed_writes_no_contract() {
+    let wrapper = fn_r_wrapper(
+        quote::quote!(rng),
+        quote::quote! {
+            pub fn draws(n: i32, seed: Option<i64>, rng: &RngGuard) -> Vec<f64> {
+                unimplemented!()
+            }
+        },
+    );
+    for needle in [
+        ".Random.seed",
+        "set.seed",
+        "attr(.val, \"seed\")",
+        ".mx_rng_state",
+    ] {
+        assert!(!wrapper.contains(needle), "`{needle}` in\n{wrapper}");
+    }
+}
+
+/// `rng(seed = ..)` names an R argument the wrapper evaluates, on a function
+/// whose result can carry the attribute; every problem is reported at once.
+#[test]
+fn rng_seed_refusals() {
+    let errors = |attr: proc_macro2::TokenStream, item: proc_macro2::TokenStream| {
+        fn_compile_errors(attr, item)
+    };
+    let both = errors(
+        quote::quote!(rng(seed = sed)),
+        quote::quote! { pub fn f(seed: Option<i64>) {} },
+    );
+    assert_eq!(both.len(), 2, "{both:?}");
+    assert!(
+        both[0].starts_with("`rng(seed = sed)` names no parameter of this function"),
+        "{both:?}"
+    );
+    assert!(
+        both[1].starts_with("`rng(seed = ..)` records the seed in the result's `seed` attribute"),
+        "{both:?}"
+    );
+    for (seed, item) in [
+        (
+            quote::quote!(rng),
+            quote::quote! { pub fn f(n: i32, rng: &RngGuard) -> f64 { 0.0 } },
+        ),
+        (
+            quote::quote!(dots),
+            quote::quote! { pub fn f(dots: &Dots) -> f64 { 0.0 } },
+        ),
+        (
+            quote::quote!(n),
+            quote::quote! { pub fn f(n: NArgs) -> f64 { 0.0 } },
+        ),
+        (
+            quote::quote!(expr),
+            quote::quote! { pub fn f(expr: Quoted) -> f64 { 0.0 } },
+        ),
+    ] {
+        let found = errors(quote::quote!(rng(seed = #seed)), item);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("needs an R argument the wrapper evaluates"),
+            "{found:?}"
+        );
+    }
+    for item in [
+        quote::quote! { pub fn f(seed: Option<i64>) -> Result<(), String> { Ok(()) } },
+        quote::quote! { pub fn f(seed: Option<i64>) -> Invisible<()> { Invisible(()) } },
+    ] {
+        let found = errors(quote::quote!(rng(seed = seed)), item);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("a unit return is `NULL`"), "{found:?}");
+    }
+
+    // The option's own spelling.
+    for (attr, message) in [
+        (
+            quote::quote!(rng(sed = seed)),
+            "unknown `rng(...)` option; expected `seed = <parameter>`",
+        ),
+        (
+            quote::quote!(rng()),
+            "`rng(...)` takes `seed = <parameter>`",
+        ),
+        (
+            quote::quote!(rng(seed = "seed")),
+            "`rng(seed = ..)` names the seed parameter by its Rust name",
+        ),
+        (
+            quote::quote!(rng(seed = a, seed = b)),
+            "`seed` is set more than once",
+        ),
+    ] {
+        let err = match syn::parse2::<MiniextendrFnAttrs>(attr) {
+            Ok(_) => panic!("accepted: {message}"),
+            Err(err) => err.to_string(),
+        };
+        assert!(err.starts_with(message), "{err}");
+    }
+    let attrs: MiniextendrFnAttrs =
+        syn::parse2(quote::quote!(rng(seed = seed), rng = false)).expect("parses");
+    assert!(attrs.rng, "`rng(seed = ..)` implies `rng`");
+}
+
+// endregion
+
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
 /// next to an explicit `&Dots`, are compile errors.
 #[test]
@@ -569,6 +785,24 @@ fn parsed_fn_mid_dots_formals_and_call_args() {
         .with_defaults(parsed.param_defaults());
     assert_eq!(builder.build_formals(), "x, ..., flag = FALSE");
     assert_eq!(builder.build_call_args(), "x, list(...), flag");
+}
+
+/// A default on a parameter with leading underscores is its formal's: the
+/// defaults are keyed by R name, which drops them (`_seed` is `seed`).
+#[test]
+fn parsed_fn_default_on_an_underscored_param() {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn probe(
+            #[miniextendr(default = "NULL")] _seed: Option<i64>,
+            #[miniextendr(default = "1L")] __n: i32,
+        ) -> i32 {
+            0
+        }
+    })
+    .expect("parses");
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_defaults(parsed.param_defaults());
+    assert_eq!(builder.build_formals(), "seed = NULL, n = 1L");
 }
 
 // endregion

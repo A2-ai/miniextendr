@@ -1138,6 +1138,57 @@ impl Default for RoxygenBuilder {
 }
 // endregion
 
+// region: RngSeedContract - the stats::simulate() seed contract
+
+/// The seed contract of `stats::simulate()`, which
+/// `#[miniextendr(rng(seed = <param>))]` writes into a standalone wrapper in
+/// the order `stats:::simulate.lm` uses (#2198).
+///
+/// The [`prelude`](Self::prelude) comes after the argument checks, so a
+/// refused argument changes no RNG state. It creates `.Random.seed` when it is
+/// missing. With a `NULL` seed it then remembers the state; otherwise it
+/// registers the restore of the session's state with `on.exit()` and calls
+/// `set.seed()` with the value as passed, which validates it. The C wrapper's
+/// `GetRNGstate()` then loads the seeded state, and its `PutRNGstate()` saves
+/// the state inside `.Call()`, before `on.exit()` puts the session's state
+/// back, also when the body returns an error or panics.
+/// [`ATTRIBUTE`](Self::ATTRIBUTE) records the seed in the result, after the
+/// result's condition check.
+pub(crate) struct RngSeedContract<'a> {
+    /// The seed's R formal.
+    pub formal: &'a str,
+}
+
+impl RngSeedContract<'_> {
+    /// The statements before `.Call()`, each line after the first prefixed by
+    /// `indent`.
+    pub(crate) fn prelude(&self, indent: &str) -> String {
+        let seed = self.formal;
+        let lines = [
+            "if (!exists(\".Random.seed\", envir = globalenv(), inherits = FALSE)) stats::runif(1)"
+                .to_owned(),
+            format!("if (is.null({seed})) {{"),
+            "  .mx_rng_state <- get(\".Random.seed\", envir = globalenv())".to_owned(),
+            "} else {".to_owned(),
+            "  .mx_r_seed <- get(\".Random.seed\", envir = globalenv())".to_owned(),
+            "  on.exit(assign(\".Random.seed\", .mx_r_seed, envir = globalenv()), add = TRUE)"
+                .to_owned(),
+            format!("  set.seed({seed})"),
+            format!("  .mx_rng_state <- structure({seed}, kind = as.list(RNGkind()))"),
+            "}".to_owned(),
+        ];
+        lines.join(&format!("\n{indent}"))
+    }
+
+    /// The statement that gives the result `.val` its `seed` attribute. A
+    /// value that can't carry attributes (`NULL`, an environment, an external
+    /// pointer, a function) is left as it is; `NULL` is tested on its own,
+    /// since `is.atomic(NULL)` is `TRUE` before R 4.4.
+    pub(crate) const ATTRIBUTE: &'static str = "if (!is.null(.val) && (is.atomic(.val) || \
+         is.list(.val))) attr(.val, \"seed\") <- .mx_rng_state";
+}
+// endregion
+
 // region: Tests
 
 #[cfg(test)]

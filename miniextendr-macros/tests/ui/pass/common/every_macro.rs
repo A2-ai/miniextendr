@@ -92,6 +92,18 @@ pub fn drawn(n: i32, rng: &RngGuard, scale: f64) -> f64 {
     f64::from(n) * scale * rng.unif_rand()
 }
 
+#[miniextendr(rng(seed = seed), s3(generic = "simulate", class = "shadow_fit"))]
+pub fn simulate_shadow_fit(
+    _object: SEXP,
+    #[miniextendr(default = "1")] nsim: usize,
+    #[miniextendr(default = "NULL")] seed: ::core::option::Option<i64>,
+    _dots: &Dots,
+    rng: &RngGuard,
+) -> ::std::vec::Vec<f64> {
+    let _ = seed;
+    (0..nsim).map(|_| rng.norm_rand()).collect()
+}
+
 #[miniextendr(unwrap_in_r)]
 pub fn unwrapped(x: i32) -> ::core::result::Result<i32, ::std::string::String> {
     ::core::result::Result::Ok(x)
