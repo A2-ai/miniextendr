@@ -141,29 +141,25 @@ pub enum ErrPartsMode {
     Probe { prefix: String },
     /// `#[miniextendr(serde_error(..))]`: serialize the error with serde; the enum
     /// variant becomes the member class `<prefix>_<variant>`, the payload fields
-    /// become the condition's data. `tag` is the internally-tagged discriminator
-    /// field consumed as the variant (`#[serde(tag = "kind")]`); `skip` and
-    /// `rename` are the payload-field controls (`skip(...)` / `rename(...)`).
+    /// become the condition's data. `prefix` is the crate default (`<crate>_error`);
+    /// the spec's named `shape` and its own options (`tag`, `prefix`, `skip`,
+    /// `rename`, `as_*`) reach `serde_err_parts` as `SerdeErrorShape`s, applied
+    /// in that order.
     Serde {
-        tag: String,
         prefix: String,
-        skip: Vec<String>,
-        rename: Vec<(String, String)>,
+        spec: crate::miniextendr_fn::SerdeErrorSpec,
     },
 }
 
 impl ErrPartsMode {
     /// Resolve a parsed `serde_error` spec (or its absence) into a mode.
     pub fn from_spec(spec: Option<&crate::miniextendr_fn::SerdeErrorSpec>) -> Self {
+        let prefix = crate::miniextendr_fn::default_serde_error_prefix();
         match spec {
-            None => ErrPartsMode::Probe {
-                prefix: crate::miniextendr_fn::default_serde_error_prefix(),
-            },
+            None => ErrPartsMode::Probe { prefix },
             Some(spec) => ErrPartsMode::Serde {
-                tag: spec.tag().to_string(),
-                prefix: spec.prefix(),
-                skip: spec.skip.clone(),
-                rename: spec.rename.clone(),
+                prefix,
+                spec: spec.clone(),
             },
         }
     }
@@ -174,22 +170,33 @@ impl ErrPartsMode {
             ErrPartsMode::Probe { prefix } => {
                 quote! { ::miniextendr_api::__mx_result_err_parts!(e, #prefix) }
             }
-            ErrPartsMode::Serde {
-                tag,
-                prefix,
-                skip,
-                rename,
-            } => {
-                let (from, to): (Vec<&String>, Vec<&String>) =
-                    rename.iter().map(|(f, t)| (f, t)).unzip();
-                quote! {
-                    ::miniextendr_api::condition::serde_err_parts(
-                        &e,
-                        #tag,
-                        #prefix,
-                        &[#(#skip),*],
-                        &[#((#from, #to)),*],
-                    )
+            ErrPartsMode::Serde { prefix, spec } => {
+                // The user's path keeps its span: a misspelt or mistyped shape
+                // is reported on it.
+                let mut shapes: Vec<TokenStream> = spec
+                    .shape
+                    .iter()
+                    .map(|path| quote::quote_spanned!(syn::spanned::Spanned::span(path)=> &#path))
+                    .collect();
+                let call = |shapes: &[TokenStream]| {
+                    quote! {
+                        ::miniextendr_api::condition::serde_err_parts(&e, #prefix, &[#(#shapes),*])
+                    }
+                };
+                match spec.own_shape() {
+                    None => call(&shapes),
+                    Some(own) => {
+                        let ident = syn::Ident::new(
+                            "__MX_SERDE_ERROR_SHAPE",
+                            proc_macro2::Span::mixed_site(),
+                        );
+                        shapes.push(quote!(&#ident));
+                        let call = call(&shapes);
+                        quote! {{
+                            const #ident: ::miniextendr_api::condition::SerdeErrorShape = #own;
+                            #call
+                        }}
+                    }
                 }
             }
         }

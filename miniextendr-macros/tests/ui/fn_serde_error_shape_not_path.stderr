@@ -1,0 +1,5 @@
+error: serde_error shape takes the path of a `SerdeErrorShape` const: `shape = ENGINE`
+ --> tests/ui/fn_serde_error_shape_not_path.rs:8:35
+  |
+8 | #[miniextendr(serde_error(shape = "ENGINE"))]
+  |                                   ^^^^^^^^

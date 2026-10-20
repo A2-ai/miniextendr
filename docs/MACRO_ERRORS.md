@@ -612,8 +612,8 @@ Under the API crate's `serde` feature every `Result<T, E>` whose
 already classed from its serde shape, so the bare `#[miniextendr(serde_error)]`
 flag, `serde_error = true`, `serde_error = false` and an empty `serde_error()`
 would switch nothing on or off. The attribute only carries options: write
-`serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))`, or drop
-it. See
+`serde_error(shape = ENGINE)`, options such as
+`serde_error(prefix = "..", skip(..), as_character(..))`, or drop it. See
 [CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
 
 ### "`serde_error` cannot be used with `unwrap_in_r`"
@@ -631,13 +631,16 @@ does not return `Result` has no `Err` arm, so the attribute would be a silent
 no-op; it is rejected instead. Return `Result<T, E>` with
 `E: serde::Serialize + Display`.
 
-### "unknown serde_error option; expected `tag`, `prefix`, `skip(...)` or `rename(...)`"
+### "unknown serde_error option; expected `shape`, `tag`, `prefix`, `skip(...)`, `rename(...)`, `as_character(...)`, `as_integer(...)`, `as_double(...)` or `as_logical(...)`"
 
-`serde_error(...)` takes `tag = "..."` and `prefix = "..."` as name-value
-pairs and `skip("a", "b")` / `rename(a = "b")` as nested lists. The two list
-options are the payload-field controls; `skip = "a"` and `rename = "b"` are
-rejected with a message pointing at the list form. See
-[CONDITIONS.md](CONDITIONS.md#payload-fields-named-message).
+`serde_error(...)` takes `shape = PATH`, `tag = "..."` and `prefix = "..."` as
+name-value pairs and `skip("a", "b")`, `rename(a = "b")` and
+`as_character("a")` / `as_integer(..)` / `as_double(..)` / `as_logical(..)`
+as nested lists. The list options are the payload-field controls;
+`skip = "a"`, `rename = "b"` and `as_integer = "n"` are rejected with a
+message pointing at the list form. See
+[CONDITIONS.md](CONDITIONS.md#payload-fields-named-message) and
+[CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes).
 
 ### "serde_error rename target `message` is reserved"
 
@@ -647,6 +650,42 @@ option exists to avoid. Pick another name. The same family covers
 `serde_error skip names `a` twice`, `serde_error rename names `a` twice`, and
 `serde_error names `a` in both skip and rename`: each field appears in at most
 one place.
+
+### "serde_error names `n` in both as_integer and as_double; a field has one R type"
+
+Each `as_*` option gives a payload field one atomic R type, so a field may be
+named by only one of them. Keep the one you want. Within one function every
+conflict is reported at once, each on the name that repeats an earlier option.
+To give a field a different type than a shared shape does, name it in the
+function's own options: those apply after the shape and win
+([CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes)).
+
+### "serde_error names `message` in both skip and as_character; a skipped field has no R type"
+
+`skip` drops the field, so a type for it has nothing to act on. Drop one of
+the two. `serde_error as_integer names `n` twice` and
+`serde_error as_double takes a list of field names` belong to the same family.
+
+### "serde_error shape takes the path of a `SerdeErrorShape` const: `shape = ENGINE`"
+
+`shape = ` names a `const` (or `static`) of type
+`miniextendr_api::condition::SerdeErrorShape` by path, as Rust code would
+refer to it from the function's module: `shape = ENGINE`,
+`shape = crate::errors::ENGINE`, or on a method `shape = Self::SHAPE`. A string, a list (`shape(ENGINE)`), the bare
+word and a qualified path (`<T as Tr>::X`) are rejected, as is `shape` given
+twice. A path that does not resolve, or names a value of another type, is
+rustc's own error at the path.
+
+### "evaluation panicked: SerdeErrorShape: field `n` is in both `as_integer` and `as_double`; a field has one R type"
+
+error[E0080] on a `SerdeErrorShape` const: the builder methods check their
+fields against the options already set and panic during const evaluation, so
+a contradictory shape does not compile. The message names the field and the
+two options; the span is the const. The checks mirror the attribute's: a
+field in two `as_*` lists, a field skipped and also typed or renamed, a field
+listed or renamed twice, two renames onto one name, a reserved `rename`
+target, an empty list or name, and an option set twice (list every field in
+one call).
 
 ### "tuple field 0 of variant `E::Raw` needs a `data` name"
 

@@ -510,6 +510,17 @@ pub(crate) fn build_dots_validation_stmt(
 /// - `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —
 ///   options for the serde-classed `Err` arm. The path itself is automatic under the
 ///   API crate's `serde` feature for every `Result<T, E>` with `E: Serialize + Display`.
+///   `as_character("a", ..)`, `as_integer(..)`, `as_double(..)` and `as_logical(..)` give
+///   payload fields that atomic R type, as the `serde::as_*` field helpers would from the
+///   error type itself; like `skip` and `rename` they name fields as the error serializes
+///   them, before any rename. A field takes one `as_*` option and is not also skipped
+///   (compile errors, all reported at once). `shape = PATH` names a
+///   `miniextendr_api::condition::SerdeErrorShape` const holding any of these options, so
+///   the functions returning one error type share them:
+///   `serde_error(shape = ENGINE, as_double("n"))` applies `ENGINE`, then the function's
+///   own options, which win for a field set by both. The path resolves from the
+///   function's module (`Self::X` on a method names the impl's type); a misspelt one is
+///   a compile error.
 /// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
 /// - `#[miniextendr(dots = empty | empty(allow = [..]) | forward(allow = [..]) | data)]` —
 ///   what `...` takes; the R wrapper refuses the other arguments before

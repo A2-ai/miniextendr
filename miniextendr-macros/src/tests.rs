@@ -1800,28 +1800,21 @@ fn miniextendr_attr_postfix_parses_and_rejects_conflicts() {
 
 #[test]
 fn miniextendr_attr_serde_error_forms() {
-    use crate::miniextendr_fn::SerdeErrorSpec;
-
-    // Option list: the only accepted form. Unset options keep the defaults
-    // (`kind` tag, `<crate>_error` prefix).
+    // Option list: the only accepted form. Unset options stay `None`; the
+    // runtime supplies the `kind` tag and the macro the `<crate>_error` prefix.
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(tag = "type")))
         .expect("should parse nested serde_error");
     let spec = attrs.serde_error.expect("serde_error set");
-    assert_eq!(spec.tag(), "type");
-    assert!(
-        spec.prefix().ends_with("_error"),
-        "default prefix is `<crate>_error`: {}",
-        spec.prefix()
-    );
+    assert_eq!(spec.tag.as_deref(), Some("type"));
+    assert_eq!(spec.prefix, None);
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(
         tag = "type",
         prefix = "engine"
     )))
     .expect("should parse nested serde_error");
     let spec = attrs.serde_error.expect("serde_error set");
-    assert_eq!(spec.tag(), "type");
-    assert_eq!(spec.prefix(), "engine");
-    assert_eq!(SerdeErrorSpec::default().tag(), "kind");
+    assert_eq!(spec.tag.as_deref(), Some("type"));
+    assert_eq!(spec.prefix.as_deref(), Some("engine"));
 
     // The serde path is on for every eligible error type under the `serde`
     // feature, so the flag forms carry no information and are rejected.
@@ -1837,10 +1830,120 @@ fn miniextendr_attr_serde_error_forms() {
             .unwrap_or_else(|| panic!("`{text}` must fail"));
         assert!(err.to_string().contains("is not a switch"), "{text}: {err}");
         assert!(
-            err.to_string().contains("serde_error(tag ="),
+            err.to_string().contains("serde_error(shape = ENGINE)"),
             "{text}: {err}"
         );
     }
+}
+
+/// `serde_error(shape = PATH)` (#2207): a named `SerdeErrorShape`, alone or
+/// with the function's own options.
+#[test]
+fn miniextendr_attr_serde_error_shape() {
+    use crate::miniextendr_fn::FieldType;
+
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(shape = ENGINE)))
+        .expect("shape alone");
+    let spec = attrs.serde_error.expect("serde_error set");
+    assert_eq!(spec.shape, Some(syn::parse_quote!(ENGINE)));
+    assert!(spec.own_shape().is_none(), "no options of its own");
+
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(
+        shape = crate::errors::ENGINE,
+        as_double("n"),
+        prefix = "rate"
+    )))
+    .expect("shape + own options");
+    let spec = attrs.serde_error.expect("serde_error set");
+    assert_eq!(spec.shape, Some(syn::parse_quote!(crate::errors::ENGINE)));
+    assert_eq!(spec.types, [(FieldType::Double, "n".to_string())]);
+    assert_eq!(spec.prefix.as_deref(), Some("rate"));
+
+    // Not a path, or twice.
+    for input in [
+        quote::quote!(serde_error(shape = "ENGINE")),
+        quote::quote!(serde_error(shape(ENGINE))),
+        quote::quote!(serde_error(shape)),
+        quote::quote!(serde_error(shape = <T as Tr>::ENGINE)),
+    ] {
+        let text = input.to_string();
+        let err = syn::parse2::<MiniextendrFnAttrs>(input)
+            .err()
+            .unwrap_or_else(|| panic!("`{text}` must fail"));
+        assert!(
+            err.to_string()
+                .contains("takes the path of a `SerdeErrorShape` const"),
+            "{text}: {err}"
+        );
+    }
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(shape = A, shape = B)))
+        .err()
+        .expect("two shapes");
+    assert!(err.to_string().contains("shape is given twice"), "{err}");
+}
+
+/// `serde_error(as_character(..), as_integer(..), as_double(..), as_logical(..))`
+/// (#2207): each lists payload fields, keyed like `skip` / `rename`.
+#[test]
+fn miniextendr_attr_serde_error_as_options() {
+    use crate::miniextendr_fn::FieldType;
+
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(
+        as_character("rule", "column"),
+        as_integer("n"),
+        as_double("rate"),
+        as_logical("exact"),
+        rename(rule = "rules"),
+        as_character("source")
+    )))
+    .expect("every as_* option");
+    let spec = attrs.serde_error.expect("serde_error set");
+    assert_eq!(
+        spec.types,
+        [
+            (FieldType::Character, "rule".to_string()),
+            (FieldType::Character, "column".to_string()),
+            (FieldType::Integer, "n".to_string()),
+            (FieldType::Double, "rate".to_string()),
+            (FieldType::Logical, "exact".to_string()),
+            (FieldType::Character, "source".to_string()),
+        ]
+    );
+    // A type and a rename of one field compose.
+    assert_eq!(spec.rename, [("rule".to_string(), "rules".to_string())]);
+}
+
+/// Conflicts among the function's own options: every one is reported, each on
+/// the token that repeats or contradicts an earlier option.
+#[test]
+fn miniextendr_attr_serde_error_as_options_refusals_are_batched() {
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(
+        as_integer("n"),
+        as_double("n"),
+        skip("rule"),
+        as_character("rule"),
+        as_logical("flag"),
+        skip("flag"),
+        as_integer("m", "m"),
+        as_double = "x",
+        as_logical(),
+        as_character("")
+    )))
+    .err()
+    .expect("conflicts must fail");
+    let messages: Vec<String> = err.into_iter().map(|e| e.to_string()).collect();
+    assert_eq!(
+        messages,
+        [
+            "serde_error names `n` in both as_integer and as_double; a field has one R type",
+            "serde_error names `rule` in both skip and as_character; a skipped field has no R type",
+            "serde_error names `flag` in both as_logical and skip; a skipped field has no R type",
+            "serde_error as_integer names `m` twice",
+            "serde_error as_double takes a list of field names: `as_double(\"rule\")`",
+            "serde_error as_logical needs at least one field name: `as_logical(\"message\")`",
+            "serde_error as_character field name must not be empty",
+        ]
+    );
 }
 
 #[test]
@@ -1849,8 +1952,9 @@ fn miniextendr_attr_serde_error_rejects_bad_input() {
         .err()
         .expect("unknown nested key must fail");
     assert!(
-        err.to_string()
-            .contains("expected `tag`, `prefix`, `skip(...)` or `rename(...)`"),
+        err.to_string().contains(
+            "expected `shape`, `tag`, `prefix`, `skip(...)`, `rename(...)`, `as_character(...)`"
+        ),
         "{err}"
     );
 
@@ -1889,8 +1993,8 @@ fn miniextendr_attr_serde_error_skip_and_rename() {
             ("line".to_string(), "at".to_string()),
         ]
     );
-    assert_eq!(spec.prefix(), "engine");
-    assert_eq!(spec.tag(), "kind");
+    assert_eq!(spec.prefix.as_deref(), Some("engine"));
+    assert_eq!(spec.tag, None);
 
     // Rust keywords are accepted as field names (`type` is a common one).
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serde_error(rename(type = "ty"))))
@@ -2067,7 +2171,7 @@ fn miniextendr_attr_call_arg_parses_and_validates() {
 #[test]
 fn err_parts_mode_expr_selects_the_serde_path() {
     use crate::c_wrapper_builder::ErrPartsMode;
-    use crate::miniextendr_fn::SerdeErrorSpec;
+    use crate::miniextendr_fn::{FieldType, SerdeErrorSpec};
 
     // No options: the runtime probe, handed the `<crate>_error` prefix for
     // its serde arm.
@@ -2081,33 +2185,73 @@ fn err_parts_mode_expr_selects_the_serde_path() {
     assert!(probe.contains(&format!("\"{prefix}\"")), "{probe}");
     assert!(!probe.contains("serde_err_parts"), "{probe}");
 
+    // The function's own options become an inline const shape, the last one
+    // `serde_err_parts` applies; the crate prefix is the fallback.
     let spec = SerdeErrorSpec {
         tag: Some("type".into()),
         prefix: Some("engine".into()),
         skip: vec!["message".into()],
         rename: vec![("source".into(), "cause".into())],
+        types: vec![
+            (FieldType::Integer, "n".into()),
+            (FieldType::Character, "rule".into()),
+            (FieldType::Integer, "m".into()),
+        ],
+        ..SerdeErrorSpec::default()
     };
     let mode = ErrPartsMode::from_spec(Some(&spec));
-    assert_eq!(
-        mode,
-        ErrPartsMode::Serde {
-            tag: "type".into(),
-            prefix: "engine".into(),
-            skip: vec!["message".into()],
-            rename: vec![("source".into(), "cause".into())],
-        }
-    );
+    let ErrPartsMode::Serde { prefix, spec: kept } = &mode else {
+        panic!("a spec must select serde_err_parts: {mode:?}");
+    };
+    assert!(prefix.ends_with("_error"), "{prefix}");
+    assert_eq!(kept, &spec);
     let serde = normalize_tokens(mode.expr());
-    assert!(serde.contains("serde_err_parts"), "{serde}");
-    assert!(serde.contains("\"type\""), "{serde}");
-    assert!(serde.contains("\"engine\""), "{serde}");
-    assert!(serde.contains("&[\"message\"]"), "{serde}");
-    assert!(serde.contains("&[(\"source\",\"cause\")]"), "{serde}");
+    assert!(
+        serde.contains(
+            "const__MX_SERDE_ERROR_SHAPE:::miniextendr_api::condition::SerdeErrorShape=\
+             ::miniextendr_api::condition::SerdeErrorShape::new().tag(\"type\")\
+             .prefix(\"engine\").skip(&[\"message\"]).rename(&[(\"source\",\"cause\")])\
+             .as_integer(&[\"n\",\"m\"]).as_character(&[\"rule\"]);"
+        ),
+        "{serde}"
+    );
+    assert!(
+        serde.contains(&format!(
+            "::miniextendr_api::condition::serde_err_parts(&e,\"{prefix}\",&[&__MX_SERDE_ERROR_SHAPE])"
+        )),
+        "{serde}"
+    );
     assert!(!serde.contains("__mx_result_err_parts"), "{serde}");
 
-    // No options: both slices are empty literals.
-    let serde = normalize_tokens(ErrPartsMode::from_spec(Some(&SerdeErrorSpec::default())).expr());
-    assert!(serde.contains("&[],&[],"), "{serde}");
+    // A named shape alone: no inline const, the path passed as written.
+    let spec = SerdeErrorSpec {
+        shape: Some(syn::parse_quote!(crate::errors::ENGINE)),
+        ..SerdeErrorSpec::default()
+    };
+    let serde = normalize_tokens(ErrPartsMode::from_spec(Some(&spec)).expr());
+    assert!(!serde.contains("const"), "{serde}");
+    assert!(
+        serde.contains(&format!(
+            "serde_err_parts(&e,\"{prefix}\",&[&crate::errors::ENGINE])"
+        )),
+        "{serde}"
+    );
+
+    // Both: the named shape first, the function's options after it.
+    let spec = SerdeErrorSpec {
+        shape: Some(syn::parse_quote!(ENGINE)),
+        types: vec![(FieldType::Double, "n".into())],
+        ..SerdeErrorSpec::default()
+    };
+    let serde = normalize_tokens(ErrPartsMode::from_spec(Some(&spec)).expr());
+    assert!(
+        serde.contains("SerdeErrorShape::new().as_double(&[\"n\"]);"),
+        "{serde}"
+    );
+    assert!(
+        serde.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+        "{serde}"
+    );
 }
 
 #[test]

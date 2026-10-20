@@ -1,0 +1,11 @@
+error: serde_error names `n` in both as_integer and as_double; a field has one R type
+  --> tests/ui/fn_serde_error_as_conflicts.rs:13:15
+   |
+13 |     as_double("n"),
+   |               ^^^
+
+error: serde_error names `message` in both skip and as_character; a skipped field has no R type
+  --> tests/ui/fn_serde_error_as_conflicts.rs:15:26
+   |
+15 |     as_character("rule", "message")
+   |                          ^^^^^^^^^

@@ -6537,7 +6537,7 @@ fn method_call_caller_is_rejected_clearly() {
 
 /// `#[miniextendr(serde_error(..))]` on a method swaps the `Err` arm from the
 /// runtime probe to a direct `serde_err_parts` call carrying the options
-/// (#1449, #1457); methods without it keep the probe, whose serde arm is
+/// (#1449, #1457, #2207); methods without it keep the probe, whose serde arm is
 /// automatic under the `serde` feature.
 #[test]
 fn method_serde_error_selects_serde_err_parts() {
@@ -6552,28 +6552,62 @@ fn method_serde_error_selects_serde_err_parts() {
                 pub fn check_unit(&self, v: f64) -> Result<(), EngineError> { unimplemented!() }
                 #[miniextendr(serde_error(skip("message"), rename(source = "cause")))]
                 pub fn parse(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                #[miniextendr(serde_error(shape = ENGINE))]
+                pub fn shaped(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                #[miniextendr(serde_error(shape = ENGINE, as_double("n")))]
+                pub fn shaped_own(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                #[miniextendr(serde_error(shape = Self::SHAPE))]
+                pub fn shaped_self(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
                 pub fn plain(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
                 pub fn probe(&self, v: f64) -> Result<f64, String> { unimplemented!() }
             }
         },
     );
-    let tokens = c_wrapper_tokens(&parsed, "check");
+    let flat = |name: &str| -> String {
+        c_wrapper_tokens(&parsed, name)
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect()
+    };
+
+    let tokens = flat("check");
     assert!(tokens.contains("serde_err_parts"), "{tokens}");
     assert!(!tokens.contains("__mx_result_err_parts"), "{tokens}");
-    assert!(tokens.contains("\"kind\""), "default tag: {tokens}");
+    assert!(
+        tokens.contains("SerdeErrorShape::new().prefix(\"engine\");"),
+        "{tokens}"
+    );
+    assert!(tokens.contains("&[&__MX_SERDE_ERROR_SHAPE])"), "{tokens}");
 
-    let tokens = c_wrapper_tokens(&parsed, "check_unit");
-    assert!(tokens.contains("serde_err_parts"), "{tokens}");
-    assert!(tokens.contains("\"type\""), "{tokens}");
-    assert!(tokens.contains("\"engine\""), "{tokens}");
-    let flat: String = tokens.chars().filter(|c| !c.is_whitespace()).collect();
-    assert!(flat.contains("&[],&[],"), "no skip, no rename: {tokens}");
+    let tokens = flat("check_unit");
+    assert!(
+        tokens.contains("SerdeErrorShape::new().tag(\"type\").prefix(\"engine\");"),
+        "{tokens}"
+    );
 
-    // skip / rename land as the two slice arguments (#1457).
-    let tokens = c_wrapper_tokens(&parsed, "parse");
-    let flat: String = tokens.chars().filter(|c| !c.is_whitespace()).collect();
-    assert!(flat.contains("&[\"message\"],"), "{tokens}");
-    assert!(flat.contains("&[(\"source\",\"cause\")],"), "{tokens}");
+    // skip / rename land on the inline shape (#1457).
+    let tokens = flat("parse");
+    assert!(
+        tokens.contains(".skip(&[\"message\"]).rename(&[(\"source\",\"cause\")]);"),
+        "{tokens}"
+    );
+
+    // A named shape, alone and before the method's own options (#2207).
+    let tokens = flat("shaped");
+    assert!(tokens.contains("&[&ENGINE])"), "{tokens}");
+    assert!(!tokens.contains("__MX_SERDE_ERROR_SHAPE"), "{tokens}");
+    let tokens = flat("shaped_own");
+    assert!(
+        tokens.contains("SerdeErrorShape::new().as_double(&[\"n\"]);"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+        "{tokens}"
+    );
+    // `Self::` names the impl's type: the C wrapper is a free function.
+    let tokens = flat("shaped_self");
+    assert!(tokens.contains("&[&Checker::SHAPE])"), "{tokens}");
 
     // No attribute: the probe, with the crate prefix for its serde arm.
     for name in ["plain", "probe"] {
@@ -6584,6 +6618,67 @@ fn method_serde_error_selects_serde_err_parts() {
             "{name}: prefix literal: {tokens}"
         );
         assert!(!tokens.contains("serde_err_parts"), "{name}: {tokens}");
+    }
+}
+
+/// The `as_*` and `shape` options parse at both method spellings,
+/// `#[miniextendr(serde_error(..))]` and `#[miniextendr(s3(serde_error(..)))]`,
+/// with the same batched refusals (#2207).
+#[test]
+fn method_serde_error_as_options_and_refusals() {
+    for attr in [
+        quote::quote!(serde_error(shape = ENGINE, as_integer("n"))),
+        quote::quote!(s3(serde_error(shape = ENGINE, as_integer("n")))),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::S3,
+            syn::parse_quote! {
+                impl Checker {
+                    pub fn new(max: f64) -> Self { unimplemented!() }
+                    #[miniextendr(#attr)]
+                    pub fn check(&self, v: f64) -> Result<f64, EngineError> { unimplemented!() }
+                }
+            },
+        );
+        let tokens: String = c_wrapper_tokens(&parsed, "check")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(
+            tokens.contains("SerdeErrorShape::new().as_integer(&[\"n\"]);"),
+            "{attr}: {tokens}"
+        );
+        assert!(
+            tokens.contains("&[&ENGINE,&__MX_SERDE_ERROR_SHAPE])"),
+            "{attr}: {tokens}"
+        );
+    }
+
+    for attr in [
+        quote::quote!(serde_error(as_integer("n"), as_double("n"), skip("n"))),
+        quote::quote!(s3(serde_error(as_integer("n"), as_double("n"), skip("n")))),
+    ] {
+        let text = attr.to_string();
+        let err = ParsedImpl::parse(
+            default_impl_attrs(ClassSystem::S3),
+            syn::parse_quote! {
+                impl Checker {
+                    #[miniextendr(#attr)]
+                    pub fn check(&self, v: f64) -> Result<f64, String> { unimplemented!() }
+                }
+            },
+        )
+        .err()
+        .unwrap_or_else(|| panic!("`{text}` must fail"));
+        let messages: Vec<String> = err.into_iter().map(|e| e.to_string()).collect();
+        assert_eq!(
+            messages,
+            [
+                "serde_error names `n` in both as_integer and as_double; a field has one R type",
+                "serde_error names `n` in both as_integer and skip; a skipped field has no R type",
+            ],
+            "{text}"
+        );
     }
 }
 

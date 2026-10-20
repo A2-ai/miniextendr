@@ -3,7 +3,7 @@
 //! Under the API crate's `serde` feature every `Result<T, E>` whose
 //! `E: Serialize + Display` is already classed from its serde shape, so the
 //! flag would switch nothing on. The attribute only carries options
-//! (`serde_error(tag = "..", prefix = "..", skip(..), rename(..))`); the bare
+//! (`serde_error(shape = .., tag = "..", skip(..), as_character(..), ..)`); the bare
 //! form and `serde_error = true/false` point there instead of being accepted
 //! as no-ops. The option grammar is checked before the error type is looked
 //! at, so `E` needs no `Serialize` impl here.

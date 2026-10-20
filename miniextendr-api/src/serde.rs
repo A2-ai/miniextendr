@@ -254,6 +254,7 @@ mod traits;
 // Re-export the serde crate for convenience
 pub use ::serde::{Deserialize, Serialize};
 
+pub use crate::condition::SerdeErrorShape;
 pub use columnar::{
     DispatchNames, ResultShape, SerdeRowBuilder, SplitShape, TypeSpec, dispatch_to_dataframes,
     hashmap_to_dataframe, iter_to_dataframe, map_to_dataframe, result_to_dataframe,

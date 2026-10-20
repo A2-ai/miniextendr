@@ -437,6 +437,14 @@ struct NotFound {
 }
 ```
 
+The attribute needs the error type's own crate to depend on miniextendr. When
+it can't, or its `Serialize` is hand-written for other consumers, and the type
+is an error returned through `Result`, pick the same types at the condition
+boundary instead: `#[miniextendr(serde_error(as_character("nearest")))]` on
+the R-facing function gives the field exactly what the helper would, and a
+`SerdeErrorShape` const shares the choice across functions. See
+[CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes).
+
 ## Columnar `data.frame` Assembly
 
 For `&[T: Serialize]`, `vec_to_dataframe` produces a column-oriented R

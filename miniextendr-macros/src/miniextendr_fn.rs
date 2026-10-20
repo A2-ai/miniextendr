@@ -2669,7 +2669,7 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) serialize: bool,
     pub(crate) wrap: Option<crate::miniextendr_impl::ClassSystem>,
     /// Build the `Err` arm's condition from the error's serde output
-    /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
+    /// (`#[miniextendr(serde_error(shape = .., tag = .., prefix = .., ..))]`).
     pub(crate) serde_error: Option<SerdeErrorSpec>,
     /// Keep (`Some(true)`) or drop (`Some(false)`) the R-side type-check
     /// guards of the parameters that do not decide for themselves.
@@ -2819,11 +2819,19 @@ impl ROnExit {
 /// fields become the condition's data. Defaults: `tag = "kind"`,
 /// `prefix = "<crate>_error"` (from `CARGO_CRATE_NAME` at expansion time).
 ///
-/// Field control (#1457): `skip("a", "b")` drops payload fields by name,
-/// `rename(a = "b")` splices field `a` as `b`. Both name the field as it
-/// serializes; a variant that lacks the field is unaffected. The macro cannot
-/// see the error type's fields, so only the option grammar is checked here;
-/// a `rename` target may not be one of the reserved condition slots.
+/// Field control (#1457, #2207): `skip("a", "b")` drops payload fields by
+/// name, `rename(a = "b")` splices field `a` as `b`, and `as_character("a")`,
+/// `as_integer(..)`, `as_double(..)`, `as_logical(..)` give a field that atomic
+/// R type. All name the field as it serializes, before any rename; a variant
+/// that lacks the field is unaffected. The macro cannot see the error type's
+/// fields, so only the option grammar is checked here; a `rename` target may
+/// not be one of the reserved condition slots, and a field takes one of `skip`
+/// and the `as_*` options.
+///
+/// `shape = PATH` names a `miniextendr_api::condition::SerdeErrorShape` const
+/// holding these options, applied before the function's own (#2207). The
+/// generated code passes both to `serde_err_parts` as runtime data: the named
+/// shape, then the function's options as an inline const shape.
 ///
 /// The serde path itself needs no attribute: under the `serde` feature every
 /// `Result<T, E>` with `E: Serialize + Display` takes it through the runtime
@@ -2831,6 +2839,9 @@ impl ROnExit {
 /// boolean forms are rejected with [`SERDE_ERROR_BARE_HELP`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SerdeErrorSpec {
+    /// A named `SerdeErrorShape` (`shape = PATH`), applied before the options
+    /// below.
+    pub shape: Option<syn::Path>,
     /// Internally-tagged discriminator field name (`#[serde(tag = "...")]`).
     pub tag: Option<String>,
     /// Condition class prefix (family class).
@@ -2839,6 +2850,41 @@ pub(crate) struct SerdeErrorSpec {
     pub skip: Vec<String>,
     /// Payload fields spliced under another name: `(from, to)`.
     pub rename: Vec<(String, String)>,
+    /// Payload fields given an atomic R type (`as_character(..)` & co.), in
+    /// written order.
+    pub types: Vec<(FieldType, String)>,
+}
+
+/// The R type an `as_*` option gives a payload field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FieldType {
+    Logical,
+    Integer,
+    Double,
+    Character,
+}
+
+impl FieldType {
+    const ALL: [FieldType; 4] = [
+        FieldType::Logical,
+        FieldType::Integer,
+        FieldType::Double,
+        FieldType::Character,
+    ];
+
+    /// The option's name, which is also the `SerdeErrorShape` method's.
+    pub(crate) fn option(self) -> &'static str {
+        match self {
+            FieldType::Logical => "as_logical",
+            FieldType::Integer => "as_integer",
+            FieldType::Double => "as_double",
+            FieldType::Character => "as_character",
+        }
+    }
+
+    fn from_path(path: &syn::Path) -> Option<Self> {
+        Self::ALL.into_iter().find(|ty| path.is_ident(ty.option()))
+    }
 }
 
 /// The condition's own slots, mirrored from
@@ -2846,166 +2892,300 @@ pub(crate) struct SerdeErrorSpec {
 /// cannot depend on the API crate). The runtime check remains the backstop.
 const RESERVED_CONDITION_FIELDS: &[&str] = &["message", "call", "kind"];
 
-const SERDE_ERROR_OPTIONS_HELP: &str =
-    "unknown serde_error option; expected `tag`, `prefix`, `skip(...)` or `rename(...)`";
+const SERDE_ERROR_OPTIONS_HELP: &str = "unknown serde_error option; expected `shape`, `tag`, \
+    `prefix`, `skip(...)`, `rename(...)`, `as_character(...)`, `as_integer(...)`, \
+    `as_double(...)` or `as_logical(...)`";
+
+const SERDE_ERROR_SHAPE_HELP: &str = "serde_error shape takes the path of a `SerdeErrorShape` \
+    const: `shape = ENGINE`";
 
 /// The bare flag / boolean forms: the serde path is not something to switch
 /// on per function.
 pub(crate) const SERDE_ERROR_BARE_HELP: &str = "`serde_error` is not a switch: with the `serde` \
     feature every `Result<T, E>` whose `E: Serialize + Display` is already classed from its \
-    serde shape. The attribute only carries options; write \
-    `serde_error(tag = \"..\", prefix = \"..\", skip(..), rename(a = \"..\"))` or drop it";
+    serde shape. The attribute only carries options; write `serde_error(shape = ENGINE)`, \
+    options such as `serde_error(prefix = \"..\", skip(..), as_character(..))`, or drop it";
 
 impl SerdeErrorSpec {
-    /// The discriminator field consumed as the variant name.
-    pub fn tag(&self) -> &str {
-        self.tag.as_deref().unwrap_or("kind")
-    }
-
-    /// The family class; `<crate>_error` unless overridden.
-    pub fn prefix(&self) -> String {
-        self.prefix
-            .clone()
-            .unwrap_or_else(default_serde_error_prefix)
-    }
-
     /// Parse `serde_error(...)` contents: a comma-separated list of options.
+    /// Every problem is reported at once.
     fn from_metas<'a>(
         metas: impl IntoIterator<Item = &'a syn::Meta>,
         span: proc_macro2::Span,
     ) -> syn::Result<Self> {
         let mut spec = SerdeErrorSpec::default();
+        let mut errors = Vec::new();
         let mut any = false;
         for meta in metas {
             any = true;
-            spec.apply(meta)?;
+            spec.apply(meta, &mut errors);
         }
         if !any {
             return Err(syn::Error::new(span, SERDE_ERROR_BARE_HELP));
         }
-        spec.finish()?;
-        Ok(spec)
+        let mut errors = errors.into_iter();
+        match errors.next() {
+            None => Ok(spec),
+            Some(mut first) => {
+                first.extend(errors);
+                Err(first)
+            }
+        }
     }
 
-    fn apply(&mut self, meta: &syn::Meta) -> syn::Result<()> {
+    fn apply(&mut self, meta: &syn::Meta, errors: &mut Vec<syn::Error>) {
         match meta {
+            syn::Meta::NameValue(nv) if nv.path.is_ident("shape") => match &nv.value {
+                syn::Expr::Path(syn::ExprPath {
+                    qself: None, path, ..
+                }) if self.shape.is_none() => self.shape = Some(path.clone()),
+                syn::Expr::Path(syn::ExprPath { qself: None, .. }) => errors.push(
+                    syn::Error::new_spanned(&nv.value, "serde_error shape is given twice"),
+                ),
+                other => errors.push(syn::Error::new_spanned(other, SERDE_ERROR_SHAPE_HELP)),
+            },
             syn::Meta::NameValue(nv) if nv.path.is_ident("tag") => {
-                self.tag = Some(non_empty_lit_str(nv, "tag")?);
+                match non_empty_lit_str(nv, "tag") {
+                    Ok(tag) => self.tag = Some(tag),
+                    Err(err) => errors.push(err),
+                }
             }
             syn::Meta::NameValue(nv) if nv.path.is_ident("prefix") => {
-                self.prefix = Some(non_empty_lit_str(nv, "prefix")?);
+                match non_empty_lit_str(nv, "prefix") {
+                    Ok(prefix) => self.prefix = Some(prefix),
+                    Err(err) => errors.push(err),
+                }
             }
             syn::Meta::List(list) if list.path.is_ident("skip") => {
-                let names = list.parse_args_with(
-                    syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
-                )?;
-                if names.is_empty() {
-                    return Err(syn::Error::new_spanned(
-                        list,
-                        "serde_error skip needs at least one field name: `skip(\"message\")`",
-                    ));
-                }
-                for lit in &names {
+                for lit in field_names(list, "skip", errors) {
                     let name = lit.value();
-                    if name.is_empty() {
-                        return Err(syn::Error::new_spanned(
-                            lit,
-                            "serde_error skip field name must not be empty",
-                        ));
-                    }
                     if self.skip.contains(&name) {
-                        return Err(syn::Error::new_spanned(
-                            lit,
+                        errors.push(syn::Error::new_spanned(
+                            &lit,
                             format!("serde_error skip names `{name}` twice"),
                         ));
+                    } else if let Some(ty) = self.field_type(&name) {
+                        errors.push(both(
+                            &lit,
+                            ty.option(),
+                            "skip",
+                            "a skipped field has no R type",
+                        ));
+                    } else if self.rename.iter().any(|(from, _)| *from == name) {
+                        errors.push(both(
+                            &lit,
+                            "rename",
+                            "skip",
+                            "a skipped field has no name to rename",
+                        ));
+                    } else {
+                        self.skip.push(name);
                     }
-                    self.skip.push(name);
                 }
             }
             syn::Meta::List(list) if list.path.is_ident("rename") => {
-                let pairs = list.parse_args_with(
+                let pairs = match list.parse_args_with(
                     syn::punctuated::Punctuated::<RenamePair, syn::Token![,]>::parse_terminated,
-                )?;
+                ) {
+                    Ok(pairs) => pairs,
+                    Err(err) => return errors.push(err),
+                };
                 if pairs.is_empty() {
-                    return Err(syn::Error::new_spanned(
+                    errors.push(syn::Error::new_spanned(
                         list,
                         "serde_error rename needs at least one pair: `rename(message = \"detail\")`",
                     ));
                 }
-                for pair in pairs {
-                    let RenamePair { from, to, span } = pair;
+                for RenamePair { from, to, span } in pairs {
+                    let error = |message: String| syn::Error::new(span, message);
                     if from.is_empty() || to.is_empty() {
-                        return Err(syn::Error::new(
-                            span,
-                            "serde_error rename names must not be empty",
-                        ));
+                        errors.push(error("serde_error rename names must not be empty".into()));
+                    } else if RESERVED_CONDITION_FIELDS.contains(&to.as_str()) {
+                        errors.push(error(format!(
+                            "serde_error rename target `{to}` is reserved: `message`, `call` \
+                             and `kind` are the condition's own slots"
+                        )));
+                    } else if self.rename.iter().any(|(f, _)| *f == from) {
+                        errors.push(error(format!("serde_error rename names `{from}` twice")));
+                    } else if self.rename.iter().any(|(_, t)| *t == to) {
+                        errors.push(error(format!(
+                            "serde_error rename targets `{to}` twice; the condition would \
+                             carry two `{to}` fields and R would read only the first"
+                        )));
+                    } else if self.skip.contains(&from) {
+                        errors.push(error(format!(
+                            "serde_error names `{from}` in both skip and rename; a skipped \
+                             field has no name to rename"
+                        )));
+                    } else {
+                        self.rename.push((from, to));
                     }
-                    if RESERVED_CONDITION_FIELDS.contains(&to.as_str()) {
-                        return Err(syn::Error::new(
-                            span,
-                            format!(
-                                "serde_error rename target `{to}` is reserved: `message`, `call` \
-                                 and `kind` are the condition's own slots"
-                            ),
-                        ));
+                }
+            }
+            syn::Meta::List(list) if FieldType::from_path(&list.path).is_some() => {
+                let ty = FieldType::from_path(&list.path).expect("matched above");
+                let option = ty.option();
+                for lit in field_names(list, option, errors) {
+                    let name = lit.value();
+                    match self.field_type(&name) {
+                        Some(other) if other == ty => errors.push(syn::Error::new_spanned(
+                            &lit,
+                            format!("serde_error {option} names `{name}` twice"),
+                        )),
+                        Some(other) => errors.push(both(
+                            &lit,
+                            other.option(),
+                            option,
+                            "a field has one R type",
+                        )),
+                        None if self.skip.contains(&name) => {
+                            errors.push(both(&lit, "skip", option, "a skipped field has no R type"))
+                        }
+                        None => self.types.push((ty, name)),
                     }
-                    if self.rename.iter().any(|(f, _)| *f == from) {
-                        return Err(syn::Error::new(
-                            span,
-                            format!("serde_error rename names `{from}` twice"),
-                        ));
-                    }
-                    if self.rename.iter().any(|(_, t)| *t == to) {
-                        return Err(syn::Error::new(
-                            span,
-                            format!(
-                                "serde_error rename targets `{to}` twice; the condition would \
-                                 carry two `{to}` fields and R would read only the first"
-                            ),
-                        ));
-                    }
-                    self.rename.push((from, to));
                 }
             }
             syn::Meta::NameValue(nv) if nv.path.is_ident("skip") => {
-                return Err(syn::Error::new_spanned(
+                errors.push(syn::Error::new_spanned(
                     nv,
                     "serde_error skip takes a list of field names: `skip(\"message\")`",
                 ));
             }
             syn::Meta::NameValue(nv) if nv.path.is_ident("rename") => {
-                return Err(syn::Error::new_spanned(
+                errors.push(syn::Error::new_spanned(
                     nv,
                     "serde_error rename takes `from = \"to\"` pairs: `rename(message = \"detail\")`",
                 ));
             }
+            syn::Meta::NameValue(nv) if FieldType::from_path(&nv.path).is_some() => {
+                let option = FieldType::from_path(&nv.path)
+                    .expect("matched above")
+                    .option();
+                errors.push(syn::Error::new_spanned(
+                    nv,
+                    format!(
+                        "serde_error {option} takes a list of field names: `{option}(\"rule\")`"
+                    ),
+                ));
+            }
+            other if other.path().is_ident("shape") => {
+                errors.push(syn::Error::new_spanned(other, SERDE_ERROR_SHAPE_HELP));
+            }
             other => {
-                return Err(syn::Error::new_spanned(
+                errors.push(syn::Error::new_spanned(
                     other.path(),
                     SERDE_ERROR_OPTIONS_HELP,
                 ));
             }
         }
-        Ok(())
     }
 
-    /// Cross-option validation once every option is in.
-    fn finish(&self) -> syn::Result<()> {
-        if let Some((from, _)) = self
-            .rename
-            .iter()
-            .find(|(from, _)| self.skip.contains(from))
+    /// A method's spec with `shape = Self::X` naming the impl's type: the C
+    /// wrapper that reads the shape is a free function, where `Self` doesn't
+    /// resolve. The type ident takes the `Self` token's span.
+    pub(crate) fn with_self_type(&self, ty: &syn::Ident) -> Self {
+        let mut spec = self.clone();
+        if let Some(path) = &mut spec.shape
+            && path.leading_colon.is_none()
+            && path.segments.len() > 1
+            && let Some(first) = path.segments.first_mut()
+            && first.ident == "Self"
         {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                format!(
-                    "serde_error names `{from}` in both skip and rename; a skipped field has no \
-                     name to rename"
-                ),
-            ));
+            first.ident = syn::Ident::new(&ty.to_string(), first.ident.span());
         }
-        Ok(())
+        spec
     }
+
+    /// The `as_*` option that names `name`, if any.
+    fn field_type(&self, name: &str) -> Option<FieldType> {
+        self.types
+            .iter()
+            .find(|(_, n)| n == name)
+            .map(|(ty, _)| *ty)
+    }
+
+    /// The function's own options as a `SerdeErrorShape` builder chain;
+    /// `None` when it only names a shape.
+    pub(crate) fn own_shape(&self) -> Option<proc_macro2::TokenStream> {
+        let mut calls = Vec::new();
+        if let Some(tag) = &self.tag {
+            calls.push(quote::quote!(.tag(#tag)));
+        }
+        if let Some(prefix) = &self.prefix {
+            calls.push(quote::quote!(.prefix(#prefix)));
+        }
+        if !self.skip.is_empty() {
+            let skip = &self.skip;
+            calls.push(quote::quote!(.skip(&[#(#skip),*])));
+        }
+        if !self.rename.is_empty() {
+            let (from, to): (Vec<&String>, Vec<&String>) =
+                self.rename.iter().map(|(f, t)| (f, t)).unzip();
+            calls.push(quote::quote!(.rename(&[#((#from, #to)),*])));
+        }
+        for ty in FieldType::ALL {
+            let names: Vec<&String> = self
+                .types
+                .iter()
+                .filter(|(t, _)| *t == ty)
+                .map(|(_, name)| name)
+                .collect();
+            if !names.is_empty() {
+                let method = quote::format_ident!("{}", ty.option());
+                calls.push(quote::quote!(.#method(&[#(#names),*])));
+            }
+        }
+        (!calls.is_empty())
+            .then(|| quote::quote!(::miniextendr_api::condition::SerdeErrorShape::new() #(#calls)*))
+    }
+}
+
+/// The non-empty string literals of `skip(..)` / `as_*(..)`; problems go to
+/// `errors`.
+fn field_names(
+    list: &syn::MetaList,
+    option: &str,
+    errors: &mut Vec<syn::Error>,
+) -> Vec<syn::LitStr> {
+    let names = match list.parse_args_with(
+        syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
+    ) {
+        Ok(names) => names,
+        Err(err) => {
+            errors.push(err);
+            return Vec::new();
+        }
+    };
+    if names.is_empty() {
+        errors.push(syn::Error::new_spanned(
+            list,
+            format!("serde_error {option} needs at least one field name: `{option}(\"message\")`"),
+        ));
+    }
+    names
+        .into_iter()
+        .filter(|lit| {
+            let empty = lit.value().is_empty();
+            if empty {
+                errors.push(syn::Error::new_spanned(
+                    lit,
+                    format!("serde_error {option} field name must not be empty"),
+                ));
+            }
+            !empty
+        })
+        .collect()
+}
+
+/// A field named by two options that exclude each other.
+fn both(lit: &syn::LitStr, first: &str, second: &str, why: &str) -> syn::Error {
+    syn::Error::new_spanned(
+        lit,
+        format!(
+            "serde_error names `{}` in both {first} and {second}; {why}",
+            lit.value()
+        ),
+    )
 }
 
 /// A `tag = "..."` / `prefix = "..."` value: a non-empty string literal.
@@ -3059,7 +3239,7 @@ pub(crate) fn default_serde_error_prefix() -> String {
     format!("{krate}_error")
 }
 
-/// Parse `serde_error(tag = "...", prefix = "...", skip(...), rename(...))`
+/// Parse `serde_error(shape = .., tag = "...", prefix = "...", skip(...), rename(...), as_*(...))`
 /// given as a `Meta::List`.
 pub(crate) fn parse_serde_error_list(list: &syn::MetaList) -> syn::Result<SerdeErrorSpec> {
     use syn::spanned::Spanned;
@@ -3070,7 +3250,7 @@ pub(crate) fn parse_serde_error_list(list: &syn::MetaList) -> syn::Result<SerdeE
 }
 
 /// Parse the tail of a `serde_error` option inside `parse_nested_meta`. Only
-/// the option list `(tag = "...", prefix = "...", skip(...), rename(...))` is
+/// the option list `(shape = .., tag = "...", skip(...), as_character(...), ...)` is
 /// accepted; the bare flag and `= true/false` are rejected with
 /// [`SERDE_ERROR_BARE_HELP`], since the serde path is on for every eligible
 /// error type under the `serde` feature.

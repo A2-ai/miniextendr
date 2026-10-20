@@ -801,7 +801,7 @@ pub struct MethodAttrs {
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
     /// Build the `Err` arm's condition from the error's serde output
-    /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
+    /// (`#[miniextendr(serde_error(shape = .., tag = .., prefix = .., ..))]`).
     pub serde_error: Option<crate::miniextendr_fn::SerdeErrorSpec>,
     /// Serialize the complete return value through `AsSerialize<T>`.
     pub serialize: bool,
@@ -4099,7 +4099,12 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
         .err_parts(crate::c_wrapper_builder::ErrPartsMode::from_spec(
-            method.method_attrs.serde_error.as_ref(),
+            method
+                .method_attrs
+                .serde_error
+                .as_ref()
+                .map(|spec| spec.with_self_type(type_ident))
+                .as_ref(),
         ))
         .cfg_attrs(parsed_impl.cfg_attrs.clone())
         .type_context(type_ident.clone());

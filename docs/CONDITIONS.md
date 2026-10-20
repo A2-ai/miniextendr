@@ -261,7 +261,10 @@ consumers read, do the renaming at the condition boundary instead:
 `#[miniextendr(serde_error(skip(..), rename(..)))]` drops or renames payload
 fields, and a `message` field that merely echoes `Display` is dropped with no
 option (see
-[Payload fields named `message`](#payload-fields-named-message)).
+[Payload fields named `message`](#payload-fields-named-message)). The same
+attribute gives fields their R types (`as_character(..)` & co.), and a shared
+`SerdeErrorShape` const holds all of it for many functions (see
+[Field types and shared shapes](#field-types-and-shared-shapes)).
 
 ```rust
 error!(
@@ -723,8 +726,9 @@ API crate's `serde` feature enabled, every `Result<T, E>` whose
 `E: Serialize + Display` serializes the `Err` value. The enum variant becomes
 the member class `<prefix>_<variant>`, the variant's fields become `e$<name>`,
 and the message comes from `Display`. `#[miniextendr(serde_error(..))]` exists
-only to carry options (`tag`, `prefix`, `skip`, `rename`); the bare flag is a
-compile error, since it would switch nothing on.
+only to carry options (`tag`, `prefix`, `skip`, `rename`, the `as_*` field
+types, or a shared `shape`); the bare flag is a compile error, since it would
+switch nothing on.
 
 ```rust
 #[derive(Debug, thiserror::Error, serde::Serialize)]
@@ -777,7 +781,11 @@ e$value; e$max
   `as_integer`, `as_double`, `as_logical`): it is then always that vector
   type, `character(0)` when empty, a `None` element `NA`, the same field
   `error!(data = ...)` gives for the data (#2164). Other serializers see the
-  field unchanged. Deriving `RConditionData` (above) instead converts each
+  field unchanged. For an error type you can't annotate (its crate doesn't
+  depend on miniextendr), choose the same types at the condition boundary:
+  `serde_error(as_character("rule"))`, see
+  [Field types and shared shapes](#field-types-and-shared-shapes).
+  Deriving `RConditionData` (above) instead converts each
   field with `RValue::from`. The reserved names above apply to the payload
   fields; a clash raises a `rust_error` describing it, exactly as for
   `data()`, with the exceptions below.
@@ -832,6 +840,74 @@ must be skipped or renamed.
 - Choose `RConditionData` when the message or class vector needs to differ
   from the serde shape (it takes precedence); the serde path is the
   zero-boilerplate default for enums that are already serde-tagged.
+
+#### Field types and shared shapes
+
+A payload field's R type follows its serialization, so an empty `Vec<String>`
+arrives as `list()` and a `u32` as an integer. The error type can fix that
+itself with `#[serde(serialize_with = "miniextendr_api::serde::as_character")]`
+(above), but not when its crate can't depend on miniextendr, or when its
+`Serialize` is hand-written for other consumers. The R-facing function then
+picks the types at the condition boundary, next to `skip` and `rename`:
+
+```rust
+#[miniextendr(serde_error(as_character("rule", "column"), as_integer("n"), as_double("rate")))]
+pub fn check(x: f64) -> Result<f64, EngineError> { /* ... */ }
+```
+
+- `as_character(..)`, `as_integer(..)`, `as_double(..)`, `as_logical(..)` give
+  each named field exactly what the matching `serde::as_*` helper gives it:
+  its usual serialization as one vector of that type, `character(0)` for an
+  empty sequence, `NA` for a `None` (element). A value that doesn't fit (a
+  string under `as_integer`, an integer outside R's range) raises a
+  `rust_error` naming the field and the option, with the original error's
+  message.
+- The keys are the field names as the error serializes them, before any
+  `rename`, as for `skip` and `rename`: `rename(n = "count"), as_integer("n")`
+  gives `e$count` as an integer. A field a variant lacks is a no-op for that
+  variant.
+- A field takes one `as_*` option and can't be both skipped and typed; both
+  are compile errors, every conflict reported at once.
+
+When many functions return one error type, each would repeat that list, and a
+function that missed it would give the error's fields other types than its
+siblings. Declare the options once as a `SerdeErrorShape` const and name it by
+path:
+
+```rust
+use miniextendr_api::condition::SerdeErrorShape;
+
+pub const ENGINE: SerdeErrorShape = SerdeErrorShape::new()
+    .prefix("engine")
+    .skip(&["message"])
+    .as_character(&["rule", "column"])
+    .as_integer(&["n"]);
+
+#[miniextendr(serde_error(shape = ENGINE))]
+pub fn check(x: f64) -> Result<f64, EngineError> { /* ... */ }
+
+#[miniextendr(serde_error(shape = ENGINE, as_double("n")))]
+pub fn rate(x: f64) -> Result<f64, EngineError> { /* ... */ }
+```
+
+- The shape holds the whole option set: `tag`, `prefix`, `skip`, `rename` and
+  the four `as_*` lists, as `const fn` builder methods. It is also re-exported
+  as `miniextendr_api::serde::SerdeErrorShape` and from the prelude.
+- `shape = ` takes a path resolved from the function's module (`ENGINE`,
+  `crate::errors::ENGINE`), or on a method `Self::SHAPE` for an associated
+  const of the impl's type; a misspelt one is a compile error.
+- The function's own options apply after the shape; for a field set by both,
+  the function wins. `rate` above gives `e$n` a double. The function's `skip`
+  drops a field the shape types or renames, its `as_*` or `rename` keeps a
+  field the shape skips, and a type and a new name compose. The function's
+  `tag` / `prefix` replace the shape's; `prefix` defaults to the function's
+  crate, `<crate>_error`, as without a shape.
+- Contradictions inside a shape (a field in two `as_*` lists, a field
+  skipped and typed or renamed, a reserved or repeated rename target, an
+  option set twice) panic during const evaluation, so the `const` does not
+  compile: error E0080, naming the field.
+- All of this runs only when the function returns `Err`: the options are
+  plain data the `Err` arm reads, at no cost to a successful call.
 
 ## Catching a condition in Rust: `catch_condition`
 

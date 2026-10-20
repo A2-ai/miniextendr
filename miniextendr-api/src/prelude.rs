@@ -245,7 +245,7 @@ pub use rand_distr;
 
 // --- serde (direct R serialization) ---
 #[cfg(feature = "serde")]
-pub use crate::serde::{AsSerialize, RDeserializeNative, RSerializeNative};
+pub use crate::serde::{AsSerialize, RDeserializeNative, RSerializeNative, SerdeErrorShape};
 #[cfg(feature = "serde")]
 pub use serde;
 
