@@ -2709,7 +2709,8 @@ pub(crate) struct MiniextendrFnAttrs {
     /// S3 generic name (if this function is an S3 method).
     ///
     /// Use `#[miniextendr(s3(generic = "vec_proxy", class = "my_vctr"))]` to mark a function
-    /// as an S3 method for an existing generic.
+    /// as an S3 method for an existing generic. `pkg::generic` registers the
+    /// method lazily, for a generic of a suggested package (#2154).
     pub(crate) s3_generic: Option<String>,
     /// S3 class suffix for the method (e.g., "my_vctr" or "my_vctr.my_vctr" for double-dispatch).
     pub(crate) s3_class: Option<String>,
@@ -3739,7 +3740,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             if meta.path.is_ident("generic") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;
-                                s3_generic = Some(value.value());
+                                s3_generic = Some(crate::naming::parse_generic(&value)?);
                             } else if meta.path.is_ident("class") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;

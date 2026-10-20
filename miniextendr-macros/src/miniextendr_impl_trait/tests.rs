@@ -2952,6 +2952,40 @@ fn suppressed_trait_methods_keep_no_links() {
 // endregion
 
 #[test]
+fn trait_s3_method_on_package_qualified_generic() {
+    // #2154: `pkg::generic` names the method after the bare generic and
+    // registers it lazily; no S7 registration, since `pkg` may be absent.
+    let source: syn::ItemImpl = syn::parse_quote! {
+        impl Reconstruct for Foo {
+            #[miniextendr(s3(generic = "dplyr::dplyr_reconstruct"))]
+            fn reconstruct(&self, template: SEXP) -> SEXP { unimplemented!() }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[]).unwrap();
+    let s3 = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Reconstruct"),
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    assert!(
+        s3.contains("dplyr_reconstruct.Foo <- function(x, template, ...)"),
+        "{s3}"
+    );
+    assert!(s3.contains("#' @method dplyr_reconstruct Foo"), "{s3}");
+    assert!(
+        s3.contains("#' @exportS3Method dplyr::dplyr_reconstruct Foo"),
+        "{s3}"
+    );
+    assert!(!s3.contains("#' @export\n"), "{s3}");
+    assert!(!s3.contains("UseMethod("), "{s3}");
+    assert!(!s3.contains("S7_generic"), "{s3}");
+}
+
+#[test]
 fn trait_s3_s4_methods_match_existing_generic_formals() {
     let source: syn::ItemImpl = syn::parse_quote! {
         impl Operations for Foo {

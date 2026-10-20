@@ -3,7 +3,7 @@
 use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::dots::Dots;
 use miniextendr_api::list::NamedList;
-use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::{ExternalPtr, SEXP, miniextendr};
 
 // region: Standalone function: r_name
 
@@ -17,7 +17,7 @@ pub fn is_widget(x: i32) -> bool {
 }
 // endregion
 
-// region: Standalone function: delayed S3 registration (#1944)
+// region: Standalone function: delayed S3 registration (#1944, #2154)
 
 /// Columns of an `mx_delayed_rows` list as a data frame.
 ///
@@ -31,6 +31,20 @@ pub fn is_widget(x: i32) -> bool {
 #[miniextendr(r_name = "as_tibble.mx_delayed_rows")]
 pub fn as_tibble_mx_delayed_rows(x: NamedList, _dots: &Dots) -> BuiltDataFrame {
     x.as_data_frame().unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Keeps the data frame a dplyr verb returns for an `mx_delayed_rows` list.
+///
+/// `s3(generic = "dplyr::dplyr_reconstruct")` registers the method lazily,
+/// `S3method(dplyr::dplyr_reconstruct, mx_delayed_rows)`: dplyr is in
+/// Suggests, so the package must load without it (#2154).
+///
+/// @param data The data frame the verb returned.
+/// @param template The `mx_delayed_rows` list the verb started from.
+/// @return `data`, unchanged.
+#[miniextendr(s3(generic = "dplyr::dplyr_reconstruct", class = "mx_delayed_rows"))]
+pub fn dplyr_reconstruct_mx_delayed_rows(data: SEXP, _template: SEXP) -> SEXP {
+    data
 }
 // endregion
 

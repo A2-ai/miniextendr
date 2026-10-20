@@ -1652,6 +1652,38 @@ fn s3_wrapper_generic_override() {
 }
 
 #[test]
+fn s3_wrapper_package_qualified_generic() {
+    // #2154: a method on `pkg::generic` is named after the bare generic and
+    // registered lazily, `S3method(pkg::generic, Class)`, with no generic of
+    // its own and no `@importFrom`.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+
+            #[miniextendr(s3(generic = "dplyr::dplyr_reconstruct"))]
+            pub fn reconstruct(&self, template: SEXP) -> SEXP { unimplemented!() }
+
+            #[miniextendr(s3(generic = "vctrs::vec_ptype2", class = "Counter.Counter"))]
+            pub fn ptype2(&self, y: SEXP) -> SEXP { unimplemented!() }
+        }
+    };
+
+    let wrapper = generate_s3_r_wrapper(&parse_impl(ClassSystem::S3, item_impl));
+
+    assert!(wrapper.contains("dplyr_reconstruct.Counter <- function(x, template, ...)"));
+    assert!(wrapper.contains("#' @method dplyr_reconstruct Counter"));
+    assert!(wrapper.contains("#' @exportS3Method dplyr::dplyr_reconstruct Counter"));
+    // The method name and its registration agree on a class override.
+    assert!(wrapper.contains("vec_ptype2.Counter.Counter <- function(x, y, ...)"));
+    assert!(wrapper.contains("#' @method vec_ptype2 Counter.Counter"));
+    assert!(wrapper.contains("#' @exportS3Method vctrs::vec_ptype2 Counter.Counter"));
+    assert!(!wrapper.contains("dplyr::dplyr_reconstruct."), "{wrapper}");
+    assert!(!wrapper.contains("UseMethod(\"dplyr_reconstruct\")"));
+    assert!(!wrapper.contains("@importFrom"));
+    assert!(!wrapper.contains("#' @method vec_ptype2 Counter\n"));
+}
+
+#[test]
 fn s3_internal_keeps_s3method_export() {
     // Regression: #431. `internal` on an S3 impl must suppress NAMESPACE
     // export of the bare generic (so `R CMD check --as-cran` doesn't flag
