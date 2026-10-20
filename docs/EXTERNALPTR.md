@@ -809,11 +809,15 @@ view receiver (#1880). High-level ALTREP data traits also receive only
 
 How the value moves:
 
-- `Sidecar::new(v)` holds `v` as a *pending* value in the struct. Wrapping
-  the struct (`ExternalPtr::new` and the other constructors, or the trait
-  ABI's `mx_wrap` for erased storage) moves every pending value into the
-  pointer's `prot` list. From then on the value lives
-  in R only and the field is empty.
+- `Sidecar::new(v)` converts `v` to its R object at once and holds it as a
+  *pending* value in the struct, rooted until a slot holds it (#2216), so a
+  fresh `SEXP` or list passed to it is safe from that moment. Wrapping the
+  struct (`ExternalPtr::new` and the other constructors, or the trait ABI's
+  `mx_wrap` for erased storage) moves every pending value into the
+  pointer's `prot` list. From then on the value lives in R only and the
+  field is empty. `Sidecar::new` and `Sidecar::replace` run on R's main
+  thread, or on the managed worker (a `worker` constructor), which hands
+  the conversion to the main thread; any other thread panics.
 - Every accessor, Rust or R, first moves a pending value of its field into
   the `prot` list. So `*ptr.borrow_mut() = MyType::new(..)` takes
   effect at the next access from either side; a `saveRDS()` before any access
@@ -829,12 +833,11 @@ How the value moves:
 - `ExternalPtr::clone` and `clone_from` copy the struct and share the slot
   values as R objects, which are immutable: a later write to a field on
   either side replaces that side's slot only. `MyType::clone()` on the bare
-  struct copies pending values only.
+  struct shares its pending R objects only.
 - A private `Sidecar<T>` gets private accessors and no R accessor. That is how
   Rust keeps an R value (`Sidecar<Option<List>>`, `Sidecar<SEXP>`) alive for
   as long as the object. A `Sidecar<SEXP>` getter returns a view the slot
-  roots until the next write to that field; a pending `SEXP` passed to
-  `Sidecar::new` is not rooted until the struct is wrapped.
+  roots until the next write to that field.
 - The accessors run on R's main thread only. Off it (a `worker` method, a
   thread the package spawned) an accessor panics with a message naming the
   field and the type.

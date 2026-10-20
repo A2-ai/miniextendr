@@ -676,9 +676,9 @@ unsafe fn relayout_saved_slots<T: TypedExternal>(sexp: SEXP, value: &T) {
     prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe { type_id_symbol::<T>() });
     prot.set_vector_elt(PROT_USER_INDEX, saved.vector_elt(PROT_USER_INDEX));
     unsafe { sidecar::name_slots::<T>(prot) };
-    // Attach before the missing fields convert, so what they write is
-    // rooted through `sexp`; the saved list stays rooted by `saved`'s
-    // protection until then.
+    // Detached from `sexp`, the saved list stays rooted by the scope while
+    // its slots are read. The pending values the fields write are rooted
+    // until they sit in a slot (#2216).
     unsafe { scope.protect(saved) };
     unsafe { R_SetExternalPtrProtected(sexp, prot) };
     value.__mx_visit_sidecars(&mut |index, name, field| match sidecar::saved_slot(

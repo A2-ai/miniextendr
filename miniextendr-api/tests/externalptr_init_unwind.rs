@@ -1,4 +1,7 @@
 //! Constructor unwinding must balance R roots and retain ownership of every box.
+//!
+//! A `Sidecar` converts its value when it is made (#2216), so a conversion
+//! panic unwinds out of `Sidecar::new`, before any constructor allocates.
 mod r_test_utils;
 
 use miniextendr_api::externalptr::Sidecar;
@@ -70,8 +73,70 @@ fn assert_balanced_panic(f: impl FnOnce()) {
     );
 }
 
+#[derive(ExternalPtr)]
+struct Payload(Arc<AtomicUsize>);
+
+impl Drop for Payload {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// Converts to the R object it carries, or panics.
+struct CarriedValue(SEXP, bool);
+
+impl IntoR for CarriedValue {
+    type Error = Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        assert!(!self.1, "intentional initial sidecar conversion panic");
+        Ok(self.0)
+    }
+}
+
+/// A panic in `IntoR` unwinds out of `Sidecar::new` before any constructor
+/// runs: the protect stack is balanced, no value was built, and nothing the
+/// failed calls left behind roots the object they carried.
 #[test]
-fn every_constructor_unprotects_after_initial_conversion_panics() {
+fn a_conversion_panic_unwinds_out_of_sidecar_new() {
+    r_test_utils::with_r_thread(|| {
+        let drops = Arc::new(AtomicUsize::new(0));
+        for _ in 0..8 {
+            assert_balanced_panic(|| drop(host(&drops, true)));
+        }
+        unsafe { miniextendr_api::sys::R_gc() };
+        assert_eq!(drops.load(Ordering::SeqCst), 0, "no value was built");
+
+        let payload_drops = Arc::new(AtomicUsize::new(0));
+        let payload = ExternalPtr::new(Payload(Arc::clone(&payload_drops)));
+        for _ in 0..8 {
+            assert_balanced_panic(|| {
+                drop(Sidecar::new(CarriedValue(payload.as_sexp(), true)));
+            });
+            assert_balanced_panic(|| {
+                drop(Sidecar::replace(CarriedValue(payload.as_sexp(), true)));
+            });
+        }
+        let kept = Sidecar::new(CarriedValue(payload.as_sexp(), false));
+        drop(payload);
+        unsafe { miniextendr_api::sys::R_gc() };
+        assert_eq!(
+            payload_drops.load(Ordering::SeqCst),
+            0,
+            "the kept value roots it"
+        );
+        drop(kept);
+        unsafe { miniextendr_api::sys::R_gc() };
+        assert_eq!(
+            payload_drops.load(Ordering::SeqCst),
+            1,
+            "a failed conversion left a root behind"
+        );
+    });
+}
+
+#[test]
+fn every_constructor_unprotects_and_hands_its_box_to_the_finalizer() {
     r_test_utils::with_r_thread(|| {
         let constructors: [fn(InitialSidecar); 4] = [
             |value| drop(ExternalPtr::new(value)),
@@ -86,28 +151,33 @@ fn every_constructor_unprotects_after_initial_conversion_panics() {
         for construct in constructors {
             let drops = Arc::new(AtomicUsize::new(0));
             for _ in 0..8 {
-                assert_balanced_panic(|| construct(host(&drops, true)));
+                let baseline = unsafe { R_PPStackTop };
+                construct(host(&drops, false));
+                assert_eq!(
+                    unsafe { R_PPStackTop },
+                    baseline,
+                    "constructor leaked PROTECT entries"
+                );
             }
             unsafe { miniextendr_api::sys::R_gc() };
             assert_eq!(
                 drops.load(Ordering::SeqCst),
                 8,
-                "finalizers must reclaim every failed constructor"
+                "finalizers must reclaim every dropped pointer"
             );
         }
     });
 }
 
 #[test]
-fn a_partially_built_list_releases_completed_and_pending_elements() {
+fn a_conversion_panic_while_collecting_a_list_drops_the_values_built() {
     r_test_utils::with_r_thread(|| {
         let drops = Arc::new(AtomicUsize::new(0));
-        let items = (0..4).map(|i| host(&drops, i == 1)).collect::<Vec<_>>();
+        let items = (0..4).map(|i| host(&drops, i == 2));
         assert_balanced_panic(|| {
             ExternalPtr::collect_into_r_list(items);
         });
-        unsafe { miniextendr_api::sys::R_gc() };
-        assert_eq!(drops.load(Ordering::SeqCst), 4);
+        assert_eq!(drops.load(Ordering::SeqCst), 2);
     });
 }
 
@@ -166,7 +236,7 @@ fn construction_and_unwinding_keep_roots_under_gc_torture() {
                 ExternalPtr::new(host(&drops, true));
             });
             unsafe { miniextendr_api::sys::R_gc() };
-            assert_eq!(drops.load(Ordering::SeqCst), 4);
+            assert_eq!(drops.load(Ordering::SeqCst), 3);
         }
     });
 }
