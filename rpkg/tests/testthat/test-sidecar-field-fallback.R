@@ -125,7 +125,7 @@ test_that("S3: a method of another impl block sits next to the fallback", {
   expect_identical(x$alpha, c(1, 2))
 })
 
-test_that("S3: a restored object is refused before the fallback, and completes to nothing", {
+test_that("S3: a restored object is refused before the fallback, and completes to its fields", {
   back <- reload(new_fallback_rec(7L))
   classes <- c(
     "fallback_error_saved", "fallback_error",
@@ -136,7 +136,8 @@ test_that("S3: a restored object is refused before the fallback, and completes t
     expect_identical(class(e)[1:4], classes, label = deparse(read))
     expect_equal(conditionCall(e), read, label = deparse(read))
   }
-  expect_identical(utils::.DollarNames(back), character(0))
+  # The field names need no Rust value; the fallback's do (#2218).
+  expect_identical(utils::.DollarNames(back), c("id", "columns"))
 })
 
 test_that("S3: a list carrying the pointer keeps its own elements for other names", {

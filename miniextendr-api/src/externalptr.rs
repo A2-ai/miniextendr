@@ -384,6 +384,13 @@ pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_versi
 /// name. The `try_<field>` getters return `None` instead.
 pub const RESTORED_MISSING_SLOT_CLASS: &str = "miniextendr_restored_missing_slot";
 
+/// The class of the error for a save without slot names of a type that
+/// rebuilds saves by any version (`rebuild = path, any_version`, #2187).
+/// Such a type reads a save by slot name only, and a save made before slots
+/// were named has none, so it is refused rather than read by position, where
+/// a slot another layout shifted would read as the wrong field (#2218).
+pub const RESTORED_UNNAMED_SLOTS_CLASS: &str = "miniextendr_restored_unnamed_slots";
+
 /// The class of the error for a receiver of a type's R accessors that carries
 /// no external pointer: neither a pointer nor an object holding one in
 /// `.ptr`, such as an object of the class an earlier release of a package
@@ -479,6 +486,14 @@ pub(crate) fn restored_other_version_message(
     )
 }
 
+/// The message of the [`RESTORED_UNNAMED_SLOTS_CLASS`] error.
+pub(crate) fn restored_unnamed_slots_message(type_name: &str) -> String {
+    format!(
+        "this `{type_name}` object was saved before saves named their fields, so its saved \
+         values can't be matched to fields; re-create it"
+    )
+}
+
 /// The condition classes of a restored refusal of a `T`: the package's
 /// classes ([`TypedExternal::RESTORED_ERROR_CLASS`], in order), then the
 /// specific class, then [`RESTORED_CLASS`].
@@ -546,11 +561,55 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEX
     })
 }
 
-/// The message of a refused rebuild: the restored refusal's, then the cause's.
+/// Raises the [`RESTORED_UNNAMED_SLOTS_CLASS`] error for a save without slot
+/// names of a `T` that reads saves by name only
+/// ([`sidecar::refuses_unnamed`], #2218), with the package's classes in
+/// front and its restored message, as [`refuse_restored`] raises the other
+/// restored refusals. The default message names `receiver`'s R class, else
+/// the Rust type.
+#[cold]
+pub(crate) fn refuse_unnamed_slots<T: TypedExternal>(receiver: SEXP) -> ! {
+    std::panic::panic_any(unnamed_slots_refusal::<T>(receiver))
+}
+
+/// The condition [`refuse_unnamed_slots`] raises, as a value:
+/// [`try_rebuild_restored`] returns it, so `wrap_sexp_with_error` gives it
+/// back instead of raising it (#2217).
+fn unnamed_slots_refusal<T: TypedExternal>(receiver: SEXP) -> RCondition {
+    let name = receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
+    RCondition::Error {
+        message: restored_message_of::<T>(|| restored_unnamed_slots_message(&name)),
+        class: restored_classes_of::<T>(RESTORED_UNNAMED_SLOTS_CLASS),
+        data: None,
+        call: ConditionCall::Inherit,
+    }
+}
+
+/// The message of a refused rebuild of a `T`; see [`rebuild_failed_text`].
 fn rebuild_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> String {
-    match T::RESTORED_ERROR_MESSAGE {
-        Some(message) => format!("{message} (rebuilding it failed: {cause})"),
-        None => format!(
+    rebuild_failed_text(
+        T::REBUILD_FAILED_MESSAGE,
+        T::RESTORED_ERROR_MESSAGE,
+        type_name,
+        cause,
+    )
+}
+
+/// The message of a refused rebuild: the package's rebuild-failed template
+/// with each `%s` replaced by the cause's message (#2218); else its restored
+/// message, then the cause in parentheses; else miniextendr's, naming
+/// `type_name`. The template is filled once, so a `%s` in the cause stays as
+/// written.
+fn rebuild_failed_text(
+    template: Option<&str>,
+    restored: Option<&str>,
+    type_name: &str,
+    cause: &str,
+) -> String {
+    match (template, restored) {
+        (Some(template), _) => template.replace("%s", cause),
+        (None, Some(message)) => format!("{message} (rebuilding it failed: {cause})"),
+        (None, None) => format!(
             "this `{type_name}` object was restored from a saved session and rebuilding it \
              failed: {cause}"
         ),
@@ -581,7 +640,9 @@ pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SE
 /// `any_version` (#2187) and the save carries slot names. Installs the value
 /// in `sexp`. Returns whether `sexp` holds a value now; `Ok(false)` leaves the
 /// caller to refuse the pointer as before (another version saved it, another
-/// type, no hook, or the hook is already running for `sexp`).
+/// type, no hook, or the hook is already running for `sexp`). Under
+/// `any_version` a save of this version without slot names is refused here,
+/// before the hook runs ([`refuse_unnamed_slots`], #2218).
 ///
 /// The hook reads the saved `Sidecar` slots through [`Saved`], by field
 /// name. The installed pointer keeps each saved slot whose field `T` still
@@ -590,9 +651,10 @@ pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SE
 /// ([`install_rebuilt`]). A failing hook (an `Err`, or a condition it raises)
 /// installs nothing, and the next use tries again. It returns the restored
 /// refusal of `T` as `Err` (its classes, then [`RESTORED_NO_VALUE_CLASS`] and
-/// [`RESTORED_CLASS`], the cause as `e$parent`), for the caller to raise
-/// ([`rebuild_restored`]) or return ([`ExternalPtr::wrap_sexp_with_error`],
-/// #2217). Any other unwind (an R error, a plain panic) carries on.
+/// [`RESTORED_CLASS`], worded by [`rebuild_failed_text`], the cause as
+/// `e$parent`), for the caller to raise ([`rebuild_restored`]) or return
+/// ([`ExternalPtr::wrap_sexp_with_error`], #2217). Any other unwind (an R
+/// error, a plain panic) carries on.
 ///
 /// # Safety
 ///
@@ -607,7 +669,11 @@ pub(crate) unsafe fn try_rebuild_restored<T: TypedExternal>(
         return Ok(false);
     }
     match unsafe { classify_null_address::<T>(sexp) } {
-        NullAddress::Restored => {}
+        NullAddress::Restored => {
+            if sidecar::refuses_unnamed::<T>(unsafe { R_ExternalPtrProtected(sexp) }) {
+                return Err(unnamed_slots_refusal::<T>(receiver));
+            }
+        }
         NullAddress::OtherVersion { .. }
             if T::REBUILDS_ANY_VERSION
                 && sidecar::has_slot_names(unsafe { R_ExternalPtrProtected(sexp) }) => {}
@@ -696,7 +762,7 @@ unsafe fn relayout_saved_slots<T: TypedExternal>(sexp: SEXP, value: &T) {
     // until they sit in a slot (#2216).
     unsafe { scope.protect(saved) };
     unsafe { R_SetExternalPtrProtected(sexp, prot) };
-    value.__mx_visit_sidecars(&mut |index, name, field| match sidecar::saved_slot(
+    value.__mx_visit_sidecars(&mut |index, name, field| match sidecar::saved_slot::<T>(
         saved, index, name,
     ) {
         Some(at) if !field.__mx_replaces_saved() => {
@@ -747,6 +813,12 @@ unsafe fn clear_moved_out(sexp: SEXP) {
 /// tryCatch(method(back), miniextendr_restored_other_version = function(e) e$saved_version)
 /// #> [1] "0.0.1"
 /// ```
+///
+/// Under `rebuild = path, any_version`, any read or write of a `Sidecar`
+/// slot of another version's save rebuilds it first, the standalone
+/// accessors, R6 bindings and S7 properties included (#2187). So a test
+/// that edits the saved slots (to set up what the hook will read) edits
+/// them before it marks the save as another version's.
 ///
 /// # Panics
 ///
@@ -902,6 +974,28 @@ pub trait TypedExternal: 'static {
     /// `#[externalptr(restored(message = "..."))]`; the default keeps
     /// miniextendr's messages.
     const RESTORED_ERROR_MESSAGE: Option<&'static str> = None;
+
+    /// The package's message for a pointer of this type whose rebuild hook
+    /// failed (#2218), each `%s` in it replaced by the cause's message. It
+    /// stands alone, so it reads as one sentence. Without it the refusal
+    /// says [`Self::RESTORED_ERROR_MESSAGE`] then
+    /// ` (rebuilding it failed: <cause>)`, or miniextendr's wording.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(restored(rebuild_failed = "..."), rebuild = path)]`.
+    const REBUILD_FAILED_MESSAGE: Option<&'static str> = None;
+
+    /// The package's message for a list or an environment of the type's
+    /// class that carries no pointer (#2218), the shape an earlier release
+    /// may have saved: it says why the object has none. It replaces
+    /// [`Self::RESTORED_ERROR_MESSAGE`] for that receiver, which otherwise
+    /// serves both. The R accessors raise it with
+    /// [`NO_HANDLE_CLASS`]; a package's own code that refuses such an object
+    /// reads it here to word the refusal the same way.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(restored(no_handle = "..."))]`.
+    const NO_HANDLE_MESSAGE: Option<&'static str> = None;
 
     /// The package's condition classes for the errors the type's R field
     /// readers raise themselves (#1899), in front of their own class: a
@@ -3297,7 +3391,35 @@ pub use sidecar::*;
 
 #[cfg(test)]
 mod tests {
-    use super::drop_catching_panic;
+    use super::{drop_catching_panic, rebuild_failed_text};
+
+    /// A failed rebuild's message (#2218): the package's template with the
+    /// cause in place of each `%s`, filled once; else the restored message
+    /// and the cause in parentheses; else miniextendr's.
+    #[test]
+    fn rebuild_failed_text_fills_the_template() {
+        assert_eq!(
+            rebuild_failed_text(
+                Some("the engine could not be rebuilt (%s); build a new one"),
+                Some("saved"),
+                "Engine",
+                "bad %s value"
+            ),
+            "the engine could not be rebuilt (bad %s value); build a new one"
+        );
+        assert_eq!(
+            rebuild_failed_text(Some("%s, then %s"), None, "Engine", "x"),
+            "x, then x"
+        );
+        assert_eq!(
+            rebuild_failed_text(None, Some("this engine was saved"), "Engine", "bad"),
+            "this engine was saved (rebuilding it failed: bad)"
+        );
+        assert_eq!(
+            rebuild_failed_text(None, None, "Engine", "bad"),
+            "this `Engine` object was restored from a saved session and rebuilding it failed: bad"
+        );
+    }
 
     #[test]
     fn drop_catching_panic_does_not_propagate_panic() {

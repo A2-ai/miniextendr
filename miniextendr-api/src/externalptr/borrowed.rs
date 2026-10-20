@@ -86,13 +86,20 @@ impl<T: TypedExternal + ?Sized> Saved<'_, T> {
     /// it. Renaming the Rust field keeps earlier saves readable; renaming the
     /// R name orphans the field's slot in every earlier save, which then
     /// reads as a field the save lacks.
+    ///
+    /// A save made before slots were named is read by position, unless the
+    /// type rebuilds saves by any version (`any_version`): that type reads
+    /// by name only, so such a save has no slot for any field, and its
+    /// readers refuse it with the classed
+    /// [`RESTORED_UNNAMED_SLOTS_CLASS`](super::RESTORED_UNNAMED_SLOTS_CLASS)
+    /// error before the hook runs (#2218).
     pub fn has(&self, field: &str) -> bool {
         // SAFETY: on R's main thread (a hook runs there); the pointer is live.
         let prot = unsafe { crate::sys::R_ExternalPtrProtected(self.sexp) };
         T::SIDECAR_NAMES
             .iter()
             .position(|name| *name == field)
-            .is_some_and(|index| super::sidecar::saved_slot(prot, index, field).is_some())
+            .is_some_and(|index| super::sidecar::saved_slot::<T>(prot, index, field).is_some())
     }
 
     /// The version of the crate that saved the object, from the type ID the

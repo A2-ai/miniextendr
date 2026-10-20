@@ -1,0 +1,5 @@
+error: `restored(rebuild_failed = ...)` words the refusal of a failed rebuild; it needs `rebuild = path` next to it
+ --> tests/ui/derive_externalptr_rebuild_failed_without_rebuild.rs:7:15
+  |
+7 | #[externalptr(restored(rebuild_failed = "not rebuilt: %s"))]
+  |               ^^^^^^^^
