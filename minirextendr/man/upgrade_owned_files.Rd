@@ -27,4 +27,10 @@ anyway: their content does not change, so the summary skips them. A file
 the upgrade starts writing has to be added here, or the summary will not
 report it.
 }
+\details{
+Where the package has them installed, the list also holds the files of the
+\verb{.claude/skills/miniextendr-*} skills, installed and bundled alike (see
+\code{\link[=upgrade_skill_files]{upgrade_skill_files()}}), and the git hooks with a miniextendr section
+(see \code{\link[=upgrade_hook_files]{upgrade_hook_files()}}).
+}
 \keyword{internal}

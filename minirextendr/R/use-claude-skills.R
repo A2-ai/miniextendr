@@ -9,10 +9,14 @@
 #' release/vendoring story -- all framed for the scaffolded-package layout
 #' (`src/rust/lib.rs`, `configure`, `tools/`).
 #'
-#' Re-running upgrades in place: each bundled skill directory is deleted and
-#' rewritten (the same delete-target-first convention as [use_miniextendr()]
-#' templates), so stale copies never linger. Skill directories you added
-#' yourself under `.claude/skills/` are left untouched.
+#' Re-running replaces the set: every installed `miniextendr-*` skill
+#' directory is deleted, including one the bundle no longer ships, and the
+#' bundled skills are copied in its place (the same delete-target-first
+#' convention as [use_miniextendr()] templates). Local edits to those skills
+#' are overwritten; merging them back, from git, is up to you.
+#' [upgrade_miniextendr_package()] does the same for a package that has the
+#' skills installed. Skill directories you added yourself under
+#' `.claude/skills/` (not named `miniextendr-*`) are left untouched.
 #'
 #' When the project root is an R package (a `DESCRIPTION` is present),
 #' `.claude/` and `AGENTS.md` are added to `.Rbuildignore` so agent guidance
@@ -27,21 +31,7 @@
 use_claude_skills <- function(path = ".") {
   with_project(path)
 
-  src <- system.file("claude", "skills", package = "minirextendr", mustWork = TRUE)
-  dest <- usethis::proj_path(".claude", "skills")
-  ensure_dir(dest)
-
-  for (slug_dir in fs::dir_ls(src, type = "directory")) {
-    slug <- fs::path_file(slug_dir)
-    target <- fs::path(dest, slug)
-    # Delete-first so re-runs actually overwrite (fs::dir_copy() would nest,
-    # and usethis-style write_over() skips silently in non-interactive mode).
-    if (fs::dir_exists(target)) {
-      fs::dir_delete(target)
-    }
-    fs::dir_copy(slug_dir, target)
-    bullet_created(file.path(".claude", "skills", slug), "Installed skill")
-  }
+  replace_miniextendr_skills(usethis::proj_get())
 
   # Keep the skills out of the built tarball. Only meaningful when the project
   # root is itself the R package; in a monorepo the R package lives in a
@@ -53,6 +43,58 @@ use_claude_skills <- function(path = ".") {
   write_agents_md_stub()
 
   invisible(TRUE)
+}
+
+#' The skill set bundled with minirextendr
+#'
+#' @return Path of the installed minirextendr's `claude/skills` directory,
+#'   which holds one `miniextendr-*` directory per skill.
+#' @keywords internal
+bundled_skills_dir <- function() {
+  system.file("claude", "skills", package = "minirextendr", mustWork = TRUE)
+}
+
+#' The miniextendr skills installed in a project
+#'
+#' @param root Project root whose `.claude/skills/` holds the skills.
+#' @return Names of the `miniextendr-*` directories under
+#'   `<root>/.claude/skills/`; empty when there is none.
+#' @keywords internal
+installed_miniextendr_skills <- function(root) {
+  slugs <- list.dirs(file.path(root, ".claude", "skills"),
+                     full.names = FALSE, recursive = FALSE)
+  slugs[startsWith(slugs, "miniextendr-")]
+}
+
+#' Replace a project's miniextendr skills with the bundled set
+#'
+#' Deletes every installed `miniextendr-*` skill directory, including one the
+#' bundle no longer ships, then copies the bundled skills. Deleting first
+#' makes the copy an overwrite: `fs::dir_copy()` would nest, and usethis-style
+#' `write_over()` skips silently in non-interactive mode. The user's own
+#' skills under `.claude/skills/` are kept.
+#'
+#' @param root Project root to install the skills under.
+#' @return `NULL` invisibly; called for its side effect on
+#'   `<root>/.claude/skills/`.
+#' @keywords internal
+replace_miniextendr_skills <- function(root) {
+  dest <- file.path(root, ".claude", "skills")
+  ensure_dir(dest)
+
+  src <- bundled_skills_dir()
+  bundled <- list.dirs(src, full.names = FALSE, recursive = FALSE)
+  for (slug in installed_miniextendr_skills(root)) {
+    fs::dir_delete(file.path(dest, slug))
+    if (!slug %in% bundled) {
+      cli::cli_alert_success("Removed skill {.path {file.path('.claude', 'skills', slug)}}, which minirextendr no longer ships")
+    }
+  }
+  for (slug in bundled) {
+    fs::dir_copy(file.path(src, slug), file.path(dest, slug))
+    bullet_created(file.path(".claude", "skills", slug), "Installed skill")
+  }
+  invisible()
 }
 
 #' Write the AGENTS.md stub if absent

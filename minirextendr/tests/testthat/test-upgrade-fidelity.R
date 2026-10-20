@@ -432,3 +432,179 @@ test_that("upgrading a fresh scaffold reports no changed files", {
 })
 
 # endregion -------------------------------------------------------------------
+
+# region: #2208 — the upgrade replaces the skills and hook sections it ships --
+
+# A package in a fresh git repository, its build files already upgraded, so a
+# later upgrade only touches what a test changes. Global and system git
+# configuration are kept out: a developer's core.hooksPath cannot send the
+# hooks elsewhere.
+local_git_pkg <- function(env = parent.frame()) {
+  empty_config <- withr::local_tempfile(.local_envir = env)
+  file.create(empty_config)
+  withr::local_envvar(GIT_CONFIG_GLOBAL = empty_config, GIT_CONFIG_NOSYSTEM = "1",
+                      .local_envir = env)
+  withr::defer(minirextendr:::set_template_type("rpkg"), envir = env)
+  pkg <- make_upgrade_pkg(withr::local_tempdir(.local_envir = env))
+  fidelity_git(pkg, "init", "-q")
+  run_upgrade(pkg)
+  pkg
+}
+
+no_changes <- list(changed = character(), added = character(), removed = character())
+
+skill_file <- function(slug) file.path(".claude", "skills", slug, "SKILL.md")
+
+bundled_skill <- function(slug) {
+  readLines(file.path(minirextendr:::bundled_skills_dir(), slug, "SKILL.md"))
+}
+
+test_that("the upgrade replaces the miniextendr skills and keeps the user's own", {
+  pkg <- local_git_pkg()
+  suppressMessages(use_claude_skills(path = pkg))
+  guide <- skill_file("miniextendr-guide")
+  release <- skill_file("miniextendr-release")
+  retired <- skill_file("miniextendr-old")
+  own <- skill_file("my-own-skill")
+  writeLines(c(bundled_skill("miniextendr-guide"), "A local note."), file.path(pkg, guide))
+  file.remove(file.path(pkg, release))
+  for (skill in c(retired, own)) {
+    dir.create(dirname(file.path(pkg, skill)))
+    writeLines("not bundled", file.path(pkg, skill))
+  }
+
+  changes <- run_upgrade(pkg)
+
+  # The edit is overwritten, the missing file restored, and the skill the
+  # bundle no longer ships deleted; the summary and return value say so.
+  expect_identical(changes, list(changed = guide, added = release, removed = retired))
+  expect_identical(readLines(file.path(pkg, guide)), bundled_skill("miniextendr-guide"))
+  expect_identical(readLines(file.path(pkg, release)), bundled_skill("miniextendr-release"))
+  expect_false(dir.exists(file.path(pkg, dirname(retired))))
+  expect_identical(readLines(file.path(pkg, own)), "not bundled")
+  installed <- basename(list.dirs(file.path(pkg, ".claude", "skills"), recursive = FALSE))
+  bundled <- basename(list.dirs(minirextendr:::bundled_skills_dir(), recursive = FALSE))
+  expect_setequal(installed, c(bundled, "my-own-skill"))
+
+  # A rerun finds the skills current.
+  expect_identical(run_upgrade(pkg), no_changes)
+})
+
+test_that("a package without miniextendr skills gets none", {
+  pkg <- local_git_pkg()
+  expect_false(dir.exists(file.path(pkg, ".claude")))
+  own <- file.path(pkg, skill_file("my-own-skill"))
+  dir.create(dirname(own), recursive = TRUE)
+  writeLines("user-owned", own)
+
+  expect_identical(run_upgrade(pkg), no_changes)
+  expect_identical(list.files(file.path(pkg, ".claude", "skills")), "my-own-skill")
+  expect_identical(readLines(own), "user-owned")
+})
+
+test_that("the upgrade rewrites the miniextendr hook sections and keeps the user's lines", {
+  pkg <- local_git_pkg()
+  hooks_dir <- file.path(pkg, ".git", "hooks")
+  user_lines <- c("#!/bin/sh", "echo user check")
+  writeLines(user_lines, file.path(hooks_dir, "pre-commit"))
+  suppressMessages(use_miniextendr_git_hooks(path = pkg))
+  # pre-commit: the user's lines, then the appended section. post-merge: a
+  # standalone install.
+  current <- lapply(miniextendr_hook_names, function(hook) readLines(file.path(hooks_dir, hook)))
+  names(current) <- miniextendr_hook_names
+  expect_identical(current[["pre-commit"]][1:2], user_lines)
+
+  # Sections from an older minirextendr.
+  for (hook in miniextendr_hook_names) {
+    writeLines(c(current[[hook]], "# check from an older minirextendr"),
+               file.path(hooks_dir, hook))
+  }
+
+  msgs <- capture_messages(changes <- upgrade_miniextendr_package(
+    path = pkg, configure_ac = TRUE, autoconf = FALSE, allow_dirty = TRUE
+  ))
+
+  hook_paths <- file.path(".git", "hooks", miniextendr_hook_names)
+  expect_identical(changes, list(changed = hook_paths, added = character(),
+                                 removed = character()))
+  for (hook in miniextendr_hook_names) {
+    expect_identical(readLines(file.path(hooks_dir, hook)), current[[hook]], info = hook)
+  }
+  text <- paste(msgs, collapse = "")
+  expect_match(text, "Changed 2 files:.*\\.git/hooks/pre-commit.*\\.git/hooks/post-merge")
+
+  expect_identical(run_upgrade(pkg), no_changes)
+})
+
+test_that("the upgrade leaves a hook without a miniextendr section alone", {
+  pkg <- local_git_pkg()
+  hooks_dir <- file.path(pkg, ".git", "hooks")
+  user_hook <- c("#!/bin/sh", "echo user check")
+  writeLines(user_hook, file.path(hooks_dir, "pre-commit"))
+
+  expect_identical(run_upgrade(pkg), no_changes)
+  expect_identical(readLines(file.path(hooks_dir, "pre-commit")), user_hook)
+  expect_false(file.exists(file.path(hooks_dir, "post-merge")))
+})
+
+test_that("outside a git repository the upgrade replaces the skills and skips the hooks", {
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  pkg <- make_upgrade_pkg(withr::local_tempdir())
+  run_upgrade(pkg)
+  expect_false(dir.exists(file.path(pkg, ".claude")))
+  expect_null(minirextendr:::resolve_git_hooks_dir(pkg))
+
+  suppressMessages(use_claude_skills(path = pkg))
+  guide <- skill_file("miniextendr-guide")
+  writeLines("edited", file.path(pkg, guide))
+
+  expect_identical(run_upgrade(pkg), list(changed = guide, added = character(),
+                                          removed = character()))
+  expect_identical(readLines(file.path(pkg, guide)), bundled_skill("miniextendr-guide"))
+})
+
+test_that("a monorepo's skills are replaced at the workspace root", {
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  dirs <- make_upgrade_monorepo(withr::local_tempdir(), "mypkg-r")
+  run_upgrade(dirs$root)
+  suppressMessages(use_claude_skills(path = dirs$root))
+  guide <- skill_file("miniextendr-guide")
+
+  for (from in c("root", "pkg")) {
+    writeLines("edited", file.path(dirs$root, guide))
+
+    changes <- run_upgrade(dirs[[from]])
+
+    expect_identical(changes, list(changed = guide, added = character(),
+                                   removed = character()), info = from)
+    expect_identical(readLines(file.path(dirs$root, guide)),
+                     bundled_skill("miniextendr-guide"), info = from)
+    expect_false(dir.exists(file.path(dirs$pkg, ".claude")), info = from)
+  }
+})
+
+test_that("an uncommitted skill edit stops the upgrade; a committed one is replaced", {
+  pkg <- local_git_pkg()
+  suppressMessages(use_claude_skills(path = pkg))
+  fidelity_git(pkg, "add", "-A")
+  fidelity_git(pkg, "commit", "-q", "-m", "scaffold")
+  guide <- skill_file("miniextendr-guide")
+  edited <- c(bundled_skill("miniextendr-guide"), "A local note.")
+  writeLines(edited, file.path(pkg, guide))
+
+  upgrade <- function() {
+    suppressMessages(upgrade_miniextendr_package(
+      path = pkg, configure_ac = TRUE, autoconf = FALSE
+    ))
+  }
+  expect_error(upgrade(), "miniextendr-guide/SKILL.md", fixed = TRUE)
+  expect_identical(readLines(file.path(pkg, guide)), edited)
+
+  fidelity_git(pkg, "commit", "-q", "-am", "edit a skill")
+  expect_identical(upgrade(), list(changed = guide, added = character(),
+                                   removed = character()))
+  # git holds the edit for the author to merge back.
+  expect_identical(fidelity_git(pkg, "diff", "--name-only"), guide)
+})
+
+# endregion -------------------------------------------------------------------

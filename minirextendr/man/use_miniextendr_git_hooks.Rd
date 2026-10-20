@@ -47,9 +47,12 @@ build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 Existing hooks are preserved: if a hook file already exists, the miniextendr
 hook is appended as a sourced fragment so both run.
 
-An installed hook does not change when minirextendr is upgraded. Run
+Upgrading minirextendr alone does not change an installed hook. Run
 \code{use_miniextendr_git_hooks(force = TRUE)} to replace the miniextendr section
-with the version bundled in the installed minirextendr.
+with the version bundled in the installed minirextendr;
+\code{\link[=upgrade_miniextendr_package]{upgrade_miniextendr_package()}} does the same for each hook that has a
+miniextendr section. Your own lines in the hook file stay; edits to the
+miniextendr section are overwritten.
 
 Git hooks belong to the \strong{enclosing repository}, regardless of where the
 package sits inside it. This matches \code{\link[=use_miniextendr]{use_miniextendr()}}'s worldview: a

@@ -27,9 +27,12 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #' Existing hooks are preserved: if a hook file already exists, the miniextendr
 #' hook is appended as a sourced fragment so both run.
 #'
-#' An installed hook does not change when minirextendr is upgraded. Run
+#' Upgrading minirextendr alone does not change an installed hook. Run
 #' `use_miniextendr_git_hooks(force = TRUE)` to replace the miniextendr section
-#' with the version bundled in the installed minirextendr.
+#' with the version bundled in the installed minirextendr;
+#' [upgrade_miniextendr_package()] does the same for each hook that has a
+#' miniextendr section. Your own lines in the hook file stay; edits to the
+#' miniextendr section are overwritten.
 #'
 #' Git hooks belong to the **enclosing repository**, regardless of where the
 #' package sits inside it. This matches [use_miniextendr()]'s worldview: a

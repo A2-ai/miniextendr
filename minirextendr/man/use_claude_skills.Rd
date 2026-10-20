@@ -23,10 +23,14 @@ release/vendoring story -- all framed for the scaffolded-package layout
 (\code{src/rust/lib.rs}, \code{configure}, \verb{tools/}).
 }
 \details{
-Re-running upgrades in place: each bundled skill directory is deleted and
-rewritten (the same delete-target-first convention as \code{\link[=use_miniextendr]{use_miniextendr()}}
-templates), so stale copies never linger. Skill directories you added
-yourself under \verb{.claude/skills/} are left untouched.
+Re-running replaces the set: every installed \verb{miniextendr-*} skill
+directory is deleted, including one the bundle no longer ships, and the
+bundled skills are copied in its place (the same delete-target-first
+convention as \code{\link[=use_miniextendr]{use_miniextendr()}} templates). Local edits to those skills
+are overwritten; merging them back, from git, is up to you.
+\code{\link[=upgrade_miniextendr_package]{upgrade_miniextendr_package()}} does the same for a package that has the
+skills installed. Skill directories you added yourself under
+\verb{.claude/skills/} (not named \verb{miniextendr-*}) are left untouched.
 
 When the project root is an R package (a \code{DESCRIPTION} is present),
 \verb{.claude/} and \code{AGENTS.md} are added to \code{.Rbuildignore} so agent guidance

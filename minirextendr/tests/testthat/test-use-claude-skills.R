@@ -48,7 +48,7 @@ test_that("use_claude_skills() installs skills, .Rbuildignore, and AGENTS.md", {
   expect_true(any(grepl("miniextendr-guide", readLines(agents, warn = FALSE))))
 })
 
-test_that("use_claude_skills() re-run overwrites stale copies, keeps user files", {
+test_that("use_claude_skills() re-run replaces the miniextendr skills, keeps user files", {
   root <- tempfile("claude-skills-rerun-")
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   dir.create(root)
@@ -61,14 +61,19 @@ test_that("use_claude_skills() re-run overwrites stale copies, keeps user files"
   custom <- file.path(tmp, ".claude", "skills", "my-own-skill", "SKILL.md")
   dir.create(dirname(custom), recursive = TRUE)
   writeLines("user-owned", custom)
+  # A skill an older minirextendr shipped.
+  retired <- file.path(tmp, ".claude", "skills", "miniextendr-old")
+  dir.create(retired)
+  writeLines("retired", file.path(retired, "SKILL.md"))
   agents <- file.path(tmp, "AGENTS.md")
   writeLines("user-owned agents notes", agents)
 
   suppressMessages(use_claude_skills(path = tmp))
 
-  # bundled skill restored from the package copy
+  # bundled skill restored from the package copy; the retired one is gone
   expect_true(any(grepl("^name: miniextendr-guide$",
                         readLines(guide, warn = FALSE))))
+  expect_false(dir.exists(retired))
   # user-owned files untouched
   expect_identical(readLines(custom, warn = FALSE), "user-owned")
   expect_identical(readLines(agents, warn = FALSE), "user-owned agents notes")

@@ -45,16 +45,18 @@ or use \code{TRUE} to replace the file.}
 regenerates the configure script after upgrading.}
 
 \item{allow_dirty}{Logical. If \code{FALSE} (default), aborts when scaffolding
-files have uncommitted changes in git, to prevent accidental data loss.
-Set to \code{TRUE} to force the upgrade even with dirty files.}
+files or installed \verb{.claude/skills/miniextendr-*} skills have uncommitted
+changes in git, to prevent accidental data loss. Set to \code{TRUE} to force
+the upgrade even with dirty files.}
 }
 \value{
 Invisibly, a list of three character vectors naming the files the
 upgrade touched: \code{changed} (existed before, content differs), \code{added}
 (did not exist before) and \code{removed} (existed before, gone after). Paths
 are relative to the package directory for a standalone package and to the
-workspace root for a monorepo, as \verb{git diff} prints them there. All three
-are empty when the package already matched the templates.
+workspace root for a monorepo, as \verb{git diff} prints them there; a git
+hook outside that directory is given relative to it (\code{../.git/hooks/...}).
+All three are empty when the package already matched the templates.
 }
 \description{
 Comprehensively upgrades an existing miniextendr package to the latest
@@ -92,4 +94,23 @@ newer than the bundled copy's is kept. The closing summary also lists files
 the package no longer uses (\code{tools/wrapper-freshness.R},
 \code{tools/wrapper-inputs.rds}) and a git-tracked \verb{src/<pkg>-win.def}, which
 configure generates; the upgrade does not delete or untrack them.
+
+Where the package has them installed, the upgrade also replaces what
+minirextendr ships for coding agents and git hooks, the way
+\code{\link[=use_claude_skills]{use_claude_skills()}} and \code{use_miniextendr_git_hooks(force = TRUE)} do:
+\itemize{
+\item every \verb{.claude/skills/miniextendr-*} skill directory is replaced by the
+bundled set, and a skill minirextendr no longer ships is deleted. Skills
+of your own under \verb{.claude/skills/} stay. In a monorepo these are the
+skills at the workspace root;
+\item the miniextendr section of each git hook that has one is rewritten from
+the bundled hook. Your own lines in the hook file stay. A hook without a
+miniextendr section is left alone, and so is a package outside a git
+repository.
+}
+
+A package without \verb{miniextendr-*} skills, or without a miniextendr hook
+section, gets none. Local edits to the replaced files are overwritten:
+merging them back from git is up to you, and the summary lists every file
+replaced, added or removed.
 }

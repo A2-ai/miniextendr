@@ -278,8 +278,11 @@ commit whose staged `rv.lock` and `src/rust/Cargo.lock` pin different
 miniextendr commits, and prints the `cargo update` or `rv` command that
 brings them back together.
 
-An installed hook does not change when you upgrade minirextendr. To pick
-up new checks, reinstall it:
+An installed hook does not change when you upgrade minirextendr itself.
+`upgrade_miniextendr_package()` rewrites the miniextendr section of each
+installed hook, keeping your own lines, and replaces the
+`.claude/skills/miniextendr-*` skills. To pick up new checks without an
+upgrade, reinstall the hooks:
 
 ```{r}
 use_miniextendr_git_hooks(force = TRUE)
