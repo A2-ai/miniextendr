@@ -305,6 +305,10 @@ pub struct CWrapperContext {
     /// value is then wrapped in the markers for the call
     /// (`RustConversionBuilder::with_param_markers`).
     pub param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
+    /// The R formal of each parameter (#1842): the name a conversion error
+    /// gives the argument, in its message and `e$param`
+    /// (`RustConversionBuilder::with_formals`).
+    pub formals: crate::r_wrapper_builder::Formals,
     /// When `true`, preserve original parameter names from `inputs` in the C wrapper
     /// signature instead of renaming to `arg_0`, `arg_1`, ... The fn path preserves
     /// user identifiers for rustdoc visibility; impl method path uses `arg_N` for safety.
@@ -356,6 +360,7 @@ impl CWrapperContext {
             layered_choice_params: Vec::new(),
             no_na_params: Vec::new(),
             param_markers: Vec::new(),
+            formals: crate::r_wrapper_builder::Formals::default(),
             preserve_param_names: false,
             vis: syn::Visibility::Inherited,
             generics: syn::Generics::default(),
@@ -523,6 +528,7 @@ impl CWrapperContext {
         for (param, markers) in &self.param_markers {
             builder = builder.with_param_markers(param.clone(), markers.clone());
         }
+        builder = builder.with_formals(self.formals.clone());
         // A standalone fn's R wrapper passes `Quoted` / `Quosure` arguments
         // unevaluated (#1835); a method's is generated per class system and
         // does not, so there they stay a compile error.
@@ -1499,6 +1505,9 @@ pub struct CWrapperContextBuilder {
     /// Marked parameters, forwarded to
     /// `RustConversionBuilder::with_param_markers`.
     param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
+    /// The parameters' R formals, forwarded to
+    /// `RustConversionBuilder::with_formals`.
+    formals: crate::r_wrapper_builder::Formals,
     /// When `true`, use original parameter names in C wrapper signature (for rustdoc).
     preserve_param_names: bool,
     /// Visibility of the generated `extern "C-unwind"` wrapper.
@@ -1691,6 +1700,14 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Name each parameter by its R formal (#1842) in the conversion errors
+    /// (their message and `e$param`); without it, the Rust name without
+    /// leading underscores.
+    pub fn formals(mut self, formals: crate::r_wrapper_builder::Formals) -> Self {
+        self.formals = formals;
+        self
+    }
+
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -1792,6 +1809,7 @@ impl CWrapperContextBuilder {
             layered_choice_params: self.layered_choice_params,
             no_na_params: self.no_na_params,
             param_markers: self.param_markers,
+            formals: self.formals,
             preserve_param_names: self.preserve_param_names,
             vis: self.vis,
             generics: self.generics,

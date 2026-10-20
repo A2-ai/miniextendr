@@ -154,7 +154,11 @@ pub(super) fn generate_vtable_static(
     // Format R wrapper as raw string literal
     let r_wrapper_str = crate::r_wrapper_raw_literal(
         &r_wrapper_string,
-        &crate::r_shadowing::formal_names(methods_owned.iter().map(|m| &m.sig.inputs)),
+        &crate::r_shadowing::formal_names(
+            methods_owned
+                .iter()
+                .map(|m| (&m.sig.inputs, Default::default())),
+        ),
     );
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
@@ -795,7 +799,7 @@ pub(super) fn extract_methods(
                 unwrap_in_r: attrs.unwrap_in_r,
                 serialize: attrs.serialize,
                 return_wrap,
-                param_defaults: crate::miniextendr_fn::defaults_by_r_name(&attrs.defaults),
+                param_defaults: attrs.defaults,
                 doc_tags,
                 skip: attrs.skip,
                 r_name: attrs.r_name,
@@ -1215,6 +1219,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 // R-side `inherits(p, c(...))` checks; `not_inherits(...)` the
                 // same shape, `!inherits(p, c(...))`.
                 crate::miniextendr_fn::parse_method_class_check(&meta, &mut per_param, check)?;
+            } else if meta.path.is_ident("formal") {
+                return Err(meta.error(crate::miniextendr_fn::TRAIT_FORMAL_UNSUPPORTED));
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \

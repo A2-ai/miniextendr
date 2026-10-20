@@ -187,8 +187,13 @@ fn find_dots_param_by_type_at_any_position() {
 fn replacement_method_takes_value_last() {
     use crate::miniextendr_fn::check_replacement_value_param;
     let check = |generic: &str, sig: &str| {
-        check_replacement_value_param(generic, &inputs_of(sig), proc_macro2::Span::call_site())
-            .map_err(|err| err.to_string())
+        check_replacement_value_param(
+            generic,
+            &inputs_of(sig),
+            &Default::default(),
+            proc_macro2::Span::call_site(),
+        )
+        .map_err(|err| err.to_string())
     };
     for (generic, sig) in [
         ("$<-", "x: List, name: &str, value: SEXP"),
@@ -788,7 +793,8 @@ fn parsed_fn_mid_dots_formals_and_call_args() {
 }
 
 /// A default on a parameter with leading underscores is its formal's: the
-/// defaults are keyed by R name, which drops them (`_seed` is `seed`).
+/// defaults, keyed by Rust name, are keyed by formal for the builder
+/// (`Formals::rekey`), so `_seed`'s is `seed`'s.
 #[test]
 fn parsed_fn_default_on_an_underscored_param() {
     let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
@@ -800,8 +806,10 @@ fn parsed_fn_default_on_an_underscored_param() {
         }
     })
     .expect("parses");
+    let formals = parsed.formals();
     let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
-        .with_defaults(parsed.param_defaults());
+        .with_formals(formals.clone())
+        .with_defaults(formals.rekey(parsed.param_defaults()));
     assert_eq!(builder.build_formals(), "seed = NULL, n = 1L");
 }
 
@@ -3680,6 +3688,7 @@ fn no_preconditions_default_fn_attrs_drop_preconditions() {
     let sig: syn::Signature = syn::parse_str("fn f(n: i32, x: f64)").unwrap();
     let unchecked = crate::r_preconditions::unchecked_params(
         &sig.inputs,
+        &Default::default(),
         |name| (name == "n").then_some(true),
         None,
         None,
@@ -3853,3 +3862,381 @@ fn serialize_attribute_accepts_boolean_forms_and_rejects_result_transport_confli
         );
     }
 }
+
+// region: declared R formals (#1842)
+
+/// Every message of a parse error, combined errors included.
+fn parse_errors(tokens: proc_macro2::TokenStream) -> Vec<String> {
+    syn::parse2::<MiniextendrFunctionParsed>(tokens)
+        .err()
+        .expect("must be rejected")
+        .into_iter()
+        .map(|error| error.to_string())
+        .collect()
+}
+
+/// `formal = ".."` names the parameter's R formal and combines with the other
+/// per-parameter options, in one attribute or in several. Defaults stay keyed
+/// by Rust name; the builders take them keyed by formal, which also keeps the
+/// default of a `_count` parameter (formal `count`).
+#[test]
+fn parsed_fn_formal_spellings() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            x: f64,
+            #[miniextendr(formal = "conf.int", default = "FALSE")] fml_conf_int: bool,
+            #[miniextendr(default = "0.95")]
+            #[miniextendr(formal = "conf.level")]
+            fml_conf_level: f64,
+            #[miniextendr(formal = ".data")] _fml_data: SEXP,
+            plain_name: i32,
+            #[miniextendr(default = "1L")] _count: i32,
+        ) {}
+    });
+    let formals = parsed.formals();
+    assert_eq!(formals.of("fml_conf_int"), "conf.int");
+    assert_eq!(formals.of("fml_conf_level"), "conf.level");
+    assert_eq!(formals.of("_fml_data"), ".data");
+    assert_eq!(formals.of("plain_name"), "plain_name");
+    assert_eq!(
+        parsed
+            .param_defaults()
+            .get("fml_conf_int")
+            .map(String::as_str),
+        Some("FALSE")
+    );
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_formals(formals.clone())
+        .with_defaults(formals.rekey(parsed.param_defaults()));
+    // `_count`'s default is keyed `_count`; its formal is `count`.
+    assert_eq!(
+        builder.build_formals(),
+        "x, conf.int = FALSE, conf.level = 0.95, .data, plain_name, count = 1L"
+    );
+    assert_eq!(
+        builder.build_call_args(),
+        "x, conf.int, conf.level, .data, plain_name, count"
+    );
+}
+
+/// A `default` on a `Missing<T>` parameter (#2161) with a declared formal:
+/// the formal shows the default under the declared name, the call argument
+/// tests `missing()` of that name, and the omission note documents it.
+#[test]
+fn parsed_fn_formal_missing_default() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            #[miniextendr(formal = "conf.level", default = "0.95")] fml_conf_level: Missing<f64>,
+            #[miniextendr(default = "1L")] _count: Missing<i32>,
+        ) {}
+    });
+    let formals = parsed.formals();
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_formals(formals.clone())
+        .with_defaults(formals.rekey(parsed.param_defaults()))
+        .with_absent_formals(parsed.absent_formals("C_f"));
+    assert_eq!(builder.build_formals(), "conf.level = 0.95, count = 1L");
+    assert_eq!(
+        builder.build_call_args_vec(),
+        [
+            "if (missing(conf.level)) quote(expr=) else conf.level",
+            "if (missing(count)) quote(expr=) else count",
+        ]
+    );
+    let docs = parsed.missing_default_param_docs();
+    let mut names: Vec<&str> = docs.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["conf.level", "count"]);
+}
+
+/// `rng(seed = ..)` (#2198) names the seed parameter by its Rust name; the
+/// seed contract reads the parameter's declared formal, which has no type
+/// check either (`set.seed()` validates it).
+#[test]
+fn rng_seed_reads_the_declared_formal() {
+    let wrapper = fn_r_wrapper(
+        quote::quote!(rng(seed = fml_seed)),
+        quote::quote! {
+            pub fn seeded_draws(
+                n: i32,
+                #[miniextendr(formal = "seed.value", default = "NULL")] fml_seed: Option<i64>,
+                rng: &RngGuard,
+            ) -> Vec<f64> {
+                unimplemented!()
+            }
+        },
+    );
+    for needle in [
+        "seeded_draws <- function(n, seed.value = NULL)",
+        "if (is.null(seed.value)) {",
+        "set.seed(seed.value)",
+        ".mx_rng_state <- structure(seed.value, kind = as.list(RNGkind()))",
+        ", n, seed.value)",
+    ] {
+        assert!(wrapper.contains(needle), "no `{needle}` in\n{wrapper}");
+    }
+    assert!(
+        !wrapper.contains(".miniextendr_arg_error(\"seed.value\""),
+        "the seed has no type check\n{wrapper}"
+    );
+    assert!(
+        !wrapper.contains("fml_"),
+        "a Rust name reached R:\n{wrapper}"
+    );
+}
+
+/// A declared formal must be a syntactic R name the generated wrapper
+/// doesn't use itself; each refusal names the parameter and the formal and
+/// points at the literal.
+#[test]
+fn parsed_fn_formal_refusals() {
+    for (formal, problem) in [
+        ("", "is empty"),
+        ("1x", "is not a syntactic R name"),
+        ("conf int", "is not a syntactic R name"),
+        ("_x", "is not a syntactic R name"),
+        (".1x", "is not a syntactic R name"),
+        ("x-y", "is not a syntactic R name"),
+        ("na.rm\u{e9}", "is not a syntactic R name"),
+        ("if", "is an R reserved word"),
+        ("TRUE", "is an R reserved word"),
+        ("NA_real_", "is an R reserved word"),
+        ("...", "is R's `...`"),
+        ("..1", "is R's `...`"),
+        (
+            ".call",
+            "is the call the generated wrapper passes to `.Call()`",
+        ),
+        (
+            ".val",
+            "is where the generated wrapper keeps the result of `.Call()`",
+        ),
+        (
+            ".ptr",
+            "is the pointer argument of a generated class constructor",
+        ),
+        (".Generic", "is bound by R's S3 dispatch"),
+        (".GenericCallEnv", "is bound by R's S3 dispatch"),
+        (".mx_self", "starts with `.mx_`"),
+        (".miniextendr_arg_error", "starts with `.miniextendr_`"),
+        (".rdata_get_Engine", "starts with `.rdata_`"),
+        (".__MX_PLACEHOLDER", "starts with `.__MX_`"),
+    ] {
+        let lit = syn::LitStr::new(formal, proc_macro2::Span::call_site());
+        let errors = parse_errors(quote::quote! {
+            fn f(#[miniextendr(formal = #lit)] fml_arg: i32) {}
+        });
+        assert_eq!(errors.len(), 1, "{formal:?}: {errors:?}");
+        assert!(
+            errors[0].starts_with(&format!(
+                "parameter `fml_arg` is declared as the R argument `{formal}`, which {problem}"
+            )),
+            "{formal:?}: {errors:?}"
+        );
+    }
+}
+
+/// Collisions between formals, declared or not; all of a signature's
+/// problems are reported together.
+#[test]
+fn parsed_fn_formal_collisions_are_batched() {
+    let errors = parse_errors(quote::quote! {
+        fn f(x: i32, #[miniextendr(formal = "x")] fml_x: i32) {}
+    });
+    assert_eq!(
+        errors,
+        [
+            "parameters `x` and `fml_x` both become the R argument `x` (a declared `formal` \
+          names the R argument), and R rejects a repeated argument name. Rename one of them."
+        ]
+    );
+    let errors = parse_errors(quote::quote! {
+        fn f(
+            #[miniextendr(formal = "a.b")] fml_a: i32,
+            #[miniextendr(formal = "a.b")] fml_b: i32,
+        ) {}
+    });
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].starts_with("parameters `fml_a` and `fml_b` both become the R argument `a.b`")
+    );
+
+    let errors = parse_errors(quote::quote! {
+        fn f(
+            #[miniextendr(formal = "if")] fml_a: i32,
+            #[miniextendr(formal = ".val")] fml_b: i32,
+            _if: i32,
+        ) {}
+    });
+    assert_eq!(errors.len(), 3, "{errors:?}");
+    assert!(errors[0].contains("`fml_a` is declared as the R argument `if`"));
+    assert!(errors[1].contains("`fml_b` is declared as the R argument `.val`"));
+    assert!(errors[2].contains("`_if` becomes the R argument `if`"));
+}
+
+/// `formal` given twice, a value that is no string, a formal on the dots
+/// (`&Dots` or `LazyDots`, always `...`) and on an `NArgs` parameter, which is
+/// no formal (refused when the function expands), are refused.
+#[test]
+fn parsed_fn_formal_misuse() {
+    for (tokens, message) in [
+        (
+            quote::quote!(
+                fn f(#[miniextendr(formal = "a.b", formal = "c.d")] x: i32) {}
+            ),
+            "`formal` is given twice on this parameter",
+        ),
+        (
+            quote::quote!(
+                fn f(
+                    #[miniextendr(formal = "a.b")]
+                    #[miniextendr(formal = "c.d")]
+                    x: i32,
+                ) {
+                }
+            ),
+            "`formal` is given twice on this parameter",
+        ),
+        (
+            quote::quote!(
+                fn f(#[miniextendr(formal = 1)] x: i32) {}
+            ),
+            "`formal` takes the R argument name as a string",
+        ),
+        (
+            quote::quote!(
+                fn f(#[miniextendr(formal = conf.int)] x: i32) {}
+            ),
+            "`formal` takes the R argument name as a string",
+        ),
+        (
+            quote::quote!(
+                fn f(x: i32, #[miniextendr(formal = "rest")] rest: &Dots) {}
+            ),
+            "`formal` on the variadic (...) parameter `rest`",
+        ),
+        (
+            quote::quote!(
+                fn f(#[miniextendr(formal = "lazy.dots")] rest: LazyDots) {}
+            ),
+            "`formal` on the variadic (...) parameter `rest`",
+        ),
+    ] {
+        let errors = parse_errors(tokens);
+        assert!(
+            errors.iter().any(|e| e.contains(message)),
+            "{message}: {errors:?}"
+        );
+    }
+
+    // The expansion checks these two against every per-parameter option.
+    let parsed = parsed_fn(quote::quote! {
+        fn f(x: i32, #[miniextendr(formal = "n.args")] n: NArgs) {}
+    });
+    let err = crate::miniextendr_fn::check_nargs_params(parsed.inputs(), |name| {
+        parsed.has_param_attrs(name)
+    })
+    .expect_err("NArgs takes no formal");
+    assert!(err.to_string().contains("`formal`"), "{err}");
+}
+
+/// Every R-facing name of a standalone wrapper is the declared formal: the
+/// formals and `.Call()` arguments (a `Missing<T>` forwarded by its formal),
+/// the guards and their argument errors, the `match_arg` skip set, the
+/// `@param` fillers (an author's `@param conf.level` documents the formal), and
+/// `e$param` of a conversion error raised in Rust. Only the `match_arg`
+/// placeholders, replaced before R reads the text, hold the Rust name.
+#[test]
+fn parsed_fn_formal_reaches_every_r_name() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            x: Vec<f64>,
+            #[miniextendr(formal = "na.rm", default = "FALSE")] fml_na_rm: bool,
+            #[miniextendr(formal = "conf.level", no_na)] fml_conf_level: f64,
+            #[miniextendr(formal = "trim.mode", match_arg)] fml_trim_mode: Mode,
+            #[miniextendr(formal = "row.names")] fml_row_names: Missing<SEXP>,
+        ) {}
+    });
+    let formals = parsed.formals();
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_formals(formals.clone())
+        .with_defaults(formals.rekey(parsed.param_defaults()));
+    let r_formals = builder.build_formals();
+    assert_eq!(
+        r_formals,
+        "x, na.rm = FALSE, conf.level, trim.mode, row.names"
+    );
+    let call_args = builder.build_call_args();
+    assert_eq!(
+        call_args,
+        "x, na.rm, conf.level, trim.mode, \
+         if (missing(row.names)) quote(expr=) else row.names"
+    );
+
+    let skip = parsed.precondition_skip_params();
+    assert_eq!(skip, ["trim.mode".to_string()].into());
+    let guards = crate::r_preconditions::build_precondition_checks(
+        parsed.inputs(),
+        &skip,
+        &crate::r_preconditions::PreconditionOptions {
+            explicit: parsed.explicit_checks(),
+            formals: formals.clone(),
+            ..Default::default()
+        },
+    )
+    .guards(None)
+    .join("\n");
+    assert!(
+        guards.contains(
+            "if (!isTRUE(is.logical(na.rm))) .miniextendr_arg_error(\"na.rm\", \"must be logical\")"
+        ),
+        "{guards}"
+    );
+    assert!(guards.contains("anyNA(conf.level)"), "{guards}");
+    assert!(
+        guards.contains(".miniextendr_arg_error(\"conf.level\""),
+        "{guards}"
+    );
+
+    let mut tags = vec!["@param conf.level The confidence level.".to_string()];
+    let doc_placeholders =
+        crate::roxygen::push_fn_param_tags(&mut tags, parsed.inputs(), &parsed, "C_f", None);
+    let doc_placeholder = crate::match_arg_keys::param_doc_placeholder("C_f", "fml_trim_mode");
+    assert_eq!(
+        doc_placeholders,
+        [(doc_placeholder.clone(), "fml_trim_mode".to_string())]
+    );
+    let marker = crate::roxygen::PARAM_FILLER_MARKER;
+    assert_eq!(
+        tags,
+        [
+            "@param conf.level The confidence level.".to_string(),
+            format!("{marker}@param x (no documentation available)"),
+            format!("{marker}@param na.rm (no documentation available)"),
+            format!("{marker}@param trim.mode {doc_placeholder}"),
+            format!("{marker}@param row.names (no documentation available)"),
+        ]
+    );
+
+    let syn::FnArg::Typed(na_rm) = &parsed.inputs()[1] else {
+        unreachable!()
+    };
+    let conversion = crate::rust_conversion_builder::RustConversionBuilder::new()
+        .with_formals(formals)
+        .build_conversion(
+            na_rm,
+            &syn::Ident::new("arg_1", proc_macro2::Span::call_site()),
+        )
+        .iter()
+        .map(ToString::to_string)
+        .collect::<String>();
+    assert!(conversion.contains("\"na.rm\""), "{conversion}");
+
+    let r_text = [r_formals, call_args, guards, tags.join("\n")]
+        .join("\n")
+        .replace(&doc_placeholder, "");
+    assert!(!r_text.contains("fml_"), "{r_text}");
+    assert!(!conversion.contains("\"fml_"), "{conversion}");
+}
+
+// endregion

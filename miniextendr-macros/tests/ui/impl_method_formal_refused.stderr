@@ -1,0 +1,17 @@
+error: `formal(conf_levl = "conf.level")` names a parameter this method doesn't have: there is no `conf_levl`
+  --> tests/ui/impl_method_formal_refused.rs:16:38
+   |
+16 |     #[miniextendr(formal(conf_levl = "conf.level"))]
+   |                                      ^^^^^^^^^^^^
+
+error: parameter `data` is declared as the R argument `x`, which is the receiver of the generated S3 method. Declare another formal.
+  --> tests/ui/impl_method_formal_refused.rs:31:33
+   |
+31 |     #[miniextendr(formal(data = "x"))]
+   |                                 ^^^
+
+error: `formal(...)` on an S7 property getter, setter or validator: S7 calls it with fixed arguments (`self`, `value`), so a declared formal would name nothing
+  --> tests/ui/impl_method_formal_refused.rs:51:62
+   |
+51 |     #[miniextendr(s7(setter, prop = "level"), formal(value = "new.level"))]
+   |                                                              ^^^^^^^^^^^

@@ -613,7 +613,8 @@ pub struct ParsedMethod {
     /// fields — see [`MethodAttrs`] for the parsing surface.
     pub method_attrs: MethodAttrs,
     /// Parameter default values from `#[miniextendr(defaults(...))]`, keyed
-    /// by R name.
+    /// by Rust name; the R wrapper keys them by formal
+    /// ([`Formals::rekey`](crate::r_wrapper_builder::Formals::rekey)).
     pub param_defaults: std::collections::HashMap<String, String>,
     /// Whether this method accepts dots, either from raw `...` rewritten to
     /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
@@ -820,8 +821,9 @@ pub struct MethodAttrs {
     /// functions take the per-param syntax directly; impl methods spell the
     /// same data through `#[miniextendr(match_arg(p1, p2))]`,
     /// `#[miniextendr(match_arg_several_ok(p))]`,
-    /// `#[miniextendr(choices(p = "a, b"))]` and
-    /// `#[miniextendr(no_default(p))]` on the method attribute.
+    /// `#[miniextendr(choices(p = "a, b"))]`,
+    /// `#[miniextendr(no_default(p))]` and
+    /// `#[miniextendr(formal(p = "p.name"))]` (#1842) on the method attribute.
     ///
     /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs)
     /// struct — the `coerce` / `default` fields are unused on the impl path.
@@ -1943,6 +1945,11 @@ impl ParsedMethod {
                         &meta,
                         &mut method_attrs.per_param,
                     )?;
+                } else if meta.path.is_ident("formal") {
+                    // `formal(conf_int = "conf.int", ...)` — the R formal of each
+                    // named parameter (#1842).
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    crate::miniextendr_fn::parse_method_formal(&meta, &mut method_attrs.per_param)?;
                 } else if meta.path.is_ident("choices") {
                     // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
@@ -2219,7 +2226,7 @@ impl ParsedMethod {
                     }
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, formal, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
                     ));
                 }
                 Ok(())
@@ -2601,7 +2608,7 @@ impl ParsedMethod {
             vis: item.vis.clone(),
             doc_tags,
             method_attrs,
-            param_defaults: crate::miniextendr_fn::defaults_by_r_name(&param_defaults),
+            param_defaults,
             has_dots,
             rng_guard,
         })
@@ -2668,6 +2675,12 @@ impl ParsedMethod {
     /// blocks of one type can't both define a method (E0592).
     pub fn c_wrapper_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
         crate::naming::impl_method_c_wrapper_ident(type_ident, &self.ident)
+    }
+
+    /// The R formal of each parameter (#1842), from the method's
+    /// `formal(p = "...")`.
+    pub fn formals(&self) -> crate::r_wrapper_builder::Formals {
+        crate::r_wrapper_builder::Formals::from_param_attrs(&self.method_attrs.per_param)
     }
 
     /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
@@ -4120,7 +4133,8 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
                 .as_ref(),
         ))
         .cfg_attrs(parsed_impl.cfg_attrs.clone())
-        .type_context(type_ident.clone());
+        .type_context(type_ident.clone())
+        .formals(method.formals());
 
     if method.env.is_instance() {
         builder = builder.has_self();
@@ -4212,11 +4226,11 @@ fn generate_method_match_arg_entries(
         let several_ok = attrs.several_ok;
         let choices_ty = crate::match_arg_choices_ty(param_ty, several_ok).clone();
 
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let key = crate::match_arg_keys::param_key(rust_name);
 
         // Placeholder that the write-time substitution pass replaces with the
         // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
-        let placeholder = crate::r_class_formatter::match_arg_placeholder(&c_ident_str, &r_name);
+        let placeholder = crate::r_class_formatter::match_arg_placeholder(&c_ident_str, &key);
         let entry_ident = syn::Ident::new(
             &format!(
                 "match_arg_choices_entry_{}",
@@ -4225,7 +4239,7 @@ fn generate_method_match_arg_entries(
             proc_macro2::Span::call_site(),
         );
         let doc_placeholder =
-            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &r_name);
+            crate::r_class_formatter::match_arg_param_doc_placeholder(&c_ident_str, &key);
         let doc_entry_ident = syn::Ident::new(
             &format!(
                 "match_arg_param_doc_entry_{}",
@@ -4239,7 +4253,7 @@ fn generate_method_match_arg_entries(
             .as_deref()
             .map(crate::match_arg_keys::extract_match_arg_default)
             .unwrap_or_default();
-        let aliases_placeholder = crate::match_arg_keys::aliases_placeholder(&c_ident_str, &r_name);
+        let aliases_placeholder = crate::match_arg_keys::aliases_placeholder(&c_ident_str, &key);
         let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
             cfg_attrs,
             &entry_ident,
@@ -4629,8 +4643,9 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         // No choice formal and no prelude here (#1830), so a `Missing<..>`
         // choice parameter forwards only an omitted argument as absent, not
         // its choice vector (#2152).
-        ctx.args =
-            crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs).build_call_args();
+        ctx.args = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
+            .with_formals(method.formals())
+            .build_call_args();
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal
@@ -4691,8 +4706,12 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
 
         // Function signature: always takes x and ... for S3 method compatibility
         // Additional parameters from the method are included
-        let method_params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let r_formals = method.formals();
+        let method_params = crate::r_wrapper_builder::build_r_formals_from_sig(
+            &method.sig,
+            &r_formals,
+            &r_formals.rekey(method.param_defaults.clone()),
+        );
         let formals = if method_params.is_empty() {
             "x, ...".to_string()
         } else {
@@ -5034,8 +5053,8 @@ fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
 ///   returns `self` from a chaining method.
 ///
 /// Static methods and the other constructors are plain functions and reserve
-/// nothing; S7 property accessors have fixed formals; vctrs impls take no
-/// instance methods (MXL120).
+/// nothing; S7 property accessors have fixed formals, so a `formal(...)` on
+/// one is refused (#1842); vctrs impls take no instance methods (MXL120).
 fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
     let receiver = |name: &str, method: &str| {
         (
@@ -5054,6 +5073,21 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
         }
         let generic_receiver = m.method_attrs.receiver.as_deref().unwrap_or("x");
         let s7 = &m.method_attrs.s7;
+        let formals = m.formals();
+        if parsed.class_system == ClassSystem::S7
+            && (s7.getter || s7.setter || s7.validate)
+            && let Some(lit) = m
+                .method_attrs
+                .per_param
+                .values()
+                .find_map(|a| a.formal.as_ref())
+        {
+            return Err(syn::Error::new(
+                lit.span(),
+                "`formal(...)` on an S7 property getter, setter or validator: S7 calls it with \
+                 fixed arguments (`self`, `value`), so a declared formal would name nothing",
+            ));
+        }
         let reserved = match parsed.class_system {
             ClassSystem::R6 if instance || is_ctor => vec![
                 (
@@ -5083,7 +5117,7 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
             }
             _ => Vec::new(),
         };
-        crate::r_wrapper_builder::check_r_formals(&m.sig.inputs, &reserved)?;
+        crate::r_wrapper_builder::check_r_formals(&m.sig.inputs, &formals, &reserved)?;
     }
     Ok(())
 }
@@ -5109,6 +5143,7 @@ fn check_s3_replacement_methods(parsed: &ParsedImpl) -> syn::Result<()> {
         crate::miniextendr_fn::check_replacement_value_param(
             &generic,
             &m.sig.inputs,
+            &m.formals(),
             m.ident.span(),
         )?;
     }
@@ -5407,8 +5442,11 @@ pub fn expand_impl(
 
     // Every part is qualified against the formals pooled over the whole block
     // (the constructor included).
-    let formals =
-        crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs));
+    let formals = crate::r_shadowing::formal_names(
+        parsed
+            .included_methods()
+            .map(|m| (&m.sig.inputs, m.formals())),
+    );
     let r_part = |lines: &[String]| crate::r_wrapper_raw_literal(&lines.join("\n"), &formals);
     let class_parts = |class: &ClassWrapper, defines: &[String]| {
         let head = r_part(&class.head);

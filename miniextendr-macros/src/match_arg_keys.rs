@@ -28,6 +28,16 @@ fn c_stem(c_ident: &str) -> &str {
     c_ident.trim_start_matches("C_")
 }
 
+/// The `{r_param}` part of a parameter's placeholders: its Rust name
+/// (`rust_name`, [`crate::naming::ident_name`]) without leading underscores,
+/// also when it declares an R formal (#1842). The placeholders are replaced
+/// before R reads the text, and [`placeholder_ident_suffix`] makes Rust
+/// identifiers of them, so a declared formal, which may hold a `.`, never
+/// becomes part of one.
+pub(crate) fn param_key(rust_name: &str) -> String {
+    crate::r_wrapper_builder::normalize_r_arg_string(rust_name)
+}
+
 /// Start of every [`choices_placeholder`]. The shadowing pass
 /// (`r_shadowing`) reads a name with this prefix as a call to `c`, which is
 /// what the placeholder becomes.

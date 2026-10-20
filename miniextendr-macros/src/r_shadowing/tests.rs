@@ -260,7 +260,7 @@ fn snapshot_shadowed_formals() {
          shadowed <- function({r_formals}) {{\n  {}\n}}",
         body.join("\n  ")
     );
-    let names = formal_names([&inputs]);
+    let names = formal_names([(&inputs, Default::default())]);
     insta::assert_snapshot!(qualify_shadowed_calls(&wrapper, &names));
 }
 
@@ -273,16 +273,41 @@ fn formal_names_pool_signatures_and_skip_receivers_and_dots() {
     let method = parse_inputs("&self, _length: f64, r#c: i32, dots: &Dots");
     let other = parse_inputs("list: i32");
     assert_eq!(
-        formal_names([&method, &other]),
+        formal_names([(&method, Default::default()), (&other, Default::default())]),
         formals(&["c", "length", "list"])
     );
     // The dots are skipped wherever they sit; the formal after them counts.
     let mid_dots = parse_inputs("&self, n: i32, rest: &Dots, r#c: bool");
-    assert_eq!(formal_names([&mid_dots]), formals(&["c", "n"]));
+    assert_eq!(
+        formal_names([(&mid_dots, Default::default())]),
+        formals(&["c", "n"])
+    );
 }
 
-/// Formals come from Rust identifiers through `normalize_r_arg_string`, which
-/// never produces a `.`. That is why dotted callees need no qualification.
+/// A declared formal (#1842) is the name that counts, dotted or not, and a
+/// dotted base callee it shadows is qualified like an undotted one.
+#[test]
+fn declared_formals_are_the_names_that_shadow() {
+    let inputs = parse_inputs("fml_is_null: i32, fml_length: i32, x: i32");
+    let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn f(
+            #[miniextendr(formal = "is.null")] fml_is_null: i32,
+            #[miniextendr(formal = "length")] fml_length: i32,
+            x: i32,
+        ) {}
+    })
+    .unwrap();
+    let names = formal_names([(&inputs, parsed.formals())]);
+    assert_eq!(names, formals(&["is.null", "length", "x"]));
+    assert_eq!(
+        qualify_shadowed_calls("if (is.null(x)) length(x) else is.null.x(x)", &names),
+        "if (base::is.null(x)) base::length(x) else is.null.x(x)"
+    );
+}
+
+/// An undeclared formal comes from a Rust identifier through
+/// `normalize_r_arg_string`, which never produces a `.`; only a declared
+/// `formal` (#1842) has one.
 #[test]
 fn normalized_formals_never_contain_a_dot() {
     for rust in ["_x", "__x", "_", "x_y", "__"] {
@@ -291,7 +316,8 @@ fn normalized_formals_never_contain_a_dot() {
     }
     for rust in ["r#type", "r#in", "_r"] {
         let ident: syn::Ident = syn::parse_str(rust).unwrap();
-        let formal = crate::r_wrapper_builder::normalize_r_arg_ident(&ident).to_string();
+        let formal =
+            crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(&ident));
         assert!(!formal.contains('.'), "{rust} -> {formal}");
     }
 }
@@ -361,10 +387,12 @@ fn processed_text() -> Vec<(String, String)> {
     out
 }
 
-/// Every undotted name that processed text calls without a namespace is a
-/// [`BASE_CALLEES`] entry, a keyword, or a name the same segment binds with
-/// `<-`. A new unqualified callee in generated code fails here until it is
-/// added to the table, so a formal of that name cannot shadow it unnoticed.
+/// Every name that processed text calls without a namespace is a
+/// [`BASE_CALLEES`] entry, a keyword, a name the same segment binds with `<-`,
+/// or a framework name no formal can take (a declared one is refused,
+/// `declared_formal_problem`; an undeclared one has no `.`). A new unqualified
+/// callee in generated code fails here until it is added to the table, so a
+/// formal of that name cannot shadow it unnoticed.
 #[test]
 fn generated_callees_are_listed() {
     let mut unlisted = Vec::new();
@@ -381,7 +409,14 @@ fn generated_callees_are_listed() {
             .collect();
         for ident in &idents {
             let name = &text[ident.clone()];
-            if name.contains('.') || !is_call(&text, ident.end) || is_accessed(&text, ident.start) {
+            if !is_call(&text, ident.end) || is_accessed(&text, ident.start) {
+                continue;
+            }
+            // `.miniextendr_arg_error(`, `.mx_self$f(`, a match_arg placeholder:
+            // no formal is named so.
+            if name.contains('.')
+                && crate::r_wrapper_builder::declared_formal_problem(name).is_some()
+            {
                 continue;
             }
             if BASE_CALLEES.contains(&name) {
@@ -413,13 +448,21 @@ fn generated_callees_are_listed() {
     );
 }
 
+/// Sorted and unique, and every entry a name a formal can have: a callee no
+/// formal can take never needs qualifying.
 #[test]
-fn base_callees_are_sorted_undotted_and_unique() {
+fn base_callees_are_sorted_unique_and_formal_names() {
     let mut sorted = BASE_CALLEES.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted, BASE_CALLEES);
-    assert!(BASE_CALLEES.iter().all(|name| !name.contains('.')));
+    for name in BASE_CALLEES {
+        assert_eq!(
+            crate::r_wrapper_builder::declared_formal_problem(name),
+            None,
+            "`{name}`"
+        );
+    }
 }
 
 // endregion

@@ -107,6 +107,22 @@ pub fn describe(&self, verbose: bool) -> String { ... }
 // → describe.Person <- function(x, verbose, ...) { ... }
 ```
 
+A parameter's formal is its Rust name, so a dotted argument of the generic
+(`summary(object, ...)` methods take `conf.int`, `as.data.frame()` passes
+`row.names` and `optional`) is declared with `formal(p = "...")`:
+
+```rust
+#[miniextendr(
+    s3(generic = "summary", receiver = "object"),
+    formal(conf_int = "conf.int", conf_level = "conf.level"),
+    defaults(conf_int = "FALSE", conf_level = "0.95")
+)]
+pub fn summary(&self, conf_int: bool, conf_level: f64) -> Vec<f64> { ... }
+// → summary.Person <- function(object, conf.int = FALSE, conf.level = 0.95, ...) { ... }
+```
+
+See [Declared R formals](MINIEXTENDR_ATTRIBUTE.md#declared-r-formals-formal).
+
 A method for a replacement generic (`s3(generic = "[[<-")`, any name ending
 in `<-`) gets the `...` before its last parameter, which must be `value`:
 `` `[[<-.Person` <- function(x, i, ..., value) ``. See
@@ -472,7 +488,20 @@ What the macro does:
 2. Adds `#' @method format percent` to the roxygen block. `devtools::document()` picks that up and writes `S3method(format, percent)` into `NAMESPACE`. You do not call `.S3method()` yourself.
 3. Registers the underlying C entry point via `distributed_slice`, same as every other `#[miniextendr]` function.
 
-Your Rust function receives exactly the arguments R dispatches with. For most S3 generics that is `(x, ...)`, so the first param is typed (`SEXP`, or a concrete type with `TryFromSexp`) and the last is `_dots: ...` to absorb the R-level `...`. If the generic takes more positional arguments (`vec_cast(x, to, ...)`), list them in order.
+Your Rust function receives exactly the arguments R dispatches with. For most S3 generics that is `(x, ...)`, so the first param is typed (`SEXP`, or a concrete type with `TryFromSexp`) and the last is `_dots: ...` to absorb the R-level `...`. If the generic takes more positional arguments (`vec_cast(x, to, ...)`), list them in order. A dotted one takes its R name with `formal`, so the method keeps the generic's formals and their order, as `tools::checkS3methods()` expects:
+
+```rust
+#[miniextendr(s3(generic = "as.data.frame", class = "percent"))]
+pub fn as_data_frame_percent(
+    x: SEXP,
+    #[miniextendr(formal = "row.names", default = "NULL")] row_names: Option<Vec<String>>,
+    #[miniextendr(default = "FALSE")] optional: bool,
+    _dots: ...
+) -> BuiltDataFrame { /* ... */ }
+// → as.data.frame.percent <- function(x, row.names = NULL, optional = FALSE, ...)
+```
+
+`as.data.frame(p, NULL, TRUE)` then passes `row.names` and `optional` by position, as for a method written in R.
 
 ### Generics from a Suggests package
 

@@ -65,8 +65,10 @@ use crate::r_class_formatter::class_ref_or_verbatim;
 /// named `value`, while the Rust setter's parameter may have any name, so the
 /// first non-receiver parameter (the only one the binding forwards — see the
 /// `.with_args(&["value"])` call site) is renamed to `value` before the
-/// checks are built. Any additional parameters are ignored: the binding never
-/// passes them, and checks referencing their names would error at runtime.
+/// checks are built, and a `formal` it declares (#1842) is dropped, since it
+/// names the `set_*` method's argument. Any additional parameters are
+/// ignored: the binding never passes them, and checks referencing their names
+/// would error at runtime.
 ///
 /// `impl_preconditions` is the impl block's `preconditions` /
 /// `no_preconditions`; with the setter's own spellings (the method's, the
@@ -87,12 +89,13 @@ fn active_setter_precondition_checks(
     let mut per_param = setter.method_attrs.per_param.clone();
     if let syn::Pat::Ident(pat_ident) = value_arg.pat.as_mut() {
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        if rust_name != "value" {
-            if let Some(attrs) = per_param.remove(&rust_name) {
-                per_param.insert("value".to_string(), attrs);
-            }
-            pat_ident.ident = syn::Ident::new("value", pat_ident.ident.span());
+        // A declared `formal` names the `set_*` method's argument, not the
+        // binding's (#1842): the binding's formal is `value` whatever it is.
+        if let Some(mut attrs) = per_param.remove(&rust_name) {
+            attrs.formal = None;
+            per_param.insert("value".to_string(), attrs);
         }
+        pat_ident.ident = syn::Ident::new("value", pat_ident.ident.span());
     }
 
     let mut inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> =

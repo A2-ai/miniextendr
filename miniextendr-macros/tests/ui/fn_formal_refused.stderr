@@ -1,0 +1,65 @@
+error: parameter `conf_int` is declared as the R argument `conf int`, which is not a syntactic R name: it must start with a letter, or with a `.` that is not followed by a digit, and hold only ASCII letters, digits, `.` and `_`.
+ --> tests/ui/fn_formal_refused.rs:9:45
+  |
+9 | pub fn not_syntactic(#[miniextendr(formal = "conf int")] conf_int: f64) -> f64 {
+  |                                             ^^^^^^^^^^
+
+error: parameter `cond` is declared as the R argument `if`, which is an R reserved word.
+  --> tests/ui/fn_formal_refused.rs:15:28
+   |
+15 |     #[miniextendr(formal = "if")] cond: bool,
+   |                            ^^^^
+
+error: parameter `rest` is declared as the R argument `...`, which is R's `...` or one of its elements (`..1`, `..2`, ...), not an argument name.
+  --> tests/ui/fn_formal_refused.rs:16:28
+   |
+16 |     #[miniextendr(formal = "...")] rest: i32,
+   |                            ^^^^^
+
+error: parameter `call` is declared as the R argument `.call`, which is the call the generated wrapper passes to `.Call()`, so the generated wrapper can't take it.
+  --> tests/ui/fn_formal_refused.rs:17:28
+   |
+17 |     #[miniextendr(formal = ".call")] call: i32,
+   |                            ^^^^^^^
+
+error: parameter `this` is declared as the R argument `.mx_self`, which starts with `.mx_`, a prefix of the names the framework generates, so the generated wrapper can't take it.
+  --> tests/ui/fn_formal_refused.rs:18:28
+   |
+18 |     #[miniextendr(formal = ".mx_self")] this: i32,
+   |                            ^^^^^^^^^^
+
+error: parameter `generic` is declared as the R argument `.Generic`, which is bound by R's S3 dispatch in a method's frame, so the generated wrapper can't take it.
+  --> tests/ui/fn_formal_refused.rs:19:28
+   |
+19 |     #[miniextendr(formal = ".Generic")] generic: i32,
+   |                            ^^^^^^^^^^
+
+error: parameters `x` and `other` both become the R argument `x` (a declared `formal` names the R argument), and R rejects a repeated argument name. Rename one of them.
+  --> tests/ui/fn_formal_refused.rs:26:48
+   |
+26 | pub fn collides(x: f64, #[miniextendr(formal = "x")] other: f64) -> f64 {
+   |                                                ^^^
+
+error: `formal` is given twice on this parameter; a parameter has one R formal, so keep one of them
+  --> tests/ui/fn_formal_refused.rs:31:46
+   |
+31 | pub fn twice(#[miniextendr(formal = "na.rm", formal = "rm.na")] na_rm: bool) -> bool {
+   |                                              ^^^^^^^^^^^^^^^^
+
+error: `formal` takes the R argument name as a string, e.g. `formal = "conf.int"`
+  --> tests/ui/fn_formal_refused.rs:36:44
+   |
+36 | pub fn not_a_string(#[miniextendr(formal = na.rm)] na_rm: bool) -> bool {
+   |                                            ^^^^^
+
+error: `formal` on the variadic (...) parameter `rest`: its R formal is always `...`. Declare a named parameter for an argument with a dotted name
+  --> tests/ui/fn_formal_refused.rs:41:47
+   |
+41 | pub fn on_dots(x: f64, #[miniextendr(formal = "rest")] rest: &miniextendr_api::dots::Dots) -> f64 {
+   |                                               ^^^^^^
+
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`, `formal`) do not apply to the `NArgs` parameter `n`: it is no R argument, the generated wrapper fills it with `nargs()`
+  --> tests/ui/fn_formal_refused.rs:47:59
+   |
+47 | pub fn on_nargs(x: f64, #[miniextendr(formal = "n.args")] n: miniextendr_api::NArgs) -> f64 {
+   |                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^

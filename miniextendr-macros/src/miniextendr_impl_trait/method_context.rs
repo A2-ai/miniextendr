@@ -153,10 +153,17 @@ impl<'a> TraitMethodContext<'a> {
             &method.per_param,
             &c_ident,
         );
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &effective_defaults);
+        // Trait methods declare no formals (#1842): each is the parameter's
+        // Rust name without leading underscores.
+        let formals = crate::r_wrapper_builder::Formals::default();
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(
+            &method.sig,
+            &formals,
+            &effective_defaults,
+        );
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(
             &method.sig,
+            &formals,
             crate::miniextendr_fn::absent_formals_by_r_name(&method.per_param, &c_ident),
         );
         Self {
@@ -295,6 +302,7 @@ impl<'a> TraitMethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.per_param,
             &self.method.param_defaults,
+            &crate::r_wrapper_builder::Formals::default(),
         ));
         docs
     }

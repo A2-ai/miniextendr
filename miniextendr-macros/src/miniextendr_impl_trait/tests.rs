@@ -2828,6 +2828,22 @@ fn trait_method_preconditions_override_the_impl() {
     assert!(!out.contains("is.double(a)"), "{out}");
 }
 
+/// A trait method's R formals are the trait declaration's parameter names:
+/// `formal(...)` on a trait impl method is refused (#1842).
+#[test]
+fn trait_impl_method_refuses_formal() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(formal(k = "k.factor"))]
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let err = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
+        .expect_err("rejected")
+        .to_string();
+    assert_eq!(err, crate::miniextendr_fn::TRAIT_FORMAL_UNSUPPORTED);
+}
+
 /// A `no_preconditions(p)` entry naming no parameter is the ordinary
 /// unknown-parameter error.
 #[test]

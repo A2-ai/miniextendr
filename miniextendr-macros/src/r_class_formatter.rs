@@ -151,7 +151,7 @@ pub(crate) use crate::match_arg_keys::{
     param_doc_placeholder as match_arg_param_doc_placeholder,
 };
 
-/// Build the R-param-name → auto-generated `@param` text map for a method's
+/// Build the R-formal → auto-generated `@param` text map for a method's
 /// choice params: the write-time placeholder for a `match_arg` param (the
 /// wrapper writer renders it from the enum's `MatchArg::CHOICES`, #210), the
 /// literal `One of "a", "b".` line for a `choices(...)` param
@@ -166,17 +166,17 @@ pub(crate) fn choice_param_doc_map(
     c_ident: &str,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashMap<String, String> {
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     let mut out = std::collections::HashMap::new();
     for (rust_name, attrs) in per_param {
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let doc = if attrs.match_arg {
-            match_arg_param_doc_placeholder(c_ident, &r_name)
+            match_arg_param_doc_placeholder(c_ident, &crate::match_arg_keys::param_key(rust_name))
         } else if let Some(doc) = attrs.literal_choices_doc() {
             doc
         } else {
             continue;
         };
-        out.insert(r_name, doc);
+        out.insert(formals.of(rust_name), doc);
     }
     out
 }
@@ -212,23 +212,29 @@ pub(crate) fn build_match_arg_prelude(
     attribution: crate::r_wrapper_builder::CallAttribution,
 ) -> Vec<String> {
     use crate::miniextendr_fn::per_param_in_signature_order;
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     let mut lines = Vec::new();
 
     for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
         if !attrs.match_arg {
             continue;
         }
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        let placeholder = match_arg_placeholder(c_ident, &r_name);
-        let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &r_name);
-        lines.push(attribution.match_arg_statement(&r_name, &placeholder, Some(&aliases), attrs));
+        let key = crate::match_arg_keys::param_key(rust_name);
+        let placeholder = match_arg_placeholder(c_ident, &key);
+        let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &key);
+        lines.push(attribution.match_arg_statement(
+            &formals.of(rust_name),
+            &placeholder,
+            Some(&aliases),
+            attrs,
+        ));
     }
 
     for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
         let Some(choices) = attrs.choices.as_ref() else {
             continue;
         };
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let r_name = formals.of(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
         lines.push(attribution.match_arg_statement(&r_name, &choices_expr, None, attrs));
@@ -237,19 +243,18 @@ pub(crate) fn build_match_arg_prelude(
     lines
 }
 
-/// Rust-side parameter names that are validated by R's `match.arg()` and
-/// therefore don't need type-check preconditions generated for them.
+/// The R formals of the parameters that are validated by R's `match.arg()`
+/// and therefore don't need type-check preconditions generated for them.
 /// Shared by `MethodContext` and `TraitMethodContext`.
 pub(crate) fn match_arg_skip_set(
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashSet<String> {
-    let mut s = std::collections::HashSet::new();
-    for (rust_name, attrs) in per_param {
-        if attrs.match_arg || attrs.choices.is_some() {
-            s.insert(crate::r_wrapper_builder::normalize_r_arg_string(rust_name));
-        }
-    }
-    s
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
+    per_param
+        .iter()
+        .filter(|(_, attrs)| attrs.match_arg || attrs.choices.is_some())
+        .map(|(rust_name, _)| formals.of(rust_name))
+        .collect()
 }
 
 /// Build the R-side precondition guard lines for a parameter list, given
@@ -278,17 +283,20 @@ pub(crate) fn build_method_precondition_checks(
     impl_level: Option<bool>,
     call: Option<&str>,
 ) -> Vec<String> {
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     let opts = crate::r_preconditions::PreconditionOptions {
         coerce_all,
         coerce_params: std::collections::HashSet::new(),
         explicit: crate::miniextendr_fn::explicit_checks_by_r_name(per_param),
         unchecked: crate::r_preconditions::unchecked_params(
             inputs,
+            &formals,
             |name| per_param.get(name).and_then(|a| a.preconditions),
             method_level,
             impl_level,
             crate::crate_config::preconditions_default(),
         ),
+        formals,
     };
     crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
         .guards(call)
@@ -313,24 +321,30 @@ pub(crate) fn build_method_precondition_checks(
 /// never read it off the formal (#1552). Shared by `MethodContext::new`
 /// (inherent impls) and `TraitMethodContext::new` (trait impls,
 /// `miniextendr_impl_trait/method_context.rs`).
+///
+/// `param_defaults` is keyed by Rust name, as `defaults(p = "...")` names
+/// the parameter; the result is keyed by R formal (#1842), as
+/// [`RArgumentBuilder::with_defaults`](crate::r_wrapper_builder::RArgumentBuilder::with_defaults)
+/// reads it.
 pub(crate) fn effective_r_defaults(
     param_defaults: &std::collections::HashMap<String, String>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
 ) -> std::collections::HashMap<String, String> {
-    let mut defaults = param_defaults.clone();
+    let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
+    let mut defaults = formals.rekey(param_defaults.clone());
     // match_arg → unconditionally splice the placeholder (overriding any user
     // default, which is captured separately for write-time rotation).
     for (rust_name, attrs) in per_param {
         if !attrs.match_arg {
             continue;
         }
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let key = crate::match_arg_keys::param_key(rust_name);
         // `Option<T>` (#1473): the formal is NULL (no choice); `no_default`
         // (#1828, refused with `defaults(p = ...)`): none. The prelude spells
         // the choices out through the placeholder either way.
-        if let Some(default) = attrs.choice_formal(&match_arg_placeholder(c_ident, &r_name)) {
-            defaults.insert(r_name, default);
+        if let Some(default) = attrs.choice_formal(&match_arg_placeholder(c_ident, &key)) {
+            defaults.insert(formals.of(rust_name), default);
         }
     }
     // choices(...) → c("a", "b", ...) formal (NULL for the `Option<T>` form,
@@ -340,10 +354,9 @@ pub(crate) fn effective_r_defaults(
         let Some(choices) = attrs.choices.as_ref() else {
             continue;
         };
-        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         if let Some(default) = attrs.choice_formal(&format!("c({})", quoted.join(", "))) {
-            defaults.entry(r_name).or_insert(default);
+            defaults.entry(formals.of(rust_name)).or_insert(default);
         }
     }
     defaults
@@ -396,6 +409,7 @@ impl<'a> MethodContext<'a> {
             &c_ident,
         );
         let arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
+            .with_formals(method.formals())
             .with_defaults(effective_defaults)
             .with_absent_formals(crate::miniextendr_fn::absent_formals_by_r_name(
                 &method.method_attrs.per_param,
@@ -443,6 +457,7 @@ impl<'a> MethodContext<'a> {
             &self.method.sig.inputs,
             per_param,
             &self.method.param_defaults,
+            &self.method.formals(),
         ));
         docs
     }

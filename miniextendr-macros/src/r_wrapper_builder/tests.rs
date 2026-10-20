@@ -6,16 +6,11 @@ fn parse_inputs(s: &str) -> syn::punctuated::Punctuated<syn::FnArg, syn::token::
 }
 
 #[test]
-fn test_normalize_arg_ident() {
+fn test_normalize_arg_string() {
     // Leading underscores are stripped
-    let ident = syn::Ident::new("_x", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "x");
-
-    let ident = syn::Ident::new("__private", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "private");
-
-    let ident = syn::Ident::new("value", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "value");
+    assert_eq!(normalize_r_arg_string("_x"), "x");
+    assert_eq!(normalize_r_arg_string("__private"), "private");
+    assert_eq!(normalize_r_arg_string("value"), "value");
 }
 
 #[test]
@@ -106,11 +101,25 @@ fn test_dots_position_after_receiver() {
 /// `...`) and still checks the formals after them.
 #[test]
 fn check_r_formals_skips_dots_at_any_position() {
-    check_r_formals(&parse_inputs("x: i32, r#in: &Dots, flag: bool"), &[]).expect("accepted");
-    check_r_formals(&parse_inputs("r#if: &Dots, x: i32"), &[]).expect("accepted");
-    let err = check_r_formals(&parse_inputs("x: i32, rest: &Dots, r#in: i32"), &[])
-        .expect_err("`in` after the dots is still refused")
-        .to_string();
+    check_r_formals(
+        &parse_inputs("x: i32, r#in: &Dots, flag: bool"),
+        &Formals::default(),
+        &[],
+    )
+    .expect("accepted");
+    check_r_formals(
+        &parse_inputs("r#if: &Dots, x: i32"),
+        &Formals::default(),
+        &[],
+    )
+    .expect("accepted");
+    let err = check_r_formals(
+        &parse_inputs("x: i32, rest: &Dots, r#in: i32"),
+        &Formals::default(),
+        &[],
+    )
+    .expect_err("`in` after the dots is still refused")
+    .to_string();
     assert!(
         err.contains("becomes the R argument `in`, which is an R reserved word"),
         "{err}"
@@ -530,14 +539,16 @@ fn snapshot_nargs_formals_and_call_args() {
 #[test]
 fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
     let inputs = parse_inputs("x: SEXP, nargs: NArgs");
-    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    let names: Vec<String> = r_formal_names(&inputs, &Formals::default())
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(names, ["x"]);
-    check_r_formals(&inputs, &[]).expect("NArgs takes no formal name");
+    check_r_formals(&inputs, &Formals::default(), &[]).expect("NArgs takes no formal name");
     let call = format!(
         ".Call(C_f, {})",
         RArgumentBuilder::new(&inputs).build_call_args()
     );
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Formals::default())]);
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
         ".Call(C_f, x, nargs())"
@@ -550,7 +561,7 @@ fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
         ".Call(C_f, {})",
         RArgumentBuilder::new(&inputs).build_call_args()
     );
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Formals::default())]);
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
         ".Call(C_f, x, nargs, base::nargs())"
@@ -558,7 +569,8 @@ fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
 
     // Two parameters that both become `n` still collide; `NArgs` is neither.
     let inputs = parse_inputs("n: i32, _n: NArgs");
-    check_r_formals(&inputs, &[]).expect("NArgs is no formal, so no collision");
+    check_r_formals(&inputs, &Formals::default(), &[])
+        .expect("NArgs is no formal, so no collision");
 }
 // endregion
 
@@ -1175,12 +1187,14 @@ fn snapshot_lazy_dots_formals_and_call_args() {
 #[test]
 fn lazy_dots_is_no_named_formal_for_the_name_checks_and_shadowing() {
     let inputs = parse_inputs("x: SEXP, environment: LazyDots");
-    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    let names: Vec<String> = r_formal_names(&inputs, &Formals::default())
+        .map(|(n, _)| n)
+        .collect();
     assert_eq!(names, ["x"]);
     let inputs = parse_inputs("environment: SEXP, rest: LazyDots");
     let call_args = RArgumentBuilder::new(&inputs).build_call_args();
     assert_eq!(call_args, "environment, environment()");
-    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let formals = crate::r_shadowing::formal_names([(&inputs, Formals::default())]);
     let text = format!(".Call(C_f, .call = environment(), {call_args})");
     assert_eq!(
         crate::r_shadowing::qualify_shadowed_calls(&text, &formals),
