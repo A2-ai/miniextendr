@@ -1663,7 +1663,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     }
     arg_builder = arg_builder
         .with_defaults(merged_defaults)
-        .with_absent_formals(parsed.absent_formals(&c_ident.to_string()));
+        .with_absent_formals(parsed.absent_formals());
 
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
@@ -1915,7 +1915,8 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             // several_ok (#1472): every element must match; NULL selects every
             // choice. `Option<T>` (#1473): NULL means no choice and skips the
             // check; `Missing<T>` (#1551) skips it for an omitted argument and,
-            // for a single choice, for the formal passed whole (#2152). The
+            // for a single choice, for the formal passed whole (#2152), as the
+            // `.mx_absent_<p>` flag bound in front of it says (#2182). The
             // helpers read a factor as its labels (#1552). Under `call = caller`
             // every form raises with `.mx_call` (#1548).
             let key = crate::match_arg_keys::param_key(rust_name);
@@ -1923,7 +1924,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                 crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &key);
             let aliases = crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), &key);
             if let Some(attrs) = parsed.param_attrs(rust_name) {
-                lines.push(call_attribution.match_arg_statement(
+                lines.extend(call_attribution.match_arg_lines(
                     r_param,
                     &placeholder,
                     Some(&aliases),
@@ -1950,7 +1951,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
                     let choices_expr = format!("c({})", quoted.join(", "));
-                    lines.push(call_attribution.match_arg_statement(
+                    lines.extend(call_attribution.match_arg_lines(
                         &r_name,
                         &choices_expr,
                         None,
@@ -2035,7 +2036,8 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     // (#2198), so that a refused argument changes no RNG state. (Missing<T>
     // forwarding lives inline in the `.Call()` args — see
     // `build_call_args_vec` — because a prelude binding of the missing
-    // sentinel errors on lookup.)
+    // sentinel errors on lookup. What the match.arg and choices parts bind
+    // for it is a flag: `.mx_absent_<p>` of a single-choice parameter, #2182.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
     let rng_seed_prelude = rng_seed_formal
         .as_deref()

@@ -337,8 +337,9 @@ pub fn run(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
 
 ```r
 run <- function(mode = c("Fast", "Safe", "Debug")) {
-  if (!missing(mode) && !identical(mode, c("Fast", "Safe", "Debug")) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
-  .Call(C_mypkg_run, .call = sys.call(), if (missing(mode) || identical(mode, c("Fast", "Safe", "Debug"))) quote(expr=) else mode)
+  .mx_absent_mode <- missing(mode) || identical(mode, c("Fast", "Safe", "Debug"))
+  if (!.mx_absent_mode && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  .Call(C_mypkg_run, .call = sys.call(), if (.mx_absent_mode) quote(expr=) else mode)
 }
 
 run()                               # Missing::Absent
@@ -353,7 +354,10 @@ missing-argument sentinel to Rust (the same `quote(expr=)` forwarding every
 `Missing<T>` parameter uses), so the formal default is only documentation.
 Passing that default explicitly means the same as leaving it out (#2152): a
 value `identical()` to the formal, such as the usage line pasted back,
-skips the check and reaches Rust as `Absent` too. `identical()` compares
+skips the check and reaches Rust as `Absent` too. The wrapper makes that
+comparison once, before the check, and keeps the answer in
+`.mx_absent_mode`, which the `.Call()` argument reads: the matched value is
+never compared with the formal (#2182). `identical()` compares
 attributes, so a named or classed copy of the vector is not the formal, and
 the check reads it as any other value: a named copy is refused for its
 length, and a factor of the choices reads as its labels, the whole vector, so
@@ -382,9 +386,10 @@ exception: it reads its whole vector as every choice, omittable or not:
 | `Missing<Either<Mode, R>>` | choices | `Absent` | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(Safe))` |
 | `Missing<Either<Vec<Mode>, R>>` (`several_ok`) | choices | `Absent` | `Present(Left(..))` (all) | `Present(Right(..))` (converted to `R`) | `Present(Left(vec![Safe]))` |
 
-A choice type with a single variant has the vector `c("Only")` as its formal,
-so under `Missing<..>` every value that matches it, `"Only"` or a prefix such
-as `"On"`, reaches Rust as `Absent` (#2182).
+This holds for a choice type with a single variant too. Its formal is
+`c("Only")`, so under `Missing<..>` an omitted argument and `"Only"` passed
+whole reach Rust as `Absent`, while `"On"`, `factor("Only")` and an alias of
+`Only` match the choice and reach Rust as `Present(Only)` (#2182).
 
 To refuse an explicit `NULL` in any of these forms, with your own message, see
 [Refusing an Explicit `NULL`](#refusing-an-explicit-null).
@@ -638,8 +643,9 @@ pub fn set_rule(
 ```r
 set_rule <- function(rule = c("include", "exclude", "auto")) {
   if (!isTRUE(missing(rule) || !inherits(rule, "NULL"))) .miniextendr_arg_error("rule", message = "`rule` can't be NULL; use \"auto\" to reset it.")
-  if (!missing(rule) && !identical(rule, c("include", "exclude", "auto")) && (is.character(rule) || is.factor(rule))) rule <- .miniextendr_match_arg(rule, c("include", "exclude", "auto"), "rule")
-  .Call(C_mypkg_set_rule, .call = sys.call(), if (missing(rule) || identical(rule, c("include", "exclude", "auto"))) quote(expr=) else rule)
+  .mx_absent_rule <- missing(rule) || identical(rule, c("include", "exclude", "auto"))
+  if (!.mx_absent_rule && (is.character(rule) || is.factor(rule))) rule <- .miniextendr_match_arg(rule, c("include", "exclude", "auto"), "rule")
+  .Call(C_mypkg_set_rule, .call = sys.call(), if (.mx_absent_rule) quote(expr=) else rule)
 }
 ```
 

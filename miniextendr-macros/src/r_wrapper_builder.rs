@@ -382,11 +382,11 @@ pub struct RArgumentBuilder<'a> {
     /// Keys are R formals ([`Formals::of`]), values are R expressions emitted
     /// verbatim (e.g., `"1L"`, `"c(1, 2, 3)"`, `"NULL"`).
     defaults: std::collections::HashMap<String, String>,
-    /// The single-choice `Missing<..>` parameters that read a value
-    /// `identical()` to their formal as omitted (#2152), R formal → the
-    /// formal's default (see
-    /// [`crate::miniextendr_fn::ParamAttrs::absent_formal`]).
-    absent_formals: std::collections::HashMap<String, String>,
+    /// The R formals of the single-choice `Missing<..>` parameters that read
+    /// a value `identical()` to their formal as omitted (#2152), whose
+    /// prelude binds [`absent_flag`] (see
+    /// [`crate::miniextendr_fn::ParamAttrs::reads_formal_as_absent`]).
+    absent_formals: std::collections::HashSet<String>,
     /// The R formal of each parameter (#1842).
     formals: Formals,
 }
@@ -405,7 +405,7 @@ impl<'a> RArgumentBuilder<'a> {
             dots_kind,
             skip_first: false,
             defaults: std::collections::HashMap::new(),
-            absent_formals: std::collections::HashMap::new(),
+            absent_formals: std::collections::HashSet::new(),
             formals: Formals::default(),
         }
     }
@@ -420,12 +420,14 @@ impl<'a> RArgumentBuilder<'a> {
     }
 
     /// Add the `Missing<..>` choice parameters that read a value `identical()`
-    /// to their formal as omitted (#2152), keyed by R formal, valued by that
-    /// formal's default (see
-    /// [`crate::miniextendr_fn::absent_formals_by_r_name`]).
+    /// to their formal as omitted (#2152), by R formal (see
+    /// [`crate::miniextendr_fn::absent_formals_by_r_name`]). Their call
+    /// arguments read the [`absent_flag`] that the wrapper's prelude binds
+    /// ([`CallAttribution::match_arg_lines`]), so pass them only for a body
+    /// that runs the prelude.
     pub fn with_absent_formals(
         mut self,
-        absent_formals: std::collections::HashMap<String, String>,
+        absent_formals: std::collections::HashSet<String>,
     ) -> Self {
         self.absent_formals = absent_formals;
         self
@@ -586,18 +588,18 @@ impl<'a> RArgumentBuilder<'a> {
             // omitted argument with a default, so the default is never
             // evaluated, and a supplied value, the default's own included, is
             // `Present`. A single-choice parameter also forwards the
-            // sentinel for a value `identical()` to its formal (#2152), which
-            // its prelude check skipped: the default shown in the usage line
-            // means the same as leaving it out.
+            // sentinel for a value `identical()` to its formal (#2152): the
+            // default shown in the usage line means the same as leaving it
+            // out. Its prelude compared the argument once, before matching it,
+            // and kept the answer in `absent_flag(p)`; comparing here, after
+            // the match, would read every match of a one-choice list as the
+            // formal (#2182).
             if is_missing_type(pat_type.ty.as_ref()) {
                 let p = formal;
-                call_args.push(match self.absent_formals.get(&p) {
-                    Some(absent) => {
-                        format!(
-                            "if (missing({p}) || identical({p}, {absent})) quote(expr=) else {p}"
-                        )
-                    }
-                    None => format!("if (missing({p})) quote(expr=) else {p}"),
+                call_args.push(if self.absent_formals.contains(&p) {
+                    format!("if ({}) quote(expr=) else {p}", absent_flag(&p))
+                } else {
+                    format!("if (missing({p})) quote(expr=) else {p}")
                 });
                 continue;
             }
@@ -645,7 +647,7 @@ pub(crate) fn build_r_formals_from_sig(
 pub(crate) fn build_r_call_args_from_sig(
     sig: &syn::Signature,
     formals: &Formals,
-    absent_formals: std::collections::HashMap<String, String>,
+    absent_formals: std::collections::HashSet<String>,
 ) -> String {
     let mut builder = RArgumentBuilder::new(&sig.inputs)
         .with_formals(formals.clone())
@@ -654,6 +656,18 @@ pub(crate) fn build_r_call_args_from_sig(
         builder = builder.skip_first();
     }
     builder.build_call_args()
+}
+
+/// The local that holds whether the single-choice `Missing<..>` parameter
+/// with R formal `formal` reads as omitted (#2182): `.mx_absent_<formal>`.
+/// The prelude binds it right before the parameter's check
+/// ([`CallAttribution::match_arg_lines`]), the check is skipped when it is
+/// `TRUE`, and the `.Call()` argument forwards the missing-argument sentinel
+/// for it ([`RArgumentBuilder::with_absent_formals`]). A declared formal can't
+/// start with `.mx_` ([`declared_formal_problem`]) and a Rust name can't start
+/// with `.`, so no formal takes its name.
+pub(crate) fn absent_flag(formal: &str) -> String {
+    format!(".mx_absent_{formal}")
 }
 
 // region: Missing<T> detection for automatic defaults
@@ -993,10 +1007,11 @@ impl CallAttribution {
     /// Every form is one call to a preamble helper (`.miniextendr_match_arg`
     /// for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
     /// #1472), guarded by the layers of the parameter type: `!missing(..)`
-    /// for `Missing<..>` (#1551), with `!identical(.., <choices>)` for a
-    /// single choice, whose formal reads as omitted (#2152; the `.Call()`
-    /// argument forwards the sentinel for it, see
-    /// [`RArgumentBuilder::with_absent_formals`]), then `!is.null(..)` for `Option<..>`
+    /// for `Missing<..>` (#1551), or `!.mx_absent_<p>` ([`absent_flag`]) for
+    /// a single choice, whose formal reads as omitted too (#2152): the flag
+    /// [`Self::match_arg_lines`] binds in front of this statement, which the
+    /// `.Call()` argument reads as well (see
+    /// [`RArgumentBuilder::with_absent_formals`]); then `!is.null(..)` for `Option<..>`
     /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>` and
     /// `Either<Vec<T>, R>` (#1612), which leaves `NULL` out too: Rust reads it
     /// as `None` under `Option`, and otherwise converts it to the `R` arm, even
@@ -1038,12 +1053,13 @@ impl CallAttribution {
             format!("{param} <- {helper}({param}, {choices}, \"{param}\"{call}{aliases})");
         let mut guards = Vec::new();
         if attrs.omittable {
-            guards.push(format!("!missing({param})"));
-            // The formal itself reads as omitted too (#2152): the `.Call()`
-            // argument forwards the sentinel for it.
-            if let Some(formal) = attrs.absent_formal(choices) {
-                guards.push(format!("!identical({param}, {formal})"));
-            }
+            // The formal itself reads as omitted too (#2152), as the flag
+            // bound in front of this statement says (`match_arg_lines`).
+            guards.push(if attrs.reads_formal_as_absent() {
+                format!("!{}", absent_flag(param))
+            } else {
+                format!("!missing({param})")
+            });
         }
         if attrs.either_noun.is_some() {
             // Only the forms `match.arg()` reads are choices; everything else
@@ -1062,6 +1078,41 @@ impl CallAttribution {
         } else {
             format!("if ({}) {statement}", guards.join(" && "))
         }
+    }
+
+    /// The prelude lines of a choice parameter, one element per line: its
+    /// [`Self::match_arg_statement`], and in front of it, for a single-choice
+    /// `Missing<..>` parameter
+    /// ([`crate::miniextendr_fn::ParamAttrs::reads_formal_as_absent`]), the
+    /// binding of its [`absent_flag`]:
+    /// `.mx_absent_<p> <- missing(<p>) || identical(<p>, <choices>)`, where
+    /// `choices` is also the parameter's formal.
+    ///
+    /// The argument is compared with its formal once, before the match
+    /// (#2182). The check skips a flagged value, and the `.Call()` argument
+    /// forwards the missing-argument sentinel for it
+    /// ([`RArgumentBuilder::with_absent_formals`]). Comparing again at the
+    /// `.Call()` would see the matched value, which for a one-choice list is
+    /// `"Only"`, `identical()` to the formal `c("Only")`, so every match would
+    /// read as omitted. The binding sits right before the check, after
+    /// `r_entry` and the other checks, so the argument is forced where the
+    /// check forces it.
+    pub fn match_arg_lines(
+        self,
+        param: &str,
+        choices: &str,
+        aliases: Option<&str>,
+        attrs: &crate::miniextendr_fn::ParamAttrs,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        if attrs.reads_formal_as_absent() {
+            lines.push(format!(
+                "{} <- missing({param}) || identical({param}, {choices})",
+                absent_flag(param)
+            ));
+        }
+        lines.push(self.match_arg_statement(param, choices, aliases, attrs));
+        lines
     }
 }
 

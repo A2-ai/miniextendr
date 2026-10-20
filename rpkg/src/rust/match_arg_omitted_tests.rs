@@ -1,9 +1,10 @@
 //! Omittable choice parameters: `match_arg` / `choices` on `Missing<..>`
 //! (#1551). The formal keeps the choice vector and an omitted argument reaches
 //! Rust as `Missing::Absent`. Under `no_default` (#1828) the formal is bare
-//! instead. Also a choice parameter that refuses an explicit `NULL` with
-//! `not_inherits("NULL")`, which a plain choice would read as its first
-//! choice.
+//! instead. A one-choice list reads only its formal passed whole as omitted,
+//! not every value that matches it (#2182). Also a choice parameter that
+//! refuses an explicit `NULL` with `not_inherits("NULL")`, which a plain
+//! choice would read as its first choice.
 //!
 //! These fixtures have their own file, so their own help page: on
 //! `match_arg_tests.Rd` other functions document `mode` / `modes` themselves,
@@ -37,6 +38,42 @@ pub fn match_arg_omitted_plain(#[miniextendr(match_arg)] mode: Missing<Mode>) ->
     match mode {
         Missing::Absent => "absent".to_string(),
         Missing::Present(m) => format!("{m:?}"),
+    }
+}
+
+/// A choice type with a single variant, which the alias `"sole"` names too.
+#[derive(Copy, Clone, Debug, PartialEq, miniextendr_api::MatchArg)]
+pub enum OnlyMode {
+    #[match_arg(alias = "sole")]
+    Only,
+}
+
+/// Omittable single-variant mode: the formal is `c("Only")`. Omitting the
+/// argument or passing that formal is `Absent`; any other value that matches
+/// the choice (a prefix, a factor, the alias) is `Present(Only)` (#2182).
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_omitted_only(#[miniextendr(match_arg)] mode: Missing<OnlyMode>) -> String {
+    match mode {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(m) => format!("{m:?}"),
+    }
+}
+
+/// Omittable optional single inline choice: `c("only")` is the formal, so it
+/// is `Absent` like an omitted argument; `NULL` is `Present(None)` and a
+/// prefix `Present(Some("only"))` (#2182).
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn choices_omitted_only(
+    #[miniextendr(choices("only"))] choice: Missing<Option<String>>,
+) -> String {
+    match choice {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(c)) => c,
     }
 }
 

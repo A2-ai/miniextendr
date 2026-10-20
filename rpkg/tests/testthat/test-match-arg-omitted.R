@@ -117,6 +117,27 @@ test_that("a single choice reads its formal passed whole as omitted (#2152)", {
   expect_arg_error(obj$peek_plain(rev(modes)), "mode")
 })
 
+test_that("a one-choice list reads only its formal as omitted, not every match (#2182)", {
+  # The wrapper compares the argument with the formal before matching it, so
+  # the matched "Only" is not mistaken for the formal c("Only").
+  expect_equal(eval(formals(match_arg_omitted_only)$mode), "Only")
+  expect_equal(match_arg_omitted_only(), "absent")
+  expect_equal(match_arg_omitted_only("Only"), "absent")
+  expect_equal(match_arg_omitted_only("On"), "Only")
+  expect_equal(match_arg_omitted_only(factor("Only")), "Only")
+  expect_equal(match_arg_omitted_only("sole"), "Only")
+  expect_equal(match_arg_omitted_only(NULL), "Only")
+  expect_choice_error(match_arg_omitted_only("nope"), "mode", "Only")
+  # A literal one-choice list under Missing<Option<String>>.
+  expect_equal(eval(formals(choices_omitted_only)$choice), "only")
+  expect_equal(choices_omitted_only(), "absent")
+  expect_equal(choices_omitted_only("only"), "absent")
+  expect_equal(choices_omitted_only("on"), "only")
+  expect_equal(choices_omitted_only(factor("only")), "only")
+  expect_equal(choices_omitted_only(NULL), "null")
+  expect_choice_error(choices_omitted_only("nope"), "choice", "only")
+})
+
 test_that("R6 method with Missing<Option<T>> match_arg", {
   obj <- R6MatchArgCounter$new("Safe")
   expect_equal(eval(formals(obj$peek)$mode), modes)

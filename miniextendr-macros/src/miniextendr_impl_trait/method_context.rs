@@ -164,7 +164,7 @@ impl<'a> TraitMethodContext<'a> {
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(
             &method.sig,
             &formals,
-            crate::miniextendr_fn::absent_formals_by_r_name(&method.per_param, &c_ident),
+            crate::miniextendr_fn::absent_formals_by_r_name(&method.per_param),
         );
         Self {
             method,

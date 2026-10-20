@@ -1757,10 +1757,49 @@ fn parsed_fn_precondition_skips_use_r_names() {
 
 // region: the formal of a `Missing<..>` choice reads as omitted (#2152)
 
+/// Check the `.mx_absent_<p>` flag `flag` in generated wrapper text (#2182):
+/// each binding is a line of its own, followed by the check it guards at the
+/// same indentation, and the text reads the flag at as many `.Call()`
+/// arguments as it binds it, so no body reads a flag it doesn't bind.
+pub(crate) fn assert_absent_flag_bound(wrapper: &str, flag: &str) {
+    let lines: Vec<&str> = wrapper.lines().collect();
+    let indent = |line: &str| line.len() - line.trim_start().len();
+    let bindings: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| {
+            line.trim_start()
+                .starts_with(&format!("{flag} <- missing("))
+        })
+        .map(|(i, _)| i)
+        .collect();
+    assert!(!bindings.is_empty(), "no `{flag}` binding in:\n{wrapper}");
+    for &i in &bindings {
+        let check = lines.get(i + 1).copied().unwrap_or_default();
+        assert!(
+            check.trim_start().starts_with(&format!("if (!{flag}")),
+            "`{flag}` binding not followed by its check in:\n{wrapper}"
+        );
+        assert_eq!(
+            indent(lines[i]),
+            indent(check),
+            "`{flag}` binding and its check indented apart in:\n{wrapper}"
+        );
+    }
+    assert_eq!(
+        wrapper
+            .matches(&format!("if ({flag}) quote(expr=) else "))
+            .count(),
+        bindings.len(),
+        "`{flag}` bound and read a different number of times in:\n{wrapper}"
+    );
+}
+
 /// Only a single-choice `Missing<..>` parameter with a formal reads a value
 /// `identical()` to it as omitted: through its placeholder for `match_arg`,
-/// its literal vector for `choices(...)`. The `.Call()` argument forwards the
-/// sentinel for it, and the prelude check skips it.
+/// its literal vector for `choices(...)`. Its prelude compares the argument
+/// once, before the check, into `.mx_absent_<p>` (#2182); the check skips a
+/// flagged value and the `.Call()` argument forwards the sentinel for it.
 #[test]
 fn parsed_fn_absent_formals() {
     let parsed = parsed_fn(quote::quote! {
@@ -1769,73 +1808,95 @@ fn parsed_fn_absent_formals() {
             #[miniextendr(match_arg)] opt: Missing<Option<Mode>>,
             #[miniextendr(match_arg)] either: Missing<Either<Mode, DataFrame>>,
             #[miniextendr(choices("red", "green"))] color: Missing<String>,
+            #[miniextendr(choices("only"), formal = "one.choice")] one: Missing<String>,
             #[miniextendr(match_arg, several_ok)] modes: Missing<Vec<Mode>>,
             #[miniextendr(match_arg, no_default)] bare: Missing<Mode>,
             #[miniextendr(match_arg)] plain: Mode,
             #[miniextendr(match_arg)] nullable: Option<Mode>,
         ) {}
     });
-    let absent = parsed.absent_formals("C_f");
-    let placeholder = |p: &str| crate::match_arg_keys::choices_placeholder("C_f", p);
-    let mut want = std::collections::HashMap::new();
-    for p in ["mode", "opt", "either"] {
-        want.insert(p.to_string(), placeholder(p));
-    }
-    want.insert("color".to_string(), "c(\"red\", \"green\")".to_string());
+    let absent = parsed.absent_formals();
+    let want: std::collections::HashSet<String> = ["mode", "opt", "either", "color", "one.choice"]
+        .into_iter()
+        .map(String::from)
+        .collect();
     assert_eq!(absent, want);
 
     let call_args = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_formals(parsed.formals())
         .with_absent_formals(absent)
         .build_call_args_vec();
     assert_eq!(
         call_args,
         [
-            format!(
-                "if (missing(mode) || identical(mode, {})) quote(expr=) else mode",
-                placeholder("mode")
-            ),
-            format!(
-                "if (missing(opt) || identical(opt, {})) quote(expr=) else opt",
-                placeholder("opt")
-            ),
-            format!(
-                "if (missing(either) || identical(either, {})) quote(expr=) else either",
-                placeholder("either")
-            ),
-            "if (missing(color) || identical(color, c(\"red\", \"green\"))) quote(expr=) else color"
-                .to_string(),
-            "if (missing(modes)) quote(expr=) else modes".to_string(),
-            "if (missing(bare)) quote(expr=) else bare".to_string(),
-            "plain".to_string(),
-            "nullable".to_string(),
+            "if (.mx_absent_mode) quote(expr=) else mode",
+            "if (.mx_absent_opt) quote(expr=) else opt",
+            "if (.mx_absent_either) quote(expr=) else either",
+            "if (.mx_absent_color) quote(expr=) else color",
+            "if (.mx_absent_one.choice) quote(expr=) else one.choice",
+            "if (missing(modes)) quote(expr=) else modes",
+            "if (missing(bare)) quote(expr=) else bare",
+            "plain",
+            "nullable",
         ]
     );
 
-    // The prelude skips the check for the same value, and only there.
+    // The prelude binds the flag right before the check, which skips the
+    // same value, and only there.
+    let placeholder = |p: &str| crate::match_arg_keys::choices_placeholder("C_f", p);
     let attribution = crate::r_wrapper_builder::CallAttribution::Wrapper;
-    let statement = |p: &str| {
+    let lines = |p: &str, choices: &str| {
         let attrs = parsed.param_attrs(p).unwrap();
-        let choices = attrs.choice_list("C_f", p).unwrap();
-        attribution.match_arg_statement(p, &choices, None, attrs)
+        attribution.match_arg_lines(&parsed.formals().of(p), choices, None, attrs)
     };
     assert_eq!(
-        statement("opt"),
-        format!(
-            "if (!missing(opt) && !identical(opt, {ch}) && !is.null(opt)) \
-             opt <- .miniextendr_match_arg(opt, {ch}, \"opt\")",
-            ch = placeholder("opt")
-        )
+        lines("opt", &placeholder("opt")),
+        [
+            format!(
+                ".mx_absent_opt <- missing(opt) || identical(opt, {})",
+                placeholder("opt")
+            ),
+            format!(
+                "if (!.mx_absent_opt && !is.null(opt)) \
+                 opt <- .miniextendr_match_arg(opt, {}, \"opt\")",
+                placeholder("opt")
+            ),
+        ]
     );
     assert_eq!(
-        statement("color"),
-        "if (!missing(color) && !identical(color, c(\"red\", \"green\"))) \
-         color <- .miniextendr_match_arg(color, c(\"red\", \"green\"), \"color\")"
+        lines("either", &placeholder("either")),
+        [
+            format!(
+                ".mx_absent_either <- missing(either) || identical(either, {})",
+                placeholder("either")
+            ),
+            format!(
+                "if (!.mx_absent_either && (is.character(either) || is.factor(either))) \
+                 either <- .miniextendr_match_arg(either, {}, \"either\")",
+                placeholder("either")
+            ),
+        ]
+    );
+    assert_eq!(
+        lines("color", "c(\"red\", \"green\")"),
+        [
+            ".mx_absent_color <- missing(color) || identical(color, c(\"red\", \"green\"))",
+            "if (!.mx_absent_color) \
+             color <- .miniextendr_match_arg(color, c(\"red\", \"green\"), \"color\")",
+        ]
+    );
+    assert_eq!(
+        lines("one", "c(\"only\")"),
+        [
+            ".mx_absent_one.choice <- missing(one.choice) || identical(one.choice, c(\"only\"))",
+            "if (!.mx_absent_one.choice) \
+             one.choice <- .miniextendr_match_arg(one.choice, c(\"only\"), \"one.choice\")",
+        ]
     );
     for p in ["modes", "bare"] {
-        assert!(
-            statement(p).starts_with(&format!("if (!missing({p})) ")),
-            "{p}"
-        );
+        let lines = lines(p, &placeholder(p));
+        assert_eq!(lines.len(), 1, "{p}: {lines:?}");
+        assert!(lines[0].starts_with(&format!("if (!missing({p})) ")), "{p}");
     }
 }
 
@@ -1859,7 +1920,7 @@ fn parsed_fn_missing_default() {
     });
     let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
         .with_defaults(parsed.param_defaults())
-        .with_absent_formals(parsed.absent_formals("C_f"));
+        .with_absent_formals(parsed.absent_formals());
     assert_eq!(
         builder.build_formals(),
         "tol = 1e-8, weights = NULL, n = getOption(\"pkg.n\", 3L), plain"
@@ -3934,7 +3995,7 @@ fn parsed_fn_formal_missing_default() {
     let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
         .with_formals(formals.clone())
         .with_defaults(formals.rekey(parsed.param_defaults()))
-        .with_absent_formals(parsed.absent_formals("C_f"));
+        .with_absent_formals(parsed.absent_formals());
     assert_eq!(builder.build_formals(), "conf.level = 0.95, count = 1L");
     assert_eq!(
         builder.build_call_args_vec(),

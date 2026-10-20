@@ -1386,8 +1386,9 @@ fn trait_method_missing_default() {
 }
 
 /// The choice vector of an omittable `choices(...)` parameter reads as
-/// omitted in every class system (#2152): the prelude skips the check for
-/// it, and the `.Call()` argument forwards the sentinel for it.
+/// omitted in every class system (#2152): the prelude compares the argument
+/// with it once, into `.mx_absent_level` (#2182), skips the check for it, and
+/// the `.Call()` argument forwards the sentinel for it.
 #[test]
 fn trait_method_choice_formal_reads_as_omitted() {
     let type_ident = format_ident!("Foo");
@@ -1409,15 +1410,17 @@ fn trait_method_choice_formal_reads_as_omitted() {
         )
         .unwrap();
         for line in [
-            "if (!missing(level) && !identical(level, c(\"low\", \"high\")) && !is.null(level)) \
+            ".mx_absent_level <- missing(level) || identical(level, c(\"low\", \"high\"))",
+            "if (!.mx_absent_level && !is.null(level)) \
              level <- .miniextendr_match_arg(level, c(\"low\", \"high\"), \"level\"",
-            "if (missing(level) || identical(level, c(\"low\", \"high\"))) quote(expr=) else level",
+            "if (.mx_absent_level) quote(expr=) else level",
         ] {
             assert!(
                 result.contains(line),
                 "{class_system:?}: missing `{line}` in:\n{result}"
             );
         }
+        crate::tests::assert_absent_flag_bound(&result, ".mx_absent_level");
     }
 }
 

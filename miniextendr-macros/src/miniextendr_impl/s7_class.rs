@@ -824,7 +824,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         if let Some(ref getter_ident) = prop.getter_method_ident
             && let Some(getter_method) = find_method(getter_ident)
         {
-            let ctx = MethodContext::new(getter_method, type_ident);
+            // The lambda runs no prelude (`without_prelude`).
+            let ctx = MethodContext::new(getter_method, type_ident).without_prelude();
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let getter_call = ctx.instance_call_null_attr("self@.ptr");
             if let Some(ref msg) = prop.deprecated {
@@ -842,7 +843,8 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         if let Some(ref setter_ident) = prop.setter_method_ident
             && let Some(setter_method) = find_method(setter_ident)
         {
-            let ctx = MethodContext::new(setter_method, type_ident);
+            // The lambda runs no prelude (`without_prelude`).
+            let ctx = MethodContext::new(setter_method, type_ident).without_prelude();
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let setter_call = ctx.instance_call_null_attr("self@.ptr");
 

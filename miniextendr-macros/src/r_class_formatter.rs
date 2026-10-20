@@ -193,7 +193,11 @@ pub(crate) fn choice_param_doc_map(
 /// over a scalar or a `several_ok` list (#1612), guards either helper with
 /// `is.character(x) || is.factor(x)`, so everything else reaches the `R`
 /// arm; `Missing` adds `!missing(x)` (#1551), and for a single choice
-/// `!identical(x, <choices>)` (#2152). For `match_arg` the
+/// `!.mx_absent_x`, a flag bound on the line before
+/// (`.mx_absent_x <- missing(x) || identical(x, <choices>)`, #2152, #2182;
+/// `CallAttribution::match_arg_lines`), which the `.Call()` argument reads
+/// too. The body that calls the method's `.Call()` must run these lines. For
+/// `match_arg` the
 /// choice list is the write-time placeholder (`c_ident` keys it, the same one
 /// `effective_r_defaults` puts in the formal); for `choices(...)` it is the
 /// literal.
@@ -222,7 +226,7 @@ pub(crate) fn build_match_arg_prelude(
         let key = crate::match_arg_keys::param_key(rust_name);
         let placeholder = match_arg_placeholder(c_ident, &key);
         let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &key);
-        lines.push(attribution.match_arg_statement(
+        lines.extend(attribution.match_arg_lines(
             &formals.of(rust_name),
             &placeholder,
             Some(&aliases),
@@ -237,7 +241,7 @@ pub(crate) fn build_match_arg_prelude(
         let r_name = formals.of(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
-        lines.push(attribution.match_arg_statement(&r_name, &choices_expr, None, attrs));
+        lines.extend(attribution.match_arg_lines(&r_name, &choices_expr, None, attrs));
     }
 
     lines
@@ -413,7 +417,6 @@ impl<'a> MethodContext<'a> {
             .with_defaults(effective_defaults)
             .with_absent_formals(crate::miniextendr_fn::absent_formals_by_r_name(
                 &method.method_attrs.per_param,
-                &c_ident,
             ));
         let params = arg_builder.build_formals();
         let args = arg_builder.build_call_args();
@@ -425,6 +428,18 @@ impl<'a> MethodContext<'a> {
             impl_preconditions: None,
             call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
         }
+    }
+
+    /// For a body that calls the method without its prelude
+    /// ([`Self::match_arg_prelude`]): an `as = "..."` coercion method
+    /// (#1830) or an S7 property getter / setter lambda. [`Self::args`] then
+    /// reads no `.mx_absent_<p>` flag, which only the prelude binds (#2182),
+    /// so a `Missing<..>` choice is forwarded as omitted only when it is.
+    pub fn without_prelude(mut self) -> Self {
+        self.args = crate::r_wrapper_builder::RArgumentBuilder::new(&self.method.sig.inputs)
+            .with_formals(self.method.formals())
+            .build_call_args();
+        self
     }
 
     /// Set the `preconditions` decision inherited from the surrounding
