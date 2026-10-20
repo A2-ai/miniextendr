@@ -156,7 +156,7 @@ use miniextendr_api::{RngGuard, SEXP, miniextendr};
 /// @param nsim Number of draws.
 /// @param seed `NULL`, or a seed for `set.seed()`.
 /// @param ... Unused.
-#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "my_fit"))]
+#[miniextendr(rng(seed = _seed), s3(generic = "stats::simulate", class = "my_fit"))]
 pub fn simulate_my_fit(
     _object: SEXP,
     #[miniextendr(default = "1")] nsim: usize,
@@ -180,6 +180,13 @@ attr(x, "seed")                  # 42, with attribute kind = as.list(RNGkind())
 The draws are what `set.seed(42); rnorm(3)` gives. `<param>` names the seed
 parameter by its Rust name, and the wrapper uses its formal (`_seed` is
 `seed`). The option implies `rng`.
+
+A package that uses `rng(seed = ..)` lists `stats` in `Imports:`, because the
+wrapper calls `stats::runif()`. Name the generic `stats::simulate`: the method
+is then registered when stats' namespace loads, so the package's namespace
+loads with only its stated dependencies (`R CMD check` loads it with
+`R_DEFAULT_PACKAGES=NULL`, where a bare `simulate` is "not found"; see
+[S3_METHODS.md](S3_METHODS.md#generics-from-a-suggests-package)).
 
 After the argument checks, the wrapper runs:
 

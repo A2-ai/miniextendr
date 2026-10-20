@@ -3612,7 +3612,7 @@ pub(crate) fn refuse_rng_seed_on_method(
     Err(meta.error(format!(
         "`rng(seed = ..)` is for standalone functions and their `s3(...)` methods, not {method}; \
          write `rng` here, or give the seeded draws a standalone function \
-         (`#[miniextendr(rng(seed = seed), s3(generic = \"simulate\", class = \"..\"))]`)"
+         (`#[miniextendr(rng(seed = seed), s3(generic = \"stats::simulate\", class = \"..\"))]`)"
     )))
 }
 

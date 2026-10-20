@@ -494,6 +494,12 @@ my_rows)`. The same spelling works for an impl method,
 `#[miniextendr(s3(generic = "dplyr::dplyr_reconstruct"))]`, under the S3
 class system and in trait impls (#2154).
 
+The same goes for a generic from stats, graphics or utils (`stats::simulate`,
+`utils::.DollarNames`): a session attaches those packages, but `R CMD check`
+loads the namespace with only its stated dependencies, where a bare
+`S3method(simulate, my_fit)` fails with "object 'simulate' not found whilst
+loading namespace".
+
 A bare vctrs generic (`vec_ptype2`, `vec_cast`, ...) gets an automatic
 `@importFrom vctrs <generic>`, so vctrs must be in Imports. Spell it
 `vctrs::vec_ptype2` to register lazily instead, with vctrs in Suggests.
