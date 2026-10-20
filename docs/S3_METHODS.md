@@ -781,6 +781,60 @@ For non-vctrs generics from other packages (e.g., `tibble::tbl_sum`), add the im
 pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 ```
 
+### Re-exporting the generic
+
+A method for another package's generic is registered when your package loads,
+but the generic itself is not on the user's search path: with only your
+package attached, `tidy(fit)` fails with "could not find function "tidy"".
+Re-export the generic with the item macro `reexport!`:
+
+```rust
+use miniextendr_api::{miniextendr, reexport, SEXP};
+
+reexport!(generics::tidy, generics::glance);
+
+#[miniextendr(s3(generic = "tidy", class = "my_fit"))]
+pub fn tidy_my_fit(x: SEXP, _dots: ...) -> SEXP { ... }
+```
+
+Each item adds roxygen2's re-export block to the generated wrappers:
+
+```r
+#' @importFrom generics tidy
+#' @export
+generics::tidy
+```
+
+`devtools::document()` turns it into `importFrom(generics,tidy)` and
+`export(tidy)` in `NAMESPACE` and an alias on `man/reexports.Rd`, so `R CMD
+check` finds the name documented. Adding or removing an item changes both in
+the same `document()` pass.
+
+How it combines with `s3(generic = "tidy")`: `importFrom(generics, tidy)` makes
+the generic resolvable in the package namespace when it loads, so
+`S3method(tidy, my_fit)` registers the method on it as usual, and
+`export(tidy)` puts that same function on the search path. The method's
+registration doesn't change. For a vctrs generic the method's block already
+has the `@importFrom` (above); `reexport!` adds the export.
+
+- Each item is `pkg::name`, both written as identifiers joined by `.`
+  (`data.table::fread`, `stats::na.omit`). A name that isn't a syntactic R
+  name is a string literal, `magrittr::"%>%"`; the R code backticks it.
+- The package must be in the `Imports` field of `DESCRIPTION`: the
+  `importFrom()` needs it, and `R CMD check` reports a missing one. The macro
+  doesn't edit `DESCRIPTION`.
+- Any number of `reexport!` invocations may name the same `pkg::name`, so each
+  module can list the generics its methods are for. The wrappers get one block
+  per `pkg::name`, sorted by package and name.
+- `R CMD INSTALL` stops, with every problem in one message, on a name
+  re-exported from two packages, and on a name the generated wrappers also
+  define or export: a function, a class, the S3 generic of an `s3` impl
+  method without `generic = "..."`, or an `@export <name>` /
+  `@rawNamespace export(...)` tag. Hand-written R files are not read.
+- A package that isn't an R package name, a name that isn't one (see above),
+  and one name from two packages in one invocation are compile errors, all
+  reported at once. See [MACRO_ERRORS.md](MACRO_ERRORS.md).
+
 ### Documentation pages for standalone methods
 
 A standalone function without a page tag documents its own page, named after

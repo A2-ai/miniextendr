@@ -1,0 +1,35 @@
+error: `x` is not an R package name: ASCII letters, digits and `.`, at least two characters, starting with a letter and not ending in `.`
+ --> tests/ui/reexport_refusals.rs:7:5
+  |
+7 |     x::tidy,
+  |     ^
+
+error: `_hidden` is not a syntactic R name; write a non-syntactic name as a string literal, `generics::"_hidden"`
+ --> tests/ui/reexport_refusals.rs:8:15
+  |
+8 |     generics::_hidden,
+  |               ^^^^^^^
+
+error: the re-exported name `a b` can't hold whitespace, control characters, `` ` ``, `\` or `"`
+ --> tests/ui/reexport_refusals.rs:9:15
+  |
+9 |     generics::"a b",
+  |               ^^^^^
+
+error: `glance` is already re-exported from `generics` in this `reexport!`; a package exports one object under a name
+  --> tests/ui/reexport_refusals.rs:11:5
+   |
+11 |     broom::glance,
+   |     ^^^^^
+
+error: an item names a package and one of its exports, `pkg::name`; separate items with `,`
+  --> tests/ui/reexport_refusals.rs:12:19
+   |
+12 |     generics::tidy::x,
+   |                   ^
+
+error: expected `::` after the package `stats`: an item is `pkg::name`
+  --> tests/ui/reexport_refusals.rs:13:5
+   |
+13 |     stats,
+   |     ^^^^^

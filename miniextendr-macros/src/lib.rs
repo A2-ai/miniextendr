@@ -218,6 +218,9 @@ mod misplaced_dots;
 // r! proc-macro implementation
 mod r_macro;
 
+// reexport! proc-macro implementation
+mod reexport;
+
 // vctrs support
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
@@ -3683,6 +3686,51 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro]
 pub fn r(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     r_macro::expand(input)
+}
+
+/// Re-export other packages' R functions from this package.
+///
+/// Each item names a package and one of its exports. The generated R
+/// wrappers get roxygen2's re-export block for it, so `devtools::document()`
+/// writes `importFrom(pkg, name)` and `export(name)` to `NAMESPACE` and lists
+/// `name` on `man/reexports.Rd`:
+///
+/// ```r
+/// #' @importFrom generics tidy
+/// #' @export
+/// generics::tidy
+/// ```
+///
+/// The usual reason is a generic the package registers S3 methods for, such
+/// as `generics::tidy()` for `#[miniextendr(s3(generic = "tidy", class =
+/// "my_fit"))]`: with only the package attached, a bare `tidy(fit)` then finds
+/// the generic and dispatches to the method.
+///
+/// ```ignore
+/// use miniextendr_api::reexport;
+///
+/// reexport!(generics::tidy, generics::glance, generics::augment);
+/// reexport!(data.table::fread, stats::na.omit, magrittr::"%>%");
+/// ```
+///
+/// - The package and the name are identifiers joined by `.`. A name that is
+///   not a syntactic R name is a string literal (`magrittr::"%>%"`); the R
+///   code backticks it.
+/// - The package has to be in the `Imports` field of `DESCRIPTION`, which the
+///   `importFrom()` needs; `R CMD check` reports a missing one.
+/// - Any number of invocations may name the same `pkg::name`, so each module
+///   can re-export the generics its methods are for; the wrappers get one
+///   block per `pkg::name`.
+/// - The wrapper writer refuses, at install time, a name re-exported from two
+///   packages, and a name the package's generated wrappers also define or
+///   export (an S3 generic of an impl block, a function, an
+///   `@rawNamespace export(...)`). Hand-written R files are not checked.
+/// - A package name that is not an R package name, a name that is not an R
+///   name, and two packages for one name in one invocation are compile
+///   errors, all reported at once.
+#[proc_macro]
+pub fn reexport(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    reexport::expand(input.into()).into()
 }
 
 /// Internal proc macro used by TPIE (Trait-Provided Impl Expansion).

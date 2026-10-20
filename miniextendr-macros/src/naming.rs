@@ -424,6 +424,19 @@ pub(crate) fn is_syntactic_r_name(name: &str) -> bool {
         && !is_r_reserved_word(name)
 }
 
+/// R's rule for a package name (Writing R Extensions, "The DESCRIPTION
+/// file"): ASCII letters, digits and `.`, at least two characters, starting
+/// with a letter and not ending in `.`.
+pub(crate) fn is_r_package_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[bytes.len() - 1] != b'.'
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'.')
+}
+
 /// The left-hand side of a generated `<name> <- function(...)` definition.
 ///
 /// Syntactic names pass through unchanged so the common output stays readable;

@@ -695,6 +695,86 @@ RSidecar` selector or no `pub` `#[r_data]` field, so `#[derive(ExternalPtr)]`
 emitted no field list for them to use. Add the selector and the fields, or
 remove the option.
 
+### "`reexport!` takes one or more `pkg::name` items, e.g. `reexport!(generics::tidy)`"
+
+`reexport!()` with nothing in it re-exports nothing. List the other packages'
+exports to re-export, or remove the invocation. See
+[Re-exporting the generic](S3_METHODS.md#re-exporting-the-generic).
+
+### "expected `::` after the package `generics`: an item is `pkg::name`"
+
+Each item of `reexport!` names a package and one of its exports. The same
+family covers the other shapes that aren't one `pkg::name` item, each at its
+token:
+
+- `expected the package name of pkg::name`: an item starts with something other
+  than an identifier (`"generics"::tidy`). Write the package as identifiers
+  joined by `.`.
+- `expected the name of pkg::name, ...` and `expected an identifier after .`: a
+  name that isn't identifiers joined by `.` (`pkg::name.2`). Write it as a
+  string literal, `pkg::"name.2"`.
+- `an item names a package and one of its exports, pkg::name; separate items
+  with ,` (`generics::tidy::x`) and `unexpected token after pkg::name; separate
+  items with ,` (`generics::tidy generics::glance`): put a `,` between items.
+- `expected a pkg::name item before this ,`: two commas in a row. A trailing
+  comma is fine.
+
+### "`x` is not an R package name: ASCII letters, digits and `.`, at least two characters, starting with a letter and not ending in `.`"
+
+The part before `::` is an R package, and R's rule for a package name
+(Writing R Extensions, "The DESCRIPTION file") applies: `my_pkg` and `x` are
+refused, `data.table` and `R6` are fine.
+
+### "`_hidden` is not a syntactic R name; write a non-syntactic name as a string literal, `pkg::"_hidden"`"
+
+A name written as identifiers must be a syntactic R name: ASCII letters,
+digits, `.` and `_`, starting with a letter or a `.` not followed by a digit,
+and not a reserved word (`function`, `if`, `TRUE`, ...). Rust keywords are
+fine (`base::as.numeric`). Write any other name as a string literal:
+`magrittr::"%>%"`, `base::"[.data.frame"`. The R code backticks it.
+
+### "the re-exported name `a b` can't hold whitespace, control characters, `` ` ``, `\` or `"`"
+
+A name written as a string literal goes verbatim into the generated R code
+(between backticks) and into roxygen2's `@importFrom` tag (between quotes),
+so it can't hold whitespace, control characters or those quoting characters.
+The same family covers `a re-exported name can't be empty`, `` `café` is not
+ASCII; R code in a package must be ASCII `` (`R CMD check` warns about
+non-ASCII R code) and `a re-exported name written as a string literal takes no
+suffix` (`"x"suffix`).
+
+### "`tidy` is already re-exported from `generics` in this `reexport!`; a package exports one object under a name"
+
+One invocation names the same name from two packages
+(`reexport!(generics::tidy, broom::tidy)`). `export(tidy)` can export only one
+object; keep the item of the package whose function you mean. Naming the same
+`pkg::name` twice is fine. Across invocations the wrapper writer refuses it
+(below).
+
+### Install error: "`reexport!` re-exports `tidy` from 2 packages: ..."
+
+`R CMD INSTALL` stops in the wrapper writer when the `reexport!` invocations of
+the crate name one name from two packages. The message lists every item with
+its `(file.rs:line:column)`; keep the items of one package.
+
+### Install error: "`reexport!` re-exports `generics::tidy` (...), and the package's wrappers also bind `tidy` (...)"
+
+The generated wrappers define the re-exported name too: a `#[miniextendr]`
+function, a class, or the S3 generic of an `s3` impl block's method (a method
+without `generic = "..."` defines a generic of its own name). The package's
+own `tidy` would hide the imported one in its namespace, and `export(tidy)`
+would export it instead. Remove the re-export, or rename the package's binding
+(`r_name = "..."`, `class = "..."`). For an S3 method on the other package's
+generic, give the method `s3(generic = "tidy")`: an explicit generic is
+neither defined nor exported by the package.
+
+The same error with "also export `tidy`" means a doc comment exports the name
+itself (`@export tidy`, `@rawNamespace export(tidy)`, the workaround before
+`reexport!`). `reexport!` writes the export; drop the other one.
+
+Hand-written R files are not read: a function of the same name there is not
+refused.
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

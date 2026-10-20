@@ -157,6 +157,9 @@ pub fn list_shapes(x: List, frame: DataFrame) -> List {
     x
 }
 
+// R re-exports, written by the wrapper writer.
+miniextendr_api::reexport!(generics::tidy, stats::na.omit, magrittr::"%>%");
+
 // endregion
 
 // region: match_arg, choices and factors

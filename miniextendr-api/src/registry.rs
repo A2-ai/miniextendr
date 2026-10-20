@@ -129,6 +129,15 @@ pub static MX_SIDECAR_ACCESSORS: [SidecarAccessorsEntry];
 #[distributed_slice]
 pub static MX_ALL_EQUAL: [AllEqualEntry];
 
+/// The `pkg::name` items of every `reexport!` (#1910). **Host-only.**
+/// [`collect_r_wrappers`] writes roxygen2's re-export block for each
+/// `pkg::name` once, however many items name it, and
+/// [`write_r_wrappers_to_file`] refuses a name re-exported from two packages
+/// or bound by the package's own wrappers (`reexport_conflicts`).
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_REEXPORTS: [ReexportEntry];
+
 /// The package crate's `conversion_error_class`. **Host-only.**
 ///
 /// `miniextendr_init!` emits one entry, with the classes it reads from the
@@ -288,6 +297,9 @@ pub enum RWrapperPriority {
     TraitImpl,
     /// Vctrs S3 method wrappers (`#[derive(Vctrs)]`).
     Vctrs,
+    /// The re-export blocks of `reexport!` (#1910). They bind nothing, so
+    /// their place is free; last keeps them together.
+    Reexport,
 }
 
 /// R wrapper code with priority for ordering.
@@ -578,6 +590,23 @@ pub struct AllEqualEntry {
 
 // SAFETY: &'static str fields and integers — immutable and valid for program lifetime.
 unsafe impl Sync for AllEqualEntry {}
+
+/// One `pkg::name` item of a `reexport!` invocation (#1910): `name`, an
+/// export of the R package `package`, which this package exports too.
+/// The macro has checked both names.
+pub struct ReexportEntry {
+    /// The R package the name comes from, e.g. `"generics"`.
+    pub package: &'static str,
+    /// The re-exported name as R spells it, unquoted, e.g. `"tidy"` or
+    /// `"%>%"`.
+    pub name: &'static str,
+    /// Source file of the invocation (`file!()`).
+    pub source_file: &'static str,
+    /// Line of the item in `source_file`.
+    pub source_line: u32,
+    /// Column of the item, for the `# Generated from` header.
+    pub source_column: u32,
+}
 
 /// Build the `rust_type → ClassNameEntry` lookup used by every placeholder
 /// resolver in `write_r_wrappers_to_file`.
@@ -935,6 +964,190 @@ fn all_equal_method(entry: &AllEqualEntry, class: &ClassNameEntry) -> String {
     }
     out
 }
+
+// region: re-exports (#1910)
+
+/// The re-exports of every `reexport!` as one fragment, `None` without any:
+/// for each `pkg::name`, roxygen2's re-export block
+///
+/// ```r
+/// # Generated from Rust `reexport!` of `generics::tidy` (fits.rs:3:11)
+/// #' @importFrom generics tidy
+/// #' @export
+/// generics::tidy
+/// ```
+///
+/// from which roxygen2 writes `importFrom(generics,tidy)` and `export(tidy)`
+/// to `NAMESPACE` and an alias to `man/reexports.Rd`. A `pkg::name` that
+/// several items name is written once, its header listing their sites. The
+/// blocks are sorted by package, then name.
+///
+/// A name re-exported from two packages gets a block for each here;
+/// [`reexport_conflicts`] refuses it with the other problems once the file
+/// is assembled.
+#[cfg(not(target_arch = "wasm32"))]
+fn reexport_fragment(entries: &[ReexportEntry]) -> Option<WrapperFragment> {
+    let mut by_item: std::collections::BTreeMap<(&str, &str), Vec<&ReexportEntry>> =
+        std::collections::BTreeMap::new();
+    for entry in entries {
+        by_item
+            .entry((entry.package, entry.name))
+            .or_default()
+            .push(entry);
+    }
+    let first = *by_item.values().next()?.first()?;
+    let blocks: Vec<String> = by_item
+        .iter()
+        .map(|((package, name), sites)| {
+            let object = if is_syntactic_r_name(name) {
+                format!("{package}::{name}")
+            } else {
+                format!("{package}::`{name}`")
+            };
+            format!(
+                "# Generated from Rust `reexport!` of `{package}::{name}` {}\n\
+                 #' @importFrom {package} {}\n\
+                 #' @export\n\
+                 {object}",
+                reexport_sites(sites),
+                r_namespace_name(name),
+            )
+        })
+        .collect();
+    Some(WrapperFragment {
+        priority: RWrapperPriority::Reexport,
+        source_file: first.source_file,
+        source_line: first.source_line,
+        content: std::borrow::Cow::Owned(blocks.join("\n\n")),
+    })
+}
+
+/// The sites of `entries`, `(file.rs:line:column)` each, in source order.
+#[cfg(not(target_arch = "wasm32"))]
+fn reexport_sites(entries: &[&ReexportEntry]) -> String {
+    let mut sites: Vec<(&str, u32, u32)> = entries
+        .iter()
+        .map(|entry| (entry.source_file, entry.source_line, entry.source_column))
+        .collect();
+    sites.sort_unstable();
+    sites.dedup();
+    sites
+        .iter()
+        .map(|(file, line, column)| format!("({file}:{line}:{column})"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Refuse the re-exports of `entries` that can't be written, all in one
+/// message: a name re-exported from two packages (a package exports one
+/// object under a name), and a name that `content`, the assembled wrappers,
+/// also binds at top level or exports. The package's own binding would hide
+/// the imported one inside its namespace, so `export(name)` would export it
+/// instead; an export alone repeats the one the re-export writes.
+///
+/// Only the generated wrappers are read, not the package's hand-written R
+/// files.
+#[cfg(not(target_arch = "wasm32"))]
+fn reexport_conflicts(content: &str, entries: &[ReexportEntry]) -> Result<(), String> {
+    use std::collections::BTreeMap;
+    let mut by_name: BTreeMap<&str, BTreeMap<&str, Vec<&ReexportEntry>>> = BTreeMap::new();
+    for entry in entries {
+        by_name
+            .entry(entry.name)
+            .or_default()
+            .entry(entry.package)
+            .or_default()
+            .push(entry);
+    }
+    if by_name.is_empty() {
+        return Ok(());
+    }
+    let reexports = |name: &str, packages: &BTreeMap<&str, Vec<&ReexportEntry>>| {
+        packages
+            .iter()
+            .map(|(package, sites)| format!("`{package}::{name}` {}", reexport_sites(sites)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let mut errors = Vec::new();
+    for (name, packages) in &by_name {
+        if packages.len() > 1 {
+            errors.push(format!(
+                "`reexport!` re-exports `{name}` from {} packages: {}. A package exports one \
+                 object under a name; re-export it from one of them.",
+                packages.len(),
+                reexports(name, packages),
+            ));
+        }
+    }
+
+    // Each fragment that binds or exports a re-exported name, once, by its
+    // binding when it both binds and exports it.
+    let mut own: BTreeMap<&str, Vec<(&'static str, std::rc::Rc<str>)>> = BTreeMap::new();
+    for WrapperName {
+        name,
+        kind,
+        producer,
+    } in wrapper_names(content)
+    {
+        if !by_name.contains_key(name) {
+            continue;
+        }
+        let uses = own.entry(name).or_default();
+        match uses.iter_mut().find(|(_, other)| *other == producer) {
+            Some(used) if used.0 == "export" => used.0 = kind,
+            Some(_) => {}
+            None => uses.push((kind, producer)),
+        }
+    }
+    for (name, uses) in own {
+        let binds = uses.iter().any(|(kind, _)| *kind != "export");
+        let what = uses
+            .iter()
+            .map(|(kind, producer)| {
+                if *kind == "export" {
+                    format!("an export from {producer}")
+                } else {
+                    format!("a {kind} from {producer}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (does, why) = if binds {
+            (
+                "bind",
+                format!(
+                    "The package's own `{name}` would hide the imported one in its namespace, \
+                     so `export({name})` would export it instead. Remove the re-export, or \
+                     rename the package's binding (`r_name = \"...\"`, `class = \"...\"`)."
+                ),
+            )
+        } else {
+            (
+                "export",
+                "`reexport!` writes the export itself; drop the other one.".to_string(),
+            )
+        };
+        errors.push(format!(
+            "`reexport!` re-exports {}, and the package's wrappers also {does} `{name}` ({what}). \
+             {why}",
+            reexports(name, &by_name[name]),
+        ));
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors
+            .iter()
+            .map(|error| format!("miniextendr: {error}"))
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+}
+
+// endregion
 
 // region: impl blocks merged per type (#1776)
 
@@ -1542,7 +1755,8 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
 ///
 /// Each type's impl blocks are first merged into one class fragment
 /// (`merge_class_blocks`, #1776); a conflict between them panics with every
-/// problem found. Entries are then ordered by `sort_wrapper_entries`: priority
+/// problem found. The `reexport!` blocks are one more fragment
+/// (`reexport_fragment`). Entries are then ordered by `sort_wrapper_entries`: priority
 /// first, then source file, then source line. Within each priority group, S7
 /// class definitions are additionally topologically sorted so parents are
 /// defined before children (S7 `parent = X` requires X to exist).
@@ -1563,6 +1777,7 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
             all_equal_fragments(&MX_ALL_EQUAL, &MX_CLASS_NAMES)
                 .unwrap_or_else(|msg| panic!("{msg}")),
         )
+        .chain(reexport_fragment(&MX_REEXPORTS))
         .collect();
     sort_wrapper_entries(&mut entries);
 
@@ -3561,6 +3776,13 @@ pub fn write_r_wrappers_to_file(path: &str) {
         }
     }
 
+    // Refuse the `reexport!` names the package's wrappers bind or export
+    // themselves, and a name re-exported from two packages (#1910). Like the
+    // scan above, it reads the final names.
+    if let Err(msg) = reexport_conflicts(&content, &MX_REEXPORTS) {
+        panic!("{msg}");
+    }
+
     let content = wrappers_file_content(&content);
 
     // Only write if content changed (avoids unnecessary NAMESPACE/man regeneration).
@@ -3873,45 +4095,19 @@ fn detect_duplicate_wrapper_defs(
     use std::collections::HashMap;
 
     // Binding name -> (kind, producer) of its first definition.
-    let mut seen: HashMap<&str, (&str, String)> = HashMap::new();
-    let mut producer = String::from("an unattributed wrapper fragment");
+    let mut seen: HashMap<&str, (&str, std::rc::Rc<str>)> = HashMap::new();
 
-    let mut lines = content.lines();
-    while let Some(line) = lines.next() {
-        if let Some(header) = line.strip_prefix("# Generated from ") {
-            producer = header.to_string();
+    for WrapperName {
+        name,
+        kind,
+        producer,
+    } in wrapper_names(content)
+    {
+        if kind == "export" {
             continue;
         }
-        // A sidecar accessor's header gives only a source position; the line
-        // after it names the field and the Rust type.
-        if let Some(wraps) = line.strip_prefix("# Wraps ") {
-            let what = wraps.split_once(" via ").map_or(wraps, |(what, _)| what);
-            producer = format!("{what} ({producer})");
-            continue;
-        }
-        let (name, kind) = if let Some(name) = parse_guarded_generic(line, lines.clone()) {
-            (name, "guarded generic")
-        } else {
-            // Method assignments and indented closures are not bare top-level
-            // bindings. Only the known generic guards above expose nested defs.
-            let Some((name, rhs)) = parse_top_level_assignment(line) else {
-                continue;
-            };
-            let kind = if rhs.starts_with("function") {
-                "function"
-            } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
-                .iter()
-                .any(|prefix| rhs.starts_with(prefix))
-            {
-                "class/namespace object"
-            } else {
-                continue;
-            };
-            (name, kind)
-        };
-
         let Some((previous, first)) = seen.get(name) else {
-            seen.insert(name, (kind, producer.clone()));
+            seen.insert(name, (kind, producer));
             continue;
         };
         let previous = *previous;
@@ -3971,6 +4167,119 @@ fn detect_duplicate_wrapper_defs(
     }
 
     Ok(())
+}
+
+/// A name the assembled wrappers bind at top level or export, and the
+/// fragment that does, as the `# Generated from Rust …` header opening each
+/// fragment names it.
+#[cfg(not(target_arch = "wasm32"))]
+struct WrapperName<'a> {
+    name: &'a str,
+    /// `"function"`, `"class/namespace object"` (`new.env`, `R6::R6Class`,
+    /// `S7::new_class`), `"guarded generic"` ([`parse_guarded_generic`]), or
+    /// `"export"`: an `@export <name>` target or an
+    /// `@rawNamespace export(<name>)` argument.
+    kind: &'static str,
+    producer: std::rc::Rc<str>,
+}
+
+/// The names of the assembled wrappers `content` in file order: see
+/// [`WrapperName`]. Read by [`detect_duplicate_wrapper_defs`] and
+/// [`reexport_conflicts`].
+#[cfg(not(target_arch = "wasm32"))]
+fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
+    let mut names = Vec::new();
+    let mut producer: std::rc::Rc<str> = std::rc::Rc::from("an unattributed wrapper fragment");
+    let mut lines = content.lines();
+    while let Some(line) = lines.next() {
+        if let Some(header) = line.strip_prefix("# Generated from ") {
+            producer = std::rc::Rc::from(header);
+            continue;
+        }
+        // A sidecar accessor's header gives only a source position; the line
+        // after it names the field and the Rust type.
+        if let Some(wraps) = line.strip_prefix("# Wraps ") {
+            let what = wraps.split_once(" via ").map_or(wraps, |(what, _)| what);
+            producer = std::rc::Rc::from(format!("{what} ({producer})"));
+            continue;
+        }
+        if let Some(targets) = line.strip_prefix("#' @export ") {
+            names.extend(targets.split_whitespace().map(|target| WrapperName {
+                name: unquote_r_name(target),
+                kind: "export",
+                producer: producer.clone(),
+            }));
+            continue;
+        }
+        if let Some(directives) = line.strip_prefix("#' @rawNamespace ") {
+            names.extend(raw_namespace_exports(directives).map(|name| WrapperName {
+                name,
+                kind: "export",
+                producer: producer.clone(),
+            }));
+            continue;
+        }
+        let (name, kind) = if let Some(name) = parse_guarded_generic(line, lines.clone()) {
+            (name, "guarded generic")
+        } else {
+            // Method assignments and indented closures are not bare top-level
+            // bindings. Only the known generic guards above expose nested defs.
+            let Some((name, rhs)) = parse_top_level_assignment(line) else {
+                continue;
+            };
+            let kind = if rhs.starts_with("function") {
+                "function"
+            } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
+                .iter()
+                .any(|prefix| rhs.starts_with(prefix))
+            {
+                "class/namespace object"
+            } else {
+                continue;
+            };
+            (name, kind)
+        };
+        names.push(WrapperName {
+            name,
+            kind,
+            producer: producer.clone(),
+        });
+    }
+    names
+}
+
+/// The names the `export(...)` directives of an `@rawNamespace` tag's text
+/// export: `export(a, "[[")` gives `a` and `[[`. `exportPattern(...)`,
+/// `exportClasses(...)` and the like are not `export(`.
+#[cfg(not(target_arch = "wasm32"))]
+fn raw_namespace_exports(directives: &str) -> impl Iterator<Item = &str> {
+    directives
+        .match_indices("export(")
+        .filter(move |(at, _)| {
+            !directives[..*at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+        })
+        .flat_map(move |(at, open)| {
+            let args = &directives[at + open.len()..];
+            let args = args.split_once(')').map_or(args, |(args, _)| args);
+            args.split(',')
+                .map(|arg| unquote_r_name(arg.trim()))
+                .filter(|name| !name.is_empty())
+        })
+}
+
+/// `name` without the double quotes, single quotes or backticks around it.
+#[cfg(not(target_arch = "wasm32"))]
+fn unquote_r_name(name: &str) -> &str {
+    ['"', '\'', '`']
+        .iter()
+        .find_map(|quote| {
+            name.strip_prefix(*quote)
+                .and_then(|inner| inner.strip_suffix(*quote))
+        })
+        .unwrap_or(name)
 }
 
 /// Recognize the generic guards emitted by `r_class_formatter` and the S4/S7
@@ -4458,6 +4767,146 @@ mod tests {
              `#[derive(AllEqual)]` on `Rec` (lib.rs:2): the objects of a vctrs class are R vectors, \
              not pointers to the Rust value, and `all.equal()` already compares them"
         );
+    }
+
+    fn reexport(
+        package: &'static str,
+        name: &'static str,
+        source_file: &'static str,
+        source_line: u32,
+    ) -> ReexportEntry {
+        ReexportEntry {
+            package,
+            name,
+            source_file,
+            source_line,
+            source_column: 11,
+        }
+    }
+
+    /// One block per `pkg::name` whatever the number of sites, sorted by
+    /// package then name, a non-syntactic name quoted (#1910).
+    #[test]
+    fn reexport_blocks_are_one_per_item_and_sorted() {
+        assert!(reexport_fragment(&[]).is_none());
+        let entries = [
+            reexport("generics", "tidy", "models.rs", 8),
+            reexport("magrittr", "%>%", "fits.rs", 4),
+            reexport("generics", "tidy", "fits.rs", 3),
+            reexport("generics", "glance", "fits.rs", 3),
+            reexport("data.table", "fread", "io.rs", 1),
+            reexport("generics", "tidy", "models.rs", 8),
+        ];
+        let fragment = reexport_fragment(&entries).expect("a fragment");
+        assert!(fragment.priority == RWrapperPriority::Reexport);
+        assert_eq!(
+            fragment.content,
+            "# Generated from Rust `reexport!` of `data.table::fread` (io.rs:1:11)\n\
+             #' @importFrom data.table fread\n\
+             #' @export\n\
+             data.table::fread\n\
+             \n\
+             # Generated from Rust `reexport!` of `generics::glance` (fits.rs:3:11)\n\
+             #' @importFrom generics glance\n\
+             #' @export\n\
+             generics::glance\n\
+             \n\
+             # Generated from Rust `reexport!` of `generics::tidy` (fits.rs:3:11) (models.rs:8:11)\n\
+             #' @importFrom generics tidy\n\
+             #' @export\n\
+             generics::tidy\n\
+             \n\
+             # Generated from Rust `reexport!` of `magrittr::%>%` (fits.rs:4:11)\n\
+             #' @importFrom magrittr \"%>%\"\n\
+             #' @export\n\
+             magrittr::`%>%`"
+        );
+        // The line numbers of the sites don't change the normalized file.
+        let moved = [reexport("generics", "tidy", "models.rs", 80)];
+        assert_eq!(
+            normalize_source_locs(&reexport_fragment(&moved).unwrap().content),
+            normalize_source_locs(
+                &reexport_fragment(&[reexport("generics", "tidy", "models.rs", 8)])
+                    .unwrap()
+                    .content
+            )
+        );
+    }
+
+    /// The blocks bind nothing, so they pass both scans of the file.
+    #[test]
+    fn reexport_blocks_pass_the_wrapper_scans() {
+        let entries = [
+            reexport("generics", "tidy", "fits.rs", 3),
+            reexport("magrittr", "%>%", "fits.rs", 4),
+        ];
+        let content = format!(
+            "# Generated from Rust fn `fit` (fits.rs:9:8)\n\
+             #' @export\n\
+             fit <- function(x) .Call(C_fit, x)\n\n{}",
+            reexport_fragment(&entries).unwrap().content
+        );
+        let names: Vec<&str> = wrapper_names(&content).iter().map(|n| n.name).collect();
+        assert_eq!(names, ["fit"]);
+        assert!(detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new()).is_ok());
+        assert_eq!(reexport_conflicts(&content, &entries), Ok(()));
+    }
+
+    /// A name from two packages, and names the wrappers bind or export, are
+    /// refused in one message naming every site (#1910).
+    #[test]
+    fn reexport_conflicts_are_refused_together() {
+        let content = concat!(
+            "# Generated from Rust impl `Fit` (fits.rs:20:6)\n",
+            "#' @export glance\n",
+            "if (!base::exists(\"glance\", mode = \"function\")) {\n",
+            "  glance <- function(x, ...) UseMethod(\"glance\")\n",
+            "}\n",
+            "# Generated from Rust fn `augment` (fits.rs:30:8)\n",
+            "#' @export\n",
+            "augment <- function(x) .Call(C_augment, x)\n",
+            "# Generated from Rust fn `fit_print` (fits.rs:40:8)\n",
+            "#' @rawNamespace export(tidy, \"%>%\")\n",
+            "#' @method print fit\n",
+            "print.fit <- function(x, ...) invisible(x)\n",
+        );
+        let entries = [
+            reexport("generics", "tidy", "fits.rs", 3),
+            reexport("broom", "tidy", "models.rs", 5),
+            reexport("generics", "tidy", "models.rs", 6),
+            reexport("generics", "glance", "fits.rs", 3),
+            reexport("generics", "augment", "fits.rs", 3),
+            reexport("generics", "interpolate", "fits.rs", 3),
+        ];
+        assert_eq!(
+            reexport_conflicts(content, &entries).unwrap_err(),
+            "miniextendr: `reexport!` re-exports `tidy` from 2 packages: `broom::tidy` \
+             (models.rs:5:11), `generics::tidy` (fits.rs:3:11) (models.rs:6:11). A package \
+             exports one object under a name; re-export it from one of them.\n\
+             miniextendr: `reexport!` re-exports `generics::augment` (fits.rs:3:11), and the \
+             package's wrappers also bind `augment` (a function from Rust fn `augment` \
+             (fits.rs:30:8)). The package's own `augment` would hide the imported one in its \
+             namespace, so `export(augment)` would export it instead. Remove the re-export, or \
+             rename the package's binding (`r_name = \"...\"`, `class = \"...\"`).\n\
+             miniextendr: `reexport!` re-exports `generics::glance` (fits.rs:3:11), and the \
+             package's wrappers also bind `glance` (a guarded generic from Rust impl `Fit` \
+             (fits.rs:20:6)). The package's own `glance` would hide the imported one in its \
+             namespace, so `export(glance)` would export it instead. Remove the re-export, or \
+             rename the package's binding (`r_name = \"...\"`, `class = \"...\"`).\n\
+             miniextendr: `reexport!` re-exports `broom::tidy` (models.rs:5:11), \
+             `generics::tidy` (fits.rs:3:11) (models.rs:6:11), and the package's wrappers also \
+             export `tidy` (an export from Rust fn `fit_print` (fits.rs:40:8)). `reexport!` \
+             writes the export itself; drop the other one."
+        );
+    }
+
+    #[test]
+    fn raw_namespace_exports_are_read_by_name() {
+        let names: Vec<&str> = raw_namespace_exports(
+            "export(a, \"[[\") exportPattern(\"^x\") S3method(print, foo) if (TRUE) export(`b`)",
+        )
+        .collect();
+        assert_eq!(names, ["a", "[[", "b"]);
     }
 
     /// Run the production scalar cross-class return wrapper resolver over

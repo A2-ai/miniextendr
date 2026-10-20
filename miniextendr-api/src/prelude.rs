@@ -58,6 +58,7 @@ pub use crate::{
     RFactor,
     list,
     miniextendr,
+    reexport,
     typed_dataframe,
     typed_list,
 };
