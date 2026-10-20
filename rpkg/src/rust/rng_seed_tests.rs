@@ -21,7 +21,10 @@ use miniextendr_api::{Nullable, miniextendr};
 ///   `set.seed()`.
 /// @param ... Unused.
 /// @return `nsim` draws, with the `seed` attribute `stats::simulate()` gives.
-#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "mx_seed_fit"))]
+#[miniextendr(
+    rng(seed = _seed),
+    s3(generic = "stats::simulate", class = "mx_seed_fit")
+)]
 pub fn simulate_mx_seed_fit(
     _object: SEXP,
     #[miniextendr(default = "1")] nsim: usize,

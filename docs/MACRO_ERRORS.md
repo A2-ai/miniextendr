@@ -886,7 +886,7 @@ The seed contract is written into the R wrapper of a standalone function or an
 `s3(...)` method; impl methods (every class system) and trait methods ("not a
 trait method") refuse it. Write `rng` on the method, or give the seeded draws a
 standalone function, for a `simulate()` method
-`#[miniextendr(rng(seed = seed), s3(generic = "simulate", class = ".."))]`.
+`#[miniextendr(rng(seed = seed), s3(generic = "stats::simulate", class = ".."))]`.
 
 ### "unknown `rng(...)` option; expected `seed = <parameter>`"
 

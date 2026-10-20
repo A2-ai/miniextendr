@@ -92,7 +92,7 @@ pub fn drawn(n: i32, rng: &RngGuard, scale: f64) -> f64 {
     f64::from(n) * scale * rng.unif_rand()
 }
 
-#[miniextendr(rng(seed = seed), s3(generic = "simulate", class = "shadow_fit"))]
+#[miniextendr(rng(seed = seed), s3(generic = "stats::simulate", class = "shadow_fit"))]
 pub fn simulate_shadow_fit(
     _object: SEXP,
     #[miniextendr(default = "1")] nsim: usize,

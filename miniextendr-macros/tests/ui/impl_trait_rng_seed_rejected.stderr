@@ -1,4 +1,4 @@
-error: `rng(seed = ..)` is for standalone functions and their `s3(...)` methods, not a trait method; write `rng` here, or give the seeded draws a standalone function (`#[miniextendr(rng(seed = seed), s3(generic = "simulate", class = ".."))]`)
+error: `rng(seed = ..)` is for standalone functions and their `s3(...)` methods, not a trait method; write `rng` here, or give the seeded draws a standalone function (`#[miniextendr(rng(seed = seed), s3(generic = "stats::simulate", class = ".."))]`)
   --> tests/ui/impl_trait_rng_seed_rejected.rs:18:19
    |
 18 |     #[miniextendr(rng(seed = seed))]

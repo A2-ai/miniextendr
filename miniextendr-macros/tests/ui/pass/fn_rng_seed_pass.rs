@@ -19,7 +19,7 @@ pub fn seeded(
     (0..n).map(|_| rng.norm_rand()).collect()
 }
 
-#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "seed_fit"))]
+#[miniextendr(rng(seed = _seed), s3(generic = "stats::simulate", class = "seed_fit"))]
 pub fn simulate_seed_fit(
     _object: SEXP,
     #[miniextendr(default = "1")] nsim: usize,

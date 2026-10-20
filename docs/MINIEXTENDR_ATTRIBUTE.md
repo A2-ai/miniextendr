@@ -1056,7 +1056,7 @@ pub fn long_simulation(n: i32, rng: &RngGuard) -> Vec<f64> { /* ... */ }
 
 // `simulate(fit, nsim, seed = 42)` draws from `set.seed(42)`, then the
 // session's stream is put back.
-#[miniextendr(rng(seed = _seed), s3(generic = "simulate", class = "my_fit"))]
+#[miniextendr(rng(seed = _seed), s3(generic = "stats::simulate", class = "my_fit"))]
 pub fn simulate_my_fit(
     _object: SEXP,
     #[miniextendr(default = "1")] nsim: usize,
