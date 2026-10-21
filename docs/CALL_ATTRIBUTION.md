@@ -436,6 +436,7 @@ instead (#1851):
 | `x$f <- v`, `x$f$col[1] <- v` | `` `$<-.mx_rec`(`*tmp*`, f, value = …) `` | `x$f <- value` |
 | `x[["f"]] <- v`, `x["f"] <- list(v)` | `` `[[<-.mx_rec`(`*tmp*`, "f", value = …) ``, … | `x[["f"]] <- value`, `x["f"] <- value` |
 | `names(x) <- v` | `` `names<-.mx_rec`(`*tmp*`, value = …) `` | `names(x) <- value` |
+| `rbind(x, x)`, `cbind(x, 1)` | `rbind(deparse.level, ...)`, `cbind(deparse.level, ...)` | `rbind(x, x)`, `cbind(x, 1)` |
 | `summary.mx_rec(x)`, called directly | `summary.mx_rec(x)` | `summary.mx_rec(x)` |
 
 The rule: when `.Generic` is bound in the method frame, which R does under
@@ -446,8 +447,13 @@ formal (`x`). For a replacement generic (`.Generic` ends in `<-`) the call is
 `call("<-", <lhs>, quote(value))`, where `<lhs>` is the frame's call with the
 `<-` dropped from its head and the `value` argument removed: compact, never
 holding the value, and the shape `stop()` reports from inside a hand-written
-`function(x, value)`. Without `.Generic`, a direct call of the method by
-name, the frame's call is reported as is.
+`function(x, value)`. `rbind()` and `cbind()` dispatch from C (`do_bind`)
+without binding `.Generic`, and call the method as `rbind(deparse.level, ...)`;
+when the frame above the method is base's `rbind` / `cbind` closure, its call,
+the user's, is reported instead (#2162). Under `do.call(rbind, args)` that call
+holds the argument values, as R's own errors there do. Otherwise, without
+`.Generic` (a direct call of the method by name), the frame's call is reported
+as is.
 
 Every condition the method raises reads this call: an `Err` or panic from the
 body, a warning or message deferred from Rust, the R-side argument checks
