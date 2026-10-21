@@ -75,6 +75,24 @@ impl CoercionMapping {
 
 // region: Type inspection helpers
 
+/// Rejects an `unsafe fn` that would get a generated wrapper (#2124): its R
+/// callers cannot uphold Rust safety preconditions. `rust_only` says how this
+/// kind of item stays out of R instead. Raw `extern "C-unwind"` registration
+/// has its own explicit contract and is not checked here.
+pub(crate) fn require_safe_wrapper(sig: &syn::Signature, rust_only: &str) -> syn::Result<()> {
+    if let Some(unsafety) = sig.unsafety {
+        return Err(syn::Error::new_spanned(
+            unsafety,
+            format!(
+                "an `unsafe fn` cannot get a generated R wrapper: its R callers cannot uphold \
+                 its safety preconditions. Expose a safe fn that checks them and calls this one \
+                 in an `unsafe` block, or {rust_only} to keep it Rust-only"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Check if a type path ends with the given identifier (e.g., "Dots", "Missing").
 ///
 /// Handles fully-qualified paths like `miniextendr_api::dots::Dots` as well as
@@ -2129,6 +2147,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         // For extern functions, #[export_name] can be used as an alternative to #[no_mangle].
         let is_extern = item.sig.abi.is_some();
         if !is_extern {
+            require_safe_wrapper(&item.sig, "drop `#[miniextendr]`")?;
             for attr in &item.attrs {
                 if attr.path().is_ident("export_name") {
                     return Err(syn::Error::new_spanned(
