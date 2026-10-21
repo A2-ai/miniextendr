@@ -15,13 +15,17 @@ Option<Mode>
   @param:  mode One of "fast", "safe", or NULL for no choice.
 Missing<Mode>
   formal:  mode = c("fast", "safe")
-  wrapper: if (!missing(mode) && !identical(mode, c("fast", "safe"))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
-  caller:  if (!missing(mode) && !identical(mode, c("fast", "safe"))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  wrapper: .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
   @param:  mode One of "fast", "safe"; omitting the argument or passing the whole list means no choice.
 Missing<Option<Mode>>
   formal:  mode = c("fast", "safe")
-  wrapper: if (!missing(mode) && !identical(mode, c("fast", "safe")) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
-  caller:  if (!missing(mode) && !identical(mode, c("fast", "safe")) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  wrapper: .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
   @param:  mode One of "fast", "safe", or NULL; omitting the argument or passing the whole list means no choice.
 Vec<Mode> (several_ok)
   formal:  mode = c("fast", "safe")
@@ -50,13 +54,17 @@ Option<Either<Mode, DataFrame>>
   @param:  mode One of "fast", "safe", a data frame, or NULL for no choice.
 Missing<Either<Mode, f64>>
   formal:  mode = c("fast", "safe")
-  wrapper: if (!missing(mode) && !identical(mode, c("fast", "safe")) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
-  caller:  if (!missing(mode) && !identical(mode, c("fast", "safe")) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  wrapper: .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
   @param:  mode One of "fast", "safe", or a number; omitting the argument or passing the whole list means no choice.
 Missing<Option<Either<Mode, List>>>
   formal:  mode = c("fast", "safe")
-  wrapper: if (!missing(mode) && !identical(mode, c("fast", "safe")) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
-  caller:  if (!missing(mode) && !identical(mode, c("fast", "safe")) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  wrapper: .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  .mx_absent_mode <- missing(mode) || identical(mode, c("fast", "safe"))
+           if (!.mx_absent_mode && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
   @param:  mode One of "fast", "safe", a list, or NULL; omitting the argument or passing the whole list means no choice.
 Either<Vec<Mode>, DataFrame> (several_ok)
   formal:  mode = c("fast", "safe")

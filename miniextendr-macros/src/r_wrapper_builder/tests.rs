@@ -869,10 +869,11 @@ fn match_arg_statement_per_attribution() {
     );
 }
 
-/// Every accepted choice-parameter shape: the R formal, the prelude statement
-/// under the default and the `call = caller` attribution, and the `@param`
-/// line (#1473, #1551), then the same for `no_default` on a few of them
-/// (#1828): a bare formal, the prelude unchanged, no omission note.
+/// Every accepted choice-parameter shape: the R formal, the prelude lines
+/// under the default and the `call = caller` attribution (with the
+/// `.mx_absent_mode` binding of a single-choice `Missing<..>`, #2182), and the
+/// `@param` line (#1473, #1551), then the same for `no_default` on a few of
+/// them (#1828): a bare formal, the prelude unchanged, no omission note.
 #[test]
 fn snapshot_choice_param_forms() {
     let forms = [
@@ -925,8 +926,12 @@ fn snapshot_choice_param_forms() {
             if several_ok { " (several_ok)" } else { "" },
             // Not `Mode (no_default)`: the shadowing test reads `Mode (` as a call.
             if no_default { " with no_default" } else { "" },
-            CallAttribution::Wrapper.match_arg_statement("mode", choices, None, &attrs),
-            CallAttribution::Caller.match_arg_statement("mode", choices, None, &attrs),
+            CallAttribution::Wrapper
+                .match_arg_lines("mode", choices, None, &attrs)
+                .join("\n           "),
+            CallAttribution::Caller
+                .match_arg_lines("mode", choices, None, &attrs)
+                .join("\n           "),
             attrs.choice_doc_suffix(),
         ));
     }

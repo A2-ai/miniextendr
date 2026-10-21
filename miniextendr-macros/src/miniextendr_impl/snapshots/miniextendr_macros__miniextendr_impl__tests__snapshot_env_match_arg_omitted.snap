@@ -29,9 +29,11 @@ Picker$new <- function() {
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
-  if (!missing(mode) && !identical(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
-  if (!missing(color) && !identical(color, c("red", "green"))) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
-  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), .mx_self, if (missing(mode) || identical(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__)) quote(expr=) else mode, if (missing(color) || identical(color, c("red", "green"))) quote(expr=) else color)
+  .mx_absent_mode <- missing(mode) || identical(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__)
+  if (!.mx_absent_mode && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
+  .mx_absent_color <- missing(color) || identical(color, c("red", "green"))
+  if (!.mx_absent_color) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
+  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), .mx_self, if (.mx_absent_mode) quote(expr=) else mode, if (.mx_absent_color) quote(expr=) else color)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

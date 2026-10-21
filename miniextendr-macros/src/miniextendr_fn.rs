@@ -1542,7 +1542,7 @@ pub(crate) struct ParamAttrs {
     /// `Missing<..>` layer of a `match_arg` / `choices` parameter (#1551): the
     /// R formal keeps the choice vector, the prelude skips the check for an
     /// omitted argument, and Rust sees `Missing::Absent`; a single choice reads
-    /// its formal passed whole the same way ([`Self::absent_formal`], #2152).
+    /// its formal passed whole the same way ([`Self::reads_formal_as_absent`], #2152).
     /// Set by [`classify_choice_param`].
     pub omittable: bool,
     /// `no_default` on a `match_arg` / `choices` parameter (#1828): the R
@@ -1633,36 +1633,20 @@ impl ParamAttrs {
         }
     }
 
-    /// The value that reads as omitted (#2152): `choices`, which is then the
-    /// formal ([`Self::choice_formal`]), for a single-choice `Missing<..>`
-    /// parameter. Its wrapper skips the check for a value `identical()` to
-    /// it and forwards the missing-argument sentinel in its place, so passing
-    /// the default shown in the usage line reaches Rust as `Missing::Absent`,
-    /// like leaving it out. `None` for every other parameter: a `several_ok`
-    /// list reads the whole vector as every choice, a parameter without
-    /// `Missing` reads it as the first choice, and a `no_default` one has no
-    /// vector in its formal.
-    pub(crate) fn absent_formal<'c>(&self, choices: &'c str) -> Option<&'c str> {
-        (self.is_choice() && self.omittable && !self.several_ok && !self.no_default)
-            .then_some(choices)
-    }
-
-    /// The R expression for this parameter's choice list, as its formal and
-    /// its prelude check spell it: the write-time placeholder of a
-    /// `match_arg` parameter (keyed by the C wrapper `c_ident` and the
-    /// parameter's [`crate::match_arg_keys::param_key`] `key`), `c("a", "b")`
-    /// for `choices(...)`, `None` for any other parameter.
-    pub(crate) fn choice_list(&self, c_ident: &str, key: &str) -> Option<String> {
-        if self.match_arg {
-            return Some(crate::match_arg_keys::choices_placeholder(c_ident, key));
-        }
-        let quoted: Vec<String> = self
-            .choices
-            .as_ref()?
-            .iter()
-            .map(|c| format!("\"{c}\""))
-            .collect();
-        Some(format!("c({})", quoted.join(", ")))
+    /// Whether a value `identical()` to this parameter's formal reads as
+    /// omitted (#2152): a single-choice `Missing<..>` parameter, whose formal
+    /// is its choice list ([`Self::choice_formal`]). Its wrapper compares the
+    /// argument with that list once, before the check, and keeps the answer
+    /// in a flag (`.mx_absent_<p>`, #2182; see
+    /// [`crate::r_wrapper_builder::CallAttribution::match_arg_lines`]). For a
+    /// flagged value it skips the check and forwards the missing-argument
+    /// sentinel, so passing the default shown in the usage line reaches Rust
+    /// as `Missing::Absent`, like leaving it out. `false` for every other
+    /// parameter: a `several_ok` list reads the whole vector as every choice,
+    /// a parameter without `Missing` reads it as the first choice, and a
+    /// `no_default` one has no vector in its formal.
+    pub(crate) fn reads_formal_as_absent(&self) -> bool {
+        self.is_choice() && self.omittable && !self.several_ok && !self.no_default
     }
 
     /// The text after the quoted choice list in the auto-generated `@param`
@@ -1673,7 +1657,7 @@ impl ParamAttrs {
     /// `, or NULL; omitting the argument or passing the whole list means no
     /// choice` for `Missing<Option<T>>`, `; omitting the argument or passing
     /// the whole list means no choice` for `Missing<T>` (#2152; see
-    /// [`Self::absent_formal`]), and nothing for a plain choice. A
+    /// [`Self::reads_formal_as_absent`]), and nothing for a plain choice. A
     /// `Missing<Vec<T>>` `several_ok` list, whose whole vector selects every
     /// choice, says only `; omitting the argument means no choice`. Under
     /// `no_default` (#1828) the omission note goes (the author documents what
@@ -1955,25 +1939,18 @@ pub(crate) fn missing_default_param_docs(
         .collect()
 }
 
-/// The parameters of `per_param` (keyed by Rust name) whose wrapper reads a
-/// value `identical()` to the formal as omitted
-/// ([`ParamAttrs::absent_formal`], #2152), as R formal → the formal's
-/// default: the `match_arg` placeholder keyed by the C wrapper `c_ident`, or
-/// the literal `choices(...)` vector. For
+/// The R formals of the parameters of `per_param` (keyed by Rust name) whose
+/// wrapper reads a value `identical()` to the formal as omitted
+/// ([`ParamAttrs::reads_formal_as_absent`], #2152). For
 /// [`crate::r_wrapper_builder::RArgumentBuilder::with_absent_formals`].
 pub(crate) fn absent_formals_by_r_name(
     per_param: &std::collections::HashMap<String, ParamAttrs>,
-    c_ident: &str,
-) -> std::collections::HashMap<String, String> {
+) -> std::collections::HashSet<String> {
     let formals = crate::r_wrapper_builder::Formals::from_param_attrs(per_param);
     per_param
         .iter()
-        .filter_map(|(name, a)| {
-            let key = crate::match_arg_keys::param_key(name);
-            let choices = a.choice_list(c_ident, &key)?;
-            let absent = a.absent_formal(&choices)?.to_string();
-            Some((formals.of(name), absent))
-        })
+        .filter(|(_, a)| a.reads_formal_as_absent())
+        .map(|(name, _)| formals.of(name))
         .collect()
 }
 
@@ -2099,7 +2076,7 @@ pub(crate) fn finalize_method_param_attrs(
 /// A `default` on a choice parameter under `Missing<..>` (#2161). An omitted
 /// argument reaches Rust as `Missing::Absent`, so the default would pick no
 /// choice; on a `choices(...)` list it would also replace the formal, the
-/// choice vector that [`ParamAttrs::absent_formal`] compares a supplied value
+/// choice vector that [`ParamAttrs::reads_formal_as_absent`] compares a supplied value
 /// with (#2152).
 fn missing_choice_default_msg(param_name: &str) -> String {
     format!(
@@ -2492,13 +2469,10 @@ impl MiniextendrFunctionParsed {
         crate::r_wrapper_builder::Formals::from_param_attrs(&self.per_param)
     }
 
-    /// The parameters that read a value `identical()` to their formal as
-    /// omitted, keyed by R formal (see [`absent_formals_by_r_name`]).
-    pub(crate) fn absent_formals(
-        &self,
-        c_ident: &str,
-    ) -> std::collections::HashMap<String, String> {
-        absent_formals_by_r_name(&self.per_param, c_ident)
+    /// The R formals of the parameters that read a value `identical()` to
+    /// their formal as omitted (see [`absent_formals_by_r_name`]).
+    pub(crate) fn absent_formals(&self) -> std::collections::HashSet<String> {
+        absent_formals_by_r_name(&self.per_param)
     }
 
     /// The generated `@param` text of each `Missing<..>` parameter with a

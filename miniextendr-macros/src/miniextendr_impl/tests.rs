@@ -5575,9 +5575,10 @@ fn snapshot_env_match_arg_omitted() {
 }
 
 /// The formal of a single-choice `Missing<..>` parameter reads as omitted in
-/// every class system (#2152): the prelude skips the check for a value
-/// `identical()` to it, and the `.Call()` argument forwards the sentinel for
-/// it. A `several_ok` list keeps the plain forwarding.
+/// every class system (#2152): the prelude compares the argument with it once,
+/// into `.mx_absent_<p>` (#2182), skips the check for a flagged value, and
+/// the `.Call()` argument forwards the sentinel for it. A `several_ok` list
+/// keeps the plain forwarding.
 #[test]
 fn method_choice_formal_reads_as_omitted_in_each_class_system() {
     let placeholder =
@@ -5624,22 +5625,58 @@ fn method_choice_formal_reads_as_omitted_in_each_class_system() {
             ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
         };
         for line in [
+            format!(".mx_absent_mode <- missing(mode) || identical(mode, {placeholder})"),
             format!(
-                "if (!missing(mode) && !identical(mode, {placeholder})) \
-                 mode <- .miniextendr_match_arg(mode, {placeholder}, \"mode\""
+                "if (!.mx_absent_mode) mode <- .miniextendr_match_arg(mode, {placeholder}, \"mode\""
             ),
-            format!("if (missing(mode) || identical(mode, {placeholder})) quote(expr=) else mode"),
-            "if (!missing(color) && !identical(color, c(\"red\", \"green\")) && \
-             (is.character(color) || is.factor(color))) color <- .miniextendr_match_arg(color"
+            "if (.mx_absent_mode) quote(expr=) else mode".to_string(),
+            ".mx_absent_color <- missing(color) || identical(color, c(\"red\", \"green\"))"
                 .to_string(),
-            "if (missing(color) || identical(color, c(\"red\", \"green\"))) quote(expr=) else color"
+            "if (!.mx_absent_color && (is.character(color) || is.factor(color))) \
+             color <- .miniextendr_match_arg(color"
                 .to_string(),
+            "if (.mx_absent_color) quote(expr=) else color".to_string(),
             "if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes".to_string(),
             "if (missing(modes)) quote(expr=) else modes".to_string(),
         ] {
-            assert!(wrapper.contains(&line), "{system:?}: missing `{line}` in:\n{wrapper}");
+            assert!(
+                wrapper.contains(&line),
+                "{system:?}: missing `{line}` in:\n{wrapper}"
+            );
         }
+        for flag in [".mx_absent_mode", ".mx_absent_color"] {
+            crate::tests::assert_absent_flag_bound(&wrapper, flag);
+        }
+        assert!(
+            !wrapper.contains("identical(modes"),
+            "{system:?}:\n{wrapper}"
+        );
     }
+}
+
+/// An S7 property getter / setter lambda runs no prelude, so it reads no
+/// `.mx_absent_<p>` flag (#2182): a `Missing<..>` choice parameter of the
+/// setter is forwarded as omitted only when it is (`without_prelude`).
+#[test]
+fn s7_property_lambdas_read_no_absent_flag() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Dial {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(s7(getter, prop = "mode"))]
+                pub fn get_mode(&self) -> String { unimplemented!() }
+                #[miniextendr(s7(setter, prop = "mode"), match_arg(value))]
+                pub fn set_mode(&mut self, value: Missing<Mode>) { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("self@.ptr, if (missing(value)) quote(expr=) else value)"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains(".mx_absent_"), "{wrapper}");
 }
 
 /// `defaults(p = ...)` on a method's `Missing<T>` parameter (#2161) in every

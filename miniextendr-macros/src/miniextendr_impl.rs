@@ -4638,14 +4638,12 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Build method context for .Call generation
-        let mut ctx = MethodContext::new(method, type_ident)
-            .with_impl_preconditions(parsed_impl.preconditions);
         // No choice formal and no prelude here (#1830), so a `Missing<..>`
         // choice parameter forwards only an omitted argument as absent, not
         // its choice vector (#2152).
-        ctx.args = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
-            .with_formals(method.formals())
-            .build_call_args();
+        let ctx = MethodContext::new(method, type_ident)
+            .with_impl_preconditions(parsed_impl.preconditions)
+            .without_prelude();
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal

@@ -846,10 +846,12 @@ pub fn match_arg_null_or<U, E>(
 /// `#[miniextendr(match_arg)] mode: Missing<Option<Mode>>` reaches Rust as
 /// `Absent` when omitted, `Present(None)` for `NULL`, and
 /// `Present(Some(mode))` for a matched choice. A single-choice parameter
-/// treats its formal passed whole the same way (#2152): for a value
-/// `identical()` to the choice vector the wrapper skips the check and forwards
-/// the sentinel (`if (missing(x) || identical(x, c(...))) quote(expr=) else
-/// x`), so it is `Absent` too; a `several_ok` list reads that vector as every
+/// treats its formal passed whole the same way (#2152): before the check the
+/// wrapper binds `.mx_absent_x <- missing(x) || identical(x, c(...))`, skips
+/// the check for it and forwards the sentinel
+/// (`if (.mx_absent_x) quote(expr=) else x`), so that value is `Absent` too,
+/// while a value the check matches is `Present` even when the choice vector
+/// has one element (#2182); a `several_ok` list reads that vector as every
 /// choice. The C wrapper decodes it with
 /// `match_arg_missing_or(sexp, match_arg_option_from_sexp::<Mode>)`.
 pub fn match_arg_missing_or<U, E>(
