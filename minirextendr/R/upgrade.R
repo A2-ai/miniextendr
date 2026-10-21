@@ -37,6 +37,23 @@
 #' `tools/wrapper-inputs.rds`) and a git-tracked `src/<pkg>-win.def`, which
 #' configure generates; the upgrade does not delete or untrack them.
 #'
+#' Where the package has them installed, the upgrade also replaces what
+#' minirextendr ships for coding agents and git hooks, the way
+#' [use_claude_skills()] and `use_miniextendr_git_hooks(force = TRUE)` do:
+#' - every `.claude/skills/miniextendr-*` skill directory is replaced by the
+#'   bundled set, and a skill minirextendr no longer ships is deleted. Skills
+#'   of your own under `.claude/skills/` stay. In a monorepo these are the
+#'   skills at the workspace root;
+#' - the miniextendr section of each git hook that has one is rewritten from
+#'   the bundled hook. Your own lines in the hook file stay. A hook without a
+#'   miniextendr section is left alone, and so is a package outside a git
+#'   repository.
+#'
+#' A package without `miniextendr-*` skills, or without a miniextendr hook
+#' section, gets none. Local edits to the replaced files are overwritten:
+#' merging them back from git is up to you, and the summary lists every file
+#' replaced, added or removed.
+#'
 #' @param path Path to the R package root (standalone) or the monorepo workspace
 #'   root. Defaults to `"."`. For a monorepo, this is the directory containing
 #'   `Cargo.toml` -- the rpkg subdir is resolved automatically.
@@ -61,14 +78,16 @@
 #' @param autoconf Logical. If `TRUE` (default) and `autoconf` is available,
 #'   regenerates the configure script after upgrading.
 #' @param allow_dirty Logical. If `FALSE` (default), aborts when scaffolding
-#'   files have uncommitted changes in git, to prevent accidental data loss.
-#'   Set to `TRUE` to force the upgrade even with dirty files.
+#'   files or installed `.claude/skills/miniextendr-*` skills have uncommitted
+#'   changes in git, to prevent accidental data loss. Set to `TRUE` to force
+#'   the upgrade even with dirty files.
 #' @return Invisibly, a list of three character vectors naming the files the
 #'   upgrade touched: `changed` (existed before, content differs), `added`
 #'   (did not exist before) and `removed` (existed before, gone after). Paths
 #'   are relative to the package directory for a standalone package and to the
-#'   workspace root for a monorepo, as `git diff` prints them there. All three
-#'   are empty when the package already matched the templates.
+#'   workspace root for a monorepo, as `git diff` prints them there; a git
+#'   hook outside that directory is given relative to it (`../.git/hooks/...`).
+#'   All three are empty when the package already matched the templates.
 #' @export
 upgrade_miniextendr_package <- function(path = ".",
                                          rpkg_subdir = NULL,
@@ -80,6 +99,9 @@ upgrade_miniextendr_package <- function(path = ".",
   layout <- upgrade_layout(path, rpkg_subdir)
   resolved_path <- layout$pkg
   monorepo <- !is.null(layout$root)
+  # The skills and the git hooks belong to the project: the workspace root of
+  # a monorepo, where use_claude_skills() puts them.
+  proj_root <- layout$root %||% resolved_path
   if (monorepo) {
     cli::cli_alert_info("Monorepo layout detected -- upgrading rpkg subdir {.path {layout$subdir}}")
   }
@@ -109,6 +131,7 @@ upgrade_miniextendr_package <- function(path = ".",
   # --- Dirty check ---
   if (!allow_dirty) {
     check_scaffolding_clean(resolved_path)
+    check_scaffolding_clean(proj_root, ".claude/skills/miniextendr-*")
   }
 
   # --- configure.ac substitutions ---
@@ -151,6 +174,19 @@ upgrade_miniextendr_package <- function(path = ".",
     check_configure_ac_drift(monorepo)
   }
 
+  # --- Agent skills and git hooks ---
+  # Replace what minirextendr ships where the package has it installed; local
+  # edits are the author's to merge back from git (#2208).
+  if (length(installed_miniextendr_skills(proj_root)) > 0L) {
+    cli::cli_h2("Replacing agent skills")
+    replace_miniextendr_skills(proj_root)
+  }
+  hooks <- miniextendr_hook_names[has_miniextendr_git_hooks(proj_root)]
+  if (length(hooks) > 0L) {
+    cli::cli_h2("Replacing the miniextendr git hook sections")
+    use_miniextendr_git_hooks(proj_root, hooks = hooks, force = TRUE)
+  }
+
   # --- Autoconf ---
   if (autoconf && nzchar(Sys.which("autoconf"))) {
     cli::cli_h2("Regenerating configure script")
@@ -189,6 +225,11 @@ upgrade_miniextendr_package <- function(path = ".",
 #' the upgrade starts writing has to be added here, or the summary will not
 #' report it.
 #'
+#' Where the package has them installed, the list also holds the files of the
+#' `.claude/skills/miniextendr-*` skills, installed and bundled alike (see
+#' [upgrade_skill_files()]), and the git hooks with a miniextendr section
+#' (see [upgrade_hook_files()]).
+#'
 #' @param layout The list `upgrade_layout()` returns.
 #' @return A character vector of absolute paths, named by the path shown to the
 #'   user: relative to the package directory for a standalone package, and to
@@ -223,12 +264,63 @@ upgrade_owned_files <- function(layout) {
     ".gitignore",
     ".gitattributes"
   )
+  proj_root <- layout$root %||% layout$pkg
+  project_files <- c(upgrade_skill_files(proj_root), upgrade_hook_files(proj_root))
   if (is.null(layout$root)) {
-    return(stats::setNames(file.path(layout$pkg, pkg_files), pkg_files))
+    return(c(stats::setNames(file.path(layout$pkg, pkg_files), pkg_files),
+             project_files))
   }
   c(stats::setNames(file.path(layout$pkg, pkg_files),
                     file.path(layout$subdir, pkg_files)),
-    ".gitignore" = file.path(layout$root, ".gitignore"))
+    ".gitignore" = file.path(layout$root, ".gitignore"),
+    project_files)
+}
+
+#' Skill files an upgrade may write or delete
+#'
+#' When a project has a `.claude/skills/miniextendr-*` skill installed, the
+#' upgrade replaces them all with the bundled set ([replace_miniextendr_skills()]).
+#' That touches every file of the installed `miniextendr-*` skills, which it
+#' deletes, and every bundled file, which it writes.
+#'
+#' @param proj_root Project root: the package directory, or a monorepo's
+#'   workspace root.
+#' @return A character vector of absolute paths named by their path relative
+#'   to `proj_root` (`.claude/skills/<skill>/<file>`); empty when no
+#'   `miniextendr-*` skill is installed.
+#' @keywords internal
+upgrade_skill_files <- function(proj_root) {
+  installed <- installed_miniextendr_skills(proj_root)
+  if (length(installed) == 0L) {
+    return(character())
+  }
+  skills_dir <- file.path(proj_root, ".claude", "skills")
+  present <- list.files(skills_dir, recursive = TRUE, all.files = TRUE)
+  present <- present[sub("/.*", "", present) %in% installed]
+  files <- union(present, list.files(bundled_skills_dir(), recursive = TRUE, all.files = TRUE))
+  stats::setNames(file.path(skills_dir, files), file.path(".claude", "skills", files))
+}
+
+#' Git hook files an upgrade may rewrite
+#'
+#' The upgrade rewrites the miniextendr section of each git hook that has one
+#' (`use_miniextendr_git_hooks(force = TRUE)`). The hooks directory is the one
+#' [resolve_git_hooks_dir()] finds for `proj_root`.
+#'
+#' @param proj_root Project root: the package directory, or a monorepo's
+#'   workspace root.
+#' @return A character vector of absolute paths of the hooks with a
+#'   miniextendr section, named by their path relative to `proj_root` (e.g.
+#'   `.git/hooks/pre-commit`); empty outside a git repository or when no hook
+#'   has a miniextendr section.
+#' @keywords internal
+upgrade_hook_files <- function(proj_root) {
+  installed <- has_miniextendr_git_hooks(proj_root)
+  if (!any(installed)) {
+    return(character())
+  }
+  hooks <- file.path(resolve_git_hooks_dir(proj_root), names(installed)[installed])
+  stats::setNames(hooks, as.character(fs::path_rel(hooks, proj_root)))
 }
 
 #' MD5 fingerprints of files
@@ -440,6 +532,27 @@ report_upgrade_leftovers <- function(proj_dir) {
   invisible()
 }
 
+# Scaffolding files the upgrade overwrites, checked for uncommitted changes
+upgrade_scaffolding_files <- c(
+  "src/stub.c",
+  "src/r_shim.h",
+  "src/rust/build.rs",
+  "src/Makevars.in",
+  "src/win.def.in",
+  "inst/include/mx_abi.h",
+  "bootstrap.R",
+  "cleanup",
+  "cleanup.win",
+  "cleanup.ucrt",
+  "configure.win",
+  "configure.ucrt",
+  "tools/config.guess",
+  "tools/config.sub",
+  ".Rbuildignore",
+  ".gitignore",
+  ".gitattributes"
+)
+
 #' Check that scaffolding files are clean in git
 #'
 #' Uses `git status --porcelain` to inspect build system files that will be
@@ -453,12 +566,16 @@ report_upgrade_leftovers <- function(proj_dir) {
 #' uncommitted files.
 #'
 #' @param proj_dir Package directory to inspect (default `usethis::proj_get()`).
-#'   The relative `scaffolding_files` pathspecs are interpreted against it.
+#'   The relative pathspecs in `files` are interpreted against it.
+#' @param files Git pathspecs of the files the upgrade overwrites there.
+#'   Defaults to the scaffolding files of the package; the upgrade also
+#'   checks the `.claude/skills/miniextendr-*` skills of the project.
 #' @return `NULL` invisibly when the files are clean, or when git is missing
 #'   or `proj_dir` is not in a git repository; otherwise aborts, listing the
 #'   `git status --porcelain` lines.
 #' @keywords internal
-check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
+check_scaffolding_clean <- function(proj_dir = usethis::proj_get(),
+                                    files = upgrade_scaffolding_files) {
   # Bail out if git is not available
   if (!nzchar(Sys.which("git"))) return(invisible())
 
@@ -469,28 +586,9 @@ check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
   }, error = function(e) NULL)
   if (is.null(repo)) return(invisible())
 
-  # Files that upgrade will overwrite
-  scaffolding_files <- c(
-    "src/stub.c",
-    "src/r_shim.h",
-    "src/rust/build.rs",
-    "src/Makevars.in",
-    "src/win.def.in",
-    "inst/include/mx_abi.h",
-    "bootstrap.R",
-    "cleanup",
-    "cleanup.win",
-    "cleanup.ucrt",
-    "configure.win",
-    "configure.ucrt",
-    "tools/config.guess",
-    "tools/config.sub",
-    ".Rbuildignore",
-    ".gitignore",
-    ".gitattributes"
-  )
-
-  out <- run_command("git", c("status", "--porcelain", "--", scaffolding_files),
+  # shQuote: system2() goes through a shell, and git, not the shell, should
+  # expand a glob pathspec.
+  out <- run_command("git", c("status", "--porcelain", "--", shQuote(files)),
                      wd = proj_dir)
   if (is.null(out) || length(out) == 0) return(invisible())
 

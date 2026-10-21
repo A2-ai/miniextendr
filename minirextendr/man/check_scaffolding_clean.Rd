@@ -4,11 +4,18 @@
 \alias{check_scaffolding_clean}
 \title{Check that scaffolding files are clean in git}
 \usage{
-check_scaffolding_clean(proj_dir = usethis::proj_get())
+check_scaffolding_clean(
+  proj_dir = usethis::proj_get(),
+  files = upgrade_scaffolding_files
+)
 }
 \arguments{
 \item{proj_dir}{Package directory to inspect (default \code{usethis::proj_get()}).
-The relative \code{scaffolding_files} pathspecs are interpreted against it.}
+The relative pathspecs in \code{files} are interpreted against it.}
+
+\item{files}{Git pathspecs of the files the upgrade overwrites there.
+Defaults to the scaffolding files of the package; the upgrade also
+checks the \verb{.claude/skills/miniextendr-*} skills of the project.}
 }
 \value{
 \code{NULL} invisibly when the files are clean, or when git is missing

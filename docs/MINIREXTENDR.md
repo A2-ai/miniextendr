@@ -446,9 +446,11 @@ The hooks auto-detect standalone vs monorepo layouts (searches for
 append a marker-delimited miniextendr section rather than
 overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
 Running twice is safe; the installer skips on the `# miniextendr`
-marker. An installed hook stays as it was when minirextendr is upgraded:
+marker. Upgrading minirextendr alone leaves an installed hook as it was:
 run `use_miniextendr_git_hooks(force = TRUE)` to replace the miniextendr
 section with the version the installed minirextendr bundles.
+`upgrade_miniextendr_package()` does the same for each hook that has a
+miniextendr section. Your own lines in the hook file stay either way.
 
 The pin check is for a package that follows miniextendr from git on both
 sides: minirextendr in `rproject.toml`
@@ -542,6 +544,24 @@ Updates templates, vendored crates, and configure.ac to match the latest minirex
   - A git-tracked `src/<pkg>-win.def`. configure generates this file and the
     scaffold now gitignores it, but an ignore rule does not untrack a file
     you committed earlier. Run `git rm --cached src/<pkg>-win.def`.
+- **Agent skills and git hooks.** Where the package has them installed, the
+  upgrade replaces what minirextendr ships:
+  - The `.claude/skills/miniextendr-*` skills are replaced by the bundled set,
+    as `use_claude_skills()` does, and a skill minirextendr no longer ships
+    is deleted. Skills of your own under `.claude/skills/` stay. In a
+    monorepo these are the skills at the workspace root.
+  - The miniextendr section of each git hook that has one is rewritten from
+    the bundled hook, as `use_miniextendr_git_hooks(force = TRUE)` does. Your
+    own lines in the hook file stay.
+
+  A package without `miniextendr-*` skills, or without a miniextendr hook
+  section, gets none, and outside a git repository there are no hooks to
+  update. Local edits to the replaced files are overwritten; merging them
+  back is up to you. The summary and the return value list the skill and
+  hook files with the other changed, added and removed files. Committed
+  skill edits show up in `git diff`, and the uncommitted-changes check
+  covers the skills too. Hooks under `.git/hooks/` aren't tracked by git,
+  so keep any edit to a miniextendr section elsewhere.
 
 ## Caching
 
