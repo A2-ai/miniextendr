@@ -200,13 +200,14 @@ pub fn format_fit(x: List, #[miniextendr(default = "3L")] digits: i32, _dots: ..
     /* ... */
 }
 
-/// `data.frame()` calls `as.data.frame(x, optional = TRUE, stringsAsFactors = ...)`.
+/// `data.frame()` calls `as.data.frame(x, optional = TRUE, stringsAsFactors = ...)`,
+/// and from R 4.7 also passes `validRN = FALSE`.
 /// @param x A `fit`.
-/// @param ... `row.names`, `optional` and `stringsAsFactors`, ignored.
+/// @param ... `row.names`, `optional`, `stringsAsFactors` and `validRN`, ignored.
 /// @export
 #[miniextendr(
     s3(generic = "as.data.frame", class = "fit"),
-    dots = empty(allow = ["row.names", "optional", "stringsAsFactors"])
+    dots = empty(allow = ["row.names", "optional", "stringsAsFactors", "validRN"])
 )]
 pub fn as_data_frame_fit(x: List, _dots: ...) -> BuiltDataFrame { /* ... */ }
 ```

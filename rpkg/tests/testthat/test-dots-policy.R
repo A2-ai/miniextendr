@@ -73,18 +73,19 @@ test_that("empty(allow = ...) takes the names base R passes", {
 test_that("empty(allow = ...) takes the generic's arguments given by position", {
   # The method's only formal is `x`, so the generic's `row.names` and
   # `optional` given by position reach `...` unnamed. Nothing reads them, so
-  # only their number counts: one for each allowed name not given by name.
+  # only their number counts: one for each allowed name not given by name
+  # (four: row.names, optional, stringsAsFactors, validRN).
   fit <- mx_dots_fit(4)
   expect_identical(as.data.frame(fit, NULL, TRUE), data.frame(estimate = 4))
-  expect_identical(as.data.frame(fit, NULL, TRUE, FALSE), data.frame(estimate = 4))
-  e <- caught(as.data.frame(fit, NULL, TRUE, FALSE, 1))
+  expect_identical(as.data.frame(fit, NULL, TRUE, FALSE, FALSE), data.frame(estimate = 4))
+  e <- caught(as.data.frame(fit, NULL, TRUE, FALSE, FALSE, 1))
   expect_s3_class(e, "miniextendr_error_unused_argument")
-  expect_identical(e$argument, "..4")
+  expect_identical(e$argument, "..5")
   expect_identical(e$suggestion, NA_character_)
-  expect_identical(conditionMessage(e), "unused argument '..4' (unnamed)")
+  expect_identical(conditionMessage(e), "unused argument '..5' (unnamed)")
   # An allowed name given by name leaves one place fewer.
-  e <- caught(as.data.frame(fit, NULL, TRUE, FALSE, optional = TRUE))
-  expect_identical(e$argument, "..3")
+  e <- caught(as.data.frame(fit, NULL, TRUE, FALSE, FALSE, optional = TRUE))
+  expect_identical(e$argument, "..4")
   # With no allowed names, every unnamed argument is refused.
   expect_identical(caught(mx_dots_predict(fit, 1, 2))$argument, "..1")
 })

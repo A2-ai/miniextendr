@@ -9,10 +9,10 @@
 \arguments{
 \item{x}{A \code{mx_dots_fit}.}
 
-\item{...}{\code{row.names}, \code{optional} and \code{stringsAsFactors}, ignored.}
+\item{...}{\code{row.names}, \code{optional}, \code{stringsAsFactors} and \code{validRN}, ignored.}
 }
 \description{
 A fit as a one-row data frame. \code{data.frame()} calls this with
-\verb{optional = TRUE, stringsAsFactors = FALSE}, so \code{...} takes those and
-\code{row.names}, and ignores them.
+\verb{optional = TRUE, stringsAsFactors = FALSE} (and, from R 4.7,
+\code{validRN = FALSE}), so \code{...} takes those and \code{row.names}, and ignores them.
 }

@@ -699,7 +699,9 @@ test_that("try_eval_in(): the data mask of eval_in(), an R error as Err (#2163)"
   expect_identical(miniextendr:::quoted_try_rows(tbl, b > limit), list(value = tbl$b > limit))
   res <- miniextendr:::quoted_try_rows(tbl, missing_col > 1)
   expect_match(res$message, "missing_col")
-  expect_identical(res$classes, c("simpleError", "error", "condition"))
+  # R's own classes for the lookup: R 4.7 adds objectNotFoundError.
+  r_err <- tryCatch(eval(quote(missing_col > 1), tbl), error = identity)
+  expect_identical(res$classes, class(r_err))
   # Evaluated at the top of the mask: no call (R's would be the tryCatch() frame's).
   expect_null(res$call)
   # The caller's handlers still see a warning.
