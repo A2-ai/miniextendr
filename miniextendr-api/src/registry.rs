@@ -133,7 +133,8 @@ pub static MX_ALL_EQUAL: [AllEqualEntry];
 /// [`collect_r_wrappers`] writes roxygen2's re-export block for each
 /// `pkg::name` once, however many items name it, and
 /// [`write_r_wrappers_to_file`] refuses a name re-exported from two packages
-/// or bound by the package's own wrappers (`reexport_conflicts`).
+/// or bound by the package's own wrappers or hand-written R files
+/// (`reexport_conflicts`).
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_REEXPORTS: [ReexportEntry];
@@ -1040,16 +1041,22 @@ fn reexport_sites(entries: &[&ReexportEntry]) -> String {
 
 /// Refuse the re-exports of `entries` that can't be written, all in one
 /// message: a name re-exported from two packages (a package exports one
-/// object under a name), and a name that `content`, the assembled wrappers,
-/// also binds at top level or exports. The package's own binding would hide
-/// the imported one inside its namespace, so `export(name)` would export it
+/// object under a name), and a name the package also binds at top level or
+/// exports, in `content`, the assembled wrappers, or in `hand_written`, its
+/// hand-written R files (#2205). The package's own binding would hide the
+/// imported one inside its namespace, so `export(name)` would export it
 /// instead; an export alone repeats the one the re-export writes.
 ///
-/// Only the generated wrappers are read, not the package's hand-written R
-/// files.
+/// A hand-written file is read by [`wrapper_names`] too, so the scan sees
+/// what that sees in generated text; every name is the file's.
 #[cfg(not(target_arch = "wasm32"))]
-fn reexport_conflicts(content: &str, entries: &[ReexportEntry]) -> Result<(), String> {
+fn reexport_conflicts(
+    content: &str,
+    hand_written: &[HandWrittenFile],
+    entries: &[ReexportEntry],
+) -> Result<(), String> {
     use std::collections::BTreeMap;
+    use std::rc::Rc;
     let mut by_name: BTreeMap<&str, BTreeMap<&str, Vec<&ReexportEntry>>> = BTreeMap::new();
     for entry in entries {
         by_name
@@ -1082,56 +1089,95 @@ fn reexport_conflicts(content: &str, entries: &[ReexportEntry]) -> Result<(), St
         }
     }
 
-    // Each fragment that binds or exports a re-exported name, once, by its
-    // binding when it both binds and exports it.
-    let mut own: BTreeMap<&str, Vec<(&'static str, std::rc::Rc<str>)>> = BTreeMap::new();
-    for WrapperName {
-        name,
-        kind,
-        producer,
-    } in wrapper_names(content)
+    // Each fragment or hand-written file that binds or exports a re-exported
+    // name, once, by its binding when it both binds and exports it.
+    struct Use {
+        kind: &'static str,
+        producer: Rc<str>,
+        /// `producer` is a hand-written file.
+        in_file: bool,
+    }
+    let mut own: BTreeMap<&str, Vec<Use>> = BTreeMap::new();
+    let generated = wrapper_names(content).into_iter().map(|name| (name, false));
+    let files = hand_written.iter().flat_map(|file| {
+        let producer: Rc<str> = Rc::from(file.name.as_str());
+        // A `# Generated from` comment in the file doesn't change whose the
+        // names are.
+        wrapper_names(&file.text).into_iter().map(move |name| {
+            let producer = producer.clone();
+            (WrapperName { producer, ..name }, true)
+        })
+    });
+    for (
+        WrapperName {
+            name,
+            kind,
+            producer,
+        },
+        in_file,
+    ) in generated.chain(files)
     {
         if !by_name.contains_key(name) {
             continue;
         }
         let uses = own.entry(name).or_default();
-        match uses.iter_mut().find(|(_, other)| *other == producer) {
-            Some(used) if used.0 == "export" => used.0 = kind,
+        match uses.iter_mut().find(|used| used.producer == producer) {
+            Some(used) if used.kind == "export" => used.kind = kind,
             Some(_) => {}
-            None => uses.push((kind, producer)),
+            None => uses.push(Use {
+                kind,
+                producer,
+                in_file,
+            }),
         }
     }
     for (name, uses) in own {
-        let binds = uses.iter().any(|(kind, _)| *kind != "export");
         let what = uses
             .iter()
-            .map(|(kind, producer)| {
-                if *kind == "export" {
-                    format!("an export from {producer}")
+            .map(|used| {
+                let (kind, producer) = (used.kind, &used.producer);
+                let from = if used.in_file { "in" } else { "from" };
+                if kind == "export" {
+                    format!("an export {from} {producer}")
                 } else {
-                    format!("a {kind} from {producer}")
+                    format!("a {kind} {from} {producer}")
                 }
             })
             .collect::<Vec<_>>()
             .join(", ");
-        let (does, why) = if binds {
+        let binders = || uses.iter().filter(|used| used.kind != "export");
+        let (does, why) = if binders().next().is_some() {
+            let files = binders()
+                .filter(|used| used.in_file)
+                .map(|used| &*used.producer)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let rename = if files.is_empty() {
+                "rename the package's binding (`r_name = \"...\"`, `class = \"...\"`)".to_string()
+            } else if binders().any(|used| !used.in_file) {
+                format!(
+                    "rename the package's binding (`r_name = \"...\"`, `class = \"...\"`) and \
+                     the one in {files}"
+                )
+            } else {
+                format!("rename the package's `{name}` in {files}")
+            };
             (
-                "bind",
+                "binds",
                 format!(
                     "The package's own `{name}` would hide the imported one in its namespace, \
                      so `export({name})` would export it instead. Remove the re-export, or \
-                     rename the package's binding (`r_name = \"...\"`, `class = \"...\"`)."
+                     {rename}."
                 ),
             )
         } else {
             (
-                "export",
+                "exports",
                 "`reexport!` writes the export itself; drop the other one.".to_string(),
             )
         };
         errors.push(format!(
-            "`reexport!` re-exports {}, and the package's wrappers also {does} `{name}` ({what}). \
-             {why}",
+            "`reexport!` re-exports {}, and the package also {does} `{name}` ({what}). {why}",
             reexports(name, &by_name[name]),
         ));
     }
@@ -1145,6 +1191,52 @@ fn reexport_conflicts(content: &str, entries: &[ReexportEntry]) -> Result<(), St
             .collect::<Vec<_>>()
             .join("\n"))
     }
+}
+
+/// A hand-written R file of the package, as [`reexport_conflicts`] reads it.
+#[cfg(not(target_arch = "wasm32"))]
+struct HandWrittenFile {
+    /// The file as messages name it, `R/tidy.R`.
+    name: String,
+    text: String,
+}
+
+/// The package's hand-written R files: the code files of `r_dir`, its `R/`
+/// directory, that R installs (extension `.R`, `.r`, `.S`, `.s` or `.q`, and
+/// a name starting with a letter or digit), in name order. The file named
+/// like `wrappers`, the file being written, is left out by name, since a
+/// release tarball's install writes into a temporary copy of it. The OS
+/// subdirectories `R/unix/` and `R/windows/` are not read. A file's text is
+/// read lossily: R also accepts Latin-1 sources.
+#[cfg(not(target_arch = "wasm32"))]
+fn hand_written_r_files(
+    r_dir: &std::path::Path,
+    wrappers: &std::path::Path,
+) -> Vec<HandWrittenFile> {
+    let failed = |e: std::io::Error| -> ! { panic!("failed to read {}: {e}", r_dir.display()) };
+    let mut files: Vec<HandWrittenFile> = std::fs::read_dir(r_dir)
+        .unwrap_or_else(|e| failed(e))
+        .filter_map(|entry| {
+            let path = entry.unwrap_or_else(|e| failed(e)).path();
+            let name = path.file_name()?.to_str()?;
+            let code = name.starts_with(|c: char| c.is_ascii_alphanumeric())
+                && name
+                    .rsplit_once('.')
+                    .is_some_and(|(_, ext)| ["R", "r", "S", "s", "q"].contains(&ext));
+            let written = wrappers.file_name() == Some(std::ffi::OsStr::new(name));
+            if !code || written || !path.is_file() {
+                return None;
+            }
+            let bytes = std::fs::read(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+            Some(HandWrittenFile {
+                name: format!("R/{name}"),
+                text: String::from_utf8_lossy(&bytes).into_owned(),
+            })
+        })
+        .collect();
+    files.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+    files
 }
 
 // endregion
@@ -3549,9 +3641,13 @@ fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::C
 /// installed shared object). All distributed_slice entries from `#[miniextendr]`
 /// items are available because stub.c force-loads the whole user crate.
 ///
+/// `r_dir` is the package's `R/` directory. With it, the `reexport!` names
+/// are also checked against the package's hand-written R files (the code
+/// files R installs from `R/`); without it, only against the wrappers.
+///
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn write_r_wrappers_to_file(path: &str) {
+pub fn write_r_wrappers_to_file(path: &str, r_dir: Option<&str>) {
     // Build the new content in memory; `wrappers_file_content` prepends the
     // header (marker line + version/fingerprint line) once the body is final.
     let mut content = String::from(WRAPPERS_PREAMBLE_HEADER);
@@ -3776,10 +3872,17 @@ pub fn write_r_wrappers_to_file(path: &str) {
         }
     }
 
-    // Refuse the `reexport!` names the package's wrappers bind or export
-    // themselves, and a name re-exported from two packages (#1910). Like the
-    // scan above, it reads the final names.
-    if let Err(msg) = reexport_conflicts(&content, &MX_REEXPORTS) {
+    // Refuse the `reexport!` names the package's wrappers or hand-written R
+    // files bind or export themselves, and a name re-exported from two
+    // packages (#1910, #2205). Like the scan above, it reads the final names.
+    // The R files are read only for a package that re-exports.
+    let hand_written = match r_dir {
+        Some(r_dir) if !MX_REEXPORTS.is_empty() => {
+            hand_written_r_files(std::path::Path::new(r_dir), std::path::Path::new(path))
+        }
+        _ => Vec::new(),
+    };
+    if let Err(msg) = reexport_conflicts(&content, &hand_written, &MX_REEXPORTS) {
         panic!("{msg}");
     }
 
@@ -4375,9 +4478,16 @@ fn parse_top_level_assignment(line: &str) -> Option<(&str, &str)> {
 /// C-callable entry point for R wrapper generation.
 ///
 /// Called from Makevars via Rscript: loads the installed shared object with
-/// `dyn.load()`, then `.Call("miniextendr_write_wrappers", path)` to write
-/// `R/miniextendr-wrappers.R`. NAMESPACE generation is left to roxygen2
+/// `dyn.load()`, then `.Call("miniextendr_write_wrappers", c(path, r_dir))` to
+/// write `R/miniextendr-wrappers.R`. NAMESPACE generation is left to roxygen2
 /// (`devtools::document()`).
+///
+/// The second element, the package's `R/` directory, is optional: without it,
+/// or when it is `NA` or empty, the hand-written R files are not checked
+/// ([`write_r_wrappers_to_file`]). It is an element and not a second argument
+/// so the routine keeps one argument: R refuses a `.Call` whose argument count
+/// differs from the registered one, and a package's `tools/write-wrappers.R`
+/// can be older or newer than its `miniextendr-api`.
 ///
 /// A panic, such as a name collision found while assembling the wrappers, is
 /// raised as an R error, so the install stops with the message instead of
@@ -4393,13 +4503,20 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
         || unsafe {
             use crate::{SEXP, SexpExt};
 
-            let char_sexp = path_sexp.string_elt_unchecked(0);
-            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-            let path = c_str
-                .to_str()
-                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let element = |i: isize| {
+                let char_sexp = path_sexp.string_elt_unchecked(i);
+                let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+                c_str
+                    .to_str()
+                    .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"))
+            };
+            let path = element(0);
+            let r_dir = (path_sexp.len_unchecked() > 1
+                && !path_sexp.string_elt_unchecked(1).is_na_string())
+            .then(|| element(1))
+            .filter(|dir| !dir.is_empty());
 
-            write_r_wrappers_to_file(path);
+            write_r_wrappers_to_file(path, r_dir);
 
             SEXP::nil()
         },
@@ -4849,7 +4966,7 @@ mod tests {
         let names: Vec<&str> = wrapper_names(&content).iter().map(|n| n.name).collect();
         assert_eq!(names, ["fit"]);
         assert!(detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new()).is_ok());
-        assert_eq!(reexport_conflicts(&content, &entries), Ok(()));
+        assert_eq!(reexport_conflicts(&content, &[], &entries), Ok(()));
     }
 
     /// A name from two packages, and names the wrappers bind or export, are
@@ -4879,25 +4996,121 @@ mod tests {
             reexport("generics", "interpolate", "fits.rs", 3),
         ];
         assert_eq!(
-            reexport_conflicts(content, &entries).unwrap_err(),
+            reexport_conflicts(content, &[], &entries).unwrap_err(),
             "miniextendr: `reexport!` re-exports `tidy` from 2 packages: `broom::tidy` \
              (models.rs:5:11), `generics::tidy` (fits.rs:3:11) (models.rs:6:11). A package \
              exports one object under a name; re-export it from one of them.\n\
              miniextendr: `reexport!` re-exports `generics::augment` (fits.rs:3:11), and the \
-             package's wrappers also bind `augment` (a function from Rust fn `augment` \
-             (fits.rs:30:8)). The package's own `augment` would hide the imported one in its \
-             namespace, so `export(augment)` would export it instead. Remove the re-export, or \
-             rename the package's binding (`r_name = \"...\"`, `class = \"...\"`).\n\
+             package also binds `augment` (a function from Rust fn `augment` (fits.rs:30:8)). \
+             The package's own `augment` would hide the imported one in its namespace, so \
+             `export(augment)` would export it instead. Remove the re-export, or rename the \
+             package's binding (`r_name = \"...\"`, `class = \"...\"`).\n\
              miniextendr: `reexport!` re-exports `generics::glance` (fits.rs:3:11), and the \
-             package's wrappers also bind `glance` (a guarded generic from Rust impl `Fit` \
+             package also binds `glance` (a guarded generic from Rust impl `Fit` \
              (fits.rs:20:6)). The package's own `glance` would hide the imported one in its \
              namespace, so `export(glance)` would export it instead. Remove the re-export, or \
              rename the package's binding (`r_name = \"...\"`, `class = \"...\"`).\n\
              miniextendr: `reexport!` re-exports `broom::tidy` (models.rs:5:11), \
-             `generics::tidy` (fits.rs:3:11) (models.rs:6:11), and the package's wrappers also \
-             export `tidy` (an export from Rust fn `fit_print` (fits.rs:40:8)). `reexport!` \
-             writes the export itself; drop the other one."
+             `generics::tidy` (fits.rs:3:11) (models.rs:6:11), and the package also exports \
+             `tidy` (an export from Rust fn `fit_print` (fits.rs:40:8)). `reexport!` writes the \
+             export itself; drop the other one."
         );
+    }
+
+    fn hand_written(name: &str, text: &str) -> HandWrittenFile {
+        HandWrittenFile {
+            name: name.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    /// A hand-written R file that binds or exports a re-exported name is
+    /// refused like the wrappers, in the same message, naming the file
+    /// (#2205). Every name in a file is the file's, whatever its comments say.
+    #[test]
+    fn reexport_conflicts_read_hand_written_files() {
+        let content = concat!(
+            "# Generated from Rust fn `augment` (fits.rs:30:8)\n",
+            "#' @export\n",
+            "augment <- function(x) .Call(C_augment, x)\n",
+        );
+        let files = [
+            hand_written(
+                "R/augment.R",
+                "augment <- function(x, ...) x\n\
+                 glance_helper <- function(x) x\n",
+            ),
+            hand_written(
+                "R/glance.R",
+                "#' @export glance\n\
+                 NULL\n\
+                 # Generated from Rust fn `tidy` (copied.rs:1:1)\n\
+                 #' Tidy a fit\n\
+                 #' @export\n\
+                 tidy <- function(x, ...) {\n\
+                 \x20 inner <- function() NULL\n\
+                 }\n",
+            ),
+            hand_written("R/utils.R", "interpolate = function(x) x\n"),
+        ];
+        let entries = [
+            reexport("generics", "tidy", "fits.rs", 3),
+            reexport("generics", "glance", "fits.rs", 3),
+            reexport("generics", "augment", "fits.rs", 3),
+            reexport("generics", "interpolate", "fits.rs", 3),
+            reexport("generics", "inner", "fits.rs", 3),
+        ];
+        assert_eq!(
+            reexport_conflicts(content, &files, &entries).unwrap_err(),
+            "miniextendr: `reexport!` re-exports `generics::augment` (fits.rs:3:11), and the \
+             package also binds `augment` (a function from Rust fn `augment` (fits.rs:30:8), a \
+             function in R/augment.R). The package's own `augment` would hide the imported one \
+             in its namespace, so `export(augment)` would export it instead. Remove the \
+             re-export, or rename the package's binding (`r_name = \"...\"`, `class = \"...\"`) \
+             and the one in R/augment.R.\n\
+             miniextendr: `reexport!` re-exports `generics::glance` (fits.rs:3:11), and the \
+             package also exports `glance` (an export in R/glance.R). `reexport!` writes the \
+             export itself; drop the other one.\n\
+             miniextendr: `reexport!` re-exports `generics::tidy` (fits.rs:3:11), and the \
+             package also binds `tidy` (a function in R/glance.R). The package's own `tidy` \
+             would hide the imported one in its namespace, so `export(tidy)` would export it \
+             instead. Remove the re-export, or rename the package's `tidy` in R/glance.R."
+        );
+        // A file that binds other names passes.
+        assert_eq!(reexport_conflicts("", &files[..1], &entries[..1]), Ok(()));
+    }
+
+    /// The scan reads the code files R installs from `R/`, in name order,
+    /// and not the wrappers being written, whatever directory they are
+    /// written in.
+    #[test]
+    fn hand_written_r_files_are_the_installed_code_files() {
+        let root =
+            std::env::temp_dir().join(format!("miniextendr-hand-written-{}", std::process::id()));
+        let r_dir = root.join("R");
+        std::fs::create_dir_all(r_dir.join("unix")).unwrap();
+        let written: [(&str, &[u8]); 9] = [
+            ("zz.R", b"zz <- function() NULL\n"),
+            ("pkg-wrappers.R", b"generated <- function() NULL\n"),
+            ("a.r", b"a <- function() NULL\n"),
+            ("latin1.R", b"caf\xe9 <- function() \"\xe9\"\n"),
+            (".hidden.R", b"hidden <- function() NULL\n"),
+            ("_draft.R", b"draft <- function() NULL\n"),
+            ("notes.txt", b"notes <- function() NULL\n"),
+            ("pkg-wrappers.tmp", b"tmp <- function() NULL\n"),
+            ("unix/os.R", b"os <- function() NULL\n"),
+        ];
+        for (name, text) in written {
+            std::fs::write(r_dir.join(name), text).unwrap();
+        }
+        let elsewhere = root.join("tmp").join("pkg-wrappers.R");
+
+        let files = hand_written_r_files(&r_dir, &elsewhere);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(names, ["R/a.r", "R/latin1.R", "R/zz.R"]);
+        assert_eq!(files[1].text, "caf\u{fffd} <- function() \"\u{fffd}\"\n");
     }
 
     #[test]

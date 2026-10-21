@@ -82,6 +82,15 @@ which walk the `#[distributed_slice]` tables and write `R/<pkg>-wrappers.R` and
 `src/rust/wasm_registry.rs`. The load runs with `MINIEXTENDR_WRAPPER_GEN=1`, so
 `R_init_<pkg>` only registers routines.
 
+The wrapper writer takes one character vector, `c(<wrappers file>, <R/ dir>)`.
+With the `R/` directory it also checks the names `reexport!` re-exports against
+the package's hand-written R files, and stops the install on one the package
+defines or exports itself. A `tools/write-wrappers.R` from before that passes
+the wrappers path alone, and the check reads only the generated wrappers. The
+check runs when the wrappers are generated, so an in-place install that
+doesn't relink (below) doesn't see a hand-written file added since; the next
+relink, or any install from a tarball, does.
+
 Each writer replaces its file only when the content changed, so an unchanged
 file keeps its bytes and its mtime. Make therefore tracks the pass with a stamp,
 `rust-target/.miniextendr-wrappers`, not with the wrappers file: the stamp

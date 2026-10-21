@@ -897,10 +897,17 @@ has the `@importFrom` (above); `reexport!` adds the export.
   module can list the generics its methods are for. The wrappers get one block
   per `pkg::name`, sorted by package and name.
 - `R CMD INSTALL` stops, with every problem in one message, on a name
-  re-exported from two packages, and on a name the generated wrappers also
-  define or export: a function, a class, the S3 generic of an `s3` impl
-  method without `generic = "..."`, or an `@export <name>` /
-  `@rawNamespace export(...)` tag. Hand-written R files are not read.
+  re-exported from two packages, and on a name the package also defines or
+  exports, in the generated wrappers or a hand-written file in `R/`: a
+  function, a class, the S3 generic of an `s3` impl method without
+  `generic = "..."`, or an `@export <name>` / `@rawNamespace export(...)`
+  tag. The hand-written files are read line by line, the way the generated
+  ones are: a top-level `name <- function(...)` (or `R6::R6Class(` /
+  `S7::new_class(` / `new.env(`) at the start of a line, and the roxygen tags
+  above. A definition written as `name = function(...)`, with `assign()`,
+  inside `local()`, a binding to anything else (`tidy <- other::tidy`), a
+  `setGeneric("tidy", ...)`, and the files in `R/unix/` and `R/windows/` are
+  not seen.
 - A package that isn't an R package name, a name that isn't one (see above),
   and one name from two packages in one invocation are compile errors, all
   reported at once. See [MACRO_ERRORS.md](MACRO_ERRORS.md).
