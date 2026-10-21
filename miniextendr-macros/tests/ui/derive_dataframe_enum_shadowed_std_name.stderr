@@ -1,0 +1,45 @@
+error[E0308]: mismatched types
+  --> tests/ui/derive_dataframe_enum_shadowed_std_name.rs:16:13
+   |
+12 | #[derive(DataFrameRow)]
+   |          ------------ arguments to this enum variant are incorrect
+...
+16 |     Local { label: String },
+   |             ^^^^^ expected `std::string::String`, found `String`
+   |
+   = note: `String` and `std::string::String` have similar names, but are actually distinct types
+note: `String` is defined in the current crate
+  --> tests/ui/derive_dataframe_enum_shadowed_std_name.rs:10:1
+   |
+10 | pub struct String(std::string::String);
+   | ^^^^^^^^^^^^^^^^^
+note: `std::string::String` is defined in crate `alloc`
+  --> $RUST/alloc/src/string.rs
+help: the type constructed contains `String` due to the type of the argument passed
+  --> tests/ui/derive_dataframe_enum_shadowed_std_name.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^
+...
+16 |     Local { label: String },
+   |             ----- this argument influences the type of `Some`
+note: tuple variant defined here
+  --> $RUST/core/src/option.rs
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: `?` operator has incompatible types
+  --> tests/ui/derive_dataframe_enum_shadowed_std_name.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ expected `String`, found `std::string::String`
+   |
+   = note: `?` operator cannot convert from `std::string::String` to `String`
+   = note: `std::string::String` and `String` have similar names, but are actually distinct types
+note: `std::string::String` is defined in crate `alloc`
+  --> $RUST/alloc/src/string.rs
+note: `String` is defined in the current crate
+  --> tests/ui/derive_dataframe_enum_shadowed_std_name.rs:10:1
+   |
+10 | pub struct String(std::string::String);
+   | ^^^^^^^^^^^^^^^^^
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)

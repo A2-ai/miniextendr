@@ -1,4 +1,4 @@
-error: type conflict for field `value`: variant `B` has a different type than a previous variant; use `#[dataframe(conflicts = "string")]` to coerce all conflicting fields to String
+error: type conflict for field `value`: variant `B` has type `String`, variant `A` has `f64`. If both name the same type, spell it the same way in every variant (type aliases and renamed imports are compared as written); otherwise use `#[dataframe(conflicts = "string")]` to store conflicting fields as String
  --> tests/ui/derive_dataframe_type_collision.rs:9:9
   |
 9 |     B { value: String },
