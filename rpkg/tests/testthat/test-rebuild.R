@@ -9,7 +9,8 @@
 # reads its save by field name and takes saves by another version
 # (`any_version`, #2187); `rebuild_rewrite_layout()` lays a save out as
 # another version might have. `RebuildRenamed`'s field is `r_rows` in Rust
-# and `n.rows` in R, the name its save uses (#2215). `RebuildWorded` and
+# and `n.rows` in R, the name its save uses (#2215). The internal
+# `Type_saved()` reads a save as stored, without rebuilding it (#2218). `RebuildWorded` and
 # `RebuildMessage` word a failed rebuild with their package's
 # `restored(rebuild_failed = ...)` and `restored(message = ...)` (#2218).
 
@@ -70,7 +71,10 @@ test_that("a failed rebuild is refused with its cause as e$parent, and tried aga
   )
   expect_identical(
     conditionMessage(e),
-    "this `RebuildR6` object was restored from a saved session and rebuilding it failed: the saved values hold 2 negative value(s)"
+    paste0(
+      "this `RebuildR6` object was restored from a saved session and rebuilding it failed: ",
+      "the saved values hold 2 negative value(s); see `miniextendr:::RebuildR6_saved(x)` for what was saved"
+    )
   )
   expect_s3_class(
     e$parent,
@@ -140,6 +144,12 @@ test_that("a save is read by field name: reordered, removed and added fields", {
   e <- tryCatch(back$added, error = identity)
   expect_s3_class(e, "miniextendr_restored_missing_slot")
   expect_identical(e$field, "added")
+  # It names the slot asked for and lists the save's, without saying why
+  # it is missing (#2218).
+  expect_identical(
+    conditionMessage(e),
+    "the saved `RebuildLayout` has no slot named `added`; its slots are `doubled`, `gone`, `label`"
+  )
   # The hook read `label` and `doubled` by name; `added` defaulted.
   expect_match(back$summary(), "^a/6/7/false/[0-9.]+$")
   # The installed object has this version's layout: `label` kept from the
@@ -171,7 +181,14 @@ test_that("a missing field read with the plain getter is the rebuild's cause", {
   expect_s3_class(e, "miniextendr_restored_no_value")
   expect_s3_class(e$parent, "miniextendr_restored_missing_slot")
   expect_identical(e$parent$field, "added")
-  expect_match(conditionMessage(e), "has no `added` field", fixed = TRUE)
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "this `RebuildLayout` object was restored from a saved session and rebuilding it failed: ",
+      "the saved `RebuildLayout` has no slot named `added`; its slots are `label`, `doubled`; ",
+      "see `miniextendr:::RebuildLayout_saved(x)` for what was saved"
+    )
+  )
 })
 
 test_that("any_version rebuilds a save by another version that carries slot names", {
@@ -204,7 +221,8 @@ test_that("any_version refuses a save without slot names by this version, before
   rebuild_rewrite_layout(ptr_of(back), c("doubled", "label", "added"), FALSE)
   message <- paste0(
     "this `RebuildLayout` object was saved before saves named their fields, ",
-    "so its saved values can't be matched to fields; re-create it"
+    "so its saved values can't be matched to fields; re-create it, ",
+    "and see `miniextendr:::RebuildLayout_saved(x)` for what was saved"
   )
   e <- tryCatch(back$summary(), error = identity)
   expect_s3_class(
@@ -247,7 +265,10 @@ test_that("without `rebuild_failed`, a failed rebuild says the restored message,
   e <- tryCatch(back$value(), error = identity)
   expect_identical(
     conditionMessage(e),
-    "this RebuildMessage was saved; build a new one (rebuilding it failed: the saved values hold 1 negative value(s))"
+    paste0(
+      "this RebuildMessage was saved; build a new one (rebuilding it failed: ",
+      "the saved values hold 1 negative value(s); see `miniextendr:::RebuildMessage_saved(x)` for what was saved)"
+    )
   )
   expect_s3_class(e, "miniextendr_restored_no_value")
   expect_identical(reload(RebuildMessage$new(4L))$value(), 4L)
@@ -289,6 +310,74 @@ test_that("a save under another R name has no slot for the field (#2215)", {
   expect_identical(back$summary(), "-1/None/false")
   expect_identical(back$n.rows, -1L)
   expect_identical(back$label, "old")
+})
+
+test_that("Type_saved() reads a save as stored, without rebuilding it (#2218)", {
+  back <- reload(RebuildR6$new(c(1, 2, 3)))
+  before <- rebuilds()
+  expect_identical(RebuildR6_saved(back), list(values = c(1, 2, 3)))
+  expect_identical(RebuildR6_saved(ptr_of(back)), list(values = c(1, 2, 3)))
+  expect_identical(rebuilds(), before)
+  # An env class's object, whose saved slot holds another object's pointer:
+  # the pointer as stored, not rebuilt.
+  pair <- reload(RebuildPair$new(RebuildR6$new(c(4, 5))))
+  inner <- RebuildPair_saved(pair)$inner
+  expect_type(inner, "externalptr")
+  expect_identical(rebuilds(), before)
+  # A live object gives its current values, which a save of it would hold.
+  live <- RebuildLayout$new("a", 3L)
+  live$label <- "b"
+  expect_identical(RebuildLayout_saved(live), list(label = "b", doubled = 3L, added = 1L))
+})
+
+test_that("Type_saved() reads another version's save under any_version, without rebuilding it", {
+  back <- reload(RebuildLayout$new("old", 2L))
+  # Laid out by that version, which had no `added`; edited before it is
+  # marked as another version's, since a `Sidecar` read of that rebuilds.
+  rebuild_rewrite_layout(ptr_of(back), c("doubled", "label"), TRUE)
+  sidecar_rewrite_saved_version(ptr_of(back), "0.0.1")
+  expect_identical(RebuildLayout_saved(back), list(doubled = 2L, label = "old"))
+  # The first use rebuilds it: this version's layout, `doubled` recomputed,
+  # `added` from the hook.
+  expect_identical(back$summary(), "old/4/7/false/0.0.1")
+  expect_identical(RebuildLayout_saved(back), list(label = "old", doubled = 4L, added = 7L))
+})
+
+test_that("after a failed rebuild, Type_saved() shows what was saved (#2218)", {
+  back <- reload(RebuildR6$new(c(-1, 2)))
+  expect_error(back$sum(), class = "miniextendr_restored_no_value")
+  expect_identical(RebuildR6_saved(back), list(values = c(-1, 2)))
+  # A `rebuild_failed` template stays as the package wrote it.
+  worded <- reload(RebuildWorded$new(-1L))
+  expect_error(worded$value(), "build a new one$")
+  expect_identical(RebuildWorded_saved(worded), list(n = -1L))
+})
+
+test_that("Type_saved() reads a save without slot names as an unnamed list", {
+  back <- reload(RebuildLayout$new("pos", 5L))
+  rebuild_rewrite_layout(ptr_of(back), c("doubled", "label", "added"), FALSE)
+  # Under `any_version` the object is refused; its values can still be seen.
+  expect_error(back$summary(), class = "miniextendr_restored_unnamed_slots")
+  expect_identical(RebuildLayout_saved(back), list(5L, "pos", 1L))
+})
+
+test_that("Type_saved() refuses an object of another type", {
+  e <- tryCatch(RebuildLayout_saved(RebuildR6$new(1)), error = identity)
+  expect_s3_class(e, "rust_error")
+  # A type without `field_error` classes refuses with a plain panic, whose
+  # message ends with its source location.
+  expect_match(conditionMessage(e), "this `RebuildR6` object holds a pointer of another type", fixed = TRUE)
+  e <- tryCatch(RebuildLayout_saved(reload(RebuildR6$new(1))), error = identity)
+  expect_match(conditionMessage(e), "this `RebuildR6` object holds a null pointer", fixed = TRUE)
+})
+
+test_that("Type_saved() survives gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  gc_stress_rebuild_saved()
+  gctorture(FALSE)
+  succeed()
 })
 
 test_that("the rebuild survives gctorture", {

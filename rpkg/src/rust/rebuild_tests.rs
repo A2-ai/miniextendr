@@ -563,4 +563,77 @@ pub fn gc_stress_rebuild() {
     }
 }
 
+/// Read `RebuildLayout` saves through `Type_saved()`'s reader, which builds
+/// a new list and its names: a live object, a named save and an unnamed
+/// one, churning the GC before each list is checked (#2218). No arguments —
+/// picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_rebuild_saved() {
+    use miniextendr_api::SexpExt;
+    use miniextendr_api::externalptr::sidecar_r_saved;
+
+    // The values of a `saved` list, in order, and its names.
+    let read = |saved: SEXP| {
+        (
+            i32::try_from_sexp(saved.vector_elt(0)).expect("doubled"),
+            String::try_from_sexp(saved.vector_elt(1)).expect("label"),
+            i32::try_from_sexp(saved.vector_elt(2)).expect("added"),
+            Option::<Vec<String>>::try_from_sexp(saved.get_attr(SEXP::names_symbol()))
+                .expect("names"),
+        )
+    };
+    let names = Some(vec![
+        "doubled".to_owned(),
+        "label".to_owned(),
+        "added".to_owned(),
+    ]);
+    for n in 1..=4 {
+        let ptr = ExternalPtr::new(RebuildLayout::new(format!("v{n}"), n));
+        // SAFETY (every block): on R's main thread; each value is rooted
+        // before the next call allocates.
+        let live = unsafe { OwnedProtect::new(sidecar_r_saved::<RebuildLayout>(ptr.as_sexp())) };
+        churn();
+        assert_eq!(
+            Option::<Vec<String>>::try_from_sexp(live.get_attr(SEXP::names_symbol()))
+                .expect("names"),
+            Some(vec![
+                "label".to_owned(),
+                "doubled".to_owned(),
+                "added".to_owned()
+            ])
+        );
+        let bytes = unsafe {
+            OwnedProtect::new(
+                RCall::new("serialize")
+                    .arg(ptr.as_sexp())
+                    .arg(SEXP::nil())
+                    .eval_base()
+                    .expect("serialize"),
+            )
+        };
+        let back = unsafe {
+            OwnedProtect::new(
+                RCall::new("unserialize")
+                    .arg(bytes.get())
+                    .eval_base()
+                    .expect("unserialize"),
+            )
+        };
+        for named in [true, false] {
+            rebuild_rewrite_layout(
+                back.get(),
+                vec!["doubled".to_owned(), "label".to_owned(), "added".to_owned()],
+                named,
+            );
+            churn();
+            let saved = unsafe { OwnedProtect::new(sidecar_r_saved::<RebuildLayout>(back.get())) };
+            churn();
+            assert_eq!(
+                read(saved.get()),
+                (n, format!("v{n}"), 1, names.clone().filter(|_| named))
+            );
+        }
+    }
+}
+
 // endregion

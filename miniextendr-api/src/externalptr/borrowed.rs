@@ -49,7 +49,7 @@ pub enum SidecarRead<'a, T: TypedExternal + ?Sized> {
 /// `#[r_data(name = "..")]` value, else the Rust field name), so a field is
 /// read by name whatever fields the version that saved it had (#2187,
 /// #2215). A field the save
-/// lacks (added since) reads as `None` through the generated
+/// lacks (added since, or renamed in R) reads as `None` through the generated
 /// `Self::try_keys(saved)`; the plain getter raises the classed error
 /// [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS).
 pub struct Saved<'a, T: TypedExternal + ?Sized> {

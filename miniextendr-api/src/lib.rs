@@ -401,6 +401,18 @@ impl AltrepPkgName {
     }
 }
 
+/// The R package name the C entrypoint set (`"unknown"` before it runs), as
+/// text for messages: a failed rebuild names the package's internal
+/// `pkg:::Type_saved(x)` (#2218).
+pub(crate) fn package_name() -> &'static str {
+    // SAFETY: the pointer is the default literal or the null-terminated
+    // string `miniextendr_set_altrep_pkg_name` was given, which lives for
+    // the session.
+    unsafe { std::ffi::CStr::from_ptr(AltrepPkgName::as_ptr()) }
+        .to_str()
+        .unwrap_or("unknown")
+}
+
 /// Opaque handle for ALTREP package name.
 /// Use `ALTREP_PKG_NAME.as_ptr()` to get the C string pointer.
 #[doc(hidden)]

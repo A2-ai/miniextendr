@@ -379,9 +379,11 @@ pub const RESTORED_NO_VALUE_CLASS: &str = "miniextendr_restored_no_value";
 pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_version";
 
 /// The class of the error a rebuild hook gets when it reads a `Sidecar`
-/// field the save has no slot for: a field added after the version that
-/// saved the object (#2187). The condition carries `field`, the field's
-/// name. The `try_<field>` getters return `None` instead.
+/// field the save has no slot for (#2187): a field added after the version
+/// that saved the object, or one whose R name changed since (#2215). The
+/// condition carries `field`, the field's name, and its message lists the
+/// slots the save has (#2218). The `try_<field>` getters return `None`
+/// instead.
 pub const RESTORED_MISSING_SLOT_CLASS: &str = "miniextendr_restored_missing_slot";
 
 /// The class of the error for a save without slot names of a type that
@@ -486,11 +488,14 @@ pub(crate) fn restored_other_version_message(
     )
 }
 
-/// The message of the [`RESTORED_UNNAMED_SLOTS_CLASS`] error.
-pub(crate) fn restored_unnamed_slots_message(type_name: &str) -> String {
+/// The message of the [`RESTORED_UNNAMED_SLOTS_CLASS`] error, pointing at
+/// `saved_reader`, the type's `pkg:::Type_saved()` ([`saved_reader_of`]),
+/// which reads such a save as is.
+pub(crate) fn restored_unnamed_slots_message(type_name: &str, saved_reader: &str) -> String {
     format!(
         "this `{type_name}` object was saved before saves named their fields, so its saved \
-         values can't be matched to fields; re-create it"
+         values can't be matched to fields; re-create it, and see `{saved_reader}(x)` for what \
+         was saved"
     )
 }
 
@@ -578,7 +583,9 @@ pub(crate) fn refuse_unnamed_slots<T: TypedExternal>(receiver: SEXP) -> ! {
 fn unnamed_slots_refusal<T: TypedExternal>(receiver: SEXP) -> RCondition {
     let name = receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
     RCondition::Error {
-        message: restored_message_of::<T>(|| restored_unnamed_slots_message(&name)),
+        message: restored_message_of::<T>(|| {
+            restored_unnamed_slots_message(&name, &saved_reader_of::<T>())
+        }),
         class: restored_classes_of::<T>(RESTORED_UNNAMED_SLOTS_CLASS),
         data: None,
         call: ConditionCall::Inherit,
@@ -591,27 +598,39 @@ fn rebuild_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> Str
         T::REBUILD_FAILED_MESSAGE,
         T::RESTORED_ERROR_MESSAGE,
         type_name,
+        &saved_reader_of::<T>(),
         cause,
     )
+}
+
+/// How a message names the saved-slot reader `#[derive(ExternalPtr)]`
+/// generates for a type with a rebuild hook: `pkg:::<TYPE_NAME>_saved`, an
+/// internal function of the package that loaded this code.
+fn saved_reader_of<T: TypedExternal>() -> String {
+    format!("{}:::{}_saved", crate::package_name(), T::TYPE_NAME)
 }
 
 /// The message of a refused rebuild: the package's rebuild-failed template
 /// with each `%s` replaced by the cause's message (#2218); else its restored
 /// message, then the cause in parentheses; else miniextendr's, naming
-/// `type_name`. The template is filled once, so a `%s` in the cause stays as
-/// written.
+/// `type_name`. Those two end by pointing at `saved_reader`, the type's
+/// `pkg:::Type_saved()`, which reads the save as is. The template is the
+/// package's own, so it stays as written; it is filled once, so a `%s` in
+/// the cause stays as written too.
 fn rebuild_failed_text(
     template: Option<&str>,
     restored: Option<&str>,
     type_name: &str,
+    saved_reader: &str,
     cause: &str,
 ) -> String {
+    let see = format!("see `{saved_reader}(x)` for what was saved");
     match (template, restored) {
         (Some(template), _) => template.replace("%s", cause),
-        (None, Some(message)) => format!("{message} (rebuilding it failed: {cause})"),
+        (None, Some(message)) => format!("{message} (rebuilding it failed: {cause}; {see})"),
         (None, None) => format!(
             "this `{type_name}` object was restored from a saved session and rebuilding it \
-             failed: {cause}"
+             failed: {cause}; {see}"
         ),
     }
 }
@@ -1033,7 +1052,10 @@ pub trait TypedExternal: 'static {
     /// is rebuilt on first use after `readRDS()`, by [`Self::__mx_rebuild`],
     /// instead of refused.
     ///
-    /// `#[derive(ExternalPtr)]` sets it with `#[externalptr(rebuild = path)]`.
+    /// `#[derive(ExternalPtr)]` sets it with `#[externalptr(rebuild = path)]`,
+    /// and generates the internal R reader `<TYPE_NAME>_saved(x)` of the
+    /// save's slots ([`sidecar_r_saved`]), which a failed rebuild's message
+    /// points at as `pkg:::<TYPE_NAME>_saved(x)`.
     #[doc(hidden)]
     const REBUILDS: bool = false;
 
@@ -3395,7 +3417,8 @@ mod tests {
 
     /// A failed rebuild's message (#2218): the package's template with the
     /// cause in place of each `%s`, filled once; else the restored message
-    /// and the cause in parentheses; else miniextendr's.
+    /// and the cause in parentheses; else miniextendr's. Those two point at
+    /// the saved-slot reader; the template stays as the package wrote it.
     #[test]
     fn rebuild_failed_text_fills_the_template() {
         assert_eq!(
@@ -3403,21 +3426,36 @@ mod tests {
                 Some("the engine could not be rebuilt (%s); build a new one"),
                 Some("saved"),
                 "Engine",
+                "pkg:::Engine_saved",
                 "bad %s value"
             ),
             "the engine could not be rebuilt (bad %s value); build a new one"
         );
         assert_eq!(
-            rebuild_failed_text(Some("%s, then %s"), None, "Engine", "x"),
+            rebuild_failed_text(
+                Some("%s, then %s"),
+                None,
+                "Engine",
+                "pkg:::Engine_saved",
+                "x"
+            ),
             "x, then x"
         );
         assert_eq!(
-            rebuild_failed_text(None, Some("this engine was saved"), "Engine", "bad"),
-            "this engine was saved (rebuilding it failed: bad)"
+            rebuild_failed_text(
+                None,
+                Some("this engine was saved"),
+                "Engine",
+                "pkg:::Engine_saved",
+                "bad"
+            ),
+            "this engine was saved (rebuilding it failed: bad; see `pkg:::Engine_saved(x)` for what \
+             was saved)"
         );
         assert_eq!(
-            rebuild_failed_text(None, None, "Engine", "bad"),
-            "this `Engine` object was restored from a saved session and rebuilding it failed: bad"
+            rebuild_failed_text(None, None, "engine", "pkg:::Engine_saved", "bad"),
+            "this `engine` object was restored from a saved session and rebuilding it failed: \
+             bad; see `pkg:::Engine_saved(x)` for what was saved"
         );
     }
 

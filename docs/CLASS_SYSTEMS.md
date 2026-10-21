@@ -1924,7 +1924,10 @@ pointer `readRDS()` brought back, whatever the field: `x$keys`, `x[["keys"]]`,
 `miniextendr_restored`. A reloaded object is refused, not recovered; the
 class re-creates it. The standalone `Type_get_f()` / `Type_set_f()`, the R6
 active bindings and the S7 properties keep reading and writing a same-version
-save's `Sidecar` values, as the way to reach a saved object's data. The
+save's `Sidecar` values, as the way to reach a saved object's data. A type
+with a rebuild hook also has the internal `pkg:::Type_saved(x)`, which
+returns every saved value as stored, also for a save the type refuses or whose rebuild failed
+(`EXTERNALPTR.md`, "Rebuilding after a reload", #2218). The
 methods pass a `require_live` flag to the same per-field accessor, so a read
 costs no extra `.Call()`, and `as.list()` refuses because its first read
 does. Only a read of a field reaches Rust: on a restored bare pointer

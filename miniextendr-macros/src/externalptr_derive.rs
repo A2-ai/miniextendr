@@ -150,7 +150,11 @@
 //! failed rebuild (`rebuild = path`), the cause's message in place of each
 //! `%s`, and `restored(no_handle = "...")` the refusal of a list or
 //! environment of the class that carries no pointer, saying why (#2218);
-//! without them the restored message serves both. R's `y <- x`
+//! without them the restored message serves both. A type with a rebuild
+//! hook also gets the internal `Type_saved(x)` (#2218,
+//! [`generate_saved_reader`]), which returns the save's slots as stored,
+//! without rebuilding or refusing the object, so a save whose rebuild failed
+//! or that the type refuses can still be looked at. R's `y <- x`
 //! shares the one Rust value and the one `prot` list: a write through `y` is
 //! visible through `x`.
 //!
@@ -2269,6 +2273,115 @@ fn generate_sidecar_accessors(
     })
 }
 
+/// Generate `Type_saved(x)` for a type with a rebuild hook (#2218): the
+/// C function `C_<crate>__mx_rdata_saved_<Type>`
+/// (`externalptr::sidecar_r_saved`), its `R_CallMethodDef` and its R
+/// wrapper, an internal function (`@noRd`). It returns the save's
+/// `Sidecar` slots, named as the save names them, without rebuilding the
+/// object or refusing it for its version: the view of a save whose rebuild
+/// failed, or that the type refuses (a save without slot names). A failed
+/// rebuild's default message points at it, as `pkg:::Type_saved(x)`: `$`
+/// refuses a restored object, so this is the R way to its saved values. It
+/// is named after the Rust type, as the standalone `Type_get_f()` accessors
+/// are. It is a diagnostic, so it stays out of the package's exports and
+/// help index; a package that wants it public exports its own wrapper. The
+/// wrapper goes in `MX_R_WRAPPERS` with the sidecar priority.
+fn generate_saved_reader(input: &DeriveInput, rebuild: Option<&syn::Path>) -> TokenStream {
+    if rebuild.is_none() {
+        return TokenStream::new();
+    }
+    let name = &input.ident;
+    let name_str = name.to_string();
+    let name_symbol = crate::naming::ident_name(name);
+    let c_name = crate::naming::sidecar_saved_c_name(&name_str);
+    let fn_name = Ident::new(&c_name, Span::call_site());
+    let doc =
+        format!("Generated saved-slot reader `{name_str}_saved()` of Rust type `{name_str}`.");
+    let def_ident = Ident::new(
+        &format!("__MX_CALL_DEF_RDATA_SAVED_{name_symbol}"),
+        Span::call_site(),
+    );
+    let registration = crate::call_method_def::call_method_def(&def_ident, &fn_name, 1);
+    let wrapper_ident = Ident::new(
+        &format!("R_WRAPPERS_RDATA_SAVED_{name_symbol}"),
+        Span::call_site(),
+    );
+    let source_location_doc = crate::source_location_doc(name.span());
+    let source_line_lit = syn::LitInt::new(&name.span().start().line.to_string(), name.span());
+    let r_wrapper = saved_reader_r_wrapper(&name_str, &c_name);
+    quote::quote! {
+        #[doc = #doc]
+        #[doc = #source_location_doc]
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        #[allow(non_snake_case)]
+        pub unsafe extern "C-unwind" fn #fn_name(
+            x: ::miniextendr_api::SEXP,
+        ) -> ::miniextendr_api::SEXP {
+            let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+            let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                || unsafe { ::miniextendr_api::externalptr::sidecar_r_saved::<#name>(x) },
+                ::core::option::Option::None,
+            );
+            unsafe {
+                ::miniextendr_api::deferred_condition::finish(
+                    __miniextendr_deferred_mark,
+                    __miniextendr_value,
+                    ::core::option::Option::None,
+                )
+            }
+        }
+
+        #[doc(hidden)]
+        #registration
+
+        /// The `Type_saved()` R wrapper via distributed slice.
+        #[doc = #source_location_doc]
+        #[doc(hidden)]
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals)]
+        static #wrapper_ident: ::miniextendr_api::registry::RWrapperEntry =
+            ::miniextendr_api::registry::RWrapperEntry {
+                priority: ::miniextendr_api::registry::RWrapperPriority::Sidecar,
+                source_file: ::core::file!(),
+                source_line: #source_line_lit,
+                content: #r_wrapper,
+            };
+    }
+}
+
+/// The R wrapper of `Type_saved(x)` ([`generate_saved_reader`]): internal,
+/// its roxygen block kept for the source and marked `@noRd`.
+fn saved_reader_r_wrapper(type_name: &str, c_name: &str) -> String {
+    let body =
+        crate::method_return_builder::standalone_body(&format!(".Call({c_name}, x)"), ".val", "  ");
+    let source_line = crate::roxygen::source_tag(format!(
+        "Generated by miniextendr from `#[derive(ExternalPtr)]` on `{type_name}`"
+    ))
+    .map(|line| format!("{line}\n"))
+    .unwrap_or_default();
+    format!(
+        r#"
+#' @title The saved values of a {type_name} object
+#' @description The values a `{type_name}` object keeps when it is saved
+#'   (`saveRDS()`, `save()`), one per saved field, as the save holds them.
+#'   After a reload, the object is rebuilt from them on first use. This reads
+#'   them without rebuilding it, whatever version of the package saved it, so
+#'   it also shows the values of an object whose rebuild failed or that is
+#'   refused. A live object gives its current values, which a save of it
+#'   would hold.
+#' @param x A `{type_name}` object, or its external pointer.
+#' @return A list of the saved values, named by the fields' R names as the
+#'   save names them, in the save's order; unnamed for a save made before
+#'   saves named their fields.
+{source_line}#' @noRd
+{type_name}_saved <- function(x) {{
+  {body}
+}}
+"#
+    )
+}
+
 /// The `Sidecar<T>` slots of a type, in protection-list order.
 fn sidecar_slots(info: &SidecarInfo) -> impl Iterator<Item = (usize, &SidecarSlot)> {
     info.slots.iter().filter_map(|slot| match slot.kind {
@@ -2681,6 +2794,7 @@ pub fn derive_external_ptr(
     };
     let sidecar_accessors =
         generate_sidecar_accessors(&input, &sidecar_info, &restored, &field_error)?;
+    let saved_reader = generate_saved_reader(&input, rebuild.as_ref());
     let erased_wrapper = generate_erased_wrapper(&input);
 
     Ok(quote::quote! {
@@ -2689,6 +2803,7 @@ pub fn derive_external_ptr(
         #into_external_ptr
         #into_r_vec_element
         #sidecar_accessors
+        #saved_reader
         #erased_wrapper
     })
 }
@@ -3603,6 +3718,37 @@ mod tests {
         .to_string();
         assert!(out.contains("MX_SIDECAR_ACCESSORS"), "{out}");
         assert!(out.contains("R_SIDECAR_ACCESSORS_T"), "{out}");
+    }
+
+    /// A type with a rebuild hook gets `Type_saved(x)` (#2218): a C reader
+    /// with one argument and an internal R wrapper, whatever its fields'
+    /// visibility. A type without a hook gets none.
+    #[test]
+    fn a_rebuild_hook_gets_the_saved_reader() {
+        let derive = |source: &str| {
+            super::derive_external_ptr(syn::parse_str(source).unwrap(), true)
+                .unwrap()
+                .to_string()
+        };
+        let out = derive(
+            "#[externalptr(rebuild = Self::from_saved)] struct T { #[r_data] f: Sidecar<i32> }",
+        );
+        assert!(out.contains("__mx_rdata_saved_T"), "{out}");
+        assert!(out.contains("sidecar_r_saved :: < T >"), "{out}");
+        assert!(out.contains("__MX_CALL_DEF_RDATA_SAVED_T"), "{out}");
+        assert!(out.contains("R_WRAPPERS_RDATA_SAVED_T"), "{out}");
+        let wrapper = super::saved_reader_r_wrapper("T", "C_saved");
+        assert!(wrapper.contains("T_saved <- function(x) {"), "{wrapper}");
+        assert!(wrapper.contains(".val <- .Call(C_saved, x)"), "{wrapper}");
+        assert!(
+            wrapper.contains("#' @title The saved values of a T object"),
+            "{wrapper}"
+        );
+        assert!(wrapper.contains("#' @noRd\nT_saved"), "{wrapper}");
+        assert!(!wrapper.contains("@export"), "{wrapper}");
+        assert!(!wrapper.contains("@rdname"), "{wrapper}");
+        let out = derive("struct T { #[r_data] r: RSidecar, #[r_data] pub f: Sidecar<i32> }");
+        assert!(!out.contains("__mx_rdata_saved_T"), "{out}");
     }
 
     #[test]

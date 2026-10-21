@@ -860,7 +860,11 @@ read a save (`Type_get_f()` and the R6 / S7 fields; the `$` / `[[` methods of
 `s3(r_data_accessors)` & co. refuse a restored pointer instead) and a rebuild
 hook ("Rebuilding after a reload" below) find each field's slot by that name.
 A field the save has no slot for raises `miniextendr_restored_missing_slot`,
-with the field's R name in `e$field`.
+with the field's R name in `e$field`. Its message names the slot asked for
+and lists the slots the save has (``the saved `Model` has no slot named
+`added`; its slots are `values`, `label` ``): the slot can be missing
+because the version that saved it had no such field, or because a field's R
+name changed since.
 
 So the R name is the save format:
 
@@ -1046,9 +1050,11 @@ impl Model {
   installs nothing, and the next use tries again. The caller gets the
   type's restored refusal: the `restored(class = ...)` classes, then
   `miniextendr_restored_no_value` and `miniextendr_restored`, with the
-  cause's message appended (``this `Model` object was restored from a saved
-  session and rebuilding it failed: <cause>``, or `<restored message>
-  (rebuilding it failed: <cause>)`). The cause is the condition object
+  cause's message appended and a pointer to the save's values (``this
+  `Model` object was restored from a saved session and rebuilding it failed:
+  <cause>; see `pkg:::Model_saved(x)` for what was saved``, or ``<restored
+  message> (rebuilding it failed: <cause>; see `pkg:::Model_saved(x)` for
+  what was saved)``, with the package's name for `pkg`). The cause is the condition object
   `e$parent`, with its own classes and fields, as `rlang::abort(parent = )`
   chains errors. It is built from the `Err` as a `#[miniextendr]` function
   returning `Result<T, E>` builds its error
@@ -1063,7 +1069,8 @@ impl Model {
   carries on as itself. `restored(rebuild_failed = "...")` words this
   refusal instead, each `%s` in it replaced by the cause's message:
   `restored(rebuild_failed = "this model could not be rebuilt (%s); fit it
-  again")`. It needs the hook next to it, and the `%s`.
+  again")`. It needs the hook next to it, and the `%s`, and stays as
+  written: it gets no pointer appended.
 - **A hook with several kinds of failure** returns `Result<Self,
   RCondition>` (#2217). A condition `catch_condition` caught passes through
   `?`, and `serde_condition!(&err)` turns a serde error into the condition
@@ -1087,11 +1094,26 @@ impl Model {
   chain: `e$parent` is the inner refusal, `e$parent$parent` its cause.
 - **Without raising.** `ExternalPtr::<T>::wrap_sexp_with_error(x)` returns
   a failed rebuild as `Err(TypeMismatchError::RebuildFailed { condition })`:
-  the refusal above as a value, its cause in it (#2217). A check that must
+  the refusal above as a value, its cause in it (#2217). Under
+  `any_version` the refusal of a save without slot names (below) comes back
+  the same way. A check that must
   not raise (is the object live? fall back to plain data?) needs no
   `catch_condition`; `condition.raise()` raises it. An `ExternalPtr<T>` /
   `&T` / `&mut T` argument and `ExternalPtr::<T>::try_from_sexp` raise it,
   as a method on the object does.
+- **The saved values.** A type with a hook also gets `Type_saved(x)` in R
+  (`Model_saved(x)`, named after the Rust type like the `Type_get_f()`
+  accessors). It is a diagnostic, so it is internal: not exported and
+  without a help page, called as `pkg:::Model_saved(x)`, as the messages
+  spell it. A package that wants it public exports its own wrapper, such as
+  `model_saved <- function(x) Model_saved(x)`. It returns the save's
+  `Sidecar` slots as a list, as stored: in the save's order and under its
+  slot names. It never rebuilds the object and never refuses it for its
+  version, so it shows the values of a save whose rebuild failed, of another version's save under `any_version`
+  before its first use rebuilds it, and of a save without slot names (an
+  unnamed list), which every other reader refuses. A live object gives its
+  current values, which a save of it would hold. It takes the object, or
+  its external pointer; another type's is refused.
 - **Conditions the hook queues** (`defer_warning!` & co.) are signalled when
   the call that triggered the rebuild returns. A hook that replays the
   construction, whose warnings were signalled once already, drops them with
@@ -1109,7 +1131,8 @@ impl Model {
   this version's with `miniextendr_restored_unnamed_slots` (and
   `miniextendr_restored`, behind the `restored(class = ...)` classes),
   ``this `Model` object was saved before saves named their fields, so its
-  saved values can't be matched to fields; re-create it``, or the type's
+  saved values can't be matched to fields; re-create it, and see
+  `pkg:::Model_saved(x)` for what was saved``, or the type's
   `restored(message = ...)`. For such a save `Saved::has()` is false for
   every field and the `try_` getters return `None`. Under `any_version` a
   slot read or write on another version's save rebuilds first, so a test

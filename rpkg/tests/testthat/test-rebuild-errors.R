@@ -20,7 +20,10 @@ test_that("a hook's Err(RCondition) reaches R as e$parent with its classes and f
   expect_s3_class(e, refusal_class, exact = TRUE)
   expect_identical(
     conditionMessage(e),
-    "this `HookCondition` object was restored from a saved session and rebuilding it failed: the recipe holds 2 negative value(s)"
+    paste0(
+      "this `HookCondition` object was restored from a saved session and rebuilding it failed: ",
+      "the recipe holds 2 negative value(s); see `miniextendr:::HookCondition_saved(x)` for what was saved"
+    )
   )
   expect_s3_class(
     e$parent,

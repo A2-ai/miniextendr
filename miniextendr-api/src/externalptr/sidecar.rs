@@ -27,6 +27,7 @@ use super::{
 };
 use crate::condition::{ConditionCall, RCondition};
 use crate::from_r::TryFromSexp;
+use crate::gc_protect::ProtectScope;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
@@ -548,7 +549,7 @@ where
             let prot = unsafe { R_ExternalPtrProtected(sexp) };
             match saved_slot::<O>(prot, index, name) {
                 Some(at) => convert_slot::<T>(prot, at, name, O::TYPE_NAME),
-                None => missing_slot::<O>(name),
+                None => missing_slot::<O>(prot, name),
             }
         }
     }
@@ -685,14 +686,20 @@ pub(crate) fn refuses_unnamed<T: TypedExternal + ?Sized>(prot: SEXP) -> bool {
     T::REBUILDS_ANY_VERSION && T::R_SLOT_COUNT > 0 && !has_slot_names(prot)
 }
 
-/// Raises the classed error for a read of `Sidecar` field `name` that a save
-/// of an `O` has no slot for.
-fn missing_slot<O: TypedExternal>(name: &str) -> ! {
+/// Raises the classed error for a read of `Sidecar` field `name` that the
+/// save `prot` of an `O` has no slot for. The message lists the slots the
+/// save has and says nothing of why the field's is missing: the version that
+/// saved it may not have had the field, or it named the slot otherwise (an
+/// R name changed since, #2215).
+fn missing_slot<O: TypedExternal>(prot: SEXP, name: &str) -> ! {
+    let names = prot.get_attr(SEXP::names_symbol());
+    let slots = has_slot_names(prot).then(|| {
+        (PROT_VEC_LEN..names.xlength())
+            .map(|at| names.string_elt_str(at).unwrap_or("NA"))
+            .collect::<Vec<_>>()
+    });
     RCondition::Error {
-        message: format!(
-            "the saved `{}` has no `{name}` field: the version that saved it did not have it",
-            O::TYPE_NAME
-        ),
+        message: missing_slot_message(O::TYPE_NAME, name, slots.as_deref()),
         class: vec![super::RESTORED_MISSING_SLOT_CLASS.to_owned()],
         data: Some(vec![(
             "field".to_owned(),
@@ -701,6 +708,20 @@ fn missing_slot<O: TypedExternal>(name: &str) -> ! {
         call: ConditionCall::Inherit,
     }
     .raise()
+}
+
+/// The message of [`missing_slot`]: the slot `name` asked for, then the
+/// slots the save has (`slots`, `None` for a save without slot names).
+fn missing_slot_message(type_name: &str, name: &str, slots: Option<&[&str]>) -> String {
+    let has = match slots {
+        Some([]) => "it has no slots".to_owned(),
+        Some(slots) => {
+            let slots: Vec<String> = slots.iter().map(|slot| format!("`{slot}`")).collect();
+            format!("its slots are {}", slots.join(", "))
+        }
+        None => "its slots are not named".to_owned(),
+    };
+    format!("the saved `{type_name}` has no slot named `{name}`; {has}")
 }
 
 // endregion
@@ -1119,7 +1140,7 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize, require_liv
         let name = T::SIDECAR_NAMES[index];
         return match saved_slot::<T>(prot, index, name) {
             Some(at) => prot.vector_elt(at),
-            None => missing_slot::<T>(name),
+            None => missing_slot::<T>(prot, name),
         };
     };
     super::borrow_value(cell).__mx_visit_sidecars(&mut |i, _, field| {
@@ -1162,7 +1183,7 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
         let name = T::SIDECAR_NAMES[index];
         match saved_slot::<T>(prot, index, name) {
             Some(at) => prot.set_vector_elt(at, value),
-            None => missing_slot::<T>(name),
+            None => missing_slot::<T>(prot, name),
         }
         return;
     };
@@ -1174,11 +1195,101 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
     prot.set_vector_elt(prot_index(index), value);
 }
 
+/// The `Sidecar` slots of the external pointer `x` carries
+/// ([`sidecar_receiver`]), as a new list named by the save's slot names: the
+/// `Type_saved(x)` reader `#[derive(ExternalPtr)]` generates for a type with
+/// a rebuild hook (#2218).
+///
+/// It reads what a save holds, and changes nothing: a restored pointer is
+/// neither rebuilt nor refused for its version (another version's save, a
+/// save without slot names, one whose rebuild failed), so its slots are
+/// read as stored, in the save's order, under the save's names. A save
+/// without slot names gives an unnamed list. A live pointer's pending values
+/// are flushed first, so it gives its current values, which a save of it
+/// would hold.
+///
+/// # Panics
+///
+/// When `x` carries no external pointer, or one `T` did not build (a pointer
+/// of another type, a null pointer), or with the
+/// `miniextendr_borrow_conflict` R error while a running call holds the
+/// value mutably.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`.
+#[doc(hidden)]
+pub unsafe fn sidecar_r_saved<T: TypedExternal>(receiver: SEXP) -> SEXP {
+    let x = unsafe { sidecar_receiver::<T>(receiver) };
+    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    let prot = unsafe { R_ExternalPtrProtected(x) };
+    if any_raw.is_null() {
+        if !matches!(
+            unsafe { super::classify_null_address::<T>(x) },
+            super::NullAddress::Restored | super::NullAddress::OtherVersion { .. }
+        ) {
+            refuse_other_type::<T>(receiver, Refused::NullPointer);
+        }
+    } else {
+        if unsafe { super::stored_type_id_symbol(x) }.is_none() {
+            refuse_other_type::<T>(receiver, Refused::OtherType);
+        }
+        match unsafe { &*any_raw }.downcast_ref::<RefCell<T>>() {
+            Some(cell) => flush_sidecars(&*super::borrow_value(cell), prot),
+            None => refuse_other_type::<T>(receiver, Refused::OtherType),
+        }
+    }
+    unsafe { saved_slots(prot) }
+}
+
+/// A new list of the `Sidecar` slots of the protection list `prot`, named by
+/// its slot names when it has them. The slot values are `prot`'s own; the
+/// list and its names are rooted while the other is allocated.
+///
+/// # Safety
+///
+/// Must be called from R's main thread, with `prot` rooted.
+unsafe fn saved_slots(prot: SEXP) -> SEXP {
+    let len = (prot.xlength() - PROT_VEC_LEN).max(0);
+    let scope = unsafe { ProtectScope::new() };
+    let list = unsafe { scope.alloc_vector(SEXPTYPE::VECSXP, len) }.get();
+    for at in 0..len {
+        list.set_vector_elt(at, prot.vector_elt(PROT_VEC_LEN + at));
+    }
+    if has_slot_names(prot) {
+        let saved_names = prot.get_attr(SEXP::names_symbol());
+        let names = unsafe { scope.alloc_vector(SEXPTYPE::STRSXP, len) }.get();
+        for at in 0..len {
+            names.set_string_elt(at, saved_names.string_elt(PROT_VEC_LEN + at));
+        }
+        list.set_names(names);
+    }
+    list
+}
+
 // endregion
 
 #[cfg(test)]
 mod tests {
-    use super::{no_handle_classes, saved_no_handle_message};
+    use super::{missing_slot_message, no_handle_classes, saved_no_handle_message};
+
+    /// A missing slot's message names the slot asked for and lists the
+    /// save's slots, without saying why it is missing (#2218).
+    #[test]
+    fn missing_slot_message_lists_the_saved_slots() {
+        assert_eq!(
+            missing_slot_message("Engine", "added", Some(&["label", "doubled"])),
+            "the saved `Engine` has no slot named `added`; its slots are `label`, `doubled`"
+        );
+        assert_eq!(
+            missing_slot_message("Engine", "added", Some(&[])),
+            "the saved `Engine` has no slot named `added`; it has no slots"
+        );
+        assert_eq!(
+            missing_slot_message("Engine", "added", None),
+            "the saved `Engine` has no slot named `added`; its slots are not named"
+        );
+    }
 
     /// A list or environment without a pointer gets the type's no-handle
     /// message, else its restored message (#2218); another receiver keeps

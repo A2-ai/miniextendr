@@ -136,7 +136,7 @@ fn assert_refusal(refusal: &RCondition) {
     assert!(
         refusal
             .message()
-            .ends_with("rebuilding it failed: quota exceeded by 3"),
+            .contains("rebuilding it failed: quota exceeded by 3; see `"),
         "{}",
         refusal.message()
     );
