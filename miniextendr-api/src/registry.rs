@@ -3166,7 +3166,8 @@ const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a 
 # at most a third of its length in edits but at least one, and fewer than its
 # length. The condition is an argument error (`kind = "conversion"`,
 # `param = "..."`) classed `miniextendr_error_unused_argument` after the
-# attribute's own `class`. `call` is the wrapper's call by default; a
+# attribute's own `class`, then the crate's conversion classes; a class in
+# both keeps only its first place. `call` is the wrapper's call by default; a
 # `call = caller` wrapper passes `.mx_call`, an S3 method its frame (resolved
 # to the generic's call), a `call = none` wrapper NULL.
 .miniextendr_check_dots <- function(names, n, formals, allow = character(), forward = FALSE, class = character(), call = sys.call(-1L)) {
@@ -3210,7 +3211,7 @@ const DOTS_CHECK_HELPER: &str = r#"# Internal helper: refuse the arguments in a 
   message <- sprintf("unused argument%s %s", if (length(bad) > 1L) "s" else "", paste(what, collapse = ", "))
   stop(structure(
     list(message = message, call = call, kind = "conversion", param = "...", argument = argument, suggestion = suggestion),
-    class = c(class, "miniextendr_error_unused_argument", .miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")
+    class = unique(c(class, "miniextendr_error_unused_argument", .miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition"))
   ))
 }
 "#;
@@ -3318,10 +3319,12 @@ macro_rules! raise_condition_helper_fn {
     # knows those classes, bound under that name at the end of the wrappers
     # preamble, so they replace it here. The copy of this helper that signals
     # deferred conditions lives in the base namespace, where the name is
-    # unbound and the marker is dropped.
+    # unbound and the marker is dropped. A class the condition already has
+    # (a package's `field_error` class shared with its conversion classes)
+    # keeps only its first place.
     .at <- match(".miniextendr_conversion_error_class", .class)
     if (!is.na(.at)) {
-      .class <- append(.class[-.at], get0(".miniextendr_conversion_error_class", ifnotfound = NULL), after = .at - 1L)
+      .class <- unique(append(.class[-.at], get0(".miniextendr_conversion_error_class", ifnotfound = NULL), after = .at - 1L))
     }
     # `.v$data` is an optional named list of structured fields (from the
     # macros' `data = ...` form). When present, splice its named elements into

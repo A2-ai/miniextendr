@@ -105,6 +105,42 @@ test_that("forward(allow = ...) passes the listed names and unnamed arguments on
   expect_identical(caught(mx_dots_forward(ns = 1))$suggestion, "nsmall")
 })
 
+test_that("a class in both the refusal's and the crate's classes appears once", {
+  # rpkg sets no `conversion_error_class`; bind one where the helpers look it
+  # up, as a crate with `conversion_error_class = ["pkg_error_argument",
+  # "pkg_error"]` and a `field_error(class = ...)` sharing "pkg_error" has it.
+  with_crate_classes <- function(f) {
+    environment(f) <- list2env(
+      list(.miniextendr_conversion_error_class = c("pkg_error_argument", "pkg_error")),
+      parent = asNamespace("miniextendr")
+    )
+    f
+  }
+  check_dots <- with_crate_classes(miniextendr:::.miniextendr_check_dots)
+  e <- caught(check_dots(
+    "foo", 1L, c("x", "i", "exact"),
+    class = c("pkg_error_config", "pkg_error"), call = quote(x[["a", foo = 1]])
+  ))
+  expect_identical(class(e), c(
+    "pkg_error_config", "pkg_error", "miniextendr_error_unused_argument",
+    "pkg_error_argument", "rust_error", "simpleError", "error", "condition"
+  ))
+  expect_identical(e$argument, "foo")
+
+  # The same for a condition raised from Rust: `arg_error!` sends a marker
+  # where the crate's classes go, after the error's own.
+  raise <- with_crate_classes(miniextendr:::.miniextendr_raise_condition)
+  value <- list(
+    error = "'mode' must be one of \"a\"", kind = "conversion",
+    class = c("pkg_error", ".miniextendr_conversion_error_class"), call = NULL
+  )
+  e <- caught(raise(value, quote(f(mode = "b"))))
+  expect_identical(
+    class(e),
+    c("pkg_error", "pkg_error_argument", "rust_error", "simpleError", "error", "condition")
+  )
+})
+
 test_that("dots = data checks nothing", {
   expect_identical(mx_dots_data(), 0L)
   expect_identical(mx_dots_data(1, b = 2, zzz = 3), 3L)

@@ -237,7 +237,7 @@ format(fit, digts = 2, zzz = 1)
   - `empty` with no `allow` takes none.
 - **The suggestion.** It is taken from the wrapper's formals and the allowed names. It is the one name the argument is a prefix of. Otherwise it is the first closest name by edit distance, where swapping two neighbouring characters counts as one edit. The distance must be at most a third of the argument's length, but at least one edit, and fewer edits than the argument has characters. If no name qualifies, there is no suggestion.
 - **The condition** is an argument error ([CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body)), carrying:
-  - **Classes:** `miniextendr_error_unused_argument`, then the crate's `conversion_error_class`, `rust_error` and the base classes. `class = "pkg_unused_argument"` (or `class = ["a", "b"]`) in `empty(..)` / `forward(..)` puts the package's own classes in front.
+  - **Classes:** `miniextendr_error_unused_argument`, then the crate's `conversion_error_class`, `rust_error` and the base classes. `class = "pkg_unused_argument"` (or `class = ["a", "b"]`) in `empty(..)` / `forward(..)` puts the package's own classes in front. A class in both the package's and the crate's classes keeps only its first place.
   - **Fields:**
     - `kind = "conversion"`;
     - `param = "..."`;
