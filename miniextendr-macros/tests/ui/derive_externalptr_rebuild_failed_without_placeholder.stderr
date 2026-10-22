@@ -1,0 +1,5 @@
+error: `rebuild_failed` is the message of a failed rebuild, with `%s` where the cause goes, e.g. `rebuild_failed = "the engine could not be rebuilt: %s"`
+ --> tests/ui/derive_externalptr_rebuild_failed_without_placeholder.rs:6:41
+  |
+6 | #[externalptr(restored(rebuild_failed = "not rebuilt"), rebuild = MyType::from_saved)]
+  |                                         ^^^^^^^^^^^^^

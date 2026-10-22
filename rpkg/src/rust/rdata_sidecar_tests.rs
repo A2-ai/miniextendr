@@ -560,7 +560,9 @@ pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
 /// on assignment. Its receiver refusals carry the package's own message
 /// (`field_error(message)`, #1920), its unknown-name error adds the
 /// package's hint after the field list (`field_error(no_field_hint)`,
-/// #2112), and a saved copy is refused on every read.
+/// #2112), a list of the class without a pointer is refused with the
+/// package's reason (`restored(no_handle)`, #2218), and a saved copy is
+/// refused on every read.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(
     s3,
@@ -569,7 +571,11 @@ pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
         message = "not a strict_rec; build one with new_strict_rec()",
         no_field_hint = "`x$%s` and `x[[\"%s\"]]` read fields only; the steps are `x$steps`."
     ),
-    restored(class = ["strict_error_saved", "strict_error"], refuse = "every_read")
+    restored(
+        class = ["strict_error_saved", "strict_error"],
+        no_handle = "this strict_rec holds no record: it was saved before a strict_rec kept one; build one with new_strict_rec()",
+        refuse = "every_read"
+    )
 )]
 pub struct SidecarStrict {
     #[r_data]

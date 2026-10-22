@@ -6,6 +6,9 @@
 //! `readRDS()` / `unserialize()`. The hook refuses a recipe with a negative
 //! value, with its own classed error. `RebuildPair` holds a `RebuildR6`
 //! pointer in a `Sidecar<SEXP>` and rebuilds it from its own hook.
+//! `RebuildWorded` and `RebuildMessage` word a failed rebuild with their
+//! package's `restored(rebuild_failed = ...)` and `restored(message = ...)`
+//! (#2218).
 
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
@@ -124,6 +127,121 @@ pub fn rebuild_counts(warn: bool) -> Vec<i32> {
         REBUILDS.load(Ordering::Relaxed),
         DROPS.load(Ordering::Relaxed),
     ]
+}
+
+// endregion
+
+// region: RebuildWorded / RebuildMessage: the words of a failed rebuild (#2218)
+
+/// Rebuilt from its saved `n`, which must not be negative. Its package words
+/// a failed rebuild itself (`restored(rebuild_failed = ...)`), the cause in
+/// place of `%s`.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(
+    env,
+    restored(
+        class = "mx_rebuild_worded",
+        message = "this RebuildWorded was saved; build a new one",
+        rebuild_failed = "this RebuildWorded could not be rebuilt (%s); build a new one"
+    ),
+    rebuild = Self::from_saved
+)]
+pub struct RebuildWorded {
+    #[r_data]
+    _r: RSidecar,
+
+    /// The saved number.
+    #[r_data]
+    pub n: Sidecar<i32>,
+
+    /// The Rust state, rebuilt from `n`.
+    value: i32,
+}
+
+impl RebuildWorded {
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RebuildError> {
+        Ok(RebuildWorded {
+            _r: RSidecar,
+            value: rebuilt_n(Self::n(saved))?,
+            n: Sidecar::default(),
+        })
+    }
+}
+
+/// An env class whose failed rebuild has its package's own words.
+#[miniextendr(env)]
+impl RebuildWorded {
+    /// Create a RebuildWorded.
+    /// @param n The number; a negative one fails to rebuild after a reload.
+    pub fn new(n: i32) -> Self {
+        RebuildWorded {
+            _r: RSidecar,
+            n: Sidecar::new(n),
+            value: n,
+        }
+    }
+
+    /// The number, from the Rust state.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// `RebuildWorded` with a restored message and no `rebuild_failed`: a failed
+/// rebuild says the restored message, then the cause in parentheses.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(
+    env,
+    restored(message = "this RebuildMessage was saved; build a new one"),
+    rebuild = Self::from_saved
+)]
+pub struct RebuildMessage {
+    #[r_data]
+    _r: RSidecar,
+
+    /// The saved number.
+    #[r_data]
+    pub n: Sidecar<i32>,
+
+    /// The Rust state, rebuilt from `n`.
+    value: i32,
+}
+
+impl RebuildMessage {
+    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RebuildError> {
+        Ok(RebuildMessage {
+            _r: RSidecar,
+            value: rebuilt_n(Self::n(saved))?,
+            n: Sidecar::default(),
+        })
+    }
+}
+
+/// An env class whose failed rebuild says its restored message and the cause.
+#[miniextendr(env)]
+impl RebuildMessage {
+    /// Create a RebuildMessage.
+    /// @param n The number; a negative one fails to rebuild after a reload.
+    pub fn new(n: i32) -> Self {
+        RebuildMessage {
+            _r: RSidecar,
+            n: Sidecar::new(n),
+            value: n,
+        }
+    }
+
+    /// The number, from the Rust state.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// The hooks' check of a saved number: a negative one is refused.
+fn rebuilt_n(n: i32) -> Result<i32, RebuildError> {
+    if n < 0 {
+        return Err(RebuildError::Negative { n: 1 });
+    }
+    Ok(n)
 }
 
 // endregion

@@ -945,6 +945,23 @@ state without the seed contract), `` `rng(seed = ..)` names the seed parameter
 by its Rust name, as an identifier `` (`rng(seed = "seed")`: drop the quotes)
 and `` `seed` is set more than once ``.
 
+### "`rebuild_failed` is the message of a failed rebuild, with `%s` where the cause goes"
+
+`#[externalptr(restored(rebuild_failed = "..."))]` (#2218) is the message a
+restored object raises when its rebuild hook fails, and each `%s` in it is
+replaced by the cause's message. A template without `%s` would hide the
+cause; add one: `rebuild_failed = "the engine could not be rebuilt: %s"`. The
+same family covers `` `rebuild_failed` can't be empty `` and
+`` `rebuild_failed` is given twice ``, and the same two for `no_handle` and
+`message`.
+
+### "`restored(rebuild_failed = ...)` words the refusal of a failed rebuild; it needs `rebuild = path` next to it"
+
+Only a type with a rebuild hook (`#[externalptr(rebuild = Self::from_saved)]`)
+has a rebuild that can fail. Add the hook, or drop `rebuild_failed`: a type
+without one refuses a restored object with the `restored(message = ...)` text.
+See "Rebuilding after a reload" in [ExternalPtr](EXTERNALPTR.md).
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

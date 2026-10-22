@@ -192,16 +192,21 @@ impl Helpers {
         lines
     }
 
-    /// The `.DollarNames()` guard: under `restored(refuse = "every_read")` a
-    /// receiver without a live Rust value completes to nothing (#1901): a
-    /// restored pointer, a list or environment carrying one or none (#1919),
-    /// whose `names()` would refuse. `.DollarNames()` serves completion, so
-    /// it never raises.
-    fn dollar_names_guard(&self, receiver: &str) -> String {
+    /// The guard of the S3 `.DollarNames()`, which reads a list's or
+    /// environment's own `names()`: under `restored(refuse = "every_read")`
+    /// a receiver without a live Rust value (#1901), a restored pointer or a
+    /// list or environment carrying one or none (#1919), completes to the
+    /// field names, which need no value (#2218), since its `names()` would
+    /// refuse. The check never rebuilds a restored pointer, and
+    /// `.DollarNames()` serves completion, so it never raises. The S4 and
+    /// env completions read only static names and the fallback's, whose
+    /// entry gives none without a value, so they need no guard.
+    fn dollar_names_guard(&self) -> String {
         format!(
-            "  if ({every_read} && !{live}({receiver}, FALSE)) return(character(0))",
+            "  if ({every_read} && !{live}(x, FALSE)) return(grep(pattern, {fields}, value = TRUE))",
             every_read = self.every_read,
-            live = self.live
+            live = self.live,
+            fields = self.fields,
         )
     }
 }
@@ -647,14 +652,14 @@ pub(super) fn s3_field_methods(
 
     // `.DollarNames()` (#1885): the fields, then a list's or environment's
     // own names. It reads only names, so it never raises; under
-    // `restored(refuse = "every_read")` a restored pointer completes to
-    // nothing (#1901).
+    // `restored(refuse = "every_read")` a restored pointer completes to the
+    // fields alone (#1901, #2218).
     dollar_names_doc(&mut lines, parsed_impl, on_page, register);
     lines.push(format!(
         "{} <- function(x, pattern = \"\") {{",
         def(".DollarNames")
     ));
-    lines.push(h.dollar_names_guard("x"));
+    lines.push(h.dollar_names_guard());
     match h.fallback_names_call("x") {
         // The fallback's names follow the fields on the bare pointer, where
         // `$` reads them (#2150).
@@ -800,7 +805,6 @@ pub(super) fn s4_field_methods(
         "{} <- function(x, pattern = \"\") {{",
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
-    lines.push(h.dollar_names_guard("x@ptr"));
     match h.fallback_names_call("x@ptr") {
         Some(call) => lines.extend(Helpers::dollar_names_with_fallback(&call, &h.fields)),
         None => lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields)),
@@ -877,8 +881,9 @@ pub(super) fn env_load_check(parsed_impl: &ParsedImpl) -> String {
 
 /// `.DollarNames.Class` for an env class with `env(r_data_accessors)`: the
 /// fields, then the class's methods (`ls(<Class>)`), since `$` reaches both.
-/// `on_page` follows the `$.Class` block's gating; the method is always
-/// registered, as `$.Class` is.
+/// Both are static, so a restored object completes to them too, under
+/// `refuse = "every_read"` as well (#2218). `on_page` follows the `$.Class`
+/// block's gating; the method is always registered, as `$.Class` is.
 pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<String> {
     let class_name = parsed_impl.class_name();
     let h = Helpers::new(parsed_impl);
@@ -888,7 +893,6 @@ pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<S
         "{} <- function(x, pattern = \"\") {{",
         crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
-    lines.push(h.dollar_names_guard("x"));
     match h.fallback_names_call("x") {
         // The fallback's names follow the methods, which `$` tries first
         // (#2150).

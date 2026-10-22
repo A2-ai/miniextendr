@@ -9,7 +9,9 @@
 # reads its save by field name and takes saves by another version
 # (`any_version`, #2187); `rebuild_rewrite_layout()` lays a save out as
 # another version might have. `RebuildRenamed`'s field is `r_rows` in Rust
-# and `n.rows` in R, the name its save uses (#2215).
+# and `n.rows` in R, the name its save uses (#2215). `RebuildWorded` and
+# `RebuildMessage` word a failed rebuild with their package's
+# `restored(rebuild_failed = ...)` and `restored(message = ...)` (#2218).
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -188,9 +190,67 @@ test_that("any_version refuses another version's save without slot names", {
 })
 
 test_that("a save without slot names by this version is read by position", {
+  # `RebuildR6` has no `any_version`.
+  back <- reload(RebuildR6$new(c(1, 2)))
+  rebuild_rewrite_layout(ptr_of(back), "values", FALSE)
+  expect_identical(back$values, c(1, 2))
+  expect_identical(back$sum(), 3)
+})
+
+test_that("any_version refuses a save without slot names by this version, before the hook (#2218)", {
   back <- reload(RebuildLayout$new("pos", 5L))
-  rebuild_rewrite_layout(ptr_of(back), c("label", "doubled", "added"), FALSE)
-  expect_match(back$summary(), "^pos/10/1/true/")
+  # Laid out by an older version, before slots were named: read by
+  # position, `label` would be `doubled`'s value.
+  rebuild_rewrite_layout(ptr_of(back), c("doubled", "label", "added"), FALSE)
+  message <- paste0(
+    "this `RebuildLayout` object was saved before saves named their fields, ",
+    "so its saved values can't be matched to fields; re-create it"
+  )
+  e <- tryCatch(back$summary(), error = identity)
+  expect_s3_class(
+    e,
+    c("miniextendr_restored_unnamed_slots", "miniextendr_restored", "rust_error", "simpleError", "error", "condition"),
+    exact = TRUE
+  )
+  expect_identical(conditionMessage(e), message)
+  # A `Sidecar` read or write, which does not rebuild, is refused too.
+  for (use in alist(back$label, back$added, back$doubled <- 1L)) {
+    e <- tryCatch(eval(use), error = identity)
+    expect_s3_class(e, "miniextendr_restored_unnamed_slots")
+    expect_identical(conditionMessage(e), message, label = deparse(use))
+  }
+  # Nothing was installed: the next use is refused the same way.
+  expect_error(back$summary(), class = "miniextendr_restored_unnamed_slots")
+})
+
+test_that("a failed rebuild is worded by the package's `rebuild_failed` (#2218)", {
+  back <- reload(RebuildWorded$new(-1L))
+  e <- tryCatch(back$value(), error = identity)
+  expect_identical(
+    conditionMessage(e),
+    "this RebuildWorded could not be rebuilt (the saved values hold 1 negative value(s)); build a new one"
+  )
+  expect_identical(class(e)[1:3], c("mx_rebuild_worded", "miniextendr_restored_no_value", "miniextendr_restored"))
+  expect_s3_class(e$parent, "mx_rebuild_error_negative")
+  # Another restored refusal keeps the restored message.
+  other <- reload(RebuildWorded$new(2L))
+  sidecar_rewrite_saved_version(other, "0.0.1")
+  e <- tryCatch(other$value(), error = identity)
+  expect_s3_class(e, "miniextendr_restored_other_version")
+  expect_identical(conditionMessage(e), "this RebuildWorded was saved; build a new one")
+  # A good save rebuilds.
+  expect_identical(reload(RebuildWorded$new(3L))$value(), 3L)
+})
+
+test_that("without `rebuild_failed`, a failed rebuild says the restored message, then the cause (#2218)", {
+  back <- reload(RebuildMessage$new(-1L))
+  e <- tryCatch(back$value(), error = identity)
+  expect_identical(
+    conditionMessage(e),
+    "this RebuildMessage was saved; build a new one (rebuilding it failed: the saved values hold 1 negative value(s))"
+  )
+  expect_s3_class(e, "miniextendr_restored_no_value")
+  expect_identical(reload(RebuildMessage$new(4L))$value(), 4L)
 })
 
 test_that("a save names its slots by the fields' R names (#2215)", {

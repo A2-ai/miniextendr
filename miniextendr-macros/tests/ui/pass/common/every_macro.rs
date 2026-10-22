@@ -395,8 +395,16 @@ impl Convert<f64> for Counter {
 #[derive(ExternalPtr)]
 #[externalptr(
     s3,
-    restored(class = ["shadow_saved"], message = "saved", refuse = "every_read"),
-    field_error(class = "shadow_field")
+    restored(
+        class = ["shadow_saved"],
+        message = "saved",
+        rebuild_failed = "not rebuilt: %s",
+        no_handle = "no pointer",
+        refuse = "every_read"
+    ),
+    field_error(class = "shadow_field"),
+    rebuild = Self::from_saved,
+    any_version
 )]
 pub struct Engine {
     n: i32,
@@ -415,6 +423,19 @@ pub struct Engine {
 impl Engine {
     fn doubled(&self) -> i32 {
         self.n * 2
+    }
+
+    fn from_saved(
+        saved: &::miniextendr_api::externalptr::Saved<'_, Self>,
+    ) -> ::core::result::Result<Self, ::std::string::String> {
+        ::core::result::Result::Ok(Engine {
+            n: 0,
+            _r: RSidecar,
+            doubled: Computed,
+            keys: Sidecar::new(Self::try_keys(saved).unwrap_or_default()),
+            base: 0,
+            raw: Sidecar::new(SEXP::nil()),
+        })
     }
 }
 
