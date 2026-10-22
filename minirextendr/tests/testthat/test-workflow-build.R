@@ -5,13 +5,13 @@
 # reads it to write NAMESPACE and man/, and the install ships all three. So
 # the steps run in dependency order: compile + regenerate wrappers in the
 # source tree (pkgbuild::compile_dll, which never loads the namespace) ->
-# devtools::document() -> one devtools::install(). Earlier versions installed
+# devtools::document() -> one R CMD INSTALL. Earlier versions installed
 # first and papered over the resulting one-build lag with a conditional
 # reinstall (#860) and a deferred install failure (#1288); an edited doc
 # comment still never reached the installed help (#1549).
 #
 # These tests are behavioural-through-mocks (pkgbuild::compile_dll,
-# devtools::install/document + the internal autoconf/configure helpers), NOT
+# devtools::document, callr::rcmd + the internal autoconf/configure helpers), NOT
 # deparse(body) greps -- see minirextendr/CLAUDE.md's brittle-test gotcha.
 # The real compile/roxygen/install round-trip is covered by the gated e2e
 # tests in test-templates.R.
@@ -51,12 +51,25 @@ mock_build_steps <- function(state,
   }
   testthat::local_mocked_bindings(
     compile_dll = record("compile_dll", compile),
+    with_build_tools = function(code, required = TRUE) code,
     .package = "pkgbuild",
+    .env = parent.frame()
+  )
+  # The install is `R CMD INSTALL` through callr. devtools::install(), the
+  # way to pak (it always runs pak::local_install_deps()), is recorded too, so
+  # a call to it shows up as an extra step (#2230).
+  testthat::local_mocked_bindings(
+    rcmd = function(cmd, cmdargs = character(), ...) {
+      state$calls <- c(state$calls, "install")
+      state$rcmd <- list(cmd = cmd, cmdargs = cmdargs)
+      install()
+    },
+    .package = "callr",
     .env = parent.frame()
   )
   testthat::local_mocked_bindings(
     document = record("document", document),
-    install = record("install", install),
+    install = record("devtools::install", function() invisible(NULL)),
     .package = "devtools",
     .env = parent.frame()
   )
@@ -100,6 +113,23 @@ test_that("miniextendr_build(): compiles + regenerates wrappers, documents, then
   expect_equal(state$calls, c("compile_dll", "document", "unload", "install"))
   # The namespace document()'s load_all() registered is unloaded by name.
   expect_equal(state$unloaded, "testpkg")
+})
+
+test_that("miniextendr_build(): installs with R CMD INSTALL in place, resolving no dependencies (#2230)", {
+  # devtools::install() always runs pak::local_install_deps(), whose killed
+  # subprocess leaves its metadata cache behind in tempdir on every build.
+  skip_if_not_installed("pkgbuild")
+  skip_if_not_installed("devtools")
+  skip_if_not_installed("callr")
+  tmp <- make_build_pkg_root()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  state <- mock_build_steps(new_state())
+
+  expect_true(miniextendr_build(tmp, install = TRUE))
+  expect_equal(state$rcmd$cmd, "INSTALL")
+  expect_equal(normalizePath(state$rcmd$cmdargs[[1L]]), normalizePath(tmp))
+  expect_true("--install-tests" %in% state$rcmd$cmdargs)
+  expect_false("devtools::install" %in% state$calls)
 })
 
 test_that("miniextendr_build(): leaves a namespace alone that pkgload did not register", {
