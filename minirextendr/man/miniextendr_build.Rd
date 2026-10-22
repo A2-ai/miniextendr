@@ -46,9 +46,11 @@ a throwaway library that links \verb{src/<pkg>.so}, regenerates
 never loads the namespace, so a stale \code{NAMESPACE} cannot fail it. Step 4's
 \code{document()} reads the current wrappers; its own \code{pkgload::load_all()}
 compile finds the library linked and the wrappers generated from it. Step 5
-installs the package once, in place (\code{build = FALSE}), with \code{NAMESPACE},
+installs the package once, in place (\verb{R CMD INSTALL}), with \code{NAMESPACE},
 \verb{man/} and the wrappers already in their final form; it reuses Step 3's
-Cargo build. A brand-new package needs no special case:
+Cargo build. It installs no dependencies: Step 3 already needed them, and
+the library they live in (rv, renv) is left as it is. A brand-new package
+needs no special case:
 Step 3 writes its first wrappers file the same way.
 
 \code{document()} loads the package from source through \code{pkgload::load_all()}

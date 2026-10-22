@@ -110,9 +110,11 @@ miniextendr_configure <- function(path = ".") {
 #' never loads the namespace, so a stale `NAMESPACE` cannot fail it. Step 4's
 #' `document()` reads the current wrappers; its own `pkgload::load_all()`
 #' compile finds the library linked and the wrappers generated from it. Step 5
-#' installs the package once, in place (`build = FALSE`), with `NAMESPACE`,
+#' installs the package once, in place (`R CMD INSTALL`), with `NAMESPACE`,
 #' `man/` and the wrappers already in their final form; it reuses Step 3's
-#' Cargo build. A brand-new package needs no special case:
+#' Cargo build. It installs no dependencies: Step 3 already needed them, and
+#' the library they live in (rv, renv) is left as it is. A brand-new package
+#' needs no special case:
 #' Step 3 writes its first wrappers file the same way.
 #'
 #' `document()` loads the package from source through `pkgload::load_all()`
@@ -242,35 +244,44 @@ compile_and_generate_wrappers <- function(pkg_path) {
   invisible(TRUE)
 }
 
-#' Install the package via devtools
+#' Install the package with `R CMD INSTALL`
 #'
-#' Step 5 of [miniextendr_build()].
+#' Step 5 of [miniextendr_build()]: the `R CMD INSTALL` that
+#' `devtools::install(build = FALSE)` runs, in a subprocess, into the first
+#' library of [.libPaths()].
 #'
-#' `build = FALSE`: install the source tree in place, as `R CMD INSTALL .`
-#' does. The install reuses `rust-target/` from Step 3, so Cargo compiles
-#' nothing, the library is not relinked and the wrappers stay as Steps 3 and
-#' 4 left them. A built tarball would install from a temporary copy instead:
-#' a cold Cargo build on every call (unless `CARGO_TARGET_DIR` points outside
-#' the package), and a monorepo's local framework crates, found by
-#' configure's walk up from the package directory, would resolve from git
-#' there.
+#' The source tree is installed in place, as `R CMD INSTALL .` does. The
+#' install reuses `rust-target/` from Step 3, so Cargo compiles nothing, the
+#' library is not relinked and the wrappers stay as Steps 3 and 4 left them.
+#' A built tarball would install from a temporary copy instead: a cold Cargo
+#' build on every call (unless `CARGO_TARGET_DIR` points outside the
+#' package), and a monorepo's local framework crates, found by configure's
+#' walk up from the package directory, would resolve from git there.
 #'
-#' `reload = FALSE`: do NOT reload the freshly-installed package into the
-#' building session. The default (`reload = TRUE`) re-registers the package's
-#' namespace from its just-written installed image; on R >= 4.6
-#' (libdeflate-compressed `.rdb`) a later pkgload `unregister()` of that
-#' namespace can fail with "internal error 1 in R_decompress1 with
-#' libdeflate" / "lazy-load database is corrupt" (#1000). The build session
-#' never needs the package loaded, so skipping the reload is both harmless
-#' and the fix.
+#' No dependency is resolved or installed. Step 3 already compiled against
+#' them, and an rv- or renv-managed library is not this step's to change.
+#' `devtools::install()` (2.5) always runs `pak::local_install_deps()` first,
+#' whatever its `dependencies`; pak's subprocess is killed when it finishes,
+#' so the package metadata it caches in that subprocess's temporary
+#' directory (about 160 MB) is never removed, one copy per build (#2230).
+#'
+#' The freshly installed package is not loaded into the building session.
+#' Reloading it re-registers the namespace from its just-written installed
+#' image; on R >= 4.6 (libdeflate-compressed `.rdb`) a later pkgload
+#' `unregister()` of that namespace can fail with "internal error 1 in
+#' R_decompress1 with libdeflate" / "lazy-load database is corrupt" (#1000).
 #'
 #' @param pkg_path Absolute path to the package root.
-#' @return The value of `devtools::install()`. Aborts when the install fails.
+#' @return `TRUE` invisibly. Aborts when the install fails.
 #' @keywords internal
 install_pkg <- function(pkg_path) {
+  args <- c(pkg_path, "--install-tests",
+            if (isTRUE(getOption("keep.source.pkgs"))) "--with-keep.source")
   tryCatch(
-    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
-                      reload = FALSE),
+    pkgbuild::with_build_tools(required = FALSE, callr::rcmd(
+      "INSTALL", args, echo = TRUE, show = TRUE, spinner = FALSE,
+      stderr = "2>&1", fail_on_status = TRUE
+    )),
     error = function(e) {
       cli::cli_abort(c(
         "Package installation failed",
@@ -278,6 +289,7 @@ install_pkg <- function(pkg_path) {
       ))
     }
   )
+  invisible(TRUE)
 }
 
 #' Warn about leftovers of an interrupted release build
