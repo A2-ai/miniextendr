@@ -94,13 +94,37 @@ collapse_dots <- function(path) {
 
 path_literal <- "(?<![A-Za-z0-9_-])path\\s*=\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*')"
 
-# The directory a `path = "..."` literal names, from the manifest directory `base`.
-path_literal_dir <- function(hit, base) {
+# The path a `path = "..."` literal holds, unquoted.
+path_literal_value <- function(hit) {
   quoted <- sub(path_literal, "\\1", hit, perl = TRUE)
   value <- substr(quoted, 2L, nchar(quoted) - 1L)
   if (startsWith(quoted, '"')) value <- gsub("\\\\(.)", "\\1", value, perl = TRUE)
-  if (!grepl("^([A-Za-z]:)?[/\\\\]", value)) value <- file.path(base, value)
+  value
+}
+
+path_is_absolute <- function(value) grepl("^([A-Za-z]:)?[/\\\\]", value)
+
+# The directory a `path = "..."` literal names, from the manifest directory `base`.
+path_literal_dir <- function(hit, base) {
+  value <- path_literal_value(hit)
+  if (!path_is_absolute(value)) value <- file.path(base, value)
   normalizePath(collapse_dots(value), winslash = "/", mustWork = FALSE)
+}
+
+# Whether a `path = "..."` literal, from the manifest directory `base`, names a
+# directory outside the package `root`. A relative path that climbs out of the
+# package names one outside it even where it lands back inside: `../../../dep`
+# from a tarball unpacked into a directory named `dep` is the package itself.
+path_literal_outside <- function(hit, base, root) {
+  value <- path_literal_value(hit)
+  if (path_is_absolute(value)) return(!path_inside(path_literal_dir(hit, base), root))
+  dir <- base
+  for (part in strsplit(gsub("\\", "/", value, fixed = TRUE), "/", fixed = TRUE)[[1L]]) {
+    if (part %in% c("", ".")) next
+    dir <- if (part == "..") dirname(dir) else file.path(dir, part)
+    if (!path_inside(dir, root)) return(TRUE)
+  }
+  FALSE
 }
 
 # Every `path = "..."` literal of a manifest outside comments: its line, the
@@ -422,8 +446,9 @@ missing_path_dependencies <- function(paths) {
   # symlinked manifest points at.
   literals <- path_literals(readLines(paths$manifest, warn = FALSE), dirname(paths$manifest))
   loaded <- dependency_table(literals$section) | startsWith(literals$section, "[patch")
-  inside <- vapply(literals$dir, path_inside, logical(1), root = paths$root, USE.NAMES = FALSE)
-  literals[loaded & !inside & !file.exists(file.path(literals$dir, "Cargo.toml")), ]
+  outside <- vapply(literals$hit, path_literal_outside, logical(1), base = dirname(paths$manifest),
+                    root = paths$root, USE.NAMES = FALSE)
+  literals[loaded & outside & !file.exists(file.path(literals$dir, "Cargo.toml")), ]
 }
 
 # The package directory a build tree of symlinks mirrors (rv up to 0.12.0 links
