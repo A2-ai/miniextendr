@@ -303,6 +303,9 @@ pub(super) enum FieldTypeKind<'a> {
 /// - `Vec<T>` -> `VariableVec`
 /// - `Box<[T]>` -> `BoxedSlice`
 /// - `HashMap<K, V>` / `BTreeMap<K, V>` -> `Map`
+/// - `Option<scalar>`, or `Option` around a datetime crate path -> `OptionScalar`
+/// - A datetime crate path (`jiff::Timestamp`, `time::Date`, see
+///   [`DATETIME_PATHS`]) -> `Scalar`
 /// - Any non-scalar bare path type (single- or multi-segment, e.g. `Point` or
 ///   `crate::geom::Point`) -> `Struct`
 /// - Everything else (known scalars, generic types with args, `::abs::Paths`) -> `Scalar`
@@ -379,14 +382,16 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
                      `Option<u16>` / `Option<i32>` for a nullable integer column.",
                 ));
             }
-            if is_option_scalar_inner(inner) {
+            if is_option_scalar_inner(inner) || is_datetime_ty(inner) {
                 return Ok(FieldTypeKind::OptionScalar);
             }
         }
         if REJECTED_WRAPPERS.contains(&name.as_str()) {
             let hint = if name == "Option" {
                 "`Option<…>` is supported only around a scalar (`Option<f64>`, \
-                 `Option<String>`, …), where it is the NA-able column contract. "
+                 `Option<String>`, …) or a datetime type spelled by its crate path \
+                 (`Option<jiff::Timestamp>`, `Option<time::Date>`, …), where it is the \
+                 NA-able column contract. "
             } else {
                 ""
             };
@@ -459,6 +464,12 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
     // KNOWN_SCALARS check. A type named `mymod::Option` / `mymod::Vec` would shadow
     // the detection above — accepted per Rust naming convention (canonical names are
     // rarely shadowed). `#[dataframe(as_list)]` is the documented escape hatch.
+    //
+    // A datetime type spelled by its crate path (`jiff::Timestamp`, `time::Date`)
+    // is one column, not a struct to flatten; see `DATETIME_PATHS` for the rule.
+    if is_datetime_ty(ty) {
+        return Ok(FieldTypeKind::Scalar);
+    }
     if let syn::Type::Path(type_path) = ty {
         let segs = &type_path.path.segments;
         // No leading colon (rules out `::std::…` absolute paths) and no self-type.
@@ -504,6 +515,89 @@ pub(super) const OPTION_SCALAR_NAMES: &[&str] = &[
     "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u16", "u32", "u64", "isize", "usize",
     "String",
 ];
+
+/// Datetime types that `DataFrameRow` stores as one column (`T`) or one NA-able
+/// column (`Option<T>`): miniextendr-api has `IntoR` and `TryFromSexp` for
+/// `Vec<T>` and `Vec<Option<T>>` of each, under its `jiff` / `time` feature.
+///
+/// Unlike the scalar names, these are recognized by crate path only:
+/// `jiff::Timestamp`, `::jiff::Timestamp` or `miniextendr_api::jiff::Timestamp`,
+/// never a bare `Timestamp` or `Date`. A proc macro can't see imports, and a
+/// bare name may be the user's own struct, which flattens as a nested
+/// `DataFrameRow` as before. RISK: a local module named `jiff` or `time`
+/// holding a struct of one of these names reads as the crate's type; spell
+/// that path `self::time::Date` or `crate::time::Date` to flatten it.
+const DATETIME_PATHS: &[&[&str]] = &[
+    &["jiff", "Timestamp"],
+    &["jiff", "Zoned"],
+    &["jiff", "SignedDuration"],
+    &["jiff", "civil", "Date"],
+    &["time", "OffsetDateTime"],
+    &["time", "Date"],
+];
+
+/// The [`DATETIME_PATHS`] entry `tp` spells, with or without a leading `::`
+/// or the `miniextendr_api::` re-export of the crate.
+fn datetime_path(tp: &syn::TypePath) -> Option<&'static [&'static str]> {
+    if tp.qself.is_some()
+        || tp
+            .path
+            .segments
+            .iter()
+            .any(|seg| !matches!(seg.arguments, syn::PathArguments::None))
+    {
+        return None;
+    }
+    let idents: Vec<String> = tp
+        .path
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect();
+    let crate_path = match idents.split_first() {
+        Some((first, rest)) if first == "miniextendr_api" => rest,
+        _ => &idents[..],
+    };
+    DATETIME_PATHS.iter().copied().find(|path| {
+        path.iter()
+            .copied()
+            .eq(crate_path.iter().map(String::as_str))
+    })
+}
+
+/// True if `ty` is a datetime type spelled by its crate path ([`DATETIME_PATHS`]).
+pub(super) fn is_datetime_ty(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(tp) if datetime_path(tp).is_some())
+}
+
+/// The datetime type of a `T` or `Option<T>` field ([`DATETIME_PATHS`]).
+pub(super) fn datetime_column_ty(ty: &syn::Type) -> Option<&syn::Type> {
+    if is_datetime_ty(ty) {
+        Some(ty)
+    } else {
+        option_payload(ty).filter(|inner| is_datetime_ty(inner))
+    }
+}
+
+/// One compile-time check per datetime type in `tys`: without the matching
+/// miniextendr-api feature, the field reports the feature to enable
+/// (`markers::DataFrameDateTime`) instead of a bare missing `IntoR` impl.
+pub(super) fn datetime_feature_assertions<'a>(
+    tys: impl IntoIterator<Item = &'a syn::Type>,
+) -> Vec<TokenStream> {
+    tys.into_iter()
+        .map(|ty| {
+            quote! {
+                const _: () = {
+                    fn _assert_datetime_column<T: ::miniextendr_api::markers::DataFrameDateTime>() {}
+                    fn _do_assert() {
+                        _assert_datetime_column::<#ty>();
+                    }
+                };
+            }
+        })
+        .collect()
+}
 
 /// Match the final scalar name, as field classification does. Absolute and
 /// relative paths have the same conversion support; associated types and
@@ -631,7 +725,8 @@ fn generic_type_arg_count(ty: &syn::Type) -> usize {
 /// Each shape's reader is the inverse of its column-expansion write rule:
 /// - `Single` scalar: one column read as `Vec<ty>` (excludes `as_list` and
 ///   opaque set/collection columns — those classify as `Single` but lack
-///   `Vec<_>: TryFromSexp`).
+///   `Vec<_>: TryFromSexp`). A datetime column (`jiff::Timestamp`,
+///   `Option<time::Date>`, …) reads back the same way.
 /// - `Single` factor: `FactorVec<ty>` validates levels and reads owned variants.
 /// - `Single` map column (`HashMap<String, V>` / `BTreeMap<String, V>`): one
 ///   VECSXP list-of-named-lists column read whole via `Vec<map>: TryFromSexp`
@@ -655,6 +750,7 @@ fn field_reader_capable(rf: &ResolvedField) -> bool {
             !d.needs_into_list
                 && (d.is_factor
                     || is_reader_scalar_ty(&d.ty)
+                    || datetime_column_ty(&d.ty).is_some()
                     || d.map_reader
                     || d.list_elem_ty
                         .as_ref()
@@ -3334,6 +3430,11 @@ fn derive_struct_dataframe(
             }
         })
         .collect();
+    let datetime_assertions =
+        datetime_feature_assertions(resolved.iter().filter_map(|rf| match rf {
+            ResolvedField::Single(d) => datetime_column_ty(&d.ty),
+            _ => None,
+        }));
 
     // region: DataFrameRowConvert on Row — orphan-rule bridge for the public verbs
     //
@@ -3443,6 +3544,7 @@ fn derive_struct_dataframe(
         #payload_fields_impl
         #datarow_convert_impl
         #(#struct_assertions)*
+        #(#datetime_assertions)*
     })
     // endregion
 }
@@ -3456,7 +3558,10 @@ fn derive_struct_dataframe(
 ///
 /// A std path is shortened only to a prelude name (`::core::primitive::i32` →
 /// `i32`, `std::vec::Vec` → `Vec`); a non-prelude name such as `HashMap` names
-/// whatever the user imported. Parentheses and the invisible group around a
+/// whatever the user imported. A datetime crate path ([`DATETIME_PATHS`]) drops
+/// its leading `::` and `miniextendr_api::` prefix, so `::jiff::Timestamp`
+/// matches `jiff::Timestamp`; a bare `Timestamp` is a nested struct field, not
+/// a datetime column, so it never reaches this comparison as one. Parentheses and the invisible group around a
 /// `macro_rules!` `$t:ty` are dropped. Aliases and renamed imports stay as
 /// written, so they remain conflicts. A false match (a user `struct String`
 /// in scope) is still caught: every merged column has one Rust type, and the
@@ -3481,6 +3586,14 @@ fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
         fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
             syn::visit_mut::visit_type_path_mut(self, ty);
             if ty.qself.is_some() {
+                return;
+            }
+            if let Some(path) = datetime_path(ty) {
+                ty.path.leading_colon = None;
+                ty.path.segments = path
+                    .iter()
+                    .map(|segment| syn::PathSegment::from(format_ident!("{segment}")))
+                    .collect();
                 return;
             }
             let segments: Vec<_> = ty.path.segments.iter().collect();
@@ -3921,6 +4034,14 @@ mod tests {
                 quote!(Option<String>),
                 quote!(::core::option::Option<::alloc::string::String>),
             ),
+            // A datetime crate path matches itself behind `::` or the
+            // `miniextendr_api` re-export.
+            (quote!(jiff::Timestamp), quote!(::jiff::Timestamp)),
+            (
+                quote!(miniextendr_api::jiff::civil::Date),
+                quote!(jiff::civil::Date),
+            ),
+            (quote!(::miniextendr_api::time::Date), quote!(time::Date)),
         ] {
             let first: syn::Type = syn::parse2(first).unwrap();
             let second: syn::Type = syn::parse2(second).unwrap();
@@ -3966,6 +4087,9 @@ mod tests {
                 quote!(std::cmp::Ordering),
                 quote!(std::sync::atomic::Ordering),
             ),
+            // Two datetime types, and a bare name the derive can't resolve.
+            (quote!(jiff::civil::Date), quote!(time::Date)),
+            (quote!(Timestamp), quote!(jiff::Timestamp)),
         ] {
             let first = syn::parse2(first).unwrap();
             let second = syn::parse2(second).unwrap();
@@ -4146,6 +4270,96 @@ mod tests {
                 "message must name the supported shape, got: {err}"
             );
         }
+    }
+
+    /// A datetime type spelled by its crate path is one column, `Option<T>` an
+    /// NA-able one, both read back; each field asserts the feature marker.
+    #[test]
+    fn datetime_crate_paths_are_readable_columns() {
+        let input: DeriveInput = syn::parse_quote! {
+            struct Obs {
+                at: jiff::Timestamp,
+                seen: Option<::jiff::Timestamp>,
+                zoned: miniextendr_api::jiff::Zoned,
+                lag: jiff::SignedDuration,
+                day: Option<jiff::civil::Date>,
+                stamp: time::OffsetDateTime,
+                due: Option<::miniextendr_api::time::Date>,
+            }
+        };
+        let syn::Data::Struct(data) = &input.data else {
+            unreachable!()
+        };
+        for (i, field) in data.fields.iter().enumerate() {
+            let resolved = resolve_struct_field(field, i, false).unwrap().unwrap();
+            assert!(matches!(&resolved, ResolvedField::Single(_)), "field {i}");
+            assert!(field_reader_capable(&resolved), "field {i}");
+        }
+        let code = expand(input);
+        assert_eq!(code.matches("DataFrameDateTime").count(), 7, "{code}");
+        assert!(code.contains("_assert_datetime_column :: < jiff :: Timestamp >"));
+        assert!(code.contains("_assert_datetime_column :: < :: jiff :: Timestamp >"));
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+    }
+
+    /// Only crate paths are datetime columns: a bare or module-relative name may
+    /// be the user's own struct and still flattens, and types without column
+    /// conversions are not recognized. `Option` around a bare name stays an
+    /// error whose hint names the crate-path spelling.
+    #[test]
+    fn datetime_bare_names_keep_their_meaning() {
+        for ty in [
+            quote!(Timestamp),
+            quote!(Date),
+            quote!(civil::Date),
+            quote!(crate::time::Date),
+            quote!(self::jiff::Timestamp),
+            quote!(jiff::Span),
+            quote!(jiff::civil::DateTime),
+            quote!(time::Duration),
+        ] {
+            let ty: syn::Type = syn::parse2(ty).unwrap();
+            assert!(
+                matches!(classify_field_type(&ty), Ok(FieldTypeKind::Struct { .. })),
+                "{}",
+                quote!(#ty)
+            );
+        }
+        let input: DeriveInput = syn::parse_quote! {
+            struct Row { at: Option<Timestamp> }
+        };
+        let error = derive_dataframe_row(input).unwrap_err().to_string();
+        assert!(error.contains("`Option<jiff::Timestamp>`"), "{error}");
+    }
+
+    /// An enum variant's datetime field is one `Vec<Option<T>>` column shared
+    /// with another variant's spelling of the same path, and reads back;
+    /// `Option<T>` there is rejected like any `Option<scalar>`.
+    #[test]
+    fn datetime_enum_variant_fields() {
+        let code = expand(syn::parse_quote! {
+            #[dataframe(tag = "kind")]
+            enum Event {
+                Start { at: jiff::Timestamp },
+                Stop { at: ::jiff::Timestamp, day: time::Date },
+            }
+        });
+        assert_eq!(code.matches("DataFrameDateTime").count(), 3, "{code}");
+        assert!(code.contains("fn try_from_dataframe"), "{code}");
+
+        let input: DeriveInput = syn::parse_quote! {
+            #[dataframe(tag = "kind")]
+            enum Event {
+                Start { at: Option<jiff::Timestamp> },
+                Stop { code: i32 },
+            }
+        };
+        let error = derive_dataframe_row(input).unwrap_err().to_string();
+        assert!(
+            error.contains("already become `Option<T>` columns"),
+            "{error}"
+        );
     }
 
     /// Enum variant fields already become `Option<T>` columns (absent for the

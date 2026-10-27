@@ -12,10 +12,10 @@ use super::{
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, SPELL_TYPES_ALIKE, VariantInfo,
     VariantShape, classify_field_type, companion_debug_clone, companion_lifetime_marker,
-    expanded_elem_idents, field_is_borrowed_ref, fixed_array_elems, from_rows_par_override,
-    is_bare_reader_scalar_ty, is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn,
-    option_payload, owned_elems_iter, parallel_columns_impl, parse_field_attrs,
-    raw_na_column_error, same_column_type, width_elems,
+    datetime_column_ty, datetime_feature_assertions, expanded_elem_idents, field_is_borrowed_ref,
+    fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty, is_datetime_ty,
+    is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn, option_payload, owned_elems_iter,
+    parallel_columns_impl, parse_field_attrs, raw_na_column_error, same_column_type, width_elems,
 };
 use crate::naming;
 use crate::type_inspect::type_display;
@@ -1090,6 +1090,13 @@ pub(super) fn derive_enum_dataframe(
             }
         })
         .collect();
+    // A datetime column without its miniextendr-api feature names the feature.
+    let datetime_assertions = datetime_feature_assertions(variant_infos.iter().flat_map(|vi| {
+        vi.fields.iter().filter_map(|erf| match erf {
+            EnumResolvedField::Single(d) => datetime_column_ty(&d.ty),
+            _ => None,
+        })
+    }));
 
     // Payload collision assertions (#486): one per nested-enum struct field.
     // For each `kind: Inner` field, emit:
@@ -2025,6 +2032,7 @@ pub(super) fn derive_enum_dataframe(
         #payload_fields_impl
         #datarow_convert_impl
         #(#struct_assertions)*
+        #(#datetime_assertions)*
         #(#payload_collision_assertions)*
         #(#sibling_collision_assertions)*
         #unit_only_factor_impls
@@ -2834,7 +2842,8 @@ fn generate_split_method(
 fn enum_field_reader_capable(erf: &EnumResolvedField) -> bool {
     match erf {
         EnumResolvedField::Single(data) => {
-            !data.needs_into_list && (data.is_factor || is_reader_scalar_ty(&data.ty))
+            !data.needs_into_list
+                && (data.is_factor || is_reader_scalar_ty(&data.ty) || is_datetime_ty(&data.ty))
         }
         EnumResolvedField::ExpandedFixed(data) => {
             !data.borrowed && is_reader_scalar_ty(&data.elem_ty)
