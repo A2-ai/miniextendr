@@ -41,6 +41,7 @@ mypackage/
 │   │   ├── build.rs     # Build-time lint
 │   ├── stub.c            # Minimal C stub for R linker
 │   ├── Makevars.in
+│   ├── Makevars.win      # Windows system libraries for the Rust staticlib
 │   └── win.def.in
 ├── vendor/              # Vendored miniextendr crates
 └── tools/               # config.guess, config.sub, build-html-reference.R

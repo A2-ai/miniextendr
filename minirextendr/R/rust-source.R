@@ -284,8 +284,9 @@ extract_impl_names <- function(code) {
 #' DESCRIPTION, a NAMESPACE exporting the names from [extract_pub_fn_names()]
 #' and [extract_impl_names()], `src/rust/{lib.rs,Cargo.toml,build.rs}` (with
 #' `features` as the crate's default features), and the rpkg template's
-#' `stub.c`, `Makevars.in`, `win.def.in`, `configure.ac`, `mx_abi.h` and
-#' `tools/` config scripts. Sets the session template type to `"rpkg"`.
+#' `stub.c`, `Makevars.in`, `Makevars.win`, `win.def.in`, `configure.ac`,
+#' `mx_abi.h` and `tools/` config scripts. Sets the session template type to
+#' `"rpkg"`.
 #'
 #' @param code Rust code string
 #' @param hash MD5 hash of the code
@@ -412,9 +413,10 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   win_def_in <- template_path("win.def.in")
   fs::file_copy(win_def_in, fs::path(pkg_dir, "src", "win.def.in"))
 
-  # Makevars.in
-  makevars_in <- template_path("Makevars.in")
-  fs::file_copy(makevars_in, fs::path(pkg_dir, "src", "Makevars.in"))
+  # Makevars.in, and Makevars.win with the Windows system libraries
+  for (makevars in c("Makevars.in", "Makevars.win")) {
+    fs::file_copy(template_path(makevars), fs::path(pkg_dir, "src", makevars))
+  }
 
   # configure.ac: AC_INIT takes the package name and the DESCRIPTION version
   configure_ac <- template_path("configure.ac")

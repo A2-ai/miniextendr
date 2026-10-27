@@ -41,7 +41,8 @@ Any previous \verb{<cache_root>/<hash>/pkg} is deleted first. The package gets a
 DESCRIPTION, a NAMESPACE exporting the names from \code{\link[=extract_pub_fn_names]{extract_pub_fn_names()}}
 and \code{\link[=extract_impl_names]{extract_impl_names()}}, \verb{src/rust/\{lib.rs,Cargo.toml,build.rs\}} (with
 \code{features} as the crate's default features), and the rpkg template's
-\code{stub.c}, \code{Makevars.in}, \code{win.def.in}, \code{configure.ac}, \code{mx_abi.h} and
-\verb{tools/} config scripts. Sets the session template type to \code{"rpkg"}.
+\code{stub.c}, \code{Makevars.in}, \code{Makevars.win}, \code{win.def.in}, \code{configure.ac},
+\code{mx_abi.h} and \verb{tools/} config scripts. Sets the session template type to
+\code{"rpkg"}.
 }
 \keyword{internal}
