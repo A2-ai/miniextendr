@@ -31,8 +31,14 @@ package in a healthy state:
 \details{
 \itemize{
 \item \strong{pre-commit}: Checks \verb{cargo fmt}, blocks on stale \code{configure} script
-or stale NAMESPACE (when \verb{*-wrappers.R} changed without \code{devtools::document()}),
-blocks on source-shape \code{src/rust/Cargo.lock} (recommends
+or stale NAMESPACE: a staged \verb{R/*-wrappers.R} blocks when \code{NAMESPACE}
+has unstaged changes, or when \code{NAMESPACE} is not staged and the
+namespace tags roxygen2 reads (\verb{@export}, \verb{@exportS3Method}, \verb{@method},
+\verb{@importFrom}, \verb{@rawNamespace}, ...), each with the object its block
+documents, differ from the committed wrappers (the message lists the
+added and removed tags; run \code{devtools::document()}). Edits that only
+move the wrappers' source lines pass. Also blocks on source-shape
+\code{src/rust/Cargo.lock} (recommends
 \code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), blocks on a staged \code{vendor.tar.xz}
 (a build artifact that \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} vendors into the
 release tarball; never commit it), blocks when the staged \code{rv.lock}
