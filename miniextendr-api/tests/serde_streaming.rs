@@ -455,3 +455,54 @@ fn dispatch_to_dataframes_custom_names() {
 }
 
 // endregion
+
+// region: grow_schema with nested structs (#1370)
+
+/// `grow_schema` absorbs a nested field that a later row introduces into its
+/// parent's block, the same columns `vec_to_dataframe` gives for the rows.
+#[test]
+fn grow_schema_absorbs_nested_field_from_later_row() {
+    #[derive(Serialize)]
+    struct Metadata {
+        hash: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    }
+    #[derive(Serialize)]
+    struct Entry {
+        path: String,
+        metadata: Metadata,
+        size: f64,
+    }
+    let entry = |path: &str, message: Option<&str>| Entry {
+        path: path.into(),
+        metadata: Metadata {
+            hash: format!("h_{path}"),
+            message: message.map(Into::into),
+        },
+        size: 1.0,
+    };
+
+    r_test_utils::with_r_thread(move || {
+        let mut b = SerdeRowBuilder::<Entry>::new(None).grow_schema();
+        b.push(entry("a", None)).unwrap();
+        b.push(entry("b", Some("why"))).unwrap();
+        b.push(entry("c", None)).unwrap();
+        let df = b.finish().unwrap().into_sexp();
+
+        let names = df.get_names();
+        let names: Vec<&str> = (0..names.xlength())
+            .map(|i| names.string_elt_str(i).unwrap())
+            .collect();
+        assert_eq!(names, ["path", "metadata_hash", "metadata_message", "size"]);
+        let message = df.vector_elt(2);
+        assert_eq!(message.type_of(), SEXPTYPE::STRSXP);
+        assert_eq!(message.string_elt_str(0), None);
+        assert_eq!(message.string_elt_str(1), Some("why"));
+        assert_eq!(message.string_elt_str(2), None);
+        assert_eq!(df.vector_elt(1).string_elt_str(2), Some("h_c"));
+        assert_eq!(df.vector_elt(3).xlength(), 3);
+    });
+}
+
+// endregion

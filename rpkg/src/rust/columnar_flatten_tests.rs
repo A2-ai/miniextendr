@@ -6,7 +6,9 @@ use miniextendr_api::DataFrameShape;
 use miniextendr_api::IntoR;
 use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::miniextendr;
-use miniextendr_api::serde::{SplitShape, vec_to_dataframe, vec_to_dataframe_split};
+use miniextendr_api::serde::{
+    SerdeRowBuilder, SplitShape, vec_to_dataframe, vec_to_dataframe_split,
+};
 
 // region: Test types
 
@@ -50,6 +52,62 @@ struct Mid {
 #[serde(crate = "crate::serde")]
 struct Leaf {
     c: f64,
+}
+
+/// A nested struct whose `message` only some rows carry (#1370).
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct FileMetadata {
+    hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct FileEntry {
+    path: String,
+    metadata: FileMetadata,
+    size: f64,
+}
+
+fn file_entries() -> Vec<FileEntry> {
+    [("a", None), ("b", Some("why")), ("c", None)]
+        .into_iter()
+        .map(|(path, message)| FileEntry {
+            path: path.into(),
+            metadata: FileMetadata {
+                hash: format!("h_{path}"),
+                message: message.map(Into::into),
+            },
+            size: 1.5,
+        })
+        .collect()
+}
+
+/// Two levels of nesting whose inner fields the first row lacks: a skipped
+/// `note` and an `Option<Leaf>` that is `None`.
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct Probe {
+    reading: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+    calibration: Option<Leaf>,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct Station {
+    name: String,
+    probe: Probe,
+}
+
+#[derive(Serialize)]
+#[serde(crate = "crate::serde")]
+struct Survey {
+    id: i32,
+    station: Station,
 }
 
 #[derive(Serialize)]
@@ -146,6 +204,53 @@ pub fn test_columnar_deep_nesting() -> BuiltDataFrame {
             mid: Mid {
                 b: 2,
                 leaf: Leaf { c: 20.0 },
+            },
+        },
+    ];
+    vec_to_dataframe(&rows).expect("from_rows")
+}
+
+/// The nested `metadata_message` column exists although the first row lacks
+/// the field.
+#[miniextendr(noexport)]
+pub fn test_columnar_nested_late_field() -> BuiltDataFrame {
+    vec_to_dataframe(&file_entries()).expect("from_rows")
+}
+
+/// The same rows through `SerdeRowBuilder::grow_schema`.
+#[miniextendr(noexport)]
+pub fn test_columnar_nested_late_field_grow() -> BuiltDataFrame {
+    let mut builder = SerdeRowBuilder::new(None).grow_schema();
+    for entry in file_entries() {
+        builder.push(entry).expect("push");
+    }
+    builder.finish().expect("finish")
+}
+
+/// Fields two levels down that only the second row carries.
+#[miniextendr(noexport)]
+pub fn test_columnar_nested_late_field_deep() -> BuiltDataFrame {
+    let rows = vec![
+        Survey {
+            id: 1,
+            station: Station {
+                name: "north".into(),
+                probe: Probe {
+                    reading: 0.5,
+                    note: None,
+                    calibration: None,
+                },
+            },
+        },
+        Survey {
+            id: 2,
+            station: Station {
+                name: "south".into(),
+                probe: Probe {
+                    reading: 0.7,
+                    note: Some("recalibrated".into()),
+                    calibration: Some(Leaf { c: 1.25 }),
+                },
             },
         },
     ];

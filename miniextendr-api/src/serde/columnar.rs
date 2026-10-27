@@ -98,6 +98,13 @@ macro_rules! reject_non_struct {
 /// | `Option<T>` (every row `None`) | `logical` NA column — R coerces to the surrounding type on first use (`c(NA, 1L)` → integer, `c(NA, "x")` → character) |
 /// | Nested struct | Recursively flattened with `parent_child` naming |
 /// | Other | Falls back to per-element list column |
+///
+/// The columns are the union of every row's fields, at every depth: a field
+/// that only some rows carry (an untagged enum variant's, one skipped with
+/// `skip_serializing_if`, or one inside an `Option<Struct>` that is `None` in
+/// some rows) gets a column that is NA on the other rows. Columns appear in
+/// first-appearance order, and a nested struct's columns stay together, so a
+/// nested field first seen in a later row joins its parent's block.
 pub fn vec_to_dataframe<T: Serialize>(rows: &[T]) -> Result<BuiltDataFrame, RSerdeError> {
     if rows.is_empty() {
         // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
@@ -320,11 +327,11 @@ where
 /// 1. **Parallel union discovery.** Each worker probes its chunk's rows into a
 ///    local `SchemaAccumulator` (pure Rust, no R contact).
 /// 2. **Global resolution** (main thread, cheap). The per-chunk accumulators
-///    are merged in chunk (= row) order and resolved through the same
-///    candidate lattice as [`vec_to_dataframe`] — so cross-chunk type clashes
-///    behave identically to the sequential union path: first-seen wins,
-///    a typed probe beats a None-only (`Generic`) probe regardless of which
-///    chunk saw it.
+///    are merged in chunk (= row) order through the same lattice as
+///    [`vec_to_dataframe`] — so cross-chunk type clashes behave identically to
+///    the sequential union path: first-seen wins, a typed probe beats a
+///    None-only (`Generic`) probe regardless of which chunk saw it, and nested
+///    structs union key by key at any depth.
 /// 3. **Parallel fill against the shared union schema.** Identical to the
 ///    homogeneous fan-out: every worker fills a local column set with one slot
 ///    per union field, NA-padding fields its rows lack. The ordered merge then
@@ -477,10 +484,10 @@ where
         })
         .collect();
 
-    // 2. Global resolution: merge per-chunk candidates in chunk (= row) order,
-    //    then resolve through the same lattice as the sequential union path.
-    //    Merging *unresolved* candidates (rather than per-chunk schemas) makes
-    //    the result identical to feeding every row into one accumulator.
+    // 2. Global resolution: merge the per-chunk unions in chunk (= row) order
+    //    through the same lattice as the sequential union path. Merging the
+    //    unions (rather than laid-out per-chunk schemas) makes the result
+    //    identical to feeding every row into one accumulator.
     let mut acc = SchemaAccumulator::new(SchemaMode::Union);
     for chunk_acc in chunk_accs {
         acc.merge(chunk_acc);
@@ -509,9 +516,9 @@ where
     }
 
     // 3. Fill against the shared union schema. Non-strict, mirroring
-    //    `vec_to_dataframe`: the union absorbed every row's keys, so an
-    //    unmapped field can only be a discarded Compound shape (the documented
-    //    recursive-union limitation) — skip it rather than error.
+    //    `vec_to_dataframe`: the union absorbed every row's keys at every
+    //    depth, so an unmapped field can only come from a row whose probe
+    //    failed — skip it rather than error.
     let merged = par_fill_merge(rows, &schema, nrow_hint, /* strict */ false)?;
     Ok(Some((schema, merged, rows.len())))
 }
@@ -531,8 +538,8 @@ fn par_chunk_size(nrow: usize) -> usize {
 ///
 /// `strict` mirrors [`ColumnFiller`]'s flag: when true, a row touching a field
 /// absent from `schema` errors (homogeneous first-row contract); when false it
-/// is silently skipped (union schema — misses can only be discarded Compound
-/// shapes).
+/// is silently skipped (union schema — a miss can only come from a row whose
+/// probe failed).
 #[cfg(feature = "rayon")]
 fn par_fill_merge<T>(
     rows: &[T],
@@ -591,8 +598,8 @@ where
 /// state and is safe to run on a rayon worker. `strict` carries
 /// [`ColumnFiller`]'s flag: the homogeneous path validates every row against
 /// the first-row schema (an unknown field errors); the growing path fills
-/// against a union schema where an unmapped field can only be a discarded
-/// Compound shape, skipped like `vec_to_dataframe` does.
+/// against a union schema where an unmapped field can only come from a row
+/// whose probe failed, skipped like `vec_to_dataframe` does.
 #[cfg(feature = "rayon")]
 struct ParChunkFiller<'a> {
     columns: Vec<ColumnBuffer>,
@@ -1113,6 +1120,12 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// `SerdeRowBuilder::with_schema(...).grow_schema()` to start with a
     /// declared partial schema and let new fields appear as rows arrive.
     ///
+    /// A new top-level field is appended as the last column. A new field of a
+    /// nested struct joins its parent's columns (`metadata_message` lands
+    /// next to `metadata_hash`), at any depth, as in [`vec_to_dataframe`].
+    /// A column keeps the shape its first row gave it: a field first seen as
+    /// one column (an `Option<Struct>` that was `None`) stays one column.
+    ///
     /// Cost: O(new_fields × existing_nrow) on each push that introduces a
     /// new field. For row-by-row growing types this is amortised
     /// O(nrow × ncols) — the same shape as `vec_to_dataframe` today.
@@ -1191,50 +1204,53 @@ impl<T: Serialize> SerdeRowBuilder<T> {
         Ok(())
     }
 
-    /// Run a Union-mode discovery pass over `row` and absorb any fields not
-    /// present in the current schema. New columns get a fresh
-    /// [`ColumnBuffer`] back-filled with `self.nrow` NA values so the
-    /// per-column length invariant is preserved going into the fill step.
-    ///
-    /// Compound (nested-struct) discoveries are flattened by
-    /// [`SchemaAccumulator::finalize`]; each leaf field appears as its own
-    /// top-level entry in the per-row schema and is added here as a flat
-    /// scalar column under that name.
+    /// Probe `row` and absorb the fields the current schema lacks, at any
+    /// depth. A nested field joins its parent's block, so the schema is laid
+    /// out again: existing columns keep their buffers and first-seen types,
+    /// and each new one gets a fresh [`ColumnBuffer`] back-filled with
+    /// `self.nrow` NA values, so the per-column length invariant holds going
+    /// into the fill step.
     fn absorb_new_fields(&mut self, row: &T) -> Result<(), RSerdeError> {
-        let mut acc = SchemaAccumulator::new(SchemaMode::Union);
-        // Union mode tolerates rows that probe to no fields (e.g. top-level
-        // None); we propagate hard serialization errors.
-        let _ = acc.feed(row);
-        // If the row produced no fields at all, `finalize` would error; treat
-        // that as "no new fields" rather than failing the push.
-        let discovered = match acc.finalize() {
-            Ok(s) => s,
-            Err(_) => return Ok(()),
-        };
-
-        let cap = self.nrow_hint.unwrap_or(0);
-        let schema = self.schema.as_mut().expect("schema set by push gating");
-
-        for field in discovered.fields {
-            if schema.field_map.map.contains_key(&field.name) {
-                continue;
-            }
-            // Allocate a fresh column and back-fill prior rows with NA so
-            // the column length matches the existing nrow.
-            let mut buf = ColumnBuffer::new(field.col_type, cap);
-            for _ in 0..self.nrow {
-                buf.push_na();
-            }
-            let col_idx = schema.fields.len();
-            self.columns.push(buf);
-            self.filled.push(false);
-            schema
-                .field_map
-                .map
-                .insert(field.name.clone(), FieldMapping::Scalar { col_idx });
-            schema.field_map.total_cols = col_idx + 1;
-            schema.fields.push(field);
+        // A row that fails the probe (e.g. top-level None) adds nothing; the
+        // fill step reports it.
+        let mut discoverer = SchemaDiscoverer::default();
+        if row.serialize(&mut discoverer).is_err() {
+            return Ok(());
         }
+        let schema = self.schema.as_mut().expect("schema set by push gating");
+        if !schema.field_map.lacks_any(&discoverer.shape) {
+            return Ok(());
+        }
+
+        let mut shape = ShapeUnion::from_layout(&schema.field_map, &schema.fields);
+        shape.add_new_keys(discoverer.shape);
+        let mut fields = Vec::new();
+        let field_map = shape.layout(None, &mut fields);
+
+        // Existing columns move to their new positions; the rest are new.
+        let mut moves = Vec::new();
+        schema.field_map.column_moves(&field_map, &mut moves);
+        let mut old: Vec<Option<ColumnBuffer>> = self.columns.drain(..).map(Some).collect();
+        let mut columns: Vec<Option<ColumnBuffer>> = fields.iter().map(|_| None).collect();
+        for (from, to) in moves {
+            columns[to] = old[from].take();
+        }
+        let cap = self.nrow_hint.unwrap_or(0);
+        self.columns = columns
+            .into_iter()
+            .zip(&fields)
+            .map(|(column, field)| {
+                column.unwrap_or_else(|| {
+                    let mut buf = ColumnBuffer::new(field.col_type, cap);
+                    for _ in 0..self.nrow {
+                        buf.push_na();
+                    }
+                    buf
+                })
+            })
+            .collect();
+        self.filled = vec![false; fields.len()];
+        *schema = Schema { fields, field_map };
         Ok(())
     }
 
@@ -1287,6 +1303,43 @@ struct FieldMap {
     total_cols: usize,
 }
 
+impl FieldMap {
+    /// True if `row` has a key, at any depth, that this level doesn't map. A
+    /// key mapped to one column counts as present whatever `row`'s shape.
+    fn lacks_any(&self, row: &ShapeUnion) -> bool {
+        row.key_order
+            .iter()
+            .any(|key| match (self.map.get(key), &row.shapes[key]) {
+                (None, _) => true,
+                (Some(FieldMapping::Compound { sub_fields, .. }), KeyShape::Compound(sub)) => {
+                    sub_fields.lacks_any(sub)
+                }
+                _ => false,
+            })
+    }
+
+    /// Push the `(old, new)` column index of every leaf this level maps, in a
+    /// layout `new` that kept each of this level's keys and its shape.
+    fn column_moves(&self, new: &FieldMap, moves: &mut Vec<(usize, usize)>) {
+        for (key, mapping) in &self.map {
+            match (mapping, &new.map[key]) {
+                (FieldMapping::Scalar { col_idx: from }, FieldMapping::Scalar { col_idx: to }) => {
+                    moves.push((*from, *to));
+                }
+                (
+                    FieldMapping::Compound {
+                        sub_fields: old, ..
+                    },
+                    FieldMapping::Compound {
+                        sub_fields: new, ..
+                    },
+                ) => old.column_moves(new, moves),
+                _ => unreachable!("add_new_keys keeps every existing key's shape"),
+            }
+        }
+    }
+}
+
 // endregion
 
 // region: Schema discovery
@@ -1310,334 +1363,255 @@ struct Schema {
     field_map: FieldMap,
 }
 
-/// A candidate mapping for a single key, extracted from one probe row.
-enum Candidate {
+/// What the probes so far say about one key: a single column, or a nested
+/// struct that flattens into its own keys' columns.
+enum KeyShape {
     Scalar(ColumnType),
-    Compound {
-        fields: Vec<FieldInfo>,
-        sub_map: FieldMap,
-    },
+    Compound(ShapeUnion),
 }
 
-/// Resolve a slice of candidates for one key into the best single candidate.
-///
-/// Lattice (highest wins):
-/// - `Compound` beats everything (has concrete shape).
-/// - `Scalar(non-Generic)` beats `Scalar(Generic)`.
-/// - `Scalar(Generic)` is the bottom (None-only probes land here).
-///
-/// Two `Scalar(non-Generic)` of different types: keep the first seen (no widening).
-/// Two `Compound` of different shapes: keep the first seen (recursive union is out of scope).
-fn resolve_candidates(candidates: &mut Vec<Candidate>) -> Candidate {
-    // Walk candidates and pick the best.
-    // We need to own the winner, so find its index then swap-remove.
-    let mut best_idx = 0;
-    for (i, c) in candidates.iter().enumerate() {
-        match (&candidates[best_idx], c) {
-            // Compound is always at least as good as what we have.
-            (_, Candidate::Compound { .. }) => {
-                best_idx = i;
-                break; // Compound is the top of the lattice — no need to look further.
+impl KeyShape {
+    /// Fold another probe of the same key into this one.
+    ///
+    /// Lattice (highest wins):
+    /// - `Compound` beats `Scalar`; two `Compound`s merge key by key, at any
+    ///   depth, through this same lattice.
+    /// - `Scalar(non-Generic)` beats `Scalar(Generic)` (a `None`-only probe).
+    /// - Two `Scalar(non-Generic)` of different types: the first seen wins (no
+    ///   widening).
+    fn absorb(&mut self, probe: KeyShape) {
+        match self {
+            KeyShape::Compound(mine) => {
+                if let KeyShape::Compound(theirs) = probe {
+                    mine.merge(theirs);
+                }
             }
-            // Scalar(non-Generic) beats Scalar(Generic).
-            (Candidate::Scalar(ColumnType::Generic), Candidate::Scalar(t))
-                if *t != ColumnType::Generic =>
-            {
-                best_idx = i;
-            }
-            _ => {}
+            KeyShape::Scalar(col_type) => match probe {
+                KeyShape::Compound(_) => *self = probe,
+                KeyShape::Scalar(probed) if *col_type == ColumnType::Generic => *col_type = probed,
+                KeyShape::Scalar(_) => {}
+            },
         }
     }
-    candidates.swap_remove(best_idx)
 }
 
-/// Mode controls accumulation strictness and the final empty-schema error wording.
+/// The union of one struct level's keys across probed rows, in
+/// first-appearance order. A nested struct's keys live in its
+/// [`KeyShape::Compound`], so its columns stay one block in the layout.
+#[derive(Default)]
+struct ShapeUnion {
+    key_order: Vec<String>,
+    shapes: HashMap<String, KeyShape>,
+}
+
+impl ShapeUnion {
+    /// Fold one probe of `key` into the union: a new key is appended, a known
+    /// one goes through [`KeyShape::absorb`].
+    fn absorb(&mut self, key: String, probe: KeyShape) {
+        if let Some(shape) = self.shapes.get_mut(&key) {
+            shape.absorb(probe);
+        } else {
+            self.key_order.push(key.clone());
+            self.shapes.insert(key, probe);
+        }
+    }
+
+    /// Fold `other` (later rows) into `self` (earlier rows). Folding rows
+    /// chunk by chunk and merging the chunks in order gives the same union as
+    /// folding every row into one.
+    fn merge(&mut self, other: ShapeUnion) {
+        let ShapeUnion {
+            key_order,
+            mut shapes,
+        } = other;
+        for key in key_order {
+            let probe = shapes.remove(&key).expect("every ordered key has a shape");
+            self.absorb(key, probe);
+        }
+    }
+
+    /// Add the keys of `row` that this union lacks, at any depth, leaving the
+    /// keys it has as they are (`SerdeRowBuilder::grow_schema` keeps each
+    /// column's first-seen shape).
+    fn add_new_keys(&mut self, row: ShapeUnion) {
+        let ShapeUnion {
+            key_order,
+            mut shapes,
+        } = row;
+        for key in key_order {
+            let probe = shapes.remove(&key).expect("every ordered key has a shape");
+            match self.shapes.get_mut(&key) {
+                None => {
+                    self.key_order.push(key.clone());
+                    self.shapes.insert(key, probe);
+                }
+                Some(KeyShape::Compound(mine)) => {
+                    if let KeyShape::Compound(theirs) = probe {
+                        mine.add_new_keys(theirs);
+                    }
+                }
+                Some(KeyShape::Scalar(_)) => {}
+            }
+        }
+    }
+
+    /// The union a laid-out schema level describes: keys in column order,
+    /// types from `fields`.
+    fn from_layout(field_map: &FieldMap, fields: &[FieldInfo]) -> Self {
+        let mut keys: Vec<(&String, &FieldMapping)> = field_map.map.iter().collect();
+        keys.sort_by_key(|(_, mapping)| match mapping {
+            FieldMapping::Scalar { col_idx } => *col_idx,
+            FieldMapping::Compound { col_start, .. } => *col_start,
+        });
+        let mut union = ShapeUnion::default();
+        for (key, mapping) in keys {
+            let shape = match mapping {
+                FieldMapping::Scalar { col_idx } => KeyShape::Scalar(fields[*col_idx].col_type),
+                FieldMapping::Compound { sub_fields, .. } => {
+                    KeyShape::Compound(ShapeUnion::from_layout(sub_fields, fields))
+                }
+            };
+            union.key_order.push(key.clone());
+            union.shapes.insert(key.clone(), shape);
+        }
+        union
+    }
+
+    /// Assign each leaf a column, depth first from `fields.len()`, naming a
+    /// nested leaf `parent_child`. A nested struct's columns are contiguous,
+    /// as [`FieldMapping::Compound`] requires.
+    fn layout(mut self, prefix: Option<&str>, fields: &mut Vec<FieldInfo>) -> FieldMap {
+        let col_start = fields.len();
+        let mut map = HashMap::with_capacity(self.key_order.len());
+        for key in self.key_order {
+            let shape = self
+                .shapes
+                .remove(&key)
+                .expect("every ordered key has a shape");
+            let name = match prefix {
+                Some(prefix) => format!("{prefix}_{key}"),
+                None => key.clone(),
+            };
+            let mapping = match shape {
+                KeyShape::Scalar(col_type) => {
+                    let col_idx = fields.len();
+                    fields.push(FieldInfo { name, col_type });
+                    FieldMapping::Scalar { col_idx }
+                }
+                KeyShape::Compound(sub) => {
+                    let sub_fields = sub.layout(Some(&name), fields);
+                    FieldMapping::Compound {
+                        col_start: sub_fields.col_start,
+                        col_count: sub_fields.total_cols,
+                        sub_fields,
+                    }
+                }
+            };
+            map.insert(key, mapping);
+        }
+        FieldMap {
+            map,
+            col_start,
+            total_cols: fields.len() - col_start,
+        }
+    }
+}
+
+/// Mode controls the final empty-schema error wording.
 ///
 /// `SingleRow` produces the `SerdeRowBuilder: first row has no fields` error; `Union`
 /// produces the `vec_to_dataframe: no fields discovered from any row` error.
-/// Field collection itself is identical — both feed candidates into the same lattice
-/// resolver. SingleRow callers feed exactly once; Union callers feed per row.
+/// Field collection itself is identical — both fold probes into the same
+/// [`ShapeUnion`]. SingleRow callers feed exactly once; Union callers feed per row.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum SchemaMode {
     SingleRow,
     Union,
 }
 
-/// Accumulates per-row probes into per-key candidate lists, then resolves them
-/// into a unified [`Schema`].
+/// Folds per-row probes into a [`ShapeUnion`], then lays it out as a
+/// [`Schema`].
 ///
-/// Two limitations vs. a fully-typed schema (apply to Union mode; SingleRow sees ≤1
-/// candidate per key so the lattice degenerates):
+/// The union recurses into nested structs: a nested field any row carries gets
+/// a column inside its parent's block, NA on the rows without it, and a nested
+/// sub-field probed as `None` on the first row is typed by a later row (#1370).
 ///
-/// - **Truly-all-None nested `Option<Struct>`**: when every row has `None` for an
-///   `Option<UserStruct>`, the probe never sees the inner struct's fields. The key lands
-///   as `Scalar(Generic)` (no Compound ever seen), which the assembly-time all-None
-///   downgrade converts to a single logical-NA column. Structurally unfixable without a
-///   type-level hint on stable Rust.
-///
-/// - **Compound-vs-Compound recursive union**: when two rows produce different Compound
-///   shapes for the same key (e.g., enum variants with different nested structs), the
-///   first Compound wins and the second is silently discarded. Corollary: a nested
-///   sub-field probed as `None` on the first row stays `Generic` (list column) even
-///   when a later row types it. Recursive union is tracked as
-///   [#1370](https://github.com/A2-ai/miniextendr/issues/1370).
+/// One limitation remains: when every row has `None` for an `Option<UserStruct>`,
+/// no probe sees the inner struct's fields. The key lands as `Scalar(Generic)`,
+/// which the assembly-time all-None downgrade converts to a single logical-NA
+/// column. Structurally unfixable without a type-level hint on stable Rust.
 struct SchemaAccumulator {
-    candidates: HashMap<String, Vec<Candidate>>,
-    key_order: Vec<String>,
+    shape: ShapeUnion,
     mode: SchemaMode,
 }
 
 impl SchemaAccumulator {
     fn new(mode: SchemaMode) -> Self {
         Self {
-            candidates: HashMap::new(),
-            key_order: Vec::new(),
+            shape: ShapeUnion::default(),
             mode,
         }
     }
 
-    /// Probe one row and append its per-key candidates. Caller controls whether
+    /// Probe one row and fold its shape into the union. Caller controls whether
     /// to propagate or swallow the error (Union mode treats per-row failures
-    /// like top-level `None` as expected and skips them).
+    /// like top-level `None` as expected and skips them); a failed probe adds
+    /// nothing.
     fn feed<T: ?Sized + Serialize>(&mut self, row: &T) -> Result<(), RSerdeError> {
-        let mut discoverer = SchemaDiscoverer::new(0);
+        let mut discoverer = SchemaDiscoverer::default();
         row.serialize(&mut discoverer)?;
-
-        for key in &discoverer.key_order {
-            if !self.candidates.contains_key(key) {
-                self.key_order.push(key.clone());
-                self.candidates.insert(key.clone(), Vec::new());
-            }
-
-            let Some(mapping) = discoverer.mappings.remove(key) else {
-                continue;
-            };
-
-            let candidate = match mapping {
-                FieldMapping::Scalar { col_idx } => {
-                    Candidate::Scalar(discoverer.fields[col_idx].col_type)
-                }
-                FieldMapping::Compound {
-                    col_start,
-                    col_count,
-                    sub_fields,
-                } => {
-                    let fields: Vec<FieldInfo> = (col_start..col_start + col_count)
-                        .map(|i| FieldInfo {
-                            name: discoverer.fields[i].name.clone(),
-                            col_type: discoverer.fields[i].col_type,
-                        })
-                        .collect();
-                    Candidate::Compound {
-                        fields,
-                        sub_map: sub_fields,
-                    }
-                }
-            };
-            self.candidates.get_mut(key).unwrap().push(candidate);
-        }
+        self.shape.merge(discoverer.shape);
         Ok(())
     }
 
-    /// Absorb another accumulator's *unresolved* candidates, preserving
-    /// first-seen key order (`self`'s keys first, then `other`'s new keys).
-    ///
-    /// Feeding rows chunk-by-chunk into per-chunk accumulators and merging
-    /// them in chunk order is equivalent to feeding every row into one
-    /// accumulator: per-key candidate lists concatenate in row order, and
-    /// key first-appearance order is preserved. Used by the parallel union
-    /// discovery in [`par_build_columns_growing`].
+    /// Absorb another accumulator's union, as if its rows had been fed after
+    /// this one's: first-appearance key order and the lattice both carry over.
+    /// Used by the parallel union discovery in [`par_build_columns_growing`].
     #[cfg(feature = "rayon")]
     fn merge(&mut self, other: SchemaAccumulator) {
-        // Register other's new keys in first-seen order. Every row behind
-        // `self` precedes every row behind `other`, so appending other's
-        // unseen keys after self's preserves global first-appearance order.
-        for key in &other.key_order {
-            if !self.candidates.contains_key(key) {
-                self.key_order.push(key.clone());
-                self.candidates.insert(key.clone(), Vec::new());
-            }
-        }
-        // Move the candidate lists over. HashMap iteration order is fine
-        // here: per-key lists are independent, and within a key self's
-        // (earlier-row) candidates already precede the appended ones.
-        for (key, mut cands) in other.candidates {
-            self.candidates
-                .get_mut(&key)
-                .expect("key registered above")
-                .append(&mut cands);
-        }
+        self.shape.merge(other.shape);
     }
 
-    /// Resolve each key's candidate list into the best single candidate and
-    /// build the unified [`Schema`]. Errors with a mode-specific message when
-    /// no fields were collected.
-    fn finalize(mut self) -> Result<Schema, RSerdeError> {
-        let mut unified_fields: Vec<FieldInfo> = Vec::new();
-        let mut unified_mappings: HashMap<String, FieldMapping> = HashMap::new();
-
-        for key in &self.key_order {
-            let candidates = self.candidates.get_mut(key).unwrap();
-            if candidates.is_empty() {
-                continue;
-            }
-            let new_start = unified_fields.len();
-            match resolve_candidates(candidates) {
-                Candidate::Scalar(col_type) => {
-                    unified_fields.push(FieldInfo {
-                        name: key.clone(),
-                        col_type,
-                    });
-                    unified_mappings
-                        .insert(key.clone(), FieldMapping::Scalar { col_idx: new_start });
-                }
-                Candidate::Compound { fields, sub_map } => {
-                    let col_count = fields.len();
-                    // sub_map indices were relative to col_offset=0 in the per-row probe;
-                    // remap them to the actual position in the unified layout.
-                    let old_base = sub_map.col_start;
-                    for field in fields {
-                        unified_fields.push(field);
-                    }
-                    let remapped = remap_field_map(sub_map, old_base, new_start);
-                    unified_mappings.insert(
-                        key.clone(),
-                        FieldMapping::Compound {
-                            col_start: new_start,
-                            col_count,
-                            sub_fields: remapped,
-                        },
-                    );
-                }
-            }
-        }
-
-        if unified_fields.is_empty() {
+    /// Lay the union out as a [`Schema`]. Errors with a mode-specific message
+    /// when no fields were collected.
+    fn finalize(self) -> Result<Schema, RSerdeError> {
+        let mut fields = Vec::new();
+        let field_map = self.shape.layout(None, &mut fields);
+        if fields.is_empty() {
             return Err(RSerdeError::Message(match self.mode {
                 SchemaMode::SingleRow => "SerdeRowBuilder: first row has no fields".into(),
                 SchemaMode::Union => "vec_to_dataframe: no fields discovered from any row".into(),
             }));
         }
-
-        let total = unified_fields.len();
-        Ok(Schema {
-            fields: unified_fields,
-            field_map: FieldMap {
-                map: unified_mappings,
-                col_start: 0,
-                total_cols: total,
-            },
-        })
+        Ok(Schema { fields, field_map })
     }
 }
 
-/// Remap all column indices in a FieldMap from old base to new base.
-fn remap_field_map(old: FieldMap, old_base: usize, new_base: usize) -> FieldMap {
-    FieldMap {
-        map: old
-            .map
-            .into_iter()
-            .map(|(k, v)| (k, remap_field_mapping(v, old_base, new_base)))
-            .collect(),
-        col_start: new_base,
-        total_cols: old.total_cols,
-    }
-}
-
-fn remap_field_mapping(m: FieldMapping, old_base: usize, new_base: usize) -> FieldMapping {
-    match m {
-        FieldMapping::Scalar { col_idx } => FieldMapping::Scalar {
-            col_idx: col_idx - old_base + new_base,
-        },
-        FieldMapping::Compound {
-            col_start,
-            col_count,
-            sub_fields,
-        } => {
-            let new_col_start = col_start - old_base + new_base;
-            FieldMapping::Compound {
-                col_start: new_col_start,
-                col_count,
-                sub_fields: remap_field_map(sub_fields, col_start, new_col_start),
-            }
-        }
-    }
-}
-
-/// Try to recursively discover and flatten a nested struct value.
-/// Returns (flat_fields, field_map) if the value serializes as a struct.
-fn try_discover_nested<T: ?Sized + Serialize>(
-    value: &T,
-    col_offset: usize,
-) -> Option<(Vec<FieldInfo>, FieldMap)> {
-    // Use single-row discovery for nested values (they're not enums at this level)
-    let mut discoverer = SchemaDiscoverer::new(col_offset);
-    if value.serialize(&mut discoverer).is_ok() && !discoverer.fields.is_empty() {
-        let total = discoverer.fields.len();
-        Some((
-            discoverer.fields,
-            FieldMap {
-                map: discoverer.mappings,
-                col_start: col_offset,
-                total_cols: total,
-            },
-        ))
-    } else {
-        None
-    }
-}
-
+/// Probes one row (or one nested value) into the [`ShapeUnion`] of its keys.
+#[derive(Default)]
 struct SchemaDiscoverer {
-    fields: Vec<FieldInfo>,
-    mappings: HashMap<String, FieldMapping>,
-    key_order: Vec<String>,
-    col_offset: usize,
+    shape: ShapeUnion,
 }
 
 impl SchemaDiscoverer {
-    fn new(col_offset: usize) -> Self {
-        Self {
-            fields: Vec::new(),
-            mappings: HashMap::new(),
-            key_order: Vec::new(),
-            col_offset,
-        }
-    }
-
-    /// Process a field: try to flatten as nested struct, else probe as scalar.
+    /// Process a field: a value that serializes as a struct or map with fields
+    /// is a nested struct to flatten, anything else a scalar column.
     fn process_field<T: ?Sized + Serialize>(
         &mut self,
         key: &str,
         value: &T,
     ) -> Result<(), RSerdeError> {
-        self.key_order.push(key.to_string());
-        let abs_col = self.col_offset + self.fields.len();
-        if let Some((sub_fields, sub_map)) = try_discover_nested(value, abs_col) {
-            let count = sub_fields.len();
-            for mut field in sub_fields {
-                field.name = format!("{key}_{}", field.name);
-                self.fields.push(field);
-            }
-            self.mappings.insert(
-                key.to_string(),
-                FieldMapping::Compound {
-                    col_start: abs_col,
-                    col_count: count,
-                    sub_fields: sub_map,
-                },
-            );
+        let mut nested = SchemaDiscoverer::default();
+        let shape = if value.serialize(&mut nested).is_ok() && !nested.shape.key_order.is_empty() {
+            KeyShape::Compound(nested.shape)
         } else {
             let mut type_probe = TypeProbe {
                 col_type: ColumnType::Generic,
             };
             let _ = value.serialize(&mut type_probe);
-            self.fields.push(FieldInfo {
-                name: key.to_string(),
-                col_type: type_probe.col_type,
-            });
-            self.mappings
-                .insert(key.to_string(), FieldMapping::Scalar { col_idx: abs_col });
-        }
+            KeyShape::Scalar(type_probe.col_type)
+        };
+        self.shape.absorb(key.to_string(), shape);
         Ok(())
     }
 }
@@ -4696,6 +4670,147 @@ mod tests {
 
     // endregion
 
+    // region: nested union discovery (#1370)
+
+    #[derive(Serialize)]
+    struct NestedDeep {
+        level: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tag: Option<bool>,
+    }
+
+    #[derive(Serialize)]
+    struct NestedMeta {
+        hash: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        deep: Option<NestedDeep>,
+    }
+
+    /// Rows whose nested struct gains fields after the first row: `note` from
+    /// row 3, `deep` from row 4, and `deep.tag` (two levels down) from row 9.
+    #[derive(Serialize)]
+    struct NestedRow {
+        id: i32,
+        meta: NestedMeta,
+        size: f64,
+    }
+
+    fn nested_rows(n: i32) -> Vec<NestedRow> {
+        (0..n)
+            .map(|i| NestedRow {
+                id: i,
+                meta: NestedMeta {
+                    hash: i * 2,
+                    note: (i % 7 == 3).then(|| format!("n{i}")),
+                    deep: (i % 5 == 4).then(|| NestedDeep {
+                        level: f64::from(i),
+                        tag: (i % 10 == 9).then_some(i % 20 == 9),
+                    }),
+                },
+                size: 0.5,
+            })
+            .collect()
+    }
+
+    /// Nested fields first seen in later rows join their parent's block in
+    /// first-appearance order, ahead of the later top-level `size`, and are NA
+    /// on the rows that lack them.
+    #[test]
+    fn union_nests_late_fields_in_parent_block() {
+        let rows = nested_rows(10);
+        let (names, cols) = seq_union_columns(&rows);
+        assert_eq!(
+            names,
+            [
+                "id",
+                "meta_hash",
+                "meta_note",
+                "meta_deep_level",
+                "meta_deep_tag",
+                "size"
+            ]
+        );
+        match &cols[2] {
+            ColumnBuffer::Character(v) => {
+                assert_eq!(v[3].as_deref(), Some("n3"));
+                assert!(v[0].is_none() && v[9].is_none(), "rows without `note`");
+            }
+            _ => panic!("expected character `meta_note` column"),
+        }
+        match &cols[3] {
+            ColumnBuffer::Real(v) => {
+                assert!(v[0].is_nan(), "row 0 has no `deep`");
+                assert_eq!(v[4], 4.0);
+                assert_eq!(v[9], 9.0);
+            }
+            _ => panic!("expected real `meta_deep_level` column"),
+        }
+        match &cols[4] {
+            ColumnBuffer::Logical(v) => {
+                assert_eq!(v[4], NA_LOGICAL, "deep without `tag`");
+                assert_eq!(v[9], 1);
+            }
+            _ => panic!("expected logical `meta_deep_tag` column"),
+        }
+    }
+
+    /// `grow_schema` gives the columns of the union path: a nested field a
+    /// later push introduces moves into its parent's block, the earlier
+    /// columns keep their values, and the new one is NA on the earlier rows.
+    #[test]
+    fn grow_schema_absorbs_nested_fields_like_union() {
+        let rows = nested_rows(10);
+        let (union_names, union_cols) = seq_union_columns(&rows);
+        let mut b = SerdeRowBuilder::<NestedRow>::new(None).grow_schema();
+        for row in nested_rows(10) {
+            b.push(row).expect("push");
+        }
+        let schema = b.schema.as_ref().expect("schema");
+        let names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(names, union_names);
+        assert_eq!(b.columns.len(), union_cols.len());
+        for (i, (grown, union)) in b.columns.iter().zip(&union_cols).enumerate() {
+            match (grown, union) {
+                (ColumnBuffer::Integer(x), ColumnBuffer::Integer(y))
+                | (ColumnBuffer::Logical(x), ColumnBuffer::Logical(y)) => {
+                    assert_eq!(x, y, "column {i}")
+                }
+                (ColumnBuffer::Real(x), ColumnBuffer::Real(y)) => assert!(
+                    x.iter().zip(y).all(|(a, b)| a.to_bits() == b.to_bits()),
+                    "column {i}"
+                ),
+                (ColumnBuffer::Character(x), ColumnBuffer::Character(y)) => {
+                    assert_eq!(x, y, "column {i}")
+                }
+                _ => panic!("column {i}: variant mismatch"),
+            }
+        }
+    }
+
+    /// The default builder keeps the first row's schema: a nested field a
+    /// later push introduces is an error, not a dropped value.
+    #[test]
+    fn default_mode_rejects_new_nested_field_on_later_push() {
+        let mut rows = nested_rows(4).into_iter();
+        let mut b = SerdeRowBuilder::<NestedRow>::new(None);
+        for row in rows.by_ref().take(3) {
+            b.push(row).expect("rows 0..3 have the first row's fields");
+        }
+        let err = b
+            .push(rows.next().expect("row 3"))
+            .expect_err("row 3's `meta.note` is not in the first row's schema");
+        match err {
+            RSerdeError::Message(m) => {
+                assert!(m.contains("\"note\""), "unexpected error: {m}")
+            }
+            other => panic!("expected Message variant, got {other:?}"),
+        }
+    }
+
+    // endregion
+
     // region: par_iter_to_dataframe (#690)
 
     /// Build the merged column buffers the *sequential* way, for equivalence
@@ -4913,7 +5028,6 @@ mod tests {
     /// equivalence comparison. Mirrors `vec_to_dataframe`'s Phases 1–3 minus
     /// the final R assembly. Only valid for Generic-free schemas (no SEXP is
     /// ever pushed, so the ProtectScope stays empty).
-    #[cfg(feature = "rayon")]
     fn seq_union_columns<T: Serialize>(rows: &[T]) -> (Vec<String>, Vec<ColumnBuffer>) {
         let mut acc = SchemaAccumulator::new(SchemaMode::Union);
         for row in rows {
@@ -5152,8 +5266,8 @@ mod tests {
         assert!(out.is_none(), "empty input should produce None");
     }
 
-    /// Merging per-chunk accumulators is candidate-for-candidate equivalent to
-    /// feeding all rows into one accumulator (key order and resolved types).
+    /// Merging per-chunk accumulators gives the same union as feeding all rows
+    /// into one accumulator (key order and resolved types), flat and nested.
     #[cfg(feature = "rayon")]
     #[test]
     fn schema_accumulator_merge_matches_single_feed() {
@@ -5169,9 +5283,14 @@ mod tests {
                 }
             })
             .collect();
+        assert_merge_matches_single_feed(&rows);
+        assert_merge_matches_single_feed(&nested_rows(60));
+    }
 
+    #[cfg(feature = "rayon")]
+    fn assert_merge_matches_single_feed<T: Serialize>(rows: &[T]) {
         let mut single = SchemaAccumulator::new(SchemaMode::Union);
-        for row in &rows {
+        for row in rows {
             let _ = single.feed(row);
         }
         let single_schema = single.finalize().expect("single schema");
@@ -5197,6 +5316,24 @@ mod tests {
             .map(|f| (f.name.clone(), f.col_type))
             .collect();
         assert_eq!(merged_fields, single_fields);
+    }
+
+    /// The nested growing build matches the sequential union too: fields a
+    /// nested struct gains mid-stream (two levels deep, across chunks) land in
+    /// the same columns in the same order.
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn par_growing_nested_equivalent_to_sequential_union() {
+        let rows = nested_rows(5_000);
+        let (seq_names, seq_cols) = seq_union_columns(&rows);
+        let (schema, par_cols, nrow) = par_build_columns_growing(&rows, None)
+            .expect("growing build ok")
+            .expect("non-empty");
+
+        assert_eq!(nrow, 5_000);
+        let par_names: Vec<String> = schema.fields.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(par_names, seq_names, "column names + order must match");
+        columns_eq(&par_cols, &seq_cols);
     }
 
     // endregion
