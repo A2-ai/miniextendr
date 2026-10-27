@@ -134,8 +134,12 @@ pub fn to_rust_name(name: &str) -> String {
     name.replace(['.', '-'], "_")
 }
 
+/// The `Version` of a freshly scaffolded DESCRIPTION.
+pub const FRESH_VERSION: &str = "0.0.0.9000";
+
 /// Substitution variables for template rendering. Mirrors `template_data()`
 /// in `minirextendr/R/utils.R`: `package`, `package_rs`, `Package`,
+/// `version` (DESCRIPTION's `Version`, for `configure.ac`'s `AC_INIT`),
 /// `features_var`, `year`, plus optional `crate_name`/`crate_name_rs` and
 /// `rpkg_name` for the monorepo template.
 pub struct TemplateData {
@@ -150,6 +154,7 @@ impl TemplateData {
             ("package", package.to_string()),
             ("package_rs", to_rust_name(package)),
             ("Package", title_case(package)),
+            ("version", FRESH_VERSION.to_string()),
             ("features_var", "CARGO_FEATURES".to_string()),
             ("year", current_year()),
         ];
@@ -171,6 +176,17 @@ impl TemplateData {
         self.pairs.push(("crate_name", crate_name.to_string()));
         self.pairs.push(("crate_name_rs", to_rust_name(crate_name)));
         self.crate_name = Some(crate_name.to_string());
+        self
+    }
+
+    /// The package version, for a DESCRIPTION that is not freshly scaffolded
+    /// (`new()` assumes [`FRESH_VERSION`]).
+    pub fn with_version(mut self, version: &str) -> Self {
+        for (key, value) in &mut self.pairs {
+            if *key == "version" {
+                *value = version.to_string();
+            }
+        }
         self
     }
 
@@ -701,7 +717,7 @@ pub fn description_content(package: &str) -> String {
     format!(
         "Package: {package}\n\
          Title: What the Package Does (One Line, Title Case)\n\
-         Version: 0.0.0.9000\n\
+         Version: {FRESH_VERSION}\n\
          Depends: {r_depends}\n\
          Authors@R:\n    \
          person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\n\

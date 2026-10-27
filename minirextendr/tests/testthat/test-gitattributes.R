@@ -97,7 +97,8 @@ test_that("upgrade adds missing merge rules and preserves existing rules on reru
     # The current template, so the upgrade's configure.ac drift check (#1406)
     # has nothing to report; this test is about .gitattributes.
     configure <- readLines(minirextendr:::configure_ac_template(monorepo))
-    writeLines(gsub("{{package}}", "attrpkg", configure, fixed = TRUE),
+    configure <- gsub("{{package}}", "attrpkg", configure, fixed = TRUE)
+    writeLines(gsub("{{version}}", "0.0.1", configure, fixed = TRUE),
                file.path(pkg, "configure.ac"))
     custom <- c("# Keep custom rules", "*.R text eol=lf")
     if (monorepo) writeLines(custom, file.path(pkg, ".gitattributes"))

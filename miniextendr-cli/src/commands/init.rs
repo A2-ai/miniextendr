@@ -358,6 +358,7 @@ fn init_use_rpkg(root: &Path, quiet: bool) -> Result<()> {
     }
 
     update_description(root)?;
+    let version = parse_description_field(&std::fs::read_to_string(&desc_path)?, "Version");
 
     // LICENSE if missing (required by License: MIT + file LICENSE).
     let license_path = root.join("LICENSE");
@@ -377,7 +378,8 @@ fn init_use_rpkg(root: &Path, quiet: bool) -> Result<()> {
         }
     }
 
-    let data = TemplateData::new(&pkg_name);
+    let data = TemplateData::new(&pkg_name)
+        .with_version(version.as_deref().unwrap_or(scaffold::FRESH_VERSION));
     scaffold::apply_plan(root, "templates/rpkg", RPKG_PLAN, &data, false)?;
     scaffold::write_config_scripts(root)?;
     std::fs::create_dir_all(root.join("vendor"))?;
@@ -698,8 +700,8 @@ mod tests {
             "install-mode latch missing"
         );
         assert!(
-            configure_ac.starts_with("AC_INIT([my.pkg]"),
-            "package name not substituted"
+            configure_ac.starts_with(&format!("AC_INIT([my.pkg], [{}])", scaffold::FRESH_VERSION)),
+            "package name and version not substituted"
         );
         let cargo_toml = read(&root, "src/rust/Cargo.toml");
         assert!(cargo_toml.contains("name = \"my_pkg\""));
@@ -900,7 +902,8 @@ mod tests {
         assert_eq!(read(&root, ".gitattributes"), attributes);
 
         // Build-system files landed and are canonical.
-        assert!(read(&root, "configure.ac").starts_with("AC_INIT([existing.pkg]"));
+        // AC_INIT carries the package's own version, not the fresh one.
+        assert!(read(&root, "configure.ac").starts_with("AC_INIT([existing.pkg], [1.0.0])"));
         assert!(root.join("src/rust/lib.rs").is_file());
         assert!(root.join("tools/build-html-reference.R").is_file());
         assert!(root.join("tools/lock-shape-check.R").is_file());

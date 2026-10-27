@@ -416,10 +416,11 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
   makevars_in <- template_path("Makevars.in")
   fs::file_copy(makevars_in, fs::path(pkg_dir, "src", "Makevars.in"))
 
-  # configure.ac
+  # configure.ac: AC_INIT takes the package name and the DESCRIPTION version
   configure_ac <- template_path("configure.ac")
   ac_content <- readLines(configure_ac, warn = FALSE)
   ac_content <- gsub("\\{\\{package\\}\\}", pkg_name, ac_content)
+  ac_content <- gsub("\\{\\{version\\}\\}", "0.0.1", ac_content)
   writeLines(ac_content, fs::path(pkg_dir, "configure.ac"))
 
   # tools/config.guess and tools/config.sub — shared with the standalone
