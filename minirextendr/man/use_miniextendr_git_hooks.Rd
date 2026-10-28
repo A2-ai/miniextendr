@@ -35,9 +35,12 @@ or stale NAMESPACE: a staged \verb{R/*-wrappers.R} blocks when \code{NAMESPACE}
 has unstaged changes, or when \code{NAMESPACE} is not staged and the
 namespace tags roxygen2 reads (\verb{@export}, \verb{@exportS3Method}, \verb{@method},
 \verb{@importFrom}, \verb{@rawNamespace}, ...), each with the object its block
-documents, differ from the committed wrappers (the message lists the
+documents, differ from the committed ones across the staged \verb{R/} files,
+the wrappers and the hand-written ones together (the message lists the
 added and removed tags; run \code{devtools::document()}). Edits that only
-move the wrappers' source lines pass. Also blocks on source-shape
+move the wrappers' source lines pass, and so does a tag that moves
+between files, such as an R function replaced by a Rust one. Also
+blocks on source-shape
 \code{src/rust/Cargo.lock} (recommends
 \code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), blocks on a staged \code{vendor.tar.xz}
 (a build artifact that \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} vendors into the

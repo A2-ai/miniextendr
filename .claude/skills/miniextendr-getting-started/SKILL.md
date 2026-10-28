@@ -223,8 +223,10 @@ The iteration loop for Rust changes is:
 
 Generated files (`R/miniextendr-wrappers.R`, `NAMESPACE`, `man/*.Rd`) must be
 committed in the same PR as the Rust changes that produced them. The pre-commit
-hook that `use_miniextendr_git_hooks()` installs blocks a staged wrappers.R whose
-namespace tags changed while `NAMESPACE` is not staged.
+hook that `use_miniextendr_git_hooks()` installs blocks a staged wrappers.R when
+the namespace tags of the staged R files changed while `NAMESPACE` is not
+staged. A tag that moves between files (an R function replaced by a Rust one)
+is no change.
 
 ### Step 5: Build a tarball for CRAN
 
