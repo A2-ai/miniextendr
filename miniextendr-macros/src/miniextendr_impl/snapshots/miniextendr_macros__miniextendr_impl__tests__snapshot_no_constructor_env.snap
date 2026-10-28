@@ -8,7 +8,7 @@ expression: "generate_env_r_wrapper(&constructorless_handle(ClassSystem::Env))"
 #' @export
 Handle <- new.env(parent = emptyenv())
 
-# Handle::id (1:1)
+# Handle::id (<unspecified>:1:1)
 #' @name Handle$id
 #' @rdname Handle
 Handle$id <- function() {

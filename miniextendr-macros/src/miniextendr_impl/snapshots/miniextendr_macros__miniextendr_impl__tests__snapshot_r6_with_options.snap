@@ -10,7 +10,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
   public = list(
-    # Child::new (1:1)
+    # Child::new (<unspecified>:1:1)
     #' @description Create a new `Child`.
     initialize = function(.ptr = NULL) {
       if (!is.null(.ptr)) {
@@ -30,7 +30,7 @@ Child <- R6::R6Class("Child", inherit = .__MX_CLASS_REF_ParentClass__,
   cloneable = TRUE
 )
 
-# Child::greet (1:1)
+# Child::greet (<unspecified>:1:1)
 #' @description Method `greet`.
 Child$set("public", "greet", function() {
   .val <- .Call(C_miniextendr_macros_Child__greet, .call = sys.call(), private$.ptr)

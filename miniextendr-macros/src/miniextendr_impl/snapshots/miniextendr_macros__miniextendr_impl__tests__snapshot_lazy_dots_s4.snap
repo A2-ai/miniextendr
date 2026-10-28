@@ -9,7 +9,7 @@ expression: wrapper
 #' @slot ptr External pointer to Rust `Bag` struct
 methods::setClass("Bag", slots = c(ptr = "externalptr"))
 
-# Bag::new (1:1)
+# Bag::new (<unspecified>:1:1)
 #' @param values (undocumented)
 #' @name Bag
 #' @rdname Bag
@@ -22,7 +22,7 @@ Bag <- function(values) {
 }
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_extra", class="Bag", export=true)
-# Bag::extra (1:1)
+# Bag::extra (<unspecified>:1:1)
 #' @description Count the extra arguments.
 #' @name Bag-s4_extra
 #' @rdname Bag

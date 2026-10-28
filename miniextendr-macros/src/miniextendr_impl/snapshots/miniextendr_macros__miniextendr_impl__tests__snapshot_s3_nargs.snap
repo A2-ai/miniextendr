@@ -3,7 +3,7 @@ source: miniextendr-macros/src/miniextendr_impl/tests.rs
 assertion_line: 7203
 expression: wrapper
 ---
-# Bag::new (1:1)
+# Bag::new (<unspecified>:1:1)
 #' @title Bag S3 Class
 #' @name Bag
 #' @rdname Bag
@@ -16,7 +16,7 @@ new_bag <- function(values) {
   structure(.val, class = "Bag")
 }
 
-# Bag::at (1:1)
+# Bag::at (<unspecified>:1:1)
 #' @description Element `i`; refuses `h[[i, ]]`.
 #' @param i (undocumented)
 #' @name [[.Bag
@@ -33,7 +33,7 @@ new_bag <- function(values) {
   .val
 }
 
-# Bag::set_at (1:1)
+# Bag::set_at (<unspecified>:1:1)
 #' @description Replace element `i`.
 #' @param i (undocumented)
 #' @param value (undocumented)

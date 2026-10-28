@@ -7,7 +7,7 @@ expression: "generate_s3_r_wrapper(&constructorless_handle(ClassSystem::S3))"
 #' @rdname Handle
 NULL
 
-# Handle::id (1:1)
+# Handle::id (<unspecified>:1:1)
 #' @title S3 generic for `id`
 #' @description S3 generic for `id`
 #' @name id.Handle

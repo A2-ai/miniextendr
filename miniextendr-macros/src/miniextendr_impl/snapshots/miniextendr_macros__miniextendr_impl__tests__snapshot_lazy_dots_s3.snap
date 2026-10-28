@@ -2,7 +2,7 @@
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
 expression: wrapper
 ---
-# Bag::new (1:1)
+# Bag::new (<unspecified>:1:1)
 #' @title Bag S3 Class
 #' @name Bag
 #' @rdname Bag
@@ -15,7 +15,7 @@ new_bag <- function(values) {
   structure(.val, class = "Bag")
 }
 
-# Bag::extra (1:1)
+# Bag::extra (<unspecified>:1:1)
 #' @title S3 generic for `extra`
 #' @description S3 generic for `extra`
 #' @name extra.Bag

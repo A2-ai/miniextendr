@@ -2,7 +2,7 @@
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
 expression: wrapper
 ---
-# Percent::new (1:1)
+# Percent::new (<unspecified>:1:1)
 #' @title Percent vctrs S3 Class
 #' @name Percent
 #' @rdname Percent
@@ -39,7 +39,7 @@ vec_ptype2.Percent.Percent <- function(x, y, ...) vctrs::new_vctr(double(), clas
 #' @export
 vec_cast.Percent.Percent <- function(x, to, ...) x
 
-# Percent::extra (1:1)
+# Percent::extra (<unspecified>:1:1)
 #' @description Count the extra arguments.
 #' @param x (undocumented)
 #' @name percent_extra
@@ -52,7 +52,7 @@ percent_extra <- function(x, ...) {
   .val
 }
 
-# Percent::format_percent (1:1)
+# Percent::format_percent (<unspecified>:1:1)
 #' @description Format, reporting the extra arguments.
 #' @param x (undocumented)
 #' @name format.Percent

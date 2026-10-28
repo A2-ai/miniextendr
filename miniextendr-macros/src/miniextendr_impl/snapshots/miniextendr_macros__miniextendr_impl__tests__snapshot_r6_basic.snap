@@ -10,7 +10,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Counter <- R6::R6Class("Counter",
   public = list(
-    # Counter::new (1:1)
+    # Counter::new (<unspecified>:1:1)
     #' @description Create a new counter
     #' @param value Initial value
     initialize = function(value, .ptr = NULL) {
@@ -35,7 +35,7 @@ Counter <- R6::R6Class("Counter",
   cloneable = FALSE
 )
 
-# Counter::get (1:1)
+# Counter::get (<unspecified>:1:1)
 #' @description Get the current value
 Counter$set("public", "get", function() {
   .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), private$.ptr)
@@ -43,7 +43,7 @@ Counter$set("public", "get", function() {
   .val
 })
 
-# Counter::increment (1:1)
+# Counter::increment (<unspecified>:1:1)
 #' @description Increment by one
 Counter$set("public", "increment", function() {
   .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), private$.ptr)
@@ -51,7 +51,7 @@ Counter$set("public", "increment", function() {
   self
 })
 
-# Counter::from_value (1:1)
+# Counter::from_value (<unspecified>:1:1)
 #' @description Create from value (static factory)
 #' @name Counter$from_value
 #' @rdname Counter

@@ -576,17 +576,16 @@ impl<'a> MethodContext<'a> {
 
     /// Generate a source location comment for this method.
     ///
-    /// Returns a string like `# Type::method (line:col)` using the method's span info.
-    /// The file name is already stated in the impl block header comment, so line:col
-    /// is sufficient to locate the method within that file.
+    /// Returns a string like `# Type::method (lib.rs:114:12)`. The position
+    /// carries the file name ([`crate::source_position`]) so the wrapper
+    /// writer's position-only comparison covers it: a bare `(114:12)` would
+    /// rewrite the wrappers whenever a line above the impl block moved.
     pub fn source_comment(&self, type_ident: &syn::Ident) -> String {
-        let start = self.method.ident.span().start();
         format!(
-            "# {}::{} ({}:{})",
+            "# {}::{} {}",
             type_ident,
             self.method.ident,
-            start.line,
-            start.column + 1,
+            crate::source_position(self.method.ident.span()),
         )
     }
 

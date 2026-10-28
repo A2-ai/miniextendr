@@ -3,7 +3,7 @@ source: miniextendr-macros/src/miniextendr_impl/tests.rs
 assertion_line: 4593
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
-# Percent::new (1:1)
+# Percent::new (<unspecified>:1:1)
 #' @title Percent vctrs S3 Class
 #' @name Percent
 #' @rdname Percent
@@ -40,7 +40,7 @@ vec_ptype2.Percent.Percent <- function(x, y, ...) vctrs::new_vctr(double(), clas
 #' @export
 vec_cast.Percent.Percent <- function(x, to, ...) x
 
-# Percent::value (1:1)
+# Percent::value (<unspecified>:1:1)
 #' @param amounts (undocumented)
 #' @name percent_value
 #' @rdname Percent
@@ -52,7 +52,7 @@ percent_value <- function(amounts) {
   .val
 }
 
-# Percent::scale (1:1)
+# Percent::scale (<unspecified>:1:1)
 #' @param amounts (undocumented)
 #' @param factor (undocumented)
 #' @name percent_scale

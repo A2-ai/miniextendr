@@ -30,7 +30,7 @@ Reading <- S7::new_class("Reading",
 )
 
 .__MX_GENERIC_DOC__(kind="S7", generic="value", class="Reading", export=true, dispatch="x", no_dots=false)
-# Reading::value (1:1)
+# Reading::value (<unspecified>:1:1)
 #' @name Reading-value
 #' @rdname Reading
 #' @aliases Reading$value
@@ -76,7 +76,7 @@ Reading_value <- function(.mx_self, ...) {
   .val
 }
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description `Reading_from_value()` is another name for the constructor `Reading()`.
 #' @param value The value.
 #' @name Reading_from_value

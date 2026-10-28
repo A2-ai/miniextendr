@@ -3,7 +3,7 @@ source: miniextendr-macros/src/miniextendr_impl/tests.rs
 assertion_line: 8928
 expression: "generate_s3_r_wrapper(&inferred_reading(ClassSystem::S3))"
 ---
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @title Reading S3 Class
 #' @name Reading
 #' @rdname Reading
@@ -18,7 +18,7 @@ new_reading <- function(value) {
   structure(.val, class = "Reading")
 }
 
-# Reading::value (1:1)
+# Reading::value (<unspecified>:1:1)
 #' @title S3 generic for `value`
 #' @description S3 generic for `value`
 #' @name value.Reading
@@ -58,7 +58,7 @@ value.Reading <- function(x, ...) {
   .val
 }
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description `reading_from_value()` is another name for the constructor `new_reading()`.
 #' @param value The value.
 #' @name reading_from_value

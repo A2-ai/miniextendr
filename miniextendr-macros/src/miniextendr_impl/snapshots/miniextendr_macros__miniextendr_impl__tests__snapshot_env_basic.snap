@@ -8,7 +8,7 @@ expression: generate_env_r_wrapper(&parsed)
 #' @export
 Counter <- new.env(parent = emptyenv())
 
-# Counter::new (1:1)
+# Counter::new (<unspecified>:1:1)
 #' @description Create a new counter
 #'
 #' \describe{
@@ -26,7 +26,7 @@ Counter$new <- function(value) {
   self
 }
 
-# Counter::get (1:1)
+# Counter::get (<unspecified>:1:1)
 #' @description Get the current value
 #' @name Counter$get
 #' @rdname Counter
@@ -36,7 +36,7 @@ Counter$get <- function() {
   .val
 }
 
-# Counter::increment (1:1)
+# Counter::increment (<unspecified>:1:1)
 #' @description Increment by one
 #' @name Counter$increment
 #' @rdname Counter
@@ -46,7 +46,7 @@ Counter$increment <- function() {
   .mx_self
 }
 
-# Counter::add (1:1)
+# Counter::add (<unspecified>:1:1)
 #' @description Add a value and return the result
 #' @name Counter$add
 #' @rdname Counter
@@ -58,7 +58,7 @@ Counter$add <- function(n) {
   .val
 }
 
-# Counter::from_string (1:1)
+# Counter::from_string (<unspecified>:1:1)
 #' @description Create from string
 #' @name Counter$from_string
 #' @rdname Counter

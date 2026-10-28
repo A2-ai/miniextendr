@@ -3,7 +3,7 @@ source: miniextendr-macros/src/miniextendr_impl/tests.rs
 assertion_line: 5198
 expression: generate_s3_r_wrapper(&parsed)
 ---
-# Counter::new (1:1)
+# Counter::new (<unspecified>:1:1)
 #' @title Counter S3 Class
 #' @name Counter
 #' @rdname Counter
@@ -17,7 +17,7 @@ new_counter <- function(value) {
   structure(.val, class = "Counter")
 }
 
-# Counter::get (1:1)
+# Counter::get (<unspecified>:1:1)
 #' @title S3 generic for `get`
 #' @description S3 generic for `get`
 #' @name get.Counter
@@ -57,7 +57,7 @@ get.Counter <- function(x, ...) {
   .val
 }
 
-# Counter::increment (1:1)
+# Counter::increment (<unspecified>:1:1)
 #' @title S3 generic for `increment`
 #' @description S3 generic for `increment`
 #' @name increment.Counter
@@ -97,7 +97,7 @@ increment.Counter <- function(x, ...) {
   x
 }
 
-# Counter::zero (1:1)
+# Counter::zero (<unspecified>:1:1)
 #' @name counter_zero
 #' @rdname Counter
 #' @export

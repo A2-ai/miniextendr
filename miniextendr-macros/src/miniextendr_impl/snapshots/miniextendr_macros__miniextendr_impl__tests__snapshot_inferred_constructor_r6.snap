@@ -11,7 +11,7 @@ expression: "generate_r6_r_wrapper(&inferred_reading(ClassSystem::R6))"
 #' @export
 Reading <- R6::R6Class("Reading",
   public = list(
-    # Reading::from_value (1:1)
+    # Reading::from_value (<unspecified>:1:1)
     #' @description Read a value.
     #' @param value The value.
     initialize = function(value, .ptr = NULL) {
@@ -36,7 +36,7 @@ Reading <- R6::R6Class("Reading",
   cloneable = FALSE
 )
 
-# Reading::value (1:1)
+# Reading::value (<unspecified>:1:1)
 #' @description Method `value`.
 Reading$set("public", "value", function() {
   .val <- .Call(C_miniextendr_macros_Reading__value, .call = sys.call(), private$.ptr)
@@ -44,7 +44,7 @@ Reading$set("public", "value", function() {
   .val
 })
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description `Reading$from_value()` is another name for the constructor `Reading$new()`.
 #' @param value The value.
 #' @name Reading$from_value

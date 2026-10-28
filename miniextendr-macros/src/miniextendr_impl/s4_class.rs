@@ -182,7 +182,6 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     // Instance methods as S4 methods
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
-        let start = method.ident.span().start();
         let method_name = s4_generic_name(method);
         w.member_names.push(format!(
             "the S4 method of `{method_name}` for `{class_name}`"
@@ -199,11 +198,10 @@ pub fn generate_s4_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         }
 
         lines.push(format!(
-            "# {}::{} ({}:{})",
+            "# {}::{} {}",
             type_ident,
             method.ident,
-            start.line,
-            start.column + 1,
+            crate::source_position(method.ident.span()),
         ));
         // Build a MethodContext so S4 methods participate in the shared
         // match_arg prelude + formal-default machinery (#209). The ctx's

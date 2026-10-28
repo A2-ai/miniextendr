@@ -19,7 +19,7 @@ Handle <- S7::new_class("Handle",
 )
 
 .__MX_GENERIC_DOC__(kind="S7", generic="id", class="Handle", export=true, dispatch="x", no_dots=false)
-# Handle::id (1:1)
+# Handle::id (<unspecified>:1:1)
 #' @name Handle-id
 #' @rdname Handle
 #' @aliases Handle$id

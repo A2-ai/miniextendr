@@ -28,7 +28,7 @@ Bag <- S7::new_class("Bag",
 )
 
 .__MX_GENERIC_DOC__(kind="S7", generic="extra", class="Bag", export=true, dispatch="x", no_dots=false)
-# Bag::extra (1:1)
+# Bag::extra (<unspecified>:1:1)
 #' @description Count the extra arguments.
 #' @name Bag-extra
 #' @rdname Bag

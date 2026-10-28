@@ -3806,12 +3806,14 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // the source-attribution comments emitted by the `#[miniextendr]` proc-macro:
     //
     //   # Generated from Rust fn `foo` (lib.rs:42:8)
-    //                                           ^^^^^ positional suffix — ignored here
+    //   # Counter::get (lib.rs:114:12)
+    //                          ^^^^^^ positional suffix — ignored here
     //
     // These positions shift whenever any unrelated Rust source above a wrapper is
     // edited. The NOTE and the file rewrite should only fire when the actual
     // wrapper code, exports, or docstrings change — not when line numbers move.
-    // The written file still carries the real line:col for jump-to-source.
+    // So the positions in the file are those of the last write that changed
+    // something else, and can lag behind the Rust source until the next one.
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     if wrappers_semantically_equal(&existing, &content) {
         return;
@@ -3851,18 +3853,6 @@ pub fn write_r_wrappers_to_file(path: &str) {
     }
 }
 
-/// Returns `true` when `a` and `b` are equal after normalising away
-/// `(<file>.rs:LINE:COL)` positional suffixes in source-attribution comments.
-///
-/// The `#[miniextendr]` proc-macro emits comments of the form:
-/// ```r
-/// # Generated from Rust fn `foo` (lib.rs:42:8)
-/// ```
-/// The `42:8` part shifts whenever unrelated code above the wrapper is edited,
-/// producing spurious wrapper-file rewrites and misleading NOTEs. Normalisation
-/// replaces `(lib.rs:42:8)` → `(lib.rs:_:_)` for the comparison only; the
-/// file on disk still carries the real positions.
-///
 /// First line of the generated wrappers file.
 #[cfg(not(target_arch = "wasm32"))]
 const WRAPPERS_FILE_MARKER: &str = "# ---- AUTO-GENERATED FILE - DO NOT EDIT ----";
@@ -3890,9 +3880,23 @@ fn wrappers_file_content(body: &str) -> String {
     )
 }
 
+/// Returns `true` when `a` and `b` are equal after normalising away
+/// `(<file>.rs:LINE:COL)` positional suffixes in source-attribution comments.
+///
+/// The `#[miniextendr]` proc-macro emits comments of the form:
+/// ```r
+/// # Generated from Rust fn `foo` (lib.rs:42:8)
+/// # Counter::get (lib.rs:114:12)
+/// ```
+/// The `42:8` part shifts whenever unrelated code above the wrapper is edited,
+/// producing spurious wrapper-file rewrites and misleading NOTEs. Normalisation
+/// replaces `(lib.rs:42:8)` → `(lib.rs:_:_)` for the comparison only, so the
+/// file on disk keeps the positions of its last real rewrite.
+///
 /// A match requires `(` + one or more non-`()`/non-newline chars + `.rs:` +
 /// ASCII digits + `:` + ASCII digits + `)`. Malformed or non-`.rs` patterns
-/// are left untouched.
+/// are left untouched, so a position comment without its file name, like
+/// `(114:12)`, is compared as written.
 ///
 /// Host-only: the sole caller is [`write_r_wrappers_to_file`], gated off on
 /// wasm32 (the wrapper-gen pass doesn't run there).
@@ -4211,11 +4215,13 @@ fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
             producer = std::rc::Rc::from(header);
             continue;
         }
-        // A sidecar accessor's header gives only a source position; the line
-        // after it names the field and the Rust type.
+        // A sidecar accessor's header gives only a source position
+        // (`Rust source (lib.rs:4:5)`); the line after it names the field and
+        // the Rust type.
         if let Some(wraps) = line.strip_prefix("# Wraps ") {
             let what = wraps.split_once(" via ").map_or(wraps, |(what, _)| what);
-            producer = std::rc::Rc::from(format!("{what} ({producer})"));
+            let at = producer.strip_prefix("Rust source ").unwrap_or(&producer);
+            producer = std::rc::Rc::from(format!("{what} {at}"));
             continue;
         }
         if let Some(targets) = line.strip_prefix("#' @export ") {
@@ -5423,6 +5429,64 @@ mod tests {
         assert!(!wrappers_semantically_equal(old, new));
     }
 
+    /// An impl block one line further down moves its method comments and
+    /// sidecar headers too; the wrappers still compare equal.
+    #[test]
+    fn wrappers_semantically_equal_impl_method_position_only_diff() {
+        let old = "# Generated from Rust impl `Counter` (lib.rs:112:6)\n\
+                   Counter <- R6::R6Class(\"Counter\",\n  public = list(\n    \
+                   # Counter::new (lib.rs:114:12)\n    initialize = function() {}\n  ))\n\
+                   # Counter::get (lib.rs:118:12)\n\
+                   # Generated from Rust source (lib.rs:20:5)\n";
+        let new = "# Generated from Rust impl `Counter` (lib.rs:113:6)\n\
+                   Counter <- R6::R6Class(\"Counter\",\n  public = list(\n    \
+                   # Counter::new (lib.rs:115:12)\n    initialize = function() {}\n  ))\n\
+                   # Counter::get (lib.rs:119:12)\n\
+                   # Generated from Rust source (lib.rs:21:5)\n";
+        assert!(wrappers_semantically_equal(old, new));
+    }
+
+    /// Every position a generated wrappers file carries in a comment is one
+    /// the writer normalizes, so moving Rust lines never rewrites the file.
+    /// Reads the tracked cross-package wrappers, which real builds produced.
+    #[test]
+    fn generated_comment_positions_are_normalized() {
+        // A position ends the comment: `(48:8)`, `line 4:5`, `(lib.rs:_:_)`
+        // once normalized. R code in a comment (`var(1:10)`) is not one.
+        fn ends_with_line_col(line: &str) -> bool {
+            let last = line.rsplit(' ').next().unwrap_or_default();
+            let last = last
+                .strip_prefix('(')
+                .and_then(|l| l.strip_suffix(')'))
+                .unwrap_or(last);
+            let mut parts = last.rsplit(':');
+            let is_number = |part: Option<&str>| {
+                part.is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+            };
+            is_number(parts.next()) && is_number(parts.next())
+        }
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        for file in [
+            "../tests/cross-package/producer.pkg/R/producer.pkg-wrappers.R",
+            "../tests/cross-package/consumer.pkg/R/consumer.pkg-wrappers.R",
+        ] {
+            let path = std::path::Path::new(manifest).join(file);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let normalized = normalize_source_locs(&text);
+            let stale: Vec<&str> = normalized
+                .lines()
+                .map(str::trim_start)
+                .filter(|line| line.starts_with("# ") && ends_with_line_col(line))
+                .collect();
+            assert!(
+                stale.is_empty(),
+                "{}: positions without a file name: {stale:#?}",
+                path.display()
+            );
+        }
+    }
+
     #[test]
     fn wrappers_semantically_equal_both_position_and_content_diff() {
         // Both positions and content differ — still NOT equal.
@@ -6605,7 +6669,7 @@ mod tests {
         let generic = "if (!base::exists(\"Shape_get_area\", mode = \"function\")) {\n  \
                        Shape_get_area <- function(x, ...) UseMethod(\"Shape_get_area\")\n}\n";
         let content = format!(
-            "# Generated from Rust source line 4:5\n\
+            "# Generated from Rust source (shape.rs:4:5)\n\
              # Wraps sidecar field `area` on Rust type `Shape` via `C_get` and `C_set`.\n\
              Shape_get_area <- function(x) .Call(C_get, x)\n\
              # Generated from Rust impl `Circle` (circle.rs:9:6)\n{generic}\
@@ -6614,9 +6678,8 @@ mod tests {
         let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
             .expect_err("the generic would replace the sidecar accessor");
         assert!(
-            error.contains(
-                "function from sidecar field `area` on Rust type `Shape` (Rust source line 4:5)"
-            ),
+            error
+                .contains("function from sidecar field `area` on Rust type `Shape` (shape.rs:4:5)"),
             "{error}"
         );
         assert!(

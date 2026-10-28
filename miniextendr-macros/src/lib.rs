@@ -244,7 +244,9 @@ pub(crate) use type_inspect::{
     is_main_thread_bound_input, is_main_thread_bound_return, is_sexp_type, match_arg_choices_ty,
     second_type_argument,
 };
-pub(crate) use util::{extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc};
+pub(crate) use util::{
+    extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc, source_position,
+};
 
 /// Validate the signature of an `extern "C-unwind"` fn exported via `#[miniextendr]`.
 ///

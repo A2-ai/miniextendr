@@ -9,7 +9,7 @@ expression: "generate_env_r_wrapper(&inferred_reading(ClassSystem::Env))"
 #' @export
 Reading <- new.env(parent = emptyenv())
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description Read a value.
 #'
 #' \describe{
@@ -27,7 +27,7 @@ Reading$new <- function(value) {
   self
 }
 
-# Reading::value (1:1)
+# Reading::value (<unspecified>:1:1)
 #' @name Reading$value
 #' @rdname Reading
 Reading$value <- function() {
@@ -36,7 +36,7 @@ Reading$value <- function() {
   .val
 }
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description `Reading$from_value()` is another name for the constructor `Reading$new()`.
 #' @name Reading$from_value
 #' @rdname Reading
