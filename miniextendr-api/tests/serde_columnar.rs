@@ -1057,10 +1057,6 @@ fn struct_fields_optout_keeps_option_enum_none_for_other_fields() {
     }
 
     r_test_utils::with_r_thread(|| {
-        // Row 1 keeps `meta.variant = Some(...)`: a nested sub-field probed as
-        // `None` on the *first* row locks its column to Generic (list) via the
-        // writer's Compound-vs-Compound first-seen lattice (#1370) — a separate
-        // writer limitation, not the #1320 heuristic under test here.
         let rows = vec![
             Row {
                 id: 1,
@@ -1296,6 +1292,311 @@ fn flatten_enum_reader_tuple_variant_roundtrip() {
         assert!(names.contains(&"m__1".to_string()), "{names:?}");
         let round: Vec<Row> = dataframe_to_vec(sexp).unwrap();
         assert_eq!(round, rows);
+    });
+}
+
+// endregion
+
+// region: nested union discovery (#1370)
+
+/// A nested struct's field that the first row omits
+/// (`skip_serializing_if`) still gets its column, inside the parent's block,
+/// NA on the rows that lack it.
+#[test]
+fn nested_field_omitted_by_first_row_gets_column() {
+    #[derive(Serialize)]
+    struct Metadata {
+        hash: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    }
+    #[derive(Serialize)]
+    struct Entry {
+        path: String,
+        metadata: Metadata,
+        size: f64,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Entry {
+                path: "a".into(),
+                metadata: Metadata {
+                    hash: "h1".into(),
+                    message: None,
+                },
+                size: 1.0,
+            },
+            Entry {
+                path: "b".into(),
+                metadata: Metadata {
+                    hash: "h2".into(),
+                    message: Some("why".into()),
+                },
+                size: 2.0,
+            },
+        ];
+        let df = vec_to_dataframe(&rows).unwrap();
+        let sexp = df.as_sexp();
+        // The late field joins its siblings, ahead of later top-level keys.
+        assert_eq!(
+            col_names(&sexp),
+            ["path", "metadata_hash", "metadata_message", "size"]
+        );
+        let message = col(&sexp, "metadata_message");
+        assert_eq!(message.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
+        assert_eq!(message.string_elt_str(0), None, "row 1 lacks the field");
+        assert_eq!(message.string_elt_str(1), Some("why"));
+        assert_eq!(col(&sexp, "metadata_hash").string_elt_str(1), Some("h2"));
+        assert_eq!(col(&sexp, "size").real_elt(1), 2.0);
+    });
+}
+
+/// The same two levels down: `outer_inner_note` exists although the first
+/// row omits `note`.
+#[test]
+fn nested_field_omitted_two_levels_deep_gets_column() {
+    #[derive(Serialize)]
+    struct Inner {
+        value: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    }
+    #[derive(Serialize)]
+    struct Outer {
+        inner: Inner,
+        flag: bool,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        outer: Outer,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                outer: Outer {
+                    inner: Inner {
+                        value: 10,
+                        note: None,
+                    },
+                    flag: true,
+                },
+            },
+            Row {
+                id: 2,
+                outer: Outer {
+                    inner: Inner {
+                        value: 20,
+                        note: Some("deep".into()),
+                    },
+                    flag: false,
+                },
+            },
+        ];
+        let df = vec_to_dataframe(&rows).unwrap();
+        let sexp = df.as_sexp();
+        assert_eq!(
+            col_names(&sexp),
+            ["id", "outer_inner_value", "outer_inner_note", "outer_flag"]
+        );
+        let note = col(&sexp, "outer_inner_note");
+        assert_eq!(note.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
+        assert_eq!(note.string_elt_str(0), None);
+        assert_eq!(note.string_elt_str(1), Some("deep"));
+        assert_eq!(col(&sexp, "outer_inner_value").integer_elt(1), 20);
+    });
+}
+
+/// A nested field that only the last row carries: NA on every earlier row.
+#[test]
+fn nested_field_only_in_last_row_gets_column() {
+    #[derive(Serialize)]
+    struct Stats {
+        n: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        mean: Option<f64>,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        stats: Stats,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows: Vec<Row> = (1..=4)
+            .map(|id| Row {
+                id,
+                stats: Stats {
+                    n: id * 10,
+                    mean: (id == 4).then_some(2.5),
+                },
+            })
+            .collect();
+        let df = vec_to_dataframe(&rows).unwrap();
+        let sexp = df.as_sexp();
+        assert_eq!(col_names(&sexp), ["id", "stats_n", "stats_mean"]);
+        let mean = col(&sexp, "stats_mean");
+        assert_eq!(mean.type_of(), miniextendr_api::SEXPTYPE::REALSXP);
+        for i in 0..3 {
+            assert!(mean.real_elt(i).is_nan(), "row {i} lacks `mean`");
+        }
+        assert_eq!(mean.real_elt(3), 2.5);
+    });
+}
+
+/// A nested `Option<Struct>` that is `None` in the first row flattens from a
+/// later row's value, and the `None` row is NA across its columns.
+#[test]
+fn nested_option_struct_none_in_first_row_flattens() {
+    #[derive(Serialize)]
+    struct Location {
+        lat: f64,
+        lon: f64,
+    }
+    #[derive(Serialize)]
+    struct Site {
+        name: String,
+        location: Option<Location>,
+    }
+    #[derive(Serialize)]
+    struct Row {
+        id: i32,
+        site: Site,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                site: Site {
+                    name: "unknown".into(),
+                    location: None,
+                },
+            },
+            Row {
+                id: 2,
+                site: Site {
+                    name: "base".into(),
+                    location: Some(Location {
+                        lat: 59.9,
+                        lon: 10.7,
+                    }),
+                },
+            },
+        ];
+        let df = vec_to_dataframe(&rows).unwrap();
+        let sexp = df.as_sexp();
+        assert_eq!(
+            col_names(&sexp),
+            ["id", "site_name", "site_location_lat", "site_location_lon"]
+        );
+        let lat = col(&sexp, "site_location_lat");
+        assert_eq!(lat.type_of(), miniextendr_api::SEXPTYPE::REALSXP);
+        assert!(lat.real_elt(0).is_nan(), "None row is NA");
+        assert_eq!(lat.real_elt(1), 59.9);
+        assert!(col(&sexp, "site_location_lon").real_elt(0).is_nan());
+    });
+}
+
+/// #1370: a nested `Option<String>` that is `None` in the first row is a
+/// character column, as it is when the `Some` row comes first, so the frame
+/// reads back.
+#[test]
+fn nested_option_scalar_none_first_is_typed_column() {
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Meta {
+        variant: Option<String>,
+        size: f64,
+    }
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct Row {
+        id: i32,
+        meta: Meta,
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Row {
+                id: 1,
+                meta: Meta {
+                    variant: None,
+                    size: 4.0,
+                },
+            },
+            Row {
+                id: 2,
+                meta: Meta {
+                    variant: Some("x".into()),
+                    size: 5.0,
+                },
+            },
+        ];
+        let df = vec_to_dataframe(&rows).unwrap();
+        let sexp = df.as_sexp();
+        let variant = col(&sexp, "meta_variant");
+        assert_eq!(variant.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
+        assert_eq!(variant.string_elt_str(0), None);
+        assert_eq!(variant.string_elt_str(1), Some("x"));
+        let round: Vec<Row> = dataframe_to_vec(sexp).unwrap();
+        assert_eq!(round, rows);
+    });
+}
+
+/// `vec_to_dataframe_split` builds its frames through the union path, so a
+/// nested field only a later row of a variant carries gets its column in the
+/// per-variant and the collated shape.
+#[test]
+fn split_nested_field_omitted_by_first_row_gets_column() {
+    #[derive(Serialize)]
+    struct Meta {
+        hash: i32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+    }
+    #[derive(Serialize)]
+    enum Event {
+        Saved { meta: Meta },
+    }
+
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            Event::Saved {
+                meta: Meta {
+                    hash: 1,
+                    note: None,
+                },
+            },
+            Event::Saved {
+                meta: Meta {
+                    hash: 2,
+                    note: Some("why".into()),
+                },
+            },
+        ];
+        let per_variant = vec_to_dataframe_split(&rows, SplitShape::PerVariantList).unwrap();
+        let collated = vec_to_dataframe_split(
+            &rows,
+            SplitShape::Collated {
+                column: "kind".into(),
+            },
+        )
+        .unwrap();
+        for (shape, names) in [
+            (per_variant, &["meta_hash", "meta_note"][..]),
+            (collated, &["kind", "meta_hash", "meta_note"][..]),
+        ] {
+            let DataFrameShape::Bare(df) = shape else {
+                panic!("one variant gives a bare data.frame");
+            };
+            let sexp = df.as_sexp();
+            assert_eq!(col_names(&sexp), names);
+            let note = col(&sexp, "meta_note");
+            assert_eq!(note.string_elt_str(0), None, "row 1 lacks the field");
+            assert_eq!(note.string_elt_str(1), Some("why"));
+        }
     });
 }
 

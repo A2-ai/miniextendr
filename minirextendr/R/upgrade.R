@@ -63,7 +63,8 @@
 #' @param version Version of miniextendr crates to vendor (default: `"main"`).
 #' @param local_path Optional path to local miniextendr repository for vendoring.
 #' @param configure_ac Logical. If `TRUE`, overwrites configure.ac with the
-#'   current template. Defaults to `FALSE` because users often customise
+#'   current template, whose `AC_INIT` carries the package name and
+#'   DESCRIPTION's `Version`. Defaults to `FALSE` because users often customise
 #'   configure.ac with feature flags. When `FALSE`, the upgrade first checks
 #'   that the existing configure.ac substitutes every `@VAR@` placeholder in
 #'   the new `src/Makevars.in` and `src/win.def.in`. If any is missing, it
@@ -73,7 +74,8 @@
 #'   autoconf for the exact list and falls back to an approximate scan of
 #'   `AC_SUBST()` / `AC_ARG_VAR()` when autoconf is unavailable. Later, the
 #'   upgrade also compares the existing file with the current template and
-#'   warns about differences, including custom edits. Review those differences
+#'   warns about differences, including custom edits; the `AC_INIT` version
+#'   alone is not one. Review those differences
 #'   or use `TRUE` to replace the file.
 #' @param autoconf Logical. If `TRUE` (default) and `autoconf` is available,
 #'   regenerates the configure script after upgrading.
@@ -240,6 +242,7 @@ upgrade_owned_files <- function(layout) {
     "src/stub.c",
     "src/r_shim.h",
     "src/Makevars.in",
+    "src/Makevars.win",
     "src/win.def.in",
     "src/rust/build.rs",
     "inst/include/mx_abi.h",
@@ -538,6 +541,7 @@ upgrade_scaffolding_files <- c(
   "src/r_shim.h",
   "src/rust/build.rs",
   "src/Makevars.in",
+  "src/Makevars.win",
   "src/win.def.in",
   "inst/include/mx_abi.h",
   "bootstrap.R",
@@ -647,6 +651,9 @@ upgrade_gitignore <- function(subdir = NULL) {
 #' Compare the complete file with the current template, rendered for this
 #' package. Custom edits also produce a warning; leave the file untouched so
 #' users can review and retain those edits when updating the build system.
+#' The template is rendered with the version in the file's own `AC_INIT`
+#' (DESCRIPTION's `Version` when it has none), so a version that differs from
+#' DESCRIPTION's, which nothing reads, is not drift.
 #'
 #' @param monorepo Whether the package is the R package of a monorepo, which
 #'   selects `templates/monorepo/rpkg/configure.ac` over
@@ -664,8 +671,13 @@ check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis:
 
   content <- readLines(configure_ac, warn = FALSE)
   template <- readLines(configure_ac_template(monorepo), warn = FALSE)
-  # configure.ac has one template variable: the package name in AC_INIT.
+  # configure.ac's template variables are the package name and version in
+  # AC_INIT.
+  ac_init <- regmatches(content, regexec("^AC_INIT\\(\\[[^]]*\\], *\\[([^]]*)\\]", content))
+  ac_init <- Filter(length, ac_init)
+  version <- if (length(ac_init)) ac_init[[1L]][[2L]] else get_package_version()
   template <- gsub("{{package}}", get_package_name(), template, fixed = TRUE)
+  template <- gsub("{{version}}", version, template, fixed = TRUE)
 
   if (!identical(content, template)) {
     cli::cli_warn(c(

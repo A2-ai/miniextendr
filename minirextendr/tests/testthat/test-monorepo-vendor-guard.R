@@ -24,8 +24,9 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
     writeLines(c("Package: guardpkg", "Version: 0.1.0", stamp),
                file.path(pkg, "DESCRIPTION"))
     writeLines(character(), file.path(pkg, "NAMESPACE"))
-    writeLines(gsub("{{package}}", "guardpkg",
-                    readLines(file.path(template, "configure.ac")), fixed = TRUE),
+    configure <- gsub("{{package}}", "guardpkg",
+                      readLines(file.path(template, "configure.ac")), fixed = TRUE)
+    writeLines(gsub("{{version}}", "0.1.0", configure, fixed = TRUE),
                file.path(pkg, "configure.ac"))
     for (file in c("Makevars.in", "win.def.in")) {
       file.copy(file.path(template, file), file.path(pkg, "src", file))

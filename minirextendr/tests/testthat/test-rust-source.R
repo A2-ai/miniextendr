@@ -176,6 +176,7 @@ pub fn add_one(x: i32) -> i32 { x + 1 }
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "rust", "build.rs")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "stub.c")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "src", "Makevars.in")))
+  expect_true(fs::file_exists(fs::path(pkg_dir, "src", "Makevars.win")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "configure.ac")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "inst", "include", "mx_abi.h")))
   expect_true(fs::file_exists(fs::path(pkg_dir, "tools", "config.guess")))

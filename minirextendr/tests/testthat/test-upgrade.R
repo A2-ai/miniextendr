@@ -142,3 +142,64 @@ test_that("configure drift picks the template the upgrade's layout picks (#1720)
   check_in(file.path(ws, "crates", "rpkg"))
   expect_identical(seen, c(TRUE, FALSE))
 })
+
+# A package at `version` whose configure.ac is `configure` (the template
+# rendered for the package at `ac_version` by default); `monorepo` puts it in
+# `rpkg/` under a workspace Cargo.toml. Returns the package directory.
+make_versioned_pkg <- function(root, version, monorepo = FALSE, ac_version = "0.1.0",
+                               configure = NULL) {
+  pkg <- if (monorepo) file.path(root, "rpkg") else root
+  if (monorepo) writeLines("[workspace]", file.path(root, "Cargo.toml"))
+  dir.create(file.path(pkg, "src", "rust"), recursive = TRUE, showWarnings = FALSE)
+  writeLines(c("Package: verpkg", paste("Version:", version)), file.path(pkg, "DESCRIPTION"))
+  writeLines("[package]", file.path(pkg, "src", "rust", "Cargo.toml"))
+  writeLines("# Previous scaffold", file.path(pkg, "src", "Makevars.in"))
+  if (is.null(configure)) {
+    configure <- readLines(minirextendr:::configure_ac_template(monorepo), warn = FALSE)
+    configure <- gsub("{{package}}", "verpkg", configure, fixed = TRUE)
+    configure <- gsub("{{version}}", ac_version, configure, fixed = TRUE)
+  }
+  writeLines(configure, file.path(pkg, "configure.ac"))
+  pkg
+}
+
+test_that("upgrade with configure_ac = TRUE writes DESCRIPTION's version into AC_INIT", {
+  for (monorepo in c(FALSE, TRUE)) {
+    tmp <- withr::local_tempdir()
+    pkg <- make_versioned_pkg(tmp, "0.5.1", monorepo,
+                              configure = c("AC_INIT([verpkg], [0.1.0])", 'CARGO_FEATURES=""', "AC_OUTPUT"))
+    suppressMessages(upgrade_miniextendr_package(path = tmp, configure_ac = TRUE, autoconf = FALSE,
+                                                allow_dirty = TRUE))
+    expect_identical(readLines(file.path(pkg, "configure.ac"))[[1L]], "AC_INIT([verpkg], [0.5.1])",
+                     info = paste("monorepo:", monorepo))
+  }
+})
+
+test_that("upgrade with configure_ac = FALSE ignores an AC_INIT version that differs from DESCRIPTION's", {
+  # Every package scaffolded before AC_INIT took DESCRIPTION's version has
+  # AC_INIT([pkg], [0.1.0]); nothing reads that version.
+  for (monorepo in c(FALSE, TRUE)) {
+    tmp <- withr::local_tempdir()
+    pkg <- make_versioned_pkg(tmp, "0.5.1", monorepo)
+    before <- readLines(file.path(pkg, "configure.ac"))
+    expect_no_warning(suppressMessages(upgrade_miniextendr_package(
+      path = tmp, configure_ac = FALSE, autoconf = FALSE, allow_dirty = TRUE
+    )))
+    expect_identical(readLines(file.path(pkg, "configure.ac")), before)
+  }
+})
+
+test_that("configure drift still warns on a real edit next to a different AC_INIT version", {
+  tmp <- withr::local_tempdir()
+  usethis::local_project(tmp, force = TRUE, setwd = FALSE)
+  pkg <- make_versioned_pkg(tmp, "0.5.1")
+  configure <- file.path(pkg, "configure.ac")
+  customized <- c(readLines(configure), "CARGO_FEATURES='serde'")
+  writeLines(customized, configure)
+
+  expect_warning(
+    minirextendr:::check_configure_ac_drift(monorepo = FALSE),
+    "configure.ac differs from the current template"
+  )
+  expect_identical(readLines(configure), customized)
+})

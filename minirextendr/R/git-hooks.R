@@ -12,8 +12,14 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #' package in a healthy state:
 #'
 #' - **pre-commit**: Checks `cargo fmt`, blocks on stale `configure` script
-#'   or stale NAMESPACE (when `*-wrappers.R` changed without `devtools::document()`),
-#'   blocks on source-shape `src/rust/Cargo.lock` (recommends
+#'   or stale NAMESPACE: a staged `R/*-wrappers.R` blocks when `NAMESPACE`
+#'   has unstaged changes, or when `NAMESPACE` is not staged and the
+#'   namespace tags roxygen2 reads (`@export`, `@exportS3Method`, `@method`,
+#'   `@importFrom`, `@rawNamespace`, ...), each with the object its block
+#'   documents, differ from the committed wrappers (the message lists the
+#'   added and removed tags; run `devtools::document()`). Edits that only
+#'   move the wrappers' source lines pass. Also blocks on source-shape
+#'   `src/rust/Cargo.lock` (recommends
 #'   [miniextendr_repair_lock()]), blocks on a staged `vendor.tar.xz`
 #'   (a build artifact that [miniextendr_build_tarball()] vendors into the
 #'   release tarball; never commit it), blocks when the staged `rv.lock`

@@ -230,12 +230,13 @@ pub fn set_posixct_utc(sexp: crate::SEXP) {
 pub fn set_posixct_tz(sexp: crate::SEXP, iana: &str) {
     use crate::SexpExt as _;
     sexp.set_class(posixct_class_sexp());
-    // Build a one-element STRSXP for the tzone attribute.
+    // Build a one-element STRSXP for the tzone attribute. Allocate the
+    // CHARSXP only once the protected STRSXP can hold it: allocating the
+    // vector first could collect an unrooted CHARSXP.
     unsafe {
-        let tzone_charsxp = crate::SEXP::charsxp(iana);
         let tzone_sexp = crate::sys::Rf_allocVector(crate::SEXPTYPE::STRSXP, 1);
         let _guard = crate::OwnedProtect::new(tzone_sexp);
-        tzone_sexp.set_string_elt(0, tzone_charsxp);
+        tzone_sexp.set_string_elt(0, crate::SEXP::charsxp(iana));
         sexp.set_attr(tzone_symbol(), tzone_sexp);
     }
 }

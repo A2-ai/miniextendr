@@ -1,0 +1,63 @@
+error[E0277]: the trait bound `Vec<Timestamp>: IntoR` is not satisfied
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ the trait `IntoR` is not implemented for `Vec<Timestamp>`
+   |
+   = note: an `Option<Class>` return converts when spelled `Option<ExternalPtr<Class>>`, or with an explicit class wrap: `Option<WrapAsR6<Class>>` or `#[miniextendr(wrap = "r6")]` (any class system)
+   = help: the following other types implement trait `IntoR`:
+             Vec<&[T]>
+             Vec<&str>
+             Vec<(A, B)>
+             Vec<(A, B, C)>
+             Vec<(A, B, C, D)>
+             Vec<(A, B, C, D, E)>
+             Vec<(A, B, C, D, E, F)>
+             Vec<(A, B, C, D, E, F, G)>
+           and $N others
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: this `Vec` or `Option` of `Timestamp` has no conversion from R
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ `Timestamp` does not implement `TryFromSexpElement`
+   |
+help: the trait `TryFromSexpElement` is not implemented for `Timestamp`
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:9:5
+   |
+ 9 |     pub struct Timestamp;
+   |     ^^^^^^^^^^^^^^^^^^^^
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = help: the following other types implement trait `TryFromSexp`:
+             Vec<&RLogical>
+             Vec<&Rcomplex>
+             Vec<&[RLogical]>
+             Vec<&[Rcomplex]>
+             Vec<&[f64]>
+             Vec<&[i32]>
+             Vec<&[u8]>
+             Vec<&f64>
+           and $N others
+   = note: required for `Vec<Timestamp>` to implement `TryFromSexp`
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `Timestamp` is not a datetime column type here
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:15:9
+   |
+15 |     at: jiff::Timestamp,
+   |         ^^^^^^^^^^^^^^^ a column of this type needs miniextendr-api's `jiff` or `time` feature
+   |
+help: the trait `DataFrameDateTime` is not implemented for `Timestamp`
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:9:5
+   |
+ 9 |     pub struct Timestamp;
+   |     ^^^^^^^^^^^^^^^^^^^^
+   = note: enable the `jiff` feature of miniextendr-api for `jiff::Timestamp`, `jiff::Zoned`, `jiff::SignedDuration` and `jiff::civil::Date`, or its `time` feature for `time::OffsetDateTime` and `time::Date`
+   = note: a local module named `jiff` or `time` hides the crate: spell a local type `self::time::Date` (or `crate::…`) to flatten it as a struct
+note: required by a bound in `_assert_datetime_column`
+  --> tests/ui/derive_dataframe_datetime_feature_off.rs:12:10
+   |
+12 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ required by this bound in `_assert_datetime_column`
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)

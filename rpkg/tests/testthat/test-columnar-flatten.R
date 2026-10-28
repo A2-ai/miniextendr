@@ -28,6 +28,36 @@ test_that("deep nesting (3 levels) flattens fully", {
   expect_equal(df$mid_leaf_c, c(10.0, 20.0))
 })
 
+test_that("a nested field the first row omits still gets a column (#1370)", {
+  for (df in list(
+    miniextendr:::test_columnar_nested_late_field(),
+    miniextendr:::test_columnar_nested_late_field_grow()
+  )) {
+    expect_s3_class(df, "data.frame")
+    expect_equal(
+      names(df),
+      c("path", "metadata_hash", "metadata_message", "size")
+    )
+    expect_equal(df$metadata_message, c(NA, "why", NA))
+    expect_equal(df$metadata_hash, c("h_a", "h_b", "h_c"))
+    expect_equal(df$size, rep(1.5, 3))
+  }
+})
+
+test_that("nested fields two levels down that the first row lacks get columns", {
+  df <- miniextendr:::test_columnar_nested_late_field_deep()
+  # First appearance: row 1 serializes `calibration` (as None) but skips `note`.
+  expect_equal(
+    names(df),
+    c(
+      "id", "station_name", "station_probe_reading",
+      "station_probe_calibration_c", "station_probe_note"
+    )
+  )
+  expect_equal(df$station_probe_note, c(NA, "recalibrated"))
+  expect_equal(df$station_probe_calibration_c, c(NA, 1.25))
+})
+
 test_that("serde flatten removes prefix", {
   df <- miniextendr:::test_columnar_serde_flatten()
   expect_s3_class(df, "data.frame")

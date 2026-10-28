@@ -25,5 +25,8 @@ happens when the project has no \code{configure.ac}).
 Compare the complete file with the current template, rendered for this
 package. Custom edits also produce a warning; leave the file untouched so
 users can review and retain those edits when updating the build system.
+The template is rendered with the version in the file's own \code{AC_INIT}
+(DESCRIPTION's \code{Version} when it has none), so a version that differs from
+DESCRIPTION's, which nothing reads, is not drift.
 }
 \keyword{internal}

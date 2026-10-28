@@ -462,6 +462,17 @@ get_package_name <- function() {
   mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION"))
 }
 
+#' Get package version from current project
+#'
+#' @return The `Version` field of the active project's DESCRIPTION, or
+#'   `"0.0.0.9000"` (the version a freshly scaffolded DESCRIPTION gets) when
+#'   the field is missing.
+#' @keywords internal
+get_package_version <- function() {
+  mx_desc_get_field("Version", file = usethis::proj_path("DESCRIPTION"),
+                    default = "0.0.0.9000")
+}
+
 # =============================================================================
 # DESCRIPTION file helpers (replaces desc package)
 # =============================================================================
@@ -784,14 +795,19 @@ get_monorepo_crate <- function(cargo_path = file.path(usethis::proj_get(), "Carg
 #' @param crate_name Optional crate name for monorepo template
 #' @param package Optional package name override (for when DESCRIPTION doesn't exist yet)
 #' @param rpkg_name Optional R package subdirectory name for monorepo template
-#' @return Named list with package, package_rs, crate_name, year, etc.
+#' @return Named list with package, package_rs, version, crate_name, year,
+#'   etc. `version` (`AC_INIT`'s in `configure.ac`) is DESCRIPTION's
+#'   `Version`; with `package` given, DESCRIPTION is not read and it is the
+#'   version a freshly scaffolded DESCRIPTION gets.
 #' @keywords internal
 template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
-  # Get package name: use provided, or read from DESCRIPTION
+  # Get package name and version: use provided, or read from DESCRIPTION
   if (is.null(package)) {
     pkg <- get_package_name()
+    version <- get_package_version()
   } else {
     pkg <- package
+    version <- "0.0.0.9000"
   }
 
   pkg_rs <- to_rust_name(pkg)
@@ -800,6 +816,7 @@ template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
     package = pkg,
     package_rs = pkg_rs,
     Package = tools::toTitleCase(pkg),
+    version = version,
     features_var = "CARGO_FEATURES",
     year = format(Sys.Date(), "%Y")
   )

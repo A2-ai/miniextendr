@@ -3,10 +3,12 @@
 
 # region: helpers -------------------------------------------------------------
 
-# The template configure.ac of a layout, rendered for `package`.
+# The template configure.ac of a layout, rendered for `package` at the
+# version make_subst_pkg() writes to DESCRIPTION.
 render_configure_ac <- function(monorepo, package = "substpkg") {
   lines <- readLines(minirextendr:::configure_ac_template(monorepo), warn = FALSE)
-  gsub("{{package}}", package, lines, fixed = TRUE)
+  lines <- gsub("{{package}}", package, lines, fixed = TRUE)
+  gsub("{{version}}", "0.0.1", lines, fixed = TRUE)
 }
 
 # A package whose configure.ac is the current template without the lines

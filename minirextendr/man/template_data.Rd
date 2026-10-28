@@ -14,7 +14,10 @@ template_data(crate_name = NULL, package = NULL, rpkg_name = NULL)
 \item{rpkg_name}{Optional R package subdirectory name for monorepo template}
 }
 \value{
-Named list with package, package_rs, crate_name, year, etc.
+Named list with package, package_rs, version, crate_name, year,
+etc. \code{version} (\code{AC_INIT}'s in \code{configure.ac}) is DESCRIPTION's
+\code{Version}; with \code{package} given, DESCRIPTION is not read and it is the
+version a freshly scaffolded DESCRIPTION gets.
 }
 \description{
 Standard template data for current project

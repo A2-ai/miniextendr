@@ -69,10 +69,11 @@ local_outside_repo <- function(env = parent.frame()) {
 
 # rv up to 0.12.0 builds from real directories whose files are symlinks into
 # the package (`symlink_package`); later releases copy the package directory.
-# Either tree sits where the package's outside siblings are absent.
-local_build_tree <- function(from, mode = c("link", "copy"), env = parent.frame()) {
+# Either tree sits where the package's outside siblings are absent, in a
+# directory called `name`.
+local_build_tree <- function(from, mode = c("link", "copy"), env = parent.frame(), name = "build") {
   mode <- match.arg(mode)
-  to <- file.path(normalizePath(withr::local_tempdir(.local_envir = env), winslash = "/"), "build")
+  to <- file.path(normalizePath(withr::local_tempdir(.local_envir = env), winslash = "/"), name)
   dirs <- list.dirs(from, full.names = FALSE)
   for (dir in c("", dirs[nzchar(dirs)])) dir.create(file.path(to, dir), recursive = TRUE, showWarnings = FALSE)
   files <- list.files(from, recursive = TRUE, all.files = TRUE, no.. = TRUE)
@@ -114,6 +115,38 @@ test_that("missing outside paths are found in every table cargo loads", {
   # A missing path keeps its `..` through normalizePath(); cargo collapses it.
   expect_identical(helper$collapse_dots("/r/pkg/src/rust/../../../core/./x/"), "/r/core/x")
   expect_identical(helper$collapse_dots("C:\\r\\pkg\\..\\core"), "C:/r/core")
+})
+
+test_that("outside paths with no Cargo.toml are found where they land", {
+  # Cargo collapses `..` lexically, so a path that climbs out of the package
+  # names a crate outside it, even where it lands back in the package
+  # directory (a tarball unpacked into a directory named like the crate's).
+  helper <- configure_helper()
+  root <- normalizePath(withr::local_tempdir(), winslash = "/")
+  build <- file.path(root, "build")
+  dir.create(file.path(root, "empty"))
+  write_files(root, list("build/src/rust/Cargo.toml" = c(
+    "[package]", 'name = "pkg-r"', 'version = "0.1.0"', "[dependencies]",
+    'own = { path = "../../../build" }', 'nested = { path = "../../../build/crates/core" }',
+    'empty = { path = "../../../empty" }', 'inside = { path = "../../inst/not-here" }')))
+  missing <- helper$missing_path_dependencies(helper$dev_bootstrap_paths(build))
+  expect_identical(missing$dir, c(build, file.path(build, "crates/core"), file.path(root, "empty")))
+  expect_true(helper$path_literal_outside('path = "../../../build"', file.path(build, "src/rust"), build))
+  expect_false(helper$path_literal_outside('path = "../../inst/x"', file.path(build, "src/rust"), build))
+  expect_false(helper$path_literal_outside(sprintf('path = "%s/inst"', build), file.path(build, "src/rust"), build))
+})
+
+test_that("a copy named like an outside crate stops before cargo", {
+  # `../../../core` from a copy in a directory called `core` is the copy
+  # itself: it exists, but has no Cargo.toml.
+  helper <- configure_helper()
+  repo <- local_outside_repo()
+  copy <- local_build_tree(file.path(repo, "pkg"), "copy", name = "core")
+  err <- expect_error(helper$configure_path_dependencies(copy), "outside the package directory are missing")
+  expect_match(conditionMessage(err), sprintf(
+    '`path = "../../../core"` under [dependencies] in src/rust/Cargo.toml: %s has no Cargo.toml', copy
+  ), fixed = TRUE)
+  expect_match(conditionMessage(err), "bootstrap.R did not run for this build.", fixed = TRUE)
 })
 
 test_that("a copy stops before cargo, naming the path and the installs that work", {

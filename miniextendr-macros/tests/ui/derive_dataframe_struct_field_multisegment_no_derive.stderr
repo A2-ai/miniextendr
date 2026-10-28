@@ -39,6 +39,7 @@ help: the trait `DataFrameRow` is not implemented for `NotADataFrameRow`
 17 |     pub struct NotADataFrameRow;
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = note: struct- and enum-typed variant fields are flattened by default into prefixed columns; the inner type must implement `DataFrameRow` for this to work
+   = note: a `jiff` or `time` datetime field is one column when its type is spelled by its crate path (`jiff::Timestamp`, `time::Date`, …); a bare imported name is flattened like a struct
 help: the trait `DataFrameRow` is implemented for `Wrapper`
   --> tests/ui/derive_dataframe_struct_field_multisegment_no_derive.rs:20:10
    |

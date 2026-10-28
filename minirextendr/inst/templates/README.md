@@ -98,6 +98,7 @@ Templates use mustache-style `{{variable}}` substitution:
 - `{{package}}` - R package name
 - `{{package_rs}}` - Rust-safe package name
 - `{{Package}}` - title-cased package name
+- `{{version}}` - the package version (DESCRIPTION's `Version`), in `configure.ac`'s `AC_INIT`
 - `{{crate_name}}` - Rust crate name (monorepo only)
 - `{{rpkg_name}}` - R package subdirectory name (monorepo only)
 - `{{year}}` - current year

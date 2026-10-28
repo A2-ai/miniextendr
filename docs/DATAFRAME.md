@@ -202,6 +202,44 @@ struct Person {
 }
 ```
 
+### Datetime columns
+
+With miniextendr-api's `jiff` or `time` feature, a datetime field is one
+column and `Option<T>` an NA-able one (`None` is `NA`). Both directions work,
+so the rows read back:
+
+| Field type | R column |
+|---|---|
+| `jiff::Timestamp`, `time::OffsetDateTime` | `POSIXct`, `tzone = "UTC"` |
+| `jiff::Zoned` | `POSIXct`, `tzone` of the first non-missing value |
+| `jiff::civil::Date`, `time::Date` | `Date` |
+| `jiff::SignedDuration` | `difftime` in seconds |
+
+A `jiff::Zoned` column has one `tzone`, so values in other zones keep their
+instant but print in the first value's zone.
+
+```rust
+use miniextendr_api::{jiff, time};
+
+#[derive(DataFrameRow)]
+struct Reading {
+    at: jiff::Timestamp,              // POSIXct
+    seen: Option<jiff::Timestamp>,    // POSIXct, NA for None
+    day: Option<jiff::civil::Date>,   // Date
+    stamp: time::OffsetDateTime,      // POSIXct
+}
+```
+
+Spell the type by its crate path: `jiff::Timestamp`, `::jiff::Timestamp` or
+`miniextendr_api::jiff::Timestamp`. A derive sees only the tokens written, not
+imports, so a bare `Timestamp` or `Date` (after `use jiff::Timestamp`) is read
+as your own struct and flattened as a nested `DataFrameRow`, as it always was.
+Conversely, a local module named `jiff` or `time` with a struct of one of
+these names reads as the crate's type; spell that one `self::time::Date` or
+`crate::time::Date`. In an enum, `jiff::Timestamp` in one variant and
+`::jiff::Timestamp` in another share one column. Without the feature, the
+field reports which feature of miniextendr-api to enable.
+
 ### Collection expansion
 
 Fixed-size arrays `[T; N]` are **automatically expanded** into N suffixed columns. `#[dataframe(expand)]` / `#[dataframe(unnest)]` request it explicitly, though arrays expand by default.
@@ -364,7 +402,7 @@ Absent-variant rows produce `NULL` in both columns (not NA). An empty map produc
 
 The following shapes produce a compile error (since #484) because they cannot be automatically expanded and would otherwise silently produce a confusing opaque list-column:
 
-- `Option<T>` for a **non-scalar** `T` — `Option<HashMap<K,V>>`, `Option<UserStruct>`, `Option<Vec<T>>`, etc. (`Option<f64>`, `Option<String>` and the other scalar payloads are the NA contract and are accepted; see [Missing data](#missing-data))
+- `Option<T>` for a **non-scalar** `T` — `Option<HashMap<K,V>>`, `Option<UserStruct>`, `Option<Vec<T>>`, etc. (`Option<f64>`, `Option<String>`, the other scalar payloads and `Option<jiff::Timestamp>`-style datetime paths are the NA contract and are accepted; see [Missing data](#missing-data))
 - `Cow<T>`, `Rc<T>`, `Arc<T>`, `RefCell<T>`, `Cell<T>`, `Mutex<T>`, `RwLock<T>`
 
 For all of these, use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, or unwrap to the inner type (e.g. store `HashMap<K,V>` directly and use an empty map for the absent case):
@@ -532,6 +570,9 @@ arrays and references, so `Vec<i32>` matches `::std::vec::Vec<::core::primitive:
 and it ignores parentheses and the invisible group a `macro_rules!` `$t:ty`
 adds. Such fields share one column, typed as the first variant spells it.
 
+A datetime crate path matches itself with a leading `::` or behind
+`miniextendr_api::` (`jiff::Timestamp` and `::jiff::Timestamp`).
+
 Anything else is compared as written: a type alias (`type Id = i32`), a renamed
 import (`use std::string::String as Text`), a module-relative path
 (`primitive::i32`) or a non-prelude type (`HashMap` against
@@ -616,6 +657,7 @@ reported at the field:
 | Field | What its type needs |
 |---|---|
 | scalar or opaque column (`i32`, `String`, `Vec<T>`, `HashMap<K, V>`, …) | its column converts to R (`Vec<T>: IntoR`; in an enum, `Vec<Option<T>>`) |
+| datetime column (`jiff::Timestamp`, `Option<time::Date>`, …) | miniextendr-api's `jiff` or `time` feature |
 | `[T; N]`, or `width` / `expand` over an owned `Vec<T>` / `Box<[T]>` | `T`'s columns convert to R; the elements are moved, so `T` needs no `Clone` or `Copy` |
 | the same over a borrowed `&[T; N]` / `&[T]` | also `T: Clone`: each element is cloned out of the borrow |
 | flattened struct, nested enum | `#[derive(DataFrameRow)]`; no `Clone`: values are moved into their columns, and out of them when an enum is read back |
@@ -985,7 +1027,8 @@ struct Record {
 
 Accepted payloads: `bool`, `f32`, `f64`, `i8`..`i64`, `u16`..`u64`, `isize`,
 `usize`, `String` (the reader covers the same set as bare scalars: `u64`,
-`isize`, `usize` are write-only). `Option` around a map, a nested
+`isize`, `usize` are write-only), and the datetime types spelled by crate path
+(see [Datetime columns](#datetime-columns)). `Option` around a map, a nested
 `DataFrameRow` struct, or a collection is rejected at compile time (see
 [Rejected wrapper types](#rejected-wrapper-types)); in **enum** row types the
 variant fields are already `Option` columns (absent for other variants), so

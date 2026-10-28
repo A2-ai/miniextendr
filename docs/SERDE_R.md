@@ -454,6 +454,14 @@ are recursively flattened into prefixed columns (`point_x`, `point_y`);
 `#[serde(flatten)]` fields appear without a prefix; `#[serde(skip_serializing_if)]`
 fills NA. `Option<Struct>` fills NA across all sub-columns when `None`.
 
+The columns are the union of every row's fields, at every depth. A field that
+only some rows carry gets a column that is NA on the other rows, whether the
+first row omits it or a nested struct's field is missing from the first row
+(`metadata_message` when only a later row's `metadata` has a `message`). A
+nested field typed only by a later row (`None` first) gets that row's type.
+Columns appear in first-appearance order, and a nested struct's columns stay
+together.
+
 ```rust
 use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::serde::vec_to_dataframe;
@@ -503,6 +511,10 @@ let df: BuiltDataFrame = builder.finish()?;
 
 `finish()` returns a rooted `BuiltDataFrame`, including for the empty
 0-row/0-column case.
+
+Without `grow_schema()`, the first row fixes the schema and a later row with a
+field it lacks, nested or not, is an error. With it, a new top-level field is
+appended as the last column and a new nested field joins its parent's columns.
 
 ### Results and enum output shapes
 

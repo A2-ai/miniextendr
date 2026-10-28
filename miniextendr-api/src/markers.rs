@@ -36,9 +36,46 @@
              if `{Self}` implements `IntoList`, or annotate with \
              `#[dataframe(as_factor)]` for unit-only enums",
     note = "struct- and enum-typed variant fields are flattened by default into prefixed \
-            columns; the inner type must implement `DataFrameRow` for this to work"
+            columns; the inner type must implement `DataFrameRow` for this to work",
+    note = "a `jiff` or `time` datetime field is one column when its type is spelled by \
+            its crate path (`jiff::Timestamp`, `time::Date`, …); a bare imported name is \
+            flattened like a struct"
 )]
 pub trait DataFrameRow {}
+
+/// The datetime types `#[derive(DataFrameRow)]` stores as one column (`T`) or
+/// one NA-able column (`Option<T>`) when a field spells them by crate path
+/// (`jiff::Timestamp`, `time::Date`, …).
+///
+/// The derive asserts this trait for each such field, so a field whose
+/// miniextendr-api feature is off names the feature to enable instead of a
+/// missing `IntoR` impl. Implemented for exactly the types with `IntoR` and
+/// `TryFromSexp` for `Vec<T>` and `Vec<Option<T>>`.
+///
+/// You should not implement this trait manually.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a datetime column type here",
+    label = "a column of this type needs miniextendr-api's `jiff` or `time` feature",
+    note = "enable the `jiff` feature of miniextendr-api for `jiff::Timestamp`, `jiff::Zoned`, \
+            `jiff::SignedDuration` and `jiff::civil::Date`, or its `time` feature for \
+            `time::OffsetDateTime` and `time::Date`",
+    note = "a local module named `jiff` or `time` hides the crate: spell a local type \
+            `self::time::Date` (or `crate::…`) to flatten it as a struct"
+)]
+pub trait DataFrameDateTime {}
+
+#[cfg(feature = "jiff")]
+impl DataFrameDateTime for jiff::Timestamp {}
+#[cfg(feature = "jiff")]
+impl DataFrameDateTime for jiff::Zoned {}
+#[cfg(feature = "jiff")]
+impl DataFrameDateTime for jiff::SignedDuration {}
+#[cfg(feature = "jiff")]
+impl DataFrameDateTime for jiff::civil::Date {}
+#[cfg(feature = "time")]
+impl DataFrameDateTime for time::OffsetDateTime {}
+#[cfg(feature = "time")]
+impl DataFrameDateTime for time::Date {}
 
 /// Reflection trait for `#[derive(DataFrameRow)]` types, used for compile-time
 /// collision detection in outer `DataFrameRow` enums.
