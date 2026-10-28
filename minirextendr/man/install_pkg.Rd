@@ -2,7 +2,7 @@
 % Please edit documentation in R/workflow.R
 \name{install_pkg}
 \alias{install_pkg}
-\title{Install the package via devtools}
+\title{Install the package with \verb{R CMD INSTALL}}
 \usage{
 install_pkg(pkg_path)
 }
@@ -10,28 +10,33 @@ install_pkg(pkg_path)
 \item{pkg_path}{Absolute path to the package root.}
 }
 \value{
-The value of \code{devtools::install()}. Aborts when the install fails.
+\code{TRUE} invisibly. Aborts when the install fails.
 }
 \description{
-Step 5 of \code{\link[=miniextendr_build]{miniextendr_build()}}.
+Step 5 of \code{\link[=miniextendr_build]{miniextendr_build()}}: the \verb{R CMD INSTALL} that
+\code{devtools::install(build = FALSE)} runs, in a subprocess, into the first
+library of \code{\link[=.libPaths]{.libPaths()}}.
 }
 \details{
-\code{build = FALSE}: install the source tree in place, as \verb{R CMD INSTALL .}
-does. The install reuses \verb{rust-target/} from Step 3, so Cargo compiles
-nothing, the library is not relinked and the wrappers stay as Steps 3 and
-4 left them. A built tarball would install from a temporary copy instead:
-a cold Cargo build on every call (unless \code{CARGO_TARGET_DIR} points outside
-the package), and a monorepo's local framework crates, found by
-configure's walk up from the package directory, would resolve from git
-there.
+The source tree is installed in place, as \verb{R CMD INSTALL .} does. The
+install reuses \verb{rust-target/} from Step 3, so Cargo compiles nothing, the
+library is not relinked and the wrappers stay as Steps 3 and 4 left them.
+A built tarball would install from a temporary copy instead: a cold Cargo
+build on every call (unless \code{CARGO_TARGET_DIR} points outside the
+package), and a monorepo's local framework crates, found by configure's
+walk up from the package directory, would resolve from git there.
 
-\code{reload = FALSE}: do NOT reload the freshly-installed package into the
-building session. The default (\code{reload = TRUE}) re-registers the package's
-namespace from its just-written installed image; on R >= 4.6
-(libdeflate-compressed \code{.rdb}) a later pkgload \code{unregister()} of that
-namespace can fail with "internal error 1 in R_decompress1 with
-libdeflate" / "lazy-load database is corrupt" (#1000). The build session
-never needs the package loaded, so skipping the reload is both harmless
-and the fix.
+No dependency is resolved or installed. Step 3 already compiled against
+them, and an rv- or renv-managed library is not this step's to change.
+\code{devtools::install()} (2.5) always runs \code{pak::local_install_deps()} first,
+whatever its \code{dependencies}; pak's subprocess is killed when it finishes,
+so the package metadata it caches in that subprocess's temporary
+directory (about 160 MB) is never removed, one copy per build (#2230).
+
+The freshly installed package is not loaded into the building session.
+Reloading it re-registers the namespace from its just-written installed
+image; on R >= 4.6 (libdeflate-compressed \code{.rdb}) a later pkgload
+\code{unregister()} of that namespace can fail with "internal error 1 in
+R_decompress1 with libdeflate" / "lazy-load database is corrupt" (#1000).
 }
 \keyword{internal}
