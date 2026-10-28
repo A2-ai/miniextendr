@@ -282,6 +282,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 - **Permission errors installing**: `R CMD INSTALL --library=/tmp/codex/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/codex/` is writable in Codex sandboxes.
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
+- **Comparing two builds of one package** (main against a branch): one R session can't hold both, and a second `library()` or an `unloadNamespace()` silently keeps the first build or loads two `.so` files. Install each into its own library and run each in its own `Rscript`. Details: "Comparing two builds" in `minirextendr/inst/claude/skills/miniextendr-debugging/SKILL.md`.
 
 ## Capturing Command Output
 
