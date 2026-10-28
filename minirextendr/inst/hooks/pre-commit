@@ -78,9 +78,13 @@ miniextendr_pre_commit() {
     #   - NAMESPACE is not staged and the namespace tags changed: every tag
     #     roxygen2's namespace roclet reads (@export, @exportS3Method, @method,
     #     @importFrom, @rawNamespace, ...), with the object its block
-    #     documents, compared between HEAD's wrappers and the staged ones. A
-    #     file missing on one side (added, deleted) contributes no tags there.
+    #     documents, compared between HEAD's and the staged copies of every
+    #     staged R/ file, the wrappers and the hand-written ones together, so
+    #     a tag that moves between files (an R function replaced by a Rust
+    #     one) changes nothing. A file missing on one side (added, deleted)
+    #     contributes no tags there.
     STAGED_WRAPPERS=$(echo "$STAGED_ANY" | grep -E "^${PREFIX}R/.*-wrappers\.R$" || true)
+    STAGED_R=$(echo "$STAGED_ANY" | grep -E "^${PREFIX}R/[^/]*\.[Rr]$" || true)
     NAMESPACE_REL="${PREFIX}NAMESPACE"
     if [ -n "$STAGED_WRAPPERS" ]; then
         if ! git diff --quiet -- "$NAMESPACE_REL"; then
@@ -91,8 +95,8 @@ miniextendr_pre_commit() {
         fi
         STAGED_NAMESPACE=$(git diff --cached --name-only -- "$NAMESPACE_REL")
         if [ -z "$STAGED_NAMESPACE" ]; then
-            # One "<tag> <value> (<object>)" line per namespace tag of a
-            # wrappers file on stdin. The object is the name a block's first
+            # One "<tag> <value> (<object>)" line per namespace tag of an R
+            # file on stdin. The object is the name a block's first
             # code line assigns (`foo <- function(...)`), that line itself for
             # a call (`setMethod(...)`), or the block's @name for `NULL`.
             # Comment lines between a block and its code (the moving source
@@ -143,12 +147,12 @@ miniextendr_pre_commit() {
                 if git cat-file -e "HEAD:${f}" 2>/dev/null; then
                     git show "HEAD:${f}" | awk -v q="'" "$NS_TAGS_AWK"
                 fi
-            done <<<"$STAGED_WRAPPERS" | LC_ALL=C sort -u)
+            done <<<"$STAGED_R" | LC_ALL=C sort -u)
             NS_INDEX=$(while IFS= read -r f; do
                 if git cat-file -e ":${f}" 2>/dev/null; then
                     git show ":${f}" | awk -v q="'" "$NS_TAGS_AWK"
                 fi
-            done <<<"$STAGED_WRAPPERS" | LC_ALL=C sort -u)
+            done <<<"$STAGED_R" | LC_ALL=C sort -u)
             NS_CHANGED=$( { printf '%s\n' "$NS_HEAD" | sed 's/^/-/'; printf '%s\n' "$NS_INDEX" | sed 's/^/+/'; } | awk '
                 length($0) > 1 { k = substr($0, 2); if (substr($0, 1, 1) == "-") head[k] = 1; else index_[k] = 1 }
                 END {
@@ -157,7 +161,7 @@ miniextendr_pre_commit() {
                 }
             ' | LC_ALL=C sort)
             if [ -n "$NS_CHANGED" ]; then
-                echo "BLOCKED: R/*-wrappers.R changes the namespace tags, but ${NAMESPACE_REL} was not updated:"
+                echo "BLOCKED: the staged R/ files change the namespace tags, but ${NAMESPACE_REL} was not updated:"
                 printf '%s\n' "$NS_CHANGED" | awk 'NR <= 20 { print "  " $0 } END { if (NR > 20) print "  ... and " NR - 20 " more" }'
                 echo "  Run: devtools::document()"
                 echo "  Then stage the updated NAMESPACE and man/ pages."

@@ -16,9 +16,12 @@ miniextendr_hook_marker <- "miniextendr_pre_commit\\(\\)|miniextendr_post_merge\
 #'   has unstaged changes, or when `NAMESPACE` is not staged and the
 #'   namespace tags roxygen2 reads (`@export`, `@exportS3Method`, `@method`,
 #'   `@importFrom`, `@rawNamespace`, ...), each with the object its block
-#'   documents, differ from the committed wrappers (the message lists the
+#'   documents, differ from the committed ones across the staged `R/` files,
+#'   the wrappers and the hand-written ones together (the message lists the
 #'   added and removed tags; run `devtools::document()`). Edits that only
-#'   move the wrappers' source lines pass. Also blocks on source-shape
+#'   move the wrappers' source lines pass, and so does a tag that moves
+#'   between files, such as an R function replaced by a Rust one. Also
+#'   blocks on source-shape
 #'   `src/rust/Cargo.lock` (recommends
 #'   [miniextendr_repair_lock()]), blocks on a staged `vendor.tar.xz`
 #'   (a build artifact that [miniextendr_build_tarball()] vendors into the
