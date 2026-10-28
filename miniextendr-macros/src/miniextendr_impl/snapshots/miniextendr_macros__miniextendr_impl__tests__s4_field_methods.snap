@@ -9,7 +9,7 @@ expression: wrapper
 #' @slot ptr External pointer to Rust `Engine` struct
 methods::setClass("Engine", slots = c(ptr = "externalptr"))
 
-# Engine::new (1:1)
+# Engine::new (<unspecified>:1:1)
 #' @param n (undocumented)
 #' @name Engine
 #' @rdname Engine
@@ -64,7 +64,7 @@ methods::setMethod("$<-", "Engine", function(x, name, value) {
 })
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_size", class="Engine", export=true)
-# Engine::size (1:1)
+# Engine::size (<unspecified>:1:1)
 #' @name Engine-s4_size
 #' @rdname Engine
 #' @aliases s4_size,Engine-method

@@ -8,7 +8,7 @@ expression: generate_env_r_wrapper(&parsed)
 #' @export
 Widget <- new.env(parent = emptyenv())
 
-# Widget::new (1:1)
+# Widget::new (<unspecified>:1:1)
 #' @name Widget$new
 #' @rdname Widget
 Widget$new <- function() {
@@ -19,7 +19,7 @@ Widget$new <- function() {
   self
 }
 
-# Widget::update (1:1)
+# Widget::update (<unspecified>:1:1)
 #' @name Widget$update
 #' @rdname Widget
 Widget$update <- function(step = 1L, verbose = FALSE) {

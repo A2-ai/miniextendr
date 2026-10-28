@@ -36,6 +36,18 @@ pub(crate) fn source_location_doc(span: proc_macro2::Span) -> String {
     )
 }
 
+/// The `(file:line:col)` a wrapper comment gives for a syntax span, e.g.
+/// `(lib.rs:114:12)`.
+///
+/// The file is the one `file!()` names, as in the `# Generated from Rust …`
+/// headers, and the column is 1-based. The wrapper writer compares wrappers
+/// with every `(<file>.rs:LINE:COL)` position normalized, so a comment in this
+/// form doesn't rewrite the wrappers file when only lines above it moved.
+pub(crate) fn source_position(span: proc_macro2::Span) -> String {
+    let start = span.start();
+    format!("({}:{}:{})", span.file(), start.line, start.column + 1)
+}
+
 /// Build a `TokenStream` containing a raw string literal from an R wrapper string.
 ///
 /// Every generated wrapper is finalized here, so this is also where calls a

@@ -10,7 +10,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Secure <- R6::R6Class("Secure",
   public = list(
-    # Secure::new (1:1)
+    # Secure::new (<unspecified>:1:1)
     #' @description Create a new `Secure`.
     initialize = function(.ptr = NULL) {
       if (!is.null(.ptr)) {
@@ -30,14 +30,14 @@ Secure <- R6::R6Class("Secure",
   cloneable = FALSE
 )
 
-# Secure::internal_compute (1:1)
+# Secure::internal_compute (<unspecified>:1:1)
 Secure$set("private", "internal_compute", function() {
   .val <- .Call(C_miniextendr_macros_Secure__internal_compute, .call = sys.call(), private$.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })
 
-# Secure::public_api (1:1)
+# Secure::public_api (<unspecified>:1:1)
 #' @description Method `public_api`.
 Secure$set("public", "public_api", function() {
   .val <- .Call(C_miniextendr_macros_Secure__public_api, .call = sys.call(), private$.ptr)

@@ -8,7 +8,7 @@ expression: generate_env_r_wrapper(&parsed)
 #' @export
 Picker <- new.env(parent = emptyenv())
 
-# Picker::new (1:1)
+# Picker::new (<unspecified>:1:1)
 #' @name Picker$new
 #' @rdname Picker
 Picker$new <- function() {
@@ -19,7 +19,7 @@ Picker$new <- function() {
   self
 }
 
-# Picker::pick (1:1)
+# Picker::pick (<unspecified>:1:1)
 #' @description Arguments of \code{Picker$pick()}:
 #'
 #' \describe{
@@ -38,7 +38,7 @@ Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker
   .val
 }
 
-# Picker::pick_many (1:1)
+# Picker::pick_many (<unspecified>:1:1)
 #' @description Arguments of \code{Picker$pick_many()}:
 #'
 #' \describe{

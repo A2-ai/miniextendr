@@ -24,7 +24,7 @@ Handle <- R6::R6Class("Handle",
   cloneable = FALSE
 )
 
-# Handle::id (1:1)
+# Handle::id (<unspecified>:1:1)
 #' @description Method `id`.
 Handle$set("public", "id", function() {
   .val <- .Call(C_miniextendr_macros_Handle__id, .call = sys.call(), private$.ptr)

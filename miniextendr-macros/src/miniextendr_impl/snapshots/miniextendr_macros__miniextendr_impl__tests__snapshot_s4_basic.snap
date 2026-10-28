@@ -9,7 +9,7 @@ expression: generate_s4_r_wrapper(&parsed)
 #' @slot ptr External pointer to Rust `Counter` struct
 methods::setClass("Counter", slots = c(ptr = "externalptr"))
 
-# Counter::new (1:1)
+# Counter::new (<unspecified>:1:1)
 #' @param value (undocumented)
 #' @name Counter
 #' @rdname Counter
@@ -23,7 +23,7 @@ Counter <- function(value) {
 }
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_get", class="Counter", export=true)
-# Counter::get (1:1)
+# Counter::get (<unspecified>:1:1)
 #' @name Counter-s4_get
 #' @rdname Counter
 #' @aliases s4_get,Counter-method
@@ -36,7 +36,7 @@ methods::setMethod("s4_get", "Counter", function(x, ...) {
 })
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_increment", class="Counter", export=true)
-# Counter::increment (1:1)
+# Counter::increment (<unspecified>:1:1)
 #' @name Counter-s4_increment
 #' @rdname Counter
 #' @aliases s4_increment,Counter-method

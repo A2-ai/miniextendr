@@ -2,7 +2,7 @@
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
 expression: wrapper
 ---
-# Engine::new (1:1)
+# Engine::new (<unspecified>:1:1)
 #' @title Engine S3 Class
 #' @name Engine
 #' @rdname Engine
@@ -147,7 +147,7 @@ as.list.Engine <- function(x, ...) {
   x
 }
 
-# Engine::size (1:1)
+# Engine::size (<unspecified>:1:1)
 #' @title S3 generic for `size`
 #' @description S3 generic for `size`
 #' @name size.Engine

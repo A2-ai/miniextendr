@@ -10,7 +10,7 @@ expression: "generate_s4_r_wrapper(&inferred_reading(ClassSystem::S4))"
 #' @slot ptr External pointer to Rust `Reading` struct
 methods::setClass("Reading", slots = c(ptr = "externalptr"))
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description Read a value.
 #' @param value The value.
 #' @name Reading
@@ -25,7 +25,7 @@ Reading <- function(value) {
 }
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_value", class="Reading", export=true)
-# Reading::value (1:1)
+# Reading::value (<unspecified>:1:1)
 #' @name Reading-s4_value
 #' @rdname Reading
 #' @aliases s4_value,Reading-method
@@ -37,7 +37,7 @@ methods::setMethod("s4_value", "Reading", function(x, ...) {
   .val
 })
 
-# Reading::from_value (1:1)
+# Reading::from_value (<unspecified>:1:1)
 #' @description `Reading_from_value()` is another name for the constructor `Reading()`.
 #' @param value The value.
 #' @name Reading_from_value

@@ -10,7 +10,7 @@ expression: wrapper
 #' @export
 Bag <- R6::R6Class("Bag",
   public = list(
-    # Bag::new (1:1)
+    # Bag::new (<unspecified>:1:1)
     #' @description Create a new `Bag`.
     #' @param values (no documentation available)
     initialize = function(values, .ptr = NULL) {
@@ -34,7 +34,7 @@ Bag <- R6::R6Class("Bag",
   cloneable = FALSE
 )
 
-# Bag::extra (1:1)
+# Bag::extra (<unspecified>:1:1)
 #' @description Count the extra arguments.
 #' @param n (no documentation available)
 #' @param ... (no documentation available)

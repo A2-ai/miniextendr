@@ -12,7 +12,7 @@ expression: generate_r6_r_wrapper(&parsed)
 #' @export
 Temperature <- R6::R6Class("Temperature",
   public = list(
-    # Temperature::new (1:1)
+    # Temperature::new (<unspecified>:1:1)
     #' @description Create a new temperature.
     #' @param celsius Temperature in Celsius.
     initialize = function(celsius, .ptr = NULL) {
@@ -37,7 +37,7 @@ Temperature <- R6::R6Class("Temperature",
   cloneable = FALSE
 )
 
-# Temperature::set_celsius (1:1)
+# Temperature::set_celsius (<unspecified>:1:1)
 #' @description Set the temperature in Celsius.
 #' @param value (no documentation available)
 Temperature$set("public", "set_celsius", function(value) {

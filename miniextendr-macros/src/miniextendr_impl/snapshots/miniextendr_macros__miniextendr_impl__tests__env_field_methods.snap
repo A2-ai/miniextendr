@@ -8,7 +8,7 @@ expression: wrapper
 #' @export
 Engine <- new.env(parent = emptyenv())
 
-# Engine::new (1:1)
+# Engine::new (<unspecified>:1:1)
 #' @name Engine$new
 #' @rdname Engine
 Engine$new <- function(n) {
@@ -21,7 +21,7 @@ Engine$new <- function(n) {
   self
 }
 
-# Engine::size (1:1)
+# Engine::size (<unspecified>:1:1)
 #' @name Engine$size
 #' @rdname Engine
 Engine$size <- function() {

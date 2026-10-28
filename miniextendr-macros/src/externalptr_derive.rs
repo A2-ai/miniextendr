@@ -2035,16 +2035,14 @@ fn generate_sidecar_accessors(
         }
 
         // Generate R wrapper code based on class system
-        let field_start = field_name.span().start();
         let via = if computed {
             format!("`{getter_c_name}`")
         } else {
             format!("`{getter_c_name}` and `{setter_c_name}`")
         };
         let comment = format!(
-            "# Generated from Rust source line {}:{}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
-            field_start.line,
-            field_start.column + 1,
+            "# Generated from Rust source {}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
+            crate::source_position(field_name.span()),
             if computed {
                 "computed field"
             } else {

@@ -9,7 +9,7 @@ expression: wrapper
 #' @export
 Bag <- new.env(parent = emptyenv())
 
-# Bag::new (1:1)
+# Bag::new (<unspecified>:1:1)
 #' @name Bag$new
 #' @rdname Bag
 Bag$new <- function(values) {
@@ -21,7 +21,7 @@ Bag$new <- function(values) {
   self
 }
 
-# Bag::extra (1:1)
+# Bag::extra (<unspecified>:1:1)
 #' @description Count the extra arguments.
 #' @name Bag$extra
 #' @rdname Bag

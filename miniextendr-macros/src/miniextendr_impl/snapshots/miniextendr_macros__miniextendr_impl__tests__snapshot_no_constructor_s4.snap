@@ -11,7 +11,7 @@ expression: "generate_s4_r_wrapper(&constructorless_handle(ClassSystem::S4))"
 methods::setClass("Handle", slots = c(ptr = "externalptr"))
 
 .__MX_GENERIC_DOC__(kind="S4", generic="s4_id", class="Handle", export=true)
-# Handle::id (1:1)
+# Handle::id (<unspecified>:1:1)
 #' @name Handle-s4_id
 #' @rdname Handle
 #' @aliases s4_id,Handle-method
