@@ -1,6 +1,6 @@
 ---
 name: miniextendr-debugging
-description: Use when a miniextendr-backed R package misbehaves — "could not find function" after adding Rust code, library() exposes nothing, configure or autoconf errors, cargo/link failures, dyn.load symbol-not-found, segfaults, suspected garbage-collector bugs, MXL lint failures, or a build that suddenly ignores your Rust edits.
+description: Use when a miniextendr-backed R package misbehaves — "could not find function" after adding Rust code, library() exposes nothing, configure or autoconf errors, cargo/link failures, dyn.load symbol-not-found, segfaults, suspected garbage-collector bugs, MXL lint failures, a build that suddenly ignores your Rust edits, or two builds of one package (say main and a branch) that need comparing.
 ---
 
 # Debugging a miniextendr package
@@ -178,6 +178,29 @@ Rterm's stdout pipe open forever. Build a `current_thread` runtime instead:
 let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
 rt.block_on(async { /* ... */ });
 ```
+
+## Comparing two builds of the same package
+
+Two builds of a package, such as one from `main` and one from a branch, share
+its name, so one R session cannot hold both.
+
+- Install each build into its own library: `R CMD INSTALL -l <lib> <pkg-dir>`.
+- Run each build in its own R process:
+  `Rscript -e 'library(pkg, lib.loc = "<lib>"); ...'`. Print
+  `getNamespaceInfo("pkg", "path")` so the output shows which build ran.
+- Once `pkg` is loaded, `library(pkg, lib.loc = "<other lib>")` does nothing
+  and gives no warning. The first build stays loaded.
+- `unloadNamespace("pkg")` leaves the package's shared object loaded. Loading
+  the other build then loads a second `pkg.so` next to it, so two copies of the
+  Rust code and its statics (logger, thread pools, registries) live in one
+  process, and `getLoadedDLLs()[["pkg"]]` names the first one.
+- A plain `library(pkg)` takes the first library on `.libPaths()` that has the
+  package. A stale copy in the user library shadows a fresh build installed
+  elsewhere, such as an rv project library.
+- In a checkout whose `.Rprofile` activates rv, `R CMD INSTALL` of an exported
+  copy can fail at lazy loading ("there is no package called 'cli'") when that
+  rv library is empty. Run it with `R_PROFILE_USER=/dev/null` and `R_LIBS` set
+  to a library that has the dependencies.
 
 ## Escalation checklist
 
