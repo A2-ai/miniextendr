@@ -48,4 +48,43 @@ StatefulCounter
 Get current value (inherent method)
 
 Get how many history entries exist
+
+Get the current counter value.
+
+Increment the counter by its default step.
+
+Add a specific value to the counter.
+
+Panic with a plain message — used by spike tests to verify rust_error class.
+
+Panic with a custom class via error!() — used to verify user-class layering.
+
+Raise a bare \verb{error!()} (no user class) — verifies \code{rust_error} layering
+and \code{e$kind == "error"} across the trait-ABI boundary.
+
+Raise a \verb{warning!()} — verifies \code{rust_warning} layering and
+\code{e$kind == "warning"} across the trait-ABI boundary.
+
+Raise a \verb{warning!(call = none, ...)} — verifies that the "no call"
+marker survives the trait-ABI re-panic, so the consumer's warning has
+\code{conditionCall() = NULL} (#1725).
+
+Raise a \verb{message!()} — verifies \code{rust_message} layering and
+\code{e$kind == "message"} across the trait-ABI boundary.
+
+Raise a classed \verb{condition!()} — verifies the custom class is catchable
+and \code{e$kind == "condition"} across the trait-ABI boundary.
+
+Raise an \verb{error!()} with structured \verb{data =} fields — verifies that
+\code{ConditionData} survives the trait-ABI vtable re-panic path
+(\code{from_tagged_sexp} slot 4 round-trip, issue #996 path-1).
+
+Raise an \verb{arg_error!()} for argument \code{mode} — verifies that the
+argument error keeps \code{e$kind == "conversion"} and \code{e$param} across the
+trait-ABI boundary and takes the implementing package's
+\code{conversion_error_class}, whichever package calls it.
+
+Reset to the default state.
+
+Check if the object is in its default state.
 }

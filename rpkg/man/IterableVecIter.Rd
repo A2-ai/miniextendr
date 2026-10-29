@@ -31,6 +31,17 @@ IterableVecIter
 \description{
 IterableVecIter blanket impl: collect all remaining items.
 
+Get the next element from the iterator.
+
+Returns \code{Nullable(Some(item))} while there are elements, and
+\code{Nullable(None)} once exhausted, which R receives as \code{NULL} whatever
+the item type: an \code{NA} could be an item, \code{NULL} never is.
+
+Get the estimated number of remaining elements.
+
+Returns \verb{(lower_bound, upper_bound)} where upper_bound is None if unknown.
+In R, this becomes \code{list(lower, upper)} where upper is NA if unknown.
+
 Consume the iterator and count remaining elements.
 
 \strong{Warning:} This exhausts the iterator.

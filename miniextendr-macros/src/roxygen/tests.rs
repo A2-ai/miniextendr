@@ -1637,6 +1637,61 @@ fn test_normalize_for_comparison() {
 
 // region: comma-list @param dedup (duplicated \argument Rd entries, #1261 item 2)
 
+/// A trait declaration's rustdoc documents an implementation's wrappers with
+/// every link's brackets gone, whatever the implementing crate's
+/// `roxygen_prose_links`: a bracket there is a Rust item or plain text.
+#[test]
+fn declaration_tags_keep_no_links() {
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = " Round-trip through slot [4], see [`Foo`]."]),
+        syn::parse_quote!(#[doc = ""]),
+        syn::parse_quote!(#[doc = " @return The value, see [other_fn()]."]),
+    ];
+    assert_eq!(
+        declaration_roxygen_tags(&attrs),
+        [
+            "@description Round-trip through slot 4, see `Foo`.",
+            "@return The value, see other_fn().",
+        ]
+    );
+}
+
+/// A trait impl's `@param` tags take the trait's parameter names: each name
+/// of a comma list maps on its own, names swap, and the description stays.
+#[test]
+fn rename_param_tags_maps_each_name() {
+    let rename = |name: &str| match name {
+        "k" => Some("factor".to_string()),
+        "a" => Some("b".to_string()),
+        "b" => Some("a".to_string()),
+        _ => None,
+    };
+    let mut tags = vec![
+        "@param k The scale factor, k > 0.".to_string(),
+        "@param a,b,c Numeric scalars.".to_string(),
+        "@return The scaled value.".to_string(),
+    ];
+    rename_param_tags(&mut tags, rename).unwrap();
+    assert_eq!(
+        tags,
+        [
+            "@param factor The scale factor, k > 0.",
+            "@param b,a,c Numeric scalars.",
+            "@return The scaled value.",
+        ]
+    );
+    // A name the trait's parameter is already documented under is refused.
+    let mut tags = vec![
+        "@param k Old name.".to_string(),
+        "@param factor New name.".to_string(),
+    ];
+    let err = rename_param_tags(&mut tags, rename).unwrap_err();
+    assert!(
+        err.contains("`@param k` documents the trait's parameter `factor`"),
+        "{err}"
+    );
+}
+
 #[test]
 fn extract_param_names_splits_comma_list() {
     // A single `@param a,b,c desc` tag documents three names, not one.

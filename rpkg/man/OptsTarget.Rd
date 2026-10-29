@@ -28,5 +28,13 @@ OptsTarget
 \item{exact}{Ignored: names match exactly.}
 }
 \description{
-OptsTarget Class
+Basic method — no special options.
+
+Method that will use r_entry in impl.
+
+Method that will use r_on_exit in impl.
+
+Method that will use r_post_checks in impl.
+
+Method that will use lifecycle in impl.
 }

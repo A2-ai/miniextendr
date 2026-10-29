@@ -36,4 +36,33 @@ Arguments of \code{IntVecIter$new()}:
 \describe{
 \item{\code{data}}{Integer vector of elements to iterate over.}
 }
+
+Get the next element from the iterator.
+
+Returns \code{Nullable(Some(item))} while there are elements, and
+\code{Nullable(None)} once exhausted, which R receives as \code{NULL} whatever
+the item type: an \code{NA} could be an item, \code{NULL} never is.
+
+Get the estimated number of remaining elements.
+
+Returns \verb{(lower_bound, upper_bound)} where upper_bound is None if unknown.
+In R, this becomes \code{list(lower, upper)} where upper is NA if unknown.
+
+Consume the iterator and count remaining elements.
+
+\strong{Warning:} This exhausts the iterator.
+
+Collect up to \code{n} elements into a vector.
+
+Returns fewer than \code{n} elements if the iterator is exhausted first.
+
+Skip \code{n} elements from the iterator.
+
+Returns the number of elements actually skipped (may be less than \code{n}
+if the iterator is exhausted).
+
+Get the \code{n}th element (0-indexed), consuming elements up to and including it.
+
+Returns \code{Nullable(None)} (\code{NULL} in R) if \code{n} is negative or the
+iterator has fewer than \code{n + 1} elements.
 }

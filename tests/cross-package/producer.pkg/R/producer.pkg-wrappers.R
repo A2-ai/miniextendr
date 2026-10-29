@@ -1734,6 +1734,7 @@ new_counter_external <- function(initial) {
 
 SimpleCounter$Counter <- new.env(parent = emptyenv())
 
+#' @description Get the current counter value.
 #' @name SimpleCounter$Counter$value
 #' @rdname SimpleCounter
 SimpleCounter$Counter$value <- function(.mx_self) {
@@ -1743,6 +1744,7 @@ SimpleCounter$Counter$value <- function(.mx_self) {
 }
 attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
+#' @description Increment the counter by its default step.
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(.mx_self) {
@@ -1753,6 +1755,7 @@ SimpleCounter$Counter$increment <- function(.mx_self) {
 }
 attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
+#' @description Add a specific value to the counter.
 #' @name SimpleCounter$Counter$add
 #' @rdname SimpleCounter
 SimpleCounter$Counter$add <- function(.mx_self, n) {
@@ -1807,6 +1810,9 @@ SimpleCounter$Counter$raise_warning <- function(.mx_self, msg) {
 }
 attr(SimpleCounter$Counter$raise_warning, ".__mx_instance__") <- TRUE
 
+#' @description Raise a `warning!(call = none, ...)` — verifies that the "no call"
+#' marker survives the trait-ABI re-panic, so the consumer's warning has
+#' `conditionCall() = NULL` (#1725).
 #' @name SimpleCounter$Counter$raise_warning_without_call
 #' @rdname SimpleCounter
 SimpleCounter$Counter$raise_warning_without_call <- function(.mx_self, msg) {
@@ -1868,6 +1874,8 @@ attr(SimpleCounter$Counter$raise_arg_error, ".__mx_instance__") <- TRUE
 
 SimpleCounter$CallsBack <- new.env(parent = emptyenv())
 
+#' @description Call the R function `f` with no arguments while holding the object
+#' mutably, then add 1 to it and return the new value.
 #' @name SimpleCounter$CallsBack$add_around
 #' @rdname SimpleCounter
 SimpleCounter$CallsBack$add_around <- function(.mx_self, f) {
@@ -1883,6 +1891,7 @@ attr(SimpleCounter$CallsBack$add_around, ".__mx_instance__") <- TRUE
 
 SimpleCounter$Resettable <- new.env(parent = emptyenv())
 
+#' @description Reset to the default state.
 #' @name SimpleCounter$Resettable$reset
 #' @rdname SimpleCounter
 SimpleCounter$Resettable$reset <- function(.mx_self) {
@@ -1893,6 +1902,7 @@ SimpleCounter$Resettable$reset <- function(.mx_self) {
 }
 attr(SimpleCounter$Resettable$reset, ".__mx_instance__") <- TRUE
 
+#' @description Check if the object is in its default state.
 #' @name SimpleCounter$Resettable$is_default
 #' @rdname SimpleCounter
 SimpleCounter$Resettable$is_default <- function(.mx_self) {
@@ -1908,6 +1918,7 @@ attr(SimpleCounter$Resettable$is_default, ".__mx_instance__") <- TRUE
 
 StatefulCounter$Counter <- new.env(parent = emptyenv())
 
+#' @description Get the current counter value.
 #' @name StatefulCounter$Counter$value
 #' @rdname StatefulCounter
 StatefulCounter$Counter$value <- function(.mx_self) {
@@ -1917,6 +1928,7 @@ StatefulCounter$Counter$value <- function(.mx_self) {
 }
 attr(StatefulCounter$Counter$value, ".__mx_instance__") <- TRUE
 
+#' @description Increment the counter by its default step.
 #' @name StatefulCounter$Counter$increment
 #' @rdname StatefulCounter
 StatefulCounter$Counter$increment <- function(.mx_self) {
@@ -1927,6 +1939,7 @@ StatefulCounter$Counter$increment <- function(.mx_self) {
 }
 attr(StatefulCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
+#' @description Add a specific value to the counter.
 #' @name StatefulCounter$Counter$add
 #' @rdname StatefulCounter
 StatefulCounter$Counter$add <- function(.mx_self, n) {
@@ -1937,6 +1950,7 @@ StatefulCounter$Counter$add <- function(.mx_self, n) {
 }
 attr(StatefulCounter$Counter$add, ".__mx_instance__") <- TRUE
 
+#' @description Panic with a plain message — used by spike tests to verify rust_error class.
 #' @name StatefulCounter$Counter$panic_plain
 #' @rdname StatefulCounter
 StatefulCounter$Counter$panic_plain <- function(.mx_self) {
@@ -1947,6 +1961,7 @@ StatefulCounter$Counter$panic_plain <- function(.mx_self) {
 }
 attr(StatefulCounter$Counter$panic_plain, ".__mx_instance__") <- TRUE
 
+#' @description Panic with a custom class via error!() — used to verify user-class layering.
 #' @name StatefulCounter$Counter$error_with_class
 #' @rdname StatefulCounter
 StatefulCounter$Counter$error_with_class <- function(.mx_self, class_name) {
@@ -1957,6 +1972,8 @@ StatefulCounter$Counter$error_with_class <- function(.mx_self, class_name) {
 }
 attr(StatefulCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 
+#' @description Raise a bare `error!()` (no user class) — verifies `rust_error` layering
+#' and `e$kind == "error"` across the trait-ABI boundary.
 #' @name StatefulCounter$Counter$raise_error
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_error <- function(.mx_self, msg) {
@@ -1967,6 +1984,8 @@ StatefulCounter$Counter$raise_error <- function(.mx_self, msg) {
 }
 attr(StatefulCounter$Counter$raise_error, ".__mx_instance__") <- TRUE
 
+#' @description Raise a `warning!()` — verifies `rust_warning` layering and
+#' `e$kind == "warning"` across the trait-ABI boundary.
 #' @name StatefulCounter$Counter$raise_warning
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_warning <- function(.mx_self, msg) {
@@ -1977,6 +1996,9 @@ StatefulCounter$Counter$raise_warning <- function(.mx_self, msg) {
 }
 attr(StatefulCounter$Counter$raise_warning, ".__mx_instance__") <- TRUE
 
+#' @description Raise a `warning!(call = none, ...)` — verifies that the "no call"
+#' marker survives the trait-ABI re-panic, so the consumer's warning has
+#' `conditionCall() = NULL` (#1725).
 #' @name StatefulCounter$Counter$raise_warning_without_call
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_warning_without_call <- function(.mx_self, msg) {
@@ -1987,6 +2009,8 @@ StatefulCounter$Counter$raise_warning_without_call <- function(.mx_self, msg) {
 }
 attr(StatefulCounter$Counter$raise_warning_without_call, ".__mx_instance__") <- TRUE
 
+#' @description Raise a `message!()` — verifies `rust_message` layering and
+#' `e$kind == "message"` across the trait-ABI boundary.
 #' @name StatefulCounter$Counter$raise_message
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_message <- function(.mx_self, msg) {
@@ -1997,6 +2021,8 @@ StatefulCounter$Counter$raise_message <- function(.mx_self, msg) {
 }
 attr(StatefulCounter$Counter$raise_message, ".__mx_instance__") <- TRUE
 
+#' @description Raise a classed `condition!()` — verifies the custom class is catchable
+#' and `e$kind == "condition"` across the trait-ABI boundary.
 #' @name StatefulCounter$Counter$raise_condition_classed
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_condition_classed <- function(.mx_self, class_name, msg) {
@@ -2007,6 +2033,9 @@ StatefulCounter$Counter$raise_condition_classed <- function(.mx_self, class_name
 }
 attr(StatefulCounter$Counter$raise_condition_classed, ".__mx_instance__") <- TRUE
 
+#' @description Raise an `error!()` with structured `data =` fields — verifies that
+#' `ConditionData` survives the trait-ABI vtable re-panic path
+#' (`from_tagged_sexp` slot 4 round-trip, issue #996 path-1).
 #' @name StatefulCounter$Counter$raise_error_with_data
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_error_with_data <- function(.mx_self) {
@@ -2017,6 +2046,10 @@ StatefulCounter$Counter$raise_error_with_data <- function(.mx_self) {
 }
 attr(StatefulCounter$Counter$raise_error_with_data, ".__mx_instance__") <- TRUE
 
+#' @description Raise an `arg_error!()` for argument `mode` — verifies that the
+#' argument error keeps `e$kind == "conversion"` and `e$param` across the
+#' trait-ABI boundary and takes the implementing package's
+#' `conversion_error_class`, whichever package calls it.
 #' @name StatefulCounter$Counter$raise_arg_error
 #' @rdname StatefulCounter
 StatefulCounter$Counter$raise_arg_error <- function(.mx_self, mode) {
@@ -2033,6 +2066,7 @@ attr(StatefulCounter$Counter$raise_arg_error, ".__mx_instance__") <- TRUE
 
 StatefulCounter$Resettable <- new.env(parent = emptyenv())
 
+#' @description Reset to the default state.
 #' @name StatefulCounter$Resettable$reset
 #' @rdname StatefulCounter
 StatefulCounter$Resettable$reset <- function(.mx_self) {
@@ -2043,6 +2077,7 @@ StatefulCounter$Resettable$reset <- function(.mx_self) {
 }
 attr(StatefulCounter$Resettable$reset, ".__mx_instance__") <- TRUE
 
+#' @description Check if the object is in its default state.
 #' @name StatefulCounter$Resettable$is_default
 #' @rdname StatefulCounter
 StatefulCounter$Resettable$is_default <- function(.mx_self) {
@@ -2058,6 +2093,7 @@ attr(StatefulCounter$Resettable$is_default, ".__mx_instance__") <- TRUE
 
 LabelledValue$Tagged <- new.env(parent = emptyenv())
 
+#' @description The labels kept in the implementor's sidecar.
 #' @name LabelledValue$Tagged$labels
 #' @rdname LabelledValue
 LabelledValue$Tagged$labels <- function(.mx_self) {

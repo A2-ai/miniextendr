@@ -39,7 +39,10 @@
 //! Both empty and populated `#[miniextendr] impl` blocks inherit the trait's
 //! R names and skipped methods. This includes generic `RToVec<T>` and
 //! `RExtend<T>` and the associated-type `RIterator`. An explicit impl-level
-//! `r_name` overrides the declaration's name for that implementation.
+//! `r_name` overrides the declaration's name for that implementation. The
+//! methods' docs here document the R wrappers of every implementation whose
+//! method has no doc comment of its own, an empty impl's included, so they are
+//! written for R users.
 
 use crate::Nullable;
 use crate::miniextendr;
@@ -157,8 +160,8 @@ pub trait RHash {
     /// Compute a hash of this value.
     ///
     /// Returns the [`DefaultHasher`] `u64` output as a 16-character lowercase
-    /// hex string. See the trait-level docs for why a string rather than a
-    /// number.
+    /// hex string, which keeps all 64 bits: R has no 64-bit integer, and a
+    /// number would lose the low bits above `2^53`.
     #[miniextendr(r_name = "hash")]
     fn r_hash(&self) -> String;
 }

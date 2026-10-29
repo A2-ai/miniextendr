@@ -47,6 +47,12 @@ SimpleCounter
 \description{
 Get current value (inherent method)
 
+Get the current counter value.
+
+Increment the counter by its default step.
+
+Add a specific value to the counter.
+
 Panic with a plain message so the consumer can test rust_error class layering.
 
 Use error!() with a custom class so the consumer can test user-class layering.
@@ -54,6 +60,10 @@ Use error!() with a custom class so the consumer can test user-class layering.
 Bare error!() — no user class, so the consumer verifies plain rust_error.
 
 warning!() — consumer verifies rust_warning + e$kind round-trip.
+
+Raise a \verb{warning!(call = none, ...)} — verifies that the "no call"
+marker survives the trait-ABI re-panic, so the consumer's warning has
+\code{conditionCall() = NULL} (#1725).
 
 message!() — consumer verifies rust_message + e$kind round-trip.
 
@@ -63,6 +73,13 @@ Raise an error with structured data fields — tests ConditionData
 round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
 
 arg_error!() — consumer verifies kind, param and its own crate classes.
+
+Call the R function \code{f} with no arguments while holding the object
+mutably, then add 1 to it and return the new value.
+
+Reset to the default state.
+
+Check if the object is in its default state.
 
 Return the supplied values unchanged.
 }

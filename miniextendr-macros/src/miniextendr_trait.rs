@@ -560,23 +560,28 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             {
                 *arg.pat = syn::parse_quote!(#name);
             }
+            // Every method carries the declaration's docs: an impl's wrapper
+            // documents an inherited default, a method an empty impl
+            // registers, and a written method without docs of its own with
+            // them.
+            let docs: Vec<_> = method
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("doc"))
+                .collect();
             // Keep default signatures, but never copy their bodies into an
             // implementation. Generated wrappers call the trait's own default,
             // so an impl that omits a default still gets its R wrapper, generic
             // trait or not. Required methods carry names only, preserving
             // impl-local types.
             if method.default.is_some() {
-                let docs = method
-                    .attrs
-                    .iter()
-                    .filter(|attr| attr.path().is_ident("doc"));
                 method_metadata.push(quote::quote! {
                     #(#docs)* #r_name_attr #skip_attr #sig {}
                 });
             } else {
                 let params = &info.param_names;
                 method_metadata.push(quote::quote! {
-                    #r_name_attr #skip_attr fn #name(#(#params: ()),*);
+                    #(#docs)* #r_name_attr #skip_attr fn #name(#(#params: ()),*);
                 });
             }
             if !has_generics && assoc_types.is_empty() && !info.skip {
@@ -586,7 +591,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                     .map(crate::naming::name_ident)
                     .unwrap_or_else(|| name.clone());
                 tpie_method_metadata.push(quote::quote! {
-                    method { r_name = #r_name; #sig; }
+                    method { r_name = #r_name; #(#docs)* #sig; }
                 });
             }
         }

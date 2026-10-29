@@ -25,4 +25,6 @@ MxNargsProbe
 }
 \description{
 Create a probe.
+
+The \code{nargs()} of the method's call; \code{a} is ignored.
 }

@@ -30,4 +30,10 @@ Bell
 A bell that has not rung yet.
 
 Rings so far.
+
+Ring: an unmarked void trait method returns the receiver visibly.
+
+Ring silently: \verb{Invisible<()>}.
+
+Rings so far, returned invisibly.
 }

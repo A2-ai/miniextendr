@@ -35,5 +35,13 @@ Arguments of \code{IntSet$contains()}:
 \item{\code{value}}{Integer value to check for membership.}
 }
 
+Create a new collection from a vector of items.
+
+Collect all elements into a vector.
+
+Elements are cloned from the collection.
+
+Get the number of elements in the collection.
+
 Check if the collection is empty.
 }

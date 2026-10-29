@@ -1333,7 +1333,7 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 nullable: crate::type_inspect::is_option_type(ty),
                 rust_type: &rust_type,
             },
-            &crate_class,
+            &crate::rust_conversion_builder::class_slice(&crate_class),
             &quote::quote!(::core::option::Option::None),
             syn::spanned::Spanned::span(ty),
         )

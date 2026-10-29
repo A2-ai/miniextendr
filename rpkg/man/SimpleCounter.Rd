@@ -42,4 +42,12 @@ Get the counter's value.
 Add to the counter using the trait method.
 
 \code{SimpleCounter$new_counter()} is another name for the constructor \code{SimpleCounter$new()}.
+
+Get the current value.
+
+Increment the counter by 1.
+
+Add n to the counter (checked - may panic on overflow).
+
+Static method: Returns the default initial value for this counter type.
 }

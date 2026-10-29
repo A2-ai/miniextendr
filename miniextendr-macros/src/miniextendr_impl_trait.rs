@@ -661,7 +661,7 @@ impl ImplWithMetadata {
 ///     pub debug_str: ::miniextendr_api::abi::mx_meth,
 ///     pub debug_str_pretty: ::miniextendr_api::abi::mx_meth,
 /// }
-/// method { r_name = debug_str; fn debug_str(&self) -> String; }
+/// method { r_name = debug_str; #[doc = " Get a compact debug string representation."] fn debug_str(&self) -> String; }
 /// method { r_name = debug_str_pretty; fn debug_str_pretty(&self) -> String; }
 /// ```
 struct TpieInput {
@@ -689,10 +689,14 @@ struct TpieInput {
 
 /// A single method entry in TPIE metadata.
 ///
-/// Contains the R-facing name and the method signature as declared in the trait.
+/// Contains the R-facing name, the declaration's docs and the method
+/// signature as declared in the trait.
 struct TpieMethod {
     /// The R-facing method name (may differ from the Rust ident via `r_name`).
     r_name: String,
+    /// The declaration's `#[doc]` attributes, which document the method's
+    /// wrappers.
+    docs: Vec<syn::Attribute>,
     /// The method signature (parameters and return type) from the trait definition.
     sig: syn::Signature,
 }
@@ -836,12 +840,14 @@ impl syn::parse::Parse for TpieMethod {
         let r_name_ident: syn::Ident = input.parse()?;
         input.parse::<syn::Token![;]>()?;
 
-        // fn method_name(...) -> ReturnType;
+        // #[doc = "..."]* fn method_name(...) -> ReturnType;
+        let docs = syn::Attribute::parse_outer(input)?;
         let sig: syn::Signature = input.parse()?;
         input.parse::<syn::Token![;]>()?;
 
         Ok(TpieMethod {
             r_name: crate::naming::ident_name(&r_name_ident),
+            docs,
             sig,
         })
     }
@@ -990,7 +996,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 serialize: false,
                 return_wrap: None,
                 param_defaults: Default::default(),
-                doc_tags: vec![],
+                // The declaration's docs, as for an inherited default.
+                doc_tags: crate::roxygen::declaration_roxygen_tags(&tm.docs),
                 skip: false,
                 strict: false,
                 lifecycle: None,

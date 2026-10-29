@@ -35,4 +35,10 @@ Arguments of \code{ChainedError$new()}:
 \item{\code{outer_msg}}{Character string for the outer error message.}
 \item{\code{inner_msg}}{Character string for the inner (source) error message.}
 }
+
+Get the error message (Display representation).
+
+Get all error messages in the chain, from outermost to innermost.
+
+Get the number of errors in the chain.
 }
