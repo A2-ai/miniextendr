@@ -427,6 +427,9 @@ jobs:
       - name: AGENTS.md sibling check
         run: just agents-md-check
 
+      - name: Unit tests out of line
+        run: just inline-tests-check
+
       - name: Merge driver for regenerated files
         run: just test-merge-drivers
 
