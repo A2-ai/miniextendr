@@ -47,7 +47,8 @@ vector, `Vec<bool>` a logical vector, `Vec<String>` a character vector. A
 Structs serialize as named R lists. `HashMap<String, T>` serializes as a named
 list. Unit enum variants serialize as a character scalar. Data enum variants
 serialize as a tagged list `list(tag = value)`. `Option<T>::None` serializes
-as NA (for primitive types) or as NULL.
+as `NULL`, or as the type's NA in a field under an `as_*` helper (see "NA and
+NULL roundtrip" below).
 
 ### RSerializeNative and RDeserializeNative
 
@@ -82,12 +83,19 @@ fn make_point(x: f64, y: f64) -> AsSerialize<Point> {
 // Returns list(x = 1.0, y = 2.0) in R
 ```
 
-### NA roundtrip
+### NA and NULL roundtrip
 
-NA values survive the Rust-R-Rust roundtrip through `Option<T>`:
-- `Option<i32>::None` → `NA_integer_` → `Option<i32>::None` on deserialization.
-- `Option<f64>::None` → `NA_real_` → `Option<f64>::None`.
-- Same pattern for `Option<bool>`, `Option<String>`.
+`Option<T>` round-trips through the serde path, but the absence encoding is
+asymmetric (verified empirically; see docs/SERDE_R.md):
+- Serialization: `Option<T>::None` → `NULL`. A field under an `as_*` helper
+  (`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`, #2164)
+  writes its type's NA instead (`NA_character_` for `as_character`), and the
+  data-frame writers fill NA. The macro scalar `IntoR` path emits
+  `NA_<type>_` too.
+- Deserialization: both `NULL` and a typed scalar `NA` (`NA_integer_`,
+  `NA_real_`, `NA_character_`, `NA`) are accepted as `None` (#1166).
+So `None` → R → `None` holds, and NA input → `None` → re-serialize comes
+back as `NULL` (NA under an `as_*` helper).
 
 ### Remote derive for external types
 

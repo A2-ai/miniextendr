@@ -66,6 +66,7 @@
 //! - `serde_error_shape_tests`: `serde_error_shape!`, `serde_error(shape = ..)` + the `as_*` boundary options (feature: `serde`)
 //! - `serde_r_tests`: Serde R serialization tests (feature: `serde`)
 //! - `saved_value_tests`: serde types come back after `readRDS()` (#2186) (feature: `serde`)
+//! - `serde_hostile_probe_tests`: unserializable / lossy serde struct probes (feature: `serde`)
 //! - `ndarray_tests`: N-dimensional array tests (feature: `ndarray`)
 //! - `vctrs_tests`: vctrs compatibility tests (feature: `vctrs`)
 //! - `vctrs_class_example`: vctrs class implementation example (feature: `vctrs`)
@@ -365,6 +366,8 @@ mod scatter_complex_raw_test;
 mod serde_error_shape_tests;
 #[cfg(feature = "serde")]
 mod serde_error_tests;
+#[cfg(feature = "serde")]
+mod serde_hostile_probe_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]

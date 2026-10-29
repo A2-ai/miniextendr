@@ -81,7 +81,8 @@ use `serialize`.
 |-----------|--------|-------|
 | `bool` | `logical(1)` | Scalar |
 | `i8/i16/i32` | `integer(1)` | Widened to i32 |
-| `i64/u64/f32/f64` | `numeric(1)` | Converted to f64 |
+| `i64/u64` | `integer(1)` or `numeric(1)` | INTSXP when the value fits i32, else f64 — values above 2^53 lose precision **silently** (serialize and re-read succeed with a different number) |
+| `f32/f64` | `numeric(1)` | Converted to f64 |
 | `String/&str` | `character(1)` | UTF-8 preserved |
 | `Option<T>::Some(v)` | T | Transparent |
 | `Option<T>::None` | `NULL` | |

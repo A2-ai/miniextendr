@@ -25,9 +25,10 @@
 //! |-----------|--------|
 //! | `bool` | `logical(1)` |
 //! | `i8/i16/i32` | `integer(1)` |
-//! | `i64/u64/f32/f64` | `numeric(1)` |
+//! | `i64/u64` | `integer(1)` when the value fits i32, else `numeric(1)` (lossy above 2^53) |
+//! | `f32/f64` | `numeric(1)` |
 //! | `String/&str` | `character(1)` |
-//! | `Option<T>::None` | NA or NULL |
+//! | `Option<T>::None` | `NULL`; the type's `NA` under an `as_*` field helper (below) |
 //! | `Vec<primitive>` | atomic vector (smart dispatch) |
 //! | `Vec<struct>` | list of lists |
 //! | `HashMap<String, T>` | named list |
@@ -69,16 +70,21 @@
 //! (`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`) is
 //! always that atomic vector: `character(0)` when empty, `NA` for `None`.
 //!
-//! # NA Roundtrip
+//! # NA and NULL Roundtrip
 //!
-//! NA values are preserved through `Option<T>`:
+//! The absence encoding is asymmetric (pinned by
+//! `rpkg/tests/testthat/test-serde-hostile-probes.R`): serialization emits
+//! `NULL` for `None`, except in a field under an `as_*` helper (above), which
+//! writes its type's `NA` (`NA_character_` for `as_character`). The macro
+//! scalar `IntoR` path emits typed NAs too. Deserialization accepts both
+//! `NULL` and a typed scalar NA as `None`:
 //!
 //! ```rust,ignore
 //! // Serialization
 //! let v: Option<i32> = None;
-//! // → NA_integer_
+//! // → NULL (not NA_integer_)
 //!
-//! // Deserialization
+//! // Deserialization: NULL and NA_integer_ both come back as None
 //! let v: Option<i32> = from_r(na_integer_sexp)?;
 //! assert!(v.is_none());
 //! ```
