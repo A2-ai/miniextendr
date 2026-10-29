@@ -33,9 +33,12 @@
 //! | any other map | `list(keys = <keys>, values = <values>)`, each a sequence, `serde = "map"` |
 //! | unit variant | `character(1)`, the variant's name |
 //! | newtype, tuple or struct variant | `list(<variant> = <payload>)` |
+//! | [`RObject`](super::RObject) | `list(<the object>)`, `serde = "robject"` |
 //!
 //! So an atomic vector without the attribute is always a scalar, and a list
-//! without it is a sequence (no names) or a struct or map (names). Every
+//! without it is a sequence (no names) or a struct or map (names). An R
+//! object is wrapped in a list, so its own attributes are never read as the
+//! encoding's. Every
 //! sequence of scalars of one kind stays one vector: a million `f64`s are one
 //! `double` vector (8 MB), not a list of a million scalars (56 MB).
 //!
@@ -55,6 +58,7 @@
 //! | named list | `visit_map`, the names as string keys |
 //! | `serde = "map"` | `visit_map`, the keys by these rules |
 //! | `serde = "some"` | `visit_some` |
+//! | `serde = "robject"` | `visit_newtype_struct` with a token for the object, which an [`RObject`](super::RObject) in the buffered value resolves while the decoder runs |
 //!
 //! No visit maps an `NA` to `None`: only `NULL` (and the `"some"` list) is
 //! the `None` encoding, so `Some(NA_real_)` stays `Some`. serde's `Content`
@@ -80,7 +84,7 @@ pub fn to_r_exact<T: ?Sized + serde::Serialize>(value: &T) -> Result<SEXP, RSerd
 
 /// Decode a value [`to_r_exact`] encoded.
 pub fn from_r_exact<T: serde::de::DeserializeOwned>(sexp: SEXP) -> Result<T, RSerdeError> {
-    T::deserialize(de::ExactDeserializer::new(sexp))
+    super::robject::with_buffer(|| T::deserialize(de::ExactDeserializer::new(sexp)))
 }
 
 // region: The `serde` attribute
@@ -100,15 +104,18 @@ enum Kind {
     Map,
     /// `list(x)`: `Some(x)` where `x`'s value is the `None` encoding.
     Some,
+    /// `list(object)`: an [`RObject`](super::RObject)'s R object.
+    Object,
 }
 
-const KINDS: [Kind; 6] = [
+const KINDS: [Kind; 7] = [
     Kind::Seq,
     Kind::Int,
     Kind::Ints,
     Kind::Str,
     Kind::Map,
     Kind::Some,
+    Kind::Object,
 ];
 
 impl Kind {
@@ -120,6 +127,7 @@ impl Kind {
             Kind::Str => c"str",
             Kind::Map => c"map",
             Kind::Some => c"some",
+            Kind::Object => c"robject",
         }
     }
 

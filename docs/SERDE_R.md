@@ -462,6 +462,62 @@ unchanged (#2256). It marks the ambiguous cases with an attribute, so it is
 not what `to_r` returns; the encoding and its rules are in
 [EXTERNALPTR.md](EXTERNALPTR.md#the-snapshot-encoding).
 
+### R objects inside a serde value
+
+`miniextendr_api::serde::RObject` holds an R object inside a serde type: a
+data frame a model was fitted on, a formula, another package's object. It
+roots the object for as long as the value holds it (a
+[`Preserved`](GC_PROTECT.md)), and serializes as the object itself:
+
+```rust
+use miniextendr_api::serde::RObject;
+
+#[derive(Serialize, Deserialize, ExternalPtr)]
+struct Fit {
+    coefficients: Vec<f64>,
+    data: RObject,
+}
+
+#[miniextendr]
+impl Fit {
+    pub fn new(coefficients: Vec<f64>, data: SEXP) -> Self {
+        Fit { coefficients, data: RObject::new(data) }
+    }
+}
+```
+
+- **`to_r`** writes the object where the value holds it, not a copy:
+  `list(coefficients = c(...), data = <the data frame>)`. A sequence holding
+  `RObject`s stays a list, even of length-1 vectors.
+- **`from_r`** gives back the object it finds there, rooted. Around it the
+  general mapping applies, so an `Option<RObject>` reads `NULL` or a
+  length-1 `NA` as `None`. Inside an untagged or internally tagged enum, or
+  a `#[serde(flatten)]` struct, serde buffers the value before it knows the
+  target type, and the buffer can't hold an R object: `from_r` refuses
+  with ``no R object for `serde::RObject` here`` (an untagged enum reports
+  only that no variant matched).
+- **A snapshot** (`saveRDS()` of an `ExternalPtr` to a serde type) writes
+  the object into the save, and `readRDS()` gives it back, also inside
+  untagged and internally tagged enums and flattened structs: the decoder
+  lends serde's buffer a token for the object
+  ([EXTERNALPTR.md](EXTERNALPTR.md#the-snapshot-encoding)). R's own sharing
+  rules apply: an environment or external pointer held in two places comes
+  back as one object, anything else as a copy per place.
+- **The columnar `data.frame` builders** (`vec_to_dataframe` & co.) put it
+  in a list column, the object itself in each cell. The parallel builders
+  refuse list columns, this one too.
+- **Other serializers refuse it.** `serde_json`, `RValue::from_serde` and any
+  other format fail with ``serde::RObject` holds an R object, which only
+  `serde::to_r` and an `ExternalPtr` snapshot can write``. No pointer or
+  address is ever written as a number.
+- **Not as an internally tagged newtype variant's payload**
+  (`#[serde(tag = "kind")] enum E { Data(RObject) }`): serde allows only a
+  struct or map there, and its tagged serializer reaches the refusal above.
+  Put the object in a struct variant's field (`Data { object: RObject }`).
+- **R's main thread.** Make, clone and drop it there, as a `Preserved`. A
+  type holding one is `!Send`, so a `#[miniextendr]` function takes it as
+  `&T` or `&mut T`, not as an `ExternalPtr<T>`.
+
 ## Columnar `data.frame` Assembly
 
 For `&[T: Serialize]`, `vec_to_dataframe` produces a column-oriented R

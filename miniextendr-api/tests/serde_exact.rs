@@ -4,7 +4,9 @@
 //! inside a plain struct, an untagged enum, an internally tagged enum, a
 //! `#[serde(flatten)]` struct, a `Vec` and a map value: the last four decode
 //! through serde's buffered `Content`, which sees only what `deserialize_any`
-//! visits. The general `to_r` / `from_r` mapping is unchanged.
+//! visits. The general `to_r` / `from_r` mapping is unchanged. An
+//! [`RObject`] comes back as its R object, in a snapshot and in `to_r` /
+//! `from_r`.
 #![cfg(feature = "serde")]
 
 mod r_test_utils;
@@ -14,7 +16,7 @@ use std::fmt::Debug;
 
 use miniextendr_api::expression::RCall;
 use miniextendr_api::into_r::IntoR;
-use miniextendr_api::serde::{__from_r_exact, __to_r_exact, from_r, to_r};
+use miniextendr_api::serde::{__from_r_exact, __to_r_exact, RObject, from_r, to_r, to_rvalue};
 use miniextendr_api::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -205,7 +207,7 @@ const NA_REAL_BITS: u64 = 0x7ff0_0000_0000_07a2;
 
 #[test]
 fn serde_exact_suite() {
-    let cases: [(&str, fn()); 9] = [
+    let cases: [(&str, fn()); 15] = [
         (
             "one-element sequences in buffered enums",
             one_element_sequences_in_buffered_enums,
@@ -229,6 +231,30 @@ fn serde_exact_suite() {
         (
             "the general mapping is unchanged",
             the_general_mapping_is_unchanged,
+        ),
+        (
+            "R objects come back in every context",
+            r_objects_come_back_in_every_context,
+        ),
+        (
+            "an environment two values hold comes back as one",
+            an_environment_two_values_hold_comes_back_as_one,
+        ),
+        (
+            "the general mapping writes the object itself",
+            the_general_mapping_writes_the_object_itself,
+        ),
+        (
+            "the general mapping refuses R objects it buffered",
+            the_general_mapping_refuses_r_objects_it_buffered,
+        ),
+        (
+            "the columnar builders put R objects in a list column",
+            the_columnar_builders_put_r_objects_in_a_list_column,
+        ),
+        (
+            "other serializers refuse R objects",
+            other_serializers_refuse_r_objects,
         ),
     ];
     // R's panic hook keeps the message off the test output: report it here.
@@ -439,6 +465,208 @@ fn the_general_mapping_is_unchanged() {
     let general =
         unsafe { OwnedProtect::new(to_r(&Values::Many(strings(&["1"]))).expect("encodes")) };
     assert!(from_r::<Values>(general.get()).is_err());
+}
+
+// endregion
+
+// region: R objects (`serde::RObject`)
+
+/// An [`RObject`] compared with R's `identical()`.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(transparent)]
+struct Obj(RObject);
+
+impl PartialEq for Obj {
+    fn eq(&self, other: &Obj) -> bool {
+        identical(self.0.as_sexp(), other.0.as_sexp())
+    }
+}
+
+fn identical(a: SEXP, b: SEXP) -> bool {
+    // SAFETY: on R's main thread; the result is read before anything
+    // allocates.
+    unsafe { RCall::new("identical").arg(a).arg(b).eval_base() }
+        .expect("identical")
+        .logical_elt(0)
+        == 1
+}
+
+/// `data.frame(x = 1:3, y = c("a", "b", "c"))`.
+fn data_frame() -> RObject {
+    // SAFETY: on R's main thread; rooted before anything allocates.
+    let frame = unsafe {
+        RCall::new("data.frame")
+            .named_value("x", vec![1i32, 2, 3])
+            .named_value("y", strings(&["a", "b", "c"]))
+            .eval_base()
+    };
+    RObject::new(frame.expect("data.frame"))
+}
+
+/// An externally tagged enum holding R objects.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+enum Step {
+    Load(Obj),
+    Fit { data: Obj, weights: Vec<f64> },
+    Done,
+}
+
+fn r_objects_come_back_in_every_context() {
+    check_everywhere(Obj(data_frame()));
+    check_everywhere(Some(Obj(data_frame())));
+    check_everywhere(None::<Obj>);
+    // An R object that is `NULL`, or a length-1 double, stays one.
+    check_everywhere(Obj(RObject::new(SEXP::nil())));
+    check_everywhere(Some(Obj(RObject::new(SEXP::nil()))));
+    check_everywhere(vec![Obj(RObject::new(1.5)), Obj(RObject::new(2.5))]);
+    // An R object's own attributes are never read as the encoding's.
+    // SAFETY: on R's main thread; rooted before anything allocates.
+    let marked = unsafe {
+        RCall::new("structure")
+            .arg_value(vec![1i32, 2])
+            .named_value("serde", "map")
+            .eval_base()
+    };
+    check_everywhere(Obj(RObject::new(marked.expect("structure"))));
+    check_everywhere(vec![
+        Step::Load(Obj(data_frame())),
+        Step::Fit {
+            data: Obj(data_frame()),
+            weights: vec![0.5],
+        },
+        Step::Done,
+    ]);
+    // A snapshot value that holds no R object isn't one.
+    // SAFETY: on R's main thread; rooted while decoded.
+    let scalar = unsafe { OwnedProtect::new(1.5.into_sexp()) };
+    let err = __from_r_exact::<RObject>(scalar.get()).expect_err("not an R object");
+    assert!(
+        err.to_string()
+            .contains("an R object (`serde = \"robject\"`)"),
+        "{err}"
+    );
+}
+
+fn an_environment_two_values_hold_comes_back_as_one() {
+    // R's `serialize()` shares environments (and external pointers and
+    // symbols) within one save, and copies everything else.
+    // SAFETY: on R's main thread; rooted before anything allocates.
+    let env = RObject::new(unsafe { RCall::new("new.env").eval_base() }.expect("new.env"));
+    let frame = data_frame();
+    let back = reload(&(env.clone(), env, frame.clone(), frame.clone()));
+    assert!(back.0.as_sexp().is_environment());
+    assert_eq!(back.0.as_sexp(), back.1.as_sexp(), "one environment");
+    assert!(identical(back.2.as_sexp(), frame.as_sexp()));
+    assert!(identical(back.3.as_sexp(), frame.as_sexp()));
+    assert_ne!(back.2.as_sexp(), back.3.as_sexp(), "two copies");
+}
+
+fn the_general_mapping_writes_the_object_itself() {
+    #[derive(Serialize, Deserialize)]
+    struct Fit {
+        coefficients: Vec<f64>,
+        data: RObject,
+    }
+    let frame = data_frame();
+    let fit = Fit {
+        coefficients: vec![1.0, 2.0],
+        data: frame.clone(),
+    };
+    // SAFETY: on R's main thread; rooted while inspected.
+    let written = unsafe { OwnedProtect::new(to_r(&fit).expect("encodes")) };
+    assert_eq!(written.get().vector_elt(1), frame.as_sexp(), "not a copy");
+    let back: Fit = from_r(written.get()).expect("decodes");
+    assert_eq!(back.data.as_sexp(), frame.as_sexp());
+    drop(written);
+
+    // A sequence of R objects stays a list, even of length-1 doubles.
+    let objects = vec![RObject::new(1.5), RObject::new(2.5)];
+    // SAFETY: as above.
+    let written = unsafe { OwnedProtect::new(to_r(&objects).expect("encodes")) };
+    assert_eq!(written.get().type_of(), SEXPTYPE::VECSXP);
+    assert_eq!(written.get().vector_elt(0), objects[0].as_sexp());
+    let back: Vec<RObject> = from_r(written.get()).expect("decodes");
+    assert_eq!(back[1].as_sexp(), objects[1].as_sexp());
+    drop(written);
+
+    // The general mapping reads `NULL` as `None`.
+    assert!(
+        from_r::<Option<RObject>>(SEXP::nil())
+            .expect("decodes")
+            .is_none()
+    );
+}
+
+fn the_general_mapping_refuses_r_objects_it_buffered() {
+    // Inside an internally tagged enum or a flattened struct serde buffers
+    // the value, which can't hold an R object: `from_r` says so. A snapshot
+    // carries it (above).
+    let refusal = "no R object for `serde::RObject` here";
+    let tagged = InTagged::Holder {
+        value: data_frame(),
+    };
+    // SAFETY: on R's main thread; rooted while decoded.
+    let written = unsafe { OwnedProtect::new(to_r(&tagged).expect("encodes")) };
+    let err = from_r::<InTagged<RObject>>(written.get()).expect_err("buffered");
+    assert!(err.to_string().contains(refusal), "{err}");
+    drop(written);
+    let flat = InFlatten {
+        label: "flat".to_owned(),
+        inner: InPlain {
+            value: data_frame(),
+        },
+    };
+    // SAFETY: as above.
+    let written = unsafe { OwnedProtect::new(to_r(&flat).expect("encodes")) };
+    let err = from_r::<InFlatten<RObject>>(written.get()).expect_err("buffered");
+    assert!(err.to_string().contains(refusal), "{err}");
+    drop(written);
+    // An untagged enum reports only that no variant matched.
+    // SAFETY: as above.
+    let written = unsafe {
+        OwnedProtect::new(to_r(&InUntagged::<RObject>::Value(data_frame())).expect("encodes"))
+    };
+    assert!(from_r::<InUntagged<RObject>>(written.get()).is_err());
+}
+
+fn the_columnar_builders_put_r_objects_in_a_list_column() {
+    let frame = data_frame();
+    let rows = [
+        InPlain {
+            value: frame.clone(),
+        },
+        InPlain {
+            value: RObject::new(1.5),
+        },
+    ];
+    let built = miniextendr_api::serde::vec_to_dataframe(&rows).expect("builds");
+    let column = built.as_sexp().vector_elt(0);
+    assert_eq!(column.type_of(), SEXPTYPE::VECSXP);
+    assert_eq!(column.vector_elt(0), frame.as_sexp(), "not a copy");
+    assert_eq!(column.vector_elt(1), rows[1].value.as_sexp());
+}
+
+fn other_serializers_refuse_r_objects() {
+    let refusal = "`serde::RObject` holds an R object, which only `serde::to_r` and an \
+                   `ExternalPtr` snapshot can write";
+    let err = to_rvalue(&data_frame()).expect_err("refused");
+    assert!(err.to_string().contains(refusal), "{err}");
+    // serde's internally tagged serializer, for a newtype variant's payload.
+    #[derive(Serialize)]
+    #[serde(tag = "kind")]
+    enum Tagged {
+        Data(RObject),
+    }
+    let err = to_r(&Tagged::Data(data_frame())).expect_err("refused");
+    assert!(err.to_string().contains(refusal), "{err}");
+    #[cfg(feature = "serde_json")]
+    {
+        let err = serde_json::to_string(&InPlain {
+            value: data_frame(),
+        })
+        .expect_err("refused");
+        assert!(err.to_string().contains(refusal), "{err}");
+    }
 }
 
 // endregion

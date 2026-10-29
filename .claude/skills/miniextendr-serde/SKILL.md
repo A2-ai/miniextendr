@@ -84,10 +84,27 @@ fn make_point(x: f64, y: f64) -> AsSerialize<Point> {
 
 ### NA roundtrip
 
-NA values survive the Rust-R-Rust roundtrip through `Option<T>`:
-- `Option<i32>::None` → `NA_integer_` → `Option<i32>::None` on deserialization.
-- `Option<f64>::None` → `NA_real_` → `Option<f64>::None`.
-- Same pattern for `Option<bool>`, `Option<String>`.
+`Option<T>` reads both `NULL` and a length-1 `NA` as `None`, and `None`
+serializes as `NULL` (the serializer never sees the absent inner type). So
+`None` survives the Rust-R-Rust roundtrip, but the general mapping is not
+exact: `Some(NA_real_)` reads back as `None`, a one-element `Vec` as its
+element inside an untagged enum, an integer above 2^53 as a double (#1417),
+`i32::MIN` as `NA` (#1419). An `ExternalPtr` snapshot uses the exact mode
+in `serde/exact.rs` instead (#2256; `docs/EXTERNALPTR.md`, "The snapshot
+encoding").
+
+### R objects in a serde value: `RObject`
+
+`miniextendr_api::serde::RObject` holds an R object (a data frame, a
+formula, another saved object) in a serde type, rooted by a `Preserved`.
+`to_r` writes the object itself, `from_r` gives the same object back, and an
+`ExternalPtr` snapshot saves it into the `.rds` and restores it, also inside
+untagged / internally tagged enums and `#[serde(flatten)]` (the snapshot
+decoder lends serde's buffer a token). `from_r` refuses it inside those
+buffered contexts; the columnar builders put it in a list column; every
+other serializer (`serde_json`, `RValue::from_serde`) refuses it. A
+type holding one is `!Send`: take it as `&T` / `&mut T`, not
+`ExternalPtr<T>`. See `docs/SERDE_R.md`, "R objects inside a serde value".
 
 ### Remote derive for external types
 
@@ -169,6 +186,12 @@ Use hand-rolled `TryFromSexp` / `IntoR` when:
   `RDeserializeNative`, `to_r`, `from_r`, and `AsSerialize<T>`.
 - `miniextendr-api/src/serde/ser.rs` — `RSerializer` (serde Serializer impl).
 - `miniextendr-api/src/serde/de.rs` — `RDeserializer` (serde Deserializer impl).
+- `miniextendr-api/src/serde/exact.rs` (+ `exact/ser.rs`, `exact/de.rs`) — the
+  exact snapshot encoding an `ExternalPtr` save uses; module docs hold its
+  encoding and `deserialize_any` tables.
+- `miniextendr-api/src/serde/robject.rs` — `RObject` and its hand-over to the
+  miniextendr serializers / deserializers (newtype marker, thread-locals,
+  buffered-token registry).
 - `miniextendr-api/src/serde/columnar.rs` — `vec_to_dataframe`,
   `vec_to_dataframe_split`, `SerdeRowBuilder`.
 

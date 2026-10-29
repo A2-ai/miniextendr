@@ -14,13 +14,16 @@
 //! saved before the type moved to another module would. `SavedShapes` holds
 //! values the general serde-to-R mapping can't read back, which the save's
 //! exact encoding keeps (#2256), and `SavedFloats` a long `Vec<f64>`, which
-//! the save keeps as one double vector.
+//! the save keeps as one double vector. `SavedHolder` holds R objects through
+//! `serde::RObject`: a data frame and another saved object, each also inside
+//! an externally and an internally tagged enum.
 
 use std::collections::HashMap;
 
 use crate::serde::{Deserialize, Deserializer, Serialize};
 use miniextendr_api::expression::RCall;
 use miniextendr_api::externalptr::{ExternalPtr, RSidecar, Sidecar};
+use miniextendr_api::serde::RObject;
 use miniextendr_api::{SEXP, SEXPTYPE, SexpExt, miniextendr};
 
 // region: One type per class system
@@ -531,6 +534,108 @@ impl SavedFloats {
     /// @param n The number of values expected.
     pub fn holds(&self, n: i32) -> bool {
         self.values.iter().copied().eq((0..n).map(f64::from))
+    }
+}
+
+// endregion
+
+// region: R objects inside a saved value (#2256)
+
+/// A step of a `SavedHolder`'s history: an externally tagged enum holding R
+/// objects.
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
+pub enum HolderStep {
+    Load(RObject),
+    Note {
+        text: String,
+        attached: Option<RObject>,
+    },
+    Done,
+}
+
+/// Where a `SavedHolder`'s data came from: an internally tagged enum, which
+/// serde buffers before it reads the R object.
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "crate::serde", tag = "kind", rename_all = "snake_case")]
+pub enum HolderSource {
+    File { path: String },
+    Object { object: RObject },
+}
+
+/// A serde type holding R objects.
+#[derive(miniextendr_api::ExternalPtr, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
+pub struct SavedHolder {
+    data: RObject,
+    inner: RObject,
+    steps: Vec<HolderStep>,
+    source: HolderSource,
+}
+
+/// @title A serde class holding R objects
+/// @description `SavedHolder` holds a data frame and another object, and
+///   holds them again in its steps (`load(data)`, `note(inner)`, a note
+///   without an object, `done`) and its source.
+#[miniextendr(env)]
+impl SavedHolder {
+    /// @param data A data frame.
+    /// @param inner Another R object.
+    pub fn new(data: SEXP, inner: SEXP) -> Self {
+        SavedHolder {
+            data: RObject::new(data),
+            inner: RObject::new(inner),
+            steps: vec![
+                HolderStep::Load(RObject::new(data)),
+                HolderStep::Note {
+                    text: "inner".to_owned(),
+                    attached: Some(RObject::new(inner)),
+                },
+                HolderStep::Note {
+                    text: "nothing".to_owned(),
+                    attached: None,
+                },
+                HolderStep::Done,
+            ],
+            source: HolderSource::Object {
+                object: RObject::new(data),
+            },
+        }
+    }
+
+    /// The data frame.
+    pub fn data(&self) -> SEXP {
+        self.data.as_sexp()
+    }
+
+    /// The other object.
+    pub fn inner(&self) -> SEXP {
+        self.inner.as_sexp()
+    }
+
+    /// The object step `i` (from 0) holds, or `NULL`.
+    /// @param i The step's index, from 0.
+    pub fn step_object(&self, i: i32) -> SEXP {
+        let step = usize::try_from(i)
+            .ok()
+            .and_then(|i| self.steps.get(i))
+            .expect("a step's index");
+        match step {
+            HolderStep::Load(object)
+            | HolderStep::Note {
+                attached: Some(object),
+                ..
+            } => object.as_sexp(),
+            HolderStep::Note { attached: None, .. } | HolderStep::Done => SEXP::nil(),
+        }
+    }
+
+    /// The object the source holds, or `NULL` for a file.
+    pub fn source_object(&self) -> SEXP {
+        match &self.source {
+            HolderSource::Object { object } => object.as_sexp(),
+            HolderSource::File { .. } => SEXP::nil(),
+        }
     }
 }
 

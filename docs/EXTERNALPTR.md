@@ -1085,6 +1085,18 @@ m2$total()                 # the value came back
   `saveRDS(ascii = TRUE)` / `serialize(ascii = TRUE)` write doubles as
   16-digit text, which R itself reads back changed in the last bit and
   without NaN payloads other than `NA`'s (the binary default keeps them).
+- **R objects in the value.** A field of type
+  [`serde::RObject`](SERDE_R.md#r-objects-inside-a-serde-value)
+  holds an R object (a data frame, a formula, another saved object), which
+  the save writes with the rest of the value and `readRDS()` gives back,
+  rooted, in any context, buffered enums included. Within one save R shares
+  only environments, external pointers and symbols: one of those that the
+  value holds in two places, or that the value and the rest of the save
+  both hold, comes back as one object. Another `ExternalPtr` to a serde type
+  comes back once, through its own carrier, with its own value. Any other
+  object (a data frame, a vector) comes back as one copy per place. The
+  Rust fields are encoded by value, so serde's rules apply to them (an
+  `Rc` held twice comes back as two).
 - **Another version's save** is decoded too: serde decides. A field added
   since then decodes when it has `#[serde(default)]`; one without a
   default, or a field whose type changed, fails to decode. A missing
@@ -1165,6 +1177,10 @@ writes attributes, so every attribute in it is one of these.
 | any other map | `list(keys = <keys>, values = <values>)`, each a sequence, `serde = "map"` |
 | unit variant | `character(1)`, the variant's name |
 | newtype, tuple or struct variant | `list(<variant> = <payload>)` |
+| [`serde::RObject`](SERDE_R.md#r-objects-inside-a-serde-value) | `list(<the object>)`, `serde = "robject"` |
+
+The list around an `RObject`'s object keeps the object's own attributes
+(a `serde` attribute included) from being read as the encoding's.
 
 Untagged and internally tagged enums and `#[serde(flatten)]` decode
 through serde's buffered `Content`, which never sees the target type and
@@ -1183,6 +1199,12 @@ the R value alone:
 | named list (a struct, a map with string keys) | `visit_map`, the names as string keys |
 | `serde = "map"` | `visit_map`, the keys by these rules |
 | `serde = "some"` | `visit_some` |
+| `serde = "robject"` | `visit_newtype_struct` with a token string for the object |
+
+serde's buffer can't hold an R object, so it keeps the token, and the
+`RObject` the buffered value is decoded into looks the object up by it
+while the decoder runs. Outside a buffer, `RObject` takes the object
+directly.
 
 No visit maps an `NA` to `None`: only `NULL` (and the `"some"` list) is the
 `None` encoding, so `Some(NA_real_)` stays `Some`, and an `integer(1)`

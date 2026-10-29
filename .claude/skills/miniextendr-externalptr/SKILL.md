@@ -363,8 +363,12 @@ receive it:
   exact mode of the serde-to-R path (`serde/exact.rs`, #2256): the value
   comes back bit for bit, through untagged / internally tagged enums and
   `flatten` too (only `i128`/`u128` there fail: serde's `Content` has none);
-  `to_r`/`from_r` keep the general, lossy mapping (#1417, #1419). A save
-  that fails to decode, a `version = 2` save, and any other type are
+  `to_r`/`from_r` keep the general, lossy mapping (#1417, #1419). A
+  `serde::RObject` field carries an R object (a data frame, another saved
+  object) through the save; R shares only environments, external pointers
+  and symbols within one save, so anything else comes back as a copy per
+  place. A save written before #2256 decodes only where the two mappings
+  agree; there is no fallback. A save that fails to decode, a `version = 2` save, and any other type are
   refused at the first use with the classed `miniextendr_restored_*` errors
   (the decoding error as `e$parent`), and `readRDS()` itself succeeds. A
   save is found by crate + type name, not module path: moving a type keeps

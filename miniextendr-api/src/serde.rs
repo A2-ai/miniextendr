@@ -248,6 +248,7 @@ mod error;
 pub(crate) mod exact;
 #[cfg(feature = "serde_json")]
 pub mod json_string;
+mod robject;
 pub mod rvalue_ser;
 mod ser;
 mod traits;
@@ -276,6 +277,7 @@ pub use error::RSerdeError;
 pub use exact::{from_r_exact as __from_r_exact, to_r_exact as __to_r_exact};
 #[cfg(feature = "serde_json")]
 pub use json_string::{AsJson, AsJsonPretty, AsJsonVec, FromJson};
+pub use robject::RObject;
 pub use rvalue_ser::{
     RValueSerializer, as_character, as_double, as_integer, as_logical, to_rvalue,
 };

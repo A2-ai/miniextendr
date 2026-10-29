@@ -6315,4 +6315,63 @@ pub fn gc_stress_saved_shapes() {
     assert!(floats.borrow().holds(1000));
 }
 
+/// Saves a `SavedHolder`, whose value holds a data frame and a `SavedEnv`
+/// through `serde::RObject`, and reads it back: the exact encoding writes
+/// each object into the save, and the decoder buffers the ones inside an
+/// internally tagged enum by token (#2256). Saves the value again before and
+/// after it is attached. No arguments — picked up by the fast
+/// `gctorture(TRUE)` no-arg sweep (#430).
+// Stays on R's main thread under `worker-default`: it holds R values.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_saved_robject() {
+    use crate::saved_value_tests::{SavedEnv, SavedHolder};
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::serde::RObject;
+
+    // SAFETY: on R's main thread; rooted before anything allocates.
+    let frame = RObject::new(
+        unsafe {
+            RCall::new("data.frame")
+                .named_value("x", vec![1i32, 2, 3])
+                .eval_base()
+        }
+        .expect("data.frame"),
+    );
+    let inner = ExternalPtr::new(SavedEnv::new(7, "inner".to_owned()));
+    let holder = ExternalPtr::new(SavedHolder::new(frame.as_sexp(), inner.as_sexp()));
+    drop(inner);
+    let back = reload_value(holder.as_sexp());
+    drop(holder);
+    churn_pending_shapes();
+    // Saved again before any access: the carrier writes what it read.
+    let back = reload_value(back.get());
+    // `SavedHolder` holds `RObject`s, so it is `!Send` and not a
+    // `TryFromSexp` `ExternalPtr`; `wrap_sexp` attaches the value too.
+    // SAFETY: on R's main thread; `back` roots the pointer.
+    let holder = unsafe { ExternalPtr::<SavedHolder>::wrap_sexp(back.get()) }.expect("attached");
+    churn_pending_shapes();
+    let check = |holder: &SavedHolder| {
+        // A data frame of one column, in each place the value holds it.
+        for data in [holder.data(), holder.step_object(0), holder.source_object()] {
+            assert_eq!(data.type_of(), SEXPTYPE::VECSXP);
+            assert_eq!(data.len(), 1);
+        }
+        // One `SavedEnv`: the save shares an external pointer.
+        assert_eq!(holder.step_object(1), holder.inner());
+        assert!(holder.step_object(2).is_nil());
+        let inner = ExternalPtr::<SavedEnv>::try_from_sexp(holder.inner()).expect("attached");
+        assert_eq!(inner.borrow().value(), 7);
+    };
+    check(&holder.borrow());
+    drop(holder);
+    let again = reload_value(back.get());
+    // SAFETY: as above.
+    let again = unsafe { ExternalPtr::<SavedHolder>::wrap_sexp(again.get()) }.expect("attached");
+    churn_pending_shapes();
+    check(&again.borrow());
+}
+
 // endregion

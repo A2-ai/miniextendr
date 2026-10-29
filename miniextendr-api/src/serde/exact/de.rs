@@ -3,6 +3,7 @@
 //! back the same through serde's buffered `Content` as directly.
 
 use super::super::error::RSerdeError;
+use super::super::robject;
 use super::Kind;
 use crate::from_r::charsxp_to_str;
 use crate::{SEXP, SEXPTYPE, SexpExt};
@@ -27,6 +28,14 @@ impl ExactDeserializer {
 
     fn has_names(&self) -> bool {
         !self.sexp.get_names().is_nil()
+    }
+}
+
+/// The error for an `RObject` read from an R value that holds none.
+fn not_an_object(sexp: SEXP, kind: Option<Kind>) -> RSerdeError {
+    RSerdeError::TypeMismatch {
+        expected: "an R object (`serde = \"robject\"`)",
+        actual: not_encoded(sexp, kind).to_string(),
     }
 }
 
@@ -129,6 +138,14 @@ impl<'de> Deserializer<'de> for ExactDeserializer {
             (SEXPTYPE::VECSXP, Some(Kind::Some)) if len == 1 => {
                 visitor.visit_some(ExactDeserializer::new(sexp.vector_elt(0)))
             }
+            // serde's `Content` can't hold the object: it keeps a token,
+            // which `RObject` resolves while this decoder runs.
+            (SEXPTYPE::VECSXP, Some(Kind::Object)) if len == 1 => {
+                let token = robject::buffer(sexp.vector_elt(0))
+                    .ok_or_else(|| de::Error::custom("an R object outside the snapshot decoder"))?;
+                let token: de::value::StringDeserializer<RSerdeError> = token.into_deserializer();
+                visitor.visit_newtype_struct(token)
+            }
             _ => match Items::of(sexp, kind) {
                 Some(items) => visitor.visit_seq(items),
                 None => Err(not_encoded(sexp, kind)),
@@ -148,10 +165,26 @@ impl<'de> Deserializer<'de> for ExactDeserializer {
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, RSerdeError> {
-        visitor.visit_newtype_struct(self)
+        if name != robject::MARKER {
+            return visitor.visit_newtype_struct(self);
+        }
+        let kind = if self.sexp.is_nil() {
+            None
+        } else {
+            self.kind()?
+        };
+        if self.sexp.type_of() != SEXPTYPE::VECSXP
+            || kind != Some(Kind::Object)
+            || self.sexp.len() != 1
+        {
+            return Err(not_an_object(self.sexp, kind));
+        }
+        robject::reading(self.sexp.vector_elt(0), || {
+            visitor.visit_newtype_struct(self)
+        })
     }
 
     fn deserialize_enum<V: Visitor<'de>>(
@@ -195,6 +228,14 @@ impl<'de> Deserializer<'de> for ExactDeserializer {
 
 // region: Elements of a sequence
 
+/// The error for an `RObject` read from an element of an atomic vector.
+fn element_not_an_object() -> RSerdeError {
+    RSerdeError::TypeMismatch {
+        expected: "an R object (`serde = \"robject\"`)",
+        actual: "an element of an atomic vector".to_owned(),
+    }
+}
+
 /// Element `index` of an atomic vector that is a sequence (`serde = "seq"`),
 /// or a name of a named list: a scalar.
 struct Element {
@@ -215,9 +256,12 @@ impl<'de> Deserializer<'de> for Element {
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, RSerdeError> {
+        if name == robject::MARKER {
+            return Err(element_not_an_object());
+        }
         visitor.visit_newtype_struct(self)
     }
 
@@ -262,9 +306,12 @@ impl<'de> Deserializer<'de> for Integer {
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, RSerdeError> {
+        if name == robject::MARKER {
+            return Err(element_not_an_object());
+        }
         visitor.visit_newtype_struct(self)
     }
 

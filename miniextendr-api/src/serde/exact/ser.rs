@@ -46,6 +46,9 @@ pub(super) enum Node {
     },
     /// `Some(x)` where `x` is `Null` or `Some`.
     Some(Box<Node>),
+    /// An [`RObject`](crate::serde::RObject)'s object, which the value roots
+    /// while it is encoded.
+    Object(SEXP),
 }
 
 /// A sequence: one atomic vector while its elements are scalars of one kind,
@@ -202,6 +205,12 @@ impl Node {
                 Kind::Map,
             ),
             Node::Some(inner) => mark(list(vec![*inner]), Kind::Some),
+            Node::Object(sexp) => {
+                // SAFETY: R's main thread; the value being encoded roots `sexp`.
+                let out = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 1) };
+                out.set_vector_elt(0, sexp);
+                mark(out, Kind::Object)
+            }
         }
     }
 }
@@ -384,9 +393,16 @@ impl ser::Serializer for NodeSerializer {
 
     fn serialize_newtype_struct<T: ?Sized + Serialize>(
         self,
-        _name: &'static str,
+        name: &'static str,
         value: &T,
     ) -> Result<Node, RSerdeError> {
+        if name == crate::serde::robject::MARKER {
+            return crate::serde::robject::written()
+                .map(Node::Object)
+                .ok_or_else(|| {
+                    ser::Error::custom("the `serde::RObject` marker without an `RObject`")
+                });
+        }
         // Transparent, the `as_*` helpers' markers included: they choose an R
         // type for reading in R, which a snapshot doesn't need.
         value.serialize(self)

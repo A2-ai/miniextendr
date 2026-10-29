@@ -16,7 +16,9 @@
 # one saved before the type moved to another module, or another type.
 # `SavedShapes` holds values the general serde-to-R mapping can't read back
 # (#2256): its `mismatches()` names the fields that differ from a new one's.
-# `SavedFloats` holds a long vector of doubles.
+# `SavedFloats` holds a long vector of doubles. `SavedHolder` holds R objects
+# through `serde::RObject`: a data frame and another object, again in its
+# steps (`step_object(i)`) and its source (`source_object()`).
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -158,15 +160,60 @@ test_that("an exact save reads back in a fresh R process", {
   skip_if_not_installed("callr")
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
-  saveRDS(list(shapes = SavedShapes$new()), path)
+  df <- data.frame(x = 1:3, y = c("a", "b", "c"))
+  saveRDS(
+    list(shapes = SavedShapes$new(), holder = SavedHolder$new(df, SavedEnv$new(7L, "fresh"))),
+    path
+  )
   out <- callr::r(
     function(path) {
       x <- readRDS(path)
-      list(mismatches = x$shapes$mismatches())
+      list(
+        mismatches = x$shapes$mismatches(),
+        data = x$holder$data(),
+        source = x$holder$source_object(),
+        value = x$holder$inner()$value(),
+        label = x$holder$step_object(1L)$label()
+      )
     },
     args = list(path = path)
   )
   expect_identical(out$mismatches, character(0))
+  expect_identical(out$data, df)
+  expect_identical(out$source, df)
+  expect_identical(out$value, 7L)
+  expect_identical(out$label, "fresh")
+})
+
+test_that("a value holding R objects comes back with them (#2256)", {
+  df <- data.frame(x = 1:3, y = c("a", "b", "c"))
+  for (back_of in list(reload, reload_rds)) {
+    for (back in list(
+      back_of(SavedHolder$new(df, SavedEnv$new(7L, "inner"))),
+      # Read back and saved again before any access.
+      reload(back_of(SavedHolder$new(df, SavedEnv$new(7L, "inner"))))
+    )) {
+      expect_identical(back$data(), df)
+      expect_identical(back$inner()$value(), 7L)
+      expect_identical(back$step_object(0L), df)
+      expect_identical(back$step_object(1L)$label(), "inner")
+      expect_null(back$step_object(2L))
+      expect_null(back$step_object(3L))
+      expect_identical(back$source_object(), df)
+    }
+  }
+})
+
+test_that("an object a saved value holds stays one object with the save's other references", {
+  # R's serialize() shares external pointers (and environments) within one
+  # save, and copies other objects.
+  inner <- SavedEnv$new(7L, "inner")
+  back <- reload_rds(list(holder = SavedHolder$new(data.frame(x = 1), inner), inner = inner))
+  expect_identical(back$holder$inner(), back$inner)
+  expect_identical(back$holder$step_object(1L), back$inner)
+  back$inner$bump()
+  expect_identical(back$holder$inner()$value(), 8L)
+  expect_identical(back$holder$step_object(1L)$value(), 8L)
 })
 
 test_that("a save that can't be decoded is refused, with the decoding error as e$parent", {
@@ -290,6 +337,15 @@ test_that("the exact save survives gctorture", {
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   gc_stress_saved_shapes()
+  gctorture(FALSE)
+  succeed()
+})
+
+test_that("R objects in a save survive gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  gc_stress_saved_robject()
   gctorture(FALSE)
   succeed()
 })
