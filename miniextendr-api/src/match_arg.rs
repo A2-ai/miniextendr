@@ -639,6 +639,22 @@ fn not_character<T: MatchArg>(sexp: SEXP) -> MatchArgError {
     }
 }
 
+/// The error of a choice value of `len` strings `label(i)` (`None` for `NA`)
+/// that is not one string: [`MatchArgError::IsNa`] when it holds an `NA` that
+/// matches no choice (see [`match_na`]), else
+/// [`MatchArgError::InvalidLength`]. The R helper decides the same way.
+fn not_scalar<'a, T: MatchArg>(
+    len: usize,
+    label: impl Fn(isize) -> Option<&'a str>,
+) -> MatchArgError {
+    let has_na = (0isize..).take(len).any(|i| label(i).is_none());
+    if has_na && match_na::<T>().is_err() {
+        MatchArgError::is_na::<T>()
+    } else {
+        MatchArgError::invalid_length::<T>(len)
+    }
+}
+
 /// Whether the `len` strings `label(i)` (`None` for `NA`) are `formal`, in
 /// order: the formal default of a choice parameter, which an omitted argument
 /// evaluates to.
@@ -675,7 +691,7 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
         return first_choice::<T>(formal);
     }
     if len != 1 {
-        return Err(MatchArgError::invalid_length::<T>(len));
+        return Err(not_scalar::<T>(len, |i| factor_label(sexp, levels, i)));
     }
     match factor_label(sexp, levels, 0) {
         Some(label) => match_choice::<T>(label),
@@ -695,7 +711,8 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
 /// - the full choices vector, `T::CHOICES` in order and without attributes
 ///   (what an omitted argument evaluates to when the choices are its formal
 ///   default), is the first choice;
-/// - otherwise the value must have length 1 ([`MatchArgError::InvalidLength`])
+/// - otherwise the value must have length 1 ([`MatchArgError::InvalidLength`],
+///   or [`MatchArgError::IsNa`] when it holds an `NA` that matches no choice)
 ///   and match a choice exactly, an alias exactly ([`MatchArg::ALIASES`]),
 ///   or a choice as a unique prefix ([`MatchArgError::NoMatch`]). The empty
 ///   string matches nothing, and `NA` is matched as the string `"NA"`, as
@@ -736,7 +753,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
         return first_choice::<T>(formal);
     }
     if len != 1 {
-        return Err(MatchArgError::invalid_length::<T>(len));
+        return Err(not_scalar::<T>(len, label));
     }
     match label(0) {
         Some(input) => match_choice::<T>(input),

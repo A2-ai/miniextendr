@@ -282,7 +282,10 @@ fn match_arg_param_agrees_with_the_wrapper_helper() {
             ("NA_character_", err(is_na)),
             (r#"c("drop", "draw")"#, err(not_scalar)),
             ("character(0)", err(not_scalar)),
-            (r#"c("drop", NA)"#, err(not_scalar)),
+            // An NA that matches no choice is refused as NA at any length.
+            (r#"c("drop", NA)"#, err(is_na)),
+            (r#"factor(c("drop", NA))"#, err(is_na)),
+            (r#"c(NA, NA)"#, err(is_na)),
             ("1L", err(not_character)),
             ("2.5", err(not_character)),
             ("NA", err(is_na)),
@@ -300,6 +303,11 @@ fn match_arg_param_agrees_with_the_wrapper_helper() {
         assert_eq!(agree::<NaPrefixed>(env, "NA_character_"), ok("NAME"));
         assert_eq!(agree::<NaPrefixed>(env, "factor(NA)"), ok("NAME"));
         assert_eq!(agree::<NaPrefixed>(env, r#""N""#), ok("NAME"));
+        // ... so a longer value holding an NA is refused for its length.
+        assert_eq!(
+            agree::<NaPrefixed>(env, r#"c("other", NA)"#),
+            err("'mode' must be of length 1")
+        );
 
         // The message quotes the choices as `dQuote(x, FALSE)` does: no escapes.
         let quoted = r#"'mode' should be one of "say "hi"", "c:\path", "plain""#;
