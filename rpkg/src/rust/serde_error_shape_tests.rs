@@ -228,7 +228,7 @@ impl std::fmt::Display for QuotaError {
 
 impl std::error::Error for QuotaError {}
 
-fn quota_exceeded(what: Vec<String>, rows: Vec<i32>) -> QuotaError {
+pub(crate) fn quota_exceeded(what: Vec<String>, rows: Vec<i32>) -> QuotaError {
     let rows: Vec<u32> = rows
         .into_iter()
         .filter_map(|r| u32::try_from(r).ok())

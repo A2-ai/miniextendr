@@ -897,9 +897,12 @@ Rules:
   `hyperparams_total(c(alpha = 1, beta = -2))` gives `e$param == "beta"` (the
   hyperparameter) and the message
   `invalid 'hyper' argument: hyperparameter 'beta' must be non-negative, got -2`.
-- **Reserved names.** `data()` fields must not be `message`, `call` or
-  `kind`; a reserved name raises a plain `rust_error` explaining the clash,
-  as for `Result` errors.
+- **Reserved names.** `data()` fields must not be `message`, `call`,
+  `kind` or `.mx_parent`; a reserved name raises a plain `rust_error`
+  explaining the clash, as for `Result` errors. The one exception is the
+  cause an `RCondition` carries (`with_parent`, or a refusal
+  `catch_condition` caught): a check that returns it, converted into
+  `SexpError`, gives the argument error that cause as `e$parent`.
 - **Fallback.** An error type without the impl keeps the plain class vector.
   The built-in `SexpError` family and `MatchArgError` are reworded as in the
   table above; any other type is rendered with `Display`. The error type

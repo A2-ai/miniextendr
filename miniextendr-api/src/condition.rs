@@ -235,7 +235,7 @@ impl ConditionCall {
 /// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
 /// the payload can be queued from a worker thread. Each variant is one kind
 /// of the tagged condition value ([`crate::error_value::kind`]).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RCondition {
     /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
     /// `Result<T, E>` Err arm once reconstructed across a package boundary.
@@ -469,6 +469,17 @@ impl RCondition {
             | RCondition::Message { call, .. }
             | RCondition::Condition { call, .. }
             | RCondition::Conversion { call, .. } => *call,
+        }
+    }
+
+    /// The user classes and the fields, whatever the variant.
+    fn class_and_data(&self) -> (&[String], &Option<ConditionData>) {
+        match self {
+            RCondition::Error { class, data, .. }
+            | RCondition::Warning { class, data, .. }
+            | RCondition::Message { class, data, .. }
+            | RCondition::Condition { class, data, .. }
+            | RCondition::Conversion { class, data, .. } => (class, data),
         }
     }
 
@@ -1595,6 +1606,39 @@ pub trait RConditionData {
     fn argument_message(&self) -> Option<String> {
         None
     }
+    /// Internal: whether a `.mx_parent` field among
+    /// [`data()`](RConditionData::data) is a cause
+    /// [`RCondition::with_parent`] attached, which the generated `Err` arms
+    /// pass on as `e$parent`. Every other reserved name is refused
+    /// ([`check_condition_data`]). True for an [`RCondition`](enum@RCondition)
+    /// and for an [`RError`] converted from one.
+    #[doc(hidden)]
+    fn __mx_keeps_parent(&self) -> bool {
+        false
+    }
+}
+
+/// [`check_condition_data`] for an `Err` arm's fields, passing a
+/// `.mx_parent` field when `keeps_parent`
+/// ([`RConditionData::__mx_keeps_parent`]).
+#[track_caller]
+fn check_err_fields(data: Option<ConditionData>, keeps_parent: bool) -> Option<ConditionData> {
+    data.map(|fields| {
+        fields
+            .into_iter()
+            .map(|(name, value)| (check_err_field(name, keeps_parent), value))
+            .collect()
+    })
+}
+
+/// [`check_condition_field_name`], passing `.mx_parent` when `keeps_parent`.
+#[track_caller]
+fn check_err_field(name: String, keeps_parent: bool) -> String {
+    if keeps_parent && name == PARENT_FIELD {
+        name
+    } else {
+        check_condition_field_name(name)
+    }
 }
 
 /// `#[derive(RCondition)]`: [`RConditionData`] generated from a type's shape
@@ -1642,6 +1686,9 @@ pub struct RError {
     data: ConditionData,
     call: ConditionCall,
     argument_message: Option<String>,
+    /// Converted from an [`RCondition`](enum@RCondition): a `.mx_parent`
+    /// field is the cause it carried ([`RConditionData::__mx_keeps_parent`]).
+    keeps_parent: bool,
 }
 
 impl RError {
@@ -1653,6 +1700,7 @@ impl RError {
             data: Vec::new(),
             call: ConditionCall::Inherit,
             argument_message: None,
+            keeps_parent: false,
         }
     }
 
@@ -1759,6 +1807,49 @@ impl RConditionData for RError {
     fn argument_message(&self) -> Option<String> {
         self.argument_message.clone()
     }
+    fn __mx_keeps_parent(&self) -> bool {
+        self.keeps_parent
+    }
+}
+
+/// An [`RCondition`](enum@RCondition) returned as an `Err` (#2217): from a
+/// `#[miniextendr]` function or method returning `Result<T, RCondition>`, or
+/// from a rebuild hook (`#[externalptr(rebuild = path)]`). Its message,
+/// classes, fields and call choice reach R as given. Like any `Err`, it is an
+/// R error whatever its variant: the kind is read only where the condition is
+/// raised or deferred ([`RCondition::raise`], [`RCondition::defer`]). A cause
+/// attached with [`RCondition::with_parent`], as a caught refusal of a
+/// restored object carries one, stays its `e$parent`, also through the
+/// [`SexpError`](crate::from_r::SexpError) it converts into.
+///
+/// It is how a body hands on a condition [`catch_condition`] caught, or one
+/// built by [`serde_condition!`](crate::serde_condition):
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn load(path: &str) -> Result<Model, RCondition> {
+///     let config = catch_condition(|| read_config(path))?;
+///     Ok(Model::new(config))
+/// }
+/// ```
+impl RConditionData for RCondition {
+    fn message(&self) -> String {
+        RCondition::message(self).to_owned()
+    }
+    fn class(&self) -> Vec<String> {
+        self.class_and_data().0.to_vec()
+    }
+    fn data(&self) -> Option<ConditionData> {
+        self.class_and_data().1.clone()
+    }
+    fn call(&self) -> ConditionCall {
+        RCondition::call(self)
+    }
+    /// A `.mx_parent` field is the cause [`RCondition::with_parent`]
+    /// attached (a refusal [`catch_condition`] caught carries one).
+    fn __mx_keeps_parent(&self) -> bool {
+        true
+    }
 }
 
 /// Any classed error (an [`RError`], a `#[derive(RCondition)]` type)
@@ -1774,6 +1865,7 @@ impl<E: RConditionData> From<E> for crate::from_r::SexpError {
             data: e.data().unwrap_or_default(),
             call: e.call(),
             argument_message: e.argument_message(),
+            keeps_parent: e.__mx_keeps_parent(),
         })
     }
 }
@@ -1889,7 +1981,7 @@ impl<E: RConditionData> ErrPartsClassed for E {
         Some(ErrParts {
             message: self.message(),
             class: self.class(),
-            data: check_condition_data(self.data()),
+            data: check_err_fields(self.data(), self.__mx_keeps_parent()),
             call: self.call(),
         })
     }
@@ -2004,7 +2096,7 @@ impl<E: RConditionData> ConversionErrClassed for E {
         ErrParts {
             message: self.message(),
             class: self.class(),
-            data: check_condition_data(self.data()),
+            data: check_err_fields(self.data(), self.__mx_keeps_parent()),
             call: self.call(),
         }
     }
@@ -2086,11 +2178,14 @@ impl ConversionErrBuiltin for crate::from_r::SexpError {
             }
             for (name, value) in refusal.fields() {
                 if !data.iter().any(|(seen, _)| seen == name) {
-                    data.push((name.clone(), value.clone()));
+                    data.push((
+                        check_err_field(name.clone(), refusal.keeps_parent),
+                        value.clone(),
+                    ));
                 }
             }
         }
-        parts.data = check_condition_data((!data.is_empty()).then_some(data));
+        parts.data = (!data.is_empty()).then_some(data);
         parts
     }
 }
@@ -3123,6 +3218,96 @@ macro_rules! serde_error_shape {
              enable it to class errors through serde"
         );
     };
+}
+
+/// The [`RCondition`](enum@RCondition) an error type that is
+/// `Serialize + Display` gives as a `#[miniextendr]` function's `Err`, for
+/// code that is not an entry point (#2217): a rebuild hook returning
+/// `Result<Self, RCondition>`, a body mixing it with conditions
+/// [`catch_condition`] caught.
+///
+/// `serde_condition!(&err)` takes a reference to the error and runs the probe
+/// a `Result` return's `Err` arm runs, with the calling crate's marker and
+/// family class: the shape [`serde_error_shape!`](crate::serde_error_shape)
+/// declared for the type in this crate, else the type's [`RConditionData`]
+/// impl, else its serde shape with the `<crate>_error` family class. The
+/// condition is an error ([`RCondition::Error`]) with the classes, message,
+/// fields and call choice an entry point returning `Err(err)` would raise.
+///
+/// ```ignore
+/// use miniextendr_api::condition::{RCondition, catch_condition};
+/// use miniextendr_api::externalptr::Saved;
+///
+/// miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
+///
+/// impl Model {
+///     fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
+///         let spec = catch_condition(|| Self::spec(saved))?;
+///         let engine = engine::Engine::load(&spec)
+///             .map_err(|e| miniextendr_api::serde_condition!(&e))?;
+///         Ok(Model::new(spec, engine))
+///     }
+/// }
+/// ```
+///
+/// The type must be `Serialize + Display`, which the macro checks. The marker
+/// is the one `miniextendr_init!` defines at the crate root, so the crate must
+/// call it, as every R package does. Without the `serde` feature the macro
+/// is a compile error.
+///
+/// Pass one reference. An error already held as `&E` (`if let Err(e) =
+/// &result`) goes in as it is, `serde_condition!(e)`: `&e` is a `&&E`, which
+/// compiles, since `&E` is `Serialize + Display` too, but skips the declared
+/// shape and the `RConditionData` impl, as an entry point returning `&E`
+/// would.
+#[cfg(feature = "serde")]
+#[macro_export]
+// `crate::` is meant: the marker is the calling crate's.
+#[allow(clippy::crate_in_macro_def)]
+macro_rules! serde_condition {
+    // A `match`, not a `let`: a temporary in `$err` (`&Error::new(..)`) lives
+    // to the end of the scrutinee's match.
+    ($err:expr $(,)?) => {
+        match $crate::condition::__mx_serde_condition_arg($err) {
+            __mx_err => {
+                let __mx_parts = $crate::__mx_result_err_parts!(
+                    *__mx_err,
+                    ::core::concat!(::core::env!("CARGO_CRATE_NAME"), "_error"),
+                    crate::__MiniextendrInitMarker
+                );
+                $crate::condition::RCondition::Error {
+                    message: __mx_parts.message,
+                    class: __mx_parts.class,
+                    data: __mx_parts.data,
+                    call: __mx_parts.call,
+                }
+            }
+        }
+    };
+}
+
+/// The `RCondition` a `Serialize + Display` error gives as an entry point's
+/// `Err`. Needs the `serde` feature, without which it is a compile error.
+#[cfg(not(feature = "serde"))]
+#[macro_export]
+macro_rules! serde_condition {
+    ($($input:tt)*) => {
+        ::core::compile_error!(
+            "`serde_condition!` needs the `serde` feature of miniextendr-api; \
+             enable it to class errors through serde"
+        )
+    };
+}
+
+/// Internal: [`serde_condition!`](crate::serde_condition)'s argument, a
+/// reference to a `Serialize + Display` error, unchanged. Taking `&E` fixes
+/// the reference depth the probe's stages see: one reference more would
+/// skip the declared shape and the [`RConditionData`] stage.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[inline]
+pub fn __mx_serde_condition_arg<E: ::serde::Serialize + std::fmt::Display>(err: &E) -> &E {
+    err
 }
 
 /// The receiver of the declared-shape probe: the error, and the marker `M` of

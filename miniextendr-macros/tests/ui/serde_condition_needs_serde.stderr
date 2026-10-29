@@ -1,0 +1,7 @@
+error: `serde_condition!` needs the `serde` feature of miniextendr-api; enable it to class errors through serde
+ --> tests/ui/serde_condition_needs_serde.rs:6:22
+  |
+6 |     let _condition = miniextendr_api::serde_condition!(&String::from("boom"));
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `miniextendr_api::serde_condition` (in Nightly builds, run with -Z macro-backtrace for more info)
