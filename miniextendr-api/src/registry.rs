@@ -3231,11 +3231,15 @@ const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
 # (` (or "grey" for "gray")`, empty when none is listed). The error is an
 # argument error (`.miniextendr_arg_error`) attributed to `call`: by default
 # the wrapper's own call, not this helper; a `call = caller` wrapper passes
-# its caller's matched call.
+# its caller's matched call. An `NA` that matches no choice, or a
+# non-character value holding `NA`, is refused as `must not be NA`, the
+# wording of a `no_na` parameter.
 .miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL, listed = "") {
   if (is.null(arg)) return(choices)
   if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, if (is.atomic(arg) && anyNA(arg)) ""#,
+    crate::match_arg::match_arg_wording!(is_na),
+    r#"" else ""#,
     crate::match_arg::match_arg_wording!(not_character),
     r#"", call)
   if (length(arg) == 0L) .miniextendr_arg_error(arg_name, "must be of length >= 1", call)
@@ -3245,6 +3249,9 @@ const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
   }
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   bad <- which(is.na(i) | i == 0L)
+  if (anyNA(arg[bad])) .miniextendr_arg_error(arg_name, ""#,
+    crate::match_arg::match_arg_wording!(is_na),
+    r#"", call)
   if (length(bad)) {
     .miniextendr_arg_error(arg_name, sprintf("element %d (\"%s\") "#,
     crate::match_arg::match_arg_wording!(not_a_choice),
@@ -3268,13 +3275,18 @@ const MATCH_ARG_HELPER: &str = concat!(
 # labels. `aliases`, a named character vector (`c(grey = "gray")`), maps a
 # string typed exactly as an alias to its choice; a prefix of an alias is not
 # one. `listed` is the text the message names the listed aliases with after
-# the choices (` (or "grey" for "gray")`, empty when none is listed). The
-# Rust side's `match_arg_param()` gives a body the same results and messages
-# for a choice argument it matches itself.
+# the choices (` (or "grey" for "gray")`, empty when none is listed). `NA`
+# is matched as the string "NA", as `pmatch()` does; when that matches no
+# choice, or the value is not character and holds `NA`, it is refused as
+# `must not be NA`, the wording of a `no_na` parameter. The Rust side's
+# `match_arg_param()` gives a body the same results and messages for a choice
+# argument it matches itself.
 .miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL, listed = "") {
   if (is.null(arg)) return(choices[[1L]])
   if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, if (is.atomic(arg) && anyNA(arg)) ""#,
+    crate::match_arg::match_arg_wording!(is_na),
+    r#"" else ""#,
     crate::match_arg::match_arg_wording!(not_character),
     r#"", call)
   if (identical(arg, choices)) return(arg[[1L]])
@@ -3284,6 +3296,9 @@ const MATCH_ARG_HELPER: &str = concat!(
   if (!is.null(aliases) && !is.na(a <- match(arg, names(aliases)))) return(aliases[[a]])
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   if (is.na(i) || i == 0L) {
+    if (is.na(arg)) .miniextendr_arg_error(arg_name, ""#,
+    crate::match_arg::match_arg_wording!(is_na),
+    r#"", call)
     .miniextendr_arg_error(arg_name, sprintf(""#,
     crate::match_arg::match_arg_wording!(not_a_choice),
     r#" %s%s", paste(dQuote(choices, FALSE), collapse = ", "), listed), call)

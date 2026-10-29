@@ -314,7 +314,7 @@ test_that("several_ok Either<Vec<T>, DataFrame>: empty, NA, NULL and other input
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "routes")
   expect_match(conditionMessage(e), "length", fixed = TRUE)
-  expect_choice_error(match_arg_either_routes(NA_character_), "routes", routes)
+  expect_choice_error(match_arg_either_routes(NA_character_), "routes", "must not be NA")
   # NULL is not a choice under `Either`: it goes to `R`, which rejects it.
   expect_error(match_arg_either_routes(NULL), "routes")
   expect_error(match_arg_either_routes(1:3), "routes")

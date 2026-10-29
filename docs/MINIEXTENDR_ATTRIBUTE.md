@@ -773,15 +773,19 @@ if (!isTRUE(inherits(x, "pkg_obj"))) .miniextendr_arg_error("x", "must inherit f
 if (!isTRUE(is.list(x))) .miniextendr_arg_error("x", "must be a list")
 ```
 
-`inherits` and then `not_inherits` run before the parameter's type checks and
-`no_na` after them, one guard per check (under `call = caller`, the same
-guards raising with the caller's call).
+`no_na` runs first, then `inherits` and `not_inherits`, then the parameter's
+type checks, one guard per check (under `call = caller`, the same guards
+raising with the caller's call). So an argument holding `NA` is refused as
+`NA` whatever its class, type or range: a logical `NA` given for a `PathBuf`,
+or `NA_real_` for a `u64`, says `'x' must not be NA`, not a type or range
+message.
 A failure raises the same condition as a failed Rust conversion: the crate's
 `conversion_error_class`, `rust_error`, `kind = "conversion"` and `e$param`,
 with the message `'x' must inherit from 'pkg_obj'`
 ([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)). The
 `match_arg` / `choices` validation raises it too
-(`'mode' should be one of "fast", "slow"`). An `Option<T>` parameter passes
+(`'mode' should be one of "fast", "slow"`, and `'mode' must not be NA` for an
+`NA` that matches no choice, `no_na` or not). An `Option<T>` parameter passes
 `NULL` and a `Missing<T>`
 parameter an omitted argument. Unlike the type checks, they stay under
 `Unchecked` / `no_preconditions` / the crate's `preconditions = false`: the
@@ -998,14 +1002,14 @@ pub fn set_interval(
 ```
 
 ```r
+if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error("tau", "must not be NA")
 if (!isTRUE(is.null(tau) || !inherits(tau, c("difftime", "Date", "POSIXt")))) .miniextendr_arg_error("tau", message = "`tau` must be a plain number in the time unit of the data")
 if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error("tau", "must be NULL or numeric, logical, character, or factor")
 if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error("tau", "must be NULL or have length 1")
-if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error("tau", "must not be NA")
 ```
 
-The refusal runs before the type checks (after `inherits`, when both are
-given). Here that order matters: `is.numeric()` is `FALSE` for a `difftime`, a
+The refusal runs before the type checks (after `no_na`, and after `inherits`
+when both are given). Here that order matters: `is.numeric()` is `FALSE` for a `difftime`, a
 `Date` and a `POSIXt`, so the type check would refuse them first, with its own
 message. A value of any other class passes the refusal and meets the type
 checks as before: `list(1)` still gets `'tau' must be NULL or numeric,

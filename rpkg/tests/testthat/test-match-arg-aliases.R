@@ -34,7 +34,8 @@ test_that("a prefix matches the choices only", {
   expect_choices_error(match_arg_alias_shade("gre"), "color", one_of)
   expect_choices_error(match_arg_alias_shade("GREY"), "color", one_of)
   expect_choices_error(match_arg_alias_shade("zzz"), "color", one_of)
-  expect_choices_error(match_arg_alias_shade(NA_character_), "color", one_of)
+  # No alias maps NA, which matches no choice.
+  expect_choices_error(match_arg_alias_shade(NA_character_), "color", "'color' must not be NA")
 })
 
 test_that("the formal and the usage list the choices only", {

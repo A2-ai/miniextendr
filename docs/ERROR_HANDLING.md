@@ -704,7 +704,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `(A, B, ...)` | `a list of length N` |
 | `DataFrame` | `a data frame` |
 | a `#[derive(TryFromSexp)]` newtype | the inner type's (`struct Dose(AsNumeric)`: `a single number`), declared by the derive; none for an inner type that has none |
-| a `match_arg` enum | none: a choice error is worded whole, as the R-side `match_arg` check words it (`'mode' should be one of "fast", "slow"`, `'mode' must be of length 1`, `'mode' must be NULL or a character vector`), with or without `#[miniextendr(match_arg)]` (#1767). As an `Either` arm it is named `one of "fast", "slow"` |
+| a `match_arg` enum | none: a choice error is worded whole, as the R-side `match_arg` check words it (`'mode' should be one of "fast", "slow"`, `'mode' must not be NA`, `'mode' must be of length 1`, `'mode' must be NULL or a character vector`), with or without `#[miniextendr(match_arg)]` (#1767). As an `Either` arm it is named `one of "fast", "slow"` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |
 | `i64`, `u64`, `isize`, `usize` under `strict` | `a single whole number` / `a single non-negative whole number` |

@@ -20,6 +20,15 @@ pub enum BuildStatus {
     NotStarted,
 }
 
+/// A choice that is the string `"NA"`: `pmatch()` matches `NA_character_`
+/// to it, so `NA_character_` selects it.
+#[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
+pub enum NaChoice {
+    Drop,
+    #[match_arg(rename = "NA")]
+    Keep,
+}
+
 /// Priority enum demonstrating individual rename.
 #[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
 pub enum Priority {
@@ -426,5 +435,30 @@ pub fn match_arg_param_with_default_mode(mode: miniextendr_api::SEXP) -> String 
     let mode: Mode = miniextendr_api::match_arg_param_with_default(mode, "mode", Mode::Safe)
         .unwrap_or_else(|e| e.raise());
     format!("{:?}", mode)
+}
+
+/// A choice argument whose choices include `"NA"`, checked by the wrapper.
+/// @param keep `"Drop"` or `"NA"`.
+#[miniextendr_api::miniextendr(noexport)]
+pub fn match_arg_na_choice(#[miniextendr(match_arg)] keep: NaChoice) -> String {
+    keep.to_choice().to_string()
+}
+
+/// The same choices with `several_ok`.
+/// @param keep Any of `"Drop"`, `"NA"`.
+#[miniextendr_api::miniextendr(noexport)]
+pub fn match_arg_na_choices(#[miniextendr(match_arg, several_ok)] keep: Vec<NaChoice>) -> String {
+    keep.iter()
+        .map(|k| k.to_choice())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// The same choices converted by `NaChoice`'s own `TryFromSexp`, without the
+/// wrapper's check.
+/// @param keep `"Drop"` or `"NA"`.
+#[miniextendr_api::miniextendr(noexport)]
+pub fn match_arg_na_choice_converted(keep: NaChoice) -> String {
+    keep.to_choice().to_string()
 }
 // endregion

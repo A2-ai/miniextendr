@@ -728,7 +728,7 @@ test_that("a match_arg enum's conversion error is the match_arg check's (#1767)"
   )
   expect_identical(
     conditionMessage(caught(miniextendr:::arg_error_plain_mode(NA_character_))),
-    "'speed' should be one of \"Fast\", \"Safe\", \"Debug\""
+    "'speed' must not be NA"
   )
   expect_identical(miniextendr:::arg_error_plain_mode("Sa"), "Safe")
   # The full choice vector is the first choice, as for `match.arg()` (#1741).
