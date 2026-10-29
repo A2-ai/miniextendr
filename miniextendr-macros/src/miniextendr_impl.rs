@@ -1900,6 +1900,9 @@ impl ParsedMethod {
                     } else {
                         method_attrs.preconditions = Some(keep);
                     }
+                } else if meta.path.is_ident("convert") {
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    crate::miniextendr_fn::parse_method_convert(&meta, &mut method_attrs.per_param)?;
                 } else if meta.path.is_ident("no_na") {
                     // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
@@ -4173,6 +4176,9 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
     // `no_na(..)` parameters also have their converted value checked, for what
     // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.method_attrs.per_param {
+        if attrs.convert {
+            builder = builder.with_convert_param(rust_name.clone());
+        }
         if let Some(leaf) = attrs.layered_leaf() {
             builder = builder.layered_choice(rust_name.clone(), leaf);
         } else if attrs.match_arg && attrs.several_ok {

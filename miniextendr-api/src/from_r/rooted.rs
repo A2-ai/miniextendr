@@ -18,7 +18,10 @@ use std::borrow::Cow;
 /// scalars, vectors or strings before dispatch, then borrow inside the worker.
 /// Nested shared-reference `Vec` inputs retain every list element in the root's
 /// protection scope, even when an ALTREP accessor does not cache that element.
-/// A type alias can use this trait explicitly in the function body.
+/// Reference aliases and custom reference converters select this path with
+/// `#[miniextendr(convert)]` on the parameter, or `#[miniextendr(convert(param))]`
+/// on an inherent or trait impl method. Other aliases can use this trait
+/// explicitly in the function body.
 ///
 /// A root proves liveness, not exclusive access: this trait does not provide
 /// mutable references to R storage. Shared native borrows still participate

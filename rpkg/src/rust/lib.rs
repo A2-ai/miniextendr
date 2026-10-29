@@ -195,6 +195,7 @@ mod constructor_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
+mod converted_reference_tests;
 mod dataframe_bounds_test;
 #[cfg(all(feature = "jiff", feature = "time"))]
 mod dataframe_datetime_tests;

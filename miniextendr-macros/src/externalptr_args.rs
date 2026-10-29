@@ -80,6 +80,15 @@ const NOT_EXTERNAL: &[&str] = &[
     "Missing",
 ];
 
+/// The reference selected by an explicit conversion, including Option.
+pub(crate) fn conversion_reference(ty: &syn::Type) -> Option<&syn::TypeReference> {
+    let ty = crate::type_inspect::option_inner_type(ty).unwrap_or(ty);
+    match ty {
+        syn::Type::Reference(reference) => Some(reference),
+        _ => None,
+    }
+}
+
 /// The borrowed external argument `ty` describes, if any: `&T` / `&mut T`
 /// where `T` names a type with no R-side conversion of its own (no type
 /// check, not in [`NOT_EXTERNAL`]), or an `ExternalPtrRef<'_, T>` /

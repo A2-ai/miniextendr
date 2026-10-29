@@ -10,6 +10,7 @@ help: the trait `TypedExternal` is not implemented for `Plain`
  6 | pub struct Plain {
    | ^^^^^^^^^^^^^^^^
    = note: `#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `Plain` through an external pointer, as the object of a `#[miniextendr]` impl or a `&Plain` / `&mut Plain` parameter
+   = note: a parameter whose `&Plain` converts through its own `TryFromSexp` impl, or whose type is an alias (`type Text = str`), takes `#[miniextendr(convert)]` (`#[miniextendr(convert(param))]` on an impl method)
    = help: the following other types implement trait `TypedExternal`:
              &'static [T]
              &'static mut [T]

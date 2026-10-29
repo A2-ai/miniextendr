@@ -1,0 +1,75 @@
+error[E0277]: `str` is not a type an `ExternalPtr` stores
+  --> tests/ui/fn_ref_param_alias_without_convert.rs:11:21
+   |
+11 | pub fn text_len(x: &Text) -> usize {
+   |                     ^^^^ `str` does not implement `TypedExternal`
+   |
+   = help: the trait `TypedExternal` is not implemented for `str`
+   = note: `#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `str` through an external pointer, as the object of a `#[miniextendr]` impl or a `&str` / `&mut str` parameter
+   = note: a parameter whose `&str` converts through its own `TryFromSexp` impl, or whose type is an alias (`type Text = str`), takes `#[miniextendr(convert)]` (`#[miniextendr(convert(param))]` on an impl method)
+help: the trait `TypedExternal` is implemented for `std::string::String`
+  --> $WORKSPACE/miniextendr-api/src/externalptr_std.rs
+   |
+   |         impl TypedExternal for $ty {
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+   | impl_te!(String, "String");
+   | -------------------------- in this macro invocation
+note: required by a bound in `miniextendr_api::from_r::__mx_external_arg`
+  --> $WORKSPACE/miniextendr-api/src/from_r.rs
+   |
+   | pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+   |                             ^^^^^^^^^^^^^ required by this bound in `__mx_external_arg`
+   = note: this error originates in the macro `impl_te` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> tests/ui/fn_ref_param_alias_without_convert.rs:11:21
+   |
+11 | pub fn text_len(x: &Text) -> usize {
+   |                     ^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+note: required by an implicit `Sized` bound in `miniextendr_api::from_r::__mx_external_arg`
+  --> $WORKSPACE/miniextendr-api/src/from_r.rs
+   |
+   | pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+   |                          ^ required by the implicit `Sized` requirement on this type parameter in `__mx_external_arg`
+
+error[E0277]: `[i32]` is not a type an `ExternalPtr` stores
+  --> tests/ui/fn_ref_param_alias_without_convert.rs:16:23
+   |
+16 | pub fn values_len(x: &Values) -> usize {
+   |                       ^^^^^^ `[i32]` does not implement `TypedExternal`
+   |
+   = help: the trait `TypedExternal` is not implemented for `[i32]`
+   = note: `#[derive(ExternalPtr)]` (or `impl_typed_external!`) implements it; R reaches a `[i32]` through an external pointer, as the object of a `#[miniextendr]` impl or a `&[i32]` / `&mut [i32]` parameter
+   = note: a parameter whose `&[i32]` converts through its own `TryFromSexp` impl, or whose type is an alias (`type Text = str`), takes `#[miniextendr(convert)]` (`#[miniextendr(convert(param))]` on an impl method)
+help: the following other types implement trait `TypedExternal`
+  --> $WORKSPACE/miniextendr-api/src/externalptr_std.rs
+   |
+   | impl<T: 'static, const N: usize> TypedExternal for [T; N] {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `[T; N]`
+...
+   | impl<T: 'static> TypedExternal for &'static [T] {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&[T]`
+...
+   | impl<T: 'static> TypedExternal for &'static mut [T] {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&mut [T]`
+note: required by a bound in `miniextendr_api::from_r::__mx_external_arg`
+  --> $WORKSPACE/miniextendr-api/src/from_r.rs
+   |
+   | pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+   |                             ^^^^^^^^^^^^^ required by this bound in `__mx_external_arg`
+
+error[E0277]: the size for values of type `[i32]` cannot be known at compilation time
+  --> tests/ui/fn_ref_param_alias_without_convert.rs:16:23
+   |
+16 | pub fn values_len(x: &Values) -> usize {
+   |                       ^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `[i32]`
+note: required by an implicit `Sized` bound in `miniextendr_api::from_r::__mx_external_arg`
+  --> $WORKSPACE/miniextendr-api/src/from_r.rs
+   |
+   | pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
+   |                          ^ required by the implicit `Sized` requirement on this type parameter in `__mx_external_arg`
