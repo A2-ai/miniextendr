@@ -510,3 +510,9 @@ NULL
 #' @param ... Additional arguments.
 #' @name splitinfer3_value
 NULL
+
+#' Get the count of a serde S3 object that comes back after `readRDS()`
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name saved_s3_value
+NULL

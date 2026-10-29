@@ -2251,6 +2251,7 @@ fn generate_typed_external(
     rebuild: Option<&syn::Path>,
     any_version: bool,
     display_name: Option<&str>,
+    snapshot: bool,
 ) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -2326,6 +2327,24 @@ fn generate_typed_external(
             }
         }
     });
+    // A type that is `Serialize + DeserializeOwned` comes back after
+    // `readRDS()` (#2186). The probe resolves here, in the type's own impl,
+    // where the type is concrete (the derive takes no generic struct): to the
+    // serde arm when both traits hold (with miniextendr-api's `serde`
+    // feature), else to the fallback. A hand-written `TypedExternal` impl
+    // keeps the trait's default (`None`).
+    let snapshot = snapshot.then(|| {
+        quote::quote! {
+            #[inline]
+            fn __mx_snapshot() -> ::core::option::Option<::miniextendr_api::externalptr::Snapshot<Self>> {
+                static CLASS: ::miniextendr_api::externalptr::SnapshotClass =
+                    ::miniextendr_api::externalptr::SnapshotClass::new();
+                #[allow(unused_imports)]
+                use ::miniextendr_api::externalptr::{SnapshotNone as _, SnapshotSerde as _};
+                (&::miniextendr_api::externalptr::SnapshotProbe::<Self>::new(&CLASS)).__mx_snapshot()
+            }
+        }
+    });
     let sidecars: Vec<_> = sidecar_slots(info).collect();
     // A save names its slots by the fields' R names (#2215), so renaming a
     // Rust field keeps every earlier save readable.
@@ -2373,6 +2392,7 @@ fn generate_typed_external(
             #field_error_class
             #field_error_message
             #rebuild
+            #snapshot
         }
     }
 }
@@ -2414,6 +2434,8 @@ pub(crate) fn generate_altrep_storage(
         None,
         false,
         Some(class_name),
+        // R never saves an ALTREP's data1 pointer: no carrier.
+        false,
     );
     let accessors = generate_sidecar_rust_accessors(input, &info, false);
     Ok(quote::quote! { #storage #accessors })
@@ -2600,7 +2622,9 @@ pub fn derive_external_ptr(
         rebuild.as_ref(),
         any_version,
         None,
+        true,
     );
+    let snapshot_registration = generate_snapshot_registration(&input);
     let sidecar_rust_accessors =
         generate_sidecar_rust_accessors(&input, &sidecar_info, rebuild.is_some());
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
@@ -2620,12 +2644,42 @@ pub fn derive_external_ptr(
 
     Ok(quote::quote! {
         #typed_external
+        #snapshot_registration
         #sidecar_rust_accessors
         #into_external_ptr
         #into_r_vec_element
         #sidecar_accessors
         #erased_wrapper
     })
+}
+
+/// Generate the `R_init` registration of the type's carrier class (#2186): a
+/// `#[no_mangle]` function and its `MX_ALTREP_REGISTRATIONS` entry, which
+/// the wasm registry lists by symbol. The derive can't tell whether the type
+/// is serde, so every type gets one; it registers the class only when the
+/// type's snapshot probe found serde.
+fn generate_snapshot_registration(input: &DeriveInput) -> TokenStream {
+    let ident = &input.ident;
+    let reg_fn_name = crate::naming::snapshot_reg_fn_ident(ident);
+    let entry_ident =
+        quote::format_ident!("__MX_SNAPSHOT_REG_ENTRY_{}", crate::naming::unraw(ident));
+    quote::quote! {
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        #[allow(non_snake_case)]
+        pub extern "C-unwind" fn #reg_fn_name() {
+            ::miniextendr_api::externalptr::__mx_register_snapshot::<#ident>();
+        }
+
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_ALTREP_REGISTRATIONS), linkme(crate = ::miniextendr_api::linkme))]
+        #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
+        static #entry_ident: ::miniextendr_api::registry::AltrepRegistration =
+            ::miniextendr_api::registry::AltrepRegistration {
+                register: #reg_fn_name,
+                symbol: ::core::stringify!(#reg_fn_name),
+            };
+    }
 }
 
 /// Generate the type-erased wrapper infrastructure for trait ABI dispatch.
@@ -3297,6 +3351,19 @@ mod tests {
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
         assert!(!out.contains("try_keys"), "{out}");
         assert!(!out.contains("REBUILDS"), "{out}");
+    }
+
+    /// The probe for a serde value (#2186) and its carrier's registration,
+    /// emitted for every type: the type's own impl picks the serde arm or the
+    /// fallback.
+    #[test]
+    fn snapshot_probe_and_registration() {
+        let input: syn::DeriveInput = syn::parse_str("struct E { n: i32 }").unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(out.contains("fn __mx_snapshot ()"), "{out}");
+        assert!(out.contains("SnapshotProbe :: < Self >"), "{out}");
+        assert!(out.contains("__mx_register_snapshot :: < E >"), "{out}");
+        assert!(out.contains("MX_ALTREP_REGISTRATIONS"), "{out}");
     }
 
     /// `field_error(class = ...)` (#1899) and `restored(refuse =

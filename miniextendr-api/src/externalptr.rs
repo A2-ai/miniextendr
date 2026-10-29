@@ -240,12 +240,13 @@ const PROT_USER_INDEX: isize = 1;
 /// which start at this index
 const PROT_VEC_LEN: isize = 2;
 
-/// Length of `T`'s `prot` list: the type ID, the user slot and one entry per
-/// [`Sidecar<T>`] field.
+/// Length of `T`'s `prot` list: the type ID, the user slot, one entry per
+/// [`Sidecar<T>`] field, and for a serde type the carrier of its saved value
+/// (#2186).
 #[inline]
 fn prot_vec_len<T: TypedExternal>() -> R_xlen_t {
     let r_slots = R_xlen_t::try_from(T::R_SLOT_COUNT).expect("sidecar count exceeds R_xlen_t::MAX");
-    PROT_VEC_LEN + r_slots
+    PROT_VEC_LEN + r_slots + R_xlen_t::from(snapshot::has_carrier_slot::<T>())
 }
 
 #[inline]
@@ -516,6 +517,23 @@ pub(crate) fn restored_message_of<T: TypedExternal>(default: impl FnOnce() -> St
 pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> NullAddress {
     let kind = unsafe { classify_null_address::<T>(sexp) };
     let name = || receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
+    // A serde type's save that could not be decoded (#2186), by any version:
+    // the no-value refusal, with the decoding error as `e$parent`.
+    if matches!(
+        kind,
+        NullAddress::Restored | NullAddress::OtherVersion { .. }
+    ) && let Some(cause) = unsafe { snapshot::decode_failure::<T>(sexp) }
+    {
+        std::panic::panic_any(
+            RCondition::Error {
+                message: decode_failed_message::<T>(&name(), cause.message()),
+                class: restored_classes_of::<T>(RESTORED_NO_VALUE_CLASS),
+                data: None,
+                call: ConditionCall::Inherit,
+            }
+            .with_parent(cause),
+        )
+    }
     let (message, class, data) = match kind {
         NullAddress::Restored => (
             restored_message_of::<T>(|| restored_no_value_message(&name())),
@@ -544,6 +562,18 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEX
         data,
         call: ConditionCall::Inherit,
     })
+}
+
+/// The message of a save that could not be decoded (#2186): the package's
+/// restored message, else miniextendr's, then the cause's.
+fn decode_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> String {
+    match T::RESTORED_ERROR_MESSAGE {
+        Some(message) => format!("{message} (its saved value could not be read: {cause})"),
+        None => format!(
+            "this `{type_name}` object was restored from a saved session, but its saved value \
+             could not be read: {cause}; re-create it"
+        ),
+    }
 }
 
 /// The message of a refused rebuild: the restored refusal's, then the cause's.
@@ -936,6 +966,22 @@ pub trait TypedExternal: 'static {
     #[inline]
     fn __mx_visit_sidecars(&self, _visit: &mut dyn FnMut(usize, &'static str, &dyn SidecarField)) {}
 
+    /// How a value of this type goes into a save and comes back after
+    /// `readRDS()` (#2186): `Some` for a type that is `Serialize +
+    /// DeserializeOwned` with miniextendr-api's `serde` feature.
+    /// `#[derive(ExternalPtr)]` emits the probe that decides it, in the
+    /// type's own impl; the default (`impl_typed_external!`, the standard
+    /// library types', a hand-written impl) is `None`, which keeps the
+    /// restored refusal.
+    #[doc(hidden)]
+    #[inline]
+    fn __mx_snapshot() -> Option<Snapshot<Self>>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Whether a pointer of this type that this version of its crate saved
     /// is rebuilt on first use after `readRDS()`, by [`Self::__mx_rebuild`],
     /// instead of refused.
@@ -1155,12 +1201,20 @@ pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
             None => receiver_not_a_handle::<T>(sexp),
         }
     };
-    // A pointer restored from a saved session gets its value back here when
-    // the type has a rebuild hook, before the receiver is borrowed.
+    // A pointer restored from a saved session gets its value back here, before
+    // the receiver is borrowed: a serde type's saved value (#2186), else the
+    // type's rebuild hook. A save that could not be decoded is refused by the
+    // receiver's prelude, which names the decoding error.
     // SAFETY: on R's main thread; `ptr` is a valid EXTPTRSXP reachable from
     // `sexp`, which the call's frame roots.
-    if T::REBUILDS && unsafe { R_ExternalPtrAddr(ptr) }.is_null() {
-        unsafe { rebuild_restored::<T>(ptr, sexp) };
+    if unsafe { R_ExternalPtrAddr(ptr) }.is_null() {
+        let attached = matches!(
+            unsafe { snapshot::attach::<T>(ptr) },
+            snapshot::Attach::Attached
+        );
+        if !attached && T::REBUILDS {
+            unsafe { rebuild_restored::<T>(ptr, sexp) };
+        }
     }
     ptr
 }
@@ -1650,6 +1704,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
+        // A serde type carries its value into a save (#2186).
+        unsafe { snapshot::init_carrier::<T>(sexp) };
 
         // Root the owning handle for its whole Rust lifetime so it survives R
         // allocations while held (e.g. element-by-element in a `Vec`) before
@@ -1695,10 +1751,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_raw = Box::into_raw(allocation);
         unsafe { R_SetExternalPtrAddr_unchecked(sexp, any_raw.cast()) };
 
-        // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
+        // Flush the value's pending `Sidecar` values and add the carrier of a
+        // serde type (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
+        unsafe { snapshot::init_carrier::<T>(sexp) };
 
         // Root the owning handle (see `create_extptr_sexp` for the rationale).
         // `root_owned` uses the pool's checked FFI, which runs inline here
@@ -1816,10 +1874,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_raw = Box::into_raw(allocation);
         unsafe { R_SetExternalPtrAddr_unchecked(sexp, any_raw.cast()) };
 
-        // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
+        // Flush the value's pending `Sidecar` values and add the carrier of a
+        // serde type (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
+        unsafe { snapshot::init_carrier::<T>(sexp) };
 
         // Root via the destination list instead of the pool: `dest` is protected
         // by the caller, so storing `sexp` keeps it (and its `prot`) alive with
@@ -2239,8 +2299,14 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Uses `Any::downcast_ref` for authoritative type checking (Rust `TypeId`).
     /// Type-erased `ExternalPtr<()>` deliberately skips the concrete downcast.
     ///
+    /// A serde type's pointer restored from a saved session gets its value
+    /// first (#2186): attaching it allocates the pointer's new protection
+    /// list, so this call may allocate (it never raises).
+    /// [`wrap_sexp_unchecked`](Self::wrap_sexp_unchecked) does not attach.
+    ///
     /// Returns `None` if:
-    /// - The internal pointer is null
+    /// - The internal pointer is null (a restored pointer whose save carries
+    ///   no value, or one that could not be decoded, included)
     /// - The metadata does not identify ordinary miniextendr storage
     /// - The stored `Box<dyn Any>` does not contain a `RefCell<T>`
     ///
@@ -2258,7 +2324,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
-            return None;
+            // SAFETY: on R's main thread with a valid EXTPTRSXP, which the
+            // caller roots. Attaching never raises.
+            return match unsafe { snapshot::attach::<T>(sexp) } {
+                snapshot::Attach::Attached => unsafe { Self::wrap_sexp(sexp) },
+                snapshot::Attach::Failed | snapshot::Attach::NoCarrier => None,
+            };
         }
         unsafe { stored_type_id_symbol(sexp) }?;
 
@@ -2278,6 +2349,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
     ///
     /// Skips thread safety checks for performance-critical paths like ALTREP callbacks.
+    /// Unlike [`wrap_sexp`](Self::wrap_sexp) it never attaches a serde type's
+    /// saved value to a restored pointer (#2186), so it allocates nothing and
+    /// returns `None` for such a pointer until another access attached it.
     ///
     /// # Safety
     ///
@@ -2351,7 +2425,16 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             // SAFETY: on R's main thread with a valid EXTPTRSXP, which the
-            // caller roots.
+            // caller roots. A serde type's saved value comes back (#2186); a
+            // save that could not be decoded raises its refusal, with the
+            // decoding error as `e$parent`.
+            match unsafe { snapshot::attach::<T>(sexp) } {
+                snapshot::Attach::Attached => return unsafe { Self::wrap_sexp_with_error(sexp) },
+                snapshot::Attach::Failed => {
+                    unsafe { refuse_restored::<T>(sexp, sexp) };
+                }
+                snapshot::Attach::NoCarrier => {}
+            }
             match unsafe { try_rebuild_restored::<T>(sexp, sexp) } {
                 Ok(true) => return unsafe { Self::wrap_sexp_with_error(sexp) },
                 Ok(false) => {}
@@ -3295,6 +3378,14 @@ pub use borrowed::{
 
 mod sidecar;
 pub use sidecar::*;
+
+mod snapshot;
+pub use snapshot::DECODE_ERROR_CLASS;
+#[doc(hidden)]
+pub use snapshot::{
+    Snapshot, SnapshotClass, SnapshotNone, SnapshotProbe, SnapshotSerde,
+    register as __mx_register_snapshot,
+};
 
 #[cfg(test)]
 mod tests {

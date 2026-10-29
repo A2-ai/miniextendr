@@ -6256,3 +6256,82 @@ pub fn gc_stress_converted_references() {
 }
 
 // endregion
+
+// region: a serde type's saved value (#2186)
+
+/// `x` serialized and read back. Each value is rooted before the next call
+/// allocates.
+#[cfg(feature = "serde")]
+fn reload_value(x: SEXP) -> OwnedProtect {
+    use miniextendr_api::expression::RCall;
+    // SAFETY: on R's main thread.
+    unsafe {
+        let bytes = OwnedProtect::new(
+            RCall::new("serialize")
+                .arg(x)
+                .arg(SEXP::nil())
+                .eval_base()
+                .expect("serialize"),
+        );
+        let back = RCall::new("unserialize")
+            .arg(bytes.get())
+            .eval_base()
+            .expect("unserialize");
+        // The protect stack is LIFO: release `bytes` before protecting the
+        // result (unprotecting allocates nothing).
+        drop(bytes);
+        OwnedProtect::new(back)
+    }
+}
+
+/// Saves `SavedR6` values with a sidecar value and reads them back: the
+/// carrier encodes the value during `serialize()`, decodes it into a holder
+/// during `unserialize()` (with the skipped `Sidecar`'s pending default),
+/// and the first access lays out a new protection list and attaches the
+/// value. Saves the attached value again, and a value read back but not yet
+/// attached; then refuses a `SavedPositive` whose save does not decode,
+/// building the refusal and its parent. No arguments — picked up by the fast
+/// `gctorture(TRUE)` no-arg sweep (#430).
+// Stays on R's main thread under `worker-default`: it holds R values.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_saved_value() {
+    use crate::saved_value_tests::{SavedPositive, SavedR6};
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::condition::{RConditionData, catch_condition};
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    for n in 1..=2 {
+        let mut ptr = ExternalPtr::new(SavedR6::new(n));
+        SavedR6::set_tags(&mut ptr, vec![format!("tag{n}"); 4]);
+        let back = reload_value(ptr.as_sexp());
+        drop(ptr);
+        churn_pending_shapes();
+        // Saved again before any access: the carrier writes what it read.
+        let back = reload_value(back.get());
+        let mut attached = ExternalPtr::<SavedR6>::try_from_sexp(back.get()).expect("attached");
+        churn_pending_shapes();
+        assert_eq!(attached.borrow().n, n);
+        assert_eq!(SavedR6::tags(&attached), vec![format!("tag{n}"); 4]);
+        attached.borrow_mut().n += 10;
+        let again = reload_value(back.get());
+        let again = ExternalPtr::<SavedR6>::try_from_sexp(again.get()).expect("attached");
+        assert_eq!(again.borrow().n, n + 10);
+        assert_eq!(SavedR6::tags(&again), vec![format!("tag{n}"); 4]);
+    }
+
+    let refused = reload_value(ExternalPtr::new(SavedPositive::new(-1)).as_sexp());
+    churn_pending_shapes();
+    let refusal =
+        catch_condition(|| ExternalPtr::<SavedPositive>::try_from_sexp(refused.get()).is_ok())
+            .expect_err("a save that does not decode is refused");
+    assert!(
+        refusal
+            .class()
+            .iter()
+            .any(|c| c == "miniextendr_restored_no_value"),
+        "{refusal:?}"
+    );
+}
+
+// endregion

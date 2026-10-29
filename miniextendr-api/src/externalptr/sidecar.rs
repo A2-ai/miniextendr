@@ -884,6 +884,17 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
 ) -> (SEXP, Option<&'a RefCell<T>>) {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
     let mut any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    // A serde type's saved value comes back at any reader (#2186). A save
+    // that could not be decoded reads as a restored pointer, and a refusal
+    // below names the decoding error.
+    if any_raw.is_null()
+        && matches!(
+            unsafe { super::snapshot::attach::<T>(x) },
+            super::snapshot::Attach::Attached
+        )
+    {
+        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    }
     // A reader that needs the value rebuilds a restored pointer first, when
     // the type has a hook; a `Sidecar` read takes the saved slot as it is.
     // Another version's save, under `any_version`, is rebuilt by any reader:
@@ -977,6 +988,15 @@ pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> RefMut<'a, 
 unsafe fn sidecar_r_cell<'a, T: TypedExternal>(receiver: SEXP) -> &'a RefCell<T> {
     let x = unsafe { sidecar_receiver::<T>(receiver) };
     let mut any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    // A serde type's saved value comes back here (#2186).
+    if any_raw.is_null()
+        && matches!(
+            unsafe { super::snapshot::attach::<T>(x) },
+            super::snapshot::Attach::Attached
+        )
+    {
+        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    }
     if any_raw.is_null() && unsafe { super::rebuild_restored::<T>(x, receiver) } {
         any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     }
@@ -1043,7 +1063,14 @@ pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
     } else {
         unsafe { unwrap_class_handle(x) }
     };
-    ptr.is_some_and(|ptr| !unsafe { R_ExternalPtrAddr(ptr) }.is_null())
+    ptr.is_some_and(|ptr| {
+        // A serde type's saved value comes back here too (#2186); attaching
+        // raises nothing.
+        if unsafe { R_ExternalPtrAddr(ptr) }.is_null() {
+            let _ = unsafe { super::snapshot::attach::<T>(ptr) };
+        }
+        !unsafe { R_ExternalPtrAddr(ptr) }.is_null()
+    })
 }
 
 /// Reads `T`'s `Sidecar` field `index` from the external pointer `x` carries

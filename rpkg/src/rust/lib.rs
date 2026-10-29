@@ -65,6 +65,7 @@
 //! - `serde_error_tests`: serde-classed Result errors + `serde_error(..)` options (feature: `serde`)
 //! - `serde_error_shape_tests`: `serde_error_shape!`, `serde_error(shape = ..)` + the `as_*` boundary options (feature: `serde`)
 //! - `serde_r_tests`: Serde R serialization tests (feature: `serde`)
+//! - `saved_value_tests`: serde types come back after `readRDS()` (#2186) (feature: `serde`)
 //! - `ndarray_tests`: N-dimensional array tests (feature: `ndarray`)
 //! - `vctrs_tests`: vctrs compatibility tests (feature: `vctrs`)
 //! - `vctrs_class_example`: vctrs class implementation example (feature: `vctrs`)
@@ -358,6 +359,8 @@ mod s7_conversion_marker_tests;
 mod s7_dispatch_tests;
 mod s7_nonsyntactic_tests;
 mod s7_tests;
+#[cfg(feature = "serde")]
+mod saved_value_tests;
 mod scalar_option_return_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]
