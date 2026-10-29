@@ -931,23 +931,29 @@ object; keep the item of the package whose function you mean. Naming the same
 the crate name one name from two packages. The message lists every item with
 its `(file.rs:line:column)`; keep the items of one package.
 
-### Install error: "`reexport!` re-exports `generics::tidy` (...), and the package's wrappers also bind `tidy` (...)"
+### Install error: "`reexport!` re-exports `generics::tidy` (...), and the package also binds `tidy` (...)"
 
-The generated wrappers define the re-exported name too: a `#[miniextendr]`
-function, a class, or the S3 generic of an `s3` impl block's method (a method
-without `generic = "..."` defines a generic of its own name). The package's
-own `tidy` would hide the imported one in its namespace, and `export(tidy)`
-would export it instead. Remove the re-export, or rename the package's binding
-(`r_name = "..."`, `class = "..."`). For an S3 method on the other package's
-generic, give the method `s3(generic = "tidy")`: an explicit generic is
-neither defined nor exported by the package.
+The package defines the re-exported name too. In the generated wrappers
+("from Rust ..."): a `#[miniextendr]` function, a class, or the S3 generic of
+an `s3` impl block's method (a method without `generic = "..."` defines a
+generic of its own name). In a hand-written file ("in R/tidy.R"): a top-level
+`tidy <- function(...)`. The package's own `tidy` would hide the imported one
+in its namespace, and `export(tidy)` would export it instead. Remove the
+re-export, or rename the package's binding: `r_name = "..."` / `class = "..."`
+in Rust, or the definition in the named R file. For an S3 method on the other
+package's generic, give the method `s3(generic = "tidy")`: an explicit generic
+is neither defined nor exported by the package.
 
-The same error with "also export `tidy`" means a doc comment exports the name
+The same error with "also exports `tidy`" means a doc comment exports the name
 itself (`@export tidy`, `@rawNamespace export(tidy)`, the workaround before
-`reexport!`). `reexport!` writes the export; drop the other one.
+`reexport!`), in a Rust doc comment or a hand-written file. `reexport!` writes
+the export; drop the other one.
 
-Hand-written R files are not read: a function of the same name there is not
-refused.
+The hand-written files are the code files directly in `R/`, read line by line
+as the generated ones are, so `tidy = function(...)`, `assign("tidy", ...)`,
+a definition inside `local()`, a binding to something other than a function or
+class (`tidy <- other::tidy`), `setGeneric("tidy", ...)` and the files in
+`R/unix/` and `R/windows/` are not refused.
 
 ### "`rng(seed = sed)` names no parameter of this function"
 

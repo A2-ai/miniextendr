@@ -3884,9 +3884,10 @@ pub fn r(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///   can re-export the generics its methods are for; the wrappers get one
 ///   block per `pkg::name`.
 /// - The wrapper writer refuses, at install time, a name re-exported from two
-///   packages, and a name the package's generated wrappers also define or
-///   export (an S3 generic of an impl block, a function, an
-///   `@rawNamespace export(...)`). Hand-written R files are not checked.
+///   packages, and a name the package also defines or exports, in its
+///   generated wrappers (an S3 generic of an impl block, a function, an
+///   `@rawNamespace export(...)`) or a hand-written file in `R/` (a top-level
+///   `name <- function(...)`, an `@export name`).
 /// - A package name that is not an R package name, a name that is not an R
 ///   name, and two packages for one name in one invocation are compile
 ///   errors, all reported at once.

@@ -413,6 +413,9 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
     list(NA_character_, is_na),
     list(factor(NA_character_), is_na),
     list(c("drop", "draw"), not_scalar),
+    list(c("drop", NA), is_na),
+    list(factor(c("drop", NA)), is_na),
+    list(c(NA_character_, NA_character_), is_na),
     list(c("draw", "drop", "error"), not_scalar),
     list(c(a = "drop", b = "draw", c = "error"), not_scalar),
     list(character(0), not_scalar),
@@ -507,7 +510,8 @@ test_that("match_arg_param_with_default() follows a default = parameter's rotate
 
 test_that("an NA in a choice argument is refused as NA, unless it matches a choice", {
   na <- function(param) sprintf("'%s' must not be NA", param)
-  for (x in list(NA, NA_character_, NA_real_, factor(NA))) {
+  # Whatever the length: a longer value is refused for its NA, not its length.
+  for (x in list(NA, NA_character_, NA_real_, factor(NA), c("Fast", NA), factor(c("Fast", NA)))) {
     label <- paste(deparse(x), collapse = "")
     expect_error(match_arg_set_mode(x), na("mode"), fixed = TRUE, info = label)
     expect_error(miniextendr:::match_arg_converted_fill(x), na("fill"), fixed = TRUE, info = label)
@@ -521,6 +525,17 @@ test_that("an NA in a choice argument is refused as NA, unless it matches a choi
   expect_identical(miniextendr:::match_arg_na_choices(c("Drop", NA_character_)), "Drop,NA")
   # A value that is not character is not matched: an NA in it is refused.
   expect_error(miniextendr:::match_arg_na_choice(NA), na("keep"), fixed = TRUE)
+  # A longer value holding an NA that selects "NA" is refused for its length.
+  expect_error(
+    miniextendr:::match_arg_na_choice(c("Drop", NA)),
+    "'keep' must be of length 1",
+    fixed = TRUE
+  )
+  expect_error(
+    miniextendr:::match_arg_na_choice_converted(c("Drop", NA)),
+    "'keep' must be of length 1",
+    fixed = TRUE
+  )
   expect_error(miniextendr:::match_arg_na_choice_converted(NA), na("keep"), fixed = TRUE)
   expect_error(miniextendr:::match_arg_na_choices(NA), na("keep"), fixed = TRUE)
   # NULL keeps its meaning (the first choice, or every choice), and a value
