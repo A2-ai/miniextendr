@@ -1,5 +1,8 @@
 //! Tests for ExternalPtr functionality.
 
+// Exercises the deprecated `worker` option (#2117).
+#![allow(deprecated)]
+
 use miniextendr_api::externalptr::ErasedExternalPtr;
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::miniextendr;
@@ -185,7 +188,7 @@ pub fn test_extptr_on_main_thread() -> i32 {
 #[cfg(feature = "worker-thread")]
 #[miniextendr(worker, noexport)]
 pub fn extptr_worker_value(ptr: ExternalPtr<Counter>) -> i32 {
-    ptr.value
+    ptr.borrow().value
 }
 
 // Round-trip a borrowed handle through the worker. Returning it must preserve
