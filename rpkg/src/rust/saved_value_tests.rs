@@ -9,12 +9,14 @@
 //! `SavedRecord` reads a save that lacks a field it added with
 //! `#[serde(default)]`, and refuses one that lacks a field without a default.
 //! `SavedEnv::bump_and_call` saves the object from a callback while a
-//! `&mut self` call holds it: a borrow conflict.
+//! `&mut self` call holds it: a borrow conflict. `saved_rewrite_type` makes
+//! a live object's save read as made by a type at another path, as one
+//! saved before the type moved to another module would.
 
 use crate::serde::{Deserialize, Deserializer, Serialize};
 use miniextendr_api::expression::RCall;
 use miniextendr_api::externalptr::{ExternalPtr, RSidecar, Sidecar};
-use miniextendr_api::{SEXP, miniextendr};
+use miniextendr_api::{SEXP, SEXPTYPE, SexpExt, miniextendr};
 
 // region: One type per class system
 
@@ -285,6 +287,28 @@ impl SavedRecord {
     pub fn summary(&self) -> String {
         format!("{}/{}/{}", self.n, self.note, self.weight)
     }
+}
+
+// endregion
+
+// region: A type at another path
+
+/// Rewrites the type ID an external pointer keeps (`crate@version::path`),
+/// keeping the version, so its next save reads as made by `crate_name`'s
+/// type at `path` (`module::Type`): a type since moved to another module,
+/// renamed, or of another crate. A live pointer keeps working.
+/// @param x An external pointer.
+/// @param crate_name The crate to write, e.g. `"miniextendr"`.
+/// @param path The module path and type name to write.
+#[miniextendr(noexport)]
+pub fn saved_rewrite_type(x: SEXP, crate_name: String, path: String) {
+    assert_eq!(
+        x.type_of(),
+        SEXPTYPE::EXTPTRSXP,
+        "`x` is an external pointer"
+    );
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn); `x` is an EXTPTRSXP.
+    unsafe { miniextendr_api::externalptr::rewrite_stored_type_for_tests(x, &crate_name, &path) };
 }
 
 // endregion

@@ -12,6 +12,8 @@
 # `SavedEnv` and `SavedS3` are serde, `PlainR6` is not. `SavedPositive`
 # refuses to decode a negative count. `SavedRecord` leaves an empty note and a
 # zero weight out of its save, as an older version would have saved it.
+# `saved_rewrite_type()` makes a save read as made by a type at another path:
+# one saved before the type moved to another module, or another type.
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -164,6 +166,38 @@ test_that("a save by another version is decoded: serde decides", {
   expect_s3_class(e, "miniextendr_restored_no_value")
   expect_s3_class(e$parent, "miniextendr_decode_error")
   expect_match(conditionMessage(e$parent), "weight", fixed = TRUE)
+})
+
+test_that("a save made before the type moved to another module comes back", {
+  obj <- SavedEnv$new(4L, "moved")
+  saved_rewrite_type(obj, "miniextendr", "miniextendr::old_module::SavedEnv")
+  back <- reload_rds(obj)
+  expect_identical(back$value(), 4L)
+  expect_identical(back$label(), "moved")
+  # Attached, the object saves under the type's own path.
+  expect_identical(reload(back)$value(), 4L)
+
+  r6 <- SavedR6$new(2L)
+  r6$tags <- "kept"
+  saved_rewrite_type(ptr_of(r6), "miniextendr", "miniextendr::old_module::SavedR6")
+  back <- reload(r6)
+  expect_identical(back$tags, "kept")
+  expect_identical(back$value(), 2L)
+})
+
+test_that("a save of another type name or another crate is refused", {
+  for (case in list(
+    c("miniextendr", "miniextendr::saved_value_tests::OldName"),
+    c("otherpkg", "otherpkg::saved_value_tests::SavedEnv")
+  )) {
+    obj <- SavedEnv$new(4L, "other")
+    saved_rewrite_type(obj, case[[1]], case[[2]])
+    back <- reload(obj)
+    e <- tryCatch(back$value(), error = identity)
+    expect_s3_class(e, "error")
+    expect_false(inherits(e, "miniextendr_restored"))
+    expect_match(conditionMessage(e), case[[2]], fixed = TRUE)
+  }
 })
 
 test_that("a version-2 save carries no value and is refused", {

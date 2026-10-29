@@ -956,7 +956,9 @@ save keeps:
   (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and the S7
   properties read and write the restored pointer;
 - the type ID in `prot[0]`, crate version included, which says what saved
-  it.
+  it. A save is the type's when the ID's crate and type name are the
+  type's: the module path is left out, so a type moved to another module of
+  its crate keeps its saves (#2186).
 
 Unless the type derives `Serialize` and `Deserialize` ("A serde type comes
 back after `readRDS()`" below), it does not keep the Rust value. Everything
@@ -1011,7 +1013,8 @@ fields included: a reloaded object is refused, not recovered
   of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
-the type ID in `prot[0]`.
+the crate, version and type name of the type ID in `prot[0]`, not its
+module path.
 
 #### A serde type comes back after `readRDS()`
 
@@ -1048,7 +1051,7 @@ m2$total()                 # the value came back
 
 - **How.** The pointer's `prot` list ends with a carrier: a zero-length
   ALTREP raw vector of a class the package registers for the type when it
-  loads (`miniextendr_saved:<module path>::<Type>`). R calls the class
+  loads (`miniextendr_saved:<crate>::<Type>`). R calls the class
   itself. During `serialize()` it encodes the value through the crate's
   serde-to-R path (`miniextendr_api::serde::to_r`, an R list) into the save.
   During `unserialize()`, which loads the package first when it is not, it
@@ -1098,11 +1101,25 @@ m2$total()                 # the value came back
 - **No value comes back** for a save made with `serialize(version = 2)`,
   which writes no ALTREP class, nor when the package or the type's class
   can't be found (R warns `cannot unserialize ALTVEC object of class ...`):
-  a type renamed or moved to another module, or one that dropped serde. The
-  reload is refused, as for a type without serde. A type whose
+  a type renamed, or one that dropped serde. The reload is refused, as for a
+  type without serde. A type whose
   `TypedExternal` impl is hand-written (or `impl_typed_external!`'s), and
   an object behind a trait-ABI handle, have no carrier either (#2243,
   #2242).
+
+- **Moving and renaming a type.** A save is found by the crate's name and
+  the type's: the carrier class (`miniextendr_saved:<crate>::<Type>`) and
+  the type ID's match both leave the version and the module path out.
+  - Moving a type to another module of its crate is safe: earlier saves
+    come back, and the first use writes the type's new path into the
+    pointer, which its next save keeps.
+  - Renaming a type breaks its earlier saves: R doesn't find their class,
+    and they are refused as above. Renaming the type renames its R class
+    too.
+  - Two serde types of one crate can't share a name, even in different
+    modules: each would read the other's saves. The package then fails to
+    load, with an error naming both types' paths. A type without serde has
+    no carrier and is not checked.
 
 **webR:** the round trip has not been tested there. Nothing in it is
 platform-specific (R serializes the pointer's tag and `prot` the same way),

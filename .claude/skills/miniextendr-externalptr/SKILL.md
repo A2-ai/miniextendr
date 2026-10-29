@@ -363,7 +363,10 @@ receive it:
   path changes integers above 2^53 (#1417) and `i32::MIN` (#1419). A save
   that fails to decode, a `version = 2` save, and any other type are
   refused at the first use with the classed `miniextendr_restored_*` errors
-  (the decoding error as `e$parent`), and `readRDS()` itself succeeds.
+  (the decoding error as `e$parent`), and `readRDS()` itself succeeds. A
+  save is found by crate + type name, not module path: moving a type keeps
+  its saves, renaming it breaks them, and two serde types of one crate with
+  the same name fail the package load.
   `docs/EXTERNALPTR.md`, "A serde type comes back after `readRDS()`".
 
 - **Cross-package type safety requires the same crate version**: the `TypeId`

@@ -365,6 +365,18 @@ fn split_type_id(id: &str) -> (Option<&str>, Option<&str>, &str) {
     }
 }
 
+/// What a save of a type is matched by (#2186): the type ID's crate,
+/// version and type name, without the module path, so a type moved to
+/// another module of its crate still owns its saves. `None` for a
+/// hand-written ID without a version.
+fn saved_identity(id: &str) -> Option<(&str, &str, &str)> {
+    let (Some(crate_name), Some(version), path) = split_type_id(id) else {
+        return None;
+    };
+    let name = path.rsplit_once("::").map_or(path, |(_, name)| name);
+    Some((crate_name, version, name))
+}
+
 // region: A pointer without an address
 
 /// The condition class every error about a pointer restored from a saved
@@ -399,10 +411,10 @@ pub(crate) enum NullAddress {
     /// Not built by `ExternalPtr`: R's `new("externalptr")`, a pointer
     /// `into_inner` cleared, another library's pointer.
     Foreign,
-    /// Built for `T` by this version of its crate: restored from a saved
-    /// session, so the Rust value is gone.
+    /// Built for `T` by this version of its crate, in whatever module `T`
+    /// was then: restored from a saved session, so the Rust value is gone.
     Restored,
-    /// Built for `T` by another version of its crate.
+    /// Built for `T` by another version of its crate, in any module.
     OtherVersion {
         /// The crate's name.
         crate_name: &'static str,
@@ -419,8 +431,11 @@ pub(crate) enum NullAddress {
 }
 
 /// Reads `prot[0]` of a pointer without an address and says what it is for
-/// `T`. Symbol names live for the session, so the borrowed parts are
-/// `'static`.
+/// `T`. A save is `T`'s when its crate and type name are `T`'s
+/// ([`saved_identity`]): the module path is left out, so moving a type to
+/// another module keeps its saves (#2186). A pointer with a live address is
+/// never classified: `Any::downcast` decides its type. Symbol names live for
+/// the session, so the borrowed parts are `'static`.
 ///
 /// # Safety
 ///
@@ -434,14 +449,18 @@ pub(crate) unsafe fn classify_null_address<T: TypedExternal>(sexp: SEXP) -> Null
     if found == own {
         return NullAddress::Restored;
     }
-    match (split_type_id(found), split_type_id(own)) {
-        ((Some(crate_name), Some(saved), path), (Some(own_crate), Some(current), own_path))
-            if crate_name == own_crate && path == own_path =>
+    match (saved_identity(found), saved_identity(own)) {
+        (Some((crate_name, saved, name)), Some((own_crate, current, own_name)))
+            if crate_name == own_crate && name == own_name =>
         {
-            NullAddress::OtherVersion {
-                crate_name,
-                saved,
-                current,
+            if saved == current {
+                NullAddress::Restored
+            } else {
+                NullAddress::OtherVersion {
+                    crate_name,
+                    saved,
+                    current,
+                }
             }
         }
         _ => NullAddress::OtherType { found },
@@ -635,6 +654,52 @@ pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
     let (crate_name, path) = match split_type_id(symbol_name(sym)) {
         (Some(crate_name), Some(_), path) => (crate_name, path),
         _ => panic!("the stored type ID has no version"),
+    };
+    let rewritten = std::ffi::CString::new(format!("{crate_name}@{version}::{path}"))
+        .expect("a type ID has no NUL");
+    // `Rf_install` interns the symbol for the session; the list keeps it.
+    let prot = unsafe { R_ExternalPtrProtected(sexp) };
+    prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe {
+        Rf_install(rewritten.as_ptr())
+    });
+}
+
+/// Test support: make a pointer read as built by `crate_name` for the type
+/// at `path` (`module::Type`), keeping the version in its type ID, so a
+/// package can test what a save of a type moved to another module, renamed,
+/// or of another crate gives after `unserialize()` (#2186).
+///
+/// It rewrites the type ID in `prot[0]` to `crate_name@version::path`. A
+/// live pointer keeps working, since `Any::downcast` checks its type, and its
+/// next save writes the rewritten ID, as the type's earlier location would
+/// have:
+///
+/// ```ignore
+/// /// @param x An external pointer.
+/// #[miniextendr(noexport)]
+/// pub fn rewrite_saved_type(x: SEXP, crate_name: String, path: String) {
+///     // SAFETY: R's main thread; `x` is an external pointer.
+///     unsafe { miniextendr_api::externalptr::rewrite_stored_type_for_tests(x, &crate_name, &path) };
+/// }
+/// ```
+///
+/// ```r
+/// rewrite_saved_type(obj, "mypkg", "mypkg::old_module::Model")
+/// back <- unserialize(serialize(obj, NULL))  # comes back as a `Model`
+/// ```
+///
+/// # Panics
+///
+/// When `sexp` is not an `ExternalPtr`-built pointer with a versioned type
+/// ID.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+pub unsafe fn rewrite_stored_type_for_tests(sexp: SEXP, crate_name: &str, path: &str) {
+    let sym = unsafe { stored_type_id_symbol(sexp) }.expect("an `ExternalPtr`-built pointer");
+    let (_, Some(version), _) = split_type_id(symbol_name(sym)) else {
+        panic!("the stored type ID has no version")
     };
     let rewritten = std::ffi::CString::new(format!("{crate_name}@{version}::{path}"))
         .expect("a type ID has no NUL");

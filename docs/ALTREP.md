@@ -636,7 +636,8 @@ same way it read `dataptr`.
 The same two callbacks carry a serde `ExternalPtr` type's value through a
 save (#2186). `#[derive(ExternalPtr)]` registers, for a type that derives
 `Serialize` and `Deserialize`, a zero-length raw ALTREP class
-(`miniextendr_saved:<module path>::<Type>`) through the same eager
+(`miniextendr_saved:<crate>::<Type>`, without the module path, so a type
+moved to another module still finds its saves) through the same eager
 registration as the derives here, and every pointer of the type keeps an
 instance of it as the last element of its protection list. Its
 `Serialized_state` encodes the value through the serde-to-R path, and its

@@ -38,11 +38,12 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use super::{
     ExternalPtr, NullAddress, PROT_TYPE_ID_INDEX, PROT_USER_INDEX, PROT_VEC_LEN, TypedExternal,
-    classify_null_address, release_any, sidecar, split_type_id, type_id_str, type_id_symbol,
+    classify_null_address, release_any, saved_identity, sidecar, split_type_id, type_id_str,
+    type_id_symbol,
 };
 use crate::altrep::RBase;
 use crate::altrep_traits::{AltVec, Altrep};
@@ -217,23 +218,76 @@ impl<T: TypedExternal> AltVec for Carrier<T> {
     }
 }
 
-/// The carrier class name of `T`: the type's path without the crate
-/// version, so a save by any version finds the class.
-fn class_name<T: TypedExternal>() -> std::ffi::CString {
-    let (_, _, path) = split_type_id(type_id_str::<T>());
-    std::ffi::CString::new(format!("miniextendr_saved:{path}")).expect("a type ID has no NUL byte")
+/// The carrier class name of the type with ID `id`:
+/// `miniextendr_saved:<crate>::<Type>`, without the crate version or the
+/// module path ([`saved_identity`]), so a save by any version, or of a type
+/// since moved to another module, finds the class. A hand-written ID
+/// without a version is used whole.
+fn class_name_of(id: &str) -> String {
+    match saved_identity(id) {
+        Some((crate_name, _, name)) => format!("miniextendr_saved:{crate_name}::{name}"),
+        None => format!("miniextendr_saved:{id}"),
+    }
+}
+
+/// The carrier class names registered so far, each with the ID of the type
+/// that registered it.
+static CLAIMED: Mutex<Vec<(String, &'static str)>> = Mutex::new(Vec::new());
+
+/// Claims the carrier class `name` for the type with ID `id`. Two serde
+/// types of one crate with the same name would share the class, and each
+/// would read the other's saves, so the second one is an error naming both
+/// types' paths. Claiming a name again for the same type is a no-op.
+fn claim(
+    claimed: &mut Vec<(String, &'static str)>,
+    name: &str,
+    id: &'static str,
+) -> Result<(), String> {
+    match claimed
+        .iter()
+        .find(|(claimed_name, _)| claimed_name == name)
+    {
+        Some(&(_, other)) if other != id => {
+            let path = |id| split_type_id(id).2;
+            Err(format!(
+                "miniextendr: the serde `ExternalPtr` types `{}` and `{}` have the same name in \
+                 one crate. A saved object is found by its crate and type name, so each would \
+                 read the other's saves; rename one",
+                path(other),
+                path(id),
+            ))
+        }
+        Some(_) => Ok(()),
+        None => {
+            claimed.push((name.to_owned(), id));
+            Ok(())
+        }
+    }
 }
 
 /// Registers `T`'s carrier class when `T` is serde, once. The registration
 /// function `#[derive(ExternalPtr)]` emits for the type calls it from
 /// `R_init` (through `MX_ALTREP_REGISTRATIONS`).
+///
+/// # Panics
+///
+/// When another serde type of `T`'s crate with `T`'s name registered its
+/// class first (`claim`). `R_init` turns the panic into an R error, so the
+/// package does not load.
 #[doc(hidden)]
 pub fn register<T: TypedExternal>() {
     let Some(snapshot) = T::__mx_snapshot() else {
         return;
     };
+    let id = type_id_str::<T>();
+    let name = class_name_of(id);
+    // Release the lock before raising.
+    let claimed = claim(&mut CLAIMED.lock().expect("CLAIMED poisoned"), &name, id);
+    if let Err(message) = claimed {
+        panic!("{message}");
+    }
     snapshot.class.0.get_or_init(|| {
-        let name = class_name::<T>();
+        let name = std::ffi::CString::new(name).expect("a type ID has no NUL byte");
         // SAFETY: during `R_init`, after the package name and DLL are set.
         let class = unsafe {
             crate::altrep::make_class_by_base(
@@ -530,3 +584,45 @@ fn saved_field_slot(saved: SEXP, index: usize, name: &str) -> Option<R_xlen_t> {
 }
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::{claim, class_name_of};
+
+    #[test]
+    fn the_class_name_leaves_out_the_version_and_the_module_path() {
+        assert_eq!(
+            class_name_of("mypkg@1.2.0::mypkg::models::Model"),
+            "miniextendr_saved:mypkg::Model"
+        );
+        assert_eq!(
+            class_name_of("mypkg@0.1.0::mypkg::Model"),
+            "miniextendr_saved:mypkg::Model"
+        );
+        assert_eq!(class_name_of("my::Model"), "miniextendr_saved:my::Model");
+    }
+
+    #[test]
+    fn two_types_of_one_crate_with_the_same_name_are_refused() {
+        let mut claimed = Vec::new();
+        let first = "mypkg@0.1.0::mypkg::a::Model";
+        let second = "mypkg@0.1.0::mypkg::b::Model";
+        assert!(claim(&mut claimed, &class_name_of(first), first).is_ok());
+        // The same type again: its registration runs once per class cell,
+        // but a test harness may call it more often.
+        assert!(claim(&mut claimed, &class_name_of(first), first).is_ok());
+        let message = claim(&mut claimed, &class_name_of(second), second)
+            .expect_err("the second `Model` would share the first one's class");
+        assert!(
+            message.contains("`mypkg::a::Model` and `mypkg::b::Model`"),
+            "{message}"
+        );
+        // Another crate's type of that name, and another name, have their own
+        // class.
+        let other_crate = "otherpkg@0.1.0::otherpkg::a::Model";
+        assert!(claim(&mut claimed, &class_name_of(other_crate), other_crate).is_ok());
+        let other_name = "mypkg@0.1.0::mypkg::a::Record";
+        assert!(claim(&mut claimed, &class_name_of(other_name), other_name).is_ok());
+        assert_eq!(claimed.len(), 3);
+    }
+}

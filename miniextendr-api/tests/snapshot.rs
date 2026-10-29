@@ -1,14 +1,17 @@
 //! A serde type's value comes back after `unserialize()` (#2186): the derive's
 //! probe finds serde, the pointer carries the value into the save, and the
 //! first access attaches what the carrier decoded. A type that is not serde
-//! keeps the restored refusal.
+//! keeps the restored refusal. A save is found by its crate and type name, so
+//! one made before the type moved to another module comes back too.
 #![cfg(feature = "serde")]
 
 mod r_test_utils;
 
 use miniextendr_api::condition::{RCondition, RConditionData, catch_condition};
 use miniextendr_api::expression::RCall;
-use miniextendr_api::externalptr::{ExternalPtr, Sidecar, TypedExternal};
+use miniextendr_api::externalptr::{
+    ExternalPtr, Sidecar, TypeMismatchError, TypedExternal, rewrite_stored_type_for_tests,
+};
 use miniextendr_api::{OwnedProtect, SEXP, SexpExt, TryFromSexp};
 
 /// A serde type, with a sidecar field the save keeps itself.
@@ -40,6 +43,22 @@ fn non_negative<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i32, D::Error>
         return Err(serde::de::Error::custom(format!("{n} is negative")));
     }
     Ok(n)
+}
+
+/// Two serde types of this crate named `Twin`, in two modules: they would
+/// share a carrier class.
+mod first {
+    #[derive(miniextendr_api::ExternalPtr, serde::Serialize, serde::Deserialize)]
+    pub struct Twin {
+        pub n: i32,
+    }
+}
+
+mod second {
+    #[derive(miniextendr_api::ExternalPtr, serde::Serialize, serde::Deserialize)]
+    pub struct Twin {
+        pub n: i32,
+    }
 }
 
 /// Registers the carrier classes, as `R_init` does through the derive's
@@ -225,5 +244,87 @@ fn the_carrier_copies_as_an_empty_raw_vector() {
             assert_eq!(copy.get().type_of(), miniextendr_api::SEXPTYPE::RAWSXP);
             assert_eq!(copy.get().xlength(), 0);
         }
+    });
+}
+
+/// A live `Counter` whose type ID says it was built by `crate_name` for the
+/// type at `path`, saved and read back.
+fn reload_as(crate_name: &str, path: &str) -> OwnedProtect {
+    let mut ptr = ExternalPtr::new(Counter {
+        n: 5,
+        label: "moved".to_owned(),
+        tags: Sidecar::new(Vec::new()),
+    });
+    Counter::set_tags(&mut ptr, vec!["t".to_owned()]);
+    // SAFETY: on R's main thread; `ptr` roots its pointer.
+    unsafe { rewrite_stored_type_for_tests(ptr.as_sexp(), crate_name, path) };
+    reload(ptr.as_sexp())
+}
+
+#[test]
+fn a_save_made_before_the_type_moved_comes_back() {
+    r_test_utils::with_r_thread(|| {
+        register();
+        let back = reload_as(env!("CARGO_PKG_NAME"), "snapshot::models::Counter");
+        let restored = ExternalPtr::<Counter>::try_from_sexp(back.get()).expect("attached");
+        assert_eq!(restored.borrow().n, 5);
+        assert_eq!(restored.borrow().label, "moved");
+        assert_eq!(Counter::tags(&restored), ["t"]);
+        // Attached, the pointer carries the type's own ID again.
+        drop(restored);
+        let again = reload(back.get());
+        let again = ExternalPtr::<Counter>::try_from_sexp(again.get()).expect("attached");
+        assert_eq!(again.borrow().n, 5);
+    });
+}
+
+#[test]
+fn a_save_of_another_type_name_or_crate_is_not_attached() {
+    r_test_utils::with_r_thread(|| {
+        register();
+        for (crate_name, path, found) in [
+            (
+                env!("CARGO_PKG_NAME"),
+                "snapshot::Tally",
+                "::snapshot::Tally",
+            ),
+            ("otherpkg", "snapshot::Counter", "otherpkg@"),
+        ] {
+            let back = reload_as(crate_name, path);
+            // SAFETY: on R's main thread; `back` roots the pointer.
+            match unsafe { ExternalPtr::<Counter>::wrap_sexp_with_error(back.get()) } {
+                Err(TypeMismatchError::Mismatch { found: id, .. }) => {
+                    assert!(id.contains(found), "{id}")
+                }
+                Err(other) => panic!("{path}: {other:?}"),
+                Ok(_) => panic!("{path}: a save of another type was attached"),
+            }
+            assert!(unsafe { ExternalPtr::<Counter>::wrap_sexp(back.get()) }.is_none());
+        }
+    });
+}
+
+#[test]
+fn two_serde_types_of_one_crate_with_the_same_name_fail_to_register() {
+    r_test_utils::with_r_thread(|| {
+        miniextendr_api::externalptr::__mx_register_snapshot::<first::Twin>();
+        // Registering a type again is a no-op.
+        miniextendr_api::externalptr::__mx_register_snapshot::<first::Twin>();
+        let payload = std::panic::catch_unwind(|| {
+            miniextendr_api::externalptr::__mx_register_snapshot::<second::Twin>()
+        })
+        .expect_err("the second `Twin` would share the first one's class");
+        let message = payload
+            .downcast_ref::<String>()
+            .expect("a formatted panic message");
+        assert!(
+            message.contains("`snapshot::first::Twin` and `snapshot::second::Twin`"),
+            "{message}"
+        );
+        // The first one still works.
+        let ptr = ExternalPtr::new(first::Twin { n: 3 });
+        let back = reload(ptr.as_sexp());
+        let back = ExternalPtr::<first::Twin>::try_from_sexp(back.get()).expect("attached");
+        assert_eq!(back.borrow().n, 3);
     });
 }

@@ -616,23 +616,6 @@ pub(super) fn prot_index(index: usize) -> R_xlen_t {
     PROT_VEC_LEN + index
 }
 
-/// Whether `sym` is the symbol of `T`'s type ID.
-///
-/// Compares names rather than installing `T`'s symbol, so it allocates nothing.
-fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
-    if sym.type_of() != SEXPTYPE::SYMSXP {
-        return false;
-    }
-    let id = T::TYPE_ID_CSTR
-        .strip_suffix(b"\0")
-        .unwrap_or(T::TYPE_ID_CSTR);
-    let printname = sym.printname();
-    // SAFETY: a CHARSXP's data holds `len` bytes.
-    let name =
-        unsafe { std::slice::from_raw_parts(printname.r_char().cast::<u8>(), printname.len()) };
-    name == id
-}
-
 /// The external pointer an R accessor's receiver `x` carries: `x` itself, or
 /// the pointer an R6 / S4 / S7 handle, an environment or a list holds in
 /// `.ptr`, the shapes an instance method's receiver takes
@@ -839,8 +822,10 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
     // Read after attaching, which gives the pointer a new list.
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let live = if any_raw.is_null() {
+        // A save by this version of `T`'s crate, in any module (#2186); the
+        // check compares names and allocates nothing.
         if require_live
-            || !unsafe { super::stored_type_id_symbol(x) }.is_some_and(is_type_id_symbol::<T>)
+            || unsafe { super::classify_null_address::<T>(x) } != super::NullAddress::Restored
         {
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
