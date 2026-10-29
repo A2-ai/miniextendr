@@ -428,7 +428,9 @@ to the call's root lifetime. Mutable references use their raw `TryFromSexp`
 implementation; a root alone cannot establish exclusive access. Both forms
 run on the main thread and participate in native alias checks through the
 converter's `NATIVE_BORROW` metadata. Custom converters borrowing native
-storage must supply that metadata, as other `TryFromSexp` implementations do.
+storage must supply that metadata, as other `TryFromSexp` implementations do;
+for a `&mut` parameter its absence (the default `None`, which the alias check
+skips) is a compile error.
 The option preserves the converter's NULL, NA, and error semantics; an
 optional custom reference therefore needs its own corresponding conversion.
 It does not apply to receivers or `Self` arguments, and cannot be combined

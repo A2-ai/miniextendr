@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `convert` on a `&mut` parameter needs its `TryFromSexp` impl to declare `NATIVE_BORROW`: the wrapper's alias check reads it before any reference exists
+  --> tests/ui/convert_mut_without_native_borrow.rs:19:45
+   |
+19 | pub fn fill(#[miniextendr(convert)] buffer: &mut Buffer) {
+   |                                             ^ evaluation of `C_$CRATE_fill::{closure#0}::_` failed here

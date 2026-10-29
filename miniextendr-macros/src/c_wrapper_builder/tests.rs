@@ -535,6 +535,13 @@ fn converted_references_keep_metadata_and_roots_without_external_guards() {
         if converter == "TryFromRoot" {
             assert!(code.contains("__mx_roots_x . rooted"), "{code}");
         }
+        // A `&mut` converter must declare its metadata: the preflight skips
+        // `None`, the default (checked at compile time).
+        assert_eq!(
+            code.contains("NATIVE_BORROW . is_some ()"),
+            converter == "TryFromSexp",
+            "{code}"
+        );
     }
 }
 

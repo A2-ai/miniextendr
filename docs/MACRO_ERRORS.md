@@ -303,6 +303,26 @@ reference already implements `TryFromSexp` (including a type alias such as
 On an inherent or trait impl method, use `#[miniextendr(convert(param))]`
 on the method. See [explicit reference conversions](EXTERNALPTR.md#arguments).
 
+### "`convert` on a `&mut` parameter needs its `TryFromSexp` impl to declare `NATIVE_BORROW`"
+
+A `#[miniextendr(convert)]` parameter of type `&mut T` (or `Option<&mut T>`)
+converts through that reference's own `TryFromSexp` impl, and the wrapper
+refuses aliased arguments before any reference exists using the impl's
+`NATIVE_BORROW`. The constant defaults to `None`, which the check skips, so
+such an impl has to declare it: forward the metadata of the native reference
+it borrows.
+
+```rust
+impl TryFromSexp for &mut Counts {
+    type Error = SexpError;
+    const NATIVE_BORROW: Option<NativeBorrow> = <&mut [i32] as TryFromSexp>::NATIVE_BORROW;
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> { /* ... */ }
+}
+```
+
+A shared `&T` needs no declaration: it borrows nothing mutably. See
+[explicit reference conversions](EXTERNALPTR.md#arguments).
+
 ### "takes `self` and is marked `constructor`"
 
 `#[miniextendr(<system>(constructor))]` describes a receiverless `fn new(...) ->

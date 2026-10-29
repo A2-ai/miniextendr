@@ -669,11 +669,27 @@ impl RustConversionBuilder {
             // preflights this converter's metadata before any reference exists.
             let binding_ty = crate::type_inspect::erase_lifetimes(ty);
             let span = ty.span();
+            // `NATIVE_BORROW` defaults to `None`, which the preflight skips: a
+            // `&mut` converter that doesn't declare it could alias another
+            // argument unchecked, so its absence is a compile error.
+            let declared = crate::externalptr_args::conversion_reference(ty)
+                .is_some_and(|r| r.mutability.is_some())
+                .then(|| {
+                    quote_spanned! {span=>
+                        const _: () = ::core::assert!(
+                            <#binding_ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW
+                                .is_some(),
+                            "`convert` on a `&mut` parameter needs its `TryFromSexp` impl to \
+                             declare `NATIVE_BORROW`: the wrapper's alias check reads it \
+                             before any reference exists"
+                        );
+                    }
+                });
             let try_expr = quote_spanned! {span=>
                 <#binding_ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#sexp_ident)
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
-            return (vec![stmt], vec![]);
+            return (vec![quote! { #declared #stmt }], vec![]);
         }
 
         // Main-thread &str normally returned above. Its existing special
