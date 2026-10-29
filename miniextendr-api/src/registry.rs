@@ -3369,8 +3369,9 @@ const MATCH_ARG_HELPER: &str = concat!(
 # one. `listed` is the text the message names the listed aliases with after
 # the choices (` (or "grey" for "gray")`, empty when none is listed). `NA`
 # is matched as the string "NA", as `pmatch()` does; when that matches no
-# choice, or the value is not character and holds `NA`, it is refused as
-# `must not be NA`, the wording of a `no_na` parameter. The Rust side's
+# choice, it is refused as `must not be NA`, the wording of a `no_na`
+# parameter, whatever the value's length or type (a value of several elements
+# holding such an `NA` is refused for the `NA`, not its length). The Rust side's
 # `match_arg_param()` gives a body the same results and messages for a choice
 # argument it matches itself.
 .miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL, listed = "") {
@@ -3382,7 +3383,9 @@ const MATCH_ARG_HELPER: &str = concat!(
     crate::match_arg::match_arg_wording!(not_character),
     r#"", call)
   if (identical(arg, choices)) return(arg[[1L]])
-  if (length(arg) != 1L) .miniextendr_arg_error(arg_name, ""#,
+  if (length(arg) != 1L) .miniextendr_arg_error(arg_name, if (anyNA(arg) && !pmatch(NA_character_, choices, nomatch = 0L)) ""#,
+    crate::match_arg::match_arg_wording!(is_na),
+    r#"" else ""#,
     crate::match_arg::match_arg_wording!(not_scalar),
     r#"", call)
   if (!is.null(aliases) && !is.na(a <- match(arg, names(aliases)))) return(aliases[[a]])
