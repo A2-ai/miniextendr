@@ -65,6 +65,11 @@
 #   Issue cache:
 #     just issues-refresh      - Refresh local ISSUES/ indexes and open-issue bodies
 #
+#   Lines of code:
+#     just loc                 - Library vs tests vs fixtures (needs tokei)
+#     just loc-compare         - The same next to extendr and savvy (clones both)
+#     just inline-tests-check  - Fail on unit tests outside tests.rs files
+#
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
@@ -917,9 +922,11 @@ install_deps:
 # cargo-revendor: required by `just configure` in dev-monorepo mode to sync
 # workspace crates into rpkg/vendor/ (otherwise cargo metadata fails on the
 # frozen path = "../../vendor/..." deps in rpkg/src/rust/Cargo.toml).
+# tokei: line counter behind `just loc`.
 [doc("Install the Rust dev tools used for day-to-day iteration")]
 dev-tools-install: revendor-install
     cargo install cargo-limit
+    cargo install tokei
 
 # Symlinks rv's cached deps from ~/.cache/rv (warm from main, same rproject.toml)
 # into THIS checkout's own rv/library in seconds — no recompile/download — so
@@ -1409,6 +1416,13 @@ templates-check:
 agents-md-check:
     bash scripts/agents-md-check.sh
 
+# Unit tests live in tests.rs files (`#[cfg(test)] mod tests;`), never inline,
+# so path tools (tokei, rg, review diffs) tell them from library code. CI's
+# Sync Checks runs this.
+[doc("Fail on unit tests outside tests.rs files")]
+inline-tests-check:
+    python3 scripts/inline-tests-check.py
+
 # Scans the R scripts and R Markdown files git tracks with attachment (from
 # rv's library, so it runs from the repo root). Add a reported package with
 # `rv add <pkg>`.
@@ -1428,6 +1442,22 @@ committed-artifacts-check range="":
 [doc("Refresh the local, untracked GitHub issue cache")]
 issues-refresh output_dir="ISSUES":
     bash scripts/refresh-issues-cache.sh "{{output_dir}}"
+
+# Lines of code by kind: library, tests, test fixtures, benches, templates,
+# tooling. Counts git-tracked files with tokei; the path rules per repository
+# live in scripts/loc.py (PROFILES), and #[cfg(test)] items inside library
+# code count as tests.
+[doc("Count lines of code, split into library code, tests and the rest")]
+loc:
+    python3 scripts/loc.py
+
+# The same count for miniextendr next to extendr and savvy, each cloned
+# (shallow, default branch) into a temporary directory, so it needs network
+# access. A file no rule in its repository's profile covers stops the report:
+# add a rule to PROFILES.
+[doc("Compare lines of code with extendr and savvy")]
+loc-compare:
+    python3 scripts/loc.py --compare
 
 # Merge driver for regenerated files (scripts/merge-driver-regen.sh). The
 # root .gitattributes routes rpkg/src/rust/Cargo.lock to `merge=mx-regen`;

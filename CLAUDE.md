@@ -87,6 +87,12 @@ hand-maintained.
 
 - **Never `mod.rs`** — use `foo.rs` + `foo/` directory. Migrate if touched.
 - **Section comments**: `// region:` / `// endregion` (IDE-foldable). Migrate `// =====`, `// ──`, `// ---` when touched.
+- **Unit tests in `tests.rs`**: `#[cfg(test)] mod tests;` with the body in `foo/tests.rs`
+  (beside a crate root: `tests.rs`); a second test module goes in `foo/tests/`,
+  declared from `foo/tests.rs`. Never an inline `mod tests { .. }` or a `#[test]` fn
+  in library code: path tools (`tokei -e '**/tests.rs'`, `rg -g '!**/tests.rs'`,
+  review diffs) must tell tests from library code. `#[cfg(test)]` fns/statics/`use`s that library code swaps in
+  for test builds stay inline. `just inline-tests-check` (Sync Checks) enforces it.
 
 ## How the build works
 
