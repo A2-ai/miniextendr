@@ -14,7 +14,10 @@ no rule covers is an error, so a new directory has to be placed on purpose.
 Inside library and fixture `.rs` files, every item under `#[cfg(test)]` (or
 `cfg(all(test, ..))`) or `#[test]` is cut out and counted as tests, so a
 repository that keeps its unit tests inline counts the same as one that keeps
-them in tests.rs files, as miniextendr does (`just inline-tests-check`).
+them in tests.rs files, as miniextendr does (`just inline-tests-check`). So is
+an item gated on one of the repository's test-only features
+(`test_features` in its profile), as savvy gates its in-crate tests on
+`savvy-test`, which need an R session.
 
 Comments are the lines that are neither code nor blank, so Rust doc comments
 (`///`, `//!`) count as comments, runnable doc examples included; the reports
@@ -75,6 +78,9 @@ PROFILES = {
             ("*/tests/*", "tests"),
             ("*/tests.rs", "tests"),  # `#[cfg(test)] mod tests;`
             ("*/test_*.py", "tests"),
+            # Built only under the `macro-coverage` feature, so the tests can
+            # exercise every macro option; users never compile it.
+            ("miniextendr-api/src/macro_coverage*", "fixtures"),
             # The crates and packages the tests drive. rpkg's lib.rs: "organized
             # into focused modules for different test categories".
             ("rpkg/src/rust/*", "fixtures"),
@@ -139,6 +145,9 @@ PROFILES = {
     },
     "savvy": {
         "url": "https://github.com/yutannihilation/savvy",
+        # Its in-crate tests need an R session, so they are gated on this
+        # feature instead of `cfg(test)`.
+        "test_features": ["savvy-test"],
         "rules": [
             # Written by `savvy-cli update`.
             ("R-package/R/000-wrappers.R", "generated"),
@@ -252,12 +261,18 @@ def tokens(text):
     return out
 
 
-def is_test_attr(inner):
+def is_test_attr(inner, test_features=()):
     inner = re.sub(r"\s+", "", inner)
-    if inner in ("test", "cfg(test)"):
+    test_only = {"test", *(f'feature="{f}"' for f in test_features)}
+    if inner == "test":
         return True
-    m = re.fullmatch(r"cfg\(all\((.*)\)\)", inner)
-    return bool(m) and "test" in m.group(1).split(",")
+    m = re.fullmatch(r"cfg\((.*)\)", inner)
+    if m is None:
+        return False
+    if m.group(1) in test_only:
+        return True
+    m = re.fullmatch(r"all\((.*)\)", m.group(1))
+    return bool(m) and not test_only.isdisjoint(m.group(1).split(","))
 
 
 def matching(text, toks, j):
@@ -294,7 +309,7 @@ def item_end(text, toks, j):
     return len(toks) - 1
 
 
-def test_regions(text):
+def test_regions(text, test_features=()):
     """Test-only items as (first_line, last_line, out_of_line_mod), 0-based and inclusive."""
     toks = tokens(text)
     lines = text.split("\n")
@@ -315,7 +330,7 @@ def test_regions(text):
             continue
         close = matching(text, toks, i + 1)  # the attribute's `]`
         inner = text[toks[i + 1][1]:toks[close][0]]
-        if not is_test_attr(inner):
+        if not is_test_attr(inner, test_features):
             i += 1
             continue
         last = item_end(text, toks, close + 1)
@@ -416,7 +431,8 @@ def count(root, repo, tokei):
                 continue
             text = (root / path).read_text(errors="replace")
             doc_examples[kind] += doc_example_lines(text)
-            regions = test_regions(text) if kind in ("library", "fixtures") else []
+            test_features = PROFILES[repo].get("test_features", ())
+            regions = test_regions(text, test_features) if kind in ("library", "fixtures") else []
             if not regions:
                 stage(kind, path, kind, False)
                 continue
