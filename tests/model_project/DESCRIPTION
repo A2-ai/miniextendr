@@ -12,4 +12,4 @@ Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
 Config/roxygen2/markdown: TRUE
 Config/roxygen2/version: 8.0.0
-SystemRequirements: Rust (>= 1.85)
+SystemRequirements: Rust (>= 1.88)

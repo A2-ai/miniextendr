@@ -53,7 +53,7 @@ impl RRngOps for MockRng {
     }
 
     fn random_bool(&self) -> bool {
-        self.next() % 2 == 0
+        self.next().is_multiple_of(2)
     }
 
     fn gen_range_f64(&self, low: f64, high: f64) -> f64 {

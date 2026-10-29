@@ -527,10 +527,10 @@ pub fn new_list_of(
     }
 
     // Validate size if provided
-    if let Some(s) = size {
-        if s < 0 {
-            return Err(VctrsBuildError::InvalidSize { size: s });
-        }
+    if let Some(s) = size
+        && s < 0
+    {
+        return Err(VctrsBuildError::InvalidSize { size: s });
     }
 
     // Build class vector: c(user_class..., "vctrs_list_of", "vctrs_vctr", "list")

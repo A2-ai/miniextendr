@@ -11,7 +11,7 @@ This page explains the less-obvious fields, especially the ones that tend to mak
 | `Config/roxygen2/markdown: TRUE` | `roxygen2` | Lets roxygen comments use Markdown syntax (replaces legacy `Roxygen: list(markdown = TRUE)`) |
 | `Config/roxygen2/version: 8.0.0` | `roxygen2` and maintainers | Records which roxygen2 version last generated the docs (replaces legacy `RoxygenNote`) |
 | `Config/testthat/edition: 3` | `testthat` | Opts the package into the current testthat behavior |
-| `SystemRequirements: Rust (>= 1.85)` | Humans, CI, package tooling | Declares that the package needs a Rust toolchain outside R |
+| `SystemRequirements: Rust (>= 1.88)` | Humans, CI, package tooling | Declares that the package needs a Rust toolchain outside R |
 | `Config/build/bootstrap: TRUE` | `pkgbuild` / `devtools` workflows | Runs `bootstrap.R` before build steps |
 | `Config/build/never-clean: true` | `pkgbuild` / `devtools` workflows | Avoids forced preclean installs that would discard previous build outputs |
 | `Config/build/extra-sources: src/rust/Cargo.lock` | `pkgbuild` | Treats additional build-relevant files as compilation inputs |
@@ -81,8 +81,8 @@ This field is descriptive, not magic. It does **not** install Rust for the user.
 
 The exact wording can vary. For example:
 
-- `SystemRequirements: Rust (>= 1.85)`
-- `SystemRequirements: Cargo (Rust package manager), rustc >= 1.85.0`
+- `SystemRequirements: Rust (>= 1.88)`
+- `SystemRequirements: Cargo (Rust package manager), rustc >= 1.88.0`
 
 The important point is that the package needs Rust tooling outside R itself.
 
