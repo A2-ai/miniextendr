@@ -1493,8 +1493,9 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
                 ));
             }
             // `Checked<T>` / `Unchecked<T>` (#1566) steer an R wrapper's type
-            // checks, and a trait's View passes arguments on as R values: the
-            // wrappers belong to each impl, which says it there.
+            // checks and `NonNa<T>` its `no_na` check, and a trait's View
+            // passes arguments on as R values: the wrappers belong to each
+            // impl, which says it there.
             let (markers, _) = crate::type_inspect::peel_param_markers(&pat_type.ty)?;
             if let Some(marker) = markers.first() {
                 let name = match pat_type.pat.as_ref() {
@@ -1506,13 +1507,9 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
                     format!(
                         "`{}<T>` in a `#[miniextendr]` trait method: the trait's View passes \
                          arguments on as R values, and each impl's wrapper checks them; spell it \
-                         on the impl, `#[miniextendr({}({name}))]`",
+                         on the impl, `#[miniextendr({})]`",
                         marker.name(),
-                        if marker.preconditions() == Some(true) {
-                            "preconditions"
-                        } else {
-                            "no_preconditions"
-                        },
+                        marker.impl_keyword(&name),
                     ),
                 ));
             }

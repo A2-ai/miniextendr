@@ -2355,6 +2355,13 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     ));
                 }
             };
+            // `NonNa<T>` is `no_na` written in the type: the R guard and the
+            // post-conversion check follow from the flag, as for the keyword
+            // (and its `message`), and the C wrapper adds its own check.
+            let mut had_checks = had_checks;
+            if markers.contains(&crate::type_inspect::ParamMarker::NonNa) {
+                had_checks.no_na = true;
+            }
             // The marker and the per-parameter keyword are one decision.
             let preconditions = merge_param_policy(
                 &markers,

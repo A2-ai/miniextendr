@@ -515,6 +515,12 @@ fn trait_method_rejects_precondition_markers() {
             ),
             "spell it on the impl, `#[miniextendr(no_preconditions(k))]`",
         ),
+        (
+            syn::parse_quote!(
+                fn scaled(&self, k: NonNa<f64>) -> f64;
+            ),
+            "spell it on the impl, `#[miniextendr(no_na(k))]`",
+        ),
     ] {
         let method: syn::TraitItemFn = method;
         let err = extract_method_info(&method)

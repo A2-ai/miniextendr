@@ -55,6 +55,15 @@ use crate::altrep_traits::NA_REAL;
 use crate::coerce::TryCoerce;
 use crate::{IsNA, RLogical, SEXP, SEXPTYPE, SexpExt};
 
+/// [`any_na`] for generated code: the C wrapper's check of a `NonNa<T>`
+/// argument before its conversion, which also covers a `.Call()` that skips
+/// the R wrapper's `!anyNA()` guard.
+#[doc(hidden)]
+#[inline]
+pub fn __mx_any_na(sexp: SEXP) -> bool {
+    any_na(sexp)
+}
+
 /// Whether R's `anyNA(sexp)` is `TRUE`: the check `no_na`'s R guard makes,
 /// done in Rust on an argument that the guard does not cover (see
 /// [`TryFromSexp::__mx_input_has_na`]).

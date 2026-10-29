@@ -663,13 +663,16 @@ pub(crate) fn mentions_unevaluated_marker(ty: &syn::Type) -> bool {
 
 /// A by-value parameter marker the macro peels from a parameter type before
 /// any R-side analysis: the parameter converts as the inner type, and the C
-/// wrapper wraps the value (`<ctor>::from_inner(x)`) before the call.
+/// wrapper wraps the value ([`ParamMarker::wrap`]) before the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ParamMarker {
     /// `Checked<T>`: keep the parameter's type-derived R-side checks.
     Checked,
     /// `Unchecked<T>`: drop them.
     Unchecked,
+    /// `NonNa<T>`: the parameter's `no_na` check, written in the type; the C
+    /// wrapper also checks the argument before converting it.
+    NonNa,
 }
 
 /// The decision family a [`ParamMarker`] belongs to: a parameter carries at
@@ -678,6 +681,8 @@ pub(crate) enum ParamMarker {
 pub(crate) enum ParamMarkerFamily {
     /// `Checked` / `Unchecked`: the type-derived R-side checks.
     Preconditions,
+    /// `NonNa`: the `no_na` check.
+    NoNa,
 }
 
 impl ParamMarker {
@@ -686,6 +691,7 @@ impl ParamMarker {
         match ident.to_string().as_str() {
             "Checked" => Some(Self::Checked),
             "Unchecked" => Some(Self::Unchecked),
+            "NonNa" => Some(Self::NonNa),
             _ => None,
         }
     }
@@ -695,6 +701,7 @@ impl ParamMarker {
         match self {
             Self::Checked => "Checked",
             Self::Unchecked => "Unchecked",
+            Self::NonNa => "NonNa",
         }
     }
 
@@ -702,23 +709,45 @@ impl ParamMarker {
     pub(crate) fn family(self) -> ParamMarkerFamily {
         match self {
             Self::Checked | Self::Unchecked => ParamMarkerFamily::Preconditions,
+            Self::NonNa => ParamMarkerFamily::NoNa,
         }
     }
 
-    /// The runtime type, for the rebinding the C wrapper emits.
-    pub(crate) fn ctor_path(self) -> proc_macro2::TokenStream {
+    /// The C wrapper's rebinding of the converted `value` as the marked
+    /// type. A `NonNa` is built unchecked: the wrapper refused an argument
+    /// holding an `NA` before converting it.
+    pub(crate) fn wrap(self, value: &syn::Ident) -> proc_macro2::TokenStream {
         match self {
-            Self::Checked => quote::quote!(::miniextendr_api::Checked),
-            Self::Unchecked => quote::quote!(::miniextendr_api::Unchecked),
+            Self::Checked => quote::quote!(::miniextendr_api::Checked::from_inner(#value)),
+            Self::Unchecked => quote::quote!(::miniextendr_api::Unchecked::from_inner(#value)),
+            // SAFETY (of the emitted `unsafe`): the C wrapper ran the
+            // marker's `__mx_any_na` check on the argument before converting
+            // it, and returned the argument error when it held an `NA`.
+            Self::NonNa => {
+                quote::quote!(unsafe { ::miniextendr_api::NonNa::new_unchecked(#value) })
+            }
         }
     }
 
     /// The precondition decision: `Some(true)` keeps the type-derived
-    /// checks, `Some(false)` drops them.
+    /// checks, `Some(false)` drops them; `None` for a marker of another
+    /// family.
     pub(crate) fn preconditions(self) -> Option<bool> {
         match self {
             Self::Checked => Some(true),
             Self::Unchecked => Some(false),
+            Self::NonNa => None,
+        }
+    }
+
+    /// The method attribute an impl spells for the marker of a trait
+    /// method's parameter `param`: `preconditions(x)`, `no_preconditions(x)`
+    /// or `no_na(x)`.
+    pub(crate) fn impl_keyword(self, param: &str) -> String {
+        match self {
+            Self::Checked => format!("preconditions({param})"),
+            Self::Unchecked => format!("no_preconditions({param})"),
+            Self::NonNa => format!("no_na({param})"),
         }
     }
 }
@@ -758,18 +787,30 @@ pub(crate) fn peel_param_markers(ty: &syn::Type) -> syn::Result<(Vec<ParamMarker
     let mut inner = ty;
     while let Some((marker, next)) = outer_param_marker(inner) {
         if let Some(first) = markers.iter().find(|m| m.family() == marker.family()) {
-            return Err(syn::Error::new_spanned(
-                ty,
-                format!(
+            let message = match marker.family() {
+                ParamMarkerFamily::Preconditions => format!(
                     "at most one precondition marker per parameter: `{}` already decides this \
                      parameter's R-side type checks, so drop `{}`",
                     first.name(),
                     marker.name()
                 ),
-            ));
+                ParamMarkerFamily::NoNa => {
+                    "`NonNa<NonNa<T>>`: one `NonNa` already refuses an `NA`, so drop the \
+                     inner one"
+                        .to_string()
+                }
+            };
+            return Err(syn::Error::new_spanned(ty, message));
         }
         markers.push(marker);
         inner = next;
+    }
+    if markers.contains(&ParamMarker::NonNa) && is_option_type(inner) {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "`NonNa<Option<T>>`: a value without `NA` leaves `Option` only `NULL` to mean; \
+             take `NonNa<T>`, or `Option<T>` with `#[miniextendr(no_na)]` to accept `NULL`",
+        ));
     }
     if let Some(nested) = nested_param_marker(inner) {
         return Err(syn::Error::new_spanned(

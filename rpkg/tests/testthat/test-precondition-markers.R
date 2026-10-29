@@ -102,6 +102,44 @@ test_that("a caller entry point's Unchecked parameter names the helper's call", 
   expect_equal(conditionCall(e), quote(helper("a")))
 })
 
+test_that("NonNa refuses NA and NaN in the R guard and in the C wrapper", {
+  f <- miniextendr:::pm_non_na_sum
+  expect_identical(f(c(1, 2)), 3)
+  expect_r_check(caught(f(c(1, NA))), "xs", "'xs' must not contain NA")
+  expect_r_check(caught(f(c(1, NaN))), "xs", "'xs' must not contain NA")
+  # A .Call() that skips the R wrapper's guard meets the C wrapper's check.
+  direct <- .Call(miniextendr:::C_miniextendr_pm_non_na_sum, NULL, c(1, NA))
+  expect_identical(direct$kind, "conversion")
+  expect_match(direct$error, "'xs' must not contain NA", fixed = TRUE)
+  expect_identical(.Call(miniextendr:::C_miniextendr_pm_non_na_sum, NULL, c(1, 2)), 3)
+})
+
+test_that("NonNa<String> refuses NA_character_ instead of reading it as empty", {
+  f <- miniextendr:::pm_non_na_name
+  expect_identical(f("ann"), "ann")
+  expect_r_check(caught(f(NA_character_)), "name", "'name' must not be NA")
+  direct <- .Call(miniextendr:::C_miniextendr_pm_non_na_name, NULL, NA_character_)
+  expect_identical(direct$kind, "conversion")
+  expect_match(direct$error, "'name' must not be NA", fixed = TRUE)
+})
+
+test_that("Unchecked<NonNa<..>> drops the type check and keeps the NA check", {
+  f <- miniextendr:::pm_unchecked_non_na
+  expect_identical(f(1:3), 6L)
+  expect_r_check(caught(f(c(1L, NA))), "xs", "'xs' must not contain NA")
+  e <- caught(f("a"))
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$rust_type, "Vec<i32>")
+})
+
+test_that("NonNa on a borrowed slice checks before the rooted borrow", {
+  f <- miniextendr:::pm_non_na_slice
+  expect_identical(f(c(1, 2, 3)), 6)
+  expect_r_check(caught(f(c(1, NA))), "xs", "'xs' must not contain NA")
+  direct <- .Call(miniextendr:::C_miniextendr_pm_non_na_slice, NULL, c(NaN, 1))
+  expect_identical(direct$kind, "conversion")
+})
+
 # endregion
 
 # region: methods, one class per class system, under the impl's no_preconditions
@@ -122,6 +160,12 @@ test_that("R6: preconditions(n) and a Checked parameter keep their checks", {
   expect_conversion(caught(obj$draw(2L, "a")), "scale", "'scale' must be a single double: got character", "f64")
   expect_identical(obj$reseed(5L), 5L)
   expect_r_check(caught(obj$reseed("a")), "seed", "'seed' must be integer")
+})
+
+test_that("R6: a NonNa parameter is the method's no_na", {
+  obj <- miniextendr:::PmR6$new(1L)
+  expect_identical(obj$offset(2.5), 3.5)
+  expect_r_check(caught(obj$offset(NA_real_)), "by", "'by' must not be NA")
 })
 
 test_that("S3: preconditions(n) and a Checked parameter keep their checks", {

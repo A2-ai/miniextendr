@@ -2357,10 +2357,11 @@ impl ParsedMethod {
         let dots_ident = crate::miniextendr_fn::find_dots_param(&item.sig.inputs)?;
         let has_dots = dots_ident.is_some();
 
-        // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566): peeled
-        // from the signature the codegen sees (the re-emitted impl keeps
-        // them), and merged with the method's `preconditions(p)` /
-        // `no_preconditions(p)`, which a marker must not contradict.
+        // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566; `NonNa<T>`):
+        // peeled from the signature the codegen sees (the re-emitted impl
+        // keeps them), and merged with the method's `preconditions(p)` /
+        // `no_preconditions(p)`, which a marker must not contradict, and
+        // `no_na(p)`.
         let param_markers = crate::miniextendr_fn::collect_param_markers(&item.sig.inputs)?;
         for arg in &item.sig.inputs {
             let syn::FnArg::Typed(pt) = arg else {
@@ -2381,6 +2382,10 @@ impl ParsedMethod {
                 true,
                 &pt.ty,
             )?;
+            // `NonNa<T>` is the method's `no_na(p)` written in the type.
+            if markers.contains(&crate::type_inspect::ParamMarker::NonNa) {
+                entry.checks.no_na = true;
+            }
         }
         let mut peeled_sig = item.sig.clone();
         peeled_sig.inputs = crate::miniextendr_fn::peeled_inputs(&item.sig.inputs, &param_markers)?;
