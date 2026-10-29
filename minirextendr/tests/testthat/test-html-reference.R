@@ -142,14 +142,14 @@ test_that("build-html-reference.R leaves out internal topics nothing on the page
   expect_match(res$html, 'href="#topic+linked_helper"', fixed = TRUE)
   expect_match(res$html, "id='topic+refpkg-package'", fixed = TRUE)
   expect_match(res$html, "id='topic+hello'", fixed = TRUE)
-  expect_match(res$output, "1 internal left out", fixed = TRUE)
+  expect_match(res$output, "1 internal Rd page(s) left out", fixed = TRUE)
   # The package directory is left as it was.
   expect_true(file.exists(file.path(pkg, "man", "hidden_helper.Rd")))
 
   res <- run(file.path(root, "all"), env = "MINIEXTENDR_HTML_INTERNAL=1")
   expect_identical(res$status, 0L, info = res$output)
   expect_match(res$html, "id='topic+hidden_helper'", fixed = TRUE)
-  expect_false(grepl("internal left out", res$output, fixed = TRUE))
+  expect_false(grepl("left out", res$output, fixed = TRUE))
 })
 
 test_that("miniextendr_html_reference() runs the package's script from R", {

@@ -223,6 +223,6 @@ if (file.exists(index_html)) {
 }
 
 cat(sprintf("wrote %s (%d topics%s%s)%s\n", out_html, length(unique(defined)),
-            if (any(!keep)) sprintf(", %d internal left out", sum(!keep)) else "",
+            if (any(!keep)) sprintf(", %d internal Rd page(s) left out", sum(!keep)) else "",
             if (length(vig_src)) sprintf(", %d vignette(s)", length(vig_src)) else "",
             if (registered) sprintf("; registered on %s", index_html) else ""))
