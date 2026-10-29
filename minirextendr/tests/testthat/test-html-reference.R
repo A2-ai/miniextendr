@@ -14,7 +14,7 @@ write_refpkg <- function(pkg) {
   writeLines(c("\\name{hello}", "\\alias{hello}", "\\alias{hello_alias}",
                "\\title{Say hello}",
                "\\description{Greets \\code{x}; see \\code{\\link{goodbye}} and",
-               "  \\code{\\link[stats]{median}}.}",
+               "  \\code{\\link[stats]{median}}; writes to \\code{\\link[base]{stderr}}.}",
                "\\usage{hello(x)}", "\\arguments{\\item{x}{A name.}}",
                "\\value{Invisibly, \\code{x}.}"),
              file.path(pkg, "man", "hello.Rd"))
@@ -56,10 +56,13 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
   html <- paste(readLines(page, warn = FALSE), collapse = "\n")
   expect_match(html, "id='topic+hello'", fixed = TRUE)
   expect_match(html, 'href="#topic+goodbye"', fixed = TRUE)
-  # Explicit \link[refpkg]{...} stays on the page; base packages go to their
-  # hosted manuals; no absolute machine path survives.
+  # Explicit \link[refpkg]{...} stays on the page; a base package's link goes
+  # to the page of the Rd file that has the alias (stderr is documented in
+  # showConnections.Rd), not to its index; no absolute machine path survives.
   expect_match(html, 'href="#topic+hello_alias"', fixed = TRUE)
-  expect_match(html, "search.r-project.org/R/refmans/stats/", fixed = TRUE)
+  expect_match(html, '"https://search.r-project.org/R/refmans/stats/html/median.html"', fixed = TRUE)
+  expect_match(html, '"https://search.r-project.org/R/refmans/base/html/showConnections.html"', fixed = TRUE)
+  expect_false(grepl("00Index.html", html, fixed = TRUE))
   expect_false(grepl("refman/refpkg", html, fixed = TRUE))
   expect_false(grepl(R.home(), html, fixed = TRUE))
   expect_match(res$output, "wrote .*refpkg[.]html [(][0-9]+ topics[)]")

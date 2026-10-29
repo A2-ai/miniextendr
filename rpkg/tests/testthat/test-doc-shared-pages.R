@@ -38,7 +38,7 @@ test_that("describeIn functions share the named help page in source order", {
     nodes <- rd[vapply(rd, function(x) identical(attr(x, "Rd_tag"), tag), logical(1))]
     gsub("[[:space:]]+", " ", paste(unlist(nodes), collapse = ""))
   }
-  expect_match(section("\\title"), "Shared documentation in source order.", fixed = TRUE)
+  expect_identical(trimws(section("\\title")), "Shared documentation in source order")
   expect_match(section("\\section"), "Doubles each input value while retaining the input order.", fixed = TRUE)
   expect_match(section("\\section"), "Formats each input value with the shared documentation fixture.", fixed = TRUE)
   expect_match(section("\\keyword"), "utilities", fixed = TRUE)
