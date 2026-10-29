@@ -6285,4 +6285,34 @@ pub fn gc_stress_saved_value() {
     );
 }
 
+/// Saves a `SavedShapes` and a `SavedFloats` and reads them back: the exact
+/// encoding builds its R list in one pass, each part set into its parent as
+/// soon as it is made, and the decoder walks it (#2256). Saves the value
+/// again before and after it is attached. No arguments — picked up by the
+/// fast `gctorture(TRUE)` no-arg sweep (#430).
+// Stays on R's main thread under `worker-default`: it holds R values.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_saved_shapes() {
+    use crate::saved_value_tests::{SavedFloats, SavedShapes};
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    let back = reload_value(ExternalPtr::new(SavedShapes::new()).as_sexp());
+    churn_pending_shapes();
+    // Saved again before any access: the carrier writes what it read.
+    let back = reload_value(back.get());
+    let shapes = ExternalPtr::<SavedShapes>::try_from_sexp(back.get()).expect("attached");
+    churn_pending_shapes();
+    assert_eq!(shapes.borrow().mismatches(), Vec::<String>::new());
+    let again = reload_value(back.get());
+    let again = ExternalPtr::<SavedShapes>::try_from_sexp(again.get()).expect("attached");
+    assert_eq!(again.borrow().mismatches(), Vec::<String>::new());
+
+    let floats = reload_value(ExternalPtr::new(SavedFloats::new(1000)).as_sexp());
+    churn_pending_shapes();
+    let floats = ExternalPtr::<SavedFloats>::try_from_sexp(floats.get()).expect("attached");
+    assert!(floats.borrow().holds(1000));
+}
+
 // endregion

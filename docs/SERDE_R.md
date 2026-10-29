@@ -446,6 +446,22 @@ would in every function returning the type, and
 `#[miniextendr(serde_error(as_character("nearest")))]` does it for one
 function. See [CONDITIONS.md](CONDITIONS.md#field-types-and-shared-shapes).
 
+### Round trips: the general mapping and the snapshot encoding
+
+The mapping above is made for reading in R, and `from_r` does not always
+give back what `to_r` wrote. A one-element `Vec<String>` is `character(1)`,
+the same R value as a `String`, so inside an untagged or internally tagged
+enum (which serde decodes through `deserialize_any`) it reads back as a
+string. An integer above 2^53 becomes a double (#1417), `i32::MIN` is
+`NA_integer_` (#1419), an `NA` reads as `None`, and a map's keys must be
+strings.
+
+An [`ExternalPtr`](EXTERNALPTR.md) to a serde type is saved by `saveRDS()`
+with an exact mode of this path instead, which reads every value back
+unchanged (#2256). It marks the ambiguous cases with an attribute, so it is
+not what `to_r` returns; the encoding and its rules are in
+[EXTERNALPTR.md](EXTERNALPTR.md#the-snapshot-encoding).
+
 ## Columnar `data.frame` Assembly
 
 For `&[T: Serialize]`, `vec_to_dataframe` produces a column-oriented R

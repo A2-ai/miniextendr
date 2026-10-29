@@ -245,6 +245,7 @@ pub mod columnar;
 pub mod dataframe_de;
 mod de;
 mod error;
+pub(crate) mod exact;
 #[cfg(feature = "serde_json")]
 pub mod json_string;
 pub mod rvalue_ser;
@@ -270,6 +271,9 @@ pub use dataframe_de::{
 };
 pub use de::RDeserializer;
 pub use error::RSerdeError;
+// The snapshot encoding, for tests that need R (`tests/serde_exact.rs`).
+#[doc(hidden)]
+pub use exact::{from_r_exact as __from_r_exact, to_r_exact as __to_r_exact};
 #[cfg(feature = "serde_json")]
 pub use json_string::{AsJson, AsJsonPretty, AsJsonVec, FromJson};
 pub use rvalue_ser::{

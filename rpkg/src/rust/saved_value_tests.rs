@@ -11,7 +11,12 @@
 //! `SavedEnv::bump_and_call` saves the object from a callback while a
 //! `&mut self` call holds it: a borrow conflict. `saved_rewrite_type` makes
 //! a live object's save read as made by a type at another path, as one
-//! saved before the type moved to another module would.
+//! saved before the type moved to another module would. `SavedShapes` holds
+//! values the general serde-to-R mapping can't read back, which the save's
+//! exact encoding keeps (#2256), and `SavedFloats` a long `Vec<f64>`, which
+//! the save keeps as one double vector.
+
+use std::collections::HashMap;
 
 use crate::serde::{Deserialize, Deserializer, Serialize};
 use miniextendr_api::expression::RCall;
@@ -309,6 +314,224 @@ pub fn saved_rewrite_type(x: SEXP, crate_name: String, path: String) {
     );
     // SAFETY: on R's main thread (a `#[miniextendr]` fn); `x` is an EXTPTRSXP.
     unsafe { miniextendr_api::externalptr::rewrite_stored_type_for_tests(x, &crate_name, &path) };
+}
+
+// endregion
+
+// region: Values the general serde-to-R mapping can't read back (#2256)
+
+/// An untagged enum whose common value is a one-element `Vec`.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde", untagged)]
+pub enum ShapeValues {
+    Many(Vec<String>),
+    Flag(bool),
+}
+
+/// A column and the values selected in it.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde")]
+pub struct ShapeSelector {
+    name: String,
+    values: Vec<String>,
+}
+
+/// An untagged enum holding a `Vec` of structs, and itself.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde", untagged)]
+pub enum ShapeScope {
+    Selectors(Vec<ShapeSelector>),
+    Any { any: Vec<ShapeScope> },
+}
+
+/// An internally tagged enum with a `Vec` field.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde", tag = "kind", rename_all = "snake_case")]
+pub enum ShapeNotice {
+    Dropped { profiles: Vec<String> },
+    Counted { n: usize },
+}
+
+/// A struct whose second part is flattened into it.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde")]
+pub struct ShapeFlat {
+    label: String,
+    #[serde(flatten)]
+    part: ShapePart,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(crate = "crate::serde")]
+pub struct ShapePart {
+    values: ShapeValues,
+    ids: Vec<u64>,
+}
+
+/// `NA_real_`: R's NA payload, 1954, in a NaN.
+const NA_REAL_BITS: u64 = 0x7ff0_0000_0000_07a2;
+
+/// Values the general serde-to-R mapping (`serde::to_r` / `from_r`) can't
+/// read back: one-element `Vec`s in untagged and internally tagged enums and
+/// a flattened struct, R's `NA` in an `f64`, `i32::MIN`, integers above
+/// 2^53, maps with keys that are not strings, `Some(None)` and a string
+/// holding a NUL byte. The save keeps them all.
+#[derive(miniextendr_api::ExternalPtr, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
+pub struct SavedShapes {
+    values: ShapeValues,
+    scope: ShapeScope,
+    nested_scope: ShapeScope,
+    notices: Vec<ShapeNotice>,
+    flat: ShapeFlat,
+    na: f64,
+    nan_payload: f64,
+    neg_zero: f64,
+    in_option: Option<f64>,
+    reals: Vec<f64>,
+    nested: Option<Option<f64>>,
+    min: i32,
+    above_i32: u32,
+    big: u64,
+    wide: i128,
+    profiles: HashMap<Vec<(String, String)>, usize>,
+    by_id: HashMap<u32, f64>,
+    nul: String,
+}
+
+fn strings(values: &[&str]) -> Vec<String> {
+    values.iter().map(|&s| s.to_owned()).collect()
+}
+
+fn bits(x: Option<f64>) -> Option<u64> {
+    x.map(f64::to_bits)
+}
+
+/// @title A serde class holding values only an exact save keeps
+/// @description `SavedShapes` holds one-element vectors in untagged and
+///   internally tagged enums, R's `NA` in a double, wide integers, maps with
+///   keys that are not strings and nested options.
+#[miniextendr(env)]
+impl SavedShapes {
+    /// The value with every shape.
+    pub fn new() -> Self {
+        let selector = ShapeSelector {
+            name: "ID".to_owned(),
+            values: strings(&["1"]),
+        };
+        SavedShapes {
+            values: ShapeValues::Many(strings(&["1"])),
+            scope: ShapeScope::Selectors(vec![ShapeSelector {
+                name: "ID".to_owned(),
+                values: strings(&["1"]),
+            }]),
+            nested_scope: ShapeScope::Any {
+                any: vec![ShapeScope::Selectors(vec![selector])],
+            },
+            notices: vec![
+                ShapeNotice::Dropped {
+                    profiles: strings(&["ID=1"]),
+                },
+                ShapeNotice::Counted { n: 3 },
+            ],
+            flat: ShapeFlat {
+                label: "flat".to_owned(),
+                part: ShapePart {
+                    values: ShapeValues::Many(strings(&["2"])),
+                    ids: vec![9_007_199_254_740_993],
+                },
+            },
+            na: f64::from_bits(NA_REAL_BITS),
+            nan_payload: f64::from_bits(0x7ff8_0000_0000_0123),
+            neg_zero: -0.0,
+            in_option: Some(f64::from_bits(NA_REAL_BITS)),
+            reals: vec![f64::from_bits(NA_REAL_BITS), -0.0, f64::INFINITY],
+            nested: Some(None),
+            min: i32::MIN,
+            above_i32: u32::MAX,
+            big: 9_007_199_254_740_993,
+            wide: i128::MIN,
+            profiles: [(vec![("ID".to_owned(), "1".to_owned())], 0)].into(),
+            by_id: [(1, 0.5), (u32::MAX, -0.0)].into(),
+            nul: "a\0b".to_owned(),
+        }
+    }
+
+    /// The names of the fields whose value differs from a new object's,
+    /// doubles compared by their bits: `character(0)` when every field
+    /// matches.
+    pub fn mismatches(&self) -> Vec<String> {
+        let new = Self::new();
+        let mut out = Vec::new();
+        let mut check = |name: &str, same: bool| {
+            if !same {
+                out.push(name.to_owned());
+            }
+        };
+        check("values", self.values == new.values);
+        check("scope", self.scope == new.scope);
+        check("nested_scope", self.nested_scope == new.nested_scope);
+        check("notices", self.notices == new.notices);
+        check("flat", self.flat == new.flat);
+        check("na", self.na.to_bits() == new.na.to_bits());
+        check(
+            "nan_payload",
+            self.nan_payload.to_bits() == new.nan_payload.to_bits(),
+        );
+        check(
+            "neg_zero",
+            self.neg_zero.to_bits() == new.neg_zero.to_bits(),
+        );
+        check("in_option", bits(self.in_option) == bits(new.in_option));
+        check(
+            "reals",
+            self.reals
+                .iter()
+                .map(|x| x.to_bits())
+                .eq(new.reals.iter().map(|x| x.to_bits())),
+        );
+        check("nested", self.nested.map(bits) == new.nested.map(bits));
+        check("min", self.min == new.min);
+        check("above_i32", self.above_i32 == new.above_i32);
+        check("big", self.big == new.big);
+        check("wide", self.wide == new.wide);
+        check("profiles", self.profiles == new.profiles);
+        check(
+            "by_id",
+            self.by_id.len() == new.by_id.len()
+                && self
+                    .by_id
+                    .iter()
+                    .all(|(k, v)| new.by_id.get(k).map(|x| x.to_bits()) == Some(v.to_bits())),
+        );
+        check("nul", self.nul == new.nul);
+        out
+    }
+}
+
+/// A long `Vec<f64>`: the save keeps it as one double vector.
+#[derive(miniextendr_api::ExternalPtr, Serialize, Deserialize)]
+#[serde(crate = "crate::serde")]
+pub struct SavedFloats {
+    values: Vec<f64>,
+}
+
+/// @title A serde class holding a long vector of doubles
+/// @description `SavedFloats` holds `0, 1, ..., n - 1`.
+#[miniextendr(env)]
+impl SavedFloats {
+    /// @param n The number of values.
+    pub fn new(n: i32) -> Self {
+        SavedFloats {
+            values: (0..n).map(f64::from).collect(),
+        }
+    }
+
+    /// Whether the values are `0, 1, ..., n - 1` for `n` values.
+    /// @param n The number of values expected.
+    pub fn holds(&self, n: i32) -> bool {
+        self.values.iter().copied().eq((0..n).map(f64::from))
+    }
 }
 
 // endregion

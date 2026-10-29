@@ -769,6 +769,14 @@ jobs:
       - name: Tests (miniextendr-api, ndarray feature)
         run: cargo test -p miniextendr-api --locked --no-fail-fast --features ndarray --test ndarray_generic --test ndarray_all_types --test ndarray_string
 
+      # The serde suites (`serde_exact`, `snapshot`, `serde_columnar`,
+      # `serde_option_na`, ...) are `#![cfg(feature = "serde")]` the same way,
+      # so the workspace run above compiles them to empty binaries and the
+      # snapshot encoding's round trips (#2256) never ran. The lib binary runs
+      # again with the serde modules' unit tests.
+      - name: Tests (miniextendr-api, serde features)
+        run: cargo test -p miniextendr-api --locked --no-fail-fast --features serde,serde_json
+
       # The custom-connection tests are gated on the opt-in `connections`
       # feature the same way: the integration suite is
       # `#![cfg(feature = "connections")]` and the unit tests sit in the

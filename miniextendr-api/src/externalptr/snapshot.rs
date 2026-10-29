@@ -9,7 +9,8 @@
 //! `R_init`. R itself calls the class's methods:
 //!
 //! - **`Serialized_state`**, during `serialize()`: the value encoded through
-//!   the crate's serde-to-R path (`serde::to_r`), an R list. It
+//!   the crate's serde-to-R path in its exact mode (`serde/exact.rs`, #2256),
+//!   an R list the value comes back from unchanged. It
 //!   reads the value through [`ExternalPtr::borrow`], so a `serialize()` that
 //!   R code runs while a call holds the object mutably (a callback that saves
 //!   `self`) raises the `miniextendr_borrow_conflict` error instead of
@@ -18,7 +19,7 @@
 //!   and the reload is refused as before.
 //! - **`Unserialize`**, during `unserialize()`, which loads the package (and
 //!   so registers the class) first: decodes the state at once
-//!   (`serde::from_r`) and keeps the value, or the decoding error, in the
+//!   (the same exact mode) and keeps the value, or the decoding error, in the
 //!   carrier. It never raises: a failure is kept for the first access.
 //!
 //! R reads the protection list before the pointer exists, so the value is
@@ -137,8 +138,8 @@ where
     fn __mx_snapshot(&self) -> Option<Snapshot<T>> {
         Some(Snapshot {
             class: self.0,
-            encode: |value| crate::serde::to_r(value).map_err(|e| e.to_string()),
-            decode: |state| crate::serde::from_r(state).map_err(|e| e.to_string()),
+            encode: |value| crate::serde::exact::to_r_exact(value).map_err(|e| e.to_string()),
+            decode: |state| crate::serde::exact::from_r_exact(state).map_err(|e| e.to_string()),
         })
     }
 }

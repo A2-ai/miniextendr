@@ -14,6 +14,9 @@
 # zero weight out of its save, as an older version would have saved it.
 # `saved_rewrite_type()` makes a save read as made by a type at another path:
 # one saved before the type moved to another module, or another type.
+# `SavedShapes` holds values the general serde-to-R mapping can't read back
+# (#2256): its `mismatches()` names the fields that differ from a new one's.
+# `SavedFloats` holds a long vector of doubles.
 
 reload <- function(x) unserialize(serialize(x, NULL))
 reload_rds <- function(x) {
@@ -134,6 +137,38 @@ test_that("readRDS() loads the package in a session that has not, and the value 
   expect_identical(out$label, "fresh")
 })
 
+test_that("values the general serde mapping changes come back exactly (#2256)", {
+  for (back_of in list(reload, reload_rds)) {
+    expect_identical(back_of(SavedShapes$new())$mismatches(), character(0))
+    # Read back and saved again before any access.
+    expect_identical(reload(back_of(SavedShapes$new()))$mismatches(), character(0))
+  }
+})
+
+test_that("a long vector of doubles is saved as one double vector", {
+  n <- 1000000L
+  bytes <- serialize(SavedFloats$new(n), NULL)
+  # One double vector takes 8 bytes a value; a list of scalars would take 16.
+  expect_lt(length(bytes), 9 * n)
+  expect_true(unserialize(bytes)$holds(n))
+})
+
+test_that("an exact save reads back in a fresh R process", {
+  skip_on_os("windows")
+  skip_if_not_installed("callr")
+  path <- tempfile(fileext = ".rds")
+  on.exit(unlink(path), add = TRUE)
+  saveRDS(list(shapes = SavedShapes$new()), path)
+  out <- callr::r(
+    function(path) {
+      x <- readRDS(path)
+      list(mismatches = x$shapes$mismatches())
+    },
+    args = list(path = path)
+  )
+  expect_identical(out$mismatches, character(0))
+})
+
 test_that("a save that can't be decoded is refused, with the decoding error as e$parent", {
   back <- reload(SavedPositive$new(-2L))
   e <- tryCatch(back$value(), error = identity)
@@ -246,6 +281,15 @@ test_that("the saved-value round trip survives gctorture", {
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   gc_stress_saved_value()
+  gctorture(FALSE)
+  succeed()
+})
+
+test_that("the exact save survives gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  gc_stress_saved_shapes()
   gctorture(FALSE)
   succeed()
 })
