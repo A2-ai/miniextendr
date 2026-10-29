@@ -96,15 +96,15 @@ fn a_fresh_value_is_rooted_from_construction() {
         let drops = Arc::new(AtomicUsize::new(0));
         let payload = ExternalPtr::new(Payload(Arc::clone(&drops)));
         let pending = Sidecar::<SEXP>::new(payload.as_sexp());
-        let replacing = Sidecar::<SEXP>::replace(payload.as_sexp());
+        let second = Sidecar::<SEXP>::new(payload.as_sexp());
         drop(payload);
         collect();
         assert_eq!(drops.load(Ordering::SeqCst), 0);
         drop(pending);
         collect();
         assert_eq!(drops.load(Ordering::SeqCst), 0);
-        let copy = replacing.clone();
-        drop(replacing);
+        let copy = second.clone();
+        drop(second);
         collect();
         assert_eq!(drops.load(Ordering::SeqCst), 0);
         drop(copy);

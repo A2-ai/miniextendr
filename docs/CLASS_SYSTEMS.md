@@ -1916,7 +1916,12 @@ compile, since each emits the fallback's `.Call` entry
 #### A restored pointer
 
 `saveRDS()` keeps a pointer's `Sidecar` values but not its Rust value
-(`EXTERNALPTR.md`, "Serialization"). The generated field methods refuse a
+(`EXTERNALPTR.md`, "Serialization"), unless the type derives `Serialize` and
+`Deserialize`: such a type comes back after `readRDS()` with its value, and
+every method and field works on the reloaded object as on the original
+(`EXTERNALPTR.md`, "A serde type comes back after `readRDS()`", #2186). The
+rest of this section is about the other types, and a serde type's save that
+fails to decode. The generated field methods refuse a
 pointer `readRDS()` brought back, whatever the field: `x$keys`, `x[["keys"]]`,
 `x$keys <- v` and `x[["keys"]] <- v` on an S3, S4 or env object raise
 `miniextendr_restored_no_value` (a save by this version of the package) or
@@ -2116,7 +2121,8 @@ The method:
    tuple field) or with the field's label (`Estimates: `).
 
 An object restored from a saved session is refused with the type's
-`miniextendr_restored_*` error, on the call as written.
+`miniextendr_restored_*` error, on the call as written, unless its type
+derives serde and the value came back.
 
 A field's R value is a clone converted with `IntoR` (so the field is
 `Clone + IntoR`), or:

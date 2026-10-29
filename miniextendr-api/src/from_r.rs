@@ -2377,14 +2377,8 @@ use crate::externalptr::{ExternalPtr, TypeMismatchError, TypedExternal};
 /// Map a downcast [`TypeMismatchError`] to the [`SexpError`] surfaced from
 /// `ExternalPtr<T>` argument conversion. Shared by the checked and unchecked
 /// `TryFromSexp` paths below.
-///
-/// A failed rebuild is raised, not mapped: the conversion refuses it as a
-/// method on the object does, with the hook's cause as `e$parent` (#2217).
-/// A rebuild hook that converts another restored pointer gets that refusal
-/// as its own cause.
 fn type_mismatch_to_sexp_error(e: TypeMismatchError) -> SexpError {
     match e {
-        TypeMismatchError::RebuildFailed { condition } => condition.raise(),
         TypeMismatchError::NullPointer => {
             SexpError::InvalidValue("external pointer is null".to_string())
         }

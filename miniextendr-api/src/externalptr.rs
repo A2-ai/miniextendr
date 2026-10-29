@@ -379,10 +379,10 @@ pub const RESTORED_NO_VALUE_CLASS: &str = "miniextendr_restored_no_value";
 /// the condition carries `saved_version` and `current_version`.
 pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_version";
 
-/// The class of the error a rebuild hook gets when it reads a `Sidecar`
-/// field the save has no slot for: a field added after the version that
-/// saved the object (#2187). The condition carries `field`, the field's
-/// name. The `try_<field>` getters return `None` instead.
+/// The class of the error for reading a `Sidecar` field of a restored
+/// pointer whose save has no slot for it: a field added after the version
+/// that saved the object (#2187). The condition carries `field`, the field's
+/// name.
 pub const RESTORED_MISSING_SLOT_CLASS: &str = "miniextendr_restored_missing_slot";
 
 /// The class of the error for a receiver of a type's R accessors that carries
@@ -576,166 +576,6 @@ fn decode_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> Stri
     }
 }
 
-/// The message of a refused rebuild: the restored refusal's, then the cause's.
-fn rebuild_failed_message<T: TypedExternal>(type_name: &str, cause: &str) -> String {
-    match T::RESTORED_ERROR_MESSAGE {
-        Some(message) => format!("{message} (rebuilding it failed: {cause})"),
-        None => format!(
-            "this `{type_name}` object was restored from a saved session and rebuilding it \
-             failed: {cause}"
-        ),
-    }
-}
-
-std::thread_local! {
-    /// The pointers whose rebuild hook is running on this thread: a hook that
-    /// reaches its own object again finds it refused, not rebuilt twice.
-    static REBUILDING: RefCell<Vec<SEXP>> = const { RefCell::new(Vec::new()) };
-}
-
-/// [`try_rebuild_restored`], raising the refusal of a failed rebuild: for
-/// the paths that refuse a restored pointer by raising (a method's receiver,
-/// the R field accessors).
-///
-/// # Safety
-///
-/// As [`try_rebuild_restored`].
-#[cold]
-pub(crate) unsafe fn rebuild_restored<T: TypedExternal>(sexp: SEXP, receiver: SEXP) -> bool {
-    unsafe { try_rebuild_restored::<T>(sexp, receiver) }.unwrap_or_else(|refusal| refusal.raise())
-}
-
-/// Rebuilds the value of `sexp`, a pointer without an address, when `T`
-/// has a rebuild hook (`#[externalptr(rebuild = path)]`) and this version of
-/// its crate saved it, or another version did and `T` opts in with
-/// `any_version` (#2187) and the save carries slot names. Installs the value
-/// in `sexp`. Returns whether `sexp` holds a value now; `Ok(false)` leaves the
-/// caller to refuse the pointer as before (another version saved it, another
-/// type, no hook, or the hook is already running for `sexp`).
-///
-/// The hook reads the saved `Sidecar` slots through [`Saved`], by field
-/// name. The installed pointer keeps each saved slot whose field `T` still
-/// has, unless the hook's struct replaces it ([`Sidecar::replace`]), and
-/// takes the value the hook's struct holds for a field the save lacks
-/// ([`install_rebuilt`]). A failing hook (an `Err`, or a condition it raises)
-/// installs nothing, and the next use tries again. It returns the restored
-/// refusal of `T` as `Err` (its classes, then [`RESTORED_NO_VALUE_CLASS`] and
-/// [`RESTORED_CLASS`], the cause as `e$parent`), for the caller to raise
-/// ([`rebuild_restored`]) or return ([`ExternalPtr::wrap_sexp_with_error`],
-/// #2217). Any other unwind (an R error, a plain panic) carries on.
-///
-/// # Safety
-///
-/// On R's main thread, with `sexp` a valid `EXTPTRSXP` whose address is NULL,
-/// rooted for the call; `receiver` is the object the user called on.
-#[cold]
-pub(crate) unsafe fn try_rebuild_restored<T: TypedExternal>(
-    sexp: SEXP,
-    receiver: SEXP,
-) -> Result<bool, RCondition> {
-    if !T::REBUILDS {
-        return Ok(false);
-    }
-    match unsafe { classify_null_address::<T>(sexp) } {
-        NullAddress::Restored => {}
-        NullAddress::OtherVersion { .. }
-            if T::REBUILDS_ANY_VERSION
-                && sidecar::has_slot_names(unsafe { R_ExternalPtrProtected(sexp) }) => {}
-        _ => return Ok(false),
-    }
-    if REBUILDING.with_borrow(|running| running.contains(&sexp)) {
-        return Ok(false);
-    }
-    struct Running(SEXP);
-    impl Drop for Running {
-        fn drop(&mut self) {
-            REBUILDING.with_borrow_mut(|running| running.retain(|&s| s != self.0));
-        }
-    }
-    REBUILDING.with_borrow_mut(|running| running.push(sexp));
-    let running = Running(sexp);
-    // SAFETY: `sexp` is a pointer this version built for a `T` (classified
-    // above), rooted by the caller for the hook's duration.
-    let saved = unsafe { Saved::<T>::new(sexp) };
-    let outcome = crate::condition::catch_condition(|| T::__mx_rebuild(&saved));
-    drop(running);
-    match outcome {
-        Ok(Ok(value)) => {
-            // SAFETY: on R's main thread; `sexp` still has no address (the
-            // hook could not install one: a reentrant use was refused).
-            unsafe { install_rebuilt(sexp, value) };
-            Ok(true)
-        }
-        Ok(Err(cause)) | Err(cause) => {
-            let name = receiver_class(receiver).unwrap_or_else(|| T::TYPE_NAME.to_owned());
-            Err(RCondition::Error {
-                message: rebuild_failed_message::<T>(&name, cause.message()),
-                class: restored_classes_of::<T>(RESTORED_NO_VALUE_CLASS),
-                data: None,
-                call: ConditionCall::Inherit,
-            }
-            .with_parent(cause))
-        }
-    }
-}
-
-/// Puts the rebuilt `value` in `sexp`, a restored pointer for a `T`, as
-/// construction puts a new value in a new pointer: the finalizer first
-/// (R does not save it), then the address.
-///
-/// The pointer gets a protection list in this version's layout (#2187): its
-/// type ID and slot names, the saved user slot, and for each `Sidecar` field
-/// the saved slot of that name. `value`'s own pending value for the field
-/// is written instead when the save has no such slot, or when the hook made
-/// it with [`Sidecar::replace`]. `value`'s other pending values are dropped.
-///
-/// # Safety
-///
-/// On R's main thread, with `sexp` a valid `EXTPTRSXP` for a `T` whose
-/// address is NULL, rooted for the call.
-unsafe fn install_rebuilt<T: TypedExternal>(sexp: SEXP, value: T) {
-    if T::R_SLOT_COUNT > 0 {
-        unsafe { relayout_saved_slots(sexp, &value) };
-    }
-    discard_pending_sidecars(&value);
-    let (_, any_raw) = ExternalPtr::<T>::erase(value);
-    // Own the allocation until the finalizer that frees it is registered.
-    let allocation = unsafe { Box::from_raw(any_raw) };
-    unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
-    let any_raw = Box::into_raw(allocation);
-    unsafe { R_SetExternalPtrAddr(sexp, any_raw.cast()) };
-}
-
-/// Replaces the saved protection list of `sexp` with one in `T`'s layout:
-/// see [`install_rebuilt`]. `value`'s pending values for the fields the save
-/// lacks are written; the rest stay pending, for the caller to drop.
-///
-/// # Safety
-///
-/// As [`install_rebuilt`].
-unsafe fn relayout_saved_slots<T: TypedExternal>(sexp: SEXP, value: &T) {
-    let saved = unsafe { R_ExternalPtrProtected(sexp) };
-    let scope = unsafe { ProtectScope::new() };
-    let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
-    unsafe { scope.protect(prot) };
-    prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe { type_id_symbol::<T>() });
-    prot.set_vector_elt(PROT_USER_INDEX, saved.vector_elt(PROT_USER_INDEX));
-    unsafe { sidecar::name_slots::<T>(prot) };
-    // Detached from `sexp`, the saved list stays rooted by the scope while
-    // its slots are read. The pending values the fields write are rooted
-    // until they sit in a slot (#2216).
-    unsafe { scope.protect(saved) };
-    unsafe { R_SetExternalPtrProtected(sexp, prot) };
-    value.__mx_visit_sidecars(&mut |index, name, field| match sidecar::saved_slot(
-        saved, index, name,
-    ) {
-        Some(at) if !field.__mx_replaces_saved() => {
-            prot.set_vector_elt(sidecar::prot_index(index), saved.vector_elt(at));
-        }
-        _ => field.__mx_flush(prot, index),
-    });
-}
-
 /// Empties the pointer a value was moved out of (`into_raw` / `into_inner`):
 /// the address, so the finalizer is a no-op, and the tag and protection list
 /// too, so the pointer reads as empty (the plain `null external pointer`
@@ -803,59 +643,6 @@ pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
     prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe {
         Rf_install(rewritten.as_ptr())
     });
-}
-
-/// Lays the `Sidecar` slots of a restored pointer's save out as another
-/// version of its type might have saved them, for tests of reading a save by
-/// field name (#2187). Slot `i` of the new list holds the slot named
-/// `layout[i]` in the current save, or the string `"unknown"` for a name the
-/// save has no slot for. The list carries the names `layout` unless `named`
-/// is false, which gives a save made before slots were named.
-///
-/// # Panics
-///
-/// When `sexp` still has its Rust value, or its save carries no slot names.
-///
-/// # Safety
-///
-/// Must be called from R's main thread with a valid `EXTPTRSXP`.
-#[doc(hidden)]
-pub unsafe fn rewrite_saved_slots_for_tests(sexp: SEXP, layout: &[&str], named: bool) {
-    assert!(
-        unsafe { R_ExternalPtrAddr(sexp) }.is_null(),
-        "the pointer still has its Rust value: save and restore it first"
-    );
-    let saved = unsafe { R_ExternalPtrProtected(sexp) };
-    assert!(
-        sidecar::has_slot_names(saved),
-        "the save carries no slot names"
-    );
-    let names = saved.get_attr(SEXP::names_symbol());
-    let len = PROT_VEC_LEN
-        + R_xlen_t::try_from(layout.len()).expect("the layout length fits in R_xlen_t");
-    let scope = unsafe { ProtectScope::new() };
-    let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len) };
-    unsafe { scope.protect(prot) };
-    prot.set_vector_elt(PROT_TYPE_ID_INDEX, saved.vector_elt(PROT_TYPE_ID_INDEX));
-    prot.set_vector_elt(PROT_USER_INDEX, saved.vector_elt(PROT_USER_INDEX));
-    for (index, name) in layout.iter().enumerate() {
-        let found =
-            (PROT_VEC_LEN..names.xlength()).find(|&at| names.string_elt_str(at) == Some(name));
-        let slot = match found {
-            Some(at) => saved.vector_elt(at),
-            None => crate::into_r::IntoR::into_sexp("unknown"),
-        };
-        prot.set_vector_elt(sidecar::prot_index(index), slot);
-    }
-    if named {
-        let new_names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len) };
-        unsafe { scope.protect(new_names) };
-        for (index, name) in layout.iter().enumerate() {
-            new_names.set_string_elt(sidecar::prot_index(index), SEXP::charsxp(name));
-        }
-        prot.set_names(new_names);
-    }
-    unsafe { R_SetExternalPtrProtected(sexp, prot) };
 }
 
 // endregion
@@ -980,34 +767,6 @@ pub trait TypedExternal: 'static {
         Self: Sized,
     {
         None
-    }
-
-    /// Whether a pointer of this type that this version of its crate saved
-    /// is rebuilt on first use after `readRDS()`, by [`Self::__mx_rebuild`],
-    /// instead of refused.
-    ///
-    /// `#[derive(ExternalPtr)]` sets it with `#[externalptr(rebuild = path)]`.
-    #[doc(hidden)]
-    const REBUILDS: bool = false;
-
-    /// Whether [`Self::__mx_rebuild`] also rebuilds a pointer another
-    /// version of the crate saved, when the save carries slot names.
-    /// `#[derive(ExternalPtr)]` sets it with `any_version` next to
-    /// `rebuild = path` (#2187).
-    #[doc(hidden)]
-    const REBUILDS_ANY_VERSION: bool = false;
-
-    /// Rebuilds the value of a pointer of this type restored from a saved
-    /// session, from what the save kept. `#[derive(ExternalPtr)]` emits it for
-    /// `#[externalptr(rebuild = path)]`: it calls `path` and turns its `Err`
-    /// into a condition.
-    #[doc(hidden)]
-    fn __mx_rebuild(saved: &Saved<'_, Self>) -> Result<Self, RCondition>
-    where
-        Self: Sized,
-    {
-        let _ = saved;
-        unreachable!("`{}` has no rebuild hook", Self::TYPE_NAME)
     }
 }
 
@@ -1201,20 +960,14 @@ pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
             None => receiver_not_a_handle::<T>(sexp),
         }
     };
-    // A pointer restored from a saved session gets its value back here, before
-    // the receiver is borrowed: a serde type's saved value (#2186), else the
-    // type's rebuild hook. A save that could not be decoded is refused by the
-    // receiver's prelude, which names the decoding error.
+    // A serde type's pointer restored from a saved session gets its value
+    // back here, before the receiver is borrowed (#2186). A save that could
+    // not be decoded is refused by the receiver's prelude, which names the
+    // decoding error.
     // SAFETY: on R's main thread; `ptr` is a valid EXTPTRSXP reachable from
     // `sexp`, which the call's frame roots.
     if unsafe { R_ExternalPtrAddr(ptr) }.is_null() {
-        let attached = matches!(
-            unsafe { snapshot::attach::<T>(ptr) },
-            snapshot::Attach::Attached
-        );
-        if !attached && T::REBUILDS {
-            unsafe { rebuild_restored::<T>(ptr, sexp) };
-        }
+        let _ = unsafe { snapshot::attach::<T>(ptr) };
     }
     ptr
 }
@@ -2389,26 +2142,11 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// This is used by the [`TryFromSexp`] trait implementation.
     ///
-    /// A pointer restored from a saved session is rebuilt first when `T` has
-    /// a rebuild hook (`#[externalptr(rebuild = path)]`). A failed rebuild is
-    /// returned, not raised (#2217): [`TypeMismatchError::RebuildFailed`]
-    /// holds the refusal a use of the object raises, with the hook's cause as
-    /// `e$parent`. So a check that must not raise (is the object live? fall
-    /// back to plain data?) needs no
-    /// [`catch_condition`](crate::condition::catch_condition):
-    ///
-    /// ```ignore
-    /// match unsafe { ExternalPtr::<Model>::wrap_sexp_with_error(x) } {
-    ///     Ok(model) => Some(model),
-    ///     Err(TypeMismatchError::RebuildFailed { .. }) => None,
-    ///     Err(other) => panic!("{other}"),
-    /// }
-    /// ```
-    ///
-    /// The [`TryFromSexp`] conversion, behind every `ExternalPtr<T>` / `&T` /
-    /// `&mut T` argument, raises the refusal ([`RCondition::raise`]), as a
-    /// method on the object does. An R error or a plain panic inside the hook
-    /// carries on as itself here too.
+    /// A pointer restored from a saved session gets its value first when `T`
+    /// derives serde and the save carries one (#2186). A save that could not
+    /// be decoded raises its refusal (the classed restored error, with the
+    /// decoding error as `e$parent`); every other pointer without a value is
+    /// returned as `Err`.
     ///
     /// # Safety
     ///
@@ -2434,11 +2172,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
                     unsafe { refuse_restored::<T>(sexp, sexp) };
                 }
                 snapshot::Attach::NoCarrier => {}
-            }
-            match unsafe { try_rebuild_restored::<T>(sexp, sexp) } {
-                Ok(true) => return unsafe { Self::wrap_sexp_with_error(sexp) },
-                Ok(false) => {}
-                Err(condition) => return Err(TypeMismatchError::RebuildFailed { condition }),
             }
             // SAFETY: on R's main thread with a valid EXTPTRSXP.
             return Err(match unsafe { classify_null_address::<T>(sexp) } {
@@ -2828,23 +2561,12 @@ pub enum TypeMismatchError {
         /// ([`TypedExternal::RESTORED_ERROR_MESSAGE`]).
         package_message: Option<&'static str>,
     },
-    /// A pointer restored from a saved session whose rebuild hook
-    /// (`#[externalptr(rebuild = path)]`) failed (#2217). Nothing was
-    /// installed; the next use tries again.
-    RebuildFailed {
-        /// The restored refusal a use of the object raises: the package's
-        /// classes, [`RESTORED_NO_VALUE_CLASS`] and [`RESTORED_CLASS`], the
-        /// message naming the cause, and the hook's condition as `e$parent`.
-        /// Raise it with [`RCondition::raise`].
-        condition: RCondition,
-    },
 }
 
 impl TypeMismatchError {
     /// The condition classes of the error about a restored pointer: the
     /// package's classes, then the specific class, then [`RESTORED_CLASS`];
-    /// `None` for the other variants (a failed rebuild's classes are its
-    /// `condition`'s).
+    /// `None` for the other variants.
     pub fn restored_classes(&self) -> Option<Vec<&'static str>> {
         let (package_classes, specific) = match self {
             Self::Restored {
@@ -2853,10 +2575,7 @@ impl TypeMismatchError {
             Self::OtherVersion {
                 package_classes, ..
             } => (package_classes, RESTORED_OTHER_VERSION_CLASS),
-            Self::NullPointer
-            | Self::InvalidTypeId
-            | Self::Mismatch { .. }
-            | Self::RebuildFailed { .. } => return None,
+            Self::NullPointer | Self::InvalidTypeId | Self::Mismatch { .. } => return None,
         };
         Some(
             package_classes
@@ -2901,7 +2620,6 @@ impl fmt::Display for TypeMismatchError {
                     type_name, crate_name, saved, current,
                 )),
             },
-            Self::RebuildFailed { condition } => f.write_str(condition.message()),
         }
     }
 }
@@ -3372,9 +3090,7 @@ mod altrep_helpers;
 pub use altrep_helpers::*;
 
 mod borrowed;
-pub use borrowed::{
-    ExternalPtrMut, ExternalPtrRef, Saved, SidecarOwner, SidecarOwnerMut, SidecarRead,
-};
+pub use borrowed::{ExternalPtrMut, ExternalPtrRef, SidecarOwner, SidecarOwnerMut};
 
 mod sidecar;
 pub use sidecar::*;

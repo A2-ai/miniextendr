@@ -110,10 +110,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - `Sidecar<SEXP>`, `Sidecar<List>` and `Sidecar<DataFrame>` keep an
 ///   arbitrary R object unconverted. The getter returns a view that the slot
 ///   roots only until the next write to that field; don't hold it across one.
-/// - [`Sidecar::new`] and [`Sidecar::replace`] convert their value with
-///   `IntoR` at once and root the R object it gives until a slot holds it
-///   (#2216). A fresh `SEXP` or list passed to them is safe from that moment;
-///   it needs its own protection only before the call.
+/// - [`Sidecar::new`] converts its value with `IntoR` at once and roots the
+///   R object it gives until a slot holds it (#2216). A fresh `SEXP` or list
+///   passed to it is safe from that moment; it needs its own protection only
+///   before the call.
 ///
 /// # Lifecycle
 ///
@@ -154,8 +154,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - **`*ptr = new` and `mem::swap(&mut *a, &mut *b)`** are plain Rust
 ///   moves. The sidecar values stay in each pointer's protection list; only
 ///   pending values travel with the struct.
-/// - **After `readRDS()`** there is no Rust value. The standalone R
-///   accessors (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and
+/// - **After `readRDS()`** a type that derives `Serialize` and
+///   `Deserialize` gets its value back at the first access, and the slots
+///   the save kept with it (#2186). Any other type has no Rust value. The
+///   standalone R accessors (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and
 ///   the S7 properties read and write the protection list directly, checked
 ///   by the type ID stored with it. The `$` / `[[` / `$<-` / `[[<-` field
 ///   methods of `s3(r_data_accessors)` & co. refuse the restored pointer
@@ -170,14 +172,15 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// A saved object (`saveRDS()`, `serialize()`) stores one slot per `Sidecar`
 /// field, named after the field's R name: the `#[r_data(name = "..")]` value,
 /// else the Rust field name (#2187, #2215). After a reload, the standalone R
-/// accessors, the R6 bindings, the S7 properties and a rebuild hook
-/// (`#[externalptr(rebuild = path)]`, through [`super::Saved`]) find each
-/// field's slot by that name. So the R name is the save format:
+/// accessors, the R6 bindings, the S7 properties and a serde type's restored
+/// value (#2186) find each field's slot by that name. So the R name is the
+/// save format:
 ///
 /// - Reordering, adding or removing `Sidecar` fields keeps earlier saves
 ///   readable. A field the save has no slot for raises the classed
 ///   [`RESTORED_MISSING_SLOT_CLASS`](super::RESTORED_MISSING_SLOT_CLASS)
-///   error (or reads as `None` through a hook's `Self::try_<field>(saved)`).
+///   error from an R accessor; a serde type's restored value gets the
+///   field's [`Sidecar`] from its decoded struct instead.
 /// - Renaming the Rust field keeps them readable too, as long as the R name
 ///   stays: a field without `name = ..` keeps its old ident as
 ///   `#[r_data(name = "old")]`.
@@ -189,7 +192,7 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// A save from another version of the crate (the `version` in its
 /// `Cargo.toml`, which the stored type ID records) is refused with the classed
 /// `miniextendr_restored_other_version` error (#1872), unless the type
-/// rebuilds it (`rebuild = path, any_version`).
+/// derives serde and serde reads the save (#2186).
 ///
 /// # Methods that need sidecar values take a view
 ///
@@ -226,9 +229,6 @@ pub struct Sidecar<T> {
 struct Pending {
     sexp: SEXP,
     root: Arc<PendingRoot>,
-    /// Made by [`Sidecar::replace`]: in a struct a rebuild hook returns, the
-    /// value replaces the slot the save kept (#2187).
-    replace: bool,
 }
 
 /// Only the pool key crosses threads, as with an owning `ExternalPtr`.
@@ -254,31 +254,12 @@ impl<T: IntoR + 'static> Sidecar<T> {
     /// Off R's main thread and its managed worker, before converting; or
     /// when the conversion fails.
     pub fn new(value: T) -> Self {
-        Self::pending(value, false)
-    }
-
-    /// A sidecar field holding `value`, which replaces the slot a save kept
-    /// when a rebuild hook (`#[externalptr(rebuild = path)]`) returns it.
-    ///
-    /// A rebuilt object keeps each slot its save has: the hook's
-    /// [`Sidecar::new`] values are placeholders for those fields, and fill only
-    /// the fields the save lacks. A hook that recomputes a field's value, and
-    /// wants the object to hold the new value rather than the saved one,
-    /// returns it as `Sidecar::replace(value)`. Anywhere else it is
-    /// `Sidecar::new(value)`. Converts and roots `value` as
-    /// [`Sidecar::new`] does, with the same panics.
-    pub fn replace(value: T) -> Self {
-        Self::pending(value, true)
-    }
-
-    /// Converts `value` and roots its R object on R's main thread: inline
-    /// there, through the main thread from the managed worker (#2216).
-    fn pending(value: T, replace: bool) -> Self {
+        // Converts `value` and roots its R object on R's main thread: inline
+        // there, through the main thread from the managed worker (#2216).
         assert!(
             crate::worker::is_r_main_thread() || crate::worker::has_worker_context(),
-            "`Sidecar::{}` converts its value on R's main thread: call it there or on \
+            "`Sidecar::new` converts its value on R's main thread: call it there or on \
              the managed worker, not from a thread the package spawned",
-            if replace { "replace" } else { "new" },
         );
         // `root_owned` roots the fresh object across the pool's growth.
         let (sexp, key) = crate::worker::with_r_thread(move || {
@@ -289,7 +270,6 @@ impl<T: IntoR + 'static> Sidecar<T> {
             pending: RefCell::new(Some(Pending {
                 sexp,
                 root: Arc::new(PendingRoot(key)),
-                replace,
             })),
             _value: PhantomData,
         }
@@ -297,14 +277,6 @@ impl<T: IntoR + 'static> Sidecar<T> {
 }
 
 impl<T> Sidecar<T> {
-    /// Whether the pending value was made by [`Sidecar::replace`].
-    fn replaces_saved(&self) -> bool {
-        self.pending
-            .borrow()
-            .as_ref()
-            .is_some_and(|pending| pending.replace)
-    }
-
     /// Drops a pending value, which a write to the slot supersedes.
     fn discard_pending(&self) {
         *self.pending.borrow_mut() = None;
@@ -313,7 +285,7 @@ impl<T> Sidecar<T> {
     /// Moves a pending value into slot `index` of `prot`, if there is one.
     /// On R's main thread; `set_vector_elt` allocates nothing.
     fn flush_into(&self, prot: SEXP, index: usize) {
-        let Some(Pending { sexp, root, .. }) = self.pending.borrow_mut().take() else {
+        let Some(Pending { sexp, root }) = self.pending.borrow_mut().take() else {
             return;
         };
         prot.set_vector_elt(prot_index(index), sexp);
@@ -334,7 +306,6 @@ impl<T> Sidecar<T> {
         *self.pending.borrow_mut() = Some(Pending {
             sexp,
             root: Arc::new(PendingRoot(super::root_owned(sexp))),
-            replace: false,
         });
     }
 }
@@ -410,8 +381,6 @@ pub trait SidecarField {
     fn __mx_load(&self, prot: SEXP, index: usize);
     /// Drops a pending value, which a write to the slot supersedes.
     fn __mx_discard_pending(&self);
-    /// Whether the pending value was made by [`Sidecar::replace`].
-    fn __mx_replaces_saved(&self) -> bool;
 }
 
 impl<T> SidecarField for Sidecar<T> {
@@ -425,10 +394,6 @@ impl<T> SidecarField for Sidecar<T> {
 
     fn __mx_discard_pending(&self) {
         self.discard_pending();
-    }
-
-    fn __mx_replaces_saved(&self) -> bool {
-        self.replaces_saved()
     }
 }
 
@@ -530,52 +495,12 @@ where
     <T as TryFromSexp>::Error: fmt::Display,
 {
     assert_main_thread(name, O::TYPE_NAME);
-    // SAFETY (both arms): on R's main thread; the handle's EXTPTRSXP is live
-    // and was built for an `O`.
-    match ptr.__mx_read() {
-        super::SidecarRead::Live(value) => {
-            let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
-            field(&value).flush_into(prot, index);
-            convert_slot::<T>(prot, prot_index(index), name, O::TYPE_NAME)
-        }
-        // A rebuild hook reads what the save kept, by the field's name;
-        // nothing is pending.
-        super::SidecarRead::Saved(sexp) => {
-            let prot = unsafe { R_ExternalPtrProtected(sexp) };
-            match saved_slot(prot, index, name) {
-                Some(at) => convert_slot::<T>(prot, at, name, O::TYPE_NAME),
-                None => missing_slot::<O>(name),
-            }
-        }
-    }
-}
-
-/// `T`'s `Sidecar` field `index`, named `name`, as the save `saved` kept it,
-/// or `None` when the save has no slot for it: a field added after the
-/// version that saved the object.
-///
-/// Called by the `try_<field>` getters `#[derive(ExternalPtr)]` generates for
-/// a type with a rebuild hook.
-///
-/// # Panics
-///
-/// Off R's main thread, naming the field; or when the slot does not convert
-/// to `T`.
-#[doc(hidden)]
-pub fn sidecar_try_saved<O, T>(
-    saved: &super::Saved<'_, O>,
-    index: usize,
-    name: &'static str,
-) -> Option<T>
-where
-    O: TypedExternal,
-    T: TryFromSexp,
-    <T as TryFromSexp>::Error: fmt::Display,
-{
-    assert_main_thread(name, O::TYPE_NAME);
-    // SAFETY: on R's main thread; `saved` holds a live EXTPTRSXP.
-    let prot = unsafe { R_ExternalPtrProtected(saved.as_sexp()) };
-    saved_slot(prot, index, name).map(|at| convert_slot::<T>(prot, at, name, O::TYPE_NAME))
+    let value = ptr.__mx_read();
+    // SAFETY: on R's main thread; the handle's EXTPTRSXP is live and was
+    // built for an `O`.
+    let prot = unsafe { R_ExternalPtrProtected(super::ExternalPtrRef::as_sexp(&value)) };
+    field(&value).flush_into(prot, index);
+    convert_slot::<T>(prot, prot_index(index), name, O::TYPE_NAME)
 }
 
 /// Stores `value` in `T`'s `Sidecar` field `index` of the object `ptr` holds,
@@ -869,6 +794,7 @@ pub fn sidecar_require_live(flag: SEXP) -> bool {
 /// error. With `require_live` (the field methods of `r_data_accessors`)
 /// every restored pointer is refused through [`refuse_restored`], so a save
 /// by this version gets [`RESTORED_NO_VALUE_CLASS`](super::RESTORED_NO_VALUE_CLASS).
+/// A serde type's save gets its value first (#2186), and is live.
 ///
 /// # Panics
 ///
@@ -895,22 +821,7 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
     {
         any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     }
-    // A reader that needs the value rebuilds a restored pointer first, when
-    // the type has a hook; a `Sidecar` read takes the saved slot as it is.
-    // Another version's save, under `any_version`, is rebuilt by any reader:
-    // the rebuild lays its slots out as this version's (#2187).
-    if any_raw.is_null()
-        && (require_live
-            || T::REBUILDS_ANY_VERSION
-                && matches!(
-                    unsafe { super::classify_null_address::<T>(x) },
-                    super::NullAddress::OtherVersion { .. }
-                ))
-        && unsafe { super::rebuild_restored::<T>(x, receiver) }
-    {
-        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
-    }
-    // Read after a rebuild, which gives the pointer a new list (#2187).
+    // Read after attaching, which gives the pointer a new list.
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let live = if any_raw.is_null() {
         if require_live
@@ -995,9 +906,6 @@ unsafe fn sidecar_r_cell<'a, T: TypedExternal>(receiver: SEXP) -> &'a RefCell<T>
             super::snapshot::Attach::Attached
         )
     {
-        any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
-    }
-    if any_raw.is_null() && unsafe { super::rebuild_restored::<T>(x, receiver) } {
         any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     }
     if any_raw.is_null() {

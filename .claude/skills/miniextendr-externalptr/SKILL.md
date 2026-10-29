@@ -183,7 +183,8 @@ Three field tiers are supported in sidecar slots:
 Scalar and conversion values live behind the pointer's address, which
 `saveRDS()` does not write; after `readRDS()` their getters error on the null
 pointer while the `Sidecar<T>` R accessors still work (checked by the
-`prot[0]` type ID).
+`prot[0]` type ID). A type that derives `Serialize` and `Deserialize` is the
+exception: its whole value comes back (#2186, below).
 
 ### Cross-package ABI
 
@@ -264,8 +265,9 @@ Returning Rust data to R where R needs to inspect, modify, or serialize it:
   `miniextendr-serde` (via serde Serialize/Deserialize).
 
 If the object must survive `saveRDS()`/`readRDS()` or a session restart:
-- An `ExternalPtr` cannot (see the pitfall below). Return plain data, a serde
-  list, or an R closure that captures plain R data instead.
+- Derive `Serialize` and `Deserialize` on the `ExternalPtr` type (with
+  miniextendr-api's `serde` feature): the value comes back (see the pitfall
+  below). Otherwise return plain data or a serde list instead.
 
 If the data is array-like and benefits from lazy evaluation:
 - Consider ALTREP (`miniextendr-altrep` skill).
@@ -286,8 +288,9 @@ Use sidecar fields for:
 
 Avoid sidecar fields for:
 - Large data in a conversion field — every read converts the whole value.
-- State that must survive `saveRDS()` in a scalar or conversion field (#1418);
-  `Sidecar<T>` values do survive.
+- State that must survive `saveRDS()` in a scalar or conversion field of a
+  type without serde (#1418); `Sidecar<T>` values do survive, and so does a
+  serde type's whole value.
 
 ### Crossing a crate boundary?
 
@@ -348,16 +351,20 @@ receive it:
   miniextendr limitation. If you need R-vectorized behavior over Rust data,
   use ALTREP.
 
-- **ExternalPtr does not survive `saveRDS()` / session restarts**: the pointer
-  address cannot be serialized, so a round-tripped object keeps its R class
-  but its pointer is dead — every subsequent access fails the `Any::downcast`
-  with an "expected ExternalPtr<T>" error. This is inherent to `EXTPTRSXP`,
-  not a miniextendr bug, and it is easy to miss because `readRDS()` itself
-  succeeds. If users need a persistable interface, expose a base-R-style
-  closure that captures plain R data (which serializes fine and can rebuild
-  the pointer-backed object lazily), or provide getters for the plain data so
-  the object can be reconstructed after reload. At minimum, document the
-  limitation on the constructor.
+- **Only a serde `ExternalPtr` type survives `saveRDS()` / session
+  restarts** (#2186): R saves an external pointer without its address. A
+  type that derives `Serialize` and `Deserialize` (miniextendr-api's `serde`
+  feature on) keeps its value in the save through an ALTREP carrier in the
+  pointer's `prot` list, which R itself calls during `serialize()` and
+  `readRDS()`; the value is attached at the first use. No attribute, no
+  opt-out. Every `serialize()` encodes the whole value (parallel worker
+  sends and `digest` hashing included), a save while a `&mut self` call
+  holds the object raises `miniextendr_borrow_conflict`, and the serde-to-R
+  path changes integers above 2^53 (#1417) and `i32::MIN` (#1419). A save
+  that fails to decode, a `version = 2` save, and any other type are
+  refused at the first use with the classed `miniextendr_restored_*` errors
+  (the decoding error as `e$parent`), and `readRDS()` itself succeeds.
+  `docs/EXTERNALPTR.md`, "A serde type comes back after `readRDS()`".
 
 - **Cross-package type safety requires the same crate version**: the `TypeId`
   in `Any::downcast` is per-compilation. Two separate compilations of the same

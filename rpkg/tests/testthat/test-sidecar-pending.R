@@ -1,8 +1,7 @@
 # A pending `Sidecar` value is rooted from construction until it sits in a
 # slot (#2216). Fixture: `gc_stress_sidecar_pending()` in
 # src/rust/gc_stress_fixtures.rs, which builds `Sidecar<SEXP>` values from
-# fresh lists, in a constructor and in a rebuild hook (`Sidecar::replace`),
-# churns the GC and reads them back.
+# fresh lists, churns the GC and reads them back.
 
 test_that("gc_stress_sidecar_pending runs", {
   expect_null(miniextendr:::gc_stress_sidecar_pending())

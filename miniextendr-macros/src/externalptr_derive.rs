@@ -113,7 +113,7 @@
 //! the Rust accessors keep the Rust identifier. The name must be a syntactic
 //! R name, unique in the type, and not `.ptr`. A `Sidecar` field's R name is
 //! also the save format (#2215): a save names the field's slot after it
-//! (`SIDECAR_NAMES`), and a reload or a rebuild hook finds the slot by it. So
+//! (`SIDECAR_NAMES`), and a reload finds the slot by it. So
 //! renaming the Rust field keeps earlier saves readable (give it the old
 //! ident as its `name` if it had none), while renaming the R name orphans
 //! the slot in every earlier save.
@@ -255,12 +255,6 @@ struct ExternalPtrAttrs {
     /// `field_error(class = ..., message = ...)`: the field readers' own
     /// errors (#1899, #1920).
     field_error: FieldErrorOptions,
-    /// `rebuild = path`: the hook that rebuilds a pointer restored from a
-    /// saved session (#2146).
-    rebuild: Option<syn::Path>,
-    /// `any_version`, next to `rebuild`: the hook also rebuilds a save by
-    /// another version of the crate (#2187).
-    any_version: bool,
 }
 
 /// `#[externalptr(field_error(class = ..., message = ..., no_field_hint = ...))]`.
@@ -291,15 +285,10 @@ struct FieldErrorOptions {
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
 /// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "..."))]`
-/// - `#[externalptr(rebuild = Self::from_saved)]`, the rebuild hook of a
-///   pointer restored from a saved session (#2146), with `any_version` for
-///   saves by another version of the crate too (#2187).
 fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
     let mut restored: Option<RestoredOptions> = None;
     let mut field_error: Option<FieldErrorOptions> = None;
-    let mut rebuild: Option<syn::Path> = None;
-    let mut any_version: Option<proc_macro2::Span> = None;
 
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
@@ -329,28 +318,11 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs>
                         }
                         field_error = Some(parse_field_error_options(&meta)?);
                     }
-                    "rebuild" => {
-                        if rebuild.is_some() {
-                            return Err(meta.error("`rebuild = ...` is given twice"));
-                        }
-                        rebuild = Some(meta.value()?.parse::<syn::Path>().map_err(|e| {
-                            syn::Error::new(
-                                e.span(),
-                                "`rebuild` takes the path of a function `fn(&Saved<'_, Self>) -> Result<Self, E>`, e.g. `rebuild = Self::from_saved`",
-                            )
-                        })?);
-                    }
-                    "any_version" => {
-                        if any_version.is_some() {
-                            return Err(meta.error("`any_version` is given twice"));
-                        }
-                        any_version = Some(syn::spanned::Spanned::span(&meta.path));
-                    }
                     _ => {
                         return Err(syn::Error::new_spanned(
                             &meta.path,
                             format!(
-                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)`, `field_error(class = ..., message = ...)`, `rebuild = path` or `any_version`",
+                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)` or `field_error(class = ..., message = ...)`",
                                 ident_str
                             ),
                         ));
@@ -361,20 +333,10 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs>
         }
     }
 
-    if let (Some(span), None) = (any_version, &rebuild) {
-        return Err(syn::Error::new(
-            span,
-            "`any_version` lets the rebuild hook read a save by another version of the crate; \
-             it needs `rebuild = path` next to it",
-        ));
-    }
-
     Ok(ExternalPtrAttrs {
         class_system,
         restored: restored.unwrap_or_default(),
         field_error: field_error.unwrap_or_default(),
-        rebuild,
-        any_version: any_version.is_some(),
     })
 }
 
@@ -2248,8 +2210,6 @@ fn generate_typed_external(
     info: &SidecarInfo,
     restored: &RestoredOptions,
     field_error: &FieldErrorOptions,
-    rebuild: Option<&syn::Path>,
-    any_version: bool,
     display_name: Option<&str>,
     snapshot: bool,
 ) -> TokenStream {
@@ -2290,41 +2250,6 @@ fn generate_typed_external(
         quote::quote! {
             const FIELD_ERROR_MESSAGE: ::core::option::Option<&'static str> =
                 ::core::option::Option::Some(#message);
-        }
-    });
-    // `#[externalptr(rebuild = path)]` (#2146): a restored pointer is
-    // rebuilt by `path` on first use. Its `Err` becomes the condition the
-    // refusal carries as `e$parent`, through the probe a `Result` return
-    // uses: an `RConditionData` error keeps its classes and fields.
-    // `any_version` (#2187) lets it rebuild a save by another version too,
-    // which the saved slot names make safe to read.
-    let rebuild = rebuild.map(|path| {
-        let prefix = crate::miniextendr_fn::default_serde_error_prefix();
-        let marker = crate::miniextendr_fn::init_marker_path();
-        let call = quote::quote_spanned! {syn::spanned::Spanned::span(path)=> #path(saved) };
-        let any_version = any_version.then(|| {
-            quote::quote! { const REBUILDS_ANY_VERSION: bool = true; }
-        });
-        quote::quote! {
-            const REBUILDS: bool = true;
-            #any_version
-
-            fn __mx_rebuild(
-                saved: &::miniextendr_api::externalptr::Saved<'_, Self>,
-            ) -> ::core::result::Result<Self, ::miniextendr_api::condition::RCondition> {
-                match #call {
-                    ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
-                    ::core::result::Result::Err(e) => {
-                        let parts = ::miniextendr_api::__mx_result_err_parts!(e, #prefix, #marker);
-                        ::core::result::Result::Err(::miniextendr_api::condition::RCondition::Error {
-                            message: parts.message,
-                            class: parts.class,
-                            data: parts.data,
-                            call: parts.call,
-                        })
-                    }
-                }
-            }
         }
     });
     // A type that is `Serialize + DeserializeOwned` comes back after
@@ -2391,7 +2316,6 @@ fn generate_typed_external(
             #restored_message
             #field_error_class
             #field_error_message
-            #rebuild
             #snapshot
         }
     }
@@ -2431,13 +2355,11 @@ pub(crate) fn generate_altrep_storage(
         &info,
         &RestoredOptions::default(),
         &FieldErrorOptions::default(),
-        None,
-        false,
         Some(class_name),
         // R never saves an ALTREP's data1 pointer: no carrier.
         false,
     );
-    let accessors = generate_sidecar_rust_accessors(input, &info, false);
+    let accessors = generate_sidecar_rust_accessors(input, &info);
     Ok(quote::quote! { #storage #accessors })
 }
 
@@ -2448,18 +2370,10 @@ pub(crate) fn generate_altrep_storage(
 /// both for `#[r_data(ref, mut)]` or a bare `#[r_data]`. The struct holds no
 /// reference to its pointer, so there is no accessor on `&self` (#1856).
 ///
-/// A type with a rebuild hook (`rebuilds`) also gets
-/// `fn try_keys(saved: &Saved<'_, Self>) -> Option<T>` for every `Sidecar`
-/// field: `None` when the save has no slot for it (#2187).
-///
 /// A non-`pub` accessor is `#[allow(dead_code)]`: it is generated whether or
 /// not the crate calls it. The accessors (and the `TypedExternal` hook) read
 /// the fields, so rustc sees them used.
-fn generate_sidecar_rust_accessors(
-    input: &DeriveInput,
-    info: &SidecarInfo,
-    rebuilds: bool,
-) -> TokenStream {
+fn generate_sidecar_rust_accessors(input: &DeriveInput, info: &SidecarInfo) -> TokenStream {
     let methods: Vec<TokenStream> = sidecar_slots(info)
         .flat_map(|(index, slot)| {
             let inner = sidecar_inner_type(&slot.ty).expect("a Sidecar slot has an inner type");
@@ -2472,26 +2386,6 @@ fn generate_sidecar_rust_accessors(
             let allow = (!matches!(vis, Visibility::Public(_)))
                 .then(|| quote::quote! { #[allow(dead_code)] });
             let mut methods = Vec::with_capacity(3);
-            if rebuilds {
-                let try_getter = quote::format_ident!("try_{}", field_name);
-                let doc = format!(
-                    "The value of the `{field_name}` sidecar field as the save `saved` kept \
-                     it, in the slot of its R name `{r_name}`, for a rebuild hook; `None` when \
-                     the version that saved the object had no slot of that name. On R's main \
-                     thread."
-                );
-                methods.push(quote::quote! {
-                    #[doc = #doc]
-                    #allow
-                    #vis fn #try_getter(
-                        saved: &::miniextendr_api::externalptr::Saved<'_, Self>,
-                    ) -> ::core::option::Option<#inner> {
-                        ::miniextendr_api::externalptr::sidecar_try_saved::<Self, #inner>(
-                            saved, #index, #r_name,
-                        )
-                    }
-                });
-            }
             if slot.access.get {
                 let doc = format!(
                     "The value of the `{field_name}` sidecar field of the object `ptr` holds: \
@@ -2607,26 +2501,15 @@ pub fn derive_external_ptr(
         class_system,
         restored,
         field_error,
-        rebuild,
-        any_version,
     } = parse_externalptr_attrs(&input)?;
 
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external = generate_typed_external(
-        &input,
-        &sidecar_info,
-        &restored,
-        &field_error,
-        rebuild.as_ref(),
-        any_version,
-        None,
-        true,
-    );
+    let typed_external =
+        generate_typed_external(&input, &sidecar_info, &restored, &field_error, None, true);
     let snapshot_registration = generate_snapshot_registration(&input);
-    let sidecar_rust_accessors =
-        generate_sidecar_rust_accessors(&input, &sidecar_info, rebuild.is_some());
+    let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (
             generate_into_external_ptr(&input),
@@ -3263,56 +3146,17 @@ mod tests {
         assert!(!out.contains("RESTORED_ERROR_"), "{out}");
     }
 
-    /// `rebuild = path, any_version` (#2146, #2187): `any_version` needs
-    /// the hook; with it the impl sets `REBUILDS_ANY_VERSION`, and a type
-    /// with a hook gets `try_<field>` getters over the save, which take the
-    /// `Saved` handle.
+    /// A save names its slots by the R names (#2215): `name = ..`, else the
+    /// ident. The visitor, which flushes, loads and lays out a restored
+    /// value's slots, and every accessor pass the same name; the getters keep
+    /// the Rust names.
     #[test]
-    fn rebuild_any_version_option() {
-        let attrs = |source: &str| {
-            let input: syn::DeriveInput = syn::parse_str(source).unwrap();
-            super::parse_externalptr_attrs(&input)
-        };
-        let parsed =
-            attrs("#[externalptr(rebuild = Self::from_saved, any_version)] struct E;").unwrap();
-        assert!(parsed.rebuild.is_some());
-        assert!(parsed.any_version);
-        let parsed = attrs("#[externalptr(rebuild = Self::from_saved)] struct E;").unwrap();
-        assert!(!parsed.any_version);
-        for source in [
-            "#[externalptr(any_version)] struct E;",
-            "#[externalptr(r6, any_version)] struct E;",
-        ] {
-            let message = attrs(source)
-                .err()
-                .map(|e| e.to_string())
-                .unwrap_or_default();
-            assert!(
-                message.contains("needs `rebuild = path`"),
-                "`{source}`: {message}"
-            );
-        }
-        let message = attrs("#[externalptr(rebuild = f, any_version, any_version)] struct E;")
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_default();
-        assert!(
-            message.contains("`any_version` is given twice"),
-            "{message}"
-        );
-
+    fn sidecar_slots_are_named_by_the_r_name() {
         let input: syn::DeriveInput = syn::parse_str(
-            "#[externalptr(rebuild = Self::from_saved, any_version)] struct E { #[r_data] keys: Sidecar<Vec<i32>>, #[r_data(name = \"n.rows\")] r_rows: Sidecar<i32> }",
+            "struct E { #[r_data] keys: Sidecar<Vec<i32>>, #[r_data(name = \"n.rows\")] r_rows: Sidecar<i32> }",
         )
         .unwrap();
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
-        assert!(
-            out.contains("const REBUILDS_ANY_VERSION : bool = true ;"),
-            "{out}"
-        );
-        // A save names its slots by the R names (#2215): `name = ..`, else
-        // the ident. The visitor, which flushes, loads and lays out a
-        // rebuild's slots, and every accessor pass the same name.
         assert!(
             out.contains(
                 "const SIDECAR_NAMES : & 'static [& 'static str] = & [\"keys\" , \"n.rows\"] ;"
@@ -3324,18 +3168,6 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains(
-                "fn try_keys (saved : & :: miniextendr_api :: externalptr :: Saved < '_ , Self > ,)"
-            ),
-            "{out}"
-        );
-        // The getters keep the Rust names.
-        assert!(out.contains("fn try_r_rows (saved"), "{out}");
-        assert!(
-            out.contains("sidecar_try_saved :: < Self , i32 > (saved , 1usize , \"n.rows\" ,)"),
-            "{out}"
-        );
-        assert!(
             out.contains("sidecar_get :: < Self , i32 > (ptr , 1usize , \"n.rows\" ,"),
             "{out}"
         );
@@ -3344,13 +3176,6 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("\"r_rows\""), "{out}");
-
-        // Without a hook there is no `Saved` handle to read, so no `try_` getters.
-        let input: syn::DeriveInput =
-            syn::parse_str("struct E { #[r_data] keys: Sidecar<Vec<i32>> }").unwrap();
-        let out = super::derive_external_ptr(input, true).unwrap().to_string();
-        assert!(!out.contains("try_keys"), "{out}");
-        assert!(!out.contains("REBUILDS"), "{out}");
     }
 
     /// The probe for a serde value (#2186) and its carrier's registration,
