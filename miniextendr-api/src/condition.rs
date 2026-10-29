@@ -400,11 +400,11 @@ impl RCondition {
     /// and the cause replaces a `data` field this condition names `parent`.
     ///
     /// ```ignore
-    /// match catch_condition(|| rebuild(&saved)) {
+    /// match catch_condition(|| load_config(path)) {
     ///     Ok(value) => value,
     ///     Err(cause) => RCondition::Error {
-    ///         message: format!("could not rebuild: {}", cause.message()),
-    ///         class: vec!["pkg_error_rebuild".into()],
+    ///         message: format!("could not load the model: {}", cause.message()),
+    ///         class: vec!["pkg_error_load".into()],
     ///         data: None,
     ///         call: ConditionCall::Inherit,
     ///     }
@@ -561,12 +561,12 @@ pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
 /// ```ignore
 /// use miniextendr_api::condition::catch_condition;
 ///
-/// match catch_condition(|| rebuild(&snapshot)) {
+/// match catch_condition(|| load_config(path)) {
 ///     Ok(object) => object,
 ///     Err(cause) => error!(
-///         class = "pkg_error_rebuild",
+///         class = "pkg_error_load",
 ///         data = ("cause", cause.message().to_string()),
-///         "cannot rebuild the object: {}", cause.message()
+///         "cannot load the model: {}", cause.message()
 ///     ),
 /// }
 /// ```
@@ -1816,9 +1816,8 @@ impl RConditionData for RError {
 }
 
 /// An [`RCondition`](enum@RCondition) returned as an `Err` (#2217): from a
-/// `#[miniextendr]` function or method returning `Result<T, RCondition>`, or
-/// from a rebuild hook (`#[externalptr(rebuild = path)]`). Its message,
-/// classes, fields and call choice reach R as given. Like any `Err`, it is an
+/// `#[miniextendr]` function or method returning `Result<T, RCondition>`.
+/// Its message, classes, fields and call choice reach R as given. Like any `Err`, it is an
 /// R error whatever its variant: the kind is read only where the condition is
 /// raised or deferred ([`RCondition::raise`], [`RCondition::defer`]). A cause
 /// attached with [`RCondition::with_parent`], as a caught refusal of a
@@ -3225,8 +3224,8 @@ macro_rules! serde_error_shape {
 
 /// The [`RCondition`](enum@RCondition) an error type that is
 /// `Serialize + Display` gives as a `#[miniextendr]` function's `Err`, for
-/// code that is not an entry point (#2217): a rebuild hook returning
-/// `Result<Self, RCondition>`, a body mixing it with conditions
+/// code that is not an entry point (#2217): a helper returning
+/// `Result<T, RCondition>`, a body mixing it with conditions
 /// [`catch_condition`] caught.
 ///
 /// `serde_condition!(&err)` takes a reference to the error and runs the probe
@@ -3239,13 +3238,12 @@ macro_rules! serde_error_shape {
 ///
 /// ```ignore
 /// use miniextendr_api::condition::{RCondition, catch_condition};
-/// use miniextendr_api::externalptr::Saved;
 ///
 /// miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
 ///
 /// impl Model {
-///     fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
-///         let spec = catch_condition(|| Self::spec(saved))?;
+///     fn load(path: &str) -> Result<Self, RCondition> {
+///         let spec = catch_condition(|| Self::spec(path))?;
 ///         let engine = engine::Engine::load(&spec)
 ///             .map_err(|e| miniextendr_api::serde_condition!(&e))?;
 ///         Ok(Model::new(spec, engine))

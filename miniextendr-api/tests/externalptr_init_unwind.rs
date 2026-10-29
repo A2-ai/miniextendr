@@ -113,9 +113,6 @@ fn a_conversion_panic_unwinds_out_of_sidecar_new() {
             assert_balanced_panic(|| {
                 drop(Sidecar::new(CarriedValue(payload.as_sexp(), true)));
             });
-            assert_balanced_panic(|| {
-                drop(Sidecar::replace(CarriedValue(payload.as_sexp(), true)));
-            });
         }
         let kept = Sidecar::new(CarriedValue(payload.as_sexp(), false));
         drop(payload);

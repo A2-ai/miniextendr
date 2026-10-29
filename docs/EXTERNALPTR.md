@@ -853,7 +853,7 @@ How the value moves:
   struct (`ExternalPtr::new` and the other constructors, or the trait ABI's
   `mx_wrap` for erased storage) moves every pending value into the
   pointer's `prot` list. From then on the value lives in R only and the
-  field is empty. `Sidecar::new` and `Sidecar::replace` run on R's main
+  field is empty. `Sidecar::new` runs on R's main
   thread, or on the managed worker (a `worker` constructor), which hands
   the conversion to the main thread; any other thread panics.
 - Every accessor, Rust or R, first moves a pending value of its field into
@@ -895,10 +895,12 @@ A saved object (`saveRDS()`, `serialize()`) stores one slot per `Sidecar`
 field, named after the field's R name: the `#[r_data(name = "...")]` value,
 else the Rust field name (#2187, #2215). After a reload, the R accessors that
 read a save (`Type_get_f()` and the R6 / S7 fields; the `$` / `[[` methods of
-`s3(r_data_accessors)` & co. refuse a restored pointer instead) and a rebuild
-hook ("Rebuilding after a reload" below) find each field's slot by that name.
-A field the save has no slot for raises `miniextendr_restored_missing_slot`,
-with the field's R name in `e$field`.
+`s3(r_data_accessors)` & co. refuse a restored pointer instead) and a serde
+type's restored value ("A serde type comes back after `readRDS()`" below)
+find each field's slot by that name. A field the save has no slot for raises
+`miniextendr_restored_missing_slot` from an R accessor, with the field's R
+name in `e$field`; a serde type's restored value takes that field's value
+from its decoded struct instead.
 
 So the R name is the save format:
 
@@ -917,8 +919,8 @@ So the R name is the save format:
 A save from another version of the crate (`version` in the package's
 `src/rust/Cargo.toml`, which the type ID in `prot[0]` records) is refused
 with the `miniextendr_restored_other_version` error ("Serialization" below,
-#1872), unless the type rebuilds it (`rebuild = path, any_version`). A save
-made before slots were named is read by position.
+#1872), unless the type derives serde and serde reads the save. A save made
+before slots were named is read by position.
 
 ### Copies
 
@@ -954,10 +956,13 @@ save keeps:
   (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and the S7
   properties read and write the restored pointer;
 - the type ID in `prot[0]`, crate version included, which says what saved
-  it.
+  it. A save is the type's when the ID's crate and type name are the
+  type's: the module path is left out, so a type moved to another module of
+  its crate keeps its saves (#2186).
 
-It does not keep the Rust value. Everything that needs it raises a classed
-error on the restored object, so code can tell the case apart and
+Unless the type derives `Serialize` and `Deserialize` ("A serde type comes
+back after `readRDS()`" below), it does not keep the Rust value. Everything
+that needs it raises a classed error on the restored object, so code can tell the case apart and
 re-create the object: a method (any receiver), an `ExternalPtr<T>`
 argument, the R accessor of a struct or computed field. The `$` / `[[` /
 `$<-` / `[[<-` field methods of `s3(r_data_accessors)`, `s4(...)` and
@@ -972,7 +977,7 @@ fields included: a reloaded object is refused, not recovered
   message ``this `MyType` object was saved by mypkg 0.6.0 and can't be read
   by mypkg 0.7.0; re-create it``, with `e$saved_version` and
   `e$current_version`. The `Sidecar` accessors refuse such a pointer too:
-  slots are positional, and another version may lay them out differently.
+  another version may have other fields.
   To test this case without two builds, call
   `miniextendr_api::externalptr::rewrite_stored_version_for_tests(x, "0.0.1")`
   on a restored pointer from a test-only function: it makes the pointer read
@@ -989,8 +994,8 @@ fields included: a reloaded object is refused, not recovered
   `refuse = "every_read"` makes every S3 reader refuse first, before the
   name or position is looked at: `names()`, `as.list()`, an unknown name
   and a position too, on the bare pointer and on a list or environment
-  carrying it in `.ptr`, with `.DollarNames()` returning `character(0)`
-  (`CLASS_SYSTEMS.md`, "A restored pointer").
+  carrying it in `.ptr`. `.DollarNames()` still lists the fields, so
+  completion never raises (`CLASS_SYSTEMS.md`, "A restored pointer").
 - A receiver of the class that carries no pointer at all (a list without
   `.ptr`, e.g. an older format of the same class) raises
   `miniextendr_no_handle` (``this `myclass` object holds no pointer``)
@@ -999,144 +1004,122 @@ fields included: a reloaded object is refused, not recovered
   environment receiver also gets the `restored(class = ...)` classes and
   the `restored(message = ...)` text, the shape a save in an older format
   has; an atomic vector given the class was never saved and gets neither.
-  Otherwise `field_error(message = "...")` replaces the message of this
-  refusal and of the two above.
+  `restored(no_handle = "...")` gives that list or environment its own
+  message, one that says why it holds no pointer (``this engine was saved
+  by an older release, which kept no engine; build a new one``), in place
+  of the restored message; the package's own code can reuse it as
+  `TypedExternal::NO_HANDLE_MESSAGE`. Otherwise
+  `field_error(message = "...")` replaces the message of this refusal and
+  of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
-the type ID in `prot[0]`.
+the crate, version and type name of the type ID in `prot[0]`, not its
+module path.
 
-#### Rebuilding after a reload: `rebuild = path`
+#### A serde type comes back after `readRDS()`
 
-A type whose `Sidecar` fields hold everything its Rust value is built from
-can be rebuilt instead of refused. `#[externalptr(rebuild = path)]` names a
-hook, `fn(&Saved<'_, Self>) -> Result<Self, E>`, which the first use that
-needs the value calls on a pointer this version of the crate saved:
+A type that derives `Serialize` and `Deserialize` comes back after
+`readRDS()` with its value, when miniextendr-api's `serde` feature is on
+(#2186). There is no attribute: `#[derive(ExternalPtr)]` checks for the two
+traits, and every other type keeps the refusal above.
 
 ```rust
-use miniextendr_api::externalptr::{RSidecar, Saved, Sidecar};
+use miniextendr_api::externalptr::{RSidecar, Sidecar};
+use serde::{Deserialize, Serialize};
 
-#[derive(ExternalPtr)]
-#[externalptr(r6, rebuild = Self::from_saved)]
+#[derive(ExternalPtr, Serialize, Deserialize)]
+#[externalptr(r6)]
 pub struct Model {
+    #[serde(skip)]
     #[r_data]
     _r: RSidecar,
-    /// The recipe: a save keeps it.
+    /// A sidecar value: the save keeps its slot, so serde skips it.
+    #[serde(skip)]
     #[r_data]
-    pub values: Sidecar<Vec<f64>>,
-    /// Rust state, rebuilt from the recipe.
+    pub labels: Sidecar<Vec<String>>,
+    values: Vec<f64>,
     total: f64,
-}
-
-impl Model {
-    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, ModelError> {
-        let values = Self::values(saved); // the saved slot
-        Ok(Model {
-            _r: RSidecar,
-            total: values.iter().sum(),
-            values: Sidecar::default(), // placeholder: the saved slot stays
-        })
-    }
 }
 ```
 
-- **Where.** Every path that refuses a restored pointer above rebuilds it
-  first: a method (any receiver), an `ExternalPtr<T>` / `&T` / `&mut T`
-  argument, the R accessor of a struct field. The framework installs the
-  value it returns in the restored pointer itself, finalizer included, so the
-  later calls, and every R name bound to the object, see a live pointer. A
-  `Sidecar` accessor reads (or writes) the saved slot of its field's name,
-  without rebuilding.
-- **What the hook reads.** The type's generated `Sidecar` getters take the
-  `Saved` handle like a live one (`Self::values(saved)`). Only `Sidecar`
-  fields have a slot in the save: a struct field or a `Computed` field is
-  gone with the Rust value, so a type whose rebuild needs one keeps it in a
-  `Sidecar` instead. `Saved::as_sexp()` is the restored pointer, and
-  `Saved::version()` the crate version that saved it.
-- **By field name.** A save names its slots after the `Sidecar` fields' R
-  names (`#[r_data(name = "...")]`, else the Rust field name), so the hook
-  reads each field by name, whatever fields the saving version had or in
-  what order (#2187, #2215). A field added since that version has no slot:
-  `Self::try_values(saved)` (generated for every `Sidecar` field of a type
-  with a hook, named after the Rust field) returns `None`, and the plain
-  getter raises `miniextendr_restored_missing_slot`, with the field's R name
-  in `e$field`. `Saved::has("values")` says the same for an R name. A slot
-  whose field is gone is ignored. A save from before slots were named is
-  read by position.
-- **What the rebuilt object holds.** The pointer is laid out as this
-  version's. A field the save has keeps its saved slot: the hook's
-  `Sidecar::new(..)` value for it is a placeholder and is dropped. A field
-  the save lacks takes the value the hook put in its struct, so give it the
-  real value (`Sidecar::new(Self::try_values(saved).unwrap_or_default())`).
-  A hook that recomputes a field and wants the object to hold the new value
-  returns it as `Sidecar::replace(value)`, which replaces the saved slot.
-- **Nested objects.** A `Sidecar<SEXP>` can hold another object's pointer.
-  Converting it in the hook (`ExternalPtr::<Inner>::try_from_sexp(..)`)
-  rebuilds that one too, in its own pointer, when its type has a hook. A hook
-  that reaches its own object again finds it refused, not rebuilt twice.
-- **Failure.** An `Err` (or a condition the hook raises with `error!`)
-  installs nothing, and the next use tries again. The caller gets the
-  type's restored refusal: the `restored(class = ...)` classes, then
-  `miniextendr_restored_no_value` and `miniextendr_restored`, with the
-  cause's message appended (``this `Model` object was restored from a saved
-  session and rebuilding it failed: <cause>``, or `<restored message>
-  (rebuilding it failed: <cause>)`). The cause is the condition object
-  `e$parent`, with its own classes and fields, as `rlang::abort(parent = )`
-  chains errors. It is built from the `Err` as a `#[miniextendr]` function
-  returning `Result<T, E>` builds its error
-  ([CONDITIONS.md](CONDITIONS.md#classed-result-errors-with-rconditiondata-and-rerror)):
-  an `E` that implements `RConditionData` (a `#[derive(RCondition)]` type,
-  `RError`, an `RCondition` itself) keeps its classes, message and fields;
-  under the `serde` feature a `Serialize + Display` `E` is classed from its
-  serde shape, the one `serde_error_shape!` declares for it if any; any
-  other `E` gives its `Debug` text. The cause's classes stay out of the
-  refusal's, so a handler for them does not catch a reload failure; branch
-  on `inherits(e$parent, "pkg_error_config")`. An R error inside the hook
-  carries on as itself.
-- **A hook with several kinds of failure** returns `Result<Self,
-  RCondition>` (#2217). A condition `catch_condition` caught passes through
-  `?`, and `serde_condition!(&err)` turns a serde error into the condition
-  a function returning `Err(err)` raises, with the crate's declared shape
-  ([CONDITIONS.md](CONDITIONS.md#a-serde-error-as-an-rcondition)):
+```r
+m <- Model$new(c(1, 2))
+saveRDS(m, "model.rds")
+m2 <- readRDS("model.rds") # in another session too: readRDS() loads the package
+m2$total()                 # the value came back
+```
 
-  ```rust
-  fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
-      let values = Self::values(saved);
-      catch_condition(|| check_recipe(&values))?; // raises error!(class = .., data = ..)
-      let engine = engine::Engine::fit(&values)
-          .map_err(|e| miniextendr_api::serde_condition!(&e))?;
-      Ok(Model { engine, values: Sidecar::default() })
-  }
-  ```
+- **How.** The pointer's `prot` list ends with a carrier: a zero-length
+  ALTREP raw vector of a class the package registers for the type when it
+  loads (`miniextendr_saved:<crate>::<Type>`). R calls the class
+  itself. During `serialize()` it encodes the value through the crate's
+  serde-to-R path (`miniextendr_api::serde::to_r`, an R list) into the save.
+  During `unserialize()`, which loads the package first when it is not, it
+  decodes the list (`serde::from_r`) and keeps the value. R reads the
+  `prot` list before the pointer exists, so the value is attached at the
+  pointer's first use: a method (any receiver), an `ExternalPtr<T>` / `&T`
+  / `&mut T` argument, an R accessor of any field, the `$` / `[[` field
+  methods. From then on the pointer is live, for every R name bound to it.
+  No user code runs at restore time besides the type's `Deserialize`.
+- **`Sidecar` values** come back from their saved slots, by the fields' R
+  names (above). A `Sidecar` field is `#[serde(skip)]`; the decoded
+  struct's value for it fills only a field the save has no slot for.
+- **Cost.** Every `serialize()` of the object encodes the whole value:
+  `saveRDS()`, `save()`, an object sent to a parallel worker, a
+  `digest`-style hash of it. That cost was accepted; a type that must not
+  pay it leaves out serde.
+- **A save reads the value through a borrow** (`ExternalPtr::borrow`). R
+  code that saves the object while a call holds it mutably (a callback a
+  `&mut self` method runs, which calls `saveRDS(self)`) gets the
+  `miniextendr_borrow_conflict` error, and the save stops.
+- **A value serde can't encode** gives the save no value: R writes the
+  pointer as before, and the reload is refused as for a type without serde.
+- **The round trip can change values.** The serde-to-R path stores
+  integers above 2^53 (`i64` / `u64`) as R doubles, which lose precision
+  (#1417), and an `i32` holding `i32::MIN` is R's `NA_integer_` (#1419).
+  Such values come back changed after `saveRDS()` / `readRDS()`.
+- **Another version's save** is decoded too: serde decides. A field added
+  since then decodes when it has `#[serde(default)]`; one without a
+  default, or a field whose type changed, fails to decode.
+- **A save that fails to decode** is refused at the first use, as a
+  restored pointer without a value is: the `restored(class = ...)` classes,
+  then `miniextendr_restored_no_value` and `miniextendr_restored`, with the
+  message ``this `Model` object was restored from a saved session, but its
+  saved value could not be read: <cause>; re-create it`` (or
+  `<restored message> (its saved value could not be read: <cause>)`). The
+  cause is `e$parent`, of class `miniextendr_decode_error` with serde's
+  message; a `Deserialize` impl that raises an `RCondition` keeps its own
+  classes. The object stays refused, and saving it again writes the saved
+  value back unchanged. `unserialize()` itself does not raise, so `load()`
+  of an `.RData` file restores the other objects next to one that fails;
+  only an R error raised by the type's own `Deserialize` code propagates
+  from it (#2244).
+- **Without raising.** `ExternalPtr::<T>::wrap_sexp(x)` attaches the value
+  too, and returns `None` for a save that fails to decode.
+  `wrap_sexp_with_error` and the `TryFromSexp` conversion raise its refusal,
+  as a method does.
+- **No value comes back** for a save made with `serialize(version = 2)`,
+  which writes no ALTREP class, nor when the package or the type's class
+  can't be found (R warns `cannot unserialize ALTVEC object of class ...`):
+  a type renamed, or one that dropped serde. The reload is refused, as for a
+  type without serde. A type whose
+  `TypedExternal` impl is hand-written (or `impl_typed_external!`'s), and
+  an object behind a trait-ABI handle, have no carrier either (#2243,
+  #2242).
 
-  Either way `e$parent` has the condition's classes, message and fields.
-  It is an error whatever kind the `RCondition` was built with, as any
-  `Err` is. A hook that converts another restored pointer inside
-  `catch_condition` and returns the refusal it caught gives the whole
-  chain: `e$parent` is the inner refusal, `e$parent$parent` its cause.
-- **Without raising.** `ExternalPtr::<T>::wrap_sexp_with_error(x)` returns
-  a failed rebuild as `Err(TypeMismatchError::RebuildFailed { condition })`:
-  the refusal above as a value, its cause in it (#2217). A check that must
-  not raise (is the object live? fall back to plain data?) needs no
-  `catch_condition`; `condition.raise()` raises it. An `ExternalPtr<T>` /
-  `&T` / `&mut T` argument and `ExternalPtr::<T>::try_from_sexp` raise it,
-  as a method on the object does.
-- **Conditions the hook queues** (`defer_warning!` & co.) are signalled when
-  the call that triggered the rebuild returns. A hook that replays the
-  construction, whose warnings were signalled once already, drops them with
-  `deferred_condition::capture(|| ..).0`.
-- **Another version's save** is refused as before
-  (`miniextendr_restored_other_version`), and the hook does not run, unless
-  the type opts in with `any_version` next to the hook:
-  `#[externalptr(r6, rebuild = Self::from_saved, any_version)]`. The hook
-  then rebuilds a save by any version of the crate that names its slots,
-  on the object's first use of any kind (a `Sidecar` read included, since
-  the slots are laid out anew). The hook decides what to accept: it reads
-  `saved.version()`, checks the fields, and returns an `Err` to refuse. A
-  save by another version without slot names stays refused: its layout is
-  unknown.
-
-A type whose `Sidecar` fields hold too little to rebuild from needs the
-value itself in the save, a serde snapshot (#2186).
+- **Moving and renaming a type.** A save is found by the crate's name and
+  the type's: the carrier class (`miniextendr_saved:<crate>::<Type>`) and
+  the type ID's match both leave the version and the module path out.
+  - Moving a type to another module of its crate is safe: earlier saves
+    come back, and the first use writes the type's new path into the
+    pointer, which its next save keeps.
+  - Renaming a type breaks its earlier saves: R doesn't find their class,
+    and they are refused as above. Renaming the type renames its R class
+    too.
+  - Two serde types of one crate can't share a name, even in different
+    modules: each would read the other's saves. The package then fails to
+    load, with an error naming both types' paths. A type without serde has
+    no carrier and is not checked.
 
 **webR:** the round trip has not been tested there. Nothing in it is
 platform-specific (R serializes the pointer's tag and `prot` the same way),
@@ -1151,15 +1134,17 @@ EXTPTRSXP
   addr  → *mut Box<dyn Any> (thin pointer → heap-allocated fat pointer)
             └→ RefCell<T> (the Rust value and its borrow flag)
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
-  prot  → VECSXP[2 + T::R_SLOT_COUNT], named "", "", then the Sidecar fields' names
+  prot  → VECSXP[2 + T::R_SLOT_COUNT (+ 1 for a serde type)], named "", "",
+          then the Sidecar fields' names (and "" for the carrier)
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
             [1] → user-protected SEXP (set via set_protected)
             [2..] → one value per Sidecar<T> field
+            [last] → a serde type's carrier: the ALTREP that saves its value
 ```
 
 Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols. The `Any` value is a `RefCell<T>`, which the generated code borrows (see [Reentrant Calls](#reentrant-calls)).
 
-The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
+The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number. A serde type's list ends with its carrier ("A serde type comes back after `readRDS()`").
 
 ## Thread Safety
 

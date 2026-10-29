@@ -524,12 +524,13 @@ later, unpredictably.
   to a hand-written sidecar wrapper causes "Incorrect number of arguments" at runtime.
   See the `miniextendr-macros` skill for details on the two codegen paths.
 
-- **Pointer-backed class objects look serializable but are not**: an R6/S7/env
-  object wrapping an `ExternalPtr` round-trips `saveRDS()`/`readRDS()` with its
-  class intact, then fails on the first method or accessor call ("expected
-  ExternalPtr<T>") — the pointer is dead in the new session. See the
-  serialization pitfall in the `miniextendr-externalptr` skill for the
-  closure-over-plain-data escape hatch.
+- **Pointer-backed class objects come back only for serde types**: an
+  R6/S7/S4/env/S3 object wrapping an `ExternalPtr` round-trips
+  `saveRDS()`/`readRDS()` with its class intact. A type that derives
+  `Serialize` and `Deserialize` gets its value back at the first use
+  (#2186); any other type is refused there with the classed
+  `miniextendr_restored_no_value` error. See the serialization pitfall in the
+  `miniextendr-externalptr` skill.
 
 ## Related skills
 

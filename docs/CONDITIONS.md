@@ -608,9 +608,8 @@ its message, classes, fields and call choice as given, as an R error whatever
 variant it is (`kind` is `"result_err"`). That is how a body hands on a
 condition [`catch_condition`](#catching-a-condition-in-rust-catch-condition)
 caught, with `?`, or one [`serde_condition!`](#a-serde-error-as-an-rcondition)
-built; a rebuild hook's `Err(RCondition)` becomes the refusal's `e$parent` the
-same way ([EXTERNALPTR.md](EXTERNALPTR.md)). A condition with a cause, such
-as a caught refusal of a restored object, keeps it as `e$parent`:
+built. A condition with a cause, such as a caught refusal of a restored
+object, keeps it as `e$parent`:
 
 ```rust
 use miniextendr_api::condition::{RCondition, catch_condition};
@@ -960,21 +959,21 @@ pub fn strict_rate(x: f64) -> Result<f64, engine::Error> { /* ... */ }
 
 Code that is not an entry point gets the same condition with
 `serde_condition!(&err)`: the `RCondition` a `#[miniextendr]` function of
-the crate raises for `Err(err)`, as a value (#2217). A rebuild hook whose
-failures come from more than one place returns `Result<Self, RCondition>`
-and uses it for its serde errors:
+the crate raises for `Err(err)`, as a value (#2217). A helper whose
+failures come from more than one place returns `Result<T, RCondition>` and
+uses it for its serde errors:
 
 ```rust
-use miniextendr_api::condition::RCondition;
-use miniextendr_api::externalptr::Saved;
+use miniextendr_api::condition::{RCondition, catch_condition};
 
 miniextendr_api::serde_error_shape!(engine::Error = ENGINE);
 
 impl Model {
-    fn from_saved(saved: &Saved<'_, Self>) -> Result<Self, RCondition> {
-        let engine = engine::Engine::fit(&Self::values(saved))
+    fn load(path: &str) -> Result<Self, RCondition> {
+        let values = catch_condition(|| read_values(path))?;
+        let engine = engine::Engine::fit(&values)
             .map_err(|e| miniextendr_api::serde_condition!(&e))?;
-        Ok(Model { engine, values: Sidecar::default() })
+        Ok(Model { engine, values })
     }
 }
 ```
@@ -1029,7 +1028,7 @@ pub fn restore(path: &str) -> Restored {
 | a plain `panic!()` or any other payload | resumed: it becomes an R error at the boundary, with its source location |
 
 - An `Err` can be raised again with `.raise()` or queued with `.defer()`, or
-  passed on with `?` from a function or rebuild hook returning
+  passed on with `?` from a function returning
   `Result<_, RCondition>`, which raises it as an error with its classes and
   fields ([above](#classed-result-errors-with-rconditiondata-and-rerror)).
 - To get an R error back as a value, evaluate the R code with `try_eval_with_handlers` (or `RCall::try_eval_with_handlers`), which returns `Err(REvalError)`; `REvalError::reraise_class` gives the classes to raise it again as your own (next section).
@@ -1175,9 +1174,9 @@ e$parent$line
 - **Only Rust conditions.** The cause is an `RCondition`. An R condition
   caught as `REvalError` can't be a parent yet (#1874).
 
-A `#[externalptr(rebuild = ..)]` hook's error reaches R this way: a failed
-rebuild is refused with the hook's error as `e$parent`
-([EXTERNALPTR.md](EXTERNALPTR.md)).
+A serde `ExternalPtr` type's decoding error reaches R this way: a save that
+fails to decode is refused with the decoding error as `e$parent`
+([EXTERNALPTR.md](EXTERNALPTR.md#a-serde-type-comes-back-after-readrds)).
 
 ## Conditions without a call
 

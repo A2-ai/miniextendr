@@ -631,6 +631,21 @@ impl AltrepSerialize for LazyIntSeqData {
 No explicit macro call here either — the derive reads the `serialize` key the
 same way it read `dataptr`.
 
+### An `ExternalPtr` type's saved value
+
+The same two callbacks carry a serde `ExternalPtr` type's value through a
+save (#2186). `#[derive(ExternalPtr)]` registers, for a type that derives
+`Serialize` and `Deserialize`, a zero-length raw ALTREP class
+(`miniextendr_saved:<crate>::<Type>`, without the module path, so a type
+moved to another module still finds its saves) through the same eager
+registration as the derives here, and every pointer of the type keeps an
+instance of it as the last element of its protection list. Its
+`Serialized_state` encodes the value through the serde-to-R path, and its
+`Unserialize` decodes it and never raises. A failure, kept with the object,
+is raised at its first use. A save of a value that can't be encoded writes
+the empty vector itself (a C null state). See
+[EXTERNALPTR.md](EXTERNALPTR.md#a-serde-type-comes-back-after-readrds).
+
 ## Class Registration and Cross-Session readRDS
 
 For `saveRDS`/`readRDS` to work across R sessions, R must be able to find the

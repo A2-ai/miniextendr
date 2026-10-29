@@ -807,8 +807,7 @@ Under the API crate's `serde` feature, the `Err` arm of every
 `#[miniextendr]` function or method returning a `Result` looks up a shape
 declared with `serde_error_shape!`, keyed by a marker type that
 `miniextendr_init!` defines at the crate root; `serde_error_shape!` and
-`serde_condition!` name the marker too, and so does a rebuild hook's `Err`
-(`#[externalptr(rebuild = path)]`). Call `miniextendr_api::miniextendr_init!()`
+`serde_condition!` name the marker too. Call `miniextendr_api::miniextendr_init!()`
 at the crate root (`lib.rs`), as every R package does, not inside a module. A
 doctest with such a function needs it as well, at the top level next to a
 `fn main() {}`.

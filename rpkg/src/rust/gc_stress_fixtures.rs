@@ -6063,10 +6063,8 @@ pub fn gc_stress_struct_factor() {
 
 // region: pending Sidecar values are rooted (#2216)
 
-/// A host whose `Sidecar<SEXP>` holds a fresh list, rebuilt from its saved
-/// `tag` by a hook that returns a fresh list as `Sidecar::replace`.
+/// A host whose `Sidecar<SEXP>` holds a fresh list.
 #[derive(miniextendr_api::ExternalPtr)]
-#[externalptr(rebuild = Self::from_saved)]
 pub struct SidecarPendingHost {
     #[r_data]
     items: miniextendr_api::externalptr::Sidecar<SEXP>,
@@ -6074,28 +6072,10 @@ pub struct SidecarPendingHost {
     tag: miniextendr_api::externalptr::Sidecar<i32>,
 }
 
-impl SidecarPendingHost {
-    /// The rebuild hook: a fresh list for `tag + 1` replaces the saved one.
-    /// The list is reachable only through the returned struct while the GC
-    /// runs, and while the install allocates the new protection list.
-    fn from_saved(
-        saved: &miniextendr_api::externalptr::Saved<'_, Self>,
-    ) -> Result<Self, miniextendr_api::condition::RError> {
-        use miniextendr_api::externalptr::Sidecar;
-        let tag = Self::tag(saved) + 1;
-        let host = SidecarPendingHost {
-            items: Sidecar::replace(pending_list(tag)),
-            tag: Sidecar::replace(tag),
-        };
-        churn_pending_shapes();
-        Ok(host)
-    }
-}
-
 /// A fresh `list()` of 4 integer vectors, each `rep(tag, 8)`. Rooted only
 /// while it is built: the caller gets it unprotected.
 fn pending_list(tag: i32) -> SEXP {
-    // SAFETY: on R's main thread (a `#[miniextendr]` fn or its rebuild).
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn).
     unsafe {
         let scope = miniextendr_api::gc_protect::ProtectScope::new();
         let list = scope.alloc_vecsxp(4).get();
@@ -6135,18 +6115,14 @@ fn check_pending_list(list: SEXP, tag: i32, path: &str) {
 }
 
 /// Builds `SidecarPendingHost`s whose `Sidecar<SEXP>` holds a fresh list,
-/// churns the GC, wraps them and reads the list back; then saves one,
-/// reloads it, and rebuilds it through the hook, which returns another
-/// fresh list as `Sidecar::replace`. Each pending list is reachable only
-/// through its `Sidecar` until it sits in a slot: `ExternalPtr::new`
-/// allocates the protection list and the pointer before writing it, and the
-/// rebuild allocates the new protection list first. No arguments — picked
-/// up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+/// churns the GC, wraps them and reads the list back. Each pending list is
+/// reachable only through its `Sidecar` until it sits in a slot:
+/// `ExternalPtr::new` allocates the protection list and the pointer before
+/// writing it. No arguments — picked up by the fast `gctorture(TRUE)` no-arg
+/// sweep (#430).
 // Stays on R's main thread under `worker-default`: it holds R values.
 #[miniextendr(noexport, no_worker)]
 pub fn gc_stress_sidecar_pending() {
-    use miniextendr_api::TryFromSexp;
-    use miniextendr_api::expression::RCall;
     use miniextendr_api::externalptr::{ExternalPtr, Sidecar};
 
     for tag in 1..=2 {
@@ -6158,32 +6134,7 @@ pub fn gc_stress_sidecar_pending() {
         let ptr = ExternalPtr::new(host);
         churn_pending_shapes();
         check_pending_list(SidecarPendingHost::items(&ptr), tag, "construction");
-
-        // SAFETY: on R's main thread; each value is rooted before the next
-        // call allocates.
-        let bytes = unsafe {
-            OwnedProtect::new(
-                RCall::new("serialize")
-                    .arg(ptr.as_sexp())
-                    .arg(SEXP::nil())
-                    .eval_base()
-                    .expect("serialize"),
-            )
-        };
-        drop(ptr);
-        let back = unsafe {
-            OwnedProtect::new(
-                RCall::new("unserialize")
-                    .arg(bytes.get())
-                    .eval_base()
-                    .expect("unserialize"),
-            )
-        };
-        let rebuilt =
-            ExternalPtr::<SidecarPendingHost>::try_from_sexp(back.get()).expect("rebuilt");
-        churn_pending_shapes();
-        check_pending_list(SidecarPendingHost::items(&rebuilt), tag + 1, "rebuild");
-        assert_eq!(SidecarPendingHost::tag(&rebuilt), tag + 1);
+        assert_eq!(SidecarPendingHost::tag(&ptr), tag);
     }
 }
 
@@ -6253,6 +6204,85 @@ pub fn gc_stress_converted_references() {
         );
         assert_eq!(values.integer_elt(0), 2);
     }
+}
+
+// endregion
+
+// region: a serde type's saved value (#2186)
+
+/// `x` serialized and read back. Each value is rooted before the next call
+/// allocates.
+#[cfg(feature = "serde")]
+fn reload_value(x: SEXP) -> OwnedProtect {
+    use miniextendr_api::expression::RCall;
+    // SAFETY: on R's main thread.
+    unsafe {
+        let bytes = OwnedProtect::new(
+            RCall::new("serialize")
+                .arg(x)
+                .arg(SEXP::nil())
+                .eval_base()
+                .expect("serialize"),
+        );
+        let back = RCall::new("unserialize")
+            .arg(bytes.get())
+            .eval_base()
+            .expect("unserialize");
+        // The protect stack is LIFO: release `bytes` before protecting the
+        // result (unprotecting allocates nothing).
+        drop(bytes);
+        OwnedProtect::new(back)
+    }
+}
+
+/// Saves `SavedR6` values with a sidecar value and reads them back: the
+/// carrier encodes the value during `serialize()`, decodes it into a holder
+/// during `unserialize()` (with the skipped `Sidecar`'s pending default),
+/// and the first access lays out a new protection list and attaches the
+/// value. Saves the attached value again, and a value read back but not yet
+/// attached; then refuses a `SavedPositive` whose save does not decode,
+/// building the refusal and its parent. No arguments — picked up by the fast
+/// `gctorture(TRUE)` no-arg sweep (#430).
+// Stays on R's main thread under `worker-default`: it holds R values.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_saved_value() {
+    use crate::saved_value_tests::{SavedPositive, SavedR6};
+    use miniextendr_api::TryFromSexp;
+    use miniextendr_api::condition::{RConditionData, catch_condition};
+    use miniextendr_api::externalptr::ExternalPtr;
+
+    for n in 1..=2 {
+        let mut ptr = ExternalPtr::new(SavedR6::new(n));
+        SavedR6::set_tags(&mut ptr, vec![format!("tag{n}"); 4]);
+        let back = reload_value(ptr.as_sexp());
+        drop(ptr);
+        churn_pending_shapes();
+        // Saved again before any access: the carrier writes what it read.
+        let back = reload_value(back.get());
+        let mut attached = ExternalPtr::<SavedR6>::try_from_sexp(back.get()).expect("attached");
+        churn_pending_shapes();
+        assert_eq!(attached.borrow().n, n);
+        assert_eq!(SavedR6::tags(&attached), vec![format!("tag{n}"); 4]);
+        attached.borrow_mut().n += 10;
+        let again = reload_value(back.get());
+        let again = ExternalPtr::<SavedR6>::try_from_sexp(again.get()).expect("attached");
+        assert_eq!(again.borrow().n, n + 10);
+        assert_eq!(SavedR6::tags(&again), vec![format!("tag{n}"); 4]);
+    }
+
+    let refused = reload_value(ExternalPtr::new(SavedPositive::new(-1)).as_sexp());
+    churn_pending_shapes();
+    let refusal =
+        catch_condition(|| ExternalPtr::<SavedPositive>::try_from_sexp(refused.get()).is_ok())
+            .expect_err("a save that does not decode is refused");
+    assert!(
+        refusal
+            .class()
+            .iter()
+            .any(|c| c == "miniextendr_restored_no_value"),
+        "{refusal:?}"
+    );
 }
 
 // endregion

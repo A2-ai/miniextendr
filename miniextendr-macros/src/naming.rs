@@ -283,6 +283,28 @@ pub(crate) fn altrep_reg_fn_ident(ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("__mx_altrep_reg_{prefix}_{ident}")
 }
 
+/// `__mx_snapshot_reg_<crate>_<Ident>_<hash>` — the registration fn of an
+/// `ExternalPtr` type's carrier class (#2186).
+///
+/// Every non-generic `#[derive(ExternalPtr)]` type emits one, and two types
+/// of one crate may share an ident in different modules, so the symbol
+/// carries a hash of where the type is defined: the source file's name (not
+/// its path, which differs between the host build and a webR build of the
+/// same sources), line and column.
+pub(crate) fn snapshot_reg_fn_ident(ident: &syn::Ident) -> syn::Ident {
+    let prefix = crate_prefix();
+    let span = ident.span();
+    let file = span.file();
+    let file = file.rsplit(['/', '\\']).next().unwrap_or(&file);
+    let start = span.start();
+    let site = format!("{file}:{}:{}", start.line, start.column);
+    let hash = site.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    });
+    let ident = unraw(ident);
+    quote::format_ident!("__mx_snapshot_reg_{prefix}_{ident}_{hash:016x}")
+}
+
 /// `__VTABLE_<crate>_<Trait>_FOR_<Type>` — trait-impl vtable static.
 /// Preserve spelling: Rust distinguishes `Counter` from `counter`, as must
 /// both the Rust identifier and the exported linker symbol. `type_name` may
