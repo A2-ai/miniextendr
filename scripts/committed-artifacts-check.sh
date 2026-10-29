@@ -51,10 +51,12 @@ max_bytes=$((max_mib * 1024 * 1024))
 
 # Path rules (bash ERE against the repo-relative path) and what a match is.
 # The rpkg-scoped rule stays scoped: tests/model_project and the cross-package
-# fixtures track their generated wrappers on purpose.
+# fixtures track their generated wrappers on purpose. A vendored crate tree puts
+# every file under vendor/<crate>/; a file directly in vendor/ is source, as in
+# cargo-revendor/src/vendor/tests.rs (the `vendor` module's unit tests).
 rule_res=(
     '(^|/)vendor\.tar\.xz$'
-    '(^|/)vendor/'
+    '(^|/)vendor/[^/]+/'
     '(^|/)(target|rust-target[^/]*|ra[-_]target)/'
     '(^|/)[^/]+\.Rcheck/|(^|/)rpkg-check-output/'
     '(^|/)[A-Za-z][A-Za-z0-9.]*_[0-9][0-9.-]*\.(tar\.gz|tgz|zip)$'
