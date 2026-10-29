@@ -70,7 +70,7 @@ test_that("no_na on a Missing<f64> lets an omitted argument through", {
   expect_error(miniextendr:::param_no_na_missing(NA_real_), "'x' must not be NA", fixed = TRUE)
 })
 
-test_that("both checks on one parameter run the class first, then NA", {
+test_that("both checks on one parameter run NA first, then the class", {
   x <- structure(c(1, 2), class = "mx_num")
   expect_identical(miniextendr:::param_checks_both(x), 3)
   expect_error(
@@ -78,7 +78,7 @@ test_that("both checks on one parameter run the class first, then NA", {
     "'x' must not contain NA",
     fixed = TRUE
   )
-  expect_error(miniextendr:::param_checks_both(c(1, NA)), "'x' must inherit from 'mx_num'", fixed = TRUE)
+  expect_error(miniextendr:::param_checks_both(c(1, NA)), "'x' must not contain NA", fixed = TRUE)
   expect_error(miniextendr:::param_checks_both("a"), "'x' must inherit from 'mx_num'", fixed = TRUE)
   expect_error(
     miniextendr:::param_checks_both(structure("a", class = "mx_num")),
@@ -685,6 +685,37 @@ test_that("impl methods take when(...) hints in inherits(p(...))", {
     "`model` is a fit; pass its `$model`"
   )
   expect_identical(caught_msg(h$add_model(NULL)), "`model` must be an `mx_model` object")
+})
+
+# endregion
+
+# region: an NA is refused as NA first
+
+test_that("no_na refuses an NA as NA before the type and range checks", {
+  na <- "'x' must not be NA"
+  for (x in list(NA, NA_real_, NA_integer_, NaN)) {
+    label <- paste(deparse(x), collapse = "")
+    expect_identical(caught_msg(miniextendr:::param_no_na_u64(x)), na, info = label)
+    expect_identical(caught_msg(miniextendr:::param_no_na_opt_usize(x)), na, info = label)
+  }
+  for (x in list(NA, NA_character_)) {
+    label <- paste(deparse(x), collapse = "")
+    expect_identical(caught_msg(miniextendr:::param_no_na_opt_string(x)), na, info = label)
+    expect_identical(caught_msg(miniextendr:::param_no_na_path(x)), na, info = label)
+  }
+  e <- tryCatch(miniextendr:::param_no_na_path(NA), error = identity)
+  expect_identical(e$param, "x")
+  expect_identical(e$kind, "conversion")
+  # NULL still passes an Option, and values without NA convert or keep their
+  # type and range messages.
+  expect_identical(miniextendr:::param_no_na_opt_usize(NULL), "none")
+  expect_identical(miniextendr:::param_no_na_opt_string(NULL), "none")
+  expect_identical(miniextendr:::param_no_na_u64(3), "3")
+  expect_identical(miniextendr:::param_no_na_opt_usize(2), "2")
+  expect_identical(miniextendr:::param_no_na_opt_string("a"), "a")
+  expect_identical(miniextendr:::param_no_na_path("a/b"), "a/b")
+  expect_identical(caught_msg(miniextendr:::param_no_na_u64(-1)), caught_msg(miniextendr:::conv_u64_arg(-1)))
+  expect_identical(caught_msg(miniextendr:::param_no_na_opt_string(1)), "'x' must be NULL or character")
 })
 
 # endregion

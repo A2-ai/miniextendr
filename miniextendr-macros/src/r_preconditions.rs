@@ -263,16 +263,18 @@ pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
 /// a standalone fn parameter, or `inherits(x = "cls")` /
 /// `not_inherits(x = "bad")` / `no_na(x)` on an impl or trait method. They
 /// are the same kind of guards as the type checks, raising the same argument
-/// error. The class checks run before the parameter's type checks, so a value
-/// of the wrong class gets the class message whatever its type: `inherits`
-/// first, then `not_inherits` (#1815). That order matters for the classes a
+/// error. The NA check runs first, so an argument holding `NA` gets its
+/// message (`'x' must not be NA`) whatever its class, type or range, the
+/// checks that would otherwise refuse a typed `NA` (an `NA` is logical, and
+/// fails a range check) before it. The class checks run next, before the
+/// parameter's type checks, so a value of the wrong class gets the class
+/// message whatever its type: `inherits` first, then `not_inherits` (#1815). That order matters for the classes a
 /// `not_inherits` typically refuses: `is.numeric()` is `FALSE` for a
 /// `difftime`, `Date` or `POSIXt`, so after an `AsNumeric` type check the
 /// refusal would never be reached. An `inherits` message also replaces the
 /// messages of the parameter's type checks; a `not_inherits` message does
 /// not, since a value that passes it is of none of the refused classes and is
-/// judged by its type. The NA check runs after the type checks, with its own
-/// message. All survive `no_preconditions`: the Rust conversion does not
+/// judged by its type. All survive `no_preconditions`: the Rust conversion does not
 /// repeat them, so dropping them would change what the function accepts.
 ///
 /// `no_na` also has a Rust half. A type can read more inputs as missing than
@@ -455,7 +457,7 @@ impl ExplicitChecks {
     }
 
     /// The NA check (`no_na`) for parameter `param` of type `ty`, which runs
-    /// after the parameter's type checks, with its own message. Empty without
+    /// before the parameter's other checks, with its own message. Empty without
     /// `no_na`, and for an `Either` parameter that is not a choice parameter
     /// (`choice`: `match_arg` / `choices`), whose NA check runs in Rust after
     /// the conversion ([`no_na_checked_after_conversion`]).
@@ -1241,8 +1243,8 @@ pub struct FallbackParam {
 /// Holds the R-side checks for known types and a list of parameters with
 /// unknown types that were not statically prechecked.
 pub struct PreconditionOutput {
-    /// The checks, in parameter order: each parameter's class checks, its
-    /// type checks, then its NA check ([`ExplicitChecks`]). Rendered by
+    /// The checks, in parameter order: each parameter's NA check, its class
+    /// checks, then its type checks ([`ExplicitChecks`]). Rendered by
     /// [`PreconditionOutput::guards`].
     assertions: Vec<RAssertion>,
     /// Parameters with unknown custom types that were not prechecked.
@@ -1311,9 +1313,9 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// - Skip types (SEXP, Dots, ExternalPtr, etc.)
 /// - The type-derived checks of the parameters in `opts.unchecked`
 ///
-/// A parameter's [`ExplicitChecks`] are never skipped: its class checks
-/// (`inherits`, then `not_inherits`) come before its type checks, which take
-/// the `inherits` message when there is one, and its NA check after them.
+/// A parameter's [`ExplicitChecks`] are never skipped: its NA check comes
+/// first, then its class checks (`inherits`, then `not_inherits`), then its
+/// type checks, which take the `inherits` message when there is one.
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
@@ -1346,9 +1348,15 @@ pub fn build_precondition_checks(
         let r_name = opts.formals.of_ident(&pat_ident.ident);
         let explicit = opts.explicit.get(&r_name);
 
-        // The class checks first, so a value of the wrong class gets their
-        // message whatever its type.
+        // The NA check first, so an `NA` gets its message whatever its class
+        // or type, then the class checks, so a value of the wrong class gets
+        // their message whatever its type.
         if let Some(checks) = explicit {
+            assertions.extend(checks.value_assertions(
+                &r_name,
+                pt.ty.as_ref(),
+                skip_params.contains(&r_name),
+            ));
             assertions.extend(checks.class_assertions(&r_name, pt.ty.as_ref()));
         }
 
@@ -1374,14 +1382,6 @@ pub fn build_precondition_checks(
                     r_name: r_name.clone(),
                 });
             }
-        }
-
-        if let Some(checks) = explicit {
-            assertions.extend(checks.value_assertions(
-                &r_name,
-                pt.ty.as_ref(),
-                skip_params.contains(&r_name),
-            ));
         }
     }
 
@@ -1937,13 +1937,13 @@ mod tests {
     }
 
     #[test]
-    fn as_character_vec_with_no_na_checks_type_then_na() {
+    fn as_character_vec_with_no_na_checks_na_then_type() {
         let out = explicit_output("fn f(x: AsCharacterVec)", &[("x", no_na())], false);
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(is.atomic(x))) .miniextendr_arg_error(\"x\", \"must be atomic\")",
                 "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
+                "if (!isTRUE(is.atomic(x))) .miniextendr_arg_error(\"x\", \"must be atomic\")",
             ]
         );
     }
@@ -2350,7 +2350,7 @@ mod tests {
     }
 
     /// The `inherits` message does not cover the NA check, which keeps its
-    /// generated message.
+    /// generated message and runs first.
     #[test]
     fn no_na_keeps_its_own_message() {
         let mut checks = with_inherits_message(&["pkg_num"], "need a pkg_num");
@@ -2359,9 +2359,9 @@ mod tests {
         assert_eq!(
             out.guards(None),
             vec![
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
                 "if (!isTRUE(inherits(x, \"pkg_num\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_num\")",
                 "if (!isTRUE(is.double(x))) .miniextendr_arg_error(\"x\", message = \"need a pkg_num\")",
-                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
             ]
         );
     }
@@ -2453,8 +2453,8 @@ mod tests {
     /// The #1815 case: `not_inherits` with a message on an `Option<AsNumeric>`
     /// with `no_na`. The refusal runs before the marker's type checks
     /// (`is.numeric()` is `FALSE` for these classes, so after them it would
-    /// never be reached), passes `NULL`, and leaves the type and NA checks
-    /// their generated messages.
+    /// never be reached), after the NA check, passes `NULL`, and leaves the
+    /// type and NA checks their generated messages.
     #[test]
     fn not_inherits_precedes_the_type_checks_and_keeps_their_messages() {
         let mut checks = with_not_inherits_message(
@@ -2466,10 +2466,10 @@ mod tests {
         assert_eq!(
             out.guards(None),
             vec![
+                "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
                 "if (!isTRUE(is.null(tau) || !inherits(tau, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` must be a plain number\")",
                 "if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
                 "if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error(\"tau\", \"must be NULL or have length 1\")",
-                "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
             ]
         );
     }
@@ -2563,8 +2563,8 @@ mod tests {
         );
         let unchecked = guards("fn f(x: Option<AsNumeric>)", true);
         assert_eq!(unchecked.len(), 2, "{unchecked:?}");
-        assert!(unchecked[0].contains("!inherits(x, \"difftime\")"));
-        assert!(unchecked[1].contains("!anyNA(x)"));
+        assert!(unchecked[0].contains("!anyNA(x)"));
+        assert!(unchecked[1].contains("!inherits(x, \"difftime\")"));
         let missing = explicit_output("fn f(x: Missing<f64>)", &[("x", refused())], false);
         assert_eq!(
             missing.guards(None)[0],
@@ -2845,7 +2845,7 @@ mod tests {
         let verb = |sig: &str| {
             let out = explicit_output(sig, &[("x", no_na())], false);
             let guards = out.guards(None);
-            let guard = guards.last().expect("the no_na guard");
+            let guard = guards.first().expect("the no_na guard");
             if guard.contains("must not contain NA") {
                 "contain"
             } else {
@@ -2941,7 +2941,7 @@ mod tests {
             let guards = guards(sig, skip);
             assert!(
                 guards
-                    .last()
+                    .first()
                     .is_some_and(|g| g.contains("!isTRUE(!anyNA(x))")),
                 "{sig}: {guards:?}"
             );
@@ -2965,7 +2965,7 @@ mod tests {
             let guards = guards(sig, skip);
             let expected = format!("!isTRUE({layer} || !anyNA(x))");
             assert!(
-                guards.last().is_some_and(|g| g.contains(&expected)),
+                guards.first().is_some_and(|g| g.contains(&expected)),
                 "{sig}: {guards:?}"
             );
         }
@@ -3028,13 +3028,13 @@ mod tests {
         };
         let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
-        // the class first. A list holds several values, so its NA check says
+        // the NA check first. A list holds several values, so its NA check says
         // `contain`.
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
                 "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
+                "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
             ]
         );
         let none = explicit_output("fn f(n: i32)", &[], true);
@@ -3116,20 +3116,19 @@ mod tests {
         assert_eq!(
             out.guards(None),
             vec![
+                "if (!isTRUE(!anyNA(model))) .miniextendr_arg_error(\"model\", message = \"no NA in `model`\")",
                 "if (!isTRUE(inherits(model, c(\"pkg_a\", \"pkg_b\")))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\")",
                 "if (!isTRUE(is.list(model))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\")",
-                "if (!isTRUE(!anyNA(model))) .miniextendr_arg_error(\"model\", message = \"no NA in `model`\")",
             ]
         );
         let caller = out.guards(Some(".mx_call"));
         assert!(
             caller[0].ends_with(
-                ".miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\", call = .mx_call)"
+                ".miniextendr_arg_error(\"model\", message = \"no NA in `model`\", call = .mx_call)"
             ),
             "{}",
             caller[0]
         );
-        // A type check with the class message names the call too.
         assert!(
             caller[1].ends_with(
                 ".miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\", call = .mx_call)"
@@ -3137,9 +3136,10 @@ mod tests {
             "{}",
             caller[1]
         );
+        // A type check with the class message names the call too.
         assert!(
             caller[2].ends_with(
-                ".miniextendr_arg_error(\"model\", message = \"no NA in `model`\", call = .mx_call)"
+                ".miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\", call = .mx_call)"
             ),
             "{}",
             caller[2]
@@ -3147,7 +3147,7 @@ mod tests {
         // A type check without a class message keeps the positional call.
         let plain = explicit_output("fn f(model: List)", &[("model", no_na())], false);
         assert!(
-            plain.guards(Some(".mx_call"))[0]
+            plain.guards(Some(".mx_call"))[1]
                 .ends_with(".miniextendr_arg_error(\"model\", \"must be a list\", .mx_call)"),
             "{:?}",
             plain.guards(Some(".mx_call"))

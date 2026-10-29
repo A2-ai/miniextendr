@@ -5,8 +5,8 @@
 //! (`#[miniextendr(inherits = "cls", not_inherits = "bad", no_na)]`); impl
 //! and trait methods on the method
 //! (`#[miniextendr(inherits(x = "cls"), not_inherits(x = "bad"), no_na(y))]`).
-//! All land in the generated precondition guards (`inherits`, then
-//! `not_inherits`, before the type checks, `no_na` after them) and survive
+//! All land in the generated precondition guards (`no_na` first, then
+//! `inherits` and `not_inherits`, then the type checks) and survive
 //! `no_preconditions`. Either spelling takes an
 //! optional `message = "..."`, the condition message of a failure, used
 //! verbatim (`inherits(class = "cls", message = "...")`,
@@ -67,6 +67,36 @@ pub fn param_no_na_scalar(#[miniextendr(no_na)] x: f64) -> f64 {
 #[miniextendr(noexport)]
 pub fn param_no_na_vec(#[miniextendr(no_na)] x: Vec<f64>) -> f64 {
     x.iter().sum()
+}
+
+/// `no_na` on a `u64`: an `NA` is refused as `NA`, before the type and range
+/// checks would refuse a logical `NA` or `NA_real_` for their own reasons.
+/// @param x A non-negative whole number.
+#[miniextendr(noexport)]
+pub fn param_no_na_u64(#[miniextendr(no_na)] x: u64) -> String {
+    x.to_string()
+}
+
+/// `no_na` on an `Option<usize>`: `NULL` passes, `NA_real_` is refused as `NA`.
+/// @param x `NULL` or a non-negative whole number.
+#[miniextendr(noexport)]
+pub fn param_no_na_opt_usize(#[miniextendr(no_na, default = "NULL")] x: Option<usize>) -> String {
+    x.map_or_else(|| "none".to_string(), |n| n.to_string())
+}
+
+/// `no_na` on an `Option<String>`: a logical `NA` is refused as `NA`, not as
+/// a value that is not character.
+/// @param x `NULL` or a string.
+#[miniextendr(noexport)]
+pub fn param_no_na_opt_string(#[miniextendr(no_na, default = "NULL")] x: Option<String>) -> String {
+    x.unwrap_or_else(|| "none".to_string())
+}
+
+/// `no_na` on a `PathBuf`: a logical `NA` is refused as `NA`.
+/// @param x A path.
+#[miniextendr(noexport)]
+pub fn param_no_na_path(#[miniextendr(no_na)] x: std::path::PathBuf) -> String {
+    x.display().to_string()
 }
 
 /// `no_na` on a `Missing<f64>`: an omitted argument passes.

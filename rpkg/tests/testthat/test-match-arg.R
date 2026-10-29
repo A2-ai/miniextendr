@@ -241,7 +241,7 @@ test_that("several_ok: an unmatched element errors even when another matches", {
   )
   expect_error(match_arg_multi_mode(c("Fast", "zzz")), "'modes' element 2 \\(\"zzz\"\\) should be one of")
   expect_error(match_arg_multi_mode_boxed(c("zzz", "Fast")), "'modes' element 1")
-  expect_error(match_arg_multi_mode_slice(c("Fast", NA)), "'modes' element 2")
+  expect_error(match_arg_multi_mode_slice(c("Fast", NA)), "'modes' must not be NA", fixed = TRUE)
   expect_error(match_arg_multi_priority(1L, c("lo", "middle")), "'priorities' element 2")
 })
 
@@ -397,6 +397,7 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
   one_of <- "'fill' should be one of \"drop\", \"draw\", \"error\""
   not_scalar <- "'fill' must be of length 1"
   not_character <- "'fill' must be NULL or a character vector"
+  is_na <- "'fill' must not be NA"
   # input, then the choice or the error message both must give.
   rows <- list(
     list(NULL, "drop"),
@@ -409,15 +410,17 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
     list("dr", one_of),
     list("zzz", one_of),
     list("", one_of),
-    list(NA_character_, one_of),
-    list(factor(NA_character_), one_of),
+    list(NA_character_, is_na),
+    list(factor(NA_character_), is_na),
     list(c("drop", "draw"), not_scalar),
     list(c("draw", "drop", "error"), not_scalar),
     list(c(a = "drop", b = "draw", c = "error"), not_scalar),
     list(character(0), not_scalar),
     list(1L, not_character),
     list(2.5, not_character),
-    list(NA, not_character),
+    list(NA, is_na),
+    list(NA_real_, is_na),
+    list(c(1, NA), is_na),
     list(list("drop"), not_character)
   )
   for (row in rows) {
@@ -483,7 +486,7 @@ test_that("match_arg_param_with_default() follows a default = parameter's rotate
     list("Fast", "Fast"),
     list("Fa", "Fast"),
     list("D", "Debug"),
-    list(NA_character_, one_of),
+    list(NA_character_, "'mode' must not be NA"),
     list(1L, "'mode' must be NULL or a character vector")
   )
   for (row in rows) {
@@ -500,4 +503,30 @@ test_that("match_arg_param_with_default() follows a default = parameter's rotate
     }
   }
   expect_identical(wrapped(), "Safe")
+})
+
+test_that("an NA in a choice argument is refused as NA, unless it matches a choice", {
+  na <- function(param) sprintf("'%s' must not be NA", param)
+  for (x in list(NA, NA_character_, NA_real_, factor(NA))) {
+    label <- paste(deparse(x), collapse = "")
+    expect_error(match_arg_set_mode(x), na("mode"), fixed = TRUE, info = label)
+    expect_error(miniextendr:::match_arg_converted_fill(x), na("fill"), fixed = TRUE, info = label)
+    expect_error(match_arg_multi_mode(x), na("modes"), fixed = TRUE, info = label)
+  }
+  expect_error(match_arg_multi_mode(c("Fast", NA_character_)), na("modes"), fixed = TRUE)
+  # pmatch() matches NA_character_ to a choice spelled "NA", so it selects it,
+  # in the wrapper's check and in the conversion alike.
+  expect_identical(miniextendr:::match_arg_na_choice(NA_character_), "NA")
+  expect_identical(miniextendr:::match_arg_na_choice_converted(NA_character_), "NA")
+  expect_identical(miniextendr:::match_arg_na_choices(c("Drop", NA_character_)), "Drop,NA")
+  # A value that is not character is not matched: an NA in it is refused.
+  expect_error(miniextendr:::match_arg_na_choice(NA), na("keep"), fixed = TRUE)
+  expect_error(miniextendr:::match_arg_na_choice_converted(NA), na("keep"), fixed = TRUE)
+  expect_error(miniextendr:::match_arg_na_choices(NA), na("keep"), fixed = TRUE)
+  # NULL keeps its meaning (the first choice, or every choice), and a value
+  # without NA keeps its message.
+  expect_identical(miniextendr:::match_arg_na_choice(NULL), "Drop")
+  expect_identical(miniextendr:::match_arg_na_choices(NULL), "Drop,NA")
+  expect_error(match_arg_set_mode("zzz"), "'mode' should be one of", fixed = TRUE)
+  expect_error(match_arg_set_mode(1), "'mode' must be NULL or a character vector", fixed = TRUE)
 })

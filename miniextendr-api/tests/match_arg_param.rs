@@ -250,6 +250,7 @@ fn match_arg_param_agrees_with_the_wrapper_helper() {
         let one_of = r#"'mode' should be one of "drop", "draw", "error""#;
         let not_character = "'mode' must be NULL or a character vector";
         let not_scalar = "'mode' must be of length 1";
+        let is_na = "'mode' must not be NA";
 
         let rows: &[(&str, Outcome)] = &[
             // NULL and the formal default select the first choice.
@@ -275,15 +276,18 @@ fn match_arg_param_agrees_with_the_wrapper_helper() {
             (r#"factor(c("drop", "draw", "error"))"#, ok("drop")),
             (r#"factor(c("drop", "draw"))"#, err(not_scalar)),
             (r#"factor("zzz")"#, err(one_of)),
-            ("factor(NA_character_)", err(one_of)),
-            // NA, length, and type.
-            ("NA_character_", err(one_of)),
+            ("factor(NA_character_)", err(is_na)),
+            // NA, length, and type: an NA that matches no choice, or one in a
+            // value that is not character, is refused as NA.
+            ("NA_character_", err(is_na)),
             (r#"c("drop", "draw")"#, err(not_scalar)),
             ("character(0)", err(not_scalar)),
             (r#"c("drop", NA)"#, err(not_scalar)),
             ("1L", err(not_character)),
             ("2.5", err(not_character)),
-            ("NA", err(not_character)),
+            ("NA", err(is_na)),
+            ("NA_real_", err(is_na)),
+            ("c(1, NA)", err(is_na)),
             ("TRUE", err(not_character)),
             (r#"list("drop")"#, err(not_character)),
             ("quote(drop)", err(not_character)),
@@ -356,7 +360,7 @@ fn match_arg_param_with_default_agrees_with_the_rotated_formal() {
             (r#""Fast""#, ok("Fast")),
             (r#""Fa""#, ok("Fast")),
             (r#""S""#, ok("Safe")),
-            ("NA_character_", err(one_of)),
+            ("NA_character_", err("'mode' must not be NA")),
             ("1L", err("'mode' must be NULL or a character vector")),
         ];
         for (input, expected) in rows {
@@ -434,8 +438,8 @@ fn aliases_agree_with_the_wrapper_helper() {
             // Everything else as without aliases.
             ("NULL", ok("red")),
             (&r_formal::<Shade>(""), ok("red")),
-            ("NA_character_", err(one_of)),
-            ("factor(NA_character_)", err(one_of)),
+            ("NA_character_", err("'mode' must not be NA")),
+            ("factor(NA_character_)", err("'mode' must not be NA")),
             (r#""""#, err(one_of)),
             (r#""zzz""#, err(one_of)),
             (r#"c("grey", "red")"#, err("'mode' must be of length 1")),
@@ -510,7 +514,7 @@ fn unlisted_aliases_agree_with_the_wrapper_helper() {
             (r#""gr""#, ok("gray")),
             (r#""gre""#, err(one_of)),
             (r#""zzz""#, err(one_of)),
-            ("NA_character_", err(one_of)),
+            ("NA_character_", err("'mode' must not be NA")),
             (r#"c("grey", "red")"#, err("'mode' must be of length 1")),
         ];
         for (input, expected) in rows {
@@ -545,7 +549,7 @@ fn mixed_aliases_agree_with_the_wrapper_helper() {
             (r#""bleu""#, ok("blue")),
             (r#""gre""#, err(one_of)),
             (r#"factor("zzz")"#, err(one_of)),
-            ("NA_character_", err(one_of)),
+            ("NA_character_", err("'mode' must not be NA")),
             ("1L", err("'mode' must be NULL or a character vector")),
         ];
         for (input, expected) in rows {
@@ -628,6 +632,7 @@ fn several_ok_aliases_agree_with_the_wrapper_helper() {
             (r#"c("grey", "zzz")"#, &[]),
             (r#"c("gre", "red")"#, &[]),
             (r#"c("grey", NA)"#, &[]),
+            ("NA", &[]),
         ];
         for (input, expected) in rows {
             let r = r_several_outcome::<Shade>(env, input);
@@ -639,6 +644,10 @@ fn several_ok_aliases_agree_with_the_wrapper_helper() {
                     rust.is_err(),
                     "match_arg_vec_from_sexp on `{input}`: {rust:?}"
                 );
+                if *input == r#"c("grey", NA)"# || *input == "NA" {
+                    assert_eq!(r[1], "'mode' must not be NA");
+                    assert!(matches!(rust, Err(MatchArgError::IsNa { .. })), "{rust:?}");
+                }
                 if *input == r#"c("grey", "zzz")"# {
                     assert_eq!(
                         r[1],
@@ -659,6 +668,20 @@ fn several_ok_aliases_agree_with_the_wrapper_helper() {
                 assert_eq!(&got, expected, "match_arg_vec_from_sexp on `{input}`");
             }
         }
+
+        // `pmatch()` matches an NA element as the string "NA" too.
+        let input = r#"c("other", NA)"#;
+        assert_eq!(
+            r_several_outcome::<NaPrefixed>(env, input),
+            ["ok", "other", "NAME"]
+        );
+        let value = OwnedProtect::new(r_eval_str(input, env).expect("evaluates"));
+        let got: Vec<&str> = miniextendr_api::match_arg_vec_from_sexp::<NaPrefixed>(value.get())
+            .expect("NA selects NAME")
+            .into_iter()
+            .map(MatchArg::to_choice)
+            .collect();
+        assert_eq!(got, ["other", "NAME"]);
     });
 }
 

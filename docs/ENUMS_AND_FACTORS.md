@@ -246,12 +246,17 @@ pub fn fill_with(fill: SEXP) -> String {
 |---|---|
 | `NULL`, or the whole choice vector `c("drop", "draw", "error")` | `Drop` (the first choice) |
 | `"error"`, `"e"` (a unique prefix), `factor("draw")` | that choice |
-| `"dr"` (an ambiguous prefix), `"zzz"`, `""`, `NA_character_` | `'fill' should be one of "drop", "draw", "error"` |
+| `"dr"` (an ambiguous prefix), `"zzz"`, `""` | `'fill' should be one of "drop", "draw", "error"` |
+| `NA_character_`, `factor(NA)`, `NA`, `NA_real_` | `'fill' must not be NA` |
 | `c("drop", "draw")`, `character(0)` | `'fill' must be of length 1` |
 | `1L`, `TRUE`, `list("drop")` | `'fill' must be NULL or a character vector` |
 
 As in `match.arg()`, `NA_character_` is matched as the string `"NA"`, so it
-selects a choice spelled `"NA"` or with that prefix, and the whole choice
+selects a choice spelled `"NA"` or with that prefix; when it matches nothing it
+is refused as `NA`, with the wording of a `no_na` parameter. A value that is
+not character and holds an `NA` (a logical `NA`, `NA_real_`) is refused the
+same way. Under `several_ok` an element `NA_character_` that matches no choice
+gives `'fill' must not be NA` too. The whole choice
 vector selects the first choice only when it has no attributes (a named
 vector is a vector of length 3). The returned `ArgError` carries the parameter
 name and message (`e.param()`, `e.message()`) for a caller that words its own

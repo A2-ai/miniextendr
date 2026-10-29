@@ -165,7 +165,9 @@ impl MatchArgAlias {
 /// error with `arg_error` too (#1767). `or` and `alias_for` are the words of
 /// the clause naming the listed aliases ([`listed_aliases_clause`], #2148),
 /// which the wrappers writer renders in Rust and passes to the R helpers as
-/// their `listed` argument. It expands to string literals.
+/// their `listed` argument. `is_na` is the error of an `NA` that matches no
+/// choice, and of a non-character value holding `NA`, as `no_na` words it.
+/// It expands to string literals.
 macro_rules! match_arg_wording {
     (not_character) => {
         "must be NULL or a character vector"
@@ -175,6 +177,9 @@ macro_rules! match_arg_wording {
     };
     (not_a_choice) => {
         "should be one of"
+    };
+    (is_na) => {
+        "must not be NA"
     };
     (or) => {
         "or"
@@ -301,9 +306,11 @@ impl MatchArgError {
     ///
     /// - [`InvalidType`](Self::InvalidType): `'mode' must be NULL or a character vector`
     /// - [`InvalidLength`](Self::InvalidLength): `'mode' must be of length 1`
-    /// - [`IsNa`](Self::IsNa), [`NoMatch`](Self::NoMatch): `'mode' should be
-    ///   one of "fast", "safe"`, then the listed aliases (`'mode' should be
-    ///   one of "fast", "safe" (or "quick" for "fast")`, #2148)
+    /// - [`IsNa`](Self::IsNa): `'mode' must not be NA`, the message a `no_na`
+    ///   parameter gives an `NA`
+    /// - [`NoMatch`](Self::NoMatch): `'mode' should be one of "fast",
+    ///   "safe"`, then the listed aliases (`'mode' should be one of "fast",
+    ///   "safe" (or "quick" for "fast")`, #2148)
     ///
     /// The choices and the aliases are quoted as R's `dQuote(choices,
     /// FALSE)` quotes them, without escapes. [`match_arg_param`] returns it;
@@ -324,7 +331,8 @@ impl MatchArgError {
         let what = match self {
             MatchArgError::InvalidType { .. } => match_arg_wording!(not_character).to_string(),
             MatchArgError::InvalidLength { .. } => match_arg_wording!(not_scalar).to_string(),
-            MatchArgError::IsNa { .. } | MatchArgError::NoMatch { .. } => {
+            MatchArgError::IsNa { .. } => match_arg_wording!(is_na).to_string(),
+            MatchArgError::NoMatch { .. } => {
                 let quoted: Vec<String> = formal.iter().map(|c| r_quote(c)).collect();
                 format!(
                     "{} {}{}",
@@ -615,6 +623,22 @@ fn match_na<T: MatchArg>() -> Result<T, MatchArgError> {
     match_string::<T>("NA", &[]).map_err(|_| MatchArgError::is_na::<T>())
 }
 
+/// The error of a choice value that is not a character vector (nor a
+/// factor or `NULL`): [`MatchArgError::IsNa`] when it is an atomic vector
+/// holding an `NA` (`anyNA()`'s reading), else
+/// [`MatchArgError::InvalidType`]. The R helpers decide the same way.
+fn not_character<T: MatchArg>(sexp: SEXP) -> MatchArgError {
+    let atomic = matches!(
+        sexp.type_of(),
+        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::CPLXSXP
+    );
+    if atomic && crate::from_r::any_na(sexp) {
+        MatchArgError::is_na::<T>()
+    } else {
+        MatchArgError::invalid_type::<T>(sexp.type_of())
+    }
+}
+
 /// Whether the `len` strings `label(i)` (`None` for `NA`) are `formal`, in
 /// order: the formal default of a choice parameter, which an omitted argument
 /// evaluates to.
@@ -666,7 +690,8 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
 /// - `NULL` is the first choice;
 /// - a factor is read as its labels;
 /// - any other value that is not a character vector is
-///   [`MatchArgError::InvalidType`];
+///   [`MatchArgError::IsNa`] when it holds an `NA` (a logical `NA`,
+///   `NA_real_`), else [`MatchArgError::InvalidType`];
 /// - the full choices vector, `T::CHOICES` in order and without attributes
 ///   (what an omitted argument evaluates to when the choices are its formal
 ///   default), is the first choice;
@@ -697,7 +722,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
         return factor_to_choice::<T>(sexp, formal);
     }
     if sexptype != SEXPTYPE::STRSXP {
-        return Err(MatchArgError::invalid_type::<T>(sexptype));
+        return Err(not_character::<T>(sexp));
     }
     let len = sexp.len();
     // `identical(arg, choices)` compares attributes too: a named vector of
@@ -731,6 +756,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
 ///
 /// - `'mode' must be NULL or a character vector`
 /// - `'mode' must be of length 1`
+/// - `'mode' must not be NA`
 /// - `'mode' should be one of "fast", "safe"`
 ///
 /// [`ArgError::raise`] raises it as that condition (`kind = "conversion"`,
@@ -1057,14 +1083,17 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
             .collect();
     }
 
-    // STRSXP path — delegate type check + per-element NA handling
-    // to Vec<Option<&str>>. `None` means NA_character_ (IsNa error).
+    if sexp.type_of() != SEXPTYPE::STRSXP {
+        return Err(not_character::<T>(sexp));
+    }
+    // STRSXP path — `None` is NA_character_, matched as the string "NA" the
+    // way `pmatch()` does (IsNa error when that matches no choice).
     <Vec<Option<&'static str>> as TryFromSexp>::try_from_sexp(sexp)
         .map_err(sexp_err_to_match_arg_err::<T>)?
         .into_iter()
-        .map(|opt| {
-            opt.ok_or_else(MatchArgError::is_na::<T>)
-                .and_then(match_choice::<T>)
+        .map(|opt| match opt {
+            Some(s) => match_choice::<T>(s),
+            None => match_na::<T>(),
         })
         .collect()
 }

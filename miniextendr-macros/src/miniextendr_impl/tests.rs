@@ -890,9 +890,9 @@ fn env_method_not_inherits() {
     let parsed = parse_impl(ClassSystem::Env, item_impl);
     let wrapper = generate_env_r_wrapper(&parsed);
     let guards = [
+        "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
         "if (!isTRUE(is.null(tau) || !inherits(tau, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` must be a plain number\")",
         "if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
-        "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
         "if (!isTRUE(inherits(x, \"mx_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'mx_obj'\")",
         "if (!isTRUE(!inherits(x, \"mx_old\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'mx_old'\")",
         "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")",

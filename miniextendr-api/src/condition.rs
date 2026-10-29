@@ -5221,7 +5221,10 @@ mod condition_macro_tests {
             choices: CHOICES,
             aliases: &[],
         };
-        assert_eq!(crate::__mx_conversion_arg_message!(na, "mode"), one_of);
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(na, "mode").as_deref(),
+            Some("'mode' must not be NA")
+        );
         let long = MatchArgError::InvalidLength {
             actual: 2,
             choices: CHOICES,
