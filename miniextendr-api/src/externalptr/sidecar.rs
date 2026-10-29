@@ -705,8 +705,9 @@ fn refusal_message<T: TypedExternal>(receiver: SEXP, refused: Refused) -> String
 /// an environment, the shape an earlier release of a package may have
 /// written to disk, its restored classes
 /// ([`TypedExternal::RESTORED_ERROR_CLASS`]) in front of those: a package
-/// refuses such a save as it refuses a restored pointer, with its restored
-/// message ([`TypedExternal::RESTORED_ERROR_MESSAGE`]) when it sets one.
+/// refuses such a save as it refuses a restored pointer, with its no-handle
+/// message ([`TypedExternal::NO_HANDLE_MESSAGE`], #2218), else its restored
+/// message ([`TypedExternal::RESTORED_ERROR_MESSAGE`]), when it sets one.
 /// Another receiver (an atomic vector given the class) was never saved, so
 /// it gets neither (#1919).
 #[cold]
@@ -717,16 +718,30 @@ fn refuse_no_handle<T: TypedExternal>(receiver: SEXP) -> ! {
     } else {
         &[]
     };
-    let message = match T::RESTORED_ERROR_MESSAGE {
-        Some(message) if saved_shape => message.to_owned(),
-        _ => refusal_message::<T>(receiver, Refused::NoPointer),
-    };
+    let message =
+        match saved_no_handle_message(saved_shape, T::NO_HANDLE_MESSAGE, T::RESTORED_ERROR_MESSAGE)
+        {
+            Some(message) => message.to_owned(),
+            None => refusal_message::<T>(receiver, Refused::NoPointer),
+        };
     std::panic::panic_any(RCondition::Error {
         message,
         class: no_handle_classes(restored, T::FIELD_ERROR_CLASS),
         data: None,
         call: ConditionCall::Inherit,
     })
+}
+
+/// The package's message for a receiver that carries no pointer, when it is
+/// a list or an environment (`saved_shape`), the shape an earlier release
+/// may have saved: the no-handle message, else the restored message. `None`
+/// leaves the receiver refusal's own wording ([`refusal_message`]).
+fn saved_no_handle_message(
+    saved_shape: bool,
+    no_handle: Option<&'static str>,
+    restored: Option<&'static str>,
+) -> Option<&'static str> {
+    saved_shape.then(|| no_handle.or(restored)).flatten()
 }
 
 /// The classes of [`refuse_no_handle`]: `restored`, then `field_error`, then
@@ -954,8 +969,10 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
 /// no-pointer error, or the other-type error) and a live pointer of another
 /// type is refused too, so the result is always `true`. Without it
 /// (`.DollarNames()`, which serves completion and never raises) the answer
-/// is whether `x` carries a pointer with an address: a list or an
-/// environment without one, or an atomic vector, has none.
+/// is whether `x` carries a pointer with an address, after attaching a
+/// serde type's saved value (#2186): a list or an environment without one,
+/// or an atomic vector, has none. Completion of a receiver without a value
+/// then lists the type's field names, which need none (#2218).
 ///
 /// # Safety
 ///
@@ -1065,7 +1082,27 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
 
 #[cfg(test)]
 mod tests {
-    use super::no_handle_classes;
+    use super::{no_handle_classes, saved_no_handle_message};
+
+    /// A list or environment without a pointer gets the type's no-handle
+    /// message, else its restored message (#2218); another receiver keeps
+    /// the receiver refusal's wording.
+    #[test]
+    fn saved_no_handle_message_prefers_the_no_handle_reason() {
+        assert_eq!(
+            saved_no_handle_message(true, Some("no engine"), Some("saved")),
+            Some("no engine")
+        );
+        assert_eq!(
+            saved_no_handle_message(true, None, Some("saved")),
+            Some("saved")
+        );
+        assert_eq!(saved_no_handle_message(true, None, None), None);
+        assert_eq!(
+            saved_no_handle_message(false, Some("no engine"), Some("saved")),
+            None
+        );
+    }
 
     /// A parent class both lists share follows both specific classes.
     #[test]

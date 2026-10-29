@@ -967,7 +967,7 @@ test_that("restored: the field methods refuse the pointer; the standalone access
   expect_s3_class(caught(back$nope <- 1), "miniextendr_no_field")
 })
 
-test_that("restored: under `refuse = \"every_read\"` names(), an unknown name and the completions refuse too (#1901)", {
+test_that("restored: under `refuse = \"every_read\"` names() and an unknown name refuse too (#1901)", {
   h <- new_handmade_rec(2L)
   back <- reload(h)
   message <- "this handmade_rec was saved; build a new one with new_handmade_rec()"
@@ -984,9 +984,10 @@ test_that("restored: under `refuse = \"every_read\"` names(), an unknown name an
     expect_restored_classes(e, classes, deparse(read))
     expect_equal(conditionCall(e), read)
   }
-  # The completions serve the console: they list nothing instead of raising.
-  expect_identical(utils::.DollarNames(back), character(0))
-  expect_identical(utils::.DollarNames(back, "^i"), character(0))
+  # The completions serve the console: they list the field names, which
+  # need no Rust value, instead of raising (#2218).
+  expect_identical(utils::.DollarNames(back), c("id", "ids", "label", "extra"))
+  expect_identical(utils::.DollarNames(back, "^i"), c("id", "ids"))
   # A live object answers as before.
   expect_s3_class(caught(h$nope), "miniextendr_no_field")
   expect_identical(names(h), c("id", "ids", "label", "extra"))
@@ -1035,12 +1036,14 @@ test_that("restored: under `refuse = \"every_read\"` a list or environment of th
   expect_identical(names(live), c(".ptr", "note"))
   expect_identical(live[[2]], "n")
   # The completions never raise: a receiver the readers refuse completes to
-  # nothing, a live one to the fields and its own names.
-  expect_identical(utils::.DollarNames(old), character(0))
-  expect_identical(utils::.DollarNames(env), character(0))
+  # the field names (#2218), a live one to the fields and its own names.
+  fields <- c("id", "ids", "label", "extra")
+  expect_identical(utils::.DollarNames(old), fields)
+  expect_identical(utils::.DollarNames(env), fields)
   expect_identical(utils::.DollarNames(live, "^[in]"), c("id", "ids", "note"))
   saved <- reload(live)
-  expect_identical(utils::.DollarNames(saved), character(0))
+  expect_identical(utils::.DollarNames(saved), fields)
+  expect_identical(utils::.DollarNames(saved, "^l"), "label")
   for (read in alist(names(saved), saved$note, saved[[2]], as.list(saved))) {
     e <- caught(eval(read))
     expect_restored_classes(
@@ -1213,13 +1216,36 @@ test_that("strict_rec: the type's own message replaces the receiver refusals (#1
   e <- caught(other$id)
   expect_identical(conditionMessage(e), message)
   expect_identical(class(e)[1:2], c("strict_error_field", "strict_error"))
-  old <- structure(list(id = 1L), class = "strict_rec")
-  e <- caught(names(old))
+  # An atomic vector given the class was never saved: the field-error
+  # message, not the no-handle reason.
+  e <- caught(structure(1L, class = "strict_rec")$id)
   expect_identical(conditionMessage(e), message)
+})
+
+test_that("strict_rec: a list or environment without a pointer gets the type's no-handle reason (#2218)", {
+  reason <- "this strict_rec holds no record: it was saved before a strict_rec kept one; build one with new_strict_rec()"
+  old <- structure(list(id = 1L), class = "strict_rec")
+  env <- structure(new.env(), class = "strict_rec")
+  for (read in alist(names(old), old$id, old[["steps"]], old$nope, as.list(old), names(env), env$id)) {
+    e <- caught(eval(read))
+    expect_identical(conditionMessage(e), reason, label = deparse(read))
+    expect_identical(
+      class(e)[1:4],
+      c("strict_error_saved", "strict_error_field", "strict_error", "miniextendr_no_handle"),
+      label = deparse(read)
+    )
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+  # The standalone accessor of its `Sidecar` field words it the same way.
+  e <- caught(SidecarStrict_get_steps(old))
+  expect_identical(conditionMessage(e), reason)
+  # A restored pointer keeps the restored wording.
   expect_identical(
-    class(e)[1:4],
-    c("strict_error_saved", "strict_error_field", "strict_error", "miniextendr_no_handle")
+    conditionMessage(caught(reload(new_strict_rec(2L))$id)),
+    "this `strict_rec` object was restored from a saved session and has no Rust value; re-create it"
   )
+  # The completions list the fields (#2218).
+  expect_identical(utils::.DollarNames(old), c("id", "steps"))
 })
 
 test_that("strict_rec: a saved copy is refused before the name or index is looked at", {

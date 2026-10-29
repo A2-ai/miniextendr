@@ -721,6 +721,18 @@ pub trait TypedExternal: 'static {
     /// miniextendr's messages.
     const RESTORED_ERROR_MESSAGE: Option<&'static str> = None;
 
+    /// The package's message for a list or an environment of the type's
+    /// class that carries no pointer (#2218), the shape an earlier release
+    /// may have saved: it says why the object has none. It replaces
+    /// [`Self::RESTORED_ERROR_MESSAGE`] for that receiver, which otherwise
+    /// serves both. The R accessors raise it with
+    /// [`NO_HANDLE_CLASS`]; a package's own code that refuses such an object
+    /// reads it here to word the refusal the same way.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(restored(no_handle = "..."))]`.
+    const NO_HANDLE_MESSAGE: Option<&'static str> = None;
+
     /// The package's condition classes for the errors the type's R field
     /// readers raise themselves (#1899), in front of their own class: a
     /// refused position (`subscriptOutOfBoundsError`), a name that is not a

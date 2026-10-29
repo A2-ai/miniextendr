@@ -992,8 +992,8 @@ fields included: a reloaded object is refused, not recovered
   `refuse = "every_read"` makes every S3 reader refuse first, before the
   name or position is looked at: `names()`, `as.list()`, an unknown name
   and a position too, on the bare pointer and on a list or environment
-  carrying it in `.ptr`, with `.DollarNames()` returning `character(0)`
-  (`CLASS_SYSTEMS.md`, "A restored pointer").
+  carrying it in `.ptr`. `.DollarNames()` still lists the fields, so
+  completion never raises (`CLASS_SYSTEMS.md`, "A restored pointer").
 - A receiver of the class that carries no pointer at all (a list without
   `.ptr`, e.g. an older format of the same class) raises
   `miniextendr_no_handle` (``this `myclass` object holds no pointer``)
@@ -1002,8 +1002,13 @@ fields included: a reloaded object is refused, not recovered
   environment receiver also gets the `restored(class = ...)` classes and
   the `restored(message = ...)` text, the shape a save in an older format
   has; an atomic vector given the class was never saved and gets neither.
-  Otherwise `field_error(message = "...")` replaces the message of this
-  refusal and of the two above.
+  `restored(no_handle = "...")` gives that list or environment its own
+  message, one that says why it holds no pointer (``this engine was saved
+  by an older release, which kept no engine; build a new one``), in place
+  of the restored message; the package's own code can reuse it as
+  `TypedExternal::NO_HANDLE_MESSAGE`. Otherwise
+  `field_error(message = "...")` replaces the message of this refusal and
+  of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.

@@ -1898,8 +1898,8 @@ running method holding the value mutably raises
 `miniextendr_borrow_conflict`. The function's own errors
 (`rust_error!(class = ...)`) reach R with their classes and the call as
 written (`x$alpha`). `.DollarNames()` never raises on a restored pointer: it
-returns `character(0)` under `refuse = "every_read"`, else the fields
-without the fallback's names.
+offers the fields without the fallback's names, under `refuse =
+"every_read"` too (#2218).
 
 `fallback` needs `r_data_accessors`, `fallback_names` needs `fallback`, and
 both are compile errors under `r6(...)`, `s7(...)` and `vctrs(...)`, whose
@@ -1933,9 +1933,10 @@ save's `Sidecar` values, as the way to reach a saved object's data. The
 methods pass a `require_live` flag to the same per-field accessor, so a read
 costs no extra `.Call()`, and `as.list()` refuses because its first read
 does. Only a read of a field reaches Rust: on a restored bare pointer
-`names()`, `.DollarNames()` and an unknown name (`NULL`) still answer,
-unless the type asks for `refuse = "every_read"` (below), or, for the
-unknown name, has a field fallback, which needs the Rust value.
+`names()` and an unknown name (`NULL`) still answer, unless the type asks
+for `refuse = "every_read"` (below), or, for the unknown name, has a field
+fallback, which needs the Rust value. `.DollarNames()` answers in every
+case, with the fields.
 
 A type names its own condition classes and message for every one of its
 restored refusals, the field methods and the methods that take the handle
@@ -1957,6 +1958,14 @@ condition's `saved_version` / `current_version` fields stay. The message is
 a static string per type: one type maps to one R class, so the package can
 name it literally.
 
+`no_handle = "..."` in `restored(...)` is the message for a list or
+environment of the class that carries no pointer (#2218). It says why the
+object has none, e.g. `"this engine was saved by an older release, which
+kept no engine; build a new one with engine()"`. Without it that receiver
+gets the restored message. It is a static string too, and the package's own
+R or Rust code that refuses such an object can word it the same way from
+`TypedExternal::NO_HANDLE_MESSAGE`.
+
 A class whose contract is that a reloaded object is refused on every use adds
 `refuse = "every_read"` to `restored(...)`. Then every S3 reader (`$`, `[[`,
 `names()`, `as.list()`) checks a bare pointer, and a list or environment
@@ -1967,9 +1976,10 @@ environment of the class that carries no pointer (the shape an earlier
 release of the package may have saved) is refused on every read too, with
 `miniextendr_no_handle` behind the `restored(class = ...)` and
 `field_error(class = ...)` classes. A list carrying a live `.ptr` answers
-as before. `.DollarNames(x)` returns `character(0)` for a restored pointer
-(it serves completion, so it never raises). The check is one more `.Call()`
-per read, paid only by the types that opt in.
+as before. `.DollarNames(x)` offers only the field names for a restored
+pointer, or a list or environment without a live one (#2218): they need no
+Rust value, so completion never raises. The check is one more `.Call()` per
+read, paid only by the types that opt in.
 
 #### The package's classes on the readers' own errors
 
@@ -1990,8 +2000,9 @@ receiver of the class that carries no pointer (`miniextendr_no_handle`). A
 list or environment without a pointer, e.g. an older format, also gets the
 `restored(class = ...)` classes first, then these, each class once at its
 last place, so a parent class both lists end in follows both specific
-classes, and the `restored(message = ...)` text when the type sets one; an
-atomic vector given the class was never saved, so it gets these alone.
+classes, and the `restored(no_handle = ...)` text, else the
+`restored(message = ...)` text, when the type sets one; an atomic vector
+given the class was never saved, so it gets these alone.
 
 The receiver refusals name the class the user sees: `this "engine" object
 holds a pointer of another type`, `... holds no pointer`, `... holds a null

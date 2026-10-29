@@ -395,7 +395,12 @@ impl Convert<f64> for Counter {
 #[derive(ExternalPtr)]
 #[externalptr(
     s3,
-    restored(class = ["shadow_saved"], message = "saved", refuse = "every_read"),
+    restored(
+        class = ["shadow_saved"],
+        message = "saved",
+        no_handle = "no pointer",
+        refuse = "every_read"
+    ),
     field_error(class = "shadow_field")
 )]
 pub struct Engine {

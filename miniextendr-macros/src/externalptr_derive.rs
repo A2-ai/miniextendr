@@ -145,7 +145,10 @@
 //! reads that never call an accessor: `names()` and an unknown `$` / `[[`
 //! name check the pointer first through one more C function
 //! (`.rdata_live_<Type>`, `externalptr::sidecar_r_live`), and `.DollarNames()`
-//! returns `character(0)` for a restored pointer. R's `y <- x`
+//! offers only the field names for a restored pointer without its value
+//! (#2218). `restored(no_handle = "...")` words the refusal of a list or
+//! environment of the class that carries no pointer, saying why (#2218);
+//! without it the restored message serves both. R's `y <- x`
 //! shares the one Rust value and the one `prot` list: a write through `y` is
 //! visible through `x`.
 //!
@@ -228,12 +231,12 @@ use syn::{DeriveInput, Field, Ident, Visibility};
 
 use crate::miniextendr_impl::ClassSystem;
 
-/// The package's condition classes and message for a pointer of the type
+/// The package's condition classes and messages for a pointer of the type
 /// restored from a saved session, `#[externalptr(restored(class = "..." |
-/// ["...", "..."], message = "...", refuse = "every_read"))]` (#1891,
-/// #1901). Each is optional; the derive emits
-/// `TypedExternal::RESTORED_ERROR_CLASS` / `RESTORED_ERROR_MESSAGE` for the
-/// ones given.
+/// ["...", "..."], message = "...", no_handle = "...", refuse =
+/// "every_read"))]` (#1891, #1901, #2218). Each is optional; the derive emits
+/// `TypedExternal::RESTORED_ERROR_CLASS` / `RESTORED_ERROR_MESSAGE` /
+/// `NO_HANDLE_MESSAGE` for the ones given.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct RestoredOptions {
     /// The classes, in order, put in front of the `miniextendr_restored*`
@@ -241,10 +244,13 @@ struct RestoredOptions {
     class: Vec<String>,
     /// The message, replacing miniextendr's in both restored cases.
     message: Option<String>,
+    /// `no_handle = "..."`: the message for a list or environment of the
+    /// class that carries no pointer, saying why (#2218).
+    no_handle: Option<String>,
     /// `refuse = "every_read"`: the field methods refuse a restored pointer
     /// on the reads that never reach a field accessor too (`names()`, a name
-    /// that is not a field), and `.DollarNames()` offers nothing for it
-    /// (#1901). The derive emits the liveness check they call.
+    /// that is not a field), and `.DollarNames()` offers only the field names
+    /// for it (#1901, #2218). The derive emits the liveness check they call.
     every_read: bool,
 }
 
@@ -281,7 +287,7 @@ struct FieldErrorOptions {
 /// - `#[externalptr(s4)]` - S4 class
 /// - `#[externalptr(s7)]` - S7 class
 /// - `#[externalptr(vctrs)]` - vctrs class
-/// - `#[externalptr(restored(class = "pkg_saved", message = "...", refuse = "every_read"))]`,
+/// - `#[externalptr(restored(class = "pkg_saved", message = "...", no_handle = "...", refuse = "every_read"))]`,
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
 /// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "..."))]`
@@ -369,13 +375,27 @@ fn parse_class_list(inner: &syn::meta::ParseNestedMeta) -> syn::Result<Vec<Strin
 }
 
 /// The arguments of `restored(...)`: `class = "..."` or `class = ["...", ...]`
-/// (non-empty, in order), `message = "..."` (non-empty) and `refuse =
-/// "every_read"`, each at most once. syn refuses empty parentheses, so at
-/// least one is given.
+/// (non-empty, in order), `message = "..."`, `no_handle = "..."` (each
+/// non-empty) and `refuse = "every_read"`, each at most once. syn refuses
+/// empty parentheses, so at least one is given.
 fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<RestoredOptions> {
     let mut options = RestoredOptions::default();
     let mut class_given = false;
     let mut refuse_given = false;
+    // A non-empty string option, given once.
+    let text = |inner: &syn::meta::ParseNestedMeta, given: bool, option: &str| {
+        if given {
+            return Err(inner.error(format!("`{option}` is given twice")));
+        }
+        let value: syn::LitStr = inner.value()?.parse()?;
+        if value.value().is_empty() {
+            return Err(syn::Error::new_spanned(
+                value,
+                format!("`{option}` can't be empty"),
+            ));
+        }
+        Ok(value)
+    };
     meta.parse_nested_meta(|inner| {
         if inner.path.is_ident("class") {
             if std::mem::replace(&mut class_given, true) {
@@ -384,17 +404,11 @@ fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Rest
             options.class = parse_class_list(&inner)?;
             Ok(())
         } else if inner.path.is_ident("message") {
-            if options.message.is_some() {
-                return Err(inner.error("`message` is given twice"));
-            }
-            let message: syn::LitStr = inner.value()?.parse()?;
-            if message.value().is_empty() {
-                return Err(syn::Error::new_spanned(
-                    message,
-                    "`message` can't be empty",
-                ));
-            }
-            options.message = Some(message.value());
+            options.message = Some(text(&inner, options.message.is_some(), "message")?.value());
+            Ok(())
+        } else if inner.path.is_ident("no_handle") {
+            options.no_handle =
+                Some(text(&inner, options.no_handle.is_some(), "no_handle")?.value());
             Ok(())
         } else if inner.path.is_ident("refuse") {
             if std::mem::replace(&mut refuse_given, true) {
@@ -412,7 +426,7 @@ fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Rest
             Ok(())
         } else {
             Err(inner.error(
-                "unknown `restored` option; expected `class = \"...\"` (or `class = [\"...\", ...]`), `message = \"...\"` and `refuse = \"every_read\"`",
+                "unknown `restored` option; expected `class = \"...\"` (or `class = [\"...\", ...]`), `message = \"...\"`, `no_handle = \"...\"` and `refuse = \"every_read\"`",
             ))
         }
     })?;
@@ -2237,6 +2251,14 @@ fn generate_typed_external(
                 ::core::option::Option::Some(#message);
         }
     });
+    // `restored(no_handle = ...)` (#2218): the message of a list or
+    // environment of the class without a pointer.
+    let no_handle_message = restored.no_handle.as_ref().map(|message| {
+        quote::quote! {
+            const NO_HANDLE_MESSAGE: ::core::option::Option<&'static str> =
+                ::core::option::Option::Some(#message);
+        }
+    });
     // `#[externalptr(field_error(class = ..., message = ...))]` (#1899,
     // #1920): the classes in front of the R accessors' type-mismatch and
     // no-pointer errors, and the package's message for both.
@@ -2314,6 +2336,7 @@ fn generate_typed_external(
             #r_slot_count
             #restored_class
             #restored_message
+            #no_handle_message
             #field_error_class
             #field_error_message
             #snapshot
@@ -3176,6 +3199,54 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("\"r_rows\""), "{out}");
+    }
+
+    /// `restored(no_handle = ...)` (#2218): parsed and checked, and emitted
+    /// as the `TypedExternal` message.
+    #[test]
+    fn restored_no_handle_option() {
+        let attrs = |source: &str| {
+            let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+            super::parse_externalptr_attrs(&input)
+        };
+        let parsed =
+            attrs("#[externalptr(s3, restored(no_handle = \"no engine\"))] struct E;").unwrap();
+        assert_eq!(parsed.restored.no_handle.as_deref(), Some("no engine"));
+
+        let refused = |source: &str, expected: &str| {
+            let message = attrs(source)
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| panic!("`{source}` must be refused"));
+            assert!(message.contains(expected), "`{source}`: {message}");
+        };
+        refused(
+            "#[externalptr(restored(no_handle = \"\"))] struct E;",
+            "`no_handle` can't be empty",
+        );
+        refused(
+            "#[externalptr(restored(no_handle = \"a\", no_handle = \"b\"))] struct E;",
+            "`no_handle` is given twice",
+        );
+        refused(
+            "#[externalptr(restored(message = \"a\", message = \"b\"))] struct E;",
+            "`message` is given twice",
+        );
+
+        let input: syn::DeriveInput = syn::parse_str(
+            "#[externalptr(restored(no_handle = \"no engine\"))] struct E { n: i32 }",
+        )
+        .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(
+            out.contains(
+                "const NO_HANDLE_MESSAGE : :: core :: option :: Option < & 'static str > = :: core :: option :: Option :: Some (\"no engine\") ;"
+            ),
+            "{out}"
+        );
+        let input: syn::DeriveInput = syn::parse_str("struct E { n: i32 }").unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(!out.contains("NO_HANDLE_MESSAGE"), "{out}");
     }
 
     /// The probe for a serde value (#2186) and its carrier's registration,
