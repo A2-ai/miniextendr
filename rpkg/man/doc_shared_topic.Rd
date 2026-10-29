@@ -4,7 +4,7 @@
 \alias{doc_shared_topic}
 \alias{doc_shared_double}
 \alias{format.doc_shared_vector}
-\title{Shared documentation in source order.}
+\title{Shared documentation in source order}
 \usage{
 doc_shared_topic(x)
 

@@ -15,7 +15,7 @@
 # index.html, the manual and the vignettes are added to its crate list.
 #
 # In-package links stay on the page; cross-package links go to the single-page
-# manuals CRAN hosts. Nothing at install time depends on this script; it ships
+# manuals CRAN hosts, or for base packages to the topic's own page. Nothing at install time depends on this script; it ships
 # with the other tools/ scripts so an unpacked tarball can build the manual too.
 # MINIEXTENDR_HTML_STRICT=0 turns checkRd findings from an error into a message.
 
@@ -56,7 +56,8 @@ if (length(problems)) {
 
 # 2. Link targets for other packages. pkg2HTML appends "#topic+<alias>" to
 #    whatever this returns; CRAN serves pkg2HTML output for every package at
-#    the refman path, base packages only have per-topic pages.
+#    the refman path, base packages only have per-topic pages (step 4 points
+#    their links at the right page).
 base_pkgs <- rownames(installed.packages(priority = "base"))
 pkg_href <- function(p) {
   if (identical(p, pkg)) return(paste0(pkg, ".html"))
@@ -76,9 +77,28 @@ tools::pkg2HTML(
 )
 
 # 4. pkg2HTML hard-codes an absolute path to R's logo; ship a copy instead.
+#    A base package's index page has no "#topic+<alias>" anchors, so each such
+#    link goes to the page of the Rd file that has the alias, looked up in the
+#    package's installed help index (stderr is on showConnections.html). An
+#    alias missing from it keeps the index page, without the fragment.
 r_html_dir <- file.path(R.home("doc"), "html")
 html <- readLines(out_html, encoding = "UTF-8", warn = FALSE)
 html <- gsub(file.path(r_html_dir, "Rlogo.svg"), "Rlogo.svg", html, fixed = TRUE)
+base_links <- unique(unlist(regmatches(html, gregexpr(
+  'https://search[.]r-project[.]org/R/refmans/[^/]+/html/00Index[.]html#topic[+][^"]+', html))))
+base_rd <- list()
+for (link in base_links) {
+  p <- sub("^.*/refmans/([^/]+)/html/.*$", "\\1", link)
+  if (is.null(base_rd[[p]])) {
+    aliases <- readRDS(file.path(find.package(p), "help", "aliases.rds"))
+    # pkg2HTML's id for an alias (tools:::string2id).
+    ids <- gsub("%", "+", vapply(names(aliases), utils::URLencode, "", reserved = TRUE))
+    base_rd[[p]] <- structure(unname(aliases), names = ids)
+  }
+  rd <- base_rd[[p]][sub("^.*#topic[+]", "", link)]
+  page <- if (is.na(rd)) "00Index.html" else paste0(rd, ".html")
+  html <- gsub(link, sub("00Index[.]html#.*$", page, link), html, fixed = TRUE)
+}
 writeLines(html, out_html, useBytes = TRUE)
 for (f in c("R-nav.css", "Rlogo.svg")) {
   stopifnot(file.copy(file.path(r_html_dir, f), out_dir, overwrite = TRUE))

@@ -20,7 +20,7 @@ pub fn doc_attr_no_params() -> &'static str {
 /// @name
 /// doc_shared_topic
 /// @title Shared documentation
-/// in source order.
+/// in source order
 /// @description Shared-page fixtures for standalone and S3 functions.
 /// @keywords utilities
 /// methods

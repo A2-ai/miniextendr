@@ -146,7 +146,8 @@ minirextendr::miniextendr_html_reference()      # the same, from an R session
 
 Nothing is installed or loaded, so the page cannot lag the tree and builds in
 seconds for packages with thousands of generated wrappers. In-package links
-stay on the page, other packages link to their CRAN manuals, and built
+stay on the page, other packages link to their CRAN manuals (a base package to
+the topic's own page on search.r-project.org), and built
 vignettes under `inst/doc` are copied alongside. When a rustdoc crate index
 (`--enable-index-page`) sits one level above the output directory, the manual
 is added to its list. A `checkRd` finding aborts the build; set
