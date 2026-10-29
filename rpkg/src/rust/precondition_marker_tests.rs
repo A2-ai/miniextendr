@@ -83,6 +83,16 @@ pub fn pm_checked_str_worker(s: Checked<&str>) -> String {
     s.to_uppercase()
 }
 
+/// `NonNa<&str>` on the worker thread: the C wrapper checks the argument on
+/// the main thread before the owned copy, and the marker wraps the borrow
+/// made inside the worker closure.
+/// @param s A string.
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
+#[miniextendr(noexport, worker)]
+pub fn pm_non_na_str_worker(s: NonNa<&str>) -> String {
+    s.to_uppercase()
+}
+
 /// A `call = caller` entry point with an unchecked parameter: the Rust
 /// conversion's error names the call the helper's `.call` resolves to.
 /// @param n An integer.
