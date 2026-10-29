@@ -4,7 +4,12 @@
 \alias{miniextendr_html_reference}
 \title{Build the single-page HTML reference manual}
 \usage{
-miniextendr_html_reference(path = ".", out = NULL, strict = TRUE)
+miniextendr_html_reference(
+  path = ".",
+  out = NULL,
+  strict = TRUE,
+  internal = FALSE
+)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
@@ -15,6 +20,9 @@ miniextendr_html_reference(path = ".", out = NULL, strict = TRUE)
 \item{strict}{If \code{FALSE}, \code{checkRd()} findings are printed and the page is
 still rendered (sets \code{MINIEXTENDR_HTML_STRICT=0} for the script). The
 default refuses to build on any finding.}
+
+\item{internal}{If \code{TRUE}, topics with \verb{\\keyword\{internal\}} are rendered
+too (sets \code{MINIEXTENDR_HTML_INTERNAL=1} for the script).}
 }
 \value{
 Invisibly, the path of the rendered \verb{<package>.html}.
@@ -25,5 +33,7 @@ Runs the package's \code{tools/build-html-reference.R} (added by
 through \code{Rscript}, so the page is built exactly as the shell invocation
 builds it: every \verb{man/*.Rd} is validated with \code{tools::checkRd()} and
 rendered with \code{tools::pkg2HTML()} (R >= 4.4) into one HTML page next to
-the rustdoc output. Nothing is installed or loaded.
+the rustdoc output. Topics with \verb{\\keyword\{internal\}} are left out, as R
+leaves them out of a package's help index, except the package overview
+and those a kept topic links to. Nothing is installed or loaded.
 }

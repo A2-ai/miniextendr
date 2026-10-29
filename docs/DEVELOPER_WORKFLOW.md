@@ -57,9 +57,10 @@ just doc-r              # → rpkg/rust-target/doc/r/miniextendr.html
 just doc-all            # nightly: rustdoc + crate index + the R manual → site/public/rustdoc/
 ```
 
-Renders every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R
+Renders `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R
 4.4+, a few seconds, nothing installed or loaded) after `tools::checkRd()` has
-passed over the sources — a finding aborts the build (`MINIEXTENDR_HTML_STRICT=0`
+passed over the sources. Internal topics are left out unless a kept page links
+to them (`MINIEXTENDR_HTML_INTERNAL=1` keeps them all) — a finding aborts the build (`MINIEXTENDR_HTML_STRICT=0`
 renders anyway). Run `just devtools-document`
 first when `man/` may be stale. `just doc-all` needs a nightly toolchain: it
 documents the workspace crates and the rpkg bridge crate into one tree with

@@ -5,7 +5,9 @@
 #' through `Rscript`, so the page is built exactly as the shell invocation
 #' builds it: every `man/*.Rd` is validated with `tools::checkRd()` and
 #' rendered with `tools::pkg2HTML()` (R >= 4.4) into one HTML page next to
-#' the rustdoc output. Nothing is installed or loaded.
+#' the rustdoc output. Topics with `\keyword{internal}` are left out, as R
+#' leaves them out of a package's help index, except the package overview
+#' and those a kept topic links to. Nothing is installed or loaded.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param out Output directory. `NULL` uses the script's default,
@@ -13,9 +15,12 @@
 #' @param strict If `FALSE`, `checkRd()` findings are printed and the page is
 #'   still rendered (sets `MINIEXTENDR_HTML_STRICT=0` for the script). The
 #'   default refuses to build on any finding.
+#' @param internal If `TRUE`, topics with `\keyword{internal}` are rendered
+#'   too (sets `MINIEXTENDR_HTML_INTERNAL=1` for the script).
 #' @return Invisibly, the path of the rendered `<package>.html`.
 #' @export
-miniextendr_html_reference <- function(path = ".", out = NULL, strict = TRUE) {
+miniextendr_html_reference <- function(path = ".", out = NULL, strict = TRUE,
+                                       internal = FALSE) {
   pkg_dir <- normalizePath(path, mustWork = TRUE)
   script <- file.path(pkg_dir, "tools", "build-html-reference.R")
   if (!file.exists(script)) {
@@ -30,6 +35,16 @@ miniextendr_html_reference <- function(path = ".", out = NULL, strict = TRUE) {
     add = TRUE
   )
   if (strict) Sys.unsetenv("MINIEXTENDR_HTML_STRICT") else Sys.setenv(MINIEXTENDR_HTML_STRICT = "0")
+  old_internal <- Sys.getenv("MINIEXTENDR_HTML_INTERNAL", unset = NA)
+  on.exit(
+    if (is.na(old_internal)) {
+      Sys.unsetenv("MINIEXTENDR_HTML_INTERNAL")
+    } else {
+      Sys.setenv(MINIEXTENDR_HTML_INTERNAL = old_internal)
+    },
+    add = TRUE
+  )
+  if (internal) Sys.setenv(MINIEXTENDR_HTML_INTERNAL = "1") else Sys.unsetenv("MINIEXTENDR_HTML_INTERNAL")
   status <- system2(
     file.path(R.home("bin"), "Rscript"),
     c(shQuote(script), if (!is.null(out)) shQuote(out))
