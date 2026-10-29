@@ -568,11 +568,14 @@ fn fn_compile_errors(
 /// Under `rng(seed = <param>)` a standalone wrapper writes the seed contract
 /// of `stats::simulate()`: the prelude after the argument checks, with no
 /// type check on the seed (`set.seed()` validates it), and the `seed`
-/// attribute after the result's condition check.
+/// attribute after the result's condition check. The function spells
+/// `preconditions, no_coerce`: the argument checks are part of the contract,
+/// so the snapshot holds whatever the `no-preconditions-default` and
+/// `coerce-default` features of this build say.
 #[test]
 fn rng_seed_standalone_wrapper() {
     let wrapper = fn_r_wrapper(
-        quote::quote!(rng(seed = seed)),
+        quote::quote!(rng(seed = seed), preconditions, no_coerce),
         quote::quote! {
             pub fn seeded_draws(
                 n: i32,
@@ -598,11 +601,17 @@ fn rng_seed_standalone_wrapper() {
     );
 }
 
-/// The same contract on an `s3(...)` method, the `simulate()` method's shape.
+/// The same contract on an `s3(...)` method, the `simulate()` method's shape,
+/// with the same options spelled.
 #[test]
 fn rng_seed_s3_method_wrapper() {
     let wrapper = fn_r_wrapper(
-        quote::quote!(rng(seed = seed), s3(generic = "simulate", class = "mx_fit")),
+        quote::quote!(
+            rng(seed = seed),
+            s3(generic = "simulate", class = "mx_fit"),
+            preconditions,
+            no_coerce
+        ),
         quote::quote! {
             pub fn simulate_mx_fit(
                 _object: SEXP,

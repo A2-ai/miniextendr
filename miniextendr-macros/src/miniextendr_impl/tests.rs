@@ -18,6 +18,9 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         field_lookup: FieldLookup::default(),
         field_fallback: None,
         strict: false,
+        // Methods coerce only when they say so, whatever the `coerce-default`
+        // feature of this build says, so the snapshots are the same under both.
+        method_coerce_default: false,
         // The impl keeps the checks, whatever the `no-preconditions-default`
         // feature of this build says, so the snapshots are the same under both.
         preconditions: Some(true),
@@ -1500,7 +1503,7 @@ fn method_and_param_no_preconditions_drop_the_checks() {
 fn method_preconditions_pair_is_last_wins() {
     let method_attrs = |attrs: proc_macro2::TokenStream| {
         let attr: syn::Attribute = syn::parse_quote!(#[miniextendr(#attrs)]);
-        ParsedMethod::parse_method_attrs(&[attr]).expect("parses")
+        ParsedMethod::parse_method_attrs(&[attr], false).expect("parses")
     };
     assert_eq!(
         method_attrs(quote::quote!(no_preconditions)).preconditions,
@@ -1641,6 +1644,90 @@ fn r6_active_binding_setter_follows_its_param_marker() {
     );
     // The constructor keeps its checks.
     assert!(wrapper.contains("is.double(celsius)"), "{wrapper}");
+}
+// endregion
+
+// region: method-level coerce and the coerce-default feature
+
+/// The impl options of the feature tests below: `preconditions` keeps the
+/// checks they read under the `no-preconditions-default` feature too.
+fn parsed_coerce_feature_attrs() -> ImplAttrs {
+    syn::parse2(quote::quote!(r6, preconditions)).unwrap()
+}
+
+/// An impl whose methods take an `i32` each: `plain` spells nothing,
+/// `coerced` spells `coerce` and `exact` spells `no_coerce`.
+fn coerce_sampler() -> syn::ItemImpl {
+    syn::parse_quote! {
+        impl Sampler {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn plain(&self, a: i32) { unimplemented!() }
+            #[miniextendr(coerce)]
+            pub fn coerced(&self, b: i32) { unimplemented!() }
+            #[miniextendr(no_coerce)]
+            pub fn exact(&self, c: i32) { unimplemented!() }
+        }
+    }
+}
+
+/// Whether the R-side check of the `i32` argument `param` in `wrapper` takes
+/// what a coercing conversion takes (whole-number doubles, logicals, raws)
+/// or integers only.
+fn int_check_coerces(wrapper: &str, param: &str) -> bool {
+    let exact = format!("if (!isTRUE(is.integer({param}))) ");
+    let coercing = format!("if (!isTRUE(is.integer({param}) || is.logical({param}) || ");
+    match (wrapper.contains(&exact), wrapper.contains(&coercing)) {
+        (true, false) => false,
+        (false, true) => true,
+        _ => panic!("no single check of `{param}` in\n{wrapper}"),
+    }
+}
+
+/// A method that spells neither `coerce` nor `no_coerce` takes the impl's
+/// `method_coerce_default`; a method's own spelling comes first.
+#[test]
+fn method_coerce_spelling_beats_the_impl_default() {
+    for method_coerce_default in [false, true] {
+        let mut attrs = default_impl_attrs(ClassSystem::R6);
+        attrs.method_coerce_default = method_coerce_default;
+        let parsed = ParsedImpl::parse(attrs, coerce_sampler()).expect("parses");
+        let wrapper = generate_r6_r_wrapper(&parsed);
+        assert_eq!(
+            int_check_coerces(&wrapper, "a"),
+            method_coerce_default,
+            "{wrapper}"
+        );
+        assert!(int_check_coerces(&wrapper, "b"), "{wrapper}");
+        assert!(!int_check_coerces(&wrapper, "c"), "{wrapper}");
+    }
+}
+
+/// Under the `coerce-default` feature an impl's methods coerce unless they
+/// spell `no_coerce`.
+///
+/// Run with: `cargo test -p miniextendr-macros --features coerce-default`
+#[cfg(feature = "coerce-default")]
+#[test]
+fn coerce_default_impl_methods_coerce() {
+    let attrs = parsed_coerce_feature_attrs();
+    assert!(attrs.method_coerce_default);
+    let parsed = ParsedImpl::parse(attrs, coerce_sampler()).expect("parses");
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(int_check_coerces(&wrapper, "a"), "{wrapper}");
+    assert!(!int_check_coerces(&wrapper, "c"), "{wrapper}");
+}
+
+/// Without the `coerce-default` feature an impl's methods coerce only when
+/// they spell `coerce`.
+#[cfg(not(feature = "coerce-default"))]
+#[test]
+fn default_impl_methods_do_not_coerce() {
+    let attrs = parsed_coerce_feature_attrs();
+    assert!(!attrs.method_coerce_default);
+    let parsed = ParsedImpl::parse(attrs, coerce_sampler()).expect("parses");
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(!int_check_coerces(&wrapper, "a"), "{wrapper}");
+    assert!(int_check_coerces(&wrapper, "b"), "{wrapper}");
 }
 // endregion
 

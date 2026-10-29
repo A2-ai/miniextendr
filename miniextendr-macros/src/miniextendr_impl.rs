@@ -1035,6 +1035,14 @@ pub struct ImplAttrs {
     /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
     pub strict: bool,
     // endregion
+    // region: Argument coercion
+    /// Whether a method that spells neither `coerce` nor `no_coerce` coerces
+    /// its arguments: the `coerce-default` feature, read when the impl
+    /// attribute is parsed, as `strict` is. No impl option sets it. Inherent
+    /// methods only: a trait impl's methods read the feature themselves
+    /// (`miniextendr_impl_trait/vtable.rs`).
+    pub method_coerce_default: bool,
+    // endregion
     // region: Preconditions
     /// `Some(false)` drops the R-side type-check guards from the generated
     /// method wrappers, `Some(true)` keeps them: those of an inherent impl,
@@ -1530,6 +1538,7 @@ impl syn::parse::Parse for ImplAttrs {
                 names: fallback_names.map(|(names, _)| names),
             }),
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
+            method_coerce_default: cfg!(feature = "coerce-default"),
             preconditions,
             internal,
             noexport,
@@ -1649,7 +1658,13 @@ impl ParsedMethod {
     /// - `#[miniextendr(s3(ignore, constructor, generic = "..."))]`
     /// - `#[miniextendr(s7(ignore, constructor, generic = "..."))]`
     /// - etc.
-    fn parse_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<MethodAttrs> {
+    ///
+    /// `coerce_default` is the `coerce` of a method that spells neither
+    /// `coerce` nor `no_coerce` (`ImplAttrs::method_coerce_default`).
+    fn parse_method_attrs(
+        attrs: &[syn::Attribute],
+        coerce_default: bool,
+    ) -> syn::Result<MethodAttrs> {
         use syn::spanned::Spanned;
         let mut method_attrs = MethodAttrs::default();
         // Use Option<bool> for fields that support feature defaults.
@@ -2241,7 +2256,7 @@ impl ParsedMethod {
         // Main-thread execution is already the fallback when worker is false.
         // Only an explicit override may take precedence over worker selection.
         method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(false);
-        method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "coerce-default"));
+        method_attrs.coerce = coerce.unwrap_or(coerce_default);
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
         // active-binding doc path (emits a class-level
@@ -2334,15 +2349,17 @@ impl ParsedMethod {
     ///
     /// Regular doc comments are auto-converted to `@description` for all class
     /// systems. `class_page` is whether the class block renders a help page:
-    /// the method's docs go nowhere else when it does not.
+    /// the method's docs go nowhere else when it does not. `coerce_default`
+    /// is the impl's `method_coerce_default`.
     pub fn from_impl_item(
         item: &mut syn::ImplItemFn,
         class_page: crate::roxygen::RdPage,
+        coerce_default: bool,
     ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
         old_handle_receiver(&item.sig)?;
         let env = Self::detect_env(&item.sig);
-        let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
+        let mut method_attrs = Self::parse_method_attrs(&item.attrs, coerce_default)?;
         // An ignored method gets no wrapper, like a skipped trait method.
         if !method_attrs.ignore {
             crate::miniextendr_fn::require_safe_wrapper(
@@ -3235,7 +3252,8 @@ impl ParsedImpl {
         let mut methods = Vec::new();
         for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let mut method = ParsedMethod::from_impl_item(fn_item, class_page)?;
+                let mut method =
+                    ParsedMethod::from_impl_item(fn_item, class_page, attrs.method_coerce_default)?;
                 crate::s7_conversion::configure(
                     &mut method,
                     fn_item,
