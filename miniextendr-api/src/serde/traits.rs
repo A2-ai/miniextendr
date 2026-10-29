@@ -26,7 +26,7 @@ use crate::SEXP;
 /// | `i32` | `integer(1)` |
 /// | `f64` | `numeric(1)` |
 /// | `String` | `character(1)` |
-/// | `Option<T>::None` | NA or NULL |
+/// | `Option<T>::None` | `NULL`; the type's `NA` under an `as_*` field helper |
 /// | `Vec<primitive>` | atomic vector |
 /// | `Vec<struct>` | list of lists |
 /// | `HashMap<String, T>` | named list |
