@@ -14,8 +14,9 @@ Safe wrappers for building and evaluating R function calls from Rust.
 Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
 string of R source), `dollar_extract` (the R `$` operator), and
 `eval_with_handlers` / `try_eval_with_handlers` (evaluate in the caller's R
-context, see [Handler-keeping evaluation](#handler-keeping-evaluation)). A
-call's arguments read with `PairListExt` ([Reading a
+context, see [Handler-keeping evaluation](#handler-keeping-evaluation)), and
+`get_option` (`getOption()`, see [Reading options](#reading-options-get-option)).
+A call's arguments read with `PairListExt` ([Reading a
 call](#reading-a-call-pairlistext)).
 
 ## Quick Example
@@ -267,6 +268,38 @@ unsafe {
     let value = dollar_extract(list_sexp, "field_name")?;
 }
 ```
+
+## Reading options: `get_option`
+
+`get_option::<T>(name)` reads the R option `name`, as `getOption(name)` does,
+and converts it with `TryFromSexp`. It returns `Ok(None)` when the option is
+unset or `NULL` (R does not tell the two apart). A value that doesn't convert
+is an `RError` whose message names the option and gives the reason in R terms,
+with class `miniextendr_option_error` and the option's name in `e$option`
+(after the classes and fields of a refusal that carries its own, such as a
+`validate` check). Return it from a `#[miniextendr]` function with `?`:
+
+<!-- docs-examples-check -->
+```rust
+use miniextendr_api::condition::RError;
+use miniextendr_api::{get_option, miniextendr};
+
+#[miniextendr]
+pub fn report_width() -> Result<i32, RError> {
+    Ok(get_option::<i32>("mypkg.width")?.unwrap_or(80))
+}
+```
+
+```r
+options(mypkg.width = "wide")
+report_width()
+#> Error in report_width() :
+#>   options("mypkg.width") is invalid: expected integer, got character
+```
+
+Read into an owned type (`String`, `Vec<_>`): a borrowed `&str` points into
+the option's value, which nothing roots after `get_option` returns. It panics
+off R's main thread.
 
 ## Reading a call: `PairListExt`
 

@@ -713,6 +713,10 @@ pub mod encoding;
 pub mod expression;
 pub use expression::{RCall, REnv, REvalError, RSymbol, r_eval_str, r_eval_str_global};
 
+/// Reading R options (`getOption()`) from Rust.
+pub mod options;
+pub use options::get_option;
+
 // S4 slot access and class checking helpers
 pub mod s4_helpers;
 
