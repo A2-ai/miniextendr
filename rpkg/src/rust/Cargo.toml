@@ -71,8 +71,6 @@ coerce-default = ["miniextendr-api/coerce-default"]
 no-preconditions-default = ["miniextendr-api/no-preconditions-default"]
 r6-default = ["miniextendr-api/r6-default"]
 s7-default = ["miniextendr-api/s7-default"]
-worker-thread = ["miniextendr-api/worker-thread"]
-worker-default = ["miniextendr-api/worker-default"]
 ## All additive features (excludes mutually exclusive r6-default/s7-default and nonapi/connections).
 full = [
     "serde", "serde_json", "num-complex", "uuid", "url", "aho-corasick",
@@ -80,7 +78,7 @@ full = [
     "nalgebra", "indexmap", "tinyvec", "bytes", "raw_conversions", "vctrs",
     "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
-    "either", "log", "worker-thread", "macro-coverage",
+    "either", "log", "macro-coverage",
     "growth-debug", "blake3", "md5", "globset", "zstd", "blas-lapack",
     "satellite", "jiff",
 ]

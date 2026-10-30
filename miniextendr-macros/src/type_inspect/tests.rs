@@ -1,53 +1,13 @@
 use super::{
     ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name, choice_layers,
-    erase_lifetimes, is_lazy_dots_marker, is_main_thread_bound_input, is_main_thread_bound_return,
-    is_nargs_marker, is_rng_guard_param, match_arg_choices_ty, mentions_lazy_dots,
-    mentions_rng_guard, mentions_unevaluated_marker, peel_param_markers, r_value_noun,
-    type_display, unevaluated_param, visibility_marker_error,
+    erase_lifetimes, is_lazy_dots_marker, is_nargs_marker, is_rng_guard_param,
+    match_arg_choices_ty, mentions_lazy_dots, mentions_rng_guard, mentions_unevaluated_marker,
+    peel_param_markers, r_value_noun, type_display, unevaluated_param, visibility_marker_error,
 };
 use crate::r_wrapper_builder::CallAttribution;
 
 fn ty(s: &str) -> syn::Type {
     syn::parse_str(s).unwrap()
-}
-
-#[test]
-fn main_thread_bound_return_detects_nested_positions() {
-    // Bare and fully-qualified paths
-    assert!(is_main_thread_bound_return(&ty("BuiltDataFrame")));
-    assert!(is_main_thread_bound_return(&ty(
-        "miniextendr_api::dataframe::BuiltDataFrame"
-    )));
-    assert!(is_main_thread_bound_return(&ty("DataFrameShape")));
-    assert!(is_main_thread_bound_input(&ty("NamedListBuilder")));
-    assert!(is_main_thread_bound_return(&ty("NamedListBuilder")));
-    assert!(is_main_thread_bound_return(&ty(
-        "Result<miniextendr_api::NamedListBuilder, String>"
-    )));
-    assert!(is_main_thread_bound_return(&ty("SEXP")));
-    // Nested inside Result / Option / containers / tuples
-    assert!(is_main_thread_bound_return(&ty(
-        "Result<BuiltDataFrame, String>"
-    )));
-    assert!(is_main_thread_bound_return(&ty(
-        "Result<DataFrameShape, std::string::String>"
-    )));
-    assert!(is_main_thread_bound_return(&ty("Option<BuiltDataFrame>")));
-    assert!(is_main_thread_bound_return(&ty("Vec<BuiltDataFrame>")));
-    assert!(is_main_thread_bound_return(&ty("(i32, BuiltDataFrame)")));
-    // Precious-list roots, in the error position too
-    assert!(is_main_thread_bound_input(&ty("Preserved")));
-    assert!(is_main_thread_bound_return(&ty("Result<bool, REvalError>")));
-    assert!(is_main_thread_bound_input(&ty(
-        "miniextendr_api::txt_progress_bar::RTxtProgressBar"
-    )));
-    // Send-safe returns stay worker-eligible
-    assert!(!is_main_thread_bound_return(&ty("i32")));
-    assert!(!is_main_thread_bound_return(&ty(
-        "Result<Vec<f64>, String>"
-    )));
-    assert!(!is_main_thread_bound_return(&ty("ExternalPtr<MyType>")));
-    assert!(!is_main_thread_bound_return(&ty("DataFrame")));
 }
 
 #[test]
@@ -105,10 +65,6 @@ fn unevaluated_param_matches_bare_and_missing_markers_only() {
         assert!(mentions_unevaluated_marker(&ty(misplaced)), "{misplaced}");
     }
     assert!(!mentions_unevaluated_marker(&ty("Vec<i32>")));
-    // Bare markers are main-thread-bound inputs; `Missing<..>` is checked
-    // by the caller.
-    assert!(is_main_thread_bound_input(&ty("Quoted")));
-    assert!(is_main_thread_bound_input(&ty("Quosure<'_>")));
 }
 
 #[test]
@@ -140,11 +96,6 @@ fn call_marker_matches_bare_marker_types_only() {
     assert_eq!(call_marker(&ty("Option<Call>")), None);
     assert_eq!(call_marker(&ty("SEXP")), None);
     assert_eq!(call_marker(&ty("Caller")), None);
-    // A marker holds the `.call` slot's SEXP, so it pins the main thread.
-    assert!(is_main_thread_bound_input(&ty("Call")));
-    assert!(is_main_thread_bound_input(&ty(
-        "miniextendr_api::CallerCall"
-    )));
 }
 
 #[test]
@@ -158,8 +109,6 @@ fn nargs_marker_matches_the_bare_type_only() {
     assert!(!is_nargs_marker(&ty("Option<NArgs>")));
     assert!(!is_nargs_marker(&ty("Missing<NArgs>")));
     assert!(!is_nargs_marker(&ty("Nargs")));
-    // A plain count: it does not pin the main thread.
-    assert!(!is_main_thread_bound_input(&ty("NArgs")));
 }
 
 #[test]
@@ -218,8 +167,6 @@ fn lazy_dots_marker_matches_the_whole_type_by_value_only() {
         assert!(mentions_lazy_dots(&ty(misplaced)), "{misplaced}");
     }
     assert!(!mentions_lazy_dots(&ty("&Dots")));
-    // It holds the wrapper's frame, so it pins the main thread.
-    assert!(is_main_thread_bound_input(&ty("LazyDots<'_>")));
 }
 
 /// The inner type a parameter converts as, and the markers peeled off it.

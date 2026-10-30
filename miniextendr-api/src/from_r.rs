@@ -1240,8 +1240,8 @@ impl_try_from_sexp_scalar_native!(crate::Rcomplex, CPLXSXP);
 ///
 /// # Safety
 ///
-/// SEXP handles are only valid on R's main thread. Standalone `#[miniextendr]`
-/// functions taking a `SEXP` parameter run on the main thread automatically.
+/// SEXP handles are only valid on R's main thread, where every
+/// `#[miniextendr]` function runs.
 impl TryFromSexp for SEXP {
     type Error = SexpError;
 

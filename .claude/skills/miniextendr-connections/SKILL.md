@@ -126,9 +126,8 @@ Panics inside `RConnectionImpl` methods are caught by `catch_connection_panic`. 
 
 - **`connections` feature must be enabled**: the entire connections module is gated behind `features = ["connections"]` in `Cargo.toml`. Functions and types will not be available without it.
 
-- **Thread safety**: connection callbacks are called by R on the main thread. Do not share connection state with a worker thread without a mutex. The `RConnectionImpl` impl is stored behind a raw pointer from the main thread; accessing it from the worker is unsound.
+- **Thread safety**: connection callbacks are called by R on the main thread. The `RConnectionImpl` impl is stored behind a raw pointer from the main thread; accessing it from any other thread is unsound.
 
 ## Related skills
 
 - `miniextendr-ffi` — `guarded_ffi_call_with_fallback`, panic telemetry, `_unchecked` FFI variants used inside connection trampolines.
-- `miniextendr-worker` — threading model; why connection callbacks must stay on the main thread.

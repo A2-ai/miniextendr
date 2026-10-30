@@ -522,8 +522,7 @@ pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
 
 The marker (`miniextendr_api::{Call, CallerCall}`, `repr(transparent)` over
 `SEXP`) is not an R formal: the C wrapper binds it from its hidden call slot,
-so the body sees exactly the call the wrapper attributed to. A function taking
-one runs on the main thread. `caller`, in either spelling, requires
+so the body sees exactly the call the wrapper attributed to. `caller`, in either spelling, requires
 `noexport` / `internal`; a crate default of `"caller"` applies to those
 functions only and leaves exported ones at `wrapper`, while `"none"` applies
 to every free function. Two spellings on one
@@ -552,7 +551,7 @@ expression and its environment and evaluates it in the caller's R context,
 against a data frame's columns if it likes. Both work under `Missing<..>`, on
 standalone functions and standalone S3 methods only, without per-parameter
 options except a `default` under `Missing<..>` (it writes the formal and is
-never evaluated), and keep the function on the main thread. See
+never evaluated). See
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#omitted-arguments).
 
 #### Argument count: `NArgs`
@@ -578,7 +577,7 @@ environment-class inherent method the count leaves out the object. A function
 takes at most one, per-parameter options (`default`, `coerce`, `match_arg`,
 `no_na`, ... and a method's `defaults(..)`) do not apply to it, and an
 `extern "C-unwind"` function cannot take it (no generated wrapper passes the
-count). It holds a plain number and leaves the function's thread as it was.
+count). It holds a plain number.
 Unlike the call markers it has no attribute or crate-default spelling: it
 hands the body a value, and an attribute would compute a count that no
 parameter receives. The subscript forms, the count table and the fixtures:
@@ -606,7 +605,7 @@ functions, `s3(...)` functions and the impl-block methods of every class
 system (env, R6, S3, S4, S7, vctrs) accept it; trait methods and
 `extern "C-unwind"` functions do not. A function takes at most one `...`
 (`&Dots` or `LazyDots`), per-parameter options and `dots = typed_list!(..)`
-do not apply to it, and it keeps the function on the main thread. A function
+do not apply to it. A function
 without one keeps its wrapper unchanged. The methods, missing and forwarded
 elements, conditions and the fixtures:
 [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
@@ -689,34 +688,8 @@ does not know) or on a `match_arg` / `choices` parameter, a marker in a
 on an `extern "C-unwind"` function, a marker as a return type, and the
 function attribute's `preconditions = true | false` on a parameter (write it
 bare there). `Checked<u16>` with `coerce` keeps the
-widened guard; `Checked<&str>` and `Checked<&[f64]>` work on both thread
-paths. `Checked` means the R-side guard is kept: it is not an
+widened guard; `Checked<&str>` and `Checked<&[f64]>` work too. `Checked` means the R-side guard is kept: it is not an
 overflow-checked conversion, nor the thread-checked FFI variants.
-
-#### Threading
-
-| Attribute | Effect |
-|-----------|--------|
-| `worker` | Run on worker thread (default if `worker-default` feature). Deprecated (#2117): warns at compile time |
-| `no_worker` | Run on main R thread |
-
-Functions taking or returning `!Send` framework types automatically run on the
-main thread — the generated wrapper can only execute there. No attribute is
-needed. This covers `SEXP` (parameters and returns), the R-backed views
-(`AltrepSexp`, `RDVector`, `RDMatrix`, `RndVec`, `RndMat`, `ProtectedStrVec`,
-and the borrowed `StrVec` / `RCow` parameters),
-and the GC-rooted owned handles (`BuiltDataFrame`, `DataFrameShape`) anywhere
-in the return type, including nested inside `Result`, `Option`, or containers.
-Arbitrary user `!Send` types can't be detected syntactically — mark those
-functions `no_worker` explicitly.
-
-```rust
-#[miniextendr(no_worker)]
-pub fn fast_add(x: i32, y: i32) -> i32 { x + y }
-
-#[miniextendr]
-pub fn inspect_sexp(x: miniextendr_api::sys::SEXP) -> i32 { /* ... */ }
-```
 
 #### Type Conversion
 
@@ -887,8 +860,8 @@ pub fn greet(name: NonNa<String>) -> String {
 
 The C wrapper checks the argument once more before converting it, with
 `anyNA()`'s rules in Rust, so a `.Call()` that skips the R wrapper's guard
-meets the same refusal, on every conversion path (borrowed `&[f64]` / `&str`,
-the worker). `NA` means what `anyNA()` counts: `NaN` is refused as well.
+meets the same refusal, on every conversion path (borrowed `&[f64]` / `&str`
+included). `NA` means what `anyNA()` counts: `NaN` is refused as well.
 
 `NonNa<T>` is `repr(transparent)` and has `Deref`, `AsRef` and `Borrow` to
 `T`, plus `into_inner()`, `unwrap()` (the same, never panics) and `get()` for
@@ -1472,7 +1445,6 @@ impl Person {
 | `class = "..."` | Override S3 class suffix |
 | `as = "..."` | Generate `as.<target>()` coercion method |
 | `defaults(p = "val")` | R-side parameter defaults (on `Missing<T>`, as `default = "..."` above) |
-| `worker` / `no_worker` | Thread override |
 | `check_interrupt` | Insert interrupt check |
 | `coerce` / `no_coerce` | Type coercion override |
 | `wrap = "r6"` | Explicitly wrap the return in R6 (also `s7`, `s4`, `s3`, `env`, `vctrs`); see explicit cross-class return wrapping above |
@@ -1908,7 +1880,7 @@ pub enum Format {
 The macro resolves the gates before it reads the item, so item-wide decisions
 use only the enabled members: constructor inference, S7 property pairing, name
 collisions, factor levels and R formals. A `cfg_attr` can add `miniextendr`
-options (`r_name`, `skip`, `worker`, ...) as well as other gates. Keep a
+options (`r_name`, `skip`, `check_interrupt`, ...) as well as other gates. Keep a
 conditional S7 property's getter and setter under compatible gates so the
 enabled methods still form a property. A trait's ABI tag covers its enabled
 methods, so a trait method gated differently in two packages gives them

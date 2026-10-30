@@ -208,30 +208,6 @@ use crate::sys::{
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
-/// Own the allocation during the handoff to R's main thread.
-///
-/// # Safety
-///
-/// The value is exclusively owned and accessed only after the handoff. Keeping
-/// the box owned also reclaims it if routing rejects the calling context.
-type SendableAnyPtr = crate::worker::Sendable<Box<Box<dyn Any>>>;
-
-/// Create a new sendable pointer from a raw `*mut Box<dyn Any>`.
-///
-/// # Safety
-///
-/// The pointer must be a live `Box::into_raw` allocation; ownership transfers.
-#[inline]
-unsafe fn sendable_any_ptr_new(ptr: *mut Box<dyn Any>) -> SendableAnyPtr {
-    crate::worker::Sendable(unsafe { Box::from_raw(ptr) })
-}
-
-/// Get the raw pointer, consuming the sendable wrapper.
-#[inline]
-fn sendable_any_ptr_into_ptr(ptr: SendableAnyPtr) -> *mut Box<dyn Any> {
-    Box::into_raw(ptr.0)
-}
-
 /// Index of the type SYMSXP contained in the `prot` (a `VECSXP` list)
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
@@ -1025,8 +1001,7 @@ unsafe fn list_element(sexp: SEXP, name: &str) -> Option<SEXP> {
 /// decided by the `Any::downcast` that follows; this only widens the accepted
 /// R-side shape.
 ///
-/// Runs on R's main thread: generated preludes execute before any worker
-/// hand-off.
+/// Runs on R's main thread, in the generated preludes.
 #[inline]
 pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
     let ptr = if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
@@ -1419,20 +1394,16 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Release the pool root iff this handle owns one.
     ///
-    /// Routed through [`with_r_thread`] because an owning `ExternalPtr` is
-    /// `Send` and may be dropped on the worker thread, while the pool lives on
-    /// R's main thread. `with_r_thread` runs the closure inline when already on
-    /// the main thread (the common case), so this is a direct pool release
-    /// there and a thread hand-off only from the worker. `ProtectKey` is `Copy`
-    /// + `Send` (two `u32`s), so it crosses the boundary by value.
+    /// Through [`with_r_thread`]: the pool lives on R's main thread, so a
+    /// handle dropped on any other thread panics instead of touching it.
     ///
-    /// [`with_r_thread`]: crate::worker::with_r_thread
+    /// [`with_r_thread`]: crate::with_r_thread
     #[inline]
     fn release_root_if_owned(&self) {
         let Some(key) = self.root else {
             return;
         };
-        crate::worker::with_r_thread(move || unroot_owned(key));
+        crate::with_r_thread(move || unroot_owned(key));
     }
 
     /// Box `x` in its [`RefCell`] and erase that to the `Box<Box<dyn Any>>` R
@@ -1454,31 +1425,25 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// `R_ExternalPtrAddr`) pointing to a fat pointer (carries the `Any` vtable
     /// for runtime type checking via `downcast`) to a `RefCell<T>`.
     ///
-    /// This function can be called from the two supported R contexts:
-    /// - If called from R's main thread, creates the ExternalPtr directly
-    /// - If called from the worker thread (during `run_on_worker`), automatically
-    ///   sends the R API calls to the main thread via [`with_r_thread`]
-    ///
     /// # Panics
     ///
-    /// Panics if called from a non-main thread outside of a `run_on_worker` context.
+    /// Panics if called from a thread other than R's main thread (through
+    /// [`with_r_thread`]); `x` is dropped.
     ///
     /// Equivalent to `Box::new`.
     ///
-    /// [`with_r_thread`]: crate::worker::with_r_thread
+    /// [`with_r_thread`]: crate::with_r_thread
     #[inline]
     pub fn new(x: T) -> Self {
         let (cached_ptr, any_raw) = Self::erase(x);
 
-        // Wrap in Sendable so it can be sent across thread boundary
-        let sendable = unsafe { sendable_any_ptr_new(any_raw) };
-
-        // Use with_r_thread to run R API calls on main thread. The pool root is
-        // taken there (on the main thread, where the pool lives) and the key
-        // crosses back by value — `(SEXP, ProtectKey)` is `Send`.
-        let (sexp, root) = crate::worker::with_r_thread(move || {
-            let any_raw = sendable_any_ptr_into_ptr(sendable);
-            unsafe { Self::create_extptr_sexp_unchecked(any_raw) }
+        // Own the allocation until R holds it: if `with_r_thread` panics, the
+        // closure drops it. The pool root is taken on the main thread, where
+        // the pool lives.
+        // SAFETY: `any_raw` is the live `Box::into_raw` allocation `erase` made.
+        let any_box = unsafe { Box::from_raw(any_raw) };
+        let (sexp, root) = crate::with_r_thread(move || unsafe {
+            Self::create_extptr_sexp_unchecked(Box::into_raw(any_box))
         });
 
         Self::from_owned_parts(sexp, cached_ptr, root)
@@ -1541,8 +1506,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // allocations while held (e.g. element-by-element in a `Vec`) before
         // reaching R (#836). The pool gives O(1) any-order release — see the
         // `EXTPTR_ROOTS` docs for why that beats `R_PreserveObject` here.
-        // Must happen here, on the main thread, because `new` returns the SEXP
-        // to the *calling* thread (possibly the worker) where R API is gone.
         let root = root_owned(sexp);
 
         (sexp, root)
@@ -1612,9 +1575,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// GC-safe while held — #836) only to release every root again when the `Vec`
     /// drops, then still needs a second pass to copy the handles into a list.
     /// Here the list *is* the root, so both the pool round-trip and the copy
-    /// pass are skipped. The whole batch also crosses to R's main thread in a
-    /// single [`with_r_thread`](crate::worker::with_r_thread) hop rather than one
-    /// per element.
+    /// pass are skipped. The whole batch also takes a single
+    /// [`with_r_thread`](crate::with_r_thread) main-thread check rather than
+    /// one per element.
     ///
     /// The returned `VECSXP` is **not** protected: the caller must protect it or
     /// return it to R immediately, exactly like any other freshly built SEXP
@@ -1623,18 +1586,14 @@ impl<T: TypedExternal> ExternalPtr<T> {
     where
         I: IntoIterator<Item = T>,
     {
-        // Box + type-erase every value on the *calling* thread (no R API needed),
-        // then hand the allocations to the main thread. Keep them owned until
-        // each pointer's finalizer is registered: iterator or conversion panics
-        // must drop every value that has not yet been transferred to R.
+        // Box + type-erase every value first (no R API needed). Keep them owned
+        // until each pointer's finalizer is registered: iterator or conversion
+        // panics must drop every value that has not yet been transferred to R.
         let allocations: Vec<Box<dyn Any>> = items
             .into_iter()
             .map(|x| -> Box<dyn Any> { Box::new(RefCell::new(x)) })
             .collect();
-        let sendable = crate::worker::Sendable(allocations);
-
-        crate::worker::with_r_thread(move || {
-            let allocations = sendable.0;
+        crate::with_r_thread(move || {
             // SAFETY: `with_r_thread` runs this on R's main thread; every entry
             // owns a `RefCell<T>` in the ordinary ExternalPtr layout.
             unsafe { Self::build_extptr_list(allocations) }
@@ -2554,10 +2513,8 @@ impl ExternalPtr<()> {
     /// holds; the `TypedExternal` tag in the `prot` slot is unchanged because
     /// the type is the same. The pending values of the value's
     /// [`Sidecar<T>`] fields (what the method set with `Sidecar::new`) are
-    /// flushed into `prot`, on R's main thread (a `worker` method's
-    /// write-back runs on the worker, so the flush is routed through
-    /// [`with_r_thread`](crate::worker::with_r_thread)); the other slots keep
-    /// their values. Raises the `miniextendr_borrow_conflict` error while a
+    /// flushed into `prot`, on R's main thread; the other slots keep their
+    /// values. Raises the `miniextendr_borrow_conflict` error while a
     /// running call holds the value the slot holds.
     pub fn restore_after_consuming<T: TypedExternal>(&mut self, value: T) {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
@@ -2576,14 +2533,9 @@ impl ExternalPtr<()> {
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
         *any_box = Box::new(RefCell::new(value));
         if T::R_SLOT_COUNT > 0 {
-            let sexp = self.sexp;
-            let any_raw = crate::worker::Sendable(any_raw);
-            crate::worker::with_r_thread(move || {
-                let any_raw = any_raw.0;
-                // SAFETY: on R's main thread; `any_raw` owns the `T` just
-                // stored, inside the live EXTPTRSXP `sexp`.
-                unsafe { init_sidecars::<T>(any_raw, sexp) };
-            });
+            // SAFETY: on R's main thread (checked by `with_r_thread`);
+            // `any_raw` owns the `T` just stored, inside the live EXTPTRSXP.
+            crate::with_r_thread(|| unsafe { init_sidecars::<T>(any_raw, self.sexp) });
         }
     }
 }
@@ -2823,7 +2775,7 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
 /// `ExternalPtr<T>` is `Send`, and copying `Sidecar` slots is R API.
 fn assert_sidecar_clone_on_main_thread<T: TypedExternal>() {
     assert!(
-        crate::worker::is_r_main_thread(),
+        crate::is_r_main_thread(),
         "cloning an `ExternalPtr<{}>` copies its sidecar slots, which runs on R's main thread only",
         T::TYPE_NAME
     );

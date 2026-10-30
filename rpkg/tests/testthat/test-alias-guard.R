@@ -94,14 +94,6 @@ test_that("nested alias checks retain roots under gctorture", {
   expect_null(result)
 })
 
-test_that("worker wrappers reject aliases before dispatch", {
-  skip_if_not(miniextendr_has_feature("worker-thread") ||
-                miniextendr_has_feature("worker-default"), "worker feature not enabled")
-  x <- c(1L, 2L)
-  expect_error(alias_worker_lists(list(x), x), "aliasing")
-  expect_identical(x, c(1L, 2L))
-})
-
 test_that("raw wrapper preflight leaves wrong native types to conversion", {
   result <- .Call(miniextendr:::C_miniextendr_alias_list_mut_direct_shared,
                   NULL, list("bad"), "bad")
@@ -113,12 +105,7 @@ test_that("raw wrapper preflight leaves wrong native types to conversion", {
 test_that("RNG cleanup keeps alias conditions alive with a shared seed", {
   skip_gc_stress_if_disabled()
   withr::local_preserve_seed()
-  functions <- "alias_rng_lists"
-  if (miniextendr_has_feature("worker-thread") ||
-      miniextendr_has_feature("worker-default")) {
-    functions <- c(functions, "alias_worker_rng_lists")
-  }
-  for (fn in functions) {
+  for (fn in "alias_rng_lists") {
     set.seed(1252)
     saved_seed <- .Random.seed
     x <- c(1L, 2L)
@@ -137,12 +124,7 @@ test_that("RNG cleanup keeps alias conditions alive with a shared seed", {
 test_that("native scalar aliases report every pair before mutation", {
   inputs <- list(integer = 2L, real = 2.5, raw = as.raw(2L),
                  logical = TRUE, complex = 2 + 3i)
-  prefixes <- "alias_scalar_"
-  if (miniextendr_has_feature("worker-thread") ||
-      miniextendr_has_feature("worker-default")) {
-    prefixes <- c(prefixes, "alias_worker_scalar_")
-  }
-  for (prefix in prefixes) {
+  for (prefix in "alias_scalar_") {
     for (type in names(inputs)) {
       fn <- get(paste0(prefix, type))
       x <- inputs[[type]]
@@ -184,13 +166,6 @@ test_that("scalar, slice, list, boxed, and wrapped borrows share one guard", {
   b <- c(4L, 5L)
   expect_identical(alias_boxed_scalars(list(a), list(b)), 9L)
   expect_identical(a, 9L)
-  if (miniextendr_has_feature("worker-thread") ||
-      miniextendr_has_feature("worker-default")) {
-    expect_error(alias_worker_boxed_scalars(list(x), list(x)), "aliasing")
-    expect_error(alias_worker_boxed_scalars(list(x, NULL, x), list()), "duplicate elements")
-    expect_identical(alias_worker_boxed_scalars(list(NULL), list(NULL)), 0L)
-    expect_identical(x, 7L)
-  }
 })
 
 test_that("scalar preflight requires length one but treats NA as borrowed storage", {
@@ -266,18 +241,6 @@ test_that("owned, shared-only and differently typed tuple fields pass the guard"
   err <- tryCatch(alias_tuple_internal(list(w, w, w)), error = identity)
   expect_match(conditionMessage(err), "must be a list of length 2", fixed = TRUE)
   expect_false(grepl("aliasing", conditionMessage(err), fixed = TRUE))
-})
-
-test_that("worker wrappers check tuple fields before dispatch", {
-  skip_if_not(miniextendr_has_feature("worker-thread") ||
-                miniextendr_has_feature("worker-default"), "worker feature not enabled")
-  x <- 2L
-  expect_error(alias_worker_tuple_internal(list(x, x)), "duplicate elements")
-  expect_identical(x, 2L)
-  a <- 1L
-  b <- 2L
-  expect_identical(alias_worker_tuple_internal(list(a, b)), 3L)
-  expect_identical(a, 3L)
 })
 
 test_that("tuple alias checks retain roots under gctorture", {

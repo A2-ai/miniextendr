@@ -4,10 +4,10 @@
 //! them from. They do NOT automatically route to the main thread. This means:
 //!
 //! - Accessing ALTREP from the R main thread → callback runs on main thread ✓
-//! - Accessing ALTREP from a worker thread (via with_r_thread) → callback runs
-//!   on main thread ✓ (because with_r_thread routes the entire operation)
-//! - Accessing ALTREP from a raw std::thread → callback runs on THAT thread ✗
-//!   (R API calls from non-main threads are undefined behavior)
+//! - Accessing ALTREP through `with_r_thread` from another thread → panics
+//!   before reaching R ✓ (there is no route to the main thread)
+//! - Accessing ALTREP from a raw std::thread with unchecked FFI → callback runs
+//!   on THAT thread ✗ (R API calls from non-main threads are undefined behavior)
 //!
 //! Run with: `cargo test -p miniextendr-api --test altrep_thread --features arrow`
 
@@ -16,9 +16,9 @@ mod r_test_utils;
 #[cfg(feature = "arrow")]
 mod arrow_altrep_thread {
     use super::r_test_utils;
+    use miniextendr_api::is_r_main_thread;
     use miniextendr_api::prelude::{SEXP, SexpExt};
     use miniextendr_api::sys;
-    use miniextendr_api::worker::is_r_main_thread;
 
     /// Create an ALTREP Float64Array with NAs and return the SEXP + protect it.
     fn make_arrow_altrep_with_nas() -> SEXP {
@@ -108,44 +108,24 @@ mod arrow_altrep_thread {
     }
 
     #[test]
-    fn altrep_via_with_r_thread_from_worker() {
-        // This test verifies that accessing ALTREP via `with_r_thread` from
-        // the worker thread correctly routes the R API call to the main thread.
+    fn altrep_via_with_r_thread_off_main_panics_before_r() {
+        // `with_r_thread` has no route from another thread: a spawned
+        // thread's ALTREP access panics before the callback could run there.
         r_test_utils::with_r_thread(|| {
             let sexp = make_arrow_altrep_with_nas();
+            let sexp_raw = sexp.as_ptr() as usize;
 
-            // Simulate the worker pattern: run_on_worker dispatches to worker,
-            // worker calls with_r_thread to access ALTREP on main thread.
-            // Since we're already on the R thread in this test, we simulate by
-            // spawning a std::thread that calls with_r_thread.
-            let sexp_raw = sexp.as_ptr() as usize; // smuggle as usize (not Send)
-
-            let result = miniextendr_api::worker::run_on_worker(move || {
-                // We're on the worker thread now
-                assert!(
-                    !is_r_main_thread(),
-                    "worker thread should NOT be main thread"
-                );
-
-                // Access ALTREP via with_r_thread — routes to main thread
-                miniextendr_api::with_r_thread(move || {
-                    assert!(
-                        is_r_main_thread(),
-                        "with_r_thread should run on main thread"
-                    );
-                    let sexp = SEXP(sexp_raw as *mut _);
-                    let v0 = sexp.real_elt(0);
-                    let v1_bits = sexp.real_elt(1).to_bits();
-                    let v2 = sexp.real_elt(2);
-                    (v0, v1_bits, v2)
+            let outcome = std::thread::spawn(move || {
+                assert!(!is_r_main_thread(), "spawned thread is not main");
+                std::panic::catch_unwind(move || {
+                    miniextendr_api::with_r_thread(move || SEXP(sexp_raw as *mut _).real_elt(0))
                 })
-            });
+            })
+            .join()
+            .expect("the panic is caught on the spawned thread");
+            assert!(outcome.is_err(), "with_r_thread off main must panic");
 
-            let (v0, v1_bits, v2) = result.unwrap();
-            assert_eq!(v0, 10.0);
-            assert_eq!(v1_bits, miniextendr_api::altrep_traits::NA_REAL.to_bits());
-            assert_eq!(v2, 30.0);
-
+            assert_eq!(sexp.real_elt(0), 10.0);
             unsafe { sys::Rf_unprotect(1) };
         });
     }

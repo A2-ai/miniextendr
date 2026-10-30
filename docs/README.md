@@ -65,8 +65,8 @@ framework.
 - **[RNG](RNG.md)** -- R random number generation from Rust
 - **[RArray](RARRAY.md)** -- N-dimensional R arrays
 - **[Safety](SAFETY.md)** -- Safety invariants and guarantees
-- **[Threads](THREADS.md)** -- Worker-thread architecture and main-thread
-  safety
+- **[Threads](THREADS.md)** -- The main-thread invariant and parallel Rust
+  code
 
 ### Macro reference
 
@@ -210,7 +210,6 @@ Humans can read them too:
 | [miniextendr-dots](../.claude/skills/miniextendr-dots/SKILL.md) | `Dots`, `typed_list!`, variadic args |
 | [miniextendr-connections](../.claude/skills/miniextendr-connections/SKILL.md) | custom R connections from Rust |
 | [miniextendr-ffi](../.claude/skills/miniextendr-ffi/SKILL.md) | `r_ffi_checked`, `with_r_unwind_protect`, GC RAII |
-| [miniextendr-worker](../.claude/skills/miniextendr-worker/SKILL.md) | `run_on_worker`, `Sendable<T>` |
 | [miniextendr-lint](../.claude/skills/miniextendr-lint/SKILL.md) | MXL rule catalogue |
 | [miniextendr-build](../.claude/skills/miniextendr-build/SKILL.md) | `configure.ac`, Makevars, install-mode latch |
 | [miniextendr-scaffolding](../.claude/skills/miniextendr-scaffolding/SKILL.md) | minirextendr templates and sync workflow |

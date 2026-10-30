@@ -3,17 +3,17 @@
 use miniextendr_api::dots::Dots;
 use miniextendr_api::{miniextendr, SEXP, TryFromSexp, TryFromSexpElement};
 
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn named_lifetimes<'a>(x: &'a i32, y: &'a str) -> i32 { *x + i32::try_from(y.len()).unwrap() }
 
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn ignored_args(x: &mut [i32], _ignored: (), dots: &Dots) -> i32 { let _ = (_ignored, dots); i32::try_from(x.len()).unwrap() }
 
 #[miniextendr(match_arg)]
 #[derive(Copy, Clone)]
 pub enum Mode { Fast, Slow }
 
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn special_conversions(x: &mut [i32],
     #[miniextendr(match_arg)] optional: Option<Mode>,
     #[miniextendr(match_arg, several_ok)] vec: Vec<Mode>,
@@ -27,7 +27,7 @@ impl TryFromSexp for &RLogical {
     type Error = std::convert::Infallible;
     fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> { Ok(&RLogical) }
 }
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn custom_reference(x: &RLogical, y: &mut [i32]) -> i32 { let _ = x; i32::try_from(y.len()).unwrap() }
 
 struct User;
@@ -36,16 +36,16 @@ impl TryFromSexpElement for &User {
     fn from_inner(_: i32) -> Self { &User }
 }
 // Vec<&User> converts via Vec<i32>; &User itself has no TryFromSexp impl.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn custom_container(x: Vec<&User>, y: &mut [i32]) -> i32 { i32::try_from(x.len() + y.len()).unwrap() }
 
 // Numeric coercion uses the primitive type's multi-source TryFromSexp impl.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn coerce_only(#[miniextendr(coerce)] x: u16, y: &mut [i32]) -> i32 { let _ = x; i32::try_from(y.len()).unwrap() }
 
 #[derive(TryFromSexp)]
 struct Borrowed(&'static mut i32);
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn newtype_borrow(x: Box<[Option<Borrowed>]>, y: &i32) -> i32 { i32::try_from(x.len()).unwrap() + *y }
 // The element blankets forward the inner container's borrow metadata.
 const _: () = assert!(<Box<[Option<Borrowed>]> as TryFromSexp>::NATIVE_BORROW.is_some());

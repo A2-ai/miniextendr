@@ -473,8 +473,7 @@ impl SidecarComputed {
 
 /// The `keys` of a `SidecarComputed`, through an `ExternalPtr<T>` argument.
 /// @param ptr A `SidecarComputed` pointer.
-// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn sidecar_computed_keys(ptr: ExternalPtr<SidecarComputed>) -> Vec<i32> {
     SidecarComputed::r_keys(&ptr)
 }
@@ -1122,9 +1121,7 @@ pub fn sidecar_rewrap(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlo
 
 /// Clones the handle: a new pointer sharing the sidecar values as R objects.
 /// @param ptr A `SidecarSlotR6` pointer.
-// Stays on R's main thread under `worker-default`: cloning copies sidecar
-// slots, on the main thread only.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn sidecar_clone_handle(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlotR6> {
     ptr.clone()
 }
@@ -1132,9 +1129,7 @@ pub fn sidecar_clone_handle(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<Side
 /// Clones `source`'s value into `target` in place (`ExternalPtr::clone_from`):
 /// `target` reads `source`'s struct fields and sidecar values afterwards.
 /// @param target,source Two `SidecarSlotR6` pointers.
-// Stays on R's main thread under `worker-default`: cloning copies sidecar
-// slots, on the main thread only.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn sidecar_clone_from(
     mut target: ExternalPtr<SidecarSlotR6>,
     source: ExternalPtr<SidecarSlotR6>,
@@ -1145,8 +1140,7 @@ pub fn sidecar_clone_from(
 /// The `keys` of a pointer, read through the handle accessor
 /// `SidecarSlotR6::keys(&ptr)`.
 /// @param ptr A `SidecarSlotR6` pointer.
-// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn sidecar_keys_via_handle(ptr: ExternalPtr<SidecarSlotR6>) -> Vec<i32> {
     SidecarSlotR6::keys(&ptr)
 }
@@ -1225,8 +1219,7 @@ fn churn() {
 /// Regression fixture for #1846: a sidecar field used to hold a bare `SEXP`
 /// that nothing rooted. Here every value is referenced only by its slot. No
 /// arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-// Stays on R's main thread under `worker-default`: sidecar accessors run on the main thread only.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_sidecar_fields() {
     // Flush at creation; writes through the handle.
     let mut handles: Vec<ExternalPtr<SidecarSlotR6>> = (1..=8)

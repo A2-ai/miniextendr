@@ -73,9 +73,9 @@ impl ShimNames for HygieneHost {
 /// Call `shim_args` through the trait's View, the vtable-shim path another
 /// package takes. The shim reads every argument after `argc` by index, so an
 /// `argc` parameter that replaced the shim's own count refuses them.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn shim_names_through_view() -> Vec<i32> {
-    // SAFETY: main thread (`no_worker`); the wrapped handle is protected for
+    // SAFETY: R's main thread (the wrapper); the wrapped handle is protected for
     // the whole View call.
     unsafe {
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(

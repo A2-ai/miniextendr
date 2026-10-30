@@ -12,9 +12,6 @@
 //!   `compile_fail` doctest on
 //!   `miniextendr_api::condition::is_reserved_condition_field`).
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::condition::{ConditionData, RCondition, RConditionData, RError};
 use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 
@@ -276,21 +273,6 @@ impl miniextendr_api::TryFromSexp for Hyperparams {
 #[miniextendr]
 pub fn hyperparams_total(hyper: Hyperparams) -> f64 {
     hyper.0.values().sum()
-}
-
-#[cfg(feature = "worker-thread")]
-mod worker {
-    use super::Hyperparams;
-    use miniextendr_api::miniextendr;
-
-    /// `hyperparams_total()` on the worker thread: the argument converts on
-    /// the main thread before dispatch, through the split conversion path.
-    ///
-    /// @param hyper A named numeric vector of non-negative values.
-    #[miniextendr(worker)]
-    pub fn hyperparams_total_worker(hyper: Hyperparams) -> f64 {
-        hyper.0.values().sum()
-    }
 }
 
 /// Internal entry point behind the hand-written `hyperparams_total_caller()`

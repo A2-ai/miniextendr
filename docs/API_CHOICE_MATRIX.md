@@ -31,8 +31,7 @@ textbook.
 | **GC protection** | `ProtectScope` (RAII, LIFO) within `.Call` | manual `Rf_protect` / `Rf_unprotect` | always. The RAII variant is correct by construction; manual is correct only by audit. |
 | **Long-lived SEXP** | `preserve::insert` / `preserve::release` (cross-.Call) | `ProtectScope` (single .Call) | the SEXP needs to survive past your function's return |
 | **Rust data owned by R** | `ExternalPtr<MyStruct>` | sidecar fields (multi-SEXP attribute slots) | one owned struct is the natural shape. Sidecars are for cases where R-side code wants to read individual fields without crossing the Rust boundary. |
-| **Execution model** | inline on R's main thread inside `R_UnwindProtect` (default) | worker dispatch via `#[miniextendr(worker)]` or `worker-default` | your code touches R objects or benefits from the simplest call path; choose worker dispatch for Rust work that needs that isolation model |
-| **Thread re-entry** | from an active miniextendr worker, wrap R calls in `with_r_thread` | call R directly only when already on its main thread | worker dispatch is selected; arbitrary spawned/Rayon threads cannot call R or use `with_r_thread` |
+| **Parallel work** | compute on plain Rust data in Rayon / `std::thread`, touch R before and after on the main thread | call R from the parallel section | always: R's API is main-thread only, and `with_r_thread` panics on any other thread |
 
 ## Class systems (one-of-six)
 
@@ -64,7 +63,6 @@ call sites:
 | `strict-default` | All `#[miniextendr]` lossy conversions reject NA / truncation by default |
 | `coerce-default` | Numeric scalars use `TryCoerce` path by default |
 | `r6-default` / `s7-default` | Picks the default class system for `#[miniextendr] impl` blocks without an explicit attr |
-| `worker-default` | All `#[miniextendr]` fns dispatch through the worker thread (implies `worker-thread`) |
 
 See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full story.
 
@@ -94,5 +92,5 @@ not the default.
 - [CONDITIONS.md](CONDITIONS.md) — condition class layering
 - [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) — variadic + validation
 - [FFI_GUARD.md](FFI_GUARD.md) — checked/unchecked FFI boundary
-- [THREADS.md](THREADS.md) — worker-thread architecture
+- [THREADS.md](THREADS.md) — the main-thread invariant
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) — project-wide knobs

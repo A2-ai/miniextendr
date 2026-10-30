@@ -273,15 +273,6 @@ test_that("a custom no_na message is the same text on both sides", {
   expect_identical(from_rust, caught_msg(miniextendr:::param_no_na_custom(NA_real_)))
 })
 
-test_that("on the worker path the check runs before dispatch", {
-  skip_if_not(miniextendr_has_feature("worker-thread"), "worker-thread feature off")
-  expect_identical(miniextendr:::param_no_na_numbers_worker(c("1", "2")), 0L)
-  expect_identical(
-    caught_msg(miniextendr:::param_no_na_numbers_worker(c("1", ""))),
-    "'x' must not contain NA"
-  )
-})
-
 test_that("under call = caller the Rust check names the caller", {
   expect_identical(miniextendr:::param_no_na_number_caller(" 4 "), 4)
   e <- tryCatch(miniextendr:::param_no_na_number_caller("NA"), error = identity)

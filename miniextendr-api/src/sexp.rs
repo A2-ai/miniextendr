@@ -36,8 +36,8 @@ pub struct SEXPREC(::std::os::raw::c_void);
 ///
 /// While SEXP is Send+Sync (allowing it to be passed between threads), the data
 /// it points to must only be accessed on R's main thread. The miniextendr runtime
-/// enforces this through checked FFI wrappers and `with_r_thread` routing when
-/// worker dispatch is selected.
+/// enforces this through checked FFI wrappers, which check for R's main thread
+/// through `with_r_thread`.
 ///
 /// # Equality Semantics
 ///
@@ -299,7 +299,7 @@ impl SEXP {
     // Use only inside ALTREP callbacks, `with_r_unwind_protect`, or `with_r_thread` blocks
     // where the R-thread invariant is already established (see `#[r_ffi_checked]` docs).
 
-    /// Create a length-1 integer vector (unchecked — no thread routing).
+    /// Create a length-1 integer vector (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -309,7 +309,7 @@ impl SEXP {
         unsafe { Rf_ScalarInteger_unchecked(x) }
     }
 
-    /// Create a length-1 real vector (unchecked — no thread routing).
+    /// Create a length-1 real vector (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -319,7 +319,7 @@ impl SEXP {
         unsafe { Rf_ScalarReal_unchecked(x) }
     }
 
-    /// Create a length-1 logical vector from raw i32 (unchecked — no thread routing).
+    /// Create a length-1 logical vector from raw i32 (unchecked — no main-thread check).
     ///
     /// Accepts 0 (FALSE), 1 (TRUE), or `NA_LOGICAL` (`i32::MIN`) for NA.
     ///
@@ -331,7 +331,7 @@ impl SEXP {
         unsafe { Rf_ScalarLogical_unchecked(x) }
     }
 
-    /// Create a length-1 raw vector (unchecked — no thread routing).
+    /// Create a length-1 raw vector (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -341,7 +341,7 @@ impl SEXP {
         unsafe { Rf_ScalarRaw_unchecked(x) }
     }
 
-    /// Create a length-1 complex vector (unchecked — no thread routing).
+    /// Create a length-1 complex vector (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -351,7 +351,7 @@ impl SEXP {
         unsafe { Rf_ScalarComplex_unchecked(x) }
     }
 
-    /// Create a length-1 character vector from a CHARSXP (unchecked — no thread routing).
+    /// Create a length-1 character vector from a CHARSXP (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -476,7 +476,7 @@ impl SEXP {
         unsafe { R_altrep_data1(self) }
     }
 
-    /// Get the raw SEXP in the ALTREP data1 slot (unchecked — no thread routing).
+    /// Get the raw SEXP in the ALTREP data1 slot (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -509,7 +509,7 @@ impl SEXP {
         unsafe { R_altrep_data2(self) }
     }
 
-    /// Get the raw SEXP in the ALTREP data2 slot (unchecked — no thread routing).
+    /// Get the raw SEXP in the ALTREP data2 slot (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -531,7 +531,7 @@ impl SEXP {
         unsafe { R_set_altrep_data2(self, v) }
     }
 
-    /// Set the ALTREP data2 slot (unchecked — no thread routing).
+    /// Set the ALTREP data2 slot (unchecked — no main-thread check).
     ///
     /// # Safety
     ///

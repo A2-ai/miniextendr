@@ -462,22 +462,21 @@ See `tests/cross-package/` (`producer_oven_temp` extends `producer_temp`, and
 **Impact:** Low
 
 There is no async/await or Tokio integration. R's C API is single-threaded and synchronous.
-async would require a runtime that conflicts with R's execution model. The worker thread
-pattern already provides the key benefit (non-blocking Rust execution):
+async would require a runtime that conflicts with R's execution model. A `#[miniextendr]`
+body runs synchronously on R's main thread, so blocking I/O blocks R for its duration:
 
 ```rust
 #[miniextendr]
 pub fn fetch_data(url: String) -> String {
-    // I/O happens on worker thread (doesn't block R)
-    // Use blocking HTTP client like ureq
+    // Blocking HTTP client like ureq; R waits for the response
     ureq::get(&url).call()?.into_string()?
 }
 ```
 
-For true async I/O needs, users should use R-level parallelism (mirai, callr) with
+For non-blocking or concurrent I/O, use R-level parallelism (mirai, callr) with
 miniextendr handling the per-request Rust work synchronously.
 
-See [THREADS.md](THREADS.md) for the worker thread model and [FEATURES.md](FEATURES.md#rayon) for parallel iteration via Rayon.
+See [THREADS.md](THREADS.md) for the main-thread invariant and [FEATURES.md](FEATURES.md#rayon) for parallel iteration via Rayon.
 
 ---
 
@@ -632,32 +631,24 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#externalptr-semantics) for the Ext
 
 ---
 
-### 5.5 Thread Safety Debug Assertions
+### 5.5 Thread Safety Checks
 
-**Location:** `miniextendr-api/src/from_r.rs`
+**Location:** `miniextendr-api/src/thread.rs`
 
-**Contract:** R's C API is single-threaded. miniextendr enforces this via two layers: debug-only assertions on SEXP access, and runtime checks on all checked FFI wrappers.
+**Contract:** R's C API is single-threaded. miniextendr enforces this with run-time checks on all checked FFI wrappers.
 
-Debug-only SEXP thread assertions:
+**Implication:** Raw SEXP accessors built on `*_unchecked` FFI do not check the
+thread, so a `SEXP` moved to another thread and read there goes undetected.
+Generated `#[miniextendr]` wrappers always run on R's main thread, so argument
+and return conversions never hit this.
 
-```rust
-#[cfg(debug_assertions)]
-fn assert_main_thread() { ... }
-```
+**Checked FFI (always active):** The checked FFI wrappers go through
+`with_r_thread`. Calls on R's main thread execute inline; every off-main call
+panics rather than touching R. The `*_unchecked` variants skip this check and
+retain a caller-enforced main-thread precondition.
 
-**Implication:** Release builds could have SEXP-access thread safety violations that go undetected. Standalone `#[miniextendr]` functions taking `SEXP`/`RArray` parameters run on the main thread by default (they are `!Send`), so they avoid this class of violation without any explicit attribute.
-
-**Checked FFI routing (always active):** The checked FFI wrappers route through
-`with_r_thread`. Calls on R's main thread execute inline; calls from the managed
-worker route back to the main thread; every other off-main call panics rather
-than touching R, regardless of whether the infrastructure feature is compiled.
-The `*_unchecked` variants skip this routing and retain a caller-enforced
-main-thread precondition.
-
-**Recommended pattern:** Use checked FFI by default and wrap a group of R calls
-in `with_r_thread` when worker code needs a single main-thread critical section.
-Use `*_unchecked` only inside contexts the MXL301 lint recognizes as already
-main-thread-safe.
+**Recommended pattern:** Use checked FFI by default. Use `*_unchecked` only
+inside contexts the MXL301 lint recognizes as already main-thread-safe.
 
 See [THREADS.md](THREADS.md) for the thread safety model, [SAFETY.md](SAFETY.md) for invariants, and [ERROR_HANDLING.md](ERROR_HANDLING.md#thread-safety) for thread-related error patterns.
 
@@ -709,7 +700,7 @@ pub fn safe_threaded_work() -> Result<i32, String> {
 
 **Tests:** See `test-errors-more.R` for skipped tests demonstrating this behavior.
 
-See [ERROR_HANDLING.md](ERROR_HANDLING.md) for the full error handling model and [THREADS.md](THREADS.md) for the worker thread architecture.
+See [ERROR_HANDLING.md](ERROR_HANDLING.md) for the full error handling model and [THREADS.md](THREADS.md) for the main-thread invariant.
 
 ---
 

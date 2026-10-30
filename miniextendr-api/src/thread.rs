@@ -1,11 +1,33 @@
-//! Advanced controls for R's process-global C-stack bounds.
+//! R's main thread, and advanced controls for R's process-global C-stack
+//! bounds.
 //!
-//! R's stack checking mechanism causes segfaults when R API functions are called
-//! from threads other than the main R thread. This module exposes legacy tools
-//! that disable that one check, but doing so does **not** make R's API safe on a
-//! secondary thread.
+//! # R's main thread
+//!
+//! R's C API may only be called on R's main thread: the thread that loaded the
+//! package and ran [`miniextendr_runtime_init`] from `R_init_<pkg>`. Every
+//! generated `.Call` entry point, ALTREP callback and connection callback runs
+//! there.
+//!
+//! - [`is_r_main_thread`] — whether the current thread is R's main thread.
+//! - [`with_r_thread`] — run a closure that calls R, after checking that this
+//!   is R's main thread. The checked FFI bindings in [`crate::sys`] go through
+//!   it, so an R call from a Rayon or `std::thread` thread panics with a clear
+//!   message instead of reaching R.
+//!
+//! Inside a [`with_r_thread`] body the check has been made: the
+//! `*_unchecked` variants in [`crate::sys`] are fine there (the lint
+//! **MXL301** recognises the body, alongside ALTREP callbacks and
+//! [`crate::unwind_protect::with_r_unwind_protect`] bodies).
+//!
+//! Threads the package spawns stay pure Rust: compute there, then hand the
+//! results to R on the main thread (see `rayon_bridge` for the pattern).
 //!
 //! # R API calls remain main-thread-only
+//!
+//! R's stack checking mechanism causes segfaults when R API functions are
+//! called from threads other than the main R thread. This module also exposes
+//! legacy tools that disable that one check, but doing so does **not** make
+//! R's API safe on a secondary thread.
 //!
 //! R's global state, garbage collector, and error signaling are not made
 //! thread-safe by changing `R_CStackLimit`. Writing R Extensions requires
@@ -14,13 +36,6 @@
 //! secondary thread. Do not use this module as an off-main R bridge in package
 //! code. The misleading package-facing surface is tracked for removal or
 //! relocation in #1352.
-//!
-//! # Prefer [`crate::worker::with_r_thread`] in normal code
-//!
-//! The supported bridge is [`crate::worker::with_r_thread`], which routes a
-//! closure from miniextendr's dedicated worker context to the recorded R main
-//! thread. Arbitrary Rayon or `std::thread` workers cannot call R directly and
-//! cannot use `with_r_thread` outside that active worker context.
 //!
 //! `StackCheckGuard` is gated behind the `nonapi` feature because it
 //! mutates `R_CStackStart` / `R_CStackLimit` / `R_CStackDir`, none of which
@@ -38,8 +53,8 @@
 //!
 //! # Cross references
 //!
-//! - [`crate::worker::with_r_thread`] — preferred path for crossing back to R.
 //! - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
+//! - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 //!
 //! # Background
 //!
@@ -70,8 +85,110 @@
 //!
 //! # Feature Gate
 //!
-//! This module requires the `nonapi` feature because it accesses non-API
-//! R internals (`R_CStackLimit`, `R_CStackStart`, `R_CStackDir`).
+//! The stack-check controls require the `nonapi` feature because they access
+//! non-API R internals (`R_CStackLimit`, `R_CStackStart`, `R_CStackDir`).
+
+use std::sync::OnceLock;
+use std::thread::ThreadId;
+
+// region: R's main thread
+
+static R_MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
+
+/// Check if the current thread is R's main thread.
+///
+/// Returns `true` if called from the main R thread, `false` otherwise.
+/// Before `miniextendr_runtime_init()` is called, always returns `false`.
+#[inline(always)]
+pub fn is_r_main_thread() -> bool {
+    R_MAIN_THREAD_ID
+        .get()
+        .is_some_and(|&id| id == std::thread::current().id())
+}
+
+/// Run a closure that calls R's C API, after checking that this is R's main
+/// thread.
+///
+/// On R's main thread, runs `f` and returns its value. R's C API may not be
+/// called from any other thread, so this has nowhere to send the closure:
+/// called from a Rayon or `std::thread` thread it panics instead. Inside
+/// the closure the `*_unchecked` FFI variants are fine (lint **MXL301**).
+///
+/// # Panics
+///
+/// - If `miniextendr_runtime_init()` hasn't been called yet
+/// - If called from a thread other than R's main thread
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::with_r_thread;
+///
+/// let sexp = with_r_thread(|| unsafe {
+///     miniextendr_api::sys::Rf_ScalarInteger_unchecked(1)
+/// });
+/// ```
+#[inline]
+pub fn with_r_thread<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    assert_runtime_initialized();
+    if !is_r_main_thread() {
+        panic!(
+            "R's C API was called from a thread other than R's main thread.\n\
+             \n\
+             R API calls can only happen on R's main thread. Keep code on other \
+             threads (Rayon, std::thread) pure Rust: collect its results and convert \
+             them to R objects after the parallel section returns."
+        );
+    }
+    f()
+}
+
+/// Initialize the miniextendr runtime: record the calling thread as R's main
+/// thread.
+///
+/// Must be called from R's main thread, typically from `R_init_<pkgname>`.
+/// Idempotent: later calls keep the first thread.
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn miniextendr_runtime_init() {
+    let _ = R_MAIN_THREAD_ID.set(std::thread::current().id());
+}
+
+/// Shut the miniextendr runtime down: uninstall the process panic hook this
+/// DLL registered (see `backtrace::miniextendr_panic_hook_uninstall`).
+///
+/// Called from `R_unload_<pkg>` (generated by `miniextendr_init!`), before
+/// `library.dynam.unload` unmaps the DLL's code. Idempotent.
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn miniextendr_runtime_shutdown() {
+    crate::backtrace::miniextendr_panic_hook_uninstall();
+}
+
+/// Panic if the runtime hasn't been initialized.
+fn assert_runtime_initialized() {
+    if R_MAIN_THREAD_ID.get().is_none() {
+        panic!(
+            "miniextendr_runtime_init() must be called before using R FFI APIs.\n\
+             \n\
+             This is typically done in R_init_<pkgname>() via:\n\
+             \n\
+             void R_init_pkgname(DllInfo *dll) {{\n\
+             miniextendr_runtime_init();\n\
+             R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);\n\
+             }}\n\
+             \n\
+             If you're embedding R in Rust, call miniextendr_runtime_init() from the main thread \
+             before any R API calls."
+        );
+    }
+}
+// endregion
+
+// region: C-stack bounds (nonapi)
 
 #[cfg(feature = "nonapi")]
 use crate::sys::nonapi_stack::{
@@ -223,6 +340,7 @@ where
     let _guard = StackCheckGuard::disable();
     f()
 }
+// endregion
 
 // region: Thread spawning with legacy R-sized stacks
 
@@ -437,7 +555,7 @@ where
     })
 }
 
-#[cfg(test)]
-#[cfg(feature = "nonapi")]
-mod tests;
 // endregion
+
+#[cfg(test)]
+mod tests;

@@ -483,7 +483,7 @@ impl OmitGrade for OmitPickS3 {
 /// Calls the `OmitGrade` methods through the trait's View, the path another
 /// package takes: an omitted, a `NULL` and a supplied grade, then an omitted
 /// and a supplied list of grades.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn omit_grade_through_view() -> Vec<String> {
     unsafe {
         let erased = __mx_wrap_OmitPickS3(OmitPickS3);

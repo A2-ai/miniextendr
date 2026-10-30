@@ -130,17 +130,11 @@
 //!
 //! Use `#[miniextendr(unwrap_in_r)]` to return `Result<T, E>` to R without unwrapping.
 //!
-//! ## Thread Strategy
+//! ## Execution
 //!
-//! By default, `#[miniextendr]` functions run on R's main thread. Opt into
-//! worker-thread execution with `#[miniextendr(worker)]` (requires the
-//! `worker-thread` feature on `miniextendr-api`). A worker opt-in is ignored
-//! when the signature requires main-thread execution (returns/takes `SEXP`,
-//! uses variadic dots, or sets `check_interrupt`).
-//!
-//! **Note**: `ExternalPtr<T>` is `Send` — it can be returned from worker
-//! thread functions. All R API operations on `ExternalPtr` are serialized
-//! through `with_r_thread`.
+//! `#[miniextendr]` functions run on R's main thread, inside
+//! `with_r_unwind_protect`: a Rust panic becomes an R condition, and an R
+//! error unwinds through the Rust frames with their destructors.
 //!
 //! ## Class Systems
 //!
@@ -160,7 +154,6 @@ mod altrep;
 mod c_wrapper_builder;
 mod call_method_def;
 mod cfg_gates;
-mod deprecation;
 mod dots_policy;
 mod externalptr_args;
 mod list_macro;
@@ -236,13 +229,9 @@ compile_error!(
     "features \"r6-default\" and \"s7-default\" are mutually exclusive — \
      enable exactly one, or omit both to fall back to the unspecified default"
 );
-// Note: default-main-thread was removed — main thread is now the hardcoded default.
-// worker-default still opts into worker thread execution.
-
 pub(crate) use type_inspect::{
-    SeveralOkContainer, classify_several_ok_container, first_type_argument,
-    is_main_thread_bound_input, is_main_thread_bound_return, is_sexp_type, match_arg_choices_ty,
-    second_type_argument,
+    SeveralOkContainer, classify_several_ok_container, first_type_argument, is_sexp_type,
+    match_arg_choices_ty, second_type_argument,
 };
 pub(crate) use util::{
     extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc, source_position,
@@ -459,7 +448,7 @@ pub(crate) fn build_dots_validation_stmt(
 /// If the function is declared `extern "C-unwind"` and exported with
 /// `#[no_mangle]` (2021), `#[unsafe(no_mangle)]` (2024), or `#[export_name = "..."]`,
 /// the function itself is the C symbol and the R wrapper is prefixed with
-/// `unsafe_` to signal bypassed safety (no worker isolation or conversion).
+/// `unsafe_` to signal bypassed safety (no argument conversion or panic handling).
 ///
 /// ## Variadics (`...`)
 ///
@@ -497,7 +486,6 @@ pub(crate) fn build_dots_validation_stmt(
 ///
 /// ## Attributes
 ///
-/// - `#[miniextendr(worker)]` — opt into worker-thread execution
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
 ///   (identical to an `Invisible<T>` / `Visible<T>` return type; the two must agree).
 ///   Only unit-`NULL` returns are invisible by default; receiver-returning
@@ -780,19 +768,6 @@ pub fn miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // Spans a failed earlier expansion left behind belong to no output.
-    let _ = deprecation::take();
-    let expanded = proc_macro2::TokenStream::from(expand_miniextendr(attr, item));
-    let warnings = deprecation::take();
-    quote::quote! { #expanded #warnings }.into()
-}
-
-/// The `#[miniextendr]` expansion, before the deprecated-option warnings
-/// ([`deprecation`]) are appended.
-fn expand_miniextendr(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
     // rustc must select gated members before any expansion reads them (#2107).
     if let Ok(parsed) = syn::parse::<syn::Item>(item.clone()) {
         match cfg_gates::select(&attr.clone().into(), &parsed) {
@@ -825,7 +800,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     item: proc_macro2::TokenStream,
 ) -> T {
     let MiniextendrFnAttrs {
-        force_worker,
         force_invisible,
         check_interrupt,
         coerce_all,
@@ -1165,9 +1139,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     {
         return err.into_compile_error().into();
     }
-    let has_rng_guard = all_inputs.iter().any(|arg| {
-        matches!(arg, syn::FnArg::Typed(pt) if crate::type_inspect::is_rng_guard_param(&pt.ty))
-    });
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
         .filter(|arg| match arg {
@@ -1350,8 +1321,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         &err_parts,
     );
 
-    let returns_sexp = return_analysis.returns_sexp;
-
     // Marker (`Invisible<T>` / `Visible<T>`) > attribute (`invisible` /
     // `visible`) > shape default (unit-`NULL` returns are invisible).
     let is_invisible_return_type = match crate::type_inspect::resolve_visibility(
@@ -1363,76 +1332,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         Ok(v) => v,
         Err(err) => return err.into_compile_error().into(),
     };
-
-    // Check if any input parameter is main-thread-bound (SEXP or a !Send
-    // framework wrapper like AltrepSexp — neither can move into the worker
-    // closure, so the function must stay on the main thread). A `Call` /
-    // `CallerCall` marker holds the call slot's SEXP and counts too.
-    let has_sexp_inputs = all_inputs.iter().any(|arg| {
-        if let syn::FnArg::Typed(pat_type) = arg {
-            is_main_thread_bound_input(pat_type.ty.as_ref())
-        } else {
-            false
-        }
-    });
-
-    // Check if the return type is main-thread-bound (BuiltDataFrame /
-    // DataFrameShape / an R-backed view — all hold R memory and are !Send, so
-    // they cannot cross back from the worker thread; `run_on_worker` requires
-    // `T: Send`). Walks nested positions: Result<BuiltDataFrame, E>,
-    // Option<DataFrameShape>, Vec<...>, tuples.
-    let has_main_thread_bound_return = match output {
-        syn::ReturnType::Default => false,
-        syn::ReturnType::Type(_, ty) => is_main_thread_bound_return(ty),
-    };
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Thread Strategy Selection
-    // ═══════════════════════════════════════════════════════════════════════════
-    //
-    // miniextendr supports two execution strategies:
-    //
-    // 1. **Main Thread Strategy** (with_r_unwind_protect) — DEFAULT
-    //    - All code runs on R's main thread
-    //    - Required when SEXP types are involved (not Send)
-    //    - Required for R API calls (Rf_*, R_*)
-    //    - Panic handling via R_UnwindProtect (Rust destructors run correctly)
-    //    - Errors are always returned as tagged SEXP values; the R wrapper
-    //      inspects the tag and raises a structured condition (`rust_*` class
-    //      layering) past the Rust boundary.
-    //    - Simpler execution model, better R integration
-    //
-    // 2. **Worker Thread Strategy** (run_on_worker + catch_unwind) — OPT-IN
-    //    - Argument conversion on main thread (SEXP → Rust types)
-    //    - Function execution on dedicated worker thread (clean panic isolation)
-    //    - Result conversion on main thread (Rust types → SEXP)
-    //    - Panic handling via catch_unwind (prevents unwinding across FFI boundary)
-    //    - Opt in with #[miniextendr(worker)]
-    //    - ExternalPtr<T> is Send: can be returned from worker thread functions
-    //    - R API calls from worker use with_r_thread (serialized to main thread)
-    //
-    // Default: Main thread (simpler execution model, compatible with the
-    // tagged-SEXP error transport)
-    // Override: Use worker thread with #[miniextendr(worker)]
-    //
-    // Thread strategy:
-    // - Main thread is always used unless force_worker is set
-    // - force_worker cannot override hard requirements for main thread
-    // - Hard requirements: returns_sexp, has_sexp_inputs (borrowed external
-    //   arguments `&T` / `&mut T` / views included, #2106),
-    //   has_main_thread_bound_return, has_dots, check_interrupt
-    // A `Quoted` / `Quosure` parameter (also under `Missing<..>`, which
-    // `is_main_thread_bound_input` does not look into) holds R objects and
-    // evaluates R code (#1835). The RNG guard (#2002) is `!Send` and its
-    // draws read R's RNG state.
-    let requires_main_thread = returns_sexp
-        || has_sexp_inputs
-        || has_rng_guard
-        || !unevaluated_r_names.is_empty()
-        || has_main_thread_bound_return
-        || has_dots
-        || check_interrupt;
-    let use_main_thread = !force_worker || requires_main_thread;
 
     // Extract cfg attributes to apply to generated items (needed by CWrapperContext)
     let cfg_attrs = extract_cfg_attrs(parsed.attrs());
@@ -1543,12 +1442,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         None => None,
     };
 
-    let thread_strategy = if use_main_thread {
-        c_wrapper_builder::ThreadStrategy::MainThread
-    } else {
-        c_wrapper_builder::ThreadStrategy::WorkerThread
-    };
-
     // Build CWrapperContext for the standalone fn
     let mut c_wrapper_builder =
         c_wrapper_builder::CWrapperContext::builder(rust_ident.clone(), c_ident.clone())
@@ -1557,7 +1450,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
             .inputs(inputs.iter().cloned().collect())
             .output(output.clone())
             .call_expr(fn_call_expr)
-            .thread_strategy(thread_strategy)
             .return_handling(fn_return_handling)
             .err_parts(err_parts)
             .cfg_attrs(cfg_attrs.clone())
@@ -2367,53 +2259,44 @@ fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) 
     }
 }
 
-/// Generate thread-safe wrappers for R FFI functions.
+/// Generate main-thread-checked wrappers for R FFI functions.
 ///
 /// Apply this to an `extern "C-unwind"` block to generate, **for each
 /// non-variadic function**, a pair of entry points:
 ///
-/// - The original name (e.g. `Rf_allocVector`) — a safe Rust wrapper that
-///   runs directly on R's main thread, routes through
-///   `miniextendr_api::worker::with_r_thread` from an active miniextendr
-///   worker context, and panics for arbitrary off-main callers.
+/// - The original name (e.g. `Rf_allocVector`) — a wrapper that runs the call
+///   through `miniextendr_api::with_r_thread`: directly on R's main thread,
+///   and a panic on any other thread.
 /// - A `*_unchecked` sibling (`Rf_allocVector_unchecked`) — the raw
-///   `extern "C-unwind"` declaration with no main-thread assertion and no
-///   worker round-trip.
+///   `extern "C-unwind"` declaration with no main-thread assertion.
 ///
 /// User code should reach for the checked variant by default; the unchecked
 /// sibling exists for three known-safe contexts:
 ///
 /// 1. **Inside ALTREP callbacks** — R is already calling us on the main
-///    thread, so the assertion would always pass and the route would
-///    deadlock the call back to R.
-/// 2. **Inside a `with_r_unwind_protect` body** — the guard has established
-///    main-thread context, and re-entering `with_r_thread` would nest two
-///    `R_UnwindProtect` frames (paying the longjmp-leak cost twice).
+///    thread, so the assertion would always pass.
+/// 2. **Inside a `with_r_unwind_protect` body** — the guard runs on R's main
+///    thread, so the assertion is redundant.
 /// 3. **Inside a `with_r_thread` body** — the assertion is redundant; you
 ///    are already where you needed to be.
 ///
 /// The build-time lint **MXL301** enforces this: calling `*_unchecked`
-/// outside one of those three contexts is a compile-time error. Without the
-/// `worker-thread` feature, the checked variant still enforces the recorded
-/// main-thread contract; it simply has no worker route available.
+/// outside one of those three contexts is a compile-time error.
 ///
 /// # Tradeoffs at a glance
 ///
-/// | Variant | Asserts main thread | Routes to main | When to use |
-/// |---|---|---|---|
-/// | `Rf_foo` (checked) | yes (debug) | yes (from worker) | default |
-/// | `Rf_foo_unchecked` | no | no | ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread` |
+/// | Variant | Asserts main thread | When to use |
+/// |---|---|---|
+/// | `Rf_foo` (checked) | yes | default |
+/// | `Rf_foo_unchecked` | no | ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread` |
 ///
 /// # Behavior
 ///
-/// All non-variadic functions are routed to the main thread via `with_r_thread`
-/// when called from a worker thread. The return value is wrapped in `Sendable`
-/// and sent back to the caller. This applies to both value-returning functions
-/// (SEXP, i32, etc.) and pointer-returning functions (`*const T`, `*mut T`).
-///
-/// Pointer-returning functions (like `INTEGER`, `REAL`) are safe to route because
-/// the underlying SEXP must be GC-protected by the caller, and R's GC only runs
-/// during R API calls which are serialized through `with_r_thread`.
+/// Every non-variadic function calls its `*_unchecked` sibling inside
+/// `with_r_thread`, which panics off R's main thread before the call reaches
+/// R. This applies to value-returning functions (SEXP, i32, etc.),
+/// pointer-returning functions (`*const T`, `*mut T`), and never-returning
+/// ones (`Rf_error`).
 ///
 /// # Initialization Requirement
 ///
@@ -2431,7 +2314,7 @@ fn return_handling_category_description(rh: &c_wrapper_builder::ReturnHandling) 
 /// ```ignore
 /// #[r_ffi_checked]
 /// unsafe extern "C-unwind" {
-///     // Routed to main thread via with_r_thread when called from worker
+///     // Panics off R's main thread
 ///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
 ///     pub fn INTEGER(x: SEXP) -> *mut i32;
 /// }
@@ -2478,7 +2361,7 @@ pub fn r_ffi_checked(
                         .filter(|attr| !attr.path().is_ident("link_name"))
                         .collect();
                     let checked_doc = format!(
-                        "Checked wrapper for `{}`. Calls `{}` and routes through `with_r_thread`.",
+                        "Checked wrapper for `{}`. Calls `{}` inside `with_r_thread`, which panics off R's main thread.",
                         fn_name_str, unchecked_name_str
                     );
                     let checked_doc_lit = syn::LitStr::new(&checked_doc, fn_name.span());
@@ -2512,40 +2395,17 @@ pub fn r_ffi_checked(
                         })
                         .collect();
 
-                    let is_never = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Never(_)));
-
-                    let wrapper = if is_never {
-                        // Never-returning functions (like Rf_error)
-                        quote::quote! {
-                            #(#attrs)*
-                            #[doc = #checked_doc_lit]
-                            #[doc = #source_loc_doc_lit]
-                            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
-                            #[inline(always)]
-                            #[allow(non_snake_case)]
-                            #vis unsafe fn #fn_name(#inputs) #output {
-                                ::miniextendr_api::worker::with_r_thread(move || unsafe {
-                                    #unchecked_name(#(#arg_names),*)
-                                })
-                            }
-                        }
-                    } else {
-                        // Normal functions - route via with_r_thread
-                        quote::quote! {
-                            #(#attrs)*
-                            #[doc = #checked_doc_lit]
-                            #[doc = #source_loc_doc_lit]
-                            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
-                            #[inline(always)]
-                            #[allow(non_snake_case)]
-                            #vis unsafe fn #fn_name(#inputs) #output {
-                                let result = ::miniextendr_api::worker::with_r_thread(move || {
-                                    ::miniextendr_api::worker::Sendable(unsafe {
-                                        #unchecked_name(#(#arg_names),*)
-                                    })
-                                });
-                                result.0
-                            }
+                    let wrapper = quote::quote! {
+                        #(#attrs)*
+                        #[doc = #checked_doc_lit]
+                        #[doc = #source_loc_doc_lit]
+                        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
+                        #[inline(always)]
+                        #[allow(non_snake_case)]
+                        #vis unsafe fn #fn_name(#inputs) #output {
+                            ::miniextendr_api::with_r_thread(move || unsafe {
+                                #unchecked_name(#(#arg_names),*)
+                            })
                         }
                     };
                     checked_wrappers.push(wrapper);
@@ -3836,7 +3696,7 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// # Safety
 ///
 /// Expands to an `unsafe` block; the underlying FFI is `#[r_ffi_checked]`, so
-/// calls from a worker thread are serialized onto the R thread.
+/// a call off R's main thread panics before it reaches R.
 ///
 /// # Example
 ///
@@ -4075,13 +3935,13 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         }
 
         /// R_unload_<pkg> entry point — R calls this on `detach(unload=TRUE)` /
-        /// `dyn.unload()`. Signals the miniextendr worker thread (if enabled)
-        /// to exit cleanly. See `#103`.
+        /// `dyn.unload()`. Uninstalls the miniextendr panic hook before R
+        /// unmaps the library's code.
         #[unsafe(no_mangle)]
         pub unsafe extern "C-unwind" fn #unload_name(
             _dll: *mut ::miniextendr_api::sys::DllInfo,
         ) {
-            ::miniextendr_api::worker::miniextendr_runtime_shutdown();
+            ::miniextendr_api::thread::miniextendr_runtime_shutdown();
         }
 
         /// Linker anchor: stub.c takes the address of this symbol to force the

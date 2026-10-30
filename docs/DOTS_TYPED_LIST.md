@@ -92,7 +92,6 @@ The same holds for methods in every class system: `fn collect(&self, n: i32, res
 - The dots parameter takes no default, `match_arg` or check; `Missing<&Dots>` is refused. The dots are always present.
 - On a `call = caller` or `call_arg` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
 - `#[miniextendr(dots = typed_list!(...))]` reads an explicit `&Dots` the same way it reads `...`.
-- A function with dots runs on the R main thread, even under `worker`: the dots are an R list.
 
 ## Dots left unforced: `LazyDots`
 
@@ -172,7 +171,7 @@ Where it is accepted:
 - The parameter is taken by value with the whole type `LazyDots` (optionally `LazyDots<'_>` or a path ending in it). `&LazyDots`, `Option<LazyDots>` and `Missing<LazyDots>` are compile errors: the dots are always present (`len()` is 0 when the call passes none).
 - It takes no per-parameter option (`default`, `coerce`, `match_arg`, `no_na`, ...) and no `dots = typed_list!(...)`, which validates a forced list.
 - Trait methods and `extern "C-unwind"` functions refuse it: a trait method's arguments cross the trait ABI as converted values, and `.Call()` reaches an `extern` function without a generated wrapper.
-- A function with a `LazyDots` parameter runs on the R main thread, even under `worker`, and the value is `!Send`.
+- A `LazyDots` value is `!Send`: it stays on R's main thread.
 - A function without one keeps its wrapper byte for byte.
 
 `rpkg/src/rust/lazy_dots_tests.rs` has the fixtures (the readers and forcers, `subset.mx_lazy`, `update.mx_lazy`, `` `[.mx_lazy_grid` ``, the `forward` / `next_method` fixtures and one class per class system), and `rpkg/tests/testthat/test-lazy-dots.R` tests them.

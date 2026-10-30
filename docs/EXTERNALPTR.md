@@ -15,8 +15,8 @@ R has no native way to hold arbitrary Rust data. `EXTPTRSXP` is R's mechanism fo
   every read of the value checked: a `#[miniextendr]` function borrows it at
   the call (`&T` / `&mut T` parameters), and Rust code holding a handle
   borrows it with `borrow()` / `borrow_mut()`
-- **Context-checked construction** -- `new()` runs on R's main thread or routes
-  from an active miniextendr worker context
+- **Context-checked construction** -- `new()` runs on R's main thread and
+  panics on any other
 
 Checked conversions and erased-handle accessors reject foreign pointers before
 reading their address as Rust storage. They require a symbol tag and an ordinary
@@ -59,10 +59,8 @@ pub fn create_data(v: f64) -> MyData {
 let ptr = ExternalPtr::new(MyData { value: 3.14 });
 ```
 
-`new()` works on R's main thread and from miniextendr's dedicated worker during
-an active `run_on_worker` call; the latter routes its R allocations through
-`with_r_thread`. It panics on an arbitrary spawned or Rayon thread rather than
-calling R off-main.
+`new()` works on R's main thread. It panics on a spawned or Rayon thread rather
+than calling R off-main.
 
 ### Unchecked construction (ALTREP callbacks, main-thread-only code)
 
@@ -387,10 +385,6 @@ the object to another function that does. A trait method's `&Self` /
 `&mut Self` arguments borrow the same way, after the check that rejects their
 aliasing each other or the receiver.
 
-A borrowed argument keeps the call on R's main thread, like a `&self` method:
-under `#[miniextendr(worker)]` or the `worker-default` feature such a function
-still runs on the main thread.
-
 A `&T` whose `T` isn't `TypedExternal` fails to compile at the parameter
 (`` `T` is not a type an `ExternalPtr` stores ``). The reference parameters
 the macro converts from R vectors keep their meaning: `&str`, `&[T]` /
@@ -443,8 +437,7 @@ returns it, or moves the value out with `ExternalPtr::into_inner` (which
 fails only while another running call holds the value, and leaves the R
 object without one). Elements of a
 `Vec<ExternalPtr<T>>` and the `ExternalPtr<T>` arguments of a trait method
-called through a View are handles too. An `ExternalPtr<T>` argument moves to
-the worker under `worker`, and is read there with `borrow()`.
+called through a View are handles too.
 
 ### Unwinding
 
@@ -854,8 +847,7 @@ How the value moves:
   `mx_wrap` for erased storage) moves every pending value into the
   pointer's `prot` list. From then on the value lives in R only and the
   field is empty. `Sidecar::new` runs on R's main
-  thread, or on the managed worker (a `worker` constructor), which hands
-  the conversion to the main thread; any other thread panics.
+  thread; any other thread panics.
 - Every accessor, Rust or R, first moves a pending value of its field into
   the `prot` list. So `*ptr.borrow_mut() = MyType::new(..)` takes
   effect at the next access from either side; a `saveRDS()` before any access
@@ -876,8 +868,8 @@ How the value moves:
   Rust keeps an R value (`Sidecar<Option<List>>`, `Sidecar<SEXP>`) alive for
   as long as the object. A `Sidecar<SEXP>` getter returns a view the slot
   roots until the next write to that field.
-- The accessors run on R's main thread only. Off it (a `worker` method, a
-  thread the package spawned) an accessor panics with a message naming the
+- The accessors run on R's main thread only. Off it (a thread the package
+  spawned, a Rayon task) an accessor panics with a message naming the
   field and the type.
 - A conversion failure in a getter (the slot holds an R value that does not
   convert to `T`) is a panic naming the field and the type; the framework

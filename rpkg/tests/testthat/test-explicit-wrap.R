@@ -51,11 +51,6 @@ test_that("explicit vctrs wrapping retains record behavior and parent classes", 
   }
 })
 
-test_that("worker returns produce usable explicitly selected objects", {
-  skip_if_missing_feature("worker-thread")
-  expect_identical(wrapped_board_worker()$dimensions(), c(9L, 10L))
-})
-
 test_that("cross-class and trait factory wrapping survives GC stress", {
   skip_on_cran()
   factory <- WrapFactory$new()

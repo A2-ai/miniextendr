@@ -4,9 +4,6 @@
 //! and the `.Call()` arguments follow the Rust signature order, and every
 //! formal after the dots is matched by exact name only.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::dots::Dots;
 use miniextendr_api::{miniextendr, typed_list};
 
@@ -72,20 +69,6 @@ pub fn dots_mid_caller_impl(
         return Err(format!("x must be non-negative, got {x}"));
     }
     Ok(format!("x={x} dots={} flag={flag}", dots_count(rest)))
-}
-
-/// `worker` on a function with dots: the dots keep it on the R main thread.
-/// @param x A number.
-/// @param ... Values counted by Rust.
-/// @param flag A flag.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(worker, noexport)]
-pub fn dots_mid_worker(
-    x: i32,
-    rest: &Dots,
-    #[miniextendr(default = "FALSE")] flag: bool,
-) -> String {
-    format!("x={x} dots={} flag={flag}", dots_count(rest))
 }
 
 // endregion

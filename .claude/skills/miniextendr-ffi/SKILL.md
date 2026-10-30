@@ -93,7 +93,7 @@ For long-lived SEXPs that outlive a single `.Call` frame, use `R_PreserveObject`
 
 ### Panic telemetry
 
-Every site that converts a panic to an R error fires `crate::panic_telemetry::fire(message, source)`. The four sources are `PanicSource::Worker`, `PanicSource::Altrep`, `PanicSource::UnwindProtect`, and `PanicSource::Connection`. Telemetry hooks can be registered via `set_panic_telemetry_hook` for diagnostics. See `miniextendr-api/src/panic_telemetry.rs`.
+Every site that converts a panic to an R error fires `crate::panic_telemetry::fire(message, source)`. The three sources are `PanicSource::Altrep`, `PanicSource::UnwindProtect`, and `PanicSource::Connection`. Telemetry hooks can be registered via `set_panic_telemetry_hook` for diagnostics. See `miniextendr-api/src/panic_telemetry.rs`.
 
 ## How it works
 
@@ -130,7 +130,7 @@ ALTREP callbacks receive raw SEXP arguments from R's runtime — they are always
 - Am I on R's main thread?
   - Yes, and I know it (inside `with_r_thread`, ALTREP callback, `with_r_unwind_protect` trampoline): use `fn_name_unchecked(…)` — no redundant check, no MXL301 warning.
   - Yes, but uncertain: use `fn_name(…)` — debug assertion catches mistakes in development.
-  - No (worker thread): use `with_r_thread(|| fn_name_unchecked(…))` — routes the call to the main thread.
+  - No (a Rayon or `std::thread` thread): don't. `with_r_thread` and every checked wrapper panic there; compute on plain Rust data and touch R after returning to the main thread.
 
 ### I'm in an ALTREP callback — which FFI?
 
@@ -174,7 +174,6 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 
 ## Related skills
 
-- `miniextendr-worker` — `with_r_thread`, `run_on_worker`, `Sendable<T>`, how closures cross thread boundaries.
 - `miniextendr-altrep` — guard modes that route through the same unwind-protect machinery.
 - `miniextendr-macros` — codegen for `#[miniextendr]` functions; how the generated R wrapper inspects the tagged-SEXP.
 - `miniextendr-lint` — MXL300 (direct Rf_error) and MXL301 (unchecked FFI outside safe context) rules.

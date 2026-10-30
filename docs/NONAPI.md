@@ -22,7 +22,6 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 | `SET_ATTRIB` | `miniextendr-api/src/sys.rs` | `nonapi` | Replace the attribute pairlist. Use `SexpExt::set_attr()` for one attribute, `DUPLICATE_ATTRIB` / `SHALLOW_DUPLICATE_ATTRIB` to copy all of them. MXL304 |
 | `OBJECT`, `SET_OBJECT` | `miniextendr-api/src/sys.rs` | `nonapi` | Object bit. Use `SexpExt::is_object()` (`Rf_isObject`); setting a `class` attribute sets the bit |
 | `LEVELS`, `SETLEVELS` | `miniextendr-api/src/sys.rs` | `nonapi` | The `gp` header field, not factor levels (those are the `levels` attribute, `SexpExt::get_levels()`) |
-| `R_curErrorBuf` | `miniextendr-api/src/sys.rs` | `nonapi` | Current error message buffer - used for better error messages from worker thread |
 | `R_CStackStart` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack top; package code must not rewrite it for secondary-thread R calls |
 | `R_CStackLimit` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack limit; disabling it does not make R's API thread-safe |
 | `R_CStackDir` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack growth direction (-1 = down, 1 = up) |

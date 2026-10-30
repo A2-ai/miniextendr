@@ -16,7 +16,7 @@
 //!   variants of the R FFI** — see the [`crate::sys`] module doc. The lint
 //!   **MXL301** recognises this as one of the three contexts where bypassing
 //!   the main-thread assertion is valid (the other two being ALTREP callbacks
-//!   and [`crate::worker::with_r_thread`] bodies).
+//!   and [`crate::with_r_thread`] bodies).
 //!
 //! ## You probably don't need this from a `#[miniextendr]` body
 //!
@@ -49,12 +49,12 @@
 //! Every call to `with_r_unwind_protect` (and its variants) drains the
 //! cross-thread log queue via the crate-private `drain_log_queue_if_available`
 //! helper before returning or re-raising an R error. This ensures that records
-//! buffered by worker threads are flushed to R's console on every FFI exit —
+//! buffered by other threads (Rayon, `std::thread`) are flushed to R's console on every FFI exit —
 //! including error paths.
 //!
 //! ## Cross references
 //!
-//! - [`crate::worker::with_r_thread`] — routes a closure to R's main thread.
+//! - [`crate::with_r_thread`] — checks for R's main thread and runs a closure.
 //! - [`crate::ffi_guard`] — unified panic-catching trampoline that consumes
 //!   `with_r_unwind_protect_sourced` for ALTREP `RUnwind` mode.
 //! - [`crate::error_value`] / [`mod@crate::condition`] — panic → R condition
@@ -160,9 +160,7 @@ use crate::{Rboolean, SEXP};
 static R_CONTINUATION_TOKEN: OnceLock<SEXP> = OnceLock::new();
 
 /// Get or create the global continuation token.
-///
-/// This is public for use by the worker module.
-pub(crate) fn get_continuation_token() -> SEXP {
+fn get_continuation_token() -> SEXP {
     *R_CONTINUATION_TOKEN.get_or_init(|| {
         // The continuation token must be created on R's main thread
         // (R_MakeUnwindCont is an R API call). OnceLock ensures it is
@@ -175,21 +173,9 @@ pub(crate) fn get_continuation_token() -> SEXP {
     })
 }
 
-/// Panic payload whose message is already final (location folded, or
-/// deliberately location-free): downstream folds must use it verbatim and
-/// must NOT append the current thread's recorded panic location (#1245).
-///
-/// Produced by `worker::route_to_main_thread`'s re-panic when a `with_r_thread`
-/// closure panics on the main thread: the main-thread stringify point already
-/// folded the *true* origin location into the message before it crossed back
-/// to the worker, so the worker's own re-panic (needed to unwind out of
-/// `run_on_worker`) must carry that message forward untouched rather than
-/// re-fold its own relay call site on top.
-pub(crate) struct PreLocatedPanic(pub(crate) String);
-
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, `&String`, `PreLocatedPanic` and
+/// Handles `&str`, `String`, `&String` and
 /// [`RCondition`](enum@crate::condition::RCondition) payloads (the condition's
 /// message) consistently. The borrowed variants are returned as
 /// `Cow::Borrowed`, so the common `panic!("literal")` case avoids the heap
@@ -205,8 +191,6 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
         Cow::Borrowed(s.as_str())
     } else if let Some(s) = payload.downcast_ref::<&String>() {
         Cow::Borrowed(s.as_str())
-    } else if let Some(pre) = payload.downcast_ref::<PreLocatedPanic>() {
-        Cow::Borrowed(pre.0.as_str())
     } else if let Some(condition) = payload.downcast_ref::<crate::condition::RCondition>() {
         Cow::Borrowed(condition.message())
     } else {
@@ -221,8 +205,8 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
 /// when [`crate::backtrace::take_last_panic_location`] has a location for this
 /// thread, otherwise the bare message. The location is captured in the process
 /// panic hook (`backtrace.rs`), which fires on the panicking thread — so this
-/// **must be called on the same thread that ran the panicking closure** (main
-/// for main-thread `#[miniextendr]` fns; the worker for worker-dispatched fns).
+/// **must be called on the same thread that ran the panicking closure** (R's
+/// main thread for `#[miniextendr]` fns).
 ///
 /// Only the *generic panic* path uses this. `error!`/`warning!`/`message!`/
 /// `condition!` (and `Result::Err` / `Option::None`) travel the typed
@@ -293,7 +277,7 @@ impl Drop for Boundary {
 ///
 /// The unwind runs the destructors of the Rust frames between the evaluation
 /// and the boundary that catches it. The boundary ([`run_r_unwind_protect`],
-/// the worker's main-thread loop, the FFI guards) then resumes the exit with
+/// the FFI guards) then resumes the exit with
 /// `R_ContinueUnwind`, and R carries on to the context it was jumping to, with
 /// the condition object and call it was jumping with.
 ///
@@ -359,7 +343,7 @@ impl Drop for RUnwind {
     /// another thread (code that moved the caught payload there), it waits in
     /// [`ABANDONED_OFF_MAIN`] for the next evaluation.
     fn drop(&mut self) {
-        if crate::worker::is_r_main_thread() {
+        if crate::is_r_main_thread() {
             unsafe { sys::R_ReleaseObject(self.token) }
         } else {
             ABANDONED_OFF_MAIN
@@ -527,7 +511,7 @@ pub(crate) unsafe fn call_unwinding(
 ///
 /// This is called at every exit point of `run_r_unwind_protect` (normal
 /// return, Rust panic, and immediately before `R_ContinueUnwind`) so that
-/// worker-thread log records always reach R's console before the FFI call
+/// off-main-thread log records always reach R's console before the FFI call
 /// returns or re-raises an R error.
 ///
 /// When the `log` feature is disabled this compiles to a no-op; there is
@@ -547,7 +531,7 @@ fn drain_log_queue_if_available() {
 /// `Box::from_raw` reclamation on all non-diverging paths.
 ///
 /// Drains the cross-thread log queue (when the `log` feature is enabled) at
-/// each exit point so worker-thread records reach R's console before the FFI
+/// each exit point so off-main-thread records reach R's console before the FFI
 /// boundary is crossed.
 fn run_r_unwind_protect<F, R>(f: F) -> Result<R, Box<dyn Any + Send>>
 where
@@ -617,7 +601,7 @@ where
                 // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
-                    // Drain worker-thread log records before returning the panic
+                    // Drain off-main-thread log records before returning the panic
                     // payload to the caller (which will convert it to an R error).
                     drain_log_queue_if_available();
                     // An R exit carried out of `call_unwinding` (#1835): the Rust
@@ -631,7 +615,7 @@ where
                         .take()
                         .expect("result not set after successful completion");
                     drop(data);
-                    // Drain worker-thread log records on the normal success path.
+                    // Drain off-main-thread log records on the normal success path.
                     drain_log_queue_if_available();
                     Ok(result)
                 }
@@ -641,7 +625,7 @@ where
                 drop(data);
                 // Check if this was an R error or a Rust panic
                 if payload.downcast_ref::<RErrorMarker>().is_some() {
-                    // R error - drain log records before re-raising so worker
+                    // R error - drain log records before re-raising so off-main
                     // thread output is not lost even on error exits.
                     drain_log_queue_if_available();
                     // No signalling while resuming an R error or exiting handler.

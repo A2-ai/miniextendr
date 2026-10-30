@@ -132,9 +132,6 @@ through the guards; they do not run the remaining body or save step. The guard
 passed to a `&RngGuard` parameter does not save the state when it drops: step 3
 does.
 
-A function or method that takes the guard always runs on R's main thread, whatever
-`worker` or `worker-default` says: the guard is `!Send`.
-
 **Inside an `rng` function, draw from the `&RngGuard` parameter; don't call
 `with_rng`.** A nested `GetRNGstate()` reloads `.Random.seed`, which still holds
 the state from before the call, so the draws would repeat.
@@ -360,7 +357,7 @@ so `standard_normal()` draws what `rnorm(1)` draws. `rand`'s own
 `runif()`.
 
 `RRng` is `!Send` and `!Sync`, like the guard it borrows: it can't move into a
-worker closure or a rayon task. Outside an `rng` function, make one inside
+spawned thread or a rayon task. Outside an `rng` function, make one inside
 `with_rng`: `with_rng(|guard| guard.rng().standard_normal())`.
 
 The same feature exposes `RRngOps` and `RDistributionOps` for exporting custom
@@ -381,10 +378,6 @@ pub fn interruptible_random(n: i32, rng: &RngGuard) -> Vec<f64> {
     (0..n).map(|_| rng.unif_rand()).collect()
 }
 ```
-
-Under the deprecated `worker` option the body runs on the worker thread, where no
-guard can go. A function that takes `&RngGuard` stays on R's main thread
-regardless.
 
 ## R Longjumps and Safety
 
@@ -431,4 +424,4 @@ See [Rayon](RAYON.md#rng-reproducibility) for full details on reproducible paral
 
 - [Rayon Integration](RAYON.md) -- Parallel computation (including RNG reproducibility)
 - [`#[miniextendr]` Attribute](MINIEXTENDR_ATTRIBUTE.md) -- Complete attribute reference
-- [Threads](THREADS.md) -- Worker thread architecture
+- [Threads](THREADS.md) -- The main-thread invariant

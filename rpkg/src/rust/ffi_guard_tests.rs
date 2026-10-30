@@ -7,13 +7,13 @@ use miniextendr_api::prelude::*;
 /// Test guarded_ffi_call with CatchUnwind on a non-panicking closure.
 #[miniextendr]
 pub fn ffi_guard_catch_unwind_ok() -> i32 {
-    guarded_ffi_call(|| 42i32, GuardMode::CatchUnwind, PanicSource::Worker)
+    guarded_ffi_call(|| 42i32, GuardMode::CatchUnwind, PanicSource::Altrep)
 }
 
 /// Test guarded_ffi_call_with_fallback on a non-panicking closure.
 #[miniextendr]
 pub fn ffi_guard_fallback_ok() -> i32 {
-    guarded_ffi_call_with_fallback(|| 99i32, -1i32, PanicSource::Worker)
+    guarded_ffi_call_with_fallback(|| 99i32, -1i32, PanicSource::Connection)
 }
 
 /// Test guarded_ffi_call_with_fallback on a panicking closure — returns fallback.
@@ -22,6 +22,6 @@ pub fn ffi_guard_fallback_panic() -> i32 {
     guarded_ffi_call_with_fallback(
         || -> i32 { panic!("intentional panic") },
         -1i32,
-        PanicSource::Worker,
+        PanicSource::Connection,
     )
 }

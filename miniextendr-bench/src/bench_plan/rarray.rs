@@ -7,7 +7,7 @@
 //! - `as_slice` full-buffer iteration baseline (column-major).
 //! - `get_rc` nested loops to quantify per-element index overhead.
 //! - `column(col)` + per-column iteration (contiguous slices).
-//! - `to_vec` copy cost (main-thread copy-out for worker-friendly compute).
+//! - `to_vec` copy cost (main-thread copy-out for parallel compute).
 //!
 //! Parameters:
 //! - matrix sizes from `MATRIX_DIMS` (e.g. 64x64, 256x256).

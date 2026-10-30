@@ -1,8 +1,8 @@
 //! Structured panic telemetry for debugging Rust panics that become R errors.
 //!
-//! Three separate panic→R-error paths exist in miniextendr (worker thread, ALTREP
-//! trampolines, and unwind_protect). This module provides a unified hook point
-//! that fires before each panic is converted to an R error.
+//! Three separate panic→R-error paths exist in miniextendr (ALTREP trampolines,
+//! connection callbacks, and unwind_protect). This module provides a unified
+//! hook point that fires before each panic is converted to an R error.
 //!
 //! # Relationship to the three emission paths
 //!
@@ -47,8 +47,6 @@ use std::sync::{Arc, RwLock};
 /// Describes where a panic originated before being converted to an R error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PanicSource {
-    /// Panic on the worker thread (caught by `run_on_worker`).
-    Worker,
     /// Panic inside an ALTREP trampoline (caught by `catch_altrep_panic`).
     Altrep,
     /// Panic inside `with_r_unwind_protect` (caught by `with_r_unwind_protect_sourced`).
@@ -77,7 +75,7 @@ static HOOK: RwLock<Option<Hook>> = RwLock::new(None);
 ///
 /// # Thread Safety
 ///
-/// The hook may be called from any thread (worker thread, main R thread, etc.).
+/// The hook may be called from any thread that converts a panic.
 /// Ensure your closure is safe to call concurrently.
 ///
 /// It is safe to call `set_panic_telemetry_hook` or `clear_panic_telemetry_hook`

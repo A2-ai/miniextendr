@@ -120,7 +120,7 @@ impl MarkerArgs for MarkerReader {
 /// package takes: each marker argument crosses as its inner value and is read
 /// back unchanged (`None`, `NaN`, the text `"NA"`, `NULL`, an omitted
 /// argument), and a returned marker crosses back the same way.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn marker_args_through_view() -> Vec<String> {
     let localhost: IpAddr = "127.0.0.1".parse().expect("an IPv4 address");
     let loopback6: IpAddr = "::1".parse().expect("an IPv6 address");

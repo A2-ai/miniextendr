@@ -22,8 +22,6 @@ strict-default = []
 coerce-default = []
 r6-default = []
 s7-default = []
-## Deprecated (#2117): the worker thread won't be developed further.
-worker-default = []
 ## Drop the R-side type checks (`no_preconditions`) by default for all
 ## #[miniextendr] functions and impl blocks. Individual items keep them with
 ## `#[miniextendr(preconditions)]`.

@@ -1,7 +1,7 @@
 //! Benchmarks for panic telemetry overhead.
 //!
 //! `panic_telemetry::fire()` acquires a `RwLock` read lock at every panic→R-error
-//! boundary (worker, altrep_bridge, unwind_protect, connection). This benchmark
+//! boundary (altrep_bridge, unwind_protect, connection). This benchmark
 //! measures the cost of that read lock pattern to confirm it's negligible.
 //!
 //! Since `fire()` is `pub(crate)`, we benchmark the identical RwLock pattern

@@ -1,8 +1,5 @@
 //! Regression fixtures for pre-conversion native-borrow alias checks.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::miniextendr;
 
 fn bump<'a>(slices: impl IntoIterator<Item = &'a mut [i32]>) -> i32 {
@@ -23,7 +20,7 @@ fn read<'a>(slices: impl IntoIterator<Item = &'a [i32]>) -> i32 {
 /// Exercise borrowed-slice alias checks with list mut direct mut inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_mut_direct_mut(a: Vec<&'static mut [i32]>, b: &'static mut [i32]) -> i32 {
     bump(a) + bump([b])
 }
@@ -31,7 +28,7 @@ pub fn alias_list_mut_direct_mut(a: Vec<&'static mut [i32]>, b: &'static mut [i3
 /// Exercise borrowed-slice alias checks with list mut direct shared inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_mut_direct_shared(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
     bump(a) + read([b])
 }
@@ -39,7 +36,7 @@ pub fn alias_list_mut_direct_shared(a: Vec<&'static mut [i32]>, b: &[i32]) -> i3
 /// Exercise borrowed-slice alias checks with list shared direct mut inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_shared_direct_mut(a: Vec<&[i32]>, b: &'static mut [i32]) -> i32 {
     read(a) + bump([b])
 }
@@ -47,7 +44,7 @@ pub fn alias_list_shared_direct_mut(a: Vec<&[i32]>, b: &'static mut [i32]) -> i3
 /// Exercise borrowed-slice alias checks with list mut list mut inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_mut_list_mut(a: Vec<&'static mut [i32]>, b: Vec<&'static mut [i32]>) -> i32 {
     bump(a) + bump(b)
 }
@@ -55,7 +52,7 @@ pub fn alias_list_mut_list_mut(a: Vec<&'static mut [i32]>, b: Vec<&'static mut [
 /// Exercise borrowed-slice alias checks with list mut list shared inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_mut_list_shared(a: Vec<&'static mut [i32]>, b: Vec<&[i32]>) -> i32 {
     bump(a) + read(b)
 }
@@ -63,7 +60,7 @@ pub fn alias_list_mut_list_shared(a: Vec<&'static mut [i32]>, b: Vec<&[i32]>) ->
 /// Exercise borrowed-slice alias checks with list shared list mut inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_shared_list_mut(a: Vec<&[i32]>, b: Vec<&'static mut [i32]>) -> i32 {
     read(a) + bump(b)
 }
@@ -71,7 +68,7 @@ pub fn alias_list_shared_list_mut(a: Vec<&[i32]>, b: Vec<&'static mut [i32]>) ->
 /// Exercise borrowed-slice alias checks with list shared list shared inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_list_shared_list_shared(a: Vec<&[i32]>, b: Vec<&[i32]>) -> i32 {
     read(a) + read(b)
 }
@@ -79,7 +76,7 @@ pub fn alias_list_shared_list_shared(a: Vec<&[i32]>, b: Vec<&[i32]>) -> i32 {
 /// Exercise borrowed-slice alias checks with optional lists inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_optional_lists(a: Option<Vec<Option<&'static mut [i32]>>>, b: Option<&[i32]>) -> i32 {
     bump(a.into_iter().flatten().flatten()) + read(b)
 }
@@ -87,7 +84,7 @@ pub fn alias_optional_lists(a: Option<Vec<Option<&'static mut [i32]>>>, b: Optio
 /// Exercise borrowed-slice alias checks with nested lists inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_nested_lists(a: Vec<Vec<&'static mut [i32]>>, b: Vec<&[i32]>) -> i32 {
     bump(a.into_iter().flatten()) + read(b)
 }
@@ -95,33 +92,15 @@ pub fn alias_nested_lists(a: Vec<Vec<&'static mut [i32]>>, b: Vec<&[i32]>) -> i3
 /// Exercise borrowed-slice alias checks with owned and list inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_owned_and_list(a: Vec<i32>, b: Vec<&'static mut [i32]>) -> i32 {
     a.into_iter().sum::<i32>() + bump(b)
-}
-
-/// Exercise borrowed-slice alias checks with worker lists inputs.
-/// @param a First vector or list of vectors.
-/// @param b Second vector or list of vectors.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_lists(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
-    bump(a) + read([b])
-}
-
-/// Exercise borrowed-slice alias checks before worker RNG cleanup.
-/// @param a First list of vectors.
-/// @param b Second vector.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker, rng)]
-pub fn alias_worker_rng_lists(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
-    bump(a) + read([b])
 }
 
 /// Exercise borrowed-slice alias checks with rng lists inputs.
 /// @param a First vector or list of vectors.
 /// @param b Second vector or list of vectors.
-#[miniextendr(no_worker, rng)]
+#[miniextendr(rng)]
 pub fn alias_rng_lists(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
     bump(a) + read([b])
 }
@@ -130,7 +109,7 @@ pub fn alias_rng_lists(a: Vec<&'static mut [i32]>, b: &[i32]) -> i32 {
 /// @param a First list of integer vectors.
 /// @param b Shared integer vector.
 /// @param c Second list of integer vectors.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_three_arguments(
     a: Vec<&'static mut [i32]>,
     b: &[i32],
@@ -164,66 +143,30 @@ impl AliasGuardProbe {
 /// @param a Mutable scalar.
 /// @param b Second mutable scalar.
 /// @param c Shared scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_integer(a: &mut i32, b: &mut i32, c: &i32) -> i32 {
     *a = *c;
     *b = *c;
     1
 }
 
-/// Reject overlapping integer scalar borrows before conversion.
-/// @param a Mutable scalar.
-/// @param b Second mutable scalar.
-/// @param c Shared scalar.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_scalar_integer(a: &mut i32, b: &mut i32, c: &i32) -> i32 {
-    *a = *c;
-    *b = *c;
-    1
-}
-
 /// Reject overlapping real scalar borrows before conversion.
 /// @param a Mutable scalar.
 /// @param b Second mutable scalar.
 /// @param c Shared scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_real(a: &mut f64, b: &mut f64, c: &f64) -> i32 {
     *a = *c;
     *b = *c;
     1
 }
 
-/// Reject overlapping real scalar borrows before conversion.
-/// @param a Mutable scalar.
-/// @param b Second mutable scalar.
-/// @param c Shared scalar.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_scalar_real(a: &mut f64, b: &mut f64, c: &f64) -> i32 {
-    *a = *c;
-    *b = *c;
-    1
-}
-
 /// Reject overlapping raw scalar borrows before conversion.
 /// @param a Mutable scalar.
 /// @param b Second mutable scalar.
 /// @param c Shared scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_raw(a: &mut u8, b: &mut u8, c: &u8) -> i32 {
-    *a = *c;
-    *b = *c;
-    1
-}
-
-/// Reject overlapping raw scalar borrows before conversion.
-/// @param a Mutable scalar.
-/// @param b Second mutable scalar.
-/// @param c Shared scalar.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_scalar_raw(a: &mut u8, b: &mut u8, c: &u8) -> i32 {
     *a = *c;
     *b = *c;
     1
@@ -233,7 +176,7 @@ pub fn alias_worker_scalar_raw(a: &mut u8, b: &mut u8, c: &u8) -> i32 {
 /// @param a Mutable scalar.
 /// @param b Second mutable scalar.
 /// @param c Shared scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_logical(
     a: &mut miniextendr_api::RLogical,
     b: &mut miniextendr_api::RLogical,
@@ -244,44 +187,12 @@ pub fn alias_scalar_logical(
     1
 }
 
-/// Reject overlapping logical scalar borrows before conversion.
-/// @param a Mutable scalar.
-/// @param b Second mutable scalar.
-/// @param c Shared scalar.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_scalar_logical(
-    a: &mut miniextendr_api::RLogical,
-    b: &mut miniextendr_api::RLogical,
-    c: &miniextendr_api::RLogical,
-) -> i32 {
-    *a = *c;
-    *b = *c;
-    1
-}
-
 /// Reject overlapping complex scalar borrows before conversion.
 /// @param a Mutable scalar.
 /// @param b Second mutable scalar.
 /// @param c Shared scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_complex(
-    a: &mut miniextendr_api::Rcomplex,
-    b: &mut miniextendr_api::Rcomplex,
-    c: &miniextendr_api::Rcomplex,
-) -> i32 {
-    *a = *c;
-    *b = *c;
-    1
-}
-
-/// Reject overlapping complex scalar borrows before conversion.
-/// @param a Mutable scalar.
-/// @param b Second mutable scalar.
-/// @param c Shared scalar.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_scalar_complex(
     a: &mut miniextendr_api::Rcomplex,
     b: &mut miniextendr_api::Rcomplex,
     c: &miniextendr_api::Rcomplex,
@@ -300,7 +211,7 @@ pub struct AliasBorrowedScalar(&'static mut i32);
 /// Exercise native borrow metadata through scalar shared conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_shared(a: &i32, b: &i32) -> i32 {
     *a + *b
 }
@@ -308,7 +219,7 @@ pub fn alias_scalar_shared(a: &i32, b: &i32) -> i32 {
 /// Exercise native borrow metadata through scalar slice conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_slice(a: &mut i32, b: &[i32]) -> i32 {
     *a = b.iter().sum();
     *a
@@ -317,7 +228,7 @@ pub fn alias_scalar_slice(a: &mut i32, b: &[i32]) -> i32 {
 /// Exercise native borrow metadata through slice scalar conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_slice_scalar(a: &mut [i32], b: &i32) -> i32 {
     a.fill(*b);
     i32::try_from(a.len()).unwrap()
@@ -326,7 +237,7 @@ pub fn alias_slice_scalar(a: &mut [i32], b: &i32) -> i32 {
 /// Exercise native borrow metadata through scalar lists conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_scalar_lists(a: Vec<&'static mut i32>, b: Vec<&i32>) -> i32 {
     let value = b.into_iter().copied().sum();
     for a in a {
@@ -338,7 +249,7 @@ pub fn alias_scalar_lists(a: Vec<&'static mut i32>, b: Vec<&i32>) -> i32 {
 /// Exercise native borrow metadata through boxed scalars conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 #[allow(clippy::boxed_local)] // Exercise the actual boxed conversion.
 pub fn alias_boxed_scalars(
     a: Box<[Option<&'static mut i32>]>,
@@ -354,7 +265,7 @@ pub fn alias_boxed_scalars(
 /// Exercise native borrow metadata through boxed slices conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 #[allow(clippy::boxed_local)] // Exercise the actual boxed conversion.
 pub fn alias_boxed_slices(a: Box<[&'static mut [i32]]>, b: &i32) -> i32 {
     bump(a.into_vec()) + *b
@@ -363,7 +274,7 @@ pub fn alias_boxed_slices(a: Box<[&'static mut [i32]]>, b: &i32) -> i32 {
 /// Exercise native borrow metadata through nested scalars conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_nested_scalars(a: NestedScalarBorrow, b: &i32) -> i32 {
     for a in a.into_iter().flatten().flatten() {
         *a = *b;
@@ -374,7 +285,7 @@ pub fn alias_nested_scalars(a: NestedScalarBorrow, b: &i32) -> i32 {
 /// Exercise native borrow metadata through newtype scalars conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 #[allow(clippy::boxed_local)] // Exercise the actual boxed conversion.
 pub fn alias_newtype_scalars(a: Box<[Option<AliasBorrowedScalar>]>, b: &i32) -> i32 {
     for a in a.into_vec().into_iter().flatten() {
@@ -386,7 +297,7 @@ pub fn alias_newtype_scalars(a: Box<[Option<AliasBorrowedScalar>]>, b: &i32) -> 
 /// Exercise native borrow metadata through wrapped scalars conversions.
 /// @param a First scalar, vector, or list.
 /// @param b Second scalar, vector, or list.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_wrapped_scalars(a: Result<&mut i32, ()>, b: miniextendr_api::Missing<&i32>) -> i32 {
     if let (Ok(a), miniextendr_api::Missing::Present(b)) = (a, b) {
         *a = *b;
@@ -394,25 +305,13 @@ pub fn alias_wrapped_scalars(a: Result<&mut i32, ()>, b: miniextendr_api::Missin
     1
 }
 
-/// Check boxed native borrows before worker dispatch.
-/// @param a Optional mutable scalars in a list.
-/// @param b Optional shared slices in a list.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-#[allow(clippy::boxed_local)] // Exercise the actual boxed conversion.
-pub fn alias_worker_boxed_scalars(
-    a: Box<[Option<&'static mut i32>]>,
-    b: Box<[Option<&'static [i32]>]>,
-) -> i32 {
-    alias_boxed_scalars(a, b)
-}
 // endregion
 
 // region: Tuple fields (#2014)
 
 /// Reject a tuple whose mutable and shared fields borrow one R vector.
 /// @param pair List of a mutable integer scalar and a shared one.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_internal(pair: (&mut i32, &i32)) -> i32 {
     *pair.0 += *pair.1;
     *pair.0
@@ -421,7 +320,7 @@ pub fn alias_tuple_internal(pair: (&mut i32, &i32)) -> i32 {
 /// Reject a tuple field that aliases another parameter.
 /// @param pair List of a mutable integer vector and a tag.
 /// @param other Shared integer vector.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_and_direct(pair: (&mut [i32], String), other: &[i32]) -> i32 {
     let (values, _tag) = pair;
     values.fill(other.iter().sum());
@@ -431,7 +330,7 @@ pub fn alias_tuple_and_direct(pair: (&mut [i32], String), other: &[i32]) -> i32 
 /// Reject fields of two tuple parameters that borrow one R vector.
 /// @param left List of a mutable integer scalar and a tag.
 /// @param right List of a shared integer scalar and a tag.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_pairs(left: (&mut i32, String), right: (&i32, String)) -> i32 {
     *left.0 = *right.0;
     *left.0
@@ -440,7 +339,7 @@ pub fn alias_tuple_pairs(left: (&mut i32, String), right: (&i32, String)) -> i32
 /// Reject aliases between fields of nested tuples.
 /// @param nested List of two lists: an owned and a mutable integer scalar,
 ///   then a shared integer scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_nested(nested: ((i32, &mut i32), (&i32,))) -> i32 {
     let ((owned, target), (source,)) = nested;
     *target = owned + *source;
@@ -452,7 +351,7 @@ type AliasTuplePair = (&'static mut i32, &'static i32);
 
 /// Reject tuple aliases through a type alias of the tuple.
 /// @param pair List of a mutable integer scalar and a shared one.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_type_alias(pair: AliasTuplePair) -> i32 {
     *pair.0 += *pair.1;
     *pair.0
@@ -463,7 +362,7 @@ pub fn alias_tuple_type_alias(pair: AliasTuplePair) -> i32 {
 /// @param pair List of a list of mutable integer vectors and a shared integer
 ///   vector.
 /// @param other Mutable integer vector.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_list_field(
     pair: (Vec<&'static mut [i32]>, &'static [i32]),
     other: &'static mut [i32],
@@ -474,7 +373,7 @@ pub fn alias_tuple_list_field(
 
 /// Accept an owned field next to a mutable field from the same R vector.
 /// @param pair List of an owned integer and a mutable integer scalar.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_owned_mut(pair: (i32, &mut i32)) -> i32 {
     *pair.1 += pair.0;
     *pair.1
@@ -482,25 +381,17 @@ pub fn alias_tuple_owned_mut(pair: (i32, &mut i32)) -> i32 {
 
 /// Accept shared fields that borrow the same R vector.
 /// @param pair List of two shared integer scalars.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_shared(pair: (&i32, &i32)) -> i32 {
     *pair.0 + *pair.1
 }
 
 /// Accept shared double fields beside a mutable integer field.
 /// @param triple List of a mutable integer scalar and two shared doubles.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn alias_tuple_mixed_types(triple: (&mut i32, &f64, &f64)) -> f64 {
     *triple.0 += 1;
     f64::from(*triple.0) + *triple.1 + *triple.2
 }
 
-/// Check tuple field aliases before worker dispatch.
-/// @param pair List of a mutable integer scalar and a shared one.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker)]
-pub fn alias_worker_tuple_internal(pair: (&mut i32, &i32)) -> i32 {
-    *pair.0 += *pair.1;
-    *pair.0
-}
 // endregion

@@ -1,4 +1,4 @@
-//! Test: unknown unsafe() option on method.
+//! Test: `unsafe(...)` is not a method option.
 
 use miniextendr_macros::miniextendr;
 

@@ -87,24 +87,6 @@ test_that("Checked<Option<i32>> accepts NULL and checks the rest", {
   expect_r_check(caught(f("a")), "n", "'n' must be NULL or integer")
 })
 
-test_that("Checked<&str> on the worker thread", {
-  skip_if_missing_feature("worker-thread")
-  f <- miniextendr:::pm_checked_str_worker
-  expect_identical(f("ab"), "AB")
-  expect_r_check(caught(f(1)), "s", "'s' must be character")
-})
-
-test_that("NonNa<&str> on the worker thread is checked before dispatch", {
-  skip_if_missing_feature("worker-thread")
-  f <- miniextendr:::pm_non_na_str_worker
-  expect_identical(f("ab"), "AB")
-  expect_r_check(caught(f(NA_character_)), "s", "'s' must not be NA")
-  direct <- .Call(miniextendr:::C_miniextendr_pm_non_na_str_worker, NULL, NA_character_)
-  expect_identical(direct$kind, "conversion")
-  expect_match(direct$error, "'s' must not be NA", fixed = TRUE)
-  expect_identical(.Call(miniextendr:::C_miniextendr_pm_non_na_str_worker, NULL, "cd"), "CD")
-})
-
 test_that("a caller entry point's Unchecked parameter names the helper's call", {
   helper <- function(n) miniextendr:::pm_caller_unchecked(n, .call = parent.frame())
   expect_identical(helper(1L), 2L)

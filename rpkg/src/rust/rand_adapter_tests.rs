@@ -42,7 +42,7 @@ pub fn rand_rrng_range(n: i32, low: f64, high: f64, guard: &RngGuard) -> Vec<f64
 /// Sample n standard normal values from an `RRng` made inside `with_rng`, in
 /// a function without `rng`: `rnorm(n)` for the same seed.
 /// @param n Integer number of values to generate.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rand_rrng_with_rng_normal(n: i32) -> Vec<f64> {
     with_rng(|guard| {
         let mut rng = guard.rng();

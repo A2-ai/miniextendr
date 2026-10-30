@@ -9,7 +9,7 @@
 //! reference is absolute. The invocations live in `common/every_macro.rs`,
 //! shared with `glob_import_method_calls.rs`. rpkg's
 //! `shadowed_std_names_tests.rs` covers the paths that need features this
-//! crate doesn't have (worker, vctrs, rayon, serde).
+//! crate doesn't have (vctrs, rayon, serde).
 #![allow(dead_code, unused_macros, non_camel_case_types)]
 
 // region: shadows

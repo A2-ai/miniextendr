@@ -65,7 +65,6 @@ fn bench_core(ctx: &ProjectContext, args: &[String], quiet: bool) -> Result<()> 
         "translate",
         "strings",
         "externalptr",
-        "worker",
         "unwind_protect",
     ];
     let mut cmd_args: Vec<String> = vec![

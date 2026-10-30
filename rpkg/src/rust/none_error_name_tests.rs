@@ -3,38 +3,18 @@
 //! The fixtures that raise return `Option<()>`, which raises on `None` in
 //! every path. A `None` of `Option<scalar>` is a typed `NA` instead (#1415),
 //! so it would not reach the message these tests check.
-//!
-//! The worker fixtures need a worker feature, which rpkg's default build
-//! (`just test-rpkg`) leaves off; the R install enables `worker-thread`.
-
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
 
 use miniextendr_api::{ExternalPtr, miniextendr};
 
 /// @noRd
-#[miniextendr(noexport, no_worker, r_name = "none_named_main")]
+#[miniextendr(noexport, r_name = "none_named_main")]
 pub fn none_rust_main() -> Option<()> {
     None
 }
 
 /// @noRd
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(noexport, worker, r_name = "none_named_worker")]
-pub fn none_rust_worker() -> Option<()> {
-    None
-}
-
-/// @noRd
-#[miniextendr(noexport, no_worker, postfix = "_entry")]
+#[miniextendr(noexport, postfix = "_entry")]
 pub fn none_postfix_main() -> Option<()> {
-    None
-}
-
-/// @noRd
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(noexport, worker, postfix = "_entry")]
-pub fn none_postfix_worker() -> Option<()> {
     None
 }
 
@@ -61,27 +41,6 @@ impl NoneNameLookup {
 
     #[miniextendr(postfix = "_entry")]
     pub fn find(&self) -> Option<()> {
-        None
-    }
-}
-
-// The worker methods, in a second impl block of the same class (#1776),
-// which repeats the class settings.
-/// @noRd
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(env, noexport)]
-impl NoneNameLookup {
-    #[miniextendr(env(worker), r_name = "load_value")]
-    pub fn rust_load() -> Option<()> {
-        #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
-        assert!(!miniextendr_api::worker::is_r_main_thread());
-        None
-    }
-
-    #[miniextendr(env(worker), postfix = "_entry")]
-    pub fn load() -> Option<()> {
-        #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
-        assert!(!miniextendr_api::worker::is_r_main_thread());
         None
     }
 }

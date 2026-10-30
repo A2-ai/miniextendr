@@ -108,9 +108,7 @@
 //! ## Thread Safety
 //!
 //! The generated vtable is a static constant, safe to access from any thread.
-//! Trait shims now mirror inherent impls: instance methods stay on the main
-//! thread, while static trait methods run on the worker thread unless
-//! `main_thread` is explicitly requested.
+//! Trait shims, like inherent methods, run on R's main thread.
 
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident};
@@ -141,11 +139,6 @@ struct TraitMethod {
     has_self: bool,
     /// Whether receiver is `&mut self` (vs `&self`). Only meaningful if `has_self` is true.
     is_mut: bool,
-    /// When true, dispatches to the worker thread via `run_on_worker`.
-    /// Set by explicit `#[miniextendr(worker)]` or the `worker-default` feature flag.
-    worker: bool,
-    /// When true, forces execution on R's main thread via `unsafe(main_thread)`.
-    unsafe_main_thread: bool,
     /// Enable automatic type coercion for all parameters via `Rf_coerceVector`.
     coerce: bool,
     /// Check for R user interrupts (`R_CheckUserInterrupt`) before calling the method.
@@ -987,8 +980,6 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 invisible,
                 has_self,
                 is_mut,
-                worker: cfg!(feature = "worker-default"),
-                unsafe_main_thread: false,
                 coerce: false,
                 check_interrupt: false,
                 rng: false,

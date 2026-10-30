@@ -22,15 +22,9 @@ folds that location into the message via
 `unwind_protect::panic_message_with_location`, producing the trailing
 `\n(at file:line)`.
 
-The hook fires on the *panicking* thread, so the slot is per-thread:
-
-- **Main-thread `#[miniextendr]` fns** (anything taking a `SEXP` / borrowed R
-  view, returning a `SEXP`, taking `...`, or `check_interrupt`) — panic, hook,
-  and `catch_unwind` all run on main; the location is read on main.
-- **Worker-thread `#[miniextendr(worker)]` fns** — the panic and hook fire on
-  the worker; the location is folded **once, at the worker (origin) thread**
-  (`worker.rs`), and the finished message crosses back to main verbatim. No
-  double-append, no clobber by main-side re-panics.
+The hook fires on the *panicking* thread, so the slot is per-thread. Every
+`#[miniextendr]` body runs on R's main thread: the panic, the hook and
+`catch_unwind` all run there, and the location is read there.
 
 ## Which errors carry a location
 
@@ -67,7 +61,7 @@ contained a location); the only observable difference was the
 is exactly what makes the newly-surfaced location correct.
 
 The sibling automatic `#[inline(never)]` injection is unrelated and stays — it
-keeps function names in stack traces and preserves the worker/unwind boundary.
+keeps function names in stack traces and preserves the unwind boundary.
 
 ## Opting into the stderr traceback
 

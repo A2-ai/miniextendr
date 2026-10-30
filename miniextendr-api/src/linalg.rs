@@ -16,9 +16,8 @@
 //!   error (a longjmp) on an invalid argument, is therefore never reached.
 //! - Zero-size cases are answered in Rust without calling Fortran.
 //!
-//! Like the raw routines, they must run on R's main thread (from a
-//! miniextendr worker the call is routed there) in a process where R is
-//! initialised: inside an R package, or after `miniextendr-engine` has
+//! Like the raw routines, they must run on R's main thread in a process where
+//! R is initialised: inside an R package, or after `miniextendr-engine` has
 //! started R in a standalone binary.
 //!
 //! ```ignore
@@ -157,8 +156,7 @@ fn elements(what: &'static str, rows: usize, cols: usize) -> Result<usize, Linal
 ///
 /// # Panics
 ///
-/// Off R's main thread and outside a miniextendr worker (the checked
-/// [`sys::dgemm_`] cannot route the call).
+/// Off R's main thread (through the checked [`sys::dgemm_`]).
 pub fn matrix_product(
     m: usize,
     n: usize,
@@ -229,8 +227,7 @@ pub fn matrix_product(
 ///
 /// # Panics
 ///
-/// Off R's main thread and outside a miniextendr worker (the checked
-/// [`sys::dgesv_`] cannot route the call).
+/// Off R's main thread (through the checked [`sys::dgesv_`]).
 pub fn solve(n: usize, nrhs: usize, a: &[f64], b: &[f64]) -> Result<Vec<f64>, LinalgError> {
     let (n_int, nrhs_int) = (blas_int("n", n)?, blas_int("nrhs", nrhs)?);
     check_len("a", n, n, a)?;

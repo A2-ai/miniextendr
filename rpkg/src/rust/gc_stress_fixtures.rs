@@ -427,9 +427,7 @@ pub fn gc_stress_altrep_guarded_bridges() -> SEXP {
 /// is built, survives a collection; then a clone-policy copy, the only root
 /// of its sidecar once the original is unprotected, survives one too. No
 /// arguments, for the no-arg gctorture sweep (#430).
-// Sidecar accessors run on R's main thread only: stay there under
-// `worker-default`.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_altrep_sidecar() {
     use crate::altrep_sidecar_tests::{
         SidecarVector, altrep_cloned_sidecar_ints, altrep_cloned_sidecar_tag, make_sidecar_altrep,
@@ -3327,7 +3325,7 @@ pub fn gc_stress_factor_labels() -> i32 {
         .map(|i| if i % 7 == 0 { NA } else { i % 3 + 1 })
         .collect();
 
-    // SAFETY: all R API calls happen on the worker thread (this fixture is
+    // SAFETY: all R API calls happen on R's main thread (this fixture is
     // invoked via the #[miniextendr] wrapper), and every transient
     // allocation is protected before the next allocation can run GC.
     let df = unsafe {
@@ -4296,133 +4294,6 @@ pub fn gc_stress_rcow_roundtrip() {
 
 // endregion
 
-// region: R longjmp inside with_r_thread from a worker job (#733)
-
-/// Drive an **R error raised inside a `with_r_thread` closure from a
-/// `run_on_worker` job** end-to-end, so the `cleanup_handler` /
-/// `R_ContinueUnwind` path in `worker.rs` (the worker-job R-longjmp branch)
-/// is exercised under R's normal top-level error handler.
-///
-/// This is the #733 follow-up to #731's `worker_channel_stress.rs` cargo
-/// suite. That cargo path **cannot** safely cover this case: the cargo-test R
-/// embedding (`r_test_utils.rs`) runs raw FFI jobs in a `for` loop with no R
-/// top-level handler, so `R_ContinueUnwind(token)` would resume an unwind with
-/// nowhere to land — a likely segfault rather than a clean test. Inside an
-/// rpkg testthat run R's normal error handler is in place, so the resumed
-/// unwind lands at the top level and the framework re-raises it as a tagged
-/// condition.
-///
-/// Shape (entirely synthesised internally so it's callable with no args, per
-/// the no-arg gctorture-fixture convention, #430):
-///
-/// 1. The fn returns `SEXP`, so the macro picks the **MainThread** strategy:
-///    the body runs on R's main thread and is the thread that drives
-///    `dispatch_to_worker`'s event loop (no re-entrant `run_on_worker`).
-/// 2. `run_on_worker` moves the closure onto the worker thread.
-/// 3. From the worker, `with_r_thread` routes back to the main thread, which
-///    calls `Rf_error_unchecked` — an R error. R `R_UnwindProtect`'s
-///    `cleanup_handler` fires, sends `Err(msg)` to the worker so it can't
-///    deadlock on `response_rx.recv()`, then `R_ContinueUnwind`s the longjmp.
-///    (`_unchecked` is valid here: we're inside a `with_r_thread` callback —
-///    MXL301-permitted context.)
-/// 4. `R_ContinueUnwind` resumes the *original* R `Rf_error` longjmp on the
-///    main thread, which lands directly at R's top level. So the surfaced
-///    condition is a **bare `simpleError`** carrying the original message — the
-///    macro's tagged-condition transport (`rust_error`) is bypassed entirely,
-///    and the `run_on_worker` call below **never returns** on this path. This
-///    answers the #733 open question on how the condition is layered. The
-///    `match` below is therefore a defensive guard, not the live path.
-///
-/// The companion testthat test (`test-worker-longjmp.R`) asserts that the call
-/// errors and that the condition is a `simpleError` carrying the original
-/// message (and explicitly NOT a `rust_error`). Existing `test-worker.R`
-/// coverage of the same raw-`Rf_error` shape only matched the message text.
-#[miniextendr(noexport)]
-pub fn gc_stress_with_r_thread_stop() -> SEXP {
-    use miniextendr_api::worker::{run_on_worker, with_r_thread};
-
-    let outcome = run_on_worker(|| {
-        // On the worker: route back to the main thread and raise an R error.
-        // The error longjmps through R_UnwindProtect's cleanup_handler, which
-        // sends an Err to this worker job before R_ContinueUnwind resumes the
-        // unwind. The closure never returns normally.
-        with_r_thread::<_, ()>(|| unsafe {
-            // Deliberately raise a raw R error to exercise the worker-job
-            // R-longjmp path under test (#733). `_unchecked` is valid inside a
-            // `with_r_thread` callback (MXL301-permitted context); the raw
-            // `Rf_error` is the whole point of the fixture (MXL300).
-            // mxl::allow(MXL300, MXL301)
-            miniextendr_api::sys::Rf_error_unchecked(
-                c"%s".as_ptr(),
-                c"R error inside with_r_thread from a worker job".as_ptr(),
-            );
-        });
-        // Unreachable: with_r_thread above diverges via the R longjmp.
-        SEXP::nil()
-    });
-
-    // Defensive guard only: on the path under test, `R_ContinueUnwind` resumes
-    // the original R longjmp straight to top level, so `run_on_worker` above
-    // never returns and neither arm is reached. If the unwind behaviour ever
-    // changes so the worker's Err *does* propagate, surface it loudly rather
-    // than silently returning.
-    match outcome {
-        Err(msg) => panic!("{msg}"),
-        Ok(_) => panic!(
-            "gc_stress_with_r_thread_stop: worker job returned normally; \
-             the R longjmp path was not exercised"
-        ),
-    }
-}
-
-// endregion
-
-// region: worker re-usability after R longjmp + leak bound (#931)
-
-/// A normal `run_on_worker` round-trip that also routes through `with_r_thread`,
-/// returning a value the R side can assert on.
-///
-/// This is the *second* job in the #931 worker-re-usability test: the test first
-/// triggers an R longjmp through a worker job via [`gc_stress_with_r_thread_stop`]
-/// (which never returns — it resumes the original `Rf_error` straight to R's top
-/// level, see #733 / PR #930), catches that error at top level, then calls this
-/// fixture. If the worker thread were left poisoned by the unwind (its `recv()`
-/// loop not re-armed, thread-locals not cleared, a wedged channel), this second
-/// dispatch would hang, panic, or return the wrong value.
-///
-/// Shape: the fn returns `SEXP`, so the macro picks the **MainThread** strategy —
-/// the body is the thread that drives `dispatch_to_worker`'s event loop. It
-/// dispatches a closure to the worker, which routes a trivial computation back
-/// to the main thread via `with_r_thread`, then returns the sum. We assert the
-/// arithmetic is correct so a partially-corrupted worker (stale thread-local
-/// channels from the prior aborted job) surfaces as a wrong answer rather than a
-/// silent pass.
-///
-/// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
-/// (#430): it holds no SEXPs across allocations itself, but exercising the worker
-/// dispatch under GC pressure is cheap insurance.
-// Stays on R's main thread under `worker-default`: it calls `run_on_worker` itself.
-#[miniextendr(noexport, no_worker)]
-pub fn gc_stress_worker_roundtrip() -> i32 {
-    use miniextendr_api::worker::{run_on_worker, with_r_thread};
-
-    let outcome = run_on_worker(|| {
-        // Route a trivial computation back to the main thread, mirroring the
-        // structure of the longjmp fixture but on the success path. Summing the
-        // per-step results proves the worker→main→worker hand-off is intact.
-        let a = with_r_thread(|| 1_000i32);
-        let b = with_r_thread(move || a + 234);
-        a + b
-    });
-
-    match outcome {
-        Ok(sum) => sum,
-        Err(msg) => panic!("gc_stress_worker_roundtrip: worker dispatch failed: {msg}"),
-    }
-}
-
-// endregion
-
 // region: zero-copy &str argument borrow (#664)
 
 /// Production helper for the `&str` zero-copy argument-borrow path (#664).
@@ -5168,7 +5039,7 @@ pub fn gc_stress_deferred_conditions() -> Vec<i32> {
 
 /// Exercise serde return conversion at the generated boundary under GC pressure.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, no_worker, serialize)]
+#[miniextendr(noexport, serialize)]
 pub fn gc_stress_serialized_return() -> crate::serialize_attr_tests::SerializedRecord {
     crate::serialize_attr_tests::serialized_record_attr(41)
 }
@@ -5326,7 +5197,7 @@ impl ViewArgProbe for ViewArgHost {
 /// protection list, so it survives the collection through the View's root.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_trait_view_args() -> String {
     use miniextendr_api::gc_protect::ProtectScope;
     use miniextendr_api::{Rboolean, sys};
@@ -5374,7 +5245,7 @@ pub fn gc_stress_trait_view_args() -> String {
 // region: borrowed list alias preflight (#1252)
 
 /// Check nested-list alias rejection while R allocations run under gctorture.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_slice_alias_guard() {
     use miniextendr_api::gc_protect::ProtectScope;
     use miniextendr_api::{IntoR, SexpExt};
@@ -5431,7 +5302,7 @@ pub fn gc_stress_slice_alias_guard() {
 // region: tuple field alias preflight (#2014)
 
 /// Check tuple-field alias rejection while R allocations run under gctorture.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_tuple_alias_guard() {
     use miniextendr_api::gc_protect::ProtectScope;
     use miniextendr_api::{IntoR, SexpExt};
@@ -6022,7 +5893,7 @@ impl miniextendr_api::altrep_traits::AltString for GcTransientBorrowString {
 miniextendr_api::impl_inferbase_string!(GcTransientBorrowString);
 
 /// Retain lazy ALTSTRING elements through scalar and vector borrows and GC.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_uncached_string_borrows() {
     use miniextendr_api::{ProtectScope, ProtectedStrVec, StrVec, TryFromRoot};
     use std::borrow::Cow;
@@ -6120,8 +5991,7 @@ fn check_pending_list(list: SEXP, tag: i32, path: &str) {
 /// `ExternalPtr::new` allocates the protection list and the pointer before
 /// writing it. No arguments — picked up by the fast `gctorture(TRUE)` no-arg
 /// sweep (#430).
-// Stays on R's main thread under `worker-default`: it holds R values.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_sidecar_pending() {
     use miniextendr_api::externalptr::{ExternalPtr, Sidecar};
 
@@ -6146,7 +6016,7 @@ pub fn gc_stress_sidecar_pending() {
 /// points: shared references rooted for the call (across a collection in
 /// `converted_refs_strings`), a mutable one updated in place, and the alias
 /// check refusing one vector passed as both.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_converted_references() {
     use crate::converted_reference_tests::{
         C_miniextendr_converted_refs_alias_pair, C_miniextendr_converted_refs_describe,
@@ -6243,9 +6113,8 @@ fn reload_value(x: SEXP) -> OwnedProtect {
 /// attached; then refuses a `SavedPositive` whose save does not decode,
 /// building the refusal and its parent. No arguments — picked up by the fast
 /// `gctorture(TRUE)` no-arg sweep (#430).
-// Stays on R's main thread under `worker-default`: it holds R values.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_saved_value() {
     use crate::saved_value_tests::{SavedPositive, SavedR6};
     use miniextendr_api::TryFromSexp;
@@ -6290,9 +6159,8 @@ pub fn gc_stress_saved_value() {
 /// soon as it is made, and the decoder walks it (#2256). Saves the value
 /// again before and after it is attached. No arguments — picked up by the
 /// fast `gctorture(TRUE)` no-arg sweep (#430).
-// Stays on R's main thread under `worker-default`: it holds R values.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_saved_shapes() {
     use crate::saved_value_tests::{SavedFloats, SavedShapes};
     use miniextendr_api::TryFromSexp;
@@ -6321,9 +6189,8 @@ pub fn gc_stress_saved_shapes() {
 /// internally tagged enum by token (#2256). Saves the value again before and
 /// after it is attached. No arguments — picked up by the fast
 /// `gctorture(TRUE)` no-arg sweep (#430).
-// Stays on R's main thread under `worker-default`: it holds R values.
 #[cfg(feature = "serde")]
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn gc_stress_saved_robject() {
     use crate::saved_value_tests::{SavedEnv, SavedHolder};
     use miniextendr_api::TryFromSexp;

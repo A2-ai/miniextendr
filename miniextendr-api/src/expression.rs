@@ -247,7 +247,7 @@ impl REnv {
     /// R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
     /// function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
     /// closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard,
-    /// a connection callback, a [`with_r_thread`](crate::worker::with_r_thread)
+    /// a connection callback, a [`with_r_thread`](crate::with_r_thread)
     /// closure.
     ///
     /// # Returns
@@ -990,7 +990,7 @@ unsafe fn quote(value: SEXP) -> SEXP {
 ///   function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
 ///   closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard
 ///   (not `unsafe`, which catches nothing), a connection callback, a
-///   [`with_r_thread`](crate::worker::with_r_thread) closure.
+///   [`with_r_thread`](crate::with_r_thread) closure.
 /// - `expr` and `env` stay rooted for the call; `env` is an environment.
 ///
 /// # Returns
@@ -1043,7 +1043,7 @@ pub unsafe fn eval_with_handlers(expr: SEXP, env: SEXP) -> SEXP {
 ///   function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
 ///   closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard
 ///   (not `unsafe`, which catches nothing), a connection callback, a
-///   [`with_r_thread`](crate::worker::with_r_thread) closure.
+///   [`with_r_thread`](crate::with_r_thread) closure.
 /// - `expr` and `env` stay rooted for the call; `env` is an environment.
 ///
 /// # Returns
@@ -1075,11 +1075,9 @@ pub unsafe fn try_eval_with_handlers(expr: SEXP, env: SEXP) -> Result<SEXP, REva
 ///
 /// # Safety
 ///
-/// - Must be called from (or routed to) the R main thread. The parse and eval
-///   FFI calls go through the checked `#[r_ffi_checked]` variants, which
-///   serialize onto the R thread via `with_r_thread`, so calling from a
-///   worker thread is sound — but the returned SEXP must not outlive the R
-///   session.
+/// - Must be called from the R main thread. The parse and eval FFI calls go
+///   through the checked `#[r_ffi_checked]` variants, which panic on any other
+///   thread. The returned SEXP must not outlive the R session.
 /// - `env` must be a valid ENVSXP.
 ///
 /// # Returns
@@ -1685,7 +1683,7 @@ unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
 ///
 /// # Safety
 ///
-/// R's main thread (the checked FFI routes a worker's call there);
+/// R's main thread (the checked FFI panics on any other);
 /// `body(body_data)` is sound to call, and what it reads is rooted.
 unsafe fn try_call_raw(body: TryBody, body_data: *mut c_void) -> Caught {
     /// `R_ToplevelExec`'s callback. A jump out of it crosses no Rust frame
@@ -1709,8 +1707,8 @@ unsafe fn try_call_raw(body: TryBody, body_data: *mut c_void) -> Caught {
 ///
 /// # Safety
 ///
-/// R's main thread (the checked FFI routes a worker's call there); `expr`
-/// and `env` rooted.
+/// R's main thread (the checked FFI panics on any other); `expr` and `env`
+/// rooted.
 unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
     let mut args = EvalArgs { expr, env };
     unsafe { try_call_raw(eval_body, (&raw mut args).cast()) }

@@ -1001,8 +1001,8 @@ use std::marker::PhantomData;
 /// # Thread Safety
 ///
 /// `RVecStorage` is `!Send` and `!Sync` because accessing R memory requires
-/// being on R's main thread. Functions using `RDVector`/`RDMatrix` automatically
-/// route to the main thread via the `#[miniextendr]` macro.
+/// being on R's main thread, where `#[miniextendr]` functions using
+/// `RDVector`/`RDMatrix` run.
 ///
 /// # ALTREP
 ///

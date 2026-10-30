@@ -48,7 +48,7 @@ pub(crate) fn wrapper_gen_mode() -> bool {
 ///
 /// This performs all initialization steps in the correct order:
 ///
-/// 1. Record main thread ID (and optionally spawn worker thread)
+/// 1. Record main thread ID
 /// 2. Enter R unwind protection and install the panic hook
 /// 3. Assert UTF-8 locale
 /// 4. Set ALTREP package name
@@ -66,7 +66,7 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
     // The guard's checked R calls need the runtime's main-thread identity.
     // Runtime initialization is pure Rust; the generated R_init entry point
     // catches a panic here before it can escape into R.
-    crate::worker::miniextendr_runtime_init();
+    crate::miniextendr_runtime_init();
 
     crate::unwind_protect::with_r_unwind_protect_or_raise(
         || unsafe {

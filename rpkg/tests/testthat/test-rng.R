@@ -60,30 +60,6 @@ test_that("rng_with_interrupt works (main thread + RNG)", {
   expect_length(result1, 5)
 })
 
-test_that("rng_worker_uniform works (explicit worker + RNG)", {
-  # rng_worker_uniform requires the worker-thread feature. Probe the DLL's
-  # registration table directly: package_init locks symbols
-  # (R_forceSymbols), so the PACKAGE-string form of getNativeSymbolInfo
-  # always errors and had silently skipped this test since its addition.
-  # C symbols are crate-prefixed since #1273 (C_miniextendr_...).
-  skip_if_not(
-    !is.null(tryCatch(
-      getNativeSymbolInfo("C_miniextendr_rng_worker_uniform",
-                          getLoadedDLLs()[["miniextendr"]]),
-      error = function(e) NULL
-    )),
-    "worker-thread feature not enabled"
-  )
-  set.seed(42)
-  result1 <- rng_worker_uniform(5L)
-
-  set.seed(42)
-  result2 <- rng_worker_uniform(5L)
-
-  expect_equal(result1, result2)
-  expect_length(result1, 5)
-})
-
 test_that("rng_guard_test (manual RngGuard) works", {
   set.seed(42)
   result1 <- rng_guard_test(5L)
@@ -211,10 +187,6 @@ test_that("the guard parameter is no R formal", {
   expect_identical(names(formals(rng_normal)), "n")
   expect_identical(names(formals(rng_int)), c("n", "max"))
   expect_length(formals(rng_bool), 0L)
-})
-
-test_that("a guard parameter keeps a worker function on R's main thread", {
-  expect_true(rng_guard_worker_on_main())
 })
 
 test_that("with_rng loads the state when called and saves it", {

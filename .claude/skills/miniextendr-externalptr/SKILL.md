@@ -213,9 +213,8 @@ ExternalPtr::new(value)
   6. Return ExternalPtr { sexp, cached_ptr, _marker }
 ```
 
-`ExternalPtr::new` uses `with_r_thread` so it can be called safely from the
-worker thread. The SEXP creation and finalizer registration happen on R's main
-thread; the Rust allocation happens on the calling thread.
+`ExternalPtr::new` must run on R's main thread: the SEXP creation and finalizer
+registration go through `with_r_thread`, which panics on any other thread.
 
 ### Accessing the wrapped value
 

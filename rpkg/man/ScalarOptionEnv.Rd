@@ -25,8 +25,6 @@
 \alias{ScalarOptionEnv$optional_os_string}
 \alias{ScalarOptionEnv$optional_self}
 \alias{ScalarOptionEnv$optional_strict}
-\alias{ScalarOptionEnv$optional_worker}
-\alias{ScalarOptionEnv$optional_worker_strict}
 \title{ScalarOptionEnv Class}
 \usage{
 ScalarOptionEnv

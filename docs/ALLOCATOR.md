@@ -75,7 +75,6 @@ Allocator R API calls stay on the main thread or are rejected:
 | Calling Thread | Behavior |
 |----------------|----------|
 | R main thread | Executes directly (default path) |
-| Worker thread (with `worker-thread` feature, inside `run_on_worker`) | Routes via `with_r_thread` |
 | Other threads (Rayon, spawned) | **Panics** |
 
 The panic on arbitrary threads is intentional. R's C API is not thread-safe,
@@ -90,13 +89,11 @@ If this happens:
 
 - **Inside `with_r_unwind_protect`** (default path): `R_UnwindProtect` catches
   the longjmp, Rust destructors run normally
-- **Inside `run_on_worker`** (with `worker-thread` feature): same protection
-  via `R_UnwindProtect`
 - **Outside protected context**: Rust destructors are **skipped**, causing resource
   leaks (files, locks, etc.)
 
-Best practice: use `RAllocator` inside `with_r_unwind_protect` or the worker
-thread pattern, where unwind protection is active.
+Best practice: use `RAllocator` inside `with_r_unwind_protect` (every
+`#[miniextendr]` body), where unwind protection is active.
 
 ### Protection Strategy
 

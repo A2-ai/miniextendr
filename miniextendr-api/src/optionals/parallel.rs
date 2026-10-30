@@ -33,7 +33,7 @@
 //!
 //! See `docs/RAYON.md` ("Controlling parallelism from R") for the full
 //! design and a decision guide comparing this to R-level parallelism
-//! (future/mirai) and worker-thread task queues.
+//! (future/mirai).
 
 use std::sync::Once;
 

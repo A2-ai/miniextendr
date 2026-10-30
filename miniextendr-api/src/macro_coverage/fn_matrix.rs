@@ -11,9 +11,6 @@
 //! Every `MiniextendrFnAttrs` option has at least one atomic fixture,
 //! and common combinations are also covered.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use crate::SEXP;
 use crate::miniextendr;
 
@@ -139,11 +136,6 @@ pub(crate) fn cov_fn_attr_check_interrupt(n: i32) -> i32 {
     n * 2
 }
 
-#[miniextendr(worker)]
-pub(crate) fn cov_fn_attr_worker(x: i32) -> i32 {
-    x
-}
-
 #[miniextendr(rng)]
 pub(crate) fn cov_fn_attr_rng(x: i32) -> i32 {
     x
@@ -159,7 +151,7 @@ pub(crate) fn cov_fn_lifecycle_simple(x: i32) -> i32 {
     x
 }
 
-#[miniextendr(lifecycle(stage = "deprecated", when = "0.9.0", with = "cov_fn_attr_worker()"))]
+#[miniextendr(lifecycle(stage = "deprecated", when = "0.9.0", with = "cov_fn_attr_rng()"))]
 pub(crate) fn cov_fn_lifecycle_full(x: i32) -> i32 {
     x
 }
@@ -171,29 +163,6 @@ pub(crate) fn cov_fn_param_default(#[miniextendr(default = "1L")] x: i32) -> i32
 // endregion
 
 // region: Attribute option: combinations
-
-#[miniextendr(worker, invisible)]
-pub(crate) fn cov_combo_worker_invisible(x: i32) -> i32 {
-    x
-}
-
-#[miniextendr(worker, visible)]
-pub(crate) fn cov_combo_worker_visible() {}
-
-#[miniextendr(worker, coerce)]
-pub(crate) fn cov_combo_worker_coerce(x: u16) -> i32 {
-    x as i32
-}
-
-#[miniextendr(worker, rng)]
-pub(crate) fn cov_combo_worker_rng(x: i32) -> i32 {
-    x
-}
-
-#[miniextendr(worker, unwrap_in_r)]
-pub(crate) fn cov_combo_worker_unwrap(x: i32) -> Result<i32, &'static str> {
-    Ok(x)
-}
 
 #[miniextendr(visible, check_interrupt)]
 pub(crate) fn cov_combo_visible_interrupt() {}

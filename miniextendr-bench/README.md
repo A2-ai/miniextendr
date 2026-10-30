@@ -28,7 +28,7 @@ Some selected targets:
 - `translate`: string extraction costs
 - `trait_abi`: mx_erased trait dispatch (vtable query + method calls)
 
-Many others cover conversions, FFI calls, ExternalPtr, ALTREP, worker routing, and more.
+Many others cover conversions, FFI calls, ExternalPtr, ALTREP, and more.
 
 ## Publishing to CRAN
 
@@ -74,12 +74,12 @@ grep '^version' ../Cargo.toml | head -1
 just bench
 
 # Run specific benchmark
-just bench --bench worker
+just bench --bench ffi_calls
 
 # Compare against baseline (divan feature)
-cargo bench --bench worker -- --save-baseline main
+cargo bench --bench ffi_calls -- --save-baseline main
 # ... make changes ...
-cargo bench --bench worker -- --baseline main
+cargo bench --bench ffi_calls -- --baseline main
 ```
 
 ### Interpreting Results
@@ -102,7 +102,6 @@ The benchmarks use [divan](https://github.com/nvzqz/divan) which reports:
 
 | Benchmark | Focus |
 |-----------|-------|
-| `worker` | Worker thread routing overhead |
 | `ffi_calls` | Raw R FFI call latency |
 | `rffi_checked` | Checked FFI wrapper overhead |
 | `into_r` / `from_r` | Type conversion costs |

@@ -44,7 +44,7 @@ Supported element types (`T`) are those implementing `RNativeType`:
 ```rust
 use miniextendr_api::rarray::RMatrix;
 
-// RMatrix parameters run on the main thread automatically (RArray is !Send)
+// Every #[miniextendr] function runs on R's main thread, where RMatrix is read
 #[miniextendr]
 pub fn matrix_sum(m: RMatrix<f64>) -> f64 {
     unsafe { m.as_slice().iter().sum() }
@@ -80,9 +80,8 @@ column_means(m)
 other threads because the underlying R APIs (`DATAPTR_RO`, etc.) must be called on
 the R main thread.
 
-Functions that accept `RArray`, `RMatrix`, or `RVector` parameters run on the
-main thread automatically — these types are `!Send`, so the generated wrapper
-can only execute there. No attribute is required:
+Functions that accept `RArray`, `RMatrix`, or `RVector` parameters run on R's
+main thread, like every `#[miniextendr]` function. No attribute is required:
 
 ```rust
 #[miniextendr]
@@ -92,14 +91,14 @@ pub fn process(m: RMatrix<f64>) -> f64 {
 }
 ```
 
-To use the data in worker threads or parallel code, copy it first with `to_vec()`:
+To use the data on other threads or in parallel code, copy it first with `to_vec()`:
 
 ```rust
 #[miniextendr]
 pub fn parallel_process(m: RMatrix<f64>) -> f64 {
     // Copy on main thread -- Vec<f64> is Send
     let data: Vec<f64> = unsafe { m.to_vec() };
-    // data can now be passed to rayon, worker threads, etc.
+    // data can now be passed to rayon, spawned threads, etc.
     data.iter().sum()
 }
 ```

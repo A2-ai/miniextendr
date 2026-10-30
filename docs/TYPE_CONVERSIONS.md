@@ -517,14 +517,10 @@ pub fn sum(x: &[f64]) -> f64 {
 }
 ```
 
-Main-thread wrappers and trait shims convert explicit shared native slices,
+Generated wrappers and trait shims convert explicit shared native slices,
 and `Vec`s of them, through `TryFromRoot`, tying the borrow to the rooted call
 argument. Use the
 slice during that call; copy to `Vec` when the data must outlive it.
-
-Worker wrappers check the slice through `TryFromRoot` on R's main thread,
-copy it into a `Vec`, and borrow that copy inside the worker, so the worker
-never reads R memory.
 
 Raw `TryFromSexp` reference conversions and mutable slices still have
 unconstrained lifetimes (#1427). Their callers must keep the source rooted and
@@ -546,12 +542,9 @@ pub fn process_string(s: &str) -> String {
 }
 ```
 
-Main-thread wrappers and trait shims bind explicit `&str`, `Option<&str>`,
+Generated wrappers and trait shims bind explicit `&str`, `Option<&str>`,
 `Vec<&str>` and `Vec<Option<&str>>` inputs to the call's root through
-`TryFromRoot`. Worker wrappers convert
-`&str`, `Option<&str>`, `Vec<&str>` and `Vec<Option<&str>>` to the corresponding
-owned `String` forms on R's main thread, move that storage into the worker,
-and create the borrows there. The worker's strings do not point into R memory.
+`TryFromRoot`.
 
 Raw `TryFromSexp` character references still expose an unconstrained
 lifetime (#1427). R can collect a
@@ -582,7 +575,7 @@ The Rust data is heap-allocated and owned by R:
 5. Heap memory freed
 
 **Thread safety:** `ExternalPtr<T>` is `Send` when `T: Send`, allowing a
-sequential ownership handoff between worker and R threads. It is not `Sync` and
+sequential ownership handoff between threads. It is not `Sync` and
 must not be accessed concurrently. Operations that touch the SEXP or R's
 protection machinery are routed to the R thread.
 
@@ -962,10 +955,7 @@ keep the data.
 
 The macro recognizes these types by name. An alias or a newtype of a view has
 to take a `SEXP` and call `try_from_root` in the body; one of a reference
-converts through `TryFromSexp`. On the worker thread, shared references copy
-before dispatch: the character forms into `String` storage, the native
-references and slices into owned values or a `Vec`; the worker borrows the
-copy. Mutable references (`&mut [T]`, `Option<&mut [T]>`) and reference
+converts through `TryFromSexp`. Mutable references (`&mut [T]`, `Option<&mut [T]>`) and reference
 containers other than `Vec` still convert through `TryFromSexp` with an
 unconstrained lifetime (#1427).
 `Missing`, `Either` and `Result<_, ()>` of a view, and trait methods returning

@@ -6,11 +6,8 @@
 //!   struct; the `defer_*!` macros take the `warning!` grammar.
 //! - Signalling happens when the wrapper returns, in queue order, before the
 //!   value (or the error) reaches R; `conditionCall()` is the wrapper's call.
-//! - The rng, worker-thread and s3-method fixtures exercise the other C
-//!   wrapper templates and the class-wrapping R side.
-
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
+//! - The rng and s3-method fixtures exercise the RNG wrapper template and
+//!   the class-wrapping R side.
 
 use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
@@ -180,27 +177,6 @@ pub fn deferred_nested(f: miniextendr_api::SEXP) -> i32 {
     // call's warning reaches the same `withCallingHandlers` as this one's.
     let inner = unsafe { RCall::from_sexp(f).eval_with_handlers(sys::R_GlobalEnv) };
     i32::try_from_sexp(inner).expect("integer") + 100
-}
-
-// endregion
-
-// region: Worker-thread template
-
-#[cfg(feature = "worker-thread")]
-mod worker {
-    use super::PkgWarning;
-    use miniextendr_api::{defer_warning, miniextendr};
-
-    /// Worker-thread template: the push happens on the worker, the signal on
-    /// the main thread after the result is back. Returns 9.
-    #[miniextendr(worker)]
-    pub fn deferred_worker_value() -> i32 {
-        defer_warning(PkgWarning::Truncated {
-            dropped: 1,
-            total: 10,
-        });
-        9
-    }
 }
 
 // endregion

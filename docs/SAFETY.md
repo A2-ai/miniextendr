@@ -2,7 +2,7 @@
 
 This document explains the thread safety invariants and FFI safety requirements
 for miniextendr. Read this before contributing unsafe code or modifying the
-worker, thread, or unwind_protect modules.
+thread or unwind_protect modules.
 
 ## Overview
 
@@ -30,21 +30,6 @@ miniextendr provides abstractions to handle all three safely.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Optional: Worker Thread (with `worker-thread` feature)
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  R Main Thread                                                  │
-│  ├── .Call() entry points run on this thread                    │
-│  └── All R API calls must happen here                           │
-│                                                                 │
-│  Worker Thread (spawned by miniextendr_runtime_init)             │
-│  ├── User Rust code runs here via run_on_worker()               │
-│  ├── Panics are caught, converted to R errors                   │
-│  └── Uses with_r_thread() to call R APIs                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ### How Panics Are Caught
 
 R's longjmp-based error handling bypasses Rust destructors. miniextendr uses
@@ -54,14 +39,10 @@ R's longjmp-based error handling bypasses Rust destructors. miniextendr uses
 2. `R_UnwindProtect` catches R longjmps (e.g., `Rf_error`), runs cleanup
 3. Errors are converted to R errors after Rust cleanup completes
 
-With the `worker-thread` feature, the same safety is achieved via bidirectional
-channels: user code runs on the worker, `catch_unwind` catches panics, and
-`with_r_thread` routes R API calls to the main thread inside `R_UnwindProtect`.
-
 ### Thread Identification
 
 ```rust
-// worker.rs
+// thread.rs
 static R_MAIN_THREAD_ID: OnceLock<thread::ThreadId> = OnceLock::new();
 
 pub fn is_r_main_thread() -> bool {
@@ -75,48 +56,6 @@ pub fn is_r_main_thread() -> bool {
 **Invariant**: `R_MAIN_THREAD_ID` is set exactly once, from the main thread,
 during `miniextendr_runtime_init()`. Any call before initialization returns
 `false` (safe default - prevents R API calls from wrong thread).
-
-## Sendable Wrappers
-
-### `Sendable<T>`
-
-```rust
-// worker.rs
-#[repr(transparent)]
-pub struct Sendable<T>(pub T);
-unsafe impl<T> Send for Sendable<T> {}
-```
-
-**Why it's safe**: `Sendable` is used to transfer *owned* data between threads.
-The type system ensures:
-
-1. The value is moved into `Sendable` on one thread
-2. Transmitted to another thread via channels
-3. Extracted and used exclusively on the destination thread
-
-The data is never accessed concurrently - ownership transfers completely.
-
-**Use cases**:
-- Sending raw pointers for R API calls (`SendablePtr<T>`)
-- Sending allocation results back to callers (`SendableDataPtr`)
-- With `worker-thread`: sending closures to the main thread (`MainThreadWork`)
-
-### `SendablePtr<T>` (externalptr.rs)
-
-```rust
-type SendablePtr<T> = Sendable<NonNull<T>>;
-```
-
-Used to send pointer addresses between threads. The pointed-to data is only
-accessed on the main thread after the pointer arrives.
-
-### `SendableDataPtr` (allocator.rs)
-
-```rust
-type SendableDataPtr = Sendable<*mut u8>;
-```
-
-Similar to `SendablePtr` but allows null (for allocation failures).
 
 ## ExternalPtr<T> Thread Safety
 
@@ -159,17 +98,6 @@ R_UnwindProtect_C_unwind(
 2. Run via `R_UnwindProtect` (catches R longjmps)
 3. If R error: cleanup handler runs, then `R_ContinueUnwind` completes R's error handling
 4. If Rust panic: error message is extracted and converted to an R error
-
-**With `worker-thread` feature** (in `run_on_worker`):
-
-1. Wrap user code in `catch_unwind` on the worker thread
-2. R API calls route through `with_r_thread` → `R_UnwindProtect` on main thread
-3. If R error: cleanup handler sends error message to worker, then panics
-4. Worker thread catches the panic, drops resources, sends `Done(Err(...))`
-5. Main thread calls `R_ContinueUnwind` to let R complete its error handling
-
-**Key invariant**: The cleanup handler must not block. It sends an error message
-and panics immediately so `catch_unwind` can catch it.
 
 ## Continuation Token
 
@@ -214,52 +142,29 @@ The atomic refcount only coordinates restoration of the process-global value;
 it does not make R's global state, garbage collector, or API thread-safe.
 Writing R Extensions requires package R API calls to remain on the main thread
 and says packages must not change these stack globals for secondary-thread R
-calls. Package code must use worker/`with_r_thread` routing instead. Removal or
+calls. Package code must keep every R API call on the main thread instead. Removal or
 relocation of these misleading helpers is tracked in #1352.
 
 ## Allocator Safety
 
-The R-backed allocator (`allocator.rs`) has special requirements:
-
-1. **Main thread only**: Calls `Rf_allocVector` which must run on main thread
-2. **Thread routing**: Uses `with_r_thread_or_inline`, which runs inline on main thread,
-   routes via `with_r_thread` if worker context exists, and panics otherwise
-3. **No fallback**: Panics if called from arbitrary thread without worker context
-
-```rust
-fn with_r_thread_or_inline<R, F>(f: F) -> R {
-    if is_r_main_thread() {
-        f()
-    } else if has_worker_context() {
-        with_r_thread(f)
-    } else {
-        panic!("R allocator called from non-main thread without worker context");
-    }
-}
-```
+The R-backed allocator (`allocator.rs`) calls `Rf_allocVector`, which must run
+on R's main thread. Every allocator entry point goes through `with_r_thread`,
+which runs the allocation inline on the main thread and panics on any other
+thread (a `std::thread::spawn` thread, a Rayon worker).
 
 **longjmp warning**: `Rf_allocVector` can longjmp on allocation failure. The
-allocator is safe when used inside `run_on_worker` (which has unwind protection)
-but can cause issues in other contexts.
+allocator is safe inside a `#[miniextendr]` body (the generated wrapper runs it
+under `R_UnwindProtect`) but can cause issues in other contexts.
 
 ## FFI Function Categories
 
 All non-variadic functions in `ffi.rs` marked with `#[r_ffi_checked]` behave
-identically: they are routed to the main thread via `with_r_thread` when called
-from the worker thread. The return value is wrapped in `Sendable` and sent back
-to the caller. This applies to both value-returning functions
-(`Rf_ScalarInteger`, `Rf_allocVector`) and pointer-returning functions
-(`INTEGER`, `REAL`, `DATAPTR`).
-
-Pointer-returning functions are safe to route because the underlying SEXP must
-be GC-protected by the caller, and R's GC only runs during R API calls which
-are serialized through `with_r_thread`.
-
-By default (main thread execution), all checked wrappers run inline. In an
-opted-in worker body, they route through `with_r_thread`.
-
-Calling checked wrappers from any other non-main thread panics, whether or not
-the `worker-thread` infrastructure feature was compiled.
+identically: the checked variant calls `with_r_thread`, which runs the call
+inline on R's main thread and panics on any other thread. This applies to both
+value-returning functions (`Rf_ScalarInteger`, `Rf_allocVector`) and
+pointer-returning functions (`INTEGER`, `REAL`, `DATAPTR`). The `*_unchecked`
+variants skip the check for contexts already known to be on the main thread
+(ALTREP callbacks, `with_r_unwind_protect`, `with_r_thread` closures).
 
 ## Initialization Requirements
 
@@ -273,9 +178,7 @@ miniextendr_api::miniextendr_init!(pkgname);
 ```
 
 See [ENTRYPOINT.md](ENTRYPOINT.md) for the full init sequence. `package_init()`:
-1. Records `R_MAIN_THREAD_ID` for thread checks
-2. With `worker-thread` feature: spawns the worker thread and sets up channels
-3. Without `worker-thread`: only records the thread ID (no thread spawned)
+1. Records `R_MAIN_THREAD_ID` for thread checks (no thread is spawned)
 
 **Invariant**: Must be called from the main thread. Calling from another thread
 will cause all subsequent thread checks to be incorrect.
@@ -285,13 +188,12 @@ will cause all subsequent thread checks to be incorrect.
 | Component | Invariant |
 |-----------|-----------|
 | `R_MAIN_THREAD_ID` | Set once, from main thread, during init |
-| `Sendable<T>` | Value moved, not shared; accessed only at destination |
 | `ExternalPtr<T>` | `Send` when `T: Send`; not `Sync`; R API calls require main thread |
 | `AltrepSexp` | !Send + !Sync; materialization on main thread only |
 | SEXP (via `TryFromSexp`) | ALTREP auto-materialized before function body runs |
 | `R_CONTINUATION_TOKEN` | Created once, preserved for session lifetime |
 | `StackCheckGuard` | Legacy process-global restoration only; not package thread safety (#1352) |
-| Allocator | Main thread or worker context only |
+| Allocator | Main thread only; panic otherwise |
 | Pointer APIs | Main thread only; panic otherwise |
 
 ## Reporting Safety Issues

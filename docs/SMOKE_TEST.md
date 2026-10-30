@@ -177,7 +177,6 @@ plain `just devtools-test` skips them.
 just devtools-test-stress gc-stress
 just devtools-test-stress panic
 just devtools-test-stress thread
-just devtools-test-stress worker
 just devtools-test-stress trait-abi
 just devtools-test-stress externalptr
 just devtools-test-stress class-systems
@@ -194,7 +193,6 @@ just devtools-test-stress rayon
 | `gc-stress` | `test-gc-stress.R`, `test-gc-stress-fixtures.R` |
 | `panic` | `test-panic.R`, `test-panic-location.R`, `test-panic-telemetry.R` |
 | `thread` | `test-thread.R`, `test-thread-broken.R` |
-| `worker` | `test-worker.R`, `test-worker-longjmp.R` |
 | `trait-abi` | `test-trait-abi.R` |
 | `externalptr` | `test-externalptr.R`, `test-externalptr-*.R`, `test-vec-externalptr.R` |
 | `class-systems` | `test-class-systems.R` |

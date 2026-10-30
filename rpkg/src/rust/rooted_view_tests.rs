@@ -122,9 +122,9 @@ impl RootedViews for RootedViewHost {
 /// package takes: the View hands each view over as its SEXP and the shim binds
 /// it again to a root local to the shim.
 /// @noRd
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn rooted_views_through_view() -> Vec<String> {
-    // SAFETY: main thread (`no_worker`); the scope roots the wrapped handle
+    // SAFETY: R's main thread (the wrapper); the scope roots the wrapped handle
     // and both inputs for every View call.
     unsafe {
         let scope = ProtectScope::new();
@@ -151,14 +151,14 @@ pub fn rooted_views_through_view() -> Vec<String> {
 
 /// An ALTSTRING input that returns a fresh, uncached string on every read.
 /// @noRd
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn rooted_uncached_strings() -> miniextendr_api::SEXP {
     crate::gc_stress_fixtures::GcTransientBorrowString.into_sexp()
 }
 
 /// Borrow uncached strings through each generated parameter path, then collect.
 /// @noRd
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn rooted_uncached_strings_check(
     text: &str,
     optional: Option<&str>,

@@ -6,9 +6,6 @@
 //! - the same on impl methods, one class per class system
 //! - Manual RNG management with `RngGuard` and `with_rng`
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::miniextendr;
 use miniextendr_api::rng::{RngGuard, with_rng};
 
@@ -50,51 +47,29 @@ pub fn rng_with_interrupt(n: i32, rng: &RngGuard) -> Vec<f64> {
     (0..n).map(|_| rng.unif_rand()).collect()
 }
 
-/// Test RNG on worker thread (requires worker-thread feature).
-/// @param n Integer number of uniform values to generate.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(rng, worker)]
-pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
-    // SAFETY: the wrapper loaded the state before dispatching, and the
-    // checked FFI runs each draw on R's main thread (`with_r_thread`). No
-    // guard reaches a worker body (it is `!Send`), so this fixture draws
-    // through the raw FFI.
-    (0..n)
-        .map(|_| unsafe { miniextendr_api::sys::unif_rand() })
-        .collect()
-}
-
-/// A `&RngGuard` parameter keeps the call on R's main thread under `worker`.
-#[miniextendr(rng, worker)]
-pub fn rng_guard_worker_on_main(rng: &RngGuard) -> bool {
-    let _ = rng.unif_rand();
-    miniextendr_api::worker::is_r_main_thread()
-}
 // endregion
 
 // region: Manual RNG management tests
 
 /// Test manual RNG management using RngGuard RAII pattern.
 /// @param n Integer number of uniform values to generate.
-// Stays on R's main thread under `worker-default`: the guard's draws need it.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rng_guard_test(n: i32) -> Vec<f64> {
-    // SAFETY: `no_worker` keeps this body on R's main thread.
+    // SAFETY: the wrapper runs this body on R's main thread.
     let rng = unsafe { RngGuard::new() };
     (0..n).map(|_| rng.unif_rand()).collect()
 }
 
 /// Test manual RNG management using the with_rng closure API.
 /// @param n Integer number of uniform values to generate.
-// Stays on R's main thread under `worker-default`: `with_rng` runs on the main thread only.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|rng| (0..n).map(|_| rng.unif_rand()).collect())
 }
 
 /// One draw of each kind through `with_rng`, in order:
 /// c(unif_rand, norm_rand, exp_rand, unif_index(10)).
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rng_with_rng_each() -> Vec<f64> {
     with_rng(|rng| {
         vec![

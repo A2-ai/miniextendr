@@ -447,10 +447,6 @@ test_that("every no-arg gc_stress_* fixture survives gctorture", {
   ns <- getNamespace("miniextendr")
   fixtures <- ls(ns, pattern = "^gc_stress_")
   fixtures <- Filter(function(f) length(formals(get(f, ns))) == 0L, fixtures)
-  # gc_stress_with_r_thread_stop raises by design (its point is the raw
-  # Rf_error longjmp path; test-worker-longjmp.R expect_error()s it). Every
-  # other fixture's contract is an error-free return.
-  fixtures <- setdiff(fixtures, "gc_stress_with_r_thread_stop")
   # CI's r-stress-tests job splits this sweep across parallel shards via
   # MINIEXTENDR_STRESS_SHARD=k/n (helper-gc-stress.R); locally the env var
   # is unset and the full fixture list runs.

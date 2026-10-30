@@ -4,12 +4,9 @@
 \alias{panic_location_main_direct}
 \title{panic_location_main_direct}
 \usage{
-panic_location_main_direct(x)
-}
-\arguments{
-\item{x}{Ignored; present only to force main-thread dispatch.}
+panic_location_main_direct()
 }
 \description{
-Direct panic on the MAIN thread. The R error message must carry
+Direct panic. The R error message must carry
 \verb{(at panic_location_tests.rs:<panic line>)}.
 }

@@ -48,12 +48,6 @@ test_that("serializer errors stay classed Rust errors", {
   expect_match(conditionMessage(err), "intentional serialization failure", fixed = TRUE)
 })
 
-test_that("serialize converts worker results on the R thread", {
-  skip_if_missing_feature("serde")
-  skip_if_missing_feature("worker-thread")
-  expect_identical(serialized_record_worker(4L), serialized_record_type(4L))
-})
-
 test_that("the serialized return boundary survives GC stress", {
   skip_if_missing_feature("serde")
   skip_on_cran()

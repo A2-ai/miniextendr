@@ -27,15 +27,15 @@ fn add(a: i32, b: i32) -> i32 {
 ```
 
 Common attributes:
-- `#[miniextendr(worker)]` – opt into worker-thread execution (default is main thread).
 - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` – control visibility.
 - `#[miniextendr(check_interrupt)]` – call `R_CheckUserInterrupt()` up front.
 - `#[miniextendr(coerce)]` – enable coercion for non-native argument types.
 
 ### `#[r_ffi_checked]`
 
-Wraps `extern "C-unwind"` blocks with wrappers that route calls to R's main
-thread when invoked from a non-main thread (requires a worker context).
+Wraps `extern "C-unwind"` blocks with checked wrappers that run the call on R's
+main thread and panic when invoked from any other thread, plus `*_unchecked`
+variants that skip the check.
 
 ### Derives
 
@@ -50,7 +50,7 @@ thread when invoked from a non-main thread (requires a worker context).
 
 ## Notes
 
-- Attributes like `#[miniextendr(worker)]` and `#[miniextendr(coerce)]`
+- Attributes like `#[miniextendr(invisible)]` and `#[miniextendr(coerce)]`
   control wrapper behavior.
 - R wrapper generation is driven by doc comments and roxygen tags.
 - Impl‑block support covers S3/S4/S7/R6 methods plus env‑style dispatch.

@@ -2,13 +2,11 @@
 //! module shadows them, so it compiles only if every emitted reference is
 //! absolute. The UI fixture `tests/ui/pass/shadowed_standard_names.rs` covers
 //! every macro the UI tests' crate can compile; this module covers the paths
-//! that need features that crate lacks: a worker wrapper (`worker-thread`),
-//! the Vctrs derive (`vctrs`), the parallel `DataFrameRow` methods (`rayon`)
-//! and the serde-classed `Result` error and `serde_condition!` (`serde`).
+//! that need features that crate lacks: the Vctrs derive (`vctrs`), the
+//! parallel `DataFrameRow` methods (`rayon`) and the serde-classed `Result`
+//! error and `serde_condition!` (`serde`).
 //! Keep the shadow list in step with the UI fixture's.
 #![allow(dead_code, unused_macros, non_camel_case_types)]
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
 
 // region: shadows
 
@@ -224,61 +222,8 @@ mod alloc {}
 
 // endregion
 
-#[cfg(any(
-    feature = "worker-thread",
-    feature = "worker-default",
-    feature = "serde"
-))]
+#[cfg(feature = "serde")]
 use miniextendr_api::miniextendr;
-
-/// Double `x` on the worker thread.
-/// @param x An integer.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker, noexport)]
-pub fn shadowed_std_names_worker(x: i32) -> ::core::result::Result<i32, ::std::string::String> {
-    if x < 0 {
-        ::core::result::Result::Err(::std::format!("negative: {x}"))
-    } else {
-        ::core::result::Result::Ok(x * 2)
-    }
-}
-
-/// Count the bytes of `x` on the worker thread (a `&str` crosses as an owned
-/// `String`).
-/// @param x A string.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker, noexport)]
-pub fn shadowed_std_names_worker_str(x: &str) -> i32 {
-    i32::try_from(x.len()).unwrap_or(i32::MAX)
-}
-
-/// A counter with a method that runs on the worker thread.
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct ShadowedWorkerCounter {
-    value: i32,
-}
-
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(env, noexport)]
-impl ShadowedWorkerCounter {
-    /// Create a counter.
-    /// @param value Starting value.
-    pub fn new(value: i32) -> Self {
-        ShadowedWorkerCounter { value }
-    }
-
-    /// Add the byte length of `label` to `base` on the worker thread. Only a
-    /// static method can run there (an instance method borrows `self` on the
-    /// main thread).
-    /// @param base An integer.
-    /// @param label A string.
-    #[miniextendr(env(worker))]
-    pub fn add_len(base: i32, label: &str) -> ::core::result::Result<i32, ::std::string::String> {
-        i32::try_from(label.len())
-            .map(|n| base + n)
-            .map_err(|_| ::std::string::String::from("too long"))
-    }
-}
 
 /// A vctrs class derived with the standard names shadowed.
 #[cfg(feature = "vctrs")]

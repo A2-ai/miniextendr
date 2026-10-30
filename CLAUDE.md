@@ -5,7 +5,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 ## Orientation
 
 ```
-miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, worker thread)
+miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, conversions)
 miniextendr-macros/   # Proc macros (#[miniextendr], derives)
 miniextendr-engine/   # Standalone R embedding (REngine) for Rust binaries/tests
 miniextendr-lint/     # Build-time static analysis (MXL* rules)
@@ -427,10 +427,10 @@ flag in the PR.
 ## Key concepts (runtime FFI)
 
 - **Execution model**: generated Rust runs on R's main thread inside
-  `R_UnwindProtect` by default. `#[miniextendr(worker)]` and `worker-default`
-  opt into the dedicated worker; R API work routes back through `with_r_thread`.
-  The worker is **deprecated** (#2117): an explicit `worker` warns, and its open
-  problems are not planned. Don't build new features on it.
+  `R_UnwindProtect`; there is no worker thread (removed in #2117). R API calls
+  happen only on that thread: `with_r_thread` runs its closure inline there and
+  panics on any other thread (Rayon, `std::thread`), so parallel code computes
+  on plain Rust data and hands the result back to the main thread.
 - **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance. Every read is checked (#2106): a `#[miniextendr]` fn takes `&T` / `&mut T` (or the views `ExternalPtrRef` / `ExternalPtrMut`) and the wrapper borrows the `RefCell` for the call; an `ExternalPtr<T>` handle has no `Deref` and reads through `borrow()` / `borrow_mut()`.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
 - **ALTREP**: Single-struct pattern, no wrapper. Two paths:

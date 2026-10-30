@@ -7,9 +7,6 @@
 //! a call that is missing for another reason. Tests live in
 //! `rpkg/tests/testthat/test-callless-conditions.R`.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
     Call, defer_condition, defer_message, defer_warning, miniextendr, rust_condition, rust_error,
@@ -192,61 +189,6 @@ pub fn callless_raise_guard(callless: bool, call: Call) -> i32 {
         },
         Some(call.sexp()),
     )
-}
-
-// endregion
-
-// region: Worker-thread template
-
-#[cfg(feature = "worker-thread")]
-mod worker {
-    use super::OverrideWarning;
-    use miniextendr_api::{defer_warning, miniextendr, rust_error, warning};
-
-    /// Worker-thread template, deferred: a call-less warning and a sibling
-    /// that keeps the call, queued on the worker and signalled on the main
-    /// thread. Returns 7.
-    #[miniextendr(worker)]
-    pub fn callless_worker_deferred() -> i32 {
-        defer_warning!(call = none, class = "pkg_override", "worker data warning");
-        defer_warning(OverrideWarning::Settled { n: 7 });
-        7
-    }
-
-    /// Worker-thread template, immediate: the warning raised on the worker
-    /// reaches R with its class, data and call choice.
-    /// @param callless Whether to drop the call (`FALSE` keeps the wrapper's call).
-    #[miniextendr(worker)]
-    pub fn callless_worker_warning(callless: bool) {
-        if callless {
-            warning!(
-                call = none,
-                class = "pkg_override",
-                data = { row = 1 },
-                "worker warning"
-            );
-        }
-        warning!(class = "pkg_override", data = { row = 1 }, "worker warning");
-    }
-
-    /// Worker-thread template, immediate error with a class vector and data.
-    /// @param callless Whether to drop the call (`FALSE` keeps the wrapper's call).
-    #[miniextendr(worker)]
-    pub fn callless_worker_error(callless: bool) {
-        if callless {
-            rust_error!(
-                call = none,
-                class = ["pkg_worker_error", "pkg_error"],
-                data = { code = 7 },
-                "worker error"
-            );
-        }
-        rust_error!(
-            class = ["pkg_worker_error", "pkg_error"],
-            data = { code = 7 },
-            "worker error"
-        );
-    }
 }
 
 // endregion

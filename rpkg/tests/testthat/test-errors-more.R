@@ -42,7 +42,3 @@ test_that("SEXP equality distinguishes pointer identity from value equality", {
   expect_false(res2$pointer_eq)
   expect_true(res2$semantic_eq)
 })
-
-test_that("worker drop-on-panic signals error", {
-  expect_error(miniextendr:::unsafe_C_worker_drop_on_panic(), "intentional panic")
-})

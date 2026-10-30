@@ -62,7 +62,7 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
     debug_assert!(
-        crate::worker::is_r_main_thread(),
+        crate::is_r_main_thread(),
         "must be called from R main thread"
     );
     use crate::SexpExt;

@@ -6,12 +6,12 @@
 //! # Design Philosophy
 //!
 //! **Rust computation: Parallel on Rayon threads (normal 2MB stacks)**
-//! **R API calls: Serial on worker/main thread (before/after parallel work)**
+//! **R API calls: Serial on R's main thread (before/after parallel work)**
 //!
 //! Uses existing infrastructure:
 //! - `IntoR` trait for R conversion
 //! - `RNativeType` trait for type → SEXPTYPE mapping
-//! - `with_r_thread` for main thread dispatch
+//! - `with_r_thread` for the main-thread check
 //!
 //! # Quick Start
 //!
@@ -32,15 +32,9 @@
 //! ┌───────────────────────────────────────────────────────────┐
 //! │                    R Main Thread                          │
 //! │  .Call("my_func") → miniextendr entry point               │
-//! │  (handles routed R API calls from worker thread)          │
-//! └─────────────────────────┬─────────────────────────────────┘
-//!                           ↓
-//! ┌─────────────────────────┴─────────────────────────────────┐
-//! │ Entry context: R main (default) or selected worker body   │
 //! │  1. Setup: with_r_vec() allocates R vectors               │
 //! │  2. Parallel: spawn Rayon work                            │
 //! │  3. Cleanup: convert results to R                         │
-//! │  (worker path routes R API calls via with_r_thread)       │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌───────────────────────────────────────────────────────────┐
@@ -94,14 +88,13 @@
 //! GC cannot collect the protected vector, so the slice remains valid.
 //!
 //! **Critical**: The closure **must contain only pure Rust code**. Do not call any
-//! R APIs from Rayon threads - they will panic (no routing available).
+//! R APIs from Rayon threads - they will panic.
 //!
 //! # CRITICAL: No R API Calls from Rayon Threads
 //!
-//! **R API calls from Rayon threads will panic.** The `with_r_thread` routing
-//! mechanism only works from the worker thread (inside `run_on_worker`), not from
-//! Rayon pool threads. Rayon threads do not have the thread-local channels needed
-//! for routing.
+//! **R API calls from Rayon threads will panic.** R's C API may only be called
+//! on R's main thread, and `with_r_thread` checks for it: there is no route
+//! from a Rayon pool thread to the main thread.
 //!
 //! ## Broken Patterns (will panic)
 //!
@@ -111,7 +104,7 @@
 //!     unsafe { sys::Rf_ScalarReal(*x) }  // PANICS! with_r_thread not available
 //! }).collect()
 //!
-//! // PANIC: into_sexp() tries to route but fails on Rayon threads
+//! // PANIC: into_sexp() checks for R's main thread and fails on Rayon threads
 //! data.par_iter().map(|x| {
 //!     x.into_sexp()  // PANICS! with_r_thread not available
 //! }).collect()
@@ -140,13 +133,13 @@
 //!
 //! ## Special Case: `_unchecked` FFI Functions
 //!
-//! The `*_unchecked` variants bypass thread routing and **must** be called
+//! The `*_unchecked` variants bypass the main-thread check and **must** be called
 //! from the R main thread. Calling them from Rayon threads is undefined behavior.
 //!
 //! ```ignore
-//! // UNSAFE: _unchecked variants don't route to main thread
+//! // UNSAFE: _unchecked variants don't check for the main thread
 //! data.par_iter().map(|x| {
-//!     unsafe { SEXP::scalar_real_unchecked(*x) }  // UB! No routing
+//!     unsafe { SEXP::scalar_real_unchecked(*x) }  // UB! No check
 //! }).collect()
 //! ```
 //!
@@ -192,9 +185,9 @@
 //! inside `par_iter`, `par_chunks`, or any Rayon parallel context:
 //!
 //! - **Any `ffi::*` function** (both checked and unchecked variants)
-//! - **`with_r_thread()`** - routing only works from the worker thread
+//! - **`with_r_thread()`** - panics off R's main thread
 //! - **`with_r_vec()`**, **`with_r_matrix()`**, etc. - these use `with_r_thread` internally
-//! - **`.into_sexp()`** on any type - routes to main thread, fails on Rayon threads
+//! - **`.into_sexp()`** on any type - checks for R's main thread, fails on Rayon threads
 //! - **R's RNG functions** (`sys::unif_rand` etc.) - call R APIs internally
 //!   (`RngGuard` and `RRng` are `!Send`, so their draws don't compile there)
 //! - **`TryFromSexp::try_from_sexp()`** - may call R for error messages
@@ -203,7 +196,7 @@
 //! on primitive types (`i32`, `f64`, `bool`, etc.) and standard Rust collections.
 
 use crate::IntoR;
-use crate::worker::with_r_thread;
+use crate::with_r_thread;
 use crate::{RNativeType, SEXP, SexpExt};
 
 #[cfg(feature = "rayon")]
@@ -284,15 +277,15 @@ where
 
     super::parallel::ensure_pool();
 
-    // Allocate, protect, and get data pointer on the R main thread
-    use crate::worker::Sendable;
-    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, len as crate::R_xlen_t);
-        crate::sys::Rf_protect_unchecked(sexp);
-        let ptr = T::dataptr_mut(sexp);
-        (sexp, Sendable(ptr))
+    // Allocate and protect on the R main thread, and get the data pointer;
+    // the vector stays protected until the fill is done
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
+            T::SEXP_TYPE,
+            len as crate::R_xlen_t,
+        ))
     });
-    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
+    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
 
     // Create slice and dispatch chunks in parallel
     let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -307,7 +300,7 @@ where
             });
     }
 
-    sexp
+    sexp.get()
 }
 
 /// Pre-allocate an R vector, fill element-wise in parallel, return the SEXP.
@@ -521,19 +514,20 @@ where
 
     super::parallel::ensure_pool();
 
-    // Allocate, protect, and get data pointer on the R main thread
-    use crate::worker::Sendable;
+    // Allocate and protect on the R main thread, and get the data pointer;
+    // the matrix stays protected until the fill is done
     // SAFETY: `nrow`/`ncol <= i32::MAX` asserted above, so these narrowing
     // casts cannot truncate.
     #[allow(clippy::cast_possible_truncation)]
     let (nrow_i32, ncol_i32) = (nrow as i32, ncol as i32);
-    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::sys::Rf_allocMatrix_unchecked(T::SEXP_TYPE, nrow_i32, ncol_i32);
-        crate::sys::Rf_protect_unchecked(sexp);
-        let ptr = T::dataptr_mut(sexp);
-        (sexp, Sendable(ptr))
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocMatrix_unchecked(
+            T::SEXP_TYPE,
+            nrow_i32,
+            ncol_i32,
+        ))
     });
-    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
+    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
 
     // Split into columns and dispatch in parallel
     let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
@@ -547,7 +541,7 @@ where
             });
     }
 
-    sexp
+    sexp.get()
 }
 
 /// Pre-allocate an N-dimensional R array, fill slabs in parallel, return the SEXP.
@@ -617,11 +611,13 @@ where
 
     super::parallel::ensure_pool();
 
-    // Allocate, set dims, protect, and get data pointer on the R main thread
-    use crate::worker::Sendable;
-    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::R_xlen_t);
-        crate::sys::Rf_protect_unchecked(sexp);
+    // Allocate, protect and set dims on the R main thread, and get the data
+    // pointer; the array stays protected until the fill is done
+    let sexp = with_r_thread(move || unsafe {
+        let sexp = crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
+            T::SEXP_TYPE,
+            total_len as crate::R_xlen_t,
+        ));
 
         let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector_unchecked::<i32>(NDIM);
         crate::sys::Rf_protect_unchecked(dim_sexp);
@@ -636,11 +632,9 @@ where
 
         sexp.set_attr_unchecked(SEXP::dim_symbol(), dim_sexp);
         crate::sys::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
-
-        let ptr = T::dataptr_mut(sexp);
-        (sexp, Sendable(ptr))
+        sexp
     });
-    let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
+    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
 
     // Calculate slab size (product of all dims except the last)
     let slab_size: usize = if NDIM <= 1 {
@@ -661,7 +655,7 @@ where
             });
     }
 
-    sexp
+    sexp.get()
 }
 
 /// Pre-allocate an R matrix and return it as [`RMatrix<T>`][crate::rarray::RMatrix].
@@ -1340,9 +1334,9 @@ impl<T> ColumnWriter<T> {
 ///
 /// # Thread Safety
 ///
-/// `.collect_r()` must be called from the worker thread or main thread, NOT
-/// from inside a Rayon parallel context. The R vector allocation uses
-/// `with_r_thread()`, which only works from those threads.
+/// `.collect_r()` must be called on R's main thread, NOT from inside a Rayon
+/// parallel context. The R vector allocation uses `with_r_thread()`, which
+/// panics on any other thread.
 #[cfg(feature = "rayon")]
 pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
     /// Collect this indexed parallel iterator directly into an R SEXP vector.
@@ -1357,16 +1351,15 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
         super::parallel::ensure_pool();
         let len = self.len();
 
-        // Allocate, protect, and get data pointer on the R main thread
-        use crate::worker::Sendable;
-        let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-            let sexp =
-                crate::sys::Rf_allocVector_unchecked(Self::Item::SEXP_TYPE, len as crate::R_xlen_t);
-            crate::sys::Rf_protect_unchecked(sexp);
-            let ptr = Self::Item::dataptr_mut(sexp);
-            (sexp, Sendable(ptr))
+        // Allocate and protect on the R main thread, and get the data
+        // pointer; the vector stays protected until the fill is done
+        let sexp = with_r_thread(move || unsafe {
+            crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
+                Self::Item::SEXP_TYPE,
+                len as crate::R_xlen_t,
+            ))
         });
-        let _guard = crate::gc_protect::WorkerUnprotectGuard::new(1);
+        let ptr = unsafe { Self::Item::dataptr_mut(sexp.get()) };
 
         // Parallel zip: iterator items → output slots (zero intermediate allocation)
         if len > 0 {
@@ -1376,7 +1369,7 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
             });
         }
 
-        sexp
+        sexp.get()
     }
 }
 
@@ -1384,22 +1377,19 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
 #[cfg(feature = "rayon")]
 impl<T: rayon::iter::IndexedParallelIterator> ParCollectR for T {}
 
-/// `FromParallelIterator` implementation for `Sendable<SEXP>`.
+/// `FromParallelIterator` implementation for `SEXP`.
 ///
-/// Enables standard `.collect()` syntax when the return type is `Sendable<SEXP>`:
+/// Enables standard `.collect()` syntax when the return type is `SEXP`:
 ///
 /// ```ignore
-/// use miniextendr_api::worker::Sendable;
-///
 /// #[miniextendr]
-/// fn parallel_sqrt(x: &[f64]) -> Sendable<SEXP> {
+/// fn parallel_sqrt(x: &[f64]) -> SEXP {
 ///     x.par_iter().map(|&v| v.sqrt()).collect()
 /// }
 /// ```
 ///
-/// The return type `Sendable<SEXP>` drives type inference so `.collect()` works
-/// without a turbofish. `Sendable<SEXP>` implements `IntoR`, so it works as a
-/// `#[miniextendr]` return type.
+/// The return type `SEXP` drives type inference so `.collect()` works without
+/// a turbofish. Call it on R's main thread, not inside a Rayon closure.
 ///
 /// # Performance
 ///
@@ -1407,7 +1397,7 @@ impl<T: rayon::iter::IndexedParallelIterator> ParCollectR for T {}
 /// performance on indexed iterators, use [`.collect_r()`][ParCollectR::collect_r]
 /// instead.
 #[cfg(feature = "rayon")]
-impl<T> rayon::iter::FromParallelIterator<T> for crate::worker::Sendable<SEXP>
+impl<T> rayon::iter::FromParallelIterator<T> for SEXP
 where
     T: Send + crate::IntoR + 'static,
     Vec<T>: crate::IntoR,
@@ -1418,8 +1408,7 @@ where
     {
         super::parallel::ensure_pool();
         let vec: Vec<T> = pi.into_par_iter().collect();
-        let sexp = with_r_thread(|| vec.into_sexp());
-        crate::worker::Sendable(sexp)
+        with_r_thread(|| vec.into_sexp())
     }
 }
 

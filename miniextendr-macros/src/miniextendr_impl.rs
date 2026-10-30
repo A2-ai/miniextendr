@@ -32,7 +32,6 @@
 //! │  ┌─────────────────────────────────────────────────────────────────┐   │
 //! │  │ generate_c_wrapper_for_method()                                 │   │
 //! │  │   └─▶ CWrapperContext (shared builder from c_wrapper_builder)   │   │
-//! │  │         - thread strategy (main vs worker)                      │   │
 //! │  │         - SEXP→Rust conversion                                  │   │
 //! │  │         - return handling                                       │   │
 //! │  └─────────────────────────────────────────────────────────────────┘   │
@@ -772,10 +771,6 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `vec_ptype2.my_vctr.my_vctr` for vctrs double-dispatch.
     pub class: Option<String>,
-    /// Worker thread execution (default: auto-detect based on types)
-    pub worker: bool,
-    /// Force main thread execution (unsafe)
-    pub unsafe_main_thread: bool,
     /// Enable R interrupt checking
     pub check_interrupt: bool,
     /// Enable coercion for this method's parameters
@@ -1645,9 +1640,6 @@ impl ParsedMethod {
             ));
         }
 
-        // Static methods can select worker dispatch. Receiver and dots borrows
-        // keep their wrappers on the main thread (see generate_method_c_wrapper).
-
         Ok(())
     }
 
@@ -1668,8 +1660,6 @@ impl ParsedMethod {
         use syn::spanned::Spanned;
         let mut method_attrs = MethodAttrs::default();
         // Use Option<bool> for fields that support feature defaults.
-        let mut worker: Option<bool> = None;
-        let mut unsafe_main_thread: Option<bool> = None;
         let mut coerce: Option<bool> = None;
 
         for attr in attrs {
@@ -1711,15 +1701,6 @@ impl ParsedMethod {
                             // Active binding setter: works for both R6 and S7
                             method_attrs.r6.setter = true;
                             method_attrs.s7.setter = true;
-                        } else if inner.path.is_ident("worker") {
-                            worker = Some(true);
-                            crate::deprecation::worker_option(inner.path.span());
-                        } else if inner.path.is_ident("no_worker") {
-                            worker = Some(false);
-                        } else if inner.path.is_ident("main_thread") {
-                            unsafe_main_thread = Some(true);
-                        } else if inner.path.is_ident("no_main_thread") {
-                            unsafe_main_thread = Some(false);
                         } else if inner.path.is_ident("check_interrupt") {
                             method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
@@ -1876,7 +1857,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -1990,18 +1971,6 @@ impl ParsedMethod {
                         let entry = method_attrs.per_param.entry(name).or_default();
                         entry.choices = Some(choices);
                         entry.several_ok = true;
-                        Ok(())
-                    })?;
-                } else if meta.path.is_ident("unsafe") {
-                    // Parse unsafe(main_thread) - same syntax as standalone functions
-                    meta.parse_nested_meta(|inner| {
-                        if inner.path.is_ident("main_thread") {
-                            unsafe_main_thread = Some(true);
-                        } else {
-                            return Err(inner.error(
-                                "unknown `unsafe(...)` option; only `main_thread` is supported",
-                            ));
-                        }
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("check_interrupt") {
@@ -2244,7 +2213,7 @@ impl ParsedMethod {
                     }
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, formal, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, formal, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
                     ));
                 }
                 Ok(())
@@ -2252,10 +2221,6 @@ impl ParsedMethod {
         }
 
         // Resolve feature defaults for fields not explicitly set
-        method_attrs.worker = worker.unwrap_or(cfg!(feature = "worker-default"));
-        // Main-thread execution is already the fallback when worker is false.
-        // Only an explicit override may take precedence over worker selection.
-        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(false);
         method_attrs.coerce = coerce.unwrap_or(coerce_default);
 
         // Method-level `internal` / `noexport` are currently only honoured by the R6
@@ -3854,12 +3819,7 @@ impl ParsedImpl {
 /// 4. Calls the actual Rust method
 /// 5. Converts the return value back to SEXP
 ///
-/// Thread strategy is determined automatically: instance methods always run on the main
-/// thread (because `self_ref` is a non-Send borrow), as do methods taking `...`. Other
-/// static methods use the main thread unless `worker` or `worker-default` selects
-/// worker dispatch; `unsafe(main_thread)` keeps one on main regardless, and so do the
-/// requirements that keep a standalone function there (R values in or out,
-/// `check_interrupt`).
+/// The wrapper runs on R's main thread.
 ///
 /// Also emits an `R_CallMethodDef` constant for R routine registration.
 ///
@@ -3868,7 +3828,7 @@ impl ParsedImpl {
 /// * `parsed_impl` - The parsed impl block providing type identity, cfg attrs, and options
 /// * `method` - The parsed method to generate a wrapper for
 pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod) -> TokenStream {
-    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
+    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling};
 
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
@@ -3879,26 +3839,6 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
     let self_slot = syn::Ident::new("self_slot", proc_macro2::Span::mixed_site());
     let external_ptr = syn::Ident::new("__self_ptr", proc_macro2::Span::mixed_site());
     let taken = syn::Ident::new("__mx_taken", proc_macro2::Span::mixed_site());
-
-    // Determine thread strategy
-    // Instance methods must use main thread because self_ref is a borrow that can't cross threads
-    // Static methods use worker thread only when worker=true (set by explicit #[miniextendr(env(worker))]
-    // or by the worker-default feature flag), and, as for standalone functions, only when
-    // no R value crosses the call (a main-thread-bound input or return) and no
-    // `check_interrupt` asks for R's interrupt check.
-    let thread_strategy = if method.method_attrs.unsafe_main_thread
-        || method.env.is_instance()
-        || method.has_dots
-        || method.method_attrs.check_interrupt
-        || method.rng_guard.is_some()
-        || crate::type_inspect::signature_holds_r_values(&method.sig)
-    {
-        ThreadStrategy::MainThread
-    } else if method.method_attrs.worker {
-        ThreadStrategy::WorkerThread
-    } else {
-        ThreadStrategy::MainThread
-    };
 
     // Build rust arguments from the signature, with the `rng` wrapper's guard
     // back at the `&RngGuard` parameter's position (#2002)
@@ -4155,7 +4095,6 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         .pre_call(pre_call)
         .post_conversion(post_conversion)
         .call_expr(call_expr)
-        .thread_strategy(thread_strategy)
         .return_handling(return_handling)
         .err_parts(crate::c_wrapper_builder::ErrPartsMode::from_spec(
             method

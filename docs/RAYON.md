@@ -334,22 +334,19 @@ fn parallel_filter(x: &[f64]) -> SEXP {
 }
 ```
 
-### `.collect()` with `Sendable<SEXP>` Return Type
+### `.collect()` with a `SEXP` Return Type
 
-If you prefer standard `.collect()` syntax, return `Sendable<SEXP>` from your function.
+If you prefer standard `.collect()` syntax, return `SEXP` from your function.
 The return type drives type inference so no turbofish is needed:
 
 ```rust
-use miniextendr_api::worker::Sendable;
-
 #[miniextendr]
-fn parallel_sqrt(x: &[f64]) -> Sendable<SEXP> {
+fn parallel_sqrt(x: &[f64]) -> SEXP {
     x.par_iter().map(|&v| v.sqrt()).collect()
 }
 ```
 
-`Sendable<SEXP>` implements both `IntoR` (works as `#[miniextendr]` return type) and
-`From<Sendable<SEXP>> for SEXP` (for manual unwrapping with `.into()`).
+Call `.collect()` into `SEXP` on R's main thread, not inside a Rayon closure.
 
 This path collects to an intermediate `Vec<T>` before converting to R.
 For zero-copy performance, use `.collect_r()`.
@@ -359,7 +356,7 @@ For zero-copy performance, use `.collect_r()`.
 | Strategy | Allocation | Requires | Best For |
 |----------|-----------|----------|----------|
 | `.collect_r()` | Zero-copy into R | Indexed iterator | Max performance |
-| `-> Sendable<SEXP>` + `.collect()` | Vec + copy to R | Any par iterator | Standard rayon idiom |
+| `-> SEXP` + `.collect()` | Vec + copy to R | Any par iterator | Standard rayon idiom |
 | `par_map(x, f)` | Zero-copy into R | Input slice | Simple 1:1 transforms |
 | `par_collect_sexp(iter)` | Vec + copy to R | Any par iterator | Filters, flat maps |
 | `-> Vec<T>` return | Vec + copy to R | Nothing special | Simplest code |
@@ -672,7 +669,7 @@ Docker/Kubernetes. Two gaps to know about:
 |---|---|---|
 | **Rayon** (this doc) | Data-parallel, pure-Rust compute inside one `#[miniextendr]` call — CPU-bound transforms, reductions, DataFrame fills | Cheap; work-stealing within one process |
 | **R-level (future/mirai)** | Independent, coarse-grained jobs that each need their own R + Rust runtime (e.g. fan out a whole analysis per input file) | Each worker pays full R+package startup; heavier but fully isolated |
-| **User-owned channel task queue** | Long-running pure-Rust jobs kicked off from R without blocking the console; R later polls for Rust-owned results | You own the queue/lifecycle; this is separate from blocking `run_on_worker`, and the background thread must not call R |
+| **User-owned channel task queue** | Long-running pure-Rust jobs kicked off from R without blocking the console; R later polls for Rust-owned results | You own the queue/lifecycle, and the background thread must not call R |
 
 A sketch of the task-queue shape (not a ready-made API — build this in your
 package if you need it):
@@ -690,11 +687,6 @@ thread::spawn(move || {
     }
 });
 ```
-
-Note `#989`: errors raised from a worker-thread job currently surface to R
-as a bare `simpleError`, not the framework's usual `rust_error`-classed
-condition — if your queue needs `tryCatch(..., rust_error = ...)` dispatch
-on job failures, track that issue.
 
 ## Safety
 
@@ -722,7 +714,7 @@ with_r_vec(n, |chunk, _| {
 
 // WRONG: with_r_thread inside closure - PANICS
 with_r_vec(n, |chunk, _| {
-    with_r_thread(|| { ... });  // PANICS! Not on worker thread
+    with_r_thread(|| { ... });  // PANICS! Not on R's main thread
 });
 ```
 
@@ -730,7 +722,7 @@ with_r_vec(n, |chunk, _| {
 
 - **GC Protection**: Pre-allocated SEXPs are `Rf_protect`ed during parallel writes
 - **No Concurrent R Access**: All R operations happen before/after parallel section
-- **RAII Guards**: `WorkerUnprotectGuard` ensures cleanup even on panic
+- **RAII Guards**: `OwnedProtect` ensures cleanup even on panic
 
 ## Examples
 
@@ -793,13 +785,13 @@ fn euclidean_distance(x: &[f64], y: &[f64]) -> SEXP {
 
 ## Troubleshooting
 
-### Error: "with_r_thread called outside of run_on_worker context"
+### Error: "R's C API was called from a thread other than R's main thread"
 
-**Solution:** Do not call `with_r_thread` from a Rayon closure or arbitrary
-spawned thread. It only routes from miniextendr's dedicated worker during an
-active `run_on_worker` call. Invoke helpers such as `with_r_vec` from R's main
-thread or an opted-in `#[miniextendr(worker)]` body; their internal allocation
-happens before the Rayon closure, whose work must remain pure Rust.
+**Solution:** Do not call R (directly, through `with_r_thread`, or through a
+checked FFI wrapper) from a Rayon closure or an arbitrary spawned thread.
+Invoke helpers such as `with_r_vec` from R's main thread (any `#[miniextendr]`
+body); their internal allocation happens before the Rayon closure, whose work
+must remain pure Rust.
 
 ### Slow Performance
 
@@ -821,5 +813,5 @@ eprintln!("Thread index: {:?}", perf::thread_index());
 ## See Also
 
 - [SAFETY.md](SAFETY.md): thread safety invariants
-- [ENTRYPOINT.md](ENTRYPOINT.md): worker initialization requirements
+- [ENTRYPOINT.md](ENTRYPOINT.md): runtime initialization requirements
 - `miniextendr-bench/benches/rayon.rs`: performance benchmarks

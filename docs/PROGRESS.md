@@ -144,7 +144,7 @@ All `RTerm` output is **silently dropped** when called from a non-main thread:
 
 ```rust
 fn write_console(&self, bytes: &[u8]) -> io::Result<()> {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         return Ok(());  // Silent no-op
     }
     // ... actual output ...
@@ -152,16 +152,14 @@ fn write_console(&self, bytes: &[u8]) -> io::Result<()> {
 ```
 
 This means:
-- Progress bars drawn from **non-main threads** (worker thread, rayon threads) produce no output.
+- Progress bars drawn from **non-main threads** (rayon threads, spawned threads) produce no output.
 - Only code running on the **main R thread** can display progress.
 
-For `#[miniextendr]` functions, this works naturally -- by default your function runs on the
-main thread, so progress bar output works directly. If using the `worker-thread` feature,
-operations that need R console access should run the progress bar update on the main thread.
-In practice, since indicatif batches draws, the simplest approach is to create the progress
-bar and call `pb.inc()` from your function directly.
+For `#[miniextendr]` functions, this works naturally -- your function runs on the main
+thread, so progress bar output works directly. Since indicatif batches draws, the simplest
+approach is to create the progress bar and call `pb.inc()` from your function directly.
 
-See [THREADS.md](THREADS.md) for details on the worker thread model.
+See [THREADS.md](THREADS.md) for the main-thread invariant.
 
 ## ANSI Cursor Support
 
@@ -266,5 +264,5 @@ pub fn parallel_progress() {
 ## See Also
 
 - [FEATURES.md](FEATURES.md) -- Feature flags reference (`indicatif`)
-- [THREADS.md](THREADS.md) -- Worker thread architecture and main thread safety
+- [THREADS.md](THREADS.md) -- The main-thread invariant
 - [indicatif documentation](https://docs.rs/indicatif) -- Full indicatif API reference

@@ -3455,7 +3455,7 @@ fn build_enum_reader(
             /// Read an R `data.frame` directly into a `Vec<Self>` (parallel).
             ///
             /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R thread via
-            /// rayon. All SEXP access happens up front on the R/worker thread; the
+            /// rayon. All SEXP access happens up front on the R main thread; the
             /// `into_par_iter()` region touches only pre-extracted owned data. Shapes with
             /// struct-flatten/nested-enum or factor fields delegate to the sequential
             /// reader instead.

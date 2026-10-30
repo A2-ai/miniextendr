@@ -9,7 +9,6 @@ Four independent FFI boundaries exist between Rust and R:
 | Boundary | Where | Guard |
 |----------|-------|-------|
 | Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + tagged-condition SEXP |
-| Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `Rf_error` |
 | ALTREP trampolines | `altrep_bridge.rs` | Per-type `AltrepGuard` const |
 | `R_UnwindProtect` | `unwind_protect.rs` | Catches panics + R longjmps |
 | Connection callbacks | `connection.rs` | `catch_unwind` + fallback value |
@@ -51,7 +50,7 @@ use miniextendr_api::panic_telemetry::PanicSource;
 let result = guarded_ffi_call(
     || some_pure_rust_work(),
     GuardMode::CatchUnwind,
-    PanicSource::Worker,
+    PanicSource::UnwindProtect,
 );
 ```
 
@@ -166,7 +165,6 @@ Identifies which boundary caught the panic:
 
 ```rust
 pub enum PanicSource {
-    Worker,        // worker thread (run_on_worker)
     Altrep,        // ALTREP trampoline (guarded_altrep_call)
     UnwindProtect, // with_r_unwind_protect
     Connection,    // connection callback trampoline
@@ -231,7 +229,6 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 | Site | File | What happens after `fire()` |
 |------|------|-----------------------------|
-| Worker thread (opt-in) | `worker.rs` | `Rf_error` on main thread (requires `worker-thread` feature) |
 | ALTREP bridge | `ffi_guard.rs` (via `guarded_ffi_call`) | `Rf_error` or `R_UnwindProtect` |
 | Unwind protect | `unwind_protect.rs` | `R_ContinueUnwind` |
 | Connection | `ffi_guard.rs` (via `guarded_ffi_call_with_fallback`) | Returns fallback value |
@@ -242,5 +239,5 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 - [Error Handling](ERROR_HANDLING.md) -- How panics, Result, and R errors interact
 - [ALTREP Guards](ALTREP_GUARDS.md) -- Per-type guard mode selection for ALTREP
-- [Threads](THREADS.md) -- Worker thread architecture
+- [Threads](THREADS.md) -- The main-thread invariant
 - [Connections](CONNECTIONS.md) -- Custom R connections from Rust

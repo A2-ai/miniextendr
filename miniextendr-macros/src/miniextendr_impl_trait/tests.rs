@@ -112,8 +112,6 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         invisible: None,
         has_self,
         is_mut: false,
-        worker: false,
-        unsafe_main_thread: false,
         coerce: false,
         check_interrupt: false,
         rng: false,
@@ -3222,39 +3220,25 @@ fn trait_generic_receiver_options_reject_conflicts_and_wrong_context() {
     );
 }
 
-/// A static trait method selecting the worker stays on the main thread when an
-/// R value crosses the call or it checks for interrupts, as a standalone
-/// function does.
+/// The worker options are gone: each is an unknown trait method option, flat
+/// and nested.
 #[test]
-fn trait_static_methods_keep_r_values_on_the_main_thread() {
-    let impl_item: syn::ItemImpl = syn::parse_quote! {
-        impl Source for Foo {
-            #[miniextendr(worker)]
-            fn sexp_in(x: SEXP) -> i32 { unimplemented!() }
-            #[miniextendr(worker)]
-            fn sexp_out() -> SEXP { unimplemented!() }
-            #[miniextendr(worker, check_interrupt)]
-            fn interruptible() -> i32 { unimplemented!() }
-            #[miniextendr(worker)]
-            fn plain(x: i32) -> i32 { unimplemented!() }
-        }
-    };
-    let methods =
-        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
-    for (method, worker) in methods.iter().zip([false, false, false, true]) {
-        let out = super::vtable::generate_trait_method_c_wrapper(
-            method,
-            &format_ident!("Foo"),
-            &format_ident!("Source"),
-            &syn::parse_quote!(Source),
-        )
-        .to_string();
-        assert_eq!(
-            out.contains("run_on_worker"),
-            worker,
-            "{}: {out}",
-            method.ident
-        );
+fn worker_options_are_unknown_trait_method_options() {
+    for item in [
+        quote::quote!(#[miniextendr(worker)]),
+        quote::quote!(#[miniextendr(main_thread)]),
+        quote::quote!(#[miniextendr(env(worker))]),
+        quote::quote!(#[miniextendr(r6(main_thread))]),
+    ] {
+        let impl_item: syn::ItemImpl = syn::parse_quote! {
+            impl Source for Foo {
+                #item
+                fn plain(x: i32) -> i32 { unimplemented!() }
+            }
+        };
+        let err = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
+            .expect_err("a worker option must error");
+        assert!(err.to_string().starts_with("unknown"), "{item}: {err}");
     }
 }
 

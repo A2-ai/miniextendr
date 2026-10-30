@@ -7,7 +7,6 @@
 //!
 //! - [`panic_tests`]: Panic, drop, and R error handling tests
 //! - [`unwind_protect_tests`]: `with_r_unwind_protect` mechanism tests
-//! - `worker_tests`: Worker thread and `with_r_thread` tests
 //! - [`thread_tests`]: RThreadBuilder and thread safety tests
 //! - [`interrupt_tests`]: R interrupt checking tests
 //!
@@ -306,7 +305,6 @@ mod optional_input_tests;
 mod ordered_float_adapter_tests;
 mod own_page_docs;
 mod owned_str_tests;
-#[cfg(feature = "worker-thread")]
 mod panic_location_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
@@ -406,8 +404,6 @@ mod url_adapter_tests;
 mod uuid_adapter_tests;
 mod vec_externalptr_tests;
 mod visibility_tests;
-#[cfg(feature = "worker-thread")]
-mod worker_tests;
 mod zero_copy_tests;
 #[cfg(feature = "zstd")]
 mod zstd_adapter_tests;
@@ -2282,12 +2278,6 @@ pub fn miniextendr_enabled_features() -> Vec<&'static str> {
 
     // Codegen selectors + diagnostics (denylisted in tools/detect-features.R;
     // only the scheduled feature-legs CI job builds with these on)
-    if cfg!(feature = "worker-thread") {
-        features.push("worker-thread");
-    }
-    if cfg!(feature = "worker-default") {
-        features.push("worker-default");
-    }
     if cfg!(feature = "strict-default") {
         features.push("strict-default");
     }

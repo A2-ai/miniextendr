@@ -23,7 +23,7 @@ to add optional crates as separate direct dependencies.
 
 | Category | Features |
 |----------|---------|
-| Core / R | `nonapi`, `rayon`, `worker-thread`, `connections`, `indicatif`, `vctrs` |
+| Core / R | `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs` |
 | Serialization | `serde`, `serde_json`, `toml` |
 | Matrix / Array | `ndarray`, `nalgebra` |
 | Numeric | `num-bigint`, `rust_decimal`, `ordered-float`, `num-complex` |
@@ -39,7 +39,7 @@ to add optional crates as separate direct dependencies.
 | Formatting | `tabled` |
 | Arrow / DataFusion | `arrow`, `datafusion` |
 | Logging | `log` |
-| Project defaults | `strict-default`, `coerce-default`, `r6-default`, `s7-default`, `worker-default` |
+| Project defaults | `strict-default`, `coerce-default`, `r6-default`, `s7-default` |
 | Diagnostics | `macro-coverage`, `growth-debug` |
 
 For the complete entry-by-entry reference -- including descriptions, type tables, and

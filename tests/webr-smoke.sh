@@ -6,7 +6,7 @@
 # via the canonical runner tests/webr-node-smoke/smoke.mjs. By default the
 # runner then finishes with an informational testthat pass (#1255): suite
 # counts are reported but test failures never gate — many tests legitimately
-# fail or skip under wasm (worker-thread / fork / subprocess assumptions).
+# fail or skip under wasm (thread / fork / subprocess assumptions).
 # Disable with SMOKE_TESTTHAT=0; only a harness error before the counts
 # line turns the gate red.
 #

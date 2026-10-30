@@ -311,57 +311,6 @@ test_that("a call-less error drops the raising guard's call argument", {
 
 # endregion
 
-# region: Worker thread
-
-has_worker_fixtures <- function() {
-  exists("callless_worker_warning", envir = asNamespace("miniextendr"), inherits = FALSE)
-}
-
-test_that("worker: an immediate call-less warning keeps its class, data and no call", {
-  skip_if_not(has_worker_fixtures(), "worker-thread feature not enabled")
-  w <- tryCatch(callless_worker_warning(TRUE), warning = function(w) w)
-  expect_null(conditionCall(w))
-  expect_identical(
-    class(w),
-    c("pkg_override", "rust_warning", "simpleWarning", "warning", "condition")
-  )
-  expect_identical(conditionMessage(w), "worker warning")
-  expect_identical(w$kind, "warning")
-  expect_identical(w$row, 1L)
-
-  sibling <- tryCatch(callless_worker_warning(FALSE), warning = function(w) w)
-  expect_true(called(sibling, "callless_worker_warning"))
-  expect_identical(class(sibling), class(w))
-})
-
-test_that("worker: an immediate call-less error keeps its classes, data and no call", {
-  skip_if_not(has_worker_fixtures(), "worker-thread feature not enabled")
-  e <- tryCatch(callless_worker_error(TRUE), pkg_worker_error = function(e) e)
-  expect_null(conditionCall(e))
-  expect_identical(
-    class(e),
-    c("pkg_worker_error", "pkg_error", "rust_error", "simpleError", "error", "condition")
-  )
-  expect_identical(conditionMessage(e), "worker error")
-  expect_identical(e$kind, "error")
-  expect_identical(e$code, 7L)
-
-  sibling <- tryCatch(callless_worker_error(FALSE), pkg_worker_error = function(e) e)
-  expect_true(called(sibling, "callless_worker_error"))
-})
-
-test_that("worker: deferred call-less warnings keep the value and no call", {
-  skip_if_not(has_worker_fixtures(), "worker-thread feature not enabled")
-  out <- collect_callless(callless_worker_deferred())
-  expect_identical(out$value, 7L)
-  expect_length(out$conditions, 2L)
-  expect_null(conditionCall(out$conditions[[1]]))
-  expect_identical(conditionMessage(out$conditions[[1]]), "worker data warning")
-  expect_true(called(out$conditions[[2]], "callless_worker_deferred"))
-  expect_identical(out$conditions[[2]]$n, 7L)
-})
-
-# endregion
 
 # region: GC stress
 

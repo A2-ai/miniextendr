@@ -131,19 +131,6 @@ test_that("the error type's own `param` field wins over the parameter name", {
   )
 })
 
-test_that("classed conversion errors reach the worker path", {
-  skip_if_not(
-    exists("hyperparams_total_worker", envir = asNamespace("miniextendr"), inherits = FALSE),
-    "worker-thread feature not enabled"
-  )
-  e <- tryCatch(hyperparams_total_worker(1:3), error = function(e) e)
-  expect_s3_class(e, "mx_fixture_bad_arg")
-  expect_equal(e$kind, "conversion")
-  expect_equal(e$param, "hyper")
-  expect_equal(conditionCall(e), quote(hyperparams_total_worker(1:3)))
-  expect_equal(hyperparams_total_worker(c(alpha = 2)), 2)
-})
-
 test_that("classed conversion errors reach the call = caller path", {
   e <- tryCatch(miniextendr:::hyperparams_total_caller(c(a = -1)), error = function(e) e)
   expect_s3_class(e, "mx_fixture_negative_hyperparam")

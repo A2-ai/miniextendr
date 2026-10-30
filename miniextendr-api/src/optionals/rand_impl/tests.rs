@@ -20,7 +20,7 @@ impl<T: ?Sized> AmbiguousIfSync<()> for T {}
 impl<T: ?Sized + Sync> AmbiguousIfSync<u8> for T {}
 
 /// An `RRng` draws on the thread whose guard it borrows (#2005): it can't
-/// move into a worker closure or a rayon task.
+/// move into a spawned thread or a rayon task.
 #[test]
 fn rrng_is_neither_send_nor_sync() {
     let _ = <RRng<'static> as AmbiguousIfSend<_>>::some_item;

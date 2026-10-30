@@ -22,7 +22,6 @@
 //! - `externalptr.rs`      ExternalPtr creation, access, tagging
 //! - `trait_abi.rs`        mx_erased / trait vtable query and dispatch
 //! - `unwind_protect.rs`   with_r_unwind_protect overhead (normal and error)
-//! - `worker.rs`           worker-thread dispatch overhead vs direct calls
 //! - `allocator.rs`        RAllocator vs System allocator (when applicable)
 //! - `rayon.rs`            rayon_bridge parallel helpers (feature-gated)
 //! - `connections.rs`      Custom connections (feature-gated)
@@ -89,7 +88,6 @@
 //! - `externalptr`: ExternalPtr creation/access/protection
 //! - `trait_abi`: trait ABI dispatch (mx_erased query + vtable calls)
 //! - `unwind_protect`: with_r_unwind_protect overhead
-//! - `worker`: worker thread dispatch overhead
 //! - `allocator`: RAllocator behavior
 //! - `rayon`: parallel helpers
 //! - `connections`: custom connections
@@ -128,5 +126,4 @@ pub mod strings;
 pub mod trait_abi;
 pub mod translate;
 pub mod unwind_protect;
-pub mod worker;
 pub mod wrappers;

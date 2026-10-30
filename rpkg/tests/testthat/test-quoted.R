@@ -491,30 +491,6 @@ test_that("tidyselect::eval_select() through a built call, error_call the wrappe
   expect_s3_class(e, "rlang_error")
 })
 
-test_that("with_r_thread from a worker body keeps the caller's handlers", {
-  skip_if_not(miniextendr_has_feature("worker-thread") ||
-                miniextendr_has_feature("worker-default"), "worker feature not enabled")
-  seen <- 0L
-  out <- withCallingHandlers(
-    miniextendr:::quoted_worker_call("base", "warning", "from the worker"),
-    warning = function(w) {
-      seen <<- seen + 1L
-      invokeRestart("muffleWarning")
-    }
-  )
-  expect_identical(out, "from the worker")
-  expect_identical(seen, 1L)
-
-  e <- tryCatch(miniextendr:::quoted_worker_call("base", "stop", "worker error"), error = identity)
-  expect_s3_class(e, "simpleError")
-  expect_identical(conditionMessage(e), "worker error")
-  w <- tryCatch(miniextendr:::quoted_worker_call("base", "warning", "exit"), warning = identity)
-  expect_s3_class(w, "simpleWarning")
-  expect_identical(conditionMessage(w), "exit")
-  # The worker answers the next call.
-  expect_identical(miniextendr:::quoted_worker_call("base", "toupper", "ok"), "OK")
-})
-
 # endregion
 
 # region: an R error returned as Err, the caller's handlers kept (try_eval_with_handlers, #1893)

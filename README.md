@@ -8,8 +8,8 @@ used to scaffold standalone packages and monorepos.
 
 ### Core crates and tooling
 
-- `miniextendr-api/` - Runtime crate: R FFI bindings, conversions, worker-thread
-  routing, ALTREP, class systems, trait ABI, and macro re-exports.
+- `miniextendr-api/` - Runtime crate: R FFI bindings, conversions, main-thread
+  checks, ALTREP, class systems, trait ABI, and macro re-exports.
 - `miniextendr-macros/` - Proc macros such as `#[miniextendr]`,
   `#[r_ffi_checked]`, `ExternalPtr`, and `RNativeType`.
 - `miniextendr-engine/` - Standalone R embedding engine for Rust-only binaries
@@ -35,8 +35,7 @@ used to scaffold standalone packages and monorepos.
 - FFI bindings to R's C API plus safer `SEXP`-oriented helpers.
 - Rust <-> R conversions for common scalars, vectors, lists, matrices, and
   user-defined types.
-- Main-thread execution inside `R_UnwindProtect` by default, with an optional
-  worker-thread dispatch model for functions that opt in.
+- Main-thread execution inside `R_UnwindProtect` for every generated wrapper.
 - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 - Env, S3, S4, S7, and R6 class generation from Rust impl blocks.
 - Type-erased cross-package trait dispatch via tags and vtables.
@@ -48,7 +47,7 @@ used to scaffold standalone packages and monorepos.
 Feature families in the runtime crate include:
 
 - Runtime/build: `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs`,
-  `worker-thread`, `worker-default`, `no-preconditions-default`, `log`
+  `no-preconditions-default`, `log`
 - Serialization/data: `serde` (native R), `serde_json` (JSON), `borsh`,
   `arrow`, `datafusion`
 - Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`, `jiff`,

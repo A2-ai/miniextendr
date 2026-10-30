@@ -159,18 +159,6 @@ test_that("unit, rng and s3-method wrappers flush the queue too", {
   expect_identical(suppressWarnings(nudge(other, 0L)), 4L)
 })
 
-test_that("worker-thread wrappers flush the queue on the main thread", {
-  skip_if_not(
-    exists("deferred_worker_value", envir = asNamespace("miniextendr"), inherits = FALSE),
-    "worker-thread feature not enabled"
-  )
-  out <- collect_conditions(deferred_worker_value())
-  expect_identical(out$value, 9L)
-  expect_length(out$conditions, 1L)
-  expect_s3_class(out$conditions[[1]], "pkg_warning_truncated")
-  expect_identical(out$conditions[[1]]$dropped, 1L)
-})
-
 test_that("nested calls flush only their own queue", {
   out <- collect_conditions(deferred_nested(function() deferred_warning_value(5L)))
   expect_identical(out$value, 103L)

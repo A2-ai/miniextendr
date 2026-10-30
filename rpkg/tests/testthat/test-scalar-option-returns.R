@@ -83,18 +83,3 @@ test_that("strict scalar Option methods preserve conversion checks", {
   expect_s3_class(class$optional_self(TRUE), "ScalarOptionEnv")
   expect_null(class$optional_self(FALSE))
 })
-
-test_that("worker scalar Option methods preserve conversion checks", {
-  skip_if_not(
-    any(c("worker-thread", "worker-default") %in% miniextendr_enabled_features()),
-    "worker feature is disabled"
-  )
-  class <- miniextendr:::ScalarOptionEnv
-  expect_identical(class$optional_worker(TRUE), 42L)
-  expect_identical(class$optional_worker(FALSE), NA_integer_)
-  call <- class$optional_worker_strict
-  expect_identical(call(TRUE, FALSE), 42L)
-  expect_identical(call(FALSE, FALSE), NA_integer_)
-  expect_identical(call(FALSE, TRUE), NA_integer_)
-  expect_error(call(TRUE, TRUE))
-})

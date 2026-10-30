@@ -210,8 +210,8 @@ reachable.
 
 ## Error Handling
 
-Rust panics are caught by the miniextendr worker thread and converted to R
-errors automatically:
+Rust panics are caught at the R/Rust boundary and converted to R errors
+automatically:
 
 ```rust
 /// Divide two numbers, panicking on division by zero.
@@ -297,19 +297,18 @@ verify that it is:
 2. Has `#[miniextendr]`
 3. Sub-module is declared with `mod` in the parent module
 
-## The Worker Thread Model
+## Threads
 
-miniextendr runs your Rust code on a dedicated worker thread, separate from
-R's main thread. This design ensures that Rust panics are caught safely
-without crashing the R session.
+miniextendr runs your Rust code on R's main thread, inside a boundary that
+catches both Rust panics and R errors, so neither crashes the R session.
 
 You generally do not need to think about this -- the `#[miniextendr]` macro
-handles the dispatch automatically. Two things to be aware of:
+generates the boundary. Two things to be aware of:
 
 - **Rust panics** are caught and forwarded as R errors.
-- **R API calls** (e.g., allocating R objects) must happen on the main
-  thread. Functions that accept or return `SEXP` are automatically routed
-  to the main thread.
+- **R API calls** (e.g., allocating R objects) must happen on R's main
+  thread. Threads you start yourself (Rayon, `std::thread`) may compute on
+  plain Rust data but must not touch R; the R API panics there.
 
 ## Next Steps
 

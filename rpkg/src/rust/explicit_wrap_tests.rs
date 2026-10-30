@@ -1,8 +1,5 @@
 //! Explicit cross-class return wrapping and trait factory regressions (#1521).
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use crate::s3_tests::S3Counter;
 use crate::s4_tests::S4Counter;
 use crate::s7_tests::S7Counter;
@@ -165,13 +162,6 @@ pub fn wrapped_board(w: i32, h: i32) -> WrapAsR6<WrapBoard> {
 #[miniextendr(wrap = "r6")]
 pub fn wrapped_board_attr(w: i32, h: i32) -> WrapBoard {
     WrapBoard::new(w, h)
-}
-
-/// Worker results are wrapped after reaching the R thread.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(worker)]
-pub fn wrapped_board_worker() -> WrapAsR6<WrapBoard> {
-    WrapAsR6(WrapBoard::new(9, 10))
 }
 
 #[cfg(feature = "vctrs")]

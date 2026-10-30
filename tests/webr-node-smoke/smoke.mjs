@@ -308,7 +308,7 @@ async function main() {
 // Restores the coverage dropped when the local and CI runners were unified
 // onto this script: run rpkg's testthat suite inside the webR session and
 // report counts. Tolerate-and-report by design — many tests legitimately
-// fail or skip under wasm (worker-thread / fork / subprocess assumptions),
+// fail or skip under wasm (thread / fork / subprocess assumptions),
 // so red counts NEVER touch the exit code. Only a harness error before the
 // counts line (testthat won't install, the mount fails, test_dir itself
 // errors) rejects, which main() converts into a red gate. The Promise.race

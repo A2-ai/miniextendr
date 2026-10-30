@@ -120,8 +120,8 @@ impl NativeBorrow {
 
 /// Whether any conversion pair can alias, without inspecting or allocating in R.
 ///
-/// Generated worker wrappers use this before entering R unwind protection so
-/// owned/custom conversions and shared-only signatures need no extra boundary.
+/// Generated wrappers use this to skip the alias check for owned/custom
+/// conversions and shared-only signatures.
 #[doc(hidden)]
 pub fn needs_check(borrows: &[Option<NativeBorrow>]) -> bool {
     for (i, borrow) in borrows.iter().enumerate() {

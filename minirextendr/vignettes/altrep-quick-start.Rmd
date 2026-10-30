@@ -256,7 +256,7 @@ expensive.
 
 ## Guard Modes
 
-ALTREP callbacks run on R's main thread (not the worker thread). miniextendr
+ALTREP callbacks run on R's main thread. miniextendr
 wraps each callback in a guard that catches Rust panics so they don't crash
 R. Three guard modes are available:
 

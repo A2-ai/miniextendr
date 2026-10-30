@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn catch_unwind_returns_value_on_success() {
     let _queue = crate::deferred_condition::tests::lock_queue();
-    let result = guarded_ffi_call(|| 42, GuardMode::CatchUnwind, PanicSource::Worker);
+    let result = guarded_ffi_call(|| 42, GuardMode::CatchUnwind, PanicSource::Altrep);
     assert_eq!(result, 42);
 }
 

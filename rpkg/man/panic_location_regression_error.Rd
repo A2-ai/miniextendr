@@ -4,13 +4,10 @@
 \alias{panic_location_regression_error}
 \title{panic_location_regression_error}
 \usage{
-panic_location_regression_error(x)
-}
-\arguments{
-\item{x}{Ignored; present only to force main-thread dispatch.}
+panic_location_regression_error()
 }
 \description{
 Regression guard: \verb{error!()} produces a typed \code{rust_error} condition with NO
 \verb{(at …)} suffix (it travels the \code{RCondition} branch, untouched by the
-location feature). Takes a \code{SEXP} arg to stay on the main-thread typed path.
+location feature).
 }

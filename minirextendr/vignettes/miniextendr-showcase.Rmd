@@ -327,7 +327,7 @@ set_mode("D")
 
 ## Error Handling
 
-Rust panics are caught by the worker thread and converted to R errors:
+Rust panics are caught at the R/Rust boundary and converted to R errors:
 
 **Rust:**
 

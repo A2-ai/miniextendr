@@ -182,7 +182,7 @@ lives in `tools/detect-features.R`; configure passes the result to cargo via
 | R ↔ Rust type mapping, NA handling, Option, vectors | `miniextendr-conversions` |
 | Expose a Rust struct as an R6/S3/S4/S7/vctrs class | `miniextendr-classes` |
 | data.frame ↔ Vec<Row>, DataFrameRow derive, builders | `miniextendr-dataframe` |
-| Rayon, worker thread, SEXP-not-Send, thread control | `miniextendr-parallel` |
+| Rayon, spawned threads, SEXP-not-Send, thread control | `miniextendr-parallel` |
 | Vendoring, CRAN submission, release CI | `miniextendr-release` |
 
 Full manual (all framework docs, rendered): https://a2-ai.github.io/miniextendr

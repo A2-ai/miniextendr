@@ -101,8 +101,8 @@ altrep_info(1:10)          # Works - 1:10 is ALTREP
 altrep_info(c(1L, 2L, 3L)) # Error: "expected an ALTREP vector"
 ```
 
-`AltrepSexp` is `!Send + !Sync` and cannot be sent to rayon threads or other
-worker threads. This is enforced at compile time via `PhantomData<Rc<()>>`.
+`AltrepSexp` is `!Send + !Sync` and cannot be sent to rayon threads or any
+other thread. This is enforced at compile time via `PhantomData<Rc<()>>`.
 
 To extract data from an `AltrepSexp`, materialize it on the R main thread:
 

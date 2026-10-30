@@ -11,7 +11,7 @@
 //! The naive way to surface a Rust error in R is to call `Rf_error`, which
 //! `longjmp`s out of the call frame. That works for C — C has no destructors —
 //! but in Rust it skips every drop on the stack: open files, `Mutex` guards,
-//! `Box::into_raw` round-trips, the worker-thread continuation token. Anything
+//! `Box::into_raw` round-trips, `RefCell` borrows. Anything
 //! holding a resource leaks or corrupts.
 //!
 //! The framework instead catches every Rust panic (and every `RCondition`

@@ -23,7 +23,7 @@
 //! `indicatif::TermLike` is declared as `Debug + Send + Sync`, so `RTerm`
 //! must also be `Send + Sync` — there is no compile-time guard against
 //! off-thread use. Safety is enforced at runtime: every method
-//! short-circuits when [`crate::worker::is_r_main_thread`] returns `false`.
+//! short-circuits when [`crate::is_r_main_thread`] returns `false`.
 //! Off-main-thread writes are silently dropped, mirroring the contract of
 //! the pre-existing `RStdout` / `RStderr` `std::io::Write` impls.
 //!
@@ -163,7 +163,7 @@ impl RTerm {
     /// ```
     pub fn new(conn: impl IntoR, width: u16) -> Self {
         assert!(
-            crate::worker::is_r_main_thread(),
+            crate::is_r_main_thread(),
             "RTerm::new must be called from the R main thread"
         );
         let sexp = conn.into_sexp();
@@ -191,7 +191,7 @@ impl RTerm {
         if buf.is_empty() {
             return Ok(());
         }
-        if !crate::worker::is_r_main_thread() {
+        if !crate::is_r_main_thread() {
             return Ok(());
         }
         match self.kind {
@@ -233,7 +233,7 @@ impl fmt::Debug for RTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Reading the description dereferences the SEXP — only do that on the
         // main thread.
-        let description = if crate::worker::is_r_main_thread() {
+        let description = if crate::is_r_main_thread() {
             unsafe { conn_description(self.sexp) }.unwrap_or_else(|| "<unknown>".to_string())
         } else {
             "<off-main-thread>".to_string()
@@ -309,7 +309,7 @@ impl TermLike for RTerm {
     }
 
     fn flush(&self) -> io::Result<()> {
-        if !crate::worker::is_r_main_thread() {
+        if !crate::is_r_main_thread() {
             return Ok(());
         }
         match self.kind {
