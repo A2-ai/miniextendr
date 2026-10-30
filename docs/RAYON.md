@@ -679,7 +679,8 @@ use std::sync::mpsc;
 use std::thread;
 
 // Spawn once; hold `tx` in a `OnceLock` or ExternalPtr-backed struct.
-let (tx, rx) = mpsc::channel::<Job>();
+// Bounded: when 16 jobs wait, `send` waits too (`try_send` refuses instead).
+let (tx, rx) = mpsc::sync_channel(16);
 thread::spawn(move || {
     for job in rx {
         let result = run_job(job); // pure Rust — no R API calls here

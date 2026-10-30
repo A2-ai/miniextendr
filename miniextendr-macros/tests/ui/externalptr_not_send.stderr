@@ -1,0 +1,47 @@
+error[E0277]: `NonNull<RefCell<Counter>>` cannot be sent between threads safely
+  --> tests/ui/externalptr_not_send.rs:15:17
+   |
+15 |         s.spawn(move || a.borrow_mut().n += 1);
+   |           ----- -------^^^^^^^^^^^^^^^^^^^^^^
+   |           |     |
+   |           |     `NonNull<RefCell<Counter>>` cannot be sent between threads safely
+   |           |     within this `{closure@$DIR/tests/ui/externalptr_not_send.rs:15:17: 15:24}`
+   |           required by a bound introduced by this call
+   |
+   = help: within `{closure@$DIR/tests/ui/externalptr_not_send.rs:15:17: 15:24}`, the trait `Send` is not implemented for `NonNull<RefCell<Counter>>`
+note: required because it appears within the type `ExternalPtr<Counter>`
+  --> $WORKSPACE/miniextendr-api/src/externalptr.rs
+   |
+   | pub struct ExternalPtr<T: TypedExternal> {
+   |            ^^^^^^^^^^^
+note: required because it's used within this closure
+  --> tests/ui/externalptr_not_send.rs:15:17
+   |
+15 |         s.spawn(move || a.borrow_mut().n += 1);
+   |                 ^^^^^^^
+note: required by a bound in `Scope::<'scope, 'env>::spawn`
+  --> $RUST/std/src/thread/scoped.rs
+
+error[E0277]: `NonNull<RefCell<Counter>>` cannot be sent between threads safely
+  --> tests/ui/externalptr_not_send.rs:22:24
+   |
+22 |     std::thread::spawn(move || drop(x));
+   |     ------------------ -------^^^^^^^^
+   |     |                  |
+   |     |                  `NonNull<RefCell<Counter>>` cannot be sent between threads safely
+   |     |                  within this `{closure@$DIR/tests/ui/externalptr_not_send.rs:22:24: 22:31}`
+   |     required by a bound introduced by this call
+   |
+   = help: within `{closure@$DIR/tests/ui/externalptr_not_send.rs:22:24: 22:31}`, the trait `Send` is not implemented for `NonNull<RefCell<Counter>>`
+note: required because it appears within the type `ExternalPtr<Counter>`
+  --> $WORKSPACE/miniextendr-api/src/externalptr.rs
+   |
+   | pub struct ExternalPtr<T: TypedExternal> {
+   |            ^^^^^^^^^^^
+note: required because it's used within this closure
+  --> tests/ui/externalptr_not_send.rs:22:24
+   |
+22 |     std::thread::spawn(move || drop(x));
+   |                        ^^^^^^^
+note: required by a bound in `spawn`
+  --> $RUST/std/src/thread/functions.rs

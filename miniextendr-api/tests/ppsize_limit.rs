@@ -32,7 +32,7 @@ const MAX_PPSIZE: &str = "--max-ppsize=10000";
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
-static R_THREAD: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
+static R_THREAD: OnceLock<mpsc::SyncSender<Job>> = OnceLock::new();
 
 fn initialize_r_with_small_ppsize() {
     unsafe {
@@ -73,21 +73,19 @@ where
     F: FnOnce() -> T + Send + 'static,
 {
     let sender = R_THREAD.get_or_init(|| {
-        let (tx, rx) = mpsc::channel::<Job>();
+        let (tx, rx) = mpsc::sync_channel(16);
         RThreadBuilder::new()
             .name("r-ppsize-test".to_string())
             .stack_size(16 * 1024 * 1024)
             .spawn(move || {
                 initialize_r_with_small_ppsize();
-                for job in rx {
-                    job();
-                }
+                rx.into_iter().for_each(|job: Job| job());
             })
             .expect("Failed to spawn R test thread");
         tx
     });
 
-    let (result_tx, result_rx) = mpsc::sync_channel(0);
+    let (result_tx, result_rx) = mpsc::sync_channel(1);
     let job: Job = Box::new(move || {
         let result = catch_unwind(AssertUnwindSafe(f));
         let _ = result_tx.send(result);

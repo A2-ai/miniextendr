@@ -164,15 +164,14 @@ pub(crate) fn set_fake_main_thread(v: Option<bool>) {
 #[track_caller]
 pub(crate) fn on_main_thread<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
     use std::panic::{AssertUnwindSafe, catch_unwind};
-    use std::sync::mpsc::{Sender, channel};
 
     type Job = Box<dyn FnOnce() + Send>;
-    static JOBS: OnceLock<Sender<Job>> = OnceLock::new();
+    static JOBS: OnceLock<SyncSender<Job>> = OnceLock::new();
     let jobs = JOBS.get_or_init(|| {
-        let (tx, rx) = channel::<Job>();
+        let (tx, rx) = sync_channel(16);
         std::thread::spawn(move || {
             install_r_logger();
-            rx.into_iter().for_each(|job| job());
+            rx.into_iter().for_each(|job: Job| job());
         });
         tx
     });
