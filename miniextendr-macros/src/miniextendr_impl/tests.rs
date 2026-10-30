@@ -9117,19 +9117,56 @@ fn s3_field_methods_without_a_constructor() {
     assert!(!wrapper.contains("engine_rec <- new.env("), "{wrapper}");
 }
 
-/// A readers-only impl of a class named as its Rust type keeps the class
-/// environment: a trait impl's static methods and consts land in `Type$Trait`.
+/// A readers-only impl of a class named as its Rust type has the class
+/// environment as its env part, which the wrapper writer keeps when a trait
+/// impl's static methods or consts land in `Class$Trait` (#2264).
 #[test]
-fn s3_field_methods_without_a_constructor_keep_the_type_env() {
+fn s3_field_methods_without_a_constructor_mark_the_type_env() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Engine {}
     };
     let mut attrs = default_impl_attrs(ClassSystem::S3);
     attrs.r_data_accessors = RDataAccessors::GetOnly;
-    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    let class = super::s3_class::generate_s3_class(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    let env = class.env.join("\n");
     assert!(
-        wrapper.contains("Engine <- new.env(parent = emptyenv())"),
-        "{wrapper}"
+        env.contains("#' @export\nEngine <- new.env(parent = emptyenv())"),
+        "{env}"
+    );
+    for part in [&class.head, &class.members, &class.tail] {
+        assert!(!part.join("\n").contains("new.env("), "{part:?}");
+    }
+    assert!(
+        class.tail.iter().all(|line| line.is_empty()),
+        "{:?}",
+        class.tail
+    );
+}
+
+/// With a constructor the env part holds the environment and the tail
+/// binds `Class$new` into it.
+#[test]
+fn s3_constructor_env_is_the_env_part() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+        }
+    };
+    let class = super::s3_class::generate_s3_class(
+        &ParsedImpl::parse(default_impl_attrs(ClassSystem::S3), item_impl).unwrap(),
+    );
+    assert!(
+        class
+            .env
+            .join("\n")
+            .contains("Engine <- new.env(parent = emptyenv())"),
+        "{:?}",
+        class.env
+    );
+    assert!(
+        class.tail.join("\n").contains("Engine$new <- new_engine"),
+        "{:?}",
+        class.tail
     );
 }
 

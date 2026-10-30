@@ -220,7 +220,11 @@ target). The macro generates this correctly; this only matters when adding manua
 roxygen to adjacent code.
 
 S3 also generates an Env-style class environment (`Type <- new.env(parent = emptyenv())`)
-for `Type$new()` syntax and trait namespace compatibility.
+for `Type$new()` syntax and trait namespaces (`Type$Trait`). It is the block's
+`ClassBlockEntry::env` part, which the wrappers writer keeps only when the type
+has a constructor or a trait impl registered a `TraitNamespaceEntry` for it
+(`MX_TRAIT_NAMESPACES`, #2264), so a constructorless class exports no empty
+environment.
 
 ### S4 class
 

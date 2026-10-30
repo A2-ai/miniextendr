@@ -8,7 +8,7 @@ use proc_macro2::TokenStream;
 use quote::format_ident;
 use syn::ItemImpl;
 
-use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
+use super::r_wrappers::{TraitWrapperOpts, binds_trait_namespace, generate_trait_r_wrapper};
 use super::{TraitAbiMetadata, TraitConst, TraitMethod, type_to_symbol_name};
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
@@ -22,6 +22,8 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// - C wrapper functions and `R_CallMethodDef` entries for each method and const
 /// - R wrapper code string (class-system specific)
 /// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
+/// - A `TraitNamespaceEntry` when the R wrappers bind the `Class$Trait`
+///   namespace ([`binds_trait_namespace`], #2264)
 ///
 /// # Arguments
 ///
@@ -148,6 +150,27 @@ pub(super) fn generate_vtable_static(
         Err(e) => return e.into_compile_error(),
     };
 
+    // A trait impl that binds `Class$Trait` tells the wrapper writer, which
+    // keeps the type's S3 class environment for it (#2264): the type's own
+    // impl blocks are separate expansions and can't see this one.
+    let trait_namespace_entry = if binds_trait_namespace(
+        impl_attrs.class_system,
+        &methods_owned,
+        &consts,
+    ) {
+        quote::quote! {
+            const _: () = {
+                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_NAMESPACES), linkme(crate = ::miniextendr_api::linkme))]
+                static TRAIT_NAMESPACE: ::miniextendr_api::registry::TraitNamespaceEntry =
+                    ::miniextendr_api::registry::TraitNamespaceEntry {
+                        type_path: || ::core::any::type_name::<#concrete_type>(),
+                    };
+            };
+        }
+    } else {
+        quote::quote! {}
+    };
+
     // Generate constant name for R wrapper registration
     let r_wrappers_const = crate::naming::trait_impl_wrappers_ident(&type_name_str, trait_name);
 
@@ -257,6 +280,7 @@ pub(super) fn generate_vtable_static(
                     #r_wrapper_str
                 ),
             };
+        #trait_namespace_entry
 
         // Trait dispatch entry for universal_query
         #[doc = ::core::concat!(

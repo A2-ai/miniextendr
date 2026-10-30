@@ -25,13 +25,15 @@ use super::ParsedImpl;
 /// - Static methods: regular functions named `<class>_<method>(...)`
 /// - Class environment: `ClassName <- new.env(parent = emptyenv())` for `Class$new()`
 ///   syntax and trait namespaces, when the impl has a constructor or the class
-///   is named as its Rust type (#1918)
+///   is named as its Rust type (#1918); the wrapper writer keeps it only for a
+///   constructor or a trait impl that writes into it (#2264)
 ///
 /// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
 ///
 /// The constructor and the field methods are the head; the S3 methods and the
-/// static methods are the members; the class environment is the tail.
+/// static methods are the members; the class environment is the env part, and
+/// its `$new` binding the tail.
 pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
@@ -315,16 +317,17 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
     // The class environment holds `Class$new()` and the trait namespaces
     // (`Class$Trait`, for a trait's static methods and consts; static methods
-    // of the impl are plain functions). Emit it only
-    // when one of them can land in it: an impl with a constructor, or a class
-    // named as its Rust type. An impl that only adds the field readers to a
-    // class the package names and builds itself gets none, so no second
-    // binding of a same-named constructor, export or `\alias` (#1918).
+    // of the impl are plain functions). Whether one of them lands in it is
+    // known only when the wrappers are written, where the trait impls
+    // register (#2264): the env part is kept for a constructor or a trait
+    // namespace. A class the package names and builds itself has none to
+    // keep unless it has a constructor, so no second binding of a same-named
+    // constructor, export or `\alias` (#1918).
     let has_class_env = parsed_impl.constructor_context().is_some() || *type_ident == class_name;
     let export_line = if should_export { "#' @export\n" } else { "" };
     if has_class_env {
         if class_has_no_rd {
-            lines.push(format!(
+            w.env.push(format!(
                 "#' @noRd
 {} <- new.env(parent = emptyenv())",
                 class_name
@@ -338,11 +341,11 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             } else {
                 format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
             };
-            lines.push(format!(
+            w.env.push(format!(
                 "#' @rdname {topic}\n{order}{export_line}{class_name} <- new.env(parent = emptyenv())"
             ));
         }
-        lines.push(String::new());
+        w.env.push(String::new());
     }
 
     // Add $new binding to class environment (for Class$new() syntax)
@@ -367,8 +370,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// (#2069).
 ///
 /// - A class named as its Rust type has its class block on `NULL`, without
-///   an `@export` of the class name: S3's class environment exports it, and
-///   vctrs has no object of that name.
+///   an `@export` of the class name: S3's class environment exports it when
+///   a trait impl writes into it (#2264), and vctrs has no object of that
+///   name.
 /// - A class the package names and builds itself (`class = "..."`) has no
 ///   class environment either (#1918). Its roxygen block only carries the
 ///   impl docs ([`super::docs_only_class_block`]).

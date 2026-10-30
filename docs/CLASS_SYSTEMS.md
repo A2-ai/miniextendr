@@ -1039,9 +1039,12 @@ has a constructor: the one candidate, or the one marked among several.
 Nothing is generated in place of the constructor. R6's `TypeName$new()` and
 S7's `TypeName()`, which exist anyway to wrap the factories' pointers, raise
 an error naming the type when called without a `.ptr`, rather than build an
-object holding a `NULL` pointer. Env and S3 leave `TypeName$new` `NULL`, and
-S4 and vctrs define no `TypeName()` or `new_typename()`: a package that builds
-its objects in R may define its own under that name (#2069). An abstract S7
+object holding a `NULL` pointer. Env leaves `TypeName$new` `NULL`, and S4 and
+vctrs define no `TypeName()` or `new_typename()`: a package that builds its
+objects in R may define its own under that name (#2069). S3 defines no
+`new_typename()` and no class environment `TypeName` either, unless a trait
+impl's static methods or consts land in its `TypeName$Trait` namespace
+(#2264). An abstract S7
 class (`s7(abstract)`) keeps S7's own refusal to construct it. A vctrs class
 without a constructor gets its vectors from `vctrs::new_vctr()`
 (`new_rcrd()`, `new_list_of()`) with `class = "TypeName"`.
@@ -1825,11 +1828,13 @@ objects itself (`structure(make_engine(), class = "engine")`) writes
 {}` and gets the readers for the pointer it classes by hand. Such an impl
 emits no class environment (`engine <- new.env(...)`), so the package's own
 constructor can be named `engine()` without a second binding. The environment
-exists only when it can hold something: `Class$new()` for an impl with a
-constructor, or a trait's `Class$Trait` namespace for a class named as its
-Rust type. The readers are documented on the class's topic (or the impl's
-`@rdname`) under `#[miniextendr(internal)]` too, which only drops the exports
-(#1918).
+exists only when something lands in it: `Class$new()` for a class with a
+constructor, or a trait impl's `Class$Trait` namespace (its static methods and
+consts) for a class named as its Rust type. The impl blocks can't see the
+trait impls, so this is decided when the wrappers are written, where each
+trait impl that binds a namespace registers its type (#2264). The readers
+are documented on the class's topic (or the impl's `@rdname`) under
+`#[miniextendr(internal)]` too, which only drops the exports (#1918).
 
 #### A fallback for names no field has
 

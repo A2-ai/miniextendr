@@ -10,8 +10,13 @@
 //! - `NoCtor*`: no method returns bare `Self` (`of` returns
 //!   `Result<Self, String>`, `parse` `Option<Self>`), so the class has no
 //!   constructor. Objects come from those static factories. R6's `T$new()`
-//!   and S7's `T()` raise an error without a `.ptr`; env and S3 leave
-//!   `T$new` `NULL`, and S4 and vctrs define no `T()` or `new_t()` (#2069).
+//!   and S7's `T()` raise an error without a `.ptr`; env leaves `T$new`
+//!   `NULL`, and S4 and vctrs define no `T()` or `new_t()` (#2069). S3
+//!   defines neither `new_t()` nor its class environment `T`, which nothing
+//!   would land in (#2264).
+//! - `NoCtorTraitS3`: an S3 class without a constructor whose trait impl
+//!   has a static method, `NoCtorTraitS3$MatrixCounter$default_value()`: its
+//!   class environment is kept for that namespace (#2264).
 //! - `SplitInfer*`: the methods are in a first impl block and the one
 //!   candidate in a second; the decision is made for the type, across its
 //!   blocks (#1776).
@@ -349,6 +354,41 @@ impl NoCtorS3 {
     /// The current value.
     pub fn noctor3_value(&self) -> i32 {
         self.value
+    }
+}
+
+/// An S3 class without a constructor, with a trait impl's static method.
+#[derive(ExternalPtr)]
+pub struct NoCtorTraitS3 {
+    value: i32,
+}
+
+/// S3 class whose objects come from its factory, with a trait namespace.
+#[miniextendr(s3)]
+impl NoCtorTraitS3 {
+    /// An object holding `value`, which must not be negative.
+    /// @param value The value.
+    pub fn of(value: i32) -> Result<Self, String> {
+        if value < 0 {
+            return Err(format!("negative value {value}"));
+        }
+        Ok(Self { value })
+    }
+}
+
+// The static `default_value()` lands in `NoCtorTraitS3$MatrixCounter`, which
+// keeps the class environment.
+#[miniextendr(s3)]
+impl crate::class_system_matrix::MatrixCounter for NoCtorTraitS3 {
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
+    /// @param n Amount to add.
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        13
     }
 }
 

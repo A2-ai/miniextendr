@@ -4507,6 +4507,10 @@ pub struct ClassWrapper {
     pub class_doc_lines: Vec<String>,
     /// The block's methods and static methods.
     pub members: Vec<String>,
+    /// The S3 class environment with its roxygen block, which the wrapper
+    /// writer keeps only when the type has a constructor or a trait impl
+    /// writes `Class$Trait` into it (#2264). Empty for the other systems.
+    pub env: Vec<String>,
     /// What follows the members of every block, such as R6's `$lock()`.
     pub tail: Vec<String>,
     /// The names the members bind in the class's own namespaces, worded for
@@ -4531,8 +4535,10 @@ impl ClassWrapper {
         }
     }
 
-    /// Local macro rendering for snapshots, with merge markers stripped.
-    /// Write-time topic inheritance is covered by the registry and rpkg tests.
+    /// Local macro rendering for snapshots, with merge markers stripped and
+    /// the [`env`](Self::env) written, as for a class something lands in.
+    /// Write-time topic inheritance and the env decision are covered by the
+    /// registry and rpkg tests.
     #[cfg(test)]
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
@@ -4554,6 +4560,7 @@ impl ClassWrapper {
             }
         }
         lines.extend(self.members.iter().cloned());
+        lines.extend(self.env.iter().cloned());
         lines.extend(self.tail.iter().cloned());
         lines
             .join("\n")
@@ -5426,6 +5433,7 @@ pub fn expand_impl(
         let class_docs = r_part(&class.class_docs);
         let class_doc_lines = r_part(&class.class_doc_lines);
         let members = r_part(&class.members);
+        let env = r_part(&class.env);
         let tail = r_part(&class.tail);
         let member_names = &class.member_names;
         quote! {
@@ -5435,6 +5443,7 @@ pub fn expand_impl(
             class_doc_lines: #class_doc_lines,
             members: #members,
             member_names: &[#(#member_names),*],
+            env: #env,
             tail: #tail,
         }
     };
