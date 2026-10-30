@@ -323,6 +323,32 @@ impl RCondition {
         crate::deferred_condition::defer(self);
     }
 
+    /// The error condition of a classed error value: its
+    /// [`message`](RConditionData::message), [`class`](RConditionData::class),
+    /// [`data`](RConditionData::data) fields and
+    /// [`call`](RConditionData::call) choice, as a `Result` return raises it.
+    ///
+    /// For raising a typed error by hand where no `Result` reaches the
+    /// generated code, such as a helper deep inside a body:
+    ///
+    /// ```ignore
+    /// let model = load(path).unwrap_or_else(|e| RCondition::from_data(&e).raise());
+    /// ```
+    ///
+    /// Raised, it is `kind = "error"`; returned as `Err` it would be
+    /// `"result_err"`. Both are R errors with the same classes and fields.
+    /// A `data()` field with a reserved name (`message`, `call`, `kind`)
+    /// panics here, as in a generated `Err` arm.
+    #[track_caller]
+    pub fn from_data<E: RConditionData + ?Sized>(e: &E) -> RCondition {
+        RCondition::Error {
+            message: e.message(),
+            class: e.class(),
+            data: check_err_fields(e.data(), e.__mx_keeps_parent()),
+            call: e.call(),
+        }
+    }
+
     /// Split into the kind (one of [`crate::error_value::kind`]) and the
     /// [`ErrParts`] (message, class, data, call choice) that
     /// [`crate::error_value::condition_parts_value`] builds the tagged value
@@ -2060,6 +2086,42 @@ macro_rules! __mx_result_err_parts {
                     ::core::option::Option::Some(parts) => parts,
                     ::core::option::Option::None => __mx_e.__mx_fallback_parts($prefix),
                 },
+            },
+        }
+    }};
+}
+
+/// The parts of an error that only has `Display`: its text as the message,
+/// no class, no data. The fallback of [`crate::__mx_into_r_err_parts!`].
+#[doc(hidden)]
+pub fn display_err_parts<E: ?Sized + std::fmt::Display>(e: &E) -> ErrParts {
+    ErrParts {
+        message: e.to_string(),
+        class: Vec::new(),
+        data: None,
+        call: ConditionCall::Inherit,
+    }
+}
+
+/// Internal: the probe of a failed return conversion (`IntoR::try_into_sexp`
+/// returned `Err(e)`) in generated code. Not public API.
+///
+/// The classed stage of [`crate::__mx_result_err_parts!`] (an
+/// [`RConditionData`] error gives its message, classes, fields and call
+/// choice), then the error's `Display` ([`display_err_parts`]): every
+/// `IntoR::Error` has `Display`, and nothing else is known of it, in a
+/// generic trait shim least of all. No declared serde shape, so the expansion
+/// site needs no `__MiniextendrInitMarker`.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_into_r_err_parts {
+    ($e:expr) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ErrPartsClassed as _, ErrPartsUnclassed as _};
+        match &$e {
+            __mx_e => match __mx_e.__mx_classed_parts() {
+                ::core::option::Option::Some(parts) => parts,
+                ::core::option::Option::None => $crate::condition::display_err_parts(__mx_e),
             },
         }
     }};

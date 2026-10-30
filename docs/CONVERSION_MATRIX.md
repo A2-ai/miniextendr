@@ -394,6 +394,10 @@ with all failing field positions collected in one diagnostic. `Option<Tuple>`,
 row containers also collect failures across rows. Successful fields and rows
 enter the protected list before the next conversion runs.
 
+A returned value converts with `try_into_sexp`, so such an error reaches R as
+an R error (`kind = "result_err"`) with the error's `RConditionData` classes
+and fields, else its `Display` text (#2272).
+
 Tuples with 1–12 fields also implement `IntoList` and `TryFromList`, using
 these same positional conversions and batched field errors. Element-wise
 `Coerce` covers all twelve arities, including the singleton; the existing

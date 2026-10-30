@@ -7097,7 +7097,7 @@ fn fallible_self_ref_builders_use_self_handle() {
         let tokens = c_wrapper_tokens(&parsed, name);
         assert!(tokens.contains("self_sexp"), "{name}: {tokens}");
         assert!(
-            !tokens.contains("IntoR :: into_sexp (__result)"),
+            !tokens.contains("IntoR :: try_into_sexp (__result)"),
             "{name} must not route the borrow through IntoR: {tokens}"
         );
         let m = parsed.methods.iter().find(|m| m.ident == name).unwrap();

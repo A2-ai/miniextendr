@@ -63,8 +63,15 @@ The attribute wraps the **complete return value**, just like `AsSerialize<T>`:
 
 To keep `Err` as an R error, wrap only the successful payload in the type spelling:
 `Result<AsSerialize<Point>, E>`. `serialize` cannot be combined with `unwrap_in_r`
-or `serde_error(...)`, which select different Result handling. Panics and failures
-inside the serializer still become ordinary structured Rust errors.
+or `serde_error(...)`, which select different Result handling.
+
+A value serde refuses (a map whose keys are not strings, a `Serialize` impl's
+own `Error::custom`) is an R error of class `miniextendr_serde_error`
+(`miniextendr_api::serde::SERDE_ERROR_CLASS`) with serde's message and
+`e$kind == "result_err"`: `AsSerialize`'s `IntoR::Error` is `RSerdeError`, which
+implements `RConditionData`, and the generated code raises a failed return
+conversion as it raises an `Err` (#2272). A panic inside a `Serialize` impl
+stays an ordinary `rust_error`.
 
 Trait implementations apply serde transport to their concrete vtable shims too.
 Rust View consumers retain their declared return type's `TryFromSexp` contract;

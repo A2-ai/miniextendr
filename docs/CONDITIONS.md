@@ -621,6 +621,24 @@ its classes and fields with `kind = "conversion"`, the parameter's name as
 the same condition (#1591). See
 [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors).
 
+It classes failed return conversions too: when a return value's
+`IntoR::Error` implements `RConditionData`, a failed conversion raises its
+classes and fields with `kind = "result_err"`; any other error raises its
+`Display` text (#2272). `RSerdeError`, the error of `AsSerialize`, has the
+class `miniextendr_serde_error`. See
+[ERROR_HANDLING.md](ERROR_HANDLING.md#a-return-value-whose-conversion-fails).
+
+Where no `Result` reaches the generated code (a computed field's getter that
+returns a plain value, a helper deep inside a body), raise a classed error by
+hand with `RCondition::from_data(&e).raise()`: the error's message, classes,
+fields and call choice, as an `Err` would give them, with `kind = "error"`:
+
+```rust
+use miniextendr_api::condition::RCondition;
+
+let model = load(path).unwrap_or_else(|e| RCondition::from_data(&e).raise());
+```
+
 For one-off cases, `RError` is a ready-made classed value. Any
 `std::error::Error` converts into it with `?` or `From` (the message keeps the
 `caused by:` chain), and builders add the R-facing parts:

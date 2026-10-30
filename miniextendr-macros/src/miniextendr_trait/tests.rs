@@ -760,6 +760,15 @@ fn declaration_shims_live_on_the_trait_and_are_excluded_from_trait_objects() {
         assert!(text.contains("Self : :: core :: marker :: Sized"), "{text}");
         assert!(!text.contains("__ImplT"), "{text}");
         assert!(text.contains("with_r_unwind_protect_shim"));
+        // The result converts with `try_into_sexp`; a failure is the
+        // `result_err` condition with no call slot (#2272).
+        assert!(
+            text.contains(
+                "match :: miniextendr_api :: into_r :: IntoR :: try_into_sexp (result) {"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("trait_abi :: to_sexp (result)"), "{text}");
     }
     assert!(!file.items.iter().any(|item| {
         matches!(item, syn::Item::Fn(function) if function.sig.ident.to_string().ends_with("_shim"))

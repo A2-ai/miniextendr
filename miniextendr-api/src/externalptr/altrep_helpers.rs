@@ -238,12 +238,118 @@ pub struct RSidecar;
 /// The getter runs on R's main thread with the live Rust value, so a
 /// computed field refuses a pointer restored from a saved session like a
 /// struct field does. Its errors are its own: a `rust_error!(class = ...)`
-/// in the getter reaches R with that class. The getter returns a value, not a
-/// `Result`; it takes `&Self`, so it can't read `Sidecar` values (#1856),
-/// which are R fields already.
+/// in the getter reaches R with that class. A getter returning
+/// `Result<T, E>` is an error boundary, as a `#[miniextendr]` function's
+/// `Result` is (#2269): `Ok` reads the value, `Err` raises the error with
+/// the classes and fields of its
+/// [`RConditionData`](crate::condition::RConditionData) impl (else its serde
+/// shape, else its `Debug` text), and `Err(())` of a `Result<T, ()>` reads
+/// `NULL`. The getter takes `&Self`, so it can't read `Sidecar` values
+/// (#1856), which are R fields already.
 ///
 /// Only a `pub` `Computed` field reaches R, and only on S3, S4, env and
 /// vctrs types: R6 active bindings and S7 properties need a setter (#1888).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Computed;
+// endregion
+
+// region: The computed getter's `Result` probe (#2269)
+
+/// What a computed field's getter gave, as the generated getter reads it.
+/// Sorted by the autoref probe on [`ComputedProbe`], since the derive sees
+/// the getter's path, not its return type.
+#[doc(hidden)]
+pub enum ComputedRead<T, E> {
+    /// A value to convert with `IntoR`: the getter's value, or its `Ok`.
+    Value(T),
+    /// `Err(())` of a `Result<T, ()>`: the field reads `NULL`, as a
+    /// function's `Result<T, ()>` return does.
+    Null,
+    /// `Err(e)` of any other `Result<T, E>`: raised as a classed R error.
+    Err(E),
+}
+
+/// The autoref probe of a computed getter's value `V`. The generated getter
+/// calls `(&&&ComputedProbe::of(&value)).__mx_computed_read(value)` with the
+/// three traits in scope; method lookup tries the receiver `&&&ComputedProbe<V>`
+/// first, so the impl on the deepest reference that fits `V` wins:
+/// [`ComputedReadNull`] for `Result<T, ()>`, then [`ComputedReadResult`] for
+/// any `Result<T, E>`, then [`ComputedReadValue`] for anything else.
+#[doc(hidden)]
+pub struct ComputedProbe<V>(::core::marker::PhantomData<V>);
+
+impl<V> ComputedProbe<V> {
+    /// The probe of `value`'s type.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn of(_value: &V) -> Self {
+        ComputedProbe(::core::marker::PhantomData)
+    }
+}
+
+/// First arm: `Result<T, ()>`, whose `Err(())` reads `NULL`.
+#[doc(hidden)]
+pub trait ComputedReadNull {
+    type Value;
+    type Ok;
+    fn __mx_computed_read(
+        &self,
+        value: Self::Value,
+    ) -> ComputedRead<Self::Ok, ::core::convert::Infallible>;
+}
+
+impl<T> ComputedReadNull for &&ComputedProbe<Result<T, ()>> {
+    type Value = Result<T, ()>;
+    type Ok = T;
+    #[inline(always)]
+    fn __mx_computed_read(
+        &self,
+        value: Result<T, ()>,
+    ) -> ComputedRead<T, ::core::convert::Infallible> {
+        match value {
+            Ok(value) => ComputedRead::Value(value),
+            Err(()) => ComputedRead::Null,
+        }
+    }
+}
+
+/// Second arm: any other `Result<T, E>`, whose `Err` is raised.
+#[doc(hidden)]
+pub trait ComputedReadResult {
+    type Value;
+    type Ok;
+    type Err;
+    fn __mx_computed_read(&self, value: Self::Value) -> ComputedRead<Self::Ok, Self::Err>;
+}
+
+impl<T, E> ComputedReadResult for &ComputedProbe<Result<T, E>> {
+    type Value = Result<T, E>;
+    type Ok = T;
+    type Err = E;
+    #[inline(always)]
+    fn __mx_computed_read(&self, value: Result<T, E>) -> ComputedRead<T, E> {
+        match value {
+            Ok(value) => ComputedRead::Value(value),
+            Err(error) => ComputedRead::Err(error),
+        }
+    }
+}
+
+/// Last arm: any other value, read as it is.
+#[doc(hidden)]
+pub trait ComputedReadValue {
+    type Value;
+    fn __mx_computed_read(
+        &self,
+        value: Self::Value,
+    ) -> ComputedRead<Self::Value, ::core::convert::Infallible>;
+}
+
+impl<V> ComputedReadValue for ComputedProbe<V> {
+    type Value = V;
+    #[inline(always)]
+    fn __mx_computed_read(&self, value: V) -> ComputedRead<V, ::core::convert::Infallible> {
+        ComputedRead::Value(value)
+    }
+}
 // endregion

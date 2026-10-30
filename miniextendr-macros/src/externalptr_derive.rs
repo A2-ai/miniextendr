@@ -101,7 +101,9 @@
 //!    `IntoR`/`TryFromSexp` traits on every read and write
 //! 4. **Computed fields** (`#[r_data(get = "Self::f")] pub f: Computed`,
 //!    #1883) - no value in the struct; the getter calls the named
-//!    `fn(&Self) -> impl IntoR` on the live Rust value. There is no setter:
+//!    `fn(&Self) -> impl IntoR` on the live Rust value; a `Result` from it
+//!    is an error boundary, `Result<T, ()>` reading `NULL` (#2269). There
+//!    is no setter:
 //!    no `Type_set_f()`, and under the get/set field syntax an assignment
 //!    raises `miniextendr_read_only_field`. Only `pub`, and not under
 //!    `#[externalptr(r6)]` / `#[externalptr(s7)]`, whose bindings and
@@ -1109,9 +1111,12 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 ///   `r_data_accessors`, #1891) a restored pointer is refused.
 /// - Scalar kinds: reads the struct field (accessed via the external pointer
 ///   address) and wraps it with `Rf_Scalar*`.
-/// - `Conversion`: clones the struct field and calls `IntoR::into_sexp`.
+/// - `Conversion`: clones the struct field and converts it with `IntoR`.
 /// - `Computed`: calls the `get` function on the live struct and converts
-///   its value with `IntoR::into_sexp`.
+///   its value with `IntoR`; a `Result` is an error boundary (#2269).
+///
+/// A failed `IntoR` conversion raises the classed `result_err` condition
+/// (`c_wrapper_builder::return_conversion`, #2272).
 ///
 /// The body runs inside `with_r_unwind_protect` (see the emission site in
 /// [`generate_sidecar_accessors`]). The receiver is the pointer or an object
@@ -1151,12 +1156,47 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             // panics the surrounding guard catches, so they reach R with
             // their classes. Naming the marker field is its only Rust use:
             // it keeps `dead_code` quiet and checks the field's type.
+            //
+            // A `Result` from the getter is an error boundary, as a
+            // function's is (#2269). The derive sees only the getter's path,
+            // so the autoref probe on `ComputedProbe` sorts its value:
+            // `Result<T, ()>`'s `Err` reads `NULL`, another `Err` is the
+            // `result_err` condition with the `Err` arm probe of functions
+            // (`e` is the name `ErrPartsMode::expr` reads), anything else and
+            // an `Ok` convert. The read and the conversion are spanned at the
+            // `get` string, where a type without `IntoR` is reported.
+            let span = syn::spanned::Spanned::span(getter);
+            let read = quote::quote_spanned! {span=>
+                (&&&::miniextendr_api::externalptr::ComputedProbe::of(&__mx_value))
+                    .__mx_computed_read(__mx_value)
+            };
+            let none = quote::quote!(::core::option::Option::None);
+            let value = crate::c_wrapper_builder::return_conversion_at(
+                &quote::quote!(__mx_ok),
+                &none,
+                span,
+            );
+            let err_parts = crate::c_wrapper_builder::ErrPartsMode::from_spec(None).expr();
             quote::quote! {
-                use ::miniextendr_api::into_r::IntoR;
+                #[allow(unused_imports)]
+                use ::miniextendr_api::externalptr::{
+                    ComputedReadNull as _, ComputedReadResult as _, ComputedReadValue as _,
+                };
                 unsafe {
                     #extract_ref
                     let ::miniextendr_api::externalptr::Computed = data.#field_name;
-                    IntoR::into_sexp(#getter(data))
+                    let __mx_value = #getter(data);
+                    match #read {
+                        ::miniextendr_api::externalptr::ComputedRead::Value(__mx_ok) => #value,
+                        ::miniextendr_api::externalptr::ComputedRead::Null => {
+                            ::miniextendr_api::SEXP::nil()
+                        }
+                        ::miniextendr_api::externalptr::ComputedRead::Err(e) => {
+                            ::miniextendr_api::error_value::result_err_condition_value(
+                                #err_parts, #none,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1204,12 +1244,15 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             let ty = &slot.ty;
             let span = syn::spanned::Spanned::span(ty);
             let clone = quote::quote_spanned! {span=> <#ty as ::core::clone::Clone>::clone };
+            let value = crate::c_wrapper_builder::return_conversion(
+                &quote::quote!(val),
+                &quote::quote!(::core::option::Option::None),
+            );
             quote::quote! {
-                use ::miniextendr_api::into_r::IntoR;
                 unsafe {
                     #extract_ref
                     let val: #ty = #clone(&data.#field_name);
-                    <#ty as IntoR>::into_sexp(val)
+                    #value
                 }
             }
         }

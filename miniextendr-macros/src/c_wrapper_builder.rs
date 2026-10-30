@@ -18,6 +18,10 @@ use quote::{format_ident, quote};
 /// or set explicitly via [`CWrapperContextBuilder::return_handling`]. Each variant
 /// handles a different return type pattern, controlling how the C wrapper converts
 /// the Rust value back to R and how errors/None values are surfaced.
+///
+/// Every conversion of a value goes through [`return_conversion`]:
+/// `IntoR::try_into_sexp`, with a failed conversion raised as a classed R
+/// error (#2272).
 #[derive(Debug, Clone)]
 pub enum ReturnHandling {
     /// Returns unit type `()` -- emits `R_NilValue`.
@@ -42,13 +46,13 @@ pub enum ReturnHandling {
     /// call yields `Option<()>`; `NULL` on `None`, as every `Option` return
     /// gives, and the same handle on `Some`.
     SelfHandleOption,
-    /// Returns an arbitrary type `T: IntoR` -- converts via `IntoR::into_sexp`.
+    /// Returns an arbitrary type `T: IntoR` -- converts it ([`return_conversion`]).
     IntoR,
     /// Returns `Option<()>` -- raises an error on `None`, otherwise emits `R_NilValue`.
     OptionUnit,
     /// Returns `Option<SEXP>` -- raises an error on `None`, otherwise passes through.
     OptionSexp,
-    /// Returns `Option<T>` -- calls `IntoR::into_sexp` on the whole `Option`, so `None`
+    /// Returns `Option<T>` -- converts the whole `Option` through its `IntoR`, so `None`
     /// becomes whatever `IntoR for Option<T>` gives: `NULL` for containers, references
     /// and pointers, a typed `NA` for scalars. This is the one rule for an `Option<T>`
     /// return from a standalone function, an inherent method and a trait method
@@ -73,7 +77,7 @@ pub enum ReturnHandling {
     ResultUnit,
     /// Returns `Result<SEXP, E>` -- raises an error on `Err`, otherwise passes through.
     ResultSexp,
-    /// Returns `Result<T, E>` -- raises an error on `Err`, otherwise converts via `IntoR::into_sexp`.
+    /// Returns `Result<T, E>` -- raises an error on `Err`, otherwise converts the `Ok` value.
     ResultIntoR,
     /// Returns `Result<T, ()>` -- maps `Err(())` to `Err(NullOnErr)` then converts via `IntoR`.
     /// `None`/`Err` maps to R `NULL` (unit error is a deliberate sentinel, not a Rust failure).
@@ -86,19 +90,19 @@ pub enum ReturnHandling {
     /// treated exactly like a bare `Self` return (wrapped class object via
     /// `ReturnStrategy::for_method` — see `ParsedMethod::returns_result_self`).
     ResultExternalPtr,
-    /// Returns `T` where `T: IntoList` -- wraps in `AsList(result)` then calls `IntoR::into_sexp`.
+    /// Returns `T` where `T: IntoList` -- wraps in `AsList(result)` then converts it.
     ///
     /// Produced when `#[miniextendr(prefer = "list")]` is used on a function returning `T: IntoList`.
     /// Distinct from returning `AsList<T>` explicitly only in that the wrapping is generated
     /// by the macro rather than written by the user.
     AsListOf,
-    /// Returns `T` where `T: IntoExternalPtr` -- wraps in `AsExternalPtr(result)` then calls `IntoR::into_sexp`.
+    /// Returns `T` where `T: IntoExternalPtr` -- wraps in `AsExternalPtr(result)` then converts it.
     ///
     /// Produced when `#[miniextendr(prefer = "externalptr")]` is used on a function returning
     /// `T: IntoExternalPtr`. Distinct from the existing `ExternalPtr` variant (which boxes `Self`
     /// via `ExternalPtr::new`): this variant calls `IntoExternalPtr::into_external_ptr()` on `T`.
     AsExternalPtrOf,
-    /// Returns `T` where `T: RNativeType` -- wraps in `AsRNative(result)` then calls `IntoR::into_sexp`.
+    /// Returns `T` where `T: RNativeType` -- wraps in `AsRNative(result)` then converts it.
     ///
     /// Produced when `#[miniextendr(prefer = "native")]` is used on a function returning `T: RNativeType`.
     AsNativeOf,
@@ -183,6 +187,48 @@ impl ErrPartsMode {
     }
 }
 
+/// The conversion of a returned value to the `SEXP` a generated entry point
+/// returns (#2272): `IntoR::try_into_sexp(value)`, and a failed conversion
+/// becomes the tagged condition value of a `Result` error (`kind =
+/// "result_err"`): the error's classes, fields and message when it
+/// implements `RConditionData`, else its `Display` text
+/// (`__mx_into_r_err_parts!`). No panic, so no framework file location in
+/// the message.
+///
+/// `call` is the call slot: `Some(__miniextendr_call)` in a `.Call` wrapper,
+/// `None` where the entry has none (sidecar getters, trait vtable shims; the
+/// R guard supplies the call).
+///
+/// An infallible `IntoR` (`Error = Infallible`) costs nothing: the `Err` arm
+/// is uninhabited and compiles away.
+pub(crate) fn return_conversion(value: &TokenStream, call: &TokenStream) -> TokenStream {
+    return_conversion_at(value, call, proc_macro2::Span::call_site())
+}
+
+/// [`return_conversion`] with the `try_into_sexp` path spanned at `span`, so
+/// a value without `IntoR` is reported there.
+pub(crate) fn return_conversion_at(
+    value: &TokenStream,
+    call: &TokenStream,
+    span: proc_macro2::Span,
+) -> TokenStream {
+    let try_into_sexp =
+        quote::quote_spanned!(span=> ::miniextendr_api::into_r::IntoR::try_into_sexp);
+    quote! {
+        match #try_into_sexp(#value) {
+            ::core::result::Result::Ok(__mx_sexp) => __mx_sexp,
+            // SAFETY: every generated entry point converts its return value
+            // inside its R unwind guard, on R's main thread.
+            ::core::result::Result::Err(__mx_error) => unsafe {
+                ::miniextendr_api::error_value::result_err_condition_value(
+                    ::miniextendr_api::__mx_into_r_err_parts!(__mx_error),
+                    #call,
+                )
+            },
+        }
+    }
+}
+
 /// All information needed to generate a C wrapper function for an R-exported Rust item.
 ///
 /// This struct abstracts over the differences between standalone `#[miniextendr]` functions
@@ -248,7 +294,7 @@ pub struct CWrapperContext {
     /// `call_method_def_{type}_{method}` (methods) or `call_method_def_{fn}` (standalone).
     pub call_method_def_ident: Option<syn::Ident>,
     /// When `true`, uses `checked_into_sexp_*` for lossy return types (`i64`, `u64`,
-    /// `isize`, `usize` and their `Vec` variants) instead of regular `IntoR::into_sexp`.
+    /// `isize`, `usize` and their `Vec` variants) instead of the `IntoR` conversion.
     /// Set by `#[miniextendr(strict)]`.
     pub strict: bool,
     /// How `Err` values become condition parts. Set by `#[miniextendr(serde_error)]`.
@@ -635,6 +681,7 @@ impl CWrapperContext {
         let fn_name = self.message_name();
         let err_parts = self.err_parts.expr();
         let self_sexp = crate::naming::self_sexp_ident();
+        let wrapper_call = quote!(::core::option::Option::Some(__miniextendr_call));
 
         match &self.return_handling {
             ReturnHandling::Unit => {
@@ -649,11 +696,13 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::ExternalPtr => {
+                let conversion = return_conversion(
+                    &quote!(::miniextendr_api::externalptr::ExternalPtr::new(__result)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::externalptr::ExternalPtr::new(__result)
-                    )
+                    #conversion
                 }
             }
             ReturnHandling::SelfHandle => {
@@ -721,7 +770,7 @@ impl CWrapperContext {
             }
             ReturnHandling::OptionIntoR => {
                 // For Option<T> where Option<T>: IntoR (e.g. Option<&T>, Option<Vec<T>>).
-                // Call into_sexp on the whole Option — IntoR impl handles None → NULL/NA.
+                // Convert the whole Option — its IntoR impl handles None → NULL/NA.
                 // result_ident holds the full Option<T>, so the strict lookup must
                 // see the full type (checked_option_* helpers).
                 let result_ident = format_ident!("__result");
@@ -746,11 +795,13 @@ impl CWrapperContext {
             // Option<Self>: wrap Some(Self) in an ExternalPtr like the bare-Self path;
             // the Option<ExternalPtr<Self>> gives NULL for None.
             ReturnHandling::OptionExternalPtr => {
+                let conversion = return_conversion(
+                    &quote!(__result.map(::miniextendr_api::externalptr::ExternalPtr::new)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        __result.map(::miniextendr_api::externalptr::ExternalPtr::new)
-                    )
+                    #conversion
                 }
             }
             ReturnHandling::ResultUnit => {
@@ -804,6 +855,10 @@ impl CWrapperContext {
             // Result<Self, E>: raise on Err like ResultIntoR, but wrap Ok(Self) in an
             // ExternalPtr like the bare-Self path rather than routing through IntoR.
             ReturnHandling::ResultExternalPtr => {
+                let conversion = return_conversion(
+                    &quote!(::miniextendr_api::externalptr::ExternalPtr::new(__result)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
                     let __result = match __result {
@@ -812,33 +867,37 @@ impl CWrapperContext {
                             #err_parts, ::core::option::Option::Some(__miniextendr_call),
                         ) },
                     };
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::externalptr::ExternalPtr::new(__result)
-                    )
+                    #conversion
                 }
             }
             ReturnHandling::AsListOf => {
+                let conversion = return_conversion(
+                    &quote!(::miniextendr_api::convert::AsList(__result)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::convert::AsList(__result)
-                    )
+                    #conversion
                 }
             }
             ReturnHandling::AsExternalPtrOf => {
+                let conversion = return_conversion(
+                    &quote!(::miniextendr_api::convert::AsExternalPtr(__result)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::convert::AsExternalPtr(__result)
-                    )
+                    #conversion
                 }
             }
             ReturnHandling::AsNativeOf => {
+                let conversion = return_conversion(
+                    &quote!(::miniextendr_api::convert::AsRNative(__result)),
+                    &wrapper_call,
+                );
                 quote! {
                     let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::convert::AsRNative(__result)
-                    )
+                    #conversion
                 }
             }
         }
@@ -846,7 +905,7 @@ impl CWrapperContext {
 
     /// Returns the SEXP conversion expression for `result_ident`, using strict
     /// checked conversion if strict mode is on and the inner return type is lossy,
-    /// otherwise falling back to `IntoR::into_sexp()`.
+    /// otherwise falling back to [`return_conversion`].
     ///
     /// `result_holds_unwrapped` says what `result_ident` is bound to at runtime:
     /// `true` when the arm already unwrapped the declared `Option<T>` /
@@ -893,7 +952,10 @@ impl CWrapperContext {
             }
         }
 
-        quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#result_ident) }
+        return_conversion(
+            &quote!(#result_ident),
+            &quote!(::core::option::Option::Some(__miniextendr_call)),
+        )
     }
 
     /// Generates the `R_CallMethodDef` constant for R's `.Call` interface registration.

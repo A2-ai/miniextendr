@@ -723,7 +723,25 @@ Access via Sidecar".
 | `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
 | any `Clone + IntoR + TryFromSexp` type | the Rust struct | converts a clone with `IntoR` (the struct is only borrowed) | converts with `TryFromSexp`, or raises `'name' must be ...` |
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
-| `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR` | none; the field syntax raises `miniextendr_read_only_field` |
+| `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR`; a `Result` is an error boundary: `Ok` reads the value, `Err` raises the classed error, `Err(())` of a `Result<T, ()>` reads `NULL` | none; the field syntax raises `miniextendr_read_only_field` |
+
+A getter whose value fails to convert raises the error a function's failed
+return conversion raises (`e$kind == "result_err"`, the error's
+`RConditionData` classes and fields, else its `Display` text; #2272). A
+computed getter returning `Result<T, E>` raises `Err(e)` as a `#[miniextendr]`
+function returning it would: `E`'s `RConditionData` classes and fields, else
+its serde shape (under the `serde` feature), else its `Debug` text (#2269). To
+raise a typed error by hand inside a getter, use
+`RCondition::from_data(&e).raise()`:
+
+```rust
+impl Engine {
+    fn frame(&self) -> Result<BuiltDataFrame, EngineError> { self.build_frame() }
+    fn rows(&self) -> i32 {
+        self.count_rows().unwrap_or_else(|e| RCondition::from_data(&e).raise())
+    }
+}
+```
 
 `#[r_data(name = "keys")]` sets the field's R name, used by every R-facing
 string (the field list, the `$` / `[[` labels, the R6 binding or S7 property,

@@ -5,10 +5,21 @@
 
 use std::fmt;
 
+use crate::condition::RConditionData;
+
+/// The class of the R error an [`RSerdeError`] raises, before the
+/// `rust_error` classes: a failed [`AsSerialize`](super::AsSerialize) return,
+/// a `Result<T, RSerdeError>` return, an argument whose conversion fails with
+/// one.
+pub const SERDE_ERROR_CLASS: &str = "miniextendr_serde_error";
+
 /// Error type for R serialization/deserialization.
 ///
 /// This error type implements both `serde::ser::Error` and `serde::de::Error`,
 /// allowing it to be used in both serialization and deserialization contexts.
+///
+/// It implements [`RConditionData`]: where it reaches R, it is an error of
+/// class [`SERDE_ERROR_CLASS`] whose message is its `Display` text.
 #[derive(Debug, Clone)]
 pub enum RSerdeError {
     /// Generic message error (from serde's `Error::custom`).
@@ -118,3 +129,13 @@ impl fmt::Display for RSerdeError {
 }
 
 impl std::error::Error for RSerdeError {}
+
+impl RConditionData for RSerdeError {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+
+    fn class(&self) -> Vec<String> {
+        vec![SERDE_ERROR_CLASS.to_owned()]
+    }
+}
