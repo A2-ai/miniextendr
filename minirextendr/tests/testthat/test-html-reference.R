@@ -103,6 +103,55 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
   expect_true(file.exists(file.path(root, "lenient", "refpkg.html")))
 })
 
+test_that("build-html-reference.R leaves out internal topics nothing on the page links to", {
+  skip_if(getRversion() < "4.4.0", "tools::pkg2HTML() needs R >= 4.4.0")
+  root <- withr::local_tempdir()
+  pkg <- write_refpkg(file.path(root, "refpkg"))
+  # An internal helper nothing links to, one that goodbye links to, and the
+  # package overview, which roxygen2's "_PACKAGE" marks internal too.
+  writeLines(c("\\name{hidden_helper}", "\\alias{hidden_helper}", "\\title{Hidden helper}",
+               "\\description{Not part of the API.}", "\\keyword{internal}"),
+             file.path(pkg, "man", "hidden_helper.Rd"))
+  writeLines(c("\\name{linked_helper}", "\\alias{linked_helper}", "\\title{Linked helper}",
+               "\\description{Internal, but goodbye links here.}", "\\keyword{internal}"),
+             file.path(pkg, "man", "linked_helper.Rd"))
+  writeLines(c("\\docType{package}", "\\name{refpkg-package}", "\\alias{refpkg}",
+               "\\alias{refpkg-package}", "\\title{refpkg: Reference Fixture}",
+               "\\description{The package overview.}", "\\keyword{internal}"),
+             file.path(pkg, "man", "refpkg-package.Rd"))
+  writeLines(c("\\name{goodbye}", "\\alias{goodbye}", "\\title{Say goodbye}",
+               "\\description{Built on \\code{\\link{linked_helper}}.}",
+               "\\usage{goodbye()}", "\\value{NULL.}"),
+             file.path(pkg, "man", "goodbye.Rd"))
+
+  run <- function(out, env = character()) {
+    log <- tempfile("html-reference-", fileext = ".log")
+    status <- system2(file.path(R.home("bin"), "Rscript"),
+                      c(shQuote(file.path(pkg, "tools", "build-html-reference.R")), shQuote(out)),
+                      stdout = log, stderr = log, env = env)
+    list(status = status, output = paste(readLines(log, warn = FALSE), collapse = "\n"),
+         html = if (file.exists(file.path(out, "refpkg.html"))) {
+           paste(readLines(file.path(out, "refpkg.html"), warn = FALSE), collapse = "\n")
+         })
+  }
+
+  res <- run(file.path(root, "default"))
+  expect_identical(res$status, 0L, info = res$output)
+  expect_false(grepl("id='topic+hidden_helper'", res$html, fixed = TRUE))
+  expect_match(res$html, "id='topic+linked_helper'", fixed = TRUE)
+  expect_match(res$html, 'href="#topic+linked_helper"', fixed = TRUE)
+  expect_match(res$html, "id='topic+refpkg-package'", fixed = TRUE)
+  expect_match(res$html, "id='topic+hello'", fixed = TRUE)
+  expect_match(res$output, "1 internal Rd page(s) left out", fixed = TRUE)
+  # The package directory is left as it was.
+  expect_true(file.exists(file.path(pkg, "man", "hidden_helper.Rd")))
+
+  res <- run(file.path(root, "all"), env = "MINIEXTENDR_HTML_INTERNAL=1")
+  expect_identical(res$status, 0L, info = res$output)
+  expect_match(res$html, "id='topic+hidden_helper'", fixed = TRUE)
+  expect_false(grepl("left out", res$output, fixed = TRUE))
+})
+
 test_that("miniextendr_html_reference() runs the package's script from R", {
   skip_if(getRversion() < "4.4.0", "tools::pkg2HTML() needs R >= 4.4.0")
   root <- withr::local_tempdir()
@@ -121,6 +170,17 @@ test_that("miniextendr_html_reference() runs the package's script from R", {
   expect_identical(normalizePath(dirname(page)),
                    normalizePath(file.path(pkg, "rust-target", "doc", "r")))
   expect_identical(Sys.getenv("MINIEXTENDR_HTML_STRICT", unset = "unset"), "unset")
+
+  # internal = TRUE renders internal topics and restores the environment.
+  writeLines(c("\\name{hidden_helper}", "\\alias{hidden_helper}", "\\title{Hidden helper}",
+               "\\description{Not part of the API.}", "\\keyword{internal}"),
+             file.path(pkg, "man", "hidden_helper.Rd"))
+  unlink(file.path(pkg, "man", "broken.Rd"))
+  page <- miniextendr_html_reference(pkg, out = file.path(root, "internal"), internal = TRUE)
+  expect_match(paste(readLines(page, warn = FALSE), collapse = "\n"), "id='topic+hidden_helper'", fixed = TRUE)
+  page <- miniextendr_html_reference(pkg, out = file.path(root, "public"))
+  expect_false(grepl("id='topic+hidden_helper'", paste(readLines(page, warn = FALSE), collapse = "\n"), fixed = TRUE))
+  expect_identical(Sys.getenv("MINIEXTENDR_HTML_INTERNAL", unset = "unset"), "unset")
 
   # No script: point at the helper that adds it.
   bare <- file.path(root, "bare")

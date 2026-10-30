@@ -18,6 +18,8 @@
 # manuals CRAN hosts, or for base packages to the topic's own page. Nothing at install time depends on this script; it ships
 # with the other tools/ scripts so an unpacked tarball can build the manual too.
 # MINIEXTENDR_HTML_STRICT=0 turns checkRd findings from an error into a message.
+# Topics with \keyword{internal} are left out of the page, as R leaves them
+# out of a package's help index. MINIEXTENDR_HTML_INTERNAL=1 keeps them.
 
 if (getRversion() < "4.4.0") stop("tools::pkg2HTML() needs R >= 4.4.0")
 
@@ -56,7 +58,7 @@ if (length(problems)) {
 
 # 2. Link targets for other packages. pkg2HTML appends "#topic+<alias>" to
 #    whatever this returns; CRAN serves pkg2HTML output for every package at
-#    the refman path, base packages only have per-topic pages (step 4 points
+#    the refman path, base packages only have per-topic pages (step 5 points
 #    their links at the right page).
 base_pkgs <- rownames(installed.packages(priority = "base"))
 pkg_href <- function(p) {
@@ -67,16 +69,84 @@ pkg_href <- function(p) {
   sprintf("https://cran.r-project.org/web/packages/%s/refman/%s.html", p, p)
 }
 
-# 3. The manual. stylesheet is a URL relative to the page; the file is copied
-#    next to it below. Code highlighting (prism) and KaTeX load from CDNs, as
-#    in pkg2HTML's default output.
+# 3. The topics on the page. A topic with \keyword{internal} is left out, as
+#    R's help index leaves it out, unless it is the package overview
+#    (\docType{package}, the page pkg2HTML puts first) or a kept topic links
+#    to it, so every in-page link keeps its target.
+#    MINIEXTENDR_HTML_INTERNAL=1 keeps every topic.
+rd_tag_text <- function(rd, tag) {
+  hits <- Filter(function(e) identical(attr(e, "Rd_tag"), tag), rd)
+  trimws(vapply(hits, function(e) paste(unlist(e), collapse = ""), ""))
+}
+# The topics in this package that `rd` links to: \link{topic},
+# \link[=topic]{text}, \link[<pkg>]{topic} and \link[<pkg>:file]{text}.
+rd_own_links <- function(rd) {
+  found <- character()
+  walk <- function(e) {
+    if (identical(attr(e, "Rd_tag"), "\\link")) {
+      text <- paste(unlist(e), collapse = "")
+      opt <- attr(e, "Rd_option")
+      opt <- if (is.null(opt)) "" else paste(unlist(opt), collapse = "")
+      target <- if (!nzchar(opt)) {
+        text
+      } else if (startsWith(opt, "=")) {
+        substring(opt, 2L)
+      } else if (identical(opt, pkg)) {
+        text
+      } else if (startsWith(opt, paste0(pkg, ":"))) {
+        substring(opt, nchar(pkg) + 2L)
+      }
+      found <<- c(found, target)
+    }
+    if (is.list(e)) for (child in e) walk(child)
+  }
+  walk(rd)
+  unique(found)
+}
+rd <- lapply(rd_files, tools::parse_Rd, macros = macros, encoding = "UTF-8")
+keep <- vapply(rd, function(r) {
+  !("internal" %in% rd_tag_text(r, "\\keyword")) || "package" %in% rd_tag_text(r, "\\docType")
+}, NA)
+if (identical(Sys.getenv("MINIEXTENDR_HTML_INTERNAL"), "1")) keep[] <- TRUE
+# A link names an alias, or for \link[<pkg>:file] the Rd file.
+topic_index <- c(
+  unlist(lapply(seq_along(rd), function(i) {
+    a <- rd_tag_text(rd[[i]], "\\alias")
+    structure(rep(i, length(a)), names = a)
+  })),
+  structure(seq_along(rd_files), names = sub("[.][Rr]d$", "", basename(rd_files)))
+)
+repeat {
+  linked <- topic_index[unique(unlist(lapply(rd[keep], rd_own_links)))]
+  linked <- unique(linked[!is.na(linked)])
+  more <- setdiff(linked, which(keep))
+  if (!length(more)) break
+  keep[more] <- TRUE
+}
+
+# 4. The manual. pkg2HTML renders every Rd file under dir, so with topics left
+#    out it renders a copy of DESCRIPTION and man/ without them. stylesheet is
+#    a URL relative to the page; the file is copied next to it below. Code
+#    highlighting (prism) and KaTeX load from CDNs, as in pkg2HTML's default
+#    output.
+render_dir <- pkg_dir
+if (!all(keep)) {
+  render_dir <- file.path(tempfile("html-reference-"), pkg)
+  dir.create(render_dir, recursive = TRUE)
+  stopifnot(
+    file.copy(file.path(pkg_dir, "DESCRIPTION"), render_dir),
+    file.copy(file.path(pkg_dir, "man"), render_dir, recursive = TRUE)
+  )
+  unlink(file.path(render_dir, "man", basename(rd_files[!keep])))
+}
 out_html <- file.path(out_dir, paste0(pkg, ".html"))
 tools::pkg2HTML(
-  dir = pkg_dir, out = out_html,
+  dir = render_dir, out = out_html,
   hooks = list(pkg_href = pkg_href), stylesheet = "R-nav.css"
 )
+if (!identical(render_dir, pkg_dir)) unlink(dirname(render_dir), recursive = TRUE)
 
-# 4. pkg2HTML hard-codes an absolute path to R's logo; ship a copy instead.
+# 5. pkg2HTML hard-codes an absolute path to R's logo; ship a copy instead.
 #    A base package's index page has no "#topic+<alias>" anchors, so each such
 #    link goes to the page of the Rd file that has the alias, looked up in the
 #    package's installed help index (stderr is on showConnections.html). An
@@ -104,7 +174,7 @@ for (f in c("R-nav.css", "Rlogo.svg")) {
   stopifnot(file.copy(file.path(r_html_dir, f), out_dir, overwrite = TRUE))
 }
 
-# 5. Built vignettes, when present (tools::buildVignettes() or R CMD build).
+# 6. Built vignettes, when present (tools::buildVignettes() or R CMD build).
 vig_src <- list.files(file.path(pkg_dir, "inst", "doc"), pattern = "[.]html$", full.names = TRUE)
 if (length(vig_src)) {
   vig_dir <- file.path(out_dir, "vignettes")
@@ -112,7 +182,7 @@ if (length(vig_src)) {
   stopifnot(file.copy(vig_src, vig_dir, overwrite = TRUE))
 }
 
-# 6. Self-check: every in-page link has a target, no machine path leaked.
+# 7. Self-check: every in-page link has a target, no machine path leaked.
 defined <- sub("^id=.topic[+]", "",
                unlist(regmatches(html, gregexpr("id=.topic[+][^\"'>]+", html))))
 referenced <- sub("^href=\"#topic[+]", "",
@@ -124,7 +194,7 @@ if (any(grepl(sprintf("/refman/%s.html", pkg), html, fixed = TRUE))) {
   stop("links into this package were resolved to CRAN instead of the page")
 }
 
-# 7. Register the manual on rustdoc's crate index when one sits one level up.
+# 8. Register the manual on rustdoc's crate index when one sits one level up.
 #    rustdoc rewrites that file on every cargo doc run, so run this script
 #    after it. Any other index.html is left alone.
 index_html <- file.path(dirname(out_dir), "index.html")
@@ -152,6 +222,7 @@ if (file.exists(index_html)) {
   }
 }
 
-cat(sprintf("wrote %s (%d topics%s)%s\n", out_html, length(unique(defined)),
+cat(sprintf("wrote %s (%d topics%s%s)%s\n", out_html, length(unique(defined)),
+            if (any(!keep)) sprintf(", %d internal Rd page(s) left out", sum(!keep)) else "",
             if (length(vig_src)) sprintf(", %d vignette(s)", length(vig_src)) else "",
             if (registered) sprintf("; registered on %s", index_html) else ""))

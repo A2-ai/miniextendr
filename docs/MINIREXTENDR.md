@@ -148,7 +148,11 @@ Nothing is installed or loaded, so the page cannot lag the tree and builds in
 seconds for packages with thousands of generated wrappers. In-package links
 stay on the page, other packages link to their CRAN manuals (a base package to
 the topic's own page on search.r-project.org), and built
-vignettes under `inst/doc` are copied alongside. When a rustdoc crate index
+vignettes under `inst/doc` are copied alongside. Topics with
+`\keyword{internal}` are left out, as R leaves them out of a package's help
+index, except the package overview and any internal topic a kept page links
+to. `MINIEXTENDR_HTML_INTERNAL=1` (or `internal = TRUE`) renders them all.
+When a rustdoc crate index
 (`--enable-index-page`) sits one level above the output directory, the manual
 is added to its list. A `checkRd` finding aborts the build; set
 `MINIEXTENDR_HTML_STRICT=0` (or `strict = FALSE`) to print the findings and
