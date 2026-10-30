@@ -120,7 +120,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Configure git auth for cargo private deps
@@ -165,10 +165,10 @@ runners:
   run: |
     if [ "$(uname -m)" = "x86_64" ]; then
       sudo xcode-select -s /Applications/Xcode_16.2.app || true
-      echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+      echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
     else
       sudo xcode-select -s /Applications/Xcode_26.0.app || true
-      echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+      echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> "$GITHUB_ENV"
     fi
     echo "xcode is set: $(xcode-select --print-path)"
     xcrun --show-sdk-version || true
@@ -216,13 +216,13 @@ built against:
 - name: Download CRAN system libraries
   run: |
     sudo mkdir -p /opt
-    sudo chown $USER /opt
+    sudo chown "$USER" /opt
     curl --retry 3 --fail-with-body -sSL \
       https://github.com/r-universe-org/macos-libs/releases/download/2025-12-13/cranlibs-everything.tar.xz \
       -o libs.tar.xz
     sudo tar -xf libs.tar.xz -C / opt
     rm -f libs.tar.xz
-    echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> $GITHUB_ENV
+    echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> "$GITHUB_ENV"
 ```
 
 The tarball URL pins a specific release date so the workflow is reproducible
@@ -280,7 +280,7 @@ minirextendr::use_release_workflow()
 ```
 
 The template targets AlmaLinux 8 (RHEL 8 family — common in enterprise release
-pipelines) and macOS arm64 (`macos-14`). Extend it with additional steps for
+pipelines) and macOS on arm64 (`macos-15`) and x86_64 (`macos-15-intel`). Extend it with additional steps for
 your package's specific setup (R package installation, cargo caching, upload
 steps, etc.).
 

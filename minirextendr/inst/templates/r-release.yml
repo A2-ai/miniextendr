@@ -82,15 +82,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-14, macos-13]
+        runner: [macos-15, macos-15-intel]
         r-version: ['release', 'oldrel-1']
     runs-on: ${{ matrix.runner }}
 
     # Note: NO LANG/LC_ALL here — macOS runners default to UTF-8 and break
     # if you force C.UTF-8 (glibc-only). See https://a2-ai.github.io/miniextendr/manual/release-workflow/ (Gotcha 2)
     #
-    # macos-14 is arm64 (CRAN target: Sonoma / 14.0).
-    # macos-13 is x86_64 (CRAN target: Big Sur / 11.0; last Intel macOS runner).
+    # macos-15 is arm64 (CRAN target: Sonoma / 14.0).
+    # macos-15-intel is x86_64 (CRAN target: Big Sur / 11.0; the last Intel
+    # macOS image GitHub offers).
     # The SDK / deployment-target pin step below branches on `uname -m`, so it
     # is safe across both runners.
     steps:
@@ -121,10 +122,10 @@ jobs:
         run: |
           if [ "$(uname -m)" = "x86_64" ]; then
             sudo xcode-select -s /Applications/Xcode_16.2.app || true
-            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> $GITHUB_ENV
+            echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
           else
             sudo xcode-select -s /Applications/Xcode_26.0.app || true
-            echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+            echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> "$GITHUB_ENV"
           fi
           echo "xcode is set: $(xcode-select --print-path)"
           xcrun --show-sdk-version || true
@@ -139,13 +140,13 @@ jobs:
       - name: Download CRAN system libraries
         run: |
           sudo mkdir -p /opt
-          sudo chown $USER /opt
+          sudo chown "$USER" /opt
           curl --retry 3 --fail-with-body -sSL \
             https://github.com/r-universe-org/macos-libs/releases/download/2025-12-13/cranlibs-everything.tar.xz \
             -o libs.tar.xz
           sudo tar -xf libs.tar.xz -C / opt
           rm -f libs.tar.xz
-          echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/opt/R/$(uname -m)/lib/pkgconfig:/opt/R/$(uname -m)/share/pkgconfig" >> "$GITHUB_ENV"
 
       - uses: r-lib/actions/setup-r@v2
         with:
