@@ -16,38 +16,15 @@ cond_msg <- function(expr) {
 # Regex for the surfaced location, scoped to the fixture's own source file.
 loc_re <- "\\(at .*panic_location_tests\\.rs:[0-9]+\\)"
 
-test_that("main-thread direct panic surfaces the Rust (at file:line)", {
-  msg <- cond_msg(panic_location_main_direct(NULL))
+test_that("direct panic surfaces the Rust (at file:line)", {
+  msg <- cond_msg(panic_location_main_direct())
   expect_match(msg, "boom-main-direct", fixed = TRUE)
   expect_match(msg, loc_re)
 })
 
-test_that("main-thread nested panic points at the plain helper's panic!", {
-  msg <- cond_msg(panic_location_main_nested(NULL))
+test_that("nested panic points at the plain helper's panic!", {
+  msg <- cond_msg(panic_location_main_nested())
   expect_match(msg, "boom-nested", fixed = TRUE)
-  expect_match(msg, loc_re)
-})
-
-test_that("worker-thread direct panic surfaces the Rust (at file:line)", {
-  msg <- cond_msg(panic_location_worker_direct())
-  expect_match(msg, "boom-worker-direct", fixed = TRUE)
-  expect_match(msg, loc_re)
-})
-
-test_that("worker-thread nested panic points at the plain helper's panic!", {
-  msg <- cond_msg(panic_location_worker_nested())
-  expect_match(msg, "boom-nested", fixed = TRUE)
-  expect_match(msg, loc_re)
-})
-
-test_that("panic inside with_r_thread (from a worker job) surfaces the ORIGIN location, not worker.rs (#1245)", {
-  msg <- cond_msg(panic_location_worker_with_r_thread())
-  expect_match(msg, "panic in `with_r_thread`: boom-with-r-thread", fixed = TRUE)
-  expect_false(grepl("worker.rs", msg, fixed = TRUE))
-  # Path hygiene (#1211): the folded location is the bare crate-relative
-  # fixture filename, same regex as the direct/nested cases above — not
-  # `worker.rs` (the worker's own re-panic relay site) and not an absolute
-  # build-machine path.
   expect_match(msg, loc_re)
 })
 
@@ -56,18 +33,18 @@ test_that("panic inside with_r_thread (from a worker job) surfaces the ORIGIN lo
 # carry NO `(at …)` suffix.
 
 test_that("error!() gets no location suffix", {
-  msg <- cond_msg(panic_location_regression_error(NULL))
+  msg <- cond_msg(panic_location_regression_error())
   expect_match(msg, "regression-error-no-location", fixed = TRUE)
   expect_false(grepl("(at ", msg, fixed = TRUE))
 })
 
 test_that("Result::Err return gets no location suffix", {
-  msg <- cond_msg(panic_location_regression_result_err(NULL))
+  msg <- cond_msg(panic_location_regression_result_err())
   expect_match(msg, "regression-result-err-no-location", fixed = TRUE)
   expect_false(grepl("(at ", msg, fixed = TRUE))
 })
 
 test_that("Option::None return gets no location suffix", {
-  msg <- cond_msg(panic_location_regression_option_none(NULL))
+  msg <- cond_msg(panic_location_regression_option_none())
   expect_false(grepl("(at ", msg, fixed = TRUE))
 })

@@ -18,7 +18,7 @@ ALTREP (Alternative Representation) lets R vectors be backed by arbitrary Rust d
 - "How do I implement a string ALTREP with NA support?"
 - "Why is `#[miniextendr]` on a 1-field struct rejected?"
 - "What is the sparse iterator ALTREP pattern?"
-- "ALTREP callbacks on worker thread vs main thread?"
+- "Which thread do ALTREP callbacks run on?"
 
 ## Key concepts
 
@@ -106,7 +106,7 @@ The `elt` callback for string ALTREP must return a `CHARSXP` allocated with `Rf_
 
 ### ALTREP callbacks and threads
 
-ALTREP callbacks (length, elt, dataptr, serialized_state, etc.) are always called by R on the main R thread. They receive raw `SEXP` arguments, which are not `Send`. Do not attempt to route ALTREP callbacks to the worker thread. See `miniextendr-worker` for the threading model.
+ALTREP callbacks (length, elt, dataptr, serialized_state, etc.) are always called by R on the main R thread. They receive raw `SEXP` arguments and may call the R API directly. Never touch an ALTREP vector's data from a Rayon or `std::thread` thread: materialize it on the main thread first.
 
 ### `impl_altinteger_from_data!` and the `no_lowlevel` escape hatch
 
@@ -252,13 +252,12 @@ Never enable `dataptr` and `subset` together — they are mutually exclusive by 
 
 - **GC discipline in `elt` callbacks**: the `elt` callback for string ALTREP allocates a fresh CHARSXP with `Rf_mkCharLenCE`. If you then store that CHARSXP in a temporary before returning, it must be protected across any subsequent R API call that could trigger GC. Use `OwnedProtect` or pass directly to the return. See `miniextendr-ffi` for the protection model.
 
-- **ALTREP callbacks are on the main thread**: you cannot call `run_on_worker` from inside an ALTREP callback. The callback is already on the main thread. Use `with_r_thread` only if you are on the worker and need R API access; inside ALTREP callbacks, call R API directly (with appropriate guard mode set).
+- **ALTREP callbacks are on the main thread**: inside them, call the R API directly (with the appropriate guard mode set), using `_unchecked` FFI variants.
 
 - **gctorture discipline**: if your ALTREP stores SEXPs across allocations (e.g., in a `Vec<SEXP>` sidecar), run a `gctorture(TRUE)` sweep before committing. CI's stricter R-devel GC is more aggressive and aborts with `malloc(): unsorted double linked list corrupted` on protect violations. See `docs/GCTORTURE_TESTING.md` for the harness pattern.
 
 ## Related skills
 
-- `miniextendr-worker` — threading model, why ALTREP callbacks stay on main thread.
 - `miniextendr-ffi` — `#[r_ffi_checked]`, `_unchecked` variants, GC protection, unwind protection.
 - `miniextendr-externalptr` — `TypedExternal`, `AltrepExtract` blanket impl, pointer provenance.
 - `miniextendr-macros` — how `#[miniextendr]` on functions and the ALTREP derives fit into the broader macro system.

@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Runtime library for miniextendr - safe Rust-R interop with worker threads, ALTREP, and type conversions"
+description = "Runtime library for miniextendr - safe Rust-R interop with ALTREP, external pointers, and type conversions"
 documentation = "https://docs.rs/miniextendr-api"
 rust-version = "1.85"
 
@@ -129,12 +129,6 @@ strict-default = ["miniextendr-macros/strict-default"]
 coerce-default = ["miniextendr-macros/coerce-default"]
 r6-default = ["miniextendr-macros/r6-default"]
 s7-default = ["miniextendr-macros/s7-default"]
-## Enable worker thread infrastructure (run_on_worker, with_r_thread bidirectional dispatch).
-## Without this feature, worker APIs are lightweight inline stubs.
-## Deprecated (#2117), as is `worker-default`: the worker thread won't be
-## developed further, and its known problems are not planned.
-worker-thread = []
-worker-default = ["miniextendr-macros/worker-default", "worker-thread"]
 ## Drop the R-side type checks by default crate-wide. Forwards to
 ## miniextendr-macros/no-preconditions-default.
 ## Orthogonal to strict-default and coerce-default (not a mutex pair).
@@ -173,12 +167,11 @@ full-integrations = [
 
 ## Every codegen selector / runtime-surface feature that CI wants linted:
 ## the `*-default` forwarding selectors (one mutex side — `r6-default`, NOT
-## `s7-default`), plus `nonapi`, `connections`, `worker-thread` (via
-## `worker-default`), `indicatif` and `blas-lapack`. This whole set compiles
+## `s7-default`), plus `nonapi`, `connections`, `indicatif` and
+## `blas-lapack`. This whole set compiles
 ## together — it is the unit CI's `clippy_all` derives.
 full-codegen = [
     "strict-default", "coerce-default", "no-preconditions-default", "r6-default",
-    "worker-default",
     "nonapi", "connections", "indicatif", "blas-lapack",
 ]
 
@@ -189,7 +182,6 @@ full-codegen = [
 ## clippy steps never reach rpkg/src/rust).
 full-codegen-s7 = [
     "strict-default", "coerce-default", "no-preconditions-default", "s7-default",
-    "worker-default",
     "nonapi", "connections", "indicatif", "blas-lapack",
 ]
 

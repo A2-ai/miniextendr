@@ -326,7 +326,7 @@ on Windows can hang indefinitely at `* checking tests ...`. The worker
 threads outlive R's main thread and keep the Rterm stdout pipe open;
 `system2(stdout = TRUE)` then waits forever.
 
-Fix by constructing a `current_thread` runtime on the worker thread:
+Fix by constructing a `current_thread` runtime, which runs on the calling thread:
 
 ```rust
 let rt = tokio::runtime::Builder::new_current_thread()

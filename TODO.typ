@@ -35,9 +35,6 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Performance
 
-- [x] Worker batching/context reuse API — `with_r_thread_batch` + `RThreadScope`
-  - `with_r_thread_batch`: send multiple closures in one round-trip
-  - `RThreadScope`: RAII context for multiple `call()` invocations on one channel open
 - [~] Direct/no-wrapper export mode for hot functions
   - Already covered by `extern "C-unwind"` + `#[no_mangle]` support
   - Function IS the C symbol; R wrapper is `unsafe_` prefixed convenience only
@@ -48,15 +45,15 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [x] Property-based roundtrip tests — 24 proptest tests for all scalar/vector/option types
 - [x] Macro codegen snapshot tests — 12 expect-test snapshots for R wrappers and class systems
-- [x] Thread-safety assertions — 198 R-level worker thread tests, checked FFI wrapper
-  panic tests, RAII cleanup across thread boundaries (test-worker.R, panic_tests.rs)
+- [x] Thread-safety assertions — checked FFI wrapper panic tests, RAII cleanup
+  across thread boundaries (panic_tests.rs)
   - Remaining gap: RThreadBuilder direct tests skipped (crashes R runtime)
 - [x] String ALTREP NA serialization — fixed in cc115a7 (use `Vec<Option<String>>`,
   register `Vec_Option_String` ALTREP class)
-- [~] Worker thread test re-enablement
-  - `test-thread.R` — disabled anti-pattern tests (R API calls from worker thread); correctly disabled
+- [~] Thread test re-enablement
+  - `test-thread.R` — disabled anti-pattern tests (R API calls from spawned threads); correctly disabled
   - `test-thread-broken.R` — `RThreadBuilder` crashes R's stack checking; needs R-level API changes
-  - Both files serve as documentation; `test-worker.R` (198 tests) covers the correct patterns
+  - Both files serve as documentation
 - [x] Cross-package test expansion — `Resettable` trait + `StatefulCounter` + 163 new tests
   - Multi-trait dispatch (Counter + Resettable on same type across packages)
   - Type discrimination (DoubleCounter is Counter but NOT Resettable)

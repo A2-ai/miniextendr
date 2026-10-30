@@ -126,18 +126,18 @@ thread_local! {
 /// Whether the current thread is R's main thread.
 ///
 /// In tests: returns the thread-local override when set; falls back to the real
-/// `worker::is_r_main_thread()` otherwise.
+/// `crate::is_r_main_thread()` otherwise.
 #[cfg(not(test))]
 #[inline(always)]
 fn is_main() -> bool {
-    crate::worker::is_r_main_thread()
+    crate::is_r_main_thread()
 }
 
 #[cfg(test)]
 fn is_main() -> bool {
     FAKE_IS_MAIN
         .with(|c| c.get())
-        .unwrap_or_else(crate::worker::is_r_main_thread)
+        .unwrap_or_else(crate::is_r_main_thread)
 }
 
 /// Override the main-thread predicate for the duration of the current test.

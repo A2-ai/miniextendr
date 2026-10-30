@@ -1,6 +1,6 @@
 ---
 name: miniextendr-parallel
-description: Use when writing multi-threaded Rust inside a miniextendr package — rayon parallel iterators feeding R vectors, the SEXP-not-Send rule, "cannot be sent between threads safely" compile errors, panics on worker threads, R stack-limit errors from spawned threads, or the worker-thread feature.
+description: Use when writing multi-threaded Rust inside a miniextendr package — rayon parallel iterators feeding R vectors, which R handles can cross threads, "cannot be sent between threads safely" compile errors, panics from R API calls off the main thread, or R stack-limit errors from spawned threads.
 ---
 
 # Parallel Rust in an R package
@@ -10,10 +10,12 @@ R allocation, every read/write of R memory, and R's garbage collector must
 happen on the thread R owns. Rust threads may do arbitrary computation — they
 just cannot touch R.
 
-miniextendr encodes this in the type system: `SEXP` (and types wrapping it,
-like `DataFrame`) are not `Send`. If your closure captures R data, it won't
-compile for another thread. That compile error is the framework protecting
-you — the fix is to convert to plain Rust data *first*, then parallelize.
+miniextendr enforces this in two places. Every R API call checks the thread
+and panics off R's main thread. And the handles that own R state
+(`ExternalPtr<T>`, `RArray` / `RMatrix`, `RRng`, `Preserved`) are `!Send`, so a
+closure that captures one won't compile for another thread. A bare `SEXP` is
+only a pointer and does compile there, but an R call through it panics. Either
+way, the fix is to convert to plain Rust data *first*, then parallelize.
 
 ## The standard pattern
 
@@ -123,33 +125,14 @@ those threads. Disabling R's process-global stack check removes only one crash
 path and does not make the API or GC thread-safe; that misleading surface is
 tracked for removal in miniextendr issue #1352.
 
-## The `worker-thread` feature (opt-in)
-
-`worker-thread = ["miniextendr-api/worker-thread"]` enables the dedicated
-worker infrastructure. Select it per export with `#[miniextendr(worker)]`, or
-use `worker-default` to change the crate-wide default. It gives you two
-primitives:
-
-- `run_on_worker(|| ...)` — run a `Send` closure on the worker; returns
-  `Result<T, String>` (`Err` = panic message).
-- `with_r_thread(|| ...)` — from inside worker code, hop back to the main
-  thread for an R API call, blocking until it completes.
-
-`Sendable<T>` wraps a non-`Send` value (like a SEXP) so it can *travel* to the
-worker — but it may only be *used* inside `with_r_thread`. Wrapping a SEXP
-and touching it on the worker is undefined behavior (the GC races you).
-
-Without the feature, `run_on_worker(f)` just runs `f()` inline — code is
-portable across both configurations. Don't nest `run_on_worker` inside
-itself (single worker; the re-entry guard panics with a clear message).
-
 ## Debugging
 
-- **"`SEXP` cannot be sent between threads safely"** — you captured R data in
-  a parallel closure. Convert to `Vec`/slice before the parallel region.
-- **Panic: "must be called from the R main thread"** — some code path called
-  R API off-thread; find the R call inside your closure and hoist it out (or
-  wrap in `with_r_thread` under the worker model).
+- **"`… cannot be sent between threads safely`"** naming an R handle
+  (`ExternalPtr`, `RArray`, `RRng`, `Preserved`) — you captured R data in a
+  parallel closure. Convert to `Vec`/slice before the parallel region.
+- **Panic: "R's C API was called from a thread other than R's main thread"** —
+  some code path called the R API off-thread; find the R call inside your
+  closure and hoist it out, before or after the parallel region.
 - **Crash only under parallel load** — if any `unsafe` R access exists in the
   parallel region, that's the suspect. Also run the GC-torture recipe from
   `miniextendr-debugging`.

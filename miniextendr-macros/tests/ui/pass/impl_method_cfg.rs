@@ -20,10 +20,10 @@ macro_rules! gated_class {
             #[cfg(all())]
             pub fn enabled(&self) -> i32 { 42 }
 
-            // The disabled worker must not require worker-thread support.
+            // A disabled method's options are never read.
             #[cfg(any())]
-            #[miniextendr($system(worker))]
-            pub fn disabled_worker(_value: MissingType) -> MissingType { unreachable!() }
+            #[miniextendr($system(check_interrupt))]
+            pub fn disabled_method(_value: MissingType) -> MissingType { unreachable!() }
 
             // Multiple gates are conjunctive; cfg_attr can add a gate.
             #[cfg(all())]

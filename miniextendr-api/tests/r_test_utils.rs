@@ -17,7 +17,7 @@ fn initialize_r() {
             .expect("Failed to initialize R");
         // Initialize in same order as package_init() (called by miniextendr_init!)
         miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_runtime_init();
+        miniextendr_api::miniextendr_runtime_init();
         disable_r_stack_checking();
         assert!(
             miniextendr_engine::r_initialized_sentinel(),

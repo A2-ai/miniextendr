@@ -112,8 +112,8 @@ pub use crate::{
 };
 // endregion
 
-// region: Worker thread
-pub use crate::{Sendable, with_r_thread};
+// region: R's main thread
+pub use crate::with_r_thread;
 // endregion
 
 // region: Error handling and console output

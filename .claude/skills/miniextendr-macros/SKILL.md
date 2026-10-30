@@ -59,9 +59,8 @@ generated code or extending the macro.
 The `#[miniextendr]` attribute on a bare `pub fn` is processed by
 `miniextendr_fn.rs`. Return type analysis runs through
 `miniextendr-macros/src/return_type_analysis.rs` (`analyze_return_type`), which
-determines: whether SEXP is returned (forces main-thread execution), whether the
-R wrapper should call `invisible()`, and how to handle `Option<T>` / `Result<T,E>`
-unwrapping.
+determines whether the R wrapper should call `invisible()` and how to handle
+`Option<T>` / `Result<T,E>` unwrapping.
 
 **Impl block methods** (`miniextendr-macros/src/miniextendr_impl.rs`):
 
@@ -83,13 +82,9 @@ conflate sidecar accessors with regular method wrappers.
 
 ### Thread execution strategy
 
-The C wrapper runs on R's main thread by default (`ThreadStrategy::MainThread`,
-wrapping in `with_r_unwind_protect`). A function opts into the worker thread with
-`#[miniextendr(worker)]` (`ThreadStrategy::WorkerThread`), which moves the Rust
-call into `run_on_worker` while argument conversion and SEXP conversion remain on
-the main thread. Functions are forced to the main thread when: the function takes
-or returns `SEXP`, the receiver `&self`/`&mut self` is not `Send`, it takes `Dots`,
-or `#[miniextendr(check_interrupt)]` is used.
+The C wrapper runs argument conversion, the Rust call and return conversion on
+R's main thread, inside `with_r_unwind_protect`. There is no other strategy: the
+worker thread was removed (#2117).
 
 ### Tagged-condition transport — the only error path
 
@@ -235,8 +230,7 @@ miniextendr-externalptr and miniextendr-ffi skills.
 | `internal` | Adds `@keywords internal` to generated roxygen; class is still exported but not user-visible in docs. |
 | `noexport` | Omits `@export` from generated roxygen; function is not exported from the package namespace. |
 | `unwrap_in_r` | `Result<T, E>` is passed to R as a list with an `$error` field instead of treating `Err` as a Rust-origin failure. Orthogonal to the tagged-condition transport (which only fires for panics and unwrapped errors). |
-| `worker` | Executes the Rust function on the worker thread (see `miniextendr-worker` skill). |
-| `check_interrupt` | Forces main-thread execution; inserts `R_CheckUserInterrupt` around the call. |
+| `check_interrupt` | Inserts `R_CheckUserInterrupt` around the call. |
 | `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`. A `&RngGuard` parameter (no R formal) receives the guard; draw with `rng.unif_rand()` etc. `&RngGuard` without `rng` is a compile error. |
 | `dots = typed_list!(...)` | Validates `...` arguments; generates `dots_typed` parameter. See `miniextendr-dots` skill. |
 | `coerce_all` | Applies coercion mappings to all eligible types. |
@@ -351,14 +345,6 @@ Cargo feature.
 - Post-processing (placeholder substitution, ordering): `miniextendr-api/src/registry.rs`
   `write_r_wrappers_to_file`.
 
-### I need a function to run on the worker thread
-
-Add `#[miniextendr(worker)]`. The function must not take or return `SEXP` (SEXP
-is not `Send`), must not take `Dots`, must not have a `self` receiver (unless the
-type is `Send`), and must not use `check_interrupt`. If any of these constraints
-are violated, the macro falls back silently to main-thread execution. See the
-`miniextendr-worker` skill for the full story.
-
 ## Key files
 
 - `miniextendr-macros/src/miniextendr_fn.rs` — `#[miniextendr]` on standalone
@@ -435,6 +421,5 @@ are violated, the macro falls back silently to main-thread execution. See the
 - `miniextendr-ffi` — `#[r_ffi_checked]`, `_unchecked` variants, MXL300/MXL301.
 - `miniextendr-externalptr` — `Box<Box<dyn Any>>` storage, pointer provenance,
   TypedExternal display tags.
-- `miniextendr-worker` — `run_on_worker`, `Sendable<T>`, ALTREP-callbacks-on-main.
 - `miniextendr-dots` — `Dots`, `typed_list!`, `name @ ...` syntax.
 - `miniextendr-lint` — MXL rule catalogue and how to add new rules.

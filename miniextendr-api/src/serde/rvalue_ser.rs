@@ -4,8 +4,8 @@
 //! mapping, but the output is an [`RValue`] tree instead of a live `SEXP`, so it
 //! can be built on any thread and travel through `panic_any`. This is what
 //! condition `data =` payloads and `#[miniextendr(serde_error)]` need: a
-//! serialized error's fields have to cross the unwind (and possibly the
-//! worker→main thread) boundary before any R object exists.
+//! serialized error's fields have to cross the unwind boundary before any R
+//! object exists.
 //!
 //! # Type mapping
 //!

@@ -2,41 +2,42 @@ use super::*;
 
 #[test]
 fn catch_unwind_returns_value_on_success() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
-    let result = guarded_ffi_call(|| 42, GuardMode::CatchUnwind, PanicSource::Worker);
+    let result = guarded_ffi_call(|| 42, GuardMode::CatchUnwind, PanicSource::Altrep);
     assert_eq!(result, 42);
 }
 
 #[test]
 fn fallback_returns_value_on_success() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = guarded_ffi_call_with_fallback(|| 42, -1, PanicSource::Connection);
     assert_eq!(result, 42);
 }
 
 #[test]
 fn fallback_returns_fallback_on_panic() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = guarded_ffi_call_with_fallback(|| panic!("boom"), -1, PanicSource::Connection);
     assert_eq!(result, -1);
 }
 
+/// The hook records; the test asserts outside it, where a failure reaches the
+/// test runner (`fire` swallows a panicking hook). The slot is per thread, so
+/// no other test's panic reaches this hook (#1492).
 #[test]
 fn fallback_fires_telemetry_on_panic() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
-    let fired = std::sync::Arc::new(AtomicBool::new(false));
-    let fired_clone = fired.clone();
-
+    let reports = Rc::new(RefCell::new(Vec::new()));
+    let seen = Rc::clone(&reports);
     crate::panic_telemetry::set_panic_telemetry_hook(move |report| {
-        assert_eq!(report.source, PanicSource::Connection);
-        assert!(report.message.contains("test panic"));
-        fired_clone.store(true, Ordering::SeqCst);
+        seen.borrow_mut()
+            .push((report.source, report.message.to_string()));
     });
 
     let _ = guarded_ffi_call_with_fallback(|| panic!("test panic"), 0i32, PanicSource::Connection);
-
-    assert!(fired.load(Ordering::SeqCst), "telemetry hook should fire");
     crate::panic_telemetry::clear_panic_telemetry_hook();
+
+    assert_eq!(
+        *reports.borrow(),
+        [(PanicSource::Connection, "test panic".to_string())]
+    );
 }

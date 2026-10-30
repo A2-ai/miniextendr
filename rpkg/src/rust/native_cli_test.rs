@@ -9,10 +9,9 @@ use miniextendr_api::prelude::*;
 /// Returns the number of currently active cli progress bars.
 ///
 /// @importFrom cli cli_progress_bar
-// cli's C API runs R code: stay on R's main thread under `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn cli_active_progress_bars() -> i32 {
     // SAFETY: cli_progress_num() is resolved via R_GetCCallable at first call.
-    // Must be called on the R main thread (which `no_worker` guarantees).
+    // Must be called on the R main thread, where the wrapper runs.
     unsafe { cli_ffi::cli_progress_num() }
 }

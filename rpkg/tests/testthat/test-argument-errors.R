@@ -810,29 +810,6 @@ test_that("arg_error!(call = none, ...) raises it without a call", {
   expect_identical(conditionMessage(e), conditionMessage(caught(miniextendr:::arg_error_body("zzz"))))
 })
 
-test_that("arg_error! on the worker thread keeps the condition", {
-  # The fixture exists only when rpkg is built with `worker-thread`.
-  skip_if_not(
-    exists("arg_error_body_worker", envir = asNamespace("miniextendr"), inherits = FALSE),
-    "worker-thread feature not enabled"
-  )
-  e <- caught(miniextendr:::arg_error_body_worker("zzz"))
-  e_body <- caught(miniextendr:::arg_error_body("zzz"))
-  expect_identical(class(e), layers)
-  expect_identical(class(e), class(e_body))
-  expect_identical(e$kind, "conversion")
-  expect_identical(e$param, "fill")
-  expect_identical(conditionMessage(e), conditionMessage(e_body))
-  expect_identical(fields(e), fields(e_body))
-  expect_equal(conditionCall(e), quote(miniextendr:::arg_error_body_worker("zzz")))
-  local_mocked_bindings(
-    .miniextendr_conversion_error_class = c("pkg_error_argument", "pkg_error"),
-    .package = "miniextendr"
-  )
-  e <- caught(miniextendr:::arg_error_body_worker("zzz"))
-  expect_identical(class(e), c("pkg_error_argument", "pkg_error", layers))
-})
-
 test_that("arg_error! under call = caller names the call the wrapper's checks name", {
   e <- caught(miniextendr:::arg_error_body_caller_impl("zzz", .call = quote(user_fn(x))))
   expect_equal(conditionCall(e), quote(user_fn(x)))

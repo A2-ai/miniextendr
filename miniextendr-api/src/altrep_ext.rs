@@ -26,7 +26,7 @@ pub trait AltrepSexpExt {
     /// - Must be called from the R main thread
     unsafe fn altrep_data2_raw(&self) -> SEXP;
 
-    /// Get the ALTREP data2 slot (unchecked — no thread routing).
+    /// Get the ALTREP data2 slot (unchecked — no main-thread check).
     ///
     /// # Safety
     ///
@@ -42,7 +42,7 @@ pub trait AltrepSexpExt {
     /// - Must be called from the R main thread
     unsafe fn set_altrep_data2(&self, data2: SEXP);
 
-    /// Set the ALTREP data2 slot (unchecked — no thread routing).
+    /// Set the ALTREP data2 slot (unchecked — no main-thread check).
     ///
     /// # Safety
     ///

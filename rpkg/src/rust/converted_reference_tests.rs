@@ -156,7 +156,7 @@ impl GenericConvertedReads<i32> for ConvertedRefHost {
 
 /// A trait View already converts non-Self references; the opt-out fixes its R wrapper.
 /// @noRd
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn converted_refs_through_view() -> i32 {
     unsafe {
         let scope = miniextendr_api::ProtectScope::new();

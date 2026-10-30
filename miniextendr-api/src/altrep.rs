@@ -35,10 +35,9 @@
 //!
 //! ## Threading
 //!
-//! ALTREP callbacks run on R's main thread — they receive raw `SEXP`
-//! arguments which are not `Send`. Do not route them through the worker
-//! thread; the trampolines bridge from C straight back into safe Rust on the
-//! main thread, with panic / longjmp handling per the chosen guard mode.
+//! ALTREP callbacks run on R's main thread; the trampolines bridge from C
+//! straight back into safe Rust there, with panic / longjmp handling per the
+//! chosen guard mode.
 
 use crate::sys::altrep::{
     R_altrep_class_t, R_make_altcomplex_class, R_make_altinteger_class, R_make_altlist_class,

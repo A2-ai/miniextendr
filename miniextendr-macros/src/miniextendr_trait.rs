@@ -1297,7 +1297,7 @@ fn type_contains_ident(ty: &syn::Type, ident: &syn::Ident) -> bool {
 /// beyond `__ImplT: TraitName`. This struct collects those bounds.
 struct ExtraBounds {
     /// Bounds added directly to `__ImplT` (e.g., `IntoR` when methods return `Self`,
-    /// or `TypedExternal + Send + 'static` when methods take `&Self` parameters).
+    /// or `TypedExternal + 'static` when methods take `&Self` parameters).
     impl_bounds: Vec<TokenStream>,
     /// Where clause predicates for complex types (e.g.,
     /// `<__ImplT as Trait>::Item: IntoR` or `Vec<T>: TryFromSexp`).
@@ -1307,7 +1307,7 @@ struct ExtraBounds {
 /// Compute extra bounds needed for the shim and build_vtable functions.
 ///
 /// - Methods returning `Self` → `__ImplT: IntoR`
-/// - Methods with `&Self` params → `__ImplT: TypedExternal + Send + 'static`
+/// - Methods with `&Self` params → `__ImplT: TypedExternal + 'static`
 /// - Methods returning types with `Self::AssocType` or trait type params →
 ///   full rewritten return type `: IntoR` (e.g., `Nullable<<__ImplT as RIterator>::Item>: IntoR`)
 /// - Methods with trait type params in params →
@@ -1382,9 +1382,7 @@ fn compute_extra_bounds(
         impl_bounds.push(quote::quote! { ::miniextendr_api::IntoR });
     }
     if needs_typed_external {
-        impl_bounds.push(
-            quote::quote! { ::miniextendr_api::TypedExternal + ::core::marker::Send + 'static },
-        );
+        impl_bounds.push(quote::quote! { ::miniextendr_api::TypedExternal + 'static });
     }
 
     if needs_owner && !needs_typed_external {

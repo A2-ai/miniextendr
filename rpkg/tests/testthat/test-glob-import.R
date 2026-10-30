@@ -6,13 +6,6 @@ test_that("DataFrameRow readers compile and round-trip under a glob import (#202
   expect_equal(par, c(4L, 3L, 2L))
 })
 
-test_that("a worker wrapper compiles under a glob import", {
-  worker <- get0("glob_import_worker", envir = asNamespace("miniextendr"))
-  skip_if(is.null(worker), "built without worker-thread")
-  expect_equal(worker("ab", c(1, 2)), 5)
-  expect_error(worker("ab", numeric()), "empty")
-})
-
 test_that("a serde-classed error compiles under a glob import", {
   serde <- get0("glob_import_serde", envir = asNamespace("miniextendr"))
   skip_if(is.null(serde), "built without serde")

@@ -4,10 +4,7 @@
 \alias{panic_location_regression_result_err}
 \title{panic_location_regression_result_err}
 \usage{
-panic_location_regression_result_err(x)
-}
-\arguments{
-\item{x}{Ignored; present only to force main-thread dispatch.}
+panic_location_regression_result_err()
 }
 \description{
 Regression guard: returning \code{Result::Err} gets NO \verb{(at …)} suffix (it

@@ -1,4 +1,6 @@
 //! Typed payload derivation feeds the existing condition transport.
+mod r_test_utils;
+
 use miniextendr_api::condition::ConditionCall;
 use miniextendr_api::{RCondition, RValue};
 
@@ -128,19 +130,21 @@ fn raise_uses_the_recognized_payload_and_unwinds_rust_values() {
     assert_eq!(condition.into_parts().0, "warning");
 }
 
+/// Queueing needs R's main thread.
 #[test]
 fn deferred_mixed_enum_keeps_kinds_and_queue_order() {
     use miniextendr_api::deferred_condition::{mark, take_pending};
 
-    let start = mark();
-    RCondition::from(Diagnostic::Dropped { n: 2 }).defer();
-    RCondition::from(Diagnostic::Finished(10)).defer();
-    RCondition::from(Diagnostic::Progress).defer();
-    let queued = take_pending(start);
-    let kinds: Vec<_> = queued
-        .into_iter()
-        .map(|condition| condition.into_parts().0)
-        .collect();
+    let kinds = r_test_utils::with_r_thread(|| {
+        let start = mark();
+        RCondition::from(Diagnostic::Dropped { n: 2 }).defer();
+        RCondition::from(Diagnostic::Finished(10)).defer();
+        RCondition::from(Diagnostic::Progress).defer();
+        take_pending(start)
+            .into_iter()
+            .map(|condition| condition.into_parts().0)
+            .collect::<Vec<_>>()
+    });
     assert_eq!(kinds, ["warning", "message", "condition"]);
 }
 

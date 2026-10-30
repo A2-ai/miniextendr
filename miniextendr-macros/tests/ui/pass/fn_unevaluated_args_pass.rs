@@ -1,12 +1,9 @@
 //! Compile-pass test for unevaluated arguments (#1835): `Quoted` and
 //! `Quosure`, bare and under `Missing<..>` (also with a `default`), with and
 //! without a written lifetime, a fully qualified path, next to ordinary and
-//! `Call` parameters, on a standalone S3 method, and under `worker` (which
-//! they keep on R's main thread).
+//! `Call` parameters, and on a standalone S3 method.
 
 #![allow(dead_code)]
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
 
 use miniextendr_api::{Call, Missing, Quosure, Quoted, SEXP, miniextendr};
 
@@ -66,11 +63,6 @@ pub fn optional_cols_default(
 #[miniextendr(s3(generic = "subset", class = "mx_table"))]
 pub fn mx_table_subset(x: SEXP, subset: Quoted, _dots: ...) -> SEXP {
     subset.eval_in(x)
-}
-
-#[miniextendr(worker)]
-pub fn on_worker_request(expr: Quoted) -> i32 {
-    i32::from(expr.as_name().is_some())
 }
 
 fn main() {}

@@ -103,7 +103,7 @@ fn dataframe_few_long_flattened() {
 fn dataframe_few_long_column_granular() {
     use miniextendr_api::SEXP;
     use miniextendr_api::SexpExt;
-    use miniextendr_api::worker::with_r_thread;
+    use miniextendr_api::with_r_thread;
 
     // Phase 1: allocate every column up-front (serially on the R thread) and
     // protect; collect the data pointers.
@@ -171,7 +171,7 @@ fn dataframe_few_long_column_granular() {
 #[cfg(all(feature = "rayon", feature = "serde"))]
 mod serde_growing {
     use miniextendr_api::serde::{Serialize, par_iter_to_dataframe_growing, vec_to_dataframe};
-    use miniextendr_api::worker::with_r_thread;
+    use miniextendr_api::with_r_thread;
     use std::sync::LazyLock;
 
     const GROW_ROWS: usize = 500_000;

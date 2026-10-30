@@ -5,7 +5,7 @@
 #
 # Resolution path: Either use R's own R_BeginDeferred/R_EndDeferred (if exposed
 # in future R versions), or implement a message-passing approach where the
-# worker thread sends requests to the main R thread. See docs/GAPS.md and
+# spawned thread sends requests to the main R thread. See docs/GAPS.md and
 # docs/THREADS.md for design discussion.
 test_that("RThreadBuilder basic flow works", {
   skip("Crashes current R runtime; needs safer registration before enabling")

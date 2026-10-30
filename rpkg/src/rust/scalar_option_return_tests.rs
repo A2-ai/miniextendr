@@ -2,9 +2,6 @@
 //! #2121): `None` is the type's `NA`, as a standalone function's is, in every
 //! class system. `Option<()>` still raises, and `Option<Self>` gives `NULL`.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::{ExternalPtr, miniextendr};
 
 /// Scalar Option return regression fixture (Env).
@@ -80,19 +77,6 @@ impl ScalarOptionEnv {
         present.then(|| std::ffi::OsString::from("os"))
     }
     pub fn optional_strict(present: bool, large: bool) -> Option<i64> {
-        present.then_some(if large { i64::MAX } else { 42 })
-    }
-}
-
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(env, internal, strict)]
-impl ScalarOptionEnv {
-    #[miniextendr(env(worker))]
-    pub fn optional_worker(present: bool) -> Option<i32> {
-        present.then_some(42)
-    }
-    #[miniextendr(env(worker))]
-    pub fn optional_worker_strict(present: bool, large: bool) -> Option<i64> {
         present.then_some(if large { i64::MAX } else { 42 })
     }
 }

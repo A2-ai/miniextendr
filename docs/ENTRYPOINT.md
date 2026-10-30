@@ -69,8 +69,7 @@ unsafe extern "C-unwind" fn R_init_mypkg(dll: *mut DllInfo) {
 `package_init()` performs the following in order:
 
 1. **Install panic hook**: captures panic messages for R error reporting
-2. **Initialize runtime**: records main thread ID; with `worker-thread`
-   feature, also spawns the worker thread
+2. **Initialize runtime**: records main thread ID
 3. **Assert UTF-8 locale**: fails fast if locale isn't UTF-8
 4. **Register ALTREP classes**: registers all `#[derive(Altrep*)]` classes
 5. **Register trait ABI**: calls `mx_abi_register()` for cross-package
@@ -145,7 +144,7 @@ This runs during [`just devtools-document`](https://github.com/A2-ai/miniextendr
 | API Category | When Safe |
 |--------------|-----------|
 | Panic hook | Anytime after `package_init()` |
-| R APIs (value-returning) | After init, on main thread (or via `with_r_thread` with `worker-thread` feature) |
+| R APIs (value-returning) | After init, on main thread only |
 | R APIs (pointer-returning) | Main thread only, after init |
 | Trait ABI | After init |
 | User Rust functions | After init |

@@ -1,8 +1,5 @@
 //! Attribute/type parity for serde return transport (#1521).
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use crate::serde::{Serialize, Serializer};
 use miniextendr_api::serde::AsSerialize;
 use miniextendr_api::{ExternalPtr, Invisible, miniextendr};
@@ -38,14 +35,6 @@ pub fn serialized_record_attr(value: i32) -> SerializedRecord {
 #[miniextendr]
 pub fn serialized_record_type(value: i32) -> AsSerialize<SerializedRecord> {
     AsSerialize(record(value))
-}
-
-/// Serialize after the worker returns its owned Rust payload.
-/// @param value Integer stored in the record (early-return fixtures use its absolute value).
-#[cfg(feature = "worker-thread")]
-#[miniextendr(worker, serialize)]
-pub fn serialized_record_worker(value: i32) -> SerializedRecord {
-    record(value)
 }
 
 /// Early returns remain ordinary Rust returns.
@@ -190,7 +179,7 @@ impl SerializeValues for SerializeHost {
 
 /// Exercise the concrete trait vtable and its Rust View conversion.
 /// @param value Integer stored in the trait-ABI instance.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn serialized_trait_view(value: i32) -> Vec<i32> {
     unsafe {
         let erased = __mx_wrap_SerializeHost(SerializeHost { value });

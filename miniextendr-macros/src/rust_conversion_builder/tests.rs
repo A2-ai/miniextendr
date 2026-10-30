@@ -59,22 +59,6 @@ fn test_str_conversion_main_thread_borrows_zero_copy() {
     }
 }
 
-#[test]
-fn test_str_conversion_worker_copies_then_borrows() {
-    // Worker path (`build_conversion_split`): `&str` must be owned-then-borrowed
-    // so the worker retains independent character storage for the borrow.
-    let builder = RustConversionBuilder::new();
-    let param = parse_param("s: &str");
-    if let syn::FnArg::Typed(pat_type) = param {
-        let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-        let (owned, borrowed) = builder.build_conversion_split(&pat_type, &sexp_ident);
-        assert_eq!(owned.len(), 1); // String storage on main thread
-        assert_eq!(borrowed.len(), 1); // borrow inside worker closure
-        assert!(owned[0].to_string().contains("String"));
-        assert!(borrowed[0].to_string().contains("as_str"));
-    }
-}
-
 /// Build the conversion statements of one parameter, joined as a string.
 fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
     let syn::FnArg::Typed(pat_type) = parse_param(src) else {
@@ -903,36 +887,33 @@ fn no_na_check_only_for_listed_params() {
     assert!(!s.contains("__mx_has_na"), "{s}");
 }
 
-/// Under the worker split the check is an owned (pre-closure) statement: it
-/// runs on the main thread, where it may allocate the condition.
+/// The check follows the conversion: it reads the converted value.
 #[test]
-fn no_na_check_is_in_the_owned_vector_of_the_split() {
+fn no_na_check_follows_the_conversion() {
     let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
     let syn::FnArg::Typed(pat_type) = parse_param("x: AsNumericVec") else {
         unreachable!()
     };
     let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-    let (owned, borrowed) = builder.build_conversion_split(&pat_type, &sexp_ident);
-    assert_eq!(owned.len(), 2);
-    assert!(borrowed.is_empty());
-    assert!(owned[1].to_string().contains(NO_NA_CHECK), "{}", owned[1]);
+    let stmts = builder.build_conversion(&pat_type, &sexp_ident);
+    assert_eq!(stmts.len(), 2);
+    assert!(stmts[1].to_string().contains(NO_NA_CHECK), "{}", stmts[1]);
 
-    // An `Either`: the input binding, the conversion and the check, all owned.
+    // An `Either`: the input binding, the conversion and the check.
     let syn::FnArg::Typed(pat_type) = parse_param("x: Either<AsNumeric, DataFrame>") else {
         unreachable!()
     };
-    let (owned, borrowed) = builder.build_conversion_split(&pat_type, &sexp_ident);
-    assert_eq!(owned.len(), 3);
-    assert!(borrowed.is_empty());
+    let stmts = builder.build_conversion(&pat_type, &sexp_ident);
+    assert_eq!(stmts.len(), 3);
     assert!(
-        owned[0].to_string().contains("let __no_na_input_x = arg_0"),
+        stmts[0].to_string().contains("let __no_na_input_x = arg_0"),
         "{}",
-        owned[0]
+        stmts[0]
     );
     assert!(
-        owned[2].to_string().contains("__mx_input_has_na"),
+        stmts[2].to_string().contains("__mx_input_has_na"),
         "{}",
-        owned[2]
+        stmts[2]
     );
 }
 
@@ -1103,7 +1084,6 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
         let syn::FnArg::Typed(param) = parse_param(src) else {
             unreachable!()
         };
-        assert!(crate::type_inspect::is_main_thread_bound_input(&param.ty));
         assert!(!crate::type_inspect::is_sexp_type(&param.ty));
         let metadata = builder.native_borrow_metadata(&param, &syn::parse_quote!(arg_0));
         let metadata = metadata.unwrap().to_string();
@@ -1131,21 +1111,6 @@ fn static_borrowed_parameters_are_refused_at_their_lifetime() {
     for src in ["x: Cow<'_, str>", "x: &'a [i32]", "x: Option<&str>"] {
         let code = conversion_text(&builder, src);
         assert!(!code.contains("compile_error"), "{code}");
-    }
-    // A worker borrows a local copy, which can't be `'static` either.
-    for src in [
-        "x: &'static [i32]",
-        "x: Option<&'static i32>",
-        "x: &'static str",
-        "x: Vec<Option<&'static str>>",
-    ] {
-        let syn::FnArg::Typed(param) = parse_param(src) else {
-            unreachable!()
-        };
-        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
-        let code = quote::quote!(#(#owned)*).to_string();
-        assert!(code.contains("cannot be `'static`"), "{code}");
-        assert!(borrowed.is_empty(), "{src}");
     }
 }
 
@@ -1179,7 +1144,6 @@ fn main_thread_shared_references_bind_the_argument_root() {
         let syn::FnArg::Typed(param) = parse_param(&format!("value: {ty}")) else {
             unreachable!()
         };
-        assert!(!crate::type_inspect::is_main_thread_bound_input(&param.ty));
         // String references have no native alias metadata. Every native
         // reference must retain its metadata through the rooted converter.
         if !ty.contains("str") {
@@ -1210,47 +1174,21 @@ fn match_arg_slices_keep_owned_selection_storage() {
 }
 
 #[test]
-fn worker_character_containers_own_storage_before_borrowing() {
+fn character_borrows_have_no_native_borrow_metadata() {
     let builder = RustConversionBuilder::new();
-    for (ty, owned_ty, borrow) in [
-        ("&'a str", ":: std :: string :: String", "as_str"),
-        (
-            "Option<&'a str>",
-            ":: core :: option :: Option < :: std :: string :: String >",
-            "as_deref",
-        ),
-        (
-            "std::vec::Vec<&'a str>",
-            ":: std :: vec :: Vec < :: std :: string :: String >",
-            "String :: as_str",
-        ),
-        (
-            "Vec<core::option::Option<&'a str>>",
-            ":: std :: vec :: Vec < :: core :: option :: Option < :: std :: string :: String > >",
-            "Option :: as_deref",
-        ),
+    for ty in [
+        "&'a str",
+        "Option<&'a str>",
+        "std::vec::Vec<&'a str>",
+        "Vec<core::option::Option<&'a str>>",
     ] {
         let syn::FnArg::Typed(param) = parse_param(&format!("text: {ty}")) else {
             unreachable!()
         };
-        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
-        assert_eq!(owned.len(), 1, "{ty}");
-        assert_eq!(borrowed.len(), 1, "{ty}");
-        let owned = owned[0].to_string();
-        let borrowed = borrowed[0].to_string();
         assert!(
-            owned.contains(&format!("let __owned_text : {owned_ty} =")),
-            "{owned}"
+            owned_string_storage(&param.ty, &syn::parse_quote!(__owned_text)).is_some(),
+            "{ty}"
         );
-        assert!(
-            owned.contains("TryFromSexp :: try_from_sexp (arg_0)"),
-            "{owned}"
-        );
-        assert!(!owned.contains("TryFromRoot"), "{owned}");
-        assert!(borrowed.contains(borrow), "{borrowed}");
-        assert!(borrowed.contains("'_"), "{borrowed}");
-        assert!(!borrowed.contains("miniextendr_api"), "{borrowed}");
-        assert!(!crate::type_inspect::is_main_thread_bound_input(&param.ty));
         assert!(
             builder
                 .native_borrow_metadata(&param, &syn::parse_quote!(arg_0))
@@ -1265,104 +1203,6 @@ fn worker_character_containers_own_storage_before_borrowing() {
         "Vec<Vec<&str>>",
     ] {
         let ty: syn::Type = syn::parse_str(ty).unwrap();
-        assert!(worker_string_storage(&ty, &syn::parse_quote!(__owned_text)).is_none());
-    }
-}
-
-#[test]
-fn worker_character_marker_wraps_the_borrow_inside_the_closure() {
-    let builder = RustConversionBuilder::new().with_param_markers(
-        "text".into(),
-        vec![crate::type_inspect::ParamMarker::Checked],
-    );
-    let syn::FnArg::Typed(param) = parse_param("text: Vec<Option<&str>>") else {
-        unreachable!()
-    };
-    let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
-    assert_eq!(owned.len(), 1);
-    assert_eq!(borrowed.len(), 2);
-    assert!(borrowed[0].to_string().contains("Option :: as_deref"));
-    assert!(
-        borrowed[1]
-            .to_string()
-            .contains("Checked :: from_inner (text)")
-    );
-}
-
-#[test]
-fn worker_optional_string_choices_keep_the_null_decoder_and_argument_type() {
-    let builder = RustConversionBuilder::new().with_layered_choice(
-        "mode".into(),
-        ChoiceLeaf::Literal {
-            choices: vec!["low".into(), "high".into()],
-            several: false,
-        },
-    );
-    let syn::FnArg::Typed(param) = parse_param("mode: Option<&str>") else {
-        unreachable!()
-    };
-    let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
-    let owned = owned[0].to_string();
-    assert!(owned.contains("match_arg_null_or"), "{owned}");
-    assert!(
-        owned.contains("String as :: miniextendr_api :: TryFromSexp"),
-        "{owned}"
-    );
-    assert!(owned.contains("Option<&str>"), "{owned}");
-    assert_eq!(borrowed.len(), 1);
-    assert!(borrowed[0].to_string().contains("as_deref"));
-}
-
-#[test]
-fn worker_native_references_copy_before_dispatch_and_borrow_inside_it() {
-    let builder = RustConversionBuilder::new();
-    for (ty, owned_ty, borrow) in [
-        ("&'a i32", "i32", "& __owned_value"),
-        ("&f64", "f64", "& __owned_value"),
-        ("&u8", "u8", "& __owned_value"),
-        ("&RLogical", "RLogical", "& __owned_value"),
-        ("&Rcomplex", "Rcomplex", "& __owned_value"),
-        ("&'a [i32]", ":: std :: vec :: Vec < i32 >", "as_slice"),
-        (
-            "&[NativeNewtype]",
-            ":: std :: vec :: Vec < NativeNewtype >",
-            "as_slice",
-        ),
-        (
-            "Option<&i32>",
-            ":: core :: option :: Option < i32 >",
-            "as_ref",
-        ),
-        (
-            "Option<&[f64]>",
-            ":: core :: option :: Option < :: std :: vec :: Vec < f64 > >",
-            "as_deref",
-        ),
-    ] {
-        let syn::FnArg::Typed(param) = parse_param(&format!("value: {ty}")) else {
-            unreachable!()
-        };
-        let (owned, borrowed) = builder.build_conversion_split(&param, &syn::parse_quote!(arg_0));
-        assert_eq!(owned.len(), 1, "{ty}");
-        assert_eq!(borrowed.len(), 1, "{ty}");
-        let owned = owned[0].to_string();
-        let borrowed = borrowed[0].to_string();
-        assert!(
-            owned.contains(&format!("let __owned_value : {owned_ty} =")),
-            "{owned}"
-        );
-        assert!(owned.contains("TryFromRoot"), "{owned}");
-        assert!(owned.contains("Result :: map ("), "{owned}");
-        assert!(borrowed.contains(borrow), "{borrowed}");
-        assert!(!borrowed.contains("miniextendr_api"), "{borrowed}");
-    }
-    for ty in [
-        "&mut [i32]",
-        "Option<&mut i32>",
-        "&CustomObject",
-        "Vec<&i32>",
-    ] {
-        let ty = syn::parse_str(ty).unwrap();
-        assert!(worker_native_storage(&ty, &syn::parse_quote!(__owned_value)).is_none());
+        assert!(owned_string_storage(&ty, &syn::parse_quote!(__owned_text)).is_none());
     }
 }

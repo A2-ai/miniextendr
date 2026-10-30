@@ -5,9 +5,7 @@
 //! Plain and coercing conversions, `no_na` checks and an `Either` choice each
 //! read the call slot or the error from a template spanned at the argument's
 //! type. So do vectors, strings, strict integers, a mutable `match_arg` slice
-//! and an `Either` arm whose failure asks the type what it declares. Worker
-//! methods aren't covered: they need the `worker-thread` feature, which this
-//! suite doesn't enable.
+//! and an `Either` arm whose failure asks the type what it declares.
 #![allow(dead_code)]
 
 use miniextendr_api::either_impl::Either;

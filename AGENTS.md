@@ -25,7 +25,7 @@ Rust-R interoperability framework for building R packages with Rust backends.
 
 ### Rust/FFI gotchas
 
-- **`DataFrame` (view) vs `BuiltDataFrame` (owned) split (#1128)**: `DataFrame` is a cheap `Copy` **view** over a bare SEXP with no GC root (sound only while an R `.Call` frame or a `ProtectScope` keeps it reachable). Every **Rust-side constructor** returns `BuiltDataFrame`, an owned RAII handle that roots the frame through a `Preserved` (`R_PreserveObject`/`R_ReleaseObject`, `!Send`): `IntoDataFrame::into_dataframe`, `SerdeRowBuilder::finish`, `DataFrame::builder().build()`, serde `*_to_dataframe`, `NamedList::as_data_frame`. It `Deref`s to `DataFrame` and returns to R via `IntoR`. `!Send` means it can't cross back out of `with_r_thread`/`run_on_worker` — build+read+drop it on the R thread. The **editing** methods also return rooted handles (#1247): the new-frame producers (`drop`/`select`/`select_rows`/`prepend_column`/`with_column`) return `BuiltDataFrame`, with inherent forwards on `BuiltDataFrame` for the whole editing set, so constructor→edit chains are rooted at every link. `rename`/`strip_prefix` stay in-place view methods. Remaining footgun: hand-smuggling the view out of a handle (`*built`) then letting the handle drop. `column: SEXP` args to `with_column`/`prepend_column` must be caller-rooted across the call.
+- **`DataFrame` (view) vs `BuiltDataFrame` (owned) split (#1128)**: `DataFrame` is a cheap `Copy` **view** over a bare SEXP with no GC root (sound only while an R `.Call` frame or a `ProtectScope` keeps it reachable). Every **Rust-side constructor** returns `BuiltDataFrame`, an owned RAII handle that roots the frame through a `Preserved` (`R_PreserveObject`/`R_ReleaseObject`, `!Send`): `IntoDataFrame::into_dataframe`, `SerdeRowBuilder::finish`, `DataFrame::builder().build()`, serde `*_to_dataframe`, `NamedList::as_data_frame`. It `Deref`s to `DataFrame` and returns to R via `IntoR`. `!Send` means it can't leave R's main thread — build+read+drop it there. The **editing** methods also return rooted handles (#1247): the new-frame producers (`drop`/`select`/`select_rows`/`prepend_column`/`with_column`) return `BuiltDataFrame`, with inherent forwards on `BuiltDataFrame` for the whole editing set, so constructor→edit chains are rooted at every link. `rename`/`strip_prefix` stay in-place view methods. Remaining footgun: hand-smuggling the view out of a handle (`*built`) then letting the handle drop. `column: SEXP` args to `with_column`/`prepend_column` must be caller-rooted across the call.
 - **Pointer provenance**: cache `*mut T` via a mutable path (`&mut T`, `Box::into_raw`, `downcast_mut`, `ptr::from_mut`). Never write through a `cached_ptr` derived from `&T` / `downcast_ref` — UB under Stacked Borrows.
 - **`cargo package` for workspace resolution**: when vendoring, let `cargo package` expand workspace inheritance — never hard-code workspace dependency replacements.
 - **m4 in `AC_CONFIG_COMMANDS`**: `$1` is empty (use `$0` or avoid `sh -c`). Escape `[` / `]` in sed/grep as `@<:@` / `@:>@`.
@@ -48,7 +48,7 @@ steps inside the guarded recipe body so its snapshot precedes them (#1992).
 ## Project Structure
 
 ```
-miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, worker thread)
+miniextendr-api/      # Runtime (FFI, ExternalPtr, ALTREP, conversions)
 miniextendr-macros/   # Proc macros (#[miniextendr], derives; naming in src/naming.rs)
 miniextendr-bench/    # Benchmarks (separate workspace member)
 miniextendr-lint/     # Static analysis
@@ -222,10 +222,10 @@ Never commit it or any other build artifact: CI's Generated Files Check (`just c
 ## Key Concepts
 
 - **Execution model**: generated Rust runs on R's main thread inside
-  `R_UnwindProtect` by default. `#[miniextendr(worker)]` and `worker-default`
-  opt into the dedicated worker; R API work routes back through `with_r_thread`.
-  The worker is **deprecated** (#2117): an explicit `worker` warns, and its open
-  problems are not planned. Don't build new features on it.
+  `R_UnwindProtect`; there is no worker thread (removed in #2117). R API calls
+  happen only on that thread: `with_r_thread` runs its closure inline there and
+  panics on any other thread (Rayon, `std::thread`), so parallel code computes
+  on plain Rust data and hands the result back to the main thread.
 - **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance. Every read is checked (#2106): a `#[miniextendr]` fn takes `&T` / `&mut T` (or the views `ExternalPtrRef` / `ExternalPtrMut`) and the wrapper borrows the `RefCell` for the call; an `ExternalPtr<T>` handle has no `Deref` and reads through `borrow()` / `borrow_mut()`.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
 - **ALTREP**: Single-struct pattern, no wrapper. Two paths:

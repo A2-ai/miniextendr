@@ -1,14 +1,7 @@
 # Thread Safety in miniextendr
 
-This document explains miniextendr's main-thread contract, optional worker
-dispatch, and the limits of its legacy non-API stack controls.
-
-> **The worker thread is deprecated** (#2117): `#[miniextendr(worker)]` and the
-> `worker-thread` / `worker-default` features keep working but won't be
-> developed further, and their known problems (#989, #1425, #2076, #2109) are
-> not planned. An explicit `worker` option warns at compile time;
-> `#![allow(deprecated)]` on the module silences it. `with_r_thread` and
-> `is_r_main_thread` are not deprecated.
+This document explains miniextendr's main-thread contract and the limits of
+its legacy non-API stack controls.
 
 ## Non-negotiable rule: R API calls stay on R's main thread
 
@@ -59,60 +52,27 @@ Setting `R_CStackLimit` to `(uintptr_t)-1` disables this check, but only this
 check. It does not make R's allocator, GC, global state, external libraries, or
 error longjmps thread-safe. The OS still enforces its real stack limit.
 
-## Supported routing
+## Where generated code runs
 
-By default, generated functions run on R's main thread inside
-`R_UnwindProtect`. No routing is needed.
+Generated functions and methods run on R's main thread inside
+`R_UnwindProtect`. A Rust panic becomes an R condition; an R error unwinds
+through the Rust frames, running their destructors.
 
-Functions that opt into `#[miniextendr(worker)]` (or a crate using
-`worker-default`) run their Rust body on miniextendr's dedicated worker. Within
-that active worker context, `with_r_thread` marshals R API work back to the
-recorded main thread:
+Code on other threads (Rayon, `std::thread`) stays pure Rust: collect its
+results, return to the main thread, and convert them to R objects there. The
+Rayon bridge (`with_r_vec`, `par_collect_r`, ...) does exactly this: it
+allocates the R vector on the main thread, fills its data pointer in
+parallel, and returns. See [RAYON.md](RAYON.md).
 
-```rust
-use miniextendr_api::{miniextendr, r_println, with_r_thread};
-
-#[miniextendr(worker)]
-fn compute_and_report(x: Vec<f64>) -> Vec<f64> {
-    let result = expensive_pure_rust_computation(x);
-    with_r_thread(|| r_println!("computation complete"));
-    result
-}
-```
-
-The arguments, converted on the main thread, move into the worker, and the
-return value moves back for conversion, so their types must be `Send`. A
-function over a `!Send` type, such as an `ExternalPtr<T>` whose `T` is not
-`Send`, needs `#[miniextendr(no_worker)]` under `worker-default`. A function
-that borrows an external value (a `&T` / `&mut T` / `ExternalPtrRef` /
-`ExternalPtrMut` parameter) runs on the main thread, like an instance method:
-the borrow is taken and released there.
-
-Static methods of an impl block, constructors included, select the worker the
-same way, through their class option (`env(worker)`, `r6(worker)`, ...) or
-`worker-default`. Instance methods and methods taking dots always run on the
-main thread. A function or static method that takes or returns an R value
-(`SEXP`, `Quoted`, an R-backed view or root such as `BuiltDataFrame`,
-`Preserved` or `REvalError`) or sets `check_interrupt` also stays on the main
-thread, whatever selects the worker.
-
-Shared native arguments (`&T`, `&[T]`, and their `Option` forms) are validated
-and copied on the R thread. The worker borrows those Rust-owned snapshots;
-reentrant R callbacks cannot invalidate their storage. Character references
-likewise borrow owned strings on the worker. Native scalar references still
-require exactly one element; optional native references map only `NULL` to
-`None`, preserving NA sentinels as values. Mutable native references retain
-their write-through behavior and still need the lifetime migration in #1427.
-
-`with_r_thread` is not a general cross-thread executor. From an arbitrary
-spawned thread outside an active `run_on_worker` call, it panics instead of
-silently running R on the wrong thread.
+`with_r_thread(f)` checks that it runs on R's main thread and runs `f`
+inline; anywhere else it panics before `f` reaches R. `is_r_main_thread()`
+answers the question without panicking. Neither moves work between threads.
 
 ### Checked vs Unchecked R FFI
 
 Most `miniextendr_api::sys::*` functions are **checked** (via `#[r_ffi_checked]`).
-They run directly on the main thread, route from an active miniextendr worker
-context through `with_r_thread`, and panic for arbitrary off-main callers.
+They run the call inside `with_r_thread`: directly on the main thread, and a
+panic on any other thread.
 
 Use `*_unchecked` only when the surrounding context has already established
 that execution is on R's main thread, such as an ALTREP callback, an
@@ -183,19 +143,18 @@ Serializing arbitrary spawned-thread calls with a mutex is not sufficient: R
 requires the calls themselves, its GC interactions, and error signaling to run
 on the main thread.
 
-The supported pattern is pure Rust computation on an opted-in miniextendr
-worker, with explicit main-thread routing only when the body genuinely needs an
-R API:
+The supported pattern is pure Rust computation on other threads, joined
+before the function returns, with every R API call on the main thread:
 
 ```rust
-use miniextendr_api::{miniextendr, r_println, with_r_thread};
+use miniextendr_api::miniextendr;
+use rayon::prelude::*;
 
-#[miniextendr(worker)]
-fn normalized(mut x: Vec<f64>) -> Vec<f64> {
-    normalize_in_rust(&mut x);
-
-    with_r_thread(|| r_println!("normalized"));
-    x // generated return conversion runs at the framework boundary
+#[miniextendr]
+fn normalized(x: Vec<f64>) -> Vec<f64> {
+    let total: f64 = x.par_iter().sum();
+    // Return conversion runs on the main thread, at the framework boundary.
+    x.par_iter().map(|v| v / total).collect()
 }
 ```
 
@@ -214,33 +173,15 @@ thread boundary.
 
 For explicit ALTREP handling, use `AltrepSexp`, a `!Send + !Sync` wrapper
 that prevents un-materialized ALTREP vectors from reaching rayon or other
-worker threads at compile time.
+threads at compile time.
 
 See [Receiving ALTREP from R](ALTREP_SEXP.md) for the full guide.
 
-## Worker Shutdown
+## Unload
 
-The worker thread must be shut down **synchronously** before the package DLL is
-unmapped. This section documents why, what the mechanism is, and the historical
-background.
-
-### Why synchronous shutdown is required
-
-On Windows, `R_unload_<pkg>` → `library.dynam.unload` unmaps the DLL's code
-pages **as soon as the unload hook returns**. If the worker thread is still
-alive at that point (even mid-sleep in a polling loop), it will resume
-execution in freed memory, corrupting the process's SEH exception chain. The
-next `RaiseException` anywhere in the process then fails with
-`ERROR_ACCESS_DENIED` (Win32 error 5), which Rust's panic runtime surfaces as:
-
-```
-fatal runtime error: failed to initiate panic, error 5, aborting
-```
-
-This was reproducible with `devtools::test` / `devtools::load_all(reset = TRUE)`,
-which trigger `library.dynam.unload` on every reload. See
-[`reviews/windows-panic-unload-issue.md`](../reviews/windows-panic-unload-issue.md)
-for the full root-cause analysis.
+`R_unload_<pkg>` (generated by `miniextendr_init!`) calls
+`miniextendr_runtime_shutdown()` before `library.dynam.unload` unmaps the
+package DLL.
 
 ### Why the panic hook must be uninstalled
 
@@ -249,57 +190,23 @@ for the full root-cause analysis.
 DLL. After unload, the process-global hook still points at that code. The next
 panic from **any** crate (not just miniextendr) would jump to unmapped memory.
 
-`miniextendr_runtime_shutdown` calls `miniextendr_panic_hook_uninstall()` after
-the worker has joined (order matters: the worker might itself panic during
-shutdown, and we want our hook still live to handle it). The uninstall calls
-`std::panic::take_hook()`, which drops our closure and resets the process slot
-to Rust's default hook.
-
-### The shutdown protocol (commit 451d1e8b)
-
-The fix (PR closing #277) replaced the old atomic-flag + `recv_timeout(250ms)`
-poll loop with a tagged-message channel and a blocking join:
-
-```rust
-// Worker loop blocks on recv() - no timeout, no polling
-while let Ok(msg) = rx.recv() {
-    match msg {
-        WorkerMsg::Job(job) => job(),
-        WorkerMsg::Shutdown => break,
-    }
-}
-
-// Shutdown: deliver message, drop sender, block until thread exits
-pub(super) fn shutdown() {
-    let Some(state) = WORKER.lock().unwrap().take() else { return };
-    let _ = state.tx.send(WorkerMsg::Shutdown);
-    drop(state.tx);   // closing the channel is a second wake-up path
-    if let Err(payload) = state.handle.join() { /* log, continue */ }
-}
-```
-
-`R_unload_<pkg>` does not return until `JoinHandle::join()` returns, so
-`library.dynam.unload`'s subsequent memory unmap sees no live code references.
-The `WORKER_SHOULD_STOP` atomic, the 250 ms `SHUTDOWN_POLL_INTERVAL`, the
-`atexit` registration, and the test-only `miniextendr_runtime_join_for_test`
-helper are all gone. The new design doesn't need them.
+`miniextendr_runtime_shutdown` calls `miniextendr_panic_hook_uninstall()`,
+which calls `std::panic::take_hook()`: that drops our closure and resets the
+process slot to Rust's default hook. On Windows the unmap happens as soon as
+the unload hook returns, and a dangling hook fails the next panic with
+`fatal runtime error: failed to initiate panic, error 5, aborting`.
 
 ### API surface
 
 `miniextendr_runtime_shutdown()`: `extern "C-unwind" fn` with `#[unsafe(no_mangle)]`,
-called from the generated `R_unload_<pkg>` hook produced by `miniextendr_init!`.
-Idempotent: subsequent calls after the first are no-ops. Also runs without
-the `worker-thread` feature (panic hook uninstall still runs).
+called from the generated `R_unload_<pkg>` hook. Idempotent.
 
 `miniextendr_runtime_init()`: counterpart init, called from `R_init_<pkg>`.
-Registers the main thread ID and (with `worker-thread`) spawns the worker.
-Explicitly does **not** register a libc `atexit` handler. An `atexit` function
-pointer into the DLL has the same unmap hazard as the worker thread or panic
-hook. If the package is unloaded before process exit, the `atexit` registry
-would jump to freed memory. Normal exit via `R_unload_<pkg>` is sufficient;
-abnormal exit (`q("no")`, process kill) relies on the OS to reap the thread.
+Records R's main thread ID. It does **not** register a libc `atexit` handler:
+an `atexit` function pointer into the DLL has the same unmap hazard as the
+panic hook.
 
-Source: `miniextendr-api/src/worker.rs` (shutdown logic),
+Source: `miniextendr-api/src/thread.rs` (init and shutdown),
 `miniextendr-api/src/backtrace.rs` (panic hook install/uninstall).
 
 ## Non-API Functions Used
@@ -316,7 +223,7 @@ See [NONAPI.md](NONAPI.md) for the full tracking document.
 
 ## Known Limitations
 
-- **Async/await is not supported.** R's C API is single-threaded and synchronous; use blocking I/O on the worker thread or R-level parallelism (mirai, callr). See [GAPS.md](GAPS.md#43-asyncawait-support).
+- **Async/await is not supported.** R's C API is single-threaded and synchronous; use blocking I/O or R-level parallelism (mirai, callr). See [GAPS.md](GAPS.md#43-asyncawait-support).
 - **Spawned-thread panics cannot be propagated** through `extern "C-unwind"` functions. Handle thread errors explicitly via `Result` rather than `resume_unwind`. See [GAPS.md](GAPS.md#56-thread-panic-propagation-limitation).
 - **Debug-only SEXP thread assertions** mean release builds may not detect SEXP access from wrong threads. Checked FFI wrappers provide runtime checks in all build modes.
 
@@ -326,7 +233,7 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 ## See Also
 
-- [SAFETY.md](SAFETY.md) -- Safety invariants and the worker thread model
+- [SAFETY.md](SAFETY.md) -- Safety invariants and the main-thread model
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling and R error propagation
 - [FEATURES.md](FEATURES.md#nonapi) -- The `nonapi` feature flag and legacy stack controls
 - [RAYON.md](RAYON.md) -- Parallel iteration with Rayon

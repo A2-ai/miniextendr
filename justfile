@@ -144,10 +144,9 @@ check-features:
         "indexmap,tinyvec,bitvec,bitflags"
         # defaults combos
         "strict-default,coerce-default,r6-default"
-        "strict-default,s7-default,worker-default"
-        # diagnostic features (macro-coverage does NOT compile alone — it
-        # needs worker-thread; this combo is its only compile gate)
-        "growth-debug,worker-thread,macro-coverage"
+        "strict-default,s7-default"
+        # diagnostic features
+        "growth-debug,macro-coverage"
         # newer integrations (no standalone datafusion combo — heavy; it
         # rides in once via full-integrations in the final combo)
         "jiff"
@@ -542,7 +541,7 @@ bench-lint *cargo_flags:
 
 # Run core benchmarks (default features, high-signal targets)
 bench-core *cargo_flags:
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench ffi_calls --bench into_r --bench from_r --bench translate --bench strings --bench externalptr --bench worker --bench unwind_protect {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench ffi_calls --bench into_r --bench from_r --bench translate --bench strings --bench externalptr --bench unwind_protect {{cargo_flags}}
 
 # Run feature-gated benchmarks (connections, rayon, serde)
 bench-features *cargo_flags:

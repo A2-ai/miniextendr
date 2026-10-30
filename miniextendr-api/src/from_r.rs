@@ -1240,8 +1240,8 @@ impl_try_from_sexp_scalar_native!(crate::Rcomplex, CPLXSXP);
 ///
 /// # Safety
 ///
-/// SEXP handles are only valid on R's main thread. Standalone `#[miniextendr]`
-/// functions taking a `SEXP` parameter run on the main thread automatically.
+/// SEXP handles are only valid on R's main thread, where every
+/// `#[miniextendr]` function runs.
 impl TryFromSexp for SEXP {
     type Error = SexpError;
 
@@ -2455,8 +2455,8 @@ fn external_ptr_from_sexp<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>
 /// The handle a generated wrapper borrows for a `&T` / `&mut T` /
 /// [`ExternalPtrRef`](crate::ExternalPtrRef) /
 /// [`ExternalPtrMut`](crate::ExternalPtrMut) argument: converted like an
-/// `ExternalPtr<T>` argument, without its `T: Send` bound, since a borrowed
-/// argument keeps the call on R's main thread.
+/// `ExternalPtr<T>` argument. A free function, so the generated `::<T>` is
+/// spanned on `T` and a `T` that isn't `TypedExternal` gets one error.
 #[doc(hidden)]
 #[inline]
 pub fn __mx_external_arg<T: TypedExternal>(sexp: SEXP) -> Result<ExternalPtr<T>, SexpError> {
@@ -2492,7 +2492,7 @@ pub fn __mx_optional_external_arg<T: TypedExternal>(
 ///     data.borrow().value
 /// }
 /// ```
-impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
+impl<T: TypedExternal> TryFromSexp for ExternalPtr<T> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -2525,7 +2525,7 @@ impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
     }
 }
 
-impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
+impl<T: TypedExternal> TryFromSexp for Option<ExternalPtr<T>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -2554,7 +2554,7 @@ impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
 /// `impl TryFromSexp for Vec<ExternalPtr<T>>` there because both `Vec` and
 /// `TryFromSexp` are foreign — so it lives here, keyed on `ExternalPtr<T>` to
 /// avoid colliding with the atomic-vector impls.
-impl<T: TypedExternal + Send> TryFromSexp for Vec<ExternalPtr<T>> {
+impl<T: TypedExternal> TryFromSexp for Vec<ExternalPtr<T>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -2575,7 +2575,7 @@ impl<T: TypedExternal + Send> TryFromSexp for Vec<ExternalPtr<T>> {
 /// Convert an R list (VECSXP) of external pointers / `NULL`s to
 /// `Vec<Option<ExternalPtr<T>>>`. `NULL` elements map to `None`; every other
 /// element must be an `EXTPTRSXP` carrying a `T` (issue #827).
-impl<T: TypedExternal + Send> TryFromSexp for Vec<Option<ExternalPtr<T>>> {
+impl<T: TypedExternal> TryFromSexp for Vec<Option<ExternalPtr<T>>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

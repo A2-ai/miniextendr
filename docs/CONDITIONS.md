@@ -226,15 +226,14 @@ transport. Build it directly for nested or heterogeneous values, or use
 `RValue::debug(value)` to attach an eager `Debug` rendering when no native R
 mapping is appropriate.
 
-#### Worker-thread note
+#### Why the payload is `RValue`
 
-The payload travels through `panic_any`, which requires `Send` — and the macro
-may fire on the worker thread, where a live `SEXP` is illegal to carry. Each
-field is therefore converted at the call site into `RValue`, and a multi-field
-payload becomes `ConditionData` (`Vec<(String, RValue)>`). The actual R objects
-are materialised on R's main thread at the unwind boundary. Consequently,
-`data = ...` works identically from worker-thread and main-thread code, but a
-live `SEXP` or arbitrary `IntoR` value cannot ride along.
+The payload travels through `panic_any`, which requires `Send`, so a live
+`SEXP` cannot ride in it. Each field is therefore converted at the call site
+into `RValue`, and a multi-field payload becomes `ConditionData`
+(`Vec<(String, RValue)>`). The actual R objects are materialised on R's main
+thread at the unwind boundary. Consequently, a live `SEXP` or arbitrary
+`IntoR` value cannot ride along.
 
 #### Reserved names
 
@@ -468,10 +467,24 @@ catch the failure inside the block with
 [`catch_condition`](#catching-a-condition-in-rust-catch-condition):
 `capture(|| catch_condition(|| rebuild(&snapshot)))`.
 
-**Where it works.** Every `#[miniextendr]` function and method, including
-`#[miniextendr(worker)]` bodies (the queue is a `Mutex`: the push happens on
-the worker, the signal on R's main thread once the result is back), `rng`
-wrappers and trait-ABI vtable shims. ALTREP `RUnwind` and `RustUnwind` callbacks,
+**Where it works.** Every `#[miniextendr]` function and method, `rng`
+wrappers and trait-ABI vtable shims, on R's main thread. Queueing from any
+other thread (a Rayon task, a `std::thread`) panics: no R call there could
+signal the condition. Collect what the parallel section found and queue the
+conditions on the main thread after it returns:
+
+```rust
+#[miniextendr]
+fn parse_all(xs: Vec<String>) -> Vec<i32> {
+    let parsed: Vec<Result<i32, _>> = xs.par_iter().map(|s| s.parse::<i32>()).collect();
+    let bad = parsed.iter().filter(|r| r.is_err()).count();
+    if bad > 0 {
+        defer_warning!("{bad} values could not be parsed"); // on the main thread
+    }
+    parsed.into_iter().filter_map(Result::ok).collect()
+}
+```
+ ALTREP `RUnwind` and `RustUnwind` callbacks,
 `with_r_unwind_protect_or_raise`, and connection I/O callbacks flush their own
 conditions before returning. ALTREP and connection conditions have
 `conditionCall() = NULL`; the raising guard uses its explicit `call` argument
@@ -1112,7 +1125,7 @@ To raise the caught condition itself, unchanged (R's classes and fields, no
 
 `REvalError` is `!Send`: dropping it releases the condition's root, which
 must happen on R's main thread. Convert it to an `RError` (the third form), or
-keep the `String` from `message()`, to carry the failure to a worker thread.
+keep the `String` from `message()`, to carry the failure to another thread.
 
 ## Chaining a cause: `with_parent`
 
@@ -1250,9 +1263,6 @@ Every transport carries it:
 
 - immediate macros and `Result` errors, through the generated wrapper;
 - deferred conditions, signalled from Rust with the same helper;
-- `#[miniextendr(worker)]` bodies: the worker wrapper catches the condition on
-  the worker and builds its tagged value on the main thread, so an immediate
-  `warning!` / `error!` there keeps its kind, classes, data and call choice;
 - trait-ABI vtable shims: the marker survives the re-panic into the consumer,
   so a producer's call-less warning is call-less in the consumer's wrapper too;
 - `with_r_unwind_protect_or_raise` and ALTREP `RUnwind` guards, where a
@@ -1385,8 +1395,7 @@ fields: `argument` (each refused argument, `..<i>` for an unnamed one) and
   `ArgError` is a plain value and does not implement `RConditionData`:
   returned as a body's `Err` it takes the `Result` path
   (`kind = "result_err"`), so raise it with `.raise()`.
-- **Where it works**: immediate calls, `#[miniextendr(worker)]` bodies (the
-  worker wrapper builds the condition on the main thread) and trait-ABI calls,
+- **Where it works**: immediate calls and trait-ABI calls,
   where the consumer package's wrapper raises it with the classes of the
   package that implements the method, as that package's own wrapper would.
 
@@ -1453,8 +1462,8 @@ Two narrow cases still degrade:
 - A trait View method (`view.method()`) called from Rust code that is not
   wrapped in `with_r_unwind_protect` (e.g., a manual call from a test harness
   or init callback). The re-panic from the View has no outer guard to catch it,
-  so the worker thread's `catch_unwind` boundary converts it to an R error
-  without `rust_*` class layering. In practice, every `#[miniextendr]` fn
+  so it propagates as an ordinary Rust panic, without `rust_*` class
+  layering. In practice, every `#[miniextendr]` fn
   already provides the outer guard, so this only affects unusual call sites.
 
 Functions that explicitly opt out via `#[miniextendr(unwrap_in_r)]` deliver

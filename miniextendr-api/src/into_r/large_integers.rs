@@ -473,9 +473,8 @@ fn vec_externalptr_to_list<T: crate::externalptr::TypedExternal>(
     items: Vec<crate::externalptr::ExternalPtr<T>>,
 ) -> crate::SEXP {
     use crate::SexpExt;
-    // SAFETY: return-value conversion runs on R's main thread (after
-    // `run_on_worker` hands the `Vec` back); every element is pool-rooted and
-    // kept alive by `items` across the single allocation.
+    // SAFETY: return-value conversion runs on R's main thread; every element
+    // is pool-rooted and kept alive by `items` across the single allocation.
     unsafe {
         let n = items.len();
         let list = crate::sys::Rf_allocVector(crate::SEXPTYPE::VECSXP, n as crate::R_xlen_t);

@@ -47,9 +47,8 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks (below the crate's `preconditions` key) | `preconditions`, `Checked<T>` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
-| `worker-default` | Select worker execution (implies `worker-thread`; deprecated, #2117) | fns + static methods | `no_worker` |
 
-All six `*-default` features above are denylisted from rpkg's auto-detected
+All five `*-default` features above are denylisted from rpkg's auto-detected
 default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
 codegen semantics crate-wide, so no PR-gating job ever builds or runs the R
 wrappers they generate. Their only runtime coverage is the scheduled
@@ -57,7 +56,7 @@ wrappers they generate. Their only runtime coverage is the scheduled
 which rebuilds rpkg with one feature bundle on top of the detected base set,
 regenerates `NAMESPACE` and `man/` for that build (the committed ones are the
 default build's), and re-runs `tests/testthat/test-feature-defaults.R` against it. The
-`worker-default`, `r6-default` and `s7-default` legs run the full suite, and the
+`r6-default` and `s7-default` legs run the full suite, and the
 `coerce-default` leg also runs the coercion regression suites.
 
 ### Hardcoded Defaults (No Longer Feature-Controlled)
@@ -67,7 +66,7 @@ The following were previously opt-in features but are now **always enabled by de
 | Default | Effect | Notes |
 |---------|--------|-------|
 | Tagged-condition transport | Transport Rust errors as R conditions (panics, `Err`, `None` → tagged SEXP → R wrapper raises) | Only path; no opt-out. `unwrap_in_r` is orthogonal (Result-as-value vs Result-as-error-boundary). |
-| Main thread | All code runs on R's main thread | Opt into the worker thread with `worker`. |
+| Main thread | All code runs on R's main thread | Only path; no opt-out. |
 
 ### Orthogonality
 
@@ -163,37 +162,17 @@ impl MyType { ... }
 
 ### Methods
 
-Per-method `worker` and `coerce` options respect feature defaults. Worker
-selection applies to static methods, including constructors: arguments and
-return values crossing the thread boundary must be `Send`. An explicit
-`main_thread` (or `unsafe(main_thread)`) overrides worker selection;
-`no_worker` opts a method out of `worker-default`.
-
-Instance methods always stay on R's main thread because they borrow their
-receiver. Methods taking `Dots` or `LazyDots` stay there too. A `worker`
-option on either does not move the borrowed R state across threads. Static
-methods follow the rule standalone functions do: one that takes or returns an
-R value (`SEXP`, `Quoted`, an R-backed view such as `BuiltDataFrame`, also
-nested in the return type) or sets `check_interrupt` stays on the main thread
-whatever selects the worker.
+Per-method `coerce` options respect feature defaults.
 
 ```rust
-// With worker-default + coerce-default features enabled:
+// With the coerce-default feature enabled:
 #[miniextendr(r6)]
 impl MyType {
-    // worker=true, coerce=true (from features)
+    // coerce=true (from the feature)
     pub fn compute(x: f32) -> f32 { x * 2.0 }
 
-    #[miniextendr(r6(no_worker))]     // main thread, coerce=true
-    pub fn local(x: f32) -> f32 { x }
-
-    #[miniextendr(r6(no_coerce))]     // worker=true, coerce=false
+    #[miniextendr(r6(no_coerce))]     // coerce=false
     pub fn strict_compute(x: f32) -> f32 { x * 2.0 }
-
-    #[miniextendr(r6(worker, main_thread))] // explicit main-thread override
-    pub fn on_main(x: f32) -> f32 { x }
-
-    pub fn value(&self) -> f32 { self.value } // always main thread
 }
 ```
 
@@ -246,7 +225,7 @@ fn mixed_fn(n: Checked<i32>, x: f64) -> f64 { f64::from(*n) * x }
 
 On a function the pair also takes `= true` / `= false`
 (`preconditions = false` is `no_preconditions`), and on a function or an impl
-block the last one written wins, like `worker` / `no_worker`.
+block the last one written wins, like `strict` / `no_strict`.
 
 The same applies to impl blocks, inherent and trait impls alike (including an
 empty-body trait impl and the setter of an R6 active binding):
@@ -280,7 +259,7 @@ For each option, the resolution is:
 
 1. **Explicit attribute** -- `strict` or `no_strict` on the item → uses that value
 2. **Feature default** -- `cfg!(feature = "strict-default")` → uses the feature setting (for feature-controlled options)
-3. **Built-in default** -- main-thread execution (`worker=false`, no forced thread override), tagged-condition transport always on, `false` for other boolean options, `Env` for class system
+3. **Built-in default** -- tagged-condition transport always on, `false` for other boolean options, `Env` for class system
 
 Explicit attributes always win over feature/built-in defaults.
 
@@ -333,6 +312,4 @@ impl LightWrapper { ... }  // env (overridden)
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
 | `preconditions` | `#[miniextendr(preconditions)]` on fn, method or impl, inherent or trait (`preconditions = true` on a fn); on a parameter, `#[miniextendr(preconditions)]`, `Checked<T>` or the method's `preconditions(p)`; `preconditions = true` in `[package.metadata.miniextendr]` | `no-preconditions-default` feature (keeps the R-side type checks) |
 | `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn, method or impl, inherent or trait (`no_preconditions = true` on a fn); on a parameter, `#[miniextendr(no_preconditions)]`, `Unchecked<T>` or the method's `no_preconditions(p)`; `preconditions = false` in `[package.metadata.miniextendr]` | Built-in default: drops the R-side type checks |
-| `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
-| `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `worker-default` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `r6-default` or `s7-default` feature |

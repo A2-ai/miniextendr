@@ -51,10 +51,10 @@
 //! }
 //! ```
 //!
-//! A function or method that takes the guard always runs on R's main thread,
-//! whatever `worker` / `worker-default` says: the guard cannot leave it. Trait
-//! methods take no `&RngGuard` parameter; their arguments cross the trait ABI
-//! as R values.
+//! A function or method that takes the guard runs on R's main thread, as every
+//! `#[miniextendr]` function does: the guard cannot leave it. Trait methods
+//! take no `&RngGuard` parameter; their arguments cross the trait ABI as R
+//! values.
 //!
 //! ## Generated Code Pattern
 //!
@@ -193,7 +193,7 @@ impl RngGuard {
     #[inline]
     pub unsafe fn __mx_loaded_by_wrapper() -> Self {
         debug_assert!(
-            crate::worker::is_r_main_thread(),
+            crate::is_r_main_thread(),
             "an `rng` wrapper's guard must be made on R's main thread"
         );
         Self {
@@ -278,7 +278,7 @@ where
     // release builds: otherwise this safe wrapper could invoke R's RNG API from
     // a background thread and trigger undefined behaviour (#1096).
     assert!(
-        crate::worker::is_r_main_thread(),
+        crate::is_r_main_thread(),
         "with_rng must run on R's main thread"
     );
     let guard = unsafe { RngGuard::new() };

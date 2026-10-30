@@ -10,9 +10,6 @@
 //! the tests can tell that an R exit (an error, a `tryCatch()` handler) ran
 //! the Rust destructors on its way out: `quoted_sentinel_drops()` counts them.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use miniextendr_api::expression::{RCall, try_eval_with_handlers};
@@ -275,31 +272,6 @@ pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
     }
 }
 
-/// Call `pkg::fun(arg)` from the worker thread, through `with_r_thread` and
-/// `RCall::eval_with_handlers`: the value as a string (`""` when it is not
-/// one). An R exit in the callback continues to the caller's handler, and the
-/// worker answers the next call.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(noexport, worker)]
-pub fn quoted_worker_call(pkg: String, fun: String, arg: String) -> String {
-    miniextendr_api::worker::with_r_thread(move || {
-        // SAFETY: `with_r_thread` runs this on R's main thread, inside the
-        // `.Call()`; `RCall` roots its arguments.
-        unsafe {
-            let arg = OwnedProtect::new(SEXP::scalar_string_from_str(&arg));
-            let value = RCall::namespaced(&pkg, &fun)
-                .unwrap_or_else(|e| panic!("{e}"))
-                .arg(arg.get())
-                .eval_with_handlers(miniextendr_api::sys::R_BaseEnv);
-            if value.type_of() == SEXPTYPE::STRSXP && value.len() > 0 {
-                value.string_elt_str(0).unwrap_or_default().to_owned()
-            } else {
-                String::new()
-            }
-        }
-    })
-}
-
 // endregion
 
 // region: an R error returned as Err, the caller's handlers kept (#1893)
@@ -486,9 +458,7 @@ pub fn quoted_eval_stash(expr: Quoted) -> bool {
 
 /// Resume the unwind `quoted_eval_stash()` kept, in this later call. Its R
 /// exit cannot continue (its target is gone), so the boundary raises an error.
-// Stays on R's main thread under `worker-default`: reads the stash
-// `quoted_eval_stash()` left on the main thread.
-#[miniextendr(noexport, no_worker)]
+#[miniextendr(noexport)]
 pub fn quoted_resume_stashed() -> bool {
     match STASHED.with(|stashed| stashed.borrow_mut().take()) {
         Some(payload) => std::panic::resume_unwind(payload),

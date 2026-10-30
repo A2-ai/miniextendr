@@ -1094,8 +1094,7 @@ fn parsed_fn_precondition_spelling_errors() {
 }
 
 /// A marker's rebinding follows the parameter's last statement: the
-/// conversion (and its `no_na` check) on the main thread, the borrow inside
-/// the worker closure for a split `&str`.
+/// conversion, and its `no_na` check.
 #[test]
 fn param_marker_rebind_follows_the_last_statement() {
     use crate::type_inspect::ParamMarker;
@@ -1108,19 +1107,15 @@ fn param_marker_rebind_follows_the_last_statement() {
     let rebind_s = "let s = :: miniextendr_api :: Checked :: from_inner (s) ;";
     let rebind_n = "let n = :: miniextendr_api :: Unchecked :: from_inner (n) ;";
 
-    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(s: &str)), &sexp);
-    assert!(owned.iter().all(|t| !t.to_string().contains("from_inner")));
-    assert_eq!(borrowed.last().unwrap().to_string(), rebind_s);
     let main = builder.build_conversion(&pat(quote::quote!(s: &str)), &sexp);
     assert_eq!(main.last().unwrap().to_string(), rebind_s);
 
-    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(n: f64)), &sexp);
-    assert!(borrowed.is_empty());
-    assert_eq!(owned.len(), 3, "conversion, no_na check, rebind");
-    assert!(owned[1].to_string().contains("__mx_has_na"));
-    assert_eq!(owned[2].to_string(), rebind_n);
+    let stmts = builder.build_conversion(&pat(quote::quote!(n: f64)), &sexp);
+    assert_eq!(stmts.len(), 3, "conversion, no_na check, rebind");
+    assert!(stmts[1].to_string().contains("__mx_has_na"));
+    assert_eq!(stmts[2].to_string(), rebind_n);
     // The conversion names the inner type in `e$rust_type`.
-    assert!(owned[0].to_string().contains("\"f64\""), "{}", owned[0]);
+    assert!(stmts[0].to_string().contains("\"f64\""), "{}", stmts[0]);
 
     let unmarked = builder.build_conversion(&pat(quote::quote!(x: i32)), &sexp);
     assert!(
@@ -1203,8 +1198,7 @@ fn parsed_fn_non_na_marker_errors() {
     }
 }
 
-/// The C wrapper checks a `NonNa` argument before converting it, on the main
-/// thread (first of the owned statements on the worker path too), and
+/// The C wrapper checks a `NonNa` argument before converting it and
 /// rebuilds the value unchecked after the conversion; the message is
 /// `no_na`'s, the author's when given.
 #[test]
@@ -1230,11 +1224,11 @@ fn non_na_check_precedes_the_conversion() {
         "let x = unsafe { :: miniextendr_api :: NonNa :: new_unchecked (x) } ;"
     );
 
-    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(s: &str)), &sexp);
-    assert!(owned[0].to_string().contains("__mx_any_na (arg_0)"));
-    assert!(owned[0].to_string().contains("\"give a name\""));
+    let stmts = builder.build_conversion(&pat(quote::quote!(s: &str)), &sexp);
+    assert!(stmts[0].to_string().contains("__mx_any_na (arg_0)"));
+    assert!(stmts[0].to_string().contains("\"give a name\""));
     assert_eq!(
-        borrowed.last().unwrap().to_string(),
+        stmts.last().unwrap().to_string(),
         "let s = unsafe { :: miniextendr_api :: NonNa :: new_unchecked (s) } ;"
     );
 
@@ -2172,6 +2166,25 @@ fn miniextendr_attr_rejects_unknown_options() {
         .err()
         .unwrap();
     assert!(err.to_string().contains("unknown `#[miniextendr]` option"));
+}
+
+/// The worker options are gone (#2117): each is an unknown option.
+#[test]
+fn miniextendr_attr_rejects_the_worker_options() {
+    for option in [
+        quote::quote!(worker),
+        quote::quote!(no_worker),
+        quote::quote!(worker = true),
+        quote::quote!(no_worker = false),
+    ] {
+        let err = syn::parse2::<MiniextendrFnAttrs>(option.clone())
+            .err()
+            .unwrap_or_else(|| panic!("`{option}` must error"));
+        assert!(
+            err.to_string().contains("unknown `#[miniextendr]` option"),
+            "{option}: {err}"
+        );
+    }
 }
 
 #[test]
@@ -3940,7 +3953,7 @@ fn default_fn_attrs_keep_preconditions() {
 }
 
 /// The pair joins the shared flag table: bare and `= bool` on a fn, and the
-/// last one written wins, like `worker` / `no_worker`.
+/// last one written wins, like `coerce` / `no_coerce`.
 #[test]
 fn preconditions_pair_parses_on_fns_last_wins() {
     let prec = |input: proc_macro2::TokenStream| {

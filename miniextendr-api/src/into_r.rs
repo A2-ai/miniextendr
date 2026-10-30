@@ -180,29 +180,6 @@ impl IntoR for crate::SEXP {
     }
 }
 
-impl IntoR for crate::worker::Sendable<crate::SEXP> {
-    type Error = std::convert::Infallible;
-    #[inline]
-    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.0)
-    }
-    #[inline]
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.0)
-    }
-    #[inline]
-    fn into_sexp(self) -> crate::SEXP {
-        self.0
-    }
-}
-
-impl From<crate::worker::Sendable<crate::SEXP>> for crate::SEXP {
-    #[inline]
-    fn from(s: crate::worker::Sendable<crate::SEXP>) -> Self {
-        s.0
-    }
-}
-
 impl IntoR for () {
     type Error = std::convert::Infallible;
     #[inline]

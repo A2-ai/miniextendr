@@ -59,7 +59,7 @@
 //! # Threads
 //!
 //! [`RRng`] is `!Send` and `!Sync`, like the guard it borrows: R's RNG state
-//! belongs to R's main thread. It can't move into a worker closure or a rayon
+//! belongs to R's main thread. It can't move into a spawned thread or a rayon
 //! task. For parallel random numbers, seed a Rust RNG per chunk instead (the
 //! `rayon` feature's docs show how), or draw what you need from R first and
 //! hand the values over.

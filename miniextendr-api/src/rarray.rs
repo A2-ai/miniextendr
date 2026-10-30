@@ -29,12 +29,11 @@
 //! from other threads. This is because the underlying R APIs (`DATAPTR_RO`, etc.)
 //! must be called on the R main thread.
 //!
-//! Functions that use `RArray`/`RMatrix` parameters run on the main thread
-//! automatically — these types are `!Send`, so the generated wrapper can only
-//! execute there. No attribute is required.
+//! Every `#[miniextendr]` function runs on R's main thread, so `RArray` /
+//! `RMatrix` parameters are read there. No attribute is required.
 //!
-//! For worker-thread usability, use [`to_vec()`][RArray::to_vec] to copy data
-//! on the main thread, then pass the owned `Vec` to worker threads.
+//! To use the data on other threads (Rayon, `std::thread::spawn`), copy it with
+//! [`to_vec()`][RArray::to_vec] on the main thread and pass the owned `Vec` on.
 //!
 //! # Performance
 //!
@@ -291,7 +290,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
 
     /// Copy array data to an owned `Vec<T>`.
     ///
-    /// This method copies the data, making it safe to use in worker threads
+    /// This method copies the data, making it safe to move to other threads
     /// or pass to parallel computation. The copy is performed on the current
     /// thread (which must be the R main thread).
     ///
@@ -306,7 +305,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// #[miniextendr]
     /// fn process_matrix(m: RMatrix<f64>) -> f64 {
-    ///     // Copy data - Vec<f64> is Send and can be used in worker threads
+    ///     // Copy data - Vec<f64> is Send and can move to other threads
     ///     let data: Vec<f64> = unsafe { m.to_vec() };
     ///     // Now data can be passed to parallel computation
     ///     data.iter().sum()

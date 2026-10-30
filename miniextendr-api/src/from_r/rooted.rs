@@ -12,10 +12,9 @@ use std::borrow::Cow;
 /// This conversion carries the root lifetime that raw [`TryFromSexp`]
 /// cannot express.
 /// Generated wrappers use the rooted `.Call` argument for `StrVec`, `RCow`,
-/// and `Cow` inputs (including the character-vector Cow containers). Main-thread
-/// wrappers and trait shims also use it for explicit shared native references
-/// and optional shared references. Worker shared references copy to Rust-owned
-/// scalars, vectors or strings before dispatch, then borrow inside the worker.
+/// and `Cow` inputs (including the character-vector Cow containers). Wrappers
+/// and trait shims also use it for explicit shared native references and
+/// optional shared references.
 /// Nested shared-reference `Vec` inputs retain every list element in the root's
 /// protection scope, even when an ALTREP accessor does not cache that element.
 /// Reference aliases and custom reference converters select this path with

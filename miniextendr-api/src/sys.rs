@@ -11,7 +11,7 @@
 //! [`SexpExt`]: crate::sexp_ext::SexpExt
 //! [`IntoR`]: crate::IntoR
 //! [`TryFromSexp`]: crate::TryFromSexp
-//! [`with_r_thread`]: crate::worker::with_r_thread
+//! [`with_r_thread`]: crate::with_r_thread
 //! [`with_r_unwind_protect`]: crate::unwind_protect::with_r_unwind_protect
 //!
 //! # Checked vs `*_unchecked` variants
@@ -21,17 +21,14 @@
 //! to the `unsafe extern "C-unwind"` blocks below:
 //!
 //! - **Checked** (default — e.g. `Rf_allocVector`, `Rf_protect`, `INTEGER`):
-//!   runs directly on R's main thread, routes through
-//!   [`crate::worker::with_r_thread`] from an active miniextendr worker
-//!   context, and panics for arbitrary off-main callers. **Use these by
-//!   default.**
-//! - **`*_unchecked`** (e.g. `Rf_allocVector_unchecked`): bypass the assertion
-//!   and the worker round-trip. Calling one off the R main thread is
-//!   undefined behaviour. They exist for three known-safe contexts:
+//!   runs on R's main thread through [`crate::with_r_thread`], and panics for
+//!   any other caller. **Use these by default.**
+//! - **`*_unchecked`** (e.g. `Rf_allocVector_unchecked`): bypass the check.
+//!   Calling one off the R main thread is undefined behaviour. They exist for three known-safe contexts:
 //!     1. Inside ALTREP callbacks — R is already calling us on the main thread.
 //!     2. Inside a [`crate::unwind_protect::with_r_unwind_protect`] body —
 //!        the guard has already established main-thread context.
-//!     3. Inside a [`crate::worker::with_r_thread`] body — the check would be
+//!     3. Inside a [`crate::with_r_thread`] body — the check would be
 //!        redundant.
 //!
 //! The build-time lint **MXL301** enforces this: any `*_unchecked` call
@@ -47,8 +44,8 @@
 //!
 //! # Cross references
 //!
-//! - [`crate::ffi_guard`] — guard taxonomy and worker-thread invariants.
-//! - [`crate::thread`] / [`crate::worker`] — worker / main-thread split.
+//! - [`crate::ffi_guard`] — guard taxonomy.
+//! - [`crate::thread`] — R's main thread.
 //! - [`crate::altrep_traits`] / [`crate::altrep_bridge`] — guard modes
 //!   inside ALTREP callbacks.
 //! - [`crate::error_value`] / [`mod@crate::condition`] — panic → R condition
@@ -126,27 +123,6 @@ unsafe extern "C-unwind" {
     pub fn REprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
 }
 
-// Error message access (non-API, declared in Rinternals.h but flagged by R CMD check)
-#[cfg(feature = "nonapi")]
-unsafe extern "C-unwind" {
-    /// Get the current R error message buffer.
-    ///
-    /// Returns a pointer to R's internal error message buffer.
-    /// Used by Rserve and other embedding applications.
-    ///
-    /// # Safety
-    ///
-    /// - The returned pointer is only valid until the next R error
-    /// - Must not be modified
-    /// - Should be copied if needed beyond the immediate scope
-    ///
-    /// # Feature Gate
-    ///
-    /// This is a non-API function and requires the `nonapi` feature.
-    #[allow(non_snake_case, dead_code)] // used by worker.rs under worker-thread feature
-    pub(crate) fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
-}
-
 // Console hooks (non-API; declared in Rinterface.h)
 #[cfg(feature = "nonapi")]
 unsafe extern "C-unwind" {
@@ -173,7 +149,7 @@ pub unsafe fn Rf_error(
     fmt: *const ::std::os::raw::c_char,
     arg1: *const ::std::os::raw::c_char,
 ) -> ! {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!("Rf_error called from non-main thread");
     }
     unsafe { Rf_error_unchecked(fmt, arg1) }
@@ -193,7 +169,7 @@ pub unsafe fn Rf_errorcall(
     fmt: *const ::std::os::raw::c_char,
     arg1: *const ::std::os::raw::c_char,
 ) -> ! {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!("Rf_errorcall called from non-main thread");
     }
     unsafe { Rf_errorcall_unchecked(call, fmt, arg1) }
@@ -208,7 +184,7 @@ pub unsafe fn Rf_errorcall(
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!("Rf_warning called from non-main thread");
     }
     unsafe { Rf_warning_unchecked(fmt, arg1) }
@@ -223,7 +199,7 @@ pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std:
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!("Rprintf called from non-main thread");
     }
     unsafe { Rprintf_unchecked(fmt, arg1) }
@@ -238,7 +214,7 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!("REprintf called from non-main thread");
     }
     unsafe { REprintf_unchecked(fmt, arg1) }
@@ -1698,7 +1674,7 @@ unsafe extern "C-unwind" {
     /// error, which longjmps. Call this where such a longjmp is caught: a
     /// `#[miniextendr]` function body, or
     /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// `#[r_ffi_checked]` gives the main-thread check only, not an
     /// unwind guard.
     pub fn Rf_dnorm4(x: f64, mu: f64, sigma: f64, give_log: ::std::os::raw::c_int) -> f64;
 
@@ -1718,7 +1694,7 @@ unsafe extern "C-unwind" {
     /// error, which longjmps. Call this where such a longjmp is caught: a
     /// `#[miniextendr]` function body, or
     /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// `#[r_ffi_checked]` gives the main-thread check only, not an
     /// unwind guard.
     pub fn Rf_pnorm5(
         x: f64,
@@ -1746,7 +1722,7 @@ unsafe extern "C-unwind" {
     /// error, which longjmps. Call this where such a longjmp is caught: a
     /// `#[miniextendr]` function body, or
     /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// `#[r_ffi_checked]` gives the main-thread check only, not an
     /// unwind guard.
     pub fn Rf_qnorm5(
         p: f64,
@@ -1774,7 +1750,7 @@ unsafe extern "C-unwind" {
     /// error, which longjmps. Call this where such a longjmp is caught: a
     /// `#[miniextendr]` function body, or
     /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// `#[r_ffi_checked]` gives the main-thread check only, not an
     /// unwind guard.
     pub fn Rf_qchisq(
         p: f64,
@@ -1883,7 +1859,7 @@ unsafe extern "C-unwind" {
     ///   ("L-BFGS-B needs finite values of 'fn'"). Call it where such a
     ///   longjmp is caught: a `#[miniextendr]` function body, or
     ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   `#[r_ffi_checked]` gives the main-thread check only, not an
     ///   unwind guard.
     /// - The callbacks must not let a Rust panic unwind through `lbfgsb`'s
     ///   frames (see [`optimfn`]).
@@ -2020,10 +1996,10 @@ unsafe extern "C-unwind" {
     ///   it where such a longjmp is caught: a `#[miniextendr]` function
     ///   body, or
     ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   `#[r_ffi_checked]` gives the main-thread check only, not an
     ///   unwind guard.
-    /// - Call it from R's main thread (the checked variant routes there from
-    ///   a worker) in a process where R is initialised: `xerbla` is R's.
+    /// - Call it from R's main thread in a process where R is initialised:
+    ///   `xerbla` is R's.
     ///   A standalone binary must start R first (`miniextendr-engine`).
     #[allow(clippy::too_many_arguments)]
     pub fn dgemm_(
@@ -2082,10 +2058,10 @@ unsafe extern "C-unwind" {
     ///   [`crate::linalg::solve`] does, or call it where such a longjmp is
     ///   caught: a `#[miniextendr]` function body, or
     ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
-    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   `#[r_ffi_checked]` gives the main-thread check only, not an
     ///   unwind guard.
-    /// - Call it from R's main thread (the checked variant routes there from
-    ///   a worker) in a process where R is initialised: `xerbla` is R's.
+    /// - Call it from R's main thread in a process where R is initialised:
+    ///   `xerbla` is R's.
     ///   A standalone binary must start R first (`miniextendr-engine`).
     #[allow(clippy::too_many_arguments)]
     pub fn dgesv_(

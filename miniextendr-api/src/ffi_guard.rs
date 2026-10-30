@@ -1,6 +1,6 @@
 //! Unified FFI guard for catching panics at Rust-R boundaries.
 //!
-//! Four modules independently catch panics at FFI boundaries: `worker.rs`,
+//! Three modules independently catch panics at FFI boundaries:
 //! `altrep_bridge.rs`, `unwind_protect.rs`, and `connection.rs`. This module
 //! extracts the common pattern into a single `guarded_ffi_call` function.
 //!
@@ -35,7 +35,7 @@
 //!
 //! ## Cross references
 //!
-//! - [`crate::worker::with_r_thread`] — main-thread routing entry point.
+//! - [`crate::with_r_thread`] — the main-thread check.
 //! - [`crate::unwind_protect::with_r_unwind_protect`] — the user-facing R
 //!   error catcher; consumed by `RUnwind` mode.
 

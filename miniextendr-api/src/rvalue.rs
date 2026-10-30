@@ -1,11 +1,11 @@
 //! `RValue` — an owned, `Send`, R-native value tree.
 //!
 //! The `serde_json::Value` analogue for R's base data types: an owned (no live
-//! `SEXP`), inspectable (`Debug + Clone`), `Send` (crosses the worker boundary)
-//! representation of "an arbitrary R native value". Use it wherever you need to
-//! carry a dynamic/heterogeneous R value through Rust — e.g. condition `data =`
-//! payloads, which travel through `panic_any` and may be raised on the worker
-//! thread where a live `SEXP` would be illegal.
+//! `SEXP`), inspectable (`Debug + Clone`), `Send` (a `panic_any` payload can
+//! carry it) representation of "an arbitrary R native value". Use it wherever
+//! you need to carry a dynamic/heterogeneous R value through Rust — e.g.
+//! condition `data =` payloads, which travel through `panic_any` before any R
+//! object exists.
 //!
 //! Tuples with 1–12 fields convert into unnamed [`RValue::List`] entries,
 //! recursively using each field's `Into<RValue>` implementation. This lets

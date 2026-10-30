@@ -8,8 +8,7 @@ Four independent FFI boundaries exist between Rust and R:
 
 | Boundary | Where | Guard |
 |----------|-------|-------|
-| Main thread (default) | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + tagged-condition SEXP |
-| Worker thread (opt-in, requires `worker-thread` feature) | `worker.rs` | `catch_unwind` + `Rf_error` |
+| Generated wrappers | `unwind_protect.rs` | `R_UnwindProtect` + `catch_unwind` + tagged-condition SEXP |
 | ALTREP trampolines | `altrep_bridge.rs` | Per-type `AltrepGuard` const |
 | `R_UnwindProtect` | `unwind_protect.rs` | Catches panics + R longjmps |
 | Connection callbacks | `connection.rs` | `catch_unwind` + fallback value |
@@ -51,7 +50,7 @@ use miniextendr_api::panic_telemetry::PanicSource;
 let result = guarded_ffi_call(
     || some_pure_rust_work(),
     GuardMode::CatchUnwind,
-    PanicSource::Worker,
+    PanicSource::UnwindProtect,
 );
 ```
 
@@ -166,7 +165,6 @@ Identifies which boundary caught the panic:
 
 ```rust
 pub enum PanicSource {
-    Worker,        // worker thread (run_on_worker)
     Altrep,        // ALTREP trampoline (guarded_altrep_call)
     UnwindProtect, // with_r_unwind_protect
     Connection,    // connection callback trampoline
@@ -207,31 +205,33 @@ use miniextendr_api::panic_telemetry::clear_panic_telemetry_hook;
 clear_panic_telemetry_hook();
 ```
 
-### Thread Safety and Reentrancy
+### Threads and Reentrancy
 
-- The hook may fire from **any thread** (worker, main R thread, etc.).
-- The hook closure must be `Send + Sync + 'static`.
-- The read lock is released before the hook is invoked, so calling
+- Every panic-to-error boundary runs on R's main thread, so the hook lives
+  there: set it on the main thread. The slot is thread-local; a hook set on
+  another thread stays in that thread's slot and never sees the main thread's
+  panics.
+- The hook closure must be `'static`; it need not be `Send` or `Sync`, so it
+  may hold an `Rc` or a `RefCell`.
+- `fire()` clones the hook out of its slot before calling it, so calling
   `set_panic_telemetry_hook` or `clear_panic_telemetry_hook` from within a hook
-  is safe (no deadlock).
+  is safe.
 - Secondary panics inside the hook are caught via `catch_unwind` and silently
   suppressed -- the system is already on a panic-to-error path.
 
 ### Performance
 
-`fire()` takes a read lock on an `RwLock<Option<Arc<...>>>`. In the common case
-(no hook set, or hook set but no panic), the cost is a single uncontended read
-lock -- effectively free. The hook only runs on panic paths, never on hot paths.
+`fire()` borrows a thread-local `RefCell<Option<Rc<...>>>` and, with a hook
+set, clones the `Rc` -- effectively free. The hook only runs on panic paths, never on hot paths.
 
 ---
 
 ## Integration Points
 
-All four panic-to-R-error sites call `panic_telemetry::fire()`:
+All three panic-to-R-error sites call `panic_telemetry::fire()`:
 
 | Site | File | What happens after `fire()` |
 |------|------|-----------------------------|
-| Worker thread (opt-in) | `worker.rs` | `Rf_error` on main thread (requires `worker-thread` feature) |
 | ALTREP bridge | `ffi_guard.rs` (via `guarded_ffi_call`) | `Rf_error` or `R_UnwindProtect` |
 | Unwind protect | `unwind_protect.rs` | `R_ContinueUnwind` |
 | Connection | `ffi_guard.rs` (via `guarded_ffi_call_with_fallback`) | Returns fallback value |
@@ -242,5 +242,5 @@ All four panic-to-R-error sites call `panic_telemetry::fire()`:
 
 - [Error Handling](ERROR_HANDLING.md) -- How panics, Result, and R errors interact
 - [ALTREP Guards](ALTREP_GUARDS.md) -- Per-type guard mode selection for ALTREP
-- [Threads](THREADS.md) -- Worker thread architecture
+- [Threads](THREADS.md) -- The main-thread invariant
 - [Connections](CONNECTIONS.md) -- Custom R connections from Rust

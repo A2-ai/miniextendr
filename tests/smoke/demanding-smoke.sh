@@ -160,7 +160,6 @@ phase_a3_high_risk_tests() {
     gc-stress
     panic
     thread
-    worker
     trait-abi
     externalptr
     class-systems

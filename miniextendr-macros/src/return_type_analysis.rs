@@ -1,8 +1,6 @@
 //! Return type analysis for `#[miniextendr]` functions.
 //!
-//! Determines:
-//! 1. Whether function returns SEXP (affects thread strategy)
-//! 2. Whether result should be invisible in R
+//! Determines whether the result should be invisible in R.
 
 use crate::is_sexp_type;
 use syn::spanned::Spanned;
@@ -14,9 +12,6 @@ use syn::spanned::Spanned;
 struct AnalysisCtx<'a> {
     /// Identifier for the variable holding the Rust function's return value.
     rust_result_ident: &'a syn::Ident,
-    /// Set to `true` if the return type contains SEXP, meaning the function must
-    /// run on R's main thread (SEXP is not `Send`).
-    returns_sexp: &'a mut bool,
     /// Set to `true` if the R wrapper should return invisibly (e.g., `()` or `Option<()>`).
     is_invisible: &'a mut bool,
     /// Statements to execute after calling the Rust function but before converting
@@ -26,15 +21,9 @@ struct AnalysisCtx<'a> {
 
 /// Relevant analysis result for a `#[miniextendr]` function's return type.
 ///
-/// Captures the properties needed to determine thread strategy and R wrapper invisibility.
+/// Captures the R wrapper's invisibility.
 /// Detailed return-value codegen is handled by [`crate::c_wrapper_builder::CWrapperContext`].
 pub(crate) struct ReturnTypeAnalysis {
-    /// Whether the return type contains SEXP (affects thread strategy).
-    ///
-    /// When `true`, the generated wrapper runs on R's main thread because
-    /// SEXP is not `Send`.
-    pub returns_sexp: bool,
-
     /// Whether the R wrapper function should return its result invisibly.
     ///
     /// Set to `true` for `()`, `Option<()>`, and `Result<(), E>` return types.
@@ -81,7 +70,6 @@ pub(crate) fn analyze_return_type(
     strict: bool,
     err_parts: &crate::c_wrapper_builder::ErrPartsMode,
 ) -> ReturnTypeAnalysis {
-    let mut returns_sexp = false;
     let mut is_invisible = false;
     let mut post_call_statements = Vec::new();
 
@@ -102,7 +90,6 @@ pub(crate) fn analyze_return_type(
             // -> SEXP
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible = false;
-                returns_sexp = true;
             }
 
             // -> Option<T>
@@ -112,7 +99,6 @@ pub(crate) fn analyze_return_type(
             {
                 let mut ctx = AnalysisCtx {
                     rust_result_ident,
-                    returns_sexp: &mut returns_sexp,
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
@@ -126,7 +112,6 @@ pub(crate) fn analyze_return_type(
             {
                 let mut ctx = AnalysisCtx {
                     rust_result_ident,
-                    returns_sexp: &mut returns_sexp,
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
@@ -140,10 +125,7 @@ pub(crate) fn analyze_return_type(
         },
     };
 
-    ReturnTypeAnalysis {
-        returns_sexp,
-        is_invisible,
-    }
+    ReturnTypeAnalysis { is_invisible }
 }
 
 /// Analyze `Option<T>` return type and generate conversion code.
@@ -180,7 +162,6 @@ fn analyze_option_type(
     } else if is_sexp_inner {
         // Option<SEXP> - return SEXP or R_NilValue for None
         *ctx.is_invisible = false;
-        *ctx.returns_sexp = true;
         quote::quote! {
             match #rust_result_ident {
                 ::core::option::Option::Some(v) => v,
@@ -237,9 +218,6 @@ fn analyze_result_type(
             // Result<T, ()> - convert to Result<T, NullOnErr> and use IntoR
             // IntoR for Result<T, NullOnErr> returns NULL on Err
             *ctx.is_invisible = false;
-            if ok_is_sexp {
-                *ctx.returns_sexp = true;
-            }
             // Convert Err(()) to Err(NullOnErr) so IntoR can return NULL
             ctx.post_call_statements.push(quote::quote! {
                 let #rust_result_ident = #rust_result_ident.map_err(|()| ::miniextendr_api::into_r::NullOnErr);
@@ -253,10 +231,6 @@ fn analyze_result_type(
         // Uses IntoR impl which returns list(error=...) on Err.
         // Note: Requires E: Display for the IntoR impl.
         *ctx.is_invisible = false;
-        if ok_is_sexp {
-            // Still require main thread for Result<SEXP, E>
-            *ctx.returns_sexp = true;
-        }
         quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     } else if ok_is_unit {
         // Result<(), E> - invisible, tagged condition SEXP on Err
@@ -273,7 +247,6 @@ fn analyze_result_type(
     } else if ok_is_sexp {
         // Result<SEXP, E> - return SEXP or tagged condition SEXP on Err
         *ctx.is_invisible = false;
-        *ctx.returns_sexp = true;
         quote::quote! {
             match #rust_result_ident {
                 ::core::result::Result::Ok(v) => v,

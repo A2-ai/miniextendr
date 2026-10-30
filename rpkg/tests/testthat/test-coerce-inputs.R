@@ -100,15 +100,11 @@ test_that("coerced bools retain logical inputs while accepting integer zero and 
   for (x in list(integer(), logical(), c(TRUE, FALSE))) expect_error(scalar(x))
 })
 
-test_that("per-argument, worker, and optional bool coercion agree with their R gates", {
+test_that("per-argument and optional bool coercion agree with their R gates", {
   fun <- miniextendr:::coerce_input_per_arg
   expect_identical(fun(TRUE, FALSE), c(TRUE, FALSE))
   expect_identical(fun(1L, TRUE), c(TRUE, TRUE))
   expect_error(fun(1L, 1L))
-  if (miniextendr_has_feature("worker-thread")) {
-    expect_true(miniextendr:::coerce_input_worker(TRUE))
-    expect_true(miniextendr:::coerce_input_worker(1L))
-  }
   expect_true(miniextendr:::coerce_input_optional(TRUE))
   expect_false(miniextendr:::coerce_input_optional(NA))
   expect_false(miniextendr:::coerce_input_optional(NULL))

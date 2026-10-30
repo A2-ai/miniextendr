@@ -17,12 +17,11 @@
 //! - **Without `rayon`** — each column is filled in one full-range serial pass.
 //!
 //! Both paths produce an identical `data.frame`. Nothing else in the builder
-//! depends on rayon: `with_r_thread`, `Sendable`, `RNativeType`, the PROTECT
+//! depends on rayon: `with_r_thread`, `RNativeType`, the PROTECT
 //! discipline, and the assembly step are all rayon-independent. The `Send + Sync`
 //! bounds on the fill closures are simply unused when rayon is absent.
 
-use crate::worker::{Sendable, with_r_thread};
-use crate::{RNativeType, SEXP, SexpExt};
+use crate::{RNativeType, SEXP, SexpExt, with_r_thread};
 
 // region: type-erased column fill machinery
 
@@ -62,7 +61,7 @@ impl ColPtr {
 enum ColumnKind {
     /// Native column: the fill wrote directly into R memory; the SEXP is already
     /// complete. Holds the allocated (and currently protected) SEXP.
-    Native(Sendable<SEXP>),
+    Native(SEXP),
     /// Character column: the fill computed `Option<String>` values into a `Vec`
     /// (no R API on fill threads). The `CHARSXP`s are set serially on the R
     /// thread during assembly. `None` becomes `NA_character_`.
@@ -73,8 +72,8 @@ enum ColumnKind {
 /// the flattened work-list (or serial loop) dispatches.
 struct ColumnReg {
     /// Allocates the column's backing storage (R SEXP for native columns, an
-    /// owned `Vec` for character columns) for `nrow` rows. Runs serially on the
-    /// R/worker thread. Returns the [`ColumnKind`] (carrying the protected SEXP
+    /// owned `Vec` for character columns) for `nrow` rows. Runs serially on
+    /// R's main thread. Returns the [`ColumnKind`] (carrying the protected SEXP
     /// or the owned buffer) and the raw data pointer the range filler writes
     /// through during the fill phase.
     #[allow(clippy::type_complexity)]
@@ -128,7 +127,7 @@ struct ColumnReg {
 ///
 /// # Phases
 ///
-/// 1. Allocate each column's backing storage **serially on the R/worker thread**
+/// 1. Allocate each column's backing storage **serially on R's main thread**
 ///    (native columns get a protected R vector; character columns get an owned
 ///    `Vec<Option<String>>`). Strict PROTECT discipline — the dangerous part.
 /// 2. Fill all columns (parallel flat pass with `rayon`, serial otherwise). No R
@@ -236,14 +235,13 @@ impl RDataFrameBuilder {
                 // Allocate + protect the R vector serially on the R thread, then
                 // hand back its data pointer for the fill. The protection is
                 // balanced during assembly in `build`.
-                let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
+                let (sexp, ptr) = with_r_thread(move || unsafe {
                     let sexp =
                         crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, nrow as crate::R_xlen_t);
                     crate::sys::Rf_protect_unchecked(sexp);
-                    let ptr = T::dataptr_mut(sexp);
-                    (sexp, Sendable(ptr))
+                    (sexp, T::dataptr_mut(sexp))
                 });
-                (ColumnKind::Native(Sendable(sexp)), ColPtr(ptr as *mut ()))
+                (ColumnKind::Native(sexp), ColPtr(ptr as *mut ()))
             }),
             make_filler: Box::new(move |base: ColPtr, nrow: usize| {
                 Box::new(move |offset: usize, len: usize| {
@@ -408,7 +406,7 @@ impl RDataFrameBuilder {
             let mut col_sexps: Vec<SEXP> = Vec::with_capacity(ncol);
             for kind in kinds {
                 match kind {
-                    ColumnKind::Native(Sendable(sexp)) => {
+                    ColumnKind::Native(sexp) => {
                         native_protected += 1;
                         col_sexps.push(sexp);
                     }

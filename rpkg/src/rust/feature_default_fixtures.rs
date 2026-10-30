@@ -1,5 +1,5 @@
 //! Runtime fixtures for the feature-controlled `#[miniextendr]` option
-//! defaults (`worker-default` / `strict-default` / `coerce-default` /
+//! defaults (`strict-default` / `coerce-default` /
 //! `no-preconditions-default` / `r6-default` / `s7-default`) and their
 //! opt-outs.
 //! See docs/FEATURE_DEFAULTS.md.
@@ -12,27 +12,6 @@
 //! (audit A5/A10).
 
 use miniextendr_api::miniextendr;
-
-fn current_thread_name() -> String {
-    std::thread::current()
-        .name()
-        .unwrap_or("<unnamed>")
-        .to_string()
-}
-
-/// Name of the thread the body runs on under the build's default dispatch:
-/// "miniextendr-worker" under `worker-default`, the R main thread otherwise.
-#[miniextendr]
-pub fn fdefault_worker_thread_name() -> String {
-    current_thread_name()
-}
-
-/// Same body as `fdefault_worker_thread_name` with `no_worker`: pinned to the
-/// R main thread even under `worker-default`.
-#[miniextendr(no_worker)]
-pub fn fdefault_no_worker_thread_name() -> String {
-    current_thread_name()
-}
 
 /// i64 identity under the build's default conversion mode: rejects logical
 /// and raw inputs under `strict-default`, accepts them otherwise.

@@ -14,10 +14,6 @@
 //!
 //! An `ExternalPtr<T>` parameter is a handle the body keeps or consumes: it
 //! takes no borrow, and reads through it are `borrow()` / `borrow_mut()`.
-//!
-//! A borrowed argument keeps the call on R's main thread
-//! ([`crate::type_inspect::is_main_thread_bound_input`]), like a `&self`
-//! receiver.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};

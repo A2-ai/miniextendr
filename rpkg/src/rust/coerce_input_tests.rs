@@ -1,8 +1,5 @@
 //! Coercion must preserve the ordinary converter's valid inputs (#1112).
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::miniextendr;
 
 /// Identity for a coerced i8 parameter.
@@ -193,14 +190,6 @@ pub fn coerce_input_vector_bool(x: Vec<bool>) -> Vec<bool> {
 #[miniextendr(no_coerce, noexport)]
 pub fn coerce_input_per_arg(#[miniextendr(coerce)] x: bool, y: bool) -> Vec<bool> {
     vec![x, y]
-}
-
-/// Worker dispatch preserves logical inputs with coercion enabled.
-/// @param x Logical or integer zero/one.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(worker, coerce, noexport)]
-pub fn coerce_input_worker(x: bool) -> bool {
-    x
 }
 
 /// Coercion does not change the unsupported Option<bool> mapping.

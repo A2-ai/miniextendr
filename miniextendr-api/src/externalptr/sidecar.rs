@@ -19,7 +19,7 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::{
     NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
@@ -122,11 +122,9 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///   as a pending value in the struct, rooted in a main-thread pool until a
 ///   slot holds it or the last copy drops. That is the only state a `Sidecar`
 ///   has: before the struct is wrapped, after `*ptr = Engine::new(..)`, after
-///   `ExternalPtr::into_inner`. They run on R's main thread, or on the
-///   managed worker, which hands the conversion to the main thread as
-///   `ExternalPtr::new` does; any other thread panics. Like an owning
-///   `ExternalPtr`, the last copy of a pending value must be dropped on R's
-///   main thread or its managed worker.
+///   `ExternalPtr::into_inner`. They run on R's main thread; any other
+///   thread panics. A `Sidecar` is `!Send`, so a pending value, and the
+///   struct holding it, stays on R's main thread, where its last copy drops.
 /// - **Flushed when wrapped.** `ExternalPtr::new` and the trait ABI's `mx_wrap`
 ///   move every pending value into the pointer's protection list. From then
 ///   on the value lives in R only, and the field is empty.
@@ -228,17 +226,18 @@ pub struct Sidecar<T> {
 #[derive(Clone)]
 struct Pending {
     sexp: SEXP,
-    root: Arc<PendingRoot>,
+    root: Rc<PendingRoot>,
 }
 
-/// Only the pool key crosses threads, as with an owning `ExternalPtr`.
-/// Cloning a pending value needs no R call; the last copy releases the root.
+/// Shared by the clones of a pending value: cloning needs no R call, and the
+/// last copy releases the root. `Rc` keeps a `Sidecar`, and so the struct
+/// holding it, on R's main thread, where the release happens.
 struct PendingRoot(crate::protect_pool::ProtectKey);
 
 impl Drop for PendingRoot {
     fn drop(&mut self) {
         let key = self.0;
-        crate::worker::with_r_thread(move || super::unroot_owned(key));
+        crate::with_r_thread(move || super::unroot_owned(key));
     }
 }
 
@@ -251,25 +250,23 @@ impl<T: IntoR + 'static> Sidecar<T> {
     ///
     /// # Panics
     ///
-    /// Off R's main thread and its managed worker, before converting; or
-    /// when the conversion fails.
+    /// Off R's main thread, before converting; or when the conversion fails.
     pub fn new(value: T) -> Self {
-        // Converts `value` and roots its R object on R's main thread: inline
-        // there, through the main thread from the managed worker (#2216).
+        // Converts `value` and roots its R object on R's main thread (#2216).
         assert!(
-            crate::worker::is_r_main_thread() || crate::worker::has_worker_context(),
-            "`Sidecar::new` converts its value on R's main thread: call it there or on \
-             the managed worker, not from a thread the package spawned",
+            crate::is_r_main_thread(),
+            "`Sidecar::new` converts its value on R's main thread: call it there, \
+             not from a thread the package spawned",
         );
         // `root_owned` roots the fresh object across the pool's growth.
-        let (sexp, key) = crate::worker::with_r_thread(move || {
+        let (sexp, key) = crate::with_r_thread(move || {
             let sexp = value.into_sexp();
             (sexp, super::root_owned(sexp))
         });
         Self {
             pending: RefCell::new(Some(Pending {
                 sexp,
-                root: Arc::new(PendingRoot(key)),
+                root: Rc::new(PendingRoot(key)),
             })),
             _value: PhantomData,
         }
@@ -305,7 +302,7 @@ impl<T> Sidecar<T> {
         let sexp = prot.vector_elt(prot_index(index));
         *self.pending.borrow_mut() = Some(Pending {
             sexp,
-            root: Arc::new(PendingRoot(super::root_owned(sexp))),
+            root: Rc::new(PendingRoot(super::root_owned(sexp))),
         });
     }
 }
@@ -356,11 +353,10 @@ where
 /// Panics unless this is R's main thread. No R API: the message names the
 /// field and the owning type.
 fn assert_main_thread(name: &str, owner_type: &str) {
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         panic!(
             "sidecar field `{name}` of `{owner_type}`: its accessors run on R's main thread only; \
-             this call came from another thread (a `worker` method, or a thread the \
-             package spawned)",
+             this call came from another thread (a thread the package spawned)",
         );
     }
 }

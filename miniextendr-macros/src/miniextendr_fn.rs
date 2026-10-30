@@ -2807,7 +2807,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// Kept as a single constant so the three "unknown option" error paths (Path,
 /// NameValue bool, parenthesized bool) all read from the same list and can't
 /// drift.
-const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
+const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, coerce, no_coerce, \
      rng, unwrap_in_r, serialize, serde_error, strict, no_strict, \
      preconditions, no_preconditions, internal, noexport, export, call_arg";
 
@@ -2825,7 +2825,6 @@ const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...
 ///
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
-/// - `worker`: opt into worker-thread execution (default is main thread)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `rng(seed = <param>)`: `rng`, plus the seed contract of `stats::simulate()`
@@ -2865,8 +2864,6 @@ const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
 #[derive(Default)]
 pub(crate) struct MiniextendrFnAttrs {
-    /// Force execution on worker thread (set by `worker`).
-    pub(crate) force_worker: bool,
     /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
     pub(crate) force_invisible: Option<bool>,
     /// Insert `R_CheckUserInterrupt()` before calling the Rust function.
@@ -3944,12 +3941,12 @@ pub(crate) enum ReturnPref {
 /// - **Name-value**: `#[miniextendr(prefer = "list")]` or `#[miniextendr(invisible = true)]`
 /// - **Nested list**: `#[miniextendr(s3(generic = "...", class = "..."))]`
 ///
-/// Options with negated forms (`no_worker`, `no_coerce`, `no_strict`) explicitly
+/// Options with negated forms (`no_coerce`, `no_strict`, `no_preconditions`) explicitly
 /// disable the corresponding flag, which is useful for overriding feature-based
 /// defaults.
 ///
 /// An empty input (plain `#[miniextendr]`) resolves all options to their feature-based
-/// defaults (e.g., `worker-default`, `coerce-default`, `strict-default`).
+/// defaults (e.g., `coerce-default`, `strict-default`).
 ///
 /// # Errors
 ///
@@ -3963,7 +3960,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         use syn::spanned::Spanned;
         // Use Option<bool> for fields that support feature defaults.
         // None = not explicitly set → resolve from cfg!(feature = "...") at end.
-        let mut force_worker: Option<bool> = None;
         let mut force_invisible: Option<bool> = None;
         let mut check_interrupt = false;
         let mut coerce_all: Option<bool> = None;
@@ -4007,7 +4003,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         for meta in metas {
             match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce, worker, rng
+                // Simple identifiers: invisible, visible, check_interrupt, coerce, rng, ...
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
@@ -4028,11 +4024,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             serialize = true;
                         } else if ident == "serde_error" {
                             return Err(syn::Error::new_spanned(&path, SERDE_ERROR_BARE_HELP));
-                        } else if ident == "worker" {
-                            force_worker = Some(true);
-                            crate::deprecation::worker_option(ident.span());
-                        } else if ident == "no_worker" {
-                            force_worker = Some(false);
                         } else if ident == "strict" {
                             strict = Some(true);
                         } else if ident == "no_strict" {
@@ -4082,13 +4073,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 force_invisible = Some(!val);
                             } else if ident == "check_interrupt" {
                                 check_interrupt = val;
-                            } else if ident == "worker" {
-                                force_worker = Some(val);
-                                if val {
-                                    crate::deprecation::worker_option(ident.span());
-                                }
-                            } else if ident == "no_worker" {
-                                force_worker = Some(!val);
                             } else if ident == "coerce" {
                                 coerce_all = Some(val);
                             } else if ident == "no_coerce" {
@@ -4457,7 +4441,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         Ok(Self {
-            force_worker: force_worker.unwrap_or(cfg!(feature = "worker-default")),
             force_invisible,
             check_interrupt,
             coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),

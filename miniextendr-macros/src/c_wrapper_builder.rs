@@ -1,7 +1,7 @@
 //! Unified C wrapper generation for standalone functions and impl methods.
 //!
 //! This module provides shared infrastructure for generating C wrappers that:
-//! - Handle worker thread vs main thread execution strategies
+//! - Run on R's main thread inside `with_r_unwind_protect`
 //! - Perform parameter conversion from SEXP to Rust types
 //! - Convert Rust return values back to SEXP
 //! - Properly handle panics and R errors
@@ -11,32 +11,6 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-
-/// Thread execution strategy for C wrappers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThreadStrategy {
-    /// Execute on main R thread with `with_r_unwind_protect`. **Default.**
-    ///
-    /// All code runs on R's main thread. Errors are returned as tagged SEXP values
-    /// (via `make_rust_condition_value`) and the R wrapper raises structured
-    /// condition objects. Simpler execution model with better R integration.
-    ///
-    /// Also required when:
-    /// - Function takes SEXP inputs (not Send)
-    /// - Function returns raw SEXP
-    /// - Instance method (self_ptr isn't Send)
-    /// - Function uses variadic dots (Dots type isn't Send)
-    /// - `#[miniextendr(check_interrupt)]` used
-    MainThread,
-
-    /// Execute on worker thread with panic catching. **Opt-in via `#[miniextendr(worker)]`.**
-    ///
-    /// Structure:
-    /// 1. Argument conversion on main thread
-    /// 2. Function execution on worker thread via `run_on_worker`
-    /// 3. SEXP conversion on main thread with `with_r_unwind_protect`
-    WorkerThread,
-}
 
 /// Strategy for converting a Rust return value into an R `SEXP`.
 ///
@@ -240,13 +214,11 @@ pub struct CWrapperContext {
     /// includes extracting `self` from the `ExternalPtr` SEXP.
     pub pre_call: Vec<TokenStream>,
     /// Statements after argument conversion, before the argument borrows and
-    /// the Rust call. They run on R's main thread in both wrappers.
+    /// the Rust call.
     pub post_conversion: Vec<TokenStream>,
     /// The actual Rust call expression (e.g., `my_func(arg0, arg1)` or
     /// `self_ref.method(arg0)`). Inserted into the wrapper body after conversions.
     pub call_expr: TokenStream,
-    /// Whether to run on the main R thread or dispatch to the worker thread.
-    pub thread_strategy: ThreadStrategy,
     /// How to convert the Rust return value into a `SEXP` for R.
     pub return_handling: ReturnHandling,
     /// When `true`, all parameters use coercing conversion (`Rf_coerceVector`) instead
@@ -346,7 +318,6 @@ impl CWrapperContext {
             pre_call: Vec::new(),
             post_conversion: Vec::new(),
             call_expr: None,
-            thread_strategy: None,
             return_handling: None,
             coerce_all: false,
             coerce_params: Vec::new(),
@@ -377,10 +348,6 @@ impl CWrapperContext {
     ///
     /// When `skip_wrapper` is set (for user-written `extern "C-unwind"` fns), only the
     /// `R_CallMethodDef` is emitted — the fn body itself is already the C symbol.
-    ///
-    /// Dispatches to [`generate_main_thread_wrapper`](Self::generate_main_thread_wrapper) or
-    /// [`generate_worker_thread_wrapper`](Self::generate_worker_thread_wrapper) based on
-    /// [`thread_strategy`](Self::thread_strategy).
     pub fn generate(&self) -> TokenStream {
         let call_method_def = self.generate_call_method_def();
 
@@ -393,10 +360,7 @@ impl CWrapperContext {
                 #call_method_def
             }
         } else {
-            let c_wrapper = match self.thread_strategy {
-                ThreadStrategy::MainThread => self.generate_main_thread_wrapper(),
-                ThreadStrategy::WorkerThread => self.generate_worker_thread_wrapper(),
-            };
+            let c_wrapper = self.generate_wrapper();
 
             quote! {
                 #(#cfg_attrs)*
@@ -472,36 +436,9 @@ impl CWrapperContext {
     ///
     /// Each statement converts an `arg_N: SEXP` into the corresponding Rust type
     /// declared in the original function signature. Respects `strict` and `coerce` settings.
-    ///
-    /// Used by the main-thread wrapper where all conversions happen inline.
     fn build_conversion_stmts(&self, sexp_idents: &[syn::Ident]) -> Vec<TokenStream> {
         let builder = self.conversion_builder();
         builder.build_conversions(&self.inputs, sexp_idents)
-    }
-
-    /// Build conversion statements split for worker thread execution.
-    ///
-    /// Returns (pre_closure, in_closure) statements:
-    /// - pre_closure: Run on main thread, produce owned values to move
-    /// - in_closure: Run inside worker closure, create borrows
-    fn build_conversion_stmts_split(
-        &self,
-        sexp_idents: &[syn::Ident],
-    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
-        let builder = self.conversion_builder();
-
-        let mut all_pre = Vec::new();
-        let mut all_in = Vec::new();
-
-        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
-            if let syn::FnArg::Typed(pat_type) = arg {
-                let (owned, borrowed) = builder.build_conversion_split(pat_type, sexp_ident);
-                all_pre.extend(owned);
-                all_in.extend(borrowed);
-            }
-        }
-
-        (all_pre, all_in)
     }
 
     /// Configure argument conversion once for both metadata and value conversion.
@@ -564,33 +501,16 @@ impl CWrapperContext {
         if args.is_empty() {
             return TokenStream::new();
         }
-        let check = quote! {
-            // SAFETY: wrapper arguments are rooted on R's main thread, and
-            // every allocating traversal runs inside R unwind protection.
-            unsafe {
-                ::miniextendr_api::from_r::borrow::assert_no_aliases(
-                    [#(#args),*], __miniextendr_native_borrows,
-                );
-            }
-        };
-        let check = if self.thread_strategy == ThreadStrategy::WorkerThread {
-            quote! {
-                let __miniextendr_alias_result =
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || { #check; ::miniextendr_api::SEXP::nil() },
-                        ::core::option::Option::Some(__miniextendr_call),
-                    );
-                if __miniextendr_alias_result != ::miniextendr_api::SEXP::nil() {
-                    return __miniextendr_alias_result;
-                }
-            }
-        } else {
-            check
-        };
         quote! {{
             let __miniextendr_native_borrows = [#(#metadata),*];
             if ::miniextendr_api::from_r::borrow::needs_check(&__miniextendr_native_borrows) {
-                #check
+                // SAFETY: wrapper arguments are rooted on R's main thread, and
+                // every allocating traversal runs inside R unwind protection.
+                unsafe {
+                    ::miniextendr_api::from_r::borrow::assert_no_aliases(
+                        [#(#args),*], __miniextendr_native_borrows,
+                    );
+                }
             }
         }}
     }
@@ -608,14 +528,14 @@ impl CWrapperContext {
         crate::externalptr_args::arg_borrows(&self.inputs, &unborrowed, self_ty.as_ref())
     }
 
-    /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
+    /// Generates the `extern "C-unwind"` wrapper, which runs on R's main thread.
     ///
     /// The wrapper body is enclosed in `with_r_unwind_protect`: Rust panics become
     /// tagged conditions for the R wrapper to raise, while R exits resume after Rust
     /// cleanup. With `rng`, an outer R unwind guard also covers loading and saving
     /// state. The inner guard converts Rust panics to values so `PutRNGstate()` still
     /// runs; the result stays rooted while that call may allocate.
-    fn generate_main_thread_wrapper(&self) -> TokenStream {
+    fn generate_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let vis = &self.vis;
         let generics = &self.generics;
@@ -641,7 +561,7 @@ impl CWrapperContext {
 
         let return_handling = self.generate_return_handling(call_expr);
 
-        let doc = self.generate_doc_comment("main thread");
+        let doc = self.generate_doc_comment();
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         let guarded_body = self.protect_wrapper_body(quote! {
@@ -706,125 +626,7 @@ impl CWrapperContext {
         }
     }
 
-    /// Generates an `extern "C-unwind"` wrapper that dispatches to the worker thread.
-    ///
-    /// Structure:
-    /// 1. Protect RNG loading/saving too, if `rng` is enabled
-    /// 2. `with_r_unwind_protect` around setup, dispatch, and return conversion
-    /// 3. Pre-closure conversions on the main thread (produces owned values)
-    /// 4. `run_on_worker` (returns `Result<T, String>`) with a
-    ///    `move` closure containing in-closure conversions and the call expression,
-    ///    run through `condition::catch_condition` so an `error!()` /
-    ///    `warning!()` / ... payload comes back as a value and is raised on the
-    ///    main thread with its class, data and call choice
-    /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
-    /// 6. `PutRNGstate()` (if `rng` enabled)
-    /// 7. Rust panics become tagged conditions; R exits continue through the guard
-    /// 8. Conditions queued with `defer_warning` & co. during the call are
-    ///    signalled (`deferred_condition::finish`) before the SEXP reaches R
-    fn generate_worker_thread_wrapper(&self) -> TokenStream {
-        let c_ident = &self.c_ident;
-        let vis = &self.vis;
-        let generics = &self.generics;
-        let (c_params, _, sexp_idents) = self.build_c_params();
-        let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
-        let alias_guard = self.build_alias_guard(&sexp_idents);
-        let type_setup = self
-            .inferred_signature
-            .as_ref()
-            .map(|callable| crate::trait_signature::setup(&self.inputs, self.has_self, callable));
-        let borrow = self.arg_borrows();
-        let pre_call = &self.pre_call;
-        let post_conversion = &self.post_conversion;
-        let call_expr = &self.call_expr;
-
-        // Compile-time check: worker dispatch requires the `worker-thread` feature.
-        // Check both `worker-thread` (direct) and `worker-default` (implies worker-thread
-        // via miniextendr-api, but the user crate may only have the latter in its features).
-        let fn_name = self.fn_ident.to_string();
-        let feature_msg = format!(
-            "`#[miniextendr(worker)]` on `{fn_name}` requires the `worker-thread` cargo feature. \
-             Add `worker-thread = [\"miniextendr-api/worker-thread\"]` to your [features] in Cargo.toml."
-        );
-        let worker_feature_check = quote! {
-            #[cfg(not(any(feature = "worker-thread", feature = "worker-default")))]
-            ::core::compile_error!(#feature_msg);
-        };
-
-        let pre_call_checks = if self.check_interrupt {
-            quote! {
-                unsafe { ::miniextendr_api::sys::R_CheckUserInterrupt(); }
-            }
-        } else {
-            TokenStream::new()
-        };
-
-        let (worker_body, return_conversion) = self.generate_worker_return_handling(call_expr);
-
-        let doc = self.generate_doc_comment("worker thread");
-        let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
-
-        let guarded_body = self.protect_wrapper_body(quote! {
-            #type_setup
-            #alias_guard
-            #pre_call_checks
-            #(#pre_call)*
-            #(#pre_closure_stmts)*
-            // Post-conversion checks stay on the main thread. A borrowed
-            // external argument keeps the whole call there, so `borrow` is
-            // empty here.
-            #(#post_conversion)*
-            #borrow
-
-            // `catch_condition` returns an `error!()` / `warning!()` / ...
-            // raised on the worker as a value (its payload is `Send`), so
-            // it is raised here with its class, data and call choice;
-            // only generic panics come back as the message `Err`.
-            match ::miniextendr_api::worker::run_on_worker(move || {
-                ::miniextendr_api::condition::catch_condition(move || {
-                    #(#in_closure_stmts)*
-                    #worker_body
-                })
-            }) {
-                ::core::result::Result::Ok(::core::result::Result::Ok(__miniextendr_result)) => {
-                    #return_conversion
-                }
-                ::core::result::Result::Ok(::core::result::Result::Err(__miniextendr_condition)) => unsafe {
-                    ::miniextendr_api::error_value::rust_condition_value(
-                        __miniextendr_condition,
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                },
-                ::core::result::Result::Err(__panic_msg) => {
-                    unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                        &__panic_msg, ::miniextendr_api::error_value::kind::PANIC, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                    ) }
-                }
-            }
-        });
-
-        quote! {
-            #worker_feature_check
-
-            #[doc = #doc]
-            #[doc = #source_loc_doc]
-            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
-            #[unsafe(no_mangle)]
-            #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
-                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
-                let __miniextendr_value = #guarded_body;
-                unsafe {
-                    ::miniextendr_api::deferred_condition::finish(
-                        __miniextendr_deferred_mark,
-                        __miniextendr_value,
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                }
-            }
-        }
-    }
-
-    /// Generates the inline return-handling code for the main-thread wrapper.
+    /// Generates the inline return-handling code for the wrapper.
     ///
     /// Emits the call expression followed by conversion logic based on [`ReturnHandling`].
     /// For `Option`/`Result` variants, also emits error-path code that returns a
@@ -1042,286 +844,6 @@ impl CWrapperContext {
         }
     }
 
-    /// Generates return-handling code split between worker and main threads.
-    ///
-    /// Returns `(worker_body, return_conversion)`:
-    /// - `worker_body`: Runs inside the `run_on_worker` closure. Contains just the call
-    ///   expression (the worker returns the raw `Option`/`Result` for the main thread
-    ///   to inspect).
-    /// - `return_conversion`: Runs back on the main thread after the worker returns.
-    ///   Converts the Rust value to SEXP (via `with_r_unwind_protect`). For `Option`
-    ///   and `Result` variants, error checking happens here and produces a tagged
-    ///   condition SEXP that the R-side wrapper raises.
-    fn generate_worker_return_handling(
-        &self,
-        call_expr: &TokenStream,
-    ) -> (TokenStream, TokenStream) {
-        let fn_name = self.message_name();
-        let err_parts = self.err_parts.expr();
-
-        match &self.return_handling {
-            ReturnHandling::Unit => {
-                let worker = quote! {
-                    #call_expr;
-                };
-                let convert = quote! {
-                    ::miniextendr_api::SEXP::nil()
-                };
-                (worker, convert)
-            }
-            ReturnHandling::RawSexp => {
-                // Raw SEXP can't use worker thread - this shouldn't happen
-                // but handle it gracefully
-                let worker = quote! {
-                    #call_expr
-                };
-                let convert = quote! {
-                    __miniextendr_result
-                };
-                (worker, convert)
-            }
-            ReturnHandling::ExternalPtr => {
-                let worker = quote! {
-                    #call_expr
-                };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(
-                            ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
-                        ),
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::IntoR => {
-                let worker = quote! {
-                    #call_expr
-                };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident, true);
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || #conversion,
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::OptionUnit => {
-                let error_msg = format!("`{fn_name}()` returned no value");
-                // Return the Option from worker, check on main thread.
-                let worker = quote! { #call_expr };
-                let convert = quote! {
-                    if __miniextendr_result.is_none() {
-                        unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) }
-                    } else {
-                        ::miniextendr_api::SEXP::nil()
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::OptionSexp => {
-                let error_msg = format!("`{fn_name}()` returned no value");
-                let worker = quote! { #call_expr };
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                            #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::OptionIntoR => {
-                // For Option<T> where Option<T>: IntoR, call into_sexp on the whole Option.
-                // The worker returns the raw Option<T>; the main thread converts via IntoR.
-                // None maps to whatever IntoR for Option<T> returns (NULL/NA) — not an error.
-                // result_ident holds the full Option<T>, so the strict lookup must
-                // see the full type (checked_option_* helpers).
-                let worker = quote! { #call_expr };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident, false);
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    {
-                        let #result_ident = __miniextendr_result;
-                        #unwind_fn(|| #conversion, ::core::option::Option::Some(__miniextendr_call))
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::OptionClassPayload => {
-                // Option<Class> under an explicit class wrap: the worker returns the
-                // Option; the main thread converts Some's payload, None is NULL.
-                let worker = quote! { #call_expr };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident, true);
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::option::Option::Some(#result_ident) => #unwind_fn(|| #conversion, ::core::option::Option::Some(__miniextendr_call)),
-                        ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
-                    }
-                };
-                (worker, convert)
-            }
-            // Option<Self>: wrap Some(Self) in an ExternalPtr like the bare-Self path;
-            // the Option<ExternalPtr<Self>> gives NULL for None.
-            ReturnHandling::OptionExternalPtr => {
-                let worker = quote! { #call_expr };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(
-                            __miniextendr_result.map(::miniextendr_api::externalptr::ExternalPtr::new)
-                        ),
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::ResultUnit => {
-                let worker = quote! { #call_expr };
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::result::Result::Ok(()) => ::miniextendr_api::SEXP::nil(),
-                        ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::ResultSexp => {
-                let worker = quote! { #call_expr };
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::result::Result::Ok(v) => v,
-                        ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::ResultIntoR => {
-                let worker = quote! { #call_expr };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident, true);
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::result::Result::Ok(#result_ident) => #unwind_fn(
-                            || #conversion,
-                            ::core::option::Option::Some(__miniextendr_call),
-                        ),
-                        ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
-                };
-                (worker, convert)
-            }
-            // Result<T, ()>: unit error is a deliberate sentinel — always map to NULL.
-            // Convert via NullOnErr so IntoR returns R NULL on Err.
-            ReturnHandling::ResultNullOnErr => {
-                let result_ident = format_ident!("__miniextendr_result");
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let worker = quote! { #call_expr };
-                let conversion = self.sexp_conversion_expr(&result_ident, true);
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::result::Result::Ok(#result_ident) => #unwind_fn(|| #conversion, ::core::option::Option::Some(__miniextendr_call)),
-                        ::core::result::Result::Err(()) => ::miniextendr_api::SEXP::nil(),
-                    }
-                };
-                (worker, convert)
-            }
-            // Result<Self, E>: raise on Err like ResultIntoR, but wrap Ok(Self) in an
-            // ExternalPtr like the bare-Self path rather than routing through IntoR.
-            ReturnHandling::ResultExternalPtr => {
-                let worker = quote! { #call_expr };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    match __miniextendr_result {
-                        ::core::result::Result::Ok(v) => #unwind_fn(
-                            || ::miniextendr_api::into_r::IntoR::into_sexp(
-                                ::miniextendr_api::externalptr::ExternalPtr::new(v)
-                            ),
-                            ::core::option::Option::Some(__miniextendr_call),
-                        ),
-                        ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
-                        ) },
-                    }
-                };
-                (worker, convert)
-            }
-            ReturnHandling::AsListOf => {
-                let worker = quote! { #call_expr };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(
-                            ::miniextendr_api::convert::AsList(__miniextendr_result)
-                        ),
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::AsExternalPtrOf => {
-                let worker = quote! { #call_expr };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(
-                            ::miniextendr_api::convert::AsExternalPtr(__miniextendr_result)
-                        ),
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::AsNativeOf => {
-                let worker = quote! { #call_expr };
-                let unwind_fn = self.worker_conversion_unwind_fn();
-                let convert = quote! {
-                    #unwind_fn(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(
-                            ::miniextendr_api::convert::AsRNative(__miniextendr_result)
-                        ),
-                        ::core::option::Option::Some(__miniextendr_call),
-                    )
-                };
-                (worker, convert)
-            }
-            ReturnHandling::SelfHandle
-            | ReturnHandling::SelfHandleResult
-            | ReturnHandling::SelfHandleOption => {
-                // The self-handle strategies are only assigned to instance
-                // methods, which always run on the main thread (the receiver
-                // borrow / moved value can't cross to the worker). They never
-                // reach the worker return-handling path.
-                unreachable!(
-                    "ReturnHandling::SelfHandle* is instance-only and always uses the main thread"
-                )
-            }
-        }
-    }
-
-    /// Returns the unwind protection function for worker-thread conversion steps.
-    /// Always returns tagged condition SEXP on conversion panics; the R-side wrapper raises.
-    fn worker_conversion_unwind_fn(&self) -> TokenStream {
-        quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
-    }
-
     /// Returns the SEXP conversion expression for `result_ident`, using strict
     /// checked conversion if strict mode is on and the inner return type is lossy,
     /// otherwise falling back to `IntoR::into_sexp()`.
@@ -1432,18 +954,18 @@ impl CWrapperContext {
 
     /// Generates a rustdoc comment string for the C wrapper function.
     ///
-    /// Includes the original function/method name, thread strategy label, and a
-    /// cross-reference to the R wrapper constant when there is one.
-    fn generate_doc_comment(&self, thread_info: &str) -> String {
+    /// Includes the original function/method name and a cross-reference to the
+    /// R wrapper constant when there is one.
+    fn generate_doc_comment(&self) -> String {
         let item = match self.type_context {
             Some(ref type_ident) => format!("{}::{}", type_ident, self.fn_ident),
             None => self.fn_ident.to_string(),
         };
         match self.r_wrapper_const {
-            Some(ref r_wrapper_const) => format!(
-                "C wrapper for [`{item}`] ({thread_info}). See [`{r_wrapper_const}`] for R wrapper."
-            ),
-            None => format!("C wrapper for [`{item}`] ({thread_info})."),
+            Some(ref r_wrapper_const) => {
+                format!("C wrapper for [`{item}`]. See [`{r_wrapper_const}`] for R wrapper.")
+            }
+            None => format!("C wrapper for [`{item}`]."),
         }
     }
 }
@@ -1454,8 +976,8 @@ impl CWrapperContext {
 /// (provided at construction) default to empty/false/None. The required `call_expr`
 /// must be set before calling [`build`](Self::build) or it will panic.
 ///
-/// Optional fields like `thread_strategy` and `return_handling` are auto-detected from
-/// the function signature if not explicitly set.
+/// `return_handling` is auto-detected from the function signature if not
+/// explicitly set.
 pub struct CWrapperContextBuilder {
     /// Rust function/method identifier (set at construction).
     fn_ident: syn::Ident,
@@ -1476,8 +998,6 @@ pub struct CWrapperContextBuilder {
     post_conversion: Vec<TokenStream>,
     /// The Rust call expression. **Required.**
     call_expr: Option<TokenStream>,
-    /// Thread strategy override. If `None`, defaults to [`ThreadStrategy::MainThread`].
-    thread_strategy: Option<ThreadStrategy>,
     /// Return handling override. If `None`, auto-detected from `output` via [`detect_return_handling`].
     return_handling: Option<ReturnHandling>,
     /// Enable coercing conversion for all parameters.
@@ -1582,12 +1102,6 @@ impl CWrapperContextBuilder {
     /// **Required** -- [`build`](Self::build) panics if not set.
     pub fn call_expr(mut self, expr: TokenStream) -> Self {
         self.call_expr = Some(expr);
-        self
-    }
-
-    /// Overrides the thread strategy. If not called, defaults to [`ThreadStrategy::MainThread`].
-    pub fn thread_strategy(mut self, strategy: ThreadStrategy) -> Self {
-        self.thread_strategy = Some(strategy);
         self
     }
 
@@ -1775,7 +1289,6 @@ impl CWrapperContextBuilder {
 
     /// Consumes the builder and returns a fully configured [`CWrapperContext`].
     ///
-    /// If `thread_strategy` was not set, defaults to [`ThreadStrategy::MainThread`].
     /// If `return_handling` was not set, auto-detects from the `output` type via
     /// [`detect_return_handling`].
     ///
@@ -1786,15 +1299,6 @@ impl CWrapperContextBuilder {
         let call_expr = self
             .call_expr
             .expect("call_expr is required for CWrapperContext");
-
-        // Detect thread strategy if not explicitly set.
-        // Main thread is the default for all methods (safer, simpler execution model).
-        let thread_strategy = if self.convert_params.is_empty() {
-            self.thread_strategy.unwrap_or(ThreadStrategy::MainThread)
-        } else {
-            // A custom borrowed conversion may retain R storage.
-            ThreadStrategy::MainThread
-        };
 
         // Detect return handling if not explicitly set
         let return_handling = self
@@ -1812,7 +1316,6 @@ impl CWrapperContextBuilder {
             pre_call: self.pre_call,
             post_conversion: self.post_conversion,
             call_expr,
-            thread_strategy,
             return_handling,
             coerce_all: self.coerce_all,
             coerce_params: self.coerce_params,

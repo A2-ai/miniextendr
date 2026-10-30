@@ -14,7 +14,7 @@ use syn::spanned::Spanned;
 /// - Unit types `()` → identity binding
 /// - `&Dots` → special wrapper with storage
 /// - Slices `&[T]` → TryFromSexp
-/// - `&str` → String + Borrow (for worker thread compatibility)
+/// - `&str` → a borrow of R's CHARSXP (`TryFromRoot`)
 /// - Scalar references → DATAPTR_RO_unchecked
 /// - Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 /// - Default → TryFromSexp
@@ -207,9 +207,9 @@ impl RustConversionBuilder {
     /// `Unchecked<T>`, #1566), outermost first. The `pat_type` this builder
     /// sees holds the inner type, so the conversion and its failure context
     /// (`e$rust_type`) are the inner type's; after the parameter's last
-    /// statement (the borrow on the split worker path, else the conversion or
-    /// its `no_na` check) the value is rebound through each marker's
-    /// `from_inner`, innermost first, so the call receives the declared type.
+    /// statement (the conversion or its `no_na` check) the value is rebound
+    /// through each marker's `from_inner`, innermost first, so the call
+    /// receives the declared type.
     pub fn with_param_markers(
         mut self,
         param_name: String,
@@ -240,7 +240,7 @@ impl RustConversionBuilder {
     /// before its conversion: the `no_na` R guard's `anyNA()` again, in Rust
     /// (`from_r::__mx_any_na`), so the marker's value holds no `NA` on every
     /// path, a `.Call()` that skips the R wrapper and every conversion arm
-    /// (borrowed, worker) included. It raises the guard's condition, as the
+    /// (borrowed included). It raises the guard's condition, as the
     /// post-conversion `no_na` check does ([`no_na_value_stmt`]). `None` for
     /// a parameter without the marker.
     fn non_na_check(
@@ -323,8 +323,8 @@ impl RustConversionBuilder {
         }
         // Character borrows never alias native numeric storage. In particular,
         // do not instantiate Vec<&'a str>'s raw, static-only TryFromSexp impl
-        // merely to ask for its empty metadata: worker storage is owned.
-        if worker_string_storage(ty, sexp_ident).is_some() {
+        // merely to ask for its empty metadata.
+        if owned_string_storage(ty, sexp_ident).is_some() {
             return None;
         }
         if crate::type_inspect::is_rooted_view(ty) {
@@ -507,100 +507,44 @@ impl RustConversionBuilder {
         }
     }
 
-    /// Generate conversion statement for a single parameter.
-    ///
-    /// This is the non-split variant: owned conversions and borrow statements are
-    /// concatenated into a single list, suitable for main-thread execution where
-    /// everything runs in the same scope.
+    /// Generate conversion statements for a single parameter.
     ///
     /// - `pat_type`: the typed pattern from the function signature (e.g., `x: i32`).
     /// - `sexp_ident`: the identifier of the raw SEXP variable holding the R argument.
     ///
     /// Returns a flat list of `let` binding statements that convert `sexp_ident` into
-    /// the Rust type declared in `pat_type`.
+    /// the Rust type declared in `pat_type`. Every statement runs inside the
+    /// wrapper's `with_r_unwind_protect` closure, where the argument SEXPs are
+    /// live for the whole call, so `&str` and the shared native references
+    /// borrow R's storage directly (`TryFromRoot`).
     pub fn build_conversion(
         &self,
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
     ) -> Vec<TokenStream> {
-        // `build_conversion` is the single-scope (main-thread) path: every statement
-        // runs inside the same `with_r_unwind_protect` closure where the argument
-        // SEXPs are live for the whole call. So `&str` can borrow R's CHARSXP pool
-        // directly — zero-copy — exactly like `&[T]` already does. The owning-`String`
-        // detour only exists to satisfy `Send` when the value must cross the worker
-        // boundary (`build_conversion_split`), which never applies here.
-        let (owned, borrowed) = self.build_conversion_split_inner(pat_type, sexp_ident, true);
         self.non_na_check(pat_type, sexp_ident)
             .into_iter()
-            .chain(owned)
-            .chain(borrowed)
+            .chain(self.conversion_stmts(pat_type, sexp_ident))
             .chain(self.marker_rebind(pat_type))
             .collect()
     }
 
-    /// Generate conversion statements split into two phases for worker thread execution.
-    ///
-    /// `&str`, `Option<&str>`, `Vec<&str>` and `Vec<Option<&str>>` first
-    /// convert to the corresponding owned strings on R's main thread. The
-    /// worker closure owns that storage and creates the borrows inside it.
-    /// Other conversions without a separate borrow use only the first vec.
-    ///
-    /// - `pat_type`: the typed pattern from the function signature (e.g., `s: &str`).
-    /// - `sexp_ident`: the identifier of the raw SEXP variable holding the R argument.
-    ///
-    /// Returns `(owned_conversions, borrow_statements)` where each element is a list
-    /// of `let` binding token streams.
-    pub fn build_conversion_split(
+    /// The conversion of one parameter, without the `NonNa` check before it
+    /// or the marker rebinding after it (see [`Self::build_conversion`]).
+    fn conversion_stmts(
         &self,
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
-    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
-        // Rust considers &str Send, but that does not give it ownership of an
-        // R CHARSXP. Copy character borrows before moving them to the worker.
-        let (mut owned, mut borrowed) =
-            self.build_conversion_split_inner(pat_type, sexp_ident, false);
-        // The `NonNa` check reads the argument, so it runs on the main thread
-        // before the conversion.
-        if let Some(check) = self.non_na_check(pat_type, sexp_ident) {
-            owned.insert(0, check);
-        }
-        // A marker wraps the parameter's final binding: the borrow inside the
-        // worker closure when there is one, else the owned value, which then
-        // moves into the closure as the declared type.
-        if let Some(rebind) = self.marker_rebind(pat_type) {
-            if borrowed.is_empty() {
-                owned.push(rebind);
-            } else {
-                borrowed.push(rebind);
-            }
-        }
-        (owned, borrowed)
-    }
-
-    /// Inner implementation of [`Self::build_conversion_split`].
-    ///
-    /// `root_shared_inputs` selects the main-thread shared-borrow path:
-    /// - `true` (main-thread, single-scope): emit a direct zero-copy `&str` borrow
-    ///   over R's CHARSXP pool via `TryFromRoot` — no `String` allocation.
-    ///   Shared native references use the same root-bound path; its lifetime
-    ///   prevents the result from escaping the call as a static reference.
-    /// - `false` (worker): convert borrowed strings, including optional and
-    ///   vector forms, to owned storage on main; borrow only inside the worker.
-    fn build_conversion_split_inner(
-        &self,
-        pat_type: &syn::PatType,
-        sexp_ident: &syn::Ident,
-        root_shared_inputs: bool,
-    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    ) -> Vec<TokenStream> {
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
-            return (vec![], vec![]);
+            return vec![];
         };
         let ident = &pat_ident.ident;
         // `r#`-free spelling for synthesized bindings (`__storage_where`).
         let plain = crate::naming::unraw(ident);
-        // These temporaries survive other argument conversions (and, for
-        // worker borrows, cross into another closure). Source parameters may
-        // use the same spelling, so keep every temporary hygienic.
+        // These temporaries survive other argument conversions. Source
+        // parameters may use the same spelling, so keep every temporary
+        // hygienic.
         let binding_span = proc_macro2::Span::mixed_site();
         let ty = pat_type.ty.as_ref();
         // The R formal's name (`_x` → `x`, `r#type` → `type`, a declared
@@ -633,7 +577,7 @@ impl RustConversionBuilder {
                 );
                 let #ident: #ty = <#ty>::from_sexp(#call);
             };
-            return (vec![stmt], vec![]);
+            return vec![stmt];
         }
 
         // A borrowed external argument (#2106) converts to its handle here;
@@ -649,7 +593,7 @@ impl RustConversionBuilder {
                 self.self_type.as_ref(),
                 err_arm,
             );
-            return (vec![stmt], vec![]);
+            return vec![stmt];
         }
 
         // A copied trait signature (#2123) may name a type that resolves only
@@ -669,13 +613,12 @@ impl RustConversionBuilder {
         let converted_shared = explicit_conversion
             && crate::externalptr_args::conversion_reference(ty)
                 .is_some_and(|r| r.mutability.is_none());
-        let rooted_reference = root_shared_inputs
-            && (converted_shared || crate::type_inspect::is_rooted_reference(ty))
+        let rooted_reference = (converted_shared || crate::type_inspect::is_rooted_reference(ty))
             && !self.match_arg_several_ok_params.contains(&param_name)
             && layered_choice.is_none();
         if crate::type_inspect::is_rooted_view(ty) || rooted_reference {
             if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
-                return (vec![stmt], vec![]);
+                return vec![stmt];
             }
             let span = ty.span();
             let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
@@ -698,13 +641,10 @@ impl RustConversionBuilder {
                 }
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &bound_ty, span);
-            return (
-                vec![quote! {
-                    let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
-                    #stmt
-                }],
-                vec![],
-            );
+            return vec![quote! {
+                let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
+                #stmt
+            }];
         }
 
         if explicit_conversion {
@@ -733,19 +673,19 @@ impl RustConversionBuilder {
                 <#binding_ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#sexp_ident)
             };
             let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
-            return (vec![quote! { #declared #stmt }], vec![]);
+            return vec![quote! { #declared #stmt }];
         }
 
-        // Main-thread &str normally returned above. Its existing special
-        // choice path also uses owned storage; keep that fallback here.
+        // `&str` normally returned above, borrowed in place. A `&str` with
+        // choices decodes into owned storage and borrows that.
         let owned_ident = quote::format_ident!("__owned_{}", plain, span = binding_span);
-        if (!root_shared_inputs || matches!(ty, syn::Type::Reference(_)))
+        if matches!(ty, syn::Type::Reference(_))
             && !self.match_arg_several_ok_params.contains(&param_name)
-            && let Some((owned_ty, borrow_expr)) = worker_string_storage(ty, &owned_ident)
+            && let Some((owned_ty, borrow_expr)) = owned_string_storage(ty, &owned_ident)
         {
             // The borrow is of a local copy, so it can't be `'static` either.
             if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
-                return (vec![stmt], vec![]);
+                return vec![stmt];
             }
             let span = ty.span();
             // Preserve the existing decoder for a string with choices, but
@@ -762,35 +702,7 @@ impl RustConversionBuilder {
             let borrow_stmt = quote_spanned! {span=>
                 let #ident: #bound_ty = #borrow_expr;
             };
-            return (vec![owned_stmt], vec![borrow_stmt]);
-        }
-
-        if !root_shared_inputs
-            && !self.match_arg_several_ok_params.contains(&param_name)
-            && let Some((owned_ty, copy, borrow)) = worker_native_storage(ty, &owned_ident)
-        {
-            if let Some(stmt) = crate::type_inspect::static_rooted_view_binding(ident, ty) {
-                return (vec![stmt], vec![]);
-            }
-            let span = ty.span();
-            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
-            // Check the borrowed representation before copying: scalar inputs
-            // still require exactly one element, and optional NULLs stay None.
-            let roots = quote::format_ident!("__mx_roots_{}", plain, span = binding_span);
-            let try_expr = quote_spanned! {span=> {
-                let #roots = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
-                ::core::result::Result::map(
-                    <#bound_ty as ::miniextendr_api::TryFromRoot<'_>>::try_from_root(unsafe {
-                        #roots.rooted(#sexp_ident)
-                    }),
-                    #copy,
-                )
-            }};
-            let owned_stmt = self.conversion_stmt(try_expr, &ctx, &owned_ident, &owned_ty, span);
-            let borrow_stmt = quote_spanned! {span=>
-                let #ident: #bound_ty = #borrow;
-            };
-            return (vec![owned_stmt], vec![borrow_stmt]);
+            return vec![owned_stmt, borrow_stmt];
         }
 
         // `LazyDots` (#1892): the R wrapper passes its own frame,
@@ -808,17 +720,14 @@ impl RustConversionBuilder {
                 let #ident: #bound_ty =
                     unsafe { ::miniextendr_api::LazyDots::from_wrapper_arg(&#sexp_ident) };
             };
-            return (vec![stmt], vec![]);
+            return vec![stmt];
         }
 
         // `Quoted` / `Quosure` (#1835): the R wrapper passes the argument
         // unevaluated, behind the missing-argument sentinel; it never goes
         // through `TryFromSexp`.
         if let Some(param) = crate::type_inspect::unevaluated_param(ty) {
-            return (
-                vec![self.unevaluated_binding(ident, sexp_ident, &r_name, ty, param)],
-                vec![],
-            );
+            return vec![self.unevaluated_binding(ident, sexp_ident, &r_name, ty, param)];
         }
 
         match ty {
@@ -827,7 +736,7 @@ impl RustConversionBuilder {
             // has its own parameter binding that will be `mut` if they specified it.
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 let stmt = quote! { let #ident = (); };
-                (vec![stmt], vec![])
+                vec![stmt]
             }
 
             // Reference types: &T, &mut T
@@ -882,7 +791,7 @@ impl RustConversionBuilder {
                             let #ident: #ty = &#storage_ident;
                         }
                     };
-                    return (vec![owned_stmt], vec![borrow_stmt]);
+                    return vec![owned_stmt, borrow_stmt];
                 }
 
                 if is_dots {
@@ -893,9 +802,9 @@ impl RustConversionBuilder {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #sexp_ident };
                         let #ident = &#storage_ident;
                     };
-                    (vec![stmt], vec![])
+                    vec![stmt]
                 } else if is_slice {
-                    // Worker shared slices and mutable slices still use TryFromSexp.
+                    // Mutable slices (and shared ones with choices) use TryFromSexp.
                     // Annotate the binding with the lifetime-erased type
                     // (`&'a [T]` → `&'_ [T]`):
                     // the user's lifetime need not be in scope, and the `Err` arm's
@@ -908,14 +817,14 @@ impl RustConversionBuilder {
                         span,
                     );
                     let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
-                    (vec![stmt], vec![])
+                    vec![stmt]
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
                     let span = ty.span();
                     let (try_expr, binding_ty) =
                         try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
                     let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
-                    (vec![stmt], vec![])
+                    vec![stmt]
                 }
             }
 
@@ -936,7 +845,7 @@ impl RustConversionBuilder {
                     let span = ty.span();
                     let strict_ctx = ArgContext::strict(&r_name, ty);
                     let stmt = self.conversion_stmt(strict_expr, &strict_ctx, ident, ty, span);
-                    return (vec![stmt], vec![]);
+                    return vec![stmt];
                 }
 
                 // A choice under `Missing` / `Option` / `Either` layers (#1473,
@@ -961,7 +870,7 @@ impl RustConversionBuilder {
                     );
                     let mut stmts = either_arm_guards(&param_name, ty);
                     stmts.push(stmt);
-                    return (stmts, vec![]);
+                    return stmts;
                 }
 
                 // match_arg + several_ok: use match_arg_vec_from_sexp for container types
@@ -977,7 +886,7 @@ impl RustConversionBuilder {
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
                             let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
-                            return (vec![stmt], vec![]);
+                            return vec![stmt];
                         }
                         crate::SeveralOkContainer::BoxedSlice => {
                             let try_expr = quote_spanned! {span=>
@@ -985,7 +894,7 @@ impl RustConversionBuilder {
                                     .map(|v| v.into_boxed_slice())
                             };
                             let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
-                            return (vec![stmt], vec![]);
+                            return vec![stmt];
                         }
                         crate::SeveralOkContainer::Array(n) => {
                             let span = ty.span();
@@ -1016,7 +925,7 @@ impl RustConversionBuilder {
                                     #len_arm
                                 };
                             };
-                            return (vec![vec_stmt, arr_stmt], vec![]);
+                            return vec![vec_stmt, arr_stmt];
                         }
                         crate::SeveralOkContainer::BorrowedSlice => {
                             let storage_ident =
@@ -1030,7 +939,7 @@ impl RustConversionBuilder {
                             let borrow_stmt = quote_spanned! {span=>
                                 let #ident: #ty = &#storage_ident;
                             };
-                            return (vec![owned_stmt], vec![borrow_stmt]);
+                            return vec![owned_stmt, borrow_stmt];
                         }
                     }
                 }
@@ -1083,8 +992,6 @@ impl RustConversionBuilder {
                             self.conversion_stmt(try_expr, &declared, ident, &binding_ty, span);
                         // `ty: TryFromSexp` is proven here, so a `no_na`
                         // parameter's value can be asked after the binding.
-                        // Owned vector: it runs on the main thread, before a
-                        // worker closure, like the conversion's `Err` arm.
                         if let Some((_, message)) = self
                             .no_na_params
                             .iter()
@@ -1116,7 +1023,7 @@ impl RustConversionBuilder {
                                     &self.conversion_error_class,
                                     span,
                                 );
-                                return (vec![bind, stmt, check], vec![]);
+                                return vec![bind, stmt, check];
                             }
                             let check = no_na_value_stmt(
                                 ident,
@@ -1126,12 +1033,12 @@ impl RustConversionBuilder {
                                 &self.conversion_error_class,
                                 span,
                             );
-                            return (vec![stmt, check], vec![]);
+                            return vec![stmt, check];
                         }
                         stmt
                     }
                 };
-                (vec![stmt], vec![])
+                vec![stmt]
             }
         }
     }
@@ -1267,10 +1174,11 @@ fn layered_choice_expr(
     quote_spanned! {span=> #expr }
 }
 
-/// The four borrowed character shapes supported by the raw converters.
-/// Keep their worker storage owned; do not generalize this to arbitrary list
-/// nesting, which has different conversion and rooting requirements (#1427).
-fn worker_string_storage(ty: &syn::Type, storage: &syn::Ident) -> Option<(syn::Type, TokenStream)> {
+/// The four borrowed character shapes supported by the raw converters, with
+/// the owned type each decodes into and the borrow of that storage. Do not
+/// generalize this to arbitrary list nesting, which has different conversion
+/// and rooting requirements (#1427).
+fn owned_string_storage(ty: &syn::Type, storage: &syn::Ident) -> Option<(syn::Type, TokenStream)> {
     let vector_element = match ty {
         syn::Type::Path(path) if path.qself.is_none() => path
             .path
@@ -1316,56 +1224,6 @@ fn worker_string_storage(ty: &syn::Type, storage: &syn::Ident) -> Option<(syn::T
             ),
         },
     )
-}
-
-/// Shared native worker inputs are snapshots of their R-thread conversion.
-/// Copy before dispatch, then form every reference inside the worker closure.
-/// Mutable inputs keep their separate write-through conversion path.
-fn worker_native_storage(
-    ty: &syn::Type,
-    storage: &syn::Ident,
-) -> Option<(syn::Type, TokenStream, TokenStream)> {
-    if !crate::type_inspect::is_rooted_reference(ty) || worker_string_storage(ty, storage).is_some()
-    {
-        return None;
-    }
-    let optional = crate::type_inspect::option_inner_type(ty);
-    let syn::Type::Reference(reference) = optional.unwrap_or(ty) else {
-        return None;
-    };
-    let element = &reference.elem;
-    let (owned, copy, borrow) = match element.as_ref() {
-        syn::Type::Slice(slice) => {
-            let element = &slice.elem;
-            (
-                syn::parse_quote!(::std::vec::Vec<#element>),
-                quote!(::std::vec::Vec::from),
-                if optional.is_some() {
-                    quote!(::core::option::Option::as_deref(&#storage))
-                } else {
-                    quote!(::std::vec::Vec::as_slice(&#storage))
-                },
-            )
-        }
-        _ => (
-            element.as_ref().clone(),
-            quote!(|value| *value),
-            if optional.is_some() {
-                quote!(::core::option::Option::as_ref(&#storage))
-            } else {
-                quote!(&#storage)
-            },
-        ),
-    };
-    if optional.is_some() {
-        Some((
-            syn::parse_quote!(::core::option::Option<#owned>),
-            quote!(|value| ::core::option::Option::map(value, #copy)),
-            borrow,
-        ))
-    } else {
-        Some((owned, copy, borrow))
-    }
 }
 
 /// One compile-time assertion per leaf of the `R` arm of an `Either` choice
@@ -1806,8 +1664,7 @@ fn na_refusal_stmt(
     let call = crate::naming::call_slot_ident();
     // SAFETY (of the emitted `unsafe`): the check runs with the argument's
     // conversion, where the conversion `Err` arm runs: on the R main thread,
-    // inside the wrapper's with_r_unwind_protect closure or before the worker
-    // closure.
+    // inside the wrapper's with_r_unwind_protect closure.
     quote_spanned! {span=>
         if #has_na {
             return unsafe {

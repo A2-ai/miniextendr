@@ -9,7 +9,7 @@
 //!
 //! `miniextendr_panic_hook()` installs; `miniextendr_panic_hook_uninstall()`
 //! takes it back off. Both are idempotent and paired by the init / unload
-//! code in `worker.rs`.
+//! code (`package_init` and `thread::miniextendr_runtime_shutdown`).
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,8 +25,8 @@ thread_local! {
     /// the panic hook. `Location` borrows the `PanicHookInfo`, so we snapshot an
     /// owned `(file, line)`.
     ///
-    /// Per-thread because the hook fires on the panicking thread: a worker-thread
-    /// panic records here on the worker; a main-thread panic records here on main.
+    /// Per-thread because the hook fires on the panicking thread: a panic on a
+    /// spawned thread records there; a main-thread panic records here on main.
     /// [`take_last_panic_location`] reads-and-clears so a stale location can never
     /// leak onto a later, location-less message on the same (reused) thread.
     static LAST_PANIC_LOCATION: Cell<Option<(String, u32)>> = const { Cell::new(None) };
@@ -58,8 +58,8 @@ pub(crate) fn take_last_panic_location() -> Option<(String, u32)> {
 /// If `MINIEXTENDR_BACKTRACE` is truthy (`yes`/`true`/`1`/`on`, per
 /// `crate::env_flag::parse_bool`), the default Rust panic hook runs (full
 /// traceback printed to stderr); otherwise the hook swallows the panic output
-/// silently so the R error (emitted by `panic_message_to_r_error`) is what
-/// users see. Unrecognized values default to off.
+/// silently so the R error the framework raises is what users see.
+/// Unrecognized values default to off.
 ///
 /// Idempotent within a DLL instance: the first call installs, subsequent
 /// calls are no-ops. If the DLL is unloaded and loaded again, the new

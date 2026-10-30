@@ -38,9 +38,7 @@ impl AltIntegerData for StreamingIntRangeData {
 }
 
 /// Create a streaming integer ALTREP `1..=n`.
-// no_worker: the returned struct holds a Box<dyn Fn> streaming closure (!Send),
-// which cannot cross to the worker thread under worker-default.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn streaming_int_range(n: i32) -> StreamingIntRangeData {
     let len = n as usize;
     StreamingIntRangeData {
@@ -88,9 +86,7 @@ impl AltRealData for StreamingRealSquaresData {
 }
 
 /// Create a streaming real ALTREP `1^2, 2^2, ..., n^2`.
-// no_worker: the returned struct holds a Box<dyn Fn> streaming closure (!Send),
-// which cannot cross to the worker thread under worker-default.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn streaming_real_squares(n: i32) -> StreamingRealSquaresData {
     let len = n as usize;
     StreamingRealSquaresData {

@@ -23,8 +23,8 @@
 //!
 //! `Rf_error` (longjmp via `r_stop`) survives only at the FFI guard site where
 //! there is no SEXP slot to return through:
-//! **`ffi_guard::guarded_ffi_call(GuardMode::CatchUnwind, …)`**, the worker
-//! thread panic conversion before the worker→main boundary returns a SEXP.
+//! **`ffi_guard::guarded_ffi_call(GuardMode::CatchUnwind, …)`**, the guard of
+//! ALTREP `RustUnwind` callbacks.
 //!
 //! Trait-ABI vtable shims panic on arity, borrow and conversion failures inside
 //! `with_r_unwind_protect_shim`, which returns a tagged condition SEXP.
@@ -52,7 +52,7 @@
 ///
 /// Survives at the one guard site where there is no SEXP slot to return
 /// through: [`crate::ffi_guard::guarded_ffi_call`] with `GuardMode::CatchUnwind`
-/// (worker thread panic conversion).
+/// (ALTREP `RustUnwind` callbacks).
 ///
 /// User code should use `panic!()` (caught by the framework and converted to a
 /// `rust_error` R condition) or the structured condition macros `error!()` /
@@ -63,71 +63,46 @@ pub(crate) fn r_stop(msg: &str) -> ! {
     // would otherwise reject them, and a panic here would abort the process.
     let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
-    if crate::worker::is_r_main_thread() {
-        unsafe {
-            crate::sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        }
-    } else {
-        // Route to main thread
-        crate::worker::with_r_thread(move || unsafe {
-            crate::sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        })
-    }
+    crate::with_r_thread(|| unsafe {
+        crate::sys::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+    })
 }
 
 /// Raise an R warning with the given message.
 ///
 /// Unlike `r_stop`, this returns normally after issuing the warning.
-/// Automatically routes to R's main thread if called from a worker thread.
+/// Panics off R's main thread.
 #[inline]
 pub fn r_warning(msg: &str) {
     // NUL-safe (see r_stop)
     let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
-    if crate::worker::is_r_main_thread() {
-        unsafe {
-            crate::sys::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        }
-    } else {
-        crate::worker::with_r_thread(move || unsafe {
-            crate::sys::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        });
-    }
+    crate::with_r_thread(|| unsafe {
+        crate::sys::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+    });
 }
 
 /// Print a message to R's console (internal implementation).
-/// Automatically routes to R's main thread if called from a worker thread.
+/// Panics off R's main thread.
 #[doc(hidden)]
 #[inline]
 pub fn _r_print_str(msg: &str) {
     // NUL-safe (see r_stop)
     let c_msg = std::ffi::CString::new(msg.replace('\0', "\u{fffd}")).unwrap_or_default();
 
-    if crate::worker::is_r_main_thread() {
-        unsafe {
-            crate::sys::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        }
-    } else {
-        crate::worker::with_r_thread(move || unsafe {
-            crate::sys::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
-        });
-    }
+    crate::with_r_thread(|| unsafe {
+        crate::sys::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
+    });
 }
 
 /// Print a newline to R's console (internal implementation).
-/// Automatically routes to R's main thread if called from a worker thread.
+/// Panics off R's main thread.
 #[doc(hidden)]
 #[inline]
 pub fn _r_print_newline() {
-    if crate::worker::is_r_main_thread() {
-        unsafe {
-            crate::sys::Rprintf_unchecked(c"\n".as_ptr());
-        }
-    } else {
-        crate::worker::with_r_thread(|| unsafe {
-            crate::sys::Rprintf_unchecked(c"\n".as_ptr());
-        });
-    }
+    crate::with_r_thread(|| unsafe {
+        crate::sys::Rprintf_unchecked(c"\n".as_ptr());
+    });
 }
 
 /// Print to R's console (like `print!`).

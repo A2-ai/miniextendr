@@ -2870,7 +2870,7 @@ fn derive_struct_dataframe(
     // The parallel variant (`#[cfg(feature = "rayon")]`) splits cleanly along the
     // R-thread boundary: all SEXP access (column extraction, ALTREP
     // materialisation, sub-frame selection + recursive nested reads) happens up
-    // front on the R/worker thread; only then does `(0..nrow).into_par_iter()`
+    // front on R's main thread; only then does `(0..nrow).into_par_iter()`
     // assemble each `Self` from the pre-extracted, owned column data by index —
     // pure Rust, zero R API calls. Flattened and factor fields would need
     // `Clone` for by-index assembly, so their `_par` reader delegates to the
@@ -3338,7 +3338,7 @@ fn derive_struct_dataframe(
                 /// Mirrors [`Self::try_from_dataframe`] but assembles rows off the R
                 /// thread via rayon. Safety: all SEXP access (column extraction, ALTREP
                 /// materialisation, nested sub-frame reads) happens up front on the
-                /// R/worker thread; the `into_par_iter()` region touches only
+                /// R main thread; the `into_par_iter()` region touches only
                 /// pre-extracted owned data and makes no R API calls.
                 pub fn try_from_dataframe_par(
                     sexp: ::miniextendr_api::SEXP,

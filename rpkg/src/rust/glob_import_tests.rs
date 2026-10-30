@@ -5,12 +5,9 @@
 //! fixture `tests/ui/pass/glob_import_method_calls.rs` covers every macro
 //! the UI tests' crate can compile; this module covers the
 //! paths that need features that crate lacks: the parallel `DataFrameRow`
-//! readers (`rayon`), the Vctrs derive (`vctrs`), a worker wrapper
-//! (`worker-thread`) and a serde-classed error (`serde`).
+//! readers (`rayon`), the Vctrs derive (`vctrs`) and a serde-classed error
+//! (`serde`).
 #![allow(dead_code)]
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::*;
 use std::collections::{BTreeMap, HashMap};
 
@@ -159,19 +156,6 @@ pub struct GlobRatio {
     #[vctrs(data)]
     num: Vec<i32>,
     den: Vec<i32>,
-}
-
-/// Sum `xs` and add the byte length of `label` on the worker thread.
-/// @param label A string.
-/// @param xs A numeric vector.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(worker, noexport)]
-pub fn glob_import_worker(label: &str, xs: Vec<f64>) -> Result<f64, String> {
-    if xs.is_empty() {
-        Err("empty".to_string())
-    } else {
-        Ok(xs.iter().sum::<f64>() + label.len() as f64)
-    }
 }
 
 /// Stand-in for a serde-tagged error enum.

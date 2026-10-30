@@ -873,6 +873,6 @@ connection for its entire lifetime.
 ## See Also
 
 - [FEATURES.md](FEATURES.md) -- Feature flags reference (`connections`)
-- [THREADS.md](THREADS.md) -- Thread safety and the worker thread model
+- [THREADS.md](THREADS.md) -- Thread safety and the main-thread invariant
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling across the FFI boundary
 - Test fixtures: `rpkg/src/rust/connection_tests.rs`

@@ -47,16 +47,6 @@ test_that("on a `caller` wrapper, `.call` goes after the formal that follows the
   expect_identical(conditionCall(e)[[1]], quote(via))
 })
 
-test_that("`worker` on a function with dots runs on the main thread", {
-  skip_if_not(
-    exists("dots_mid_worker", envir = asNamespace("miniextendr"), inherits = FALSE),
-    "built without the worker-thread feature"
-  )
-  f <- miniextendr:::dots_mid_worker
-  expect_equal(names(formals(f)), c("x", "...", "flag"))
-  expect_equal(f(1L, 2, flag = TRUE), "x=1 dots=1 flag=true")
-})
-
 test_that("the page of an explicit `&Dots` documents `...`, not the Rust name", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")

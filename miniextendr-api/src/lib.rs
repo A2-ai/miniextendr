@@ -9,7 +9,7 @@
 //! - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
 //! - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 //! - Wrapper generation from Rust signatures (`#[miniextendr]`, automatic registration via linkme).
-//! - Main-thread unwind protection plus optional worker dispatch (`worker`).
+//! - Main-thread unwind protection (`unwind_protect`) and the main-thread check (`thread`).
 //! - Class system support (S3, S4, S7, R6, env-style impl blocks).
 //! - Cross-package trait ABI for type-erased dispatch (`trait_abi`).
 //!
@@ -113,11 +113,9 @@
 //! ## Threading and safety
 //!
 //! R uses `longjmp` for errors, which can bypass Rust destructors. Generated
-//! wrappers run inline on R's main thread inside `R_UnwindProtect` by default.
-//! Opt-in `#[miniextendr(worker)]` functions (or crates using
-//! `worker-default`) run Rust logic on the worker and marshal R API calls back
-//! through `with_r_thread`. Most FFI wrappers are main-thread routed via
-//! `#[r_ffi_checked]`. Use unchecked variants only when you have arranged a
+//! wrappers run inline on R's main thread inside `R_UnwindProtect`. Most FFI
+//! wrappers check for R's main thread via `#[r_ffi_checked]` (through
+//! [`with_r_thread`]). Use unchecked variants only when you have arranged a
 //! safe context.
 //!
 //! The `nonapi` feature exposes legacy controls for R's process-global stack
@@ -135,7 +133,6 @@
 //! | `connections` | Experimental R connection framework. **Unstable R API.** |
 //! | `indicatif` | Progress bars routed through R connections. Requires `nonapi` + `connections`. |
 //! | `vctrs` | vctrs class construction (`new_vctr`, `new_rcrd`, `new_list_of`) and `#[derive(Vctrs)]`. |
-//! | `worker-thread` | Worker dispatch infrastructure. It does not change proc-macro defaults by itself; without it, worker APIs are inline stubs. |
 //!
 //! ### Type Conversions (Scalars & Vectors)
 //!
@@ -211,7 +208,6 @@
 //! |---------|-------------|
 //! | `r6-default` | Default class system: R6 (mutually exclusive with `s7-default`) |
 //! | `s7-default` | Default class system: S7 (mutually exclusive with `r6-default`) |
-//! | `worker-default` | Default to worker thread dispatch (implies `worker-thread`) |
 //! | `strict-default` | Default to strict mode for lossy integer conversions |
 //! | `coerce-default` | Default to coerce mode for type conversions |
 //! | `no-preconditions-default` | Drop the R-side type checks by default (`preconditions` keeps them per item) |
@@ -306,7 +302,7 @@ pub mod sexp_ext;
 /// expects you to use the crate-root re-exports for the type vocabulary
 /// ([`SEXP`], [`SexpExt`], [`SEXPTYPE`], [`R_xlen_t`], …) and the
 /// higher-level safe wrappers ([`IntoR`], [`TryFromSexp`],
-/// [`worker::with_r_thread`], [`unwind_protect::with_r_unwind_protect`],
+/// [`with_r_thread`], [`unwind_protect::with_r_unwind_protect`],
 /// the `#[miniextendr]` proc-macro). `sys::` is only here so those
 /// wrappers — and the rare hand-rolled FFI in tests or benchmarks — have
 /// something to call.
@@ -461,16 +457,12 @@ pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod pump;
 pub mod unwind_protect;
-pub mod worker;
 
-// Re-export commonly used worker items at root for convenience
-pub use worker::{Sendable, is_r_main_thread, with_r_thread};
-
-// Required exports for generated code and initialization
-pub use worker::miniextendr_runtime_init;
-
-// Advanced stack-configuration utilities; not permission for off-main R API use
+// R's main thread (`with_r_thread`, `is_r_main_thread`) plus advanced
+// stack-configuration utilities; the latter are not permission for off-main
+// R API use
 pub mod thread;
+pub use thread::{is_r_main_thread, miniextendr_runtime_init, with_r_thread};
 
 // Collection growth debug instrumentation (diagnostics)
 #[cfg(feature = "growth-debug")]
@@ -552,9 +544,9 @@ macro_rules! report_growth {
 ///
 /// # Safety
 ///
-/// Expands to an `unsafe` block. Must be reached from (or routed to) the R
-/// main thread — the underlying FFI is `#[r_ffi_checked]`, so calls from a
-/// worker thread are serialized onto the R thread.
+/// Expands to an `unsafe` block. Must be reached from the R
+/// main thread — the underlying FFI is `#[r_ffi_checked]`, so a call from
+/// another thread panics before it reaches R.
 ///
 /// # Example
 ///

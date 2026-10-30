@@ -50,8 +50,7 @@ pub fn point_typed(x: f64, y: f64) -> AsSerialize<Point> {
 
 The conversion happens after the Rust call returns, including early `return`s.
 It also works on inherent and trait-impl methods. A serialized class or `Self`
-return produces serde data instead of a class-constructor wrapper. Worker bodies
-return owned Rust data; serialization runs on R's main thread.
+return produces serde data instead of a class-constructor wrapper.
 
 The attribute wraps the **complete return value**, just like `AsSerialize<T>`:
 
@@ -385,7 +384,7 @@ pub fn convert_from_r(sexp: SEXP) -> Vec<i32> {
 ### Owned values: `RValue::from_serde`
 
 `to_r` allocates a `SEXP`, so it needs the R main thread. When a value has to
-be built somewhere else first (a worker thread, a panic payload, a condition's
+be built somewhere else first (a Rayon thread, a panic payload, a condition's
 `data =`), serialize into the owned, `Send` `RValue` tree instead and
 materialise it later:
 

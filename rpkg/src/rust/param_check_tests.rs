@@ -20,9 +20,6 @@
 //! newtypes of them) `no_na` also checks the converted value, for what the
 //! marker reads as `NA` beyond `anyNA()`.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use std::collections::HashMap;
 
 use miniextendr_api::{
@@ -319,14 +316,6 @@ pub fn param_no_na_number_custom(
     dose: AsNumeric,
 ) -> f64 {
     dose.0.expect("no_na refuses a missing value")
-}
-
-/// On the worker path the check runs on the main thread, before dispatch.
-/// @param x Numbers, strings or factor labels, none of them missing.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(worker, noexport)]
-pub fn param_no_na_numbers_worker(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
-    count_refused(&x.0)
 }
 
 /// Under `call = caller` the Rust check names the caller, like the R guard

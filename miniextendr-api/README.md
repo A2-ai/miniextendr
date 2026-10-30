@@ -6,7 +6,7 @@ This crate provides:
 
 - FFI bindings to R's C API.
 - Conversions between Rust and R types.
-- Main-thread unwind protection plus optional worker-thread dispatch.
+- Main-thread unwind protection for every generated wrapper.
 - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
 - Env, S3, S4, S7, and R6 class generation from Rust impl blocks.
 - Cross-package trait ABI support via tags and vtables.
@@ -156,16 +156,14 @@ including `Vec<T>`. Overflow and precision failures surface as R errors.
 
 ## Threading and safety
 
-R uses `longjmp` for errors, which can bypass Rust destructors. By default,
-generated wrappers run Rust inline on R's main thread inside
-`R_UnwindProtect`, so R errors and Rust panics cross a destructor-safe boundary.
+R uses `longjmp` for errors, which can bypass Rust destructors. Generated
+wrappers run Rust inline on R's main thread inside `R_UnwindProtect`, so R
+errors and Rust panics cross a destructor-safe boundary.
 
-Functions can opt into worker dispatch with `#[miniextendr(worker)]`, or a
-crate can select it by default with `worker-default`. In that mode, R API calls
-from the worker are marshalled back to the main R thread via `with_r_thread`.
-
-Most FFI wrappers are main-thread routed via `#[r_ffi_checked]`. Use
-`*_unchecked` variants only when you have explicitly arranged safe context.
+Most FFI wrappers are checked via `#[r_ffi_checked]`: they call
+`with_r_thread`, which runs the call inline on R's main thread and panics on
+any other thread. Use `*_unchecked` variants only when you have explicitly
+arranged safe context.
 
 ### Advanced stack controls (`nonapi`)
 
@@ -177,8 +175,8 @@ C-stack bounds:
 
 These controls remove only R's stack-address check. They do **not** make R's
 global state, garbage collector, error signaling, or C API safe on a secondary
-thread. R package code must keep every R API call on the recorded main thread;
-use the worker/`with_r_thread` path instead. Removal or relocation of this
+thread. R package code must keep every R API call on the recorded main thread.
+Removal or relocation of this
 misleading public surface is tracked in #1352.
 
 ## Rayon integration (`rayon` feature)
@@ -191,8 +189,8 @@ Rayon helpers allow parallel Rust computation with R-safe boundaries:
 - `perf::*` helpers for Rayon pool info
 - `rayon_bridge::rayon` re-export to avoid version mismatches
 
-R API calls must stay outside parallel closures. Use `with_r_thread` before or
-after parallel work when you need to touch R.
+R API calls must stay outside parallel closures: `with_r_thread` panics on a
+Rayon thread. Touch R before or after the parallel section, on the main thread.
 
 ## Connections (`connections` feature)
 
@@ -214,8 +212,6 @@ Default features:
 | `connections` | Experimental custom R connection framework. |
 | `indicatif` | Progress bars routed through R connections/the console. Requires `nonapi` and `connections`. |
 | `vctrs` | Access to the vctrs C API and the `#[derive(Vctrs)]` proc macro. |
-| `worker-thread` | Enables the worker-thread infrastructure without changing proc-macro defaults by itself. |
-| `worker-default` | Makes worker-thread execution the proc-macro default and enables `worker-thread`. |
 | `no-preconditions-default` | Makes generated wrappers drop their R-side type checks by default (`preconditions` keeps them per item). |
 | `log` | Routes Rust `log` output to the R console during package init. |
 
@@ -302,4 +298,4 @@ For embedding R in standalone binaries or integration tests, use
 - Update conversion behavior tests when R semantics change.
 - Ensure roxygen/doc extraction remains in sync with macro behavior.
 - Track non-API symbols behind feature gates.
-- Verify thread checks and worker-thread behavior across R versions.
+- Verify thread checks across R versions.

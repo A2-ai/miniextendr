@@ -2,20 +2,9 @@
 # (docs/FEATURE_DEFAULTS.md) and their opt-outs, driven by the fixtures in
 # src/rust/feature_default_fixtures.rs. On a default build every pair behaves
 # identically; the scheduled feature-legs CI job (.github/workflows/ci.yml)
-# rebuilds with worker-default / strict-default / coerce-default /
-# no-preconditions-default / r6-default / s7-default flipped on and re-runs this file, which is the only
+# rebuilds with strict-default / coerce-default / no-preconditions-default /
+# r6-default / s7-default flipped on and re-runs this file, which is the only
 # runtime coverage those features have (audit A5/A10).
-
-test_that("worker-default routes bare functions to the worker thread", {
-  bare <- fdefault_worker_thread_name()
-  pinned <- fdefault_no_worker_thread_name()
-  if (miniextendr_has_feature("worker-default")) {
-    expect_equal(bare, "miniextendr-worker")
-    expect_false(identical(bare, pinned))
-  } else {
-    expect_identical(bare, pinned)
-  }
-})
 
 test_that("strict-default rejects logical/raw inputs to i64 params", {
   strict_on <- miniextendr_has_feature("strict-default")

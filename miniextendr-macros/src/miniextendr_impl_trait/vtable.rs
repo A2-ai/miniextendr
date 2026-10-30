@@ -946,8 +946,6 @@ pub(super) fn extract_methods(
                 invisible,
                 has_self,
                 is_mut,
-                worker: attrs.worker,
-                unsafe_main_thread: attrs.unsafe_main_thread,
                 coerce: attrs.coerce,
                 check_interrupt: attrs.check_interrupt,
                 rng: attrs.rng,
@@ -1013,13 +1011,9 @@ fn check_trait_method_defaults(
 
 /// Parsed `#[miniextendr(...)]` attributes for a single trait method.
 ///
-/// Extracted from method-level attributes to control C wrapper behavior,
-/// threading, and R wrapper generation.
+/// Extracted from method-level attributes to control C wrapper behavior and
+/// R wrapper generation.
 struct TraitMethodAttrs {
-    /// Dispatch to worker thread. Set by explicit `#[miniextendr(worker)]` or `worker-default` feature.
-    worker: bool,
-    /// Force execution on R's main thread (overrides explicit or feature-selected worker dispatch).
-    unsafe_main_thread: bool,
     /// Enable `Rf_coerceVector` for all parameters. Set by `coerce` /
     /// `no_coerce`, else the `coerce-default` feature.
     coerce: bool,
@@ -1072,17 +1066,13 @@ struct TraitMethodAttrs {
 /// Parse `#[miniextendr(...)]` attributes from a trait method.
 ///
 /// Supports two syntax styles:
-/// - **Flat**: `#[miniextendr(worker, coerce, rng)]`
-/// - **Nested class-system**: `#[miniextendr(env(worker, coerce))]`
+/// - **Flat**: `#[miniextendr(coerce, rng)]`
+/// - **Nested class-system**: `#[miniextendr(env(coerce, check_interrupt))]`
 ///
-/// Both styles can coexist. The `worker` flag controls whether static methods
-/// dispatch to the worker thread (defaults to `cfg!(feature = "worker-default")`).
-/// `coerce` and `strict` default to the `coerce-default` / `strict-default`
+/// Both styles can coexist. `coerce` and `strict` default to the `coerce-default` / `strict-default`
 /// features, as on inherent methods, and `no_coerce` / `no_strict` opt out.
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     use syn::spanned::Spanned;
-    let mut worker = false;
-    let mut unsafe_main_thread = false;
     let mut coerce: Option<bool> = None;
     let mut check_interrupt = false;
     let mut rng = false;
@@ -1121,12 +1111,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
 
             if is_class_meta {
                 meta.parse_nested_meta(|inner| {
-                    if inner.path.is_ident("worker") {
-                        worker = true;
-                        crate::deprecation::worker_option(inner.path.span());
-                    } else if inner.path.is_ident("main_thread") {
-                        unsafe_main_thread = true;
-                    } else if inner.path.is_ident("coerce") {
+                    if inner.path.is_ident("coerce") {
                         coerce = Some(true);
                     } else if inner.path.is_ident("no_coerce") {
                         coerce = Some(false);
@@ -1164,18 +1149,13 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         no_dispatch_dots = true;
                     } else {
                         return Err(inner.error(
-                            "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
-                             `no_coerce`, `check_interrupt`, `unwrap_in_r`, `serialize`, or \
-                             `no_shortcut` (S3/S4 also accept `generic`, `receiver`, `no_dots`)",
+                            "unknown nested option; expected `coerce`, `no_coerce`, \
+                             `check_interrupt`, `unwrap_in_r`, `serialize`, or `no_shortcut` \
+                             (S3/S4 also accept `generic`, `receiver`, `no_dots`)",
                         ));
                     }
                     Ok(())
                 })?;
-            } else if meta.path.is_ident("worker") {
-                worker = true;
-                crate::deprecation::worker_option(meta.path.span());
-            } else if meta.path.is_ident("main_thread") {
-                unsafe_main_thread = true;
             } else if meta.path.is_ident("coerce") {
                 coerce = Some(true);
             } else if meta.path.is_ident("no_coerce") {
@@ -1382,7 +1362,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
-                     `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, \
+                     `env`, `r6`, `s7`, `s3`, `s4`, `coerce`, `no_coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
                      `choices`, `choices_several_ok`, `no_default`, `inherits`, `not_inherits`, `no_na`, \
@@ -1401,8 +1381,6 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     }
 
     Ok(TraitMethodAttrs {
-        worker: worker || cfg!(feature = "worker-default"),
-        unsafe_main_thread,
         coerce: coerce.unwrap_or(cfg!(feature = "coerce-default")),
         check_interrupt,
         rng,
@@ -1457,7 +1435,6 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
 ///
 /// Instance methods (`has_self`) extract the object via `ErasedExternalPtr::from_sexp`
 /// and call with fully-qualified trait syntax `<Type as Trait>::method(self_ref, ...)`.
-/// Static methods run on the worker thread when the `worker` flag is set.
 ///
 /// `&Self` / `&mut Self` parameters are borrowed external arguments (#2106): the C wrapper
 /// converts each to its `ExternalPtr<Type>` handle and borrows it with the declared
@@ -1468,27 +1445,11 @@ pub(super) fn generate_trait_method_c_wrapper(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
 ) -> TokenStream {
-    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
+    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling};
 
     let method_ident = &method.ident;
     let c_ident = method.c_wrapper_ident(type_ident, trait_name);
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
-
-    // Thread strategy: instance methods stay on main thread (self_ref can't cross threads);
-    // static methods use worker thread only when worker=true (explicit or worker-default feature)
-    // and, as for standalone functions, no R value crosses the call and no
-    // `check_interrupt` asks for R's interrupt check.
-    let thread_strategy = if method.has_self
-        || method.unsafe_main_thread
-        || method.check_interrupt
-        || crate::type_inspect::signature_holds_r_values(&method.sig)
-    {
-        ThreadStrategy::MainThread
-    } else if method.worker {
-        ThreadStrategy::WorkerThread
-    } else {
-        ThreadStrategy::MainThread
-    };
 
     // Build rust argument names from the signature (excluding self receiver)
     let rust_args: Vec<syn::Ident> = method
@@ -1555,7 +1516,6 @@ pub(super) fn generate_trait_method_c_wrapper(
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
         .output(method.sig.output.clone())
-        .thread_strategy(thread_strategy)
         .return_handling(return_handling)
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);
@@ -1742,7 +1702,7 @@ pub(super) fn generate_trait_const_c_wrapper(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
 ) -> TokenStream {
-    use crate::c_wrapper_builder::{CWrapperContext, ThreadStrategy};
+    use crate::c_wrapper_builder::CWrapperContext;
 
     let const_ident = &trait_const.ident;
     let c_ident = trait_const.c_wrapper_ident(type_ident, trait_name);
@@ -1771,7 +1731,6 @@ pub(super) fn generate_trait_const_c_wrapper(
         .inputs(Default::default()) // no inputs
         .output(return_type)
         .call_expr(call_expr)
-        .thread_strategy(ThreadStrategy::MainThread)
         .return_handling(return_handling)
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);

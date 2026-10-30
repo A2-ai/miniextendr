@@ -10,9 +10,6 @@
 //! `NonNa<T>` is `no_na` written in the type: the same R guard, plus the C
 //! wrapper's own check, which a `.Call()` skipping the R wrapper still meets.
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use miniextendr_api::{Checked, ExternalPtr, NonNa, Unchecked, miniextendr};
 
 // region: free functions
@@ -72,25 +69,6 @@ pub fn pm_checked_coerce(#[miniextendr(coerce)] n: Checked<u16>) -> i32 {
 #[miniextendr(noexport, no_preconditions)]
 pub fn pm_checked_option(n: Checked<Option<i32>>) -> i32 {
     n.unwrap_or(-1)
-}
-
-/// `Checked<&str>` on the worker thread: the marker wraps the borrow made
-/// inside the worker closure.
-/// @param s A string.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(noexport, worker, no_preconditions)]
-pub fn pm_checked_str_worker(s: Checked<&str>) -> String {
-    s.to_uppercase()
-}
-
-/// `NonNa<&str>` on the worker thread: the C wrapper checks the argument on
-/// the main thread before the owned copy, and the marker wraps the borrow
-/// made inside the worker closure.
-/// @param s A string.
-#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
-#[miniextendr(noexport, worker)]
-pub fn pm_non_na_str_worker(s: NonNa<&str>) -> String {
-    s.to_uppercase()
 }
 
 /// A `call = caller` entry point with an unchecked parameter: the Rust

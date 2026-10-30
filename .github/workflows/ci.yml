@@ -801,15 +801,6 @@ jobs:
           cargo test -p miniextendr-api --locked --no-fail-fast --features connections --lib -- connection::
           cargo test -p miniextendr-api --locked --no-fail-fast --features connections --test connection
 
-      # The worker integration suites are `#![cfg(feature = "worker-thread")]`
-      # and also compile to empty binaries in the workspace run above.
-      # `inherent_worker_dispatch` runs again under `worker-default`, where
-      # static methods select the worker without an attribute (#2031).
-      - name: Tests (miniextendr-api, worker features)
-        run: |
-          cargo test -p miniextendr-api --locked --no-fail-fast --features worker-thread --test worker_shutdown --test worker_channel_stress --test inherent_worker_dispatch --test worker_string_inputs --test worker_native_inputs
-          cargo test -p miniextendr-api --locked --no-fail-fast --features worker-default --test inherent_worker_dispatch
-
       # The blas-lapack suites are feature-gated the same way. The second
       # binary lives in miniextendr-bench, a dependent of miniextendr-api: it
       # checks that the build script's BLAS/LAPACK link directives reach other
@@ -1173,8 +1164,7 @@ jobs:
   # Apply the label to a PR that touches Windows support (Makevars.win /
   # configure.win, rtools linking, Windows-specific code paths). Non-gating,
   # so not in ci-success.needs: a labeled failure shows red on the PR without
-  # blocking it. It hung past its timeout in April 2026 (#94), and worker
-  # panics under pipe-redirected stdout can abort (#104).
+  # blocking it. It hung past its timeout in April 2026 (#94).
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
@@ -1595,15 +1585,15 @@ jobs:
   # Feature runtime legs (scheduled only)
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
-  # (worker-default, strict-default, coerce-default, no-preconditions-default,
-  # r6-default, s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
+  # (strict-default, coerce-default, no-preconditions-default, r6-default,
+  # s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
   # builds — let alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set, regenerates NAMESPACE and
   # man/ for that build, and runs testthat against it.
   #
-  # The extras, worker-default, r6-default, and s7-default legs run the full
-  # suite. extras/worker-default features are additive/transparent; the class
+  # The extras, r6-default, and s7-default legs run the full suite. The
+  # extras features are additive/transparent; the class
   # legs became full-suite-safe in #1113, which made every #[miniextendr] impl
   # block in rpkg explicitly `env` — the class flip now only reaches the one
   # deliberately bare probe (FdefaultProbe in feature_default_fixtures.rs) plus
@@ -1616,7 +1606,7 @@ jobs:
   # no_preconditions_default unit tests in miniextendr-macros (src/tests.rs
   # and the trait-impl one), which no other job compiles+runs.
   #
-  # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
+  # Weekly-only + workflow_dispatch: six extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
   # via the job summary (same pattern as gctorture-nightly.yml).
   feature-legs:
@@ -1630,9 +1620,6 @@ jobs:
         include:
           - leg: extras
             features: nonapi,indicatif,growth-debug
-            filter: ""
-          - leg: worker-default
-            features: worker-default
             filter: ""
           # The class legs run the full suite (#1113): rpkg's impl blocks are
           # explicitly `env`, so the class flip only reaches the deliberate

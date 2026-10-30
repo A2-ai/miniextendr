@@ -63,7 +63,7 @@
 //! one, and an `extern "C-unwind"` function cannot take it (it has no generated
 //! R wrapper to pass the count). Standalone functions, `s3(...)` methods, and
 //! the methods of impl blocks and trait impls accept it. It holds a plain
-//! number, so it does not keep the function on R's main thread.
+//! number.
 
 use crate::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};

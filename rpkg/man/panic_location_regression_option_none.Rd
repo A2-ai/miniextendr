@@ -4,10 +4,7 @@
 \alias{panic_location_regression_option_none}
 \title{panic_location_regression_option_none}
 \usage{
-panic_location_regression_option_none(x)
-}
-\arguments{
-\item{x}{Ignored; present only to force main-thread dispatch.}
+panic_location_regression_option_none()
 }
 \description{
 Regression guard: a required \code{Option::None} return raises the typed

@@ -10,9 +10,6 @@
 //! fixtures raise the same condition from a function body with `arg_error!`
 //! (#1740).
 
-// Exercises the deprecated `worker` option (#2117).
-#![allow(deprecated)]
-
 use crate::match_arg_tests::{FillMode, Mode};
 use miniextendr_api::{
     AsNumeric, AsNumericVec, DataFrame, MatchArg, arg_error, defer_warning, miniextendr,
@@ -207,17 +204,6 @@ pub fn arg_error_after_deferred(fill: &str) -> String {
         arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
     }
     fill.to_string()
-}
-
-/// [`arg_error_body`] on the worker thread.
-/// @param fill A string.
-#[cfg(feature = "worker-thread")]
-#[miniextendr(internal, worker)]
-pub fn arg_error_body_worker(fill: String) -> String {
-    if !is_fill_choice(&fill) {
-        arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
-    }
-    fill
 }
 
 /// [`arg_error_body`] under `call = caller`: the condition names the call a

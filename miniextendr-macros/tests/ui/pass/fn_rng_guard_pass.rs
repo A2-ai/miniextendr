@@ -28,13 +28,6 @@ pub fn guard_only(rng: &RngGuard) -> f64 {
     rng.norm_rand()
 }
 
-// The guard keeps the call on R's main thread: no `worker-thread` feature is
-// needed for a body that never reaches the worker.
-#[miniextendr(rng, worker)]
-pub fn guard_on_worker(rng: &RngGuard) -> f64 {
-    rng.unif_index(10.0)
-}
-
 #[derive(ExternalPtr)]
 pub struct EnvSampler(f64);
 
@@ -51,7 +44,7 @@ impl EnvSampler {
     pub fn reset(&mut self, rng: &RngGuard) {
         self.0 = rng.unif_rand();
     }
-    #[miniextendr(rng, env(worker))]
+    #[miniextendr(rng)]
     pub fn sampled(rng: &RngGuard, n: i32) -> Vec<f64> {
         (0..n).map(|_| rng.norm_rand()).collect()
     }

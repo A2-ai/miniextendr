@@ -76,7 +76,7 @@ test_that("Point - RDefault default creates (0, 0)", {
 })
 
 test_that("Point - RFromStr from_str parses string to Point", {
-  # Valid string parses correctly - tests &str parameter on worker thread
+  # Valid string parses correctly - tests a &str parameter
   p <- Point$RFromStr$from_str("(10, 20)")
   expect_s3_class(p, "Point")
   expect_equal(p$x(), 10L)

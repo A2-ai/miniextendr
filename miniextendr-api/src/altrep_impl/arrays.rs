@@ -32,7 +32,7 @@ macro_rules! register_array_family {
                         const { RefCell::new(BTreeMap::new()) };
                 }
 
-                crate::worker::with_r_thread(|| {
+                crate::with_r_thread(|| {
                     let cached = CLASSES.with_borrow(|classes| classes.get(&N).copied());
                     if let Some(class) = cached {
                         return class;

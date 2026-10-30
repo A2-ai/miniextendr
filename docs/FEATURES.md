@@ -12,7 +12,6 @@ Only `default` features are enabled automatically.
 | **Core / R Integration** | | |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`, `ATTRIB` / `SET_ATTRIB`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
-| `worker-thread` | Infrastructure for opt-in worker dispatch (deprecated, #2117) | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
 | `indicatif` | Progress bars via R connections / console | indicatif (implies `connections`, `nonapi`) |
 | `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
@@ -73,7 +72,6 @@ Only `default` features are enabled automatically.
 | **Project defaults** | | |
 | `strict-default`, `coerce-default`, `no-preconditions-default` | Default conversion/wrapper policies | (forwarded to miniextendr-macros) |
 | `r6-default`, `s7-default` | Default class system (mutually exclusive) | (forwarded to miniextendr-macros) |
-| `worker-default` | Default worker dispatch (deprecated, #2117) | `worker-thread` |
 
 ---
 
@@ -109,7 +107,6 @@ symbols may change between R versions and will cause `R CMD check` warnings.
   `is_identical()`; lint MXL304 flags direct use)
 - `OBJECT`, `SET_OBJECT`, `LEVELS`, `SETLEVELS` -- SEXP header bits (prefer
   `SexpExt::is_object()`)
-- `R_curErrorBuf` -- current R error message buffer
 - `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- process-global stack-check controls
 - `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` --
   legacy stack-configuration utilities; they do not make off-main R API calls safe
@@ -119,28 +116,6 @@ See [NONAPI.md](NONAPI.md) for the full tracking list.
 R's API remains main-thread-only. Package code must not change these stack
 globals or use the helpers as a substitute for `with_r_thread`; removal or
 relocation of that public surface is tracked in #1352.
-
-### `worker-thread`
-
-**Deprecated** (#2117): the worker thread won't be developed further, and its
-known problems (#989, #1425, #2076, #2109) are not planned. An explicit
-`#[miniextendr(worker)]` warns at compile time; `worker-default` does not.
-
-Enables the dedicated worker thread infrastructure. Without this feature, `run_on_worker()`
-and `with_r_thread()` are lightweight inline stubs that execute closures directly on the
-calling thread (no thread dispatch).
-
-**With the feature enabled:**
-- `miniextendr_runtime_init()` spawns a dedicated worker thread with bidirectional channels
-- `run_on_worker(f)` dispatches `f` to the worker thread, returns `Result<T, String>`
-- `with_r_thread(f)` routes `f` back to R's main thread from the worker
-
-**Without the feature (the default):**
-- `miniextendr_runtime_init()` only records the main thread ID
-- `run_on_worker(f)` → `Ok(f())` (inline)
-- `with_r_thread(f)` → `f()` (inline, panics if not on main thread)
-
-The `worker-default` feature implies `worker-thread`.
 
 ### `rayon`
 
@@ -1152,12 +1127,11 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 | `no-preconditions-default` | Drop the R-side type checks from every wrapper | `preconditions` |
 | `r6-default` | R6 class system for impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks | `env`, `r6`, etc. |
-| `worker-default` | Force worker thread execution (implies `worker-thread`; deprecated, #2117) | `no_worker` |
 
 **Note:** The tagged-condition transport (panics, `Err`, `None` → tagged SEXP → R wrapper
 raises a structured `rust_*` condition) and main thread execution are **hardcoded
 defaults** with no opt-out. The `unwrap_in_r` attribute is orthogonal (Result-as-value
-vs Result-as-error-boundary). Opt into the worker thread per-function with `worker`.
+vs Result-as-error-boundary).
 
 **Mutual exclusivity:** `r6-default`/`s7-default` cannot be enabled simultaneously.
 
@@ -1209,7 +1183,6 @@ Feature implications (automatically enabled):
 | `rand_distr` | `rand` |
 | `indicatif` | `connections`, `nonapi` |
 | `datafusion` | `arrow` |
-| `worker-default` | `worker-thread` |
 
 ---
 
@@ -1226,4 +1199,4 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- How feature-gated types convert to/from R
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features
-- [THREADS.md](THREADS.md) -- Worker-thread routing and optional non-API stack controls
+- [THREADS.md](THREADS.md) -- The main-thread invariant and optional non-API stack controls

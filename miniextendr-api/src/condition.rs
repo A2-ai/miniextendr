@@ -127,8 +127,8 @@
 //! [`RValue::debug`](crate::RValue::debug) escape hatch, which stringifies any
 //! `T: Debug`. For nested lists or complex/raw/NA-bearing values build an
 //! [`RValue`](crate::RValue) directly. The payload is built as a Send-safe owned
-//! value at the call site and materialised as R objects on the main thread — so
-//! `data =` works from worker-thread code too.
+//! value at the call site and materialised as R objects at the unwind
+//! boundary.
 //!
 //! Three `data =` grammars are accepted (see [`crate::error!`]):
 //! - single pair: `data = ("name", value)`
@@ -155,8 +155,8 @@
 /// [`crate::error_value::make_rust_condition_value`]. Each value is an
 /// [`RValue`](crate::RValue) — an owned, `Send`, R-native value tree. Send-safe
 /// by construction (no live `SEXP`), so the payload can travel through
-/// `panic_any` and cross the worker→main thread boundary; the R objects are
-/// materialised on the main thread at the unwind boundary.
+/// `panic_any`, whose payload must be `Send`; the R objects are materialised
+/// on the main thread at the unwind boundary.
 ///
 /// The macros accept any value with `RValue: From<_>` (scalars and `Vec`s of
 /// `i32` / `f64` / `bool` / `String` / `&str`; their NA-aware `Option` /
@@ -233,8 +233,8 @@ impl ConditionCall {
 /// Every variant carries the same four parts: the message, the user classes
 /// (prepended to the `rust_*` layering, empty for none), the optional `data`
 /// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
-/// the payload can be queued from a worker thread. Each variant is one kind
-/// of the tagged condition value ([`crate::error_value::kind`]).
+/// the payload can travel through `panic_any`. Each variant is one kind of the
+/// tagged condition value ([`crate::error_value::kind`]).
 #[derive(Debug, Clone)]
 pub enum RCondition {
     /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
@@ -316,6 +316,9 @@ impl RCondition {
     ///
     /// Preserves its declared kind, classes, fields and call policy, including
     /// for a mixed-kind enum. Errors queued here stop R at that boundary.
+    ///
+    /// Panics off R's main thread; see
+    /// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).
     pub fn defer(self) {
         crate::deferred_condition::defer(self);
     }
@@ -594,10 +597,6 @@ pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
 /// [`deferred_condition::capture`](crate::deferred_condition::capture)). A
 /// caught raise still runs the panic hook: with `MINIEXTENDR_BACKTRACE=true`
 /// it prints the panic to stderr.
-///
-/// Generated `#[miniextendr(worker)]` wrappers run the body through it on the
-/// worker thread: the payload is `Send`, so it crosses back to the main
-/// thread as a value and is raised there with its class, data and call kept.
 pub fn catch_condition<T>(f: impl FnOnce() -> T) -> Result<T, RCondition> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(value) => Ok(value),
@@ -875,10 +874,9 @@ macro_rules! __mx_condition_parts {
 /// `String` (plus `&str` / `Vec<&str>`, converted to owned); their NA-aware
 /// `Option` / `Vec<Option<_>>` forms (→ R `NA`); the wide-integer ladder (`i64`
 /// / `u32`); and the [`RValue::debug`](crate::RValue::debug) escape hatch for
-/// any `T: Debug`. The payload must be `Send` — it travels through `panic_any`
-/// and may cross the worker→main thread boundary, so live `SEXP`s cannot ride
-/// along; the R objects are materialised on the main thread at the unwind
-/// boundary. For nested lists or complex/raw values build an
+/// any `T: Debug`. The payload is owned — it travels through `panic_any`, so
+/// live `SEXP`s cannot ride along; the R objects are materialised on the main
+/// thread at the unwind boundary. For nested lists or complex/raw values build an
 /// [`RValue`](crate::RValue) directly.
 ///
 /// # Conditions without a call

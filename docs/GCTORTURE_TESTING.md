@@ -19,7 +19,7 @@ and a recipe for running it across the full `rpkg/` test suite.
   devel/oldrel — that's the strict-allocator signature for a UAF that other runtimes
   tolerate.
 - Before merging anything that touches `serde/columnar.rs`, ALTREP code, ExternalPtr
-  storage, or the worker-thread serializer.
+  storage, or the ExternalPtr serializer.
 
 ## The two pitfalls
 
@@ -129,8 +129,6 @@ For a tighter feedback loop while bisecting:
   imbalances surface as panics from `R_PPStackTop` overflow, not gctorture firings.
 - **Cross-`.Call` lifetime bugs** that depend on R-side caching (e.g., an ExternalPtr
   that survives one call only because R's namespace cached the wrapping closure).
-- **Thread-affine bugs** — gctorture is single-threaded and won't reproduce data races
-  across the worker thread.
 - **ALTREP materialization order issues** — gctorture stresses GC, not lazy-eval ordering.
 
 ## Project-specific reference

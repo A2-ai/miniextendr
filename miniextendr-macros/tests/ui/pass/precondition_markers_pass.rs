@@ -3,8 +3,7 @@
 //! per-parameter `preconditions` / `no_preconditions`, and the method-level
 //! bare and list forms, with agreeing combinations, borrowed inner types,
 //! `coerce` and `no_na`. The generated conversion reads the inner type and
-//! wraps the value back for the call. (The worker path needs the
-//! `worker-thread` feature; rpkg covers it.)
+//! wraps the value back for the call.
 
 #![allow(dead_code)]
 

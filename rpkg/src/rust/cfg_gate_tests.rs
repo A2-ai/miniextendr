@@ -29,7 +29,7 @@ macro_rules! gated_class {
             pub fn cfg_value(&self) -> i32 { self.value }
 
             #[cfg(any())]
-            #[miniextendr($system(worker))]
+            #[miniextendr($system(check_interrupt))]
             pub fn cfg_disabled(_value: MissingType) -> MissingType { unreachable!() }
 
             #[cfg_attr(all(), cfg_attr(all(), miniextendr(r_name = "cfg_renamed")))]

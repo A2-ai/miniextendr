@@ -1312,7 +1312,7 @@ fn read_console_line(line: &mut Vec<u8>) -> std::io::Result<()> {
     use crate::SexpExt;
     use crate::expression::RCall;
 
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         return Err(std::io::Error::other(
             "RStdin can only be read on R's main thread",
         ));
@@ -1430,7 +1430,7 @@ impl std::io::Read for RStdin {
 //   1 = stderr (message/diagnostic output)
 //
 // Calls from a non-main thread are silently dropped — writing to the R
-// console from a worker thread is unsound (R API is not thread-safe).
+// console from another thread is unsound (R API is not thread-safe).
 //
 // This is `pub(crate)` so [`crate::progress`] can route its terminal-connection
 // branch through the same console hook (the `indicatif` integration dispatches
@@ -1439,7 +1439,7 @@ pub(crate) fn write_console_to(buf: &[u8], otype: std::os::raw::c_int) -> usize 
     if buf.is_empty() {
         return 0;
     }
-    if !crate::worker::is_r_main_thread() {
+    if !crate::is_r_main_thread() {
         return 0;
     }
     // Construct a temporary null-terminated copy for %s printing.

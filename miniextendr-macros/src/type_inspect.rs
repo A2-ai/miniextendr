@@ -172,112 +172,6 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
-/// Framework type names that hold R memory and are `!Send` by design.
-///
-/// Used only for thread-strategy selection: values of these types can neither
-/// move into the worker closure nor cross back out of it (`run_on_worker`
-/// requires `Send`), so any function touching one stays on the main thread
-/// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
-/// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
-/// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`, `Preserved`,
-/// `REvalError`, `RTxtProgressBar`). Arbitrary user `!Send` types can't be
-/// detected syntactically — those need an explicit `no_worker`.
-const MAIN_THREAD_BOUND: &[&str] = &[
-    "SEXP",
-    // Condition-call markers wrap the `.call` slot's SEXP (#1566).
-    "Call",
-    "CallerCall",
-    // Unevaluated-argument markers hold the argument's expression and
-    // environment (#1835); `Missing<..>` around them is checked by the caller.
-    "Quoted",
-    "Quosure",
-    // The unforced dots hold the wrapper's frame and evaluate R code (#1892).
-    "LazyDots",
-    "AltrepSexp",
-    "RDVector",
-    "RDMatrix",
-    "RndVec",
-    "RndMat",
-    "ProtectedStrVec",
-    "StrVec",
-    "RCow",
-    "BuiltDataFrame",
-    "NamedListBuilder",
-    "BuiltList",
-    "DataFrameShape",
-    // Precious-list roots: a `Preserved` handle, the `REvalError` an R
-    // evaluation fails with, which keeps its condition in one, and an
-    // `RTxtProgressBar`.
-    "Preserved",
-    "REvalError",
-    "RTxtProgressBar",
-];
-
-/// Returns `true` if `ty` is an input type bound to the R main thread.
-///
-/// Checks rooted borrowing conversions (including character-vector Cow
-/// containers), then the outermost path segment for other framework handles.
-/// Return-type analysis keeps the narrower [`is_sexp_type`] and uses the
-/// recursive [`is_main_thread_bound_return`] for thread selection.
-#[inline]
-pub(crate) fn is_main_thread_bound_input(ty: &syn::Type) -> bool {
-    is_rooted_view(ty)
-        // A borrowed external argument holds its value's `RefCell` borrow on
-        // the main thread, like a `&self` receiver (#2106).
-        || crate::externalptr_args::external_arg(ty).is_some()
-        || matches!(ty, syn::Type::Path(p) if p
-        .path
-        .segments
-        .last()
-        .map(|s| MAIN_THREAD_BOUND.contains(&s.ident.to_string().as_str()))
-        .unwrap_or(false))
-}
-
-/// Returns `true` if `ty` is (or contains) a main-thread-bound type anywhere
-/// in a return position — e.g. `BuiltDataFrame`, `Result<BuiltDataFrame,
-/// String>`, `Option<DataFrameShape>`, `Vec<BuiltDataFrame>`.
-///
-/// Unlike inputs, main-thread-bound returns routinely nest inside `Result` /
-/// `Option` / containers, so this walks the whole type tree. Under
-/// `worker-default` a function whose return type matches is forced onto the
-/// main thread: the value owns R memory (`!Send`) and cannot cross back from
-/// the worker (`run_on_worker` requires `T: Send`).
-pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
-    match ty {
-        syn::Type::Path(p) => p.path.segments.last().is_some_and(|seg| {
-            if MAIN_THREAD_BOUND.contains(&seg.ident.to_string().as_str()) {
-                return true;
-            }
-            if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-                return ab.args.iter().any(|arg| {
-                    matches!(arg, syn::GenericArgument::Type(t) if is_main_thread_bound_return(t))
-                });
-            }
-            false
-        }),
-        syn::Type::Reference(r) => is_main_thread_bound_return(&r.elem),
-        syn::Type::Paren(p) => is_main_thread_bound_return(&p.elem),
-        syn::Type::Group(g) => is_main_thread_bound_return(&g.elem),
-        syn::Type::Tuple(t) => t.elems.iter().any(is_main_thread_bound_return),
-        syn::Type::Array(a) => is_main_thread_bound_return(&a.elem),
-        syn::Type::Slice(s) => is_main_thread_bound_return(&s.elem),
-        _ => false,
-    }
-}
-
-/// Returns `true` if a method signature passes an R value across the call: a
-/// main-thread-bound input (an unevaluated `Quoted` / `Quosure` under
-/// `Missing<..>` too) or a main-thread-bound return. Such a static method stays
-/// on the main thread even when `worker` or `worker-default` selects the
-/// worker, the rule standalone functions follow.
-pub(crate) fn signature_holds_r_values(sig: &syn::Signature) -> bool {
-    sig.inputs.iter().any(|arg| {
-        matches!(arg, syn::FnArg::Typed(pt)
-            if is_main_thread_bound_input(&pt.ty) || unevaluated_param(&pt.ty).is_some())
-    }) || matches!(&sig.output, syn::ReturnType::Type(_, ty) if is_main_thread_bound_return(ty))
-}
-
 // region: condition-call markers (#1566)
 
 /// Detect a condition-call marker parameter type: `Call` selects `wrapper`
@@ -405,8 +299,7 @@ pub(crate) fn is_rooted_view(ty: &syn::Type) -> bool {
 
 /// Explicit shared reference forms whose main-thread conversions borrow a root:
 /// the references, their `Option`s, and `Vec`s of either (nested `Vec`s too).
-/// Keep worker selection separate: `&str` uses owned storage on the worker,
-/// while mutable/custom references still need their existing conversion path.
+/// Mutable and custom references keep their own conversion path.
 pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
     let ty = option_inner_type(ty).unwrap_or(ty);
     if let syn::Type::Path(path) = ty
@@ -439,9 +332,10 @@ pub(crate) fn is_rooted_reference(ty: &syn::Type) -> bool {
 
 /// A `'static` borrowed parameter (`StrVec<'static>`, `Cow<'static, str>`,
 /// `&'static [T]`, `Option<&'static str>`) can never be bound: its root is the
-/// call's argument slot, or on the worker a copy that ends with the call. Returns the statement that binds `ident` with a
-/// `compile_error!` naming the fix, spanned at the lifetime, in place of a
-/// borrow-checker error about a generated temporary. The binding keeps the code
+/// call's argument slot, or a copy that ends with the call. Returns the
+/// statement that binds `ident` with a `compile_error!` naming the fix,
+/// spanned at the lifetime, in place of a borrow-checker error about a
+/// generated temporary. The binding keeps the code
 /// that uses `ident` free of follow-on errors; it does not diverge, so that
 /// code draws no unreachable warning.
 pub(crate) fn static_rooted_view_binding(

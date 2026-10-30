@@ -485,9 +485,7 @@ pub fn rust_get_stderr() -> miniextendr_api::connection::RStderr {
 /// Useful for capturing stderr output from Rust code via `capture.output()`.
 /// @param message Character string to emit on stderr.
 #[cfg(feature = "connections")]
-// R's connections are written on R's main thread: stay there under
-// `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rust_write_to_stderr(message: String) {
     use miniextendr_api::connection::RStderr;
     use std::io::Write;
@@ -504,9 +502,7 @@ pub fn rust_write_to_stderr(message: String) {
 /// @param size Buffer size in bytes.
 /// @return Character vector with one element per read.
 #[cfg(feature = "connections")]
-// RStdin reads R's console on R's main thread only: stay there under
-// `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rust_stdin_read_chunks(size: usize) -> Vec<String> {
     use miniextendr_api::connection::RStdin;
     use std::io::Read;
@@ -527,9 +523,7 @@ pub fn rust_stdin_read_chunks(size: usize) -> Vec<String> {
 /// @param n Maximum number of lines.
 /// @return Character vector of the lines, without their line terminators.
 #[cfg(feature = "connections")]
-// RStdin reads R's console on R's main thread only: stay there under
-// `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rust_stdin_lines(n: usize) -> Vec<String> {
     use miniextendr_api::connection::RStdin;
     RStdin
@@ -548,9 +542,7 @@ pub fn rust_stdin_lines(n: usize) -> Vec<String> {
 /// @return Character vector: the first read, the rest of its line (through
 ///   `RStdin::lock()`), the next line (through `RStdin::read_line()`).
 #[cfg(feature = "connections")]
-// RStdin reads R's console on R's main thread only: stay there under
-// `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn rust_stdin_read_then_lines(size: usize) -> Vec<String> {
     use miniextendr_api::connection::RStdin;
     use std::io::{BufRead, Read};

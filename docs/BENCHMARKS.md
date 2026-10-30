@@ -6,7 +6,7 @@ numbers actually mean.
 
 `miniextendr-bench` embeds R through `miniextendr-engine`, exercises
 every FFI path the runtime cares about (conversions, ALTREP,
-ExternalPtr, worker routing, trait ABI, unwind protection, GC
+ExternalPtr, trait ABI, unwind protection, GC
 protection, class dispatch, …), and prints numbers that engineers can
 compare against an earlier baseline before landing a change.
 
@@ -19,7 +19,7 @@ miniextendr's selling points are safety, small FFI overhead, and
 ALTREP throughput. Those are empirical claims. The only way to keep
 them true across refactors is to measure them. Every non-trivial
 change to a hot path (conversions, ALTREP callbacks, unwind protect,
-worker dispatch, class-system codegen) should be accompanied by at
+class-system codegen) should be accompanied by at
 least one `just bench`/`just bench-save` run and, ideally, a
 `just bench-drift` check against the prior baseline.
 
@@ -32,8 +32,7 @@ entry points. R hands the callee an array of `SEXP` arguments and
 receives a `SEXP` back. No marshalling, no serialisation, no IPC.
 Most of what these benchmarks measure is the thin work that happens
 on top of that already-fast call: argument conversion, GC protection,
-unwind guarding, ALTREP materialisation, and the occasional hop to
-the worker thread. If a benchmark moves, it is one of those layers
+unwind guarding and ALTREP materialisation. If a benchmark moves, it is one of those layers
 that moved, not the `.Call()` dispatch itself.
 
 ## Running benchmarks
@@ -54,7 +53,7 @@ just bench
 just bench --bench trait_abi
 
 # Core high-signal subset (ffi_calls, into_r, from_r, translate,
-# strings, externalptr, worker, unwind_protect)
+# strings, externalptr, unwind_protect)
 just bench-core
 
 # Feature-gated (connections, rayon)
@@ -87,13 +86,13 @@ supports regex filtering and baseline save/compare:
 # Only run the `altrep_int_dataptr` benchmarks inside the altrep target
 just bench --bench altrep -- altrep_int_dataptr
 
-# Save a divan baseline named "main" for the worker target
+# Save a divan baseline named "main" for the unwind_protect target
 cargo bench --manifest-path=miniextendr-bench/Cargo.toml \
-  --bench worker -- --save-baseline main
+  --bench unwind_protect -- --save-baseline main
 
 # …make changes, then compare against that baseline
 cargo bench --manifest-path=miniextendr-bench/Cargo.toml \
-  --bench worker -- --baseline main
+  --bench unwind_protect -- --baseline main
 ```
 
 ## Structured baselines and drift detection
@@ -187,7 +186,7 @@ high-level plan lives in `miniextendr-bench/src/bench_plan.rs`.
 | `into_r` | `IntoR` scalar and vector (incl. 1 M-element scale benchmarks) |
 | `list` | List construction, named lookup, derive-based builders |
 | `native_vs_coerce` | RNative memcpy path vs element-wise coercion |
-| `panic_telemetry` | Panic-hook `RwLock` read cost, fire cost |
+| `panic_telemetry` | Panic-hook slot read cost, fire cost |
 | `preserve` | Preserve list insert/release vs `PROTECT`/`UNPROTECT` |
 | `raw_access` | `r_slice`, unchecked slice, raw pointer access across INTSXP/REALSXP |
 | `rarray` | `RArray`/`RMatrix` row/col access patterns |
@@ -201,7 +200,6 @@ high-level plan lives in `miniextendr-bench/src/bench_plan.rs`.
 | `translate` | `R_CHAR` vs `translateCharUTF8` extraction costs |
 | `typed_list` | `typed_list!` validation across field count |
 | `unwind_protect` | `with_r_unwind_protect` overhead; nested layers; panic path |
-| `worker` | Worker-thread round-trip, channel saturation, batching, payload size |
 | `wrappers` | Generated R wrapper dispatch (plain, env, R6, S3, S4, S7); requires rpkg installed |
 
 Each benchmark uses the shared `miniextendr_bench::init()` harness
@@ -227,8 +225,8 @@ Rules of thumb:
 
 - For anything under ~50 ns, absolute deltas are almost always below
   measurement noise. Compare *ratios* across a size matrix instead.
-- For ALTREP and worker paths, always report both the cold path
-  (first call, includes class/channel init) and the hot path.
+- For ALTREP paths, always report both the cold path
+  (first call, includes class init) and the hot path.
 - String and CHARSXP allocation dominates large-vector conversion
   timings. Changes in `strings`/`into_r` that don't touch
   `mkCharLenCE` should not move those numbers.
@@ -246,8 +244,6 @@ Commit `00df79d4` on `main`.
 
 | Subsystem | Operation | Median | Notes |
 |-----------|-----------|--------|-------|
-| Worker thread | `run_on_worker_no_r` | 0.46 ns | compiles to inline call |
-| Worker thread | `with_r_thread` (on main) | 11.6 ns | near free |
 | Unwind protect | `with_r_unwind_protect` | 32.6 ns | overhead vs direct |
 | Unwind protect | nested 5 layers | 161 ns | linear |
 | `catch_unwind` | success path | 0.46 ns | |

@@ -252,8 +252,7 @@ argument to act on:
 - a class or trait method taking one (only standalone functions, standalone
   S3 methods included, pass arguments unevaluated; methods are #1839).
 
-A function taking either marker runs on R's main thread (also under
-`worker`), and a marker borrows the `.Call()` argument: it cannot be stored
+A marker borrows the `.Call()` argument: it cannot be stored
 or sent to another thread. A written lifetime (`Quoted<'a>`) is accepted.
 
 ## Handler-keeping evaluation

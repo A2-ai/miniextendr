@@ -154,7 +154,7 @@ prints how to enter and remove it.
    `MINIEXTENDR_STRESS` unset so the opt-in gctorture blocks — which have
    their own CI job — don't run under the much slower interpreter). Suite counts are
    reported but test failures never gate: many tests legitimately fail or
-   skip under wasm (worker-thread / fork / subprocess assumptions). Only a
+   skip under wasm (thread / fork / subprocess assumptions). Only a
    harness error before the counts line turns the gate red, and a 20-minute
    in-runner budget abandons (without failing) a wedged suite.
 
@@ -388,8 +388,6 @@ rig-installed arm64 `R` on `PATH` (see "arm64-native dev image" below).
   on the host (e.g. `dyn.load`-based wrapper-gen) is gated off via
   `IS_WASM_INSTALL`; R wrappers and `wasm_registry.rs` are pre-generated
   by Phase 1's native build and shipped through into Phase 2's source tree.
-- **Worker thread is off.** R-on-WASM is single-threaded; the
-  `worker-thread` feature must be disabled. Already feature-gated.
 - **`RUSTFLAGS` for the side-module** are set by `rpkg/configure.ac`'s
   `is_wasm_install` branch (and mirrored into the minirextendr templates):
   `-Zdefault-visibility=hidden` (#494). This flag is load-bearing, not

@@ -231,39 +231,28 @@ fn alias_guard_covers_native_scalar_and_boxed_borrows() {
     }
 }
 
-/// A `no_na` parameter's converted value is checked in both wrappers; in the
-/// worker wrapper the check runs on the main thread, before `run_on_worker`.
+/// A `no_na` parameter's converted value is checked in the wrapper.
 #[test]
-fn no_na_check_renders_in_main_thread_and_worker_wrappers() {
+fn no_na_check_renders_in_the_wrapper() {
     let sig: syn::ItemFn = syn::parse_quote!(
         fn dose(x: AsNumeric) -> f64 {}
     );
-    let ctx = |strategy: ThreadStrategy| {
-        CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_dose))
-            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_dose))
-            .call_expr(quote::quote!(dose(x)))
-            .inputs(sig.sig.inputs.clone())
-            .output(sig.sig.output.clone())
-            .thread_strategy(strategy)
-            .no_na("x".to_string(), None)
-            .build()
-            .generate()
-            .to_string()
-    };
+    let main = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_dose))
+        .r_wrapper_const(syn::parse_quote!(R_WRAPPER_dose))
+        .call_expr(quote::quote!(dose(x)))
+        .inputs(sig.sig.inputs.clone())
+        .output(sig.sig.output.clone())
+        .no_na("x".to_string(), None)
+        .build()
+        .generate()
+        .to_string();
     let check = ":: miniextendr_api :: TryFromSexp :: __mx_has_na (& x)";
-
-    let main = ctx(ThreadStrategy::MainThread);
     assert!(main.contains(check), "{main}");
     assert!(main.contains("\"'x' must not be NA\""), "{main}");
-
-    let worker = ctx(ThreadStrategy::WorkerThread);
-    let at = worker.find(check).expect("the check in the worker wrapper");
-    let dispatch = worker.find("run_on_worker").expect("the worker dispatch");
-    assert!(at < dispatch, "{worker}");
 }
 
 #[test]
-fn every_none_error_path_uses_the_r_name_on_both_threads() {
+fn every_none_error_path_uses_the_r_name() {
     for handling in [ReturnHandling::OptionUnit, ReturnHandling::OptionSexp] {
         let context =
             CWrapperContext::builder(syn::parse_quote!(rust_name), syn::parse_quote!(C_test))
@@ -273,18 +262,15 @@ fn every_none_error_path_uses_the_r_name_on_both_threads() {
                 .return_handling(handling)
                 .build();
         let call = quote::quote!(rust_name());
-        let main = context.generate_return_handling(&call).to_string();
-        let (_, worker) = context.generate_worker_return_handling(&call);
-        for tokens in [main, worker.to_string()] {
-            assert!(
-                tokens.contains("`visible.name()` returned no value"),
-                "{tokens}"
-            );
-            assert!(
-                !tokens.contains("`rust_name()` returned no value"),
-                "{tokens}"
-            );
-        }
+        let tokens = context.generate_return_handling(&call).to_string();
+        assert!(
+            tokens.contains("`visible.name()` returned no value"),
+            "{tokens}"
+        );
+        assert!(
+            !tokens.contains("`rust_name()` returned no value"),
+            "{tokens}"
+        );
     }
 }
 
@@ -302,17 +288,13 @@ fn option_self_returns_give_null_for_none() {
     let call = quote::quote!(rust_name());
 
     let lookup = context(ReturnHandling::OptionExternalPtr);
-    let main = lookup.generate_return_handling(&call).to_string();
-    let (_, worker) = lookup.generate_worker_return_handling(&call);
-    for tokens in [main, worker.to_string()] {
-        assert!(
-            tokens.contains("map (:: miniextendr_api :: externalptr :: ExternalPtr :: new)"),
-            "{tokens}"
-        );
-        assert!(!tokens.contains("NONE_ERR"), "{tokens}");
-    }
+    let tokens = lookup.generate_return_handling(&call).to_string();
+    assert!(
+        tokens.contains("map (:: miniextendr_api :: externalptr :: ExternalPtr :: new)"),
+        "{tokens}"
+    );
+    assert!(!tokens.contains("NONE_ERR"), "{tokens}");
 
-    // Self-handle returns belong to instance methods, which cannot run on workers.
     let step = context(ReturnHandling::SelfHandleOption);
     let main = step.generate_return_handling(&call).to_string();
     assert!(
@@ -341,7 +323,6 @@ fn argument_borrows_follow_conversion() {
         .r_wrapper_const(syn::parse_quote!(R_WRAPPER_pair))
         .call_expr(quote::quote!(pair(a, b, c, d)))
         .inputs(sig.sig.inputs.clone())
-        .thread_strategy(ThreadStrategy::MainThread)
         .post_conversion(vec![quote::quote!(post_conversion_marker();)])
         .type_context(syn::parse_quote!(Counter))
         .preserve_param_names()
@@ -490,8 +471,7 @@ fn explicit_class_wrap_converts_an_optional_payload() {
     ));
 }
 
-/// `OptionClassPayload` gives NULL for `None` on both threads, never the
-/// absence error.
+/// `OptionClassPayload` gives NULL for `None`, never the absence error.
 #[test]
 fn optional_class_payload_none_is_null() {
     let context = CWrapperContext::builder(syn::parse_quote!(find), syn::parse_quote!(C_test))
@@ -501,13 +481,10 @@ fn optional_class_payload_none_is_null() {
         .return_handling(ReturnHandling::OptionClassPayload)
         .build();
     let call = quote::quote!(find());
-    let main = context.generate_return_handling(&call).to_string();
-    let (_, worker) = context.generate_worker_return_handling(&call);
-    for tokens in [main, worker.to_string()] {
-        assert!(tokens.contains("SEXP :: nil ()"), "{tokens}");
-        assert!(tokens.contains("into_sexp"), "{tokens}");
-        assert!(!tokens.contains("NONE_ERR"), "{tokens}");
-    }
+    let tokens = context.generate_return_handling(&call).to_string();
+    assert!(tokens.contains("SEXP :: nil ()"), "{tokens}");
+    assert!(tokens.contains("into_sexp"), "{tokens}");
+    assert!(!tokens.contains("NONE_ERR"), "{tokens}");
 }
 
 #[test]
@@ -522,7 +499,6 @@ fn converted_references_keep_metadata_and_roots_without_external_guards() {
         let context = CWrapperContext::builder(syn::parse_quote!(f), syn::parse_quote!(C_f))
             .inputs(syn::parse_quote!(x: #ty))
             .call_expr(quote::quote!(f(x)))
-            .thread_strategy(ThreadStrategy::WorkerThread)
             .with_convert_param("x".into())
             .build();
         let code = context.generate().to_string();
@@ -531,7 +507,6 @@ fn converted_references_keep_metadata_and_roots_without_external_guards() {
         assert!(code.contains("assert_no_aliases"), "{code}");
         assert!(!code.contains("__mx_external_arg"), "{code}");
         assert!(!code.contains("__mx_borrow"), "{code}");
-        assert!(!code.contains("run_on_worker"), "{code}");
         if converter == "TryFromRoot" {
             assert!(code.contains("__mx_roots_x . rooted"), "{code}");
         }
@@ -553,8 +528,7 @@ fn convert_on_a_native_reference_keeps_its_conversion() {
     let conversion_of_x = |ty: &syn::Type, convert: bool| {
         let mut builder = CWrapperContext::builder(syn::parse_quote!(f), syn::parse_quote!(C_f))
             .inputs(syn::parse_quote!(x: #ty, y: i32))
-            .call_expr(quote::quote!(f(x, y)))
-            .thread_strategy(ThreadStrategy::MainThread);
+            .call_expr(quote::quote!(f(x, y)));
         if convert {
             builder = builder.with_convert_param("x".into());
         }

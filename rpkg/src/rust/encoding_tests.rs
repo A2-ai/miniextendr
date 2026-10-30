@@ -31,8 +31,7 @@ pub fn encoding_info_available() -> bool {
 ///
 /// Used by `tests/testthat/test-encoding.R` to verify both the success and
 /// failure paths after `Sys.setlocale()` flips `LC_CTYPE`.
-// `Rf_error` must run on R's main thread: stay there under `worker-default`.
-#[miniextendr(no_worker)]
+#[miniextendr]
 pub fn assert_utf8_locale_now() -> bool {
     encoding::miniextendr_assert_utf8_locale();
     true

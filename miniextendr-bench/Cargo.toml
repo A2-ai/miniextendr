@@ -110,10 +110,6 @@ name = "unwind_protect"
 harness = false
 
 [[bench]]
-name = "worker"
-harness = false
-
-[[bench]]
 name = "wrappers"
 harness = false
 

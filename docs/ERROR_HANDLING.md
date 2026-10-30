@@ -545,15 +545,13 @@ This is a defensive measure -- in practice, hook installation should not fail.
 
 ### Main Thread Requirement
 
-R API calls must happen on R's main thread. Checked FFI wrappers route calls
-from an active miniextendr worker context back to that thread and panic for
-arbitrary off-main callers in every build mode. Some lower-level SEXP accessors
-also retain debug assertions:
+R API calls must happen on R's main thread. Checked FFI wrappers run the call
+inline there and panic for any off-main caller in every build mode:
 
 ```rust
 #[miniextendr]
 pub fn my_function() {
-    // Runs directly here because default exports execute on R's main thread.
+    // Runs directly here: every export executes on R's main thread.
     r_println!("Hello from R!");
 }
 ```
@@ -563,13 +561,13 @@ pub fn my_function() {
 Explicitly check thread context:
 
 ```rust
-use miniextendr_api::worker::is_r_main_thread;
+use miniextendr_api::is_r_main_thread;
 
 pub fn internal_function() {
     if is_r_main_thread() {
         r_println!("On main thread");
     } else {
-        eprintln!("On worker thread");
+        eprintln!("On another thread");
     }
 }
 ```
@@ -934,9 +932,8 @@ Rules:
   written, but `kind = "error"`, no `e$param` / `e$rust_type`, no crate class
   and no parameter in the message. Return the error, or refuse in a newtype's
   check, for an argument error.
-- **Worker and `call = caller`.** The conversion runs on the main thread in
-  both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
-  follows the function's call attribution.
+- **`call = caller`.** The class, data and `e$param` are the same;
+  `conditionCall(e)` follows the function's call attribution.
 - **Sidecar setters** (`Type_set_<field>`, and the R6 / S7 bindings over them)
   raise the same condition on their `value` formal, naming the field:
   `'<field>' must be <expected>: <reason>` (`'count' must be a number: got "abc"`,
@@ -1262,11 +1259,6 @@ std::thread::spawn(|| {
     eprintln!("Hello!");  // Rust-only output is safe
 });
 
-// For miniextendr's opt-in worker, route R work to the main thread:
-#[miniextendr(worker)]
-fn routed_output() {
-    with_r_thread(|| r_println!("Hello!"));
-}
 ```
 
 ### 3. Ignoring Result
@@ -1304,7 +1296,7 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide feature defaults
 - [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md) -- Complete `#[miniextendr]` option reference
 - [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) -- `MINIEXTENDR_BACKTRACE` and other env vars
-- [THREADS.md](THREADS.md) -- Worker thread architecture and thread safety
+- [THREADS.md](THREADS.md) -- The main-thread invariant and thread safety
 - [SAFETY.md](SAFETY.md) -- Safety invariants (R_UnwindProtect, GC protection)
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#error-cases) -- Type conversion error messages
 - [MACRO_ERRORS.md](MACRO_ERRORS.md) -- Proc-macro and lint error codes
