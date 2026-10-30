@@ -1683,6 +1683,39 @@ pub fn conv_dots_names_report(dots: ...) -> ListNamesReport {
 }
 // endregion
 
+// region: List classes (`#[into_list(class = ...)]`, #2273)
+
+/// A list-mode struct whose list has two classes.
+#[miniextendr(list)]
+#[into_list(class = ["mx_classed_fit", "mx_classed_result"])]
+pub struct ClassedFit {
+    estimate: f64,
+    n: i32,
+}
+
+/// A tuple struct whose unnamed list has one class.
+#[derive(miniextendr_api::IntoList)]
+#[into_list(class = "mx_classed_pair")]
+pub struct ClassedPair(i32, String);
+
+/// Test `#[into_list(class = ...)]` through `#[miniextendr(list)]`: returns
+/// `list(estimate = 1.5, n = 3L)` with class `c("mx_classed_fit", "mx_classed_result")`.
+#[miniextendr]
+pub fn conv_classed_fit() -> ClassedFit {
+    ClassedFit {
+        estimate: 1.5,
+        n: 3,
+    }
+}
+
+/// Test `#[into_list(class = ...)]` through `AsList`: returns `list(7L, "b")`
+/// with class `"mx_classed_pair"`.
+#[miniextendr]
+pub fn conv_classed_pair() -> miniextendr_api::convert::AsList<ClassedPair> {
+    miniextendr_api::convert::AsList(ClassedPair(7, "b".to_string()))
+}
+// endregion
+
 // region: Tuple arguments (TryFromSexp for tuples, #976)
 
 /// Test 1-tuple argument round-trip: reads a 1-element unnamed list as `(i32,)` and returns it.

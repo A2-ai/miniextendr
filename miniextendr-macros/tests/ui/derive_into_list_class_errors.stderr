@@ -1,0 +1,35 @@
+error: unknown #[into_list(...)] option on a struct; supported: class (`ignore` goes on a field)
+ --> tests/ui/derive_into_list_class_errors.rs:6:13
+  |
+6 | #[into_list(ignore)]
+  |             ^^^^^^
+
+error: `class` is a struct option: put #[into_list(class = ...)] on the struct
+  --> tests/ui/derive_into_list_class_errors.rs:13:17
+   |
+13 |     #[into_list(class = "a")]
+   |                 ^^^^^
+
+error: `class` needs at least one class name
+  --> tests/ui/derive_into_list_class_errors.rs:18:13
+   |
+18 | #[into_list(class = [])]
+   |             ^^^^^^^^^^
+
+error: a class name can't be empty
+  --> tests/ui/derive_into_list_class_errors.rs:24:27
+   |
+24 | #[into_list(class = ["a", ""])]
+   |                           ^^
+
+error: a list can't have class "factor" (R refuses it on anything but an integer vector)
+  --> tests/ui/derive_into_list_class_errors.rs:30:27
+   |
+30 | #[into_list(class = ["a", "factor"])]
+   |                           ^^^^^^^^
+
+error: duplicate `class` option
+  --> tests/ui/derive_into_list_class_errors.rs:36:26
+   |
+36 | #[into_list(class = "a", class = "b")]
+   |                          ^^^^^

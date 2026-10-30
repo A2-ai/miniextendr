@@ -223,6 +223,17 @@ fn expand_struct(
         .into();
     }
 
+    // A list's class belongs on the derive's own attribute.
+    if effective_list && attrs.class.is_some() {
+        return syn::Error::new(
+            item_struct.ident.span(),
+            "in list mode, set the list's class with #[into_list(class = \"...\")] \
+             on the struct",
+        )
+        .into_compile_error()
+        .into();
+    }
+
     // Reject ALTREP attrs on non-ALTREP paths
     if has_altrep_attrs && effective_mode {
         return syn::Error::new(

@@ -2952,6 +2952,8 @@ pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// - Named structs → named R list: `list(x = 1L, y = 2L)`
 /// - Tuple structs → unnamed R list: `list(1L, 2L)`
 /// - Fields annotated `#[into_list(ignore)]` are skipped
+/// - `#[into_list(class = "a")]` / `#[into_list(class = ["a", "b"])]` on the
+///   struct sets the list's `class` attribute to exactly those classes
 #[proc_macro_derive(IntoList, attributes(into_list))]
 pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2969,6 +2971,7 @@ pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 /// - Tuple structs: extract by position (0, 1, 2, ...)
 /// - Fields annotated `#[into_list(ignore)]` are not read and are initialized with
 ///   `Default::default()`, so their types must be `Default`
+/// - The list's class is not checked, `#[into_list(class = ...)]` included
 #[proc_macro_derive(TryFromList, attributes(into_list))]
 pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);

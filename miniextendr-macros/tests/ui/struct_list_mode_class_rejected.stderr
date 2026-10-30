@@ -1,0 +1,5 @@
+error: in list mode, set the list's class with #[into_list(class = "...")] on the struct
+ --> tests/ui/struct_list_mode_class_rejected.rs:6:8
+  |
+6 | struct Fit {
+  |        ^^^
