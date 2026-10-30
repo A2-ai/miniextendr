@@ -27,9 +27,9 @@
 //! values it needs are strings, booleans and a single-line string array
 //! under one well-known table.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 use crate::r_wrapper_builder::CallAttribution;
 use crate::roxygen::ProseLinks;
@@ -113,8 +113,9 @@ impl std::fmt::Display for CrateConfigError {
 ///
 /// Returns the defaults when `CARGO_MANIFEST_DIR` is unset or its `Cargo.toml`
 /// cannot be read; only a present-but-malformed entry is an error. Results are
-/// cached per manifest directory, so a single proc-macro server process serving
-/// several crates (rust-analyzer) never leaks one crate's default into another.
+/// cached per thread and manifest directory, so a single proc-macro server
+/// process serving several crates (rust-analyzer) never leaks one crate's
+/// default into another.
 pub(crate) fn crate_config() -> Result<CrateConfig, CrateConfigError> {
     let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") else {
         return Ok(CrateConfig::default());
@@ -172,16 +173,16 @@ pub(crate) fn roxygen_prose_links() -> ProseLinks {
 
 /// [`crate_config`] for an explicit manifest directory (the cached entry point).
 pub(crate) fn crate_config_for_dir(dir: &Path) -> Result<CrateConfig, CrateConfigError> {
-    static CACHE: OnceLock<Mutex<HashMap<PathBuf, Result<CrateConfig, CrateConfigError>>>> =
-        OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut cache = cache
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    cache
-        .entry(dir.to_path_buf())
-        .or_insert_with(|| read_crate_config(&dir.join("Cargo.toml")))
-        .clone()
+    thread_local! {
+        static CACHE: RefCell<HashMap<PathBuf, Result<CrateConfig, CrateConfigError>>> =
+            RefCell::new(HashMap::new());
+    }
+    CACHE.with_borrow_mut(|cache| {
+        cache
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| read_crate_config(&dir.join("Cargo.toml")))
+            .clone()
+    })
 }
 
 /// Read and parse one manifest. Missing or unreadable files yield the defaults.

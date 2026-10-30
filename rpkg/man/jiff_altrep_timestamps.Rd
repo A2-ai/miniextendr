@@ -12,5 +12,5 @@ jiff_altrep_timestamps(n)
 \description{
 Create a JiffTimestampVec ALTREP containing n timestamps (0..n seconds after epoch).
 
-Returns a POSIXct (UTC) ALTREP REALSXP vector backed by Arc<Vec\if{html}{\out{<Timestamp>}}>.
+Returns a POSIXct (UTC) ALTREP REALSXP vector backed by \verb{Vec<Timestamp>}.
 }

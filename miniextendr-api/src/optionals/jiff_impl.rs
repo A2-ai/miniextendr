@@ -874,8 +874,6 @@ impl RDate for Date {
 
 // region: ALTREP lazy vector for Vec<Timestamp>
 
-use std::sync::Arc;
-
 use crate::altrep_data::{AltRealData, AltrepLen};
 
 /// ALTREP-backed lazy vector of `Timestamp`s.
@@ -885,16 +883,14 @@ use crate::altrep_data::{AltRealData, AltrepLen};
 #[derive(miniextendr_macros::AltrepReal)]
 #[altrep(class = "JiffTimestampVec", manual)]
 pub struct JiffTimestampVec {
-    /// Shared ownership of the timestamps.
-    pub data: Arc<Vec<Timestamp>>,
+    /// The timestamps.
+    pub data: Vec<Timestamp>,
 }
 
 impl JiffTimestampVec {
     /// Create a new ALTREP-backed timestamp vector.
     pub fn new(data: Vec<Timestamp>) -> Self {
-        Self {
-            data: Arc::new(data),
-        }
+        Self { data }
     }
 }
 
@@ -926,8 +922,8 @@ impl AltRealData for JiffTimestampVec {
 #[derive(miniextendr_macros::AltrepReal)]
 #[altrep(class = "JiffZonedVec", manual)]
 pub struct JiffZonedVec {
-    /// Shared ownership of the zoned datetimes.
-    pub data: Arc<Vec<Zoned>>,
+    /// The zoned datetimes.
+    pub data: Vec<Zoned>,
     /// Canonical IANA timezone name shared by every element.
     pub tzone: String,
 }
@@ -954,10 +950,7 @@ impl JiffZonedVec {
             }
             first
         };
-        Ok(Self {
-            data: Arc::new(data),
-            tzone,
-        })
+        Ok(Self { data, tzone })
     }
 }
 
@@ -1044,7 +1037,7 @@ impl crate::from_r::TryFromSexp for JiffZonedVec {
             return Err(errors.into_element_error());
         }
         Ok(Self {
-            data: Arc::new(result),
+            data: result,
             tzone: canonical,
         })
     }

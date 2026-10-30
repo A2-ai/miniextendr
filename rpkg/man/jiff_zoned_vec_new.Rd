@@ -14,6 +14,6 @@ jiff_zoned_vec_new(zdts)
 Create a JiffZonedVec ALTREP from a character vector of RFC 9557 zoned strings.
 
 All elements must share the same IANA timezone. Returns a POSIXct REALSXP
-ALTREP vector backed by \verb{Arc<Vec<Zoned>>} with the \code{tzone} attribute set.
+ALTREP vector backed by \verb{Vec<Zoned>} with the \code{tzone} attribute set.
 Panics (error in R) if any element has a different timezone.
 }
