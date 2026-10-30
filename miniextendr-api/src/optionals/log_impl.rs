@@ -6,16 +6,21 @@
 //!
 //! # Thread safety
 //!
-//! The logger is safe to call from any thread. Records logged from non-main
-//! threads are buffered in a bounded MPSC queue (capacity 1024) and drained
-//! to R's console the next time the main thread passes through the FFI
-//! trampoline. Main-thread records drain the queue first, then render
-//! immediately.
+//! The logger is safe to call from any thread. A record logged on a thread
+//! other than R's main thread (rayon, `std::thread`) is sent on a bounded
+//! `std::sync::mpsc` channel (capacity 1024). Any thread sends on it; R's main
+//! thread owns the receiving end, which `install_r_logger()` keeps in a
+//! thread-local of the thread it runs on (`package_init()` runs it on R's main
+//! thread). The main thread prints the waiting records the next time it passes
+//! through the FFI trampoline, each thread's records in the order that thread
+//! sent them. A record logged on the main thread prints the waiting records
+//! first, then itself.
 //!
-//! If the queue fills up, the oldest record is dropped and an overflow counter
-//! is incremented. The next call to `drain_log_queue()` from the main thread
-//! emits a single `WARN`-level message ("N log records dropped due to queue
-//! overflow") and resets the counter to 0.
+//! If the channel is full, the record being sent is dropped (a sender cannot
+//! remove the oldest one) and an overflow counter is incremented. The next
+//! call to `drain_log_queue()` from the main thread prints the records kept,
+//! then a single `WARN`-level message ("N log records dropped due to queue
+//! overflow"), and resets the counter to 0.
 //!
 //! # Level mapping
 //!
@@ -39,7 +44,8 @@
 //! The `drain_log_queue()` function is called automatically from the unwind
 //! protect trampoline (`unwind_protect.rs`) on every FFI exit path — normal
 //! return, Rust panic, and R longjmp. It is a no-op when not on the main
-//! thread.
+//! thread. Each call prints at most 1024 records, so threads that keep logging
+//! cannot hold R's main thread there; the rest print at the next drain.
 //!
 //! # Example
 //!
@@ -57,23 +63,54 @@
 pub use log;
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
-use std::collections::VecDeque;
+use std::cell::OnceCell;
 #[cfg(not(test))]
 use std::ffi::CString;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
-/// Capacity of the cross-thread log queue.
+/// Capacity of the cross-thread log channel.
 const QUEUE_CAPACITY: usize = 1024;
 
-/// Buffered records from non-main threads, pending drain on the next main-thread FFI exit.
-static QUEUE: OnceLock<Mutex<VecDeque<(Level, String)>>> = OnceLock::new();
+/// A formatted record on its way from another thread to R's main thread.
+type Entry = (Level, String);
 
-/// Number of records dropped due to queue overflow since the last drain.
+/// Sending end of the cross-thread log channel. Any thread sends on it.
+static SENDER: OnceLock<SyncSender<Entry>> = OnceLock::new();
+
+thread_local! {
+    /// Receiving end of the cross-thread log channel: set on the thread that
+    /// opened the channel (R's main thread), empty on every other thread.
+    static RECEIVER: OnceCell<Receiver<Entry>> = const { OnceCell::new() };
+}
+
+/// Number of records dropped because the channel was full, since the last drain.
 static DROPPED: AtomicUsize = AtomicUsize::new(0);
 
-fn queue() -> &'static Mutex<VecDeque<(Level, String)>> {
-    QUEUE.get_or_init(|| Mutex::new(VecDeque::with_capacity(QUEUE_CAPACITY)))
+/// Open the cross-thread log channel and keep its receiving end on the
+/// current thread. Only the first call opens it.
+fn open_channel() {
+    SENDER.get_or_init(|| {
+        let (tx, rx) = sync_channel(QUEUE_CAPACITY);
+        RECEIVER.with(|cell| {
+            cell.get_or_init(|| rx);
+        });
+        tx
+    });
+}
+
+/// Send a record logged off R's main thread to the main thread.
+///
+/// When the channel is full (or the main thread is gone), the record is
+/// dropped and counted in `DROPPED`.
+fn send_to_main(level: Level, msg: String) {
+    let sent = SENDER
+        .get()
+        .is_some_and(|tx| tx.try_send((level, msg)).is_ok());
+    if !sent {
+        DROPPED.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 // region: Test infrastructure (cfg(test) overrides)
@@ -111,6 +148,58 @@ pub(crate) fn set_fake_main_thread(v: Option<bool>) {
     FAKE_IS_MAIN.with(|c| c.set(v));
 }
 
+/// Run `f` on the thread that plays R's main thread in tests, and return its
+/// result.
+///
+/// The channel's receiving end stays on the thread that installed the logger,
+/// as it stays on R's main thread in production, while cargo runs each test on
+/// a thread of its own. So a test that logs or drains runs its whole body here:
+/// one long-lived thread that installs the logger before any body and runs one
+/// body at a time, which also keeps tests from sharing the channel, `DROPPED`
+/// and the render sink at once. Each body starts as the "main thread", with
+/// nothing waiting in the channel, `DROPPED` at 0 and the sink empty. A panic in
+/// the body panics the caller with the same message: the runner's own panic
+/// output goes to the capture of the test that started it, which may be over.
+#[cfg(test)]
+#[track_caller]
+pub(crate) fn on_main_thread<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::mpsc::{Sender, channel};
+
+    type Job = Box<dyn FnOnce() + Send>;
+    static JOBS: OnceLock<Sender<Job>> = OnceLock::new();
+    let jobs = JOBS.get_or_init(|| {
+        let (tx, rx) = channel::<Job>();
+        std::thread::spawn(move || {
+            install_r_logger();
+            rx.into_iter().for_each(|job| job());
+        });
+        tx
+    });
+
+    let (tx, rx) = sync_channel(1);
+    jobs.send(Box::new(move || {
+        // Start clean even after a body that panicked.
+        set_fake_main_thread(Some(true));
+        RECEIVER.with(|cell| {
+            if let Some(rx) = cell.get() {
+                rx.try_iter().for_each(drop);
+            }
+        });
+        DROPPED.store(0, Ordering::Relaxed);
+        take_rendered();
+        tx.send(catch_unwind(AssertUnwindSafe(f))).ok();
+    }))
+    .expect("the test main thread is running");
+    match rx.recv().expect("the test main thread ran the body") {
+        Ok(value) => value,
+        Err(payload) => panic!(
+            "{}",
+            crate::unwind_protect::panic_payload_to_string(payload.as_ref())
+        ),
+    }
+}
+
 // endregion
 
 // region: Render abstraction (cfg(test) indirection)
@@ -118,8 +207,8 @@ pub(crate) fn set_fake_main_thread(v: Option<bool>) {
 /// Write a formatted log message to R's console.
 ///
 /// In production: calls `Rprintf` (stdout) or `REprintf` (stderr) based on
-/// level. In tests: appends to a `Mutex<Vec<String>>` sink to avoid calling
-/// the R FFI.
+/// level. In tests: appends to a thread-local sink to avoid calling the R FFI
+/// (rendering only happens on the main thread).
 #[cfg(not(test))]
 fn render(level: Level, msg: &str) {
     let line = format!("{msg}\n");
@@ -140,16 +229,18 @@ fn render(level: Level, msg: &str) {
 }
 
 #[cfg(test)]
-pub(crate) static TEST_SINK: Mutex<Vec<String>> = Mutex::new(Vec::new());
+thread_local! {
+    static TEST_SINK: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 
 #[cfg(test)]
 fn render(_level: Level, msg: &str) {
-    TEST_SINK.lock().unwrap().push(msg.to_string());
+    TEST_SINK.with_borrow_mut(|sink| sink.push(msg.to_string()));
 }
 
 #[cfg(test)]
 pub(crate) fn take_rendered() -> Vec<String> {
-    std::mem::take(&mut *TEST_SINK.lock().unwrap())
+    TEST_SINK.take()
 }
 
 // endregion
@@ -174,18 +265,13 @@ impl Log for RLogger {
         let msg = format!("{}", record.args());
 
         if is_main() {
-            // On the main thread: drain any buffered worker records first,
+            // On the main thread: first drain the records other threads sent,
             // then render this record immediately.
             drain_log_queue();
             render(record.level(), &msg);
         } else {
-            // On a worker thread: push to the bounded queue.
-            let mut q = queue().lock().unwrap();
-            if q.len() >= QUEUE_CAPACITY {
-                q.pop_front(); // drop oldest
-                DROPPED.fetch_add(1, Ordering::Relaxed);
-            }
-            q.push_back((record.level(), msg));
+            // On another thread: send to the main thread.
+            send_to_main(record.level(), msg);
         }
     }
 
@@ -207,14 +293,18 @@ impl Log for RLogger {
 
 /// Install the R console logger.
 ///
-/// Call this once during package initialization (from `package_init()`).
+/// Call this once during package initialization (from `package_init()`), on
+/// R's main thread: the first call opens the cross-thread log channel and keeps
+/// its receiving end on the calling thread, the only thread that drains it.
 /// If a logger is already installed (by another package or the user),
-/// this is a no-op.
+/// installing this one is a no-op.
 ///
 /// Default level: `Off` (all output suppressed until the downstream package
 /// calls `set_log_level("info")` or similar).
 pub fn install_r_logger() {
     static LOGGER: RLogger = RLogger;
+    // Open the channel first, so the logger never runs without a sender.
+    open_channel();
     // ok() — ignore AlreadySet error if another logger is installed
     log::set_logger(&LOGGER).ok();
     log::set_max_level(LevelFilter::Off);
@@ -230,14 +320,16 @@ pub fn set_log_level(level: &str) {
     log::set_max_level(filter);
 }
 
-/// Drain all buffered cross-thread log records to R's console.
+/// Drain the log records other threads sent to R's console.
 ///
 /// Must be called from R's main thread — silently returns otherwise.
-/// Idempotent: if the queue is empty, this is a no-op.
+/// Idempotent: if nothing is waiting, this is a no-op. Prints at most 1024
+/// records per call; records sent while it prints may wait for the next call.
 ///
-/// If records were dropped due to queue overflow, a single `WARN`-level
-/// message ("N log records dropped due to queue overflow") is emitted first,
-/// and the overflow counter is reset to zero.
+/// If records were dropped because the channel was full, a single `WARN`-level
+/// message ("N log records dropped due to queue overflow") is emitted after the
+/// records kept (the dropped ones were sent after them), and the overflow
+/// counter is reset to zero.
 ///
 /// The FFI trampoline in `unwind_protect.rs` calls this automatically on every
 /// FFI exit path (normal return, Rust panic, and caught R longjmp). Direct
@@ -247,22 +339,22 @@ pub fn drain_log_queue() {
         return;
     }
 
-    // Emit overflow warning before the buffered records.
+    // Bounded: other threads keep sending while this renders.
+    RECEIVER.with(|cell| {
+        if let Some(rx) = cell.get() {
+            for (level, msg) in rx.try_iter().take(QUEUE_CAPACITY) {
+                render(level, &msg);
+            }
+        }
+    });
+
+    // Report overflow after the records kept: a full channel drops the newest.
     let dropped = DROPPED.swap(0, Ordering::Relaxed);
     if dropped > 0 {
         render(
             Level::Warn,
             &format!("{dropped} log records dropped due to queue overflow"),
         );
-    }
-
-    // Drain and render all buffered records.
-    let records: Vec<(Level, String)> = {
-        let mut q = queue().lock().unwrap();
-        std::mem::take(&mut *q).into_iter().collect()
-    };
-    for (level, msg) in records {
-        render(level, &msg);
     }
 }
 
@@ -352,12 +444,6 @@ impl crate::IntoR for log::LevelFilter {
 // endregion
 
 // region: Tests
-
-/// Serialises all tests that touch the shared `QUEUE`/`DROPPED`/`TEST_SINK`
-/// globals.  Exposed as `pub(crate)` so tests in sibling modules (e.g.
-/// `pump`) can acquire the same lock and avoid races.
-#[cfg(test)]
-pub(crate) static LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
 mod tests;
