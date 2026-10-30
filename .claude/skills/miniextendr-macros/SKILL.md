@@ -57,10 +57,11 @@ generated code or extending the macro.
 **Standalone functions** (`miniextendr-macros/src/miniextendr_fn.rs`):
 
 The `#[miniextendr]` attribute on a bare `pub fn` is processed by
-`miniextendr_fn.rs`. Return type analysis runs through
-`miniextendr-macros/src/return_type_analysis.rs` (`analyze_return_type`), which
-determines whether the R wrapper should call `invisible()` and how to handle
-`Option<T>` / `Result<T,E>` unwrapping.
+`miniextendr_fn.rs`. `returns_invisibly` in
+`miniextendr-macros/src/return_type_analysis.rs` decides from the return
+shape whether the R wrapper returns `invisible()`; the C wrapper's handling of
+the value, `Option<T>` / `Result<T,E>` included, is
+`c_wrapper_builder::detect_return_handling`'s.
 
 **Impl block methods** (`miniextendr-macros/src/miniextendr_impl.rs`):
 
@@ -212,7 +213,8 @@ miniextendr-externalptr and miniextendr-ffi skills.
    `miniextendr_fn.rs`.
 2. `miniextendr_fn.rs` normalizes the function signature, runs `CoercionMapping`
    to detect types needing coercion (e.g., `bool` from `i32`), and calls
-   `analyze_return_type` from `return_type_analysis.rs`.
+   `returns_invisibly` from `return_type_analysis.rs` and
+   `detect_return_handling` from `c_wrapper_builder.rs`.
 3. The C wrapper is emitted: `extern "C-unwind" #[no_mangle] fn C_foo(...)` with
    `with_r_unwind_protect` wrapping the body.
 4. A `#[distributed_slice(MX_CALL_DEFS)]` entry registers the wrapper under the
@@ -357,8 +359,8 @@ Cargo feature.
   method C wrappers; prepends `__miniextendr_call: SEXP`.
 - `miniextendr-macros/src/r_wrapper_builder.rs` — `DotCallBuilder` at ~L390 for
   `.Call(...)` R wrapper emission; `RArgumentBuilder`, `RoxygenBuilder`.
-- `miniextendr-macros/src/return_type_analysis.rs` — `analyze_return_type`;
-  `ReturnTypeAnalysis` struct; `output_is_result`.
+- `miniextendr-macros/src/return_type_analysis.rs` — `returns_invisibly`;
+  `output_is_result`; strict-mode `strict_conversion_for_type`.
 - `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
   `standalone_body`, `condition_check_inline_block`; `ReturnStrategy` enum.
 - `miniextendr-macros/src/roxygen.rs` — doc-comment extraction; multiline tag

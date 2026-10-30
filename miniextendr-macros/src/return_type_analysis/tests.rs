@@ -96,3 +96,49 @@ fn lossless_shapes_fall_through_to_into_r() {
         assert_eq!(strict_expr(ty), None, "{ty}");
     }
 }
+
+/// Whether a standalone fn returning `output` (`""` for no arrow) is
+/// invisible by default.
+fn invisible(output: &str, unwrap_in_r: bool) -> bool {
+    let output: syn::ReturnType = if output.is_empty() {
+        syn::ReturnType::Default
+    } else {
+        syn::parse_str(&format!("-> {output}")).expect("valid return type")
+    };
+    super::returns_invisibly(&output, unwrap_in_r)
+}
+
+#[test]
+fn unit_shaped_returns_are_invisible() {
+    for output in [
+        "",
+        "()",
+        "Option<()>",
+        "Result<(), ()>",
+        "Result<(), String>",
+    ] {
+        assert!(invisible(output, false), "{output}");
+    }
+    // `unwrap_in_r` hands a `Result<(), E>` to R, so it is visible; a
+    // `Result<(), ()>` stays invisible.
+    assert!(!invisible("Result<(), String>", true));
+    assert!(invisible("Result<(), ()>", true));
+}
+
+#[test]
+fn every_other_return_is_visible() {
+    for output in [
+        "i32",
+        "SEXP",
+        "Option<i32>",
+        "Option<SEXP>",
+        "Result<i32, ()>",
+        "Result<i32, String>",
+        "Result<SEXP, String>",
+        "(i32, i32)",
+        "Vec<()>",
+    ] {
+        assert!(!invisible(output, false), "{output}");
+        assert!(!invisible(output, true), "{output}");
+    }
+}

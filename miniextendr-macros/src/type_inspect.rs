@@ -161,17 +161,6 @@ pub(crate) fn visibility_marker_error(ty: &syn::Type, what: &str) -> Option<syn:
     None
 }
 
-/// Returns `true` if `ty` is syntactically `SEXP`.
-#[inline]
-pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
-        .path
-        .segments
-        .last()
-        .map(|s| s.ident == "SEXP")
-        .unwrap_or(false))
-}
-
 // region: condition-call markers (#1566)
 
 /// Detect a condition-call marker parameter type: `Call` selects `wrapper`

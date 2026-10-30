@@ -118,7 +118,7 @@
 //!
 //! ## Return Type Handling
 //!
-//! The `return_type_analysis` module determines how to convert Rust returns to SEXP:
+//! `c_wrapper_builder::detect_return_handling` determines how to convert Rust returns to SEXP:
 //!
 //! | Rust Type | Strategy | R Result |
 //! |-----------|----------|----------|
@@ -230,8 +230,8 @@ compile_error!(
      enable exactly one, or omit both to fall back to the unspecified default"
 );
 pub(crate) use type_inspect::{
-    SeveralOkContainer, classify_several_ok_container, first_type_argument, is_sexp_type,
-    match_arg_choices_ty, second_type_argument,
+    SeveralOkContainer, classify_several_ok_container, first_type_argument, match_arg_choices_ty,
+    second_type_argument,
 };
 pub(crate) use util::{
     extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc, source_position,
@@ -1223,11 +1223,6 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         return err.into_compile_error().into();
     }
 
-    // Analyze return type to determine:
-    // - Whether it returns SEXP (affects thread strategy)
-    // - Whether result should be invisible
-    let rust_result_ident =
-        syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
     // `serde_error` only has an `Err` arm to act on when the fn returns `Result`.
     if serde_error.is_some() && !return_type_analysis::output_is_result(output) {
         return syn::Error::new_spanned(
@@ -1312,21 +1307,12 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         s3_method_comment = String::new();
     };
 
-    let return_analysis = return_type_analysis::analyze_return_type(
-        output,
-        &rust_result_ident,
-        &r_wrapper_ident_str,
-        unwrap_in_r,
-        strict,
-        &err_parts,
-    );
-
     // Marker (`Invisible<T>` / `Visible<T>`) > attribute (`invisible` /
     // `visible`) > shape default (unit-`NULL` returns are invisible).
     let is_invisible_return_type = match crate::type_inspect::resolve_visibility(
         visibility_marker,
         force_invisible,
-        return_analysis.is_invisible,
+        return_type_analysis::returns_invisibly(output, unwrap_in_r),
         syn::spanned::Spanned::span(parsed.output()),
     ) {
         Ok(v) => v,

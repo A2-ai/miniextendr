@@ -1084,7 +1084,6 @@ fn borrowed_vector_views_take_a_root_from_the_live_argument_slot() {
         let syn::FnArg::Typed(param) = parse_param(src) else {
             unreachable!()
         };
-        assert!(!crate::type_inspect::is_sexp_type(&param.ty));
         let metadata = builder.native_borrow_metadata(&param, &syn::parse_quote!(arg_0));
         let metadata = metadata.unwrap().to_string();
         assert!(metadata.contains("TryFromRoot"), "{metadata}");
