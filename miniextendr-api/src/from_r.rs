@@ -122,12 +122,13 @@ pub(crate) fn any_na(sexp: SEXP) -> bool {
 
 /// Convert CHARSXP to `&str`, translating to UTF-8 when required.
 ///
-/// UTF-8 and native strings (including ASCII) borrow directly from the
-/// CHARSXP via `R_CHAR` + `LENGTH`. Package initialization requires a UTF-8
-/// locale, so native strings have the same interpretation.
-/// Latin-1 and other translatable strings use `Rf_translateCharUTF8`; that
-/// buffer lives on R's memory stack for the enclosing `.Call`. Strings marked
-/// with R's `bytes` encoding are rejected because they are not text.
+/// UTF-8 strings, ASCII strings and native strings in a UTF-8 session borrow
+/// directly from the CHARSXP via `R_CHAR` + `LENGTH`. Latin-1 strings, and
+/// native non-ASCII strings in a session whose locale isn't UTF-8, use
+/// `Rf_translateCharUTF8`; that buffer lives on R's memory stack for the
+/// enclosing `.Call`. The first native translation of the session queues a
+/// warning (`encoding::warn_native_translation`). Strings marked with R's `bytes`
+/// encoding are rejected because they are not text.
 ///
 /// # Safety
 ///
@@ -137,14 +138,11 @@ pub(crate) fn any_na(sexp: SEXP) -> bool {
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE(charsxp);
-        if matches!(
-            encoding,
-            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
-        ) {
-            return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
-        }
-        reject_bytes_encoding(encoding);
-        translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp))
+        let text = utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
+            crate::sys::Rf_translateCharUTF8(charsxp)
+        });
+        text.warn_if_native();
+        text.as_str()
     }
 }
 
@@ -153,14 +151,77 @@ pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
 pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE_unchecked(charsxp);
-        if matches!(
+        let text = utf8_text(
             encoding,
-            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
-        ) {
-            return charsxp_utf8_bytes(charsxp.r_char_unchecked(), charsxp.len_unchecked());
+            charsxp.r_char_unchecked(),
+            charsxp.len_unchecked(),
+            || crate::sys::Rf_translateCharUTF8_unchecked(charsxp),
+        );
+        text.warn_if_native();
+        text.as_str()
+    }
+}
+
+/// Where a CHARSXP's UTF-8 text lives.
+enum Utf8Text {
+    /// The CHARSXP's own bytes: UTF-8-marked, ASCII, or native in a UTF-8
+    /// session.
+    Own(&'static str),
+    /// R's translation, in a buffer on R's memory stack until the enclosing
+    /// `.Call` returns. `native` when the string was unmarked (in the
+    /// session's encoding) rather than marked Latin-1.
+    Translated { text: &'static str, native: bool },
+}
+
+impl Utf8Text {
+    #[inline]
+    fn as_str(&self) -> &'static str {
+        match *self {
+            Utf8Text::Own(text) | Utf8Text::Translated { text, .. } => text,
+        }
+    }
+
+    #[inline]
+    fn warn_if_native(&self) {
+        if let Utf8Text::Translated { native: true, .. } = self {
+            crate::encoding::warn_native_translation();
+        }
+    }
+}
+
+/// A CHARSXP's text as UTF-8, given its encoding mark, its bytes and R's
+/// `translateCharUTF8`.
+///
+/// R's translation returns the CHARSXP's own bytes when none is needed:
+/// UTF-8 or ASCII strings, and native strings while the session's locale is
+/// UTF-8 (R reads its current locale, so `Sys.setlocale()` is followed). The
+/// bytes are then borrowed and validated. Bytes-marked strings panic before
+/// `translate` runs.
+///
+/// # Safety
+///
+/// `own` / `len` are the CHARSXP's `R_CHAR` and `LENGTH`; `translate` returns
+/// its `Rf_translateCharUTF8`.
+#[inline]
+unsafe fn utf8_text(
+    encoding: crate::cetype_t,
+    own: *const std::os::raw::c_char,
+    len: usize,
+    translate: impl FnOnce() -> *const std::os::raw::c_char,
+) -> Utf8Text {
+    unsafe {
+        if matches!(encoding, crate::cetype_t::CE_UTF8) {
+            return Utf8Text::Own(charsxp_utf8_bytes(own, len));
         }
         reject_bytes_encoding(encoding);
-        translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8_unchecked(charsxp))
+        let utf8 = translate();
+        if std::ptr::eq(utf8, own) {
+            return Utf8Text::Own(charsxp_utf8_bytes(own, len));
+        }
+        Utf8Text::Translated {
+            text: translated_charsxp_to_str(utf8),
+            native: matches!(encoding, crate::cetype_t::CE_NATIVE),
+        }
     }
 }
 
@@ -172,23 +233,26 @@ unsafe fn charsxp_utf8_bytes(ptr: *const std::os::raw::c_char, len: usize) -> &'
     }
 }
 
-/// Borrow directly from a UTF-8 or native CHARSXP in the required UTF-8 locale.
+/// Borrow directly from a CHARSXP whose bytes are its UTF-8 text.
 ///
 /// Unlike [`charsxp_to_str`], this never returns R's temporary translation
-/// buffer. Use it for views whose borrow may be tied to the source STRSXP
-/// rather than merely to the enclosing `.Call`.
+/// buffer: a string that needs translation (Latin-1, or native non-ASCII in
+/// a session whose locale isn't UTF-8) panics. Use it for views whose borrow
+/// may be tied to the source STRSXP rather than merely to the enclosing
+/// `.Call`.
 #[inline]
 pub(crate) unsafe fn charsxp_to_borrowed_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE(charsxp);
-        if matches!(
-            encoding,
-            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
-        ) {
-            return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
+        match utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
+            crate::sys::Rf_translateCharUTF8(charsxp)
+        }) {
+            Utf8Text::Own(text) => text,
+            Utf8Text::Translated { .. } => panic!(
+                "cannot borrow an R string that needs translation to UTF-8 (Latin-1, or native \
+                 in a session whose locale isn't UTF-8); use Cow<str> or String to translate it"
+            ),
         }
-        reject_bytes_encoding(encoding);
-        panic!("cannot borrow a non-UTF-8 R string; use Cow<str> or String to translate it");
     }
 }
 
@@ -209,23 +273,22 @@ unsafe fn translated_charsxp_to_str(ptr: *const std::os::raw::c_char) -> &'stati
 
 /// Convert CHARSXP to `Cow<str>`.
 ///
-/// UTF-8/native strings borrow directly from R. Strings that require encoding
-/// translation become owned Rust strings so the translated buffer cannot be
-/// invalidated independently of the returned value.
+/// Strings whose bytes are their UTF-8 text borrow directly from R. Strings
+/// that require encoding translation become owned Rust strings so the
+/// translated buffer cannot be invalidated independently of the returned
+/// value.
 #[inline]
 pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE(charsxp);
-        if matches!(
-            encoding,
-            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
-        ) {
-            return std::borrow::Cow::Borrowed(charsxp_utf8_bytes(charsxp.r_char(), charsxp.len()));
+        let text = utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
+            crate::sys::Rf_translateCharUTF8(charsxp)
+        });
+        text.warn_if_native();
+        match text {
+            Utf8Text::Own(text) => std::borrow::Cow::Borrowed(text),
+            Utf8Text::Translated { text, .. } => std::borrow::Cow::Owned(text.to_owned()),
         }
-        reject_bytes_encoding(encoding);
-        std::borrow::Cow::Owned(
-            translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp)).to_owned(),
-        )
     }
 }
 

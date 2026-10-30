@@ -16,6 +16,11 @@
 //!
 //! `miniextendr_encoding_init()` is not called by `package_init`; it exists
 //! for debugging and for standalone Rust applications embedding R.
+//!
+//! A package loads in any locale. String conversions read each CHARSXP's
+//! encoding mark and translate when needed; in a session whose locale isn't
+//! UTF-8, the first translation of a native non-ASCII string raises one
+//! warning ([`NATIVE_TRANSLATION_CLASS`]).
 
 use std::sync::OnceLock;
 
@@ -42,66 +47,32 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
     ENCODING_INFO.get()
 }
 
-/// Assert that R's locale is UTF-8.
-///
-/// Called once from `R_init_*` (package init). Errors if the R session
-/// does not use UTF-8, so native/unmarked CHARSXPs have an unambiguous UTF-8
-/// interpretation. Explicitly tagged Latin-1 strings are translated by the
-/// conversion layer, while strings marked as `bytes` are rejected as non-text.
-///
-/// Uses `l10n_info()[["UTF-8"]]` which is public R API.
-///
-/// ABI: must be `extern "C-unwind"`, not `extern "C"` — the failure branch
-/// raises via `Rf_error`, and under webR (Emscripten builds R with
-/// `-sSUPPORT_LONGJMP=wasm`) that longjmp is a real wasm exception that
-/// unwinds through this frame. A non-unwind `extern "C"` ABI makes rustc
-/// insert an abort guard at the boundary, which turns the load-gate error
-/// into an `unreachable` trap that kills the whole wasm runtime (observed
-/// in the tier-3 testthat pass via `assert_utf8_locale_now()`). On native
-/// targets `longjmp` never touches landing pads, which is why this only
-/// bit on wasm32.
-#[unsafe(no_mangle)]
-pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
-    debug_assert!(
-        crate::is_r_main_thread(),
-        "must be called from R main thread"
-    );
-    use crate::SexpExt;
-    use crate::sys::{R_BaseEnv, Rf_eval, Rf_install};
+/// The class of the warning a package raises the first time it translates a
+/// native string to UTF-8.
+pub const NATIVE_TRANSLATION_CLASS: &str = "miniextendr_native_translation";
 
-    unsafe {
-        // Read `l10n_info()[["UTF-8"]]` inside a scope so the temporaries
-        // (call, info) are unprotected *before* the error branch below —
-        // matching the original ordering (a longjmp out of `Rf_error` would
-        // skip the scope's Drop).
-        let is_utf8 = {
-            let scope = crate::ProtectScope::new();
-            // Call l10n_info()
-            let call = scope.protect_raw(crate::sys::Rf_lang1(Rf_install(c"l10n_info".as_ptr())));
-            let info = scope.protect_raw(Rf_eval(call, R_BaseEnv));
-
-            // Find the "UTF-8" element by name
-            let names = info.get_names();
-            let n = info.xlength();
-            let mut is_utf8 = false;
-            for i in 0..n {
-                let name_charsxp = names.string_elt(i);
-                if name_charsxp.r_char_str() == Some("UTF-8") {
-                    let elt = info.vector_elt(i);
-                    is_utf8 = elt.logical_elt(0) != 0;
-                    break;
-                }
-            }
-            is_utf8
-        };
-
-        if !is_utf8 {
-            crate::sys::Rf_error_unchecked(
-                c"%s".as_ptr(),
-                c"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)".as_ptr(),
-            );
-        }
+/// Queue a warning, once per session for each package, the first time a
+/// native (unmarked) non-ASCII string is translated to UTF-8: the session's
+/// locale isn't UTF-8, and bytes its encoding can't represent came out as
+/// `<xx>` escapes.
+///
+/// Deferred, so it is signalled when the current call returns, never from
+/// inside a conversion; class [`NATIVE_TRANSLATION_CLASS`].
+pub(crate) fn warn_native_translation() {
+    static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
     }
+    crate::deferred_condition::defer_warning(
+        crate::condition::RError::new(
+            "translated a string from the session's native encoding to UTF-8: the R session's \
+             locale isn't UTF-8, so characters that encoding can't represent became <xx> \
+             escapes. Start R in a UTF-8 locale (for example LANG=C.UTF-8) to avoid \
+             translation. Shown once per session.",
+        )
+        .class(NATIVE_TRANSLATION_CLASS)
+        .without_call(),
+    );
 }
 
 /// Initialize / snapshot R's encoding state.

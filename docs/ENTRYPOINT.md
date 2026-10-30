@@ -70,14 +70,16 @@ unsafe extern "C-unwind" fn R_init_mypkg(dll: *mut DllInfo) {
 
 1. **Install panic hook**: captures panic messages for R error reporting
 2. **Initialize runtime**: records main thread ID
-3. **Assert UTF-8 locale**: fails fast if locale isn't UTF-8
-4. **Register ALTREP classes**: registers all `#[derive(Altrep*)]` classes
-5. **Register trait ABI**: calls `mx_abi_register()` for cross-package
+3. **Register ALTREP classes**: registers all `#[derive(Altrep*)]` classes
+4. **Register trait ABI**: calls `mx_abi_register()` for cross-package
    trait dispatch (`mx_wrap`, `mx_get`, `mx_query`)
-6. **Register routines**: calls `R_registerRoutines()` with all linkme-
+5. **Register routines**: calls `R_registerRoutines()` with all linkme-
    collected `.Call` entries
-7. **Lock down symbols**: `R_useDynamicSymbols(dll, FALSE)` and
+6. **Lock down symbols**: `R_useDynamicSymbols(dll, FALSE)` and
    `R_forceSymbols(dll, TRUE)`
+
+There is no locale check: the package loads in any locale, and string
+conversions translate per string ([ENCODING.md](ENCODING.md)).
 
 The macro also defines the crate's marker type, `__MiniextendrInitMarker`, at
 the crate root. A shape declared with `serde_error_shape!` is a trait impl
@@ -186,7 +188,7 @@ fn main() {
 
 Additional functions available when embedding:
 
-- `miniextendr_encoding_init()` - Initialize UTF-8 locale handling (non-API)
+- `miniextendr_encoding_init()` - Snapshot R's locale flags for debugging (non-API)
 
 These aren't available in R packages because they reference symbols not
 exported from libR.

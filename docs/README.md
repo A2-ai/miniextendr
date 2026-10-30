@@ -61,7 +61,7 @@ framework.
   preserve lists
 - **[FFI Guard & Panic Telemetry](FFI_GUARD.md)** -- Panic boundaries and
   telemetry hooks
-- **[Encoding](ENCODING.md)** -- UTF-8 locale requirement and encoding probing
+- **[Encoding](ENCODING.md)** -- strings in any locale and encoding probing
 - **[RNG](RNG.md)** -- R random number generation from Rust
 - **[RArray](RARRAY.md)** -- N-dimensional R arrays
 - **[Safety](SAFETY.md)** -- Safety invariants and guarantees

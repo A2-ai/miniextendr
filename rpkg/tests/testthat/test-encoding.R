@@ -1,17 +1,18 @@
-# Encoding / locale assertion tests for package_init.
+# String conversion in any locale.
 #
-# `package_init` (miniextendr-api/src/init.rs) calls
-# `miniextendr_assert_utf8_locale()` once during `R_init_*`. That assertion
-# rejects sessions whose locale isn't UTF-8, so unmarked/native CHARSXPs have
-# an unambiguous UTF-8 interpretation. Explicit Latin-1 CHARSXPs can still
-# occur in such a session and must be translated per string.
+# A miniextendr package loads in any locale. Each conversion reads the
+# string's encoding mark: UTF-8 and ASCII are borrowed, Latin-1 is translated,
+# bytes are refused, and a native (unmarked) string is borrowed in a UTF-8
+# session and translated from the session's encoding otherwise. R decides
+# per call (`Rf_translateCharUTF8` reads the current locale), so a
+# `Sys.setlocale()` mid-session is followed. The first native translation in a
+# session raises one `miniextendr_native_translation` warning.
 #
-# These tests cover three layers:
-#   1. The FFI lookup of `l10n_info()[["UTF-8"]]` works.
-#   2. The assertion's success path (UTF-8 locale).
-#   3. The assertion's failure path (non-UTF-8 locale) — exercised both
-#      mid-session via `Sys.setlocale()` and at fresh load via `callr::r()`
-#      with explicit `LC_ALL` / `LC_CTYPE` overrides.
+# These tests cover:
+#   1. Per-string encoding marks in the (UTF-8) test session.
+#   2. Native strings after a mid-session `Sys.setlocale("LC_CTYPE", "C")`.
+#   3. Package load and conversions in a fresh R under `LC_ALL=C` / `POSIX`
+#      (`callr::r()`), where the warning's once-per-session count is visible.
 #
 # R's docs warn that changing `LC_CTYPE` mid-session may not take effect on
 # every platform. Each mid-session test guards with the actual `l10n_info()`
@@ -25,16 +26,6 @@ test_that("encoding_info_available returns logical", {
   # Standard R package builds: encoding_init is disabled (symbols not
   # exported from libR), so this is FALSE. Embedded / nonapi builds may
   # populate the snapshot.
-})
-
-# endregion
-
-# region: l10n_info baseline
-
-test_that("test session reports UTF-8 (R >= 4.2 default)", {
-  # The miniextendr package literally cannot have loaded if this were FALSE
-  # (package_init would have thrown), so the test session must report UTF-8.
-  expect_true(isTRUE(l10n_info()[["UTF-8"]]))
 })
 
 # endregion
@@ -69,7 +60,8 @@ test_that("vector Cow strings own elements that require translation", {
   expect_false(zero_copy_vec_cow_str_all_borrowed(c("ascii", value)))
 })
 
-test_that("native UTF-8 and ASCII strings remain borrowed on supported R versions", {
+test_that("native UTF-8 and ASCII strings remain borrowed in a UTF-8 session", {
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "test session is not UTF-8")
   value <- enc2utf8("façade")
   Encoding(value) <- "unknown"
   expect_identical(Encoding(value), "unknown")
@@ -95,21 +87,7 @@ test_that("malformed strings tagged as UTF-8 are rejected before creating str", 
 
 # endregion
 
-# region: assertion success path
-
-test_that("assert_utf8_locale_now succeeds in a UTF-8 test session", {
-  expect_true(assert_utf8_locale_now())
-})
-
-test_that("assert_utf8_locale_now is idempotent", {
-  for (i in seq_len(5)) {
-    expect_true(assert_utf8_locale_now())
-  }
-})
-
-# endregion
-
-# region: assertion failure path (mid-session locale flip)
+# region: native strings after a mid-session locale flip
 
 # Helper: temporarily switch LC_CTYPE, restoring on exit. Returns the value
 # Sys.setlocale() actually returned ("" on failure) so callers can skip when
@@ -121,50 +99,37 @@ with_lc_ctype <- function(loc, code) {
   list(applied = applied, value = if (nzchar(applied)) force(code) else NULL)
 }
 
-test_that("assert_utf8_locale_now errors after Sys.setlocale to C", {
+# The warning fires once per session, so whether this session already raised
+# it depends on test order: muffle it here; the subprocess tests count it.
+muffle_translation <- function(code) {
+  withCallingHandlers(
+    code,
+    miniextendr_native_translation = function(w) invokeRestart("muffleWarning")
+  )
+}
+
+test_that("native strings are translated after Sys.setlocale to C", {
   res <- with_lc_ctype("C", {
     # Some platforms keep `l10n_info()[['UTF-8']]` TRUE even after
-    # `LC_CTYPE=C` (R caches `utf8locale` early). Only assert the failure
-    # path when l10n_info actually flipped — otherwise the assertion is
-    # correctly returning success.
+    # `LC_CTYPE=C`. Only check translation when l10n_info actually flipped.
     if (isTRUE(l10n_info()[["UTF-8"]])) {
       skip("Platform did not flip l10n_info()[['UTF-8']] under LC_CTYPE=C")
     }
-    expect_error(
-      assert_utf8_locale_now(),
-      regexp = "UTF-8 locale",
-      fixed = FALSE
-    )
+    native <- rawToChar(as.raw(c(0x66, 0x61, 0xe7, 0x61, 0x64, 0x65)))
+    expect_identical(Encoding(native), "unknown")
+    expect_identical(muffle_translation(conv_string_arg(native)), "fa<e7>ade")
+    # A `Vec<Cow<str>>` element owns its translation.
+    expect_false(muffle_translation(zero_copy_vec_cow_str_all_borrowed(c("ascii", native))))
+    # ASCII and UTF-8-marked strings are still borrowed.
+    expect_true(zero_copy_cow_str_is_borrowed("ascii"))
+    expect_true(zero_copy_cow_str_is_borrowed(enc2utf8("fa\u00e7ade")))
   })
   if (!nzchar(res$applied)) {
     skip("Platform refused Sys.setlocale('LC_CTYPE', 'C')")
   }
 })
 
-test_that("assert_utf8_locale_now errors after Sys.setlocale to a Latin-1 locale", {
-  # Try a few well-known Latin-1 locale names; skip if none take.
-  candidates <- c("en_US.ISO8859-1", "en_US.iso88591", "C.ISO-8859-1")
-  applied <- ""
-  original <- Sys.getlocale("LC_CTYPE")
-  for (cand in candidates) {
-    applied <- suppressWarnings(Sys.setlocale("LC_CTYPE", cand))
-    if (nzchar(applied)) break
-  }
-  on.exit(suppressWarnings(Sys.setlocale("LC_CTYPE", original)), add = TRUE)
-
-  if (!nzchar(applied)) {
-    skip("No Latin-1 locale available on this platform")
-  }
-  if (isTRUE(l10n_info()[["UTF-8"]])) {
-    skip("Latin-1 locale did not flip l10n_info()[['UTF-8']]")
-  }
-  expect_error(
-    assert_utf8_locale_now(),
-    regexp = "UTF-8 locale"
-  )
-})
-
-test_that("assert_utf8_locale_now succeeds again after restoring UTF-8", {
+test_that("native UTF-8 strings are borrowed again after restoring UTF-8", {
   original <- Sys.getlocale("LC_CTYPE")
   on.exit(suppressWarnings(Sys.setlocale("LC_CTYPE", original)), add = TRUE)
 
@@ -172,7 +137,6 @@ test_that("assert_utf8_locale_now succeeds again after restoring UTF-8", {
   if (!nzchar(flipped) || isTRUE(l10n_info()[["UTF-8"]])) {
     skip("Could not flip locale away from UTF-8 to test restore")
   }
-  # Restore something UTF-8.
   utf8 <- ""
   for (cand in c("en_US.UTF-8", "C.UTF-8", "en_GB.UTF-8")) {
     utf8 <- suppressWarnings(Sys.setlocale("LC_CTYPE", cand))
@@ -181,7 +145,10 @@ test_that("assert_utf8_locale_now succeeds again after restoring UTF-8", {
   if (!nzchar(utf8) || !isTRUE(l10n_info()[["UTF-8"]])) {
     skip("No UTF-8 locale available to restore")
   }
-  expect_true(assert_utf8_locale_now())
+  value <- enc2utf8("fa\u00e7ade")
+  Encoding(value) <- "unknown"
+  expect_true(zero_copy_cow_str_is_borrowed(value))
+  expect_identical(conv_string_arg(value), enc2utf8(value))
 })
 
 # endregion
@@ -189,13 +156,13 @@ test_that("assert_utf8_locale_now succeeds again after restoring UTF-8", {
 # region: package load under explicit locale (subprocess)
 
 # These tests spawn a fresh R via callr::r() with the requested locale env
-# vars and observe whether `library(miniextendr)` succeeds. This is the only
-# way to exercise the assertion at *load* time — its real production path.
+# vars: load the package there and convert strings in a session that starts
+# in that locale, where the once-per-session warning count is observable.
 
 skip_on_os("windows")  # Windows locale names + processx orphan handling are
-                      # both finicky; the locale-load gate is platform-
-                      # independent in implementation, so Linux + macOS cover
-                      # the contract.
+                      # both finicky; the conversion is platform-independent
+                      # in implementation, so Linux + macOS cover the
+                      # contract.
 
 run_load_in_locale <- function(env) {
   callr::r(
@@ -231,10 +198,6 @@ probe_locale <- function(var, candidates) {
       # Subprocess successfully picked up the locale.
       return(cand)
     }
-    if (var == "LC_ALL" && identical(cand, "C")) {
-      # We *want* C here.
-      return(cand)
-    }
   }
   ""
 }
@@ -257,44 +220,68 @@ test_that("library(miniextendr) succeeds under LC_CTYPE=en_US.UTF-8 with LANG=C"
   expect_true(res$utf8)
 })
 
-test_that("library(miniextendr) errors under LC_ALL=C", {
-  env <- c(callr::rcmd_safe_env(), LC_ALL = "C")
+# Convert ASCII, UTF-8-marked, Latin-1-marked and native non-ASCII strings in
+# a fresh session, recording the classes of every warning raised.
+run_strings_in_locale <- function(env) {
+  callr::r(
+    function() {
+      library(miniextendr)
+      native <- rawToChar(as.raw(c(0x66, 0x61, 0xe7, 0x61, 0x64, 0x65)))
+      latin1 <- native
+      Encoding(latin1) <- "latin1"
+      warnings <- list()
+      out <- withCallingHandlers(
+        list(
+          utf8_session = isTRUE(l10n_info()[["UTF-8"]]),
+          ascii = conv_string_arg("ascii"),
+          utf8 = conv_string_arg("fa\u00e7ade"),
+          latin1 = conv_string_arg(latin1),
+          native = conv_string_arg(native),
+          native_again = conv_string_arg(native),
+          native_vec_cow_borrowed = zero_copy_vec_cow_str_all_borrowed(c("ascii", native))
+        ),
+        warning = function(w) {
+          warnings[[length(warnings) + 1L]] <<- class(w)
+          invokeRestart("muffleWarning")
+        }
+      )
+      out$warnings <- warnings
+      out
+    },
+    env = env,
+    show = FALSE
+  )
+}
 
-  # First confirm that LC_ALL=C actually produces a non-UTF-8 session in the
-  # subprocess; some glibc builds default to C.UTF-8 even when asked for C.
-  utf8_in_sub <- tryCatch(
-    callr::r(
-      function() isTRUE(l10n_info()[["UTF-8"]]),
-      env = env,
-      show = FALSE
-    ),
+# Whether a fresh R under `env` reports a UTF-8 session (NA if it failed).
+subprocess_utf8 <- function(env) {
+  tryCatch(
+    callr::r(function() isTRUE(l10n_info()[["UTF-8"]]), env = env, show = FALSE),
     error = function(e) NA
   )
-  if (isTRUE(utf8_in_sub)) {
-    skip("Subprocess kept UTF-8 even under LC_ALL=C")
-  }
+}
 
-  res <- run_load_in_locale(env)
-  expect_false(res$ok)
-  expect_match(res$message, "UTF-8 locale")
-})
+for (loc in c("C", "POSIX")) {
+  test_that(paste0("strings convert per string under LC_ALL=", loc, ", warning once"), {
+    env <- c(callr::rcmd_safe_env(), LC_ALL = loc)
+    # Some glibc builds default to C.UTF-8 even when asked for C.
+    if (!isFALSE(subprocess_utf8(env))) {
+      skip(paste0("Subprocess is not a non-UTF-8 session under LC_ALL=", loc))
+    }
 
-test_that("library(miniextendr) errors under LC_ALL=POSIX", {
-  env <- c(callr::rcmd_safe_env(), LC_ALL = "POSIX")
-  utf8_in_sub <- tryCatch(
-    callr::r(
-      function() isTRUE(l10n_info()[["UTF-8"]]),
-      env = env,
-      show = FALSE
-    ),
-    error = function(e) NA
-  )
-  if (isTRUE(utf8_in_sub)) {
-    skip("Subprocess kept UTF-8 even under LC_ALL=POSIX")
-  }
-  res <- run_load_in_locale(env)
-  expect_false(res$ok)
-  expect_match(res$message, "UTF-8 locale")
-})
+    res <- run_strings_in_locale(env)
+    expect_false(res$utf8_session)
+    expect_identical(res$ascii, "ascii")
+    expect_identical(res$utf8, "fa\u00e7ade")
+    expect_identical(res$latin1, "fa\u00e7ade")
+    # The session's encoding is ASCII: 0xE7 has no character in it.
+    expect_identical(res$native, "fa<e7>ade")
+    expect_identical(res$native_again, "fa<e7>ade")
+    expect_false(res$native_vec_cow_borrowed)
+    # Three native translations, one warning.
+    expect_length(res$warnings, 1L)
+    expect_true("miniextendr_native_translation" %in% res$warnings[[1]])
+  })
+}
 
 # endregion

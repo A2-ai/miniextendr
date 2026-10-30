@@ -17,12 +17,11 @@ six fixes already baked in.
 ### Gotcha 1: AlmaLinux 8 minimal defaults to the `C` locale
 
 AlmaLinux 8's container image ships with only the `C`/`POSIX` locale installed.
-When R starts, `l10n_info()[["UTF-8"]]` returns `FALSE`, which causes
-`miniextendr_assert_utf8_locale()` to fire:
-
-```
-Error: miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)
-```
+When R starts, `l10n_info()[["UTF-8"]]` returns `FALSE`. The package still
+loads, but every native non-ASCII string a conversion reads is translated from
+ASCII, so characters outside it become `<xx>` escapes, and the first one raises
+a `miniextendr_native_translation` warning (see [ENCODING.md](ENCODING.md)).
+Tests that compare non-ASCII text fail.
 
 **Fix**: set `LANG=C.UTF-8` and `LC_ALL=C.UTF-8` at the **job** level (not the
 workflow level — see Gotcha 2) for container jobs, or install a full locale pack
@@ -247,28 +246,15 @@ for the same hermetic reason as Gotcha 5.
   installs R independently and puts its `bin/` on PATH; the upstream's path
   addition is for runs that don't use `setup-r`.
 
-## Why `package_init` checks for UTF-8
+## Why the jobs set a UTF-8 locale
 
-`miniextendr_assert_utf8_locale()` is called during R package initialization
-(from `R_init_<package>`) via `miniextendr-api/src/encoding.rs`. It calls
-`l10n_info()[["UTF-8"]]` (public R API) and aborts if the result is `FALSE`.
-
-This check makes native/unmarked CHARSXPs safe to interpret as UTF-8. Explicit
-per-string tags remain possible in a UTF-8 session: the conversion layer uses a
-zero-copy path for UTF-8/ASCII, translates Latin-1 text, and rejects `bytes`
-strings. In a non-UTF-8 locale, native strings have no compatible zero-copy
-interpretation for Rust's `str`, so the framework asserts up-front.
-
-The check is not a bug in miniextendr — it is a guard against using the
-framework in an environment where string correctness cannot be guaranteed. The
-platform is wrong (or differently configured), not the framework. The fixes in
-Gotchas 1–2 bring the platform into compliance; the assertion then passes and
-package load succeeds normally.
-
-R >= 4.2.0 itself defaulted to UTF-8 on all mainstream platforms (Windows via
-UTF-8 code page, macOS and modern Linux always UTF-8), so the assertion fires
-only on minimal container images (like AlmaLinux 8) that ship without any
-UTF-8 locale installed.
+A miniextendr package loads in any locale: each string conversion reads the
+string's encoding mark and translates when needed ([ENCODING.md](ENCODING.md)).
+In a non-UTF-8 session, though, native non-ASCII text can't be represented
+faithfully, so the release jobs set `LANG=C.UTF-8` (Gotchas 1 and 2) to build
+and test in the locale users run. R >= 4.2.0 defaults to UTF-8 on mainstream
+platforms (Windows via the UTF-8 code page, macOS and modern Linux), so only
+minimal container images such as AlmaLinux 8 need it.
 
 ## Reference template
 
