@@ -1037,6 +1037,43 @@ fn mxl121_factory_function() {
     assert!(other_class.is_empty(), "{other_class:?}");
 }
 
+/// A function returning the type through a class marker, a visibility marker
+/// or a `Vec`, the return wrappers the macro looks through.
+#[test]
+fn mxl121_factory_through_return_wrappers() {
+    for ret in [
+        "WrapAsS3<Widget>",
+        "Result<WrapAsS3<Widget>, String>",
+        "WrapAsR6<Widget>",
+        "WrapAsS7<Widget>",
+        "WrapAsS4<Widget>",
+        "WrapAsEnv<Widget>",
+        "WrapAsVctrs<Widget>",
+        "ConvertTo<Widget>",
+        "ConvertFrom<Widget>",
+        "Invisible<Widget>",
+        "Visible<Option<Widget>>",
+        "Vec<Widget>",
+        "Option<Vec<ExternalPtr<Widget>>>",
+    ] {
+        let diags = mxl121(&[(
+            "lib.rs",
+            &format!(
+                r#"
+                #[miniextendr(s3)]
+                impl Widget {{
+                    pub fn id(&self) -> i32 {{ self.id }}
+                }}
+
+                #[miniextendr]
+                pub fn widget_make(id: i32) -> {ret} {{ todo!() }}
+                "#
+            ),
+        )]);
+        assert!(diags.is_empty(), "{ret}: {diags:?}");
+    }
+}
+
 /// `// mxl::allow(MXL121)` on the impl's header, here above its doc comments.
 #[test]
 fn mxl121_allow_on_the_impl() {

@@ -909,10 +909,30 @@ fn header_allows(lines: &[&str], first_line: usize, line: usize, code: &str) -> 
     })
 }
 
+/// The return wrappers [`collect_returned_types`] looks through. Keep in sync
+/// with the macro's return vocabulary: the visibility markers
+/// (`type_inspect::peel_return_visibility`), the boundary containers and the
+/// class markers (`return_wrap::resolve` / `marker_system`), and `ExternalPtr`.
+const RETURN_WRAPPERS: &[&str] = &[
+    "Result",
+    "Option",
+    "Vec",
+    "ExternalPtr",
+    "Invisible",
+    "Visible",
+    "WrapAsR6",
+    "WrapAsS7",
+    "WrapAsS4",
+    "WrapAsS3",
+    "WrapAsEnv",
+    "WrapAsVctrs",
+    "ConvertTo",
+    "ConvertFrom",
+];
+
 /// Add to `out` the type `ty` hands to R as a class object: its last path
-/// segment, `self_type` for `Self`, through `Result`, `Option` and
-/// `ExternalPtr`. Other names (`i32`, `Vec`, ...) are added too; they match no
-/// class.
+/// segment, `self_type` for `Self`, through the [`RETURN_WRAPPERS`]. Other
+/// names (`i32`, `String`, ...) are added too; they match no class.
 fn collect_returned_types(ty: &syn::Type, self_type: Option<&str>, out: &mut HashSet<String>) {
     let syn::Type::Path(path) = ty else {
         return;
@@ -920,10 +940,7 @@ fn collect_returned_types(ty: &syn::Type, self_type: Option<&str>, out: &mut Has
     let Some(last) = path.path.segments.last() else {
         return;
     };
-    if ["Result", "Option", "ExternalPtr"]
-        .iter()
-        .any(|wrapper| last.ident == wrapper)
-    {
+    if RETURN_WRAPPERS.iter().any(|wrapper| last.ident == wrapper) {
         if let syn::PathArguments::AngleBracketed(args) = &last.arguments
             && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
         {
