@@ -761,6 +761,19 @@ jobs:
       - name: Tests (ui_vctrs trybuild, vctrs feature)
         run: cargo test -p miniextendr-macros --test ui_vctrs --features vctrs --locked --no-fail-fast
 
+      # The miniextendr-macros unit tests compare generated R wrapper text,
+      # which the `*-default` codegen selectors change (`coerce-default`,
+      # `no-preconditions-default`, ...). The workspace run above uses default
+      # features, and rust-lint's clippy_all / clippy_all_s7 compile these
+      # tests under `full-codegen` / `full-codegen-s7` without running them.
+      # Run them under both aggregates here: miniextendr-api is selected so
+      # `--features` reaches the aggregates, and its lib tests link libR, so
+      # this lives in this job rather than next to the clippy steps.
+      - name: Tests (macros + api lib, full-codegen aggregates)
+        run: |
+          cargo test -p miniextendr-api -p miniextendr-macros --lib --locked --no-fail-fast --features full-codegen,serde,serde_json
+          cargo test -p miniextendr-api -p miniextendr-macros --lib --locked --no-fail-fast --features full-codegen-s7,serde,serde_json
+
       # The ndarray integration tests are feature-gated (`#[cfg(feature =
       # "ndarray")]`) and invisible to the default-features workspace run
       # above — without an explicit feature leg they never execute in CI

@@ -2813,12 +2813,14 @@ fn trait_method_formals_reject_the_receiver() {
 
 /// A trait impl with one type-guarded parameter (`k`) and one `no_na`
 /// parameter (`d`), expanded under the impl options `attrs`; returns the
-/// expansion's token text, which carries the R wrapper.
+/// expansion's token text, which carries the R wrapper. The method spells
+/// `no_coerce`, so its type guard reads `K_TYPE_GUARD` under the
+/// `coerce-default` feature too.
 fn scale_impl_expansion(attrs: proc_macro2::TokenStream) -> String {
     let impl_attrs: ImplAttrs = syn::parse2(attrs).unwrap();
     let impl_item: syn::ItemImpl = syn::parse_quote! {
         impl Scale for Meter {
-            #[miniextendr(no_na(d))]
+            #[miniextendr(no_na(d), no_coerce)]
             fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
         }
     };
@@ -2915,14 +2917,15 @@ fn trait_method_messages_use_the_r_name() {
 
 /// A trait method's bare `preconditions` / `no_preconditions` and its
 /// `preconditions(p)` / `no_preconditions(p)` lists come before the impl
-/// block's (#1017, #1566).
+/// block's (#1017, #1566). The methods spell `no_coerce`, so a kept check is
+/// `is.double(..)` under the `coerce-default` feature too.
 #[test]
 fn trait_method_preconditions_override_the_impl() {
     let methods: syn::ItemImpl = syn::parse_quote! {
         impl Scale for Meter {
-            #[miniextendr(preconditions(k))]
+            #[miniextendr(preconditions(k), no_coerce)]
             fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
-            #[miniextendr(preconditions)]
+            #[miniextendr(preconditions, no_coerce)]
             fn kept(&self, a: f64) -> f64 { unimplemented!() }
         }
     };
@@ -2933,9 +2936,9 @@ fn trait_method_preconditions_override_the_impl() {
 
     let methods: syn::ItemImpl = syn::parse_quote! {
         impl Scale for Meter {
-            #[miniextendr(no_preconditions(k))]
+            #[miniextendr(no_preconditions(k), no_coerce)]
             fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
-            #[miniextendr(no_preconditions)]
+            #[miniextendr(no_preconditions, no_coerce)]
             fn dropped(&self, a: f64) -> f64 { unimplemented!() }
         }
     };
