@@ -19,7 +19,7 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use super::{
     NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
@@ -123,8 +123,8 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///   slot holds it or the last copy drops. That is the only state a `Sidecar`
 ///   has: before the struct is wrapped, after `*ptr = Engine::new(..)`, after
 ///   `ExternalPtr::into_inner`. They run on R's main thread; any other
-///   thread panics. Like an owning `ExternalPtr`, the last copy of a pending
-///   value must be dropped on R's main thread.
+///   thread panics. A `Sidecar` is `!Send`, so a pending value, and the
+///   struct holding it, stays on R's main thread, where its last copy drops.
 /// - **Flushed when wrapped.** `ExternalPtr::new` and the trait ABI's `mx_wrap`
 ///   move every pending value into the pointer's protection list. From then
 ///   on the value lives in R only, and the field is empty.
@@ -226,11 +226,12 @@ pub struct Sidecar<T> {
 #[derive(Clone)]
 struct Pending {
     sexp: SEXP,
-    root: Arc<PendingRoot>,
+    root: Rc<PendingRoot>,
 }
 
-/// Only the pool key crosses threads, as with an owning `ExternalPtr`.
-/// Cloning a pending value needs no R call; the last copy releases the root.
+/// Shared by the clones of a pending value: cloning needs no R call, and the
+/// last copy releases the root. `Rc` keeps a `Sidecar`, and so the struct
+/// holding it, on R's main thread, where the release happens.
 struct PendingRoot(crate::protect_pool::ProtectKey);
 
 impl Drop for PendingRoot {
@@ -265,7 +266,7 @@ impl<T: IntoR + 'static> Sidecar<T> {
         Self {
             pending: RefCell::new(Some(Pending {
                 sexp,
-                root: Arc::new(PendingRoot(key)),
+                root: Rc::new(PendingRoot(key)),
             })),
             _value: PhantomData,
         }
@@ -301,7 +302,7 @@ impl<T> Sidecar<T> {
         let sexp = prot.vector_elt(prot_index(index));
         *self.pending.borrow_mut() = Some(Pending {
             sexp,
-            root: Arc::new(PendingRoot(super::root_owned(sexp))),
+            root: Rc::new(PendingRoot(super::root_owned(sexp))),
         });
     }
 }

@@ -1243,7 +1243,7 @@ The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained 
 
 ## Thread Safety
 
-`ExternalPtr` is `Send` when `T: Send`, allowing it to be transferred between threads. All R API calls are serialized through the main thread. Concurrent access is not supported -- R's runtime is single-threaded. The views `ExternalPtrRef` / `ExternalPtrMut` are `!Send`: a borrow stays on the thread that took it.
+`ExternalPtr` is `!Send` and `!Sync`: its R object, its root and its finalizer belong to R's main thread, where every handle is made and dropped. Move the value out with `into_inner` to hand it to another thread. A `#[miniextendr]` function takes `ExternalPtr<T>` for any `TypedExternal` `T`, `Send` or not (#2027). The views `ExternalPtrRef` / `ExternalPtrMut` are `!Send` too: a borrow stays on the thread that took it.
 
 ## Trait Implementations
 

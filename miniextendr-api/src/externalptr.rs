@@ -1168,9 +1168,15 @@ fn borrow_conflict<T>() -> ! {
 ///
 /// # Thread Safety
 ///
-/// `ExternalPtr` is `Send` to allow returning from worker thread functions.
-/// However, **concurrent access is not allowed** - R's runtime is single-threaded.
-/// All R API calls are serialized through the main thread via `with_r_thread`.
+/// `ExternalPtr` is `!Send` and `!Sync`: its R object, its root and its
+/// finalizer belong to R's main thread, where every handle is made and
+/// dropped. Move the value out ([`into_inner`](Self::into_inner)) to hand it
+/// to another thread.
+///
+/// ```compile_fail
+/// fn assert_send<T: Send>() {}
+/// assert_send::<miniextendr_api::ExternalPtr<()>>();
+/// ```
 ///
 /// # Reading the value
 ///
@@ -1229,12 +1235,6 @@ pub struct ExternalPtr<T: TypedExternal> {
     root: Option<ProtectKey>,
     _marker: PhantomData<T>,
 }
-
-// SAFETY: ExternalPtr can be sent between threads because:
-// 1. All R API operations are serialized through the main thread via with_r_thread
-// 2. The worker thread is blocked while the main thread processes R calls
-// 3. There is no concurrent access - only sequential hand-off between threads
-unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
 // region: ExternalPtr GC roots
 //
@@ -2772,7 +2772,7 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     }
 }
 
-/// `ExternalPtr<T>` is `Send`, and copying `Sidecar` slots is R API.
+/// Copying `Sidecar` slots is R API.
 fn assert_sidecar_clone_on_main_thread<T: TypedExternal>() {
     assert!(
         crate::is_r_main_thread(),

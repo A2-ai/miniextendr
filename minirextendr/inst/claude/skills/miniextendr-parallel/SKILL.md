@@ -1,6 +1,6 @@
 ---
 name: miniextendr-parallel
-description: Use when writing multi-threaded Rust inside a miniextendr package — rayon parallel iterators feeding R vectors, the SEXP-not-Send rule, "cannot be sent between threads safely" compile errors, panics from R API calls off the main thread, or R stack-limit errors from spawned threads.
+description: Use when writing multi-threaded Rust inside a miniextendr package — rayon parallel iterators feeding R vectors, which R handles can cross threads, "cannot be sent between threads safely" compile errors, panics from R API calls off the main thread, or R stack-limit errors from spawned threads.
 ---
 
 # Parallel Rust in an R package
@@ -10,10 +10,12 @@ R allocation, every read/write of R memory, and R's garbage collector must
 happen on the thread R owns. Rust threads may do arbitrary computation — they
 just cannot touch R.
 
-miniextendr encodes this in the type system: `SEXP` (and types wrapping it,
-like `DataFrame`) are not `Send`. If your closure captures R data, it won't
-compile for another thread. That compile error is the framework protecting
-you — the fix is to convert to plain Rust data *first*, then parallelize.
+miniextendr enforces this in two places. Every R API call checks the thread
+and panics off R's main thread. And the handles that own R state
+(`ExternalPtr<T>`, `RArray` / `RMatrix`, `RRng`, `Preserved`) are `!Send`, so a
+closure that captures one won't compile for another thread. A bare `SEXP` is
+only a pointer and does compile there, but an R call through it panics. Either
+way, the fix is to convert to plain Rust data *first*, then parallelize.
 
 ## The standard pattern
 
@@ -125,8 +127,9 @@ tracked for removal in miniextendr issue #1352.
 
 ## Debugging
 
-- **"`SEXP` cannot be sent between threads safely"** — you captured R data in
-  a parallel closure. Convert to `Vec`/slice before the parallel region.
+- **"`… cannot be sent between threads safely`"** naming an R handle
+  (`ExternalPtr`, `RArray`, `RRng`, `Preserved`) — you captured R data in a
+  parallel closure. Convert to `Vec`/slice before the parallel region.
 - **Panic: "R's C API was called from a thread other than R's main thread"** —
   some code path called the R API off-thread; find the R call inside your
   closure and hoist it out, before or after the parallel region.

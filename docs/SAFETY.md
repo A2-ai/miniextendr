@@ -59,22 +59,14 @@ during `miniextendr_runtime_init()`. Any call before initialization returns
 
 ## ExternalPtr<T> Thread Safety
 
-`ExternalPtr<T>` is `Send` when `T: Send` (declared as
-`unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T>` in
-`miniextendr-api/src/externalptr.rs`). It is **not** `Sync`. There is no
-interior synchronization, and R's runtime is single-threaded.
+`ExternalPtr<T>` is `!Send` and `!Sync`. It owns a GC root in a main-thread
+pool and an R finalizer, and dropping it releases the root through
+`with_r_thread`, so every handle is made, used and dropped on R's main thread.
+A `#[miniextendr]` argument of type `ExternalPtr<T>` therefore needs no
+`T: Send` (#2027).
 
-This is sound because the `ExternalPtr` value itself is just an owning handle
-over a heap allocation (`Box<Box<dyn Any>>`); transferring the handle to
-another thread moves ownership, no shared state is created. What is *not*
-allowed from off-thread is calling R API functions on the underlying SEXP.
-R's GC, finalizer registration, and pointer dereference all require the main
-thread.
-
-**Safe pattern**: Freely move `ExternalPtr<T: Send>` between Rust threads for
-compute-only work, but perform all R API calls (including construction from
-a SEXP, finalizer registration, and returning to R) on the main thread.
-`.Call` entry points always run on the main thread.
+**Safe pattern**: to hand the value to another thread, move it out
+(`ExternalPtr::into_inner`, on the main thread) and send the plain Rust value.
 
 ## R_UnwindProtect
 
@@ -188,7 +180,7 @@ will cause all subsequent thread checks to be incorrect.
 | Component | Invariant |
 |-----------|-----------|
 | `R_MAIN_THREAD_ID` | Set once, from main thread, during init |
-| `ExternalPtr<T>` | `Send` when `T: Send`; not `Sync`; R API calls require main thread |
+| `ExternalPtr<T>` | `!Send` + `!Sync`; made, used and dropped on the main thread |
 | `AltrepSexp` | !Send + !Sync; materialization on main thread only |
 | SEXP (via `TryFromSexp`) | ALTREP auto-materialized before function body runs |
 | `R_CONTINUATION_TOKEN` | Created once, preserved for session lifetime |

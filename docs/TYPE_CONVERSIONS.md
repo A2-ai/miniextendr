@@ -574,10 +574,10 @@ The Rust data is heap-allocated and owned by R:
 4. When SEXP is collected, Rust `Drop` runs
 5. Heap memory freed
 
-**Thread safety:** `ExternalPtr<T>` is `Send` when `T: Send`, allowing a
-sequential ownership handoff between threads. It is not `Sync` and
-must not be accessed concurrently. Operations that touch the SEXP or R's
-protection machinery are routed to the R thread.
+**Thread safety:** `ExternalPtr<T>` is `!Send` and `!Sync`: its SEXP, root
+and finalizer belong to R's main thread. An argument of that type needs no
+`T: Send` (#2027). Move the value out with `into_inner` to hand it to another
+thread.
 
 ---
 
