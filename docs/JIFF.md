@@ -41,9 +41,9 @@ For types with no base-R scalar analog, wrap in `#[derive(ExternalPtr)]` and imp
 
 ## ALTREP
 
-`JiffTimestampVec` — lazy `REALSXP` backed by `Arc<Vec<Timestamp>>`. Elements are projected to seconds-since-epoch on access; no upfront conversion. Apply POSIXct class after construction.
+`JiffTimestampVec` — lazy `REALSXP` backed by `Vec<Timestamp>`. Elements are projected to seconds-since-epoch on access; no upfront conversion. Apply POSIXct class after construction.
 
-`JiffZonedVec` — lazy `REALSXP` backed by `Arc<Vec<Zoned>>`, **single-timezone strict**. Constructor (`JiffZonedVec::new`) validates that all elements share the same IANA timezone name; returns `Err` if any element differs. On success, `into_sexp()` produces a POSIXct ALTREP with `class = c("POSIXct", "POSIXt")` and `tzone = <iana>`. `TryFromSexp` reconstructs each element using the SEXP's `tzone` attribute.
+`JiffZonedVec` — lazy `REALSXP` backed by `Vec<Zoned>`, **single-timezone strict**. Constructor (`JiffZonedVec::new`) validates that all elements share the same IANA timezone name; returns `Err` if any element differs. On success, `into_sexp()` produces a POSIXct ALTREP with `class = c("POSIXct", "POSIXt")` and `tzone = <iana>`. `TryFromSexp` reconstructs each element using the SEXP's `tzone` attribute.
 
 ## vctrs rcrd constructors
 

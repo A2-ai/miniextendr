@@ -773,8 +773,8 @@ is required.
 `RTimestamp`, `RDate`, `RZoned`, `RSignedDuration`, `RSpan`, `RDateTime`, `RTime`
 
 **ALTREP:**
-- `JiffTimestampVec` — lazy `Vec<Timestamp>` backed by `Arc`; elements projected on access, no upfront materialization.
-- `JiffZonedVec` — lazy `Vec<Zoned>` backed by `Arc`; single-timezone strict (construction rejects heterogeneous timezones). Produces `POSIXct` with `tzone` attribute.
+- `JiffTimestampVec` — lazy `Vec<Timestamp>`; elements projected on access, no upfront materialization.
+- `JiffZonedVec` — lazy `Vec<Zoned>`; single-timezone strict (construction rejects heterogeneous timezones). Produces `POSIXct` with `tzone` attribute.
 
 **vctrs rcrd constructors** (requires `vctrs` feature):
 `span_vec_to_rcrd`, `zoned_vec_to_rcrd`, `datetime_vec_to_rcrd`, `time_vec_to_rcrd`

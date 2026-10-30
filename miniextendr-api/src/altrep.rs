@@ -44,8 +44,8 @@ use crate::sys::altrep::{
     R_altrep_class_t, R_make_altcomplex_class, R_make_altinteger_class, R_make_altlist_class,
     R_make_altlogical_class, R_make_altraw_class, R_make_altreal_class, R_make_altstring_class,
 };
+use std::cell::RefCell;
 use std::ffi::CStr;
-use std::sync::Mutex;
 
 /// Base type for ALTREP vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,12 +112,16 @@ pub trait RegisterAltrep {
 
 // region: Runtime dispatch helper for class creation
 
-/// Records every ALTREP class name registered during `package_init()`.
-///
-/// After all registrations complete, [`assert_altrep_class_uniqueness`] checks
-/// for duplicates. Using `Mutex` rather than `RefCell` because `validate_altrep_class`
-/// can be called from any context during init.
-static REGISTERED_CLASS_NAMES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+thread_local! {
+    /// Records every ALTREP class name registered during `package_init()`.
+    ///
+    /// After all registrations complete, [`assert_altrep_class_uniqueness`]
+    /// checks for duplicates. Only R's main thread makes classes:
+    /// `package_init()` registers them there, and a class made on first use
+    /// is made by a conversion to R, which runs there too (`[T; N]` arrays
+    /// enter it through `with_r_thread`).
+    static REGISTERED_CLASS_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
 
 /// Validate that an ALTREP class handle was successfully created.
 ///
@@ -145,9 +149,7 @@ pub fn validate_altrep_class(
     }
     // Record the name for duplicate detection at the end of package_init().
     REGISTERED_CLASS_NAMES
-        .lock()
-        .expect("REGISTERED_CLASS_NAMES poisoned")
-        .push(class_name.to_string_lossy().into_owned());
+        .with_borrow_mut(|names| names.push(class_name.to_string_lossy().into_owned()));
     cls
 }
 
@@ -157,23 +159,20 @@ pub fn validate_altrep_class(
 /// have completed in `package_init()`. Panics with a clear message if any
 /// duplicate class name is found.
 pub fn assert_altrep_class_uniqueness() {
-    let names = REGISTERED_CLASS_NAMES
-        .lock()
-        .expect("REGISTERED_CLASS_NAMES poisoned");
-    if names.len() <= 1 {
-        return;
-    }
-    // Sort + dedup to find collisions efficiently.
-    let mut sorted: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
-    sorted.sort_unstable();
-    for window in sorted.windows(2) {
-        if window[0] == window[1] {
-            panic!(
-                "miniextendr: duplicate ALTREP class name \"{}\" \
-                 — each ALTREP type must have a unique class name within the package",
-                window[0]
-            );
-        }
+    let duplicate = REGISTERED_CLASS_NAMES.with_borrow(|names| {
+        // Sort so that equal names are adjacent.
+        let mut sorted: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        sorted.sort_unstable();
+        sorted
+            .windows(2)
+            .find(|window| window[0] == window[1])
+            .map(|window| window[0].to_owned())
+    });
+    if let Some(name) = duplicate {
+        panic!(
+            "miniextendr: duplicate ALTREP class name \"{name}\" \
+             — each ALTREP type must have a unique class name within the package"
+        );
     }
 }
 

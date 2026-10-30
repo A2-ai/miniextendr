@@ -192,16 +192,14 @@ pub fn jiff_duration_secs(dur: SignedDuration) -> f64 {
 
 /// Create a JiffTimestampVec ALTREP containing n timestamps (0..n seconds after epoch).
 ///
-/// Returns a POSIXct (UTC) ALTREP REALSXP vector backed by Arc<Vec<Timestamp>>.
+/// Returns a POSIXct (UTC) ALTREP REALSXP vector backed by `Vec<Timestamp>`.
 /// @param n Number of elements.
 #[miniextendr]
 pub fn jiff_altrep_timestamps(n: i32) -> SEXP {
     let data: Vec<Timestamp> = (0..n)
         .map(|i| Timestamp::new(i as i64, 0).expect("valid timestamp"))
         .collect();
-    let vec = JiffTimestampVec {
-        data: Arc::new(data),
-    };
+    let vec = JiffTimestampVec { data };
     // Create the ALTREP SEXP and set POSIXct class + UTC tzone.
     let altrep = vec.into_sexp();
     unsafe {
@@ -234,7 +232,7 @@ pub fn jiff_altrep_elt(x: Vec<Timestamp>, i: i32) -> f64 {
 /// Create a JiffZonedVec ALTREP from a character vector of RFC 9557 zoned strings.
 ///
 /// All elements must share the same IANA timezone. Returns a POSIXct REALSXP
-/// ALTREP vector backed by `Arc<Vec<Zoned>>` with the `tzone` attribute set.
+/// ALTREP vector backed by `Vec<Zoned>` with the `tzone` attribute set.
 /// Panics (error in R) if any element has a different timezone.
 ///
 /// @param zdts Character vector of RFC 9557 zoned datetime strings, e.g.
@@ -533,7 +531,7 @@ fn elt_counter() -> Arc<AtomicUsize> {
 #[derive(miniextendr_api::AltrepReal)]
 #[altrep(class = "JiffTimestampVecCounted", manual)]
 pub struct JiffTimestampVecCounted {
-    pub data: Arc<Vec<Timestamp>>,
+    pub data: Vec<Timestamp>,
     pub counter: Arc<AtomicUsize>,
 }
 
@@ -560,10 +558,7 @@ pub fn jiff_counted_altrep(n: i32) -> SEXP {
     let data: Vec<Timestamp> = (0..n)
         .map(|i| Timestamp::new(i as i64, 0).expect("valid timestamp"))
         .collect();
-    let vec = JiffTimestampVecCounted {
-        data: Arc::new(data),
-        counter,
-    };
+    let vec = JiffTimestampVecCounted { data, counter };
     let altrep = vec.into_sexp();
     unsafe {
         let _guard = OwnedProtect::new(altrep);

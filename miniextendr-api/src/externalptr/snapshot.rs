@@ -39,7 +39,7 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use super::{
     ExternalPtr, NullAddress, PROT_TYPE_ID_INDEX, PROT_USER_INDEX, PROT_VEC_LEN, TypedExternal,
@@ -231,9 +231,11 @@ fn class_name_of(id: &str) -> String {
     }
 }
 
-/// The carrier class names registered so far, each with the ID of the type
-/// that registered it.
-static CLAIMED: Mutex<Vec<(String, &'static str)>> = Mutex::new(Vec::new());
+thread_local! {
+    /// The carrier class names registered so far, each with the ID of the
+    /// type that registered it. Only `R_init`, on R's main thread, claims.
+    static CLAIMED: RefCell<Vec<(String, &'static str)>> = const { RefCell::new(Vec::new()) };
+}
 
 /// Claims the carrier class `name` for the type with ID `id`. Two serde
 /// types of one crate with the same name would share the class, and each
@@ -282,8 +284,8 @@ pub fn register<T: TypedExternal>() {
     };
     let id = type_id_str::<T>();
     let name = class_name_of(id);
-    // Release the lock before raising.
-    let claimed = claim(&mut CLAIMED.lock().expect("CLAIMED poisoned"), &name, id);
+    // Release the borrow before raising.
+    let claimed = CLAIMED.with_borrow_mut(|claimed| claim(claimed, &name, id));
     if let Err(message) = claimed {
         panic!("{message}");
     }

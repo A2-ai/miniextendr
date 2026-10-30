@@ -21,24 +21,24 @@ macro_rules! register_array_family {
     ($elem:ty, $name:literal) => {
         impl<const N: usize> crate::altrep::RegisterAltrep for [$elem; N] {
             fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
+                use std::cell::RefCell;
                 use std::collections::BTreeMap;
                 use std::ffi::CString;
-                use std::sync::Mutex;
 
-                static CLASSES: Mutex<BTreeMap<usize, crate::sys::altrep::R_altrep_class_t>> =
-                    Mutex::new(BTreeMap::new());
+                // Only R's main thread uses the cache: every access is
+                // inside `with_r_thread`.
+                thread_local! {
+                    static CLASSES: RefCell<BTreeMap<usize, crate::sys::altrep::R_altrep_class_t>> =
+                        const { RefCell::new(BTreeMap::new()) };
+                }
 
                 crate::worker::with_r_thread(|| {
-                    let cached = CLASSES
-                        .lock()
-                        .expect("array ALTREP class cache poisoned")
-                        .get(&N)
-                        .copied();
+                    let cached = CLASSES.with_borrow(|classes| classes.get(&N).copied());
                     if let Some(class) = cached {
                         return class;
                     }
 
-                    // R copies/interns these bytes. Do not hold the cache lock
+                    // R copies/interns these bytes. Do not hold the cache borrow
                     // across R allocation or callback installation.
                     let name = CString::new(format!("{}_{}", $name, N))
                         .expect("array class name contains no NUL");
@@ -51,10 +51,7 @@ macro_rules! register_array_family {
                     unsafe {
                         <Self as crate::altrep_data::InferBase>::install_methods(class);
                     }
-                    CLASSES
-                        .lock()
-                        .expect("array ALTREP class cache poisoned")
-                        .insert(N, class);
+                    CLASSES.with_borrow_mut(|classes| classes.insert(N, class));
                     class
                 })
             }
