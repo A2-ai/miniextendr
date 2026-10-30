@@ -23,6 +23,12 @@
 //! "duplicate definitions" error pointing at the call-site `As*` wrappers as the
 //! way to choose a representation per return value (see #870).
 //!
+//! ## Struct Attributes
+//!
+//! - `#[into_list(class = "a")]` / `#[into_list(class = ["a", "b"])]` -- the
+//!   `class` attribute `IntoList` sets on the list: exactly these classes, no
+//!   implicit `"list"`. `TryFromList` does not check a list's class.
+//!
 //! ## Field Attributes
 //!
 //! - `#[into_list(ignore)]` -- skip this field during IntoList/TryFromList conversion.
@@ -30,7 +36,69 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Fields, parse_quote, spanned::Spanned};
+use syn::{DeriveInput, Fields, LitStr, parse_quote, spanned::Spanned};
+
+/// The classes a struct's `#[into_list(class = ...)]` gives its list, if any.
+///
+/// Takes `class = "a"` or `class = ["a", "b"]`. Refuses an empty list, an
+/// empty name, a repeated `class` option, any other option, and `"factor"`:
+/// R's `class<-` raises an error for a factor class on anything but an integer
+/// vector.
+fn struct_classes(input: &DeriveInput) -> syn::Result<Option<Vec<LitStr>>> {
+    let mut classes: Option<Vec<LitStr>> = None;
+
+    for attr in &input.attrs {
+        if !attr.path().is_ident("into_list") {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+            if !meta.path.is_ident("class") {
+                return Err(meta.error(
+                    "unknown #[into_list(...)] option on a struct; supported: class \
+                     (`ignore` goes on a field)",
+                ));
+            }
+            if classes.is_some() {
+                return Err(meta.error("duplicate `class` option"));
+            }
+
+            let value = meta.value()?;
+            let names: Vec<LitStr> = if value.peek(syn::token::Bracket) {
+                let content;
+                syn::bracketed!(content in value);
+                content
+                    .parse_terminated(<LitStr as syn::parse::Parse>::parse, syn::Token![,])?
+                    .into_iter()
+                    .collect()
+            } else {
+                vec![value.parse()?]
+            };
+
+            if names.is_empty() {
+                return Err(meta.error("`class` needs at least one class name"));
+            }
+            for name in &names {
+                match name.value().as_str() {
+                    "" => return Err(syn::Error::new(name.span(), "a class name can't be empty")),
+                    "factor" => {
+                        return Err(syn::Error::new(
+                            name.span(),
+                            "a list can't have class \"factor\" (R refuses it on anything \
+                             but an integer vector)",
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+
+            classes = Some(names);
+            Ok(())
+        })?;
+    }
+
+    Ok(classes)
+}
 
 /// Check whether a struct field has the `#[into_list(ignore)]` attribute.
 ///
@@ -48,6 +116,11 @@ fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
             if meta.path.is_ident("ignore") {
                 ignored = true;
                 return Ok(());
+            }
+            if meta.path.is_ident("class") {
+                return Err(meta.error(
+                    "`class` is a struct option: put #[into_list(class = ...)] on the struct",
+                ));
             }
 
             Err(meta.error("unknown #[into_list(...)] option; supported: ignore"))
@@ -73,9 +146,11 @@ fn default_bound(ty: &syn::Type) -> syn::WherePredicate {
 ///
 /// Fields marked with `#[into_list(ignore)]` are excluded from the list.
 /// Each non-ignored field's type must implement `IntoR` (enforced via where-clause bounds).
+/// `#[into_list(class = ...)]` on the struct sets the list's `class` attribute.
 ///
-/// Returns `Err` if applied to a non-struct type or if an unknown field attribute is found.
+/// Returns `Err` if applied to a non-struct type or if an unknown attribute is found.
 pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
+    let classes = struct_classes(&input)?;
     let struct_data = match input.data {
         syn::Data::Struct(data) => data,
         _ => {
@@ -186,6 +261,13 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
+    let set_class = classes.map(|classes| {
+        quote! {
+            let __class = ::miniextendr_api::Preserved::new(&[#(#classes),*][..]);
+            ::miniextendr_api::SexpExt::set_class(&__sexp, __class.as_sexp());
+        }
+    });
+
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::list::IntoList for #name #ty_generics #where_clause {
             fn into_list(self) -> ::miniextendr_api::list::List {
@@ -195,6 +277,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 });
                 let __sexp = __root.as_sexp();
                 #remove_names
+                #set_class
                 // SAFETY: the builder produced a VECSXP, rooted until return.
                 unsafe { ::miniextendr_api::list::List::from_raw(__sexp) }
             }
@@ -215,9 +298,12 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 ///
 /// Fields marked with `#[into_list(ignore)]` are filled with `Default::default()`.
 /// Each non-ignored field's type must implement `TryFromSexp` (enforced via where-clause bounds).
+/// The list's class is not checked: `#[into_list(class = ...)]` is validated,
+/// then only `IntoList` uses it.
 ///
-/// Returns `Err` if applied to a non-struct type or if an unknown field attribute is found.
+/// Returns `Err` if applied to a non-struct type or if an unknown attribute is found.
 pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
+    struct_classes(&input)?;
     let struct_data = match input.data {
         syn::Data::Struct(data) => data,
         _ => {

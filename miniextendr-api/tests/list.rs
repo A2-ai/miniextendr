@@ -394,3 +394,82 @@ fn derive_try_from_list_missing_and_wrong_type() {
 }
 
 // endregion
+
+// region: Struct classes (`#[into_list(class = ...)]`)
+
+/// The strings of a character vector (`NA` reads as `""`).
+fn strings(sexp: miniextendr_api::SEXP) -> Vec<String> {
+    (0..sexp.xlength())
+        .map(|i| sexp.string_elt_str(i).unwrap_or("").to_string())
+        .collect()
+}
+
+#[derive(Debug, PartialEq, miniextendr_api::IntoList, miniextendr_api::TryFromList)]
+#[into_list(class = ["mx_fit", "mx_result"])]
+struct Fit {
+    estimate: f64,
+    #[into_list(ignore)]
+    scratch: i32,
+}
+
+#[derive(miniextendr_api::IntoList)]
+#[into_list(class = "mx_pair")]
+struct Pair(i32, String);
+
+#[derive(miniextendr_api::IntoList, miniextendr_api::PreferList)]
+#[into_list(class = "mx_unit")]
+struct Marker;
+
+#[test]
+fn into_list_sets_exactly_the_given_classes() {
+    r_test_utils::with_r_thread(|| {
+        let list = Fit {
+            estimate: 1.5,
+            scratch: 9,
+        }
+        .into_list();
+        assert_eq!(strings(list.as_sexp().get_class()), ["mx_fit", "mx_result"]);
+        assert_eq!(names_as_vec(list), ["estimate"]);
+        assert!(list.as_sexp().is_object(), "a classed list is an object");
+
+        // A tuple struct keeps no names and still gets its class.
+        let pair = Pair(1, "a".into()).into_list();
+        assert_eq!(strings(pair.as_sexp().get_class()), ["mx_pair"]);
+        assert!(pair.as_sexp().get_names().is_nil());
+
+        // The class reaches `IntoR` through `PreferList`.
+        let unit = Marker.into_sexp();
+        assert!(unit.is_list());
+        assert_eq!(unit.xlength(), 0);
+        assert_eq!(strings(unit.get_class()), ["mx_unit"]);
+    });
+}
+
+#[test]
+fn try_from_list_ignores_the_class() {
+    r_test_utils::with_r_thread(|| {
+        let fit = Fit {
+            estimate: 2.0,
+            scratch: 3,
+        };
+        let back = Fit::try_from_list(fit.into_list()).unwrap();
+        assert_eq!(
+            back,
+            Fit {
+                estimate: 2.0,
+                scratch: 0
+            }
+        );
+
+        // Any class, or none, reads the same way.
+        for code in [
+            "list(estimate = 4)",
+            r#"structure(list(estimate = 4), class = "other")"#,
+        ] {
+            let (_g, list) = r_list(code);
+            assert_eq!(Fit::try_from_list(list).unwrap().estimate, 4.0, "{code}");
+        }
+    });
+}
+
+// endregion

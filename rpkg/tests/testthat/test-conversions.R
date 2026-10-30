@@ -761,6 +761,33 @@ test_that("dots with a repeated name reach the body (#1754)", {
   )
 })
 
+test_that("#[into_list(class = ...)] sets exactly the given classes (#2273)", {
+  expect_identical(
+    conv_classed_fit(),
+    structure(
+      list(estimate = 1.5, n = 3L),
+      class = c("mx_classed_fit", "mx_classed_result")
+    )
+  )
+  expect_identical(
+    conv_classed_pair(),
+    structure(list(7L, "b"), class = "mx_classed_pair")
+  )
+})
+
+test_that("a classed IntoList list dispatches S3 methods (#2273)", {
+  describe <- function(x) UseMethod("describe")
+  describe.mx_classed_result <- function(x) paste("result", x$estimate)
+  describe.mx_classed_pair <- function(x) paste("pair", x[[1]])
+  describe.default <- function(x) "default"
+
+  # No method for the first class, so the second one's is used.
+  expect_identical(describe(conv_classed_fit()), "result 1.5")
+  expect_identical(describe(conv_classed_pair()), "pair 7")
+  expect_true(inherits(conv_classed_fit(), "mx_classed_result"))
+  expect_false(inherits(conv_classed_fit(), "list"))
+})
+
 # =============================================================================
 # Map conversion edge cases (Phase A1/A2)
 # =============================================================================

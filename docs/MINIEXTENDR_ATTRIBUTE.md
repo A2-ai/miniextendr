@@ -1742,6 +1742,27 @@ pub struct Cfg {
 }
 ```
 
+**Classing the list.** `#[into_list(class = "...")]` on the struct sets the
+list's `class` attribute, with one name or a bracketed list of them. The list
+gets exactly those classes (no implicit `"list"`), so S3 methods dispatch on
+it. It applies wherever `IntoList` builds the list: list mode, `PreferList`,
+and `AsList`. `TryFromList` does not check the class. Put the attribute after
+`#[miniextendr(list)]`; `class = ...` inside `#[miniextendr(list, ...)]` is an
+error.
+
+<!-- docs-examples-check -->
+```rust
+use miniextendr_api::miniextendr;
+
+#[miniextendr(list)]
+#[into_list(class = ["fit_summary", "summary"])]
+pub struct FitSummary {
+    pub estimate: f64,
+    pub n: i32,
+}
+// R: structure(list(estimate = ..., n = ...), class = c("fit_summary", "summary"))
+```
+
 **Return-only by default.** List mode generates `PreferList` (return path) but
 **not** `TryFromSexp` on the struct, so a list-mode struct is *not* usable as a
 `#[miniextendr]` function argument directly. To reconstruct one from R, take a
