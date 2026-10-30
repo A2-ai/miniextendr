@@ -1052,10 +1052,10 @@ m2$total()                 # the value came back
 - **How.** The pointer's `prot` list ends with a carrier: a zero-length
   ALTREP raw vector of a class the package registers for the type when it
   loads (`miniextendr_saved:<crate>::<Type>`). R calls the class
-  itself. During `serialize()` it encodes the value through the crate's
-  serde-to-R path (`miniextendr_api::serde::to_r`, an R list) into the save.
-  During `unserialize()`, which loads the package first when it is not, it
-  decodes the list (`serde::from_r`) and keeps the value. R reads the
+  itself. During `serialize()` it encodes the value into the save as an R
+  list, through the exact mode of the crate's serde-to-R path ("The snapshot
+  encoding" below). During `unserialize()`, which loads the package first
+  when it is not, it decodes the list and keeps the value. R reads the
   `prot` list before the pointer exists, so the value is attached at the
   pointer's first use: a method (any receiver), an `ExternalPtr<T>` / `&T`
   / `&mut T` argument, an R accessor of any field, the `$` / `[[` field
@@ -1074,13 +1074,41 @@ m2$total()                 # the value came back
   `miniextendr_borrow_conflict` error, and the save stops.
 - **A value serde can't encode** gives the save no value: R writes the
   pointer as before, and the reload is refused as for a type without serde.
-- **The round trip can change values.** The serde-to-R path stores
-  integers above 2^53 (`i64` / `u64`) as R doubles, which lose precision
-  (#1417), and an `i32` holding `i32::MIN` is R's `NA_integer_` (#1419).
-  Such values come back changed after `saveRDS()` / `readRDS()`.
+- **The value comes back exactly**, through untagged and internally
+  tagged enums and `#[serde(flatten)]` too: one-element `Vec`s, `f64` bits
+  (`NA_real_`'s payload, NaN, `-0.0`, `Inf`), `i32::MIN`, integers above
+  2^53, maps whose keys are not strings, `Some(None)`, strings holding a
+  NUL byte ("The snapshot encoding" below). Two limits: serde's buffered
+  `Content` reads no `i128` / `u128`, so one inside an untagged or
+  internally tagged enum or a flattened struct fails to decode (#2257,
+  serde-rs/serde#1682); and
+  `saveRDS(ascii = TRUE)` / `serialize(ascii = TRUE)` write doubles as
+  16-digit text, which R itself reads back changed in the last bit and
+  without NaN payloads other than `NA`'s (the binary default keeps them).
+- **R objects in the value.** A field of type
+  [`serde::RObject`](SERDE_R.md#r-objects-inside-a-serde-value)
+  holds an R object (a data frame, a formula, another saved object), which
+  the save writes with the rest of the value and `readRDS()` gives back,
+  rooted, in any context, buffered enums included. Within one save R shares
+  only environments, external pointers and symbols: one of those that the
+  value holds in two places, or that the value and the rest of the save
+  both hold, comes back as one object. Another `ExternalPtr` to a serde type
+  comes back once, through its own carrier, with its own value. Any other
+  object (a data frame, a vector) comes back as one copy per place. The
+  Rust fields are encoded by value, so serde's rules apply to them (an
+  `Rc` held twice comes back as two).
 - **Another version's save** is decoded too: serde decides. A field added
   since then decodes when it has `#[serde(default)]`; one without a
-  default, or a field whose type changed, fails to decode.
+  default, or a field whose type changed, fails to decode. A missing
+  `Option` field decodes as `None` (serde's default), so a save from
+  another version, or a damaged one, can come back with that field cleared
+  rather than refused.
+- **`&'static str` fields** can never be `DeserializeOwned`: serde borrows a
+  field written `&'static str` (or `Option<&'static str>`) with
+  `'de: 'static`, so the derived impl is `Deserialize<'static>` only, and
+  `Vec<&'static str>` has no impl at all. Such a type has no snapshot. Use
+  `String`, `Cow<'static, str>`, or a `#[serde(deserialize_with = ...)]`
+  that maps the text to the static strings.
 - **A save that fails to decode** is refused at the first use, as a
   restored pointer without a value is: the `restored(class = ...)` classes,
   then `miniextendr_restored_no_value` and `miniextendr_restored`, with the
@@ -1120,6 +1148,81 @@ m2$total()                 # the value came back
     modules: each would read the other's saves. The package then fails to
     load, with an error naming both types' paths. A type without serde has
     no carrier and is not checked.
+
+##### The snapshot encoding
+
+The save encodes the value with an exact mode of the crate's serde-to-R
+path (#2256): the same R list `serde::to_r` writes where that one is exact,
+and an attribute `serde` naming the kind where the general mapping would
+be ambiguous. `serde::to_r` / `serde::from_r` keep the general mapping,
+which reads better in R but is not exact (#1417, #1419). Only the encoding
+writes attributes, so every attribute in it is one of these.
+
+| Rust value | R value |
+|---|---|
+| `bool` | `logical(1)` |
+| an integer that fits `i32` (any type, `i32::MIN` included) | `integer(1)` |
+| an integer outside `i32` (`i64`, `u64`, `i128`, `u128`, `u32`) | `character(1)` in decimal, `serde = "int"` |
+| `f32`, `f64` | `double(1)`, the bits as they are |
+| `char`, `str` | `character(1)` |
+| a string holding a NUL byte | `raw` of its UTF-8 bytes, `serde = "str"` |
+| bytes (`serialize_bytes`, e.g. `serde_bytes`) | `raw` |
+| `None`, `()`, unit struct | `NULL` |
+| `Some(x)` | `x`'s value; `list(x)` with `serde = "some"` when `x`'s value is `NULL` or such a list (`Some(None)`) |
+| newtype struct | its field's value |
+| sequence of `bool`s, of integers that fit `i32`, of floats, or of strings (at least one element) | that atomic vector, `serde = "seq"` |
+| sequence of integers, at least one outside `i32` | `character` in decimal, `serde = "ints"` |
+| any other sequence (empty, a `None`, nested, mixed), tuple, tuple struct | unnamed list |
+| struct, map whose keys are all strings | named list (an empty one is `named list()`) |
+| any other map | `list(keys = <keys>, values = <values>)`, each a sequence, `serde = "map"` |
+| unit variant | `character(1)`, the variant's name |
+| newtype, tuple or struct variant | `list(<variant> = <payload>)` |
+| [`serde::RObject`](SERDE_R.md#r-objects-inside-a-serde-value) | `list(<the object>)`, `serde = "robject"` |
+
+The list around an `RObject`'s object keeps the object's own attributes
+(a `serde` attribute included) from being read as the encoding's.
+
+Untagged and internally tagged enums and `#[serde(flatten)]` decode
+through serde's buffered `Content`, which never sees the target type and
+records only what `deserialize_any` visits. So every visit is decided from
+the R value alone:
+
+| R value | `deserialize_any` visits |
+|---|---|
+| `NULL` | `visit_unit` (`None` and `()` read it) |
+| `logical(1)`, `integer(1)`, `double(1)`, `character(1)` | `visit_bool`, `visit_i32`, `visit_f64`, `visit_str` |
+| `raw` | `visit_bytes` |
+| `serde = "int"` | `visit_i64`, else `visit_u64`, `visit_i128`, `visit_u128`: the first that holds the value |
+| `serde = "str"` | `visit_string` |
+| `serde = "seq"` or `"ints"`, any length (one too) | `visit_seq`, each element by the rows above |
+| unnamed list | `visit_seq` |
+| named list (a struct, a map with string keys) | `visit_map`, the names as string keys |
+| `serde = "map"` | `visit_map`, the keys by these rules |
+| `serde = "some"` | `visit_some` |
+| `serde = "robject"` | `visit_newtype_struct` with a token string for the object |
+
+serde's buffer can't hold an R object, so it keeps the token, and the
+`RObject` the buffered value is decoded into looks the object up by it
+while the decoder runs. Outside a buffer, `RObject` takes the object
+directly.
+
+No visit maps an `NA` to `None`: only `NULL` (and the `"some"` list) is the
+`None` encoding, so `Some(NA_real_)` stays `Some`, and an `integer(1)`
+holding `NA_integer_` is `i32::MIN`.
+
+**Sequences.** An atomic vector without the attribute is always a scalar,
+and one with `serde = "seq"` is always a sequence, of any length: that is
+what tells a `Vec` of one element from its element. A sequence whose
+elements are all scalars of one kind stays one atomic vector, so a
+`Vec<f64>` of a million values is one 8 MB double vector rather than a 56
+MB list of scalars, and the encoder collects it in one Rust vector before
+it allocates the R one. A sequence with a `None`, a nested value or mixed
+kinds is a list, whose elements each carry their own encoding.
+
+A save written before #2256 used the general mapping. Where the two agree
+it decodes; otherwise (a one-element `Vec`, an integer the general mapping
+wrote as a double) it is refused at the first use, as a save that fails to
+decode. Nothing reads the old mapping as a fallback.
 
 **webR:** the round trip has not been tested there. Nothing in it is
 platform-specific (R serializes the pointer's tag and `prot` the same way),

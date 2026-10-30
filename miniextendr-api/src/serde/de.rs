@@ -491,9 +491,14 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
     fn deserialize_newtype_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
+        // An `RObject` takes this object.
+        if name == super::robject::MARKER {
+            let sexp = self.sexp;
+            return super::robject::reading(sexp, || visitor.visit_newtype_struct(self));
+        }
         visitor.visit_newtype_struct(self)
     }
 

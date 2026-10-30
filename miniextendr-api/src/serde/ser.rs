@@ -154,6 +154,12 @@ impl ser::Serializer for RSerializer {
         name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error> {
+        // An `RObject` is its object.
+        if name == super::robject::MARKER {
+            return super::robject::written().ok_or_else(|| {
+                ser::Error::custom("the `serde::RObject` marker without an `RObject`")
+            });
+        }
         // A field under `as_character` & co. (#2164) becomes one vector of
         // that type; any other newtype struct is transparent.
         match super::rvalue_ser::Atomic::from_marker(name) {
@@ -239,6 +245,8 @@ pub struct SeqSerializer {
     element_type: Option<SEXPTYPE>,
     /// Track whether all elements are scalar.
     all_scalar: bool,
+    /// An element is an `RObject`, which stays an element of a list.
+    has_object: bool,
     /// Keeps element SEXPs protected until `.end()` assembles the container;
     /// drop balances the protect stack even on early-`Err` paths.
     scope: ProtectScope,
@@ -250,6 +258,7 @@ impl SeqSerializer {
             elements: Vec::with_capacity(len.unwrap_or(0)),
             element_type: None,
             all_scalar: true,
+            has_object: false,
             // SAFETY: serializers run on the R main thread — every method
             // allocates through the R API.
             scope: unsafe { ProtectScope::new() },
@@ -262,7 +271,9 @@ impl ser::SerializeSeq for SeqSerializer {
     type Error = RSerdeError;
 
     fn serialize_element<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
+        super::robject::forget_written();
         let elem = value.serialize(RSerializer)?;
+        self.has_object |= super::robject::is_written(elem);
 
         // Track homogeneity for smart dispatch
         let elem_len = elem.xlength();
@@ -286,6 +297,9 @@ impl ser::SerializeSeq for SeqSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
+        if self.has_object {
+            return Ok(crate::list::List::from_raw_values(self.elements).as_sexp());
+        }
         Ok(crate::list::List::from_scalars_or_list(&self.elements).as_sexp())
     }
 }

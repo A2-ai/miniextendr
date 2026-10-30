@@ -61,12 +61,39 @@ mod second {
     }
 }
 
+/// Values the general serde-to-R mapping can't read back (#2256): the save
+/// uses the exact encoding.
+#[derive(miniextendr_api::ExternalPtr, serde::Serialize, serde::Deserialize)]
+struct Shapes {
+    values: Values,
+    notice: Notice,
+    na: f64,
+    nested: Option<Option<f64>>,
+    min: i32,
+    big: u64,
+    by_id: std::collections::HashMap<u32, f64>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[serde(untagged)]
+enum Values {
+    Many(Vec<String>),
+    Flag(bool),
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+#[serde(tag = "kind")]
+enum Notice {
+    Dropped { profiles: Vec<String> },
+}
+
 /// Registers the carrier classes, as `R_init` does through the derive's
 /// `MX_ALTREP_REGISTRATIONS` entries.
 fn register() {
     miniextendr_api::externalptr::__mx_register_snapshot::<Counter>();
     miniextendr_api::externalptr::__mx_register_snapshot::<Plain>();
     miniextendr_api::externalptr::__mx_register_snapshot::<Positive>();
+    miniextendr_api::externalptr::__mx_register_snapshot::<Shapes>();
 }
 
 /// `x` saved and read back.
@@ -128,6 +155,40 @@ fn a_serde_value_comes_back() {
         let again = reload(back.get());
         let again = ExternalPtr::<Counter>::try_from_sexp(again.get()).expect("attached");
         assert_eq!(again.borrow().n, 8);
+    });
+}
+
+#[test]
+fn a_value_the_general_mapping_changes_comes_back_exactly() {
+    r_test_utils::with_r_thread(|| {
+        register();
+        let na = f64::from_bits(0x7ff0_0000_0000_07a2);
+        let ptr = ExternalPtr::new(Shapes {
+            values: Values::Many(vec!["1".to_owned()]),
+            notice: Notice::Dropped {
+                profiles: vec!["ID=1".to_owned()],
+            },
+            na,
+            nested: Some(None),
+            min: i32::MIN,
+            big: 9_007_199_254_740_993,
+            by_id: [(u32::MAX, -0.0)].into(),
+        });
+        let back = reload(ptr.as_sexp());
+        let back = ExternalPtr::<Shapes>::try_from_sexp(back.get()).expect("attached");
+        let back = back.borrow();
+        assert_eq!(back.values, Values::Many(vec!["1".to_owned()]));
+        assert_eq!(
+            back.notice,
+            Notice::Dropped {
+                profiles: vec!["ID=1".to_owned()]
+            }
+        );
+        assert_eq!(back.na.to_bits(), na.to_bits());
+        assert_eq!(back.nested, Some(None));
+        assert_eq!(back.min, i32::MIN);
+        assert_eq!(back.big, 9_007_199_254_740_993);
+        assert_eq!(back.by_id[&u32::MAX].to_bits(), (-0.0f64).to_bits());
     });
 }
 
