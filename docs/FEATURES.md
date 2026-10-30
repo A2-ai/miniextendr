@@ -1087,6 +1087,11 @@ Routes Rust `log` macros (`info!`, `warn!`, `error!`, `debug!`, `trace!`) to R's
 console output (`Rprintf`/`REprintf`). The logger is installed automatically during
 `package_init()` -- no setup needed beyond enabling the feature.
 
+Records logged on other threads (rayon, `std::thread`) cannot call R, so they are
+sent to R's main thread over a `std::sync::mpsc` channel and printed when the
+`#[miniextendr]` call returns, each thread's records in order. The channel holds
+1024 records; past that, new records are dropped and a warning reports how many.
+
 ```rust
 use log::{info, warn};
 

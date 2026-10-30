@@ -1,138 +1,141 @@
 use super::*;
 use std::thread;
 
-/// Acquire the test serialization lock, recovering from a previous test
-/// panic that left the lock poisoned.
-fn acquire_test_lock() -> std::sync::MutexGuard<'static, ()> {
-    LOG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
-
 // Convenience: install logger if not already installed, set level to Trace.
 fn init_trace() {
     install_r_logger();
     set_log_level("trace");
 }
 
-// Clear the queue and reset dropped counter between tests.
-fn reset_state() {
-    // Recover from poisoned mutex (prior test may have panicked holding the lock).
-    let mut q = queue().lock().unwrap_or_else(|e| e.into_inner());
-    q.clear();
-    drop(q);
-    DROPPED.store(0, Ordering::Relaxed);
-    take_rendered();
-    set_fake_main_thread(None);
-}
-
-// Enqueue a record as if from a worker thread (bypasses level filter).
-fn enqueue(level: Level, msg: &str) {
-    let mut q = queue().lock().unwrap_or_else(|e| e.into_inner());
-    if q.len() >= QUEUE_CAPACITY {
-        q.pop_front();
-        DROPPED.fetch_add(1, Ordering::Relaxed);
-    }
-    q.push_back((level, msg.to_string()));
+// Send a record as a thread other than the main thread does (bypasses the
+// level filter).
+fn send(level: Level, msg: &str) {
+    send_to_main(level, msg.to_string());
 }
 
 // region: default_level_is_off
 
 /// After `install_r_logger`, the max level is Off so info!/error! produce
-/// nothing (no queue entries, no rendered output).
+/// nothing, on the main thread or off it.
 #[test]
 fn default_level_is_off() {
-    let _guard = acquire_test_lock();
-    reset_state();
-    install_r_logger(); // resets to Off
-    set_fake_main_thread(Some(true));
+    on_main_thread(|| {
+        install_r_logger(); // resets to Off
 
-    // These should be filtered out before reaching queue or render.
-    log::info!("should be suppressed");
-    log::error!("also suppressed");
+        // These should be filtered out before reaching the channel or render.
+        log::info!("should be suppressed");
+        set_fake_main_thread(Some(false));
+        log::error!("also suppressed");
+        set_fake_main_thread(Some(true));
+        drain_log_queue();
 
-    assert_eq!(
-        queue().lock().unwrap_or_else(|e| e.into_inner()).len(),
-        0,
-        "queue must be empty"
-    );
-    assert!(take_rendered().is_empty(), "nothing should be rendered");
+        assert!(take_rendered().is_empty(), "nothing should be rendered");
+    });
 }
 // endregion
 
 // region: worker_buffering
 
-/// A record logged from a non-main thread lands in QUEUE and is not
-/// rendered immediately.
+/// A record logged off the main thread waits in the channel: it is not
+/// rendered until the main thread drains.
 #[test]
 fn worker_buffering() {
-    let _guard = acquire_test_lock();
-    reset_state();
-    init_trace();
+    on_main_thread(|| {
+        init_trace();
 
-    // Pretend we are NOT on the main thread.
-    set_fake_main_thread(Some(false));
-    log::info!("buffered from worker");
+        // Pretend we are NOT on the main thread.
+        set_fake_main_thread(Some(false));
+        log::info!("buffered from worker");
+        // Draining off the main thread does nothing.
+        drain_log_queue();
+        assert!(
+            take_rendered().is_empty(),
+            "worker records must not be rendered immediately"
+        );
 
-    let q = queue().lock().unwrap_or_else(|e| e.into_inner());
-    assert_eq!(q.len(), 1, "record must be in queue");
-    assert_eq!(q[0].1, "buffered from worker");
-    drop(q);
-
-    assert!(
-        take_rendered().is_empty(),
-        "worker records must not be rendered immediately"
-    );
+        set_fake_main_thread(Some(true));
+        drain_log_queue();
+        assert_eq!(take_rendered(), ["buffered from worker"]);
+    });
 }
 // endregion
 
 // region: fifo_drain
 
-/// Records enqueued in order are drained in the same order (FIFO).
+/// Records sent in order are drained in the same order (FIFO).
 #[test]
 fn fifo_drain() {
-    let _guard = acquire_test_lock();
-    reset_state();
+    on_main_thread(|| {
+        for i in 0..5 {
+            send(Level::Info, &format!("msg-{i}"));
+        }
 
-    // Enqueue directly (bypasses level/thread check).
-    for i in 0..5 {
-        enqueue(Level::Info, &format!("msg-{i}"));
-    }
+        drain_log_queue();
 
-    // Drain on the "main thread".
-    set_fake_main_thread(Some(true));
-    drain_log_queue();
+        let rendered = take_rendered();
+        assert_eq!(rendered.len(), 5);
+        for (i, r) in rendered.iter().enumerate() {
+            assert_eq!(r, &format!("msg-{i}"), "FIFO order violated at index {i}");
+        }
+    });
+}
+// endregion
 
-    let rendered = take_rendered();
-    assert_eq!(rendered.len(), 5);
-    for (i, r) in rendered.iter().enumerate() {
-        assert_eq!(r, &format!("msg-{i}"), "FIFO order violated at index {i}");
-    }
+// region: main_thread_record_after_waiting_records
+
+/// A record logged on the main thread prints after the records other threads
+/// sent before it.
+#[test]
+fn main_thread_record_after_waiting_records() {
+    on_main_thread(|| {
+        init_trace();
+
+        thread::spawn(|| log::info!("from spawned thread"))
+            .join()
+            .unwrap();
+        log::info!("from main thread");
+
+        assert_eq!(take_rendered(), ["from spawned thread", "from main thread"]);
+    });
 }
 // endregion
 
 // region: overflow_accounting
 
-/// Enqueueing capacity+50 records results in exactly 50 dropped and the
-/// queue stays at QUEUE_CAPACITY.
+/// Sending capacity+50 records from a spawned thread drops the 50 newest: the
+/// drain prints the first QUEUE_CAPACITY records in order, then the overflow
+/// warning.
 #[test]
 fn overflow_accounting() {
-    let _guard = acquire_test_lock();
-    reset_state();
+    on_main_thread(|| {
+        init_trace();
 
-    let extra = 50usize;
-    for i in 0..(QUEUE_CAPACITY + extra) {
-        enqueue(Level::Info, &format!("msg-{i}"));
-    }
+        let extra = 50usize;
+        thread::spawn(move || {
+            for i in 0..(QUEUE_CAPACITY + extra) {
+                log::info!("msg-{i}");
+            }
+        })
+        .join()
+        .unwrap();
 
-    assert_eq!(
-        DROPPED.load(Ordering::Relaxed),
-        extra,
-        "expected {extra} dropped records"
-    );
-    assert_eq!(
-        queue().lock().unwrap_or_else(|e| e.into_inner()).len(),
-        QUEUE_CAPACITY,
-        "queue must be capped at {QUEUE_CAPACITY}"
-    );
+        assert_eq!(
+            DROPPED.load(Ordering::Relaxed),
+            extra,
+            "expected {extra} dropped records"
+        );
+
+        drain_log_queue();
+        let rendered = take_rendered();
+        assert_eq!(rendered.len(), QUEUE_CAPACITY + 1);
+        for (i, r) in rendered[..QUEUE_CAPACITY].iter().enumerate() {
+            assert_eq!(r, &format!("msg-{i}"), "kept records out of order at {i}");
+        }
+        assert_eq!(
+            rendered[QUEUE_CAPACITY],
+            format!("{extra} log records dropped due to queue overflow")
+        );
+    });
 }
 // endregion
 
@@ -142,39 +145,36 @@ fn overflow_accounting() {
 /// does NOT re-emit it.
 #[test]
 fn overflow_warning_emitted_and_reset() {
-    let _guard = acquire_test_lock();
-    reset_state();
+    on_main_thread(|| {
+        // Force overflow by sending capacity+1 records.
+        for i in 0..=(QUEUE_CAPACITY) {
+            send(Level::Info, &format!("msg-{i}"));
+        }
 
-    // Force overflow by enqueueing capacity+1 records.
-    for i in 0..=(QUEUE_CAPACITY) {
-        enqueue(Level::Info, &format!("msg-{i}"));
-    }
+        // First drain — QUEUE_CAPACITY records + overflow warning.
+        drain_log_queue();
+        let first = take_rendered();
+        assert!(
+            first
+                .iter()
+                .any(|m| m.contains("log records dropped due to queue overflow")),
+            "expected overflow warning in first drain; got: {first:?}"
+        );
 
-    set_fake_main_thread(Some(true));
-
-    // First drain — overflow warning + QUEUE_CAPACITY records.
-    drain_log_queue();
-    let first = take_rendered();
-    assert!(
-        first
-            .iter()
-            .any(|m| m.contains("log records dropped due to queue overflow")),
-        "expected overflow warning in first drain; got: {first:?}"
-    );
-
-    // Second drain — nothing left, no overflow warning.
-    drain_log_queue();
-    let second = take_rendered();
-    assert!(
-        second.iter().all(|m| !m.contains("log records dropped")),
-        "unexpected overflow warning re-emitted in second drain; got: {second:?}"
-    );
+        // Second drain — nothing left, no overflow warning.
+        drain_log_queue();
+        let second = take_rendered();
+        assert!(
+            second.is_empty(),
+            "nothing should be left after the first drain; got: {second:?}"
+        );
+    });
 }
 // endregion
 
 // region: drain_on_error_path
 
-/// A record buffered by a "worker" is visible in the rendered sink after
+/// A record sent by a "worker" is visible in the rendered sink after
 /// the drain that the trampoline would call on error exit.
 ///
 /// This test exercises the drain path directly, which is what the
@@ -182,57 +182,82 @@ fn overflow_warning_emitted_and_reset() {
 /// every FFI exit path (normal, panic, R longjmp).
 #[test]
 fn drain_on_error_path() {
-    let _guard = acquire_test_lock();
-    reset_state();
+    on_main_thread(|| {
+        // Step 1: send a record as if from a worker thread.
+        send(Level::Warn, "worker warning before error");
 
-    // Step 1: buffer a record as if from a worker thread.
-    enqueue(Level::Warn, "worker warning before error");
+        // Step 2: simulate trampoline error-path drain — called from main thread.
+        drain_log_queue();
 
-    // Step 2: simulate trampoline error-path drain — called from main thread.
-    set_fake_main_thread(Some(true));
-    drain_log_queue();
-
-    // Step 3: the record must appear in the rendered sink.
-    let rendered = take_rendered();
-    assert!(
-        rendered
-            .iter()
-            .any(|m| m.contains("worker warning before error")),
-        "buffered record must be drained even on error path; got: {rendered:?}"
-    );
+        // Step 3: the record must appear in the rendered sink.
+        let rendered = take_rendered();
+        assert!(
+            rendered
+                .iter()
+                .any(|m| m.contains("worker warning before error")),
+            "sent record must be drained even on error path; got: {rendered:?}"
+        );
+    });
 }
 // endregion
 
 // region: std::thread spawn buffering (real thread, no fake override)
 
-/// A record from a real `std::thread::spawn` thread is buffered (not
-/// rendered), and appears after drain on the "main thread".
+/// A record from a real `std::thread::spawn` thread is not rendered when
+/// logged, and the next drain on the "main thread" prints it.
 #[test]
 fn real_thread_buffering() {
-    let _guard = acquire_test_lock();
-    reset_state();
-    init_trace();
+    on_main_thread(|| {
+        init_trace();
 
-    // Spawn a thread that will NOT be the R main thread (R_MAIN_THREAD_ID
-    // is either unset or set to the test thread, neither matches the spawned
-    // thread ID).
-    let handle = thread::spawn(|| {
-        log::info!("from spawned thread");
+        // The spawned thread has no fake override and is not R's main thread
+        // (R_MAIN_THREAD_ID is unset or another thread), so it sends.
+        thread::spawn(|| {
+            log::info!("from spawned thread");
+        })
+        .join()
+        .unwrap();
+
+        assert!(take_rendered().is_empty());
+
+        drain_log_queue();
+        assert_eq!(take_rendered(), ["from spawned thread"]);
     });
-    handle.join().unwrap();
+}
+// endregion
 
-    // The record must be in the queue (not rendered yet).
-    assert_eq!(queue().lock().unwrap_or_else(|e| e.into_inner()).len(), 1);
-    assert!(take_rendered().is_empty());
+// region: per-thread order across threads
 
-    // Drain on the fake-main thread.
-    set_fake_main_thread(Some(true));
-    drain_log_queue();
-    let rendered = take_rendered();
-    assert!(
-        rendered.iter().any(|m| m.contains("from spawned thread")),
-        "got: {rendered:?}"
-    );
+/// Records from several threads interleave, but each thread's records print in
+/// the order that thread sent them.
+#[test]
+fn per_thread_order() {
+    on_main_thread(|| {
+        init_trace();
+
+        thread::scope(|s| {
+            for t in 0..4 {
+                s.spawn(move || {
+                    for i in 0..100 {
+                        log::info!("t{t}-{i}");
+                    }
+                });
+            }
+        });
+
+        drain_log_queue();
+        let rendered = take_rendered();
+        assert_eq!(rendered.len(), 400);
+        for t in 0..4 {
+            let prefix = format!("t{t}-");
+            let seen: Vec<&str> = rendered
+                .iter()
+                .filter_map(|m| m.strip_prefix(&prefix))
+                .collect();
+            let expected: Vec<String> = (0..100).map(|i| i.to_string()).collect();
+            assert_eq!(seen, expected, "thread {t} records out of order");
+        }
+    });
 }
 // endregion
 

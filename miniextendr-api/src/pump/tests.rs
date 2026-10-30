@@ -161,55 +161,43 @@ fn drain_logs_each_tick_default_on() {
     #[cfg(feature = "log")]
     {
         use crate::optionals::log_impl::{
-            LOG_TEST_LOCK, install_r_logger, set_fake_main_thread, set_log_level, take_rendered,
+            install_r_logger, on_main_thread, set_log_level, take_rendered,
         };
 
-        // Acquire the same lock that log_impl tests use so we don't race on
-        // the shared QUEUE / DROPPED / TEST_SINK globals.
-        let _guard = LOG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The pump loop (and drain_log_queue inside it) runs on the log tests'
+        // "main thread", which holds the log channel's receiving end and runs
+        // one log test at a time. The worker is a real scoped thread with no
+        // fake override, so is_main() → is_r_main_thread() → false → its
+        // records are sent on the channel.
+        let rendered = on_main_thread(|| {
+            install_r_logger();
+            set_log_level("trace");
 
-        install_r_logger();
-        set_log_level("trace");
-        // Clear residual state from prior tests.
-        take_rendered();
-
-        let rendered_before_pump: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let rendered_before_pump2 = Arc::clone(&rendered_before_pump);
-
-        // The pump loop (and drain_log_queue inside it) runs on *this* thread.
-        // Mark this thread as main so drain_log_queue() actually drains.
-        // The worker is a real scoped thread whose FAKE_IS_MAIN is None,
-        // so is_main() → is_r_main_thread() → false → records go to queue.
-        set_fake_main_thread(Some(true));
-
-        WorkerPump::<u8>::new()
-            .drain_logs_each_tick(true)
-            .run(
-                |tx| {
-                    // Runs on a real background thread; is_main() == false
-                    // → log record is buffered in QUEUE, not rendered yet.
-                    log::info!("hello from worker");
-                    tx.send(1u8).ok();
-                    Ok(())
-                },
-                move |msg: u8| {
-                    // WorkerPump calls drain_log_queue() BEFORE calling us.
-                    // Since is_main() == true on the pump thread, the queue
-                    // was already drained → record is in TEST_SINK.
-                    let rendered = take_rendered();
-                    rendered_before_pump2.lock().unwrap().extend(rendered);
-                    let _ = msg;
-                },
-            )
-            .expect("run failed");
-
-        // Restore state.
-        set_fake_main_thread(None);
-        take_rendered();
+            let mut rendered_before_pump = Vec::new();
+            WorkerPump::<u8>::new()
+                .drain_logs_each_tick(true)
+                .run(
+                    |tx| {
+                        // Runs on a real background thread; is_main() == false
+                        // → log record is sent on the channel, not rendered yet.
+                        log::info!("hello from worker");
+                        tx.send(1u8).ok();
+                        Ok(())
+                    },
+                    |msg: u8| {
+                        // WorkerPump calls drain_log_queue() BEFORE calling us.
+                        // Since is_main() == true on the pump thread, the channel
+                        // was already drained → record is in the render sink.
+                        rendered_before_pump.extend(take_rendered());
+                        let _ = msg;
+                    },
+                )
+                .expect("run failed");
+            rendered_before_pump
+        });
 
         // The drain happened before pump(msg), so the record must have
         // appeared in the captured snapshot.
-        let rendered = rendered_before_pump.lock().unwrap();
         assert!(
             rendered.iter().any(|m| m.contains("hello from worker")),
             "log record was not drained before pump tick; got: {rendered:?}"

@@ -39,3 +39,21 @@ test_that("debug messages visible at debug level", {
   out <- capture.output(miniextendr:::test_log_debug("visible debug"))
   expect_true(any(grepl("visible debug", out)))
 })
+
+test_that("log records from another thread print when the call returns", {
+  miniextendr:::test_log_set_level("info")
+  on.exit(miniextendr:::test_log_set_level("off"), add = TRUE)
+  out <- capture.output(miniextendr:::test_log_info_from_thread("hello from a thread"))
+  expect_true(any(grepl("hello from a thread", out)))
+})
+
+test_that("a full log channel keeps the first 1024 records and reports the dropped ones", {
+  miniextendr:::test_log_set_level("info")
+  on.exit(miniextendr:::test_log_set_level("off"), add = TRUE)
+  msg <- capture.output(
+    out <- capture.output(miniextendr:::test_log_flood_from_thread(1100L)),
+    type = "message"
+  )
+  expect_identical(out, paste("flood", 0:1023))
+  expect_true(any(grepl("76 log records dropped due to queue overflow", msg)))
+})
