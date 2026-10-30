@@ -12,8 +12,6 @@
 noctors3_of(value)
 
 noctors3_parse(text)
-
-NoCtorS3
 }
 \arguments{
 \item{x}{An object.}

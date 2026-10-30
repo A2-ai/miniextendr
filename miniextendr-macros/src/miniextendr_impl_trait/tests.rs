@@ -1001,6 +1001,50 @@ fn declared_scale_expansion(
     .to_string())
 }
 
+/// A trait impl whose wrappers bind `Class$Trait` registers its type for the
+/// wrapper writer, which keeps the S3 class environment for it (#2264): an
+/// S3 or vctrs impl with a static method or a const, any Env or R6 impl. An
+/// S3 impl whose methods all dispatch on the object, and S4 / S7 impls, whose
+/// namespaces live elsewhere, register nothing.
+#[test]
+fn trait_impls_binding_a_namespace_register_their_type() {
+    let registers = |system: proc_macro2::TokenStream, item: &syn::ItemImpl| {
+        let out = declared_scale_expansion(system, item.clone()).unwrap();
+        let registered = out.contains("MX_TRAIT_NAMESPACES");
+        if registered {
+            assert!(
+                out.contains("type_path : || :: core :: any :: type_name :: < Meter > ()"),
+                "{out}"
+            );
+        }
+        registered
+    };
+    let instance: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            fn scaled(&self, factor: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let static_method: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            fn scaled(factor: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let with_const: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            const UNIT: i32 = 1;
+            fn scaled(&self, factor: f64) -> f64 { unimplemented!() }
+        }
+    };
+    assert!(!registers(quote::quote!(s3), &instance));
+    assert!(registers(quote::quote!(s3), &static_method));
+    assert!(registers(quote::quote!(s3), &with_const));
+    assert!(registers(quote::quote!(vctrs), &static_method));
+    assert!(registers(quote::quote!(env), &instance));
+    assert!(registers(quote::quote!(r6), &instance));
+    assert!(!registers(quote::quote!(s4), &static_method));
+    assert!(!registers(quote::quote!(s7), &static_method));
+}
+
 /// Every impl's wrappers name a parameter as the trait declares it: the R
 /// formal, its default and checks, the argument errors and the `@param`
 /// docs, whatever the impl calls it.

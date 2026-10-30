@@ -31,6 +31,27 @@ pub(super) struct TraitWrapperOpts {
     pub(super) impl_preconditions: Option<bool>,
 }
 
+/// Whether the trait wrappers of `class_system` for `methods` and `consts`
+/// bind the `Class$Trait` namespace in the class's own object
+/// ([`trait_namespace_env`]): Env always, R6 for any member, S3 and vctrs for
+/// a static method or a const; S4 and S7 keep theirs elsewhere. The trait
+/// impl then registers a `TraitNamespaceEntry`, so the wrapper writer keeps
+/// the S3 class environment it writes into (#2264).
+pub(super) fn binds_trait_namespace(
+    class_system: ClassSystem,
+    methods: &[TraitMethod],
+    consts: &[TraitConst],
+) -> bool {
+    match class_system {
+        ClassSystem::Env => true,
+        ClassSystem::R6 => !methods.is_empty() || !consts.is_empty(),
+        ClassSystem::S3 | ClassSystem::Vctrs => {
+            methods.iter().any(|m| !m.has_self) || !consts.is_empty()
+        }
+        ClassSystem::S4 | ClassSystem::S7 => false,
+    }
+}
+
 /// Generate R wrapper code for trait methods and consts, dispatching by class system.
 ///
 /// Calls the appropriate class-system-specific generator (env, s3, s4, s7, r6),
@@ -773,7 +794,7 @@ fn generate_trait_s3_r_wrapper(
     }
 
     // Create trait namespace for static methods and consts BEFORE assigning to it
-    if !static_methods.is_empty() || !consts.is_empty() {
+    if binds_trait_namespace(ClassSystem::S3, methods, consts) {
         lines.push(format!(
             "{} <- new.env(parent = emptyenv())",
             trait_namespace_env(ClassSystem::S3, type_ident, trait_name)
@@ -1378,7 +1399,7 @@ fn generate_trait_r6_r_wrapper(
 
     // Create the trait namespace env up front — instance methods now live in it
     // too (not just static methods / consts).
-    if !methods.is_empty() || !consts.is_empty() {
+    if binds_trait_namespace(ClassSystem::R6, methods, consts) {
         lines.push(format!(
             "{} <- new.env(parent = emptyenv())",
             trait_namespace_env(ClassSystem::R6, type_ident, trait_name)

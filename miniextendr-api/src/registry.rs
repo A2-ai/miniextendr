@@ -104,6 +104,15 @@ pub static MX_CLASS_NAMES: [ClassNameEntry];
 #[distributed_slice]
 pub static MX_CLASS_BLOCKS: [ClassBlockEntry];
 
+/// The types whose class environment a trait impl writes into: one entry
+/// per `#[miniextendr] impl Trait for Type` whose wrappers bind the
+/// `Class$Trait` namespace. **Host-only.** [`collect_r_wrappers`] keeps a
+/// class's [`env`](ClassBlockEntry::env) part only for a type with a
+/// constructor or an entry here (#2264).
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_TRAIT_NAMESPACES: [TraitNamespaceEntry];
+
 /// S7 sidecar property documentation entries. **Host-only.**
 ///
 /// Each `#[derive(ExternalPtr)] #[externalptr(s7)]` struct with `#[r_data]` fields
@@ -441,6 +450,7 @@ pub const CLASS_MEMBER_DEFAULT_PREFIX: &str = ".__MX_CLASS_MEMBER_DEFAULT__";
 /// registers its R wrapper in parts, and [`collect_r_wrappers`] writes one
 /// class per type: the defining block's [`head`](Self::head), every block's
 /// [`members`](Self::members) in source order, then the defining block's
+/// [`env`](Self::env) when something lands in it and its
 /// [`tail`](Self::tail). The defining block is the one with a
 /// [`defines`](Self::defines) entry (at most one block may have any), else
 /// the first in source order. The class's roxygen block has the
@@ -514,6 +524,13 @@ pub struct ClassBlockEntry {
     /// Top-level functions are left to the duplicate-definition scan of the
     /// written file.
     pub member_names: &'static [&'static str],
+    /// The S3 class environment, `Class <- new.env(...)` with its roxygen
+    /// block, which holds `Class$new()` and the trait namespaces
+    /// `Class$Trait`; empty for the other class systems. Written after the
+    /// members, before the [`tail`](Self::tail), only when the type has a
+    /// constructor or a trait impl writes into it ([`MX_TRAIT_NAMESPACES`]),
+    /// so a class without either exports no empty environment (#2264).
+    pub env: &'static str,
     /// What follows every block's members, such as R6's `$lock()`.
     pub tail: &'static str,
 }
@@ -521,6 +538,19 @@ pub struct ClassBlockEntry {
 // SAFETY: &'static str fields, a fn pointer, integers and a reference to
 // another such entry — immutable and valid for program lifetime.
 unsafe impl Sync for ClassBlockEntry {}
+
+/// A trait impl that writes into its type's class environment: the
+/// `Class$Trait` namespace an Env, S3, vctrs or R6 trait impl binds for its
+/// static methods and consts (and an Env or R6 one for its instance methods
+/// too). Registered in [`MX_TRAIT_NAMESPACES`] by
+/// `#[miniextendr] impl Trait for Type`, a separate expansion from the
+/// type's impl blocks, which can't see it: the wrapper writer keeps the
+/// type's [`ClassBlockEntry::env`] for it (#2264).
+pub struct TraitNamespaceEntry {
+    /// The implementing type's `core::any::type_name`, matched against
+    /// [`ClassBlockEntry::type_path`].
+    pub type_path: fn() -> &'static str,
+}
 
 /// Implemented by `#[miniextendr]` for each type with an impl block that
 /// declares its class constructor (`#[miniextendr(<system>(constructor))]`,
@@ -1291,7 +1321,9 @@ fn class_block_name(block: &ClassBlockEntry) -> String {
 /// `class_docs` of every block (the defining block's first) at its
 /// [`CLASS_DOCS_MARKER`] line and the `class_doc_lines` of every block at its
 /// [`CLASS_DOC_LINES_MARKER`] line, then each block's members, then the
-/// defining block's tail. A tag repeated exactly is written once, and a
+/// defining block's env and tail. The env is written only when the type has
+/// a constructor (`Class$new()`) or a trait impl writes into it (an entry of
+/// `trait_namespaces` for the type, #2264). A tag repeated exactly is written once, and a
 /// generated [`CLASS_DEFAULT_PREFIX`] line gives way to the same tag on
 /// another block. A `# Generated from Rust impl` header precedes each
 /// part whose block differs from the previous part's, so the
@@ -1314,8 +1346,11 @@ fn class_block_name(block: &ClassBlockEntry) -> String {
 ///   one ([`resolve_class_constructor`], which first picks each block's
 ///   rendering).
 #[cfg(not(target_arch = "wasm32"))]
-fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>, String> {
-    use std::collections::HashMap;
+fn merge_class_blocks(
+    blocks: &[ClassBlockEntry],
+    trait_namespaces: &[TraitNamespaceEntry],
+) -> Result<Vec<WrapperFragment>, String> {
+    use std::collections::{HashMap, HashSet};
 
     let mut ordered: Vec<&ClassBlockEntry> = blocks.iter().collect();
     ordered.sort_by_key(|b| (b.source_file, b.source_line, b.source_column));
@@ -1358,8 +1393,12 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
         }
     }
 
+    // The types a trait impl writes `Class$Trait` into.
+    let namespaced: HashSet<&'static str> =
+        trait_namespaces.iter().map(|e| (e.type_path)()).collect();
+
     let mut fragments = Vec::with_capacity(types.len());
-    for (_, type_blocks) in &types {
+    for (path, type_blocks) in &types {
         let type_blocks = match resolve_class_constructor(type_blocks) {
             Ok(blocks) => blocks,
             Err(error) => {
@@ -1437,11 +1476,15 @@ fn merge_class_blocks(blocks: &[ClassBlockEntry]) -> Result<Vec<WrapperFragment>
         if errors.len() > type_errors {
             continue;
         }
+        // Decided over the resolved renderings: the constructor may sit in
+        // another block than the definer's env.
+        let keep_env =
+            type_blocks.iter().any(|b| !b.constructor.is_empty()) || namespaced.contains(path);
         fragments.push(WrapperFragment {
             priority: RWrapperPriority::Class,
             source_file: first.source_file,
             source_line: first.source_line,
-            content: std::borrow::Cow::Owned(merged_class_content(definer, &type_blocks)),
+            content: std::borrow::Cow::Owned(merged_class_content(definer, &type_blocks, keep_env)),
         });
     }
 
@@ -1744,9 +1787,14 @@ fn resolve_class_member_docs(content: &str, class: &str, topic: &str) -> String 
     result.join("\n")
 }
 
-/// The text of a type's merged class: see [`merge_class_blocks`].
+/// The text of a type's merged class: see [`merge_class_blocks`], which
+/// decides `keep_env`.
 #[cfg(not(target_arch = "wasm32"))]
-fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) -> String {
+fn merged_class_content(
+    definer: &ClassBlockEntry,
+    blocks: &[&ClassBlockEntry],
+    keep_env: bool,
+) -> String {
     let block_docs = block_docs(definer, blocks);
     // A default of `owner` gives way to the same tag on another block; its
     // own docs were seen when it was generated.
@@ -1809,12 +1857,16 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
 
     let mut parts: Vec<(&ClassBlockEntry, &str)> = vec![(definer, &head)];
     parts.extend(blocks.iter().map(|&b| (b, class_part(b.members))));
+    if keep_env {
+        parts.push((definer, class_part(definer.env)));
+    }
     parts.push((definer, class_part(definer.tail)));
 
     let mut content = String::new();
     let mut previous: Option<&ClassBlockEntry> = None;
     for (block, text) in parts {
-        if text.is_empty() {
+        // A blank part would only open a header with nothing under it.
+        if text.trim().is_empty() {
             continue;
         }
         if previous.is_some_and(|p| std::ptr::eq(p, block)) {
@@ -1857,7 +1909,8 @@ fn merged_class_content(definer: &ClassBlockEntry, blocks: &[&ClassBlockEntry]) 
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
-    let classes = merge_class_blocks(&MX_CLASS_BLOCKS).unwrap_or_else(|msg| panic!("{msg}"));
+    let classes = merge_class_blocks(&MX_CLASS_BLOCKS, &MX_TRAIT_NAMESPACES)
+        .unwrap_or_else(|msg| panic!("{msg}"));
     let mut entries: Vec<WrapperFragment> = MX_R_WRAPPERS
         .iter()
         .map(WrapperFragment::from)

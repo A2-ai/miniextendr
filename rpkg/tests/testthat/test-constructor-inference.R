@@ -139,14 +139,30 @@ test_that("an R6 class without a constructor is made by its factories", {
 })
 
 test_that("an S3 class without a constructor is made by its factories", {
-  expect_null(NoCtorS3$new)
-  # No `new_<class>()` a package's own could clash with (#2069).
-  expect_false(exists("new_noctors3", envir = asNamespace("miniextendr"), inherits = FALSE))
+  # No `new_<class>()` a package's own could clash with (#2069), and no class
+  # environment: nothing lands in it (#2264).
+  ns <- asNamespace("miniextendr")
+  expect_false(exists("new_noctors3", envir = ns, inherits = FALSE))
+  expect_false(exists("NoCtorS3", envir = ns, inherits = FALSE))
+  expect_false("NoCtorS3" %in% getNamespaceExports("miniextendr"))
   obj <- noctors3_of(3L)
   expect_s3_class(obj, "NoCtorS3")
   expect_identical(noctor3_value(obj), 3L)
   expect_identical(noctor3_value(noctors3_parse("0")), 0L)
   expect_error(noctors3_of(-1L), "negative value")
+})
+
+test_that("an S3 class without a constructor keeps the environment a trait impl uses", {
+  # The trait impl's static lands in `NoCtorTraitS3$MatrixCounter` (#2264).
+  expect_true(is.environment(NoCtorTraitS3))
+  expect_true("NoCtorTraitS3" %in% getNamespaceExports("miniextendr"))
+  expect_null(NoCtorTraitS3$new)
+  expect_false(exists("new_noctortraits3", envir = asNamespace("miniextendr"), inherits = FALSE))
+  expect_identical(NoCtorTraitS3$MatrixCounter$default_value(), 13L)
+  obj <- noctortraits3_of(4L)
+  expect_s3_class(obj, "NoCtorTraitS3")
+  custom_add(obj, 2L)
+  expect_identical(custom_get(obj), 6L)
 })
 
 test_that("an S4 class without a constructor is made by its factories", {

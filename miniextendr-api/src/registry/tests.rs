@@ -2383,12 +2383,13 @@ fn widget_block(line: u32, head: &'static str, members: &'static str) -> ClassBl
         class_doc_lines: "\n\n",
         members,
         member_names: &[],
+        env: "\n\n",
         tail: "\n\n",
     }
 }
 
 fn merged(blocks: &[ClassBlockEntry]) -> Vec<String> {
-    merge_class_blocks(blocks)
+    merge_class_blocks(blocks, &[])
         .unwrap_or_else(|msg| panic!("{msg}"))
         .into_iter()
         .map(|f| f.content.into_owned())
@@ -2605,7 +2606,7 @@ fn merge_refuses_blocks_with_different_settings() {
     let mut hidden = widget_block(10, "\n\n", "\n\n");
     hidden.settings = "env, @noRd";
     let plain = widget_block(40, "\n\n", "\n\n");
-    let msg = merge_class_blocks(&[hidden, plain])
+    let msg = merge_class_blocks(&[hidden, plain], &[])
         .err()
         .expect("settings differ");
     assert!(
@@ -2625,7 +2626,7 @@ fn merge_refuses_two_defining_blocks() {
     ctor.defines = &["a constructor"];
     let mut props = widget_block(40, "\n\n", "\n\n");
     props.defines = &["a constructor", "S7 properties"];
-    let msg = merge_class_blocks(&[ctor, props])
+    let msg = merge_class_blocks(&[ctor, props], &[])
         .err()
         .expect("two blocks define the class");
     assert!(
@@ -2648,7 +2649,7 @@ fn merge_refuses_a_member_bound_by_two_blocks() {
     first.member_names = &["`Widget$get`", "`Widget$set`"];
     let mut second = widget_block(40, "\n\n", "\n\n");
     second.member_names = &["`Widget$get`"];
-    let msg = merge_class_blocks(&[first, second])
+    let msg = merge_class_blocks(&[first, second], &[])
         .err()
         .expect("`$get` is bound twice");
     assert!(
@@ -2668,7 +2669,7 @@ fn merge_refuses_two_types_with_one_class_name() {
     let mut theirs = widget_block(40, "\nWidget <- new.env()\n", "\n\n");
     theirs.type_path = other_widget_path;
     theirs.source_file = "legacy.rs";
-    let msg = merge_class_blocks(&[mine, theirs])
+    let msg = merge_class_blocks(&[mine, theirs], &[])
         .err()
         .expect("one class, two types");
     assert!(
@@ -2784,7 +2785,7 @@ fn merge_refuses_two_titles() {
     let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
     more.class_docs = "\n#' @title Gadgets\n";
     let same = widget_block(70, DOCUMENTED_HEAD, "\n\n");
-    let msg = merge_class_blocks(&[ctor, more, same])
+    let msg = merge_class_blocks(&[ctor, more, same], &[])
         .err()
         .expect("two titles");
     assert_eq!(
@@ -2802,7 +2803,9 @@ fn merge_refuses_a_page_other_than_the_definers() {
     ctor.defines = &["a constructor"];
     let mut more = widget_block(40, DOCUMENTED_HEAD, "\n\n");
     more.class_docs = "\n#' @rdname widget_ops\n";
-    let msg = merge_class_blocks(&[ctor, more]).err().expect("two pages");
+    let msg = merge_class_blocks(&[ctor, more], &[])
+        .err()
+        .expect("two pages");
     assert_eq!(
         msg,
         "miniextendr: the impl blocks of `Widget` put the class on two help pages: \
@@ -2822,7 +2825,7 @@ fn merge_reports_every_problem_at_once() {
     second.defines = &["a constructor"];
     second.member_names = &["`Widget$get`"];
     second.settings = "env, internal";
-    let msg = merge_class_blocks(&[first, second])
+    let msg = merge_class_blocks(&[first, second], &[])
         .err()
         .expect("three problems");
     assert_eq!(msg.lines().count(), 3, "{msg}");
@@ -2891,7 +2894,7 @@ fn a_declared_constructor_keeps_the_candidate_a_static_method() {
 fn candidates_in_two_blocks_without_a_declared_constructor_are_refused() {
     let mut other = widget_block(10, "\n\n", "\n\n");
     other.constructor_candidates = &["empty", "from_file"];
-    let msg = merge_class_blocks(&[other, inferring_block(40)])
+    let msg = merge_class_blocks(&[other, inferring_block(40)], &[])
         .err()
         .expect("three candidates");
     assert!(
@@ -2905,6 +2908,136 @@ fn candidates_in_two_blocks_without_a_declared_constructor_are_refused() {
     assert!(msg.contains("`#[miniextendr(env(constructor))]`"), "{msg}");
     // The candidates are the only problem reported.
     assert_eq!(msg.lines().count(), 1, "{msg}");
+}
+
+// endregion
+
+// region: the S3 class environment decided per type (#2264)
+
+/// An S3 impl block of `Widget` without a constructor, as the macro emits
+/// it: its page on `NULL`, a method, and the class environment as its `env`
+/// part.
+fn s3_widget_block() -> ClassBlockEntry {
+    let mut block = widget_block(
+        10,
+        "\n#' @title Widget S3 Class\n#' @name Widget\nNULL\n\n",
+        "\nsize.Widget <- function(x, ...) 1\n\n",
+    );
+    block.settings = "s3";
+    block.env = "\n#' @rdname Widget\n#' @export\nWidget <- new.env(parent = emptyenv())\n\n";
+    block
+}
+
+/// The classes `blocks` merge into, with `trait_namespaces` registered.
+fn merged_with(blocks: &[ClassBlockEntry], trait_namespaces: &[TraitNamespaceEntry]) -> String {
+    merge_class_blocks(blocks, trait_namespaces)
+        .unwrap_or_else(|msg| panic!("{msg}"))
+        .remove(0)
+        .content
+        .into_owned()
+}
+
+/// Without a constructor or a trait impl writing into it, nothing lands in
+/// the class environment: it is not written, nor exported, and no header is
+/// left behind for the parts after the members.
+#[test]
+fn class_env_without_constructor_or_trait_namespace_is_dropped() {
+    assert_eq!(
+        merged_with(&[s3_widget_block()], &[]),
+        "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+         #' @title Widget S3 Class\n\
+         #' @name Widget\n\
+         NULL\n\
+         \n\
+         size.Widget <- function(x, ...) 1\n"
+    );
+}
+
+/// A trait impl's `Class$Trait` namespace keeps the environment.
+#[test]
+fn class_env_with_a_trait_namespace_is_kept() {
+    let output = merged_with(
+        &[s3_widget_block()],
+        &[TraitNamespaceEntry {
+            type_path: widget_path,
+        }],
+    );
+    assert!(
+        output.contains(
+            "size.Widget <- function(x, ...) 1\n\n\
+             #' @rdname Widget\n\
+             #' @export\n\
+             Widget <- new.env(parent = emptyenv())"
+        ),
+        "{output}"
+    );
+}
+
+/// A constructor keeps the environment for `Class$new()`, written between
+/// the members and the tail that binds it.
+#[test]
+fn class_env_with_a_constructor_is_kept_before_the_tail() {
+    let mut block = s3_widget_block();
+    block.constructor = "new";
+    block.defines = &["a constructor"];
+    block.tail = "\nWidget$new <- new_widget\n\n";
+    let output = merged_with(&[block], &[]);
+    assert!(
+        output.contains(
+            "Widget <- new.env(parent = emptyenv())\n\n\
+             Widget$new <- new_widget"
+        ),
+        "{output}"
+    );
+}
+
+/// An S3 block of `Widget` that infers `from_value` as its constructor, with
+/// its `demoted` rendering (no constructor), as [`inferring_block`].
+fn s3_inferring_block() -> ClassBlockEntry {
+    let mut demoted = s3_widget_block();
+    demoted.constructor_candidates = &["from_value"];
+    let mut block = s3_widget_block();
+    block.constructor = "from_value";
+    block.constructor_inferred = true;
+    block.constructor_candidates = &["from_value"];
+    block.defines = &["the inferred constructor `from_value`"];
+    block.demoted = Some(Box::leak(Box::new(demoted)));
+    block
+}
+
+/// The constructor is decided across the type's blocks (#1776), and the
+/// environment with it: a lone inferred constructor keeps it, and so does a
+/// constructor declared in another block, whose environment is written once.
+#[test]
+fn class_env_follows_the_resolved_constructor() {
+    let lone = merged_with(&[s3_inferring_block()], &[]);
+    assert!(lone.contains("Widget <- new.env("), "{lone}");
+
+    let mut declared = widget_block(30, "\n\n", "\n\n");
+    declared.settings = "s3";
+    declared.constructor = "new";
+    declared.defines = &["a constructor"];
+    declared.env = "\n#' @export\nWidget <- new.env(parent = emptyenv()) # new\n\n";
+    let output = merged_with(&[s3_inferring_block(), declared], &[]);
+    assert!(
+        output.contains("Widget <- new.env(parent = emptyenv()) # new"),
+        "{output}"
+    );
+    assert_eq!(output.matches("new.env(").count(), 1, "{output}");
+}
+
+/// Trait namespaces are matched by `core::any::type_name`: a trait impl on
+/// another type of the same name keeps nothing here.
+#[test]
+fn class_env_trait_namespaces_match_the_type_path() {
+    let output = merged_with(
+        &[s3_widget_block()],
+        &[TraitNamespaceEntry {
+            type_path: other_widget_path,
+        }],
+    );
+    assert!(!output.contains("new.env("), "{output}");
+    assert!(!output.contains("@export"), "{output}");
 }
 
 // endregion
