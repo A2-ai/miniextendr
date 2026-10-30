@@ -62,10 +62,11 @@
 use std::{
     any::Any,
     borrow::Cow,
-    cell::Cell,
+    cell::{Cell, OnceCell},
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::OnceLock,
+    sync::mpsc::{Receiver, SyncSender, sync_channel},
 };
 
 // region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
@@ -340,45 +341,65 @@ impl Drop for RUnwind {
     /// and dropped it, or the boundary refused it ([`RUnwind::stray`]). The R
     /// exit is abandoned: R carries on from where the evaluation stopped, as
     /// after `R_tryEval`. Release the token, on R's main thread: dropped on
-    /// another thread (code that moved the caught payload there), it waits in
-    /// [`ABANDONED_OFF_MAIN`] for the next evaluation.
+    /// another thread (code that moved the caught payload there), it goes to
+    /// the main thread over [`ABANDONED_SENDER`] and the next evaluation
+    /// releases it.
+    ///
+    /// Off the main thread the token is sent with `try_send`, never `send`: the
+    /// main thread may be joining the dropping thread, and a blocking send
+    /// would wait for it forever. When the channel is full (more than
+    /// [`ABANDONED_CAPACITY`] exits dropped off the main thread between two
+    /// evaluations) or not open yet, the token stays preserved, and R keeps
+    /// the value the exit carried: a leak, not a crash.
     fn drop(&mut self) {
         if crate::is_r_main_thread() {
             unsafe { sys::R_ReleaseObject(self.token) }
-        } else {
-            ABANDONED_OFF_MAIN
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(self.token);
-            HAS_ABANDONED_OFF_MAIN.store(true, std::sync::atomic::Ordering::Release);
+        } else if let Some(tx) = ABANDONED_SENDER.get() {
+            let _ = tx.try_send(self.token);
         }
     }
 }
 
-/// Tokens of R exits dropped off R's main thread, where `R_ReleaseObject`
-/// would race R. [`call_unwinding`] releases them on the main thread.
-static ABANDONED_OFF_MAIN: std::sync::Mutex<Vec<SEXP>> = std::sync::Mutex::new(Vec::new());
+/// Capacity of the channel carrying abandoned exits' tokens to R's main thread.
+const ABANDONED_CAPACITY: usize = 64;
 
-/// Whether [`ABANDONED_OFF_MAIN`] may hold a token: the evaluation's fast path.
-static HAS_ABANDONED_OFF_MAIN: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+/// Sending end of the channel for the tokens of R exits dropped off R's main
+/// thread, where `R_ReleaseObject` would race R. Any thread sends on it.
+static ABANDONED_SENDER: OnceLock<SyncSender<SEXP>> = OnceLock::new();
 
-/// Release the tokens of exits dropped off the main thread.
+thread_local! {
+    /// Receiving end of the abandoned-token channel: set on the thread that
+    /// opened it (R's main thread), empty on every other thread.
+    static ABANDONED_RECEIVER: OnceCell<Receiver<SEXP>> = const { OnceCell::new() };
+}
+
+/// Open the abandoned-token channel and keep its receiving end on the current
+/// thread. [`crate::miniextendr_runtime_init`] calls it on R's main thread;
+/// only the first call opens it.
+pub(crate) fn open_abandoned_channel() {
+    ABANDONED_SENDER.get_or_init(|| {
+        let (tx, rx) = sync_channel(ABANDONED_CAPACITY);
+        ABANDONED_RECEIVER.with(|cell| {
+            cell.get_or_init(|| rx);
+        });
+        tx
+    });
+}
+
+/// Release the tokens of exits dropped off the main thread. An empty channel
+/// is the fast path: `try_iter` stops at once.
 ///
 /// # Safety
 ///
 /// R's main thread.
 unsafe fn release_abandoned_off_main() {
-    if HAS_ABANDONED_OFF_MAIN.swap(false, std::sync::atomic::Ordering::Acquire) {
-        let tokens = std::mem::take(
-            &mut *ABANDONED_OFF_MAIN
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
-        for token in tokens {
-            unsafe { sys::R_ReleaseObject(token) };
+    ABANDONED_RECEIVER.with(|cell| {
+        if let Some(rx) = cell.get() {
+            for token in rx.try_iter() {
+                unsafe { sys::R_ReleaseObject(token) };
+            }
         }
-    }
+    });
 }
 
 /// Resume `payload` if it carries an R exit ([`RUnwind`]) that belongs to
