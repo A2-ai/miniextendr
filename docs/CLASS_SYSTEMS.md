@@ -1334,9 +1334,16 @@ Generated R uses the registered class name:
 S7Circle <- S7::new_class("S7Circle", parent = Shape, ...)
 ```
 
-The same placeholder (`.__MX_CLASS_REF_<Type>__`) powers R6 `inherit =` and S7
-`convert_from` / `convert_to`. Unregistered names produce a compile-time warning
-and fall through to the bare identifier - which will fail at R load.
+The same placeholder (`.__MX_CLASS_REF_<Type>__`) powers R6 `inherit =`, S7
+`convert_from` / `convert_to`, the `WrapAs*` return markers (#2265) and the
+class a trait impl attaches to (#2266): an S3 or vctrs trait impl's
+`generic.<class>` methods and their registration, the `<class>$Trait`
+namespace of Env, S3, R6 and vctrs, the S4 method signature, the S7 class
+object, and a trait method's `Self` return. Where the named object must
+exist (R6, S7, S4), an unregistered name prints a warning when the wrappers
+are written and falls through to the bare identifier, which fails at R load.
+Where any string is a class (S3, Env, vctrs), the fallback to the Rust name
+is quiet (`.__MX_CLASS_REF_OR_BARE_<Type>__`).
 
 ### Explicit Return Class Systems
 
@@ -1346,9 +1353,12 @@ The corresponding markers for S7, S4, S3, Env, and Vctrs use the same shared
 wrapping decision. For example, an Env factory returning an R6 board emits
 `Board$new(.ptr = .val)`, and a trait factory can use `WrapAsR6<Self>`.
 
-Explicit wrapping uses the final Rust type-name segment as the R class name
-(`Self` uses the implementing class name), without a registry lookup. The
-selected system and name must match the target's R definition. See
+Explicit wrapping names the class by its final Rust type-name segment and
+writes the R name that type's impl block registers, so a `class = "..."`
+rename applies (`Self` uses the implementing class). The class system is the
+marker's, not the registered one, and must match the target's R definition.
+A type with no impl block keeps its Rust name (see
+[Cross-Type Class Name References](#cross-type-class-name-references)). See
 [explicit cross-class return wrapping](MINIEXTENDR_ATTRIBUTE.md#explicit-cross-class-return-wrapping)
 for both spellings, container/error behavior, visibility composition, and
 vctrs class preservation.
@@ -1816,7 +1826,7 @@ objects itself (`structure(make_engine(), class = "engine")`) writes
 emits no class environment (`engine <- new.env(...)`), so the package's own
 constructor can be named `engine()` without a second binding. The environment
 exists only when it can hold something: `Class$new()` for an impl with a
-constructor, or a trait's `Type$Trait` namespace for a class named as its
+constructor, or a trait's `Class$Trait` namespace for a class named as its
 Rust type. The readers are documented on the class's topic (or the impl's
 `@rdname`) under `#[miniextendr(internal)]` too, which only drops the exports
 (#1918).

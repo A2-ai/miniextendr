@@ -113,7 +113,7 @@ pub(crate) fn configure(
                 .convert_to
                 .as_ref()
                 .expect("convert_to target was selected");
-            wrap.set_target(crate::r_class_formatter::class_ref_or_verbatim(target));
+            wrap.set_target(target.clone());
         }
         ConversionKind::From => {
             if wrap.target() != "Self"

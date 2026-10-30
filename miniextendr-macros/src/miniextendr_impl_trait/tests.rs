@@ -1,5 +1,39 @@
 use super::*;
 
+/// [`generate_trait_r_wrapper`]'s output as the wrappers writer renders it
+/// for a class named as its Rust type: every class placeholder (#2266)
+/// becomes the bare Rust name, as a registry entry of an unrenamed class
+/// (or a miss) gives. The tests of the placeholders themselves call the
+/// generator directly.
+fn render_trait_r_wrapper(
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    methods: &[TraitMethod],
+    consts: &[TraitConst],
+    opts: TraitWrapperOpts,
+) -> syn::Result<String> {
+    generate_trait_r_wrapper(type_ident, trait_name, methods, consts, opts)
+        .map(|r| bare_class_refs(&r))
+}
+
+/// Replace each `.__MX_CLASS_REF_<Name>__` / `.__MX_CLASS_REF_OR_BARE_<Name>__`
+/// placeholder in `r` with `<Name>`.
+fn bare_class_refs(r: &str) -> String {
+    const PREFIX: &str = ".__MX_CLASS_REF_";
+    let mut out = String::with_capacity(r.len());
+    let mut rest = r;
+    while let Some(at) = rest.find(PREFIX) {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + PREFIX.len()..];
+        let tail = tail.strip_prefix("OR_BARE_").unwrap_or(tail);
+        let end = tail.find("__").expect("a closed class placeholder");
+        out.push_str(&tail[..end]);
+        rest = &tail[end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[test]
 fn test_type_to_symbol_name() {
     // Simple type
@@ -163,7 +197,7 @@ fn test_internal_suppresses_export_s3() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -201,7 +235,7 @@ fn test_noexport_suppresses_export_s3() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -228,7 +262,7 @@ fn test_internal_suppresses_export_s4() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -255,7 +289,7 @@ fn test_noexport_suppresses_export_s4() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -288,7 +322,7 @@ fn test_noexport_suppresses_all_roxygen_s4() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -313,7 +347,7 @@ fn test_internal_still_contributes_rdname_s4() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -341,7 +375,7 @@ fn test_noexport_emits_no_rd_marker_s3() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -369,7 +403,7 @@ fn test_internal_does_not_emit_no_rd_marker_s3() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -396,7 +430,7 @@ fn test_no_flags_preserves_export_s3() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -419,7 +453,7 @@ fn test_nord_takes_precedence_over_internal_env() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -443,7 +477,7 @@ fn test_env_no_export_tags_even_without_flags() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -468,7 +502,7 @@ fn test_s7_trait_impl_emits_fast_path_shortcut() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -511,7 +545,7 @@ fn test_s7_trait_impl_no_shortcut_suppresses_shortcut() {
     let mut method = make_test_method("value", true);
     method.no_shortcut = true;
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -542,7 +576,7 @@ fn test_trait_operator_r_names_are_quoted() {
     for generic in ["[", "[[", "$", "%custom%"] {
         let mut method = make_test_method("value", true);
         method.r_name = Some(generic.to_string());
-        let wrapper = generate_trait_r_wrapper(
+        let wrapper = render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &[method],
@@ -576,7 +610,7 @@ fn test_trait_operator_r_names_are_quoted() {
     ] {
         let mut method = make_test_method("make", false);
         method.r_name = Some("[[".to_string());
-        let wrapper = generate_trait_r_wrapper(
+        let wrapper = render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &[method],
@@ -591,7 +625,7 @@ fn test_trait_operator_r_names_are_quoted() {
     for class_system in [ClassSystem::Env, ClassSystem::R6] {
         let mut method = make_test_method("value", true);
         method.r_name = Some("[[".to_string());
-        let wrapper = generate_trait_r_wrapper(
+        let wrapper = render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &[method],
@@ -619,7 +653,7 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     method.sig = sig;
     method.is_mut = true;
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -652,7 +686,7 @@ fn test_s7_trait_impl_void_shortcut_returns_self() {
     // `-> Invisible<i32>`: the converted value is returned invisibly.
     let mut peek = make_test_method("peek", true);
     peek.invisible = Some(true);
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[quiet, peek],
@@ -700,7 +734,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s4() {
     let mut method = make_test_method("scale", true);
     method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -733,7 +767,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_s7() {
     let mut method = make_test_method("scale", true);
     method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -771,7 +805,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_r6() {
     let mut method = make_test_method("scale", true);
     method.sig = syn::parse_quote!(fn scale(&mut self, x_factor: f64));
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -805,7 +839,7 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
     let mut method = make_test_method("bump", true);
     method.sig = syn::parse_quote!(fn bump(&mut self, amount: i32));
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -850,7 +884,7 @@ fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
         .or_default()
         .match_arg = true;
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -885,7 +919,7 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
         .or_default()
         .choices = Some(vec!["fast".to_string(), "slow".to_string()]);
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -983,7 +1017,7 @@ fn impl_parameters_take_the_declarations_names() {
     assert!(out.contains("#' @param factor The factor."), "{out}");
     assert!(!out.contains("#' @param k"), "{out}");
     assert!(
-        out.contains("scaled.Meter <- function(x, factor = 2, ...)"),
+        out.contains("scaled..__MX_CLASS_REF_OR_BARE_Meter__ <- function(x, factor = 2, ...)"),
         "{out}"
     );
     assert!(out.contains("if (!isTRUE(!anyNA(factor)))"), "{out}");
@@ -999,7 +1033,7 @@ fn impl_parameters_take_the_declarations_names() {
     };
     let out = declared_scale_expansion(quote::quote!(s3), impl_item).unwrap();
     assert!(
-        out.contains("scaled.Meter <- function(x, factor = 3, ...)"),
+        out.contains("scaled..__MX_CLASS_REF_OR_BARE_Meter__ <- function(x, factor = 3, ...)"),
         "{out}"
     );
 }
@@ -1078,7 +1112,7 @@ fn test_trait_method_choices_prelude_in_signature_order() {
         let methods =
             super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[])
                 .unwrap();
-        let result = generate_trait_r_wrapper(
+        let result = render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
             &methods,
@@ -1122,7 +1156,7 @@ fn test_trait_method_choices_no_default() {
     };
     let methods =
         super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         &methods,
@@ -1187,7 +1221,7 @@ fn test_trait_method_checks_take_custom_messages() {
     };
     let methods =
         super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         &methods,
@@ -1235,7 +1269,7 @@ fn test_trait_method_not_inherits() {
     };
     let methods =
         super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered, &[]).unwrap();
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         &methods,
@@ -1389,7 +1423,7 @@ fn test_missing_type_forwarded_inline_in_trait_method_call() {
     let mut method = make_test_method("configure", true);
     method.sig = syn::parse_quote!(fn configure(&mut self, opt: Missing<i32>));
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -1447,7 +1481,7 @@ fn trait_method_missing_default() {
         ClassSystem::S7,
         ClassSystem::Vctrs,
     ] {
-        let result = generate_trait_r_wrapper(
+        let result = render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
             &methods,
@@ -1513,7 +1547,7 @@ fn trait_method_choice_formal_reads_as_omitted() {
         ClassSystem::S7,
         ClassSystem::Vctrs,
     ] {
-        let result = generate_trait_r_wrapper(
+        let result = render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &[choice_trait_method()],
@@ -1547,7 +1581,7 @@ const LEVEL_DOC: &str = "#' @param level One of \"low\", \"high\", or NULL; omit
 fn s3_trait_method_documents_params_and_exports_generic_by_name() {
     let type_ident = format_ident!("Foo");
     let trait_name = format_ident!("Bar");
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[choice_trait_method()],
@@ -1566,7 +1600,7 @@ fn s3_trait_method_documents_params_and_exports_generic_by_name() {
     // that topic's block (#1590).
     let mut split = choice_trait_method();
     split.doc_tags.push("@rdname pick_family".to_string());
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[split],
@@ -1584,7 +1618,7 @@ fn s3_trait_method_documents_params_and_exports_generic_by_name() {
 fn s7_trait_shortcut_documents_choice_params() {
     let type_ident = format_ident!("Foo");
     let trait_name = format_ident!("Bar");
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[choice_trait_method()],
@@ -1760,7 +1794,7 @@ fn env_trait_method_forwards_other_tags_but_title() {
 fn env_trait_method_body_follows_suppression() {
     let method = choice_trait_method_with(&["@description Pick a level.", "@param n How many."]);
     for (class_has_no_rd, noexport) in [(true, false), (false, true)] {
-        let r = generate_trait_r_wrapper(
+        let r = render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
             std::slice::from_ref(&method),
@@ -1772,7 +1806,7 @@ fn env_trait_method_body_follows_suppression() {
             assert!(!r.contains(text), "`{text}`: got:\n{r}");
         }
     }
-    let r = generate_trait_r_wrapper(
+    let r = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         &[method],
@@ -1932,7 +1966,7 @@ fn test_internal_adds_keywords_internal_env() {
     let trait_name = format_ident!("Bar");
     let methods = vec![make_test_method("value", true)];
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &methods,
@@ -1959,7 +1993,7 @@ fn test_r6_instance_method_uses_class_qualified_namespace() {
     let trait_name = format_ident!("Bar");
     let method = make_test_method("value", true);
 
-    let result = generate_trait_r_wrapper(
+    let result = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -1993,7 +2027,7 @@ fn test_r6_instance_method_uses_class_qualified_namespace() {
 #[test]
 fn test_two_r6_impls_of_one_trait_are_distinct() {
     let trait_name = format_ident!("Bar");
-    let a = generate_trait_r_wrapper(
+    let a = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &trait_name,
         &[make_test_method("value", true)],
@@ -2001,7 +2035,7 @@ fn test_two_r6_impls_of_one_trait_are_distinct() {
         opts(ClassSystem::R6, false, false, false),
     )
     .unwrap();
-    let b = generate_trait_r_wrapper(
+    let b = render_trait_r_wrapper(
         &format_ident!("Baz"),
         &trait_name,
         &[make_test_method("value", true)],
@@ -2031,7 +2065,7 @@ fn test_self_return_rewrapped_per_class_system() {
     method.sig = syn::parse_quote!(fn dup(&self) -> Self);
 
     let emit = |cs| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &[method.clone()],
@@ -2081,7 +2115,7 @@ fn test_static_self_return_rewrapped() {
     let mut method = make_test_method("make", false);
     method.sig = syn::parse_quote!(fn make() -> Self);
 
-    let s4 = generate_trait_r_wrapper(
+    let s4 = render_trait_r_wrapper(
         &type_ident,
         &trait_name,
         &[method],
@@ -2143,7 +2177,7 @@ fn test_tpie_self_return_rewrapped() {
     assert_eq!(quote::quote!(#other).to_string(), "other : Foo");
 
     let emit = |cs| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
             &methods,
@@ -2167,6 +2201,120 @@ fn test_tpie_self_return_rewrapped() {
 }
 // endregion
 
+// region: the class a trait impl names (#2266)
+
+/// A trait impl names its class through the write-time class registry, so a
+/// `class = "..."` rename on the type's impl block applies: the S3 methods
+/// and their registration, the `Class$Trait` namespace, the S4 signature, the
+/// S7 class object and a `Self` return carry the class placeholder. It is the
+/// quiet one where any string is a class (S3, Env, vctrs), the loud one where
+/// the class object must exist (R6, S7, S4). The C symbols, the S4 flat
+/// static names, the `@rdname` page and the header keep the Rust name.
+#[test]
+fn trait_wrappers_name_the_class_through_the_registry() {
+    let mut dup = make_test_method("dup", true);
+    dup.sig = syn::parse_quote!(fn dup(&self) -> Self);
+    let make = make_test_method("make", false);
+    let emit = |cs| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &[dup.clone(), make.clone()],
+            &[],
+            opts(cs, false, false, false),
+        )
+        .unwrap()
+    };
+    let has = |r: &str, expected: &[&str]| {
+        for line in expected {
+            assert!(r.contains(line), "missing {line:?} in:\n{r}");
+        }
+    };
+    const QUIET: &str = ".__MX_CLASS_REF_OR_BARE_Foo__";
+    const LOUD: &str = ".__MX_CLASS_REF_Foo__";
+
+    for cs in [ClassSystem::S3, ClassSystem::Vctrs] {
+        has(
+            &emit(cs),
+            &[
+                "# S3 trait methods for Foo implementing Bar",
+                &format!("#' @name dup.{QUIET}"),
+                "#' @rdname Foo",
+                &format!("#' @method dup {QUIET}"),
+                &format!("dup.{QUIET} <- function(x, ...) {{"),
+                &format!("structure(.val, class = \"{QUIET}\")"),
+                &format!("S7::new_S3_class(\"{QUIET}\")) <- dup.{QUIET}"),
+                &format!("{QUIET}$Bar <- new.env(parent = emptyenv())"),
+                &format!("{QUIET}$Bar$make <- function() {{"),
+                "C_",
+            ],
+        );
+    }
+    has(
+        &emit(ClassSystem::Env),
+        &[
+            &format!("{QUIET}$Bar <- new.env(parent = emptyenv())"),
+            &format!("{QUIET}$Bar$dup <- function(.mx_self) {{"),
+            &format!("class(.val) <- \"{QUIET}\""),
+        ],
+    );
+    has(
+        &emit(ClassSystem::R6),
+        &[
+            &format!("{LOUD}$Bar <- new.env(parent = emptyenv())"),
+            &format!("{LOUD}$Bar$dup <- function(.mx_self) {{"),
+            &format!("{LOUD}$new(.ptr = .val)"),
+        ],
+    );
+    let s4 = emit(ClassSystem::S4);
+    has(
+        &s4,
+        &[
+            &format!("methods::setMethod(\"s4_trait_Bar_dup\", \"{LOUD}\", function(x, ...) {{"),
+            &format!("methods::new(\"{LOUD}\", ptr = .val)"),
+            "Foo_Bar_make <- function() {",
+        ],
+    );
+    has(
+        &emit(ClassSystem::S7),
+        &[
+            &format!(".s7_class_Foo <- {LOUD}"),
+            &format!("{LOUD}(.ptr = .val)"),
+            &format!("attr({LOUD}, \"Bar\") <- .Foo__Bar"),
+            &format!("#' @name attr({LOUD}, \"Bar\")$make"),
+            ".Foo__Bar$make <- function() {",
+        ],
+    );
+}
+
+/// An explicit `WrapAs*<Self>` in a trait method names the class through the
+/// marker's system, not the impl's: an R6 trait method returning
+/// `WrapAsS3<Self>` gets the quiet S3 form (#2265).
+#[test]
+fn trait_self_wrap_uses_the_markers_class_system() {
+    let mut method = make_test_method("as_s3", true);
+    method.sig = syn::parse_quote!(fn as_s3(&self) -> Self);
+    method.return_wrap = Some(
+        crate::return_wrap::resolve(&syn::parse_quote!(-> WrapAsS3<Self>), None)
+            .unwrap()
+            .0
+            .unwrap(),
+    );
+    let r6 = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &[method],
+        &[],
+        opts(ClassSystem::R6, false, false, false),
+    )
+    .unwrap();
+    assert!(
+        r6.contains("structure(.val, class = \".__MX_CLASS_REF_OR_BARE_Foo__\")"),
+        "got:\n{r6}"
+    );
+}
+// endregion
+
 /// S7 statics and consts live in an env attached to the class object with
 /// `attr()`. S7's `$` stops on the class object, so their topic names the
 /// access that works, `attr(Foo, "Bar")$member`, not `Foo$Bar$member`.
@@ -2176,7 +2324,7 @@ fn test_s7_statics_documented_as_attr_access() {
         ident: format_ident!("MAX"),
         ty: syn::parse_quote!(i32),
     }];
-    let s7 = generate_trait_r_wrapper(
+    let s7 = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         &[make_test_method("make", false)],
@@ -2216,7 +2364,7 @@ fn test_trait_method_rdname_override_all_systems() {
         ClassSystem::S4,
         ClassSystem::S7,
     ] {
-        let result = generate_trait_r_wrapper(
+        let result = render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             &methods,
@@ -2314,7 +2462,7 @@ fn test_s7_trait_shortcut_param_filler_follows_method_page() {
     let by_doc = "@param by Step size.".to_string();
     method.doc_tags = vec![by_doc.clone()];
     let generate = |method: &TraitMethod| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &type_ident,
             &trait_name,
             std::slice::from_ref(method),
@@ -2366,7 +2514,7 @@ fn explicit_cross_class_returns_work_in_every_trait_wrapper_generator() {
                 .0;
         let mut factory = make_test_method("create", false);
         factory.return_wrap = instance.return_wrap.clone();
-        let wrapper = generate_trait_r_wrapper(
+        let wrapper = render_trait_r_wrapper(
             &format_ident!("Factory"),
             &format_ident!("Builder"),
             &[instance, factory],
@@ -2386,7 +2534,7 @@ fn s3_operator_names_are_quoted_in_trait_wrappers() {
     for generic in ["[", "[[", "$", "==", "+", "%custom%"] {
         let mut method = make_test_method("operator", true);
         method.r_name = Some(generic.to_string());
-        let wrapper = generate_trait_r_wrapper(
+        let wrapper = render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Operators"),
             &[method],
@@ -2417,7 +2565,7 @@ fn s3_operator_names_are_quoted_in_trait_wrappers() {
 
 /// Generate one class system's trait wrapper for `methods` on `Foo: Bar`.
 fn page_tag_wrapper(class_system: ClassSystem, methods: &[TraitMethod]) -> syn::Result<String> {
-    generate_trait_r_wrapper(
+    render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
         methods,
@@ -2725,7 +2873,7 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
 #[test]
 fn trait_method_formals_reject_the_receiver() {
     let wrapper = |class_system: ClassSystem, method: TraitMethod| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
             &[method],
@@ -3097,7 +3245,7 @@ fn trait_s3_method_on_package_qualified_generic() {
     };
     let methods =
         super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[]).unwrap();
-    let s3 = generate_trait_r_wrapper(
+    let s3 = render_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Reconstruct"),
         &methods,
@@ -3132,7 +3280,7 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
     let methods =
         super::vtable::extract_methods(&source, crate::roxygen::RdPage::Rendered, &[]).unwrap();
     let generate = |method: TraitMethod, system| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Operations"),
             &[method],
@@ -3186,7 +3334,7 @@ fn trait_s3_s4_methods_match_existing_generic_formals() {
 #[test]
 fn trait_generic_receiver_options_reject_conflicts_and_wrong_context() {
     let generate = |method: TraitMethod, system| {
-        generate_trait_r_wrapper(
+        render_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Operations"),
             &[method],

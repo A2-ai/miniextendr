@@ -24,7 +24,9 @@
 //!             └─▶ ClassFormatter::format_static_method()
 //! ```
 
-use crate::miniextendr_impl::{CLASS_DOCS_MARKER, ParsedImpl, ParsedMethod, class_default};
+use crate::miniextendr_impl::{
+    CLASS_DOCS_MARKER, ClassSystem, ParsedImpl, ParsedMethod, class_default,
+};
 
 /// Determine whether a class or method should be `@export`-ed.
 ///
@@ -143,6 +145,31 @@ pub(crate) fn class_ref_or_verbatim(name: &str) -> String {
         format!(".__MX_CLASS_REF_{name}__")
     } else {
         name.to_string()
+    }
+}
+
+/// The R name of the class that `system` wraps a value in, for the Rust type
+/// `name`, in an expansion other than the class's own impl block (a
+/// `WrapAs*` return, a trait impl): a write-time placeholder the wrappers
+/// writer resolves through `MX_CLASS_NAMES`, so a `class = "..."` rename
+/// applies there too (#2265, #2266). The class system stays the caller's;
+/// only the name comes from the registry.
+///
+/// A type with no impl block keeps its Rust name. Where any string is a class
+/// (S3, Env, vctrs) that is quiet, `.__MX_CLASS_REF_OR_BARE_<name>__`; where
+/// the named class object must exist (R6, S7, S4) the writer warns,
+/// `.__MX_CLASS_REF_<name>__` ([`class_ref_or_verbatim`]). `Self`, which the
+/// caller substitutes with the implementing class, and names that are not
+/// bare identifiers pass through.
+pub(crate) fn class_ref_for(system: ClassSystem, name: &str) -> String {
+    if name == "Self" || !is_bare_identifier(name) {
+        return name.to_string();
+    }
+    match system {
+        ClassSystem::R6 | ClassSystem::S7 | ClassSystem::S4 => class_ref_or_verbatim(name),
+        ClassSystem::S3 | ClassSystem::Env | ClassSystem::Vctrs => {
+            format!(".__MX_CLASS_REF_OR_BARE_{name}__")
+        }
     }
 }
 

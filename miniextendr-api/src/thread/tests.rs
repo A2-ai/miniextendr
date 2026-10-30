@@ -21,6 +21,11 @@ fn with_r_thread_panics_before_init() {
         with_r_thread(|| 42);
     });
     assert!(result.is_err());
+    // A parallel test can initialize the runtime between the check above and
+    // the call; `with_r_thread` then refuses this thread instead.
+    if R_MAIN_THREAD_ID.get().is_some() {
+        return;
+    }
     let payload = result.unwrap_err();
     let msg = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
     assert!(

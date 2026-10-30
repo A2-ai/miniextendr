@@ -130,48 +130,48 @@ fn import_spelling_does_not_change_r_names_or_trait_object_compatibility() {
     assert!(
         R_WRAPPERS_RootPath_RDebug_IMPL
             .content
-            .contains("RootPath$RDebug$debug_str")
+            .contains(".__MX_CLASS_REF_OR_BARE_RootPath__$RDebug$debug_str")
     );
     assert!(
         R_WRAPPERS_Imported_RClone_IMPL
             .content
-            .contains("Imported$RClone$clone")
+            .contains(".__MX_CLASS_REF_OR_BARE_Imported__$RClone$clone")
     );
     assert!(
         R_WRAPPERS_Generic_RToVec_IMPL
             .content
-            .contains("Generic$RToVec$to_vec")
+            .contains(".__MX_CLASS_REF_OR_BARE_Generic__$RToVec$to_vec")
     );
     assert!(
         R_WRAPPERS_AssociatedHost_Associated_IMPL
             .content
-            .contains("AssociatedHost$Associated$value")
+            .contains(".__MX_CLASS_REF_OR_BARE_AssociatedHost__$Associated$value")
     );
     assert!(
         R_WRAPPERS_AssociatedHost_RDebug_IMPL
             .content
-            .contains("AssociatedHost$RDebug$debug_str")
+            .contains(".__MX_CLASS_REF_OR_BARE_AssociatedHost__$RDebug$debug_str")
     );
     assert!(
         R_WRAPPERS_CounterHost_Counter_IMPL
             .content
-            .contains("CounterHost$Counter$read")
+            .contains(".__MX_CLASS_REF_OR_BARE_CounterHost__$Counter$read")
     );
     // The omitted default, its `Count` argument read in the declaration.
     assert!(
         R_WRAPPERS_CounterHost_Counter_IMPL
             .content
-            .contains("CounterHost$Counter$plus")
+            .contains(".__MX_CLASS_REF_OR_BARE_CounterHost__$Counter$plus")
     );
     assert!(
         R_WRAPPERS_CratePathGreeter_Greet_IMPL
             .content
-            .contains("CratePathGreeter$Greet$hello")
+            .contains(".__MX_CLASS_REF_OR_BARE_CratePathGreeter__$Greet$hello")
     );
     assert!(
         R_WRAPPERS_BareGreeter_Greet_IMPL
             .content
-            .contains("BareGreeter$Greet$hello")
+            .contains(".__MX_CLASS_REF_OR_BARE_BareGreeter__$Greet$hello")
     );
     let concrete = CounterHost(40);
     let object: &dyn RenamedCounter = &concrete;

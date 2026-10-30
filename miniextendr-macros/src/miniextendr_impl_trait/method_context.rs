@@ -13,6 +13,28 @@
 use super::{TraitMethod, trait_method_body_lines};
 use crate::miniextendr_impl::ClassSystem;
 
+/// How the trait wrappers of `class_system` name the class of `type_ident`:
+/// its R name, which a `class = "..."` rename on the type's impl block sets,
+/// resolved when the wrappers are written (#2266,
+/// [`class_ref_for`](crate::r_class_formatter::class_ref_for)). Used for every
+/// R object the trait impl attaches to or wraps in (S3 method suffixes and
+/// registrations, the `Class$Trait` namespace, the S4 method signature, the S7
+/// class object, a `Self` return). Rust-side names (C symbols, the S7 and S4
+/// flat member names) and the `@rdname` page keep the Rust identifier.
+pub(super) fn class_ref(class_system: ClassSystem, type_ident: &syn::Ident) -> String {
+    crate::r_class_formatter::class_ref_for(class_system, &type_ident.to_string())
+}
+
+/// The trait namespace environment, `Class$Trait`, of Env, S3, R6 and vctrs
+/// classes; its members are [`trait_namespace_target`]s.
+pub(super) fn trait_namespace_env(
+    class_system: ClassSystem,
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+) -> String {
+    format!("{}${trait_name}", class_ref(class_system, type_ident))
+}
+
 /// R-visible assignment target for a trait member (method or const) placed in
 /// the per-class trait namespace — the single owner of the namespace-shape
 /// policy the 5 generators previously hand-rolled independently (audit
@@ -24,7 +46,8 @@ use crate::miniextendr_impl::ClassSystem;
 ///   collision-free by construction. This is what fixes #1115: two R6 impls of
 ///   one trait on *different* types now emit `TypeA$Trait$m` / `TypeB$Trait$m`
 ///   rather than a shared, unqualified `r6_trait_Trait_m` that aborted
-///   wrapper-gen via the duplicate-definition guard.
+///   wrapper-gen via the duplicate-definition guard. `Type` is the class's R
+///   name ([`trait_namespace_env`]).
 /// - **S4**: flat `Type_Trait_member` standalone name. S4 objects intercept
 ///   `$<-`, so `Type$Trait$member` cannot be assigned onto them; the class
 ///   component in the flat name keeps it collision-free.
@@ -41,7 +64,10 @@ pub(super) fn trait_namespace_target(
 ) -> String {
     match class_system {
         ClassSystem::Env | ClassSystem::S3 | ClassSystem::R6 | ClassSystem::Vctrs => {
-            format!("{type_ident}${trait_name}${member}")
+            format!(
+                "{}${member}",
+                trait_namespace_env(class_system, type_ident, trait_name)
+            )
         }
         ClassSystem::S4 => format!("{type_ident}_{trait_name}_{member}"),
         ClassSystem::S7 => {
@@ -98,7 +124,10 @@ pub(super) fn s7_trait_member_access(
     trait_name: &syn::Ident,
     member: &str,
 ) -> String {
-    format!("attr({type_ident}, \"{trait_name}\")${member}")
+    format!(
+        "attr({}, \"{trait_name}\")${member}",
+        class_ref(ClassSystem::S7, type_ident)
+    )
 }
 
 /// Pre-computed context for a trait method, mirroring `MethodContext`
@@ -241,7 +270,7 @@ impl<'a> TraitMethodContext<'a> {
         if let Some(wrap) = &self.method.return_wrap {
             return crate::MethodReturnBuilder::new(call.to_owned())
                 .with_raise_default(raise_default)
-                .with_class_name(self.type_ident.to_string())
+                .with_class_name(class_ref(wrap.system(), self.type_ident))
                 .with_explicit_wrap(wrap.clone())
                 .build();
         }
@@ -251,7 +280,7 @@ impl<'a> TraitMethodContext<'a> {
         let builder = crate::MethodReturnBuilder::new(call.to_string())
             .with_raise_default(raise_default)
             .with_strategy(crate::ReturnStrategy::ReturnSelf)
-            .with_class_name(self.type_ident.to_string())
+            .with_class_name(class_ref(class_system, self.type_ident))
             .with_nullable(self.method.returns_option_self())
             .with_indent(2);
         match class_system {

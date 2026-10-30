@@ -85,7 +85,7 @@ impl miniextendr_api::adapter_traits::RToVec<i32> for BlanketBag {
 fn wrappers_inherit_names_and_skip_but_keep_explicit_overrides() {
     let generic = R_WRAPPERS_Bag_Collection_IMPL.content;
     assert!(
-        generic.contains("Bag$Collection$values <- function("),
+        generic.contains(".__MX_CLASS_REF_OR_BARE_Bag__$Collection$values <- function("),
         "{generic}"
     );
     assert!(!generic.contains("$r_values <-"));
@@ -93,22 +93,24 @@ fn wrappers_inherit_names_and_skip_but_keep_explicit_overrides() {
     assert!(
         R_WRAPPERS_Bag_Associated_IMPL
             .content
-            .contains("Bag$Associated$value <- function(")
+            .contains(".__MX_CLASS_REF_OR_BARE_Bag__$Associated$value <- function(")
     );
     assert!(
         R_WRAPPERS_Override_Associated_IMPL
             .content
-            .contains("Override$Associated$custom <- function(")
+            .contains(".__MX_CLASS_REF_OR_BARE_Override__$Associated$custom <- function(")
     );
     assert!(
         R_WRAPPERS_Override_RDebug_IMPL
             .content
-            .contains("Override$RDebug$debug_str <- function(")
+            .contains(".__MX_CLASS_REF_OR_BARE_Override__$RDebug$debug_str <- function(")
     );
     let blanket = R_WRAPPERS_BlanketBag_RToVec_IMPL.content;
     for name in ["to_vec", "len", "is_empty"] {
         assert!(
-            blanket.contains(&format!("BlanketBag$RToVec${name} <- function(")),
+            blanket.contains(&format!(
+                ".__MX_CLASS_REF_OR_BARE_BlanketBag__$RToVec${name} <- function("
+            )),
             "{blanket}"
         );
         assert!(!blanket.contains(&format!("$r_{name} <-")));

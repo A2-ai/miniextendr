@@ -7857,7 +7857,7 @@ fn explicit_return_wrap_overrides_the_enclosing_class_system() {
             let plan = method.return_wrap.as_ref().unwrap();
             assert!(
                 plan.r_expression(".val", Some("Factory"))
-                    .contains("Board$new(.ptr =")
+                    .contains(".__MX_CLASS_REF_Board__$new(.ptr =")
             );
             assert!(!method.returns_self());
         }
@@ -7871,16 +7871,18 @@ fn explicit_return_wrap_overrides_the_enclosing_class_system() {
             ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
         };
         assert!(
-            wrapper.contains("Board$new(.ptr = .val)"),
+            wrapper.contains(".__MX_CLASS_REF_Board__$new(.ptr = .val)"),
             "{system:?}: {wrapper}"
         );
         assert!(
-            wrapper.contains("lapply(.val, function(.item) Board$new(.ptr = .item))"),
+            wrapper.contains(
+                "lapply(.val, function(.item) .__MX_CLASS_REF_Board__$new(.ptr = .item))"
+            ),
             "{system:?}: {wrapper}"
         );
         assert!(
             !wrapper.contains("__MX_WRAP"),
-            "explicit returns must not request registry resolution"
+            "explicit returns keep the marker's class system: no registry-chosen wrap"
         );
     }
 }

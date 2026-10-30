@@ -16,9 +16,14 @@
 //! imports do not select wrapping. Put `Invisible`/`Visible` outside the whole
 //! return, and `Option`, `Result`, or `Vec` outside the class marker.
 //!
-//! The named target must have a compatible R class definition. Explicit wrapping
-//! does not consult the class registry or verify the selected system; a mismatch
-//! is reported by R when the generated constructor or method is used.
+//! The marker selects the class system; the class name is the R name the
+//! target's `#[miniextendr]` impl block registers, resolved when the R wrappers
+//! are written, so a `class = "..."` rename applies (`Self` is the implementing
+//! class). A target with no impl block keeps its Rust name: quietly for S3, Env
+//! and vctrs, where any string is a class, and with a warning for R6, S7 and S4,
+//! whose class object must exist. Nothing checks that the selected system
+//! matches the class definition; a mismatch is reported by R when the
+//! generated constructor or method is used.
 
 use crate::IntoR;
 

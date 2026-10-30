@@ -132,21 +132,56 @@ fn external_ptr_payload_names_its_class() {
         assert!(
             plan.unwrap()
                 .r_expression(".val", None)
-                .contains("Board$new(.ptr = ")
+                .contains(".__MX_CLASS_REF_Board__$new(.ptr = ")
         );
     }
 }
 
+/// `Self` is the implementing class as the generator passes it, with no
+/// placeholder; a named target, qualified or not, is named through the class
+/// registry by its last segment (#2265).
 #[test]
-fn explicit_self_and_qualified_targets_do_not_use_registry_placeholders() {
+fn self_target_is_verbatim_and_named_targets_use_the_registry() {
     for (output, target) in [
         ("-> WrapAsR6<Self>", "ActualClass"),
-        ("-> WrapAsR6<other::Board>", "Board"),
+        ("-> WrapAsR6<other::Board>", ".__MX_CLASS_REF_Board__"),
+        ("-> WrapAsR6<Board>", ".__MX_CLASS_REF_Board__"),
     ] {
         let (plan, _) = resolve(&syn::parse_str(output).unwrap(), None).unwrap();
         assert_eq!(
             plan.unwrap().r_expression(".val", Some("ActualClass")),
             format!("{target}$new(.ptr = .val)")
+        );
+    }
+}
+
+/// The marker picks the class system; the registry only the name (#2265). A
+/// type with no impl block keeps its Rust name, quietly where any string is a
+/// class (S3, Env, vctrs) and with a warning where the class object must
+/// exist (R6, S7, S4). The stored target stays the Rust name, which
+/// `s7_conversion` compares.
+#[test]
+fn named_targets_resolve_quietly_or_loudly_by_system() {
+    const QUIET: &str = ".__MX_CLASS_REF_OR_BARE_Board__";
+    const LOUD: &str = ".__MX_CLASS_REF_Board__";
+    for (marker, expected) in [
+        ("WrapAsR6", format!("{LOUD}$new(.ptr = .val)")),
+        ("WrapAsS7", format!("{LOUD}(.ptr = .val)")),
+        ("WrapAsS4", format!("methods::new(\"{LOUD}\", ptr = .val)")),
+        ("WrapAsS3", format!("structure(.val, class = \"{QUIET}\")")),
+        ("WrapAsEnv", format!("structure(.val, class = \"{QUIET}\")")),
+        (
+            "WrapAsVctrs",
+            format!("structure(.val, class = unique(c(\"{QUIET}\", class(.val))))"),
+        ),
+    ] {
+        let output: ReturnType = syn::parse_str(&format!("-> {marker}<Board>")).unwrap();
+        let plan = resolve(&output, None).unwrap().0.unwrap();
+        assert_eq!(plan.target(), "Board", "{marker}");
+        assert_eq!(
+            plan.r_expression(".val", Some("Unused")),
+            expected,
+            "{marker}"
         );
     }
 }

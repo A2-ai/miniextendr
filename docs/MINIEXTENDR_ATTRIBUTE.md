@@ -400,7 +400,8 @@ over automatic return-class detection. A trait factory can similarly return
 `WrapAsR6<Self>` (in both the trait declaration and implementation), or put
 `#[miniextendr(wrap = "r6")]` on an implementation returning bare `Self`.
 
-The macro emits the chosen wrapping expression directly:
+The wrapper ends in the chosen wrapping expression, where `T` is the R
+name of the class:
 
 | Selection | R expression |
 |---|---|
@@ -426,10 +427,16 @@ from it. `Result<T, ()>` is not supported by explicit wrapping.
 Put visibility outside the complete return, e.g.
 `Invisible<Result<WrapAsR6<Board>, Error>>`.
 
-The payload must be an owned named type. The final Rust path segment names
-the R class; `Self` uses the implementing class name. No registry lookup or
-cross-check is added: the selected class system and name must match the R
-class definition, and a mismatch fails when R constructs or uses the object.
+The payload must be an owned named type, named by its final Rust path
+segment. The R class name is the one the type's `#[miniextendr]` impl block
+registers, resolved when the wrappers are written, so a class renamed with
+`class = "..."` is wrapped under its R name from any function or method;
+`Self` uses the implementing class. The class system is always the marker's
+(or the attribute's), never the registered one, and nothing checks that the
+two agree: a mismatch fails when R constructs or uses the object. A type
+with no impl block keeps its Rust name, quietly for S3, Env and vctrs (any
+string is a class there) and with a warning at wrapper generation for R6,
+S7 and S4, whose class object must exist.
 As with visibility markers, aliases and renamed imports do not select the
 marker behavior. Different marker/attribute systems, nested wrapping markers,
 argument-position markers, and combinations with `serialize` or `unwrap_in_r`

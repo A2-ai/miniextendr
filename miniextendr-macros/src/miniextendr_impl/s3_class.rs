@@ -314,8 +314,8 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     w.members = std::mem::take(&mut lines);
 
     // The class environment holds `Class$new()` and the trait namespaces
-    // (`Type$Trait`, named by the Rust type, for a trait's static methods and
-    // consts; static methods of the impl are plain functions). Emit it only
+    // (`Class$Trait`, for a trait's static methods and consts; static methods
+    // of the impl are plain functions). Emit it only
     // when one of them can land in it: an impl with a constructor, or a class
     // named as its Rust type. An impl that only adds the field readers to a
     // class the package names and builds itself gets none, so no second
