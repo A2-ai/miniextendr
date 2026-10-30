@@ -14,11 +14,17 @@ fn ints(data: &Option<ConditionData>) -> Vec<(&str, Option<i32>)> {
         .unwrap_or_default()
 }
 
-/// The queue is process-wide; serialise the tests that touch it.
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+/// The queue is process-wide; serialise the tests that touch it. A test that
+/// runs a guarded call (`ffi_guard`, `connection`) holds it too: the guard's
+/// `finish_guarded` takes everything queued since its mark, including what a
+/// test here queued meanwhile, and signalling that needs an R runtime.
+pub(crate) fn lock_queue() -> MutexGuard<'static, ()> {
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn with_empty_queue<T>(f: impl FnOnce() -> T) -> T {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+    let _lock = lock_queue();
     take_pending(0);
     f()
 }

@@ -480,6 +480,6 @@ macro_rules! defer_condition {
 // region: Tests — queue semantics (no R runtime needed)
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 // endregion
