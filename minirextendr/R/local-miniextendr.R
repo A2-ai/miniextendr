@@ -68,7 +68,7 @@ to pick up the marker-file branch."
   }
 
   writeLines(abs, usethis::proj_path(".miniextendr-local"))
-  usethis::use_build_ignore("\\.miniextendr-local$")
+  usethis::use_build_ignore(".miniextendr-local")
   usethis::use_git_ignore(".miniextendr-local")
   cli::cli_alert_success("Recorded local miniextendr checkout: {.path {abs}}")
   cli::cli_alert_info(
