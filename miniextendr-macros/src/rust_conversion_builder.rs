@@ -230,10 +230,48 @@ impl RustConversionBuilder {
         let (_, markers) = self.param_markers.iter().find(|(n, _)| *n == name)?;
         let span = pat_type.ty.span();
         let rebinds = markers.iter().rev().map(|marker| {
-            let ctor = marker.ctor_path();
-            quote_spanned! {span=> let #ident = #ctor::from_inner(#ident); }
+            let wrapped = marker.wrap(ident);
+            quote_spanned! {span=> let #ident = #wrapped; }
         });
         Some(quote! { #(#rebinds)* })
+    }
+
+    /// A `NonNa<T>` parameter's check of the argument SEXP `sexp_ident`,
+    /// before its conversion: the `no_na` R guard's `anyNA()` again, in Rust
+    /// (`from_r::__mx_any_na`), so the marker's value holds no `NA` on every
+    /// path, a `.Call()` that skips the R wrapper and every conversion arm
+    /// (borrowed, worker) included. It raises the guard's condition, as the
+    /// post-conversion `no_na` check does ([`no_na_value_stmt`]). `None` for
+    /// a parameter without the marker.
+    fn non_na_check(
+        &self,
+        pat_type: &syn::PatType,
+        sexp_ident: &syn::Ident,
+    ) -> Option<TokenStream> {
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let name = crate::naming::ident_name(&pat_ident.ident);
+        let (_, markers) = self.param_markers.iter().find(|(n, _)| *n == name)?;
+        if !markers.contains(&crate::type_inspect::ParamMarker::NonNa) {
+            return None;
+        }
+        let custom = self
+            .no_na_params
+            .iter()
+            .find(|(n, _)| *n == name)
+            .and_then(|(_, message)| message.as_deref());
+        let r_name = self.formals.of_ident(&pat_ident.ident);
+        let message = crate::r_preconditions::no_na_message(&r_name, &pat_type.ty, custom);
+        let span = pat_type.ty.span();
+        let has_na = quote_spanned! {span=> ::miniextendr_api::from_r::__mx_any_na(#sexp_ident) };
+        Some(na_refusal_stmt(
+            has_na,
+            &r_name,
+            &message,
+            &self.conversion_error_class,
+            span,
+        ))
     }
 
     /// Select the reference's conversion, including its native-borrow metadata.
@@ -492,8 +530,9 @@ impl RustConversionBuilder {
         // detour only exists to satisfy `Send` when the value must cross the worker
         // boundary (`build_conversion_split`), which never applies here.
         let (owned, borrowed) = self.build_conversion_split_inner(pat_type, sexp_ident, true);
-        owned
+        self.non_na_check(pat_type, sexp_ident)
             .into_iter()
+            .chain(owned)
             .chain(borrowed)
             .chain(self.marker_rebind(pat_type))
             .collect()
@@ -520,6 +559,11 @@ impl RustConversionBuilder {
         // R CHARSXP. Copy character borrows before moving them to the worker.
         let (mut owned, mut borrowed) =
             self.build_conversion_split_inner(pat_type, sexp_ident, false);
+        // The `NonNa` check reads the argument, so it runs on the main thread
+        // before the conversion.
+        if let Some(check) = self.non_na_check(pat_type, sexp_ident) {
+            owned.insert(0, check);
+        }
         // A marker wraps the parameter's final binding: the borrow inside the
         // worker closure when there is one, else the owned value, which then
         // moves into the closure as the declared type.
@@ -1737,7 +1781,6 @@ fn no_na_value_stmt(
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
-    let call = crate::naming::call_slot_ident();
     let has_na = match input {
         Some(sexp) => quote_spanned! {span=>
             ::miniextendr_api::TryFromSexp::__mx_input_has_na(&#ident, #sexp)
@@ -1746,10 +1789,25 @@ fn no_na_value_stmt(
             ::miniextendr_api::TryFromSexp::__mx_has_na(&#ident)
         },
     };
-    // SAFETY (of the emitted `unsafe`): the check runs right after the
-    // argument's conversion, where the conversion `Err` arm runs: on the R
-    // main thread, inside the wrapper's with_r_unwind_protect closure or
-    // before the worker closure.
+    na_refusal_stmt(has_na, r_name, message, crate_class, span)
+}
+
+/// `if <has_na> { return <the no_na argument error>; }`: the tagged
+/// `kind = "conversion"` value `no_na`'s R guard would raise (see
+/// [`no_na_value_stmt`]), for the post-conversion `no_na` check and the
+/// `NonNa<T>` check before the conversion alike.
+fn na_refusal_stmt(
+    has_na: TokenStream,
+    r_name: &str,
+    message: &str,
+    crate_class: &[String],
+    span: proc_macro2::Span,
+) -> TokenStream {
+    let call = crate::naming::call_slot_ident();
+    // SAFETY (of the emitted `unsafe`): the check runs with the argument's
+    // conversion, where the conversion `Err` arm runs: on the R main thread,
+    // inside the wrapper's with_r_unwind_protect closure or before the worker
+    // closure.
     quote_spanned! {span=>
         if #has_na {
             return unsafe {

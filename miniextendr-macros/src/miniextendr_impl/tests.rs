@@ -1549,6 +1549,33 @@ fn method_param_marker_converts_the_inner_type() {
     assert!(!c_wrapper.contains("Checked < i32 >"), "{c_wrapper}");
 }
 
+/// A method's `NonNa<T>` parameter is its `no_na(p)`: the C wrapper checks
+/// the argument before converting the inner type and rebuilds the value.
+#[test]
+fn method_non_na_marker_is_no_na() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Sampler {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn scale(&self, by: NonNa<f64>) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let method = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "scale")
+        .expect("scale");
+    assert!(method.method_attrs.per_param["by"].checks.no_na);
+    let c_wrapper = generate_method_c_wrapper(&parsed, method).to_string();
+    assert!(c_wrapper.contains("__mx_any_na"), "{c_wrapper}");
+    assert!(c_wrapper.contains("let by : f64 ="), "{c_wrapper}");
+    assert!(
+        c_wrapper
+            .contains("let by = unsafe { :: miniextendr_api :: NonNa :: new_unchecked (by) } ;"),
+        "{c_wrapper}"
+    );
+}
+
 /// The rank-1 spellings on a method: a marker and a `no_preconditions(p)`
 /// entry that disagree, an entry naming no parameter, and a spelling with
 /// nothing to act on.

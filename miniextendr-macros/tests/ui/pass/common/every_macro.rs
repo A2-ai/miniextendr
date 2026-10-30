@@ -15,7 +15,7 @@ use miniextendr_api::either_impl::Either;
 use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 use miniextendr_api::{
     Call, CallerCall, Checked, DataFrame, ExternalPtr, IntoR, LazyDots, List, MatchArg, Missing,
-    NArgs, Quoted, RCondition, RCow, Rcomplex, RngGuard, SEXP, StrVec, TryFromSexp, Unchecked,
+    NArgs, NonNa, Quoted, RCondition, RCow, Rcomplex, RngGuard, SEXP, StrVec, TryFromSexp, Unchecked,
     miniextendr, typed_list,
 };
 
@@ -116,9 +116,10 @@ pub fn checks(
     #[miniextendr(default = "1L")] n: i32,
     marked: Checked<i32>,
     loose: Unchecked<::std::vec::Vec<f64>>,
+    present: NonNa<::std::vec::Vec<f64>>,
 ) -> f64 {
     let _ = frame;
-    factor * f64::from(n + *marked) + loose.len() as f64
+    factor * f64::from(n + *marked) + loose.len() as f64 + present.len() as f64
 }
 
 #[miniextendr]

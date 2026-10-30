@@ -1,0 +1,5 @@
+error: `NonNa<Option<T>>`: a value without `NA` leaves `Option` only `NULL` to mean; take `NonNa<T>`, or `Option<T>` with `#[miniextendr(no_na)]` to accept `NULL`
+ --> tests/ui/fn_non_na_marker_option.rs:7:17
+  |
+7 | pub fn first(x: miniextendr_api::NonNa<Option<f64>>) -> f64 {
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

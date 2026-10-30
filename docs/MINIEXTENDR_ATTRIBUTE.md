@@ -758,6 +758,7 @@ Written on a single parameter of a standalone function:
 | `not_inherits(class = "cls", message = "...")` / `not_inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
+| `NonNa<T>` (a type, not an attribute) | `no_na` written in the parameter type: the body receives a `NonNa<T>`, which holds no `NA` (see [Refusing NA in the type](#refusing-na-in-the-type-nonna)) |
 | `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 | `formal = "row.names"` | The parameter's R formal, for an R name that is no Rust identifier (see [Declared R formals](#declared-r-formals-formal)) |
 
@@ -861,6 +862,48 @@ themselves can be wrapped. A `#[derive(TryFromSexp)]` newtype arm or a
 `Result<T, ()>` arm is checked as the `T` it wraps: with
 `struct Table(DataFrame)`, `Either<AsNumeric, Table>` lets a data frame with
 `NA` cells through, and a `Result<AsNumeric, ()>` arm still refuses `NA`.
+
+##### Refusing NA in the type: `NonNa`
+
+`miniextendr_api::NonNa<T>` is the `no_na` check written in the parameter's
+type. The parameter converts as `T` and gets `no_na`'s R guard, message and
+post-conversion check, with your `no_na(message = "...")` when both are
+written. The body receives a `NonNa<T>`, so the type says what the check
+established:
+
+```rust
+use miniextendr_api::{NonNa, miniextendr};
+
+#[miniextendr]
+pub fn total(xs: NonNa<Vec<f64>>) -> f64 {
+    xs.iter().sum()                      // Deref to Vec<f64>
+}
+
+#[miniextendr]
+pub fn greet(name: NonNa<String>) -> String {
+    format!("hello {}", name.unwrap())   // NA_character_ never arrives as ""
+}
+```
+
+The C wrapper checks the argument once more before converting it, with
+`anyNA()`'s rules in Rust, so a `.Call()` that skips the R wrapper's guard
+meets the same refusal, on every conversion path (borrowed `&[f64]` / `&str`,
+the worker). `NA` means what `anyNA()` counts: `NaN` is refused as well.
+
+`NonNa<T>` is `repr(transparent)` and has `Deref`, `AsRef` and `Borrow` to
+`T`, plus `into_inner()`, `unwrap()` (the same, never panics) and `get()` for
+a `Copy` value. It has no `DerefMut` / `AsMut`, which could write an `NA` into
+it. Outside a wrapper, `NonNa::new(value)` returns `None` for a value holding
+an `NA` (by `MaybeNa`, implemented for the scalars, strings, `Option` and
+vectors), and the `unsafe` `NonNa::new_unchecked` skips the check.
+
+It composes with the precondition markers: `Unchecked<NonNa<Vec<f64>>>` drops
+the type check and keeps the NA check. Like them it goes outermost and is a
+parameter type only. Refused: `NonNa<Option<T>>` (a value without `NA` leaves
+`Option` only `NULL` to mean; write `Option<T>` with `#[miniextendr(no_na)]`
+to accept `NULL`), `NonNa<NonNa<T>>`, a `NonNa` inside `Option` / `Vec`, a
+`#[miniextendr]` trait method's parameter (spell `no_na(x)` on the impl), an
+`extern "C-unwind"` function and a return type.
 
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a

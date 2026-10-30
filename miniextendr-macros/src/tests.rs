@@ -1120,6 +1120,139 @@ fn param_marker_rebind_follows_the_last_statement() {
             .all(|t| !t.to_string().contains("from_inner"))
     );
 }
+
+/// `NonNa<T>` peels like the precondition markers, in its own family, and is
+/// the parameter's `no_na` check: alone, under `Unchecked`, and next to the
+/// `no_na(message = ..)` keyword.
+#[test]
+fn parsed_fn_non_na_marker_is_no_na() {
+    use crate::type_inspect::ParamMarker;
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            x: NonNa<f64>,
+            ys: Unchecked<NonNa<Vec<f64>>>,
+            #[miniextendr(no_na(message = "give a name"))] s: NonNa<String>,
+            tol: f64,
+        ) {}
+    });
+    assert_eq!(
+        arg_types(parsed.inputs()),
+        ["f64", "Vec<f64>", "String", "f64"]
+    );
+    assert_eq!(
+        parsed.param_markers(),
+        [
+            ("x".to_string(), vec![ParamMarker::NonNa]),
+            (
+                "ys".to_string(),
+                vec![ParamMarker::Unchecked, ParamMarker::NonNa]
+            ),
+            ("s".to_string(), vec![ParamMarker::NonNa]),
+        ]
+    );
+    let checks = |p: &str| parsed.param_attrs(p).map(|a| a.checks.clone());
+    assert!(checks("x").unwrap().no_na);
+    assert!(checks("ys").unwrap().no_na);
+    assert_eq!(
+        parsed.param_attrs("ys").and_then(|a| a.preconditions),
+        Some(false)
+    );
+    let s = checks("s").unwrap();
+    assert!(s.no_na);
+    assert_eq!(s.no_na_message.as_deref(), Some("give a name"));
+    assert!(parsed.param_attrs("tol").is_none());
+}
+
+/// What `NonNa<T>` refuses: an `Option` inside it, two of it, a place a
+/// marker cannot go, and an `extern` function.
+#[test]
+fn parsed_fn_non_na_marker_errors() {
+    for (tokens, expected) in [
+        (
+            quote::quote! { fn f(x: NonNa<Option<f64>>) {} },
+            "`NonNa<Option<T>>`: a value without `NA` leaves `Option` only `NULL`",
+        ),
+        (
+            quote::quote! { fn f(x: Checked<NonNa<Option<i32>>>) {} },
+            "`NonNa<Option<T>>`",
+        ),
+        (
+            quote::quote! { fn f(x: NonNa<NonNa<f64>>) {} },
+            "one `NonNa` already refuses an `NA`",
+        ),
+        (
+            quote::quote! { fn f(x: Option<NonNa<f64>>) {} },
+            "put `NonNa` outermost",
+        ),
+        (
+            quote::quote! { extern "C-unwind" fn f(x: NonNa<SEXP>) -> SEXP { x } },
+            "`NonNa<T>` on an `extern \"C-unwind\"` function",
+        ),
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+}
+
+/// The C wrapper checks a `NonNa` argument before converting it, on the main
+/// thread (first of the owned statements on the worker path too), and
+/// rebuilds the value unchecked after the conversion; the message is
+/// `no_na`'s, the author's when given.
+#[test]
+fn non_na_check_precedes_the_conversion() {
+    use crate::type_inspect::ParamMarker;
+    let builder = crate::RustConversionBuilder::new()
+        .with_param_markers("x".into(), vec![ParamMarker::NonNa])
+        .with_no_na("x".into(), None)
+        .with_param_markers("s".into(), vec![ParamMarker::NonNa])
+        .with_no_na("s".into(), Some("give a name".into()));
+    let pat = |tokens: proc_macro2::TokenStream| -> syn::PatType { syn::parse2(tokens).unwrap() };
+    let sexp: syn::Ident = syn::parse_quote!(arg_0);
+
+    let main = builder.build_conversion(&pat(quote::quote!(x: Vec<f64>)), &sexp);
+    let first = main.first().unwrap().to_string();
+    assert!(
+        first.contains(":: miniextendr_api :: from_r :: __mx_any_na (arg_0)"),
+        "{first}"
+    );
+    assert!(first.contains("\"'x' must not contain NA\""), "{first}");
+    assert_eq!(
+        main.last().unwrap().to_string(),
+        "let x = unsafe { :: miniextendr_api :: NonNa :: new_unchecked (x) } ;"
+    );
+
+    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(s: &str)), &sexp);
+    assert!(owned[0].to_string().contains("__mx_any_na (arg_0)"));
+    assert!(owned[0].to_string().contains("\"give a name\""));
+    assert_eq!(
+        borrowed.last().unwrap().to_string(),
+        "let s = unsafe { :: miniextendr_api :: NonNa :: new_unchecked (s) } ;"
+    );
+
+    let unmarked = crate::RustConversionBuilder::new()
+        .with_no_na("x".into(), None)
+        .build_conversion(&pat(quote::quote!(x: Vec<f64>)), &sexp);
+    assert!(
+        unmarked
+            .iter()
+            .all(|t| !t.to_string().contains("__mx_any_na")),
+        "the keyword alone keeps the R guard and the post-conversion check"
+    );
+}
+
+/// The R wrapper of a `NonNa` parameter has `no_na`'s guard.
+#[test]
+fn non_na_r_wrapper_has_the_no_na_guard() {
+    let wrapper = fn_r_wrapper(
+        quote::quote! {},
+        quote::quote! { pub fn total(xs: NonNa<Vec<f64>>) -> f64 { xs.iter().sum() } },
+    );
+    assert!(wrapper.contains("anyNA(xs)"), "{wrapper}");
+    assert!(
+        wrapper.contains("'xs' must not contain NA") || wrapper.contains("must not contain NA"),
+        "{wrapper}"
+    );
+}
 // endregion
 
 // region: per-parameter `inherits` / `no_na` and their messages

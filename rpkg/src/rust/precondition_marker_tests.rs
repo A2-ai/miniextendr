@@ -6,11 +6,14 @@
 //! A kept check words a bad argument in R (`'n' must be integer`), a dropped
 //! one leaves it to the Rust conversion (`'n' must be a single integer: got
 //! character`); both raise the same argument-error condition.
+//!
+//! `NonNa<T>` is `no_na` written in the type: the same R guard, plus the C
+//! wrapper's own check, which a `.Call()` skipping the R wrapper still meets.
 
 // Exercises the deprecated `worker` option (#2117).
 #![allow(deprecated)]
 
-use miniextendr_api::{Checked, ExternalPtr, Unchecked, miniextendr};
+use miniextendr_api::{Checked, ExternalPtr, NonNa, Unchecked, miniextendr};
 
 // region: free functions
 
@@ -80,12 +83,50 @@ pub fn pm_checked_str_worker(s: Checked<&str>) -> String {
     s.to_uppercase()
 }
 
+/// `NonNa<&str>` on the worker thread: the C wrapper checks the argument on
+/// the main thread before the owned copy, and the marker wraps the borrow
+/// made inside the worker closure.
+/// @param s A string.
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
+#[miniextendr(noexport, worker)]
+pub fn pm_non_na_str_worker(s: NonNa<&str>) -> String {
+    s.to_uppercase()
+}
+
 /// A `call = caller` entry point with an unchecked parameter: the Rust
 /// conversion's error names the call the helper's `.call` resolves to.
 /// @param n An integer.
 #[miniextendr(noexport, call = caller)]
 pub fn pm_caller_unchecked(n: Unchecked<i32>) -> i32 {
     *n + 1
+}
+
+/// `NonNa` refuses an `NA` (or `NaN`) in `xs`; the body needs no check.
+/// @param xs Values without NA.
+#[miniextendr(noexport)]
+pub fn pm_non_na_sum(xs: NonNa<Vec<f64>>) -> f64 {
+    xs.iter().sum()
+}
+
+/// `NonNa<String>` refuses `NA_character_`, which a plain `String` reads as `""`.
+/// @param name A name.
+#[miniextendr(noexport)]
+pub fn pm_non_na_name(name: NonNa<String>) -> String {
+    name.unwrap()
+}
+
+/// `Unchecked` drops the type check; the `NonNa` check stays.
+/// @param xs Values without NA.
+#[miniextendr(noexport)]
+pub fn pm_unchecked_non_na(xs: Unchecked<NonNa<Vec<i32>>>) -> i32 {
+    xs.into_inner().iter().sum()
+}
+
+/// A borrowed slice: the C wrapper's check runs before the rooted borrow.
+/// @param xs Values without NA.
+#[miniextendr(noexport)]
+pub fn pm_non_na_slice(xs: NonNa<&[f64]>) -> f64 {
+    xs.iter().sum()
 }
 
 // endregion
@@ -153,6 +194,12 @@ impl PmR6 {
     pub fn reseed(&mut self, seed: Checked<i32>) -> i32 {
         self.seed = *seed;
         self.seed
+    }
+
+    /// `by` holds no NA: a method's `NonNa` is its `no_na(by)`.
+    /// @param by An offset.
+    pub fn offset(&self, by: NonNa<f64>) -> f64 {
+        f64::from(self.seed) + by.get()
     }
 }
 

@@ -792,6 +792,9 @@ pub use lazy_dots::LazyDots;
 /// Precondition markers (`Checked<T>` / `Unchecked<T>`) for `#[miniextendr]` parameters.
 pub mod precondition_marker;
 pub use precondition_marker::{Checked, Unchecked};
+/// `NonNa<T>`: a value that holds no R `NA`, a `#[miniextendr]` parameter marker.
+pub mod non_na;
+pub use non_na::{MaybeNa, NonNa};
 
 /// Explicit R class-system return markers.
 pub mod wrap_as;
