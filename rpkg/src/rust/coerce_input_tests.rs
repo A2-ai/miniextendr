@@ -1,6 +1,6 @@
 //! Coercion must preserve the ordinary converter's valid inputs (#1112).
 
-use miniextendr_api::miniextendr;
+use miniextendr_api::{Missing, miniextendr};
 
 /// Identity for a coerced i8 parameter.
 /// @param x Input to convert without narrowing the accepted R types.
@@ -272,6 +272,56 @@ pub fn coerce_input_no_preconditions_optional_bool(x: Vec<Option<bool>>) -> Vec<
 #[miniextendr(coerce, no_preconditions, noexport)]
 pub fn coerce_input_no_preconditions_optional_scalar_i32(x: Option<i32>) -> Option<i32> {
     x
+}
+
+/// A coerced integer under `no_na`: the C wrapper refuses an NA before conversion.
+/// @param x An integer-like scalar, not NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_i32(#[miniextendr(coerce, no_na)] x: i32) -> i32 {
+    x
+}
+
+/// A coerced optional double under `no_na`: NULL still reads None, an NA is refused.
+/// @param x NULL, or a numeric, logical, or raw scalar, not NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_optional_f64(
+    #[miniextendr(coerce, no_na)] x: Option<f64>,
+) -> Option<f64> {
+    x
+}
+
+/// A coerced optional integer vector under `no_na`: an NA element is refused.
+/// @param x Integer-like values, none of them NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_optional_vector_i32(
+    #[miniextendr(coerce, no_na)] x: Vec<Option<i32>>,
+) -> Vec<Option<i32>> {
+    x
+}
+
+/// A coerced `Missing<i32>`: an absent argument reads NA, a present one converts as a coerced `i32`.
+/// @param x An integer-like scalar, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_i32(#[miniextendr(coerce)] x: Missing<i32>) -> Option<i32> {
+    x.into_option()
+}
+
+/// A coerced `Missing<Option<f64>>`: tells an absent argument, a None and a value apart.
+/// @param x NULL, NA, a numeric, logical, or raw scalar, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_optional_f64(#[miniextendr(coerce)] x: Missing<Option<f64>>) -> String {
+    match x {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "none".to_string(),
+        Missing::Present(Some(value)) => format!("{value}"),
+    }
+}
+
+/// A coerced `Missing<Vec<bool>>`: an absent argument reads an empty vector.
+/// @param x Logicals, or integers that are zero or one, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_vector_bool(#[miniextendr(coerce)] x: Missing<Vec<bool>>) -> Vec<bool> {
+    x.unwrap_or_default()
 }
 
 /// `no_preconditions` wrappers reach the coercion checker without an R precondition.

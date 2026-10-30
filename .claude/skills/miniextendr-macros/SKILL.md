@@ -235,7 +235,7 @@ miniextendr-externalptr and miniextendr-ffi skills.
 | `check_interrupt` | Inserts `R_CheckUserInterrupt` around the call. |
 | `rng` | Wraps the call in `GetRNGstate`/`PutRNGstate`. A `&RngGuard` parameter (no R formal) receives the guard; draw with `rng.unif_rand()` etc. `&RngGuard` without `rng` is a compile error. |
 | `dots = typed_list!(...)` | Validates `...` arguments; generates `dots_typed` parameter. See `miniextendr-dots` skill. |
-| `coerce_all` | Applies coercion mappings to all eligible types (`CoercionMapping::from_type`: `i32`, `f64`, `bool` and the other numeric scalars as `T`, `Vec<T>`, `Option<T>`, `Vec<Option<T>>`); skips the rest. A per-parameter `#[miniextendr(coerce)]` on a type without a mapping is a compile error (#2274). |
+| `coerce_all` | Applies coercion mappings to all eligible types (`CoercionMapping::from_type`: `i32`, `f64`, `bool` and the other numeric scalars as `T`, `Vec<T>`, `Option<T>`, `Vec<Option<T>>`, each also under `Missing<..>`); skips the rest. `no_na` on a coerced parameter also checks the argument SEXP before conversion (`RustConversionBuilder::non_na_check`). A per-parameter `#[miniextendr(coerce)]` on a type without a mapping is a compile error (#2274). |
 
 Attributes for impl block methods are the same, with class-system–specific
 additions (e.g., `r6(prop = "name")`, `r6(finalize)`, `r6(private)`,

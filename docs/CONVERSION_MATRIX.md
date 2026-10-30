@@ -27,6 +27,10 @@ The NA-carrying forms widen the same way (#2274). `Option<i32>`, `Option<f64>` a
 | `Vec<Option<f64>>` | double, integer, logical, raw vector | each `NA` element |
 | `Vec<Option<bool>>` | logical vector, integer vector of `0`, `1` and `NA` | each `NA` element |
 
+`Missing<T>` of any coerced form (`Missing<i32>`, `Missing<Vec<f64>>`, `Missing<Option<bool>>`, ...) reads an absent argument as `Missing::Absent` and converts a supplied one as `T` does under coerce. Like every `Missing<T>`, it has no R type precondition, so the coerced conversion is its only check.
+
+`no_na` on a coerced parameter checks the argument with `anyNA()`'s rules before the coerced conversion runs, in the C wrapper as well as in the R guard, and raises the guard's condition ("'x' must not be NA", `e$param`). A `.Call()` that skips the R wrapper therefore cannot pass an `NA` that an `Option<T>` or `Vec<Option<T>>` form would read as `None`.
+
 The option can apply to a function, one parameter, or every function through `coerce-default`. `no_coerce` opts out of the feature default. A function-wide or feature-default `coerce` leaves every type it has no mapping for (`String`, `Option<Vec<i32>>`, the borrowed slices `&[i32]` / `&[f64]`, ...) with its ordinary conversion. A per-parameter `#[miniextendr(coerce)]` names its parameter, so on such a type it is a compile error rather than a silent no-op. When `strict` and `coerce` are both enabled, strict conversion takes precedence for the types it checks.
 
 ### Strict Mode (`#[miniextendr(strict)]`)

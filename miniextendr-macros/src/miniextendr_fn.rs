@@ -55,8 +55,11 @@ impl CoercionMapping {
     /// and vectors, whose bare conversion accepts one `SEXPTYPE`, widen to the
     /// same four sources (whole-valued doubles only for `i32`). Each of these
     /// element types maps in four shapes: `T`, `Vec<T>`, `Option<T>` and
-    /// `Vec<Option<T>>`. Borrowed slices and other types keep `TryFromSexp`.
+    /// `Vec<Option<T>>`, and each shape also under `Missing<..>`, whose
+    /// sentinel reads `Missing::Absent` before the mapping converts a present
+    /// value. Borrowed slices and other types keep `TryFromSexp`.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
+        let ty = get_missing_inner_type(ty).unwrap_or(ty);
         let syn::Type::Path(type_path) = ty else {
             return None;
         };
@@ -141,7 +144,8 @@ pub(crate) fn unmapped_coerce_error(pat_type: &syn::PatType, param_name: &str) -
             "`coerce` on parameter `{param_name}` has no conversion for `{}`: it widens \
              `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, \
              `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or \
-             `Vec<Option<T>>`. Remove `coerce` from this parameter.{slice_hint}",
+             `Vec<Option<T>>`, each also under `Missing<..>`. Remove `coerce` from this \
+             parameter.{slice_hint}",
             crate::type_inspect::type_display(&pat_type.ty)
         ),
     )

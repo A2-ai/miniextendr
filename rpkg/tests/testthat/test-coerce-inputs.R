@@ -227,6 +227,67 @@ test_that("per-argument coercion widens an optional double, not its neighbor", {
   expect_identical(conditionMessage(err), "'y' must be NULL or double")
 })
 
+# `no_na` on a coerced parameter: the R guard refuses an NA, and so does the C
+# wrapper when a .Call() skips the guard, before the coerce helper could read
+# the NA as None.
+test_that("no_na refuses NA on a coerced parameter in the R guard and the C wrapper", {
+  cases <- list(
+    list(
+      name = "coerce_input_no_na_i32", ok = 2, expected = 2L,
+      na = list(NA_real_, NA_integer_, NA, NaN), message = "'x' must not be NA"
+    ),
+    list(
+      name = "coerce_input_no_na_optional_f64", ok = 2L, expected = 2,
+      na = list(NA_real_, NA_integer_, NA, NaN), message = "'x' must not be NA"
+    ),
+    list(
+      name = "coerce_input_no_na_optional_vector_i32", ok = c(1, 2), expected = c(1L, 2L),
+      na = list(c(1, NA), c(NA_integer_, 2L), c(TRUE, NA)), message = "'x' must not contain NA"
+    )
+  )
+  for (case in cases) {
+    fun <- getFromNamespace(case$name, "miniextendr")
+    native <- getFromNamespace(paste0("C_miniextendr_", case$name), "miniextendr")
+    expect_identical(fun(case$ok), case$expected, info = case$name)
+    expect_identical(.Call(native, NULL, case$ok), case$expected, info = case$name)
+    for (na in case$na) {
+      err <- expect_error(fun(na))
+      expect_identical(conditionMessage(err), case$message, info = case$name)
+      expect_identical(err$param, "x", info = case$name)
+      direct <- .Call(native, NULL, na)
+      expect_identical(direct$kind, "conversion", info = case$name)
+      expect_identical(direct$error, case$message, info = case$name)
+    }
+  }
+  # NULL holds no NA: the optional double still reads it as None.
+  expect_identical(miniextendr:::coerce_input_no_na_optional_f64(NULL), NA_real_)
+})
+
+test_that("coerced Missing<T> reads an absent argument and coerces a supplied one", {
+  fun <- miniextendr:::coerce_input_missing_i32
+  expect_identical(fun(), NA_integer_)
+  for (x in list(3L, 3, as.raw(3))) expect_identical(fun(x), 3L, info = typeof(x))
+  expect_identical(fun(TRUE), 1L)
+  err <- expect_error(fun(3.5))
+  expect_match(conditionMessage(err), "precision loss", fixed = TRUE)
+  expect_identical(err$rust_type, "Missing<i32>")
+  for (x in list("3", NA_real_, c(1L, 2L))) expect_error(fun(x))
+
+  optional <- miniextendr:::coerce_input_missing_optional_f64
+  expect_identical(optional(), "absent")
+  for (x in list(NULL, NA, NA_integer_, NA_real_)) expect_identical(optional(x), "none")
+  expect_identical(optional(2L), "2")
+  expect_identical(optional(TRUE), "1")
+  expect_error(optional("2"))
+
+  flags <- miniextendr:::coerce_input_missing_vector_bool
+  expect_identical(flags(), logical())
+  expect_identical(flags(c(1L, 0L)), c(TRUE, FALSE))
+  expect_identical(flags(c(TRUE, FALSE)), c(TRUE, FALSE))
+  err <- expect_error(flags(c(1L, 2L)))
+  expect_match(conditionMessage(err), "2 is neither 0 nor 1 (element 2)", fixed = TRUE)
+})
+
 test_that("newly accepted vectors retain batched conversion diagnostics", {
   err <- expect_error(miniextendr:::coerce_input_no_preconditions(c(-1, 5, 70000, 1.5, NaN)))
   msg <- conditionMessage(err)

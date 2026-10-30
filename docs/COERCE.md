@@ -202,11 +202,16 @@ fn process_f32(x: f32) -> f64 {
 | `bool` / `Vec<bool>` | logical, integer `0` / `1` | other integers are errors |
 | `Option<T>` of the above | `NULL` or `T`'s inputs | `NULL` and `NA` read `None` |
 | `Vec<Option<T>>` of the above | `Vec<T>`'s inputs | each `NA` element reads `None` |
+| `Missing<T>` of any form above | nothing, or the inner form's inputs | an absent argument reads `Missing::Absent` |
 
 The non-native numeric types (`u16`, `i64`, `f32`, ...) already read every
 numeric source without the attribute, so `coerce` keeps their conversion, in
 their `Option<T>` and `Vec<Option<T>>` forms too.
 [`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md) ("Coerce Mode") has the NA rules.
+
+`no_na` on a coerced parameter refuses an `NA` before the coerced conversion
+runs, in the C wrapper as well as in the R guard, so a `.Call()` that skips the
+R wrapper cannot pass an `NA` that an `Option<T>` form would read as `None`.
 
 **Example in R:**
 
@@ -263,7 +268,8 @@ fn scaled(#[miniextendr(coerce)] factor: Option<f64>, x: f64) -> f64 {
 ```
 
 A per-parameter `coerce` on a type it cannot widen (`String`,
-`Option<Vec<i32>>`, a borrowed slice such as `&[i32]`) is a compile error:
+`Option<Vec<i32>>`, `Missing<String>`, a borrowed slice such as `&[i32]`) is a
+compile error:
 the option names the parameter, so doing nothing would hide a mistake. A
 function-wide `#[miniextendr(coerce)]` or the `coerce-default` feature leaves
 such parameters with their ordinary conversion.

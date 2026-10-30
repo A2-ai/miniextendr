@@ -493,8 +493,9 @@ pub(crate) fn build_dots_validation_stmt(
 /// - `#[miniextendr(check_interrupt)]` — check for a user interrupt once, before the
 ///   arguments are converted and the body runs
 /// - `#[miniextendr(coerce)]` — widen the R types a parameter accepts (`i32`, `f64`, `bool` and
-///   the other numeric scalars, as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`); also usable
-///   per-parameter, where a type it cannot widen is a compile error
+///   the other numeric scalars, as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`, each also
+///   under `Missing<..>`); also usable per-parameter, where a type it cannot widen is a compile
+///   error
 /// - `#[miniextendr(convert)]` on a reference parameter — use its own conversion rather than
 ///   an ExternalPtr borrow; on inherent/trait impl methods, write `#[miniextendr(convert(param))]`.
 /// - `#[miniextendr(rng)]` — load R's RNG state before the body and save it after;

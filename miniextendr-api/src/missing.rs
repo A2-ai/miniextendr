@@ -275,6 +275,25 @@ pub fn is_missing_arg(sexp: SEXP) -> bool {
     std::ptr::addr_eq(sexp.0, SEXP::missing_arg().0)
 }
 
+/// Read an argument that may be the missing-argument sentinel: the sentinel
+/// is `Missing::Absent`, any other value `read`'s result as
+/// `Missing::Present`. For generated code that converts a `Missing<T>`
+/// parameter with its own reader instead of `T`'s `TryFromSexp`: a `coerce`
+/// parameter's coerced helper (#2274), a choice parameter's decoder
+/// ([`match_arg_missing_or`](crate::match_arg_missing_or)).
+#[doc(hidden)]
+#[inline]
+pub fn __mx_missing_or<T, E>(
+    sexp: SEXP,
+    read: impl FnOnce(SEXP) -> Result<T, E>,
+) -> Result<Missing<T>, E> {
+    if is_missing_arg(sexp) {
+        Ok(Missing::Absent)
+    } else {
+        read(sexp).map(Missing::Present)
+    }
+}
+
 impl<T> TryFromSexp for Missing<T>
 where
     T: TryFromSexp,

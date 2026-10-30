@@ -901,11 +901,7 @@ pub fn match_arg_missing_or<U, E>(
     sexp: SEXP,
     inner: impl FnOnce(SEXP) -> Result<U, E>,
 ) -> Result<crate::Missing<U>, E> {
-    if crate::missing::is_missing_arg(sexp) {
-        Ok(crate::Missing::Absent)
-    } else {
-        inner(sexp).map(crate::Missing::Present)
-    }
+    crate::missing::__mx_missing_or(sexp, inner)
 }
 
 /// The `Either<_, R>` layer of a choice parameter: a choice or a value of
