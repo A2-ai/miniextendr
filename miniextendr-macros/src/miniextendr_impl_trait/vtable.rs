@@ -563,10 +563,12 @@ fn generate_concrete_vtable_shims(
                 !matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty())
             }
         };
+        // A failed `IntoR` is a classed `result_err` condition (#2272).
         let result_conversion = if has_return {
-            quote::quote! {
-                unsafe { ::miniextendr_api::trait_abi::to_sexp(result) }
-            }
+            crate::c_wrapper_builder::return_conversion(
+                &quote::quote!(result),
+                &quote::quote!(::core::option::Option::None),
+            )
         } else {
             quote::quote! {
                 let _ = result;

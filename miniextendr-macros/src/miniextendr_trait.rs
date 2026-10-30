@@ -975,11 +975,13 @@ fn generate_method_shim(
         )
     };
 
-    // Generate result conversion
+    // Generate result conversion: a failed `IntoR` is a classed `result_err`
+    // condition (#2272), returned to the View like any other tagged value.
     let result_conversion = if method.return_type.is_some() {
-        quote::quote! {
-            unsafe { ::miniextendr_api::trait_abi::to_sexp(result) }
-        }
+        crate::c_wrapper_builder::return_conversion(
+            &quote::quote!(result),
+            &quote::quote!(::core::option::Option::None),
+        )
     } else {
         quote::quote! {
             let _ = result;

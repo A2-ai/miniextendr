@@ -1653,8 +1653,11 @@ refused under `#[externalptr(r6)]` / `#[externalptr(s7)]`; the example above
 is an S3 class for that reason. The getter's errors are its own: a
 `rust_error!(class = "pkg_error", "...")` in it reaches R with that class and
 the call as written (`x$cache_size`). It takes `&Self`, so it can't read
-`Sidecar` values, which are R fields already; it returns a value, not a
-`Result`.
+`Sidecar` values, which are R fields already. A getter returning `Result` is
+an error boundary, as a `#[miniextendr]` function's `Result` is (#2269): `Ok`
+reads the value, `Err` raises the error with its `RConditionData` classes and
+fields, and `Err(())` of a `Result<T, ()>` reads `NULL`. To raise a typed
+error by hand, `RCondition::from_data(&e).raise()`.
 
 ### R Behavior by Class System
 

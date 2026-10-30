@@ -270,14 +270,15 @@ impl<T: serde::Serialize> From<T> for AsSerialize<T> {
     }
 }
 
+/// A value serde refuses to serialize (a map whose keys are not strings, a
+/// `Serialize` impl's own `Error::custom`) is an `Err`: returned from a
+/// `#[miniextendr]` function, R gets an error of class
+/// [`SERDE_ERROR_CLASS`](super::SERDE_ERROR_CLASS) with serde's message.
 impl<T: serde::Serialize> IntoR for AsSerialize<T> {
-    type Error = std::convert::Infallible;
+    type Error = RSerdeError;
 
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        // Panic so the surrounding `with_r_unwind_protect` converts to a tagged
-        // condition SEXP — direct `r_stop` would longjmp past the framework's
-        // structured `rust_*` class layering.
-        Ok(to_r(&self.0).unwrap_or_else(|e| panic!("native serde serialization failed: {}", e)))
+        to_r(&self.0)
     }
 }
 // endregion

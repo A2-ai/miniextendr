@@ -483,8 +483,74 @@ fn optional_class_payload_none_is_null() {
     let call = quote::quote!(find());
     let tokens = context.generate_return_handling(&call).to_string();
     assert!(tokens.contains("SEXP :: nil ()"), "{tokens}");
-    assert!(tokens.contains("into_sexp"), "{tokens}");
+    assert!(
+        tokens.contains("IntoR :: try_into_sexp (__result)"),
+        "{tokens}"
+    );
     assert!(!tokens.contains("NONE_ERR"), "{tokens}");
+}
+
+/// Every arm that converts a value converts it with `try_into_sexp` and turns
+/// a failed conversion into the `result_err` condition of the error (its
+/// classes or its `Display` text, `__mx_into_r_err_parts!`) on the wrapper's
+/// call, never into a panic of `into_sexp` (#2272).
+#[test]
+fn every_return_conversion_raises_its_error() {
+    let handlings = [
+        ("-> Board", ReturnHandling::ExternalPtr),
+        ("-> i32", ReturnHandling::IntoR),
+        ("-> Option<i32>", ReturnHandling::OptionIntoR),
+        ("-> Option<Board>", ReturnHandling::OptionClassPayload),
+        ("-> Option<Board>", ReturnHandling::OptionExternalPtr),
+        ("-> Result<i32, E>", ReturnHandling::ResultIntoR),
+        ("-> Result<i32, ()>", ReturnHandling::ResultNullOnErr),
+        ("-> Result<Board, E>", ReturnHandling::ResultExternalPtr),
+        ("-> Board", ReturnHandling::AsListOf),
+        ("-> Board", ReturnHandling::AsExternalPtrOf),
+        ("-> u8", ReturnHandling::AsNativeOf),
+    ];
+    for (output, handling) in handlings {
+        let context = CWrapperContext::builder(syn::parse_quote!(f), syn::parse_quote!(C_test))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_test))
+            .output(syn::parse_str(output).unwrap())
+            .call_expr(quote::quote!(f()))
+            .return_handling(handling.clone())
+            .build();
+        let tokens = context
+            .generate_return_handling(&quote::quote!(f()))
+            .to_string();
+        assert!(
+            tokens.contains(":: miniextendr_api :: into_r :: IntoR :: try_into_sexp ("),
+            "{handling:?}: {tokens}"
+        );
+        assert!(!tokens.contains(":: into_sexp ("), "{handling:?}: {tokens}");
+        assert!(
+            tokens.contains(
+                "result_err_condition_value (:: miniextendr_api :: __mx_into_r_err_parts ! \
+                 (__mx_error) , :: core :: option :: Option :: Some (__miniextendr_call) ,)"
+            ),
+            "{handling:?}: {tokens}"
+        );
+    }
+}
+
+/// A trait vtable shim or a sidecar getter, which have no call slot, convert
+/// the same way with `None` for the call.
+#[test]
+fn return_conversion_without_a_call_slot() {
+    let tokens = return_conversion(
+        &quote::quote!(result),
+        &quote::quote!(::core::option::Option::None),
+    )
+    .to_string();
+    assert!(
+        tokens.starts_with("match :: miniextendr_api :: into_r :: IntoR :: try_into_sexp (result)"),
+        "{tokens}"
+    );
+    assert!(
+        tokens.contains("(__mx_error) , :: core :: option :: Option :: None ,)"),
+        "{tokens}"
+    );
 }
 
 #[test]

@@ -335,6 +335,7 @@ mod reexport_tests;
 mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
+mod return_conversion_tests;
 mod rmath_tests;
 mod rng_seed_tests;
 mod rng_tests;

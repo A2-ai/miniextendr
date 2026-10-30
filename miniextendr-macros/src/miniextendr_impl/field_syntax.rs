@@ -1059,10 +1059,16 @@ pub(super) fn fallback_c_entries(parsed_impl: &ParsedImpl) -> proc_macro2::Token
     let span = fallback.get.span();
     // The `Option` and the conversion are spanned at the attribute's string,
     // so a function that returns no `Option`, or an `Option` of a type
-    // without `IntoR`, is reported there.
+    // without `IntoR`, is reported there. A failed conversion raises the
+    // classed `result_err` condition (#2272).
+    let conversion = crate::c_wrapper_builder::return_conversion_at(
+        &quote!(v),
+        &quote!(::core::option::Option::None),
+        span,
+    );
     let value = quote_spanned! {span=>
         match #get(__mx_value, &__mx_name) {
-            ::core::option::Option::Some(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
+            ::core::option::Option::Some(v) => #conversion,
             ::core::option::Option::None => none,
         }
     };
@@ -1122,6 +1128,10 @@ pub(super) fn fallback_c_entries(parsed_impl: &ParsedImpl) -> proc_macro2::Token
         let value = quote_spanned! {span=>
             let __mx_names: ::std::vec::Vec<::std::string::String> = #names_path(__mx_value);
         };
+        let names_sexp = crate::c_wrapper_builder::return_conversion(
+            &quote!(__mx_names),
+            &quote!(::core::option::Option::None),
+        );
         let c_ident = format_ident!(
             "{}",
             crate::naming::sidecar_fallback_names_c_name(&type_name)
@@ -1153,7 +1163,7 @@ pub(super) fn fallback_c_entries(parsed_impl: &ParsedImpl) -> proc_macro2::Token
                             unsafe { ::miniextendr_api::externalptr::sidecar_r_struct::<#ty>(x) };
                         let __mx_value: &#ty = &__mx_data;
                         #value
-                        __mx_names.into_sexp()
+                        #names_sexp
                     },
                     ::core::option::Option::None,
                 );

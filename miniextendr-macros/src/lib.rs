@@ -122,7 +122,7 @@
 //!
 //! | Rust Type | Strategy | R Result |
 //! |-----------|----------|----------|
-//! | `T: IntoR` | `.into_sexp()` | Converted value |
+//! | `T: IntoR` | `.try_into_sexp()`, a failure raised like an `Err` | Converted value or error |
 //! | `Result<T, E>` | Unwrap or R error | Value or error |
 //! | `Option<T>` | `Some` → value, `None` → `NULL` | Value or NULL |
 //! | `SEXP` | Pass through | Raw SEXP |

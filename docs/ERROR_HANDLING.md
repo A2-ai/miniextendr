@@ -177,6 +177,24 @@ pub fn process(path: &str) -> Result<i32> {
 }
 ```
 
+### A return value whose conversion fails
+
+The generated code converts the value a function, method, trait method or
+`#[r_data]` field returns with `IntoR::try_into_sexp`. When that conversion
+fails, R gets the error an `Err` return gives (`e$kind == "result_err"`, the
+call of the wrapper): the error's classes, fields and message when its type
+implements `RConditionData`, else its `Display` text. It is not a panic, so
+the message names no file of the framework (#2272).
+
+`AsSerialize<T>` (and `#[miniextendr(serialize)]`) fails this way when serde
+refuses the value, for example a map whose keys are not strings. Its error,
+`RSerdeError`, has the class `miniextendr_serde_error`:
+
+```r
+tryCatch(int_keyed_map(), miniextendr_serde_error = conditionMessage)
+#> [1] "map keys must be strings for R named lists"
+```
+
 ---
 
 ## R Error API
@@ -337,6 +355,7 @@ The transport intercepts three failure modes:
 |---------|-----------|---------|
 | Rust panic | `"panic"` | `panic!("oops")` |
 | `Result::Err` | `"result_err"` | `Err("bad input".to_string())` |
+| A failed return conversion | `"result_err"` | an `AsSerialize` of a map whose keys are not strings ([above](#a-return-value-whose-conversion-fails)) |
 | `Option::None` | `"none_err"` | Returning `None` from `-> Option<()>` or `-> Option<SEXP>` (any other `Option<T>`, a method's `Option<Self>` included, converts `None` to `NULL` / `NA`) |
 
 **Not affected**: `Result<T, ()>` (unit error type) always returns `NULL` on `Err(())`,

@@ -271,7 +271,7 @@ pub use dataframe_de::{
     dataframe_to_vec_with_struct_fields, with_dataframe_rows,
 };
 pub use de::RDeserializer;
-pub use error::RSerdeError;
+pub use error::{RSerdeError, SERDE_ERROR_CLASS};
 // The snapshot encoding, for tests that need R (`tests/serde_exact.rs`).
 #[doc(hidden)]
 pub use exact::{from_r_exact as __from_r_exact, to_r_exact as __to_r_exact};

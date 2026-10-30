@@ -299,10 +299,35 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
         getter.contains("sidecar_r_struct :: < Engine > (x)"),
         "{getter}"
     );
+    // The getter's value goes through the `Result` probe (#2269), then the
+    // return conversion, a failed one raising (#2272).
     assert!(
-        getter.contains("IntoR :: into_sexp (Engine :: group_by (data))"),
+        getter.contains("let __mx_value = Engine :: group_by (data) ;"),
         "{getter}"
     );
+    assert!(
+        getter.contains(
+            "(&& & :: miniextendr_api :: externalptr :: ComputedProbe :: of (& __mx_value)) \
+             . __mx_computed_read (__mx_value)"
+        ),
+        "{getter}"
+    );
+    assert!(
+        getter.contains("ComputedRead :: Null => { :: miniextendr_api :: SEXP :: nil () }"),
+        "{getter}"
+    );
+    assert!(
+        getter.contains(
+            "ComputedRead :: Err (e) => { :: miniextendr_api :: error_value :: \
+             result_err_condition_value (:: miniextendr_api :: __mx_result_err_parts ! (e ,"
+        ),
+        "{getter}"
+    );
+    assert!(
+        getter.contains(":: miniextendr_api :: into_r :: IntoR :: try_into_sexp (__mx_ok)"),
+        "{getter}"
+    );
+    assert!(!getter.contains(":: into_sexp ("), "{getter}");
     assert!(
         super::generate_setter_body(&name, &info.slots[0]).is_empty(),
         "a computed field has no setter body"
@@ -361,6 +386,29 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
         "{out}"
     );
     assert!(out.contains("sidecar_require_live (require_live)"), "{out}");
+}
+
+/// A struct field converts its clone with `try_into_sexp`; a failed
+/// conversion is the `result_err` condition, with no call slot (#2272).
+#[test]
+fn conversion_fields_raise_a_failed_conversion() {
+    let input: syn::DeriveInput =
+        syn::parse_str("struct Engine { #[r_data] _r: RSidecar, #[r_data] pub label: String }")
+            .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S3).unwrap();
+    assert_eq!(info.slots[0].kind, super::SlotKind::Conversion);
+    let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
+    let getter = super::generate_getter_body(&name, &info.slots[0]).to_string();
+    assert!(
+        getter.contains("match :: miniextendr_api :: into_r :: IntoR :: try_into_sexp (val)"),
+        "{getter}"
+    );
+    assert!(
+        getter
+            .contains("__mx_into_r_err_parts ! (__mx_error) , :: core :: option :: Option :: None"),
+        "{getter}"
+    );
+    assert!(!getter.contains(":: into_sexp ("), "{getter}");
 }
 
 /// The `Computed` compile errors: `get` on another type, no `get`,
