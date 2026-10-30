@@ -1,8 +1,8 @@
 //! Queue mechanics on the test's own thread (no R runtime). Each test runs on
-//! a fresh thread, so it starts with an empty queue. `defer` itself refuses
-//! that thread (it is not R's main thread); the typed payloads and the
-//! `defer_*!` macros are covered on R's main thread by
-//! `tests/deferred_conditions.rs`.
+//! a fresh thread, so it starts with an empty queue. `defer` sends from that
+//! thread (it is not R's main thread); the typed payloads, the `defer_*!`
+//! macros and the channel from other threads are covered on R's main thread
+//! by `tests/deferred_conditions.rs`.
 
 use super::*;
 use crate::condition::ConditionCall;
@@ -69,20 +69,23 @@ fn take_pending_past_the_end_is_empty() {
     assert!(take_pending(mark() + 1).is_empty());
 }
 
-/// A spawned thread is never R's main thread, whichever test recorded one.
+/// `capture` refuses a thread that isn't R's main thread before running the
+/// block. A spawned thread never is, whichever test recorded one.
 #[test]
-fn defer_off_the_main_thread_panics_without_queueing() {
-    let (payload, queued) = std::thread::spawn(|| {
-        let payload = std::panic::catch_unwind(|| crate::defer_warning!("from a Rayon task"))
-            .expect_err("defer_warning! off R's main thread must panic");
+fn capture_off_the_main_thread_panics() {
+    let (message, ran) = std::thread::spawn(|| {
+        let ran = std::cell::Cell::new(false);
+        let payload =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| capture(|| ran.set(true))))
+                .expect_err("capture off R's main thread must panic");
         (
             crate::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned(),
-            mark(),
+            ran.get(),
         )
     })
     .join()
     .unwrap();
-    assert!(payload.contains("off R's main thread"), "{payload}");
-    assert!(payload.contains("queue the conditions"), "{payload}");
-    assert_eq!(queued, 0);
+    assert!(message.contains("off R's main thread"), "{message}");
+    assert!(message.contains("around the"), "{message}");
+    assert!(!ran);
 }

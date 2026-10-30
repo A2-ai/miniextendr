@@ -10,5 +10,5 @@ rayon_defer_warning_after_parallel(n)
 \item{n}{Number of parallel items.}
 }
 \description{
-Collect in parallel, then queue on the main thread: the supported shape.
+Collect in parallel, then queue one summary warning on the main thread.
 }

@@ -468,22 +468,48 @@ catch the failure inside the block with
 `capture(|| catch_condition(|| rebuild(&snapshot)))`.
 
 **Where it works.** Every `#[miniextendr]` function and method, `rng`
-wrappers and trait-ABI vtable shims, on R's main thread. Queueing from any
-other thread (a Rayon task, a `std::thread`) panics: no R call there could
-signal the condition. Collect what the parallel section found and queue the
-conditions on the main thread after it returns:
+wrappers and trait-ABI vtable shims. The queue lives on R's main thread. A
+condition queued on another thread (a Rayon task, a `std::thread`) goes there
+over a bounded channel and joins the queue the next time the main thread
+reads it: when a call signals its conditions, or discards them on an R error.
+
+Rayon's `par_iter`, `join` and `scope` block the calling thread until every
+task has finished, so the call that ran the parallel section signals what its
+tasks queued (or discards it with everything else, if it fails with an R
+error):
 
 ```rust
 #[miniextendr]
 fn parse_all(xs: Vec<String>) -> Vec<i32> {
-    let parsed: Vec<Result<i32, _>> = xs.par_iter().map(|s| s.parse::<i32>()).collect();
-    let bad = parsed.iter().filter(|r| r.is_err()).count();
-    if bad > 0 {
-        defer_warning!("{bad} values could not be parsed"); // on the main thread
-    }
-    parsed.into_iter().filter_map(Result::ok).collect()
+    xs.par_iter()
+        .filter_map(|s| match s.parse::<i32>() {
+            Ok(n) => Some(n),
+            Err(_) => {
+                defer_warning!("{s:?} could not be parsed"); // on a Rayon thread
+                None
+            }
+        })
+        .collect()
 }
 ```
+
+Collecting in the parallel section and queueing once on the main thread is
+still worth it when one summary reads better than a warning per item:
+
+```rust
+let bad = parsed.iter().filter(|r| r.is_err()).count();
+if bad > 0 {
+    defer_warning!("{bad} values could not be parsed");
+}
+```
+
+The order of conditions from different tasks is the order they reached the
+channel. Only a thread nobody joins (a `std::thread::spawn` left running, a
+`rayon::spawn`) can deliver its conditions to a later, unrelated call. The
+channel holds 1024 conditions: one queued while it is full is dropped, and the
+main thread adds a warning saying how many were, after the ones it received.
+`capture()` needs the queue itself, so it panics off the main thread; call it
+on the main thread around the parallel section.
  ALTREP `RUnwind` and `RustUnwind` callbacks,
 `with_r_unwind_protect_or_raise`, and connection I/O callbacks flush their own
 conditions before returning. ALTREP and connection conditions have

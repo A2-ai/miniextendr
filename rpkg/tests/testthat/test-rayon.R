@@ -365,9 +365,23 @@ test_that("RParallelExtend par_clear/par_is_empty reset the collection", {
 
 # region: deferred conditions off R's main thread
 
-test_that("defer_warning! in a Rayon task errors and says to queue on the main thread", {
-  err <- expect_error(rayon_defer_warning_off_main(8L), "queued off R's main thread")
-  expect_match(conditionMessage(err), "queue the conditions on the main thread", fixed = TRUE)
+test_that("defer_warning! in Rayon tasks is signalled by the call that ran them", {
+  messages <- character()
+  calls <- list()
+  value <- withCallingHandlers(
+    rayon_defer_warning_off_main(8L),
+    warning = function(w) {
+      messages <<- c(messages, conditionMessage(w))
+      calls[[length(calls) + 1L]] <<- conditionCall(w)
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(value, 28L)
+  expect_setequal(messages, paste("item", 0:7))
+  expect_length(messages, 8L)
+  for (call in calls) {
+    expect_identical(call[[1L]], as.name("rayon_defer_warning_off_main"))
+  }
 })
 
 test_that("conditions queued after the parallel section are signalled", {

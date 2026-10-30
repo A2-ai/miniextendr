@@ -360,8 +360,9 @@ pub fn rayon_trait_par_clear(a: Vec<f64>) -> Vec<i32> {
 
 // region: Deferred conditions off R's main thread
 
-/// Queue a warning from inside Rayon tasks. Only R's main thread can queue
-/// one, so `defer_warning!` panics on the pool thread and the call errors.
+/// Queue a warning from inside each Rayon task. The tasks send them to R's
+/// main thread; `sum()` returns only after every task has finished, so this
+/// call signals all of them.
 /// @param n Number of parallel items.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -376,7 +377,7 @@ pub fn rayon_defer_warning_off_main(n: i32) -> i32 {
         .sum()
 }
 
-/// Collect in parallel, then queue on the main thread: the supported shape.
+/// Collect in parallel, then queue one summary warning on the main thread.
 /// @param n Number of parallel items.
 #[cfg(feature = "rayon")]
 #[miniextendr]

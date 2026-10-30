@@ -1,5 +1,5 @@
 //! The deferred-condition queue on R's main thread: typed payloads, the
-//! `defer_*!` macro grammar, `capture`, and the refusal off the main thread.
+//! `defer_*!` macro grammar, `capture`, and conditions queued on other threads.
 //! Every test runs on the one recorded R thread, so each starts by clearing
 //! what an earlier test may have left queued.
 
@@ -161,31 +161,82 @@ fn capture_leaves_the_queue_on_unwind() {
     });
 }
 
-/// A Rayon task or spawned thread can't queue: the panic says to queue on the
-/// main thread, and the main thread's queue is untouched.
+/// A spawned thread's conditions reach R's main thread over the channel: the
+/// main thread's next read of the queue takes them, after its own, in the
+/// order the thread queued them.
 #[test]
-fn defer_off_the_main_thread_panics() {
-    let (message, queued) = on_main_with_empty_queue(|| {
+fn a_joined_thread_s_conditions_join_the_queue() {
+    let queued = on_main_with_empty_queue(|| {
         let start = mark();
         defer_warning!("on main");
-        let payload = std::thread::spawn(|| {
-            std::panic::catch_unwind(|| defer_warning!("from a spawned thread"))
-                .expect_err("defer_warning! off R's main thread must panic")
+        std::thread::spawn(|| {
+            defer_warning!(class = "elsewhere", "from a spawned thread");
+            defer_message!("and a message");
         })
         .join()
         .unwrap();
-        let message =
-            miniextendr_api::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned();
-        let queued: Vec<String> = take_pending(start)
+        take_pending(start)
             .into_iter()
+            .map(RCondition::into_parts)
+            .map(|(kind, parts)| (kind, parts.message, parts.class))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(
+        queued,
+        [
+            (kind::WARNING, "on main".to_string(), Vec::<String>::new()),
+            (
+                kind::WARNING,
+                "from a spawned thread".to_string(),
+                vec!["elsewhere".to_string()]
+            ),
+            (kind::MESSAGE, "and a message".to_string(), Vec::new()),
+        ]
+    );
+}
+
+/// `capture` around a parallel section takes what its tasks queued.
+#[test]
+fn capture_takes_a_joined_thread_s_conditions() {
+    let captured = on_main_with_empty_queue(|| {
+        let ((), captured) = capture(|| {
+            std::thread::scope(|s| {
+                s.spawn(|| defer_warning!("in scope"));
+            });
+        });
+        let messages: Vec<String> = captured
+            .iter()
             .map(|condition| condition.message().to_string())
             .collect();
-        (message, queued)
+        assert!(take_pending(0).is_empty());
+        messages
     });
-    assert!(message.contains("off R's main thread"), "{message}");
-    assert!(
-        message.contains("queue the conditions on the main thread"),
-        "{message}"
+    assert_eq!(captured, ["in scope"]);
+}
+
+/// The channel holds 1024 conditions; the rest are dropped and counted, and
+/// the main thread queues one warning saying how many, after the ones kept.
+#[test]
+fn a_full_channel_drops_the_newest_and_says_how_many() {
+    let messages = on_main_with_empty_queue(|| {
+        let start = mark();
+        std::thread::spawn(|| {
+            for i in 0..1030 {
+                defer_condition!("tick {i}");
+            }
+        })
+        .join()
+        .unwrap();
+        take_pending(start)
+            .into_iter()
+            .map(|condition| condition.message().to_string())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(messages.len(), 1025);
+    assert_eq!(messages[0], "tick 0");
+    assert_eq!(messages[1023], "tick 1023");
+    assert_eq!(
+        messages[1024],
+        "6 deferred conditions from other threads dropped due to queue overflow"
     );
-    assert_eq!(queued, ["on main"]);
 }
