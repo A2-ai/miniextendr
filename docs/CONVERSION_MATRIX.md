@@ -16,7 +16,22 @@ Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f6
 
 Coercion preserves every input type accepted in normal mode. Non-native numeric scalars and vectors use the same checked multi-source converters. The native `i32` / `Vec<i32>` additionally accept whole-number doubles, logicals, and raws (`3` reaches an `i32` parameter as `3L`; `3.5`, `NA`, and out-of-range values are errors), and the native `f64` / `Vec<f64>` additionally accept integers, logicals, and raws. NA follows `as.integer()` / `as.numeric()`: it propagates where the declared type can carry it (`f64` and `Vec<f64>` receive `NA_real_` for an integer or logical `NA`; `Vec<i32>` receives `NA_integer_` for `NA_real_` or a logical `NA`), while a scalar `i32` keeps rejecting `NA` as it does without coerce. The generated R precondition follows the selected conversion, so `x: i32` under coerce is gated by "integer or whole-number numeric" instead of failing later in Rust. Borrowed slices (`&[i32]`, `&[f64]`) stay single-type because they cannot allocate a converted copy. `bool` and `Vec<bool>` additionally accept integer `0` and `1`, while retaining logical inputs; NA and other integers are errors. Vector conversion reports all failing indices in one diagnostic.
 
-The option can apply to a function, one parameter, or every function through `coerce-default`. `no_coerce` opts out of the feature default. Unmapped types, including `Option<bool>`, keep their ordinary conversion. When `strict` and `coerce` are both enabled, strict conversion takes precedence for the types it checks.
+The NA-carrying forms widen the same way (#2274). `Option<i32>`, `Option<f64>` and `Option<bool>` read `NULL` as `None`, convert any other value as their plain coerced type does, and read an `NA` of any accepted R type as `None`: `NA_real_` or a logical `NA` into `Option<i32>`, an integer `NA` into `Option<bool>`. `NaN` stays an error for `Option<i32>` and a value for `Option<f64>`, as without coerce. `Vec<Option<i32>>`, `Vec<Option<f64>>` and `Vec<Option<bool>>` convert element-wise, read each `NA` element as `None`, and report every failing element in one diagnostic; like `Vec<T>`, they refuse `NULL`. The R precondition of an `Option<T>` is its scalar's widened check behind `is.null()` ("must be NULL or integer or whole-number numeric"), that of a `Vec<Option<T>>` its vector's. The `Option<T>` and `Vec<Option<T>>` forms of the non-native numeric types already read every numeric source, so `coerce` keeps their conversion.
+
+| Parameter type under `coerce` | Accepts | Reads `None` |
+|-------------------------------|---------|--------------|
+| `Option<i32>` | `NULL`, integer, whole-number double, logical, raw (length 1) | `NULL`, `NA_integer_`, `NA_real_`, `NA` |
+| `Option<f64>` | `NULL`, double, integer, logical, raw (length 1) | `NULL`, `NA_real_`, `NA_integer_`, `NA` |
+| `Option<bool>` | `NULL`, logical, integer `0` / `1` (length 1) | `NULL`, `NA`, `NA_integer_` |
+| `Vec<Option<i32>>` | integer, whole-number double, logical, raw vector | each `NA` element |
+| `Vec<Option<f64>>` | double, integer, logical, raw vector | each `NA` element |
+| `Vec<Option<bool>>` | logical vector, integer vector of `0`, `1` and `NA` | each `NA` element |
+
+`Missing<T>` of any coerced form (`Missing<i32>`, `Missing<Vec<f64>>`, `Missing<Option<bool>>`, ...) reads an absent argument as `Missing::Absent` and converts a supplied one as `T` does under coerce. Like every `Missing<T>`, it has no R type precondition, so the coerced conversion is its only check.
+
+`no_na` on a coerced parameter checks the argument with `anyNA()`'s rules before the coerced conversion runs, in the C wrapper as well as in the R guard, and raises the guard's condition ("'x' must not be NA", `e$param`). A `.Call()` that skips the R wrapper therefore cannot pass an `NA` that an `Option<T>` or `Vec<Option<T>>` form would read as `None`.
+
+The option can apply to a function, one parameter, or every function through `coerce-default`. `no_coerce` opts out of the feature default. A function-wide or feature-default `coerce` leaves every type it has no mapping for (`String`, `Option<Vec<i32>>`, the borrowed slices `&[i32]` / `&[f64]`, ...) with its ordinary conversion. A per-parameter `#[miniextendr(coerce)]` names its parameter, so on such a type it is a compile error rather than a silent no-op. When `strict` and `coerce` are both enabled, strict conversion takes precedence for the types it checks.
 
 ### Strict Mode (`#[miniextendr(strict)]`)
 
@@ -55,6 +70,8 @@ These types require an exact R type match. Length must be 1.
 | `Option<bool>` | LGLSXP | `None` | `None` |
 | `Option<Rboolean>` | LGLSXP | `None` | `None` |
 | `Option<String>` | STRSXP | `None` | `None` |
+
+Under `coerce`, `Option<i32>`, `Option<f64>` and `Option<bool>` (and their `Vec<Option<T>>` forms) also accept the other numeric sources, with every `NA` read as `None`; see "Coerce Mode" above.
 
 ### Optional Containers, Data Frames and `Either` (NULL Only)
 

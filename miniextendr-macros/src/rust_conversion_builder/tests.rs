@@ -387,6 +387,39 @@ fn test_coercion() {
     }
 }
 
+/// The `Option<T>` / `Vec<Option<T>>` forms of the native types convert
+/// through their own coerced helpers; those of the other numeric types keep
+/// `TryFromSexp`, which already reads every numeric source (#2274).
+#[test]
+fn test_coercion_of_optional_types() {
+    let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    for (ty, helper) in [
+        ("Option<bool>", "try_from_sexp_coerced_option_bool"),
+        ("Vec<Option<bool>>", "try_from_sexp_coerced_option_bool_vec"),
+        ("Option<i32>", "try_from_sexp_coerced_option_i32"),
+        (
+            "::std::vec::Vec<::core::option::Option<i32>>",
+            "try_from_sexp_coerced_option_i32_vec",
+        ),
+        ("Option<f64>", "try_from_sexp_coerced_option_f64"),
+        ("Vec<Option<f64>>", "try_from_sexp_coerced_option_f64_vec"),
+    ] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(
+            s.contains(&format!(":: miniextendr_api :: from_r :: {helper} (")),
+            "{ty}: {s}"
+        );
+    }
+    for ty in ["Option<u16>", "Vec<Option<i64>>", "Option<f32>"] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(!s.contains("try_from_sexp_coerced"), "{ty}: {s}");
+        assert!(s.contains("TryFromSexp :: try_from_sexp"), "{ty}: {s}");
+    }
+    // Without `coerce`, the bare conversion.
+    let s = conversion_text(&RustConversionBuilder::new(), "x: Option<i32>");
+    assert!(!s.contains("try_from_sexp_coerced"), "{s}");
+}
+
 /// The decoder of a layered choice parameter (#1473, #1551): one
 /// `match_arg_*` helper per layer, outermost first, around the choice's own
 /// decoder.
@@ -769,6 +802,9 @@ fn native_metadata_matches_selected_conversion_paths() {
         ("miniextendr_api::CallerCall", true),
         ("i64", true),
         ("u16", false),
+        ("Option<i32>", true),
+        ("Vec<Option<f64>>", true),
+        ("Option<u16>", false),
         ("Vec<Mode>", true),
         ("Box<[Mode]>", true),
         ("[Mode; 2]", true),
@@ -917,10 +953,10 @@ fn no_na_check_follows_the_conversion() {
     );
 }
 
-/// The special conversion arms never carry the check: a coerced type (one
-/// with a coercion mapping), a borrowed slice, a `&T` borrow and a strict
-/// lossy integer are converted by their own helpers and keep only the R guard.
-/// A marker with `coerce` has no coercion mapping, so it takes the plain arm
+/// The special conversion arms never carry the post-conversion check: a
+/// coerced type (one with a coercion mapping), a borrowed slice, a `&T`
+/// borrow and a strict lossy integer are converted by their own helpers. A
+/// marker with `coerce` has no coercion mapping, so it takes the plain arm
 /// and is checked.
 #[test]
 fn no_na_check_skips_the_special_arms() {
@@ -929,6 +965,7 @@ fn no_na_check_skips_the_special_arms() {
         .with_no_na("x".to_string(), None);
     assert!(!conversion_text(&coerced, "x: f64").contains("__mx_has_na"));
     assert!(conversion_text(&coerced, "x: AsNumeric").contains(NO_NA_CHECK));
+    assert!(!conversion_text(&coerced, "x: AsNumeric").contains("__mx_any_na"));
 
     let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
     assert!(!conversion_text(&builder, "x: &[f64]").contains("__mx_has_na"));
@@ -938,6 +975,92 @@ fn no_na_check_skips_the_special_arms() {
         .with_strict()
         .with_no_na("x".to_string(), None);
     assert!(!conversion_text(&strict, "x: i64").contains("__mx_has_na"));
+}
+
+/// A `no_na` parameter that `coerce` converts through its mapping, plain,
+/// `Option`, `Vec<Option<_>>`, `Missing` and the non-native numeric types
+/// alike, has its argument SEXP checked before the conversion
+/// (`__mx_any_na`), raising the R guard's condition: that arm has no
+/// post-conversion check, and the `Option` forms read an `NA` as `None`
+/// (#2274). Without `no_na`, or without `coerce`, no such check.
+#[test]
+fn no_na_checks_the_coerced_argument_before_conversion() {
+    const ANY_NA: &str = ":: miniextendr_api :: from_r :: __mx_any_na (arg_0)";
+    let coerced = RustConversionBuilder::new()
+        .with_coerce_param("x".to_string())
+        .with_no_na("x".to_string(), None);
+    for (ty, message) in [
+        ("i32", "'x' must not be NA"),
+        ("Option<f64>", "'x' must not be NA"),
+        ("Vec<Option<i32>>", "'x' must not contain NA"),
+        ("Missing<bool>", "'x' must not be NA"),
+        ("Option<u16>", "'x' must not be NA"),
+    ] {
+        let stmts: Vec<String> = coerced
+            .build_conversion(
+                &match parse_param(&format!("x: {ty}")) {
+                    syn::FnArg::Typed(pt) => pt,
+                    _ => unreachable!(),
+                },
+                &syn::Ident::new("arg_0", proc_macro2::Span::call_site()),
+            )
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(stmts.len(), 2, "{ty}: {stmts:?}");
+        assert!(stmts[0].contains(ANY_NA), "{ty}: {}", stmts[0]);
+        assert!(
+            stmts[0].contains("arg_check_condition_value"),
+            "{ty}: {}",
+            stmts[0]
+        );
+        assert!(
+            stmts[0].contains(&format!("\"{message}\"")),
+            "{ty}: {}",
+            stmts[0]
+        );
+        assert!(stmts[1].starts_with("let x"), "{ty}: {}", stmts[1]);
+    }
+    // The author's message replaces the generated one.
+    let custom = RustConversionBuilder::new()
+        .with_coerce_all()
+        .with_no_na("x".to_string(), Some("give a number".to_string()));
+    let s = conversion_text(&custom, "x: Option<i32>");
+    assert!(s.contains(ANY_NA) && s.contains("\"give a number\""), "{s}");
+
+    let not_no_na = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    assert!(!conversion_text(&not_no_na, "x: Option<f64>").contains("__mx_any_na"));
+    let not_coerced = RustConversionBuilder::new().with_no_na("x".to_string(), None);
+    let s = conversion_text(&not_coerced, "x: Option<f64>");
+    assert!(!s.contains("__mx_any_na"), "{s}");
+    assert!(s.contains(NO_NA_CHECK), "{s}");
+}
+
+/// A coerced `Missing<T>` reads the sentinel as `Absent` and a present
+/// argument through `T`'s coerced helper; the non-native numeric types keep
+/// `Missing<T>`'s own `TryFromSexp` (#2274).
+#[test]
+fn coerced_missing_wraps_the_helper() {
+    let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    for (ty, helper) in [
+        ("Missing<i32>", "try_from_sexp_coerced_i32"),
+        ("Missing<Option<f64>>", "try_from_sexp_coerced_option_f64"),
+        ("Missing<Vec<bool>>", "try_from_sexp_coerced_bool_vec"),
+    ] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(
+            s.contains(&format!(
+                ":: miniextendr_api :: missing :: __mx_missing_or (arg_0 , :: miniextendr_api :: from_r :: {helper} ,)"
+            )),
+            "{ty}: {s}"
+        );
+    }
+    let s = conversion_text(&builder, "x: Missing<u16>");
+    assert!(!s.contains("__mx_missing_or"), "{s}");
+    assert!(s.contains("TryFromSexp :: try_from_sexp (arg_0)"), "{s}");
+    // `Missing<T>` of a type without a mapping keeps its plain conversion.
+    let s = conversion_text(&builder, "x: Missing<String>");
+    assert!(!s.contains("__mx_missing_or"), "{s}");
 }
 
 /// An `Either` (also under `Missing` or `Option`) has no R guard, so its

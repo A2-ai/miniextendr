@@ -1,6 +1,6 @@
 //! Coercion must preserve the ordinary converter's valid inputs (#1112).
 
-use miniextendr_api::miniextendr;
+use miniextendr_api::{Missing, miniextendr};
 
 /// Identity for a coerced i8 parameter.
 /// @param x Input to convert without narrowing the accepted R types.
@@ -192,11 +192,136 @@ pub fn coerce_input_per_arg(#[miniextendr(coerce)] x: bool, y: bool) -> Vec<bool
     vec![x, y]
 }
 
-/// Coercion does not change the unsupported Option<bool> mapping.
-/// @param x Nullable logical scalar.
+/// Identity for a coerced Option<bool> parameter (#2274): NULL and NA read None.
+/// @param x NULL, NA, a logical, or integer zero or one.
 #[miniextendr(coerce, noexport)]
-pub fn coerce_input_optional(x: Option<bool>) -> bool {
-    x.unwrap_or(false)
+pub fn coerce_input_optional_bool(x: Option<bool>) -> Option<bool> {
+    x
+}
+
+/// Identity for a coerced Vec<Option<bool>> parameter: NA elements read None.
+/// @param x Logical vector, or integer zeros, ones and NAs.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_vector_bool(x: Vec<Option<bool>>) -> Vec<Option<bool>> {
+    x
+}
+
+/// Identity for a coerced Option<i32> parameter: NULL and NA read None.
+/// @param x NULL, NA, or an integer, whole-number double, logical, or raw scalar.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_i32(x: Option<i32>) -> Option<i32> {
+    x
+}
+
+/// Identity for a coerced Vec<Option<i32>> parameter: NA elements read None.
+/// @param x Integer, whole-number double, logical, or raw vector.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_vector_i32(x: Vec<Option<i32>>) -> Vec<Option<i32>> {
+    x
+}
+
+/// Identity for a coerced Option<f64> parameter: NULL and NA read None.
+/// @param x NULL, NA, or a numeric, logical, or raw scalar.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_f64(x: Option<f64>) -> Option<f64> {
+    x
+}
+
+/// Identity for a coerced Vec<Option<f64>> parameter: NA elements read None.
+/// @param x Numeric, logical, or raw vector.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_vector_f64(x: Vec<Option<f64>>) -> Vec<Option<f64>> {
+    x
+}
+
+/// Whether a coerced Option<f64> read None (TRUE) or a value (FALSE).
+/// @param x NULL, NA, NaN, or a numeric, logical, or raw scalar.
+#[miniextendr(coerce, noexport)]
+pub fn coerce_input_optional_f64_is_none(x: Option<f64>) -> bool {
+    x.is_none()
+}
+
+/// Per-parameter coercion widens an optional double; its neighbor keeps the
+/// bare conversion.
+/// @param x NULL, NA, or a numeric, logical, or raw scalar.
+/// @param y NULL, NA, or a double scalar.
+#[miniextendr(no_coerce, noexport)]
+pub fn coerce_input_optional_per_arg(
+    #[miniextendr(coerce)] x: Option<f64>,
+    y: Option<f64>,
+) -> Vec<Option<f64>> {
+    vec![x, y]
+}
+
+/// `no_preconditions` wrapper for an optional integer vector: the Rust side batches failures.
+/// @param x Doubles, possibly NA, fractional, NaN, or out of range.
+#[miniextendr(coerce, no_preconditions, noexport)]
+pub fn coerce_input_no_preconditions_optional_i32(x: Vec<Option<i32>>) -> Vec<Option<i32>> {
+    x
+}
+
+/// `no_preconditions` wrapper for an optional logical vector read from integers.
+/// @param x Integers, possibly NA or other than zero and one.
+#[miniextendr(coerce, no_preconditions, noexport)]
+pub fn coerce_input_no_preconditions_optional_bool(x: Vec<Option<bool>>) -> Vec<Option<bool>> {
+    x
+}
+
+/// `no_preconditions` wrapper for an optional integer scalar.
+/// @param x A scalar, possibly NA, fractional, or NaN.
+#[miniextendr(coerce, no_preconditions, noexport)]
+pub fn coerce_input_no_preconditions_optional_scalar_i32(x: Option<i32>) -> Option<i32> {
+    x
+}
+
+/// A coerced integer under `no_na`: the C wrapper refuses an NA before conversion.
+/// @param x An integer-like scalar, not NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_i32(#[miniextendr(coerce, no_na)] x: i32) -> i32 {
+    x
+}
+
+/// A coerced optional double under `no_na`: NULL still reads None, an NA is refused.
+/// @param x NULL, or a numeric, logical, or raw scalar, not NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_optional_f64(
+    #[miniextendr(coerce, no_na)] x: Option<f64>,
+) -> Option<f64> {
+    x
+}
+
+/// A coerced optional integer vector under `no_na`: an NA element is refused.
+/// @param x Integer-like values, none of them NA.
+#[miniextendr(noexport)]
+pub fn coerce_input_no_na_optional_vector_i32(
+    #[miniextendr(coerce, no_na)] x: Vec<Option<i32>>,
+) -> Vec<Option<i32>> {
+    x
+}
+
+/// A coerced `Missing<i32>`: an absent argument reads NA, a present one converts as a coerced `i32`.
+/// @param x An integer-like scalar, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_i32(#[miniextendr(coerce)] x: Missing<i32>) -> Option<i32> {
+    x.into_option()
+}
+
+/// A coerced `Missing<Option<f64>>`: tells an absent argument, a None and a value apart.
+/// @param x NULL, NA, a numeric, logical, or raw scalar, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_optional_f64(#[miniextendr(coerce)] x: Missing<Option<f64>>) -> String {
+    match x {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "none".to_string(),
+        Missing::Present(Some(value)) => format!("{value}"),
+    }
+}
+
+/// A coerced `Missing<Vec<bool>>`: an absent argument reads an empty vector.
+/// @param x Logicals, or integers that are zero or one, or nothing.
+#[miniextendr(noexport)]
+pub fn coerce_input_missing_vector_bool(#[miniextendr(coerce)] x: Missing<Vec<bool>>) -> Vec<bool> {
+    x.unwrap_or_default()
 }
 
 /// `no_preconditions` wrappers reach the coercion checker without an R precondition.

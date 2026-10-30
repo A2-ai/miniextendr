@@ -180,7 +180,9 @@ impl RustConversionBuilder {
     /// checked too, and for any other type the default `false` optimises out.
     /// The reference arms (`&T`, `&[T]`, `&str`) emit no check and keep only
     /// the R guard: they convert through the reference type's own impl, and
-    /// no reading marker converts by reference.
+    /// no reading marker converts by reference. A parameter that `coerce`
+    /// converts through its mapping is checked on its argument SEXP before
+    /// the conversion instead (see `non_na_check`).
     ///
     /// An `Either` parameter (also under `Missing`) has no R guard
     /// (`r_preconditions::no_na_checked_after_conversion`). Its value is asked
@@ -236,13 +238,19 @@ impl RustConversionBuilder {
         Some(quote! { #(#rebinds)* })
     }
 
-    /// A `NonNa<T>` parameter's check of the argument SEXP `sexp_ident`,
-    /// before its conversion: the `no_na` R guard's `anyNA()` again, in Rust
-    /// (`from_r::__mx_any_na`), so the marker's value holds no `NA` on every
-    /// path, a `.Call()` that skips the R wrapper and every conversion arm
-    /// (borrowed included). It raises the guard's condition, as the
-    /// post-conversion `no_na` check does ([`no_na_value_stmt`]). `None` for
-    /// a parameter without the marker.
+    /// The check of the argument SEXP `sexp_ident` before its conversion: the
+    /// `no_na` R guard's `anyNA()` again, in Rust (`from_r::__mx_any_na`). It
+    /// raises the guard's condition, as the post-conversion `no_na` check
+    /// does ([`no_na_value_stmt`]), and covers a `.Call()` that skips the R
+    /// wrapper. Emitted for
+    ///
+    /// - a `NonNa<T>` parameter, so the marker's value holds no `NA` on every
+    ///   conversion arm (borrowed included);
+    /// - a `no_na` parameter that `coerce` converts through its mapping
+    ///   (#2274): that arm has no post-conversion check, and its `Option` /
+    ///   `Vec<Option<_>>` forms read an `NA` as `None` without an error.
+    ///
+    /// `None` for any other parameter.
     fn non_na_check(
         &self,
         pat_type: &syn::PatType,
@@ -252,15 +260,17 @@ impl RustConversionBuilder {
             return None;
         };
         let name = crate::naming::ident_name(&pat_ident.ident);
-        let (_, markers) = self.param_markers.iter().find(|(n, _)| *n == name)?;
-        if !markers.contains(&crate::type_inspect::ParamMarker::NonNa) {
+        let no_na = self.no_na_params.iter().find(|(n, _)| *n == name);
+        let marked = self.param_markers.iter().any(|(n, markers)| {
+            *n == name && markers.contains(&crate::type_inspect::ParamMarker::NonNa)
+        });
+        let coerced = no_na.is_some()
+            && self.should_coerce(&name)
+            && CoercionMapping::from_type(&pat_type.ty).is_some();
+        if !marked && !coerced {
             return None;
         }
-        let custom = self
-            .no_na_params
-            .iter()
-            .find(|(n, _)| *n == name)
-            .and_then(|(_, message)| message.as_deref());
+        let custom = no_na.and_then(|(_, message)| message.as_deref());
         let r_name = self.formals.of_ident(&pat_ident.ident);
         let message = crate::r_preconditions::no_na_message(&r_name, &pat_type.ty, custom);
         let span = pat_type.ty.span();
@@ -954,28 +964,27 @@ impl RustConversionBuilder {
                 let span = ty.span();
                 let stmt = match coercion_mapping {
                     Some(mapping) => {
-                        let try_expr = match mapping {
-                            CoercionMapping::Numeric => quote_spanned! {span=>
+                        let try_expr = match mapping.converter() {
+                            // `Missing<T>` included: its own impl reads the sentinel.
+                            None => quote_spanned! {span=>
                                 ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             },
-                            CoercionMapping::Bool => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool(#sexp_ident)
-                            },
-                            CoercionMapping::BoolVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool_vec(#sexp_ident)
-                            },
-                            CoercionMapping::NativeInt => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32(#sexp_ident)
-                            },
-                            CoercionMapping::NativeIntVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32_vec(#sexp_ident)
-                            },
-                            CoercionMapping::NativeReal => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64(#sexp_ident)
-                            },
-                            CoercionMapping::NativeRealVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64_vec(#sexp_ident)
-                            },
+                            Some(converter) => {
+                                let converter = syn::Ident::new(converter, span);
+                                let read = quote_spanned! {span=>
+                                    ::miniextendr_api::from_r::#converter
+                                };
+                                if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
+                                    quote_spanned! {span=>
+                                        ::miniextendr_api::missing::__mx_missing_or(
+                                            #sexp_ident,
+                                            #read,
+                                        )
+                                    }
+                                } else {
+                                    quote_spanned! {span=> #read(#sexp_ident) }
+                                }
+                            }
                         };
                         self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }

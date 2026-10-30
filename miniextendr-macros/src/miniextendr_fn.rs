@@ -13,7 +13,8 @@ use crate::r_wrapper_const_ident_for;
 
 /// Conversion selected by `coerce`, shared by Rust conversion and R checks.
 pub(crate) enum CoercionMapping {
-    /// Numeric scalars and vectors already have checked, multi-source converters.
+    /// The non-native numeric scalars and vectors, and their `Option` /
+    /// `Vec<Option<_>>` forms, already have checked, multi-source converters.
     Numeric,
     /// Keep logical scalars and additionally accept integer zero or one.
     Bool,
@@ -28,6 +29,21 @@ pub(crate) enum CoercionMapping {
     NativeReal,
     /// Native `Vec<f64>`: element-wise form of [`Self::NativeReal`].
     NativeRealVec,
+    /// `Option<bool>`: `NULL` and `NA` read `None`, any other value converts
+    /// as [`Self::Bool`] (#2274).
+    OptionBool,
+    /// `Vec<Option<bool>>`: element-wise form of [`Self::OptionBool`].
+    OptionBoolVec,
+    /// `Option<i32>`: `NULL` and `NA` read `None`, any other value converts
+    /// as [`Self::NativeInt`].
+    OptionNativeInt,
+    /// `Vec<Option<i32>>`: element-wise form of [`Self::OptionNativeInt`].
+    OptionNativeIntVec,
+    /// `Option<f64>`: `NULL` and `NA` read `None`, any other value converts
+    /// as [`Self::NativeReal`].
+    OptionNativeReal,
+    /// `Vec<Option<f64>>`: element-wise form of [`Self::OptionNativeReal`].
+    OptionNativeRealVec,
 }
 
 impl CoercionMapping {
@@ -37,38 +53,102 @@ impl CoercionMapping {
     /// integer, double, logical, and raw. Booleans extend their logical-only
     /// converter with integer zero/one input. The native `i32` / `f64` scalars
     /// and vectors, whose bare conversion accepts one `SEXPTYPE`, widen to the
-    /// same four sources (whole-valued doubles only for `i32`). Borrowed slices
-    /// and other types keep `TryFromSexp`.
+    /// same four sources (whole-valued doubles only for `i32`). Each of these
+    /// element types maps in four shapes: `T`, `Vec<T>`, `Option<T>` and
+    /// `Vec<Option<T>>`, and each shape also under `Missing<..>`, whose
+    /// sentinel reads `Missing::Absent` before the mapping converts a present
+    /// value. Borrowed slices and other types keep `TryFromSexp`.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
+        let ty = get_missing_inner_type(ty).unwrap_or(ty);
         let syn::Type::Path(type_path) = ty else {
             return None;
         };
-        let seg = type_path.path.segments.last()?;
+        let mut seg = type_path.path.segments.last()?;
         let is_vec = seg.ident == "Vec";
-        let ident = if is_vec {
-            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-                return None;
-            };
-            let syn::GenericArgument::Type(syn::Type::Path(inner)) = args.args.first()? else {
-                return None;
-            };
-            &inner.path.segments.last()?.ident
-        } else {
-            &seg.ident
-        };
-        match ident.to_string().as_str() {
-            "i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize" | "usize" | "f32" => {
+        if is_vec {
+            seg = type_argument_segment(seg)?;
+        }
+        let is_option = seg.ident == "Option";
+        if is_option {
+            seg = type_argument_segment(seg)?;
+        }
+        match (seg.ident.to_string().as_str(), is_vec, is_option) {
+            ("i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize" | "usize" | "f32", _, _) => {
                 Some(Self::Numeric)
             }
-            "bool" if is_vec => Some(Self::BoolVec),
-            "bool" => Some(Self::Bool),
-            "i32" if is_vec => Some(Self::NativeIntVec),
-            "i32" => Some(Self::NativeInt),
-            "f64" if is_vec => Some(Self::NativeRealVec),
-            "f64" => Some(Self::NativeReal),
+            ("bool", false, false) => Some(Self::Bool),
+            ("bool", true, false) => Some(Self::BoolVec),
+            ("bool", false, true) => Some(Self::OptionBool),
+            ("bool", true, true) => Some(Self::OptionBoolVec),
+            ("i32", false, false) => Some(Self::NativeInt),
+            ("i32", true, false) => Some(Self::NativeIntVec),
+            ("i32", false, true) => Some(Self::OptionNativeInt),
+            ("i32", true, true) => Some(Self::OptionNativeIntVec),
+            ("f64", false, false) => Some(Self::NativeReal),
+            ("f64", true, false) => Some(Self::NativeRealVec),
+            ("f64", false, true) => Some(Self::OptionNativeReal),
+            ("f64", true, true) => Some(Self::OptionNativeRealVec),
             _ => None,
         }
     }
+
+    /// The `miniextendr_api::from_r` helper this mapping converts through,
+    /// or `None` for [`Self::Numeric`], whose `TryFromSexp` impls already read
+    /// every source.
+    pub(crate) fn converter(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Numeric => return None,
+            Self::Bool => "try_from_sexp_coerced_bool",
+            Self::BoolVec => "try_from_sexp_coerced_bool_vec",
+            Self::NativeInt => "try_from_sexp_coerced_i32",
+            Self::NativeIntVec => "try_from_sexp_coerced_i32_vec",
+            Self::NativeReal => "try_from_sexp_coerced_f64",
+            Self::NativeRealVec => "try_from_sexp_coerced_f64_vec",
+            Self::OptionBool => "try_from_sexp_coerced_option_bool",
+            Self::OptionBoolVec => "try_from_sexp_coerced_option_bool_vec",
+            Self::OptionNativeInt => "try_from_sexp_coerced_option_i32",
+            Self::OptionNativeIntVec => "try_from_sexp_coerced_option_i32_vec",
+            Self::OptionNativeReal => "try_from_sexp_coerced_option_f64",
+            Self::OptionNativeRealVec => "try_from_sexp_coerced_option_f64_vec",
+        })
+    }
+}
+
+/// The last path segment of a segment's first type argument: `i32` for
+/// `Vec<i32>` or `Option<::core::primitive::i32>`.
+fn type_argument_segment(seg: &syn::PathSegment) -> Option<&syn::PathSegment> {
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    let syn::GenericArgument::Type(syn::Type::Path(inner)) = args.args.first()? else {
+        return None;
+    };
+    inner.path.segments.last()
+}
+
+/// The error for a per-parameter `coerce` on a type it has no conversion for
+/// (#2274), spanned on the parameter. A function-wide or feature-default
+/// `coerce` skips such a parameter; one that names the parameter would
+/// otherwise do nothing.
+pub(crate) fn unmapped_coerce_error(pat_type: &syn::PatType, param_name: &str) -> syn::Error {
+    let slice_hint = match pat_type.ty.as_ref() {
+        syn::Type::Reference(r) if matches!(r.elem.as_ref(), syn::Type::Slice(_)) => {
+            " A borrowed slice reads R's storage as it is and cannot hold a converted \
+             copy; take `Vec<T>`."
+        }
+        _ => "",
+    };
+    syn::Error::new_spanned(
+        pat_type,
+        format!(
+            "`coerce` on parameter `{param_name}` has no conversion for `{}`: it widens \
+             `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, \
+             `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or \
+             `Vec<Option<T>>`, each also under `Missing<..>`. Remove `coerce` from this \
+             parameter.{slice_hint}",
+            crate::type_inspect::type_display(&pat_type.ty)
+        ),
+    )
 }
 
 // endregion

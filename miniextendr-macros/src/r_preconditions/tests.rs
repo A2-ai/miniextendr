@@ -215,8 +215,8 @@ fn coerced_native_int_widens_to_whole_number_gate() {
 }
 
 #[test]
-fn coerced_numeric_and_optional_checks_are_preserved() {
-    for name in ["Vec<u16>", "Vec<f32>", "Option<bool>"] {
+fn coerced_numeric_checks_are_preserved() {
+    for name in ["Vec<u16>", "Vec<f32>", "Option<u16>", "Vec<Option<i64>>"] {
         let ty = parse_type(name);
         let expected = r_check_for_type(&ty).unwrap().assertions("x");
         let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
@@ -225,6 +225,50 @@ fn coerced_numeric_and_optional_checks_are_preserved() {
             assert_eq!(actual.condition, expected.condition);
         }
     }
+}
+
+/// `Option<T>` takes its scalar's widened check behind `is.null()`;
+/// `Vec<Option<T>>` its vector's, which lets `NA` elements through and, like
+/// `Vec<T>`'s, refuses `NULL` (#2274).
+#[test]
+fn coerced_optional_checks_widen_with_their_element() {
+    for (name, scalar) in [
+        ("Option<i32>", "i32"),
+        ("Option<f64>", "f64"),
+        ("Option<bool>", "bool"),
+    ] {
+        let ty = parse_type(name);
+        let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+        let scalar = parse_type(scalar);
+        let expected = coerce_widened(r_check_for_type(&scalar).unwrap(), &scalar).assertions("x");
+        assert_eq!(actual.len(), expected.len(), "{name}");
+        for (actual, expected) in actual.iter().zip(&expected) {
+            assert_eq!(
+                actual.condition,
+                format!("is.null(x) || {}", expected.condition)
+            );
+        }
+    }
+    for (name, vector) in [
+        ("Vec<Option<i32>>", "Vec<i32>"),
+        ("Vec<Option<f64>>", "Vec<f64>"),
+        ("Vec<Option<bool>>", "Vec<bool>"),
+    ] {
+        let ty = parse_type(name);
+        let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+        let vector = parse_type(vector);
+        let expected = coerce_widened(r_check_for_type(&vector).unwrap(), &vector).assertions("x");
+        assert_eq!(actual.len(), 1, "{name}");
+        assert_eq!(actual[0].condition, expected[0].condition, "{name}");
+        assert!(!actual[0].condition.contains("is.null"), "{name}");
+    }
+    let ty = parse_type("Option<i32>");
+    let check = coerce_widened(r_check_for_type(&ty).unwrap(), &ty);
+    assert_eq!(check.expectation(), "NULL or a single whole number");
+    assert_eq!(
+        check.assertions("x")[0].message(),
+        "'x' must be NULL or integer or whole-number numeric"
+    );
 }
 
 #[test]

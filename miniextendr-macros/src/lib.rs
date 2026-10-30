@@ -492,7 +492,10 @@ pub(crate) fn build_dots_validation_stmt(
 ///   method tails are visible unless marked (#1213).
 /// - `#[miniextendr(check_interrupt)]` — check for a user interrupt once, before the
 ///   arguments are converted and the body runs
-/// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(coerce)]` — widen the R types a parameter accepts (`i32`, `f64`, `bool` and
+///   the other numeric scalars, as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`, each also
+///   under `Missing<..>`); also usable per-parameter, where a type it cannot widen is a compile
+///   error
 /// - `#[miniextendr(convert)]` on a reference parameter — use its own conversion rather than
 ///   an ExternalPtr borrow; on inherent/trait impl methods, write `#[miniextendr(convert(param))]`.
 /// - `#[miniextendr(rng)]` — load R's RNG state before the body and save it after;
@@ -1338,6 +1341,15 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
         {
             let param_name = crate::naming::ident_name(&pat_ident.ident);
             if parsed.has_coerce_attr(&param_name) {
+                // A per-parameter `coerce` names this parameter, so a type it
+                // cannot widen is an error rather than a silent no-op (#2274);
+                // the function-wide and feature-default forms skip such types.
+                // Checked here, after the marker parameters' own refusals.
+                if miniextendr_fn::CoercionMapping::from_type(&pt.ty).is_none() {
+                    return miniextendr_fn::unmapped_coerce_error(pt, &param_name)
+                        .into_compile_error()
+                        .into();
+                }
                 coerce_params_list.push(param_name.clone());
             }
             if let Some(attrs) = parsed.param_attrs(&param_name)

@@ -197,6 +197,21 @@ fn process_f32(x: f32) -> f64 {
 | `f32` | numeric | `Coerce` (may lose precision) |
 | `Vec<u16>`, `Vec<i16>`, etc. | integer vector | element-wise `TryCoerce` |
 | `Vec<f32>` | numeric vector | element-wise `Coerce` |
+| `i32` / `Vec<i32>` | integer, whole-number double, logical, raw | `3` reads as `3L`; `3.5` is an error |
+| `f64` / `Vec<f64>` | double, integer, logical, raw | lossless widening |
+| `bool` / `Vec<bool>` | logical, integer `0` / `1` | other integers are errors |
+| `Option<T>` of the above | `NULL` or `T`'s inputs | `NULL` and `NA` read `None` |
+| `Vec<Option<T>>` of the above | `Vec<T>`'s inputs | each `NA` element reads `None` |
+| `Missing<T>` of any form above | nothing, or the inner form's inputs | an absent argument reads `Missing::Absent` |
+
+The non-native numeric types (`u16`, `i64`, `f32`, ...) already read every
+numeric source without the attribute, so `coerce` keeps their conversion, in
+their `Option<T>` and `Vec<Option<T>>` forms too.
+[`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md) ("Coerce Mode") has the NA rules.
+
+`no_na` on a coerced parameter refuses an `NA` before the coerced conversion
+runs, in the C wrapper as well as in the R guard, so a `.Call()` that skips the
+R wrapper cannot pass an `NA` that an `Option<T>` form would read as `None`.
 
 **Example in R:**
 
@@ -244,7 +259,20 @@ fn process_both(#[miniextendr(coerce)] x: u16, #[miniextendr(coerce)] y: i16, z:
 fn sum_u16(#[miniextendr(coerce)] values: Vec<u16>, offset: i32) -> i32 {
     values.iter().map(|&v| v as i32).sum::<i32>() + offset
 }
+
+// Coerce an optional parameter: NULL and NA read None, 1L reads Some(1.0)
+#[miniextendr]
+fn scaled(#[miniextendr(coerce)] factor: Option<f64>, x: f64) -> f64 {
+    x * factor.unwrap_or(1.0)
+}
 ```
+
+A per-parameter `coerce` on a type it cannot widen (`String`,
+`Option<Vec<i32>>`, `Missing<String>`, a borrowed slice such as `&[i32]`) is a
+compile error:
+the option names the parameter, so doing nothing would hide a mistake. A
+function-wide `#[miniextendr(coerce)]` or the `coerce-default` feature leaves
+such parameters with their ordinary conversion.
 
 **Example in R:**
 

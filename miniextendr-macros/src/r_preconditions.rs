@@ -136,8 +136,10 @@ impl RAssertion {
 /// Per-function knobs that influence precondition codegen.
 ///
 /// Coercion preserves numeric input types, extends `bool` / `Vec<bool>`
-/// checks to accept integers as well as logicals, and widens the native
-/// `i32` / `Vec<i32>` gates to whole-number doubles. Other types keep their checks.
+/// checks to accept integers as well as logicals, widens the native
+/// `i32` / `Vec<i32>` gates to whole-number doubles and the native `f64` /
+/// `Vec<f64>` gates to every numeric source, in the `Option<T>` and
+/// `Vec<Option<T>>` forms too (see `coerce_widened`). Other types keep their checks.
 /// Strict input conversion remains enforced in Rust, where range and precision
 /// failures can carry contextual diagnostics.
 #[derive(Clone, Default)]
@@ -1032,18 +1034,30 @@ pub(crate) fn strict_conversion_expectation(ty: &syn::Type) -> Option<String> {
 /// becomes the lossless whole-number predicate; `Vec<i32>` moves from the
 /// INTSXP-only gate (#616) to the same wide predicate the other integer vectors
 /// use. Native `f64` / `Vec<f64>` move from the `is.double` gate to the loose
-/// numeric predicate. `Option<bool>` has no coercion mapping and stays nullable
-/// logical.
+/// numeric predicate. `Option<T>` of these types takes its scalar's widened
+/// check under [`RTypeCheck::Nullable`], and `Vec<Option<T>>` its vector's
+/// (#2274): the vector checks already let `NA` elements through, and a
+/// `Vec<Option<T>>` reads `NULL` no more than a `Vec<T>` does.
 fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
     use crate::miniextendr_fn::CoercionMapping;
+    let nullable = |inner| RTypeCheck::Nullable(Box::new(inner));
     match CoercionMapping::from_type(ty) {
         Some(CoercionMapping::Bool) => RTypeCheck::ScalarLogicalOrInteger,
-        Some(CoercionMapping::BoolVec) => RTypeCheck::VectorLogicalOrInteger,
+        Some(CoercionMapping::OptionBool) => nullable(RTypeCheck::ScalarLogicalOrInteger),
+        Some(CoercionMapping::BoolVec | CoercionMapping::OptionBoolVec) => {
+            RTypeCheck::VectorLogicalOrInteger
+        }
         Some(CoercionMapping::NativeInt) => RTypeCheck::ScalarIntegerWide,
-        Some(CoercionMapping::NativeIntVec) => RTypeCheck::VectorIntegerWide,
+        Some(CoercionMapping::OptionNativeInt) => nullable(RTypeCheck::ScalarIntegerWide),
+        Some(CoercionMapping::NativeIntVec | CoercionMapping::OptionNativeIntVec) => {
+            RTypeCheck::VectorIntegerWide
+        }
         Some(CoercionMapping::NativeReal) => RTypeCheck::ScalarNumeric,
-        Some(CoercionMapping::NativeRealVec) => RTypeCheck::VectorNumeric,
-        _ => check,
+        Some(CoercionMapping::OptionNativeReal) => nullable(RTypeCheck::ScalarNumeric),
+        Some(CoercionMapping::NativeRealVec | CoercionMapping::OptionNativeRealVec) => {
+            RTypeCheck::VectorNumeric
+        }
+        Some(CoercionMapping::Numeric) | None => check,
     }
 }
 

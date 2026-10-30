@@ -1957,6 +1957,133 @@ pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> 
     )
 }
 
+// region: Coerced optional parameters (`Option<T>` / `Vec<Option<T>>`, #2274)
+
+/// The `Option` form of a `coerce` scalar: `NULL` reads `None`, any other
+/// input goes through `read`, the type's coerced scalar helper, and an `NA`
+/// that helper refuses reads `None`, as it does for the bare `Option<i32>`.
+#[inline]
+fn coerced_option<T>(
+    sexp: SEXP,
+    read: impl FnOnce(SEXP) -> Result<T, SexpError>,
+) -> Result<Option<T>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return Ok(None);
+    }
+    match read(sexp) {
+        Ok(value) => Ok(Some(value)),
+        Err(SexpError::Na(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Convert a `coerce` `Option<bool>` parameter.
+///
+/// `NULL` and a logical or integer `NA` read `None`. Any other input converts
+/// as [`try_from_sexp_coerced_bool`] does: a logical, or integer `0` / `1`.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_bool(sexp: SEXP) -> Result<Option<bool>, SexpError> {
+    coerced_option(sexp, try_from_sexp_coerced_bool)
+}
+
+/// Convert a `coerce` `Option<i32>` parameter.
+///
+/// `NULL` and an integer, double, or logical `NA` read `None`. Any other input
+/// converts as [`try_from_sexp_coerced_i32`] does: whole-valued doubles,
+/// logicals, and raws widen, while `NaN`, `3.5`, and out-of-range values are
+/// errors.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_i32(sexp: SEXP) -> Result<Option<i32>, SexpError> {
+    coerced_option(sexp, try_from_sexp_coerced_i32)
+}
+
+/// Convert a `coerce` `Option<f64>` parameter.
+///
+/// `NULL` reads `None`. Any other input converts as
+/// [`try_from_sexp_coerced_f64`] does, and the `NA_real_` it gives for an
+/// integer, double, or logical `NA` reads `None`. `NaN` stays a value, as for
+/// the bare `Option<f64>`.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_f64(sexp: SEXP) -> Result<Option<f64>, SexpError> {
+    coerced_option(sexp, try_from_sexp_coerced_f64).map(|v| v.filter(|x| !x.is_na()))
+}
+
+/// Convert a `coerce` `Vec<Option<bool>>` parameter.
+///
+/// A logical vector takes the bare conversion. An integer vector reads
+/// `NA_integer_` as `None` and `0` / `1` as booleans; every other element is
+/// an error, all of them reported in one diagnostic by reason and position.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_bool_vec(sexp: SEXP) -> Result<Vec<Option<bool>>, SexpError> {
+    if sexp.type_of() != SEXPTYPE::INTSXP {
+        return Vec::<Option<bool>>::try_from_sexp(sexp);
+    }
+    let slice: &[i32] = TryFromSexp::try_from_sexp(sexp)?;
+    collect_coerced(
+        slice.len(),
+        slice.iter().map(|&v| {
+            if v.is_na() {
+                Ok(None)
+            } else {
+                coerced_scalars::coerce_value(v).map(Some)
+            }
+        }),
+    )
+}
+
+/// Convert a `coerce` `Vec<Option<i32>>` parameter.
+///
+/// An integer vector takes the bare conversion (`NA_integer_` reads `None`).
+/// Whole-valued doubles, logicals, and raws widen element-wise; `NA_real_` and
+/// a logical `NA` read `None`, and every `NaN`, fractional, or out-of-range
+/// double is reported in one batched diagnostic.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_i32_vec(sexp: SEXP) -> Result<Vec<Option<i32>>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        return Vec::<Option<i32>>::try_from_sexp(sexp);
+    }
+    from_numeric_vec_with(
+        sexp,
+        |v: i32| Ok(if v.is_na() { None } else { Some(v) }),
+        |v: f64| {
+            if v.is_na() {
+                Ok(None)
+            } else {
+                coerced_scalars::coerce_value(v).map(Some)
+            }
+        },
+        |v: u8| Ok(Some(i32::from(v))),
+        |v: RLogical| Ok(if v.is_na() { None } else { Some(v.to_i32()) }),
+    )
+}
+
+/// Convert a `coerce` `Vec<Option<f64>>` parameter.
+///
+/// A double vector takes the bare conversion (`NA_real_` reads `None`).
+/// Integers, logicals, and raws widen element-wise; an integer or logical `NA`
+/// reads `None`.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_option_f64_vec(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::REALSXP {
+        return Vec::<Option<f64>>::try_from_sexp(sexp);
+    }
+    from_numeric_vec_with(
+        sexp,
+        |v: i32| Ok(if v.is_na() { None } else { Some(f64::from(v)) }),
+        |v: f64| Ok(if v.is_na() { None } else { Some(v) }),
+        |v: u8| Ok(Some(f64::from(v))),
+        |v: RLogical| {
+            Ok(if v.is_na() {
+                None
+            } else {
+                Some(f64::from(v.to_i32()))
+            })
+        },
+    )
+}
+
+// endregion
+
 // region: Direct Vec coercion conversions
 //
 // These provide direct `TryFromSexp for Vec<T>` where T is not an R native type
