@@ -147,7 +147,8 @@ where
 }
 
 /// Initialize the miniextendr runtime: record the calling thread as R's main
-/// thread.
+/// thread, and open there the channel that brings it the deferred conditions
+/// queued on other threads.
 ///
 /// Must be called from R's main thread, typically from `R_init_<pkgname>`.
 /// Idempotent: later calls keep the first thread.
@@ -155,6 +156,7 @@ where
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_runtime_init() {
     let _ = R_MAIN_THREAD_ID.set(std::thread::current().id());
+    crate::deferred_condition::open_channel();
 }
 
 /// Shut the miniextendr runtime down: uninstall the process panic hook this

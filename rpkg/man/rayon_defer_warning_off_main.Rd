@@ -10,6 +10,7 @@ rayon_defer_warning_off_main(n)
 \item{n}{Number of parallel items.}
 }
 \description{
-Queue a warning from inside Rayon tasks. Only R's main thread can queue
-one, so \verb{defer_warning!} panics on the pool thread and the call errors.
+Queue a warning from inside each Rayon task. The tasks send them to R's
+main thread; \code{sum()} returns only after every task has finished, so this
+call signals all of them.
 }
