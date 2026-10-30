@@ -954,28 +954,16 @@ impl RustConversionBuilder {
                 let span = ty.span();
                 let stmt = match coercion_mapping {
                     Some(mapping) => {
-                        let try_expr = match mapping {
-                            CoercionMapping::Numeric => quote_spanned! {span=>
+                        let try_expr = match mapping.converter() {
+                            None => quote_spanned! {span=>
                                 ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             },
-                            CoercionMapping::Bool => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool(#sexp_ident)
-                            },
-                            CoercionMapping::BoolVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_bool_vec(#sexp_ident)
-                            },
-                            CoercionMapping::NativeInt => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32(#sexp_ident)
-                            },
-                            CoercionMapping::NativeIntVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32_vec(#sexp_ident)
-                            },
-                            CoercionMapping::NativeReal => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64(#sexp_ident)
-                            },
-                            CoercionMapping::NativeRealVec => quote_spanned! {span=>
-                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64_vec(#sexp_ident)
-                            },
+                            Some(converter) => {
+                                let converter = syn::Ident::new(converter, span);
+                                quote_spanned! {span=>
+                                    ::miniextendr_api::from_r::#converter(#sexp_ident)
+                                }
+                            }
                         };
                         self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }

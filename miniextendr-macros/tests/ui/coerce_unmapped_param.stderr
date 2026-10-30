@@ -1,0 +1,17 @@
+error: `coerce` on parameter `x` has no conversion for `String`: it widens `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`. Remove `coerce` from this parameter.
+  --> tests/ui/coerce_unmapped_param.rs:10:46
+   |
+10 | pub fn coerced_string(#[miniextendr(coerce)] x: String) -> String {
+   |                                              ^^^^^^^^^
+
+error: `coerce` on parameter `x` has no conversion for `Option<Vec<i32>>`: it widens `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`. Remove `coerce` from this parameter.
+  --> tests/ui/coerce_unmapped_param.rs:15:52
+   |
+15 | pub fn coerced_optional_vec(#[miniextendr(coerce)] x: Option<Vec<i32>>) -> bool {
+   |                                                    ^^^^^^^^^^^^^^^^^^^
+
+error: `coerce` on parameter `x` has no conversion for `&[f64]`: it widens `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or `Vec<Option<T>>`. Remove `coerce` from this parameter. A borrowed slice reads R's storage as it is and cannot hold a converted copy; take `Vec<T>`.
+  --> tests/ui/coerce_unmapped_param.rs:20:45
+   |
+20 | pub fn coerced_slice(#[miniextendr(coerce)] x: &[f64]) -> f64 {
+   |                                             ^^^^^^^^^

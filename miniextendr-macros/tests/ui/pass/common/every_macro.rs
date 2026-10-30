@@ -87,6 +87,16 @@ pub fn coerced(x: u16, xs: ::std::vec::Vec<u8>) -> f64 {
     f64::from(x) + xs.len() as f64
 }
 
+#[miniextendr]
+pub fn coerced_optional(
+    #[miniextendr(coerce)] x: ::core::option::Option<i32>,
+    #[miniextendr(coerce)] xs: ::std::vec::Vec<::core::option::Option<f64>>,
+    #[miniextendr(coerce)] flag: ::core::option::Option<bool>,
+) -> ::core::option::Option<i32> {
+    let _ = (xs, flag);
+    x
+}
+
 #[miniextendr(rng)]
 pub fn drawn(n: i32, rng: &RngGuard, scale: f64) -> f64 {
     f64::from(n) * scale * rng.unif_rand()

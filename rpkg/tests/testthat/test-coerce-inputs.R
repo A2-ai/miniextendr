@@ -100,15 +100,131 @@ test_that("coerced bools retain logical inputs while accepting integer zero and 
   for (x in list(integer(), logical(), c(TRUE, FALSE))) expect_error(scalar(x))
 })
 
-test_that("per-argument and optional bool coercion agree with their R gates", {
+test_that("per-argument bool coercion agrees with its R gate", {
   fun <- miniextendr:::coerce_input_per_arg
   expect_identical(fun(TRUE, FALSE), c(TRUE, FALSE))
   expect_identical(fun(1L, TRUE), c(TRUE, TRUE))
   expect_error(fun(1L, 1L))
-  expect_true(miniextendr:::coerce_input_optional(TRUE))
-  expect_false(miniextendr:::coerce_input_optional(NA))
-  expect_false(miniextendr:::coerce_input_optional(NULL))
-  expect_error(miniextendr:::coerce_input_optional(1L))
+})
+
+# #2274: `coerce` widens the NA-carrying forms too. NULL and NA read None
+# (returned as NA), other values convert as the plain coerced type does.
+test_that("coerced Option<i32> widens and reads NULL and every NA as None", {
+  fun <- coerce_input_fixture("optional", "i32")
+  for (x in list(3L, 3, as.raw(3))) expect_identical(fun(x), 3L, info = typeof(x))
+  expect_identical(fun(TRUE), 1L)
+  for (x in list(NULL, NA_integer_, NA_real_, NA)) expect_identical(fun(x), NA_integer_)
+  # The R gate is the scalar's widened check behind is.null().
+  err <- expect_error(fun(3.5))
+  expect_identical(
+    conditionMessage(err),
+    "'x' must be NULL or integer or whole-number numeric"
+  )
+  for (x in list("3", c(1L, 2L), integer(), 2^31, Inf, NaN)) expect_error(fun(x))
+  # Without the gate, the Rust conversion refuses the same values.
+  raw_fun <- miniextendr:::coerce_input_no_preconditions_optional_scalar_i32
+  expect_identical(raw_fun(NA_real_), NA_integer_)
+  expect_identical(raw_fun(NULL), NA_integer_)
+  expect_identical(raw_fun(-2), -2L)
+  err <- expect_error(raw_fun(3.5))
+  expect_match(conditionMessage(err), "precision loss", fixed = TRUE)
+  expect_identical(err$rust_type, "Option<i32>")
+  expect_error(raw_fun(NaN))
+})
+
+test_that("coerced Option<f64> widens and reads NULL and every NA as None", {
+  fun <- coerce_input_fixture("optional", "f64")
+  for (x in list(2L, 2, as.raw(2))) expect_identical(fun(x), 2, info = typeof(x))
+  expect_identical(fun(TRUE), 1)
+  is_none <- miniextendr:::coerce_input_optional_f64_is_none
+  for (x in list(NULL, NA_real_, NA_integer_, NA)) expect_true(is_none(x))
+  # NaN stays a value, as for the bare Option<f64>.
+  expect_false(is_none(NaN))
+  expect_identical(fun(NaN), NaN)
+  err <- expect_error(fun("2"))
+  expect_identical(conditionMessage(err), "'x' must be NULL or numeric, logical, or raw")
+  for (x in list(c(1, 2), numeric())) expect_error(fun(x))
+})
+
+test_that("coerced Option<bool> widens to integer zero and one", {
+  fun <- coerce_input_fixture("optional", "bool")
+  for (x in list(TRUE, 1L)) expect_true(fun(x))
+  for (x in list(FALSE, 0L)) expect_false(fun(x))
+  for (x in list(NULL, NA, NA_integer_)) expect_identical(fun(x), NA)
+  err <- expect_error(fun(1))
+  expect_identical(conditionMessage(err), "'x' must be NULL or logical or integer")
+  for (x in list(2L, -1L, as.raw(1), c(TRUE, FALSE))) expect_error(fun(x))
+})
+
+test_that("coerced Vec<Option<T>> widens element-wise and reads NA as None", {
+  int_vector <- coerce_input_fixture("optional_vector", "i32")
+  for (x in list(c(1L, NA, 2L), c(1, NA, 2))) {
+    expect_identical(int_vector(x), c(1L, NA, 2L), info = typeof(x))
+  }
+  expect_identical(int_vector(c(TRUE, NA, FALSE)), c(1L, NA, 0L))
+  expect_identical(int_vector(as.raw(c(1, 2))), c(1L, 2L))
+  expect_identical(int_vector(numeric()), integer())
+  err <- expect_error(int_vector(c(1, 2.5)))
+  expect_identical(conditionMessage(err), "'x' must be integer or whole-number numeric")
+  # A vector reads NULL no more than Vec<T> does.
+  expect_error(int_vector(NULL))
+
+  real_vector <- coerce_input_fixture("optional_vector", "f64")
+  for (x in list(c(1L, NA, 2L), c(1, NA, 2), c(TRUE, NA, TRUE))) {
+    expect_identical(real_vector(x), c(as.numeric(x[1]), NA, as.numeric(x[3])), info = typeof(x))
+  }
+  expect_identical(real_vector(as.raw(c(1, 2))), c(1, 2))
+  expect_identical(real_vector(c(NaN, 1)), c(NaN, 1))
+  expect_error(real_vector(c("1", NA)))
+  expect_error(real_vector(NULL))
+
+  bool_vector <- coerce_input_fixture("optional_vector", "bool")
+  for (x in list(c(TRUE, NA, FALSE), c(1L, NA, 0L))) {
+    expect_identical(bool_vector(x), c(TRUE, NA, FALSE), info = typeof(x))
+  }
+  expect_identical(bool_vector(integer()), logical())
+  err <- expect_error(bool_vector(c(1, 0)))
+  expect_identical(conditionMessage(err), "'x' must be logical or integer")
+  expect_error(bool_vector(NULL))
+})
+
+test_that("coerced Vec<Option<T>> batches every failing element", {
+  err <- expect_error(
+    miniextendr:::coerce_input_no_preconditions_optional_i32(c(1, 2.5, NA, NaN, 2^31, 3.5))
+  )
+  expect_identical(
+    conditionMessage(err),
+    paste0(
+      "'x' must be integer or whole-number numeric: precision loss (elements 2, 6); ",
+      "NaN cannot be converted (element 4); value out of range (element 5)"
+    )
+  )
+  expect_identical(err$rust_type, "Vec<Option<i32>>")
+  expect_identical(
+    miniextendr:::coerce_input_no_preconditions_optional_i32(c(1, NA, 2)),
+    c(1L, NA, 2L)
+  )
+
+  bool_fun <- miniextendr:::coerce_input_no_preconditions_optional_bool
+  expect_identical(bool_fun(c(1L, NA, 0L)), c(TRUE, NA, FALSE))
+  err <- expect_error(bool_fun(c(1L, 2L, NA, -1L)))
+  expect_identical(
+    conditionMessage(err),
+    paste0(
+      "'x' must be logical or integer: 2 is neither 0 nor 1 (element 2); ",
+      "-1 is neither 0 nor 1 (element 4)"
+    )
+  )
+  expect_identical(err$rust_type, "Vec<Option<bool>>")
+})
+
+test_that("per-argument coercion widens an optional double, not its neighbor", {
+  fun <- miniextendr:::coerce_input_optional_per_arg
+  expect_identical(fun(1L, 2), c(1, 2))
+  expect_identical(fun(NULL, NULL), c(NA_real_, NA_real_))
+  expect_identical(fun(NA, NA_real_), c(NA_real_, NA_real_))
+  err <- expect_error(fun(1, 2L))
+  expect_identical(conditionMessage(err), "'y' must be NULL or double")
 })
 
 test_that("newly accepted vectors retain batched conversion diagnostics", {

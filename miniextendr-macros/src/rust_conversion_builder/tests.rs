@@ -387,6 +387,39 @@ fn test_coercion() {
     }
 }
 
+/// The `Option<T>` / `Vec<Option<T>>` forms of the native types convert
+/// through their own coerced helpers; those of the other numeric types keep
+/// `TryFromSexp`, which already reads every numeric source (#2274).
+#[test]
+fn test_coercion_of_optional_types() {
+    let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    for (ty, helper) in [
+        ("Option<bool>", "try_from_sexp_coerced_option_bool"),
+        ("Vec<Option<bool>>", "try_from_sexp_coerced_option_bool_vec"),
+        ("Option<i32>", "try_from_sexp_coerced_option_i32"),
+        (
+            "::std::vec::Vec<::core::option::Option<i32>>",
+            "try_from_sexp_coerced_option_i32_vec",
+        ),
+        ("Option<f64>", "try_from_sexp_coerced_option_f64"),
+        ("Vec<Option<f64>>", "try_from_sexp_coerced_option_f64_vec"),
+    ] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(
+            s.contains(&format!(":: miniextendr_api :: from_r :: {helper} (")),
+            "{ty}: {s}"
+        );
+    }
+    for ty in ["Option<u16>", "Vec<Option<i64>>", "Option<f32>"] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(!s.contains("try_from_sexp_coerced"), "{ty}: {s}");
+        assert!(s.contains("TryFromSexp :: try_from_sexp"), "{ty}: {s}");
+    }
+    // Without `coerce`, the bare conversion.
+    let s = conversion_text(&RustConversionBuilder::new(), "x: Option<i32>");
+    assert!(!s.contains("try_from_sexp_coerced"), "{s}");
+}
+
 /// The decoder of a layered choice parameter (#1473, #1551): one
 /// `match_arg_*` helper per layer, outermost first, around the choice's own
 /// decoder.
@@ -769,6 +802,9 @@ fn native_metadata_matches_selected_conversion_paths() {
         ("miniextendr_api::CallerCall", true),
         ("i64", true),
         ("u16", false),
+        ("Option<i32>", true),
+        ("Vec<Option<f64>>", true),
+        ("Option<u16>", false),
         ("Vec<Mode>", true),
         ("Box<[Mode]>", true),
         ("[Mode; 2]", true),
