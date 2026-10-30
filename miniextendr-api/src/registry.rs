@@ -86,8 +86,9 @@ pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 /// Class name entries mapping Rust type names to R-visible class names. **Host-only.**
 ///
 /// Each `#[miniextendr]` impl block emits an entry. During
-/// `write_r_wrappers_to_file`, `.__MX_CLASS_REF_<RustName>__` placeholders
-/// in generated R wrapper strings are replaced with the registered R class name
+/// `write_r_wrappers_to_file`, the `.__MX_CLASS_REF_*<RustName>__`
+/// placeholders other expansions write where they name the class (see
+/// `resolve_class_refs`) are replaced with the registered R class name
 /// (which may differ when `class = "Override"` is set on the impl block).
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
@@ -378,7 +379,7 @@ unsafe impl Sync for MatchArgParamDocEntry {}
 ///
 /// Emitted by every `#[miniextendr(env|r6|s3|s4|s7|vctrs)]` impl block.
 /// Used by the resolver in `write_r_wrappers_to_file` to replace
-/// `.__MX_CLASS_REF_<RustName>__` placeholders with the actual R class name.
+/// `.__MX_CLASS_REF_*<RustName>__` placeholders with the actual R class name.
 pub struct ClassNameEntry {
     /// Rust type identifier, e.g. `"S7Shape"`.
     pub rust_type: &'static str,
@@ -2905,6 +2906,87 @@ fn resolve_wrap_return_markers(
     result
 }
 
+/// What a `.__MX_CLASS_REF_*` placeholder writes when its Rust type has no
+/// [`ClassNameEntry`], and which registered classes it accepts.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy)]
+enum ClassRefForm {
+    /// `.__MX_CLASS_REF_<RustName>__`: the bare Rust name, with a warning.
+    /// For a class object that must exist: R6 `inherit =`, an S7 parent, an
+    /// S7 conversion, and the R6 / S7 / S4 class of a `WrapAs*` return or a
+    /// trait impl.
+    Loud,
+    /// `.__MX_CLASS_REF_OR_BARE_<RustName>__`: the bare Rust name, quietly.
+    /// For a name any string can be: the S3 / Env / vctrs class of a
+    /// `WrapAs*` return or a trait impl (#2265, #2266).
+    OrBare,
+    /// `.__MX_CLASS_REF_OR_ANY_<RustName>__`: `S7::class_any`, also for a
+    /// registered class that is not S7. For an S7 property class constraint
+    /// (#203: a getter returning `SEXP`, `PathBuf`, or an R6/S3/S4 type
+    /// shouldn't break load-time with "object '…' not found"; the property
+    /// falls back to the permissive class_any it had pre-#154).
+    OrAny,
+}
+
+/// Replace every `.__MX_CLASS_REF_*<RustName>__` placeholder in `content`
+/// with the R class name `class_index` registers for `<RustName>` (the
+/// `class = "..."` override, else the Rust name), or the [`ClassRefForm`]'s
+/// fallback when none does.
+///
+/// A linear scan for the sentinel prefix, without a regex dependency.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_class_refs(
+    content: &str,
+    class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
+) -> String {
+    const PREFIX: &str = ".__MX_CLASS_REF_";
+    const SUFFIX: &str = "__";
+    // Both start with `PREFIX`, so they are told apart after it matches.
+    const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
+    const OR_BARE_PREFIX: &str = ".__MX_CLASS_REF_OR_BARE_";
+
+    let mut result = String::with_capacity(content.len());
+    let mut remaining = content;
+    while let Some(start) = remaining.find(PREFIX) {
+        result.push_str(&remaining[..start]);
+        let rest_from_prefix = &remaining[start..];
+        let (form, header_len) = if rest_from_prefix.starts_with(OR_ANY_PREFIX) {
+            (ClassRefForm::OrAny, OR_ANY_PREFIX.len())
+        } else if rest_from_prefix.starts_with(OR_BARE_PREFIX) {
+            (ClassRefForm::OrBare, OR_BARE_PREFIX.len())
+        } else {
+            (ClassRefForm::Loud, PREFIX.len())
+        };
+        remaining = &rest_from_prefix[header_len..];
+        let Some(end) = remaining.find(SUFFIX) else {
+            // Malformed placeholder (no closing __): emit as-is and stop scanning.
+            result.push_str(&rest_from_prefix[..header_len]);
+            break;
+        };
+        let rust_name = &remaining[..end];
+        remaining = &remaining[end + SUFFIX.len()..];
+        match (class_index.get(rust_name), form) {
+            // An S7 property takes an S7 class only: S7 can't use an R6 /
+            // S3 / S4 / Env / vctrs class as a constraint.
+            (Some(entry), ClassRefForm::OrAny) if entry.class_system != "s7" => {
+                result.push_str("S7::class_any");
+            }
+            (Some(entry), _) => result.push_str(entry.r_class_name),
+            (None, ClassRefForm::OrAny) => result.push_str("S7::class_any"),
+            (None, ClassRefForm::OrBare) => result.push_str(rust_name),
+            (None, ClassRefForm::Loud) => {
+                eprintln!(
+                    "miniextendr: unresolved class reference `{rust_name}` \
+                     in R wrapper — is the class defined in a reachable crate?"
+                );
+                result.push_str(rust_name);
+            }
+        }
+    }
+    result.push_str(remaining);
+    result
+}
+
 /// Resolve scalar `.__MX_WRAP_RETURN_<RustName>__(<expr>)` placeholders
 /// emitted by class-method wrappers whose Rust return type may name a
 /// different ExternalPtr-backed class.
@@ -3768,81 +3850,11 @@ pub fn write_r_wrappers_to_file(path: &str, r_dir: Option<&str>) {
         content = result;
     }
 
-    // Replace .__MX_CLASS_REF_<RustName>__ placeholders with actual R class names.
-    //
-    // Build a lookup from rust_type → ClassNameEntry, then do a linear scan over
-    // the content for each placeholder. We avoid pulling in a regex dependency
-    // by scanning for the sentinel prefix directly.
+    // Replace the `.__MX_CLASS_REF_*<RustName>__` placeholders with the
+    // registered R class names ([`resolve_class_refs`]).
     {
         let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
-
-        // Two placeholder forms:
-        //   .__MX_CLASS_REF_<RustName>__         → loud fallback on miss
-        //     (used by R6 `inherit =`, S7 parent class, convert_from / convert_to)
-        //   .__MX_CLASS_REF_OR_ANY_<RustName>__  → silent `S7::class_any` on miss
-        //     (used by S7 property class constraints — #203: a getter returning
-        //     `SEXP`, `PathBuf`, or an R6/S3/S4 type shouldn't break load-time
-        //     with "object '…' not found"; the property just falls back to the
-        //     permissive class_any it had pre-#154.)
-        const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
-        const PREFIX: &str = ".__MX_CLASS_REF_";
-        const SUFFIX: &str = "__";
-
-        let mut result = String::with_capacity(content.len());
-        let mut remaining = content.as_str();
-        while let Some(start) = remaining.find(PREFIX) {
-            result.push_str(&remaining[..start]);
-            // Does this occurrence have the OR_ANY form?
-            let rest_from_prefix = &remaining[start..];
-            let (quiet_fallback, header_len) = if rest_from_prefix.starts_with(OR_ANY_PREFIX) {
-                (true, OR_ANY_PREFIX.len())
-            } else {
-                (false, PREFIX.len())
-            };
-            remaining = &rest_from_prefix[header_len..];
-            // Find the closing __
-            if let Some(end) = remaining.find(SUFFIX) {
-                let rust_name = &remaining[..end];
-                remaining = &remaining[end + SUFFIX.len()..];
-                match class_index.get(rust_name) {
-                    Some(entry) if quiet_fallback => {
-                        // S7 property resolved to an S7 class → use the
-                        // registered name. Registered-but-non-S7 types
-                        // (R6 / S3 / S4 / Env / Vctrs) fall through to
-                        // class_any because S7 can't use them as class
-                        // constraints.
-                        if entry.class_system == "s7" {
-                            result.push_str(entry.r_class_name);
-                        } else {
-                            result.push_str("S7::class_any");
-                        }
-                    }
-                    Some(entry) => {
-                        result.push_str(entry.r_class_name);
-                    }
-                    None if quiet_fallback => {
-                        // Unresolved S7 property type → silent class_any,
-                        // matching pre-#154 behavior.
-                        result.push_str("S7::class_any");
-                    }
-                    None => {
-                        // Unresolved non-property CLASS_REF: fall back to the
-                        // bare Rust name with a warning.
-                        eprintln!(
-                            "miniextendr: unresolved class reference `{rust_name}` \
-                             in R wrapper — is the class defined in a reachable crate?"
-                        );
-                        result.push_str(rust_name);
-                    }
-                }
-            } else {
-                // Malformed placeholder (no closing __): emit as-is and stop scanning.
-                result.push_str(PREFIX);
-                break;
-            }
-        }
-        result.push_str(remaining);
-        content = result;
+        content = resolve_class_refs(&content, &class_index);
     }
 
     // Resolve the cross-class return wrapper placeholders: the scalar

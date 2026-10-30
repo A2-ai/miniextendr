@@ -92,7 +92,9 @@ fn default_wrappers_inherit_metadata_and_overrides_win() {
         "title",
     ] {
         assert!(
-            inherited.contains(&format!("Ledger$Totals${name} <- function(")),
+            inherited.contains(&format!(
+                ".__MX_CLASS_REF_OR_BARE_Ledger__$Totals${name} <- function("
+            )),
             "{inherited}"
         );
     }
@@ -100,10 +102,10 @@ fn default_wrappers_inherit_metadata_and_overrides_win() {
     assert!(!inherited.contains("$r_label <-"));
     let own = R_WRAPPERS_Override_Totals_IMPL.content;
     assert!(
-        own.contains("Override$Totals$custom_label <- function("),
+        own.contains(".__MX_CLASS_REF_OR_BARE_Override__$Totals$custom_label <- function("),
         "{own}"
     );
-    assert!(!own.contains("Override$Totals$label <-"));
+    assert!(!own.contains(".__MX_CLASS_REF_OR_BARE_Override__$Totals$label <-"));
     let ledger = Ledger(9);
     ledger.rust_only(std::sync::Mutex::new(()));
     assert_eq!(ledger.r_label(), "default");
@@ -270,12 +272,15 @@ fn non_generic_defaults_get_wrappers_too() {
     let wrappers = R_WRAPPERS_Reader_Plain_IMPL.content;
     for name in ["read", "echo", "maybe", "total", "label", "ignored", "kind"] {
         assert!(
-            wrappers.contains(&format!("Reader$Plain${name} <- function(")),
+            wrappers.contains(&format!(
+                ".__MX_CLASS_REF_OR_BARE_Reader__$Plain${name} <- function("
+            )),
             "{wrappers}"
         );
     }
     assert!(
-        wrappers.contains("Reader$Plain$ignored <- function(.mx_self, arg0)"),
+        wrappers
+            .contains(".__MX_CLASS_REF_OR_BARE_Reader__$Plain$ignored <- function(.mx_self, arg0)"),
         "{wrappers}"
     );
     assert!(!wrappers.contains("rust_only"));

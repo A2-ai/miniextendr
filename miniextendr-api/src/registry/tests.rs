@@ -48,50 +48,11 @@ fn optional_preamble_helpers_follow_fragment_dependencies() {
     assert!(!scalar.contains(".miniextendr_check_dots <- function"));
 }
 
-/// Run the class-ref placeholder resolver over `content` using `entries` as the registry.
-///
-/// This mirrors the logic in `write_r_wrappers_to_file` but operates on a caller-supplied
-/// slice so it can be called from unit tests without a live distributed_slice.
-fn resolve_class_refs(content: &str, entries: &[ClassNameEntry]) -> String {
+/// Run the production class-ref placeholder resolver over `content` using
+/// `entries` as the registry.
+fn resolve_refs(content: &str, entries: &[ClassNameEntry]) -> String {
     let class_index = build_class_name_index(entries.iter());
-
-    const OR_ANY_PREFIX: &str = ".__MX_CLASS_REF_OR_ANY_";
-    const PREFIX: &str = ".__MX_CLASS_REF_";
-    const SUFFIX: &str = "__";
-
-    let mut result = String::with_capacity(content.len());
-    let mut remaining = content;
-    while let Some(start) = remaining.find(PREFIX) {
-        result.push_str(&remaining[..start]);
-        let rest_from_prefix = &remaining[start..];
-        let (quiet_fallback, header_len) = if rest_from_prefix.starts_with(OR_ANY_PREFIX) {
-            (true, OR_ANY_PREFIX.len())
-        } else {
-            (false, PREFIX.len())
-        };
-        remaining = &rest_from_prefix[header_len..];
-        if let Some(end) = remaining.find(SUFFIX) {
-            let rust_name = &remaining[..end];
-            remaining = &remaining[end + SUFFIX.len()..];
-            match class_index.get(rust_name) {
-                Some(entry) if quiet_fallback => {
-                    if entry.class_system == "s7" {
-                        result.push_str(entry.r_class_name);
-                    } else {
-                        result.push_str("S7::class_any");
-                    }
-                }
-                Some(entry) => result.push_str(entry.r_class_name),
-                None if quiet_fallback => result.push_str("S7::class_any"),
-                None => result.push_str(rust_name),
-            }
-        } else {
-            result.push_str(PREFIX);
-            break;
-        }
-    }
-    result.push_str(remaining);
-    result
+    resolve_class_refs(content, &class_index)
 }
 
 /// Two impl blocks of one type register identical entries (#1242, #1776);
@@ -592,7 +553,7 @@ fn test_class_ref_resolver_with_override() {
     ];
 
     let input = r#"S7Circle <- S7::new_class("S7Circle", parent = .__MX_CLASS_REF_S7Shape__, properties = list())"#;
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(
         output,
         r#"S7Circle <- S7::new_class("S7Circle", parent = Shape, properties = list())"#
@@ -618,7 +579,7 @@ fn test_class_ref_resolver_multiple_placeholders() {
 
     let input =
         "S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D)) <- function(from, to) {}";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(
         output,
         "S7::method(convert, list(Point2D, Point3D)) <- function(from, to) {}"
@@ -629,7 +590,7 @@ fn test_class_ref_resolver_multiple_placeholders() {
 fn test_class_ref_resolver_unresolved_falls_back_to_rust_name() {
     let entries: [ClassNameEntry; 0] = [];
     let input = "parent = .__MX_CLASS_REF_UnknownClass__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     // Falls back to the bare Rust name
     assert_eq!(output, "parent = UnknownClass");
 }
@@ -640,7 +601,7 @@ fn test_class_ref_resolver_verbatim_passthrough() {
     // a placeholder, so they pass through the resolver unchanged.
     let entries: [ClassNameEntry; 0] = [];
     let input = "parent = S7::class_any";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "parent = S7::class_any");
 }
 
@@ -654,7 +615,7 @@ fn test_is_bare_identifier_via_resolver() {
         field_syntax: false,
     }];
     let input = "inherit = .__MX_CLASS_REF_MyClass__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "inherit = MyClass");
 }
 
@@ -670,7 +631,7 @@ fn or_any_resolves_registered_s7_class() {
         field_syntax: false,
     }];
     let input = "class = .__MX_CLASS_REF_OR_ANY_S7PropInner__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "class = S7PropInner");
 }
 
@@ -679,7 +640,7 @@ fn or_any_unregistered_type_falls_back_to_class_any_silently() {
     // No entry for SEXP, PathBuf, Json, etc.
     let entries: [ClassNameEntry; 0] = [];
     let input = "class = .__MX_CLASS_REF_OR_ANY_SEXP__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "class = S7::class_any");
 }
 
@@ -695,7 +656,7 @@ fn or_any_registered_non_s7_type_falls_back_to_class_any() {
         field_syntax: false,
     }];
     let input = "class = .__MX_CLASS_REF_OR_ANY_R6Counter__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "class = S7::class_any");
 }
 
@@ -706,7 +667,7 @@ fn loud_class_ref_still_emits_bare_name_when_unresolved() {
     // for that path alongside the OR_ANY introduction.
     let entries: [ClassNameEntry; 0] = [];
     let input = "parent = .__MX_CLASS_REF_UnknownClass__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "parent = UnknownClass");
 }
 
@@ -724,7 +685,7 @@ fn mixed_placeholders_resolve_independently() {
         // PropInner deliberately missing → should resolve to class_any.
     ];
     let input = "inherit = .__MX_CLASS_REF_Parent__, class = .__MX_CLASS_REF_OR_ANY_PropInner__";
-    let output = resolve_class_refs(input, &entries);
+    let output = resolve_refs(input, &entries);
     assert_eq!(output, "inherit = Parent, class = S7::class_any");
 }
 
@@ -2947,3 +2908,67 @@ fn candidates_in_two_blocks_without_a_declared_constructor_are_refused() {
 }
 
 // endregion
+
+/// The `WrapAs*` and trait-impl form (#2265, #2266): a registered class
+/// gives its R name whatever its system; a type with no impl block keeps its
+/// Rust name, quietly.
+#[test]
+fn or_bare_resolves_renames_and_keeps_unregistered_names() {
+    let entries = [
+        ClassNameEntry {
+            rust_type: "EngineS3",
+            r_class_name: "engine",
+            class_system: "s3",
+            field_syntax: false,
+        },
+        ClassNameEntry {
+            rust_type: "BoardR6",
+            r_class_name: "Board",
+            class_system: "r6",
+            field_syntax: false,
+        },
+    ];
+    let input = "structure(.val, class = \".__MX_CLASS_REF_OR_BARE_EngineS3__\")\n\
+                 print..__MX_CLASS_REF_OR_BARE_EngineS3__ <- function(x, ...) x\n\
+                 .__MX_CLASS_REF_OR_BARE_EngineS3__$Trait <- new.env(parent = emptyenv())\n\
+                 structure(.val, class = \".__MX_CLASS_REF_OR_BARE_BoardR6__\")\n\
+                 structure(.val, class = \".__MX_CLASS_REF_OR_BARE_Unregistered__\")";
+    assert_eq!(
+        resolve_refs(input, &entries),
+        "structure(.val, class = \"engine\")\n\
+         print.engine <- function(x, ...) x\n\
+         engine$Trait <- new.env(parent = emptyenv())\n\
+         structure(.val, class = \"Board\")\n\
+         structure(.val, class = \"Unregistered\")"
+    );
+}
+
+/// The three forms side by side: each takes its own fallback on a miss, and
+/// a malformed placeholder is written back whole.
+#[test]
+fn class_ref_forms_resolve_independently() {
+    let entries = [ClassNameEntry {
+        rust_type: "Point",
+        r_class_name: "point",
+        class_system: "s3",
+        field_syntax: false,
+    }];
+    assert_eq!(
+        resolve_refs(
+            ".__MX_CLASS_REF_Point__ .__MX_CLASS_REF_OR_BARE_Point__ .__MX_CLASS_REF_OR_ANY_Point__",
+            &entries
+        ),
+        "point point S7::class_any"
+    );
+    assert_eq!(
+        resolve_refs(
+            ".__MX_CLASS_REF_Gone__ .__MX_CLASS_REF_OR_BARE_Gone__ .__MX_CLASS_REF_OR_ANY_Gone__",
+            &entries
+        ),
+        "Gone Gone S7::class_any"
+    );
+    assert_eq!(
+        resolve_refs("x <- .__MX_CLASS_REF_OR_BARE_Point", &entries),
+        "x <- .__MX_CLASS_REF_OR_BARE_Point"
+    );
+}

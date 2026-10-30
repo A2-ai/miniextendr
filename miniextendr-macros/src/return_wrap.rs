@@ -272,12 +272,18 @@ impl ReturnWrap {
         }
     }
 
-    /// Emit the chosen constructor directly; no write-time registry lookup.
+    /// Emit the chosen class system's constructor. `Self` is `self_type`, the
+    /// implementing class as its generator names it; any other target is
+    /// named through the write-time class registry, so a `class = "..."`
+    /// rename applies, while the system stays the marker's (#2265,
+    /// [`class_ref_for`](crate::r_class_formatter::class_ref_for)). The
+    /// placeholder is applied here, not stored: [`Self::target`] stays the
+    /// Rust name that `s7_conversion` compares.
     pub(crate) fn r_expression(&self, value: &str, self_type: Option<&str>) -> String {
         let target = if self.target == "Self" {
-            self_type.unwrap_or("Self")
+            self_type.unwrap_or("Self").to_owned()
         } else {
-            &self.target
+            crate::r_class_formatter::class_ref_for(self.system, &self.target)
         };
         let wrap = |value: &str| match self.system {
             ClassSystem::R6 => format!("{target}$new(.ptr = {value})"),

@@ -400,7 +400,10 @@ Start with the intended R API surface:
 5. In R: `obj <- MyStruct$new(...)`.
 
 The generated class is named after the Rust type by default. Override with
-`#[miniextendr(r6, class = "OverrideName")]`.
+`#[miniextendr(r6, class = "OverrideName")]`. Other expansions that name the
+class (`WrapAs*` returns, trait impls, `inherit =` / `parent =`) emit a
+`.__MX_CLASS_REF_*` placeholder that the wrappers writer resolves to the
+override through `MX_CLASS_NAMES` (#2265, #2266).
 
 ### How do I implement a trait for multiple class systems?
 

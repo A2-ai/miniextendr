@@ -6,7 +6,8 @@
 //! appropriate generator and applies post-processing for export/documentation control.
 
 use super::method_context::{
-    TraitMethodContext, s7_trait_member_access, trait_namespace_env_var, trait_namespace_target,
+    TraitMethodContext, class_ref, s7_trait_member_access, trait_namespace_env,
+    trait_namespace_env_var, trait_namespace_target,
 };
 use super::{TraitConst, TraitMethod};
 use crate::miniextendr_impl::ClassSystem;
@@ -500,8 +501,8 @@ fn generate_trait_env_r_wrapper(
 
     // Create trait namespace environment
     lines.push(format!(
-        "{}${} <- new.env(parent = emptyenv())",
-        type_ident, trait_name
+        "{} <- new.env(parent = emptyenv())",
+        trait_namespace_env(ClassSystem::Env, type_ident, trait_name)
     ));
     lines.push(String::new());
 
@@ -605,6 +606,9 @@ fn generate_trait_s3_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
+    // The S3 class the methods dispatch on: the class's R name (#2266). The
+    // page (`type_str`) keeps the Rust name.
+    let class_str = class_ref(ClassSystem::S3, type_ident);
 
     // Header comment
     lines.push(format!(
@@ -631,7 +635,7 @@ fn generate_trait_s3_r_wrapper(
             .unwrap_or_else(|| method.r_method_name());
         let (generic_package, generic_name) = crate::naming::split_generic(&qualified_generic);
         let receiver = method.receiver.as_deref().unwrap_or("x");
-        let s3_method_name = format!("{}.{}", generic_name, type_str);
+        let s3_method_name = format!("{generic_name}.{class_str}");
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
             .with_impl_preconditions(impl_preconditions)
             .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
@@ -657,7 +661,7 @@ fn generate_trait_s3_r_wrapper(
                     generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
                 };
             let generic_roxygen = generic_roxygen
-                .name(format!("{}.{}", generic_name, type_str))
+                .name(&s3_method_name)
                 .rdname(method_page(method, &type_str));
             // On an author topic its own block describes the method and documents
             // `x` and `...` (#1590); the structural lines would only compete.
@@ -717,11 +721,11 @@ fn generate_trait_s3_r_wrapper(
         // `pkg` may stay in Suggests (#2154).
         let mut method_roxygen = match generic_package {
             Some(package) => RoxygenBuilder::new().custom(format!(
-                "@exportS3Method {package}::{generic_name} {type_str}"
+                "@exportS3Method {package}::{generic_name} {class_str}"
             )),
             None => RoxygenBuilder::new().export(),
         }
-        .method(generic_name, &type_str);
+        .method(generic_name, &class_str);
         if method.generic.is_some() && !joins_author_topic(method, &type_str) {
             method_roxygen = method_roxygen.custom(format!("@param {receiver} An object"));
             if !method.no_dispatch_dots {
@@ -761,7 +765,7 @@ fn generate_trait_s3_r_wrapper(
             let generic_symbol = crate::naming::r_def_name(generic_name);
             let method_symbol = crate::naming::r_def_name(&s3_method_name);
             lines.push(format!(
-                "  S7::method({generic_symbol}, S7::new_S3_class(\"{type_str}\")) <- {method_symbol}"
+                "  S7::method({generic_symbol}, S7::new_S3_class(\"{class_str}\")) <- {method_symbol}"
             ));
             lines.push("}".to_string());
         }
@@ -771,8 +775,8 @@ fn generate_trait_s3_r_wrapper(
     // Create trait namespace for static methods and consts BEFORE assigning to it
     if !static_methods.is_empty() || !consts.is_empty() {
         lines.push(format!(
-            "{}${} <- new.env(parent = emptyenv())",
-            type_ident, trait_name
+            "{} <- new.env(parent = emptyenv())",
+            trait_namespace_env(ClassSystem::S3, type_ident, trait_name)
         ));
         lines.push(String::new());
     }
@@ -949,10 +953,11 @@ fn generate_trait_s4_r_wrapper(
         push_param_tags(&mut lines, method);
         lines.push(format!("#' @exportMethod {}", generic_name));
 
+        let class_str = class_ref(ClassSystem::S4, type_ident);
         let signature = if method.receiver.is_some() {
-            format!("c({receiver} = \"{type_str}\")")
+            format!("c({receiver} = \"{class_str}\")")
         } else {
-            format!("\"{type_str}\"")
+            format!("\"{class_str}\"")
         };
         lines.push(format!(
             "methods::setMethod(\"{generic_name}\", {signature}, function({full_params}) {{"
@@ -1074,7 +1079,10 @@ fn generate_trait_s7_r_wrapper(
     // creates instances with the namespaced class "pkg::Foo", so new_S3_class
     // wouldn't match. Using the class object directly works correctly.
     lines.push("#' @importFrom S7 new_generic method S7_dispatch".to_string());
-    lines.push(format!("{} <- {}", s7_class_var, type_str));
+    lines.push(format!(
+        "{s7_class_var} <- {}",
+        class_ref(ClassSystem::S7, type_ident)
+    ));
     lines.push(String::new());
 
     // Separate instance methods from static methods
@@ -1312,7 +1320,9 @@ fn generate_trait_s7_r_wrapper(
     if !static_methods.is_empty() || !consts.is_empty() {
         lines.push(format!(
             "attr({}, \"{}\") <- {}",
-            type_ident, trait_name, trait_env_var
+            class_ref(ClassSystem::S7, type_ident),
+            trait_name,
+            trait_env_var
         ));
         lines.push(String::new());
     }
@@ -1370,8 +1380,8 @@ fn generate_trait_r6_r_wrapper(
     // too (not just static methods / consts).
     if !methods.is_empty() || !consts.is_empty() {
         lines.push(format!(
-            "{}${} <- new.env(parent = emptyenv())",
-            type_ident, trait_name
+            "{} <- new.env(parent = emptyenv())",
+            trait_namespace_env(ClassSystem::R6, type_ident, trait_name)
         ));
         lines.push(String::new());
     }

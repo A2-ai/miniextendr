@@ -738,6 +738,52 @@ fn rng_seed_refusals() {
 
 // endregion
 
+// region: explicit class wrapping of free functions (#2265)
+
+/// A free function's `WrapAs*` return names its class through the write-time
+/// class registry, so the class's `class = "..."` rename applies; the marker
+/// and the attribute spelling agree. A bare class return stays an unclassed
+/// pointer.
+#[test]
+fn free_function_wraps_name_the_class_through_the_registry() {
+    let marker = fn_r_wrapper(
+        quote::quote!(),
+        quote::quote! {
+            pub fn make_engine() -> WrapAsS3<Engine> { unimplemented!() }
+        },
+    );
+    let attribute = fn_r_wrapper(
+        quote::quote!(wrap = "s3"),
+        quote::quote! {
+            pub fn make_engine() -> Engine { unimplemented!() }
+        },
+    );
+    let wrap = "structure(.val, class = \".__MX_CLASS_REF_OR_BARE_Engine__\")";
+    assert!(marker.contains(wrap), "{marker}");
+    assert!(attribute.contains(wrap), "{attribute}");
+
+    let r6 = fn_r_wrapper(
+        quote::quote!(),
+        quote::quote! {
+            pub fn make_board() -> Option<WrapAsR6<Board>> { unimplemented!() }
+        },
+    );
+    assert!(
+        r6.contains("if (is.null(.val)) NULL else .__MX_CLASS_REF_Board__$new(.ptr = .val)"),
+        "{r6}"
+    );
+
+    let bare = fn_r_wrapper(
+        quote::quote!(),
+        quote::quote! {
+            pub fn make_bare() -> Engine { unimplemented!() }
+        },
+    );
+    assert!(!bare.contains("__MX_CLASS_REF"), "{bare}");
+}
+
+// endregion
+
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
 /// next to an explicit `&Dots`, are compile errors.
 #[test]
