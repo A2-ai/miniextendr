@@ -36,13 +36,21 @@
 //! });
 //! ```
 //!
+//! # Threads
+//!
+//! Every panic→R-error boundary runs on R's main thread, so the hook lives
+//! there: a thread-local slot, set and fired on that thread, and the closure
+//! need not be `Send` or `Sync`. A hook set on another thread stays in that
+//! thread's slot and never sees the main thread's panics.
+//!
 //! # Performance
 //!
-//! `fire()` takes a read lock (uncontended in normal use). The hook only fires
-//! on panic paths, never on hot paths.
+//! `fire()` reads a thread-local slot and, with a hook set, clones its `Rc`.
+//! The hook only fires on panic paths, never on hot paths.
 
+use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, RwLock};
+use std::rc::Rc;
 
 /// Describes where a panic originated before being converted to an R error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,50 +71,42 @@ pub struct PanicReport<'a> {
     pub source: PanicSource,
 }
 
-type Hook = Arc<dyn Fn(&PanicReport) + Send + Sync>;
+type Hook = Rc<dyn Fn(&PanicReport)>;
 
-static HOOK: RwLock<Option<Hook>> = RwLock::new(None);
+std::thread_local! {
+    static HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
+}
 
-/// Register a panic telemetry hook.
+/// Register a panic telemetry hook on R's main thread.
 ///
 /// The hook is called with a [`PanicReport`] each time a Rust panic is about
 /// to be converted into an R error. Only one hook can be active at a time;
 /// calling this again replaces (and drops) the previous hook.
 ///
-/// # Thread Safety
-///
-/// The hook may be called from any thread that converts a panic.
-/// Ensure your closure is safe to call concurrently.
-///
-/// It is safe to call `set_panic_telemetry_hook` or `clear_panic_telemetry_hook`
-/// from within a hook — the lock is released before the hook is invoked.
-pub fn set_panic_telemetry_hook(f: impl Fn(&PanicReport) + Send + Sync + 'static) {
-    let mut guard = HOOK.write().unwrap_or_else(|e| e.into_inner());
-    *guard = Some(Arc::new(f));
+/// Call it on R's main thread, where every panic→R-error boundary runs (see
+/// [Threads](self#threads)). It is safe to call `set_panic_telemetry_hook` or
+/// `clear_panic_telemetry_hook` from within a hook: the slot is not borrowed
+/// while the hook runs.
+pub fn set_panic_telemetry_hook(f: impl Fn(&PanicReport) + 'static) {
+    // `replace` hands the previous hook back after the borrow ends, so its
+    // destructor may set or clear the hook too.
+    drop(HOOK.replace(Some(Rc::new(f))));
 }
 
 /// Remove the current panic telemetry hook, if any.
 pub fn clear_panic_telemetry_hook() {
-    let mut guard = HOOK.write().unwrap_or_else(|e| e.into_inner());
-    *guard = None;
+    drop(HOOK.take());
 }
 
 /// Fire the telemetry hook if one is set.
 ///
 /// Called internally at each panic→R-error conversion site.
 ///
-/// The hook is cloned (as `Arc`) and the lock is dropped before invocation,
-/// so the hook can safely call `set_panic_telemetry_hook` or
-/// `clear_panic_telemetry_hook` without deadlocking. Secondary panics from
-/// the hook are caught and silently suppressed.
+/// The hook is cloned (as `Rc`) out of the slot before it runs, so it can
+/// call `set_panic_telemetry_hook` or `clear_panic_telemetry_hook`. Secondary
+/// panics from the hook are caught and silently suppressed.
 pub(crate) fn fire(message: &str, source: PanicSource) {
-    // Clone the Arc while holding the read lock, then drop the lock
-    // before invoking. This prevents deadlock if the hook calls
-    // set/clear_panic_telemetry_hook (which take a write lock).
-    let hook = {
-        let guard = HOOK.read().unwrap_or_else(|e| e.into_inner());
-        guard.as_ref().cloned()
-    };
+    let hook = HOOK.with_borrow(Option::clone);
 
     if let Some(hook) = hook {
         let report = PanicReport { message, source };
@@ -115,3 +115,6 @@ pub(crate) fn fire(message: &str, source: PanicSource) {
         let _ = catch_unwind(AssertUnwindSafe(|| hook(&report)));
     }
 }
+
+#[cfg(test)]
+mod tests;

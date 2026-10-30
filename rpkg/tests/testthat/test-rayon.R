@@ -362,3 +362,19 @@ test_that("RParallelExtend par_clear/par_is_empty reset the collection", {
 })
 
 # endregion
+
+# region: deferred conditions off R's main thread
+
+test_that("defer_warning! in a Rayon task errors and says to queue on the main thread", {
+  err <- expect_error(rayon_defer_warning_off_main(8L), "queued off R's main thread")
+  expect_match(conditionMessage(err), "queue the conditions on the main thread", fixed = TRUE)
+})
+
+test_that("conditions queued after the parallel section are signalled", {
+  expect_warning(
+    expect_identical(rayon_defer_warning_after_parallel(8L), 8L),
+    "4 odd items"
+  )
+})
+
+# endregion

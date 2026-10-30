@@ -20,14 +20,12 @@ fn test_rconn_struct_size() {
 
 #[test]
 fn test_catch_connection_panic_ok() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = catch_connection_panic(42, || 7);
     assert_eq!(result, 7);
 }
 
 #[test]
 fn test_catch_connection_panic_catches_panic() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = catch_connection_panic(42, || {
         panic!("test panic");
     });
@@ -36,7 +34,6 @@ fn test_catch_connection_panic_catches_panic() {
 
 #[test]
 fn test_catch_connection_panic_catches_string_panic() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = catch_connection_panic(-1, || {
         let msg = "custom message".to_string();
         std::panic::panic_any(msg);
@@ -46,7 +43,6 @@ fn test_catch_connection_panic_catches_string_panic() {
 
 #[test]
 fn test_catch_connection_panic_catches_non_string_panic() {
-    let _queue = crate::deferred_condition::tests::lock_queue();
     let result = catch_connection_panic(0usize, || {
         std::panic::panic_any(123i32);
     });

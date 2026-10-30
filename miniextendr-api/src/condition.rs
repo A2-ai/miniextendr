@@ -316,6 +316,9 @@ impl RCondition {
     ///
     /// Preserves its declared kind, classes, fields and call policy, including
     /// for a mixed-kind enum. Errors queued here stop R at that boundary.
+    ///
+    /// Panics off R's main thread; see
+    /// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).
     pub fn defer(self) {
         crate::deferred_condition::defer(self);
     }

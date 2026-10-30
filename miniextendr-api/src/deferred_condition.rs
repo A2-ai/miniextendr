@@ -105,10 +105,12 @@
 //!
 //! # Threads and boundaries
 //!
-//! The queue is a process-wide `Mutex`, so `#[miniextendr(worker)]` bodies
-//! push from the worker thread; the signalling always happens on R's main
-//! thread after the worker result is back. Every generated `.Call` entry
+//! The queue lives on R's main thread, where every generated `.Call` entry
 //! point and every trait-ABI vtable shim flushes what was queued inside it.
+//! Queueing from any other thread (a Rayon task, a `std::thread`) panics:
+//! no R call on that thread could ever signal the condition. Collect what the
+//! parallel section found and queue the conditions on the main thread after
+//! it returns.
 //! ALTREP `RUnwind` / `RustUnwind` callbacks and connection I/O callbacks also
 //! signal locally, with `conditionCall() = NULL`; raising guards use their
 //! explicit `call` argument. An R-origin error discards the abandoned queue.
@@ -119,29 +121,32 @@
 //! by `drop_catching_panic`. Unguarded raw FFI / `AltrepGuard::Unsafe` callbacks
 //! must not queue conditions; choose a guarded callback instead.
 
-use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+use std::cell::{Cell, RefCell};
+use std::sync::OnceLock;
 
 use crate::SEXP;
 use crate::condition::{RCondition, RConditionData};
 
 // region: Queue
 
-/// Conditions queued during the current guarded callback (and enclosing calls).
-///
-/// A plain static rather than a thread-local so worker-thread pushes land in
-/// the same queue the main thread drains. The mutex is released before any R
-/// signalling, so handlers can re-enter Rust without retaining the queue lock.
-static PENDING: Mutex<Vec<RCondition>> = Mutex::new(Vec::new());
-
 std::thread_local! {
-    // Suppression belongs to this destructor's thread, not unrelated worker
-    // threads that may still be queueing diagnostics during an R-thread visit.
-    static SUPPRESSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Conditions queued during the current guarded callback (and enclosing
+    /// calls). Only R's main thread queues ([`defer`] panics elsewhere). Every
+    /// borrow ends before any R signalling, so handlers can re-enter Rust and
+    /// queue again.
+    static PENDING: RefCell<Vec<RCondition>> = const { RefCell::new(Vec::new()) };
+    /// Open finalizer suppressions ([`Suppress`]).
+    static SUPPRESSED: Cell<usize> = const { Cell::new(0) };
 }
 
-fn pending() -> MutexGuard<'static, Vec<RCondition>> {
-    PENDING.lock().unwrap_or_else(PoisonError::into_inner)
-}
+/// Why [`defer`] refuses to queue off R's main thread.
+const OFF_MAIN_THREAD: &str = "a deferred condition (defer_warning! / defer_message! / \
+     defer_condition!) was queued off R's main thread.\n\
+     \n\
+     Deferred conditions are signalled when the R call that queued them returns, \
+     on R's main thread; no R call on this thread could signal it. Collect what \
+     the parallel section (Rayon, std::thread) found, and queue the conditions \
+     on the main thread after it returns.";
 
 /// Queue a warning to be signalled when the current guarded call or callback
 /// returns; the call still returns its value.
@@ -153,6 +158,8 @@ fn pending() -> MutexGuard<'static, Vec<RCondition>> {
 ///
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,
 /// queue after the last fallible step; see [warning placement](self#warning-placement).
+///
+/// Panics off R's main thread; see [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_warning(payload: impl RConditionData) {
     defer(RCondition::Warning {
         message: payload.message(),
@@ -167,6 +174,8 @@ pub fn defer_warning(payload: impl RConditionData) {
 ///
 /// Unlike [`crate::message!`], the payload's classes are honoured: they are
 /// layered in front of `rust_message` so handlers can dispatch on them.
+///
+/// Panics off R's main thread; see [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_message(payload: impl RConditionData) {
     defer(RCondition::Message {
         message: payload.message(),
@@ -178,6 +187,8 @@ pub fn defer_message(payload: impl RConditionData) {
 
 /// Queue a plain condition (`signalCondition()`: silent without a handler)
 /// to be signalled when the current guarded call or callback returns.
+///
+/// Panics off R's main thread; see [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_condition(payload: impl RConditionData) {
     defer(RCondition::Condition {
         message: payload.message(),
@@ -222,10 +233,22 @@ pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Vec<RCondition>) {
 }
 
 /// Queue an already-built condition payload. Used by the `defer_*!` macros.
+///
+/// # Panics
+///
+/// Off R's main thread (see [Threads and boundaries](self#threads-and-boundaries)).
 #[doc(hidden)]
 pub fn defer(condition: RCondition) {
+    if !crate::is_r_main_thread() {
+        panic!("{OFF_MAIN_THREAD}");
+    }
+    push(condition);
+}
+
+/// Queue on this thread; [`defer`] checks the thread first.
+fn push(condition: RCondition) {
     if SUPPRESSED.get() == 0 {
-        pending().push(condition);
+        PENDING.with_borrow_mut(|queue| queue.push(condition));
     }
 }
 
@@ -233,29 +256,31 @@ pub fn defer(condition: RCondition) {
 #[doc(hidden)]
 #[inline]
 pub fn mark() -> usize {
-    pending().len()
+    PENDING.with_borrow(Vec::len)
 }
 
 /// Remove and return everything queued since `mark`, oldest first. Entries
 /// below `mark` belong to enclosing calls and stay.
 #[doc(hidden)]
 pub fn take_pending(mark: usize) -> Vec<RCondition> {
-    // A nested guard inside a finalizer must not drain concurrent worker
-    // entries either: they belong to a later, signal-capable boundary.
+    // A nested guard inside a finalizer must not drain the enclosing call's
+    // entries: they belong to its signal-capable boundary.
     if SUPPRESSED.get() != 0 {
         return Vec::new();
     }
-    let mut queue = pending();
-    if queue.len() <= mark {
-        return Vec::new();
-    }
-    queue.split_off(mark)
+    PENDING.with_borrow_mut(|queue| {
+        if queue.len() <= mark {
+            Vec::new()
+        } else {
+            queue.split_off(mark)
+        }
+    })
 }
 
 /// Discard conditions whose Rust/R call was abandoned by an R longjmp.
 pub(crate) fn discard(mark: usize) {
     if SUPPRESSED.get() == 0 {
-        pending().truncate(mark);
+        PENDING.with_borrow_mut(|queue| queue.truncate(mark));
     }
 }
 
@@ -407,6 +432,9 @@ pub(crate) fn raise_condition_helper() -> SEXP {
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,
 /// queue after the last fallible step; see [warning placement](crate::deferred_condition#warning-placement).
 ///
+/// Panics off R's main thread; see
+/// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).
+///
 /// ```ignore
 /// use miniextendr_api::defer_warning;
 ///
@@ -441,6 +469,9 @@ macro_rules! defer_warning {
 /// `class = …` part is accepted and layered in front of `rust_message`.
 /// `call = none` is accepted for the shared grammar and changes nothing: an R
 /// message carries no call, so `conditionCall(m)` is `NULL` either way.
+///
+/// Panics off R's main thread; see
+/// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).
 #[macro_export]
 macro_rules! defer_message {
     ($($t:tt)*) => {{
@@ -461,6 +492,9 @@ macro_rules! defer_message {
 ///
 /// Same grammar as [`crate::defer_warning!`]. Useful for progress or audit
 /// events a caller may opt into with `withCallingHandlers()`.
+///
+/// Panics off R's main thread; see
+/// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).
 #[macro_export]
 macro_rules! defer_condition {
     ($($t:tt)*) => {{
@@ -480,6 +514,6 @@ macro_rules! defer_condition {
 // region: Tests — queue semantics (no R runtime needed)
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;
 
 // endregion

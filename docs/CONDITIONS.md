@@ -468,7 +468,23 @@ catch the failure inside the block with
 `capture(|| catch_condition(|| rebuild(&snapshot)))`.
 
 **Where it works.** Every `#[miniextendr]` function and method, `rng`
-wrappers and trait-ABI vtable shims. ALTREP `RUnwind` and `RustUnwind` callbacks,
+wrappers and trait-ABI vtable shims, on R's main thread. Queueing from any
+other thread (a Rayon task, a `std::thread`) panics: no R call there could
+signal the condition. Collect what the parallel section found and queue the
+conditions on the main thread after it returns:
+
+```rust
+#[miniextendr]
+fn parse_all(xs: Vec<String>) -> Vec<i32> {
+    let parsed: Vec<Result<i32, _>> = xs.par_iter().map(|s| s.parse::<i32>()).collect();
+    let bad = parsed.iter().filter(|r| r.is_err()).count();
+    if bad > 0 {
+        defer_warning!("{bad} values could not be parsed"); // on the main thread
+    }
+    parsed.into_iter().filter_map(Result::ok).collect()
+}
+```
+ ALTREP `RUnwind` and `RustUnwind` callbacks,
 `with_r_unwind_protect_or_raise`, and connection I/O callbacks flush their own
 conditions before returning. ALTREP and connection conditions have
 `conditionCall() = NULL`; the raising guard uses its explicit `call` argument

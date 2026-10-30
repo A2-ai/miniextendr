@@ -1,14 +1,17 @@
 //! Benchmarks for panic telemetry overhead.
 //!
-//! `panic_telemetry::fire()` acquires a `RwLock` read lock at every panic→R-error
-//! boundary (altrep_bridge, unwind_protect, connection). This benchmark
-//! measures the cost of that read lock pattern to confirm it's negligible.
+//! `panic_telemetry::fire()` reads a thread-local hook slot at every
+//! panic→R-error boundary (altrep_bridge, unwind_protect, connection) and, with
+//! a hook set, clones its `Rc`. This benchmark measures that pattern to confirm
+//! it's negligible.
 //!
-//! Since `fire()` is `pub(crate)`, we benchmark the identical RwLock pattern
-//! synthetically, plus the public `set`/`clear` API for the write path.
+//! Since `fire()` is `pub(crate)`, we benchmark the identical slot pattern
+//! synthetically, plus the public `set`/`clear` API. Each benchmark sets and
+//! fires on its own thread, as the runtime does on R's main thread.
 
+use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, RwLock};
+use std::rc::Rc;
 
 use miniextendr_api::panic_telemetry;
 
@@ -17,79 +20,67 @@ fn main() {
     divan::main();
 }
 
-// region: Synthetic RwLock matching the exact pattern in fire()
+// region: Synthetic slot matching the exact pattern in fire()
 
-type Hook = Arc<dyn Fn(&str) + Send + Sync>;
-static BENCH_HOOK: RwLock<Option<Hook>> = RwLock::new(None);
+type Hook = Rc<dyn Fn(&str)>;
 
-/// Mirrors `panic_telemetry::fire()` exactly: read lock, clone Arc, drop lock,
-/// invoke if present.
+std::thread_local! {
+    static BENCH_HOOK: RefCell<Option<Hook>> = const { RefCell::new(None) };
+}
+
+/// Mirrors `panic_telemetry::fire()` exactly: borrow the slot, clone the
+/// `Rc`, release the borrow, invoke if present.
 #[inline(never)]
 fn synthetic_fire(msg: &str) {
-    let hook = {
-        let guard = BENCH_HOOK.read().unwrap_or_else(|e| e.into_inner());
-        guard.as_ref().cloned()
-    };
+    let hook = BENCH_HOOK.with_borrow(Option::clone);
     if let Some(hook) = hook {
         let _ = catch_unwind(AssertUnwindSafe(|| hook(msg)));
     }
 }
 // endregion
 
-// region: Group 1: Read lock cost (the hot-path overhead at panic boundaries)
+// region: Group 1: Slot read cost (the overhead at panic boundaries)
 
-mod read_lock {
+mod read_slot {
     use super::*;
 
-    /// RwLock read when no hook is installed (Option is None).
-    /// This is the fast path: acquire read lock, find None, release.
+    /// No hook installed (the slot is `None`): borrow, find None, release.
     #[divan::bench]
     fn no_hook() {
-        // Ensure no hook
-        {
-            let mut g = BENCH_HOOK.write().unwrap();
-            *g = None;
-        }
+        BENCH_HOOK.set(None);
         synthetic_fire("bench");
     }
 
-    /// RwLock read when a hook IS installed but no panic is occurring.
-    /// This clones the Arc (cheap refcount bump) and invokes the hook.
+    /// A hook is installed: clone the `Rc` (refcount bump) and invoke it.
     #[divan::bench]
     fn with_hook_noop() {
-        // Install trivial hook
-        {
-            let mut g = BENCH_HOOK.write().unwrap();
-            *g = Some(Arc::new(|_msg: &str| {}));
-        }
+        BENCH_HOOK.set(Some(Rc::new(|_msg: &str| {})));
         synthetic_fire("bench");
     }
 
-    /// RwLock read + Arc clone + hook invocation with a hook that does
-    /// minimal work (writes to a black-boxed variable).
+    /// Clone + invocation with a hook that does minimal work (writes to a
+    /// black-boxed variable).
     #[divan::bench]
     fn with_hook_minimal_work() {
-        {
-            let mut g = BENCH_HOOK.write().unwrap();
-            *g = Some(Arc::new(|msg: &str| {
-                divan::black_box(msg.len());
-            }));
-        }
+        BENCH_HOOK.set(Some(Rc::new(|msg: &str| {
+            divan::black_box(msg.len());
+        })));
         synthetic_fire("bench panic message");
     }
 
-    /// Bare RwLock read (no Option check, no Arc clone) for reference.
+    /// Bare slot borrow (no Option check, no `Rc` clone) for reference.
     #[divan::bench]
-    fn bare_rwlock_read() {
-        let guard = BENCH_HOOK.read().unwrap();
-        divan::black_box(&*guard);
+    fn bare_slot_borrow() {
+        BENCH_HOOK.with_borrow(|hook| {
+            divan::black_box(hook);
+        });
     }
 }
 // endregion
 
-// region: Group 2: Write lock cost (set/clear hook — infrequent operation)
+// region: Group 2: Set/clear cost (infrequent operation)
 
-mod write_lock {
+mod set_clear {
     use super::*;
 
     /// Install a new panic telemetry hook (public API).

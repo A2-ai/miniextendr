@@ -357,3 +357,34 @@ pub fn rayon_trait_par_clear(a: Vec<f64>) -> Vec<i32> {
 }
 
 // endregion
+
+// region: Deferred conditions off R's main thread
+
+/// Queue a warning from inside Rayon tasks. Only R's main thread can queue
+/// one, so `defer_warning!` panics on the pool thread and the call errors.
+/// @param n Number of parallel items.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_defer_warning_off_main(n: i32) -> i32 {
+    miniextendr_api::optionals::parallel::ensure_pool();
+    (0..n)
+        .into_par_iter()
+        .map(|i| {
+            miniextendr_api::defer_warning!("item {i}");
+            i
+        })
+        .sum()
+}
+
+/// Collect in parallel, then queue on the main thread: the supported shape.
+/// @param n Number of parallel items.
+#[cfg(feature = "rayon")]
+#[miniextendr]
+pub fn rayon_defer_warning_after_parallel(n: i32) -> i32 {
+    miniextendr_api::optionals::parallel::ensure_pool();
+    let odd = (0..n).into_par_iter().filter(|i| i % 2 == 1).count();
+    miniextendr_api::defer_warning!("{odd} odd items");
+    n
+}
+
+// endregion

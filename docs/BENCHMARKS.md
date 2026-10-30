@@ -186,7 +186,7 @@ high-level plan lives in `miniextendr-bench/src/bench_plan.rs`.
 | `into_r` | `IntoR` scalar and vector (incl. 1 M-element scale benchmarks) |
 | `list` | List construction, named lookup, derive-based builders |
 | `native_vs_coerce` | RNative memcpy path vs element-wise coercion |
-| `panic_telemetry` | Panic-hook `RwLock` read cost, fire cost |
+| `panic_telemetry` | Panic-hook slot read cost, fire cost |
 | `preserve` | Preserve list insert/release vs `PROTECT`/`UNPROTECT` |
 | `raw_access` | `r_slice`, unchecked slice, raw pointer access across INTSXP/REALSXP |
 | `rarray` | `RArray`/`RMatrix` row/col access patterns |
