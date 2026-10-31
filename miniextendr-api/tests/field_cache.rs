@@ -11,6 +11,10 @@ use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtrMut, RSidecar, 
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::{ExternalPtr, IntoR, SEXP, TryFromSexp, miniextendr};
 
+// Defines this crate's marker type, `__MiniextendrInitMarker`, which the
+// `Err` arm of `cache_checked` names under the `serde` feature.
+miniextendr_api::miniextendr_init!(field_cache);
+
 #[derive(ExternalPtr, Clone)]
 pub struct Cached {
     #[r_data]
