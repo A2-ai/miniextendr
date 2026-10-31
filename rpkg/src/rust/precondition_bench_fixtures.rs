@@ -108,14 +108,14 @@ pub fn pcb_string_u(x: String) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// Option<i32>, R guards.
+/// `Option<i32>`, R guards.
 /// @param x NULL or integer scalar.
 #[miniextendr(noexport)]
 pub fn pcb_opt_i32(x: Option<i32>) -> i32 {
     x.unwrap_or(0)
 }
 
-/// Option<i32>, no R guards.
+/// `Option<i32>`, no R guards.
 /// @param x NULL or integer scalar.
 #[miniextendr(noexport, no_preconditions)]
 pub fn pcb_opt_i32_u(x: Option<i32>) -> i32 {
@@ -156,14 +156,14 @@ pub fn pcb_slice_f64_u(x: &[f64]) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// Vec<f64>, R guards.
+/// `Vec<f64>`, R guards.
 /// @param x Double vector.
 #[miniextendr(noexport)]
 pub fn pcb_vec_f64(x: Vec<f64>) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// Vec<f64>, no R guards.
+/// `Vec<f64>`, no R guards.
 /// @param x Double vector.
 #[miniextendr(noexport, no_preconditions)]
 pub fn pcb_vec_f64_u(x: Vec<f64>) -> i32 {
@@ -184,14 +184,14 @@ pub fn pcb_slice_i32_u(x: &[i32]) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// Vec<i32>, R guards.
+/// `Vec<i32>`, R guards.
 /// @param x Integer vector.
 #[miniextendr(noexport)]
 pub fn pcb_vec_i32(x: Vec<i32>) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// Vec<i32>, no R guards.
+/// `Vec<i32>`, no R guards.
 /// @param x Integer vector.
 #[miniextendr(noexport, no_preconditions)]
 pub fn pcb_vec_i32_u(x: Vec<i32>) -> i32 {
@@ -642,14 +642,14 @@ pub fn pcb_rust_inherits(x: SEXP, cls: &str) -> bool {
 
 // region: coerce Vec<i32> from doubles
 
-/// coerce Vec<i32>: R whole-number guard, then the Rust element check.
+/// coerce `Vec<i32>`: R whole-number guard, then the Rust element check.
 /// @param x Integer or whole-number double vector.
 #[miniextendr(noexport, coerce)]
 pub fn pcb_coerce_vec_i32(x: Vec<i32>) -> i32 {
     len_i32(black_box(x).len())
 }
 
-/// coerce Vec<i32> under no_preconditions: the Rust element check only.
+/// coerce `Vec<i32>` under no_preconditions: the Rust element check only.
 /// @param x Integer or whole-number double vector.
 #[miniextendr(noexport, coerce, no_preconditions)]
 pub fn pcb_coerce_vec_i32_u(x: Vec<i32>) -> i32 {

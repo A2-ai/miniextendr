@@ -9,7 +9,7 @@ pub fn coerce_input_scalar_i8(x: i8) -> i8 {
     x
 }
 
-/// Identity for a coerced Vec<i8> parameter.
+/// Identity for a coerced `Vec<i8>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_i8(x: Vec<i8>) -> Vec<i8> {
@@ -23,7 +23,7 @@ pub fn coerce_input_scalar_i16(x: i16) -> i16 {
     x
 }
 
-/// Identity for a coerced Vec<i16> parameter.
+/// Identity for a coerced `Vec<i16>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_i16(x: Vec<i16>) -> Vec<i16> {
@@ -37,7 +37,7 @@ pub fn coerce_input_scalar_u16(x: u16) -> u16 {
     x
 }
 
-/// Identity for a coerced Vec<u16> parameter.
+/// Identity for a coerced `Vec<u16>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_u16(x: Vec<u16>) -> Vec<u16> {
@@ -51,7 +51,7 @@ pub fn coerce_input_scalar_u32(x: u32) -> u32 {
     x
 }
 
-/// Identity for a coerced Vec<u32> parameter.
+/// Identity for a coerced `Vec<u32>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_u32(x: Vec<u32>) -> Vec<u32> {
@@ -65,7 +65,7 @@ pub fn coerce_input_scalar_i64(x: i64) -> i64 {
     x
 }
 
-/// Identity for a coerced Vec<i64> parameter.
+/// Identity for a coerced `Vec<i64>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_i64(x: Vec<i64>) -> Vec<i64> {
@@ -79,7 +79,7 @@ pub fn coerce_input_scalar_u64(x: u64) -> u64 {
     x
 }
 
-/// Identity for a coerced Vec<u64> parameter.
+/// Identity for a coerced `Vec<u64>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_u64(x: Vec<u64>) -> Vec<u64> {
@@ -93,7 +93,7 @@ pub fn coerce_input_scalar_isize(x: isize) -> isize {
     x
 }
 
-/// Identity for a coerced Vec<isize> parameter.
+/// Identity for a coerced `Vec<isize>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_isize(x: Vec<isize>) -> Vec<isize> {
@@ -107,7 +107,7 @@ pub fn coerce_input_scalar_usize(x: usize) -> usize {
     x
 }
 
-/// Identity for a coerced Vec<usize> parameter.
+/// Identity for a coerced `Vec<usize>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_usize(x: Vec<usize>) -> Vec<usize> {
@@ -121,7 +121,7 @@ pub fn coerce_input_scalar_f32(x: f32) -> f32 {
     x
 }
 
-/// Identity for a coerced Vec<f32> parameter.
+/// Identity for a coerced `Vec<f32>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_f32(x: Vec<f32>) -> Vec<f32> {
@@ -135,7 +135,7 @@ pub fn coerce_input_scalar_i32(x: i32) -> i32 {
     x
 }
 
-/// Identity for a coerced native Vec<i32> parameter.
+/// Identity for a coerced native `Vec<i32>` parameter.
 /// @param x Integer, whole-number double, logical, or raw vector.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_i32(x: Vec<i32>) -> Vec<i32> {
@@ -149,7 +149,7 @@ pub fn coerce_input_scalar_f64(x: f64) -> f64 {
     x
 }
 
-/// Identity for a coerced native Vec<f64> parameter.
+/// Identity for a coerced native `Vec<f64>` parameter.
 /// @param x Numeric, logical, or raw vector.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_f64(x: Vec<f64>) -> Vec<f64> {
@@ -177,7 +177,7 @@ pub fn coerce_input_scalar_bool(x: bool) -> bool {
     x
 }
 
-/// Identity for a coerced Vec<bool> parameter.
+/// Identity for a coerced `Vec<bool>` parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]
 pub fn coerce_input_vector_bool(x: Vec<bool>) -> Vec<bool> {
@@ -192,49 +192,49 @@ pub fn coerce_input_per_arg(#[miniextendr(coerce)] x: bool, y: bool) -> Vec<bool
     vec![x, y]
 }
 
-/// Identity for a coerced Option<bool> parameter (#2274): NULL and NA read None.
+/// Identity for a coerced `Option<bool>` parameter (#2274): NULL and NA read None.
 /// @param x NULL, NA, a logical, or integer zero or one.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_bool(x: Option<bool>) -> Option<bool> {
     x
 }
 
-/// Identity for a coerced Vec<Option<bool>> parameter: NA elements read None.
+/// Identity for a coerced `Vec<Option<bool>>` parameter: NA elements read None.
 /// @param x Logical vector, or integer zeros, ones and NAs.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_vector_bool(x: Vec<Option<bool>>) -> Vec<Option<bool>> {
     x
 }
 
-/// Identity for a coerced Option<i32> parameter: NULL and NA read None.
+/// Identity for a coerced `Option<i32>` parameter: NULL and NA read None.
 /// @param x NULL, NA, or an integer, whole-number double, logical, or raw scalar.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_i32(x: Option<i32>) -> Option<i32> {
     x
 }
 
-/// Identity for a coerced Vec<Option<i32>> parameter: NA elements read None.
+/// Identity for a coerced `Vec<Option<i32>>` parameter: NA elements read None.
 /// @param x Integer, whole-number double, logical, or raw vector.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_vector_i32(x: Vec<Option<i32>>) -> Vec<Option<i32>> {
     x
 }
 
-/// Identity for a coerced Option<f64> parameter: NULL and NA read None.
+/// Identity for a coerced `Option<f64>` parameter: NULL and NA read None.
 /// @param x NULL, NA, or a numeric, logical, or raw scalar.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_f64(x: Option<f64>) -> Option<f64> {
     x
 }
 
-/// Identity for a coerced Vec<Option<f64>> parameter: NA elements read None.
+/// Identity for a coerced `Vec<Option<f64>>` parameter: NA elements read None.
 /// @param x Numeric, logical, or raw vector.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_vector_f64(x: Vec<Option<f64>>) -> Vec<Option<f64>> {
     x
 }
 
-/// Whether a coerced Option<f64> read None (TRUE) or a value (FALSE).
+/// Whether a coerced `Option<f64>` read None (TRUE) or a value (FALSE).
 /// @param x NULL, NA, NaN, or a numeric, logical, or raw scalar.
 #[miniextendr(coerce, noexport)]
 pub fn coerce_input_optional_f64_is_none(x: Option<f64>) -> bool {
