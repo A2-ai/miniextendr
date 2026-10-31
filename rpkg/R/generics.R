@@ -82,6 +82,24 @@ NULL
 #' @name add_tag
 NULL
 
+#' Add a key to an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name add_key
+NULL
+
+#' Add an item to an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name grow
+NULL
+
+#' Count the items of an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name item_count
+NULL
+
 #' Number of values held by an object
 #' @param x An object.
 #' @param ... Additional arguments.

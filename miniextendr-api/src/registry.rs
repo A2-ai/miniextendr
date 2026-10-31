@@ -715,6 +715,10 @@ pub struct SidecarPropEntry {
     /// Documentation string for this property.
     /// Defaults to `"(undocumented sidecar property)"` when no `prop_doc` was supplied.
     pub prop_doc: &'static str,
+    /// Whether the property has no setter (a `Computed` or
+    /// `#[r_data(read_only)]` field, #2268): the derive then emits no
+    /// `<Class>_set_<field>()`.
+    pub read_only: bool,
 }
 
 // SAFETY: All fields are &'static str — immutable and valid for program lifetime.
@@ -4223,7 +4227,8 @@ fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
 /// class-name registry.
 ///
 /// The derive emits two top-level functions per field —
-/// `<prefix>_get_<field>` and `<prefix>_set_<field>` — where `<prefix>` is the
+/// `<prefix>_get_<field>` and `<prefix>_set_<field>` (none for a read-only
+/// field, #2268) — where `<prefix>` is the
 /// R-visible class name. That equals the Rust type name unless the impl block
 /// set `class = "Override"`, in which case `MX_CLASS_NAMES` carries the
 /// override. We resolve through `class_index` so the names we attribute match
@@ -4251,7 +4256,10 @@ fn sidecar_accessor_names(
             format!("{prefix}_get_{}", entry.field_name),
             producer.clone(),
         );
-        out.insert(format!("{prefix}_set_{}", entry.field_name), producer);
+        // A read-only property has no setter accessor (#2268).
+        if !entry.read_only {
+            out.insert(format!("{prefix}_set_{}", entry.field_name), producer);
+        }
     }
     out
 }

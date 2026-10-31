@@ -158,6 +158,11 @@ unsafe fn data1_value_mut<T: TypedExternal>(erased: ErasedExternalPtr) -> Option
 /// - **[`Computed`]** - a read-only field computed from the Rust value by a
 ///   getter function (`#[r_data(get = "Self::f")]`)
 ///
+/// `#[r_data(read_only)]` on a public field of the first three kinds makes
+/// it read-only from R (#2268): R gets no setter, and the field methods, an
+/// R6 active binding and an S7 property refuse a write as they refuse one
+/// to a `Computed` field. The Rust accessors of a `Sidecar` field stay.
+///
 /// Every field but a `Sidecar` lives in the Rust struct, so a reader always
 /// sees the Rust value and a writer either converts into it or gets an error.
 /// Those values sit behind the pointer's address, which `saveRDS` does not
@@ -233,7 +238,10 @@ pub struct RSidecar;
 ///   `$` / `[[` field methods of `s3(r_data_accessors)` & co., at the field's
 ///   declared place among the `Sidecar` and struct fields;
 /// - no setter: no `Engine_set_group_by()`, and under the get/set form an
-///   assignment (`x$group_by <- v`) raises `miniextendr_read_only_field`.
+///   assignment (`x$group_by <- v`) raises `miniextendr_read_only_field`,
+///   as an R6 active binding does; an S7 property has no setter, so S7
+///   refuses the assignment (#1888). An `#[r_data(read_only)]` field is
+///   read-only from R the same way (#2268).
 ///
 /// The getter runs on R's main thread with the live Rust value, so a
 /// computed field refuses a pointer restored from a saved session like a
@@ -247,8 +255,7 @@ pub struct RSidecar;
 /// `NULL`. The getter takes `&Self`, so it can't read `Sidecar` values
 /// (#1856), which are R fields already.
 ///
-/// Only a `pub` `Computed` field reaches R, and only on S3, S4, env and
-/// vctrs types: R6 active bindings and S7 properties need a setter (#1888).
+/// Only a `pub` `Computed` field reaches R.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Computed;
 // endregion

@@ -853,12 +853,26 @@ generates only the reading methods. A method on another class
 
 ### "the getters-only form `r_data_accessors = "get"` applies to `s3`, `s4` and `env` classes"
 
-R6 active bindings and S7 properties always come with their setters, so
+R6 active bindings and S7 properties are generated for every field, so
 `r6(r_data_accessors = "get")` and `s7(r_data_accessors = "get")` are
-refused; use the bare `r_data_accessors`. The same family covers `unknown
-r_data_accessors value` (the only value is `"get"`) and `vctrs classes have
-no r_data_accessors` (a vctrs class uses the standalone
+refused; use the bare `r_data_accessors`, and mark a field R must not write
+`#[r_data(read_only)]`: its binding refuses a value and its property has no
+setter. The same family covers the read-only form `r_data_accessors =
+"read_only"` (refused on R6 and S7 for the same reason), `unknown
+r_data_accessors value` (the values are `"get"` and `"read_only"`) and
+`vctrs classes have no r_data_accessors` (a vctrs class uses the standalone
 `Type_get_<field>()` / `Type_set_<field>()`).
+
+### "`read_only` makes a public `#[r_data]` field read-only from R ..."
+
+`#[r_data(read_only)]` takes R's setter away from a field R would otherwise
+write (#2268), so it is refused where there is none to take: on the
+`RSidecar` selector, on a field that is not `pub` (R doesn't reach it), on a
+`Computed` field (read-only already) and next to `setter = ...` (no R setter
+whose return to choose). Remove the option there. The same family covers
+`` `read_only` takes no value `` (write `read_only`, not `read_only = "yes"`)
+and `duplicate read_only option`. It goes with `ref` / `mut`, which select
+the Rust accessors of a `Sidecar<T>` field: read-only applies to R only.
 
 ### "`s3(r_data_accessors)` on `Type` needs the field helpers `#[derive(ExternalPtr)]` emits"
 

@@ -1568,7 +1568,8 @@ the class system.
    `$` / `[[` methods that read them, `$<-` / `[[<-` methods that write
    them, and `.DollarNames()` for completion; an S3 class also gets
    `names()` and `as.list()`. On S3, S4 and env, `r_data_accessors = "get"`
-   generates the readers only.
+   generates the readers only, and `r_data_accessors = "read_only"` the
+   readers and a `$<-` / `[[<-` that refuses every field (#2268).
 
 ### Rust Code
 
@@ -1660,10 +1661,9 @@ have no setter: no `MyConfig_set_cache_size()`, and under the get/set form
 `x$cache_size <- v` raises `miniextendr_read_only_field` (`` `cache_size` of
 `MyConfig` is computed from the Rust value and can't be assigned ``, naming
 the object's R class). A
-computed field exists only for R, so it must be `pub`; and it can't be an R6
-active binding or an S7 property, which need a setter (#1888), so it is
-refused under `#[externalptr(r6)]` / `#[externalptr(s7)]`; the example above
-is an S3 class for that reason. The getter's errors are its own: a
+computed field exists only for R, so it must be `pub`. Under R6 and S7 it is
+a read-only active binding or property, as a read-only field is (below,
+#1888). The getter's errors are its own: a
 `rust_error!(class = "pkg_error", "...")` in it reaches R with that class and
 the call as written (`x$cache_size`). It takes `&Self`, so it can't read
 `Sidecar` values, which are R fields already. A getter returning `Result` is
@@ -1672,16 +1672,83 @@ reads the value, `Err` raises the error with its `RConditionData` classes and
 fields, and `Err(())` of a `Result<T, ()>` reads `NULL`. To raise a typed
 error by hand, `RCondition::from_data(&e).raise()`.
 
+#### Read-only fields
+
+`#[r_data(read_only)]` makes one field read-only from R (#2268); its siblings
+stay writable. R reads it as any field and can't write it:
+
+- No `MyConfig_set_<name>()` and no setter C entry point.
+- Under the get/set field syntax (`s3`, `s4`, `env`), `x$name <- v` and
+  `x[["name"]] <- v` raise `miniextendr_read_only_field`
+  (`` `name` of `MyConfig` is read-only ``), on the call as written.
+- An R6 active binding refuses a value with the same class. Its condition
+  has no call: R6 calls the binding with the value, so the call as written
+  isn't in reach.
+- An S7 property has no setter, which S7 reads as a read-only property: `obj@name <- v`
+  raises S7's own error (`Can't set read-only property <pkg::MyConfig>@name`),
+  without the miniextendr classes.
+
+`r_data_accessors = "read_only"` on an S3, S4 or env impl makes every field
+read-only through the field syntax: `$` / `[[` read, and the generated `$<-`
+/ `[[<-` refuse each field with `miniextendr_read_only_field` (a name that is
+no field still raises `miniextendr_no_field`). It is the field syntax of an
+immutable class that wants assignment refused rather than left to R's
+default for a pointer. The standalone setters stay internal, as under
+`"get"`: the derive can't see the impl option. R6 and S7 refuse it: mark
+each field `read_only` there.
+
+Read-only applies to R only. The Rust accessors of a `Sidecar<T>` field
+stay (`#[r_data(ref, mut, read_only)]` makes them public), and a method
+writes a struct field through `&mut self`, so the package changes the field
+through its own methods.
+
+The type's `field_error(class = ...)` classes lead the refusal, and
+`field_error(read_only_hint = "...")` adds the package's sentence after its
+message, each `%s` in it the field's R name, as `no_field_hint` does for
+`miniextendr_no_field`. A computed field's refusal takes both too.
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(
+    s3,
+    field_error(class = "pkg_error", read_only_hint = "Build a new config to change `%s`.")
+)]
+pub struct MyConfig {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data(read_only)]
+    pub id: i32,
+    #[r_data]
+    pub name: String,
+}
+```
+
+```r
+x$name <- "new"   # writes
+x$id <- 2L
+#> Error in x$id <- value :
+#>   `id` of `MyConfig` is read-only. Build a new config to change `id`.
+class(tryCatch(x$id <- 2L, error = identity))
+#> [1] "pkg_error"                   "miniextendr_read_only_field"
+#> [3] "error"                       "condition"
+```
+
+`read_only` takes no value and is refused on the `RSidecar` selector (it
+has no setter), on a private field (R doesn't reach it), on a computed field
+(read-only already) and next to `setter = ...` (there is no R setter whose
+return to choose).
+
 ### R Behavior by Class System
 
-| System | Get | Set | Computed fields | A restored pointer (`readRDS()`) |
+| System | Get | Set | Computed and read-only fields | A restored pointer (`readRDS()`) |
 |--------|-----|-----|-----|-----|
-| **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` | refused at compile time (#1888) | the bindings read and write the save's `Sidecar` values |
-| **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` | refused at compile time (#1888) | the properties read and write the save's `Sidecar` values |
+| **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` (no call) | the bindings read and write the save's `Sidecar` values |
+| **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` | `obj@cache_size`; a property without a setter, which S7 refuses to assign | the properties read and write the save's `Sidecar` values |
 | **S3** with `s3(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` | `obj$cache_size`; `obj$cache_size <- v` raises `miniextendr_read_only_field` | the field methods refuse it |
 | **S4** with `s4(r_data_accessors)` | `obj$name` | `obj$name <- "new"` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` | the field methods refuse it |
 | **Env** with `env(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` | the field methods refuse it |
 | **S3, S4, env** with `r_data_accessors = "get"` | as above | the class's own `$<-`, which can call the internal `MyConfig_set_name(x, "new")` | `obj$cache_size`; no generated assignment | the field methods refuse it |
+| **S3, S4, env** with `r_data_accessors = "read_only"` | as above | every field: `miniextendr_read_only_field` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` | the field methods refuse it |
 | **vctrs**, and any class without the option | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` | `MyConfig_get_cache_size(x)` | the standalone accessors read and write the save's `Sidecar` values |
 
 The standalone functions take the external pointer, or any object that

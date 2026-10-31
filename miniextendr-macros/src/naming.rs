@@ -246,6 +246,12 @@ pub(crate) enum RDataHelper {
     /// `.rdata_no_field_<Type>(name, env, cls)`: the `miniextendr_no_field`
     /// error, naming the R class `cls` the method serves.
     NoField,
+    /// `.rdata_read_only_<Type>(name, x, env, why)`: the
+    /// `miniextendr_read_only_field` error of a write to a field R can't
+    /// write, a `Computed` or `#[r_data(read_only)]` one or any under
+    /// `r_data_accessors = "read_only"` (#2268), naming the R class of `x`
+    /// and with `field_error(read_only_hint = ...)` after it.
+    ReadOnly,
     /// `.rdata_error_class_<Type>`: the classes the field methods put in
     /// front of their own errors, `#[externalptr(field_error(class = ...))]`
     /// (#1899); `NULL` without them.
@@ -270,6 +276,7 @@ pub(crate) fn rdata_helper_name(helper: RDataHelper, type_name: &str) -> String 
         RDataHelper::Get => "get",
         RDataHelper::Set => "set",
         RDataHelper::NoField => "no_field",
+        RDataHelper::ReadOnly => "read_only",
         RDataHelper::ErrorClass => "error_class",
         RDataHelper::EveryRead => "every_read",
         RDataHelper::Live => "live",

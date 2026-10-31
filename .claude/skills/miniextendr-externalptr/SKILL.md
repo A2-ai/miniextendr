@@ -245,8 +245,13 @@ The `#[externalptr(...)]` attribute selects the R class system:
 | `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | S7 | Properties via `new_property()` |
 
 On S3, S4 and env, `r_data_accessors = "get"` generates the reading methods
-only (for a class with its own copy-on-modify `$<-`); the default setters
-write in place, so every copy of the object sees the write. Every class
+only (for a class with its own copy-on-modify `$<-`), and `r_data_accessors =
+"read_only"` the readers and a `$<-` / `[[<-` that refuses every field with
+`miniextendr_read_only_field`; the default setters write in place, so every
+copy of the object sees the write. `#[r_data(read_only)]` makes one field
+read-only from R in every class system (no setter; R6 bindings refuse a
+value, S7 properties have no setter); `Computed` fields work the same way,
+R6 and S7 included (#2268, #1888). Every class
 system also gets the standalone `Type_get_field()` / `Type_set_field()`, which
 take the pointer or any object carrying it; there is no `r_data_accessors!`
 macro.

@@ -327,6 +327,12 @@ pub enum RDataAccessors {
     /// methods write them (for example copy-on-modify setters that return a
     /// new object).
     GetOnly,
+    /// `r_data_accessors = "read_only"` (S3, S4, env, #2268): `$` / `[[`
+    /// read the fields, and the generated `$<-` / `[[<-` refuse every field
+    /// with `miniextendr_read_only_field` (the derive's
+    /// `.rdata_read_only_<Type>`). A per-field `#[r_data(read_only)]` does
+    /// the same for one field under any class system.
+    ReadOnly,
 }
 
 impl RDataAccessors {
@@ -335,7 +341,15 @@ impl RDataAccessors {
         self != RDataAccessors::Off
     }
 
-    /// Whether the class gets field setters (`$<-` / `[[<-`).
+    /// Whether the class gets `$<-` / `[[<-` field methods: the setters of
+    /// `r_data_accessors`, or the refusals of `r_data_accessors =
+    /// "read_only"`.
+    pub fn writers(self) -> bool {
+        matches!(self, RDataAccessors::GetSet | RDataAccessors::ReadOnly)
+    }
+
+    /// Whether the `$<-` / `[[<-` field methods write the fields (through
+    /// `.rdata_set_<Type>`) rather than refuse them.
     pub fn setters(self) -> bool {
         self == RDataAccessors::GetSet
     }
@@ -445,8 +459,8 @@ fn no_field_fallback_error(key: &syn::Ident, system: &str) -> syn::Error {
 }
 
 /// Parses an `r_data_accessors` key inside `s3(...)` / `s4(...)` / `env(...)`
-/// / `r6(...)` / `s7(...)`, after the key: nothing, or `= "get"` (S3, S4 and
-/// env only).
+/// / `r6(...)` / `s7(...)`, after the key: nothing, `= "get"` or
+/// `= "read_only"` (#2268); the last two on S3, S4 and env only.
 fn parse_r_data_accessors_value(
     content: syn::parse::ParseStream,
     key: &syn::Ident,
@@ -457,25 +471,36 @@ fn parse_r_data_accessors_value(
     }
     let _: syn::Token![=] = content.parse()?;
     let value: syn::LitStr = content.parse()?;
+    let accessors = match value.value().as_str() {
+        "get" => RDataAccessors::GetOnly,
+        "read_only" => RDataAccessors::ReadOnly,
+        other => {
+            return Err(syn::Error::new(
+                value.span(),
+                format!(
+                    "unknown `r_data_accessors` value \"{other}\"; expected `r_data_accessors` \
+                     (getters and setters), `r_data_accessors = \"get\"` (getters only) or \
+                     `r_data_accessors = \"read_only\"` (getters, and setters that refuse)"
+                ),
+            ));
+        }
+    };
     if !matches!(system, ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env) {
-        return Err(syn::Error::new(
-            key.span(),
-            "the getters-only form `r_data_accessors = \"get\"` applies to `s3`, `s4` and \
-             `env` classes; R6 active bindings and S7 properties take the bare \
-             `r_data_accessors`",
-        ));
+        let form = match accessors {
+            RDataAccessors::ReadOnly => {
+                "the read-only form `r_data_accessors = \"read_only\"` applies to `s3`, `s4` and \
+                 `env` classes; R6 active bindings and S7 properties take the bare \
+                 `r_data_accessors`, and a field they must not write is `#[r_data(read_only)]`"
+            }
+            _ => {
+                "the getters-only form `r_data_accessors = \"get\"` applies to `s3`, `s4` and \
+                 `env` classes; R6 active bindings and S7 properties take the bare \
+                 `r_data_accessors`, and a field they must not write is `#[r_data(read_only)]`"
+            }
+        };
+        return Err(syn::Error::new(key.span(), form));
     }
-    if value.value() != "get" {
-        return Err(syn::Error::new(
-            value.span(),
-            format!(
-                "unknown `r_data_accessors` value \"{}\"; expected `r_data_accessors` (getters \
-                 and setters) or `r_data_accessors = \"get\"` (getters only)",
-                value.value()
-            ),
-        ));
-    }
-    Ok(RDataAccessors::GetOnly)
+    Ok(accessors)
 }
 
 /// Kind of vctrs class being created.
@@ -1467,7 +1492,8 @@ impl syn::parse::Parse for ImplAttrs {
                                 format!(
                                     "unknown {ident_str} option: {key} (expected \
                                      r_data_accessors, or r_data_accessors = \"get\" for \
-                                     getters only{lookup}, fallback = \"Self::f\", \
+                                     getters only, or r_data_accessors = \"read_only\" for \
+                                     setters that refuse{lookup}, fallback = \"Self::f\", \
                                      fallback_names = \"Self::g\")"
                                 ),
                             ));
@@ -3526,6 +3552,9 @@ impl ParsedImpl {
             RDataAccessors::Off => {}
             RDataAccessors::GetSet => options.push("r_data_accessors".to_string()),
             RDataAccessors::GetOnly => options.push("r_data_accessors = \"get\"".to_string()),
+            RDataAccessors::ReadOnly => {
+                options.push("r_data_accessors = \"read_only\"".to_string());
+            }
         }
         if self.field_lookup == FieldLookup::List {
             options.push("lookup = \"list\"".to_string());

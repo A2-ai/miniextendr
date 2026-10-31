@@ -8811,6 +8811,21 @@ fn parse_field_syntax_options() {
             ClassSystem::Env,
             RDataAccessors::GetOnly,
         ),
+        (
+            "s3(r_data_accessors = \"read_only\")",
+            ClassSystem::S3,
+            RDataAccessors::ReadOnly,
+        ),
+        (
+            "s4(r_data_accessors = \"read_only\")",
+            ClassSystem::S4,
+            RDataAccessors::ReadOnly,
+        ),
+        (
+            "env(r_data_accessors = \"read_only\")",
+            ClassSystem::Env,
+            RDataAccessors::ReadOnly,
+        ),
         ("s3", ClassSystem::S3, RDataAccessors::Off),
     ] {
         let parsed: ImplAttrs = syn::parse_str(attrs).unwrap();
@@ -8831,13 +8846,22 @@ fn parse_field_syntax_options_refusals() {
     for attrs in [
         "r6(r_data_accessors = \"get\")",
         "s7(r_data_accessors = \"get\")",
+        "r6(r_data_accessors = \"read_only\")",
+        "s7(r_data_accessors = \"read_only\")",
     ] {
         let err = parse_attrs_err(attrs);
         assert!(
             err.contains("applies to `s3`, `s4` and `env` classes"),
             "{attrs}: {err}"
         );
+        // R6 and S7 mark a field they must not write (#2268).
+        assert!(err.contains("`#[r_data(read_only)]`"), "{attrs}: {err}");
     }
+    let err = parse_attrs_err("s3(r_data_accessors = \"readonly\")");
+    assert!(
+        err.contains("`r_data_accessors = \"read_only\"` (getters, and setters that refuse)"),
+        "{err}"
+    );
     let err = parse_attrs_err("vctrs(r_data_accessors)");
     assert!(
         err.contains("vctrs classes have no `r_data_accessors`"),
@@ -9085,6 +9109,67 @@ fn s3_field_methods_getters_only() {
     assert!(!wrapper.contains("`$<-.Engine`"), "{wrapper}");
     assert!(!wrapper.contains("`[[<-.Engine`"), "{wrapper}");
     assert!(!wrapper.contains(".rdata_set_Engine"), "{wrapper}");
+}
+
+/// The read-only form (#2268) generates the readers and writers that refuse
+/// every field with the derive's `.rdata_read_only_<Type>`, on the method's
+/// call; a name that is not a field goes where it goes under the setters
+/// (refused on the bare pointer, a list's or environment's own otherwise).
+/// Nothing calls `.rdata_set_<Type>`.
+#[test]
+fn field_methods_read_only_form() {
+    let refuse = |name: &str| format!("  .rdata_read_only_Engine({name}, x, environment())\n}}");
+    let value = "#' @param value A value for a field; the fields are read-only, so the assignment is refused.";
+
+    let s3 = generate_s3_r_wrapper(&field_syntax_impl(
+        ClassSystem::S3,
+        RDataAccessors::ReadOnly,
+    ));
+    assert_s3_readers(&s3, "Engine");
+    assert_eq!(s3_method_formals(&s3, "$<-.Engine"), "x, name, value");
+    assert_eq!(s3_method_formals(&s3, "[[<-.Engine"), "x, i, ..., value");
+    assert!(
+        s3.contains(&format!(
+            "  if (is.na(match(name, .rdata_fields_Engine))) {{\n    if (typeof(x) == \"externalptr\") \
+             .rdata_no_field_Engine(name, environment(), \"Engine\")\n    return(NextMethod())\n  }}\n{}",
+            refuse("name")
+        )),
+        "{s3}"
+    );
+    assert!(s3.contains(&refuse("i")), "{s3}");
+    assert!(s3.contains(value), "{s3}");
+    assert!(!s3.contains(".rdata_set_Engine"), "{s3}");
+
+    let s4 = generate_s4_r_wrapper(&field_syntax_impl(
+        ClassSystem::S4,
+        RDataAccessors::ReadOnly,
+    ));
+    assert!(
+        s4.contains(
+            "methods::setMethod(\"$<-\", \"Engine\", function(x, name, value) {\n  if (is.na(match(name, \
+             .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment(), \"Engine\")\n  \
+             .rdata_read_only_Engine(name, x, environment())\n})"
+        ),
+        "{s4}"
+    );
+    assert!(s4.contains("#' @exportMethod $<-"), "{s4}");
+    assert!(s4.contains(value), "{s4}");
+    assert!(!s4.contains(".rdata_set_Engine"), "{s4}");
+
+    let env = generate_env_r_wrapper(&field_syntax_impl(
+        ClassSystem::Env,
+        RDataAccessors::ReadOnly,
+    ));
+    assert!(env.contains(&refuse("name")), "{env}");
+    assert!(env.contains("`[[<-.Engine` <- `$<-.Engine`"), "{env}");
+    assert!(!env.contains(".rdata_set_Engine"), "{env}");
+
+    // A class setting the blocks must agree on.
+    let settings = field_syntax_impl(ClassSystem::S3, RDataAccessors::ReadOnly).class_settings();
+    assert!(
+        settings.contains("s3(r_data_accessors = \"read_only\")"),
+        "{settings}"
+    );
 }
 
 /// A package that builds its objects itself: an impl with `class = "..."`
@@ -9672,6 +9757,18 @@ fn field_methods_collide_with_impl_methods() {
     };
     let mut attrs = default_impl_attrs(ClassSystem::S3);
     attrs.r_data_accessors = RDataAccessors::GetSet;
+    let err = ParsedImpl::parse(attrs, dollar_assign.clone())
+        .expect_err("a collision")
+        .to_string();
+    assert!(
+        err.contains("defines the `$<-` method of `Engine`"),
+        "{err}"
+    );
+    assert!(err.contains("s3(r_data_accessors = \"get\")"), "{err}");
+
+    // The read-only form generates `$<-` too (#2268).
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::ReadOnly;
     let err = ParsedImpl::parse(attrs, dollar_assign.clone())
         .expect_err("a collision")
         .to_string();

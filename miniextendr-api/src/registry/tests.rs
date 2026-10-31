@@ -2044,6 +2044,7 @@ fn detect_duplicate_clean_content_passes() {
             rust_type: "Shape",
             field_name: "area",
             prop_doc: "",
+            read_only: false,
         }],
         &[ClassNameEntry {
             rust_type: "Shape",
@@ -2053,6 +2054,28 @@ fn detect_duplicate_clean_content_passes() {
         }],
     );
     assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
+}
+
+/// A read-only S7 property (#2268) has a getter accessor and no setter one,
+/// so only `<Class>_get_<field>` is a name the derive takes.
+#[test]
+fn read_only_sidecar_property_takes_no_setter_name() {
+    let map = accessor_map(
+        &[SidecarPropEntry {
+            rust_type: "Shape",
+            field_name: "area",
+            prop_doc: "",
+            read_only: true,
+        }],
+        &[ClassNameEntry {
+            rust_type: "Shape",
+            r_class_name: "Shape",
+            class_system: "s7",
+            field_syntax: false,
+        }],
+    );
+    assert!(map.contains_key("Shape_get_area"), "{map:?}");
+    assert!(!map.contains_key("Shape_set_area"), "{map:?}");
 }
 
 #[test]
@@ -2069,6 +2092,7 @@ fn detect_duplicate_shortcut_vs_sidecar_accessor_fails() {
             rust_type: "Shape",
             field_name: "area",
             prop_doc: "",
+            read_only: false,
         }],
         &[ClassNameEntry {
             rust_type: "Shape",
@@ -2098,6 +2122,7 @@ fn detect_duplicate_honours_class_override_prefix() {
             rust_type: "S7Shape",
             field_name: "area",
             prop_doc: "",
+            read_only: false,
         }],
         &[ClassNameEntry {
             rust_type: "S7Shape",

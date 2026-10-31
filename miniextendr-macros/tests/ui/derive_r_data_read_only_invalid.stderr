@@ -1,0 +1,41 @@
+error: `read_only` takes no value: `#[r_data(read_only)]`
+  --> tests/ui/derive_r_data_read_only_invalid.rs:15:14
+   |
+15 |     #[r_data(read_only = "yes")]
+   |              ^^^^^^^^^
+
+error: duplicate `read_only` option
+  --> tests/ui/derive_r_data_read_only_invalid.rs:23:25
+   |
+23 |     #[r_data(read_only, read_only)]
+   |                         ^^^^^^^^^
+
+error: `read_only` makes a public `#[r_data]` field read-only from R (no R setter, and the field methods refuse a write); it doesn't apply to a `Computed` field, which is read-only already: it has no setter
+  --> tests/ui/derive_r_data_read_only_invalid.rs:31:14
+   |
+31 |     #[r_data(read_only, get = "Self::f")]
+   |              ^^^^^^^^^
+
+error: `read_only` makes a public `#[r_data]` field read-only from R (no R setter, and the field methods refuse a write); it doesn't apply to the RSidecar selector, which has no R accessors
+  --> tests/ui/derive_r_data_read_only_invalid.rs:37:14
+   |
+37 |     #[r_data(read_only)]
+   |              ^^^^^^^^^
+
+error: `read_only` makes a public `#[r_data]` field read-only from R (no R setter, and the field methods refuse a write); it doesn't apply to a field that is not `pub`: only `pub` `#[r_data]` fields reach R, and `read_only` applies to R only
+  --> tests/ui/derive_r_data_read_only_invalid.rs:45:14
+   |
+45 |     #[r_data(read_only)]
+   |              ^^^^^^^^^
+
+error: `read_only` makes a public `#[r_data]` field read-only from R (no R setter, and the field methods refuse a write); it doesn't apply to a field with `setter = ...`: a read-only field has no R setter whose return to choose
+  --> tests/ui/derive_r_data_read_only_invalid.rs:53:14
+   |
+53 |     #[r_data(read_only, setter = "visible")]
+   |              ^^^^^^^^^
+
+error: unknown key `readonly`; supported: `ref`, `mut`, `read_only`, `name`, `get`, `prop_doc`, `setter`
+  --> tests/ui/derive_r_data_read_only_invalid.rs:61:14
+   |
+61 |     #[r_data(readonly)]
+   |              ^^^^^^^^
