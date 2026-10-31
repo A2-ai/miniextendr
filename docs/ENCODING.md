@@ -1,49 +1,59 @@
 # Encoding and Locale
 
-This document covers miniextendr's UTF-8 locale requirement and encoding
-probing utilities.
+This document covers how miniextendr converts R strings in any locale, and its
+encoding probing utilities.
 
-**Source:** `miniextendr-api/src/encoding.rs`
+**Source:** `miniextendr-api/src/encoding.rs`, `miniextendr-api/src/from_r.rs`
 
-## UTF-8 Locale Assertion
+## Strings in any locale
 
-miniextendr requires a UTF-8 locale. The `miniextendr_assert_utf8_locale()`
-function is called during package initialization (`R_init_*`) and terminates
-with an R error if the session is not UTF-8.
+A miniextendr package loads in any locale, including `LANG=C`, `LANG=POSIX`
+and an unset locale (minimal containers, batch jobs with a stripped
+environment). Each conversion from an R string to Rust reads that string's own
+encoding mark:
 
-This makes the meaning of native/unmarked CHARSXPs unambiguous. A UTF-8 process
-locale does **not** make every CHARSXP UTF-8: R can still carry explicitly
-tagged Latin-1 and `bytes` strings. The conversion layer therefore handles the
-per-string tag as well:
+| R string | Conversion to Rust |
+|----------|--------------------|
+| ASCII | borrowed (`R_CHAR` + `LENGTH`, zero-copy) |
+| marked UTF-8 | borrowed; the bytes are validated, and malformed UTF-8 is an error |
+| native (unmarked), in a UTF-8 session | borrowed and validated, as for UTF-8 |
+| native non-ASCII, in a non-UTF-8 session | translated from the session's encoding with `Rf_translateCharUTF8` |
+| marked Latin-1 | translated with `Rf_translateCharUTF8` |
+| marked `bytes` | an error: arbitrary bytes are not text |
 
-- UTF-8, ASCII, and native strings in a UTF-8 locale use the zero-copy
-  `R_CHAR` + `LENGTH` path.
-- Latin-1 and other translatable text is converted with
-  `Rf_translateCharUTF8`.
-- `bytes` strings are rejected because arbitrary bytes cannot be represented
-  by Rust's UTF-8 `str` type.
+Whether a native string needs translation is R's decision:
+`Rf_translateCharUTF8` hands back the string's own bytes when none is needed,
+and it reads the session's current locale, so a `Sys.setlocale()` mid-session
+is followed. A translated string is a copy (`String`, a `Vec<Cow<str>>`
+element), or borrowed from R's buffer for the current `.Call` (`&str`, a
+scalar `Cow<str>` parameter). Borrowed views that can
+outlive the call (`StrVec` / `ProtectedStrVec` accessors) refuse a string that
+needs translation; read it as `String` or `Cow<str>`.
 
-R >= 4.2.0 uses UTF-8 by default on all mainstream platforms, so the locale
-gate only fails on old or misconfigured installations.
+Strings miniextendr gives R are always marked UTF-8, so they are correct in
+any locale.
 
-### How It Works
+### The translation warning
 
-1. Calls `l10n_info()` (public R API) during `R_init_*`
-2. Reads the `"UTF-8"` element from the result
-3. If `FALSE`, raises an R error:
-   `"miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)"`
+In a session whose locale isn't UTF-8, the first native non-ASCII string a
+package translates raises one warning, of class
+`miniextendr_native_translation`, when the call returns:
 
-### Initialization Integration
-
-The assertion is called automatically by `package_init()` (via `miniextendr_init!`):
-
-```rust
-// lib.rs - the macro handles UTF-8 assertion automatically
-miniextendr_api::miniextendr_init!(mypkg);
+```text
+Warning message:
+translated a string from the session's native encoding to UTF-8: the R
+session's locale isn't UTF-8, so characters that encoding can't represent
+became <xx> escapes. Start R in a UTF-8 locale (for example LANG=C.UTF-8) to
+avoid translation. Shown once per session.
 ```
 
-No user action is required. `miniextendr_init!` includes the UTF-8 locale
-check as part of the standard initialization sequence.
+In a C or POSIX locale the session's encoding is ASCII, so a byte such as
+`0xE9` comes out as `<e9>` (R's own escape for an unrepresentable byte). ASCII
+and UTF-8-marked data never warn. Muffle it with
+`withCallingHandlers(..., miniextendr_native_translation = function(w) invokeRestart("muffleWarning"))`.
+
+R >= 4.2.0 uses UTF-8 by default on mainstream platforms; set `LANG=C.UTF-8`
+(or another UTF-8 locale) where the environment leaves it unset.
 
 ## Encoding Info (Non-API, Embedding Only)
 
@@ -103,6 +113,6 @@ For background, R has two layers of encoding:
 2. **Global locale state** -- R tracks whether the session locale is UTF-8 or
    Latin-1. This affects how "native" strings are interpreted.
 
-miniextendr requires a UTF-8 locale for native/unmarked strings and still
-honors each explicit CHARSXP encoding tag. This keeps the common path
-zero-copy without treating the process locale as a property of every string.
+miniextendr honors each CHARSXP's encoding tag and lets R decide, per
+native string, whether the session's locale needs a translation. The common
+path (ASCII, UTF-8, native in a UTF-8 session) stays zero-copy.

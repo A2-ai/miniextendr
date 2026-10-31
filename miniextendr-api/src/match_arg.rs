@@ -679,7 +679,7 @@ fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<&'static str> {
     if charsxp.is_na_string() {
         return None;
     }
-    // UTF-8 locale asserted at package init — charsxp_to_str is safe.
+    // charsxp_to_str translates a non-UTF-8 string as needed.
     Some(unsafe { charsxp_to_str(charsxp) })
 }
 
@@ -746,7 +746,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
     // the choices is not the formal default.
     let label = |i: isize| {
         let charsxp = sexp.string_elt(i);
-        // UTF-8 locale asserted at package init — charsxp_to_str is safe.
+        // charsxp_to_str translates a non-UTF-8 string as needed.
         (!charsxp.is_na_string()).then(|| unsafe { charsxp_to_str(charsxp) })
     };
     if is_formal(formal, len, label) && !sexp.has_attributes() {

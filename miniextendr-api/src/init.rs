@@ -50,11 +50,13 @@ pub(crate) fn wrapper_gen_mode() -> bool {
 ///
 /// 1. Record main thread ID
 /// 2. Enter R unwind protection and install the panic hook
-/// 3. Assert UTF-8 locale
-/// 4. Set ALTREP package name
-/// 5. Register mx_abi C-callables for cross-package trait dispatch
-/// 6. Register all `#[miniextendr]` routines and ALTREP classes
-/// 7. Lock down dynamic symbols
+/// 3. Set ALTREP package name
+/// 4. Register mx_abi C-callables for cross-package trait dispatch
+/// 5. Register all `#[miniextendr]` routines and ALTREP classes
+/// 6. Lock down dynamic symbols
+///
+/// The package loads in any locale: string conversions translate per string
+/// (`from_r::charsxp_to_str`).
 ///
 /// # Safety
 ///
@@ -83,25 +85,22 @@ pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
                 // panic infrastructure isn't fully available during DLL loading.
                 crate::backtrace::miniextendr_panic_hook();
 
-                // 3. Assert UTF-8 locale
-                crate::encoding::miniextendr_assert_utf8_locale();
-
-                // 3b. Install R console logger (if log feature enabled)
+                // 2b. Install R console logger (if log feature enabled)
                 #[cfg(feature = "log")]
                 crate::optionals::log_impl::install_r_logger();
 
-                // 4. Set ALTREP package name and DllInfo
+                // 3. Set ALTREP package name and DllInfo
                 crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
                 crate::set_altrep_dll_info(dll);
 
-                // 5. Register mx_abi C-callables
+                // 4. Register mx_abi C-callables
                 crate::mx_abi::mx_abi_register(pkg_name);
             }
 
-            // 6. Register .Call routines (and ALTREP classes, unless wrapper-gen)
+            // 5. Register .Call routines (and ALTREP classes, unless wrapper-gen)
             crate::registry::miniextendr_register_routines(dll);
 
-            // 7. Lock down dynamic symbols
+            // 6. Lock down dynamic symbols
             R_useDynamicSymbols(dll, Rboolean::FALSE);
             R_forceSymbols(dll, Rboolean::TRUE);
         },
