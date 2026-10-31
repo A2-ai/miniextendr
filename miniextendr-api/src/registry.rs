@@ -4242,9 +4242,9 @@ fn scan_digits(haystack: &[u8], from: usize) -> Option<usize> {
 /// for each `#[r_data]` field, resolving the R-visible prefix through the
 /// class-name registry.
 ///
-/// The derive emits two top-level functions per field —
-/// `<prefix>_get_<field>` and `<prefix>_set_<field>` (none for a read-only
-/// field, #2268) — where `<prefix>` is the
+/// The derive emits two top-level functions per field,
+/// `<prefix>_get_<field>` and `<prefix>_set_<field>` (no setter for a
+/// read-only field, #2268), where `<prefix>` is the
 /// R-visible class name. That equals the Rust type name unless the impl block
 /// set `class = "Override"`, in which case `MX_CLASS_NAMES` carries the
 /// override. We resolve through `class_index` so the names we attribute match
