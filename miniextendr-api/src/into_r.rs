@@ -65,6 +65,12 @@
 //!   [`AsCharacter`](crate::convert::AsCharacter)) → `NULL`. `NA` already
 //!   means `Some(marker(None))`, so `NULL` is what the marker's `Option`
 //!   reads back as `None`.
+//! - [`Nullable<T>`](crate::Nullable) → `NULL`, whatever `T` is: the
+//!   optional whose `None` means "no value at all". It reads `NULL` and `NA`
+//!   back as `None`, as `Option<T>` does, so it can also be an `#[r_data]`
+//!   field type. An `Option<T>` `#[r_data]` field follows the rules above
+//!   (an `Option<String>` field reads `NA_character_`) unless it is marked
+//!   `#[r_data(null_if_none)]`, whose getter reads `NULL` for `None` (#2270).
 //!
 //! Changing a return type from `Option<i32>` to `Option<&i32>` or
 //! `Option<Vec<i32>>` therefore silently flips the R-visible absence value

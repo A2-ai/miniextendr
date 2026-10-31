@@ -874,6 +874,24 @@ whose return to choose). Remove the option there. The same family covers
 and `duplicate read_only option`. It goes with `ref` / `mut`, which select
 the Rust accessors of a `Sidecar<T>` field: read-only applies to R only.
 
+### "`null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` ..."
+
+`#[r_data(null_if_none)]` changes how the getter of an `Option<T>` struct
+field converts `None` (#2270), so it is refused on a field that has no such
+getter, each with the spelling that reads `NULL` there:
+
+- A `Nullable<T>` field reads `NULL` for `None` already: remove the option.
+- A `Sidecar<T>` field keeps the R value it was given: declare it
+  `Sidecar<Nullable<T>>`, whose `None` is stored as `NULL`.
+- A `Computed` field reads what its `get` function returns: return
+  `Nullable<T>` from it.
+- A field of any other type has no `None`; the `RSidecar` selector and a field
+  that is not `pub` have no R getter.
+
+The same family covers `` `null_if_none` takes no value `` (write
+`null_if_none`, not `null_if_none = "yes"`) and `duplicate null_if_none
+option`. It goes with `read_only`, `name`, `setter` and `prop_doc`.
+
 ### "`s3(r_data_accessors)` on `Type` needs the field helpers `#[derive(ExternalPtr)]` emits"
 
 This one is raised when the package is installed, not at compile time: the

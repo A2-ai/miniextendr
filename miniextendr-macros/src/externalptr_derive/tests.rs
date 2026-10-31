@@ -87,6 +87,7 @@ fn sidecar_setter_raises_the_argument_error() {
             prop_doc: None,
             setter_invisible: None,
             read_only: false,
+            null_if_none: false,
         };
         super::generate_setter_body(&syn::Ident::new("T", proc_macro2::Span::call_site()), &slot)
             .to_string()
@@ -117,6 +118,36 @@ fn sidecar_setter_raises_the_argument_error() {
         "{s}"
     );
     assert!(s.contains("Some (\"MyType\")"), "{s}");
+
+    // A `Nullable<T>` field reads as `Option<T>` does, so its refusal says
+    // what an `Option<T>` field's says, with `NULL or` (#2270); the Rust
+    // type is the field's own.
+    let expected =
+        crate::r_preconditions::conversion_expectation(&syn::parse_quote!(Option<String>), false)
+            .expect("Option<String> has an expectation");
+    assert!(expected.starts_with("NULL or "), "{expected}");
+    let option = body(
+        syn::parse_quote!(Option<String>),
+        super::SlotKind::Conversion,
+    );
+    let nullable = body(
+        syn::parse_quote!(Nullable<String>),
+        super::SlotKind::Conversion,
+    );
+    for s in [&option, &nullable] {
+        assert!(
+            s.contains(&format!("\"'f' must be {expected}\" , \"value\"")),
+            "{s}"
+        );
+    }
+    assert!(
+        nullable.contains("Some (\"Nullable<String>\")"),
+        "{nullable}"
+    );
+    assert!(
+        nullable.contains("< Nullable < String > as TryFromSexp > :: try_from_sexp (value)"),
+        "{nullable}"
+    );
 }
 
 /// The R6 active-binding and S7 property integration code also call the
@@ -135,6 +166,7 @@ fn sidecar_class_integration_reraises_tagged_conditions() {
         prop_doc: None,
         setter_invisible: None,
         read_only: false,
+        null_if_none: false,
     };
     let slots = [&slot];
 
@@ -1092,6 +1124,7 @@ fn field_syntax_helpers_switch_over_the_accessors() {
         prop_doc: None,
         setter_invisible: None,
         read_only: false,
+        null_if_none: false,
     };
     let (keys, reserved) = (slot("keys"), slot("r#for"));
     let out = super::generate_field_syntax_helpers(
@@ -1435,6 +1468,164 @@ fn read_only_option_is_checked() {
     );
 }
 
+/// `#[r_data(null_if_none)]` (#2270): the getter of an `Option<T>` field
+/// converts it as a `Nullable<T>`, so `None` reads `NULL`; the setter is the
+/// plain `Option<T>` one. Without it an `Option<T>` field converts as itself
+/// (`NA` for a scalar), and a `Nullable<T>` field reads `NULL` by its own
+/// conversion. It goes with `read_only`. Its S7 property takes no `class`, so
+/// S7's `class_any` admits `NULL`.
+#[test]
+fn null_if_none_fields_read_null_for_none() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s7)] struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(null_if_none)] pub label: Option<String>, \
+             #[r_data] pub plain: Option<String>, \
+             #[r_data] pub tag: Nullable<String>, \
+             #[r_data(null_if_none, read_only, name = \"code.id\")] pub code: Option<i32> }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S7).unwrap();
+    let flags: Vec<_> = info.slots.iter().map(|slot| slot.null_if_none).collect();
+    assert_eq!(flags, [true, false, false, true]);
+    assert!(
+        info.slots
+            .iter()
+            .all(|slot| slot.kind == super::SlotKind::Conversion)
+    );
+    let setters: Vec<_> = info.slots.iter().map(|slot| slot.has_r_setter()).collect();
+    assert_eq!(setters, [true, true, true, false]);
+
+    let struct_name = syn::parse_quote!(Engine);
+    let wrap = "let val = :: miniextendr_api :: Nullable (val) ;";
+    let getter = |i: usize| super::generate_getter_body(&struct_name, &info.slots[i]).to_string();
+    assert!(getter(0).contains(wrap), "{}", getter(0));
+    assert!(
+        getter(0).contains("let val : Option < String > ="),
+        "{}",
+        getter(0)
+    );
+    assert!(!getter(1).contains("Nullable"), "{}", getter(1));
+    assert!(!getter(2).contains(wrap), "{}", getter(2));
+    assert!(getter(3).contains(wrap), "{}", getter(3));
+
+    // The setter reads `NULL` and `NA` as `None` through `Option<T>`'s own
+    // conversion, as a plain `Option<T>` field's does.
+    let setter = super::generate_setter_body(&struct_name, &info.slots[0]).to_string();
+    let plain = super::generate_setter_body(&struct_name, &info.slots[1]).to_string();
+    assert_eq!(setter.replace("label", "plain"), plain);
+
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert_eq!(out.matches(wrap).count(), 2, "{out}");
+    assert!(out.contains("Engine_get_code.id <- function(x)"), "{out}");
+    assert!(!out.contains("Engine_set_code.id"), "{out}");
+    assert!(
+        out.contains("Engine_set_label <- function(x, value)"),
+        "{out}"
+    );
+
+    // S7: no property is given a class, so `class_any` admits `NULL` and a
+    // `NULL` write passes S7's validation.
+    let pub_slots: Vec<_> = info.slots.iter().collect();
+    let s7 = generate_class_integration_r_code(
+        ClassSystem::S7,
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+    );
+    assert!(s7.contains("    label = S7::new_property(\n"), "{s7}");
+    assert!(s7.contains("    code.id = S7::new_property(\n"), "{s7}");
+    assert!(!s7.contains("class ="), "{s7}");
+    assert_eq!(
+        s7.matches("setter = function(self, value)").count(),
+        3,
+        "{s7}"
+    );
+}
+
+/// The `null_if_none` option is checked: it takes no value, is given once,
+/// and applies to a public `Option<T>` struct field only: not to the
+/// selector, a `Computed` or `Sidecar` field (each named with its own
+/// `NULL` spelling), a private field, a `Nullable<T>` field (`NULL`
+/// already) or another type. It goes with `read_only`, `name`, `setter` and
+/// `prop_doc`.
+#[test]
+fn null_if_none_option_is_checked() {
+    let refused = |source: &str| {
+        let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+        super::parse_sidecar_info(&input, ClassSystem::S3)
+            .err()
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| panic!("`{source}` must be refused"))
+    };
+    let message =
+        refused("struct E { #[r_data(null_if_none, null_if_none)] pub a: Option<String> }");
+    assert!(message.contains("duplicate `null_if_none`"), "{message}");
+    let message = refused("struct E { #[r_data(null_if_none = \"yes\")] pub a: Option<String> }");
+    assert!(
+        message.contains("`null_if_none` takes no value"),
+        "{message}"
+    );
+    let message = refused("struct E { #[r_data(nullifnone)] pub a: Option<String> }");
+    assert!(
+        message.contains(
+            "unknown key `nullifnone`; supported: `ref`, `mut`, `read_only`, `null_if_none`,"
+        ),
+        "{message}"
+    );
+    for (source, why) in [
+        (
+            "struct E { #[r_data(null_if_none)] _r: RSidecar }",
+            "the RSidecar selector",
+        ),
+        (
+            "struct E { #[r_data(null_if_none, get = \"Self::f\")] pub a: Computed }",
+            "its `get` function returns `Nullable<T>`",
+        ),
+        (
+            "struct E { #[r_data(null_if_none)] pub a: Sidecar<Option<String>> }",
+            "declare it `Sidecar<Nullable<T>>`",
+        ),
+        (
+            "struct E { #[r_data(null_if_none)] a: Option<String> }",
+            "a field that is not `pub`",
+        ),
+        (
+            "struct E { #[r_data(null_if_none)] pub a: Nullable<String> }",
+            "reads `NULL` for `None` already",
+        ),
+        (
+            "struct E { #[r_data(null_if_none)] pub a: String }",
+            "a `String` field: only an `Option<T>` field has a `None`",
+        ),
+        (
+            "struct E { #[r_data(null_if_none)] pub a: Vec<Option<i32>> }",
+            "a `Vec<Option<i32>>` field",
+        ),
+    ] {
+        let message = refused(source);
+        assert!(
+            message.contains(
+                "`null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL`"
+            ),
+            "{message}"
+        );
+        assert!(message.contains(why), "{source}: {message}");
+    }
+
+    let input: syn::DeriveInput = syn::parse_str(
+        "struct E { #[r_data] _r: RSidecar, \
+             #[r_data(read_only, null_if_none)] pub a: Option<String>, \
+             #[r_data(null_if_none, name = \"bb\", setter = \"visible\", prop_doc = \"B.\")] \
+             pub b: ::std::option::Option<Vec<i32>>, \
+             #[r_data] pub c: Sidecar<Nullable<String>> }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S7).unwrap();
+    assert!(info.slots[0].null_if_none && info.slots[0].read_only);
+    assert!(info.slots[1].null_if_none && info.slots[1].r_name == "bb");
+    assert_eq!(info.slots[2].kind, super::SlotKind::Sidecar(0));
+}
+
 /// The helpers come with the R accessors, whatever the class system; a
 /// type without them gets none.
 #[test]
@@ -1492,6 +1683,8 @@ fn r_views_in_plain_fields_are_refused_recursively() {
         "Box<&'static [f64]>",
         "Arc<Mutex<Option<List>>>",
         "(List)",
+        "Nullable<List>",
+        "Nullable<Vec<DataFrame>>",
     ] {
         let input = syn::parse_str(&format!("struct Bad {{ #[r_data] pub value: {ty} }}")).unwrap();
         let err = super::derive_external_ptr(input, true).unwrap_err();
@@ -1513,6 +1706,7 @@ fn owned_fields_and_sidecars_keep_their_existing_classification() {
         "Option<BuiltList>",
         "Cow<'static, str>",
         "PhantomData<List>",
+        "Nullable<String>",
     ] {
         let ty = syn::parse_str(ty).unwrap();
         assert!(!super::contains_unrooted_r_view(&ty), "{ty:?}");
@@ -1521,6 +1715,7 @@ fn owned_fields_and_sidecars_keep_their_existing_classification() {
         "Sidecar<List>",
         "Sidecar<Option<List>>",
         "Sidecar<DataFrame>",
+        "Sidecar<Nullable<List>>",
     ] {
         let ty = syn::parse_str(ty).unwrap();
         let kind = super::slot_kind_for_type(&ty, 2, None, &syn::parse_quote!(Host)).unwrap();

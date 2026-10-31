@@ -91,6 +91,7 @@ use `serialize`.
 | `String/&str` | `character(1)` | UTF-8 preserved |
 | `Option<T>::Some(v)` | T | Transparent |
 | `Option<T>::None` | `NULL` | |
+| `Nullable<T>` | as `Option<T>` | Serializes as `Option<T>` does (#2270) |
 | `Vec<i32>` | `integer` vector | Smart dispatch |
 | `Vec<f64>` | `numeric` vector | Smart dispatch |
 | `Vec<bool>` | `logical` vector | Smart dispatch |
@@ -123,6 +124,7 @@ use `serialize`.
 | unnamed `list` | `Vec<T>` / tuple | Positional |
 | `NULL` | `()` / `Option::None` | |
 | `NA` (any of the four above) or `NULL` | `Option<T>::None` | See [NA and NULL handling](#na-and-null-handling) below |
+| as for `Option<T>` | `Nullable<T>` | Deserializes as `Option<T>` does (#2270) |
 
 **Input-side contract (audit A5):** a typed scalar `NA` reaching a *bare*
 (non-`Option`) field is a genuine missingness error and is rejected — it is

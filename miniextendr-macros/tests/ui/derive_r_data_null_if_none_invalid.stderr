@@ -1,0 +1,53 @@
+error: `null_if_none` takes no value: `#[r_data(null_if_none)]`
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:16:14
+   |
+16 |     #[r_data(null_if_none = "yes")]
+   |              ^^^^^^^^^^^^
+
+error: duplicate `null_if_none` option
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:24:28
+   |
+24 |     #[r_data(null_if_none, null_if_none)]
+   |                            ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to the RSidecar selector, which has no R accessors
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:30:14
+   |
+30 |     #[r_data(null_if_none)]
+   |              ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to a `Computed` field: its `get` function returns `Nullable<T>` to read `NULL` for `None`
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:38:14
+   |
+38 |     #[r_data(null_if_none, get = "Self::f")]
+   |              ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to a `Sidecar<T>` field, which keeps the R value it was given: declare it `Sidecar<Nullable<T>>` to keep `NULL` for `None`
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:46:14
+   |
+46 |     #[r_data(null_if_none)]
+   |              ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to a field that is not `pub`: only `pub` `#[r_data]` fields reach R
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:54:14
+   |
+54 |     #[r_data(null_if_none)]
+   |              ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to a `Nullable<T>` field, which reads `NULL` for `None` already
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:62:14
+   |
+62 |     #[r_data(null_if_none)]
+   |              ^^^^^^^^^^^^
+
+error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for `None` (in place of `NA` for a scalar); it doesn't apply to a `String` field: only an `Option<T>` field has a `None`
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:70:14
+   |
+70 |     #[r_data(null_if_none)]
+   |              ^^^^^^^^^^^^
+
+error: unknown key `null_if_null`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `name`, `get`, `prop_doc`, `setter`
+  --> tests/ui/derive_r_data_null_if_none_invalid.rs:78:14
+   |
+78 |     #[r_data(null_if_null)]
+   |              ^^^^^^^^^^^^
