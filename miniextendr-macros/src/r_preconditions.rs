@@ -1125,6 +1125,14 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
             r_check_for_type(inner_ty).map(|inner| RTypeCheck::Nullable(Box::new(inner)))
         }
 
+        // `Cow<str>` converts as `&str` does, `Cow<[T]>` as `&[T]`. The first
+        // generic argument is the lifetime, so look past it.
+        "Cow" => match crate::type_inspect::first_type_argument(segment)? {
+            syn::Type::Slice(slice) => r_check_for_vec_element(&slice.elem),
+            inner if is_str(inner) => Some(RTypeCheck::Scalar("character")),
+            _ => None,
+        },
+
         // Vec<T> → Vector (depends on element type)
         "Vec" => {
             let inner_ty = extract_single_generic_arg(segment)?;
@@ -1174,8 +1182,13 @@ fn r_check_for_reference(type_ref: &syn::TypeReference) -> Option<RTypeCheck> {
 /// `String` produces `Vector("character")`, etc. Handles nested `Option<T>` for
 /// nullable element types (e.g., `Vec<Option<String>>` becomes character vector).
 fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
-    let syn::Type::Path(tp) = elem_ty else {
-        return None;
+    let tp = match elem_ty {
+        syn::Type::Path(tp) => tp,
+        // `Vec<&str>` reads a character vector, as `Vec<String>` does.
+        syn::Type::Reference(type_ref) if is_str(&type_ref.elem) => {
+            return Some(RTypeCheck::Vector("character"));
+        }
+        _ => return None,
     };
     let seg = tp.path.segments.last()?;
     let ident = seg.ident.to_string();
@@ -1210,8 +1223,11 @@ fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
         // Logical vector
         "bool" => Some(RTypeCheck::Vector("logical")),
 
-        // Character vector
+        // Character vector; `Vec<Cow<str>>` reads one as `Vec<String>` does.
         "String" => Some(RTypeCheck::Vector("character")),
+        "Cow" if crate::type_inspect::first_type_argument(seg).is_some_and(is_str) => {
+            Some(RTypeCheck::Vector("character"))
+        }
 
         // Raw vector
         "u8" => Some(RTypeCheck::Vector("raw")),
@@ -1228,6 +1244,11 @@ fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
 
         _ => None,
     }
+}
+
+/// Whether `ty` is `str`.
+fn is_str(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(tp) if tp.qself.is_none() && tp.path.is_ident("str"))
 }
 
 /// Extract the single generic type argument from a path segment.

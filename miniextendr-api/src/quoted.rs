@@ -61,7 +61,7 @@
 use std::marker::PhantomData;
 
 use crate::expression::RCall;
-use crate::from_r::charsxp_to_str;
+use crate::from_r::charsxp_to_str_or_panic;
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::missing::Missing;
 use crate::{PairListExt, SEXP, SEXPTYPE, SexpExt};
@@ -72,13 +72,13 @@ fn expr_name<'a>(expr: SEXP) -> Option<&'a str> {
     match expr.type_of() {
         // Symbols are never collected; their print names live for the session.
         SEXPTYPE::SYMSXP => {
-            let name = unsafe { charsxp_to_str(expr.printname()) };
+            let name = unsafe { charsxp_to_str_or_panic(expr.printname()) };
             (!name.is_empty()).then_some(name)
         }
         SEXPTYPE::STRSXP if expr.len() == 1 => {
             let elt = expr.string_elt(0);
             // The CHARSXP is held by `expr`, which the caller keeps rooted.
-            (!elt.is_na_string()).then(|| unsafe { charsxp_to_str(elt) })
+            (!elt.is_na_string()).then(|| unsafe { charsxp_to_str_or_panic(elt) })
         }
         _ => None,
     }

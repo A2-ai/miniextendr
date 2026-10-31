@@ -64,7 +64,7 @@
 
 use super::error::RSerdeError;
 use crate::dataframe::DataFrame;
-use crate::from_r::charsxp_to_str;
+use crate::from_r::{charsxp_to_cow_lossy, try_charsxp_to_str};
 use crate::{IsNA, OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
@@ -667,9 +667,10 @@ fn ordered_column_names(view: &DataFrame) -> std::rc::Rc<[String]> {
             out.push(String::new());
         } else {
             // SAFETY: charsxp is a CHARSXP element of `names`, rooted by the
-            // enclosing call. `to_owned` copies before the borrow ends.
-            let s: &str = unsafe { charsxp_to_str(charsxp) };
-            out.push(s.to_owned());
+            // enclosing call. `into_owned` copies before the borrow ends. A
+            // name that is not text (marked as bytes) reads lossily: it is
+            // only matched against field names and shown in messages.
+            out.push(unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned());
         }
     }
     std::rc::Rc::from(out.into_boxed_slice())
@@ -1078,7 +1079,7 @@ unsafe fn factor_label<'sexp>(
     // data.frame SEXP rooted by R's argument frame for the enclosing call.
     // The CHARSXP cache pointer is valid for the caller-chosen `'sexp`
     // lifetime; turbofish from a `Deserializer<'de>` impl uses `'de = 'sexp`.
-    let s: &'sexp str = unsafe { charsxp_to_str(charsxp) };
+    let s: &'sexp str = unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
     Ok(Some(s))
 }
 
@@ -1135,7 +1136,8 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
                     // SAFETY: The SEXP is rooted by R's argument frame for the
                     // duration of the enclosing call, so the CHARSXP data
                     // pointer is valid for `'de` (= `'sexp`).
-                    let s: &'de str = unsafe { charsxp_to_str(charsxp) };
+                    let s: &'de str =
+                        unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
                     visitor.visit_borrowed_str(s)
                 }
             }
@@ -1319,7 +1321,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
                 return Err(RSerdeError::UnexpectedNa);
             }
             // SAFETY: SEXP rooted by the enclosing call; `'de` = `'sexp`.
-            unsafe { charsxp_to_str(charsxp) }
+            unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?
         } else {
             return Err(self.type_mismatch("character"));
         };
@@ -1356,7 +1358,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         }
         // SAFETY: The SEXP is rooted by R's argument frame for the duration
         // of the enclosing call; `'de` equals `'sexp` here.
-        let s: &'de str = unsafe { charsxp_to_str(charsxp) };
+        let s: &'de str = unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
         visitor.visit_borrowed_str(s)
     }
 
@@ -1425,7 +1427,9 @@ fn read_tag_variant(view: &DataFrame, row: usize, tag_col: &str) -> Result<Strin
             // SAFETY: `col` is a column of the data.frame SEXP rooted by the
             // enclosing call; the CHARSXP borrow is copied into an owned String
             // before the borrow ends.
-            Ok(unsafe { charsxp_to_str(charsxp) }.to_owned())
+            unsafe { try_charsxp_to_str(charsxp) }
+                .map(str::to_owned)
+                .map_err(RSerdeError::not_text)
         }
         SEXPTYPE::INTSXP if col.is_factor() => {
             // SAFETY: as above; `col.is_factor()` established the levels attr.

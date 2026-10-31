@@ -25,7 +25,7 @@ pub use named_builder::{BuiltList, NamedListBuilder};
 use crate::SEXPTYPE::{NILSXP, STRSXP, VECSXP};
 use crate::from_r::{
     ElementCheck, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_batched,
-    no_element_check,
+    no_element_check, try_charsxp_to_str,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -54,6 +54,17 @@ pub struct List(SEXP);
 /// that could become invalid if list elements are replaced with `NULL`.
 #[derive(Debug)]
 pub struct ListMut(SEXP);
+
+/// The text of the name `charsxp`, read with its own encoding (a Latin-1 name
+/// is translated); `None` for `NA` and for a name that is not text (marked as
+/// bytes, or not valid UTF-8), which nothing can look up by a Rust `&str`.
+pub(crate) fn text_name(charsxp: SEXP) -> Option<&'static str> {
+    if charsxp == SEXP::na_string() {
+        return None;
+    }
+    // SAFETY: a non-NA CHARSXP of a names attribute the caller roots.
+    unsafe { try_charsxp_to_str(charsxp) }.ok()
+}
 
 impl List {
     /// Return true if the underlying SEXP is a list (VECSXP) according to R.
@@ -120,28 +131,22 @@ impl List {
     }
 
     /// The names this list can be looked up by: `(position, name)` for each
-    /// element whose name is neither `NA` nor invalid UTF-8, in list order.
-    /// Empty names are included. Yields nothing when the list has no `names`
-    /// attribute.
+    /// element whose name is text ([`text_name`]), in list order. Empty names
+    /// are included. Yields nothing when the list has no `names` attribute.
     ///
     /// [`get_named_sexp`](Self::get_named_sexp),
     /// [`first_duplicate_name`](Self::first_duplicate_name), [`NamedList`] and
     /// the `#[derive(TryFromList)]` field lookup all walk the names through
     /// this, so they agree on which names count.
     ///
-    /// The `&str`s point into R's CHARSXP cache; they stay valid while the
-    /// list (which roots its `names` attribute) is reachable.
-    fn text_names(self) -> impl Iterator<Item = (isize, &'static str)> {
+    /// A UTF-8 or native name points into R's CHARSXP cache and stays valid
+    /// while the list (which roots its `names` attribute) is reachable; a
+    /// Latin-1 name is translated into R's memory stack, valid until the
+    /// enclosing `.Call` returns.
+    pub(crate) fn text_names(self) -> impl Iterator<Item = (isize, &'static str)> {
         let names = self.names();
         let n = if names.is_some() { self.len() } else { 0 };
-        (0..n).filter_map(move |i| {
-            let name_sexp = names?.string_elt(i);
-            if name_sexp == SEXP::na_string() {
-                return None;
-            }
-            let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_sexp.r_char()) };
-            name_cstr.to_str().ok().map(|s| (i, s))
-        })
+        (0..n).filter_map(move |i| text_name(names?.string_elt(i)).map(|s| (i, s)))
     }
 
     /// Get the raw element `SEXP` associated with `name`, without conversion.
@@ -884,7 +889,8 @@ where
 }
 
 /// Keys are the element names; an element without a usable name (no `names`
-/// attribute, `NA`, or not valid UTF-8) is keyed by its 0-based position, and
+/// attribute, `NA`, or a name that is not text, see [`text_name`]) is keyed
+/// by its 0-based position, and
 /// empty names share the key `""` (the last one wins). A non-empty name that
 /// appears more than once is an error ([`SexpError::DuplicateName`]), as for
 /// the `TryFromSexp` map conversion.
@@ -917,14 +923,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = names.string_elt(idx);
-                if name_sexp == SEXP::na_string() {
-                    format!("{i}")
-                } else {
-                    let name_ptr = name_sexp.r_char();
-                    let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-                    name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
-                }
+                text_name(names.string_elt(idx)).map_or_else(|| format!("{i}"), str::to_string)
             } else {
                 format!("{i}")
             };
@@ -950,7 +949,8 @@ where
 }
 
 /// Keys are the element names; an element without a usable name (no `names`
-/// attribute, `NA`, or not valid UTF-8) is keyed by its 0-based position, and
+/// attribute, `NA`, or a name that is not text, see [`text_name`]) is keyed
+/// by its 0-based position, and
 /// empty names share the key `""` (the last one wins). A non-empty name that
 /// appears more than once is an error ([`SexpError::DuplicateName`]), as for
 /// the `TryFromSexp` map conversion.
@@ -983,14 +983,7 @@ where
             let value: V = TryFromSexp::try_from_sexp(sexp)?;
 
             let key = if let Some(names) = names_sexp {
-                let name_sexp = names.string_elt(idx);
-                if name_sexp == SEXP::na_string() {
-                    format!("{i}")
-                } else {
-                    let name_ptr = name_sexp.r_char();
-                    let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-                    name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
-                }
+                text_name(names.string_elt(idx)).map_or_else(|| format!("{i}"), str::to_string)
             } else {
                 format!("{i}")
             };

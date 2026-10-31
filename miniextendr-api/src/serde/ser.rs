@@ -549,7 +549,7 @@ fn sexp_to_string(sexp: SEXP) -> Result<String, RSerdeError> {
         return Err(RSerdeError::NonStringKey);
     }
 
-    let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+    let s = unsafe { crate::from_r::try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
     Ok(s.to_string())
 }
 // endregion

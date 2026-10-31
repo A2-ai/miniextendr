@@ -16,7 +16,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, map_vecsxp_with};
+use crate::from_r::{
+    SexpError, SexpTypeError, TryFromSexp, map_vecsxp_with, name_refusal, try_charsxp_to_str,
+};
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 macro_rules! impl_map_try_from_sexp {
@@ -113,7 +115,9 @@ where
             if charsxp == SEXP::na_string() {
                 String::new()
             } else {
-                unsafe { charsxp_to_str(charsxp) }.to_owned()
+                unsafe { try_charsxp_to_str(charsxp) }
+                    .map_err(|e| name_refusal(i, &e))?
+                    .to_owned()
             }
         } else {
             // Use index as key if no names

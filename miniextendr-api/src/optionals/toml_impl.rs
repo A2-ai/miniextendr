@@ -70,7 +70,7 @@
 pub use toml::Value as TomlValue;
 
 use crate::from_r::{
-    SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, impl_option_try_from_sexp,
+    SexpError, SexpTypeError, TryFromSexp, impl_option_try_from_sexp, try_charsxp_to_str,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -157,7 +157,7 @@ impl TryFromSexp for TomlValue {
             ));
         }
 
-        let s = unsafe { charsxp_to_str(charsxp) };
+        let s = unsafe { try_charsxp_to_str(charsxp) }?;
         toml_from_str(s)
     }
 }

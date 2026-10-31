@@ -25,8 +25,8 @@
 
 use crate::coerce::TryCoerce;
 use crate::from_r::{
-    SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value,
-    from_numeric_vec_with, map_strsxp_with, r_slice,
+    SexpError, SexpNaError, SexpTypeError, TryFromSexp, coerce_value, from_numeric_vec_with,
+    map_strsxp_with, r_slice, try_charsxp_to_str,
 };
 use crate::{IsNA, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -216,7 +216,7 @@ impl TryFromSexp for Vec<Option<String>> {
             if charsxp == SEXP::na_string() {
                 Ok(None)
             } else {
-                Ok(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()))
+                unsafe { try_charsxp_to_str(charsxp) }.map(|s| Some(s.to_owned()))
             }
         })
     }

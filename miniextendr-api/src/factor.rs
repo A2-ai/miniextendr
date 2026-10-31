@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{
-    BatchedErrors, SexpError, SexpLengthError, SexpNaError, TryFromSexp, charsxp_to_str,
+    BatchedErrors, SexpError, SexpLengthError, SexpNaError, TryFromSexp, charsxp_to_cow_lossy,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -162,7 +162,7 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
 
     for (i, exp) in expected.iter().enumerate() {
         let charsxp = levels.string_elt(i as isize);
-        let actual = unsafe { charsxp_to_str(charsxp) };
+        let actual = unsafe { charsxp_to_cow_lossy(charsxp) };
         if actual != *exp {
             return Err(SexpError::InvalidValue(format!(
                 "level {}: expected '{}', got '{}'",
