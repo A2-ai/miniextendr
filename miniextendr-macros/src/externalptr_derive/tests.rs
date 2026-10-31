@@ -88,6 +88,7 @@ fn sidecar_setter_raises_the_argument_error() {
             setter_invisible: None,
             read_only: false,
             null_if_none: false,
+            cache: None,
         };
         super::generate_setter_body(&syn::Ident::new("T", proc_macro2::Span::call_site()), &slot)
             .to_string()
@@ -167,6 +168,7 @@ fn sidecar_class_integration_reraises_tagged_conditions() {
         setter_invisible: None,
         read_only: false,
         null_if_none: false,
+        cache: None,
     };
     let slots = [&slot];
 
@@ -1125,6 +1127,7 @@ fn field_syntax_helpers_switch_over_the_accessors() {
         setter_invisible: None,
         read_only: false,
         null_if_none: false,
+        cache: None,
     };
     let (keys, reserved) = (slot("keys"), slot("r#for"));
     let out = super::generate_field_syntax_helpers(
@@ -1738,4 +1741,149 @@ fn bare_sexp_sidecar_field_is_refused() {
         message.contains("Declare the field as `Sidecar<SEXP>`"),
         "{message}"
     );
+}
+
+/// `#[r_data(cache)]` (#2271): the getter of a conversion field passes its
+/// conversion to `sidecar_r_cached` under the field's cache index (counted
+/// among the cached fields only), as a `Result` so a failed conversion's
+/// condition is not kept; an uncached field converts on every read. The
+/// type's `CACHED_FIELD_COUNT` counts the cached fields. `cache` goes with
+/// `null_if_none` (the `Nullable` wrap moves into the conversion),
+/// `read_only`, `name`, `setter` and `prop_doc`, and leaves the setter as it
+/// is.
+#[test]
+fn cache_fields_keep_their_converted_value() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s3)] struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(cache)] pub values: Vec<f64>, \
+             #[r_data] pub plain: Vec<f64>, \
+             #[r_data] pub keys: Sidecar<Vec<i32>>, \
+             #[r_data(cache, null_if_none, read_only, name = \"lbl\")] pub label: Option<String>, \
+             #[r_data(cache, setter = \"visible\", prop_doc = \"N.\")] pub names: Vec<String> }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S3).unwrap();
+    let caches: Vec<_> = info.slots.iter().map(|slot| slot.cache).collect();
+    assert_eq!(caches, [Some(0), None, None, Some(1), Some(2)]);
+
+    let struct_name = syn::parse_quote!(Engine);
+    let getter = |i: usize| super::generate_getter_body(&struct_name, &info.slots[i]).to_string();
+    let cached = ":: miniextendr_api :: externalptr :: sidecar_r_cached :: < Engine > (x , ";
+    assert!(
+        getter(0).contains(&format!("{cached}0usize ,")),
+        "{}",
+        getter(0)
+    );
+    assert!(
+        getter(0).contains(":: core :: result :: Result :: Err (unsafe"),
+        "{}",
+        getter(0)
+    );
+    assert!(!getter(1).contains("sidecar_r_cached"), "{}", getter(1));
+    assert!(
+        getter(3).contains(&format!("{cached}1usize ,")),
+        "{}",
+        getter(3)
+    );
+    assert!(
+        getter(3).contains("let val = :: miniextendr_api :: Nullable (val) ;"),
+        "{}",
+        getter(3)
+    );
+    assert!(
+        getter(4).contains(&format!("{cached}2usize ,")),
+        "{}",
+        getter(4)
+    );
+
+    // The setter is the uncached field's: its exclusive borrow drops the
+    // kept value (`sidecar_r_struct_mut`).
+    let setter = super::generate_setter_body(&struct_name, &info.slots[0]).to_string();
+    let plain = super::generate_setter_body(&struct_name, &info.slots[1]).to_string();
+    assert_eq!(setter.replace("values", "plain"), plain);
+
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert!(
+        out.contains("const CACHED_FIELD_COUNT : usize = 3usize ;"),
+        "{out}"
+    );
+    assert!(out.contains("Engine_get_lbl <- function(x)"), "{out}");
+    assert!(!out.contains("Engine_set_lbl"), "{out}");
+
+    // A type without a cached field keeps the trait's default.
+    let input: syn::DeriveInput =
+        syn::parse_str("struct Plain { #[r_data] _r: RSidecar, #[r_data] pub values: Vec<f64> }")
+            .unwrap();
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert!(!out.contains("CACHED_FIELD_COUNT"), "{out}");
+}
+
+/// The `cache` option is checked: it takes no value, is given once, and
+/// applies to a public struct field that converts on a read: not to the
+/// selector, a `Computed` field (its function may read more than the
+/// struct), a `Sidecar` field (it converts nothing), a private field or a
+/// scalar field (a length-1 vector is as fast as a kept one).
+#[test]
+fn cache_option_is_checked() {
+    let refused = |source: &str| {
+        let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+        super::parse_sidecar_info(&input, ClassSystem::S3)
+            .err()
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| panic!("`{source}` must be refused"))
+    };
+    let message = refused("struct E { #[r_data(cache, cache)] pub a: Vec<f64> }");
+    assert!(message.contains("duplicate `cache`"), "{message}");
+    let message = refused("struct E { #[r_data(cache = \"yes\")] pub a: Vec<f64> }");
+    assert!(message.contains("`cache` takes no value"), "{message}");
+    let message = refused("struct E { #[r_data(cached)] pub a: Vec<f64> }");
+    assert!(
+        message.contains(
+            "unknown key `cached`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `cache`,"
+        ),
+        "{message}"
+    );
+    for (source, why) in [
+        (
+            "struct E { #[r_data(cache)] _r: RSidecar }",
+            "the RSidecar selector",
+        ),
+        (
+            "struct E { #[r_data(cache, get = \"Self::f\")] pub a: Computed }",
+            "a `Computed` field, which runs its `get` function on every read",
+        ),
+        (
+            "struct E { #[r_data(cache)] pub a: Sidecar<Vec<f64>> }",
+            "a `Sidecar<T>` field, whose getter returns the R value the pointer keeps",
+        ),
+        (
+            "struct E { #[r_data(cache)] a: Vec<f64> }",
+            "a field that is not `pub`",
+        ),
+        (
+            "struct E { #[r_data(cache)] pub a: i32 }",
+            "a scalar `i32` field, whose getter makes a length-1 vector",
+        ),
+        (
+            "struct E { #[r_data(cache)] pub a: f64 }",
+            "a scalar `f64` field",
+        ),
+        (
+            "struct E { #[r_data(cache)] pub a: bool }",
+            "a scalar `bool` field",
+        ),
+        (
+            "struct E { #[r_data(cache)] pub a: u8 }",
+            "a scalar `u8` field",
+        ),
+    ] {
+        let message = refused(source);
+        assert!(
+            message.contains(
+                "`cache` keeps the R value a public `#[r_data]` struct field's getter converts"
+            ),
+            "{message}"
+        );
+        assert!(message.contains(why), "{source}: {message}");
+    }
 }

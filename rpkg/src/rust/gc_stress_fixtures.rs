@@ -6242,3 +6242,80 @@ pub fn gc_stress_saved_robject() {
 }
 
 // endregion
+
+// region: cached field values (#2271)
+
+/// `#[r_data(cache)]` (#2271) through the generated getters of `CacheEnv`:
+/// the first read of each of many objects keeps its value, rooted only by
+/// the `ExternalPtr` pool (which grows meanwhile); after a collection every
+/// later read returns that same object, intact. Then an exclusive borrow and
+/// an R setter drop a kept value, and finalizing half the objects drops
+/// theirs, so new objects (whose values may take the freed addresses) read
+/// their own values. No arguments — picked up by the fast `gctorture(TRUE)`
+/// no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_rdata_cache() {
+    use crate::rdata_cache_tests::{
+        C_miniextendr__mx_rdata_get_CacheEnv_label, C_miniextendr__mx_rdata_get_CacheEnv_values,
+        C_miniextendr__mx_rdata_set_CacheEnv_values, CacheEnv,
+    };
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::{ProtectScope, TryFromSexp};
+
+    let sequence = |n: i32| (1..=n).map(f64::from).collect::<Vec<_>>();
+    let doubles = |x: SEXP| Vec::<f64>::try_from_sexp(x).expect("a double vector");
+    // SAFETY: on R's main thread; every value a getter returns is rooted by
+    // the pool until its object's next exclusive borrow or finalizer.
+    unsafe {
+        let scope = ProtectScope::new();
+        let flag = scope.protect(false.into_sexp()).get();
+        let get = |owner: &ExternalPtr<CacheEnv>| {
+            C_miniextendr__mx_rdata_get_CacheEnv_values(owner.as_sexp(), flag)
+        };
+
+        let mut owners: Vec<ExternalPtr<CacheEnv>> = (1..=32)
+            .map(|n| ExternalPtr::new(CacheEnv::new(n)))
+            .collect();
+        let kept: Vec<SEXP> = owners.iter().map(get).collect();
+        for owner in &owners {
+            assert!(C_miniextendr__mx_rdata_get_CacheEnv_label(owner.as_sexp(), flag).is_nil());
+        }
+        churn_pending_shapes();
+        miniextendr_api::sys::R_gc();
+        for ((n, owner), first) in (1..).zip(&owners).zip(&kept) {
+            assert_eq!(get(owner), *first);
+            assert_eq!(doubles(*first), sequence(n));
+        }
+
+        // An exclusive borrow drops the kept value; the next read converts.
+        owners[0].borrow_mut().values.push(0.5);
+        miniextendr_api::sys::R_gc();
+        assert_eq!(doubles(get(&owners[0])), [1.0, 0.5]);
+
+        // So does the R setter.
+        let replacement = scope.protect(vec![9.0_f64, 8.0].into_sexp()).get();
+        C_miniextendr__mx_rdata_set_CacheEnv_values(owners[1].as_sexp(), replacement, flag);
+        miniextendr_api::sys::R_gc();
+        assert_eq!(doubles(get(&owners[1])), [9.0, 8.0]);
+
+        // The finalizers of the dropped half drop their kept values; new
+        // objects read their own.
+        owners.truncate(16);
+        miniextendr_api::sys::R_gc();
+        let fresh: Vec<ExternalPtr<CacheEnv>> = (101..=116)
+            .map(|n| ExternalPtr::new(CacheEnv::new(n)))
+            .collect();
+        churn_pending_shapes();
+        for (n, owner) in (101..).zip(&fresh) {
+            let first = get(owner);
+            assert_eq!(doubles(first), sequence(n));
+            assert_eq!(get(owner), first);
+        }
+        for ((n, owner), first) in (1..).zip(&owners).zip(&kept).skip(2) {
+            assert_eq!(get(owner), *first);
+            assert_eq!(doubles(*first), sequence(n));
+        }
+    }
+}
+
+// endregion

@@ -733,6 +733,16 @@ pub trait TypedExternal: 'static {
     /// `Sidecar<_>`.
     const R_SLOT_COUNT: usize = 0;
 
+    /// Number of `#[r_data(cache)]` fields: struct fields whose R getter
+    /// keeps the R value its first read makes until the value is next
+    /// borrowed exclusively (#2271).
+    ///
+    /// `#[derive(ExternalPtr)]` counts them. Every exclusive borrow of a
+    /// value whose type has any drops the value's cached field values, and
+    /// its pointer's finalizer drops them too; a type with none pays one
+    /// constant branch per exclusive borrow.
+    const CACHED_FIELD_COUNT: usize = 0;
+
     /// The R names of the `Sidecar` fields (`#[r_data(name = "..")]`, else
     /// the Rust field name), in slot order: the names the protection list
     /// carries, so a save is read back by field name (#2187, #2215).
@@ -1107,9 +1117,26 @@ pub fn borrow_value<T>(cell: &RefCell<T>) -> Ref<'_, T> {
 
 /// Borrow a stored value exclusively for a generated wrapper: the R error of
 /// class `miniextendr_borrow_conflict` while a running call holds it.
+///
+/// The borrow may change the value, so it drops the value's cached field
+/// values (`#[r_data(cache)]`, #2271) when `T` has any: every exclusive
+/// borrow of an `ExternalPtr`'s value goes through here.
 #[doc(hidden)]
 #[inline]
-pub fn borrow_value_mut<T>(cell: &RefCell<T>) -> RefMut<'_, T> {
+pub fn borrow_value_mut<T: TypedExternal>(cell: &RefCell<T>) -> RefMut<'_, T> {
+    let guard = borrow_erased_value_mut(cell);
+    if T::CACHED_FIELD_COUNT > 0 {
+        field_cache::forget(field_cache::cell_key(cell));
+    }
+    guard
+}
+
+/// [`borrow_value_mut`] for a value in trait-ABI storage
+/// (`abi::ErasedObject<T>`), whose shims are generic over `T`: no R field
+/// getter reads that storage, so it has no cached field values to drop.
+#[doc(hidden)]
+#[inline]
+pub fn borrow_erased_value_mut<T>(cell: &RefCell<T>) -> RefMut<'_, T> {
     cell.try_borrow_mut()
         .unwrap_or_else(|_| borrow_conflict::<T>())
 }
@@ -1294,6 +1321,13 @@ pub(crate) fn unroot_owned(key: ProtectKey) {
             pool.release(key);
         }
     });
+}
+
+/// The object a [`root_owned`] key roots, `None` once the key is released.
+/// On R's main thread.
+#[inline]
+pub(crate) fn pooled(key: ProtectKey) -> Option<SEXP> {
+    EXTPTR_ROOTS.with_borrow(|slot| slot.as_ref().and_then(|pool| pool.get(key)))
 }
 
 /// One R object rooted in the main-thread pool, released when dropped.
@@ -1488,7 +1522,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { scope.protect(sexp) };
 
         // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
-        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
+        unsafe { R_RegisterCFinalizerEx(sexp, finalizer::<T>(), Rboolean::TRUE) };
         // Install the address only after the finalizer is ready. Use the pointer
         // returned by the ownership transfer, retaining its mutable provenance.
         let any_raw = Box::into_raw(allocation);
@@ -1539,7 +1573,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
         unsafe {
-            R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE);
+            R_RegisterCFinalizerEx_unchecked(sexp, finalizer::<T>(), Rboolean::TRUE);
         };
         let any_raw = Box::into_raw(allocation);
         unsafe { R_SetExternalPtrAddr_unchecked(sexp, any_raw.cast()) };
@@ -1659,7 +1693,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr::null_mut(), type_sym, prot) };
         unsafe { scope.protect(sexp) };
-        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE) };
+        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, finalizer::<T>(), Rboolean::TRUE) };
         let any_raw = Box::into_raw(allocation);
         unsafe { R_SetExternalPtrAddr_unchecked(sexp, any_raw.cast()) };
 
@@ -3033,6 +3067,33 @@ extern "C-unwind" fn release_any(sexp: SEXP) {
     // `drop_catching_panic` catches any panic and aborts instead.
     drop_catching_panic(|| drop(unsafe { Box::from_raw(any_raw) }));
 }
+
+/// The finalizer of a type with cached fields (`#[r_data(cache)]`, #2271):
+/// drops the value's cached field values, then frees the value as
+/// [`release_any`] does, so no later value at the same address finds them.
+/// Releasing pool slots allocates nothing, so this is sound in a finalizer.
+extern "C-unwind" fn release_cached(sexp: SEXP) {
+    if !sexp.is_null_or_nil() {
+        let any_raw = unsafe { R_ExternalPtrAddr(sexp) }.cast::<Box<dyn Any>>();
+        if !any_raw.is_null() {
+            // SAFETY: a live address of a pointer `ExternalPtr` built holds
+            // the `Box<dyn Any>` this finalizer frees.
+            field_cache::forget(field_cache::stored_key(&**unsafe { &*any_raw }));
+        }
+    }
+    release_any(sexp);
+}
+
+/// The finalizer `T`'s pointers register: [`release_cached`] for a type with
+/// cached fields, else [`release_any`]. A constant choice per type.
+#[inline]
+fn finalizer<T: TypedExternal>() -> crate::R_CFinalizer_t {
+    if T::CACHED_FIELD_COUNT > 0 {
+        Some(release_cached)
+    } else {
+        Some(release_any)
+    }
+}
 // endregion
 
 // region: Utility: ExternalSlice (helper for slice data)
@@ -3120,6 +3181,8 @@ pub use altrep_helpers::*;
 
 mod borrowed;
 pub use borrowed::{ExternalPtrMut, ExternalPtrRef, SidecarOwner, SidecarOwnerMut};
+
+mod field_cache;
 
 mod sidecar;
 pub use sidecar::*;
