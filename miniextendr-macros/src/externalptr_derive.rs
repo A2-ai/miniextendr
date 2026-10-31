@@ -56,10 +56,12 @@
 //! system; the impl's `r_data_accessors` option also wires the slots into the
 //! class. Under the S3, S4 and env field syntax, `$` / `[[` are the class's R
 //! API and the standalone accessors are internal: no `@export`, no "Type
-//! Sidecar Accessors" page (#1900). The derive emits both renderings in a
-//! `SidecarAccessorsEntry`; the wrapper writer picks one by the class's
-//! `ClassNameEntry::field_syntax`, since the impl block is a separate
-//! expansion. Otherwise they are exported on the type's page.
+//! Sidecar Accessors" page (#1900), and under its read-only form
+//! (`r_data_accessors = "read_only"`, #2268) there are no standalone setters.
+//! The derive emits the three renderings in a `SidecarAccessorsEntry`; the
+//! wrapper writer picks one by the class's `ClassNameEntry::field_syntax` and
+//! `read_only_fields`, since the impl block is a separate expansion.
+//! Otherwise they are exported on the type's page.
 //!
 //! | Class System | Attribute | R Accessors |
 //! |--------------|-----------|-------------|
@@ -2040,10 +2042,12 @@ fn r_hint_parts(hint: &str) -> String {
 /// The generated statics are:
 /// - `__MX_CALL_DEF_RDATA_*`: the `R_CallMethodDef` entries
 /// - `R_WRAPPERS_RDATA_{Type}`: the R6 / S7 integration, when present
-/// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported and
-///   internal, which the wrapper writer picks between by the class's field
-///   syntax (`registry::SidecarAccessorsEntry`, #1900). Only the internal
-///   rendering includes the field-syntax helpers.
+/// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported,
+///   internal, and internal without the setters, which the wrapper writer
+///   picks between by the class's field syntax
+///   (`registry::SidecarAccessorsEntry`, #1900; the last for
+///   `r_data_accessors = "read_only"`, #2268). Only the internal renderings
+///   include the field-syntax helpers.
 ///
 /// Returns `Err` if the struct has generic type parameters (`.Call` entrypoints
 /// cannot be generic).
@@ -2074,10 +2078,12 @@ fn generate_sidecar_accessors(
 
     // Generate getter/setter functions and R wrappers for each pub slot
     let mut c_functions = vec![];
-    // The standalone accessors, in the two renderings the wrapper writer
-    // picks between (#1900).
+    // The standalone accessors, in the renderings the wrapper writer picks
+    // between (#1900): exported, internal, and internal without the setters
+    // for a class whose field syntax is read-only (#2268).
     let mut exported = String::new();
     let mut internal = String::new();
+    let mut internal_read_only = String::new();
 
     // The exported rendering's page header establishes the @name topic for
     // the accessors' `@rdname`, even if the main class definition uses @noRd.
@@ -2229,34 +2235,41 @@ fn generate_sidecar_accessors(
             });
         }
 
-        // Generate R wrapper code based on class system
-        let via = if r_setter {
-            format!("`{getter_c_name}` and `{setter_c_name}`")
-        } else {
-            format!("`{getter_c_name}`")
-        };
-        let comment = format!(
-            "# Generated from Rust source {}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
-            crate::source_position(field_name.span()),
-            if computed {
-                "computed field"
-            } else if r_setter {
-                "sidecar field"
+        // Generate R wrapper code based on class system. The read-only
+        // rendering writes every field as a field without an R setter.
+        let comment = |with_setter: bool| {
+            let via = if with_setter {
+                format!("`{getter_c_name}` and `{setter_c_name}`")
             } else {
-                "read-only sidecar field"
-            },
-            r_name,
-            name_str,
-            via,
-        );
-        for (out, is_exported) in [(&mut exported, true), (&mut internal, false)] {
-            out.push_str(&comment);
+                format!("`{getter_c_name}`")
+            };
+            format!(
+                "# Generated from Rust source {}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
+                crate::source_position(field_name.span()),
+                if computed {
+                    "computed field"
+                } else if with_setter {
+                    "sidecar field"
+                } else {
+                    "read-only sidecar field"
+                },
+                r_name,
+                name_str,
+                via,
+            )
+        };
+        for (out, is_exported, with_setter) in [
+            (&mut exported, true, r_setter),
+            (&mut internal, false, r_setter),
+            (&mut internal_read_only, false, false),
+        ] {
+            out.push_str(&comment(with_setter));
             out.push_str(&generate_r_wrapper_for_slot(
                 info.class_system,
                 &name_str,
                 r_name,
                 &getter_c_name,
-                r_setter.then_some(setter_c_name.as_str()),
+                with_setter.then_some(setter_c_name.as_str()),
                 slot.setter_invisible.unwrap_or(true),
                 is_exported,
             ));
@@ -2317,14 +2330,12 @@ fn generate_sidecar_accessors(
     // R6 / S7 integration is independent of S3 / S4 / env field syntax.
     let r_wrappers =
         generate_class_integration_r_code(info.class_system, &name_str, &pub_slots, field_error);
-    // The writer selects this rendering only when an impl enables field
+    // The writer selects these renderings only when an impl enables field
     // syntax. Other types need their standalone accessors, not these helpers.
-    internal.push_str(&generate_field_syntax_helpers(
-        &name_str,
-        &pub_slots,
-        field_error,
-        restored.every_read,
-    ));
+    let helpers =
+        generate_field_syntax_helpers(&name_str, &pub_slots, field_error, restored.every_read);
+    internal.push_str(&helpers);
+    internal_read_only.push_str(&helpers);
 
     let const_name_wrappers = Ident::new(
         &format!("R_WRAPPERS_RDATA_{}", name_symbol),
@@ -2402,8 +2413,8 @@ fn generate_sidecar_accessors(
 
         #class_integration_wrappers
 
-        /// The standalone sidecar accessors, exported and internal, via
-        /// distributed slice.
+        /// The standalone sidecar accessors, exported, internal and internal
+        /// without setters, via distributed slice.
         #[doc = #source_location_doc]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_SIDECAR_ACCESSORS), linkme(crate = ::miniextendr_api::linkme))]
@@ -2413,6 +2424,7 @@ fn generate_sidecar_accessors(
                 rust_type: #name_str,
                 exported: #exported,
                 internal: #internal,
+                internal_read_only: #internal_read_only,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,
             };

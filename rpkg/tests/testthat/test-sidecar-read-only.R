@@ -98,6 +98,16 @@ test_that("S3 `r_data_accessors = \"read_only\"` reads every field and refuses e
   expect_identical(item_count(x), 1L)
 })
 
+test_that("the read-only field syntax writes no standalone setter", {
+  ns <- asNamespace("miniextendr")
+  for (setter in c("FrozenS3_set_size", "FrozenS3_set_items", "FrozenS4_set_depth", "FrozenS4_set_label", "FrozenEnv_set_count")) {
+    expect_false(exists(setter, envir = ns, inherits = FALSE), label = setter)
+  }
+  for (getter in c("FrozenS3_get_size", "FrozenS3_get_items", "FrozenS4_get_depth", "FrozenEnv_get_count")) {
+    expect_true(exists(getter, envir = ns, inherits = FALSE), label = getter)
+  }
+})
+
 test_that("S4 `r_data_accessors = \"read_only\"` reads every field and refuses every write", {
   o <- FrozenS4(1L, "s")
   expect_identical(o$depth, 1L)

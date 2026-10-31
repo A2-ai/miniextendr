@@ -719,7 +719,8 @@ pointer `[[`, `as.list()` and `[[<-` refuse an unused argument, as
 `fallback_names = "Self::g"` adds `g(&self) -> Vec<String>` to the
 completions (#2150). Under that S3, S4
 or env field syntax the `MyType_get_*()` / `MyType_set_*()` functions are
-internal, for the package's own R code; otherwise they are exported. vctrs
+internal, for the package's own R code (under `r_data_accessors =
+"read_only"` there are no `MyType_set_*()`); otherwise they are exported. vctrs
 classes get only those functions. See `CLASS_SYSTEMS.md`, "Direct Field
 Access via Sidecar".
 

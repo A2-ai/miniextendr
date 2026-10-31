@@ -1248,6 +1248,44 @@ fn read_only_fields_get_a_getter_and_a_refusing_setter_arm() {
     );
 }
 
+/// The standalone accessors come in a third rendering without the setters,
+/// which the wrapper writer picks for `r_data_accessors = "read_only"`
+/// (#2268): there a writable field's standalone setter is not written
+/// either. Its setter C entry point stays, for the other renderings.
+#[test]
+fn standalone_accessors_come_without_setters_for_the_read_only_form() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s3)] struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(read_only)] pub level: i32, #[r_data] pub base: i32 }",
+    )
+    .unwrap();
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert!(out.contains("internal_read_only :"), "{out}");
+    // Exported, internal and read-only renderings each read both fields;
+    // only the first two write `base`.
+    assert_eq!(out.matches("Engine_get_base <- function(x)").count(), 3);
+    assert_eq!(out.matches("Engine_get_level <- function(x)").count(), 3);
+    assert_eq!(
+        out.matches("Engine_set_base <- function(x, value)").count(),
+        2
+    );
+    assert!(!out.contains("Engine_set_level"), "{out}");
+    assert_eq!(
+        out.matches("# Wraps read-only sidecar field `base`")
+            .count(),
+        1
+    );
+    assert!(
+        out.contains(&crate::naming::sidecar_setter_c_name("Engine", "base")),
+        "{out}"
+    );
+    // Both internal renderings carry the field-syntax helpers.
+    assert_eq!(
+        out.matches(".rdata_read_only_Engine <- function(").count(),
+        2
+    );
+}
+
 /// An R6 binding of a field without an R setter refuses a value with the
 /// package's classes and hint and no call, and an S7 property of one has no
 /// setter (#1888, #2268); a writable field keeps its setter in both.

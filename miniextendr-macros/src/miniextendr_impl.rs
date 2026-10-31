@@ -330,8 +330,11 @@ pub enum RDataAccessors {
     /// `r_data_accessors = "read_only"` (S3, S4, env, #2268): `$` / `[[`
     /// read the fields, and the generated `$<-` / `[[<-` refuse every field
     /// with `miniextendr_read_only_field` (the derive's
-    /// `.rdata_read_only_<Type>`). A per-field `#[r_data(read_only)]` does
-    /// the same for one field under any class system.
+    /// `.rdata_read_only_<Type>`). The class's `ClassNameEntry::read_only_fields`
+    /// has the wrapper writer drop the standalone `Type_set_f()` too (the
+    /// derive's setter C entry points stay: it can't see this option). A
+    /// per-field `#[r_data(read_only)]` does the same for one field under
+    /// any class system.
     ReadOnly,
 }
 
@@ -5497,6 +5500,8 @@ pub fn expand_impl(
             parsed.class_system,
             ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env
         );
+    // The read-only form takes the standalone setters away too (#2268).
+    let read_only_fields = field_syntax && parsed.r_data_accessors == RDataAccessors::ReadOnly;
     let settings = parsed.class_settings();
     let parts = class_parts(&class, &parsed.class_definitions());
     let constructor = parsed
@@ -5585,6 +5590,7 @@ pub fn expand_impl(
                     r_class_name: #r_class_name_str,
                     class_system: #class_system_str,
                     field_syntax: #field_syntax,
+                    read_only_fields: #read_only_fields,
                 };
         };
     };

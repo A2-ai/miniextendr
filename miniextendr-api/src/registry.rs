@@ -403,9 +403,14 @@ pub struct ClassNameEntry {
     /// written without an export or a page ([`SidecarAccessorsEntry`],
     /// #1900).
     pub field_syntax: bool,
+    /// The field syntax is the read-only form, `r_data_accessors =
+    /// "read_only"` (#2268): every field is read-only from R, so the
+    /// standalone setters are not written either
+    /// ([`SidecarAccessorsEntry::internal_read_only`]).
+    pub read_only_fields: bool,
 }
 
-// SAFETY: &'static str fields and a bool — immutable and valid for program lifetime.
+// SAFETY: &'static str fields and bools — immutable and valid for program lifetime.
 unsafe impl Sync for ClassNameEntry {}
 
 /// The line of [`ClassBlockEntry::head`] where the class's roxygen block
@@ -578,13 +583,16 @@ pub const fn require_class_constructor<T: ?Sized + ClassConstructor<Block>, Bloc
 
 /// The standalone R accessors `#[derive(ExternalPtr)]` generates for a
 /// type's public `#[r_data]` fields, `Type_get_f(x)` / `Type_set_f(x,
-/// value)`, in two renderings: exported on a "Type Sidecar Accessors" page,
-/// or internal (`@noRd`, no export). [`collect_r_wrappers`] writes the
-/// internal one for a type whose class has field syntax
-/// ([`ClassNameEntry::field_syntax`]): the class's `$` / `[[` are its R
-/// interface to the fields there, and the setters would write in place
-/// through every copy (#1900). The internal rendering also carries the field
-/// helpers that those methods call. Written with the sidecar fragments.
+/// value)`, in three renderings: exported on a "Type Sidecar Accessors" page,
+/// internal (`@noRd`, no export), or internal without the setters.
+/// [`collect_r_wrappers`] writes an internal one for a type whose class has
+/// field syntax ([`ClassNameEntry::field_syntax`]): the class's `$` / `[[`
+/// are its R interface to the fields there, and the setters would write in
+/// place through every copy (#1900); the one without setters when that
+/// syntax is read-only ([`ClassNameEntry::read_only_fields`], #2268). The
+/// derive can't see the impl's option, so it emits all three. The internal
+/// renderings also carry the field helpers that those methods call. Written
+/// with the sidecar fragments.
 pub struct SidecarAccessorsEntry {
     /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
     pub rust_type: &'static str,
@@ -592,6 +600,8 @@ pub struct SidecarAccessorsEntry {
     pub exported: &'static str,
     /// The same accessors with `@noRd` and no export, plus field-syntax helpers.
     pub internal: &'static str,
+    /// [`Self::internal`] without the setters.
+    pub internal_read_only: &'static str,
     /// Source file of the derive (`file!()`), for the fragment order.
     pub source_file: &'static str,
     /// Line of the derived type in `source_file`.
@@ -883,7 +893,8 @@ pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo)
 
 /// The standalone sidecar accessors as sidecar fragments: each type's
 /// internal rendering when one of its impl blocks gives its class field
-/// syntax, else the exported one (#1900).
+/// syntax (#1900), without the setters when that syntax is read-only
+/// (#2268), else the exported one.
 #[cfg(not(target_arch = "wasm32"))]
 fn sidecar_accessor_fragments(
     accessors: &[SidecarAccessorsEntry],
@@ -892,16 +903,21 @@ fn sidecar_accessor_fragments(
     accessors
         .iter()
         .map(|entry| {
-            let field_syntax = classes
-                .iter()
-                .any(|class| class.rust_type == entry.rust_type && class.field_syntax);
+            let of_type = || {
+                classes
+                    .iter()
+                    .filter(|class| class.rust_type == entry.rust_type)
+            };
+            let content = if of_type().any(|class| class.read_only_fields) {
+                entry.internal_read_only
+            } else if of_type().any(|class| class.field_syntax) {
+                entry.internal
+            } else {
+                entry.exported
+            };
             WrapperFragment {
                 priority: RWrapperPriority::Sidecar,
-                content: std::borrow::Cow::Borrowed(if field_syntax {
-                    entry.internal
-                } else {
-                    entry.exported
-                }),
+                content: std::borrow::Cow::Borrowed(content),
                 source_file: entry.source_file,
                 source_line: entry.source_line,
             }

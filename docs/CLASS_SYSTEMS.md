@@ -1693,9 +1693,9 @@ read-only through the field syntax: `$` / `[[` read, and the generated `$<-`
 / `[[<-` refuse each field with `miniextendr_read_only_field` (a name that is
 no field still raises `miniextendr_no_field`). It is the field syntax of an
 immutable class that wants assignment refused rather than left to R's
-default for a pointer. The standalone setters stay internal, as under
-`"get"`: the derive can't see the impl option. R6 and S7 refuse it: mark
-each field `read_only` there.
+default for a pointer. No standalone `MyConfig_set_<name>()` is written
+either; the setter C entry points stay, since the derive can't see the
+impl's option. R6 and S7 refuse it: mark each field `read_only` there.
 
 Read-only applies to R only. The Rust accessors of a `Sidecar<T>` field
 stay (`#[r_data(ref, mut, read_only)]` makes them public), and a method

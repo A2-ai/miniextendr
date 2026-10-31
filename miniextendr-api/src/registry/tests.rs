@@ -65,12 +65,14 @@ fn class_name_index_dedups_identical_entries() {
             r_class_name: "Foo",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "Foo",
             r_class_name: "Foo",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let index = build_class_name_index(entries.iter());
@@ -90,12 +92,14 @@ fn class_name_index_panics_on_conflicting_override() {
             r_class_name: "Foo",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "Foo",
             r_class_name: "FooOverride",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let _ = build_class_name_index(entries.iter());
@@ -112,12 +116,14 @@ fn class_name_index_rejects_shared_r_class_names() {
                 r_class_name: "Shared",
                 class_system: "env",
                 field_syntax: false,
+                read_only_fields: false,
             },
             ClassNameEntry {
                 rust_type: "Second",
                 r_class_name: "Shared",
                 class_system,
                 field_syntax: true,
+                read_only_fields: false,
             },
         ];
         for ordered in [[&entries[0], &entries[1]], [&entries[1], &entries[0]]] {
@@ -144,12 +150,14 @@ fn class_name_index_preserves_case_distinct_r_class_names() {
             r_class_name: "Widget",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "Second",
             r_class_name: "widget",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let index = build_class_name_index(entries.iter());
@@ -158,39 +166,62 @@ fn class_name_index_preserves_case_distinct_r_class_names() {
 }
 
 /// A type's standalone sidecar accessors are written internal when one of
-/// its impl blocks gives the class field syntax, exported otherwise (#1900).
+/// its impl blocks gives the class field syntax, exported otherwise (#1900),
+/// and internal without the setters when that syntax is read-only (#2268).
 #[test]
 fn sidecar_accessors_follow_the_field_syntax() {
+    let entry =
+        |rust_type, exported, internal, internal_read_only, source_line| SidecarAccessorsEntry {
+            rust_type,
+            exported,
+            internal,
+            internal_read_only,
+            source_file: "lib.rs",
+            source_line,
+        };
     let accessors = [
-        SidecarAccessorsEntry {
-            rust_type: "Fields",
-            exported: "exported Fields",
-            internal: "internal Fields",
-            source_file: "lib.rs",
-            source_line: 1,
-        },
-        SidecarAccessorsEntry {
-            rust_type: "Plain",
-            exported: "exported Plain",
-            internal: "internal Plain",
-            source_file: "lib.rs",
-            source_line: 2,
-        },
+        entry(
+            "Fields",
+            "exported Fields",
+            "internal Fields",
+            "read-only Fields",
+            1,
+        ),
+        entry(
+            "Plain",
+            "exported Plain",
+            "internal Plain",
+            "read-only Plain",
+            2,
+        ),
+        entry(
+            "Frozen",
+            "exported Frozen",
+            "internal Frozen",
+            "read-only Frozen",
+            3,
+        ),
     ];
-    let class = |rust_type, field_syntax| ClassNameEntry {
+    let class = |rust_type, field_syntax, read_only_fields| ClassNameEntry {
         rust_type,
         r_class_name: rust_type,
         class_system: "s3",
         field_syntax,
+        read_only_fields,
     };
     let classes = [
-        class("Fields", false),
-        class("Fields", true),
-        class("Plain", false),
+        class("Fields", false, false),
+        class("Fields", true, false),
+        class("Plain", false, false),
+        class("Frozen", false, false),
+        class("Frozen", true, true),
     ];
     let fragments = sidecar_accessor_fragments(&accessors, &classes);
     let contents: Vec<&str> = fragments.iter().map(|f| f.content.as_ref()).collect();
-    assert_eq!(contents, ["internal Fields", "exported Plain"]);
+    assert_eq!(
+        contents,
+        ["internal Fields", "exported Plain", "read-only Frozen"]
+    );
     assert!(
         fragments
             .iter()
@@ -221,6 +252,7 @@ fn all_equal_methods_follow_the_class() {
         r_class_name,
         class_system,
         field_syntax: false,
+        read_only_fields: false,
     };
     let entries = [entry("Fit"), entry("Shape")];
     let classes = [class("Fit", "fit_rec", "r6"), class("Shape", "Shape", "s7")];
@@ -271,6 +303,7 @@ fn all_equal_methods_need_a_pointer_class() {
         r_class_name: "Rec",
         class_system: "vctrs",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let Err(msg) = all_equal_fragments(&[entry("Loose", 1), entry("Rec", 2)], &classes) else {
         panic!("expected the derives to be refused");
@@ -543,12 +576,14 @@ fn test_class_ref_resolver_with_override() {
             r_class_name: "Shape",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "S7Circle",
             r_class_name: "S7Circle",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
 
@@ -568,12 +603,14 @@ fn test_class_ref_resolver_multiple_placeholders() {
             r_class_name: "Point2D",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "Point3D",
             r_class_name: "Point3D",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
 
@@ -613,6 +650,7 @@ fn test_is_bare_identifier_via_resolver() {
         r_class_name: "MyClass",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "inherit = .__MX_CLASS_REF_MyClass__";
     let output = resolve_refs(input, &entries);
@@ -629,6 +667,7 @@ fn or_any_resolves_registered_s7_class() {
         r_class_name: "S7PropInner",
         class_system: "s7",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "class = .__MX_CLASS_REF_OR_ANY_S7PropInner__";
     let output = resolve_refs(input, &entries);
@@ -654,6 +693,7 @@ fn or_any_registered_non_s7_type_falls_back_to_class_any() {
         r_class_name: "R6Counter",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "class = .__MX_CLASS_REF_OR_ANY_R6Counter__";
     let output = resolve_refs(input, &entries);
@@ -681,6 +721,7 @@ fn mixed_placeholders_resolve_independently() {
             r_class_name: "Parent",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         },
         // PropInner deliberately missing → should resolve to class_any.
     ];
@@ -696,6 +737,7 @@ fn return_wrapper_resolves_r6_constructor() {
         r_class_name: "R6Board",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "return(.__MX_WRAP_RETURN_R6Board__(.val))";
     let output = resolve_return_wrappers(input, &entries);
@@ -709,6 +751,7 @@ fn return_wrapper_resolves_s7_override_constructor() {
         r_class_name: "PrettyBoard",
         class_system: "s7",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = ".__MX_WRAP_RETURN_S7Board__(.val)";
     let output = resolve_return_wrappers(input, &entries);
@@ -722,6 +765,7 @@ fn return_wrapper_resolves_s4_constructor() {
         r_class_name: "S4Board",
         class_system: "s4",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = ".__MX_WRAP_RETURN_S4Board__(.val)";
     let output = resolve_return_wrappers(input, &entries);
@@ -736,12 +780,14 @@ fn return_wrapper_resolves_attribute_classes() {
             r_class_name: "S3Board",
             class_system: "s3",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "EnvBoard",
             r_class_name: "EnvBoard",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let input = "a <- .__MX_WRAP_RETURN_S3Board__(.val)\nb <- .__MX_WRAP_RETURN_EnvBoard__(.ptr)";
@@ -775,6 +821,7 @@ fn scalar_resolver_leaves_list_markers_untouched() {
         r_class_name: "R6Board",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "a <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
     let output = resolve_return_wrappers(input, &entries);
@@ -788,6 +835,7 @@ fn list_resolver_leaves_scalar_markers_untouched() {
         r_class_name: "R6Board",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "a <- .__MX_WRAP_RETURN_R6Board__(.val)";
     let output = resolve_list_wrappers(input, &entries);
@@ -803,6 +851,7 @@ fn scalar_and_list_markers_resolve_independently() {
         r_class_name: "R6Board",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input =
         "a <- .__MX_WRAP_RETURN_R6Board__(.val)\nb <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
@@ -822,6 +871,7 @@ fn list_return_wrapper_resolves_r6_lapply() {
         r_class_name: "R6Board",
         class_system: "r6",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = "return(.__MX_WRAP_LIST_RETURN_R6Board__(.val))";
     let output = resolve_list_wrappers(input, &entries);
@@ -838,6 +888,7 @@ fn list_return_wrapper_resolves_s7_override_lapply() {
         r_class_name: "PrettyBoard",
         class_system: "s7",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = ".__MX_WRAP_LIST_RETURN_S7Board__(.val)";
     let output = resolve_list_wrappers(input, &entries);
@@ -854,6 +905,7 @@ fn list_return_wrapper_resolves_s4_lapply() {
         r_class_name: "S4Board",
         class_system: "s4",
         field_syntax: false,
+        read_only_fields: false,
     }];
     let input = ".__MX_WRAP_LIST_RETURN_S4Board__(.val)";
     let output = resolve_list_wrappers(input, &entries);
@@ -871,12 +923,14 @@ fn list_return_wrapper_resolves_attribute_classes_lapply() {
             r_class_name: "S3Board",
             class_system: "s3",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "EnvBoard",
             r_class_name: "EnvBoard",
             class_system: "env",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let input =
@@ -2051,6 +2105,7 @@ fn detect_duplicate_clean_content_passes() {
             r_class_name: "Shape",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         }],
     );
     assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
@@ -2072,6 +2127,7 @@ fn read_only_sidecar_property_takes_no_setter_name() {
             r_class_name: "Shape",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         }],
     );
     assert!(map.contains_key("Shape_get_area"), "{map:?}");
@@ -2099,6 +2155,7 @@ fn detect_duplicate_shortcut_vs_sidecar_accessor_fails() {
             r_class_name: "Shape",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         }],
     );
     let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
@@ -2129,6 +2186,7 @@ fn detect_duplicate_honours_class_override_prefix() {
             r_class_name: "Shape",
             class_system: "s7",
             field_syntax: false,
+            read_only_fields: false,
         }],
     );
     let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
@@ -3078,12 +3136,14 @@ fn or_bare_resolves_renames_and_keeps_unregistered_names() {
             r_class_name: "engine",
             class_system: "s3",
             field_syntax: false,
+            read_only_fields: false,
         },
         ClassNameEntry {
             rust_type: "BoardR6",
             r_class_name: "Board",
             class_system: "r6",
             field_syntax: false,
+            read_only_fields: false,
         },
     ];
     let input = "structure(.val, class = \".__MX_CLASS_REF_OR_BARE_EngineS3__\")\n\
@@ -3110,6 +3170,7 @@ fn class_ref_forms_resolve_independently() {
         r_class_name: "point",
         class_system: "s3",
         field_syntax: false,
+        read_only_fields: false,
     }];
     assert_eq!(
         resolve_refs(
