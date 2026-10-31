@@ -540,6 +540,21 @@ fn is_computed_type(ty: &syn::Type) -> bool {
         if type_path.path.segments.last().is_some_and(|seg| seg.ident == COMPUTED_TYPE_NAME))
 }
 
+/// The `T` of a `Nullable<T>` field type (`miniextendr_api::Nullable`, by
+/// its last path segment), `None` for any other type. Such a field reads
+/// `NULL` for `None` and reads `NULL` / `NA` as `None`, as an `Option<T>`
+/// field's setter does (#2270).
+fn nullable_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    let seg = type_path.path.segments.last()?;
+    if seg.ident != "Nullable" {
+        return None;
+    }
+    crate::type_inspect::first_type_argument(seg)
+}
+
 /// Options for a sidecar field's generated documentation, setters and Rust
 /// accessors.
 #[derive(Default)]
@@ -560,6 +575,10 @@ struct RDataOptions {
     /// setter, and the field methods refuse a write. The Rust accessors
     /// (`ref` / `mut`) stay.
     read_only: Option<Span>,
+    /// `null_if_none`: an `Option<T>` struct field's getter reads `NULL` for
+    /// `None`, in place of `Option<T>`'s own conversion (`NA` for a scalar,
+    /// #2270). The setter is unchanged.
+    null_if_none: Option<Span>,
 }
 
 /// Which Rust accessors a `Sidecar<T>` field gets: `#[r_data(ref)]` the
@@ -572,8 +591,8 @@ struct SidecarAccess {
 }
 
 /// One item of `#[r_data(...)]`: `ref`, `mut` (both keywords, so
-/// `parse_nested_meta` cannot read them), a flag (`read_only`) or
-/// `key = "value"`.
+/// `parse_nested_meta` cannot read them), a flag (`read_only`,
+/// `null_if_none`) or `key = "value"`.
 enum RDataArg {
     Ref(Span),
     Mut(Span),
@@ -668,12 +687,26 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                         "`read_only` takes no value: `#[r_data(read_only)]`",
                     ));
                 }
+                RDataArg::Flag(key) if key == "null_if_none" => {
+                    if options.null_if_none.replace(key.span()).is_some() {
+                        return Err(syn::Error::new_spanned(
+                            key,
+                            "duplicate `null_if_none` option",
+                        ));
+                    }
+                }
+                RDataArg::KeyValue { key, .. } if key == "null_if_none" => {
+                    return Err(syn::Error::new_spanned(
+                        &key,
+                        "`null_if_none` takes no value: `#[r_data(null_if_none)]`",
+                    ));
+                }
                 RDataArg::Flag(key) | RDataArg::KeyValue { key, .. } => {
                     return Err(syn::Error::new_spanned(
                         &key,
                         format!(
-                            "unknown key `{key}`; supported: `ref`, `mut`, `read_only`, `name`, `get`, \
-                             `prop_doc`, `setter`"
+                            "unknown key `{key}`; supported: `ref`, `mut`, `read_only`, `null_if_none`, \
+                             `name`, `get`, `prop_doc`, `setter`"
                         ),
                     ));
                 }
@@ -709,6 +742,43 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                 format!(
                     "`read_only` makes a public `#[r_data]` field read-only from R (no R setter, \
                      and the field methods refuse a write); it doesn't apply to {refusal}"
+                ),
+            ));
+        }
+    }
+    if let Some(span) = options.null_if_none {
+        // `null_if_none` changes how the getter converts an `Option<T>`
+        // struct field; no other kind converts one.
+        let refusal = if is_rsidecar_type(field) {
+            Some("the RSidecar selector, which has no R accessors".to_string())
+        } else if is_computed_type(&field.ty) {
+            Some(format!(
+                "a `{COMPUTED_TYPE_NAME}` field: its `get` function returns `Nullable<T>` to read \
+                 `NULL` for `None`"
+            ))
+        } else if sidecar_inner_type(&field.ty).is_some() {
+            Some(format!(
+                "a `{SIDECAR_TYPE_NAME}<T>` field, which keeps the R value it was given: declare it \
+                 `{SIDECAR_TYPE_NAME}<Nullable<T>>` to keep `NULL` for `None`"
+            ))
+        } else if !is_pub(field) || field.ident.is_none() {
+            Some("a field that is not `pub`: only `pub` `#[r_data]` fields reach R".to_string())
+        } else if nullable_inner_type(&field.ty).is_some() {
+            Some("a `Nullable<T>` field, which reads `NULL` for `None` already".to_string())
+        } else if !crate::type_inspect::is_option_type(&field.ty) {
+            Some(format!(
+                "a `{}` field: only an `Option<T>` field has a `None`",
+                crate::type_inspect::type_display(&field.ty)
+            ))
+        } else {
+            None
+        };
+        if let Some(refusal) = refusal {
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "`null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` for \
+                     `None` (in place of `NA` for a scalar); it doesn't apply to {refusal}"
                 ),
             ));
         }
@@ -887,6 +957,9 @@ pub(crate) struct SidecarSlot {
     /// `#[r_data(read_only)]` (#2268): R reads the field and can't write
     /// it. The Rust accessors of a `Sidecar<T>` field are unaffected.
     read_only: bool,
+    /// `#[r_data(null_if_none)]` (#2270): the getter of this `Option<T>`
+    /// `Conversion` field reads `NULL` for `None`.
+    null_if_none: bool,
 }
 
 impl SidecarSlot {
@@ -967,9 +1040,10 @@ fn contains_unrooted_r_view(ty: &syn::Type) -> bool {
             match segment.ident.to_string().as_str() {
                 "SEXP" | "List" | "ListMut" | "NamedList" | "DataFrame" | "StrVec" | "RCow"
                 | "RArray" | "RVector" | "RMatrix" | "RArray3D" | "Factor" | "FactorMut" => true,
-                "Option" | "Result" | "Vec" | "VecDeque" | "LinkedList" | "BinaryHeap"
-                | "HashSet" | "BTreeSet" | "HashMap" | "BTreeMap" | "Box" | "Rc" | "Arc"
-                | "Cow" | "Cell" | "RefCell" | "Mutex" | "RwLock" | "OnceCell" | "OnceLock" => {
+                "Option" | "Nullable" | "Result" | "Vec" | "VecDeque" | "LinkedList"
+                | "BinaryHeap" | "HashSet" | "BTreeSet" | "HashMap" | "BTreeMap" | "Box" | "Rc"
+                | "Arc" | "Cow" | "Cell" | "RefCell" | "Mutex" | "RwLock" | "OnceCell"
+                | "OnceLock" => {
                     let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
                         return false;
                     };
@@ -1132,6 +1206,7 @@ pub(crate) fn parse_sidecar_info(
                 prop_doc: options.prop_doc,
                 setter_invisible: options.setter_invisible,
                 read_only: options.read_only.is_some(),
+                null_if_none: options.null_if_none.is_some(),
             });
         }
     }
@@ -1194,7 +1269,9 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 ///   `r_data_accessors`, #1891) a restored pointer is refused.
 /// - Scalar kinds: reads the struct field (accessed via the external pointer
 ///   address) and wraps it with `Rf_Scalar*`.
-/// - `Conversion`: clones the struct field and converts it with `IntoR`.
+/// - `Conversion`: clones the struct field and converts it with `IntoR`;
+///   under `#[r_data(null_if_none)]` the `Option<T>` converts as a
+///   `Nullable<T>`, so `None` reads `NULL` (#2270).
 /// - `Computed`: calls the `get` function on the live struct and converts
 ///   its value with `IntoR`; a `Result` is an error boundary (#2269).
 ///
@@ -1331,10 +1408,16 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 &quote::quote!(val),
                 &quote::quote!(::core::option::Option::None),
             );
+            // `null_if_none` (#2270): the `Option<T>` converts as a
+            // `Nullable<T>`, whose `None` is `NULL` whatever `T` is.
+            let nullable = slot
+                .null_if_none
+                .then(|| quote::quote! { let val = ::miniextendr_api::Nullable(val); });
             quote::quote! {
                 unsafe {
                     #extract_ref
                     let val: #ty = #clone(&data.#field_name);
+                    #nullable
                     #value
                 }
             }
@@ -1419,11 +1502,21 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 
     // Conversion-failure value of a `Conversion` or `Sidecar` slot: the field
     // type's expectation, else the one the type declares or the error knows at
-    // run time (a newtype, a `match_arg` enum field), as for an argument.
+    // run time (a newtype, a `match_arg` enum field), as for an argument. A
+    // `Nullable<T>` reads as `Option<T>` does, so it is described as one
+    // (`'f' must be NULL or ...`, #2270).
     let conversion_err = |ty: &syn::Type| -> proc_macro2::TokenStream {
-        let prefix = crate::r_preconditions::conversion_expectation(ty, false)
+        let as_option: syn::Type;
+        let expected_ty = match nullable_inner_type(ty) {
+            Some(inner) => {
+                as_option = syn::parse_quote!(::core::option::Option<#inner>);
+                &as_option
+            }
+            None => ty,
+        };
+        let prefix = crate::r_preconditions::conversion_expectation(expected_ty, false)
             .map(|expected| format!("'{field_r_name}' must be {expected}"));
-        let declared = crate::rust_conversion_builder::declared_expectation(ty);
+        let declared = crate::rust_conversion_builder::declared_expectation(expected_ty);
         crate::rust_conversion_builder::conversion_value_tokens(
             &crate::rust_conversion_builder::ConversionSubject {
                 expected: prefix.as_deref().map_or(
@@ -1432,7 +1525,7 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 ),
                 quoted: &field_r_name,
                 param: "value",
-                nullable: crate::type_inspect::is_option_type(ty),
+                nullable: crate::type_inspect::is_option_type(expected_ty),
                 rust_type: &rust_type,
             },
             &crate::rust_conversion_builder::class_slice(&crate_class),

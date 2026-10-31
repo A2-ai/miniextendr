@@ -251,7 +251,11 @@ only (for a class with its own copy-on-modify `$<-`), and `r_data_accessors =
 copy of the object sees the write. `#[r_data(read_only)]` makes one field
 read-only from R in every class system (no setter; R6 bindings refuse a
 value, S7 properties have no setter); `Computed` fields work the same way,
-R6 and S7 included (#2268, #1888). Every class
+R6 and S7 included (#2268, #1888). An `Option<String>` field reads `NA` for
+`None` (the absence contract); `#[r_data(null_if_none)]` on an `Option<T>`
+field, or a `Nullable<T>` field, reads `NULL` instead, and both setters read
+`NULL` / `NA` as `None` (#2270; S7 properties are `class_any`, so `NULL`
+passes). Every class
 system also gets the standalone `Type_get_field()` / `Type_set_field()`, which
 take the pointer or any object carrying it; there is no `r_data_accessors!`
 macro.

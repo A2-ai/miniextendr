@@ -1738,6 +1738,60 @@ has no setter), on a private field (R doesn't reach it), on a computed field
 (read-only already) and next to `setter = ...` (there is no R setter whose
 return to choose).
 
+#### Fields that read `NULL` for `None`
+
+A struct field converts its value as a return value does, so an
+`Option<T>` field follows the absence contract (`CONVERSION_MATRIX.md`, "The
+Absence Contract"): `None` of a scalar is `NA` (`Option<String>` reads
+`NA_character_`, `Option<i32>` `NA_integer_`), and `None` of a container is
+`NULL`. Two spellings make a field read `NULL` for `None` whatever `T` is
+(#2270):
+
+- `#[r_data(null_if_none)]` on an `Option<T>` field: the getter reads
+  `NULL` for `None` and the value for `Some`.
+- A `Nullable<T>` field (`miniextendr_api::Nullable`, the return type whose
+  `None` is `NULL`).
+
+Both setters read `NULL` and `NA` as `None`, as an `Option<T>` field's
+setter always has, and a bad value raises `'label' must be NULL or a single
+string: ...` in both. `null_if_none` goes with `read_only`, `name`,
+`setter` and `prop_doc`. Under S7 the property is `class_any`, as every
+generated property is, so a `NULL` value passes S7's validation and
+`obj@label <- NULL` writes `None`.
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3)]
+pub struct MyConfig {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data(null_if_none)]
+    pub label: Option<String>,
+    #[r_data]
+    pub tag: Nullable<String>,
+    #[r_data]
+    pub note: Option<String>,
+}
+```
+
+```r
+# x: a MyConfig whose three fields are None
+x$label             # NULL
+x$tag               # NULL
+x$note              # NA_character_
+x$label <- "a"      # Some("a")
+x$label <- NULL     # None; NA_character_ stores None too
+```
+
+With the `serde` feature `Nullable<T>` serializes and deserializes as
+`Option<T>` does, so a serde type that comes back after `readRDS()` keeps
+the field (`EXTERNALPTR.md`, "A serde type comes back after `readRDS()`"). `null_if_none` is
+refused on a type that is not `Option<T>`: on a `Nullable<T>` field (it reads
+`NULL` already), on a `Computed` field (its `get` function returns
+`Nullable<T>`), on a `Sidecar<T>` field (it keeps the R value it was given;
+declare it `Sidecar<Nullable<T>>` to keep `NULL` for `None`), on a private
+field and on the `RSidecar` selector.
+
 ### R Behavior by Class System
 
 | System | Get | Set | Computed and read-only fields | A restored pointer (`readRDS()`) |

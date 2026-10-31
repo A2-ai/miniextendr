@@ -34,7 +34,7 @@ error: `read_only` makes a public `#[r_data]` field read-only from R (no R sette
 53 |     #[r_data(read_only, setter = "visible")]
    |              ^^^^^^^^^
 
-error: unknown key `readonly`; supported: `ref`, `mut`, `read_only`, `name`, `get`, `prop_doc`, `setter`
+error: unknown key `readonly`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `name`, `get`, `prop_doc`, `setter`
   --> tests/ui/derive_r_data_read_only_invalid.rs:61:14
    |
 61 |     #[r_data(readonly)]
