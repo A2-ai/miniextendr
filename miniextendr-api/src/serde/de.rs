@@ -4,7 +4,7 @@
 //! to deserialize any serde-compatible Rust type from R data structures.
 
 use super::error::RSerdeError;
-use crate::from_r::charsxp_to_str;
+use crate::from_r::try_charsxp_to_str;
 use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
@@ -131,7 +131,8 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 if charsxp == SEXP::na_string() {
                     visitor.visit_none()
                 } else {
-                    let s = unsafe { charsxp_to_str(charsxp) };
+                    let s =
+                        unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
                     visitor.visit_str(s)
                 }
             }
@@ -582,7 +583,8 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 if charsxp == SEXP::na_string() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
-                let variant = unsafe { charsxp_to_str(charsxp) };
+                let variant =
+                    unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
                 visitor.visit_enum(UnitVariantAccess {
                     variant: variant.to_string(),
                 })
@@ -591,7 +593,8 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             SEXPTYPE::VECSXP if self.has_names() && self.len() == 1 => {
                 let names = self.sexp.get_names();
                 let name_charsxp = names.string_elt(0);
-                let variant = unsafe { charsxp_to_str(name_charsxp) };
+                let variant =
+                    unsafe { try_charsxp_to_str(name_charsxp) }.map_err(RSerdeError::not_text)?;
                 let value = self.sexp.vector_elt(0);
 
                 visitor.visit_enum(DataVariantAccess {
@@ -672,7 +675,7 @@ impl RDeserializer {
         if charsxp == SEXP::na_string() {
             return Err(RSerdeError::UnexpectedNa);
         }
-        Ok(unsafe { charsxp_to_str(charsxp) })
+        unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)
     }
 }
 
@@ -808,7 +811,8 @@ impl<'de> de::Deserializer<'de> for VectorElementDeserializer {
                 if charsxp == SEXP::na_string() {
                     visitor.visit_none()
                 } else {
-                    let s = unsafe { charsxp_to_str(charsxp) };
+                    let s =
+                        unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)?;
                     visitor.visit_str(s)
                 }
             }
@@ -1025,7 +1029,7 @@ impl<'de> MapAccess<'de> for NamedListMapAccess {
         };
 
         let name_charsxp = self.names.string_elt(index as isize);
-        let name = unsafe { charsxp_to_str(name_charsxp) };
+        let name = unsafe { try_charsxp_to_str(name_charsxp) }.map_err(RSerdeError::not_text)?;
 
         // Create a string deserializer for the key
         seed.deserialize(StrDeserializer { s: name }).map(Some)

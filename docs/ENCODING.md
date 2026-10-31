@@ -33,6 +33,39 @@ needs translation; read it as `String` or `Cow<str>`.
 Strings miniextendr gives R are always marked UTF-8, so they are correct in
 any locale.
 
+### Refused strings
+
+An argument conversion refuses a `bytes` string, or one whose bytes are not
+valid UTF-8, through its `Err`, so the R error is the argument error a wrong
+type gets: the crate's `conversion_error_class`, `kind = "conversion"`, and
+`e$param`. A vector conversion lists every refused element in one message:
+
+```r
+x <- c("a", "µg", NA, "ñ"); Encoding(x) <- "bytes"
+echo(x)  # #[miniextendr] fn echo(x: Vec<String>) -> Vec<String>
+#> Error in echo(x): 'x' must be character: marked as bytes, not text (elements 2, 4)
+```
+
+The scalar form reads `'x' must be a single string: marked as bytes, not
+text`; a string that is not valid UTF-8 reads `not valid UTF-8`. The serde
+deserializers refuse it with an `RSerdeError`; `DataFrame::group_by` with a
+`DataFrameError` naming every refused key, and `group_by_metadata` /
+`group_declaration` every refused grouping-variable name.
+
+Reads that cannot return an error, such as `SexpExt::string_elt_str`,
+`SexpExt::r_char_str`, the `StrVec` accessors, and `DataFrame::names()`, read
+with the same encoding rules and **panic** on a string that is not text,
+naming the element. Name lookups (`List` / `NamedList` / `TypedList` by
+name, `DataFrame::column_raw` / `contains_column`) translate a name as a
+conversion does and skip a name that is not text, which no Rust `&str` can
+match. Names that only go into messages (a class attribute, a connection's
+description) are read lossily, with `U+FFFD` for bytes that are not UTF-8.
+
+A `match_arg` choice marked as bytes is compared by its bytes, as R's
+`match.arg()` compares it: it matches a choice only when its bytes are that
+choice's UTF-8. `AsNumeric` reads it as non-numeric, as `as.numeric()` gives
+`NA` for it.
+
 ### The translation warning
 
 In a session whose locale isn't UTF-8, the first native non-ASCII string a

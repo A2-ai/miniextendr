@@ -3519,10 +3519,11 @@ impl RCondition {
             return None;
         }
 
-        // Belt-and-suspenders PROTECT across the full inspection window. The reads
-        // below are nominally non-allocating, but R-devel's GC is aggressive enough
-        // (see MEMORY.md "Common gotchas") that a defensive guard is cheap and
-        // closes the door on subtle regressions if the read path ever changes.
+        // PROTECT across the full inspection window. The string reads below
+        // allocate when they translate a Latin-1 string (`string_elt_str`
+        // translates into R's memory stack), and R-devel's GC is aggressive
+        // enough (see MEMORY.md "Common gotchas") that every SEXP read here
+        // must stay reachable from the guarded `sexp`.
         let _guard = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
 
         // Verify the __rust_condition__ marker attribute is TRUE (a length-1 LGLSXP
@@ -3593,8 +3594,10 @@ impl RCondition {
         // value is not R data (closures, environments, …, which `try_from_sexp`
         // rejects) are dropped — safe degradation that preserves message/class/kind.
         //
-        // All reads here are non-allocating copies into owned Rust values, so no new
-        // SEXPs are created and the existing `_guard` OwnedProtect suffices.
+        // All reads here are copies into owned Rust values: they create no SEXP
+        // to root (a Latin-1 name's translation lives on R's memory stack), and
+        // every element read is reachable from `sexp`, so the existing `_guard`
+        // OwnedProtect suffices.
         let data: Option<ConditionData> = if len >= 5 {
             let data_sexp = sexp.vector_elt(4);
             if data_sexp.is_nil() || !data_sexp.is_list() {

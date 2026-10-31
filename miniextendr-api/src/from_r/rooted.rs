@@ -1,8 +1,8 @@
 //! Conversions whose borrowed result cannot outlive an R root.
 
 use super::{
-    NativeBorrow, SexpError, SexpTypeError, TryFromSexp, charsxp_to_cow, charsxp_to_str,
-    map_strsxp_with, map_vecsxp_batched,
+    NativeBorrow, SexpError, SexpTypeError, TryFromSexp, map_strsxp_with, map_vecsxp_batched,
+    try_charsxp_to_cow, try_charsxp_to_str,
 };
 use crate::{RCow, RNativeType, Root, SEXP, SEXPTYPE, SexpExt, StrVec};
 use std::borrow::Cow;
@@ -174,7 +174,9 @@ impl<'a, E: RootedVecElement<'a>> TryFromRoot<'a> for Option<Vec<E>> {
 }
 
 /// Character elements keep the raw conversions' NA handling: `NA` reads as
-/// `""` for the plain forms and as `None` for the optional ones.
+/// `""` for the plain forms and as `None` for the optional ones. `$borrow`
+/// reads one non-`NA` element and may refuse it (a string marked as bytes);
+/// the walk reports every refused element in one error.
 macro_rules! character_elements {
     ($life:lifetime; $($element:ty => |$value:ident| $borrow:expr, $na:expr, $blank:expr;)*) => {$(
         impl<$life> RootedVecElement<$life> for $element {
@@ -189,7 +191,7 @@ macro_rules! character_elements {
                     } else {
                         // An ALTSTRING accessor need not retain this CHARSXP.
                         let $value = unsafe { root.protect_child(value) }.get();
-                        Ok($borrow)
+                        $borrow
                     }
                 })
             }
@@ -198,10 +200,10 @@ macro_rules! character_elements {
 }
 
 character_elements! {'a;
-    &'a str => |value| unsafe { charsxp_to_str(value) }, "", "";
-    Option<&'a str> => |value| Some(unsafe { charsxp_to_str(value) }), None, Some("");
-    Cow<'a, str> => |value| unsafe { charsxp_to_cow(value) }, Cow::Borrowed(""), Cow::Borrowed("");
-    Option<Cow<'a, str>> => |value| Some(unsafe { charsxp_to_cow(value) }), None, Some(Cow::Borrowed(""));
+    &'a str => |value| unsafe { try_charsxp_to_str(value) }, "", "";
+    Option<&'a str> => |value| unsafe { try_charsxp_to_str(value) }.map(Some), None, Some("");
+    Cow<'a, str> => |value| unsafe { try_charsxp_to_cow(value) }, Cow::Borrowed(""), Cow::Borrowed("");
+    Option<Cow<'a, str>> => |value| unsafe { try_charsxp_to_cow(value) }.map(Some), None, Some(Cow::Borrowed(""));
 }
 
 /// Each element gets its own root before conversion or the next Elt callback.

@@ -4510,7 +4510,8 @@ pub fn gc_stress_condition_data() {
             )
         };
         // The returned SEXP is unprotected — root it before the readback
-        // (string_elt_str etc. do not allocate, but the next loop round does).
+        // (string_elt_str allocates when it translates a Latin-1 string, and
+        // the next loop round allocates).
         let _guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(tagged) };
 
         assert_eq!(tagged.len(), 5, "tagged condition value must have 5 slots");

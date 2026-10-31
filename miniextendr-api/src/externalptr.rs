@@ -450,7 +450,9 @@ pub(crate) unsafe fn classify_null_address<T: TypedExternal>(sexp: SEXP) -> Null
 pub(crate) fn receiver_class(receiver: SEXP) -> Option<String> {
     let class = receiver.get_class();
     (class.type_of() == SEXPTYPE::STRSXP && class.len() > 0)
-        .then(|| class.string_elt_str(0).map(str::to_owned))
+        // SAFETY: an element of a live class attribute. Read lossily: the
+        // name only goes into a message.
+        .then(|| unsafe { crate::from_r::charsxp_to_string_lossy(class.string_elt(0)) })
         .flatten()
 }
 
@@ -976,7 +978,7 @@ unsafe fn list_element(sexp: SEXP, name: &str) -> Option<SEXP> {
     let n = names.len().min(sexp.len());
     for i in 0..n {
         let i = isize::try_from(i).ok()?;
-        if names.string_elt_str(i) == Some(name) {
+        if crate::list::text_name(names.string_elt(i)) == Some(name) {
             return Some(sexp.vector_elt(i));
         }
     }

@@ -1104,7 +1104,7 @@ where
             .into());
         }
         // SAFETY: a non-NA CHARSXP from a live STRSXP argument.
-        let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+        let s = unsafe { crate::from_r::try_charsxp_to_str(charsxp) }?;
         s.parse::<T>()
             .map(AsFromStr)
             .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{s:?}: {e}")))

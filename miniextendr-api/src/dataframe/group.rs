@@ -270,18 +270,34 @@ impl GroupsAttr {
     /// column not named `.rows`, keeping only the first column of a repeated
     /// name. Their names are dplyr's `group_vars()`,
     /// `setdiff(names(groups), ".rows")`. An `NA` name reads as `""`, as in
-    /// [`DataFrame::names`].
-    fn key_columns(&self) -> Vec<(String, SEXP)> {
+    /// [`DataFrame::names`]; a name that is not text (marked as bytes) is an
+    /// error, every one listed.
+    fn key_columns(&self) -> Result<Vec<(String, SEXP)>, DataFrameError> {
         let names = self.frame.get_names();
         let mut columns: Vec<(String, SEXP)> = Vec::new();
-        for i in 0..self.frame.len() as isize {
-            let name = names.string_elt_str(i).unwrap_or("");
+        let mut errors = crate::from_r::BatchedErrors::default();
+        for i in 0..self.frame.len() {
+            let charsxp = names.string_elt(i as isize);
+            let name = if charsxp.is_na_string() {
+                ""
+            } else {
+                match text_key(charsxp, i, "", &mut errors) {
+                    Some(name) => name,
+                    None => continue,
+                }
+            };
             if name == ".rows" || columns.iter().any(|(seen, _)| seen == name) {
                 continue;
             }
-            columns.push((name.to_string(), self.frame.vector_elt(i)));
+            columns.push((name.to_string(), self.frame.vector_elt(i as isize)));
         }
-        columns
+        if !errors.is_empty() {
+            return Err(DataFrameError::Conversion(format!(
+                "cannot read the grouping variable names: {}",
+                errors.element_message()
+            )));
+        }
+        Ok(columns)
     }
 }
 // endregion
@@ -554,7 +570,8 @@ impl DataFrame {
     /// list of integer vectors ([`BadGroupRows`]; a list of doubles is
     /// rejected, as in dplyr). The row indices themselves are not checked,
     /// as `group_vars()` does not check them either, so stale `.rows` after a
-    /// subset still yield the declaration.
+    /// subset still yield the declaration. A grouping-variable name marked as
+    /// bytes is a [`Conversion`](DataFrameError::Conversion) error.
     ///
     /// A `rowwise_df` gets the same checks. dplyr is looser here:
     /// `group_vars()` reads a `rowwise_df`'s `groups` attribute without
@@ -597,7 +614,7 @@ impl DataFrame {
         };
         Ok(Some(GroupDeclaration {
             vars: groups
-                .key_columns()
+                .key_columns()?
                 .into_iter()
                 .map(|(name, _)| name)
                 .collect(),
@@ -688,7 +705,7 @@ impl DataFrame {
             .groups_attr()?
             .ok_or(DataFrameError::NotGroupedDataFrame)?;
         let n_groups = attr.rows.len();
-        let key_columns = attr.key_columns();
+        let key_columns = attr.key_columns()?;
 
         // Per-key-column keys: one Vec<GroupKey> of length n_groups per key
         // column (column_keys yields one scalar key per row of the groups frame).
@@ -754,7 +771,7 @@ impl DataFrame {
         let names = frame.get_names();
         let last_is_rows = names.type_of() == SEXPTYPE::STRSXP
             && names.len() == frame.len()
-            && names.string_elt_str(names.len() as isize - 1) == Some(".rows");
+            && crate::list::text_name(names.string_elt(names.len() as isize - 1)) == Some(".rows");
         if !last_is_rows {
             return Err(DataFrameError::MissingGroupRows);
         }
@@ -838,14 +855,14 @@ fn check_rows_partition(
 /// `group_by_metadata`.
 fn column_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, DataFrameError> {
     if column.is_factor() {
-        return Ok(factor_groups(column));
+        return factor_groups(column, col);
     }
     let unsupported = |type_of: String| DataFrameError::UnsupportedGroupColumn {
         column: col.to_string(),
         type_of,
     };
     match column.type_of() {
-        SEXPTYPE::STRSXP => Ok(character_groups(column)),
+        SEXPTYPE::STRSXP => character_groups(column, col),
         SEXPTYPE::INTSXP => Ok(integer_groups(column)),
         SEXPTYPE::LGLSXP => Ok(logical_groups(column)),
         // bit64 stores int64 bits in a double vector: read as doubles, its
@@ -880,9 +897,36 @@ fn column_keys(column: SEXP, col: &str) -> Result<Vec<GroupKey>, DataFrameError>
     Ok(row_keys(&column_groups(column, col)?, column.len()))
 }
 
+/// The text of the non-`NA` key `charsxp` (element `i`), or the failure
+/// recorded in `errors`, its reason after `what`: a key marked as bytes, or
+/// not valid UTF-8, has no `String` (see
+/// [`crate::from_r::try_charsxp_to_str`]).
+fn text_key(
+    charsxp: SEXP,
+    i: usize,
+    what: &str,
+    errors: &mut crate::from_r::BatchedErrors,
+) -> Option<&'static str> {
+    // SAFETY: a non-NA CHARSXP of the key column (or its levels), which the
+    // frame roots.
+    unsafe { crate::from_r::try_charsxp_to_str(charsxp) }
+        .map_err(|e| errors.push(i, || format!("{what}{}", e.r_reason(false))))
+        .ok()
+}
+
+/// The error of a key column with keys that are not text, every one listed:
+/// `cannot group by column 'x': marked as bytes, not text (elements 2, 4)`.
+fn keys_not_text(col: &str, errors: crate::from_r::BatchedErrors) -> DataFrameError {
+    DataFrameError::Conversion(format!(
+        "cannot group by column '{col}': {}",
+        errors.element_message()
+    ))
+}
+
 /// Factor fast path: levels are the keys (level order, empty levels kept).
 /// NA codes — and a literal NA level from `addNA()` — land in [`GroupKey::Na`].
-fn factor_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
+/// A level that is not text (marked as bytes) is an error.
+fn factor_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, DataFrameError> {
     // SAFETY: factor columns are INTSXP; as_slice handles empty vectors.
     let codes: &[i32] = unsafe { column.as_slice() };
     let levels = column.get_levels();
@@ -899,29 +943,48 @@ fn factor_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     }
 
     let mut groups: Vec<(GroupKey, Vec<usize>)> = Vec::with_capacity(n_levels + 1);
+    let mut errors = crate::from_r::BatchedErrors::default();
     for (lvl, bucket) in buckets.into_iter().enumerate() {
-        let key = match levels.string_elt_str(lvl as isize) {
-            Some(label) => GroupKey::Str(label.to_string()),
-            None => GroupKey::Na, // addNA() level
+        let level = levels.string_elt(lvl as isize);
+        let key = if level.is_na_string() {
+            GroupKey::Na // addNA() level
+        } else {
+            match text_key(level, lvl, "level ", &mut errors) {
+                Some(label) => GroupKey::Str(label.to_string()),
+                None => continue,
+            }
         };
         groups.push((key, bucket));
+    }
+    if !errors.is_empty() {
+        return Err(keys_not_text(col, errors));
     }
     if !na_bucket.is_empty() {
         groups.push((GroupKey::Na, na_bucket));
     }
-    groups
+    Ok(groups)
 }
 
-/// Character keys: byte-order sort (BTreeMap), NA last.
-fn character_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
-    let n = column.len() as isize;
+/// Character keys: byte-order sort (BTreeMap), NA last. A key that is not text
+/// (marked as bytes) is an error.
+fn character_groups(
+    column: SEXP,
+    col: &str,
+) -> Result<Vec<(GroupKey, Vec<usize>)>, DataFrameError> {
+    let n = column.len();
     let mut map: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut na_bucket: Vec<usize> = Vec::new();
+    let mut errors = crate::from_r::BatchedErrors::default();
     for i in 0..n {
-        match column.string_elt_str(i) {
-            Some(s) => map.entry(s.to_string()).or_default().push(i as usize),
-            None => na_bucket.push(i as usize),
+        let charsxp = column.string_elt(i as isize);
+        if charsxp.is_na_string() {
+            na_bucket.push(i);
+        } else if let Some(s) = text_key(charsxp, i, "", &mut errors) {
+            map.entry(s.to_string()).or_default().push(i);
         }
+    }
+    if !errors.is_empty() {
+        return Err(keys_not_text(col, errors));
     }
     let mut groups: Vec<(GroupKey, Vec<usize>)> = map
         .into_iter()
@@ -930,7 +993,7 @@ fn character_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     if !na_bucket.is_empty() {
         groups.push((GroupKey::Na, na_bucket));
     }
-    groups
+    Ok(groups)
 }
 
 /// Integer keys: numeric sort (BTreeMap), NA (`i32::MIN`) last.

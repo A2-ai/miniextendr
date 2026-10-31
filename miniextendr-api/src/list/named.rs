@@ -28,7 +28,9 @@ use super::List;
 ///
 /// # Name Handling
 ///
-/// - `NA`, empty-string and non-UTF-8 names are excluded from the index
+/// - A Latin-1 name is indexed by its UTF-8 translation; `NA`, empty-string
+///   and non-text names (marked as bytes, or not valid UTF-8) are excluded
+///   from the index
 /// - If a name appears more than once, the **first** occurrence wins, as with
 ///   R's `x[["name"]]` and [`List::get_named`]; check
 ///   [`List::first_duplicate_name`] to refuse such a list instead

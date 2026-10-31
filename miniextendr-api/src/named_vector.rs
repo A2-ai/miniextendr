@@ -237,7 +237,7 @@ pub(crate) unsafe fn set_names_on_sexp<S: AsRef<str>>(sexp: SEXP, keys: &[S]) {
 ///
 /// Errors on: missing names attribute, NA names, empty names, duplicate names.
 fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
-    use crate::from_r::charsxp_to_str;
+    use crate::from_r::{name_refusal, try_charsxp_to_str};
 
     let names = sexp.get_names();
     let len = sexp.len();
@@ -261,7 +261,7 @@ fn extract_names_strict(sexp: SEXP) -> Result<Vec<String>, SexpError> {
             ));
         }
 
-        let name = unsafe { charsxp_to_str(charsxp) };
+        let name = unsafe { try_charsxp_to_str(charsxp) }.map_err(|e| name_refusal(i, &e))?;
 
         // Reject empty names
         if name.is_empty() {

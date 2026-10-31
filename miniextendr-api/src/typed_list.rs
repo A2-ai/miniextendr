@@ -36,7 +36,6 @@ use crate::from_r::{SexpTypeError, TryFromSexp};
 use crate::list::List;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::collections::HashSet;
-use std::ffi::CStr;
 
 // region: Type specification structures
 
@@ -339,29 +338,16 @@ impl TypedList {
     }
 
     /// Get the raw SEXP for a named element.
+    ///
+    /// Names are read with their own encoding (a Latin-1 name is translated);
+    /// a name that is not text (marked as bytes) matches nothing.
     pub fn get_raw(&self, name: &str) -> Result<SEXP, TypedListError> {
-        let names_sexp = self.inner.names();
-        let n = self.inner.len();
-
-        if let Some(names) = names_sexp {
-            for i in 0..n {
-                let name_sexp = names.string_elt(i);
-                if name_sexp == SEXP::na_string() {
-                    continue;
-                }
-                let name_ptr = name_sexp.r_char();
-                let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
-                if let Ok(s) = name_cstr.to_str() {
-                    if s == name {
-                        return Ok(self.inner.as_sexp().vector_elt(i));
-                    }
-                }
-            }
+        match self.inner.text_names().find(|&(_, s)| s == name) {
+            Some((i, _)) => Ok(self.inner.as_sexp().vector_elt(i)),
+            None => Err(TypedListError::Missing {
+                name: name.to_string(),
+            }),
         }
-
-        Err(TypedListError::Missing {
-            name: name.to_string(),
-        })
     }
 
     /// Get the expected type string for a field from the spec.
@@ -388,32 +374,22 @@ impl TypedList {
 /// - [`TypedListError::ExtraFields`] if `allow_extra = false` and extra named fields exist
 /// - [`TypedListError::DuplicateNames`] if the list has duplicate non-empty names
 pub fn validate_list(list: List, spec: &TypedListSpec) -> Result<TypedList, TypedListError> {
-    // Build name index and check for duplicates
-    let names_sexp = list.names();
+    // Build name index and check for duplicates. Names are read with their
+    // own encoding; one that is not text (marked as bytes) indexes nothing.
     let n = list.len();
     let mut name_to_idx: std::collections::HashMap<String, isize> =
         std::collections::HashMap::with_capacity(n as usize);
 
-    if let Some(names) = names_sexp {
-        for i in 0..n {
-            let name_sexp = names.string_elt(i);
-            if name_sexp == SEXP::na_string() {
-                continue;
-            }
-            let name_ptr = name_sexp.r_char();
-            let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
-            if let Ok(s) = name_cstr.to_str() {
-                if s.is_empty() {
-                    continue;
-                }
-                if name_to_idx.contains_key(s) {
-                    return Err(TypedListError::DuplicateNames {
-                        name: s.to_string(),
-                    });
-                }
-                name_to_idx.insert(s.to_string(), i);
-            }
+    for (i, s) in list.text_names() {
+        if s.is_empty() {
+            continue;
         }
+        if name_to_idx.contains_key(s) {
+            return Err(TypedListError::DuplicateNames {
+                name: s.to_string(),
+            });
+        }
+        name_to_idx.insert(s.to_string(), i);
     }
 
     // Validate each spec entry
@@ -704,12 +680,9 @@ pub fn actual_type_string(sexp: SEXP) -> String {
         let class_len = class_attr.xlength();
         if class_len > 0 {
             let first_class = class_attr.string_elt(0);
-            if first_class != SEXP::na_string() {
-                let class_ptr = first_class.r_char();
-                let class_cstr = unsafe { CStr::from_ptr(class_ptr) };
-                if let Ok(s) = class_cstr.to_str() {
-                    return format!("{} (class: {})", base_type, s);
-                }
+            // SAFETY: the class attribute of a live SEXP; NA maps to `None`.
+            if let Some(s) = unsafe { crate::from_r::charsxp_to_string_lossy(first_class) } {
+                return format!("{} (class: {})", base_type, s);
             }
         }
     }

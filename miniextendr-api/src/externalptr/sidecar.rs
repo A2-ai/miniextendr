@@ -572,7 +572,8 @@ pub(crate) unsafe fn name_slots<T: TypedExternal>(prot: SEXP) {
 pub(crate) fn saved_slot(prot: SEXP, index: usize, name: &str) -> Option<R_xlen_t> {
     let names = prot.get_attr(SEXP::names_symbol());
     if names.type_of() == SEXPTYPE::STRSXP && names.xlength() == prot.xlength() {
-        (PROT_VEC_LEN..names.xlength()).find(|&at| names.string_elt_str(at) == Some(name))
+        (PROT_VEC_LEN..names.xlength())
+            .find(|&at| crate::list::text_name(names.string_elt(at)) == Some(name))
     } else {
         Some(prot_index(index)).filter(|&at| at < prot.xlength())
     }

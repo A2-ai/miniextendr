@@ -6,7 +6,8 @@ use std::borrow::Cow;
 
 use crate::SEXPTYPE::STRSXP;
 use crate::from_r::{
-    SexpError, SexpTypeError, TryFromSexp, charsxp_to_borrowed_str, charsxp_to_cow,
+    SexpError, SexpTypeError, TryFromSexp, charsxp_to_borrowed_str_or_panic,
+    charsxp_to_cow_or_panic,
 };
 use crate::gc_protect::{ChildRoots, OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -99,8 +100,8 @@ impl<'a> StrVec<'a> {
             if charsxp == SEXP::na_string() {
                 return None;
             }
-            // charsxp_to_borrowed_str fabricates &'static; covariance narrows it to &'a.
-            Some(charsxp_to_borrowed_str(charsxp))
+            // The read fabricates &'static; covariance narrows it to &'a.
+            Some(charsxp_to_borrowed_str_or_panic(charsxp))
         }
     }
 
@@ -108,7 +109,10 @@ impl<'a> StrVec<'a> {
     ///
     /// Returns `Cow::Borrowed` for UTF-8 strings (zero-copy), `Cow::Owned` for
     /// non-UTF-8 strings (translated via `Rf_translateCharUTF8`).
-    /// Returns `None` if out of bounds or `NA_character_`.
+    /// Returns `None` if out of bounds or `NA_character_`. Panics on a string
+    /// marked as bytes or one that is not valid UTF-8, which is not text; a
+    /// `Vec<String>` or `Vec<Cow<str>>` argument refuses such an element with
+    /// an argument error instead.
     #[inline]
     pub fn get_cow(self, idx: isize) -> Option<Cow<'a, str>> {
         let charsxp = self.get_charsxp(idx)?;
@@ -116,7 +120,7 @@ impl<'a> StrVec<'a> {
             if charsxp == SEXP::na_string() {
                 return None;
             }
-            Some(charsxp_to_cow(charsxp))
+            Some(charsxp_to_cow_or_panic(charsxp))
         }
     }
 
@@ -141,7 +145,7 @@ impl<'a> StrVec<'a> {
             if charsxp == SEXP::na_string() {
                 return None;
             }
-            Some(charsxp_to_borrowed_str(charsxp))
+            Some(charsxp_to_borrowed_str_or_panic(charsxp))
         }
     }
 
@@ -160,7 +164,7 @@ impl<'a> StrVec<'a> {
             if charsxp == SEXP::na_string() {
                 return None;
             }
-            Some(charsxp_to_cow(charsxp))
+            Some(charsxp_to_cow_or_panic(charsxp))
         }
     }
 

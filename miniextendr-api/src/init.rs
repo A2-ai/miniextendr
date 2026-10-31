@@ -56,7 +56,7 @@ pub(crate) fn wrapper_gen_mode() -> bool {
 /// 6. Lock down dynamic symbols
 ///
 /// The package loads in any locale: string conversions translate per string
-/// (`from_r::charsxp_to_str`).
+/// (`from_r::try_charsxp_to_str`).
 ///
 /// # Safety
 ///
