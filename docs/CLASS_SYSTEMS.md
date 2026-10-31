@@ -1792,6 +1792,82 @@ refused on a type that is not `Option<T>`: on a `Nullable<T>` field (it reads
 declare it `Sidecar<Nullable<T>>` to keep `NULL` for `None`), on a private
 field and on the `RSidecar` selector.
 
+#### Cached fields
+
+A struct field's getter converts a clone of the Rust value on every read, so
+reading a 100,000-element `Vec<f64>` copies 800 KB each time.
+`#[r_data(cache)]` keeps the R object the first read makes and returns that
+same object on every later read, until the value is next borrowed
+exclusively (#2271):
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3)]
+pub struct Series {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data(cache)]
+    pub values: Vec<f64>,
+    #[r_data(cache, read_only)]
+    pub names: Vec<String>,
+}
+
+#[miniextendr(s3(r_data_accessors))]
+impl Series {
+    pub fn push(&mut self, value: f64) { self.values.push(value); }
+}
+```
+
+```r
+v <- x$values       # converts and keeps the result
+w <- x$values       # the same object: no copy, no conversion
+push(x, 1)          # `&mut self`: drops what x kept
+x$values            # converts the new values
+```
+
+What drops the kept values: every exclusive borrow of the object's value,
+which is every way Rust can change it. A `&mut self` method, a
+`self: ExternalPtrMut<'_, Self>` method, a `&mut T` or `ExternalPtrMut<'_, T>`
+argument, an R setter of any field of the object, a consuming `self` method,
+`ExternalPtr::borrow_mut`, `ErasedExternalPtr::downcast_mut` and
+`ExternalPtr::into_inner` all drop every kept value of the object. A `&self`
+method and a shared borrow keep them. The check costs a constant comparison
+per exclusive borrow (`TypedExternal::CACHED_FIELD_COUNT`), so a type without
+cached fields pays nothing.
+
+Where the kept objects live: in the pool that roots owning `ExternalPtr`
+handles, keyed by object, never in the pointer's `prot` list. So a save
+(`saveRDS()`, `serialize()`) writes the same bytes before and after a read,
+an object `readRDS()` brings back starts with nothing kept (a serde type
+converts on its first read), a clone starts with nothing kept, and the
+object's finalizer releases what it kept.
+
+Sharing: a read returns the kept object itself, marked not mutable, so R
+code that modifies a value it read (`v[1] <- 0`, `attr(v, "a") <- 1`, and
+the complex assignment `x$values[1] <- 0`, which then writes through the
+setter) copies it first and the kept value stays as it was. C code that
+writes its argument in place (`data.table::set()`) changes it for every
+later read, as it would any shared R object.
+
+Caveats:
+
+- A change no exclusive borrow covers is not seen: a field read through
+  interior mutability behind `&self` (a `Cell`, `RefCell`, `Mutex` or atomic
+  in the field, or anything it reaches) keeps reading its old value until the
+  next exclusive borrow. The value is stale, never unsound: the kept object
+  is a complete R value, rooted until it is dropped.
+- The ALTREP `data1` paths that read and write without a borrow
+  (`ExternalPtr::as_mut_unchecked`) bypass the invalidation the same way.
+
+`cache` goes with `read_only`, `null_if_none` (a kept `NULL` is returned like
+any value), `name`, `setter` and `prop_doc`, under every class system. It is
+refused on a field whose getter converts nothing or reads more than the
+struct: a `Sidecar<T>` field (it returns the R value the pointer keeps), a
+`Computed` field (its function may read more than the struct, so no borrow of
+the struct says when its value changes), a scalar field (`i32`, `f64`,
+`bool`, `u8`, ...: a length-1 vector is as fast to make as to return), a
+private field and the `RSidecar` selector.
+
 ### R Behavior by Class System
 
 | System | Get | Set | Computed and read-only fields | A restored pointer (`readRDS()`) |

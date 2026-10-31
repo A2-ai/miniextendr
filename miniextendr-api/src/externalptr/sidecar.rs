@@ -889,6 +889,44 @@ pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> RefMut<'a, 
     super::borrow_value_mut(unsafe { sidecar_r_cell::<T>(x) })
 }
 
+/// The R getter of the `#[r_data(cache)]` field at cache index `index`
+/// (#2271): the R value an earlier read stored for the live `T` the receiver
+/// `x` carries, else the value of `convert` on it, stored for later reads
+/// when it is `Ok`. An `Err` is the tagged condition of a failed conversion,
+/// returned as is and not stored.
+///
+/// The value is borrowed shared, as [`sidecar_r_struct`] borrows it, before
+/// the stored value is looked up, so a read while a running call holds the
+/// value mutably raises `miniextendr_borrow_conflict` whether or not a value
+/// is stored, and a pointer without a live `T` is refused the same way. Every
+/// exclusive borrow of the value drops what is stored
+/// ([`borrow_value_mut`](super::borrow_value_mut)); see the `field_cache`
+/// module for what stays unseen.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`.
+#[doc(hidden)]
+pub unsafe fn sidecar_r_cached<T: TypedExternal>(
+    x: SEXP,
+    index: usize,
+    convert: impl FnOnce(&T) -> Result<SEXP, SEXP>,
+) -> SEXP {
+    let cell = unsafe { sidecar_r_cell::<T>(x) };
+    let value = super::borrow_value(cell);
+    let key = super::field_cache::cell_key(cell);
+    if let Some(stored) = super::field_cache::cached(key, index) {
+        return stored;
+    }
+    match convert(&value) {
+        Ok(converted) => {
+            super::field_cache::store(key, T::CACHED_FIELD_COUNT, index, converted);
+            converted
+        }
+        Err(condition) => condition,
+    }
+}
+
 /// The body of [`sidecar_r_struct`] and [`sidecar_r_struct_mut`]: the
 /// `RefCell` of the struct behind the pointer `x` carries
 /// ([`sidecar_receiver`]).

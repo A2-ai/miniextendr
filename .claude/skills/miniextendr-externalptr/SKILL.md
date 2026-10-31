@@ -127,7 +127,10 @@ non-generic `extern "C-unwind"` function registered with
 
 Because `Box<dyn Any>` carries the vtable, `release_any` handles every
 `ExternalPtr<T>` type with one concrete function. No generic finalizer per
-type is needed.
+type is needed. A type with `#[r_data(cache)]` fields registers
+`release_cached` instead (`finalizer::<T>()` picks it by
+`TypedExternal::CACHED_FIELD_COUNT`), which drops the object's kept field
+values, then calls `release_any`.
 
 ### Sidecar field accessors
 
@@ -255,7 +258,15 @@ R6 and S7 included (#2268, #1888). An `Option<String>` field reads `NA` for
 `None` (the absence contract); `#[r_data(null_if_none)]` on an `Option<T>`
 field, or a `Nullable<T>` field, reads `NULL` instead, and both setters read
 `NULL` / `NA` as `None` (#2270; S7 properties are `class_any`, so `NULL`
-passes). Every class
+passes). `#[r_data(cache)]` on a public converted (non-scalar, non-`Sidecar`,
+non-`Computed`) field keeps the R object its first read makes and returns it
+on later reads until the next exclusive borrow of the value (`&mut self`,
+`&mut T`, an R setter, `borrow_mut`, `into_inner`), which drops every kept
+value of the object (#2271, `externalptr/field_cache.rs`): kept in the
+`ExternalPtr` pool, never in `prot`, so saves and clones carry none; marked
+not mutable, so R copies before modifying; interior mutability behind
+`&self` and the ALTREP `as_mut_unchecked` path are not seen (stale, not
+unsound). Every class
 system also gets the standalone `Type_get_field()` / `Type_set_field()`, which
 take the pointer or any object carrying it; there is no `r_data_accessors!`
 macro.

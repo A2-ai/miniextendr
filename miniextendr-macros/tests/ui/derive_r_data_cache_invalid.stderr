@@ -1,0 +1,47 @@
+error: `cache` takes no value: `#[r_data(cache)]`
+  --> tests/ui/derive_r_data_cache_invalid.rs:17:14
+   |
+17 |     #[r_data(cache = "yes")]
+   |              ^^^^^
+
+error: duplicate `cache` option
+  --> tests/ui/derive_r_data_cache_invalid.rs:25:21
+   |
+25 |     #[r_data(cache, cache)]
+   |                     ^^^^^
+
+error: `cache` keeps the R value a public `#[r_data]` struct field's getter converts, until the object is next borrowed exclusively; it doesn't apply to the RSidecar selector, which has no R accessors
+  --> tests/ui/derive_r_data_cache_invalid.rs:31:14
+   |
+31 |     #[r_data(cache)]
+   |              ^^^^^
+
+error: `cache` keeps the R value a public `#[r_data]` struct field's getter converts, until the object is next borrowed exclusively; it doesn't apply to a `Computed` field, which runs its `get` function on every read: the function may read more than the struct, so no borrow of the struct says when its value changes
+  --> tests/ui/derive_r_data_cache_invalid.rs:39:14
+   |
+39 |     #[r_data(cache, get = "Self::f")]
+   |              ^^^^^
+
+error: `cache` keeps the R value a public `#[r_data]` struct field's getter converts, until the object is next borrowed exclusively; it doesn't apply to a `Sidecar<T>` field, whose getter returns the R value the pointer keeps, converting nothing
+  --> tests/ui/derive_r_data_cache_invalid.rs:47:14
+   |
+47 |     #[r_data(cache)]
+   |              ^^^^^
+
+error: `cache` keeps the R value a public `#[r_data]` struct field's getter converts, until the object is next borrowed exclusively; it doesn't apply to a field that is not `pub`: only `pub` `#[r_data]` fields reach R
+  --> tests/ui/derive_r_data_cache_invalid.rs:55:14
+   |
+55 |     #[r_data(cache)]
+   |              ^^^^^
+
+error: `cache` keeps the R value a public `#[r_data]` struct field's getter converts, until the object is next borrowed exclusively; it doesn't apply to a scalar `i32` field, whose getter makes a length-1 vector, as fast as returning a kept one
+  --> tests/ui/derive_r_data_cache_invalid.rs:63:14
+   |
+63 |     #[r_data(cache)]
+   |              ^^^^^
+
+error: unknown key `cached`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `cache`, `name`, `get`, `prop_doc`, `setter`
+  --> tests/ui/derive_r_data_cache_invalid.rs:71:14
+   |
+71 |     #[r_data(cached)]
+   |              ^^^^^^

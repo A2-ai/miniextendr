@@ -328,6 +328,7 @@ mod rarray_tests;
 mod raw_ident_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
+mod rdata_cache_tests;
 mod rdata_fallback_tests;
 mod rdata_null_if_none_tests;
 mod rdata_read_only_tests;
