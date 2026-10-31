@@ -1,11 +1,14 @@
 //! `$` / `[[` field syntax for the `#[r_data]` fields of S3, S4 and env
 //! classes: `s3(r_data_accessors)`, `s4(r_data_accessors)`,
-//! `env(r_data_accessors)`, and their getters-only form
-//! `r_data_accessors = "get"` (#1848).
+//! `env(r_data_accessors)`, their getters-only form
+//! `r_data_accessors = "get"` (#1848), and their read-only form
+//! `r_data_accessors = "read_only"`, whose `$<-` / `[[<-` refuse every field
+//! with `miniextendr_read_only_field` (#2268).
 //!
 //! The methods call the helpers `#[derive(ExternalPtr)]` emits for the type
 //! (`.rdata_fields_T`, `.rdata_get_T`, `.rdata_set_T`, `.rdata_no_field_T`,
-//! see `externalptr_derive::generate_field_syntax_helpers`), which call the
+//! `.rdata_read_only_T`, see
+//! `externalptr_derive::generate_field_syntax_helpers`), which call the
 //! per-field `.Call()` accessors. Those carry no call slot (#344, #348), so
 //! each method raises a tagged condition value with its own frame as the
 //! fallback (`environment()`), which `.miniextendr_frame_call` turns into the
@@ -80,6 +83,9 @@ struct Helpers {
     get: String,
     set: String,
     no_field: String,
+    /// The `miniextendr_read_only_field` refusal (#2268), which the writers
+    /// of `r_data_accessors = "read_only"` call for every field.
+    read_only: String,
     /// The classes in front of the methods' own errors (#1899), `NULL`
     /// without `field_error(...)`.
     error_class: String,
@@ -105,6 +111,7 @@ impl Helpers {
             get: rdata_helper_name(RDataHelper::Get, &type_name),
             set: rdata_helper_name(RDataHelper::Set, &type_name),
             no_field: rdata_helper_name(RDataHelper::NoField, &type_name),
+            read_only: rdata_helper_name(RDataHelper::ReadOnly, &type_name),
             error_class: rdata_helper_name(RDataHelper::ErrorClass, &type_name),
             every_read: rdata_helper_name(RDataHelper::EveryRead, &type_name),
             live: rdata_helper_name(RDataHelper::Live, &type_name),
@@ -137,6 +144,21 @@ impl Helpers {
         lines.push(format!(
             "{indent}if (!identical(.val, environment())) return(.val)"
         ));
+        lines
+    }
+
+    /// The last lines of a `$<-` / `[[<-` once `name` is known to be a
+    /// field: under `r_data_accessors` the write through `.rdata_set_<Type>`
+    /// on `receiver`, checked, and the object `x`; under `r_data_accessors =
+    /// "read_only"` the `miniextendr_read_only_field` refusal (#2268), on
+    /// the method's call, naming the R class of `x`.
+    fn field_write(&self, parsed_impl: &ParsedImpl, receiver: &str, name: &str) -> Vec<String> {
+        if !parsed_impl.r_data_accessors.setters() {
+            return vec![format!("  {}({name}, x, environment())", self.read_only)];
+        }
+        let mut lines = vec![format!("  .val <- {}({receiver}, {name}, value)", self.set)];
+        lines.extend(guard("  "));
+        lines.push("  x".to_string());
         lines
     }
 
@@ -282,6 +304,16 @@ pub(super) fn page_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> V
     lines
 }
 
+/// The `@param value` text of the writers: the new value, or under
+/// `r_data_accessors = "read_only"` the refused one (#2268).
+fn value_param(parsed_impl: &ParsedImpl) -> &'static str {
+    if parsed_impl.r_data_accessors.setters() {
+        "The new value of the field."
+    } else {
+        "A value for a field; the fields are read-only, so the assignment is refused."
+    }
+}
+
 /// The test of a `[[` / `[[<-` index (or env's `$` / `[[` name): a field
 /// name is a length-1 character vector naming a field.
 fn not_a_field_name(var: &str, fields: &str) -> String {
@@ -382,7 +414,8 @@ fn dollar_names_doc(
 }
 
 /// `$.Class`, `[[.Class`, `names.Class`, `as.list.Class` and
-/// `.DollarNames.Class`, and with setters `$<-.Class` / `[[<-.Class`, for an
+/// `.DollarNames.Class`, and with writers `$<-.Class` / `[[<-.Class` (which
+/// refuse every field under `r_data_accessors = "read_only"`, #2268), for an
 /// S3 class with `s3(r_data_accessors)`.
 ///
 /// The receiver is the classed pointer the constructor (or the package's own
@@ -479,7 +512,7 @@ pub(super) fn s3_field_methods(
             ),
         ),
     };
-    let value = ("value", "The new value of the field.");
+    let value = ("value", value_param(parsed_impl));
 
     // `$`: an exact field name reads the field. On a bare pointer any other
     // name raises `miniextendr_no_field`, or reads NULL under
@@ -676,10 +709,13 @@ pub(super) fn s3_field_methods(
     lines.push("}".to_string());
     lines.push(String::new());
 
-    if !parsed_impl.r_data_accessors.setters() {
+    if !parsed_impl.r_data_accessors.writers() {
         return lines;
     }
 
+    // The writers: a field is written, or under `r_data_accessors =
+    // "read_only"` refused (#2268); any other name is refused on the bare
+    // pointer and goes to a list's or environment's own `$<-` / `[[<-`.
     s3_method_doc(
         &mut lines,
         parsed_impl,
@@ -696,9 +732,7 @@ pub(super) fn s3_field_methods(
     ));
     lines.push("    return(NextMethod())".to_string());
     lines.push("  }".to_string());
-    lines.push(format!("  .val <- {}(x, name, value)", h.set));
-    lines.extend(guard("  "));
-    lines.push("  x".to_string());
+    lines.extend(h.field_write(parsed_impl, "x", "name"));
     lines.push("}".to_string());
     lines.push(String::new());
 
@@ -731,16 +765,15 @@ pub(super) fn s3_field_methods(
     ));
     lines.push("    return(NextMethod())".to_string());
     lines.push("  }".to_string());
-    lines.push(format!("  .val <- {}(x, i, value)", h.set));
-    lines.extend(guard("  "));
-    lines.push("  x".to_string());
+    lines.extend(h.field_write(parsed_impl, "x", "i"));
     lines.push("}".to_string());
     lines.push(String::new());
     lines
 }
 
-/// `setMethod("$")`, `.DollarNames.Class`, and with setters
-/// `setMethod("$<-")`, for an S4 class with `s4(r_data_accessors)`. An S4
+/// `setMethod("$")`, `.DollarNames.Class`, and with writers
+/// `setMethod("$<-")` (refusing every field under `r_data_accessors =
+/// "read_only"`, #2268), for an S4 class with `s4(r_data_accessors)`. An S4
 /// object of the class is no list (its only slot is `ptr`), so a name that
 /// is not a field raises `miniextendr_no_field`. The methods pass `x@ptr` to
 /// the accessors. `.DollarNames` is an S3 method, which `utils` dispatches on
@@ -781,7 +814,7 @@ pub(super) fn s4_field_methods(
             "A field name."
         },
     );
-    let value = ("value", "The new value of the field.");
+    let value = ("value", value_param(parsed_impl));
 
     doc(&mut lines, "$", &[x, name]);
     lines.push(format!(
@@ -813,7 +846,7 @@ pub(super) fn s4_field_methods(
     lines.push("}".to_string());
     lines.push(String::new());
 
-    if parsed_impl.r_data_accessors.setters() {
+    if parsed_impl.r_data_accessors.writers() {
         doc(&mut lines, "$<-", &[x, name, value]);
         lines.push(format!(
             "methods::setMethod(\"$<-\", \"{class_name}\", function(x, name, value) {{"
@@ -822,9 +855,7 @@ pub(super) fn s4_field_methods(
             "  if (is.na(match(name, {}))) {}(name, environment(), {class_lit})",
             h.fields, h.no_field
         ));
-        lines.push(format!("  .val <- {}(x@ptr, name, value)", h.set));
-        lines.extend(guard("  "));
-        lines.push("  x".to_string());
+        lines.extend(h.field_write(parsed_impl, "x@ptr", "name"));
         lines.push("})".to_string());
         lines.push(String::new());
     }
@@ -911,7 +942,8 @@ pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<S
 }
 
 /// `$<-.Class` and its `[[<-.Class` alias for an env class with
-/// `env(r_data_accessors)`. An env object is a classed pointer, so a name
+/// `env(r_data_accessors)`, refusing every field under `r_data_accessors =
+/// "read_only"` (#2268). An env object is a classed pointer, so a name
 /// that is not a field raises `miniextendr_no_field`; a list or environment
 /// carrying the pointer in `.ptr` writes its own element (`NextMethod()`).
 /// `on_page` follows the `$.Class` block's gating; the methods are always
@@ -922,7 +954,7 @@ pub(super) fn env_replacement_methods(parsed_impl: &ParsedImpl, on_page: bool) -
     let mut lines = Vec::new();
     let class_lit = format!("\"{}\"", crate::naming::r_string_escape(&class_name));
     let x = ("x", "An object.");
-    let value = ("value", "The new value of the field.");
+    let value = ("value", value_param(parsed_impl));
     s3_method_doc(&mut lines, parsed_impl, "$<-", on_page, true, &[x, value]);
     lines.push(format!("`$<-.{class_name}` <- function(x, name, value) {{"));
     lines.push(format!("  if ({}) {{", not_a_field_name("name", &h.fields)));
@@ -932,9 +964,7 @@ pub(super) fn env_replacement_methods(parsed_impl: &ParsedImpl, on_page: bool) -
     ));
     lines.push("    return(NextMethod())".to_string());
     lines.push("  }".to_string());
-    lines.push(format!("  .val <- {}(x, name, value)", h.set));
-    lines.extend(guard("  "));
-    lines.push("  x".to_string());
+    lines.extend(h.field_write(parsed_impl, "x", "name"));
     lines.push("}".to_string());
     s3_method_doc(&mut lines, parsed_impl, "[[<-", on_page, true, &[]);
     lines.push(format!("`[[<-.{class_name}` <- `$<-.{class_name}`"));
@@ -944,13 +974,14 @@ pub(super) fn env_replacement_methods(parsed_impl: &ParsedImpl, on_page: bool) -
 /// Refuses an impl method on a generic the field methods define: two
 /// definitions of `$.Class` (or `setMethod("$", "Class")`) would follow, and
 /// the later one would win. The getters-only form generates no `$<-` /
-/// `[[<-`, so a hand-written one is the point of it; the readers (`$`, `[[`,
-/// `names`, `as.list` and `.DollarNames` on S3, `$` and `.DollarNames` on
-/// S4) are generated in both forms. Env classes have no check: their
-/// methods are not S3 methods.
+/// `[[<-`, so a hand-written one is the point of it; the read-only form
+/// generates refusing ones (#2268); the readers (`$`, `[[`, `names`,
+/// `as.list` and `.DollarNames` on S3, `$` and `.DollarNames` on S4) are
+/// generated in every form. Env classes have no check: their methods are not
+/// S3 methods.
 pub(super) fn check_collisions(parsed_impl: &ParsedImpl) -> syn::Result<()> {
-    let setters = parsed_impl.r_data_accessors.setters();
-    let generated: &[&str] = match (parsed_impl.class_system, setters) {
+    let writers = parsed_impl.r_data_accessors.writers();
+    let generated: &[&str] = match (parsed_impl.class_system, writers) {
         _ if !parsed_impl.r_data_accessors.enabled() => return Ok(()),
         (ClassSystem::S3, true) => &["$", "[[", "names", "as.list", ".DollarNames", "$<-", "[[<-"],
         (ClassSystem::S3, false) => &["$", "[[", "names", "as.list", ".DollarNames"],
@@ -991,7 +1022,7 @@ pub(super) fn check_collisions(parsed_impl: &ParsedImpl) -> syn::Result<()> {
         } else {
             "s4"
         };
-        let advice = if setters && generic.ends_with("<-") {
+        let advice = if writers && generic.ends_with("<-") {
             format!(
                 " To write the fields with your own replacement methods, use the getters-only \
                  form `{system}(r_data_accessors = \"get\")`, which generates no `$<-` / `[[<-`."

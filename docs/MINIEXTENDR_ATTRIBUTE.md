@@ -1383,6 +1383,9 @@ impl MyClass { /* ... */ }
 
 #[miniextendr(s3(r_data_accessors = "get"))]  // reading methods only
 impl MyClass { /* ... */ }
+
+#[miniextendr(s3(r_data_accessors = "read_only"))]  // writes refused
+impl MyClass { /* ... */ }
 ```
 
 `r_data_accessors` gives the class `$` / `[[` methods that read the `pub`
@@ -1391,7 +1394,11 @@ place (S4: `$` and `$<-` only). On an S3 bare pointer `[[`, `as.list()` and
 `[[<-` refuse an unused argument, as `dots = empty` does; `[[` takes `exact`,
 as an env class's `[[` does.
 `r_data_accessors = "get"` generates the
-reading methods only, for a class that keeps its own `$<-`. The type needs an
+reading methods only, for a class that keeps its own `$<-`.
+`r_data_accessors = "read_only"` generates the reading methods and a `$<-` /
+`[[<-` that refuses every field with `miniextendr_read_only_field` (#2268);
+one field is made read-only with `#[r_data(read_only)]` on it, which R6 and
+S7 classes use too. The type needs an
 `#[r_data] _r: RSidecar` selector and at least one `pub` `#[r_data]` field.
 The impl block is refused when one of its own methods is a generated method
 (`s3(generic = "$<-")` next to the setters, for example). The R behaviour

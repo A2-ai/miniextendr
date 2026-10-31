@@ -693,6 +693,9 @@ pub struct MyType {
 
     #[r_data(get = "Self::total")]
     pub total: Computed,  // Generates MyType_get_total() only
+
+    #[r_data(read_only)]
+    pub id: i32,          // Generates MyType_get_id() only
 }
 ```
 
@@ -705,7 +708,9 @@ them (by the exact name, never a prefix; on an S3 bare pointer `[[` also
 takes a whole-number position, and an unknown name is an error unless
 `lookup = "list"` reads `NULL`), `$<-` / `[[<-` methods that write them in place
 and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
-class (`r_data_accessors = "get"` for the readers only). On an S3 bare
+class (`r_data_accessors = "get"` for the readers only, `r_data_accessors =
+"read_only"` for readers and a `$<-` / `[[<-` that refuses every field,
+#2268). On an S3 bare
 pointer `[[`, `as.list()` and `[[<-` refuse an unused argument, as
 `dots = empty` does, and `[[` takes `exact`; so does an env class's `[[`
 (#2174). With
@@ -714,7 +719,8 @@ pointer `[[`, `as.list()` and `[[<-` refuse an unused argument, as
 `fallback_names = "Self::g"` adds `g(&self) -> Vec<String>` to the
 completions (#2150). Under that S3, S4
 or env field syntax the `MyType_get_*()` / `MyType_set_*()` functions are
-internal, for the package's own R code; otherwise they are exported. vctrs
+internal, for the package's own R code (under `r_data_accessors =
+"read_only"` there are no `MyType_set_*()`); otherwise they are exported. vctrs
 classes get only those functions. See `CLASS_SYSTEMS.md`, "Direct Field
 Access via Sidecar".
 
@@ -723,7 +729,8 @@ Access via Sidecar".
 | `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
 | any `Clone + IntoR + TryFromSexp` type | the Rust struct | converts a clone with `IntoR` (the struct is only borrowed) | converts with `TryFromSexp`, or raises `'name' must be ...` |
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
-| `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR`; a `Result` is an error boundary: `Ok` reads the value, `Err` raises the classed error, `Err(())` of a `Result<T, ()>` reads `NULL` | none; the field syntax raises `miniextendr_read_only_field` |
+| `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR`; a `Result` is an error boundary: `Ok` reads the value, `Err` raises the classed error, `Err(())` of a `Result<T, ()>` reads `NULL` | none; the field syntax and an R6 binding raise `miniextendr_read_only_field`, an S7 property has no setter |
+| any of the above but `Computed`, with `#[r_data(read_only)]` | as above | as above | none, as for `Computed` (#2268), so a struct field's type needs no `TryFromSexp`; the Rust accessors of a `Sidecar<T>` stay |
 
 A getter whose value fails to convert raises the error a function's failed
 return conversion raises (`e$kind == "result_err"`, the error's
@@ -750,8 +757,12 @@ accessors (`MyType::r_keys(&ptr)`) and the C symbols keep the Rust
 identifier. The name must be syntactic, unique in the type and not `.ptr`.
 A `Sidecar` field's R name is also its name in a save (below), so renaming
 the Rust field is safe for saves and renaming the R name is not (#2215). A
-`Computed` field must be `pub`, and is refused under `#[externalptr(r6)]` /
-`#[externalptr(s7)]`, whose bindings and properties need a setter (#1888).
+`Computed` field must be `pub`; under `#[externalptr(r6)]` /
+`#[externalptr(s7)]` it is a read-only active binding / property (#1888).
+`#[r_data(read_only)]` goes on a `pub` field that isn't `Computed`, without
+`setter = ...`; the refusal carries the type's `field_error(class = ...)`
+classes and its `field_error(read_only_hint = "...")` sentence (`%s` is the
+field's R name). See `CLASS_SYSTEMS.md`, "Read-only fields".
 
 A struct field is a view of the Rust value: every read converts it afresh, and
 every write converts into Rust or fails, so no R copy can drift from it. A

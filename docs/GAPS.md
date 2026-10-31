@@ -319,6 +319,10 @@ cfg$extra <- data.frame(a = 1:3)
 - **S4**: `obj$field` and `obj$field <- value` with `s4(r_data_accessors)`
 - **vctrs**, and any class without the option: Standalone functions (`Type_get_field()` / `Type_set_field()`)
 
+`#[r_data(read_only)]` makes a field read-only from R in every class system,
+and `r_data_accessors = "read_only"` every field of an S3, S4 or env class
+(#2268).
+
 See `EXTERNALPTR.md`, "RSidecar (R Data Fields)", for the field types and
 what survives `saveRDS()`.
 

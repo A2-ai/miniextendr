@@ -86,6 +86,7 @@ fn sidecar_setter_raises_the_argument_error() {
             access: super::SidecarAccess::default(),
             prop_doc: None,
             setter_invisible: None,
+            read_only: false,
         };
         super::generate_setter_body(&syn::Ident::new("T", proc_macro2::Span::call_site()), &slot)
             .to_string()
@@ -133,11 +134,12 @@ fn sidecar_class_integration_reraises_tagged_conditions() {
         access: super::SidecarAccess::default(),
         prop_doc: None,
         setter_invisible: None,
+        read_only: false,
     };
     let slots = [&slot];
 
     for cs in [ClassSystem::R6, ClassSystem::S7] {
-        let out = generate_class_integration_r_code(cs, "T", &slots);
+        let out = generate_class_integration_r_code(cs, "T", &slots, &Default::default());
         assert_eq!(
             out.matches(".miniextendr_raise_condition(.val, sys.call())")
                 .count(),
@@ -180,7 +182,8 @@ fn r_data_name_renames_the_r_field_only() {
     assert_eq!(info.slots[1].r_name, "n.rows");
     let pub_slots: Vec<_> = info.slots.iter().collect();
 
-    let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], None, false);
+    let helpers =
+        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
     assert!(
         helpers.contains(".rdata_fields_Engine <- c(\"keys\", \"n.rows\")\n"),
         "{helpers}"
@@ -195,14 +198,24 @@ fn r_data_name_renames_the_r_field_only() {
         "{helpers}"
     );
 
-    let r6 = super::generate_class_integration_r_code(ClassSystem::R6, "Engine", &pub_slots);
+    let r6 = super::generate_class_integration_r_code(
+        ClassSystem::R6,
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+    );
     assert!(r6.contains("cls$set(\"active\", \"keys\","), "{r6}");
     assert!(
         r6.contains(&format!(".Call({getter}, private$.ptr, FALSE)")),
         "{r6}"
     );
     assert!(!r6.contains("\"r_keys\""), "{r6}");
-    let s7 = super::generate_class_integration_r_code(ClassSystem::S7, "Engine", &pub_slots);
+    let s7 = super::generate_class_integration_r_code(
+        ClassSystem::S7,
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+    );
     assert!(s7.contains("    keys = S7::new_property("), "{s7}");
 
     let out = super::derive_external_ptr(input, true).unwrap().to_string();
@@ -334,7 +347,8 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
     );
 
     let pub_slots: Vec<_> = info.slots.iter().collect();
-    let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &[], None, false);
+    let helpers =
+        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
     assert!(
         helpers
             .contains(".rdata_fields_Engine <- c(\"group_by\", \"keys\", \"n_rows\", \"base\")\n"),
@@ -345,12 +359,12 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
         helpers.contains(&format!("  group_by = .Call({group_by_getter}, x, TRUE),")),
         "{helpers}"
     );
+    // The refusal names the receiver's R class (`.rdata_read_only_Engine`)
+    // and says why (#2268).
     assert!(
         helpers.contains(
-            "  group_by = stop(errorCondition(sprintf(\"`group_by` of `%s` is computed from the Rust \
-                 value and can't be assigned\", if (is.null(oldClass(x))) \"Engine\" else oldClass(x)[[1L]]), \
-                 class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
-                 call = .miniextendr_frame_call(parent.frame()))),"
+            "  group_by = .rdata_read_only_Engine(\"group_by\", x, parent.frame(), \"is computed from \
+             the Rust value and can't be assigned\"),"
         ),
         "{helpers}"
     );
@@ -412,7 +426,8 @@ fn conversion_fields_raise_a_failed_conversion() {
 }
 
 /// The `Computed` compile errors: `get` on another type, no `get`,
-/// `ref` / `mut` / `setter` on it, a non-`pub` one, and one under R6 / S7.
+/// `ref` / `mut` / `setter` on it and a non-`pub` one; one under R6 / S7 is
+/// accepted (#1888).
 #[test]
 fn computed_fields_are_checked() {
     let refused = |source: &str, system: ClassSystem| {
@@ -459,15 +474,12 @@ fn computed_fields_are_checked() {
         ClassSystem::S3,
     );
     assert!(message.contains("must be `pub`"), "{message}");
-    for (system, name) in [(ClassSystem::R6, "r6"), (ClassSystem::S7, "s7")] {
-        let message = refused(
-            "struct E { #[r_data(get = \"Self::f\")] pub count: Computed }",
-            system,
-        );
-        assert!(
-            message.contains(&format!("not supported under `#[externalptr({name})]`")),
-            "{message}"
-        );
+    // R6 and S7 take one too: a read-only binding / property (#1888).
+    for system in [ClassSystem::R6, ClassSystem::S7] {
+        let input: syn::DeriveInput =
+            syn::parse_str("struct E { #[r_data(get = \"Self::f\")] pub count: Computed }")
+                .unwrap();
+        assert!(super::parse_sidecar_info(&input, system).is_ok());
     }
     let message = refused(
         "struct E { #[r_data(get = \"not a path\")] pub count: Computed }",
@@ -849,7 +861,8 @@ fn field_setter_visibility_reaches_standalone_and_integrated_wrappers() {
             } else {
                 "pointer (invisibly)"
             }));
-            let integrated = generate_class_integration_r_code(system, "Example", &[slot]);
+            let integrated =
+                generate_class_integration_r_code(system, "Example", &[slot], &Default::default());
             match system {
                 ClassSystem::R6 => assert_eq!(
                     integrated.contains("invisible(self)"),
@@ -1078,9 +1091,15 @@ fn field_syntax_helpers_switch_over_the_accessors() {
         access: super::SidecarAccess::default(),
         prop_doc: None,
         setter_invisible: None,
+        read_only: false,
     };
     let (keys, reserved) = (slot("keys"), slot("r#for"));
-    let out = super::generate_field_syntax_helpers("Engine", &[&keys, &reserved], &[], None, false);
+    let out = super::generate_field_syntax_helpers(
+        "Engine",
+        &[&keys, &reserved],
+        &Default::default(),
+        false,
+    );
     assert!(
         out.contains(".rdata_fields_Engine <- c(\"keys\", \"for\")\n"),
         "{out}"
@@ -1114,8 +1133,10 @@ fn field_syntax_helpers_switch_over_the_accessors() {
     let out = super::generate_field_syntax_helpers(
         "Engine",
         &[&keys],
-        &[],
-        Some("See `t$%s` or \"u\\%s\" (50% off)."),
+        &super::FieldErrorOptions {
+            no_field_hint: Some("See `t$%s` or \"u\\%s\" (50% off).".to_string()),
+            ..Default::default()
+        },
         false,
     );
     assert!(
@@ -1124,6 +1145,293 @@ fn field_syntax_helpers_switch_over_the_accessors() {
                  \"See `t$\", name, \"` or \\\"u\\\\\", name, \"\\\" (50% off).\"),\n"
         ),
         "{out}"
+    );
+}
+
+/// A read-only field (#2268): no setter C function, `CallDef` or
+/// `Type_set_<f>()`, a setter arm that calls `.rdata_read_only_<Type>`, and
+/// the helper itself with the `field_error` classes and the
+/// `read_only_hint` sentence, each `%s` the field's name. The Rust accessors
+/// of a `Sidecar` field stay.
+#[test]
+fn read_only_fields_get_a_getter_and_a_refusing_setter_arm() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s3, field_error(class = \"pkg_error\", read_only_hint = \"Use `set_%s()` (100% Rust).\"))] \
+         struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(read_only)] pub level: i32, \
+             #[r_data(mut, read_only, name = \"keys\")] pub r_keys: Sidecar<Vec<i32>>, \
+             #[r_data(get = \"Self::n\")] pub n: Computed, \
+             #[r_data] pub base: i32 }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S3).unwrap();
+    let setters: Vec<_> = info.slots.iter().map(|slot| slot.has_r_setter()).collect();
+    assert_eq!(setters, [false, false, false, true]);
+    assert!(info.slots[0].read_only && info.slots[1].read_only);
+
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    for field in ["level", "r_keys", "n"] {
+        assert!(
+            !out.contains(&crate::naming::sidecar_setter_c_name("Engine", field)),
+            "{field}: {out}"
+        );
+        assert!(
+            !out.contains(&format!("__MX_CALL_DEF_RDATA_SET_Engine_{field}")),
+            "{field}: {out}"
+        );
+    }
+    assert!(!out.contains("Engine_set_level"), "{out}");
+    assert!(!out.contains("Engine_set_keys"), "{out}");
+    assert!(out.contains("Engine_get_level <- function(x)"), "{out}");
+    assert!(out.contains("Engine_get_keys <- function(x)"), "{out}");
+    assert!(
+        out.contains("Engine_set_base <- function(x, value)"),
+        "{out}"
+    );
+    assert!(
+        out.contains("# Wraps read-only sidecar field `level` on Rust type `Engine` via `"),
+        "{out}"
+    );
+    // `mut` keeps the Rust setter of a read-only `Sidecar` field: read-only
+    // applies to R only.
+    assert!(out.contains("pub fn set_r_keys (ptr :"), "{out}");
+    assert!(!out.contains("pub fn r_keys (ptr :"), "{out}");
+
+    let pub_slots: Vec<_> = info.slots.iter().collect();
+    let options = super::FieldErrorOptions {
+        class: vec!["pkg_error".to_string()],
+        read_only_hint: Some("Use `set_%s()` (100% Rust).".to_string()),
+        ..Default::default()
+    };
+    let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &options, false);
+    assert!(
+        helpers.contains(
+            ".rdata_set_Engine <- function(x, name, value) switch(name,\n  \
+             level = .rdata_read_only_Engine(\"level\", x, parent.frame()),\n  \
+             keys = .rdata_read_only_Engine(\"keys\", x, parent.frame()),\n  \
+             n = .rdata_read_only_Engine(\"n\", x, parent.frame(), \"is computed from the Rust value \
+             and can't be assigned\"),\n"
+        ),
+        "{helpers}"
+    );
+    assert!(
+        helpers.contains(&format!(
+            "  base = .Call({}, x, value, TRUE))\n",
+            crate::naming::sidecar_setter_c_name("Engine", "base")
+        )),
+        "{helpers}"
+    );
+    assert!(
+        helpers.contains(
+            ".rdata_read_only_Engine <- function(name, x, env, why = \"is read-only\") stop(errorCondition(\n  \
+             paste0(sprintf(\"`%s` of `%s` %s\", name, if (is.null(oldClass(x))) \"Engine\" else \
+             oldClass(x)[[1L]], why), \". \", \"Use `set_\", name, \"()` (100% Rust).\"),\n  \
+             class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
+             call = .miniextendr_frame_call(env)))\n"
+        ),
+        "{helpers}"
+    );
+    assert!(
+        helpers.contains(".rdata_error_class_Engine <- c(\"pkg_error\")\n"),
+        "{helpers}"
+    );
+
+    // Without a hint the message is the sentence alone.
+    let helpers =
+        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
+    assert!(
+        helpers.contains(
+            "  sprintf(\"`%s` of `%s` %s\", name, if (is.null(oldClass(x))) \"Engine\" else \
+             oldClass(x)[[1L]], why),\n"
+        ),
+        "{helpers}"
+    );
+}
+
+/// The standalone accessors come in a third rendering without the setters,
+/// which the wrapper writer picks for `r_data_accessors = "read_only"`
+/// (#2268): there a writable field's standalone setter is not written
+/// either. Its setter C entry point stays, for the other renderings.
+#[test]
+fn standalone_accessors_come_without_setters_for_the_read_only_form() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s3)] struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(read_only)] pub level: i32, #[r_data] pub base: i32 }",
+    )
+    .unwrap();
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert!(out.contains("internal_read_only :"), "{out}");
+    // Exported, internal and read-only renderings each read both fields;
+    // only the first two write `base`.
+    assert_eq!(out.matches("Engine_get_base <- function(x)").count(), 3);
+    assert_eq!(out.matches("Engine_get_level <- function(x)").count(), 3);
+    assert_eq!(
+        out.matches("Engine_set_base <- function(x, value)").count(),
+        2
+    );
+    assert!(!out.contains("Engine_set_level"), "{out}");
+    assert_eq!(
+        out.matches("# Wraps read-only sidecar field `base`")
+            .count(),
+        1
+    );
+    assert!(
+        out.contains(&crate::naming::sidecar_setter_c_name("Engine", "base")),
+        "{out}"
+    );
+    // Both internal renderings carry the field-syntax helpers.
+    assert_eq!(
+        out.matches(".rdata_read_only_Engine <- function(").count(),
+        2
+    );
+}
+
+/// An R6 binding of a field without an R setter refuses a value with the
+/// package's classes and hint and no call, and an S7 property of one has no
+/// setter (#1888, #2268); a writable field keeps its setter in both.
+#[test]
+fn read_only_fields_get_refusing_bindings_and_setterless_properties() {
+    let input: syn::DeriveInput = syn::parse_str(
+        "struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(read_only)] pub level: i32, \
+             #[r_data(get = \"Self::n\")] pub n: Computed, \
+             #[r_data] pub base: i32 }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::R6).unwrap();
+    let pub_slots: Vec<_> = info.slots.iter().collect();
+    let options = super::FieldErrorOptions {
+        class: vec!["pkg_error_field".to_string(), "pkg_error".to_string()],
+        read_only_hint: Some("Set it with `x$set_%s()`.".to_string()),
+        ..Default::default()
+    };
+    let r6 = generate_class_integration_r_code(ClassSystem::R6, "Engine", &pub_slots, &options);
+    assert!(
+        r6.contains(
+            "      stop(errorCondition(paste0(sprintf(\"`level` of `%s` is read-only\", class(self)[[1L]]), \
+             \". \", \"Set it with `x$set_level()`.\"), class = c(\"pkg_error_field\", \"pkg_error\", \
+             \"miniextendr_read_only_field\"), call = NULL))\n"
+        ),
+        "{r6}"
+    );
+    assert!(
+        r6.contains(
+            "      stop(errorCondition(paste0(sprintf(\"`n` of `%s` is computed from the Rust value and \
+             can't be assigned\", class(self)[[1L]]), \". \", \"Set it with `x$set_n()`.\"), class = \
+             c(\"pkg_error_field\", \"pkg_error\", \"miniextendr_read_only_field\"), call = NULL))\n"
+        ),
+        "{r6}"
+    );
+    for field in ["level", "n"] {
+        assert!(
+            !r6.contains(&crate::naming::sidecar_setter_c_name("Engine", field)),
+            "{field}: {r6}"
+        );
+    }
+    assert!(
+        r6.contains(&crate::naming::sidecar_setter_c_name("Engine", "base")),
+        "{r6}"
+    );
+    // Without options: miniextendr's class alone, no hint.
+    let r6 = generate_class_integration_r_code(
+        ClassSystem::R6,
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+    );
+    assert!(
+        r6.contains(
+            "stop(errorCondition(sprintf(\"`level` of `%s` is read-only\", class(self)[[1L]]), \
+             class = c(\"miniextendr_read_only_field\"), call = NULL))"
+        ),
+        "{r6}"
+    );
+
+    let s7 = generate_class_integration_r_code(ClassSystem::S7, "Engine", &pub_slots, &options);
+    assert_eq!(s7.matches("getter = function(self)").count(), 3, "{s7}");
+    assert_eq!(
+        s7.matches("setter = function(self, value)").count(),
+        1,
+        "{s7}"
+    );
+    let level_getter = crate::naming::sidecar_getter_c_name("Engine", "level");
+    assert!(
+        s7.contains(&format!(
+            "    level = S7::new_property(\n        getter = function(self) {{\n          \
+             .val <- .Call({level_getter}, self@.ptr, FALSE)\n"
+        )),
+        "{s7}"
+    );
+    assert!(s7.contains("          .val\n        }\n    ),\n"), "{s7}");
+
+    // The S7 `@prop` entries say which properties have no setter, so the
+    // wrapper writer takes no `Engine_set_level` name for them.
+    let input: syn::DeriveInput = syn::parse_str(
+        "#[externalptr(s7)] struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(read_only)] pub level: i32, #[r_data] pub base: i32 }",
+    )
+    .unwrap();
+    let out = super::derive_external_ptr(input, true).unwrap().to_string();
+    assert!(
+        out.contains("field_name : \"level\" , prop_doc : \"(undocumented sidecar property)\" , read_only : true"),
+        "{out}"
+    );
+    assert!(
+        out.contains("field_name : \"base\" , prop_doc : \"(undocumented sidecar property)\" , read_only : false"),
+        "{out}"
+    );
+}
+
+/// The `read_only` option is checked: it takes no value, is given once, and
+/// applies to a public field R can write, so not to a `Computed` field
+/// (read-only already), the selector, a private field or one with `setter`.
+/// It goes with `ref` / `mut`, which select the Rust accessors.
+#[test]
+fn read_only_option_is_checked() {
+    let refused = |source: &str| {
+        let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+        super::parse_sidecar_info(&input, ClassSystem::S3)
+            .err()
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| panic!("`{source}` must be refused"))
+    };
+    let message = refused("struct E { #[r_data(read_only, read_only)] pub count: i32 }");
+    assert!(message.contains("duplicate `read_only`"), "{message}");
+    let message = refused("struct E { #[r_data(read_only = \"yes\")] pub count: i32 }");
+    assert!(message.contains("`read_only` takes no value"), "{message}");
+    let message = refused("struct E { #[r_data(readonly)] pub count: i32 }");
+    assert!(message.contains("unknown key `readonly`"), "{message}");
+    let message =
+        refused("struct E { #[r_data(read_only, get = \"Self::f\")] pub count: Computed }");
+    assert!(message.contains("read-only already"), "{message}");
+    let message = refused("struct E { #[r_data(read_only)] _r: RSidecar }");
+    assert!(message.contains("the RSidecar selector"), "{message}");
+    let message = refused("struct E { #[r_data(read_only)] count: i32 }");
+    assert!(message.contains("a field that is not `pub`"), "{message}");
+    let message = refused("struct E { #[r_data(read_only, setter = \"visible\")] pub count: i32 }");
+    assert!(message.contains("a field with `setter = ...`"), "{message}");
+
+    let input: syn::DeriveInput = syn::parse_str(
+        "struct E { #[r_data(ref, read_only)] pub a: Sidecar<i32>, \
+             #[r_data(read_only, mut)] pub b: Sidecar<i32>, \
+             #[r_data(read_only, name = \"cc\", prop_doc = \"C.\")] pub c: String }",
+    )
+    .unwrap();
+    let info = super::parse_sidecar_info(&input, ClassSystem::S7).unwrap();
+    assert!(info.slots.iter().all(|slot| slot.read_only));
+    assert_eq!(
+        info.slots[0].access,
+        super::SidecarAccess {
+            get: true,
+            set: false
+        }
+    );
+    assert_eq!(
+        info.slots[1].access,
+        super::SidecarAccess {
+            get: false,
+            set: true
+        }
     );
 }
 

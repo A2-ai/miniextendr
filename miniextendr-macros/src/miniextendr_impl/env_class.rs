@@ -34,7 +34,8 @@ use super::ParsedImpl;
 ///   (a `#[r_data]` field wins over a method of the same name),
 ///   `.DollarNames.ClassName` (the fields, then the methods; #1885), and,
 ///   unless the getters-only `r_data_accessors = "get"`, `$<-.ClassName` with
-///   its `[[<-.ClassName` alias (`field_syntax.rs`, #1848)
+///   its `[[<-.ClassName` alias (`field_syntax.rs`, #1848), which refuses
+///   every field under `r_data_accessors = "read_only"` (#2268)
 ///
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
@@ -291,7 +292,7 @@ pub fn generate_env_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             !class_has_no_rd && should_export,
         ));
     }
-    if fields && parsed_impl.r_data_accessors.setters() {
+    if fields && parsed_impl.r_data_accessors.writers() {
         lines.extend(super::field_syntax::env_replacement_methods(
             parsed_impl,
             !class_has_no_rd && should_export,

@@ -1,8 +1,8 @@
 //! Compile-fail test: the `Computed` field rules of `#[derive(ExternalPtr)]`
 //! (#1883). `get` applies to a `Computed` field only; a `Computed` field
-//! needs `get`; `ref` / `mut` / `setter` don't apply to it; it must be `pub`;
-//! and it is refused under `#[externalptr(r6)]` / `#[externalptr(s7)]`,
-//! whose bindings / properties need a setter.
+//! needs `get`; `ref` / `mut` / `setter` don't apply to it; and it must be
+//! `pub`. (Under `#[externalptr(r6)]` / `#[externalptr(s7)]` it is a
+//! read-only binding / property, #1888.)
 
 use miniextendr_api::ExternalPtr;
 use miniextendr_api::externalptr::{Computed, RSidecar};
@@ -45,24 +45,6 @@ struct PrivateComputed {
     _r: RSidecar,
     #[r_data(get = "Self::f")]
     count: Computed,
-}
-
-#[derive(ExternalPtr)]
-#[externalptr(r6)]
-struct R6Computed {
-    #[r_data]
-    _r: RSidecar,
-    #[r_data(get = "Self::f")]
-    pub count: Computed,
-}
-
-#[derive(ExternalPtr)]
-#[externalptr(s7)]
-struct S7Computed {
-    #[r_data]
-    _r: RSidecar,
-    #[r_data(get = "Self::f")]
-    pub count: Computed,
 }
 
 fn main() {}

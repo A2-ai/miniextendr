@@ -418,7 +418,10 @@ changes `e$rate`. That is R6 or environment semantics, not list semantics. A
 class whose `$<-` must copy takes the getters-only form,
 `s3(r_data_accessors = "get")`, and writes its own replacement method
 (`#[miniextendr(s3(generic = "$<-"))]`, see "Replacement and extraction
-generics" below), which returns a new object. The impl block is refused at
+generics" below), which returns a new object. A class whose fields R must
+not write at all takes `s3(r_data_accessors = "read_only")`, whose `$<-` /
+`[[<-` refuse every field with `miniextendr_read_only_field`; one field is
+made read-only with `#[r_data(read_only)]` (#2268). The impl block is refused at
 compile time when one of its methods is a `$` / `[[` / `$<-` / `[[<-` method
 the option generates.
 

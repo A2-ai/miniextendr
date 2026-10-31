@@ -329,6 +329,7 @@ mod raw_ident_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
 mod rdata_fallback_tests;
+mod rdata_read_only_tests;
 mod rdata_sidecar_tests;
 mod receiver_formals_tests;
 mod receiver_tests;

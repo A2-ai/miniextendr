@@ -29,17 +29,3 @@ error: a `Computed` field must be `pub`: it exists only as an R field, and only 
 46 | /     #[r_data(get = "Self::f")]
 47 | |     count: Computed,
    | |___________________^
-
-error: a `Computed` field is not supported under `#[externalptr(r6)]`: its R6 active bindings / S7 properties need a setter, and a computed field has none (#1888). Use an active method / a computed property, or an S3, S4 or env class
-  --> tests/ui/derive_computed_invalid.rs:55:5
-   |
-55 | /     #[r_data(get = "Self::f")]
-56 | |     pub count: Computed,
-   | |_______________________^
-
-error: a `Computed` field is not supported under `#[externalptr(s7)]`: its R6 active bindings / S7 properties need a setter, and a computed field has none (#1888). Use an active method / a computed property, or an S3, S4 or env class
-  --> tests/ui/derive_computed_invalid.rs:64:5
-   |
-64 | /     #[r_data(get = "Self::f")]
-65 | |     pub count: Computed,
-   | |_______________________^

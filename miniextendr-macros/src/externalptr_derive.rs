@@ -56,10 +56,12 @@
 //! system; the impl's `r_data_accessors` option also wires the slots into the
 //! class. Under the S3, S4 and env field syntax, `$` / `[[` are the class's R
 //! API and the standalone accessors are internal: no `@export`, no "Type
-//! Sidecar Accessors" page (#1900). The derive emits both renderings in a
-//! `SidecarAccessorsEntry`; the wrapper writer picks one by the class's
-//! `ClassNameEntry::field_syntax`, since the impl block is a separate
-//! expansion. Otherwise they are exported on the type's page.
+//! Sidecar Accessors" page (#1900), and under its read-only form
+//! (`r_data_accessors = "read_only"`, #2268) there are no standalone setters.
+//! The derive emits the three renderings in a `SidecarAccessorsEntry`; the
+//! wrapper writer picks one by the class's `ClassNameEntry::field_syntax` and
+//! `read_only_fields`, since the impl block is a separate expansion.
+//! Otherwise they are exported on the type's page.
 //!
 //! | Class System | Attribute | R Accessors |
 //! |--------------|-----------|-------------|
@@ -69,7 +71,9 @@
 //! | S4 | `#[externalptr(s4)]` + `#[miniextendr(s4(r_data_accessors))]` | `$` / `$<-` methods |
 //! | S7 | `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | Properties, `obj@field` / `obj@field <- value` |
 //!
-//! For S3, S4 and env, `r_data_accessors = "get"` generates the getters only.
+//! For S3, S4 and env, `r_data_accessors = "get"` generates the getters only,
+//! and `r_data_accessors = "read_only"` the getters and a `$<-` / `[[<-`
+//! that refuses every field with `miniextendr_read_only_field` (#2268).
 //! The `$` / `[[` methods share the helpers [`generate_field_syntax_helpers`]
 //! prepares for every type with R accessors (#1848). The wrapper writer includes
 //! them only when an impl enables S3, S4 or env field syntax.
@@ -103,11 +107,17 @@
 //!    #1883) - no value in the struct; the getter calls the named
 //!    `fn(&Self) -> impl IntoR` on the live Rust value; a `Result` from it
 //!    is an error boundary, `Result<T, ()>` reading `NULL` (#2269). There
-//!    is no setter:
-//!    no `Type_set_f()`, and under the get/set field syntax an assignment
-//!    raises `miniextendr_read_only_field`. Only `pub`, and not under
-//!    `#[externalptr(r6)]` / `#[externalptr(s7)]`, whose bindings and
-//!    properties need a setter (#1888).
+//!    is no R setter, as for a read-only field (below). Only `pub`.
+//!
+//! `#[r_data(read_only)]` makes a public field of tier 1 to 3 read-only from
+//! R (#2268): no `Type_set_f()` and no setter C function; under the get/set
+//! field syntax an assignment raises `miniextendr_read_only_field`; the R6
+//! active binding refuses a value with the same class (no call: R6 calls the
+//! binding with `value`, not the assignment); the S7 property has no setter,
+//! so S7 refuses the write with its own error. A computed field is refused
+//! the same way (#1888). The Rust accessors of a `Sidecar<T>` field stay:
+//! `read_only` goes with `ref` / `mut`, and refuses the selector, a private
+//! or computed field and `setter = ...`.
 //!
 //! `#[r_data(name = "keys")]` gives a field its R name (#1891): the field
 //! list, the `$` / `[[` labels, the R6 binding / S7 property and the
@@ -164,6 +174,10 @@
 //! `TypedExternal::FIELD_ERROR_CLASS`. `field_error(no_field_hint = "...")`
 //! (#2112) adds the package's sentence after the field list of the
 //! `miniextendr_no_field` error, each `%s` in it the name asked for.
+//! The classes also lead `miniextendr_read_only_field`, under the field
+//! syntax and on an R6 binding, and `field_error(read_only_hint = "...")`
+//! (#2268) adds the package's sentence after its message, each `%s` in it
+//! the field's R name.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
@@ -260,12 +274,14 @@ struct RestoredOptions {
 struct ExternalPtrAttrs {
     class_system: ClassSystem,
     restored: RestoredOptions,
-    /// `field_error(class = ..., message = ...)`: the field readers' own
-    /// errors (#1899, #1920).
+    /// `field_error(class = ..., message = ..., no_field_hint = ...,
+    /// read_only_hint = ...)`: the field methods' own errors (#1899, #1920,
+    /// #2112, #2268).
     field_error: FieldErrorOptions,
 }
 
-/// `#[externalptr(field_error(class = ..., message = ..., no_field_hint = ...))]`.
+/// `#[externalptr(field_error(class = ..., message = ..., no_field_hint = ...,
+/// read_only_hint = ...))]`.
 #[derive(Default)]
 struct FieldErrorOptions {
     /// The classes put in front of the errors the R field readers raise
@@ -277,6 +293,9 @@ struct FieldErrorOptions {
     /// A sentence the `miniextendr_no_field` error adds after its field list,
     /// each `%s` replaced by the name asked for (#2112).
     no_field_hint: Option<String>,
+    /// A sentence the `miniextendr_read_only_field` error adds after its
+    /// message, each `%s` replaced by the field's R name (#2268).
+    read_only_hint: Option<String>,
 }
 
 /// Parse `#[externalptr(...)]` attributes: the class system, the restored
@@ -292,7 +311,7 @@ struct FieldErrorOptions {
 /// - `#[externalptr(restored(class = "pkg_saved", message = "...", no_handle = "...", refuse = "every_read"))]`,
 ///   with `class = ["pkg_saved", "pkg_error"]` for several classes; next to
 ///   the class system (`#[externalptr(s3, restored(...))]`) or on its own.
-/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "..."))]`
+/// - `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"], message = "...", no_field_hint = "...", read_only_hint = "..."))]`
 fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
     let mut restored: Option<RestoredOptions> = None;
@@ -436,11 +455,26 @@ fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<Rest
 }
 
 /// The arguments of `field_error(...)`: `class = "..."` or `class = ["...",
-/// ...]`, `message = "..."` and `no_field_hint = "..."`, each once.
+/// ...]`, `message = "..."`, `no_field_hint = "..."` and `read_only_hint =
+/// "..."`, each once.
 fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<FieldErrorOptions> {
     let mut class: Option<Vec<String>> = None;
-    let mut message: Option<String> = None;
-    let mut no_field_hint: Option<String> = None;
+    let mut options = FieldErrorOptions::default();
+    // A non-empty string option, given once.
+    let text = |inner: &syn::meta::ParseNestedMeta, slot: &mut Option<String>, option: &str| {
+        if slot.is_some() {
+            return Err(inner.error(format!("`{option}` is given twice")));
+        }
+        let value: syn::LitStr = inner.value()?.parse()?;
+        if value.value().is_empty() {
+            return Err(syn::Error::new_spanned(
+                value,
+                format!("`{option}` is empty"),
+            ));
+        }
+        *slot = Some(value.value());
+        Ok(())
+    };
     meta.parse_nested_meta(|inner| {
         if inner.path.is_ident("class") {
             if class.is_some() {
@@ -449,36 +483,19 @@ fn parse_field_error_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<F
             class = Some(parse_class_list(&inner)?);
             Ok(())
         } else if inner.path.is_ident("message") {
-            if message.is_some() {
-                return Err(inner.error("`message` is given twice"));
-            }
-            let value: syn::LitStr = inner.value()?.parse()?;
-            if value.value().is_empty() {
-                return Err(syn::Error::new_spanned(value, "`message` is empty"));
-            }
-            message = Some(value.value());
-            Ok(())
+            text(&inner, &mut options.message, "message")
         } else if inner.path.is_ident("no_field_hint") {
-            if no_field_hint.is_some() {
-                return Err(inner.error("`no_field_hint` is given twice"));
-            }
-            let value: syn::LitStr = inner.value()?.parse()?;
-            if value.value().is_empty() {
-                return Err(syn::Error::new_spanned(value, "`no_field_hint` is empty"));
-            }
-            no_field_hint = Some(value.value());
-            Ok(())
+            text(&inner, &mut options.no_field_hint, "no_field_hint")
+        } else if inner.path.is_ident("read_only_hint") {
+            text(&inner, &mut options.read_only_hint, "read_only_hint")
         } else {
             Err(inner.error(
-                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`), `message = \"...\"` and `no_field_hint = \"...\"`",
+                "unknown `field_error` option; expected `class = \"...\"` (or `class = [\"...\", ...]`), `message = \"...\"`, `no_field_hint = \"...\"` and `read_only_hint = \"...\"`",
             ))
         }
     })?;
-    Ok(FieldErrorOptions {
-        class: class.unwrap_or_default(),
-        message,
-        no_field_hint,
-    })
+    options.class = class.unwrap_or_default();
+    Ok(options)
 }
 
 /// Check if a field has the `#[r_data]` attribute.
@@ -539,6 +556,10 @@ struct RDataOptions {
     /// `get = "path"`: the getter of a `Computed` field, a
     /// `fn(&Self) -> impl IntoR` (#1883).
     get: Option<syn::LitStr>,
+    /// `read_only`: R reads the field and can't write it (#2268): no R
+    /// setter, and the field methods refuse a write. The Rust accessors
+    /// (`ref` / `mut`) stay.
+    read_only: Option<Span>,
 }
 
 /// Which Rust accessors a `Sidecar<T>` field gets: `#[r_data(ref)]` the
@@ -551,10 +572,12 @@ struct SidecarAccess {
 }
 
 /// One item of `#[r_data(...)]`: `ref`, `mut` (both keywords, so
-/// `parse_nested_meta` cannot read them) or `key = "value"`.
+/// `parse_nested_meta` cannot read them), a flag (`read_only`) or
+/// `key = "value"`.
 enum RDataArg {
     Ref(Span),
     Mut(Span),
+    Flag(Ident),
     KeyValue { key: Ident, value: syn::LitStr },
 }
 
@@ -569,6 +592,9 @@ impl syn::parse::Parse for RDataArg {
             Ok(Self::Mut(token.span))
         } else if lookahead.peek(Ident) {
             let key: Ident = input.parse()?;
+            if !input.peek(syn::Token![=]) {
+                return Ok(Self::Flag(key));
+            }
             let _eq: syn::Token![=] = input.parse()?;
             let value: syn::LitStr = input.parse()?;
             Ok(Self::KeyValue { key, value })
@@ -631,15 +657,60 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                     }
                     options.get = Some(value);
                 }
-                RDataArg::KeyValue { key, .. } => {
+                RDataArg::Flag(key) if key == "read_only" => {
+                    if options.read_only.replace(key.span()).is_some() {
+                        return Err(syn::Error::new_spanned(key, "duplicate `read_only` option"));
+                    }
+                }
+                RDataArg::KeyValue { key, .. } if key == "read_only" => {
+                    return Err(syn::Error::new_spanned(
+                        &key,
+                        "`read_only` takes no value: `#[r_data(read_only)]`",
+                    ));
+                }
+                RDataArg::Flag(key) | RDataArg::KeyValue { key, .. } => {
                     return Err(syn::Error::new_spanned(
                         &key,
                         format!(
-                            "unknown key `{key}`; supported: `ref`, `mut`, `name`, `get`, `prop_doc`, `setter`"
+                            "unknown key `{key}`; supported: `ref`, `mut`, `read_only`, `name`, `get`, \
+                             `prop_doc`, `setter`"
                         ),
                     ));
                 }
             }
+        }
+    }
+    if let Some(span) = options.read_only {
+        // `read_only` takes R's setter away: a field R reaches has one to take.
+        let refusal = if is_rsidecar_type(field) {
+            Some("the RSidecar selector, which has no R accessors".to_string())
+        } else if is_computed_type(&field.ty) {
+            Some(format!(
+                "a `{COMPUTED_TYPE_NAME}` field, which is read-only already: it has no setter"
+            ))
+        } else if !is_pub(field) || field.ident.is_none() {
+            Some(
+                "a field that is not `pub`: only `pub` `#[r_data]` fields reach R, and \
+                 `read_only` applies to R only"
+                    .to_string(),
+            )
+        } else if options.setter_invisible.is_some() {
+            Some(
+                "a field with `setter = ...`: a read-only field has no R setter whose return \
+                 to choose"
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        if let Some(refusal) = refusal {
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "`read_only` makes a public `#[r_data]` field read-only from R (no R setter, \
+                     and the field methods refuse a write); it doesn't apply to {refusal}"
+                ),
+            ));
         }
     }
     if options.setter_invisible.is_some()
@@ -813,7 +884,36 @@ pub(crate) struct SidecarSlot {
     prop_doc: Option<String>,
     /// Explicit setter visibility; each generated setter keeps its default when absent.
     setter_invisible: Option<bool>,
+    /// `#[r_data(read_only)]` (#2268): R reads the field and can't write
+    /// it. The Rust accessors of a `Sidecar<T>` field are unaffected.
+    read_only: bool,
 }
+
+impl SidecarSlot {
+    /// Whether R can write the field: a setter C function, `CallDef` and
+    /// `Type_set_<f>()`, a writing arm in `.rdata_set_<Type>`, a writing R6
+    /// binding and an S7 property setter. A `Computed` field (#1883) and an
+    /// `#[r_data(read_only)]` one (#2268) have none.
+    fn has_r_setter(&self) -> bool {
+        !self.read_only && !matches!(self.kind, SlotKind::Computed(_))
+    }
+
+    /// What the refusal of a write to a field without an R setter says of
+    /// it, after "`f` of `Class`".
+    fn read_only_reason(&self) -> &'static str {
+        if matches!(self.kind, SlotKind::Computed(_)) {
+            COMPUTED_REASON
+        } else {
+            READ_ONLY_REASON
+        }
+    }
+}
+
+/// The refusal of a write to a `Computed` field, after "`f` of `Class`".
+const COMPUTED_REASON: &str = "is computed from the Rust value and can't be assigned";
+
+/// The refusal of a write to a read-only field, after "`f` of `Class`".
+const READ_ONLY_REASON: &str = "is read-only";
 
 /// Aggregated sidecar information extracted from struct field analysis.
 ///
@@ -1005,24 +1105,6 @@ pub(crate) fn parse_sidecar_info(
                         ),
                     ));
                 }
-                // The R6 active bindings and the S7 properties need a setter;
-                // a getters-only form for them is #1888.
-                if matches!(class_system, ClassSystem::R6 | ClassSystem::S7) {
-                    return Err(syn::Error::new_spanned(
-                        field,
-                        format!(
-                            "a `{COMPUTED_TYPE_NAME}` field is not supported under `#[externalptr({})]`: \
-                             its R6 active bindings / S7 properties need a setter, and a computed field \
-                             has none (#1888). Use an active method / a computed property, or an S3, S4 \
-                             or env class",
-                            if class_system == ClassSystem::R6 {
-                                "r6"
-                            } else {
-                                "s7"
-                            }
-                        ),
-                    ));
-                }
             }
             let access = if matches!(kind, SlotKind::Sidecar(_)) {
                 sidecars += 1;
@@ -1049,6 +1131,7 @@ pub(crate) fn parse_sidecar_info(
                 access,
                 prop_doc: options.prop_doc,
                 setter_invisible: options.setter_invisible,
+                read_only: options.read_only.is_some(),
             });
         }
     }
@@ -1475,8 +1558,9 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 /// `require_live` flag: `FALSE` here, so the standalone accessors keep
 /// reading a save's `Sidecar` values (#1891).
 ///
-/// `field_name` is the field's R name (`Type_get_<name>()`). A `Computed`
-/// field (`setter_c_name` is `None`) gets the getter only.
+/// `field_name` is the field's R name (`Type_get_<name>()`). A field without
+/// an R setter (`setter_c_name` is `None`: a `Computed` or
+/// `#[r_data(read_only)]` one) gets the getter only.
 ///
 /// `exported` writes them on the type's page with `@export`; otherwise they
 /// are internal (`@noRd`, no export), the rendering a type whose class has
@@ -1574,16 +1658,22 @@ fn generate_r_wrapper_for_slot(
 /// Generate class-integrated R code for sidecar fields.
 ///
 /// For R6: generates `Type$set("active", "field", ...)` calls that add active bindings
-/// referencing the sidecar getter/setter .Call entrypoints.
+/// referencing the sidecar getter/setter .Call entrypoints. The binding of a
+/// field without an R setter (a `Computed` or `#[r_data(read_only)]` one)
+/// refuses a value, as R6's own read-only active bindings do (#1888, #2268):
+/// see [`r6_read_only_refusal`].
 ///
 /// For S7: generates `.rdata_properties_Type <- list(...)` with S7::new_property()
-/// definitions that can be spliced into the S7 class's properties list.
+/// definitions that can be spliced into the S7 class's properties list. A
+/// field without an R setter is a property without a setter, which S7 itself
+/// refuses to assign (#1888, #2268).
 ///
 /// Other class systems return empty strings (their standalone accessors suffice).
 fn generate_class_integration_r_code(
     class_system: ClassSystem,
     type_name: &str,
     pub_slots: &[&SidecarSlot],
+    field_error: &FieldErrorOptions,
 ) -> String {
     if pub_slots.is_empty() {
         return String::new();
@@ -1622,7 +1712,31 @@ fn generate_class_integration_r_code(
                 // Must match the sidecar accessor's actual C symbol exactly (#1273
                 // crate-prefixing) — routed through the shared naming.rs helpers.
                 let getter_c = crate::naming::sidecar_getter_c_name(type_name, &rust_field);
-                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
+                // A value is written, or refused for a field without an R
+                // setter (#2268).
+                let write = if slot.has_r_setter() {
+                    let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
+                    let setter_return = if slot.setter_invisible.unwrap_or(true) {
+                        "invisible(self)"
+                    } else {
+                        "self"
+                    };
+                    format!(
+                        "\x20     .val <- .Call({setter_c}, private$.ptr, value, FALSE)\n\
+                         {setter_guard}\n\
+                         \x20     {setter_return}\n",
+                        setter_guard = guard("      "),
+                    )
+                } else {
+                    format!(
+                        "\x20     {}\n",
+                        r6_read_only_refusal(
+                            slot,
+                            &field_error.class,
+                            field_error.read_only_hint.as_deref()
+                        )
+                    )
+                };
                 // `FALSE`: the bindings keep reading a save's `Sidecar` values.
                 code.push_str(&format!(
                     "  cls$set(\"active\", \"{field}\", function(value) {{\n\
@@ -1631,21 +1745,10 @@ fn generate_class_integration_r_code(
                      {getter_guard}\n\
                      \x20     .val\n\
                      \x20   }} else {{\n\
-                     \x20     .val <- .Call({setter_c}, private$.ptr, value, FALSE)\n\
-                     {setter_guard}\n\
-                     \x20     {setter_return}\n\
+                     {write}\
                      \x20   }}\n\
                      \x20 }}, overwrite = TRUE)\n",
-                    field = field,
-                    getter_c = getter_c,
-                    setter_c = setter_c,
                     getter_guard = guard("      "),
-                    setter_guard = guard("      "),
-                    setter_return = if slot.setter_invisible.unwrap_or(true) {
-                        "invisible(self)"
-                    } else {
-                        "self"
-                    },
                 ));
             }
             code.push_str("}\n");
@@ -1671,8 +1774,28 @@ fn generate_class_integration_r_code(
                 // Must match the sidecar accessor's actual C symbol exactly (#1273
                 // crate-prefixing) — routed through the shared naming.rs helpers.
                 let getter_c = crate::naming::sidecar_getter_c_name(type_name, &rust_field);
-                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
                 let comma = if i < pub_slots.len() - 1 { "," } else { "" };
+                // A field without an R setter is a property without a
+                // setter: S7 refuses `obj@f <- value` itself (#2268).
+                let setter = if slot.has_r_setter() {
+                    let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
+                    let setter_return = if slot.setter_invisible.unwrap_or(false) {
+                        "invisible(self)"
+                    } else {
+                        "self"
+                    };
+                    format!(
+                        ",\n\
+                         \x20       setter = function(self, value) {{\n\
+                         \x20         .val <- .Call({setter_c}, self@.ptr, value, FALSE)\n\
+                         {setter_guard}\n\
+                         \x20         {setter_return}\n\
+                         \x20       }}",
+                        setter_guard = guard("          "),
+                    )
+                } else {
+                    String::new()
+                };
                 // `FALSE`: the properties keep reading a save's `Sidecar` values.
                 code.push_str(&format!(
                     "    {field} = S7::new_property(\n\
@@ -1680,24 +1803,9 @@ fn generate_class_integration_r_code(
                      \x20         .val <- .Call({getter_c}, self@.ptr, FALSE)\n\
                      {getter_guard}\n\
                      \x20         .val\n\
-                     \x20       }},\n\
-                     \x20       setter = function(self, value) {{\n\
-                     \x20         .val <- .Call({setter_c}, self@.ptr, value, FALSE)\n\
-                     {setter_guard}\n\
-                     \x20         {setter_return}\n\
-                     \x20       }}\n\
+                     \x20       }}{setter}\n\
                      \x20   ){comma}\n",
-                    field = field,
-                    getter_c = getter_c,
-                    setter_c = setter_c,
                     getter_guard = guard("          "),
-                    setter_guard = guard("          "),
-                    setter_return = if slot.setter_invisible.unwrap_or(false) {
-                        "invisible(self)"
-                    } else {
-                        "self"
-                    },
-                    comma = comma,
                 ));
             }
             code.push_str(")\n");
@@ -1706,6 +1814,44 @@ fn generate_class_integration_r_code(
         // Other class systems don't need class-integrated code
         _ => String::new(),
     }
+}
+
+/// The R vector of condition classes `c("pkg_a", "pkg_b", "<last>")`: the
+/// package's `field_error` classes, then miniextendr's own.
+fn r_class_vector(classes: &[String], last: &str) -> String {
+    let quoted = classes
+        .iter()
+        .map(String::as_str)
+        .chain([last])
+        .map(|class| format!("\"{}\"", crate::naming::r_string_escape(class)))
+        .collect::<Vec<_>>();
+    format!("c({})", quoted.join(", "))
+}
+
+/// The `stop()` of an R6 active binding that refuses a value (#1888,
+/// #2268), as R6's own read-only active bindings do:
+/// `miniextendr_read_only_field` with the package's `field_error` classes in
+/// front, the message naming the field and the object's R6 class, then the
+/// package's `read_only_hint`, each `%s` in it the field's R name. No call:
+/// the binding's own call is an anonymous function. The R6 class has none of
+/// the field-syntax helpers, so the classes and the hint are written in.
+fn r6_read_only_refusal(slot: &SidecarSlot, classes: &[String], hint: Option<&str>) -> String {
+    let message = format!(
+        "sprintf(\"`{}` of `%s` {}\", class(self)[[1L]])",
+        crate::naming::r_string_escape(&slot.r_name),
+        slot.read_only_reason()
+    );
+    let message = match hint {
+        None => message,
+        Some(hint) => format!(
+            "paste0({message}, \". \", \"{}\")",
+            crate::naming::r_string_escape(&hint.replace("%s", &slot.r_name))
+        ),
+    };
+    format!(
+        "stop(errorCondition({message}, class = {}, call = NULL))",
+        r_class_vector(classes, "miniextendr_read_only_field")
+    )
 }
 
 /// Generate the R helpers the `$` / `[[` field methods of `r_data_accessors`
@@ -1729,25 +1875,29 @@ fn generate_class_integration_r_code(
 /// standalone accessors pass `FALSE` and keep reading its `Sidecar` values).
 /// The accessors return a failed conversion or a panic as a tagged condition
 /// value with no call; the calling method raises it with its own frame as
-/// the fallback, so the condition reports `x$keys <- value`. A computed
-/// field's setter arm raises `miniextendr_read_only_field` itself, with the
-/// calling method's frame (`parent.frame()`) resolved the same way. The
-/// liveness check returns the same kind of value, which the method raises.
+/// the fallback, so the condition reports `x$keys <- value`. The setter arm
+/// of a field without an R setter (a `Computed` or `#[r_data(read_only)]`
+/// one, #2268) calls `.rdata_read_only_<Type>`, which raises
+/// `miniextendr_read_only_field` with the calling method's frame
+/// (`parent.frame()`) resolved the same way; the writers of `r_data_accessors
+/// = "read_only"` call it for every field. The liveness check returns the
+/// same kind of value as the accessors, which the method raises.
 ///
 /// `field_error(no_field_hint = "...")` adds a sentence after the field list
 /// of the `miniextendr_no_field` message, each `%s` in it replaced by the
-/// name asked for (#2112). The hint is split on `%s` here and pasted around
-/// the name, so any other `%` or `\` in it, or in the name, stays as written.
+/// name asked for (#2112), and `field_error(read_only_hint = "...")` one
+/// after the `miniextendr_read_only_field` message, each `%s` the field's
+/// name (#2268) ([`r_hint_parts`]).
 fn generate_field_syntax_helpers(
     type_name: &str,
     pub_slots: &[&SidecarSlot],
-    field_error: &[String],
-    no_field_hint: Option<&str>,
+    field_error: &FieldErrorOptions,
     every_read: bool,
 ) -> String {
     use crate::naming::{RDataHelper, rdata_helper_name};
 
     let error_class_var = rdata_helper_name(RDataHelper::ErrorClass, type_name);
+    let read_only_fn = rdata_helper_name(RDataHelper::ReadOnly, type_name);
     let names = pub_slots
         .iter()
         .map(|slot| format!("\"{}\"", slot.r_name))
@@ -1766,21 +1916,25 @@ fn generate_field_syntax_helpers(
             .iter()
             .map(|slot| {
                 let rust_field = crate::naming::ident_name(&slot.name);
-                let call = match (&slot.kind, setter) {
-                    // The message names the receiver's R class (#1920), else
-                    // the Rust type.
-                    (SlotKind::Computed(_), true) => format!(
-                        "stop(errorCondition(sprintf(\"`{field}` of `%s` is computed from the Rust \
-                         value and can't be assigned\", if (is.null(oldClass(x))) \"{type_name}\" else oldClass(x)[[1L]]), \
-                         class = c({error_class_var}, \"miniextendr_read_only_field\"), \
-                         call = .miniextendr_frame_call(parent.frame())))",
-                        field = slot.r_name,
-                    ),
-                    (_, true) => format!(
+                let call = match setter {
+                    // A field R can't write: the refusal names the field
+                    // and why (#1883, #2268).
+                    true if !slot.has_r_setter() => {
+                        let field = crate::naming::r_string_escape(&slot.r_name);
+                        match slot.read_only_reason() {
+                            READ_ONLY_REASON => {
+                                format!("{read_only_fn}(\"{field}\", x, parent.frame())")
+                            }
+                            why => {
+                                format!("{read_only_fn}(\"{field}\", x, parent.frame(), \"{why}\")")
+                            }
+                        }
+                    }
+                    true => format!(
                         ".Call({}, x, value, TRUE)",
                         crate::naming::sidecar_setter_c_name(type_name, &rust_field)
                     ),
-                    (_, false) => format!(
+                    false => format!(
                         ".Call({}, x, TRUE)",
                         crate::naming::sidecar_getter_c_name(type_name, &rust_field)
                     ),
@@ -1790,12 +1944,13 @@ fn generate_field_syntax_helpers(
             .collect::<Vec<_>>()
             .join(",\n")
     };
-    let error_class = if field_error.is_empty() {
+    let error_class = if field_error.class.is_empty() {
         "NULL".to_string()
     } else {
         format!(
             "c({})",
             field_error
+                .class
                 .iter()
                 .map(|class| format!("\"{}\"", crate::naming::r_string_escape(class)))
                 .collect::<Vec<_>>()
@@ -1816,16 +1971,21 @@ fn generate_field_syntax_helpers(
     let every_read = if every_read { "TRUE" } else { "FALSE" };
     let no_field_message =
         format!("sprintf(\"`%s` is not a field of `%s`; its fields are {listed}\", name, cls)");
-    let no_field_message = match no_field_hint {
+    let no_field_message = match &field_error.no_field_hint {
         None => no_field_message,
-        Some(hint) => {
-            let hint = hint
-                .split("%s")
-                .map(|part| format!("\"{}\"", crate::naming::r_string_escape(part)))
-                .collect::<Vec<_>>()
-                .join(", name, ");
-            format!("paste0({no_field_message}, \". \", {hint})")
-        }
+        Some(hint) => format!("paste0({no_field_message}, \". \", {})", r_hint_parts(hint)),
+    };
+    // The message names the receiver's R class (#1920), else the Rust type.
+    let read_only_message = format!(
+        "sprintf(\"`%s` of `%s` %s\", name, if (is.null(oldClass(x))) \"{type_name}\" else \
+         oldClass(x)[[1L]], why)"
+    );
+    let read_only_message = match &field_error.read_only_hint {
+        None => read_only_message,
+        Some(hint) => format!(
+            "paste0({read_only_message}, \". \", {})",
+            r_hint_parts(hint)
+        ),
     };
     format!(
         "\n# Field syntax helpers for {type_name} sidecar fields, shared by the `$` / `[[`\n\
@@ -1838,6 +1998,9 @@ fn generate_field_syntax_helpers(
          {no_field_fn} <- function(name, env, cls) stop(errorCondition(\n\
          \x20 {no_field_message},\n\
          \x20 class = c({error_class_var}, \"miniextendr_no_field\"), call = .miniextendr_frame_call(env)))\n\
+         {read_only_fn} <- function(name, x, env, why = \"{READ_ONLY_REASON}\") stop(errorCondition(\n\
+         \x20 {read_only_message},\n\
+         \x20 class = c({error_class_var}, \"miniextendr_read_only_field\"), call = .miniextendr_frame_call(env)))\n\
          {every_read_var} <- {every_read}\n\
          {live_fn} <- {live}\n",
         fields_var = rdata_helper_name(RDataHelper::Fields, type_name),
@@ -1849,6 +2012,17 @@ fn generate_field_syntax_helpers(
         get_arms = arms(false),
         set_arms = arms(true),
     )
+}
+
+/// A `field_error` hint as `paste0()` arguments: its text split on `%s`,
+/// each part an R string, with the R variable `name` between the parts
+/// (#2112, #2268). Any other `%` or `\` in the hint, or in the name, stays
+/// as written.
+fn r_hint_parts(hint: &str) -> String {
+    hint.split("%s")
+        .map(|part| format!("\"{}\"", crate::naming::r_string_escape(part)))
+        .collect::<Vec<_>>()
+        .join(", name, ")
 }
 
 /// Generate sidecar accessor constants and `extern "C-unwind"` functions.
@@ -1868,10 +2042,12 @@ fn generate_field_syntax_helpers(
 /// The generated statics are:
 /// - `__MX_CALL_DEF_RDATA_*`: the `R_CallMethodDef` entries
 /// - `R_WRAPPERS_RDATA_{Type}`: the R6 / S7 integration, when present
-/// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported and
-///   internal, which the wrapper writer picks between by the class's field
-///   syntax (`registry::SidecarAccessorsEntry`, #1900). Only the internal
-///   rendering includes the field-syntax helpers.
+/// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported,
+///   internal, and internal without the setters, which the wrapper writer
+///   picks between by the class's field syntax
+///   (`registry::SidecarAccessorsEntry`, #1900; the last for
+///   `r_data_accessors = "read_only"`, #2268). Only the internal renderings
+///   include the field-syntax helpers.
 ///
 /// Returns `Err` if the struct has generic type parameters (`.Call` entrypoints
 /// cannot be generic).
@@ -1902,10 +2078,12 @@ fn generate_sidecar_accessors(
 
     // Generate getter/setter functions and R wrappers for each pub slot
     let mut c_functions = vec![];
-    // The standalone accessors, in the two renderings the wrapper writer
-    // picks between (#1900).
+    // The standalone accessors, in the renderings the wrapper writer picks
+    // between (#1900): exported, internal, and internal without the setters
+    // for a class whose field syntax is read-only (#2268).
     let mut exported = String::new();
     let mut internal = String::new();
+    let mut internal_read_only = String::new();
 
     // The exported rendering's page header establishes the @name topic for
     // the accessors' `@rdname`, even if the main class definition uses @noRd.
@@ -1933,6 +2111,9 @@ fn generate_sidecar_accessors(
         let field_name_str = crate::naming::ident_name(field_name);
         let r_name = &slot.r_name;
         let computed = matches!(slot.kind, SlotKind::Computed(_));
+        // A `Computed` field and an `#[r_data(read_only)]` one have no R
+        // setter (#1883, #2268).
+        let r_setter = slot.has_r_setter();
 
         // C function names (crate-prefixed for webR cross-package symbol
         // uniqueness — #1273, routed through the shared naming.rs helpers)
@@ -1958,7 +2139,6 @@ fn generate_sidecar_accessors(
 
         // Generate getter/setter bodies based on slot kind
         let getter_body = generate_getter_body(name, slot);
-        let setter_body = generate_setter_body(name, slot);
 
         // Generate C getter function.
         //
@@ -2009,9 +2189,11 @@ fn generate_sidecar_accessors(
             #getter_registration
         });
 
-        // A computed field has no setter: no C function, no `CallDef`, no
-        // `Type_set_<name>()` (#1883).
-        if !computed {
+        // A computed or read-only field has no R setter: no C function, no
+        // `CallDef`, no `Type_set_<name>()` (#1883, #2268). The Rust
+        // accessors of a read-only `Sidecar` field stay.
+        if r_setter {
+            let setter_body = generate_setter_body(name, slot);
             // Generate C setter function (same unwind/condition transport as
             // the getter above).
             c_functions.push(quote::quote! {
@@ -2053,32 +2235,41 @@ fn generate_sidecar_accessors(
             });
         }
 
-        // Generate R wrapper code based on class system
-        let via = if computed {
-            format!("`{getter_c_name}`")
-        } else {
-            format!("`{getter_c_name}` and `{setter_c_name}`")
-        };
-        let comment = format!(
-            "# Generated from Rust source {}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
-            crate::source_position(field_name.span()),
-            if computed {
-                "computed field"
+        // Generate R wrapper code based on class system. The read-only
+        // rendering writes every field as a field without an R setter.
+        let comment = |with_setter: bool| {
+            let via = if with_setter {
+                format!("`{getter_c_name}` and `{setter_c_name}`")
             } else {
-                "sidecar field"
-            },
-            r_name,
-            name_str,
-            via,
-        );
-        for (out, is_exported) in [(&mut exported, true), (&mut internal, false)] {
-            out.push_str(&comment);
+                format!("`{getter_c_name}`")
+            };
+            format!(
+                "# Generated from Rust source {}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
+                crate::source_position(field_name.span()),
+                if computed {
+                    "computed field"
+                } else if with_setter {
+                    "sidecar field"
+                } else {
+                    "read-only sidecar field"
+                },
+                r_name,
+                name_str,
+                via,
+            )
+        };
+        for (out, is_exported, with_setter) in [
+            (&mut exported, true, r_setter),
+            (&mut internal, false, r_setter),
+            (&mut internal_read_only, false, false),
+        ] {
+            out.push_str(&comment(with_setter));
             out.push_str(&generate_r_wrapper_for_slot(
                 info.class_system,
                 &name_str,
                 r_name,
                 &getter_c_name,
-                (!computed).then_some(setter_c_name.as_str()),
+                with_setter.then_some(setter_c_name.as_str()),
                 slot.setter_invisible.unwrap_or(true),
                 is_exported,
             ));
@@ -2137,16 +2328,14 @@ fn generate_sidecar_accessors(
     }
 
     // R6 / S7 integration is independent of S3 / S4 / env field syntax.
-    let r_wrappers = generate_class_integration_r_code(info.class_system, &name_str, &pub_slots);
-    // The writer selects this rendering only when an impl enables field
+    let r_wrappers =
+        generate_class_integration_r_code(info.class_system, &name_str, &pub_slots, field_error);
+    // The writer selects these renderings only when an impl enables field
     // syntax. Other types need their standalone accessors, not these helpers.
-    internal.push_str(&generate_field_syntax_helpers(
-        &name_str,
-        &pub_slots,
-        &field_error.class,
-        field_error.no_field_hint.as_deref(),
-        restored.every_read,
-    ));
+    let helpers =
+        generate_field_syntax_helpers(&name_str, &pub_slots, field_error, restored.every_read);
+    internal.push_str(&helpers);
+    internal_read_only.push_str(&helpers);
 
     let const_name_wrappers = Ident::new(
         &format!("R_WRAPPERS_RDATA_{}", name_symbol),
@@ -2166,8 +2355,10 @@ fn generate_sidecar_accessors(
             .iter()
             .map(|slot| {
                 // The property's R name; `registry.rs` derives the
-                // `<Class>_get_<name>` collision names from it too.
+                // `<Class>_get_<name>` collision names from it too, and
+                // `<Class>_set_<name>` for a field with an R setter.
                 let field_str = slot.r_name.as_str();
+                let read_only = !slot.has_r_setter();
                 let doc_str = slot
                     .prop_doc
                     .as_deref()
@@ -2191,6 +2382,7 @@ fn generate_sidecar_accessors(
                             rust_type: #name_str,
                             field_name: #field_str,
                             prop_doc: #doc_str,
+                            read_only: #read_only,
                         };
                 }
             })
@@ -2221,8 +2413,8 @@ fn generate_sidecar_accessors(
 
         #class_integration_wrappers
 
-        /// The standalone sidecar accessors, exported and internal, via
-        /// distributed slice.
+        /// The standalone sidecar accessors, exported, internal and internal
+        /// without setters, via distributed slice.
         #[doc = #source_location_doc]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_SIDECAR_ACCESSORS), linkme(crate = ::miniextendr_api::linkme))]
@@ -2232,6 +2424,7 @@ fn generate_sidecar_accessors(
                 rust_type: #name_str,
                 exported: #exported,
                 internal: #internal,
+                internal_read_only: #internal_read_only,
                 source_file: ::core::file!(),
                 source_line: #source_line_lit,
             };
