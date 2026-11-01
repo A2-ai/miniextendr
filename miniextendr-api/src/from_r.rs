@@ -120,35 +120,58 @@ pub(crate) fn any_na(sexp: SEXP) -> bool {
 
 // region: CHARSXP to string conversion
 
-/// Convert CHARSXP to `&str`, translating to UTF-8 when required.
+/// Why a string marked with R's `bytes` encoding is refused: its bytes are
+/// not text in any encoding, so it has no Rust `str`. Worded as the reason of
+/// an argument error (`'x' must be a single string: marked as bytes, not
+/// text`), and of each element of a batched one (`marked as bytes, not text
+/// (elements 2, 4)`).
+pub(crate) const BYTES_REASON: &str = "marked as bytes, not text";
+
+/// Why a string whose own bytes are not valid UTF-8 is refused: a UTF-8 string,
+/// or a native one R reads without translation (any native string in a UTF-8
+/// session).
+pub(crate) const INVALID_UTF8_REASON: &str = "not valid UTF-8";
+
+/// Read a CHARSXP as Rust text, translating it to UTF-8 when its encoding
+/// requires.
 ///
 /// UTF-8 strings, ASCII strings and native strings in a UTF-8 session borrow
 /// directly from the CHARSXP via `R_CHAR` + `LENGTH`. Latin-1 strings, and
 /// native non-ASCII strings in a session whose locale isn't UTF-8, use
 /// `Rf_translateCharUTF8`; that buffer lives on R's memory stack for the
 /// enclosing `.Call`. The first native translation of the session queues a
-/// warning (`encoding::warn_native_translation`). Strings marked with R's `bytes`
-/// encoding are rejected because they are not text.
+/// warning (`encoding::warn_native_translation`).
+///
+/// A string marked with R's `bytes` encoding is not text, and a string read
+/// without translation whose bytes are not valid UTF-8 has no `str`: both are
+/// an [`SexpError::InvalidValue`] ([`BYTES_REASON`], [`INVALID_UTF8_REASON`]),
+/// which an argument conversion reports as an argument error. Every caller
+/// that returns a `Result` reads strings through this;
+/// [`charsxp_to_str_or_panic`] is for the few that cannot.
 ///
 /// # Safety
 ///
 /// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
-/// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
+/// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP,
+///   and, for a translated string, until the enclosing `.Call` returns.
 #[inline]
-pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
+pub(crate) unsafe fn try_charsxp_to_str(charsxp: SEXP) -> Result<&'static str, SexpError> {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE(charsxp);
         let text = utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
             crate::sys::Rf_translateCharUTF8(charsxp)
-        });
+        })?;
         text.warn_if_native();
-        text.as_str()
+        Ok(text.as_str())
     }
 }
 
-/// Unchecked version of [`charsxp_to_str`] (skips R thread checks on R API calls).
+/// Unchecked version of [`try_charsxp_to_str`] (skips R thread checks on R
+/// API calls).
 #[inline]
-pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
+pub(crate) unsafe fn try_charsxp_to_str_unchecked(
+    charsxp: SEXP,
+) -> Result<&'static str, SexpError> {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE_unchecked(charsxp);
         let text = utf8_text(
@@ -156,9 +179,9 @@ pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
             charsxp.r_char_unchecked(),
             charsxp.len_unchecked(),
             || crate::sys::Rf_translateCharUTF8_unchecked(charsxp),
-        );
+        )?;
         text.warn_if_native();
-        text.as_str()
+        Ok(text.as_str())
     }
 }
 
@@ -195,8 +218,9 @@ impl Utf8Text {
 /// R's translation returns the CHARSXP's own bytes when none is needed:
 /// UTF-8 or ASCII strings, and native strings while the session's locale is
 /// UTF-8 (R reads its current locale, so `Sys.setlocale()` is followed). The
-/// bytes are then borrowed and validated. Bytes-marked strings panic before
-/// `translate` runs.
+/// bytes are then borrowed and validated ([`INVALID_UTF8_REASON`]). A string
+/// marked as bytes is refused ([`BYTES_REASON`]) before `translate` runs,
+/// because `Rf_translateCharUTF8` raises an R error for it.
 ///
 /// # Safety
 ///
@@ -208,45 +232,88 @@ unsafe fn utf8_text(
     own: *const std::os::raw::c_char,
     len: usize,
     translate: impl FnOnce() -> *const std::os::raw::c_char,
-) -> Utf8Text {
+) -> Result<Utf8Text, SexpError> {
     unsafe {
-        if matches!(encoding, crate::cetype_t::CE_UTF8) {
-            return Utf8Text::Own(charsxp_utf8_bytes(own, len));
+        match encoding {
+            crate::cetype_t::CE_UTF8 => return charsxp_utf8_bytes(own, len).map(Utf8Text::Own),
+            crate::cetype_t::CE_BYTES => return Err(bytes_refusal()),
+            _ => {}
         }
-        reject_bytes_encoding(encoding);
         let utf8 = translate();
         if std::ptr::eq(utf8, own) {
-            return Utf8Text::Own(charsxp_utf8_bytes(own, len));
+            return charsxp_utf8_bytes(own, len).map(Utf8Text::Own);
         }
-        Utf8Text::Translated {
+        Ok(Utf8Text::Translated {
             text: translated_charsxp_to_str(utf8),
             native: matches!(encoding, crate::cetype_t::CE_NATIVE),
-        }
+        })
     }
 }
 
-#[inline]
-unsafe fn charsxp_utf8_bytes(ptr: *const std::os::raw::c_char, len: usize) -> &'static str {
-    unsafe {
-        let bytes = r_slice(ptr.cast::<u8>(), len);
-        std::str::from_utf8(bytes).expect("R string marked as UTF-8 contains invalid UTF-8 bytes")
-    }
-}
-
-/// Borrow directly from a CHARSXP whose bytes are its UTF-8 text.
+/// [`try_charsxp_to_str`] as a `Cow`.
 ///
-/// Unlike [`charsxp_to_str`], this never returns R's temporary translation
-/// buffer: a string that needs translation (Latin-1, or native non-ASCII in
-/// a session whose locale isn't UTF-8) panics. Use it for views whose borrow
-/// may be tied to the source STRSXP rather than merely to the enclosing
-/// `.Call`.
+/// Strings whose bytes are their UTF-8 text borrow directly from R. Strings
+/// that require encoding translation become owned Rust strings so the
+/// translated buffer cannot be invalidated independently of the returned
+/// value.
 #[inline]
-pub(crate) unsafe fn charsxp_to_borrowed_str(charsxp: SEXP) -> &'static str {
+pub(crate) unsafe fn try_charsxp_to_cow(
+    charsxp: SEXP,
+) -> Result<std::borrow::Cow<'static, str>, SexpError> {
+    unsafe {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        let text = utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
+            crate::sys::Rf_translateCharUTF8(charsxp)
+        })?;
+        text.warn_if_native();
+        Ok(match text {
+            Utf8Text::Own(text) => std::borrow::Cow::Borrowed(text),
+            Utf8Text::Translated { text, .. } => std::borrow::Cow::Owned(text.to_owned()),
+        })
+    }
+}
+
+/// [`try_charsxp_to_str`] for a caller that has no `Result` to return: an
+/// accessor that returns `Option<&str>`, a symbol's print name. **Panics**
+/// with the refusal's reason on a string marked as bytes or one that is not
+/// valid UTF-8; a caller that returns a `Result` uses [`try_charsxp_to_str`].
+///
+/// # Safety
+///
+/// As [`try_charsxp_to_str`].
+#[inline]
+pub(crate) unsafe fn charsxp_to_str_or_panic(charsxp: SEXP) -> &'static str {
+    unsafe { try_charsxp_to_str(charsxp) }.unwrap_or_else(|e| refuse_text(&e))
+}
+
+/// [`try_charsxp_to_cow`] for a caller that has no `Result` to return.
+/// **Panics** as [`charsxp_to_str_or_panic`] does.
+///
+/// # Safety
+///
+/// As [`try_charsxp_to_str`].
+#[inline]
+pub(crate) unsafe fn charsxp_to_cow_or_panic(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
+    unsafe { try_charsxp_to_cow(charsxp) }.unwrap_or_else(|e| refuse_text(&e))
+}
+
+/// Borrow directly from a CHARSXP whose bytes are its UTF-8 text, for a caller
+/// that has no `Result` to return.
+///
+/// Unlike [`try_charsxp_to_str`], this never returns R's temporary translation
+/// buffer. Use it for views whose borrow may be tied to the source STRSXP
+/// rather than merely to the enclosing `.Call`. **Panics** on a string that
+/// needs translation (Latin-1, or native non-ASCII in a session whose locale
+/// isn't UTF-8), and as [`charsxp_to_str_or_panic`] does.
+#[inline]
+pub(crate) unsafe fn charsxp_to_borrowed_str_or_panic(charsxp: SEXP) -> &'static str {
     unsafe {
         let encoding = crate::sys::Rf_getCharCE(charsxp);
         match utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
             crate::sys::Rf_translateCharUTF8(charsxp)
-        }) {
+        })
+        .unwrap_or_else(|e| refuse_text(&e))
+        {
             Utf8Text::Own(text) => text,
             Utf8Text::Translated { .. } => panic!(
                 "cannot borrow an R string that needs translation to UTF-8 (Latin-1, or native \
@@ -256,11 +323,57 @@ pub(crate) unsafe fn charsxp_to_borrowed_str(charsxp: SEXP) -> &'static str {
     }
 }
 
+/// Read a CHARSXP as text whatever it holds, for a read that must not fail
+/// (a name in a message, a class attribute): as [`try_charsxp_to_str`], except
+/// that a string marked as bytes, or one whose bytes are not valid UTF-8, is
+/// decoded lossily (`U+FFFD` for each invalid sequence) instead of refused.
+///
+/// # Safety
+///
+/// As [`try_charsxp_to_str`].
 #[inline]
-fn reject_bytes_encoding(encoding: crate::cetype_t) {
-    if matches!(encoding, crate::cetype_t::CE_BYTES) {
-        panic!("cannot convert an R string marked as bytes to Rust UTF-8");
+pub(crate) unsafe fn charsxp_to_cow_lossy(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
+    unsafe {
+        match try_charsxp_to_str(charsxp) {
+            Ok(text) => std::borrow::Cow::Borrowed(text),
+            Err(_) => {
+                String::from_utf8_lossy(r_slice(charsxp.r_char().cast::<u8>(), charsxp.len()))
+            }
+        }
     }
+}
+
+/// The error for a string marked as bytes ([`BYTES_REASON`]).
+fn bytes_refusal() -> SexpError {
+    SexpError::InvalidValue(BYTES_REASON.to_string())
+}
+
+/// The error of a name that [`try_charsxp_to_str`] refused, for the element at
+/// 0-based `index`: `the name of element 3 is marked as bytes, not text`.
+pub(crate) fn name_refusal(index: usize, error: &SexpError) -> SexpError {
+    SexpError::InvalidValue(format!(
+        "the name of element {} is {}",
+        index + 1,
+        error.r_reason(false)
+    ))
+}
+
+/// The panic of a `*_or_panic` read, with the refusal's reason.
+#[cold]
+fn refuse_text(error: &SexpError) -> ! {
+    panic!(
+        "cannot read an R string as Rust text: {}",
+        error.r_reason(false)
+    )
+}
+
+#[inline]
+unsafe fn charsxp_utf8_bytes(
+    ptr: *const std::os::raw::c_char,
+    len: usize,
+) -> Result<&'static str, SexpError> {
+    let bytes = unsafe { r_slice(ptr.cast::<u8>(), len) };
+    std::str::from_utf8(bytes).map_err(|_| SexpError::InvalidValue(INVALID_UTF8_REASON.to_string()))
 }
 
 #[inline]
@@ -271,36 +384,16 @@ unsafe fn translated_charsxp_to_str(ptr: *const std::os::raw::c_char) -> &'stati
         .expect("R string translation produced invalid UTF-8")
 }
 
-/// Convert CHARSXP to `Cow<str>`.
-///
-/// Strings whose bytes are their UTF-8 text borrow directly from R. Strings
-/// that require encoding translation become owned Rust strings so the
-/// translated buffer cannot be invalidated independently of the returned
-/// value.
-#[inline]
-pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
-    unsafe {
-        let encoding = crate::sys::Rf_getCharCE(charsxp);
-        let text = utf8_text(encoding, charsxp.r_char(), charsxp.len(), || {
-            crate::sys::Rf_translateCharUTF8(charsxp)
-        });
-        text.warn_if_native();
-        match text {
-            Utf8Text::Own(text) => std::borrow::Cow::Borrowed(text),
-            Utf8Text::Translated { text, .. } => std::borrow::Cow::Owned(text.to_owned()),
-        }
-    }
-}
-
 /// Convert CHARSXP to an owned, lossy `String`.
 ///
 /// NA/null-defensive: returns `None` for `NA_character_`, `R_NilValue`, or a
-/// null SEXP. Non-UTF-8 bytes are replaced (`CStr::to_string_lossy`) rather
-/// than rejected. Unlike [`charsxp_to_str`] (the UTF-8-asserted hot path for
-/// package-internal CHARSXPs), this is for defensive reads of *arbitrary* R
-/// objects — S4 class attributes, `geterrmessage()` output, vctrs field
-/// names, `tzone` attributes — where the CHARSXP's origin and encoding
-/// aren't guaranteed.
+/// null SEXP. Text is read as [`charsxp_to_cow_lossy`] reads it: Latin-1 is
+/// translated, and only a string marked as bytes or one that is not valid
+/// UTF-8 is decoded lossily (`U+FFFD`) rather than rejected. Unlike
+/// [`try_charsxp_to_str`] (the hot path for argument conversions), this is for
+/// defensive reads of *arbitrary* R objects — S4 class attributes,
+/// `geterrmessage()` output, vctrs field names, `tzone` attributes — where
+/// the CHARSXP's origin and encoding aren't guaranteed.
 ///
 /// # Safety
 ///
@@ -312,15 +405,7 @@ pub(crate) unsafe fn charsxp_to_string_lossy(charsxp: SEXP) -> Option<String> {
     if charsxp.is_null_or_nil() || charsxp.is_na_string() {
         return None;
     }
-    let ptr = charsxp.r_char();
-    if ptr.is_null() {
-        return None;
-    }
-    Some(
-        unsafe { std::ffi::CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned(),
-    )
+    Some(unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned())
 }
 
 /// Create a slice from an R data pointer, handling the zero-length case.
@@ -2272,6 +2357,11 @@ where
 /// entirely the caller's closure to encode — this only centralizes the type
 /// check and the walk.
 ///
+/// Every element is read: the failures are reported in one error
+/// ([`ElementErrors`]), each reason followed by the positions of the elements
+/// that failed with it, numbered as R counts them (`marked as bytes, not text
+/// (elements 2, 4)`).
+///
 /// Mirrors `from_numeric_vec_with`'s choice to route both the checked and
 /// unchecked `TryFromSexp` paths through the same (checked-FFI) walk — none
 /// of the current STRSXP vector impls define a distinct unchecked fast path
@@ -2293,11 +2383,15 @@ pub(crate) fn map_strsxp_with<U>(
 
     let len = sexp.len();
     let mut result = Vec::with_capacity(len);
+    let mut errors = ElementErrors::default();
     for i in 0..len {
         let charsxp = sexp.string_elt(i as crate::R_xlen_t);
-        result.push(map(charsxp, i)?);
+        match map(charsxp, i) {
+            Ok(value) => result.push(value),
+            Err(e) => errors.push(i, e),
+        }
     }
-    Ok(result)
+    errors.into_result(result)
 }
 
 /// Why a value that `Rf_asInteger` / `Rf_asReal` / `Rf_asLogical` (or a raw
@@ -2334,7 +2428,7 @@ pub fn scalar_rejection_reason(value: SEXP) -> String {
         let charsxp = value.string_elt(0);
         if charsxp != SEXP::na_string() {
             // SAFETY: a non-NA CHARSXP of a live STRSXP.
-            return format!("got {:?}", unsafe { charsxp_to_str(charsxp) });
+            return format!("got {:?}", unsafe { charsxp_to_cow_lossy(charsxp) });
         }
     }
     "NA is not allowed".to_string()

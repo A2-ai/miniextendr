@@ -7,7 +7,7 @@
 
 use std::marker::PhantomData;
 
-use crate::from_r::charsxp_to_str;
+use crate::from_r::{charsxp_to_str_or_panic, try_charsxp_to_str};
 use crate::gc_protect::ProtectScope;
 use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
 use crate::{IsNA, SEXP};
@@ -404,12 +404,22 @@ pub trait SexpExt {
 
     /// Get the i-th string element as `Option<&str>`.
     ///
-    /// Returns `None` for `NA_character_`. The returned `&str` borrows from R's
-    /// internal string cache (CHARSXP global pool) and is valid as long as the
-    /// parent STRSXP is protected from GC. The lifetime is tied to `&self` by
-    /// the borrow checker, but the true validity depends on GC protection —
-    /// do not hold the `&str` across allocation boundaries without ensuring
-    /// the SEXP remains protected.
+    /// Returns `None` for `NA_character_`. The element is read with its own
+    /// encoding: a UTF-8 or ASCII string, or a native one in a UTF-8 session,
+    /// borrows from R's internal string cache (CHARSXP global pool) and is
+    /// valid as long as the parent STRSXP is protected from GC. A Latin-1
+    /// string, or a native non-ASCII one in a session whose locale isn't
+    /// UTF-8, is translated with `Rf_translateCharUTF8`, whose buffer lives on
+    /// R's memory stack until the enclosing `.Call` returns; the translation
+    /// allocates, so it can run the GC. The lifetime is tied to `&self` by the borrow checker, but the true
+    /// validity depends on GC protection — do not hold the `&str` across
+    /// allocation boundaries without ensuring the SEXP remains protected.
+    ///
+    /// # Panics
+    ///
+    /// On an element marked as bytes, or one that is not valid UTF-8: it is
+    /// not text. A conversion that returns a `Result` refuses it instead
+    /// (`Vec<String>`, `Vec<Option<String>>`).
     #[must_use]
     fn string_elt_str(&self, i: isize) -> Option<&str>;
 
@@ -491,6 +501,16 @@ pub trait SexpExt {
     fn r_char(&self) -> *const ::std::os::raw::c_char;
 
     /// Get a `&str` from a CHARSXP. Returns `None` for `NA_character_`.
+    ///
+    /// Read with the string's own encoding, as
+    /// [`string_elt_str`](Self::string_elt_str) reads an element: a Latin-1
+    /// string, or a native non-ASCII one in a session whose locale isn't
+    /// UTF-8, is translated (into R's memory stack, until the enclosing
+    /// `.Call` returns).
+    ///
+    /// # Panics
+    ///
+    /// On a string marked as bytes, or one that is not valid UTF-8.
     #[must_use]
     fn r_char_str(&self) -> Option<&str>;
 
@@ -955,14 +975,19 @@ impl SexpExt for SEXP {
 
     #[inline]
     fn string_elt_str(&self, i: isize) -> Option<&str> {
-        unsafe {
-            let charsxp = STRING_ELT(*self, i);
-            if std::ptr::addr_eq(charsxp.0, R_NaString.0) {
-                return None;
-            }
-            let p = R_CHAR(charsxp);
-            Some(std::ffi::CStr::from_ptr(p).to_str().unwrap_or(""))
+        let charsxp = self.string_elt(i);
+        if charsxp.is_na_string() {
+            return None;
         }
+        // SAFETY: a non-NA CHARSXP element of this STRSXP.
+        let text = unsafe { try_charsxp_to_str(charsxp) }.unwrap_or_else(|e| {
+            panic!(
+                "cannot read element {} of a character vector as Rust text: {}",
+                i + 1,
+                e.r_reason(false)
+            )
+        });
+        Some(text)
     }
 
     #[inline]
@@ -1055,12 +1080,8 @@ impl SexpExt for SEXP {
         if self.is_na_string() {
             return None;
         }
-        let p = unsafe { R_CHAR(*self) };
-        Some(
-            unsafe { std::ffi::CStr::from_ptr(p) }
-                .to_str()
-                .unwrap_or(""),
-        )
+        // SAFETY: a non-NA CHARSXP (trait contract).
+        Some(unsafe { charsxp_to_str_or_panic(*self) })
     }
 
     // endregion
@@ -1366,7 +1387,7 @@ impl<'a> Iterator for PairListArgs<'a> {
         let tag = node.tag();
         // A tag is a symbol; its print name lives for the session.
         let name = if tag.is_symbol() {
-            let name = unsafe { charsxp_to_str(tag.printname()) };
+            let name = unsafe { charsxp_to_str_or_panic(tag.printname()) };
             (!name.is_empty()).then_some(name)
         } else {
             None

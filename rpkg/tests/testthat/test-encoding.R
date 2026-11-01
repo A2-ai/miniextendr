@@ -71,18 +71,186 @@ test_that("native UTF-8 and ASCII strings remain borrowed in a UTF-8 session", {
   expect_true(zero_copy_cow_str_is_borrowed("ascii"))
 })
 
-test_that("bytes-encoded strings are rejected as non-text", {
-  value <- rawToChar(as.raw(0xff))
-  Encoding(value) <- "bytes"
-  expect_error(conv_string_arg(value), "marked as bytes")
-  expect_error(miniextendr:::str_borrow_len(value), "marked as bytes")
-  expect_error(zero_copy_cow_str_is_borrowed(value), "marked as bytes")
+bytes_value <- function(x) {
+  Encoding(x) <- "bytes"
+  x
+}
+
+# The argument error of a refused string: the conversion's own condition
+# (classes, `e$param`, the wrapper's message), not a panic with a location.
+expect_string_refusal <- function(expr, message, param = "x") {
+  e <- tryCatch(expr, error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, param)
+  expect_identical(conditionMessage(e), message)
+  expect_false(grepl("from_r", conditionMessage(e), fixed = TRUE))
+}
+
+test_that("a scalar string marked as bytes is an argument error", {
+  value <- bytes_value("µg")
+  expect_identical(Encoding(value), "bytes")
+  scalar <- "'x' must be a single string: marked as bytes, not text"
+  expect_string_refusal(miniextendr:::encoding_echo_string(value), scalar)
+  expect_string_refusal(miniextendr:::encoding_echo_str(value), scalar)
+  expect_string_refusal(miniextendr:::encoding_echo_cow(value), scalar)
+  expect_string_refusal(
+    miniextendr:::encoding_echo_option_string(value),
+    "'x' must be NULL or a single string: marked as bytes, not text"
+  )
+  # The rejection is the error a wrong type gets, with the same classes.
+  expect_identical(
+    class(tryCatch(miniextendr:::encoding_echo_string(value), error = identity)),
+    class(tryCatch(miniextendr:::encoding_echo_string(1), error = identity))
+  )
+  # The pre-existing fixtures refuse it the same way.
+  expect_string_refusal(conv_string_arg(value), scalar)
+  expect_string_refusal(
+    miniextendr:::str_borrow_len(value),
+    "'s' must be a single string: marked as bytes, not text",
+    param = "s"
+  )
 })
 
-test_that("malformed strings tagged as UTF-8 are rejected before creating str", {
+test_that("every element marked as bytes is named in one argument error", {
+  value <- bytes_value(c("a", "µg", NA, "ñ"))
+  expect_identical(Encoding(value), c("unknown", "bytes", "unknown", "bytes"))
+  vector <- "'x' must be character: marked as bytes, not text (elements 2, 4)"
+  expect_string_refusal(miniextendr:::encoding_echo_vec_string(value), vector)
+  expect_string_refusal(miniextendr:::encoding_echo_vec_option_string(value), vector)
+  expect_string_refusal(miniextendr:::encoding_echo_vec_str(value), vector)
+
+  one <- bytes_value(c("a", "µg"))
+  expect_string_refusal(
+    miniextendr:::encoding_echo_vec_string(one),
+    "'x' must be character: marked as bytes, not text (element 2)"
+  )
+})
+
+test_that("NA keeps its handling next to the refusal", {
+  expect_identical(
+    miniextendr:::encoding_echo_vec_option_string(c("a", NA, "µg")),
+    c("a", NA, "µg")
+  )
+  expect_identical(miniextendr:::encoding_echo_vec_string(c("a", NA)), c("a", ""))
+  expect_identical(miniextendr:::encoding_echo_option_string(NA_character_), NA_character_)
+})
+
+test_that("a string that is not valid UTF-8 is an argument error", {
   value <- rawToChar(as.raw(0xff))
   Encoding(value) <- "UTF-8"
-  expect_error(conv_string_arg(value), "marked as UTF-8 contains invalid UTF-8")
+  expect_string_refusal(
+    conv_string_arg(value),
+    "'x' must be a single string: not valid UTF-8"
+  )
+})
+
+test_that("a native string that is not valid UTF-8 is an argument error in a UTF-8 session", {
+  skip_if_not(isTRUE(l10n_info()[["UTF-8"]]), "test session is not UTF-8")
+  # In a UTF-8 session R reads unmarked (native) bytes untranslated, so they
+  # are validated as UTF-8.
+  native <- rawToChar(as.raw(c(0x61, 0xff)))
+  expect_identical(Encoding(native), "unknown")
+  expect_string_refusal(
+    miniextendr:::encoding_echo_vec_string(c("ok", native)),
+    "'x' must be character: not valid UTF-8 (element 2)"
+  )
+})
+
+test_that("string_elt_str refuses an element marked as bytes with its position", {
+  expect_error(
+    miniextendr:::encoding_string_elt_str(bytes_value(c("a", "µg"))),
+    "element 2 of a character vector as Rust text: marked as bytes, not text",
+    fixed = TRUE
+  )
+})
+
+test_that("a key marked as bytes is a group_by error naming every element", {
+  df <- data.frame(g = bytes_value(c("a", "µg", "ñ")))
+  expect_identical(Encoding(df$g), c("unknown", "bytes", "bytes"))
+  expect_error(
+    group_by_keys(df, "g"),
+    "cannot group by column 'g': marked as bytes, not text (elements 2, 3)",
+    fixed = TRUE
+  )
+})
+
+test_that("a grouping variable name marked as bytes is a group metadata error", {
+  df <- data.frame(g = c("a", "b"), v = c(1, 2))
+  groups <- data.frame(g = c("a", "b"))
+  groups[[".rows"]] <- list(1L, 2L)
+  names(groups) <- c(bytes_value("µg"), ".rows")
+  attr(df, "groups") <- groups
+  class(df) <- c("grouped_df", "tbl_df", "tbl", "data.frame")
+  msg <- "cannot read the grouping variable names: marked as bytes, not text (element 1)"
+  expect_error(group_declaration_of(df), msg, fixed = TRUE)
+  expect_error(group_metadata_keys(df), msg, fixed = TRUE)
+})
+
+# endregion
+
+# region: Latin-1 names and string reads
+
+latin1_name <- function() iconv("DéV", "UTF-8", "latin1")
+
+test_that("DataFrame::names() translates a Latin-1 name", {
+  d <- data.frame(a = 1, b = 2)
+  names(d) <- c("a", latin1_name())
+  expect_identical(Encoding(names(d)), c("unknown", "latin1"))
+  expect_identical(miniextendr:::encoding_df_names(d), c("a", "DéV"))
+})
+
+test_that("a Latin-1 name and a Latin-1 argument find each other", {
+  d <- data.frame(a = 1)
+  names(d) <- latin1_name()
+  expect_true(miniextendr:::encoding_df_has_column(d, latin1_name()))
+  expect_true(miniextendr:::encoding_df_has_column(d, "DéV"))
+  expect_false(miniextendr:::encoding_df_has_column(d, "DeV"))
+})
+
+test_that("string_elt_str translates a Latin-1 element and keeps NA", {
+  x <- c("plain", latin1_name(), NA)
+  expect_identical(Encoding(x)[[2]], "latin1")
+  expect_identical(miniextendr:::encoding_string_elt_str(x), c("plain", "DéV", NA))
+})
+
+test_that("a Latin-1 String argument still translates", {
+  expect_identical(miniextendr:::encoding_echo_string(latin1_name()), "DéV")
+  expect_identical(
+    miniextendr:::encoding_echo_vec_string(c("a", latin1_name())),
+    c("a", "DéV")
+  )
+})
+
+test_that("group_by reads a Latin-1 key with its encoding", {
+  df <- data.frame(g = c(latin1_name(), "a", latin1_name()))
+  expect_identical(group_by_keys(df, "g"), c("DéV", "a"))
+})
+
+test_that("group metadata reads a Latin-1 grouping variable name", {
+  df <- data.frame(g = c("a", "b"), v = c(1, 2))
+  groups <- data.frame(g = c("a", "b"))
+  groups[[".rows"]] <- list(1L, 2L)
+  names(groups) <- c(latin1_name(), ".rows")
+  attr(df, "groups") <- groups
+  class(df) <- c("grouped_df", "tbl_df", "tbl", "data.frame")
+  expect_identical(group_declaration_of(df), list(vars = "DéV", drop = TRUE))
+})
+
+test_that("Latin-1 string reads survive allocation", {
+  expect_identical(
+    miniextendr:::gc_stress_latin1_string_reads(),
+    paste0("DéV", 0:5)
+  )
+})
+
+test_that("Latin-1 string reads survive allocation under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  result <- miniextendr:::gc_stress_latin1_string_reads()
+  gctorture(FALSE)
+  expect_identical(result, paste0("DéV", 0:5))
 })
 
 # endregion

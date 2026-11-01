@@ -4636,10 +4636,8 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
 
             let element = |i: isize| {
                 let char_sexp = path_sexp.string_elt_unchecked(i);
-                let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-                c_str
-                    .to_str()
-                    .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"))
+                crate::from_r::try_charsxp_to_str_unchecked(char_sexp)
+                    .unwrap_or_else(|e| panic!("invalid path: {}", e.r_reason(false)))
             };
             let path = element(0);
             let r_dir = (path_sexp.len_unchecked() > 1
@@ -4674,10 +4672,8 @@ pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP)
             use crate::{SEXP, SexpExt};
 
             let char_sexp = path_sexp.string_elt_unchecked(0);
-            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-            let path = c_str
-                .to_str()
-                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let path = crate::from_r::try_charsxp_to_str_unchecked(char_sexp)
+                .unwrap_or_else(|e| panic!("invalid path: {}", e.r_reason(false)));
 
             crate::wasm_registry_writer::write_wasm_registry_to_file(path);
 

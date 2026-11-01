@@ -19,7 +19,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::SEXP;
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, map_strsxp_with};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, map_strsxp_with, try_charsxp_to_str};
 
 /// Convert an R native vector to an owned `Cow`.
 ///
@@ -84,32 +84,29 @@ impl TryFromSexp for Vec<Option<Cow<'_, str>>> {
 ///
 /// # NA and Encoding Handling
 ///
-/// **Warning:** This conversion is lossy for NA values and encoding failures:
-/// - `NA_character_` values are converted to empty string `""`
-/// - Encoding translation failures become empty string `""`
-/// - Invalid UTF-8 (after translation) becomes empty string `""`
-///
-/// If you need to preserve NA semantics, use `Vec<Option<String>>` instead:
+/// **Warning:** This conversion is lossy for NA values: `NA_character_`
+/// values are converted to empty string `""`. If you need to preserve NA
+/// semantics, use `Vec<Option<String>>` instead:
 ///
 /// ```ignore
 /// let strings: Vec<Option<String>> = sexp.try_into()?;
 /// // NA values will be None, valid strings will be Some(s)
 /// ```
 ///
-/// This design choice prioritizes convenience over strict correctness for the
-/// common case where strings are known to be non-NA and properly encoded.
+/// Latin-1 elements are translated to UTF-8. Elements marked as bytes, or
+/// that are not valid UTF-8, are refused, all of them in one error that
+/// lists their positions (`marked as bytes, not text (elements 2, 4)`).
 impl TryFromSexp for Vec<String> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
-            let s = if charsxp == SEXP::na_string() {
-                String::new()
+            if charsxp == SEXP::na_string() {
+                Ok(String::new())
             } else {
-                unsafe { charsxp_to_str(charsxp) }.to_owned()
-            };
-            Ok(s)
+                unsafe { try_charsxp_to_str(charsxp) }.map(str::to_owned)
+            }
         })
     }
 }
@@ -126,7 +123,7 @@ impl TryFromSexp for Vec<&'static str> {
             if charsxp == SEXP::na_string() || charsxp == SEXP::blank_string() {
                 return Ok("");
             }
-            Ok(unsafe { charsxp_to_str(charsxp) })
+            unsafe { try_charsxp_to_str(charsxp) }
         })
     }
 }
@@ -144,7 +141,7 @@ impl TryFromSexp for Vec<Option<&'static str>> {
             if charsxp == SEXP::blank_string() {
                 return Ok(Some(""));
             }
-            Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+            unsafe { try_charsxp_to_str(charsxp) }.map(Some)
         })
     }
 }

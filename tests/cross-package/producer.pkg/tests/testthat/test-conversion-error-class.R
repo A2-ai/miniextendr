@@ -22,6 +22,23 @@ test_that("a plain conversion error gets the crate default classes", {
   expect_identical(producer_int_twice(2L), 4L)
 })
 
+test_that("a string marked as bytes is an argument error with the crate classes", {
+  # The conversion refuses it through its `Err` (#1394 raised a panic), so the
+  # condition is the one a wrong type gets, with no framework file location.
+  # (An ASCII string cannot be marked as bytes.)
+  mode <- "fäst"
+  Encoding(mode) <- "bytes"
+  e <- tryCatch(producer.pkg:::producer_arg_error_impl(mode), error = function(e) e)
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "mode")
+  expect_identical(conditionMessage(e), "'mode' must be a single string: marked as bytes, not text")
+  expect_identical(
+    tryCatch(producer.pkg:::producer_arg_error_impl(mode), producer_error_argument = function(e) e$param),
+    "mode"
+  )
+})
+
 test_that("the error type's own classes come first, without duplicates", {
   e <- tryCatch(producer_count_twice(-1L), error = function(e) e)
   expect_equal(

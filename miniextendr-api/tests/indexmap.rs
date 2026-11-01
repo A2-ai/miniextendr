@@ -119,13 +119,14 @@ fn indexmap_nested() {
 #[test]
 fn indexmap_degenerate_names_use_charsxp_to_string_lossy_fallbacks() {
     r_test_utils::with_r_thread(|| unsafe {
-        let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+        let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 5));
         list.set_vector_elt(0, SEXP::scalar_integer(1));
         list.set_vector_elt(1, SEXP::scalar_integer(2));
         list.set_vector_elt(2, SEXP::scalar_integer(3));
         list.set_vector_elt(3, SEXP::scalar_integer(4));
+        list.set_vector_elt(4, SEXP::scalar_integer(5));
 
-        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 4));
+        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 5));
         names.set_string_elt(0, SEXP::charsxp("a"));
         names.set_string_elt(1, SEXP::na_string());
         names.set_string_elt(2, SEXP::charsxp(""));
@@ -136,6 +137,15 @@ fn indexmap_degenerate_names_use_charsxp_to_string_lossy_fallbacks() {
                 invalid_utf8.as_ptr().cast(),
                 invalid_utf8.len() as i32,
                 cetype_t::CE_BYTES,
+            ),
+        );
+        let latin1: &[u8] = b"D\xe9V";
+        names.set_string_elt(
+            4,
+            Rf_mkCharLenCE(
+                latin1.as_ptr().cast(),
+                latin1.len() as i32,
+                cetype_t::CE_LATIN1,
             ),
         );
         list.set_names(names);
@@ -161,6 +171,9 @@ fn indexmap_degenerate_names_use_charsxp_to_string_lossy_fallbacks() {
         assert_eq!(map.get("V2"), Some(&2));
         assert_eq!(map.get("V3"), Some(&3));
         assert_eq!(map.get(keys[3].as_str()), Some(&4));
+
+        // A Latin-1 name is translated, not decoded lossily.
+        assert_eq!(keys[4], "DéV");
     });
 }
 // endregion

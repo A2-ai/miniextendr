@@ -39,7 +39,6 @@ use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
 use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
-use std::ffi::CStr;
 
 pub mod group;
 pub use group::{GroupDeclaration, GroupKey, GroupedDataFrame, RealKey, group_rows};
@@ -487,7 +486,7 @@ impl DataFrame {
             }
             let ncol = names_sexp.xlength();
             for i in 0..ncol {
-                if col_name(names_sexp, i) == from {
+                if col_name(names_sexp, i) == Some(from) {
                     names_sexp.set_string_elt(i, SEXP::charsxp(to));
                     break;
                 }
@@ -511,8 +510,8 @@ impl DataFrame {
             }
             let ncol = names_sexp.xlength();
             for i in 0..ncol {
-                let name = col_name(names_sexp, i);
-                if let Some(stripped) = name.strip_prefix(prefix) {
+                let stripped = col_name(names_sexp, i).and_then(|name| name.strip_prefix(prefix));
+                if let Some(stripped) = stripped {
                     names_sexp.set_string_elt(i, SEXP::charsxp(stripped));
                 }
             }
@@ -556,7 +555,7 @@ impl DataFrame {
                 return BuiltDataFrame::adopt(self);
             }
             let ncol = names_sexp.xlength();
-            let drop_idx = (0..ncol).find(|&i| col_name(names_sexp, i) == col);
+            let drop_idx = (0..ncol).find(|&i| col_name(names_sexp, i) == Some(col));
             let Some(drop_idx) = drop_idx else {
                 return BuiltDataFrame::adopt(self);
             };
@@ -606,7 +605,7 @@ impl DataFrame {
 
             let indices: Vec<isize> = cols
                 .iter()
-                .filter_map(|&want| (0..ncol).find(|&i| col_name(names_sexp, i) == want))
+                .filter_map(|&want| (0..ncol).find(|&i| col_name(names_sexp, i) == Some(want)))
                 .collect();
 
             let new_ncol: isize = indices.len().try_into().expect("ncol overflow");
@@ -765,7 +764,7 @@ impl DataFrame {
             }
             let ncol = names_sexp.xlength();
             for i in 0..ncol {
-                if col_name(names_sexp, i) == name {
+                if col_name(names_sexp, i) == Some(name) {
                     // set_vector_elt does not allocate; `column` is reachable
                     // from the (caller-rooted) frame before `adopt` allocates
                     // its cons cell.
@@ -819,16 +818,15 @@ impl DataFrame {
 
 // region: column-name helper + frame-attribute copy
 
-/// Read the i-th column name from a STRSXP names vector.
+/// Read the i-th column name from a STRSXP names vector, as a name lookup
+/// reads it ([`crate::list::text_name`]): a Latin-1 name is translated, and
+/// `NA` or a name that is not text (marked as bytes) is `None`, which no
+/// lookup matches.
 ///
 /// # Safety
 /// `names_sexp` must be a valid STRSXP with at least `i + 1` elements.
-unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
-    unsafe {
-        let s = names_sexp.string_elt(i);
-        let p = s.r_char();
-        std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
-    }
+unsafe fn col_name(names_sexp: SEXP, i: isize) -> Option<&'static str> {
+    crate::list::text_name(names_sexp.string_elt(i))
 }
 
 /// The body of [`DataFrame::select_rows`]: row-subset the data.frame VECSXP
@@ -1019,13 +1017,14 @@ unsafe fn grouping_columns_kept(from: SEXP, to: SEXP) -> bool {
         }
         (0..vars.xlength())
             .map(|i| col_name(vars, i))
-            .filter(|&var| var != ".rows")
-            .all(
-                |var| match (column_named(from, var), column_named(to, var)) {
+            .filter(|&var| var != Some(".rows"))
+            .all(|var| {
+                let Some(var) = var else { return false };
+                match (column_named(from, var), column_named(to, var)) {
                     (Some(before), Some(after)) => before == after,
                     _ => false,
-                },
-            )
+                }
+            })
     }
 }
 
@@ -1041,7 +1040,7 @@ unsafe fn column_named(frame: SEXP, name: &str) -> Option<SEXP> {
             return None;
         }
         (0..names.xlength())
-            .find(|&i| col_name(names, i) == name)
+            .find(|&i| col_name(names, i) == Some(name))
             .map(|i| frame.vector_elt(i))
     }
 }
@@ -1058,7 +1057,7 @@ unsafe fn ungroup_frame(to: SEXP) {
         // Still attached to (and so rooted by) `to` until `set_class` below.
         let class = to.get_class();
         let kept: Vec<isize> = (0..class.xlength())
-            .filter(|&i| !matches!(col_name(class, i), "grouped_df" | "rowwise_df"))
+            .filter(|&i| !matches!(col_name(class, i), Some("grouped_df" | "rowwise_df")))
             .collect();
         let new_class = crate::OwnedProtect::new(SEXP::alloc_strsxp(
             isize::try_from(kept.len()).expect("class length fits isize"),
@@ -1872,14 +1871,10 @@ pub(crate) fn validate_equal_lengths(named: &NamedList) -> Result<usize, DataFra
         let col_len: usize = col.len();
         if col_len != expected {
             let column = if let Some(names) = names_sexp {
-                let name_sexp = names.string_elt(i);
-                if name_sexp != SEXP::na_string() {
-                    let name_ptr = name_sexp.r_char();
-                    let name_cstr = unsafe { CStr::from_ptr(name_ptr) };
-                    name_cstr.to_str().unwrap_or("<invalid>").to_string()
-                } else {
-                    format!("column {}", i)
-                }
+                // SAFETY: an element of the list's names attribute; NA maps
+                // to `None`.
+                unsafe { crate::from_r::charsxp_to_string_lossy(names.string_elt(i)) }
+                    .unwrap_or_else(|| format!("column {}", i))
             } else {
                 format!("column {}", i)
             };

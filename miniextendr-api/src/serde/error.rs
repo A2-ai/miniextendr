@@ -76,6 +76,18 @@ pub enum RSerdeError {
     },
 }
 
+impl RSerdeError {
+    /// An R string the deserializer cannot read as text: one marked as bytes,
+    /// or one that is not valid UTF-8 (the refusal of
+    /// [`try_charsxp_to_str`](crate::from_r::try_charsxp_to_str)).
+    pub(crate) fn not_text(error: crate::from_r::SexpError) -> Self {
+        RSerdeError::Message(format!(
+            "cannot read an R string as text: {}",
+            error.r_reason(false)
+        ))
+    }
+}
+
 impl serde::ser::Error for RSerdeError {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         RSerdeError::Message(msg.to_string())

@@ -63,7 +63,7 @@
 //! choice: it goes to `R` (or is `None` under `Option<Either<..>>`).
 
 use crate::condition::ArgError;
-use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{SexpError, TryFromSexp, charsxp_to_cow_lossy};
 use crate::gc_protect::ProtectScope;
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
@@ -639,14 +639,24 @@ fn not_character<T: MatchArg>(sexp: SEXP) -> MatchArgError {
     }
 }
 
+/// The text of one string of a choice value.
+type Label = std::borrow::Cow<'static, str>;
+
+/// The text of the non-`NA` CHARSXP `charsxp` of a choice value. A Latin-1
+/// string is translated. One marked as bytes is compared by its bytes, as
+/// `pmatch()` and so the wrapper's check compare it: read lossily, it matches
+/// a choice only when its bytes are that choice's UTF-8, and a `NoMatch`
+/// shows it with `U+FFFD` for the bytes that are not UTF-8.
+fn choice_label(charsxp: SEXP) -> Label {
+    // SAFETY: a non-NA CHARSXP of the choice value, which the caller roots.
+    unsafe { charsxp_to_cow_lossy(charsxp) }
+}
+
 /// The error of a choice value of `len` strings `label(i)` (`None` for `NA`)
 /// that is not one string: [`MatchArgError::IsNa`] when it holds an `NA` that
 /// matches no choice (see [`match_na`]), else
 /// [`MatchArgError::InvalidLength`]. The R helper decides the same way.
-fn not_scalar<'a, T: MatchArg>(
-    len: usize,
-    label: impl Fn(isize) -> Option<&'a str>,
-) -> MatchArgError {
+fn not_scalar<T: MatchArg>(len: usize, label: impl Fn(isize) -> Option<Label>) -> MatchArgError {
     let has_na = (0isize..).take(len).any(|i| label(i).is_none());
     if has_na && match_na::<T>().is_err() {
         MatchArgError::is_na::<T>()
@@ -658,17 +668,17 @@ fn not_scalar<'a, T: MatchArg>(
 /// Whether the `len` strings `label(i)` (`None` for `NA`) are `formal`, in
 /// order: the formal default of a choice parameter, which an omitted argument
 /// evaluates to.
-fn is_formal<'a>(formal: &[&str], len: usize, label: impl Fn(isize) -> Option<&'a str>) -> bool {
+fn is_formal(formal: &[&str], len: usize, label: impl Fn(isize) -> Option<Label>) -> bool {
     len == formal.len()
         && formal
             .iter()
             .zip(0..)
-            .all(|(choice, i)| label(i) == Some(*choice))
+            .all(|(choice, i)| label(i).as_deref() == Some(*choice))
 }
 
 /// The label of element `i` of a factor (`None` for a missing code or one
 /// outside the levels).
-fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<&'static str> {
+fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<Label> {
     let code = codes.integer_elt(i);
     // R factor codes are 1-based; NA_integer_ is i32::MIN.
     let level = isize::try_from(code).ok()?.checked_sub(1)?;
@@ -679,8 +689,7 @@ fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<&'static str> {
     if charsxp.is_na_string() {
         return None;
     }
-    // charsxp_to_str translates a non-UTF-8 string as needed.
-    Some(unsafe { charsxp_to_str(charsxp) })
+    Some(choice_label(charsxp))
 }
 
 /// A factor as a choice: read as its labels, like `as.character()`.
@@ -694,7 +703,7 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
         return Err(not_scalar::<T>(len, |i| factor_label(sexp, levels, i)));
     }
     match factor_label(sexp, levels, 0) {
-        Some(label) => match_choice::<T>(label),
+        Some(label) => match_choice::<T>(&label),
         None => match_na::<T>(),
     }
 }
@@ -746,8 +755,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
     // the choices is not the formal default.
     let label = |i: isize| {
         let charsxp = sexp.string_elt(i);
-        // charsxp_to_str translates a non-UTF-8 string as needed.
-        (!charsxp.is_na_string()).then(|| unsafe { charsxp_to_str(charsxp) })
+        (!charsxp.is_na_string()).then(|| choice_label(charsxp))
     };
     if is_formal(formal, len, label) && !sexp.has_attributes() {
         return first_choice::<T>(formal);
@@ -756,7 +764,7 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
         return Err(not_scalar::<T>(len, label));
     }
     match label(0) {
-        Some(input) => match_choice::<T>(input),
+        Some(input) => match_choice::<T>(&input),
         None => match_na::<T>(),
     }
 }

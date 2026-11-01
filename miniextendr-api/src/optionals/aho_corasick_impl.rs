@@ -41,8 +41,8 @@
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
 use crate::from_r::{
-    SexpError, TryFromSexp, charsxp_to_str, impl_option_try_from_sexp,
-    impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
+    SexpError, TryFromSexp, impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list,
+    impl_vec_try_from_sexp_list, try_charsxp_to_str,
 };
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
@@ -84,8 +84,10 @@ impl TryFromSexp for AhoCorasick {
                 errors.push(i, || "NA is not allowed as a pattern".to_string());
                 continue;
             }
-            let s = unsafe { charsxp_to_str(charsxp) };
-            patterns.push(s.to_string());
+            match unsafe { try_charsxp_to_str(charsxp) } {
+                Ok(s) => patterns.push(s.to_string()),
+                Err(e) => errors.push(i, || e.r_reason(false)),
+            }
         }
         if !errors.is_empty() {
             return Err(errors.into_element_error());

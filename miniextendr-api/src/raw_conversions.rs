@@ -324,7 +324,7 @@ fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
     }
 
     let charsxp = attr.string_elt(0);
-    let actual = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+    let actual = unsafe { crate::from_r::charsxp_to_cow_lossy(charsxp) };
 
     if actual != expected {
         return Err(SexpError::InvalidValue(format!(

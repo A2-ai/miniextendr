@@ -183,8 +183,8 @@ impl JsonOptions {
     }
 }
 use crate::from_r::{
-    SexpError, TryFromSexp, charsxp_to_str, impl_option_try_from_sexp,
-    impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
+    SexpError, TryFromSexp, impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list,
+    impl_vec_try_from_sexp_list, try_charsxp_to_str,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -429,7 +429,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 if charsxp == SEXP::na_string() {
                     return handle_na(opts);
                 }
-                let s = unsafe { charsxp_to_str(charsxp) };
+                let s = unsafe { try_charsxp_to_str(charsxp) }?;
                 Ok(JsonValue::String(s.to_string()))
             } else {
                 let arr = (0..len).map(|i| {
@@ -437,8 +437,8 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                     if charsxp == SEXP::na_string() {
                         handle_na(opts)
                     } else {
-                        let s = unsafe { charsxp_to_str(charsxp) };
-                        Ok(JsonValue::String(s.to_string()))
+                        unsafe { try_charsxp_to_str(charsxp) }
+                            .map(|s| JsonValue::String(s.to_string()))
                     }
                 });
                 json_array(arr)
@@ -457,7 +457,9 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                     let key = if charsxp == SEXP::na_string() {
                         format!("V{}", i + 1) // Auto-name for NA keys
                     } else {
-                        unsafe { charsxp_to_str(charsxp) }.to_string()
+                        unsafe { try_charsxp_to_str(charsxp) }
+                            .map_err(|e| crate::from_r::name_refusal(i, &e))?
+                            .to_string()
                     };
                     let elem = sexp.vector_elt(isize::try_from(i).expect("index overflow"));
                     let val = sexp_to_json_value(elem, opts)?;
@@ -529,15 +531,14 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
     let slice: &[i32] = unsafe { SexpExt::as_slice(&sexp) };
 
     // Helper to convert factor index to JSON based on FactorHandling
-    let index_to_json = |idx: i32| -> JsonValue {
+    let index_to_json = |idx: i32| -> Result<JsonValue, SexpError> {
         match opts.factor {
             FactorHandling::Label => {
                 // Factor indices are 1-based
                 let charsxp = levels.string_elt(isize::try_from(idx - 1).expect("index overflow"));
-                let s = unsafe { charsxp_to_str(charsxp) };
-                JsonValue::String(s.to_string())
+                unsafe { try_charsxp_to_str(charsxp) }.map(|s| JsonValue::String(s.to_string()))
             }
-            FactorHandling::Index => JsonValue::Number(serde_json::Number::from(idx)),
+            FactorHandling::Index => Ok(JsonValue::Number(serde_json::Number::from(idx))),
         }
     };
 
@@ -546,13 +547,13 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
         if idx.is_na() {
             return handle_na(opts);
         }
-        Ok(index_to_json(idx))
+        index_to_json(idx)
     } else {
         let arr = slice.iter().map(|&idx| {
             if idx.is_na() {
                 handle_na(opts)
             } else {
-                Ok(index_to_json(idx))
+                index_to_json(idx)
             }
         });
         json_array(arr)

@@ -209,13 +209,11 @@ mod imp {
             // A list of seven strings, always in this order: description,
             // class, mode, text, opened, can read, can write.
             let summary = OwnedProtect::new(try_eval(RCall::new("summary.connection").arg(sexp))?);
+            // Read lossily: the description is a file path or URL the user
+            // chose, which need not be text, and only goes into messages.
             let field = |i: isize| {
-                summary
-                    .get()
-                    .vector_elt(i)
-                    .string_elt_str(0)
+                crate::from_r::charsxp_to_string_lossy(summary.get().vector_elt(i).string_elt(0))
                     .unwrap_or_default()
-                    .to_owned()
             };
             Ok(ConnState {
                 description: field(0),

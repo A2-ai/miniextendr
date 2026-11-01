@@ -138,17 +138,18 @@ impl TryFromSexp for RValue {
             SEXPTYPE::CPLXSXP => Ok(RValue::Complex(
                 (0..n as isize).map(|i| sexp.complex_elt(i)).collect(),
             )),
-            SEXPTYPE::STRSXP => Ok(RValue::Character(
-                (0..n as isize)
-                    .map(|i| {
-                        if sexp.string_elt(i).is_na_string() {
-                            None
-                        } else {
-                            sexp.string_elt_str(i).map(str::to_string)
-                        }
-                    })
-                    .collect(),
-            )),
+            // An element that is not text (marked as bytes) is refused; all
+            // of them in one error.
+            SEXPTYPE::STRSXP => crate::from_r::map_strsxp_with(sexp, |charsxp, _| {
+                if charsxp.is_na_string() {
+                    Ok(None)
+                } else {
+                    // SAFETY: a non-NA CHARSXP element of `sexp`.
+                    unsafe { crate::from_r::try_charsxp_to_str(charsxp) }
+                        .map(|s| Some(s.to_string()))
+                }
+            })
+            .map(RValue::Character),
             // SAFETY: type checked to be RAWSXP; `as_slice` handles the empty (0x1) case.
             SEXPTYPE::RAWSXP => Ok(RValue::Raw(unsafe { sexp.as_slice::<u8>() }.to_vec())),
             SEXPTYPE::VECSXP => {
@@ -163,10 +164,16 @@ impl TryFromSexp for RValue {
                     {
                         None
                     } else {
-                        names
-                            .string_elt_str(i)
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string)
+                        // SAFETY: a non-NA CHARSXP element of the names.
+                        let name =
+                            unsafe { crate::from_r::try_charsxp_to_str(names.string_elt(i)) }
+                                .map_err(|e| {
+                                    crate::from_r::name_refusal(
+                                        usize::try_from(i).expect("a list index is non-negative"),
+                                        &e,
+                                    )
+                                })?;
+                        (!name.is_empty()).then(|| name.to_string())
                     };
                     pairs.push((name, RValue::try_from_sexp(sexp.vector_elt(i))?));
                 }

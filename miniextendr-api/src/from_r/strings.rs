@@ -17,12 +17,14 @@
 //! forms preserve the distinction as `None`.
 //!
 //! UTF-8/ASCII strings use a zero-copy fast path. Other text encodings are
-//! translated to UTF-8; R strings marked as `bytes` are rejected. Outbound
+//! translated to UTF-8; an R string marked as `bytes`, or one that is not
+//! valid UTF-8, is refused with an [`SexpError::InvalidValue`] (an argument
+//! error in R: `'x' must be a single string: marked as bytes, not text`). Outbound
 //! counterparts: `String` / `&str` impls in [`crate::into_r`].
 
 use crate::from_r::{
-    SexpError, TryFromSexp, charsxp_to_str, charsxp_to_str_unchecked, scalar_charsxp,
-    scalar_charsxp_unchecked,
+    SexpError, TryFromSexp, scalar_charsxp, scalar_charsxp_unchecked, try_charsxp_to_str,
+    try_charsxp_to_str_unchecked,
 };
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
@@ -62,7 +64,7 @@ impl TryFromSexp for &'static str {
         }
 
         // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
-        Ok(unsafe { charsxp_to_str(charsxp) })
+        unsafe { try_charsxp_to_str(charsxp) }
     }
 
     unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
@@ -71,7 +73,7 @@ impl TryFromSexp for &'static str {
             return Ok("");
         }
         let charsxp = unsafe { root.protect_child(charsxp) }.get();
-        Ok(unsafe { charsxp_to_str(charsxp) })
+        unsafe { try_charsxp_to_str(charsxp) }
     }
 
     #[inline]
@@ -87,7 +89,7 @@ impl TryFromSexp for &'static str {
         }
 
         // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
-        Ok(unsafe { charsxp_to_str_unchecked(charsxp) })
+        unsafe { try_charsxp_to_str_unchecked(charsxp) }
     }
 }
 
@@ -109,7 +111,7 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(Some(""));
         }
 
-        Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+        unsafe { try_charsxp_to_str(charsxp) }.map(Some)
     }
 
     unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
@@ -124,7 +126,7 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(Some(""));
         }
         let charsxp = unsafe { root.protect_child(charsxp) }.get();
-        Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+        unsafe { try_charsxp_to_str(charsxp) }.map(Some)
     }
 
     #[inline]
@@ -141,7 +143,7 @@ impl TryFromSexp for Option<&'static str> {
             return Ok(Some(""));
         }
 
-        Ok(Some(unsafe { charsxp_to_str_unchecked(charsxp) }))
+        unsafe { try_charsxp_to_str_unchecked(charsxp) }.map(Some)
     }
 }
 
@@ -208,7 +210,7 @@ impl TryFromSexp for String {
             return Ok(String::new());
         }
 
-        Ok(unsafe { charsxp_to_str(charsxp) }.to_owned())
+        unsafe { try_charsxp_to_str(charsxp) }.map(str::to_owned)
     }
 
     #[inline]
@@ -219,7 +221,7 @@ impl TryFromSexp for String {
             return Ok(String::new());
         }
 
-        Ok(unsafe { charsxp_to_str_unchecked(charsxp) }.to_owned())
+        unsafe { try_charsxp_to_str_unchecked(charsxp) }.map(str::to_owned)
     }
 }
 
@@ -251,7 +253,7 @@ impl TryFromSexp for Option<String> {
             return Ok(None);
         }
 
-        Ok(Some(unsafe { charsxp_to_str(charsxp) }.to_owned()))
+        unsafe { try_charsxp_to_str(charsxp) }.map(|s| Some(s.to_owned()))
     }
 
     #[inline]

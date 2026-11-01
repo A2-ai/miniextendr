@@ -358,6 +358,16 @@ fn conversion_expectation_follows_the_type_check() {
     assert_eq!(exp("bool", true), some("a single logical or integer"));
     assert_eq!(exp("String", false), some("a single string"));
     assert_eq!(exp("&str", false), some("a single string"));
+    assert_eq!(exp("Cow<'_, str>", false), some("a single string"));
+    assert_eq!(
+        exp("Option<Cow<'_, str>>", false),
+        some("NULL or a single string")
+    );
+    assert_eq!(exp("Cow<'_, [f64]>", false), some("double"));
+    assert_eq!(exp("Vec<&str>", false), some("character"));
+    assert_eq!(exp("Vec<Option<&str>>", false), some("character"));
+    assert_eq!(exp("Vec<Cow<'_, str>>", false), some("character"));
+    assert_eq!(exp("Vec<Option<Cow<'_, str>>>", false), some("character"));
     assert_eq!(exp("u8", false), some("a single raw value"));
     assert_eq!(exp("Rcomplex", false), some("a single complex value"));
     assert_eq!(exp("Vec<i32>", false), some("integer"));

@@ -661,14 +661,20 @@ impl TryFromSexp for StringArray {
         let len = sexp.len();
         let mut builder = arrow_array::builder::StringBuilder::with_capacity(len, len * 8);
 
+        let mut errors = crate::from_r::BatchedErrors::default();
         for i in 0..len {
             let charsxp = sexp.string_elt(i as R_xlen_t);
             if charsxp.is_na_string() {
                 builder.append_null();
             } else {
-                let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
-                builder.append_value(s);
+                match unsafe { crate::from_r::try_charsxp_to_str(charsxp) } {
+                    Ok(s) => builder.append_value(s),
+                    Err(e) => errors.push(i, || e.r_reason(false)),
+                }
             }
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
 
         Ok(builder.finish())
@@ -731,10 +737,16 @@ impl TryFromSexp for StringDictionaryArray {
         let n_levels = levels_sexp.len();
         let mut dict_builder =
             arrow_array::builder::StringBuilder::with_capacity(n_levels, n_levels * 8);
+        let mut errors = crate::from_r::BatchedErrors::default();
         for i in 0..n_levels {
             let charsxp = levels_sexp.string_elt(i as R_xlen_t);
-            let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
-            dict_builder.append_value(s);
+            match unsafe { crate::from_r::try_charsxp_to_str(charsxp) } {
+                Ok(s) => dict_builder.append_value(s),
+                Err(e) => errors.push(i, || format!("level {}", e.r_reason(false))),
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
         let dictionary = dict_builder.finish();
 
@@ -818,7 +830,7 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
     let tzone_sexp = sexp.get_attr(crate::cached_class::tzone_symbol());
     let tz: Option<Arc<str>> = if tzone_sexp.type_of() == SEXPTYPE::STRSXP && tzone_sexp.len() > 0 {
         let charsxp = tzone_sexp.string_elt(0);
-        let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+        let s = unsafe { crate::from_r::try_charsxp_to_str(charsxp) }?;
         if s.is_empty() {
             None
         } else {
@@ -1081,12 +1093,11 @@ impl TryFromSexp for RecordBatch {
         // Get column names
         let names_sexp = sexp.get_names();
         let names: Vec<String> = if names_sexp.type_of() == SEXPTYPE::STRSXP {
-            (0..ncol)
-                .map(|i| {
-                    let charsxp = names_sexp.string_elt(i as R_xlen_t);
-                    unsafe { crate::from_r::charsxp_to_str(charsxp) }.to_string()
-                })
-                .collect()
+            crate::from_r::map_strsxp_with(names_sexp, |charsxp, _| {
+                unsafe { crate::from_r::try_charsxp_to_str(charsxp) }
+                    .map(str::to_string)
+                    .map_err(|e| SexpError::InvalidValue(format!("name {}", e.r_reason(false))))
+            })?
         } else {
             (0..ncol).map(|i| format!("V{}", i + 1)).collect()
         };

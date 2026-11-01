@@ -141,7 +141,9 @@ impl Kind {
             .then(|| attr.string_elt(0))
             .filter(|&charsxp| charsxp != SEXP::na_string())
             // SAFETY: a CHARSXP other than `NA_character_`.
-            .map(|charsxp| unsafe { crate::from_r::charsxp_to_str(charsxp) });
+            .map(|charsxp| unsafe { crate::from_r::try_charsxp_to_str(charsxp) })
+            .transpose()
+            .map_err(RSerdeError::not_text)?;
         KINDS
             .into_iter()
             .find(|kind| name.is_some_and(|name| kind.name().to_bytes() == name.as_bytes()))

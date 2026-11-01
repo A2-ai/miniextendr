@@ -145,7 +145,7 @@ use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 
 use crate::expression::{RCall, REvalError, eval_with_handlers, try_eval_with_handlers};
-use crate::from_r::charsxp_to_str;
+use crate::from_r::charsxp_to_str_or_panic;
 use crate::gc_protect::OwnedProtect;
 use crate::sexp_ext::PairListExt;
 use crate::{SEXP, SEXPTYPE, SexpExt};
@@ -270,7 +270,7 @@ impl<'a> LazyDots<'a> {
                     if elt.is_na_string() {
                         return None;
                     }
-                    let name = charsxp_to_str(elt);
+                    let name = charsxp_to_str_or_panic(elt);
                     (!name.is_empty()).then_some(name)
                 })
                 .collect()

@@ -5,7 +5,7 @@
 use super::super::error::RSerdeError;
 use super::super::robject;
 use super::Kind;
-use crate::from_r::charsxp_to_str;
+use crate::from_r::try_charsxp_to_str;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
@@ -80,7 +80,7 @@ fn string_elt(sexp: SEXP, i: isize) -> Result<&'static str, RSerdeError> {
         return Err(RSerdeError::UnexpectedNa);
     }
     // SAFETY: a CHARSXP other than `NA_character_`, rooted by the input.
-    Ok(unsafe { charsxp_to_str(charsxp) })
+    unsafe { try_charsxp_to_str(charsxp) }.map_err(RSerdeError::not_text)
 }
 
 /// An integer written in decimal: visited as the first of `i64`, `u64`,

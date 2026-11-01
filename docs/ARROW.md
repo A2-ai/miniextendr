@@ -386,15 +386,16 @@ aggregate's column went through the header read on every conversion, and
 heap bytes that happened to look like a header made the data.frame point into
 freed Rust memory. The registry reads no memory the buffer does not own.
 
-### String conversion (`charsxp_to_str`)
+### String conversion (`try_charsxp_to_str`)
 
-`charsxp_to_str()` reads `R_CHAR` + `LENGTH` without copying for UTF-8 and
-ASCII strings and for native strings in a UTF-8 session, then validates the
+`try_charsxp_to_str()` reads `R_CHAR` + `LENGTH` without copying for UTF-8
+and ASCII strings and for native strings in a UTF-8 session, then validates the
 bytes in O(n) time. Latin-1 strings, and native non-ASCII strings in a session
-whose locale isn't UTF-8, are translated with `Rf_translateCharUTF8`, and
-`bytes` strings are rejected. `charsxp_to_cow()`
-returns `Cow::Borrowed` for the fast path and `Cow::Owned` when translation is
-required.
+whose locale isn't UTF-8, are translated with `Rf_translateCharUTF8`, and a
+`bytes` string (or one that is not valid UTF-8) is refused with an `Err`: a
+`StringArray` or dictionary conversion lists every refused element in one
+error. `try_charsxp_to_cow()` returns `Cow::Borrowed` for the fast path and
+`Cow::Owned` when translation is required.
 
 ## Type Decision Tree
 

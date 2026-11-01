@@ -3,8 +3,8 @@
 //! rules are documented on [`AsNumericVec`].
 
 use crate::from_r::{
-    BatchedErrors, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
-    impl_option_try_from_sexp, map_strsxp_with,
+    BatchedErrors, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_cow_lossy,
+    impl_option_try_from_sexp, map_strsxp_with, try_charsxp_to_str,
 };
 use crate::into_r::IntoR;
 use crate::{IsNA, RLogical, SEXP, SEXPTYPE, SexpExt};
@@ -268,7 +268,7 @@ fn read_numeric(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
             let mut rejected = Rejected::default();
             let values = map_strsxp_with(sexp, |charsxp, i| {
                 Ok(parse_charsxp(charsxp).unwrap_or_else(|NotNumeric| {
-                    rejected.push(i, || unsafe { charsxp_to_str(charsxp) }.to_owned());
+                    rejected.push(i, || unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned());
                     None
                 }))
             })?;
@@ -323,8 +323,9 @@ fn read_factor_labels(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
 /// The text of level `k` (0-based) of a factor's `levels` STRSXP.
 fn level_label(levels: SEXP, k: usize) -> String {
     let charsxp = levels.string_elt(isize::try_from(k).expect("level index fits in R_xlen_t"));
-    // A rejected label is never `NA_character_` (that parses as `None`).
-    unsafe { charsxp_to_str(charsxp) }.to_owned()
+    // A rejected label is never `NA_character_` (that parses as `None`). One
+    // marked as bytes is shown lossily.
+    unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned()
 }
 
 /// Return the values, or the one batched error naming every rejected element.
@@ -344,9 +345,12 @@ fn parse_charsxp(charsxp: SEXP) -> Result<Option<f64>, NotNumeric> {
     if charsxp == SEXP::na_string() {
         return Ok(None);
     }
-    // SAFETY: a non-NA CHARSXP; its data is NUL-terminated, which is what
-    // `parse_nul_terminated` needs.
-    unsafe { parse_nul_terminated(charsxp_to_str(charsxp)) }
+    // A string marked as bytes (or one that is not valid UTF-8) is not a
+    // number, as `as.numeric()` reads it: R gives `NA` with a coercion warning.
+    // SAFETY: a non-NA CHARSXP; its data, or R's UTF-8 translation of it, is
+    // NUL-terminated, which is what `parse_nul_terminated` needs.
+    let text = unsafe { try_charsxp_to_str(charsxp) }.map_err(|_| NotNumeric)?;
+    unsafe { parse_nul_terminated(text) }
 }
 
 /// Parse `s` as R's `RealFromString` does, plus the `"NA"` token.
