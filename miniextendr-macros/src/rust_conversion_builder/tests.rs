@@ -310,7 +310,7 @@ fn test_strict_input_rejection_is_an_argument_error() {
         (
             "xs: Vec<u64>",
             "checked_vec_try_from_sexp_u64",
-            "'xs' must be integer or whole-number numeric",
+            "'xs' must be non-negative integer or whole-number numeric",
         ),
         (
             "xs: Vec<Option<isize>>",

@@ -713,7 +713,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `bool` | `TRUE or FALSE` |
 | `String`, `&str`, `char`, `PathBuf` | `a single string` |
 | `u8` / `Rcomplex` | `a single raw value` / `a single complex value` |
-| `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` |
+| `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` (`non-negative integer or whole-number numeric` for `u16`, `u32`, `u64`, `usize` elements) |
 | `AsNumericVec` | `numeric` |
 | `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |

@@ -69,8 +69,12 @@ test_that("coerce attribute works for Vec<u16>", {
   expect_equal(miniextendr:::test_coerce_attr_vec_u16(c(100L, 200L, 300L)), 600L)
   expect_equal(miniextendr:::test_coerce_attr_vec_u16(integer(0)), 0L)
 
-  # Negative values should error
-  expect_error(miniextendr:::test_coerce_attr_vec_u16(c(1L, -1L, 3L)))
+  # A negative element is refused in R, as for the scalar (#2290)
+  expect_error(
+    miniextendr:::test_coerce_attr_vec_u16(c(1L, -1L, 3L)),
+    "'x' must be non-negative",
+    fixed = TRUE
+  )
 
   # Coercion preserves whole-number doubles; fractional values remain lossy.
   expect_equal(miniextendr:::test_coerce_attr_vec_u16(c(1, 2, 3)), 6L)
@@ -80,18 +84,18 @@ test_that("coerce attribute works for Vec<u16>", {
 test_that("coerced Vec<u16> batches every failing element (issue #1217 item 1)", {
   # Regression for coerced vector parameters: it used to
   # short-circuit at the first element that failed to coerce, hiding later
-  # failures. Two out-of-range elements (elements 1 and 3; element 2 is valid)
+  # failures. Two elements above u16 (elements 1 and 3; element 2 is valid)
   # must BOTH surface in one batched diagnostic, each reason once with its
   # 1-based positions (#1192 grammar, as R numbers the elements).
   err <- expect_error(
-    miniextendr:::test_coerce_attr_vec_u16(c(-1L, 5L, 70000L))
+    miniextendr:::test_coerce_attr_vec_u16(c(70000L, 5L, 80000L))
   )
   msg <- conditionMessage(err)
   # The argument context and the batched reasons are in R terms (#1591); the
   # Rust type is in e$rust_type, not the message.
   expect_identical(
     msg,
-    "'x' must be integer or whole-number numeric: value out of range (elements 1, 3)"
+    "'x' must be non-negative integer or whole-number numeric: value out of range (elements 1, 3)"
   )
   expect_identical(err$rust_type, "Vec<u16>")
 })

@@ -436,10 +436,10 @@ test_that("a class_any method given a non-S7 receiver raises the argument error"
 # region: per-element failures, R-facing expectations, strict and no_na wording
 
 test_that("a vector conversion lists every bad element, 1-based and batched", {
-  # c(NA, 70000, 1, -5) passes the R-side whole-number check; the conversion
-  # refuses the NA and the two values outside u16, each reason once with the
-  # positions that failed with it.
-  e <- caught(miniextendr:::arg_error_u16s(c(NA, 70000, 1, -5)))
+  # c(NA, 70000, 1, 80000) passes the R-side whole-number and non-negative
+  # checks; the conversion refuses the NA and the two values outside u16, each
+  # reason once with the positions that failed with it.
+  e <- caught(miniextendr:::arg_error_u16s(c(NA, 70000, 1, 80000)))
   expect_identical(class(e), layers)
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "counts")
@@ -447,7 +447,7 @@ test_that("a vector conversion lists every bad element, 1-based and batched", {
   expect_identical(
     conditionMessage(e),
     paste0(
-      "'counts' must be integer or whole-number numeric: ",
+      "'counts' must be non-negative integer or whole-number numeric: ",
       "NA is not allowed (element 1); value out of range (elements 2, 4)"
     )
   )
@@ -457,7 +457,7 @@ test_that("a vector conversion lists every bad element, 1-based and batched", {
   expect_identical(
     conditionMessage(caught(miniextendr:::arg_error_u16s(rep(70000, 12)))),
     paste0(
-      "'counts' must be integer or whole-number numeric: ",
+      "'counts' must be non-negative integer or whole-number numeric: ",
       "value out of range (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 2 more"
     )
   )

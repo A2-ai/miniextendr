@@ -159,7 +159,6 @@ fn vector_integer_wide_is_lossless() {
         "Vec<usize>",
     ] {
         let asserts = assertions_for(ty_str, "x");
-        assert_eq!(asserts.len(), 1, "{} should produce 1 assertion", ty_str);
         assert_eq!(
             asserts[0].condition,
             "is.integer(x) || is.logical(x) || is.raw(x) || \
@@ -172,6 +171,35 @@ fn vector_integer_wide_is_lossless() {
             "'x' must be integer or whole-number numeric"
         );
     }
+    for ty_str in &["Vec<i8>", "Vec<i16>", "Vec<i64>", "Vec<isize>"] {
+        assert_eq!(assertions_for(ty_str, "x").len(), 1, "{ty_str}");
+    }
+}
+
+/// An unsigned vector refuses a negative element in R, as its scalar does,
+/// instead of failing in Rust as "value out of range" under the whole-number
+/// requirement it met (#2290). `NA` elements are left to the conversion.
+#[test]
+fn vector_unsigned_adds_non_negative() {
+    for ty_str in &[
+        "Vec<u16>",
+        "Vec<u32>",
+        "Vec<u64>",
+        "Vec<usize>",
+        "&[u32]",
+        "Vec<Option<u64>>",
+    ] {
+        let asserts = assertions_for(ty_str, "x");
+        assert_eq!(asserts.len(), 2, "{ty_str}");
+        assert_eq!(asserts[1].message(), "'x' must be non-negative", "{ty_str}");
+        assert_eq!(
+            asserts[1].condition, "is.raw(x) || all(x >= 0, na.rm = TRUE)",
+            "{ty_str}"
+        );
+    }
+    let asserts = assertions_for("Option<Vec<u64>>", "x");
+    assert_eq!(asserts.len(), 2);
+    assert_eq!(asserts[1].message(), "'x' must be NULL or non-negative");
 }
 
 #[test]
@@ -377,6 +405,10 @@ fn conversion_expectation_follows_the_type_check() {
     );
     assert_eq!(
         exp("Vec<u16>", false),
+        some("non-negative integer or whole-number numeric")
+    );
+    assert_eq!(
+        exp("Vec<i16>", false),
         some("integer or whole-number numeric")
     );
     assert_eq!(exp("Vec<f64>", false), some("double"));
@@ -472,7 +504,7 @@ fn strict_expectation_names_a_whole_number() {
     assert_eq!(exp("Vec<i64>"), some("integer or whole-number numeric"));
     assert_eq!(
         exp("Vec<Option<u64>>"),
-        some("integer or whole-number numeric")
+        some("non-negative integer or whole-number numeric")
     );
 }
 
