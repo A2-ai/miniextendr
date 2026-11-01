@@ -892,6 +892,27 @@ The same family covers `` `null_if_none` takes no value `` (write
 `null_if_none`, not `null_if_none = "yes"`) and `duplicate null_if_none
 option`. It goes with `read_only`, `name`, `setter` and `prop_doc`.
 
+### "`cache` keeps the R value a public `#[r_data]` struct field's getter converts ..."
+
+`#[r_data(cache)]` keeps what a struct field's getter converts until the
+object is next borrowed exclusively (#2271), so it is refused on a field
+whose getter converts nothing, or whose value no borrow of the struct
+tracks:
+
+- A `Sidecar<T>` field's getter returns the R value the pointer keeps:
+  there is no conversion to keep. Remove the option.
+- A `Computed` field's `get` function may read more than the struct (a
+  global, the clock, another object), so no exclusive borrow of the struct
+  says when its value changes. Remove the option, or store the value in a
+  struct field and cache that.
+- A scalar field (`i32`, `i16`, `i8`, `f64`, `f32`, `bool`, `Rbool`, `u8`)
+  reads a length-1 vector, as fast to make as to return: remove the option.
+- The `RSidecar` selector and a field that is not `pub` have no R getter.
+
+The same family covers `` `cache` takes no value `` (write `cache`, not
+`cache = "yes"`) and `duplicate cache option`. It goes with `read_only`,
+`null_if_none`, `name`, `setter` and `prop_doc`.
+
 ### "`s3(r_data_accessors)` on `Type` needs the field helpers `#[derive(ExternalPtr)]` emits"
 
 This one is raised when the package is installed, not at compile time: the

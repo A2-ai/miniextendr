@@ -214,17 +214,40 @@ pub(crate) fn return_conversion_at(
 ) -> TokenStream {
     let try_into_sexp =
         quote::quote_spanned!(span=> ::miniextendr_api::into_r::IntoR::try_into_sexp);
+    let err_value = into_r_err_value(call);
     quote! {
         match #try_into_sexp(#value) {
             ::core::result::Result::Ok(__mx_sexp) => __mx_sexp,
-            // SAFETY: every generated entry point converts its return value
-            // inside its R unwind guard, on R's main thread.
-            ::core::result::Result::Err(__mx_error) => unsafe {
-                ::miniextendr_api::error_value::result_err_condition_value(
-                    ::miniextendr_api::__mx_into_r_err_parts!(__mx_error),
-                    #call,
-                )
-            },
+            ::core::result::Result::Err(__mx_error) => #err_value,
+        }
+    }
+}
+
+/// [`return_conversion`] as a `Result<SEXP, SEXP>`: `Ok` the converted value,
+/// `Err` the tagged condition value of a failed conversion, for a getter that
+/// keeps a converted value and must not keep a condition (a cached field,
+/// #2271).
+pub(crate) fn return_conversion_result(value: &TokenStream, call: &TokenStream) -> TokenStream {
+    let err_value = into_r_err_value(call);
+    quote! {
+        match ::miniextendr_api::into_r::IntoR::try_into_sexp(#value) {
+            ::core::result::Result::Ok(__mx_sexp) => ::core::result::Result::Ok(__mx_sexp),
+            ::core::result::Result::Err(__mx_error) => ::core::result::Result::Err(#err_value),
+        }
+    }
+}
+
+/// The tagged condition value of a failed return conversion, the error bound
+/// to `__mx_error` ([`return_conversion`]).
+fn into_r_err_value(call: &TokenStream) -> TokenStream {
+    quote! {
+        // SAFETY: every generated entry point converts its return value
+        // inside its R unwind guard, on R's main thread.
+        unsafe {
+            ::miniextendr_api::error_value::result_err_condition_value(
+                ::miniextendr_api::__mx_into_r_err_parts!(__mx_error),
+                #call,
+            )
         }
     }
 }

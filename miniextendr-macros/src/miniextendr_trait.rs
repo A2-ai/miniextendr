@@ -970,7 +970,13 @@ fn generate_method_shim(
         )
     } else {
         (
-            crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut),
+            crate::trait_self_ref::receiver_borrow(
+                &cell,
+                &guard,
+                &self_ref,
+                method.is_mut,
+                crate::trait_self_ref::ReceiverStorage::Erased,
+            ),
             quote::quote! { #self_ref.#method_name(#(#param_names),*) },
         )
     };

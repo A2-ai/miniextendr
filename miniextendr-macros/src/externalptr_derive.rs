@@ -102,7 +102,8 @@
 //! 2. **Scalars** (`i32`, `f64`, `bool`, `u8`) - struct fields, returned as a
 //!    length-1 vector and written with `Rf_as*`
 //! 3. **Conversion types** (anything else) - struct fields, converted with the
-//!    `IntoR`/`TryFromSexp` traits on every read and write
+//!    `IntoR`/`TryFromSexp` traits on every read (unless `cache`, below) and
+//!    write
 //! 4. **Computed fields** (`#[r_data(get = "Self::f")] pub f: Computed`,
 //!    #1883) - no value in the struct; the getter calls the named
 //!    `fn(&Self) -> impl IntoR` on the live Rust value; a `Result` from it
@@ -118,6 +119,18 @@
 //! the same way (#1888). The Rust accessors of a `Sidecar<T>` field stay:
 //! `read_only` goes with `ref` / `mut`, and refuses the selector, a private
 //! or computed field and `setter = ...`.
+//!
+//! `#[r_data(cache)]` on a public tier 3 field keeps the R value its getter
+//! converts (#2271): the first read stores it
+//! (`externalptr::sidecar_r_cached`, under the field's index among the
+//! type's cached fields) and every later read returns that same object,
+//! until the value is next borrowed exclusively (a `&mut self` method, a
+//! `&mut T` argument, an R setter, `ExternalPtr::borrow_mut`, ...), which
+//! drops every kept value of the object. The derive emits
+//! `TypedExternal::CACHED_FIELD_COUNT`, the constant those borrows check. A
+//! failed conversion is not kept. It goes with `read_only`, `null_if_none`,
+//! `name`, `setter` and `prop_doc`, and refuses the selector, a tier 1, 2 or
+//! 4 field and a private one.
 //!
 //! `#[r_data(name = "keys")]` gives a field its R name (#1891): the field
 //! list, the `$` / `[[` labels, the R6 binding / S7 property and the
@@ -579,6 +592,9 @@ struct RDataOptions {
     /// `None`, in place of `Option<T>`'s own conversion (`NA` for a scalar,
     /// #2270). The setter is unchanged.
     null_if_none: Option<Span>,
+    /// `cache`: a converted struct field's getter keeps the R value its first
+    /// read makes until the value is next borrowed exclusively (#2271).
+    cache: Option<Span>,
 }
 
 /// Which Rust accessors a `Sidecar<T>` field gets: `#[r_data(ref)]` the
@@ -592,7 +608,7 @@ struct SidecarAccess {
 
 /// One item of `#[r_data(...)]`: `ref`, `mut` (both keywords, so
 /// `parse_nested_meta` cannot read them), a flag (`read_only`,
-/// `null_if_none`) or `key = "value"`.
+/// `null_if_none`, `cache`) or `key = "value"`.
 enum RDataArg {
     Ref(Span),
     Mut(Span),
@@ -701,12 +717,23 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                         "`null_if_none` takes no value: `#[r_data(null_if_none)]`",
                     ));
                 }
+                RDataArg::Flag(key) if key == "cache" => {
+                    if options.cache.replace(key.span()).is_some() {
+                        return Err(syn::Error::new_spanned(key, "duplicate `cache` option"));
+                    }
+                }
+                RDataArg::KeyValue { key, .. } if key == "cache" => {
+                    return Err(syn::Error::new_spanned(
+                        &key,
+                        "`cache` takes no value: `#[r_data(cache)]`",
+                    ));
+                }
                 RDataArg::Flag(key) | RDataArg::KeyValue { key, .. } => {
                     return Err(syn::Error::new_spanned(
                         &key,
                         format!(
                             "unknown key `{key}`; supported: `ref`, `mut`, `read_only`, `null_if_none`, \
-                             `name`, `get`, `prop_doc`, `setter`"
+                             `cache`, `name`, `get`, `prop_doc`, `setter`"
                         ),
                     ));
                 }
@@ -781,6 +808,32 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                      `None` (in place of `NA` for a scalar); it doesn't apply to {refusal}"
                 ),
             ));
+        }
+    }
+    if let Some(span) = options.cache {
+        // `cache` keeps what a struct field's getter converts; the other
+        // kinds convert nothing on a read, or read more than the struct. A
+        // scalar field is refused with its kind (`parse_sidecar_info`).
+        let refusal = if is_rsidecar_type(field) {
+            Some("the RSidecar selector, which has no R accessors".to_string())
+        } else if is_computed_type(&field.ty) {
+            Some(format!(
+                "a `{COMPUTED_TYPE_NAME}` field, which runs its `get` function on every read: the \
+                 function may read more than the struct, so no borrow of the struct says when its \
+                 value changes"
+            ))
+        } else if sidecar_inner_type(&field.ty).is_some() {
+            Some(format!(
+                "a `{SIDECAR_TYPE_NAME}<T>` field, whose getter returns the R value the pointer keeps, \
+                 converting nothing"
+            ))
+        } else if !is_pub(field) || field.ident.is_none() {
+            Some("a field that is not `pub`: only `pub` `#[r_data]` fields reach R".to_string())
+        } else {
+            None
+        };
+        if let Some(refusal) = refusal {
+            return Err(cache_refusal(span, &refusal));
         }
     }
     if options.setter_invisible.is_some()
@@ -866,6 +919,18 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
         _ => {}
     }
     Ok(options)
+}
+
+/// The refusal of `#[r_data(cache)]` on a field it doesn't apply to, at the
+/// option: `refusal` says what the field is.
+fn cache_refusal(span: Span, refusal: &str) -> syn::Error {
+    syn::Error::new(
+        span,
+        format!(
+            "`cache` keeps the R value a public `#[r_data]` struct field's getter converts, until \
+             the object is next borrowed exclusively; it doesn't apply to {refusal}"
+        ),
+    )
 }
 
 /// Check if a field type is `RSidecar`.
@@ -960,6 +1025,10 @@ pub(crate) struct SidecarSlot {
     /// `#[r_data(null_if_none)]` (#2270): the getter of this `Option<T>`
     /// `Conversion` field reads `NULL` for `None`.
     null_if_none: bool,
+    /// `#[r_data(cache)]` (#2271): the position of this `Conversion` field
+    /// among the type's cached fields, under which its getter keeps the R
+    /// value its first read makes (`externalptr::sidecar_r_cached`).
+    cache: Option<usize>,
 }
 
 impl SidecarSlot {
@@ -1144,6 +1213,7 @@ pub(crate) fn parse_sidecar_info(
     let mut selector_fields: Vec<&Field> = vec![];
     let mut slots = vec![];
     let mut sidecars = 0usize;
+    let mut cached = 0usize;
 
     for field in fields.iter() {
         if !has_r_data_attr(field) {
@@ -1191,6 +1261,25 @@ pub(crate) fn parse_sidecar_info(
             } else {
                 SidecarAccess::default()
             };
+            // `parse_r_data_options` refused `cache` on every kind but a
+            // scalar and a conversion field; a scalar reads in constant time.
+            let cache = match (options.cache, &kind) {
+                (None, _) => None,
+                (Some(_), SlotKind::Conversion) => {
+                    cached += 1;
+                    Some(cached - 1)
+                }
+                (Some(span), _) => {
+                    return Err(cache_refusal(
+                        span,
+                        &format!(
+                            "a scalar `{}` field, whose getter makes a length-1 vector, as fast as \
+                             returning a kept one",
+                            crate::type_inspect::type_display(&field.ty)
+                        ),
+                    ));
+                }
+            };
             let r_name = options
                 .name
                 .as_ref()
@@ -1207,6 +1296,7 @@ pub(crate) fn parse_sidecar_info(
                 setter_invisible: options.setter_invisible,
                 read_only: options.read_only.is_some(),
                 null_if_none: options.null_if_none.is_some(),
+                cache,
             });
         }
     }
@@ -1271,7 +1361,10 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 ///   address) and wraps it with `Rf_Scalar*`.
 /// - `Conversion`: clones the struct field and converts it with `IntoR`;
 ///   under `#[r_data(null_if_none)]` the `Option<T>` converts as a
-///   `Nullable<T>`, so `None` reads `NULL` (#2270).
+///   `Nullable<T>`, so `None` reads `NULL` (#2270). Under
+///   `#[r_data(cache)]` the converted value is kept and returned by the
+///   reads that follow until the value is borrowed exclusively
+///   (`externalptr::sidecar_r_cached`, #2271).
 /// - `Computed`: calls the `get` function on the live struct and converts
 ///   its value with `IntoR`; a `Result` is an error boundary (#2269).
 ///
@@ -1413,12 +1506,36 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             let nullable = slot
                 .null_if_none
                 .then(|| quote::quote! { let val = ::miniextendr_api::Nullable(val); });
-            quote::quote! {
-                unsafe {
-                    #extract_ref
-                    let val: #ty = #clone(&data.#field_name);
-                    #nullable
-                    #value
+            match slot.cache {
+                None => quote::quote! {
+                    unsafe {
+                        #extract_ref
+                        let val: #ty = #clone(&data.#field_name);
+                        #nullable
+                        #value
+                    }
+                },
+                // `cache` (#2271): the converted value is kept for the next
+                // reads, until the value is borrowed exclusively; a failed
+                // conversion's condition is returned and not kept.
+                Some(index) => {
+                    let value = crate::c_wrapper_builder::return_conversion_result(
+                        &quote::quote!(val),
+                        &quote::quote!(::core::option::Option::None),
+                    );
+                    quote::quote! {
+                        unsafe {
+                            ::miniextendr_api::externalptr::sidecar_r_cached::<#struct_name>(
+                                x,
+                                #index,
+                                |data: &#struct_name| {
+                                    let val: #ty = #clone(&data.#field_name);
+                                    #nullable
+                                    #value
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2546,6 +2663,8 @@ fn sidecar_slots(info: &SidecarInfo) -> impl Iterator<Item = (usize, &SidecarSlo
 ///   with the `__mx_visit_sidecars` hook that hands each of them, with its
 ///   slot index and name, to the handle (which flushes their pending values
 ///   into the slots and loads the slots back into them).
+/// - `CACHED_FIELD_COUNT`: the number of `#[r_data(cache)]` fields, when
+///   there are any (#2271).
 ///
 /// Supports generic structs (generics are forwarded to the impl).
 fn generate_typed_external(
@@ -2621,6 +2740,16 @@ fn generate_typed_external(
             }
         }
     });
+    // `#[r_data(cache)]` fields (#2271): every exclusive borrow of the value
+    // drops their kept values, and the pointer's finalizer drops them too.
+    let cached_field_count = {
+        let count = info
+            .slots
+            .iter()
+            .filter(|slot| slot.cache.is_some())
+            .count();
+        (count > 0).then(|| quote::quote! { const CACHED_FIELD_COUNT: usize = #count; })
+    };
     let sidecars: Vec<_> = sidecar_slots(info).collect();
     // A save names its slots by the fields' R names (#2215), so renaming a
     // Rust field keeps every earlier save readable.
@@ -2663,6 +2792,7 @@ fn generate_typed_external(
                     "::", ::core::module_path!(), "::", #name_lit, "\0"
                 ).as_bytes();
             #r_slot_count
+            #cached_field_count
             #restored_class
             #restored_message
             #no_handle_message

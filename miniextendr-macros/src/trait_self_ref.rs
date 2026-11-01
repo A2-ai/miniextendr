@@ -166,6 +166,21 @@ pub(crate) fn cell_address(cell: &syn::Ident) -> TokenStream {
     quote! { #cell.as_ptr().cast_const().cast::<::core::ffi::c_void>() }
 }
 
+/// Where a shim's receiver lives: the vtable shims reach trait-ABI storage
+/// (`abi::ErasedObject<T>`), the `.Call` wrapper of a trait impl method an
+/// ordinary `ExternalPtr` value.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReceiverStorage {
+    /// Trait-ABI storage. The declaration's shims are generic over the
+    /// implementing type, so its exclusive borrow is the one without a
+    /// `TypedExternal` bound (`borrow_erased_value_mut`): no R field getter
+    /// reads that storage, so it has no cached field values to drop.
+    Erased,
+    /// An `ExternalPtr` value: its exclusive borrow drops the value's cached
+    /// field values (`#[r_data(cache)]`, #2271).
+    Ordinary,
+}
+
 /// Borrow a shim's receiver from its `RefCell` for the rest of the shim:
 /// shared for `&self`, exclusive for `&mut self`. A call still running on the
 /// same object makes this raise the `miniextendr_borrow_conflict` error.
@@ -174,10 +189,15 @@ pub(crate) fn receiver_borrow(
     guard: &syn::Ident,
     self_ref: &syn::Ident,
     mutable: bool,
+    storage: ReceiverStorage,
 ) -> TokenStream {
     if mutable {
+        let borrow = match storage {
+            ReceiverStorage::Erased => quote!(borrow_erased_value_mut),
+            ReceiverStorage::Ordinary => quote!(borrow_value_mut),
+        };
         quote! {
-            let mut #guard = ::miniextendr_api::externalptr::borrow_value_mut(#cell);
+            let mut #guard = ::miniextendr_api::externalptr::#borrow(#cell);
             let #self_ref = &mut *#guard;
         }
     } else {

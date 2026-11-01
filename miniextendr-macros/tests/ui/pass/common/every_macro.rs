@@ -426,6 +426,8 @@ pub struct Engine {
     pub base: i32,
     #[r_data]
     pub raw: Sidecar<SEXP>,
+    #[r_data(cache, null_if_none)]
+    pub history: ::std::option::Option<::std::vec::Vec<i32>>,
 }
 
 impl Engine {
@@ -444,6 +446,7 @@ impl Engine {
             keys: Sidecar::new(::std::vec::Vec::new()),
             base: n,
             raw: Sidecar::new(SEXP::nil()),
+            history: ::std::option::Option::None,
         }
     }
     pub fn size(&self) -> i32 {

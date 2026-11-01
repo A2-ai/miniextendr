@@ -699,6 +699,9 @@ pub struct MyType {
 
     #[r_data(null_if_none)]
     pub label: Option<String>,  // NULL for None (a plain Option<String> reads NA)
+
+    #[r_data(cache)]
+    pub values: Vec<f64>,  // Converted on the first read, then returned as is
 }
 ```
 
@@ -735,6 +738,7 @@ Access via Sidecar".
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
 | `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR`; a `Result` is an error boundary: `Ok` reads the value, `Err` raises the classed error, `Err(())` of a `Result<T, ()>` reads `NULL` | none; the field syntax and an R6 binding raise `miniextendr_read_only_field`, an S7 property has no setter |
 | any of the above but `Computed`, with `#[r_data(read_only)]` | as above | as above | none, as for `Computed` (#2268), so a struct field's type needs no `TryFromSexp`; the Rust accessors of a `Sidecar<T>` stay |
+| a converted (non-scalar) struct field with `#[r_data(cache)]` | the Rust struct, and the R value the first read made | that same R object, until the value is next borrowed exclusively (#2271) | as without `cache`; the write drops the kept value |
 
 A getter whose value fails to convert raises the error a function's failed
 return conversion raises (`e$kind == "result_err"`, the error's
@@ -774,7 +778,22 @@ keeps `NULL` for `None`, and a `Computed` field's function returns
 
 A struct field is a view of the Rust value: every read converts it afresh, and
 every write converts into Rust or fails, so no R copy can drift from it. A
-computed field is a view too, through its function.
+computed field is a view too, through its function. `#[r_data(cache)]` trades
+the fresh conversion for speed on a large field: the first read keeps the R
+object it made, and every later read returns that object, until the value is
+borrowed exclusively (a `&mut self` method, a `&mut T` or `ExternalPtrMut`
+argument, an R setter of any field, `ExternalPtr::borrow_mut`, a consuming
+method, `into_inner`), which drops every kept value of the object. Each type
+checks a constant first (`TypedExternal::CACHED_FIELD_COUNT`), so a type
+without cached fields pays nothing. The kept objects sit in the pool that
+roots owning `ExternalPtr` handles, not in the `prot` list, so a save never
+carries them, a `readRDS()`ed or cloned object starts with none, and the
+finalizer releases them. A kept object is marked not mutable: R code that
+modifies a value it read (`v[1] <- 0`) copies it first. A change no exclusive
+borrow covers is not seen, and the field reads its old value: interior
+mutability behind `&self` (`Cell`, `RefCell`, `Mutex`, atomics) and the
+ALTREP `data1` paths that skip the borrow (`as_mut_unchecked`). The value is
+stale, never unsound. See `CLASS_SYSTEMS.md`, "Cached fields".
 
 A bare R view under `#[r_data]` is a compile error: the GC does not trace
 Rust fields. Use `Sidecar<List>`, `Sidecar<Option<List>>`, `Sidecar<DataFrame>`
@@ -1274,7 +1293,7 @@ EXTPTRSXP
             [last] → a serde type's carrier: the ALTREP that saves its value
 ```
 
-Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols. The `Any` value is a `RefCell<T>`, which the generated code borrows (see [Reentrant Calls](#reentrant-calls)).
+Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization; a type with `#[r_data(cache)]` fields registers `release_cached`, which drops the object's kept field values first. Type safety relies on `Any::downcast`, not on the `prot` symbols. The `Any` value is a `RefCell<T>`, which the generated code borrows (see [Reentrant Calls](#reentrant-calls)).
 
 The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number. A serde type's list ends with its carrier ("A serde type comes back after `readRDS()`").
 

@@ -754,6 +754,10 @@ unsafe extern "C-unwind" {
     pub fn Rf_duplicate(s: SEXP) -> SEXP;
     #[doc(alias = "shallow_duplicate")]
     pub fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
+    /// Mark an object as shared for good: R code that modifies it (`x[1] <- 0`,
+    /// `attr(x, "a") <- 1`) copies it first, whatever else references it.
+    /// Allocates nothing.
+    pub fn MARK_NOT_MUTABLE(x: SEXP);
 
     // Object comparison
     /// Check if two R objects are identical (deep semantic equality).

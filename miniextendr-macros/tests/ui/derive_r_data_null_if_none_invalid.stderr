@@ -46,7 +46,7 @@ error: `null_if_none` makes a public `Option<T>` `#[r_data]` field read `NULL` f
 70 |     #[r_data(null_if_none)]
    |              ^^^^^^^^^^^^
 
-error: unknown key `null_if_null`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `name`, `get`, `prop_doc`, `setter`
+error: unknown key `null_if_null`; supported: `ref`, `mut`, `read_only`, `null_if_none`, `cache`, `name`, `get`, `prop_doc`, `setter`
   --> tests/ui/derive_r_data_null_if_none_invalid.rs:78:14
    |
 78 |     #[r_data(null_if_null)]

@@ -6,7 +6,7 @@ test_that("field helpers are emitted only for classes with field syntax", {
     "FallbackS3", "FallbackList", "FallbackS4", "FallbackEnv",
     "ComputedResult",
     "ReadOnlyS3", "FrozenS3", "FrozenS4", "FrozenEnv",
-    "NullS3"
+    "NullS3", "CacheEnv", "CacheS3"
   )
   for (kind in c("fields", "get", "set", "no_field", "read_only", "error_class", "every_read", "live")) {
     prefix <- paste0(".rdata_", kind, "_")

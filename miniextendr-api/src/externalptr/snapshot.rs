@@ -569,7 +569,7 @@ unsafe fn install<T: TypedExternal>(sexp: SEXP, carrier: SEXP, value: T) {
     let (_, any_raw) = ExternalPtr::<T>::erase(value);
     // Own the allocation until the finalizer that frees it is registered.
     let allocation = unsafe { Box::from_raw(any_raw) };
-    unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
+    unsafe { R_RegisterCFinalizerEx(sexp, super::finalizer::<T>(), Rboolean::TRUE) };
     let any_raw = Box::into_raw(allocation);
     unsafe { R_SetExternalPtrAddr(sexp, any_raw.cast()) };
 }
