@@ -1,6 +1,6 @@
 ---
 name: miniextendr-conversions
-description: Use when passing values between R and Rust in a miniextendr package — choosing argument/return types for #[miniextendr] functions, NA handling, Option<T>, logical three-state values, integer widening, strict mode, or errors like "expected INTSXP" / unexpected NA / doubles coming back where integers went in.
+description: 'Use when passing values between R and Rust in a miniextendr package — choosing argument/return types for #[miniextendr] functions, NA handling, Option<T>, logical three-state values, integer widening, strict mode, or errors like "expected INTSXP" / unexpected NA / doubles coming back where integers went in.'
 ---
 
 # R ↔ Rust type conversions
