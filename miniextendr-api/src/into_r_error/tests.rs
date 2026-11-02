@@ -256,13 +256,13 @@ fn a_row_whose_fields_differ_drops_the_shared_class_of_the_rows() {
 }
 
 #[test]
-fn entries_stop_at_the_cap_while_the_class_sees_every_failure() {
+fn entries_list_every_failure_past_the_message_cap() {
     let mut errors = ElementFailures::default();
     for index in 0..11 {
         errors.push(index, &serde_refusal());
     }
-    // The twelfth failure is past the cap: counted, not listed, and its
-    // class still decides.
+    // The twelfth failure is past the message's cap: the message counts it,
+    // `e$errors` still has its entry, and its class still decides.
     errors.push(
         11,
         &Refusal {
@@ -276,8 +276,8 @@ fn entries_stop_at_the_cap_while_the_class_sees_every_failure() {
         "{}",
         error.message()
     );
-    assert_eq!(elements(&error).elements().len(), 10);
-    assert_eq!(entries(&error).len(), 10);
+    assert_eq!(elements(&error).elements().len(), 12);
+    assert_eq!(entries(&error).len(), 12);
     assert!(error.class().is_empty());
 }
 

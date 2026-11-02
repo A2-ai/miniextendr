@@ -110,9 +110,8 @@ impl RConditionData for IntoRError {
 ///   the element raises as a return value of its own, with its classes,
 ///   message and fields.
 ///
-/// Like the message, `e$errors` lists the first ten failures; past them the
-/// message ends `; and N more` and those failures have no entry. The shared
-/// class is decided over every failure.
+/// `e$errors` lists every failure. Only the message stops at the first ten,
+/// ending `; and N more`. The shared class is decided over every failure.
 #[derive(Debug, Clone)]
 pub struct FailedElements {
     message: String,
@@ -229,9 +228,9 @@ fn index_rvalue(index: &[usize]) -> RValue {
 /// [`IntoRError::Elements`].
 ///
 /// Each failure's message goes into a [`BatchedErrors`], so the message is
-/// the one every batched conversion writes; the listed failures (the first
-/// [`BATCHED_ERROR_CAP`](crate::from_r::BATCHED_ERROR_CAP)) keep their
-/// condition parts for `e$errors`; every failure takes part in the shared
+/// the one every batched conversion writes (it lists the first
+/// [`BATCHED_ERROR_CAP`](crate::from_r::BATCHED_ERROR_CAP)). Every failure
+/// keeps its condition parts for `e$errors` and takes part in the shared
 /// class.
 #[derive(Default)]
 pub(crate) struct ElementFailures {
@@ -247,13 +246,10 @@ impl ElementFailures {
     #[track_caller]
     pub(crate) fn push<E: RConditionData + ?Sized>(&mut self, index: usize, error: &E) {
         self.share(error.class());
-        let elements = &mut self.elements;
-        self.batch.push(index, || {
-            let parts = crate::condition::into_r_err_parts(error);
-            let reason = parts.message.clone();
-            elements.push(FailedElement::new(index, parts));
-            reason
-        });
+        let parts = crate::condition::into_r_err_parts(error);
+        let reason = parts.message.clone();
+        self.elements.push(FailedElement::new(index, parts));
+        self.batch.push(index, || reason);
     }
 
     /// Record the failure of the row at 0-based `row`, itself a container
@@ -265,14 +261,13 @@ impl ElementFailures {
             return self.push(row, &error);
         };
         self.share(failed.class);
-        let elements = &mut self.elements;
-        self.batch.push(row, || {
-            elements.extend(failed.elements.into_iter().map(|mut element| {
+        self.elements
+            .extend(failed.elements.into_iter().map(|mut element| {
                 element.index.insert(0, row + 1);
                 element
             }));
-            failed.message
-        });
+        let message = failed.message;
+        self.batch.push(row, || message);
     }
 
     /// Fold one failure's classes into the shared class.

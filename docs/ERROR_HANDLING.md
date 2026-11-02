@@ -233,9 +233,9 @@ class(e$errors[[1]]$condition)
 #> [1] "miniextendr_serde_error" "rust_error" "simpleError" "error" "condition"
 ```
 
-The element fields stay in `e$errors`, not on the error itself. Like the
-message, `e$errors` lists the first ten failures; the message counts the rest
-(`; and N more`), and the shared class is decided over all of them. A tuple
+The element fields stay in `e$errors`, not on the error itself. `e$errors`
+lists every failure; only the message stops at the first ten and counts the
+rest (`; and N more`). The shared class is decided over all of them. A tuple
 inside a tuple field is one element: its entry's condition carries its own
 `e$errors`.
 
