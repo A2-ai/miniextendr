@@ -1,4 +1,4 @@
-use super::call_method_def;
+use super::{call_method_def, call_method_def_value};
 
 #[test]
 fn registers_the_linker_symbol_with_the_given_arity() {
@@ -19,4 +19,23 @@ fn registers_the_linker_symbol_with_the_given_arity() {
         "{code}"
     );
     assert!(code.contains("MX_CALL_DEFS"), "{code}");
+}
+
+/// The value alone is the same registration, for a sidecar setter's entry
+/// in `MX_SIDECAR_SETTERS` (#2292).
+#[test]
+fn the_value_is_the_registration_without_the_static() {
+    let c_ident: syn::Ident = syn::parse_quote!(C_Engine__set_rate);
+    let value = call_method_def_value(&c_ident, 3).to_string();
+    assert!(
+        value.starts_with(":: miniextendr_api :: sys :: R_CallMethodDef {"),
+        "{value}"
+    );
+    assert!(!value.contains("MX_CALL_DEFS"), "{value}");
+    let def: syn::Ident = syn::parse_quote!(__MX_CALL_DEF_RDATA_SET_Engine_rate);
+    assert!(
+        call_method_def(&def, &c_ident, 3)
+            .to_string()
+            .contains(&value)
+    );
 }

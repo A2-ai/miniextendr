@@ -234,6 +234,70 @@ fn sidecar_accessors_follow_the_field_syntax() {
     );
 }
 
+/// The routines R registers keep every `MX_CALL_DEFS` entry and leave out
+/// the sidecar setters of a type one of whose impl blocks makes its fields
+/// read-only, by the rule that picks the setter-less accessors (#2292).
+#[test]
+fn read_only_fields_leave_their_setters_unregistered() {
+    unsafe extern "C-unwind" fn routine() -> *mut c_void {
+        std::ptr::null_mut()
+    }
+    let def = |name: &'static std::ffi::CStr| R_CallMethodDef {
+        name: name.as_ptr(),
+        fun: Some(routine),
+        numArgs: 3,
+    };
+    let call_defs = [def(c"C_f"), def(c"C_Frozen__get_a")];
+    let setter = |rust_type, name| SidecarSetterEntry {
+        rust_type,
+        def: def(name),
+    };
+    let setters = [
+        setter("Fields", c"set_Fields_a"),
+        setter("Frozen", c"set_Frozen_a"),
+        setter("Plain", c"set_Plain_a"),
+        setter("Frozen", c"set_Frozen_b"),
+    ];
+    let class = |rust_type, field_syntax, read_only_fields| ClassNameEntry {
+        rust_type,
+        r_class_name: rust_type,
+        class_system: "s3",
+        field_syntax,
+        read_only_fields,
+    };
+    let classes = [
+        class("Fields", true, false),
+        class("Frozen", false, false),
+        class("Frozen", true, true),
+    ];
+    let names = |defs: Vec<R_CallMethodDef>| -> Vec<String> {
+        defs.iter()
+            .map(|def| {
+                unsafe { std::ffi::CStr::from_ptr(def.name) }
+                    .to_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect()
+    };
+    assert_eq!(
+        names(registered_call_defs(&call_defs, &setters, &classes)),
+        ["C_f", "C_Frozen__get_a", "set_Fields_a", "set_Plain_a"]
+    );
+    // A type no impl block registers keeps its setters.
+    assert_eq!(
+        names(registered_call_defs(&call_defs, &setters, &[])),
+        [
+            "C_f",
+            "C_Frozen__get_a",
+            "set_Fields_a",
+            "set_Frozen_a",
+            "set_Plain_a",
+            "set_Frozen_b"
+        ]
+    );
+}
+
 /// The `all.equal()` method of `#[derive(AllEqual)]` takes the R class
 /// of the type's impl block: an S3 method for every class system, and an
 /// S7 class's own registration too (#2149).
