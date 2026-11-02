@@ -26,9 +26,8 @@ test_that("the bundled skill set ships complete, with frontmatter", {
     meta <- yaml::yaml.load(paste(lines[2:(close - 1)], collapse = "\n"))
     expect_identical(meta$name, slug, info = slug)
     expect_match(meta$description, "^Use when", info = slug)
-    # YAML reads the whole description line. An unquoted value ends at " #",
-    # which starts a comment, so a description that mentions
-    # #[miniextendr] must be quoted.
+    # YAML reads the whole description line. In an unquoted value " #"
+    # starts a comment, so write attributes as code: `#[miniextendr]`.
     raw <- sub("^description: ", "", grep("^description: ", lines, value = TRUE))
     if (startsWith(raw, "'")) {
       raw <- gsub("''", "'", substr(raw, 2, nchar(raw) - 1), fixed = TRUE)
