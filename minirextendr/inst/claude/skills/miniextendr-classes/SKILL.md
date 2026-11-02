@@ -1,6 +1,6 @@
 ---
 name: miniextendr-classes
-description: Use when exposing a Rust struct as an R class in a miniextendr package — choosing between R6, S3, S4, S7, Env, or vctrs; writing #[miniextendr] impl blocks; constructors, methods, properties/active bindings; trait methods callable from R; or debugging class dispatch ("could not find method", vctrs errors, S7 parent errors).
+description: Use when exposing a Rust struct as an R class in a miniextendr package — choosing between R6, S3, S4, S7, Env, or vctrs; writing `#[miniextendr]` impl blocks; constructors, methods, properties/active bindings; trait methods callable from R; or debugging class dispatch ("could not find method", vctrs errors, S7 parent errors).
 ---
 
 # Exposing Rust structs as R classes

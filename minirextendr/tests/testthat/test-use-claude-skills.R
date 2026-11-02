@@ -13,14 +13,26 @@ test_that("the bundled skill set ships complete, with frontmatter", {
   slugs <- basename(list.dirs(src, recursive = FALSE))
   expect_setequal(slugs, expected_skill_slugs)
 
+  skip_if_not_installed("yaml")
+
   for (slug in slugs) {
     skill_md <- file.path(src, slug, "SKILL.md")
     expect_true(file.exists(skill_md), info = slug)
     lines <- readLines(skill_md, warn = FALSE)
-    # frontmatter with name + description ("Use when..." trigger)
+    # frontmatter with name + description ("Use when..." trigger), read as
+    # YAML, as Claude Code reads it
     expect_identical(lines[[1]], "---", info = slug)
-    expect_true(any(grepl(paste0("^name: ", slug, "$"), lines)), info = slug)
-    expect_true(any(grepl("^description: Use when", lines)), info = slug)
+    close <- which(lines == "---")[[2]]
+    meta <- yaml::yaml.load(paste(lines[2:(close - 1)], collapse = "\n"))
+    expect_identical(meta$name, slug, info = slug)
+    expect_match(meta$description, "^Use when", info = slug)
+    # YAML reads the whole description line. In an unquoted value " #"
+    # starts a comment, so write attributes as code: `#[miniextendr]`.
+    raw <- sub("^description: ", "", grep("^description: ", lines, value = TRUE))
+    if (startsWith(raw, "'")) {
+      raw <- gsub("''", "'", substr(raw, 2, nchar(raw) - 1), fixed = TRUE)
+    }
+    expect_identical(meta$description, raw, info = slug)
     # self-contained budget from the plan: <= 250 lines per skill
     expect_lte(length(lines), 250)
   }

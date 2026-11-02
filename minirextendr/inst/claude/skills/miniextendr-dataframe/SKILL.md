@@ -1,6 +1,6 @@
 ---
 name: miniextendr-dataframe
-description: Use when moving data.frames between R and Rust in a miniextendr package — #[derive(DataFrameRow)], converting Vec<Row> to a data.frame and back, the DataFrame type, column builders, serde-based rows, enum/tagged rows, list-columns, or NA cells in tabular data.
+description: Use when moving data.frames between R and Rust in a miniextendr package — `#[derive(DataFrameRow)]`, converting `Vec<Row>` to a data.frame and back, the `DataFrame` type, column builders, serde-based rows, enum/tagged rows, list-columns, or NA cells in tabular data.
 ---
 
 # data.frames ↔ Rust rows
