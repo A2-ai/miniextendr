@@ -1085,8 +1085,8 @@ condition classes of the two restored variants (the package's, then the
 specific class, then `miniextendr_restored`), `None` for the others:
 
 ```rust
-use miniextendr_api::externalptr::{ExternalPtr, TypeMismatchError};
-use miniextendr_api::{SEXP, SEXPTYPE, SexpExt, miniextendr};
+use miniextendr_api::externalptr::TypeMismatchError;
+use miniextendr_api::{ExternalPtr, SEXP, SEXPTYPE, SexpExt, miniextendr};
 
 #[derive(ExternalPtr)]
 pub struct Model {

@@ -127,10 +127,15 @@ fn int(x: SEXP) -> i32 {
     i32::try_from_sexp(x).unwrap()
 }
 
+/// `T`'s `Default`, reached the way a derive on the holding struct reaches it.
+fn by_default<T: Default>() -> T {
+    T::default()
+}
+
 #[test]
 fn a_computed_field_is_a_zero_sized_marker() {
     assert_eq!(size_of::<Computed>(), 0);
-    assert_eq!(Computed, Computed::default());
+    assert_eq!(Computed, by_default::<Computed>());
 }
 
 #[test]
