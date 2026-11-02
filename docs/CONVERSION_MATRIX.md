@@ -407,15 +407,21 @@ stay integer, and an empty row is `integer(0)`.
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 | `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
 
-Tuple `try_into_sexp` conversions return `IntoRError::Inner` when fields fail,
-with all failing field positions collected in one diagnostic. `Option<Tuple>`,
-`Vec<Tuple>`, `Vec<Option<Tuple>>` and boxed tuple rows preserve these errors;
-row containers also collect failures across rows. Successful fields and rows
+Tuple `try_into_sexp` conversions return `IntoRError::Elements` when fields
+fail, with all failing field positions collected in one diagnostic and each
+field's own condition kept with its position (`FailedElements`).
+`Option<Tuple>`, `Vec<Tuple>`, `Vec<Option<Tuple>>` and boxed tuple rows
+preserve these errors; row containers also collect failures across rows,
+listing each failed field by its row and its field. Successful fields and rows
 enter the protected list before the next conversion runs.
 
 A returned value converts with `try_into_sexp`, so such an error reaches R as
-an R error (`kind = "result_err"`) with the error's `RConditionData` classes
-and fields, else its `Display` text (#2272).
+an R error (`kind = "result_err"`) with the error's message, classes and
+fields (`IntoR::Error` implements `RConditionData`, #2272). For failed tuple
+fields that is the batched message, the class they all share (else only
+`rust_error`) and `e$errors`, one `list(index, condition)` per failed field
+(#2282; see
+[ERROR_HANDLING.md](ERROR_HANDLING.md#failed-elements-of-a-tuple)).
 
 Tuples with 1–12 fields also implement `IntoList` and `TryFromList`, using
 these same positional conversions and batched field errors. Element-wise

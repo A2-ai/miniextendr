@@ -272,6 +272,15 @@ impl std::fmt::Display for DataFrameError {
 
 impl std::error::Error for DataFrameError {}
 
+/// The condition a `DataFrameError` raises in R: its message, no class or
+/// fields. It is [`AsDataFrame`](crate::convert::AsDataFrame)'s
+/// `IntoR::Error`.
+impl crate::condition::RConditionData for DataFrameError {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
 /// The cause and the fix that the stale-`.rows` errors
 /// ([`DataFrameError::GroupIndexOutOfRange`],
 /// [`DataFrameError::GroupRowUncovered`],

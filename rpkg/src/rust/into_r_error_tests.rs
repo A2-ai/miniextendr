@@ -16,10 +16,3 @@ pub fn into_r_error_length_overflow() -> String {
     let err = IntoRError::LengthOverflow { len: usize::MAX };
     format!("{}", err)
 }
-
-/// Trigger an Inner error and return its message.
-#[miniextendr]
-pub fn into_r_error_inner() -> String {
-    let err = IntoRError::Inner("custom error message".to_string());
-    format!("{}", err)
-}

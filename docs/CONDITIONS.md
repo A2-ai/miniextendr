@@ -239,8 +239,10 @@ thread at the unwind boundary. Consequently, a live `SEXP` or arbitrary
 
 `message`, `call` and `kind` are the condition's own slots (the R helper
 splices `data` over them with `utils::modifyList`, on every transport,
-the raising guards included, #1315), and `.mx_parent` carries a cause
-attached with [`with_parent`](#chaining-a-cause-with-parent), so they are
+the raising guards included, #1315), `.mx_parent` carries a cause
+attached with [`with_parent`](#chaining-a-cause-with-parent), and
+`.mx_errors` carries the failed elements of a tuple's conversion (`e$errors`,
+#2282), so they are
 **rejected** as field names: at compile time when the name is a literal or a
 bare identifier (`data = ("kind", 1)`, `data = { kind = 1 }`), at runtime
 otherwise (a plain `rust_error` explaining the clash, instead of the former
@@ -621,11 +623,13 @@ its classes and fields with `kind = "conversion"`, the parameter's name as
 the same condition (#1591). See
 [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors).
 
-It classes failed return conversions too: when a return value's
-`IntoR::Error` implements `RConditionData`, a failed conversion raises its
-classes and fields with `kind = "result_err"`; any other error raises its
-`Display` text (#2272). `RSerdeError`, the error of `AsSerialize`, has the
-class `miniextendr_serde_error`. See
+It classes failed return conversions too: every `IntoR::Error` implements
+`RConditionData`, so a failed conversion raises its message, classes and
+fields with `kind = "result_err"` (#2272). `RSerdeError`, the error of
+`AsSerialize` and `AsJson`, has the class `miniextendr_serde_error`. The
+failing fields of a tuple (and rows of a `Vec` of tuples) raise one error with
+the class they all share, else only `rust_error`, and keep each field's own
+condition and position in `e$errors` (#2282). See
 [ERROR_HANDLING.md](ERROR_HANDLING.md#a-return-value-whose-conversion-fails).
 
 Where no `Result` reaches the generated code (a computed field's getter that

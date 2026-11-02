@@ -71,7 +71,14 @@ own `Error::custom`) is an R error of class `miniextendr_serde_error`
 `e$kind == "result_err"`: `AsSerialize`'s `IntoR::Error` is `RSerdeError`, which
 implements `RConditionData`, and the generated code raises a failed return
 conversion as it raises an `Err` (#2272). A panic inside a `Serialize` impl
-stays an ordinary `rust_error`.
+stays an ordinary `rust_error`. `AsJson` / `AsJsonPretty` raise `serde_json`'s
+refusal with the same class, and `AsJsonVec` names every refused element.
+
+Inside a tuple (`(i32, AsSerialize<T>)`) or a `Vec` of tuples, the refusal keeps
+its class: the error is a `miniextendr_serde_error` when every failing field is
+one, its message names each failing position, and `e$errors` holds each
+field's own condition with its position (#2282, see
+[ERROR_HANDLING.md](ERROR_HANDLING.md#failed-elements-of-a-tuple)).
 
 Trait implementations apply serde transport to their concrete vtable shims too.
 Rust View consumers retain their declared return type's `TryFromSexp` contract;

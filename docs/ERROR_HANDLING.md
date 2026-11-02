@@ -182,18 +182,62 @@ pub fn process(path: &str) -> Result<i32> {
 The generated code converts the value a function, method, trait method or
 `#[r_data]` field returns with `IntoR::try_into_sexp`. When that conversion
 fails, R gets the error an `Err` return gives (`e$kind == "result_err"`, the
-call of the wrapper): the error's classes, fields and message when its type
-implements `RConditionData`, else its `Display` text. It is not a panic, so
-the message names no file of the framework (#2272).
+call of the wrapper): the error's message, classes and fields. Every
+`IntoR::Error` implements `RConditionData`, so the classes and fields reach R
+wherever the conversion fails; an error type with only a message implements
+`message()` alone, and a foreign error converts into `RError`. It is not a
+panic, so the message names no file of the framework (#2272).
 
 `AsSerialize<T>` (and `#[miniextendr(serialize)]`) fails this way when serde
-refuses the value, for example a map whose keys are not strings. Its error,
+refuses the value, for example a map whose keys are not strings, and so do
+`AsJson<T>` / `AsJsonPretty<T>` when `serde_json` refuses it. Their error,
 `RSerdeError`, has the class `miniextendr_serde_error`:
 
 ```r
 tryCatch(int_keyed_map(), miniextendr_serde_error = conditionMessage)
 #> [1] "map keys must be strings for R named lists"
 ```
+
+#### Failed elements of a tuple
+
+A tuple converts every field, and a `Vec` of tuples every row, before it
+reports a failure; so does `AsJsonVec<T>` with its elements. All the failing
+elements raise one error (#2282):
+
+- the message names every failing position, in the grammar of every batched
+  conversion (`... (element 2)`);
+- the classes are the ones every failing element has, when they all have the
+  same, so a handler for the element's class catches the tuple as it catches
+  the element alone; when the classes differ, the error has only the
+  `rust_error` classes;
+- `e$errors` has one entry per failing element, `list(index, condition)`:
+  `index` is its position as R counts it (`2L` for a tuple's second field,
+  `c(3L, 2L)` for the second field of the third row of a `Vec` of tuples), and
+  `condition` is the condition the element raises when returned alone, with
+  its own classes, message and fields. It is not signalled.
+
+```rust
+#[miniextendr]
+pub fn summary_pair() -> (i32, AsSerialize<BTreeMap<i32, f64>>) {
+    (1, AsSerialize(BTreeMap::from([(1, 2.5)])))
+}
+```
+
+```r
+e <- tryCatch(summary_pair(), miniextendr_serde_error = identity)
+conditionMessage(e)
+#> [1] "map keys must be strings for R named lists (element 2)"
+e$errors[[1]]$index
+#> [1] 2
+class(e$errors[[1]]$condition)
+#> [1] "miniextendr_serde_error" "rust_error" "simpleError" "error" "condition"
+```
+
+The element fields stay in `e$errors`, not on the error itself. Like the
+message, `e$errors` lists the first ten failures; the message counts the rest
+(`; and N more`), and the shared class is decided over all of them. A tuple
+inside a tuple field is one element: its entry's condition carries its own
+`e$errors`.
 
 ---
 

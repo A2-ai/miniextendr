@@ -728,19 +728,20 @@ impl<T> IntoR for Option<&T>
 where
     T: Copy + IntoR,
 {
-    type Error = crate::into_r_error::IntoRError;
+    type Error = T::Error;
     #[inline]
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
         match self {
-            Some(&v) => v
-                .try_into_sexp()
-                .map_err(|e| crate::into_r_error::IntoRError::Inner(e.to_string())),
+            Some(&v) => v.try_into_sexp(),
             None => Ok(crate::SEXP::nil()),
         }
     }
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(unsafe { self.into_sexp_unchecked() })
+        match self {
+            Some(&v) => unsafe { v.try_into_sexp_unchecked() },
+            None => Ok(crate::SEXP::nil()),
+        }
     }
     #[inline]
     fn into_sexp(self) -> crate::SEXP {

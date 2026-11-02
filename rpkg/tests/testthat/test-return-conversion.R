@@ -1,10 +1,12 @@
-# Failed return conversions (#2272) and computed getters returning `Result`
-# (#2269). Fixtures: src/rust/return_conversion_tests.rs.
+# Failed return conversions (#2272), the failed elements of a tuple (#2282)
+# and computed getters returning `Result` (#2269). Fixtures:
+# src/rust/return_conversion_tests.rs.
 #
 # A return value whose `IntoR` conversion fails raises the classed error of a
-# `Result` return (`e$kind == "result_err"`): the error's classes and fields
-# when it implements `RConditionData`, else its `Display` text, and never a
-# panic message with a file location.
+# `Result` return (`e$kind == "result_err"`): the error's message, classes and
+# fields (`IntoR::Error` implements `RConditionData`), and never a panic
+# message with a file location. Failing fields of a tuple raise one error with
+# the batched message, the class they all share, and `e$errors`.
 
 caught <- function(expr) tryCatch(expr, error = identity)
 
@@ -29,7 +31,7 @@ test_that("a return value whose conversion fails raises its classed error", {
   expect_equal(conditionCall(e), quote(capped(20L)))
 })
 
-test_that("an error with only Display gives its text, with no file location", {
+test_that("an error with only a message gives it, with no file location", {
   expect_identical(plain(3L), 3L)
   e <- caught(plain(20L))
   expect_s3_class(e, "rust_error")
@@ -89,17 +91,134 @@ test_that("an AsSerialize return serde refuses raises miniextendr_serde_error", 
   )
 })
 
-test_that("inside a tuple the batched conversion error keeps serde's message", {
-  e <- caught(miniextendr:::return_conversion_serde_in_tuple())
-  expect_s3_class(e, "rust_error")
-  expect_false(inherits(e, "miniextendr_serde_error"))
+test_that("an unwrap_in_r Ok value serde refuses raises its own error", {
+  e <- caught(miniextendr:::return_conversion_serde_unwrap_in_r())
+  expect_s3_class(e, "miniextendr_serde_error")
   expect_identical(e$kind, "result_err")
-  expect_match(
+  expect_identical(conditionMessage(e), "map keys must be strings for R named lists")
+})
+
+test_that("inside a tuple the field's serde error keeps its class, in e$errors", {
+  tuple <- miniextendr:::return_conversion_serde_in_tuple
+  e <- caught(tuple())
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "result_err")
+  expect_identical(
     conditionMessage(e),
-    "map keys must be strings for R named lists",
-    fixed = TRUE
+    "map keys must be strings for R named lists (element 2)"
   )
   expect_false(grepl("(at ", conditionMessage(e), fixed = TRUE))
+  expect_equal(conditionCall(e), quote(tuple()))
+
+  # One entry per failing field: its position and its own condition, the one
+  # the field raises returned alone.
+  expect_length(e$errors, 1L)
+  expect_named(e$errors[[1]], c("index", "condition"))
+  expect_identical(e$errors[[1]]$index, 2L)
+  field <- e$errors[[1]]$condition
+  expect_identical(
+    class(field),
+    c("miniextendr_serde_error", "rust_error", "simpleError", "error", "condition")
+  )
+  expect_identical(field$kind, "result_err")
+  expect_identical(
+    conditionMessage(field),
+    "map keys must be strings for R named lists"
+  )
+  expect_equal(conditionCall(field), quote(tuple()))
+
+  # A handler for the element's class catches the tuple.
+  expect_identical(
+    tryCatch(tuple(), miniextendr_serde_error = function(e) "caught"),
+    "caught"
+  )
+})
+
+test_that("rows of tuples name each failing row and field", {
+  e <- caught(miniextendr:::return_conversion_serde_in_tuple_rows())
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_identical(e$kind, "result_err")
+  expect_identical(
+    conditionMessage(e),
+    "map keys must be strings for R named lists (element 2) (elements 2, 3)"
+  )
+  expect_length(e$errors, 2L)
+  expect_identical(lapply(e$errors, `[[`, "index"), list(c(2L, 2L), c(3L, 2L)))
+  for (entry in e$errors) {
+    expect_s3_class(entry$condition, "miniextendr_serde_error")
+    expect_identical(
+      conditionMessage(entry$condition),
+      "map keys must be strings for R named lists"
+    )
+  }
+})
+
+test_that("fields failing with different classes raise rust_error, each in e$errors", {
+  e <- caught(miniextendr:::return_conversion_mixed_in_tuple(20L))
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  expect_identical(e$kind, "result_err")
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "20 exceeds the cap 10 (element 1); ",
+      "map keys must be strings for R named lists (element 2)"
+    )
+  )
+  expect_length(e$errors, 2L)
+
+  expect_identical(e$errors[[1]]$index, 1L)
+  capped_field <- e$errors[[1]]$condition
+  expect_s3_class(capped_field, "over_cap_error")
+  expect_s3_class(capped_field, "cap_error")
+  expect_identical(conditionMessage(capped_field), "20 exceeds the cap 10")
+  expect_identical(capped_field$value, 20L)
+  expect_identical(capped_field$cap, 10L)
+
+  expect_identical(e$errors[[2]]$index, 2L)
+  expect_s3_class(e$errors[[2]]$condition, "miniextendr_serde_error")
+  expect_false(inherits(e$errors[[2]]$condition, "over_cap_error"))
+
+  # Only the serde field fails: its class again.
+  e <- caught(miniextendr:::return_conversion_mixed_in_tuple(3L))
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_length(e$errors, 1L)
+  expect_identical(e$errors[[1]]$index, 2L)
+})
+
+# endregion
+
+# region: JSON text serde_json refuses
+
+test_that("an AsJson return serde_json refuses raises miniextendr_serde_error", {
+  e <- caught(miniextendr:::return_conversion_json_pair_keys())
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "result_err")
+  expect_identical(conditionMessage(e), "key must be a string")
+  expect_null(e$errors)
+})
+
+test_that("inside a tuple the refused JSON keeps its class, in e$errors", {
+  e <- caught(miniextendr:::return_conversion_json_in_tuple())
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_identical(e$kind, "result_err")
+  expect_identical(conditionMessage(e), "key must be a string (element 1)")
+  expect_length(e$errors, 1L)
+  expect_identical(e$errors[[1]]$index, 1L)
+  expect_s3_class(e$errors[[1]]$condition, "miniextendr_serde_error")
+  expect_identical(
+    conditionMessage(e$errors[[1]]$condition),
+    "key must be a string"
+  )
+})
+
+test_that("AsJsonVec names every element serde_json refuses", {
+  e <- caught(miniextendr:::return_conversion_json_vec())
+  expect_s3_class(e, "miniextendr_serde_error")
+  expect_identical(e$kind, "result_err")
+  expect_identical(conditionMessage(e), "key must be a string (elements 1, 3)")
+  expect_identical(lapply(e$errors, `[[`, "index"), list(1L, 3L))
 })
 
 # endregion

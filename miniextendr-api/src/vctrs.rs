@@ -121,6 +121,14 @@ impl std::fmt::Display for VctrsBuildError {
 }
 
 impl std::error::Error for VctrsBuildError {}
+
+/// The condition a `VctrsBuildError` raises in R: its message, no class or
+/// fields. It is [`AsVctrs`](crate::convert::AsVctrs)'s `IntoR::Error`.
+impl crate::condition::RConditionData for VctrsBuildError {
+    fn message(&self) -> String {
+        self.to_string()
+    }
+}
 // endregion
 
 // region: Helper functions
