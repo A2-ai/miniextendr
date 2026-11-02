@@ -35,6 +35,22 @@
 //! character and factor input to the choice side and everything else to `R`,
 //! the same split the R wrapper's `match.arg()` check makes.
 //!
+//! ## Native borrows
+//!
+//! An arm that borrows R's native storage (`&mut [f64]`, `&i32`, ...) makes
+//! the `Either` borrow it, but only when that arm converts. A generated
+//! wrapper's alias check takes both arms; when one of them meets another
+//! argument, the wrapper prepares the `Either` to learn the arm its conversion
+//! takes (left first, as below) and checks that arm alone, before any
+//! reference exists (#1504). So `Either<i32, &mut [f64]>` next to a `&[f64]`
+//! of the same vector is refused only when the `i32` arm does not take the
+//! vector. Under `Option`, `Missing`, `Result<_, ()>`, `Nullable` or a
+//! derived newtype the arm is still learned. Inside a list, tuple or map
+//! the check takes both arms (#2340), and so it does for an `Option` of a
+//! derived newtype and for any type whose hand-written `TryFromSexp` doesn't
+//! forward the hidden preparation hooks: refused more often than needed,
+//! never less.
+//!
 //! ## From Rust to R (`IntoR`)
 //!
 //! Each variant is converted to R using its inner type's `IntoR` implementation.
@@ -106,7 +122,8 @@
 
 pub use either::{Either, Left, Right};
 
-use crate::from_r::{SexpError, TryFromSexp};
+use crate::from_r::prepared::{Arms, Prepared};
+use crate::from_r::{NativeBorrow, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
@@ -122,6 +139,10 @@ where
     R::Error: Into<SexpError>,
 {
     type Error = SexpError;
+    // Either arm may borrow: the alias check takes both, then the arm the
+    // conversion takes when it matters (#1504).
+    const NATIVE_BORROW: Option<NativeBorrow> =
+        NativeBorrow::either(&[L::NATIVE_BORROW, R::NATIVE_BORROW]);
     // Only character input when both sides read only character input.
     const CHARACTER_ONLY: bool = L::CHARACTER_ONLY && R::CHARACTER_ONLY;
     // `no_na` asks whichever side the value converted to.
@@ -176,6 +197,50 @@ where
                 left_error: Box::new(left_err),
                 right_error: Box::new(right_err.into()),
             }),
+        }
+    }
+
+    // Learn the arm the conversion takes without building a reference: left
+    // first, as `try_from_sexp`. An owned arm's value is kept, so it converts
+    // once; a borrowing arm is deferred with its path. An arm that can't tell
+    // leaves the `Either` undecided, checked against every arm it may take.
+    fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+        let left_error = match L::__mx_prepare(sexp) {
+            Prepared::Failed(e) => e.into(),
+            left @ (Prepared::Ready(_) | Prepared::Deferred { .. }) => {
+                return left.arm(false, Either::Left, Self::NATIVE_BORROW);
+            }
+            Prepared::Unprepared | Prepared::Undecided(_) => {
+                return Prepared::Undecided(Self::NATIVE_BORROW);
+            }
+        };
+        // The left arm failed. A decided right arm is materialized on its
+        // own, so the left arm never runs again.
+        match R::__mx_prepare(sexp) {
+            Prepared::Failed(right_error) => Prepared::Failed(SexpError::EitherConversion {
+                left_error: Box::new(left_error),
+                right_error: Box::new(right_error.into()),
+            }),
+            right @ (Prepared::Ready(_) | Prepared::Deferred { .. }) => {
+                right.arm(true, Either::Right, Self::NATIVE_BORROW)
+            }
+            // An undecided right arm converts the whole `Either` again, left
+            // arm first, and a check in user code (a newtype's `validate`)
+            // may pass the second time: both arms stay in the check.
+            Prepared::Unprepared | Prepared::Undecided(_) => {
+                Prepared::Undecided(Self::NATIVE_BORROW)
+            }
+        }
+    }
+
+    fn __mx_materialize(sexp: SEXP, arms: Arms) -> Result<Self, Self::Error> {
+        match arms.pop() {
+            (false, arms) => L::__mx_materialize(sexp, arms)
+                .map(Either::Left)
+                .map_err(Into::into),
+            (true, arms) => R::__mx_materialize(sexp, arms)
+                .map(Either::Right)
+                .map_err(Into::into),
         }
     }
 }
@@ -235,6 +300,20 @@ where
         } else {
             unsafe { <Either<L, R> as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map(Some)
         }
+    }
+
+    // `NULL` is `None` before either arm is tried; anything else prepares
+    // as the `Either`.
+    fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Prepared::Ready(None)
+        } else {
+            <Either<L, R> as TryFromSexp>::__mx_prepare(sexp).map(Some, |e| e)
+        }
+    }
+
+    fn __mx_materialize(sexp: SEXP, arms: Arms) -> Result<Self, Self::Error> {
+        <Either<L, R> as TryFromSexp>::__mx_materialize(sexp, arms).map(Some)
     }
 }
 

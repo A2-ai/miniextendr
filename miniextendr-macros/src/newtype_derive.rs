@@ -182,49 +182,73 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
     // Without `validate` the scalar impl is the inner type's, error and all.
     // With it, the check runs first and both errors become `SexpError`, the
     // error every container of the newtype has.
-    let (from_where, error, try_from, try_from_unchecked, check_sexp) = match &options.validate {
-        None => (
-            where_with(base_where, &[inner_converts]),
-            quote! { <#inner as ::miniextendr_api::TryFromSexp>::Error },
-            quote! { #inner_try_from.map(|val| #wrap_val) },
-            quote! { #inner_try_from_unchecked.map(|val| #wrap_val) },
-            TokenStream::new(),
-        ),
-        Some(validate) => {
-            let check = quote! {
-                <Self as ::miniextendr_api::TryFromSexpElement>::check_sexp(sexp)?;
-            };
-            (
-                where_with(
-                    base_where,
-                    &[
-                        inner_converts,
-                        quote! {
-                            <#inner as ::miniextendr_api::TryFromSexp>::Error:
-                                ::core::convert::Into<::miniextendr_api::from_r::SexpError>
-                        },
-                    ],
-                ),
-                quote! { ::miniextendr_api::from_r::SexpError },
-                quote! {
-                    #check
-                    #inner_try_from.map(|val| #wrap_val).map_err(::core::convert::Into::into)
-                },
-                quote! {
-                    #check
-                    #inner_try_from_unchecked.map(|val| #wrap_val).map_err(::core::convert::Into::into)
-                },
-                quote! {
-                    #[inline]
-                    fn check_sexp(
-                        sexp: ::miniextendr_api::SEXP,
-                    ) -> ::core::result::Result<(), ::miniextendr_api::from_r::SexpError> {
-                        #validate(sexp).map_err(::core::convert::Into::into)
-                    }
-                },
-            )
-        }
+    // The preparation hooks forward too (#1504), so a newtype of an `Either`
+    // keeps the arm its conversion takes: without them the alias check would
+    // take both arms. `validate` runs once, in the preparation; materializing
+    // the prepared arm skips it.
+    let inner_prepare = quote! {
+        <#inner as ::miniextendr_api::TryFromSexp>::__mx_prepare(sexp)
     };
+    let inner_materialize = quote! {
+        <#inner as ::miniextendr_api::TryFromSexp>::__mx_materialize(sexp, arms)
+    };
+    let (from_where, error, try_from, try_from_unchecked, prepare, materialize, check_sexp) =
+        match &options.validate {
+            None => (
+                where_with(base_where, &[inner_converts]),
+                quote! { <#inner as ::miniextendr_api::TryFromSexp>::Error },
+                quote! { #inner_try_from.map(|val| #wrap_val) },
+                quote! { #inner_try_from_unchecked.map(|val| #wrap_val) },
+                quote! { #inner_prepare.map(|val| #wrap_val, |e| e) },
+                quote! { #inner_materialize.map(|val| #wrap_val) },
+                TokenStream::new(),
+            ),
+            Some(validate) => {
+                let check = quote! {
+                    <Self as ::miniextendr_api::TryFromSexpElement>::check_sexp(sexp)?;
+                };
+                (
+                    where_with(
+                        base_where,
+                        &[
+                            inner_converts,
+                            quote! {
+                                <#inner as ::miniextendr_api::TryFromSexp>::Error:
+                                    ::core::convert::Into<::miniextendr_api::from_r::SexpError>
+                            },
+                        ],
+                    ),
+                    quote! { ::miniextendr_api::from_r::SexpError },
+                    quote! {
+                        #check
+                        #inner_try_from.map(|val| #wrap_val).map_err(::core::convert::Into::into)
+                    },
+                    quote! {
+                        #check
+                        #inner_try_from_unchecked.map(|val| #wrap_val).map_err(::core::convert::Into::into)
+                    },
+                    quote! {
+                        if let ::core::result::Result::Err(e) =
+                            <Self as ::miniextendr_api::TryFromSexpElement>::check_sexp(sexp)
+                        {
+                            return ::miniextendr_api::from_r::prepared::Prepared::Failed(e);
+                        }
+                        #inner_prepare.map(|val| #wrap_val, ::core::convert::Into::into)
+                    },
+                    quote! {
+                        #inner_materialize.map(|val| #wrap_val).map_err(::core::convert::Into::into)
+                    },
+                    quote! {
+                        #[inline]
+                        fn check_sexp(
+                            sexp: ::miniextendr_api::SEXP,
+                        ) -> ::core::result::Result<(), ::miniextendr_api::from_r::SexpError> {
+                            #validate(sexp).map_err(::core::convert::Into::into)
+                        }
+                    },
+                )
+            }
+        };
 
     // `__mx_has_na` forwards too, so `no_na` on a newtype of a reading marker
     // (`struct Dose(AsNumeric)`) refuses what the marker reads as `NA`. So
@@ -254,6 +278,17 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
             #[inline]
             unsafe fn try_from_sexp_unchecked(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, #error> {
                 #try_from_unchecked
+            }
+            fn __mx_prepare(
+                sexp: ::miniextendr_api::SEXP,
+            ) -> ::miniextendr_api::from_r::prepared::Prepared<Self> {
+                #prepare
+            }
+            fn __mx_materialize(
+                sexp: ::miniextendr_api::SEXP,
+                arms: ::miniextendr_api::from_r::prepared::Arms,
+            ) -> ::core::result::Result<Self, #error> {
+                #materialize
             }
         }
 

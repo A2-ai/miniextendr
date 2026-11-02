@@ -505,8 +505,18 @@ impl CWrapperContext {
     ///
     /// Each statement converts an `arg_N: SEXP` into the corresponding Rust type
     /// declared in the original function signature. Respects `strict` and `coerce` settings.
-    fn build_conversion_stmts(&self, sexp_idents: &[syn::Ident]) -> Vec<TokenStream> {
-        let builder = self.conversion_builder();
+    /// `prepared` names the parameters whose alias check declared a prepared
+    /// state ([`Self::build_alias_guard`]), which their conversion reads.
+    fn build_conversion_stmts(
+        &self,
+        sexp_idents: &[syn::Ident],
+        prepared: Vec<String>,
+    ) -> Vec<TokenStream> {
+        let builder = prepared
+            .into_iter()
+            .fold(self.conversion_builder(), |builder, name| {
+                builder.with_prepared_param(name)
+            });
         builder.build_conversions(&self.inputs, sexp_idents)
     }
 
@@ -553,35 +563,53 @@ impl CWrapperContext {
 
     /// Check the actual converters' native borrows before creating references.
     /// Metadata handles scalar/slice leaves, aliases, and supported containers.
-    fn build_alias_guard(&self, sexp_idents: &[syn::Ident]) -> TokenStream {
+    ///
+    /// Also returns the parameters (Rust names) it declares a prepared state
+    /// for, which their conversions read ([`Self::build_conversion_stmts`]).
+    fn build_alias_guard(&self, sexp_idents: &[syn::Ident]) -> (TokenStream, Vec<String>) {
         let builder = self.conversion_builder();
         let mut metadata = Vec::new();
         let mut args = Vec::new();
+        let mut preparations = Vec::new();
+        let mut prepared = Vec::new();
         for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents) {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
                 && let Some(borrow) = builder.native_borrow_metadata(pt, sexp_ident)
             {
                 let name = crate::naming::ident_name(&pat_ident.ident);
+                if let Some(preparation) = builder.preparation(pt, sexp_ident) {
+                    preparations.push((metadata.len(), preparation));
+                    prepared.push(name.clone());
+                }
                 metadata.push(borrow);
                 args.push(quote! { (#sexp_ident, #name) });
             }
         }
         if args.is_empty() {
-            return TokenStream::new();
+            return (TokenStream::new(), prepared);
         }
-        quote! {{
-            let __miniextendr_native_borrows = [#(#metadata),*];
-            if ::miniextendr_api::from_r::borrow::needs_check(&__miniextendr_native_borrows) {
-                // SAFETY: wrapper arguments are rooted on R's main thread, and
-                // every allocating traversal runs inside R unwind protection.
-                unsafe {
-                    ::miniextendr_api::from_r::borrow::assert_no_aliases(
-                        [#(#args),*], __miniextendr_native_borrows,
-                    );
-                }
-            }
-        }}
+        if preparations.is_empty() {
+            return (
+                quote! {{
+                    let __miniextendr_native_borrows = [#(#metadata),*];
+                    if ::miniextendr_api::from_r::borrow::needs_check(&__miniextendr_native_borrows) {
+                        // SAFETY: wrapper arguments are rooted on R's main thread, and
+                        // every allocating traversal runs inside R unwind protection.
+                        unsafe {
+                            ::miniextendr_api::from_r::borrow::assert_no_aliases(
+                                [#(#args),*], __miniextendr_native_borrows,
+                            );
+                        }
+                    }
+                }},
+                prepared,
+            );
+        }
+        (
+            crate::rust_conversion_builder::two_pass_alias_guard(&metadata, &args, &preparations),
+            prepared,
+        )
     }
 
     /// The borrows of the borrowed external arguments (`&T` / `&mut T` /
@@ -609,8 +637,8 @@ impl CWrapperContext {
         let vis = &self.vis;
         let generics = &self.generics;
         let (c_params, _, sexp_idents) = self.build_c_params();
-        let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
-        let alias_guard = self.build_alias_guard(&sexp_idents);
+        let (alias_guard, prepared) = self.build_alias_guard(&sexp_idents);
+        let conversion_stmts = self.build_conversion_stmts(&sexp_idents, prepared);
         let type_setup = self
             .inferred_signature
             .as_ref()

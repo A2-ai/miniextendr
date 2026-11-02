@@ -906,8 +906,36 @@ Owned native containers such as `Vec<i32>` / `Box<[i32]>` and the independent
 storage used by `match_arg` with `several_ok` do not retain input borrows.
 Custom conversions default to no native borrow metadata; a converter retaining
 a native reference must describe it, and forwarding converters must preserve
-the delegated conversion's metadata. Branch-dependent `Either<L, R>` conversions
-need separate handling, tracked in [#1504](https://github.com/A2-ai/miniextendr/issues/1504).
+the delegated conversion's metadata.
+
+An `Either<L, R>` borrows through whichever arm converts, so the check follows
+the arm its conversion takes (#1504). It first takes both arms together. When
+they meet another argument, the wrapper runs the `Either`'s conversion up to the
+point where it would build a reference: the left arm's checks, then the right
+arm's. An owned arm's value is kept, so it converts once. A borrowing arm builds
+its reference only after the check, which now takes that arm alone:
+
+```rust
+#[miniextendr]
+pub fn pick(a: Either<i32, &mut [f64]>, b: &[f64]) -> f64 { /* ... */ }
+```
+
+`pick(x, x)` with a double vector `x` is refused (the right arm would borrow `x`
+mutably while `b` reads it), while `pick(1L, x)` is accepted. With
+`a: Either<f64, &mut [f64]>`, passing one double scalar twice is accepted too:
+the left arm copies it, so nothing borrows it mutably. This holds for
+an `Either` under `Option`, `Missing`, `Result<_, ()>`, `Nullable`, a
+`#[derive(TryFromSexp)]` newtype (but not an `Option` of one, which is checked
+against both arms), a nested `Either`, a `match_arg` / `choices`
+`Either` (whose arm the input's type decides), trait-method shims and the
+default methods an impl inherits. A preparation's conversion error is reported
+where the argument converts, so argument errors keep their order, but a warning
+it defers or a panic it raises happens during the check, before the arguments
+ahead of it convert. An `Either` inside a tuple or map is still checked against both arms,
+which can refuse a call whose arms would not alias; the message says so
+([#2340](https://github.com/A2-ai/miniextendr/issues/2340)). A hand-written
+`TryFromSexp` for a type that wraps a borrowing `Either` is checked against both
+arms unless it forwards the hidden `__mx_prepare` / `__mx_materialize` hooks.
 
 The wrapper guard compares R object identities. Mutable list conversions
 (`Vec<&mut T>`, `Vec<&mut [T]>`, and their optional-element forms) also collect

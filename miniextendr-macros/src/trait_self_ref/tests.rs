@@ -19,7 +19,10 @@ fn native_preflight_preserves_argument_positions_around_self_references() {
     let expected = quote! { <(&mut i32, &i32) as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW };
     let output = output.to_string();
     assert!(output.contains(&expected.to_string()));
-    assert!(output.contains(&quote! { (*argv.add(1usize), "arg1") }.to_string()));
+    // The argument converts through its own `TryFromSexp`, so the check may
+    // prepare it (#1504): its slot is read inside the check's `unsafe`.
+    assert!(output.contains(&quote! { (unsafe { *argv.add(1usize) }, "arg1") }.to_string()));
+    assert!(output.contains("__mx_prepared_1"));
     assert!(!output.contains("arg0"));
     assert!(!output.contains("arg2"));
     assert!(native_borrow_checks([(0, "other".into(), &types[0])], &argv, None).is_empty());

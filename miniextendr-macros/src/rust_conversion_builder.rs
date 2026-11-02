@@ -56,6 +56,9 @@ pub struct RustConversionBuilder {
     /// The R formal of each parameter (#1842): what a conversion condition
     /// names the argument (see [`Self::with_formals`]).
     formals: crate::r_wrapper_builder::Formals,
+    /// Parameters (Rust name) whose alias check declared a prepared state
+    /// (#1504, see [`Self::preparation`]): their conversion reads it.
+    prepared_params: Vec<String>,
 }
 
 impl RustConversionBuilder {
@@ -76,7 +79,85 @@ impl RustConversionBuilder {
             conversion_error_class: crate::crate_config::conversion_error_class(),
             unevaluated_args: false,
             self_type: None,
+            prepared_params: Vec::new(),
         }
+    }
+
+    /// Convert `param_name` (its Rust name) from the prepared state its
+    /// alias check left (#1504): the check declared the binding
+    /// [`prepared_binding`] names, from [`Self::preparation`].
+    pub(crate) fn with_prepared_param(mut self, param_name: String) -> Self {
+        self.prepared_params.push(param_name);
+        self
+    }
+
+    /// Whether `pat_type` converts through the plain `TryFromSexp` arm (or a
+    /// copied trait signature's witness): the arm [`Self::conversion_stmts`]
+    /// falls back to, after every special conversion. Only that conversion
+    /// can be prepared. Erring towards `false` only loses the exact arm of an
+    /// `Either` (the check then takes both arms).
+    fn converts_plainly(&self, pat_type: &syn::PatType) -> bool {
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return false;
+        };
+        let ty = pat_type.ty.as_ref();
+        let name = crate::naming::ident_name(&pat_ident.ident);
+        let special = matches!(ty, syn::Type::Reference(_) | syn::Type::ImplTrait(_))
+            || matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty())
+            || crate::type_inspect::call_marker(ty).is_some()
+            || crate::type_inspect::unevaluated_param(ty).is_some()
+            || crate::type_inspect::is_lazy_dots_marker(ty)
+            || self.external_arg(pat_type).is_some()
+            || self.explicit_conversion(pat_type)
+            || crate::type_inspect::is_rooted_view(ty)
+            || crate::type_inspect::is_rooted_reference(ty)
+            || (self.strict
+                && crate::return_type_analysis::strict_input_conversion_for_type(
+                    ty,
+                    &pat_ident.ident,
+                )
+                .is_some())
+            || self.layered_choice_params.iter().any(|(n, _)| *n == name)
+            || (self.match_arg_several_ok_params.contains(&name)
+                && crate::classify_several_ok_container(ty).is_some())
+            || (self.should_coerce(&name) && CoercionMapping::from_type(ty).is_some());
+        !special
+    }
+
+    /// The [`Preparation`] of an argument for the second pass of the alias
+    /// check (#1504), through `TryFromSexp::__mx_prepare`. `None` unless the
+    /// argument converts through the plain `TryFromSexp` arm.
+    ///
+    /// The check prepares an argument only when the first pass marks it: its
+    /// metadata is an `Either` at the top level (`NativeBorrow::selects`, a
+    /// constant, so every other argument's preparation optimises out), and
+    /// its arms meet another argument.
+    pub(crate) fn preparation(
+        &self,
+        pat_type: &syn::PatType,
+        sexp_ident: &syn::Ident,
+    ) -> Option<Preparation> {
+        if !self.converts_plainly(pat_type) {
+            return None;
+        }
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let ty = pat_type.ty.as_ref();
+        let span = ty.span();
+        let prepare = if self.inferred_types {
+            let target = crate::trait_signature::argument_ident(&pat_ident.ident);
+            quote_spanned! {span=> #target.prepare(#sexp_ident) }
+        } else {
+            let ty = crate::type_inspect::erase_lifetimes(ty);
+            quote_spanned! {span=>
+                <#ty as ::miniextendr_api::TryFromSexp>::__mx_prepare(#sexp_ident)
+            }
+        };
+        Some(Preparation {
+            binding: prepared_binding(&pat_ident.ident),
+            prepare,
+        })
     }
 
     pub(crate) fn with_inferred_types(mut self) -> Self {
@@ -373,7 +454,7 @@ impl RustConversionBuilder {
                     .iter()
                     .any(|(name, _)| *name == param_name)
                 {
-                    return None;
+                    return choice_native_borrow(ty);
                 }
                 if self.match_arg_several_ok_params.contains(&param_name)
                     && crate::classify_several_ok_container(ty).is_some()
@@ -1014,8 +1095,18 @@ impl RustConversionBuilder {
                         self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }
                     None => {
-                        let (try_expr, binding_ty) =
-                            try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span);
+                        let (try_expr, binding_ty) = if self.prepared_params.contains(&param_name) {
+                            debug_assert!(self.converts_plainly(pat_type));
+                            prepared_conversion(
+                                target.as_ref(),
+                                ident,
+                                sexp_ident,
+                                ty.clone(),
+                                span,
+                            )
+                        } else {
+                            try_from_sexp(target.as_ref(), sexp_ident, ty.clone(), span)
+                        };
                         // `ty: TryFromSexp` here, so a failure can ask the
                         // type what it declares.
                         let declared = match &target {
@@ -1128,6 +1219,155 @@ fn try_from_sexp(
             ty,
         ),
     }
+}
+
+/// The binding of a parameter's prepared state between its alias check and
+/// its conversion (#1504). Mixed-site, like every conversion temporary.
+pub(crate) fn prepared_binding(ident: &syn::Ident) -> syn::Ident {
+    quote::format_ident!(
+        "__mx_prepared_{}",
+        crate::naming::unraw(ident),
+        span = proc_macro2::Span::mixed_site()
+    )
+}
+
+/// How the alias check prepares one argument (#1504).
+pub(crate) struct Preparation {
+    /// The binding of its prepared state ([`prepared_binding`]), which its
+    /// conversion reads.
+    pub(crate) binding: syn::Ident,
+    /// The expression that prepares it.
+    pub(crate) prepare: TokenStream,
+}
+
+/// The alias check of a wrapper or trait shim with preparable arguments
+/// (#1504), in two passes:
+///
+/// 1. `assert_or_select` checks `metadata` (every `Either` taken with both
+///    arms). A conflict that involves no top-level `Either` raises; one that
+///    does marks the `Either` argument instead.
+/// 2. Each marked argument is prepared (its `(index, preparation)` in
+///    `preparations`): the conversion runs up to the point where it would
+///    build a native reference, which tells its arm. Its metadata becomes
+///    what that arm borrows, and `assert_no_aliases` checks again.
+///
+/// The bindings are declared before the check, `Unprepared`, for the
+/// arguments' conversions to read. `NativeBorrow::selects` on each
+/// argument's metadata, a constant except for a copied trait signature,
+/// gates its preparation; when no argument selects, the check is the
+/// one-pass `assert_no_aliases` of a wrapper without preparations, so a call
+/// that holds no top-level `Either` runs the same check as before after
+/// optimisation. Without a mark, the second pass doesn't run.
+pub(crate) fn two_pass_alias_guard(
+    metadata: &[TokenStream],
+    args: &[TokenStream],
+    preparations: &[(usize, Preparation)],
+) -> TokenStream {
+    let span = proc_macro2::Span::mixed_site();
+    let borrows = syn::Ident::new("__miniextendr_native_borrows", span);
+    let native_args = syn::Ident::new("__miniextendr_native_args", span);
+    let select = syn::Ident::new("__miniextendr_select", span);
+    // `Prepared` has no `TryFromSexp` bound: a type without one is reported
+    // once, at the type, by its preparation, metadata and conversion.
+    let declarations = preparations.iter().map(|(_, Preparation { binding, .. })| {
+        quote! {
+            let mut #binding = ::miniextendr_api::from_r::prepared::Prepared::Unprepared;
+        }
+    });
+    let selects = preparations.iter().map(|(index, _)| {
+        let declared = &metadata[*index];
+        quote! { ::miniextendr_api::from_r::NativeBorrow::selects(#declared) }
+    });
+    let prepares = preparations
+        .iter()
+        .map(|(index, Preparation { binding, prepare })| {
+            let declared = &metadata[*index];
+            quote! {
+                if ::miniextendr_api::from_r::NativeBorrow::selects(#declared) && #select[#index] {
+                    #binding = #prepare;
+                    #borrows[#index] = ::miniextendr_api::from_r::prepared::Prepared::borrow(
+                        &#binding,
+                        #borrows[#index],
+                    );
+                }
+            }
+        });
+    quote! {
+        #(#declarations)*
+        {
+            let mut #borrows = [#(#metadata),*];
+            if ::miniextendr_api::from_r::borrow::needs_check(&#borrows) {
+                let #native_args = [#(#args),*];
+                if #(#selects)||* {
+                    // SAFETY: the arguments are rooted on R's main thread for
+                    // the call, and every allocating traversal (and each
+                    // preparation) runs inside R unwind protection.
+                    let #select = unsafe {
+                        ::miniextendr_api::from_r::borrow::assert_or_select(#native_args, #borrows)
+                    };
+                    if <[bool]>::contains(&#select, &true) {
+                        #(#prepares)*
+                        // SAFETY: as above.
+                        unsafe {
+                            ::miniextendr_api::from_r::borrow::assert_no_aliases(
+                                #native_args,
+                                #borrows,
+                            );
+                        }
+                    }
+                } else {
+                    // SAFETY: as above.
+                    unsafe {
+                        ::miniextendr_api::from_r::borrow::assert_no_aliases(#native_args, #borrows);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// [`try_from_sexp`] of an argument whose alias check may have prepared it
+/// (#1504): the conversion reads the [`prepared_binding`] the check left.
+fn prepared_conversion(
+    target: Option<&syn::Ident>,
+    ident: &syn::Ident,
+    sexp_ident: &syn::Ident,
+    ty: syn::Type,
+    span: proc_macro2::Span,
+) -> (TokenStream, syn::Type) {
+    let prepared = prepared_binding(ident);
+    match target {
+        Some(target) => (
+            quote_spanned! {span=> #target.convert_prepared(#prepared, #sexp_ident) },
+            syn::parse_quote!(_),
+        ),
+        None => {
+            // The type is spelled, so a type without `TryFromSexp` is
+            // reported at it, once, not again at the prepared binding.
+            let erased = crate::type_inspect::erase_lifetimes(&ty);
+            (
+                quote_spanned! {span=>
+                    ::miniextendr_api::from_r::prepared::convert::<#erased>(#prepared, #sexp_ident)
+                },
+                ty,
+            )
+        }
+    }
+}
+
+/// The native borrow of a choice parameter (#1504): an `Either<T, R>` choice
+/// (under `Missing` / `Option` layers too) borrows what `R` borrows, for
+/// input other than character or factor. Read through `EitherArmProbe`, so
+/// an `R` without `TryFromSexp` adds no error of its own. `None` without an
+/// `Either` layer: a choice is owned.
+fn choice_native_borrow(ty: &syn::Type) -> Option<TokenStream> {
+    let right = crate::type_inspect::choice_layers(ty).either_right?;
+    let right = crate::type_inspect::erase_lifetimes(right);
+    Some(quote! {{
+        #[allow(unused_imports)]
+        use ::miniextendr_api::match_arg::EitherArmProbeFallback as _;
+        ::miniextendr_api::match_arg::EitherArmProbe::<#right>::CHOICE_NATIVE_BORROW
+    }})
 }
 
 // region: layered choice parameters

@@ -1019,6 +1019,9 @@ impl From<SexpNaError> for SexpError {
 pub mod borrow;
 pub use borrow::NativeBorrow;
 
+#[doc(hidden)]
+pub mod prepared;
+
 /// TryFrom-style trait for converting SEXP to Rust types.
 ///
 /// Inbound counterpart of [`crate::into_r::IntoR`]. Strict by construction
@@ -1130,6 +1133,42 @@ pub trait TryFromSexp: Sized {
     #[doc(hidden)]
     unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
         Self::try_from_sexp(root.get())
+    }
+
+    /// Run this conversion up to the point where it would build a native
+    /// reference, for a generated wrapper whose alias check must learn which
+    /// arm of an `Either` the conversion takes (#1504, see [`prepared`]).
+    ///
+    /// The default runs a conversion with no `NATIVE_BORROW` now and keeps
+    /// its result, value or error. A borrowing conversion stays
+    /// [`Undecided`](prepared::Prepared::Undecided): only building its
+    /// reference could tell whether it succeeds, so the check takes all it
+    /// may borrow and it converts after the check. The native slice and
+    /// scalar references validate without building one, `Either` picks its
+    /// arm, and the types that wrap one conversion (`Option<Either<..>>`,
+    /// `Missing`, `Result<_, ()>`, `Nullable`, `#[derive(TryFromSexp)]`
+    /// newtypes) forward it, with [`__mx_materialize`](Self::__mx_materialize).
+    /// Runs on R's main thread inside the wrapper's unwind protection; the
+    /// argument is rooted by the call. Not public API.
+    #[doc(hidden)]
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        if Self::NATIVE_BORROW.is_none() {
+            prepared::Prepared::from_result(Self::try_from_sexp(sexp))
+        } else {
+            prepared::Prepared::Undecided(Self::NATIVE_BORROW)
+        }
+    }
+
+    /// Build the value a preparation deferred, after the alias check: follow
+    /// `arms` through each `Either` down to the borrowing conversion. An
+    /// override of [`__mx_prepare`](Self::__mx_prepare) that wraps another
+    /// type's preparation must forward this to that type. The default
+    /// converts. Not public API.
+    #[doc(hidden)]
+    #[inline]
+    fn __mx_materialize(sexp: SEXP, arms: prepared::Arms) -> Result<Self, Self::Error> {
+        let _ = arms;
+        Self::try_from_sexp(sexp)
     }
 
     /// Whether the converted argument holds a value `#[miniextendr(no_na)]`
@@ -1503,6 +1542,21 @@ mod references;
 
 // region: Blanket implementations for slices with arbitrary lifetimes
 
+/// The one check of a native slice conversion: `sexp` has `T`'s R type.
+/// Shared with its preparation, which defers the slice (#1504).
+#[inline]
+fn native_slice_type<T: crate::RNativeType>(sexp: SEXP) -> Result<(), SexpTypeError> {
+    let actual = sexp.type_of();
+    if actual == T::SEXP_TYPE {
+        Ok(())
+    } else {
+        Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        })
+    }
+}
+
 /// Blanket impl for `&[T]` where T: RNativeType
 ///
 /// This replaces the macro-generated `&'static [T]` impls with a more composable
@@ -1518,26 +1572,18 @@ where
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
-        }
+        native_slice_type::<T>(sexp)?;
         Ok(unsafe { sexp.as_slice::<T>() })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
-        }
+        native_slice_type::<T>(sexp)?;
         Ok(unsafe { sexp.as_slice_unchecked::<T>() })
+    }
+
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        prepared::native_leaf(native_slice_type::<T>(sexp))
     }
 }
 
@@ -1563,13 +1609,7 @@ where
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
-        }
+        native_slice_type::<T>(sexp)?;
         let len = sexp.len();
         let ptr = unsafe { T::dataptr_mut(sexp) };
         Ok(unsafe { r_slice_mut(ptr, len) })
@@ -1577,16 +1617,14 @@ where
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
-        }
+        native_slice_type::<T>(sexp)?;
         let len = unsafe { sexp.len_unchecked() };
         let ptr = unsafe { T::dataptr_mut(sexp) };
         Ok(unsafe { r_slice_mut(ptr, len) })
+    }
+
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        prepared::native_leaf(native_slice_type::<T>(sexp))
     }
 }
 
@@ -1617,6 +1655,13 @@ where
             unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
         Ok(Some(slice))
     }
+
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return prepared::Prepared::Ready(None);
+        }
+        prepared::native_leaf(native_slice_type::<T>(sexp).map_err(SexpError::from))
+    }
 }
 
 /// Blanket impl for `Option<&mut [T]>` where T: RNativeType
@@ -1645,6 +1690,13 @@ where
         let slice: &mut [T] =
             unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
         Ok(Some(slice))
+    }
+
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return prepared::Prepared::Ready(None);
+        }
+        prepared::native_leaf(native_slice_type::<T>(sexp).map_err(SexpError::from))
     }
 }
 // endregion
@@ -1696,6 +1748,17 @@ where
         }
         let value = unsafe { T::try_from_sexp_unchecked(sexp).map_err(Into::into)? };
         Ok(Ok(value))
+    }
+
+    fn __mx_prepare(sexp: SEXP) -> prepared::Prepared<Self> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return prepared::Prepared::Ready(Err(()));
+        }
+        T::__mx_prepare(sexp).map(Ok, Into::into)
+    }
+
+    fn __mx_materialize(sexp: SEXP, arms: prepared::Arms) -> Result<Self, Self::Error> {
+        T::__mx_materialize(sexp, arms).map(Ok).map_err(Into::into)
     }
 }
 // endregion

@@ -93,6 +93,7 @@
 //! whole reads as omitted. Such a choice parameter takes no `default`.
 
 use crate::SEXP;
+use crate::from_r::prepared::{Arms, Prepared};
 use crate::from_r::{SexpError, TryFromSexp};
 
 /// Wrapper type that detects if an R argument was not passed (missing).
@@ -334,6 +335,22 @@ where
                 .map(Missing::Present)
                 .map_err(Into::into)
         }
+    }
+
+    // An omitted argument is ready; a given one prepares as `T`, so an
+    // `Either` inside learns its arm (#1504).
+    fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+        if is_missing_arg(sexp) {
+            Prepared::Ready(Missing::Absent)
+        } else {
+            T::__mx_prepare(sexp).map(Missing::Present, Into::into)
+        }
+    }
+
+    fn __mx_materialize(sexp: SEXP, arms: Arms) -> Result<Self, Self::Error> {
+        T::__mx_materialize(sexp, arms)
+            .map(Missing::Present)
+            .map_err(Into::into)
     }
 }
 

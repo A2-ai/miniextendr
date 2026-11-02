@@ -63,7 +63,7 @@
 //! choice: it goes to `R` (or is `None` under `Option<Either<..>>`).
 
 use crate::condition::ArgError;
-use crate::from_r::{SexpError, TryFromSexp, charsxp_to_cow_lossy};
+use crate::from_r::{NativeBorrow, SexpError, TryFromSexp, charsxp_to_cow_lossy};
 use crate::gc_protect::ProtectScope;
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 
@@ -987,6 +987,13 @@ pub struct EitherArmProbe<R>(core::marker::PhantomData<fn() -> R>);
 impl<R: TryFromSexp> EitherArmProbe<R> {
     /// `R`'s [`TryFromSexp::CHARACTER_ONLY`].
     pub const CHARACTER_ONLY: bool = R::CHARACTER_ONLY;
+
+    /// The native borrow of the choice parameter: none for character or
+    /// factor input, which is the owned choice, else what `R` borrows
+    /// ([`NativeBorrow::choice_or`]). The generated alias check reads it
+    /// (#1504).
+    pub const CHOICE_NATIVE_BORROW: Option<NativeBorrow> =
+        NativeBorrow::choice_or(&R::NATIVE_BORROW);
 }
 
 /// The fallback of [`EitherArmProbe`] for an `R` without `TryFromSexp`: the
@@ -995,6 +1002,9 @@ impl<R: TryFromSexp> EitherArmProbe<R> {
 pub trait EitherArmProbeFallback {
     /// Always `false`.
     const CHARACTER_ONLY: bool = false;
+
+    /// Always `None`: no conversion, nothing to check.
+    const CHOICE_NATIVE_BORROW: Option<NativeBorrow> = None;
 }
 
 impl<R> EitherArmProbeFallback for EitherArmProbe<R> {}

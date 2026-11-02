@@ -6,6 +6,7 @@
 //! generated call site, preserving the condition-class probes.
 
 use crate::from_r::NativeBorrow;
+use crate::from_r::prepared::Prepared;
 use crate::gc_protect::Root;
 use crate::{SEXP, TryFromRoot, TryFromSexp};
 use core::marker::PhantomData;
@@ -24,6 +25,23 @@ impl<T> Argument<T> {
         T: TryFromSexp,
     {
         T::try_from_sexp(input)
+    }
+
+    /// Prepare the conversion for the second pass of the alias check, which
+    /// learns the arm an `Either` takes (#1504).
+    pub fn prepare(&self, input: SEXP) -> Prepared<T>
+    where
+        T: TryFromSexp,
+    {
+        T::__mx_prepare(input)
+    }
+
+    /// Convert an argument the alias check may have prepared.
+    pub fn convert_prepared(&self, prepared: Prepared<T>, input: SEXP) -> Result<T, T::Error>
+    where
+        T: TryFromSexp,
+    {
+        crate::from_r::prepared::convert(prepared, input)
     }
 
     /// Convert a borrow whose lifetime is tied to the wrapper's root.

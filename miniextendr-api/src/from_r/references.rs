@@ -22,6 +22,7 @@
 //! this does not establish the root lifetime or exclude borrows held elsewhere
 //! by a direct caller (the remaining lifetime-boundary work is #1427).
 
+use crate::from_r::prepared::{Prepared, native_leaf};
 use crate::from_r::{
     NativeBorrow, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_batched,
     map_vecsxp_with, r_slice_mut,
@@ -102,6 +103,44 @@ fn map_mutable_list<T: RNativeType, U>(
     Ok(raw.into_iter().map(map).collect())
 }
 
+/// The checks of a native scalar reference conversion: `sexp` has `T`'s R
+/// type and length one. `len` reads the length, only once the type matched
+/// (a rejected ALTREP of another type must not run its Length callback).
+/// Shared with its preparation, which defers the reference (#1504).
+#[inline]
+fn native_scalar<T: RNativeType>(sexp: SEXP, len: impl FnOnce() -> usize) -> Result<(), SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+    let len = len();
+    if len != 1 {
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
+        }
+        .into());
+    }
+    Ok(())
+}
+
+/// The preparation of `Option<&T>` / `Option<&mut T>`: `NULL` is `None`,
+/// anything else is a scalar reference.
+fn optional_native_scalar<T: RNativeType, R: TryFromSexp<Error = SexpError>>(
+    sexp: SEXP,
+    none: impl FnOnce() -> R,
+) -> Prepared<R> {
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        Prepared::Ready(none())
+    } else {
+        native_leaf(native_scalar::<T>(sexp, || sexp.len()))
+    }
+}
+
 macro_rules! impl_ref_conversions_for {
     ($t:ty) => {
         impl<'a> TryFromSexp for &'a $t {
@@ -112,22 +151,7 @@ macro_rules! impl_ref_conversions_for {
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let len = sexp.len();
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
+                native_scalar::<$t>(sexp, || sexp.len())?;
                 unsafe { sexp.as_slice::<$t>() }.first().ok_or_else(|| {
                     SexpLengthError {
                         expected: 1,
@@ -139,22 +163,7 @@ macro_rules! impl_ref_conversions_for {
 
             #[inline]
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let len = unsafe { sexp.len_unchecked() };
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
+                native_scalar::<$t>(sexp, || unsafe { sexp.len_unchecked() })?;
                 unsafe { sexp.as_slice_unchecked::<$t>() }
                     .first()
                     .ok_or_else(|| {
@@ -164,6 +173,10 @@ macro_rules! impl_ref_conversions_for {
                         }
                         .into()
                     })
+            }
+
+            fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+                native_leaf(native_scalar::<$t>(sexp, || sexp.len()))
             }
         }
 
@@ -181,46 +194,20 @@ macro_rules! impl_ref_conversions_for {
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let len = sexp.len();
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
+                native_scalar::<$t>(sexp, || sexp.len())?;
                 let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
                 Ok(unsafe { &mut *ptr })
             }
 
             #[inline]
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let len = unsafe { sexp.len_unchecked() };
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
+                native_scalar::<$t>(sexp, || unsafe { sexp.len_unchecked() })?;
                 let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
                 Ok(unsafe { &mut *ptr })
+            }
+
+            fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+                native_leaf(native_scalar::<$t>(sexp, || sexp.len()))
             }
         }
 
@@ -246,6 +233,10 @@ macro_rules! impl_ref_conversions_for {
                 let value: &'a $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
                 Ok(Some(value))
             }
+
+            fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+                optional_native_scalar::<$t, Self>(sexp, || None)
+            }
         }
 
         impl<'a> TryFromSexp for Option<&'a mut $t> {
@@ -269,6 +260,10 @@ macro_rules! impl_ref_conversions_for {
                 }
                 let value: &'a mut $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
                 Ok(Some(value))
+            }
+
+            fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+                optional_native_scalar::<$t, Self>(sexp, || None)
             }
         }
 
