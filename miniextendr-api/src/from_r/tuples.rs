@@ -55,6 +55,14 @@ macro_rules! impl_tuple_vec_try_from_sexp {
                 self.iter().any(<$row>::__mx_has_na)
             }
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where Self: 'root,
+            {
+                crate::from_r::prepared::list(root, <$row>::__mx_prepare)
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 Self::__mx_try_from_sexp_with_check(sexp, &crate::from_r::no_element_check)
             }
@@ -106,6 +114,38 @@ macro_rules! impl_tuple_try_from_sexp {
 
             fn __mx_has_na(&self) -> bool {
                 $(self.$idx.__mx_has_na())||+
+            }
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where Self: 'root,
+            {
+                let sexp = root.get();
+                check_list_shape(sexp, $n, || sexp.len())?;
+                let mut errors = crate::from_r::ElementErrors::default();
+                let partial = (
+                    $(
+                        match <$T as TryFromSexp>::__mx_prepare(unsafe {
+                            root.protect_child(sexp.vector_elt($idx))
+                        }) {
+                            Ok(value) => Some(value),
+                            Err(error) => {
+                                errors.push($idx, error.into());
+                                None
+                            }
+                        },
+                    )+
+                );
+                let partial = errors.into_result(partial)?;
+                let partial = ($(partial.$idx.unwrap(),)+);
+                let mut borrows = Vec::new();
+                $(borrows.extend_from_slice(partial.$idx.borrows());)+
+                Ok(unsafe {
+                    crate::from_r::prepared::Prepared::deferred(root, borrows, move || {
+                        ($(partial.$idx.finish(),)+)
+                    })
+                })
             }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -164,6 +204,19 @@ macro_rules! impl_tuple_try_from_sexp {
 
             fn __mx_has_na(&self) -> bool {
                 self.as_ref().is_some_and(<($($T,)+)>::__mx_has_na)
+            }
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where Self: 'root,
+            {
+                if root.get().type_of() == SEXPTYPE::NILSXP {
+                    Ok(crate::from_r::prepared::Prepared::ready(root, None))
+                } else {
+                    <($($T,)+)>::__mx_prepare(root)
+                        .map(|value| unsafe { value.map(Some) })
+                }
             }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

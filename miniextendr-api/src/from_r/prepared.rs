@@ -120,6 +120,25 @@ impl<'root, T: 'root> Prepared<'root, T> {
         }
     }
 
+    /// Compose already validated children without materializing their borrows.
+    ///
+    /// # Safety
+    ///
+    /// `borrows` must contain every range selected by `make`'s children.
+    /// `make` may only finish those children and assemble their Rust values;
+    /// it must not perform further validation or R API calls.
+    pub(crate) unsafe fn deferred(
+        input: Root<'root>,
+        borrows: Vec<BorrowRange>,
+        make: impl FnOnce() -> T + 'root,
+    ) -> Self {
+        Self {
+            input,
+            borrows,
+            value: Value::Deferred(Box::new(make)),
+        }
+    }
+
     /// Construct the selected Rust value after preflight.
     ///
     /// # Safety
@@ -191,4 +210,31 @@ where
             right_error: Box::new(error.into()),
         }),
     }
+}
+
+/// Keep all selected element ranges until the whole collection is checked.
+pub(crate) fn sequence<'root, T: 'root>(
+    root: Root<'root>,
+    values: Vec<Prepared<'root, T>>,
+) -> Prepared<'root, Vec<T>> {
+    let borrows = values
+        .iter()
+        .flat_map(|v| v.borrows().iter().copied())
+        .collect();
+    unsafe {
+        Prepared::deferred(root, borrows, move || {
+            values.into_iter().map(|value| value.finish()).collect()
+        })
+    }
+}
+
+/// Read and retain each list child before the next allocating ALTREP accessor.
+pub(crate) fn list<'root, T: 'root>(
+    root: Root<'root>,
+    mut prepare: impl FnMut(Root<'root>) -> Result<Prepared<'root, T>, super::SexpError>,
+) -> Result<Prepared<'root, Vec<T>>, super::SexpError> {
+    let values = super::map_vecsxp_batched(root.get(), |value| {
+        prepare(unsafe { root.protect_child(value) })
+    })?;
+    Ok(sequence(root, values))
 }

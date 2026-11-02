@@ -1084,6 +1084,15 @@ where
 
     type Error = <Vec<T> as TryFromSexp>::Error;
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        <Vec<T>>::__mx_prepare(root).map(|value| unsafe { value.map(Vec::into_boxed_slice) })
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         <Vec<T> as TryFromSexp>::try_from_sexp(sexp).map(|v| v.into_boxed_slice())
@@ -1719,6 +1728,21 @@ where
 
     type Error = SexpError;
 
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        if root.get().type_of() == SEXPTYPE::NILSXP {
+            Ok(prepared::Prepared::ready(root, None))
+        } else {
+            <Vec<T>>::__mx_prepare(root)
+                .map(|value| unsafe { value.map(Some) })
+                .map_err(Into::into)
+        }
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if sexp.type_of() == SEXPTYPE::NILSXP {
@@ -1830,6 +1854,17 @@ where
         NativeBorrow::in_list(<Vec<T> as TryFromSexp>::NATIVE_BORROW);
 
     type Error = SexpError;
+
+    fn __mx_prepare<'root>(
+        root: crate::Root<'root>,
+    ) -> Result<prepared::Prepared<'root, Self>, Self::Error>
+    where
+        Self: 'root,
+    {
+        prepared::list(root, |child| {
+            <Vec<T>>::__mx_prepare(child).map_err(Into::into)
+        })
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_vecsxp_with(sexp, |_i, elem| {

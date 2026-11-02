@@ -368,6 +368,17 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <&'a $t>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_vecsxp_with(sexp, |_i, elem| TryFromSexp::try_from_sexp(elem))
             }
@@ -378,6 +389,17 @@ macro_rules! impl_ref_conversions_for {
                 NativeBorrow::in_list(<Option<&'a $t> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <Option<&'a $t>>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_vecsxp_with(sexp, |_i, elem| {
@@ -397,6 +419,17 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <&'a mut $t>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_mutable_list::<$t, _>(sexp, true, false, |range| {
                     // Non-optional scalar ranges were checked above.
@@ -411,6 +444,17 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <Option<&'a mut $t>>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_mutable_list::<$t, _>(sexp, true, true, |range| {
                     range.map(|range| unsafe { &mut *range.data })
@@ -424,6 +468,17 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <&'a [$t]>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_vecsxp_with(sexp, |_i, elem| {
                     TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)
@@ -436,6 +491,17 @@ macro_rules! impl_ref_conversions_for {
                 NativeBorrow::in_list(<Option<&'a [$t]> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <Option<&'a [$t]>>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_vecsxp_with(sexp, |_i, elem| {
@@ -456,6 +522,17 @@ macro_rules! impl_ref_conversions_for {
 
             type Error = SexpError;
 
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <&'a mut [$t]>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
+
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_mutable_list::<$t, _>(sexp, false, false, |range| {
                     let range = range.unwrap();
@@ -469,6 +546,17 @@ macro_rules! impl_ref_conversions_for {
                 NativeBorrow::in_list(<Option<&'a mut [$t]> as TryFromSexp>::NATIVE_BORROW);
 
             type Error = SexpError;
+
+            fn __mx_prepare<'root>(
+                root: crate::Root<'root>,
+            ) -> Result<crate::from_r::prepared::Prepared<'root, Self>, Self::Error>
+            where
+                Self: 'root,
+            {
+                crate::from_r::prepared::list(root, |child| {
+                    <Option<&'a mut [$t]>>::__mx_prepare(child).map_err(Into::into)
+                })
+            }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 map_mutable_list::<$t, _>(sexp, false, true, |range| {
