@@ -58,7 +58,7 @@ keep_rows(df, b > limit)     # `b` is a column, `limit` the caller's variable
 |---|---|
 | `expr()` | the expression as written: a symbol, a call or a constant |
 | `env()` | the environment it was written in (`parent.frame()` of the wrapper) |
-| `as_name()` | `Some(name)` for a symbol (`x`) or a single string (`"x"`), else `None` |
+| `as_name()` | `Ok(Some(name))` for a symbol (`x`) or a single string (`"x"`), else `Ok(None)`; `Err` for a name that is not text (marked as bytes) |
 | `eval()` | `eval(expr, env)` |
 | `eval_in(data)` | `eval(expr, data, env)`: `data` a list or data frame (its named elements in front of `env`, the first of two same-named ones winning), an environment (used as is) or `NULL` (`env`). Anything else panics. |
 | `try_eval_in(data)` | `eval_in(data)` with an R error returned as `Err(REvalError)` ([below](#an-r-error-returned-as-err)) |
@@ -124,7 +124,7 @@ undeclared `rlang::` use. miniextendr itself does not depend on rlang;
 | `sexp()` | the quosure (a classed formula), to pass to an R function |
 | `expr()` | its expression (`rlang::quo_get_expr()`), read natively |
 | `env()` | its environment (`rlang::quo_get_env()`), read natively |
-| `as_name()` | `Some(name)` for a symbol or a single string, looking through nested quosures, else `None` |
+| `as_name()` | `Ok(Some(name))` for a symbol or a single string, looking through nested quosures, else `Ok(None)`; `Err` for a name that is not text (marked as bytes) |
 | `eval_tidy(data)` | `rlang::eval_tidy(quo, data)`: columns win over the quosure's variables, `.data$x` / `.env$x` pick a side, `data` may be `NULL` |
 | `args(&scope)` | the arguments of the quosure's call, each a `(name, Quosure)`; `None` when the expression is not a call ([below](#quosures-in-a-call)) |
 

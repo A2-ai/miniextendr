@@ -52,10 +52,16 @@ deserializers refuse it with an `RSerdeError`; `DataFrame::group_by` with a
 `DataFrameError` naming every refused key, and `group_by_metadata` /
 `group_declaration` every refused grouping-variable name.
 
+`DataFrame::names()` and `as_name()` on `Quoted` / `Quosure` return the same
+refusal as an `Err` (`DataFrame::names()` names every refused column). Refuse
+the value with it; don't default it away. `df.names().unwrap_or_default()`
+reads a frame with one bytes-marked name as a frame with no names, and code
+that then pairs names with columns by position silently mislabels them.
+
 Reads that cannot return an error, such as `SexpExt::string_elt_str`,
-`SexpExt::r_char_str`, the `StrVec` accessors, and `DataFrame::names()`, read
-with the same encoding rules and **panic** on a string that is not text,
-naming the element. Name lookups (`List` / `NamedList` / `TypedList` by
+`SexpExt::r_char_str` and the `StrVec` accessors, read with the same encoding
+rules and **panic** on a string that is not text, naming the element. Name
+lookups (`List` / `NamedList` / `TypedList` by
 name, `DataFrame::column_raw` / `contains_column`) translate a name as a
 conversion does and skip a name that is not text, which no Rust `&str` can
 match. Names that only go into messages (a class attribute, a connection's

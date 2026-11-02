@@ -69,7 +69,7 @@ fn optional_frame_null_and_data_frame() {
         let frame = some.expect("a data frame is Some");
         assert_eq!(frame.as_sexp(), input.get(), "the same object, not a copy");
         assert_eq!((frame.nrow(), frame.ncol()), (3, 2));
-        assert_eq!(frame.names(), ["id", "v"]);
+        assert_eq!(frame.names().unwrap(), ["id", "v"]);
         assert_eq!(
             frame.as_sexp().get_class().xlength(),
             3,

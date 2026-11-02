@@ -134,7 +134,7 @@ let df: BuiltDataFrame = rows.into_dataframe()?;
 
 df.nrow();                       // row count
 df.ncol();                       // column count
-df.names();                      // Vec<String> of column names
+df.names()?;                     // Vec<String> of column names (Err for a name marked as bytes)
 df.contains_column("sensor");    // bool
 
 let values: Vec<f64> = df.column("value").unwrap();   // typed column accessor

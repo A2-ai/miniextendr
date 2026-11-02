@@ -17,7 +17,7 @@ use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::prelude::{Call, List, OwnedProtect, PairListExt, SEXP, SexpExt};
 use miniextendr_api::{
-    Missing, NamedListBuilder, Quosure, Quoted, SEXPTYPE, miniextendr, rust_error,
+    Missing, NamedListBuilder, Quosure, Quoted, SEXPTYPE, SexpError, miniextendr, rust_error,
 };
 
 use crate::expression_tests::caught_parts;
@@ -66,8 +66,8 @@ pub fn quoted_expr(expr: Quoted) -> SEXP {
 
 /// `expr` as a name: a symbol or a string, else `NA`.
 #[miniextendr(noexport)]
-pub fn quoted_name(expr: Quoted) -> Option<String> {
-    expr.as_name().map(str::to_owned)
+pub fn quoted_name(expr: Quoted) -> Result<Option<String>, SexpError> {
+    Ok(expr.as_name()?.map(str::to_owned))
 }
 
 /// `"absent"` when `expr` was omitted, else `typeof()` of the expression.
@@ -195,8 +195,8 @@ pub fn quosure_sexp(x: Quosure) -> SEXP {
 
 /// `x` as a name: a symbol or a string, else `NA`.
 #[miniextendr(noexport)]
-pub fn quosure_name(x: Quosure) -> Option<String> {
-    x.as_name().map(str::to_owned)
+pub fn quosure_name(x: Quosure) -> Result<Option<String>, SexpError> {
+    Ok(x.as_name()?.map(str::to_owned))
 }
 
 /// `"absent"` when `x` was omitted, else `typeof()` of the expression.
@@ -600,7 +600,7 @@ pub fn gc_stress_quoted() -> i32 {
         let arg = OwnedProtect::new(List::from_raw_values(vec![expr.get(), R_GlobalEnv]).as_sexp());
         let arg_sexp = arg.get();
         let quoted = Quoted::from_wrapper_arg(&arg_sexp).expect("an argument was passed");
-        assert!(quoted.as_name().is_none());
+        assert!(quoted.as_name().expect("text").is_none());
 
         // A data mask with both columns, from a named list built here.
         let a = OwnedProtect::new(miniextendr_api::IntoR::into_sexp(vec![1i32, 2, 3]));
@@ -623,7 +623,7 @@ pub fn gc_stress_quoted() -> i32 {
             OwnedProtect::new(List::from_raw_values(vec![name.get(), R_GlobalEnv]).as_sexp());
         let named_sexp = named.get();
         let named = Quoted::from_wrapper_arg(&named_sexp).expect("an argument was passed");
-        assert_eq!(named.as_name(), Some("col"));
+        assert_eq!(named.as_name().expect("text"), Some("col"));
 
         total
     }
@@ -658,7 +658,7 @@ pub fn gc_stress_quosure_args() -> i32 {
         assert_eq!(names, [Some("time"), Some("dose"), Some("wt"), None]);
         assert_eq!(args[0].1.sexp(), tad.sexp());
         assert_eq!(args[1].1.expr().type_of(), SEXPTYPE::LGLSXP);
-        assert_eq!(args[2].1.as_name(), Some("WT"));
+        assert_eq!(args[2].1.as_name().expect("text"), Some("WT"));
         assert!(args[3].1.expr().is_nil());
         assert!(
             args.iter()

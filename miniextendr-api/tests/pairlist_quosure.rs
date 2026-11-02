@@ -154,7 +154,7 @@ fn from_sexp_reads_a_quosure_only() {
     assert_eq!(quosure.sexp(), quo);
     assert_eq!(quosure.expr(), r("quote(TAD)"));
     assert_eq!(quosure.env(), unsafe { R_GlobalEnv });
-    assert_eq!(quosure.as_name(), Some("TAD"));
+    assert_eq!(quosure.as_name().unwrap(), Some("TAD"));
 }
 
 /// A quosure wrapping a quosure reads as the inner one.

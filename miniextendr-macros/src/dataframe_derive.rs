@@ -3143,7 +3143,15 @@ fn derive_struct_dataframe(
                     extracts.push(quote! {
                         let #vec_var: ::std::vec::Vec<#inner_ty> = {
                             let __prefix: &str = #prefix_lit;
-                            let __names = __view.names();
+                            let __names = match __view.names() {
+                                ::core::result::Result::Ok(__n) => __n,
+                                ::core::result::Result::Err(__e) => {
+                                    return ::core::result::Result::Err(::std::format!(
+                                        "struct column `{}`: the data.frame's column names: {}",
+                                        #base, __e
+                                    ));
+                                }
+                            };
                             let __sel: ::std::vec::Vec<&str> = __names
                                 .iter()
                                 .filter(|__n| __n.starts_with(__prefix))

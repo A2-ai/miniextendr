@@ -417,16 +417,24 @@ impl DataFrame {
         self.sexp.len()
     }
 
-    /// Collect column names in column order.
-    pub fn names(&self) -> Vec<String> {
+    /// Collect column names in column order, each read with its own encoding
+    /// (a Latin-1 name is translated). An `NA` name reads as `""`, and a frame
+    /// without names gives an empty vector.
+    ///
+    /// # Errors
+    ///
+    /// A name marked as bytes, or one that is not valid UTF-8, is not text:
+    /// the error names every such column, 1-based (`marked as bytes, not text
+    /// (elements 2, 4)`). Refuse the frame with it rather than defaulting it
+    /// away: `unwrap_or_default()` would read a frame with one such name as a
+    /// frame with no names, and shift every other name off its column.
+    pub fn names(&self) -> Result<Vec<String>, SexpError> {
         let names_sexp = self.sexp.get_names();
         if names_sexp.is_nil() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
-        let n = self.sexp.len() as isize;
-        (0..n)
-            .map(|i| names_sexp.string_elt_str(i).unwrap_or("").to_string())
-            .collect()
+        let names = <Vec<Option<String>> as TryFromSexp>::try_from_sexp(names_sexp)?;
+        Ok(names.into_iter().map(Option::unwrap_or_default).collect())
     }
 
     /// Check whether a column name exists.

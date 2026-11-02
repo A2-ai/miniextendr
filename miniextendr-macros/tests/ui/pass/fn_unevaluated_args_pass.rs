@@ -5,7 +5,7 @@
 
 #![allow(dead_code)]
 
-use miniextendr_api::{Call, Missing, Quosure, Quoted, SEXP, miniextendr};
+use miniextendr_api::{Call, Missing, Quosure, Quoted, SEXP, SexpError, miniextendr};
 
 #[miniextendr]
 pub fn evaluate(expr: Quoted) -> SEXP {
@@ -19,8 +19,8 @@ pub fn keep_rows(data: SEXP, cond: Quoted, limit: i32) -> i32 {
 }
 
 #[miniextendr]
-pub fn column_name<'a>(col: Quoted<'a>) -> Option<String> {
-    col.as_name().map(str::to_owned)
+pub fn column_name<'a>(col: Quoted<'a>) -> Result<Option<String>, SexpError> {
+    Ok(col.as_name()?.map(str::to_owned))
 }
 
 #[miniextendr]
