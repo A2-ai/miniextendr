@@ -313,6 +313,7 @@ mod panic_telemetry_tests;
 mod panic_tests;
 mod param_check_tests;
 mod pipe_builder_tests;
+mod plain_na_argument_tests;
 mod precondition_bench_fixtures;
 mod precondition_marker_tests;
 mod protect_pool_tests;

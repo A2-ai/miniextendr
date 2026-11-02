@@ -21,11 +21,13 @@ expect_refused_alike <- function(nullable, option, x) {
 test_that("Nullable<i32> takes NULL, NA and an integer, as Option<i32> does", {
   nullable <- miniextendr:::nullable_arg_i32
   option <- miniextendr:::option_arg_i32
-  for (x in list(NULL, NA_integer_, 3L)) {
+  for (x in list(NULL, NA_integer_, NA, 3L)) {
     expect_identical(nullable(x), option(x))
   }
   expect_identical(nullable(NULL), "none")
   expect_identical(nullable(NA_integer_), "none")
+  # A plain `NA` is "no value" too (#2305).
+  expect_identical(nullable(NA), "none")
   expect_identical(nullable(3L), "3")
 })
 
@@ -40,8 +42,8 @@ test_that("Nullable<i32> refuses a string with Option<i32>'s R-side check", {
   expect_identical(e$param, "x")
   # The R-side check caught it: no Rust type.
   expect_null(e$rust_type)
-  for (x in list(1.5, 1:2, NA)) {
-    # A logical `NA` is no integer to either check.
+  for (x in list(1.5, 1:2, TRUE, c(NA, NA))) {
+    # A logical value other than a plain `NA` is no integer to either check.
     expect_refused_alike(miniextendr:::nullable_arg_i32, miniextendr:::option_arg_i32, x)
   }
 })
@@ -49,10 +51,11 @@ test_that("Nullable<i32> refuses a string with Option<i32>'s R-side check", {
 test_that("without the R-side check, the Rust conversion words it as Option<i32>", {
   nullable <- miniextendr:::nullable_arg_i32_unchecked
   option <- miniextendr:::option_arg_i32_unchecked
-  for (x in list(NULL, NA_integer_, 3L)) {
+  for (x in list(NULL, NA_integer_, NA, 3L)) {
     expect_identical(nullable(x), option(x))
   }
-  for (x in list("a", 1.5, 1:2)) {
+  expect_identical(nullable(NA), "none")
+  for (x in list("a", 1.5, 1:2, TRUE, c(NA, NA))) {
     e <- expect_refused_alike(nullable, option, x)
     expect_match(conditionMessage(e), "^'x' must be NULL or a single integer: ")
     expect_identical(e$kind, "conversion")
@@ -63,13 +66,14 @@ test_that("without the R-side check, the Rust conversion words it as Option<i32>
 })
 
 test_that("Nullable<String> and Nullable<Vec<i32>> read as their Option twins", {
-  for (x in list(NULL, NA_character_, "abc")) {
+  for (x in list(NULL, NA_character_, NA, "abc")) {
     expect_identical(
       miniextendr:::nullable_arg_string(x),
       miniextendr:::option_arg_string(x)
     )
   }
   expect_identical(miniextendr:::nullable_arg_string(NA_character_), "none")
+  expect_identical(miniextendr:::nullable_arg_string(NA), "none")
   expect_identical(miniextendr:::nullable_arg_string("abc"), "\"abc\"")
   for (x in list(1, c("a", "b"), TRUE)) {
     expect_refused_alike(

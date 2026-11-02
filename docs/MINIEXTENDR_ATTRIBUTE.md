@@ -1028,8 +1028,8 @@ pub fn set_interval(
 ```r
 if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error("tau", "must not be NA")
 if (!isTRUE(is.null(tau) || !inherits(tau, c("difftime", "Date", "POSIXt")))) .miniextendr_arg_error("tau", message = "`tau` must be a plain number in the time unit of the data")
-if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error("tau", "must be NULL or numeric, logical, character, or factor")
-if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error("tau", "must be NULL or have length 1")
+if (!isTRUE(is.null(tau) || (is.logical(tau) && length(tau) == 1L && is.na(tau)) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error("tau", "must be NULL or numeric, logical, character, or factor")
+if (!isTRUE(is.null(tau) || (is.logical(tau) && length(tau) == 1L && is.na(tau)) || length(tau) == 1L)) .miniextendr_arg_error("tau", "must be NULL or have length 1")
 ```
 
 The refusal runs before the type checks (after `no_na`, and after `inherits`

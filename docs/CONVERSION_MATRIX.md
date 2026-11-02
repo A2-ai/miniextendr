@@ -16,7 +16,7 @@ Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f6
 
 Coercion preserves every input type accepted in normal mode. Non-native numeric scalars and vectors use the same checked multi-source converters. The native `i32` / `Vec<i32>` additionally accept whole-number doubles, logicals, and raws (`3` reaches an `i32` parameter as `3L`; `3.5`, `NA`, and out-of-range values are errors), and the native `f64` / `Vec<f64>` additionally accept integers, logicals, and raws. NA follows `as.integer()` / `as.numeric()`: it propagates where the declared type can carry it (`f64` and `Vec<f64>` receive `NA_real_` for an integer or logical `NA`; `Vec<i32>` receives `NA_integer_` for `NA_real_` or a logical `NA`), while a scalar `i32` keeps rejecting `NA` as it does without coerce. The generated R precondition follows the selected conversion, so `x: i32` under coerce is gated by "integer or whole-number numeric" instead of failing later in Rust. Borrowed slices (`&[i32]`, `&[f64]`) stay single-type because they cannot allocate a converted copy. `bool` and `Vec<bool>` additionally accept integer `0` and `1`, while retaining logical inputs; NA and other integers are errors. Vector conversion reports all failing indices in one diagnostic.
 
-The NA-carrying forms widen the same way (#2274). `Option<i32>`, `Option<f64>` and `Option<bool>` read `NULL` as `None`, convert any other value as their plain coerced type does, and read an `NA` of any accepted R type as `None`: `NA_real_` or a logical `NA` into `Option<i32>`, an integer `NA` into `Option<bool>`. `NaN` stays an error for `Option<i32>` and a value for `Option<f64>`, as without coerce. `Vec<Option<i32>>`, `Vec<Option<f64>>` and `Vec<Option<bool>>` convert element-wise, read each `NA` element as `None`, and report every failing element in one diagnostic; like `Vec<T>`, they refuse `NULL`. The R precondition of an `Option<T>` is its scalar's widened check behind `is.null()` ("must be NULL or integer or whole-number numeric"), that of a `Vec<Option<T>>` its vector's. The `Option<T>` and `Vec<Option<T>>` forms of the non-native numeric types already read every numeric source, so `coerce` keeps their conversion.
+The NA-carrying forms widen the same way (#2274). `Option<i32>`, `Option<f64>` and `Option<bool>` read `NULL` as `None`, convert any other value as their plain coerced type does, and read an `NA` of any accepted R type as `None`: `NA_real_` or a logical `NA` into `Option<i32>`, an integer `NA` into `Option<bool>`. `NaN` stays an error for `Option<i32>` and a value for `Option<f64>`, as without coerce. `Vec<Option<i32>>`, `Vec<Option<f64>>` and `Vec<Option<bool>>` convert element-wise, read each `NA` element as `None`, and report every failing element in one diagnostic; like `Vec<T>`, they refuse `NULL`. The R precondition of an `Option<T>` is its scalar's widened check behind `is.null()` and the plain-`NA` test of every optional scalar ("must be NULL or integer or whole-number numeric"), that of a `Vec<Option<T>>` its vector's. The `Option<T>` and `Vec<Option<T>>` forms of the non-native numeric types already read every numeric source, so `coerce` keeps their conversion.
 
 | Parameter type under `coerce` | Accepts | Reads `None` |
 |-------------------------------|---------|--------------|
@@ -59,17 +59,38 @@ These types require an exact R type match. Length must be 1.
 
 ### Option Wrappers (Normal Mode)
 
-`Option<T>` maps NA to `None` and NULL to `None`:
+`Option<T>` of a scalar maps `NULL`, the type's own NA and a plain `NA` to `None`:
 
-| Rust Type | Accepted R Type | On NA | On NULL |
-|-----------|----------------|-------|---------|
-| `Option<i32>` | INTSXP | `None` | `None` |
-| `Option<f64>` | REALSXP | `None` | `None` |
-| `Option<u8>` | RAWSXP | `Some(val)` (raw has no NA) | `None` |
-| `Option<Rcomplex>` | CPLXSXP | `None` | `None` |
-| `Option<bool>` | LGLSXP | `None` | `None` |
-| `Option<Rboolean>` | LGLSXP | `None` | `None` |
-| `Option<String>` | STRSXP | `None` | `None` |
+| Rust Type | Accepted R Type | On NA | On plain `NA` | On NULL |
+|-----------|----------------|-------|---------------|---------|
+| `Option<i32>` | INTSXP | `None` | `None` | `None` |
+| `Option<f64>` | REALSXP | `None` | `None` | `None` |
+| `Option<u8>` | RAWSXP | `Some(val)` (raw has no NA) | `None` | `None` |
+| `Option<Rcomplex>` | CPLXSXP | `None` | `None` | `None` |
+| `Option<bool>` | LGLSXP | `None` | `None` (it is the logical NA) | `None` |
+| `Option<Rboolean>` | LGLSXP | `None` | `None` (it is the logical NA) | `None` |
+| `Option<String>` | STRSXP | `None` | `None` | `None` |
+
+A plain `NA` is R's untyped missing value: a logical vector of length one
+holding `NA`, which `c(NA, 1L)` turns into `NA_integer_`. R users write `f(NA)`
+to mean "no value", so an optional scalar reads it as `None`, as it reads
+`NULL` (#2305). The R-side check passes it next to `NULL`, by type and length
+only (`is.null(x) || (is.logical(x) && length(x) == 1L && is.na(x)) ||
+is.integer(x)`, attributes not looked at), and the conversion reads it as
+`None` too, so a `.Call()` that skips the wrapper agrees. Every other value
+keeps its check, and the messages keep naming the type: a double for an
+`Option<i32>` is still refused without `coerce` (`'x' must be NULL or
+integer`), and so are `c(NA, NA)` and `TRUE`. The same holds for the other
+optional scalars: the multi-source numerics (`Option<i64>`, `Option<u32>`,
+`Option<f32>`, ...), the other string forms (`Option<&str>`,
+`Option<Box<str>>`, `Option<PathBuf>`, `Option<OsString>`, the
+`try_from_sexp_via_str_parse!` types), `Option<Complex<f64>>`, the optional
+date-time scalars, a `#[derive(TryFromSexp)]` newtype over one of these (its
+`validate` check does not see the `NA`), and a `match_arg` `Option<Mode>`
+(see "Optional Choice" in [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md)). A
+`no_na` parameter still refuses a plain `NA`. The native element borrows
+(`Option<&i32>`, `Option<&f64>`, ...) read only `NULL` as `None`: they point at
+an element, `NA` included.
 
 Under `coerce`, `Option<i32>`, `Option<f64>` and `Option<bool>` (and their `Vec<Option<T>>` forms) also accept the other numeric sources, with every `NA` read as `None`; see "Coerce Mode" above.
 
@@ -79,7 +100,11 @@ A `Nullable<T>` argument reads as `Option<T>` in every row here, `coerce`, `no_n
 
 `Option` around a value with no NA of its own reads only `NULL` as `None`.
 Any other value converts as the inner type and becomes `Some`, with the inner
-conversion's error (the R-side message prefixes the expectation with `NULL or`):
+conversion's error (the R-side message prefixes the expectation with `NULL or`).
+A plain `NA` is such a value: for an optional vector it is a logical vector of
+length one, not "no value", so `Option<Vec<i32>>` refuses it (`'x' must be NULL
+or an integer vector`) and `Option<Vec<Option<bool>>>` reads it as
+`Some(vec![None])`:
 
 | Rust Type | On NULL | Otherwise | On failure |
 |-----------|---------|-----------|------------|
@@ -180,7 +205,9 @@ value as returning `.0`; for these, returning `.0` stays the idiom.
 The generated R precondition for `AsNumeric` / `AsNumericVec` is
 `is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)` ("'x' must
 be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
-`is.null(x) ||` under `Option<…>`). For `AsCharacter` / `AsCharacterVec` it is
+`is.null(x) ||` under `Option<…>`, which for `AsNumeric` also passes a plain
+`NA`, #2305: `Option<AsNumeric>` reads it as `Some(AsNumeric(None))`, the
+marker's own `NA`). For `AsCharacter` / `AsCharacterVec` it is
 `is.atomic(x)` ("'x' must be atomic", base R's own wording; plus length 1 for
 `AsCharacter`), which refuses lists and data frames before `.Call`. `AsFromStr` /
 `AsFromStrVec` have no R precondition; their errors come from the conversion.

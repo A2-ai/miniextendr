@@ -29,7 +29,7 @@
 //! | Shape | NA input | Behaviour |
 //! |---|---|---|
 //! | `T` scalar | NaN | `Err(SexpError::Na)` |
-//! | `Option<T>` scalar | NaN | `Ok(None)` |
+//! | `Option<T>` scalar | NaN, `NULL` or a plain logical `NA` (#2305) | `Ok(None)` |
 //! | `Vec<T>` | NaN at element `i` | batched `Err(InvalidValue("NA is not allowed (element i)"))`, 1-based |
 //! | `Vec<Option<T>>` | NaN at element `i` | `None` element |
 //!
@@ -96,10 +96,10 @@ macro_rules! impl_realsxp_datetime {
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::SexpExt as _;
-                let actual = sexp.type_of();
-                if actual == $crate::SEXPTYPE::NILSXP {
+                if $crate::from_r::is_null_or_plain_na(sexp) {
                     return Ok(None);
                 }
+                let actual = sexp.type_of();
                 if actual != $crate::SEXPTYPE::REALSXP {
                     return Err($crate::from_r::SexpTypeError {
                         expected: $crate::SEXPTYPE::REALSXP,

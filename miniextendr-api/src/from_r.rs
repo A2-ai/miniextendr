@@ -1046,7 +1046,8 @@ pub trait TryFromSexp: Sized {
     const NATIVE_BORROW: Option<NativeBorrow> = None;
 
     /// Whether this conversion accepts only character input: every value it
-    /// converts, other than `NULL`, is a character vector or a factor.
+    /// converts, other than `NULL` (and the plain `NA` an optional string
+    /// reads as `None`, #2305), is a character vector or a factor.
     ///
     /// `#[miniextendr]` reads it for choice parameters (`match_arg` /
     /// `choices`) typed `Either<T, R>`. Their R wrapper sends all character
@@ -2104,6 +2105,53 @@ pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> 
         },
     )
 }
+
+// region: Optional scalars: `NULL` or a plain `NA` (#2305)
+
+/// Whether `sexp` is `NULL` or a plain `NA`, R's untyped missing value: a
+/// logical vector of length one holding `NA`. Its attributes are not looked
+/// at, as the R-side check `is.null(x) || (is.logical(x) && length(x) == 1L
+/// && is.na(x))` does not look at them.
+///
+/// An optional scalar argument reads either as "no value" (#2305), since R
+/// users write `f(NA)` for that. The `Option<T>` conversions of the scalars
+/// (integer, double, string, logical, complex and raw values, the
+/// `match_arg` choice through
+/// [`match_arg_option_from_sexp`](crate::match_arg_option_from_sexp), and
+/// the scalar types of the optional features) start with this test, so a
+/// `.Call()` that skips the R wrapper reads an argument as the wrapper's
+/// own check does. An optional vector (`Option<Vec<T>>`) does not: there a
+/// plain `NA` is a logical vector of length one, converted or refused as
+/// such.
+#[inline]
+pub(crate) fn is_null_or_plain_na(sexp: SEXP) -> bool {
+    match sexp.type_of() {
+        SEXPTYPE::NILSXP => true,
+        SEXPTYPE::LGLSXP => sexp.len() == 1 && RLogical::from_i32(sexp.logical_elt(0)).is_na(),
+        _ => false,
+    }
+}
+
+/// [`is_null_or_plain_na`] through the unchecked FFI variants, for the
+/// `try_from_sexp_unchecked` bodies.
+///
+/// # Safety
+///
+/// As for [`TryFromSexp::try_from_sexp_unchecked`]: `sexp` is a live SEXP
+/// and the caller is on R's main thread.
+#[inline]
+pub(crate) unsafe fn is_null_or_plain_na_unchecked(sexp: SEXP) -> bool {
+    match sexp.type_of() {
+        SEXPTYPE::NILSXP => true,
+        SEXPTYPE::LGLSXP => unsafe {
+            sexp.len_unchecked() == 1
+                && RLogical::from_i32(crate::sys::LOGICAL_ELT_unchecked(sexp, 0)).is_na()
+        },
+        _ => false,
+    }
+}
+
+// endregion
 
 // region: Coerced optional parameters (`Option<T>` / `Vec<Option<T>>`, #2274)
 

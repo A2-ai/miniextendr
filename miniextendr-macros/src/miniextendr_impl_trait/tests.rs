@@ -1601,7 +1601,8 @@ fn trait_method_choice_formal_reads_as_omitted() {
         .unwrap();
         for line in [
             ".mx_absent_level <- missing(level) || identical(level, c(\"low\", \"high\"))",
-            "if (!.mx_absent_level && !is.null(level)) \
+            "if (!.mx_absent_level && !is.null(level) && \
+             !(is.logical(level) && length(level) == 1L && is.na(level))) \
              level <- .miniextendr_match_arg(level, c(\"low\", \"high\"), \"level\"",
             "if (.mx_absent_level) quote(expr=) else level",
         ] {
