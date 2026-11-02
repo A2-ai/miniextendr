@@ -1881,3 +1881,91 @@ fn custom_messages_are_escaped_as_r_string_literals() {
         ]
     );
 }
+
+/// A `Nullable<T>` parameter reads as `Option<T>` (#2294): the same R type
+/// checks, the same conversion expectation, the same `coerce` widening, and
+/// the same `is.null()` guard on its `no_na` / `inherits` checks.
+#[test]
+fn nullable_reads_as_option() {
+    let pairs = [
+        ("Option<i32>", "Nullable<i32>"),
+        ("Option<f64>", "miniextendr_api::Nullable<f64>"),
+        ("Option<bool>", "Nullable<bool>"),
+        ("Option<String>", "Nullable<String>"),
+        ("Option<Vec<i32>>", "Nullable<Vec<i32>>"),
+        ("Option<Vec<String>>", "Nullable<Vec<String>>"),
+        ("Option<AsNumeric>", "Nullable<AsNumeric>"),
+        ("Option<DataFrame>", "Nullable<DataFrame>"),
+        ("Option<List>", "Nullable<List>"),
+        ("Missing<Option<u16>>", "Missing<Nullable<u16>>"),
+        (
+            "Option<Either<i32, String>>",
+            "Nullable<Either<i32, String>>",
+        ),
+        (
+            "Either<Option<i32>, String>",
+            "Either<Nullable<i32>, String>",
+        ),
+    ];
+    let guards = |ty: &str, coerced: bool| {
+        let mut checks = no_na();
+        checks.merge(inherits(&["pkg_obj"])).unwrap();
+        let sig: syn::Signature = syn::parse_str(&format!("fn f(x: {ty})")).unwrap();
+        let opts = PreconditionOptions {
+            explicit: [("x".to_string(), checks)].into_iter().collect(),
+            coerce_params: if coerced {
+                ["x".to_string()].into_iter().collect()
+            } else {
+                HashSet::new()
+            },
+            ..Default::default()
+        };
+        build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None)
+    };
+    for (option, nullable) in pairs {
+        let (o, n) = (parse_type(option), parse_type(nullable));
+        for coerced in [false, true] {
+            assert_eq!(
+                conversion_expectation(&o, coerced),
+                conversion_expectation(&n, coerced),
+                "{nullable} (coerce: {coerced})"
+            );
+            assert_eq!(
+                guards(option, coerced),
+                guards(nullable, coerced),
+                "{nullable} (coerce: {coerced})"
+            );
+        }
+        assert_eq!(has_type_check(&o), has_type_check(&n), "{nullable}");
+        assert_eq!(no_na_requirement(&o), no_na_requirement(&n), "{nullable}");
+    }
+    let asserts = assertions_for("Nullable<i32>", "x");
+    assert_eq!(asserts.len(), 2);
+    assert_eq!(asserts[0].message(), "'x' must be NULL or integer");
+    assert_eq!(asserts[0].condition, "is.null(x) || is.integer(x)");
+    assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
+    let exp = |ty: &str, coerced: bool| conversion_expectation(&parse_type(ty), coerced);
+    assert_eq!(
+        exp("Nullable<i32>", false).as_deref(),
+        Some("NULL or a single integer")
+    );
+    assert_eq!(
+        exp("Nullable<i32>", true).as_deref(),
+        Some("NULL or a single whole number")
+    );
+    assert_eq!(
+        exp("Nullable<DataFrame>", false).as_deref(),
+        Some("NULL or a data frame")
+    );
+    // The guard of a `no_na` check lets `NULL` through.
+    let out = explicit_output("fn f(x: Nullable<List>)", &[("x", no_na())], true);
+    assert_eq!(
+        out.guards(None),
+        vec![
+            "if (!isTRUE(is.null(x) || !anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")"
+        ]
+    );
+    // A `Vec` element is not an argument type: `Vec<Nullable<T>>` has no
+    // conversion, so it has no check either.
+    assert!(!has_type_check(&parse_type("Vec<Nullable<i32>>")));
+}

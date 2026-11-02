@@ -771,7 +771,8 @@ pub mod missing;
 /// Return-visibility markers (`Invisible<T>` / `Visible<T>`).
 pub mod visibility;
 pub use visibility::{Invisible, Visible};
-/// The `NULL`-on-`None` optional (`Nullable<T>`): a return, or an `#[r_data]` field.
+/// The `NULL`-on-`None` optional (`Nullable<T>`): a return, an `#[r_data]` field, or an
+/// argument read as `Option<T>`.
 pub mod nullable;
 pub use nullable::Nullable;
 /// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.

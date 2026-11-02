@@ -200,7 +200,7 @@ fn process_f32(x: f32) -> f64 {
 | `i32` / `Vec<i32>` | integer, whole-number double, logical, raw | `3` reads as `3L`; `3.5` is an error |
 | `f64` / `Vec<f64>` | double, integer, logical, raw | lossless widening |
 | `bool` / `Vec<bool>` | logical, integer `0` / `1` | other integers are errors |
-| `Option<T>` of the above | `NULL` or `T`'s inputs | `NULL` and `NA` read `None` |
+| `Option<T>` (or `Nullable<T>`) of the above | `NULL` or `T`'s inputs | `NULL` and `NA` read `None` |
 | `Vec<Option<T>>` of the above | `Vec<T>`'s inputs | each `NA` element reads `None` |
 | `Missing<T>` of any form above | nothing, or the inner form's inputs | an absent argument reads `Missing::Absent` |
 

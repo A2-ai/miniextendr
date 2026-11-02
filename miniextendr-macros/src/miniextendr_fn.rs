@@ -57,19 +57,26 @@ impl CoercionMapping {
     /// element types maps in four shapes: `T`, `Vec<T>`, `Option<T>` and
     /// `Vec<Option<T>>`, and each shape also under `Missing<..>`, whose
     /// sentinel reads `Missing::Absent` before the mapping converts a present
-    /// value. Borrowed slices and other types keep `TryFromSexp`.
+    /// value. A `Nullable<T>` maps as `Option<T>` does (#2294), except as a
+    /// `Vec` element, which has no conversion; the caller wraps the
+    /// converter's `Option` in `Nullable`. Borrowed slices and other types
+    /// keep `TryFromSexp`.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
         let ty = get_missing_inner_type(ty).unwrap_or(ty);
+        let (ty, top_optional) = match crate::type_inspect::optional_inner_type(ty) {
+            Some(inner) => (inner, true),
+            None => (ty, false),
+        };
         let syn::Type::Path(type_path) = ty else {
             return None;
         };
         let mut seg = type_path.path.segments.last()?;
-        let is_vec = seg.ident == "Vec";
+        let is_vec = !top_optional && seg.ident == "Vec";
         if is_vec {
             seg = type_argument_segment(seg)?;
         }
-        let is_option = seg.ident == "Option";
-        if is_option {
+        let is_option = top_optional || seg.ident == "Option";
+        if is_vec && is_option {
             seg = type_argument_segment(seg)?;
         }
         match (seg.ident.to_string().as_str(), is_vec, is_option) {
@@ -143,9 +150,9 @@ pub(crate) fn unmapped_coerce_error(pat_type: &syn::PatType, param_name: &str) -
         format!(
             "`coerce` on parameter `{param_name}` has no conversion for `{}`: it widens \
              `i32`, `f64`, `bool` and the other numeric scalars (`i8`, `i16`, `u16`, `u32`, \
-             `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` or \
-             `Vec<Option<T>>`, each also under `Missing<..>`. Remove `coerce` from this \
-             parameter.{slice_hint}",
+             `i64`, `u64`, `isize`, `usize`, `f32`), as `T`, `Vec<T>`, `Option<T>` (or \
+             `Nullable<T>`) or `Vec<Option<T>>`, each also under `Missing<..>`. Remove \
+             `coerce` from this parameter.{slice_hint}",
             crate::type_inspect::type_display(&pat_type.ty)
         ),
     )
@@ -1904,13 +1911,16 @@ pub(crate) fn classify_choice_param(
         let either = layers.either_right.is_some();
         // Under `Either`, `NULL` goes to the `R` arm, so `Option<Either<Vec<T>, R>>`
         // has a `None` of its own; a bare `Option<Vec<T>>` does not.
-        if layers.nullable && !either {
+        if let Some(spelling) = layers.nullable
+            && !either
+        {
             return Err(syn::Error::new(
                 ty.span(),
                 format!(
-                    "several_ok parameter `{param_name}` cannot be `Option<..>`; an omitted \
+                    "several_ok parameter `{param_name}` cannot be `{}<..>`; an omitted \
                      argument and NULL both select every choice. Use `Missing<Vec<T>>` to \
-                     tell an omitted argument apart"
+                     tell an omitted argument apart",
+                    spelling.name()
                 ),
             ));
         }
@@ -1958,10 +1968,13 @@ pub(crate) fn classify_choice_param(
     }
     // A `NULL` formal (`Option<..>` without `Missing`) makes a `default`
     // meaningless, for a scalar choice and for `Option<Either<Vec<T>, R>>`.
-    if layers.nullable && !layers.missing && has_default {
+    if let Some(spelling) = layers.nullable
+        && !layers.missing
+        && has_default
+    {
         return Err(syn::Error::new(
             ty.span(),
-            optional_choice_default_msg(param_name),
+            optional_choice_default_msg(param_name, spelling.name()),
         ));
     }
     if layers.missing && has_default {
@@ -1970,7 +1983,7 @@ pub(crate) fn classify_choice_param(
             missing_choice_default_msg(param_name),
         ));
     }
-    attrs.optional = layers.nullable;
+    attrs.optional = layers.nullable.is_some();
     attrs.omittable = layers.missing;
     attrs.either_noun = layers.either_right.map(crate::type_inspect::r_value_noun);
     Ok(())
@@ -2255,10 +2268,12 @@ fn missing_choice_default_msg(param_name: &str) -> String {
     )
 }
 
-fn optional_choice_default_msg(param_name: &str) -> String {
+/// The refusal of a `default` on a choice parameter under `Option<..>` (or
+/// `Nullable<..>`, `layer`) without `Missing`.
+fn optional_choice_default_msg(param_name: &str, layer: &str) -> String {
     format!(
-        "`Option<T>` parameter `{param_name}` with match_arg/choices cannot have a default; \
-         its R formal defaults to NULL, which means no choice. Drop the `Option` to make a \
+        "`{layer}<T>` parameter `{param_name}` with match_arg/choices cannot have a default; \
+         its R formal defaults to NULL, which means no choice. Drop the `{layer}` to make a \
          choice the default, or drop the default"
     )
 }

@@ -1,8 +1,9 @@
 use super::{
-    ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name, choice_layers,
-    erase_lifetimes, is_lazy_dots_marker, is_nargs_marker, is_rng_guard_param,
-    match_arg_choices_ty, mentions_lazy_dots, mentions_rng_guard, mentions_unevaluated_marker,
-    peel_param_markers, r_value_noun, type_display, unevaluated_param, visibility_marker_error,
+    OptionalSpelling, ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker,
+    choice_layer_name, choice_layers, erase_lifetimes, is_lazy_dots_marker, is_nargs_marker,
+    is_rng_guard_param, match_arg_choices_ty, mentions_lazy_dots, mentions_rng_guard,
+    mentions_unevaluated_marker, peel_param_markers, r_value_noun, type_display, unevaluated_param,
+    visibility_marker_error,
 };
 use crate::r_wrapper_builder::CallAttribution;
 
@@ -226,11 +227,33 @@ fn param_markers_reject_stacks_and_nesting() {
         "&Checked<i32>",
         "Option<Vec<Unchecked<i32>>>",
         "Checked<Option<Unchecked<i32>>>",
+        "Nullable<Checked<i32>>",
+        "Checked<Nullable<NonNa<i32>>>",
     ] {
         let err = peel_error(nested);
         assert!(err.contains("outermost"), "{nested}: {err}");
     }
     assert!(peel_error("Option<Checked<i32>>").contains("put `Checked` outermost"));
+}
+
+/// `NonNa<Option<T>>` and its `Nullable` spelling are refused alike, each
+/// named as written (#2294).
+#[test]
+fn non_na_refuses_an_optional_inner_type() {
+    for (src, layer) in [
+        ("NonNa<Option<i32>>", "Option"),
+        ("Checked<NonNa<Option<String>>>", "Option"),
+        ("NonNa<Nullable<i32>>", "Nullable"),
+        ("NonNa<miniextendr_api::Nullable<Vec<f64>>>", "Nullable"),
+    ] {
+        let err = peel_error(src);
+        assert!(
+            err.contains(&format!(
+                "`NonNa<{layer}<T>>`: a value without `NA` leaves `{layer}` only `NULL` to mean"
+            )),
+            "{src}: {err}"
+        );
+    }
 }
 
 /// A parameter marker in return position is an error, also inside a
@@ -317,17 +340,17 @@ fn choice_layers_peel_missing_option_either() {
         let l = choice_layers(&t);
         (
             l.missing,
-            l.nullable,
+            l.nullable.map(OptionalSpelling::name),
             l.either_right.map(type_display),
             type_display(l.value),
         )
     };
-    assert_eq!(layers("Mode"), (false, false, None, "Mode".to_string()));
+    assert_eq!(layers("Mode"), (false, None, None, "Mode".to_string()));
     assert_eq!(
         layers("Missing<Option<Either<Mode, DataFrame>>>"),
         (
             true,
-            true,
+            Some("Option"),
             Some("DataFrame".to_string()),
             "Mode".to_string()
         )
@@ -336,7 +359,7 @@ fn choice_layers_peel_missing_option_either() {
         layers("Either<Mode, Option<f64>>"),
         (
             false,
-            false,
+            None,
             Some("Option<f64>".to_string()),
             "Mode".to_string()
         )
@@ -345,8 +368,23 @@ fn choice_layers_peel_missing_option_either() {
     // rejects it.
     assert_eq!(
         layers("Option<Missing<Mode>>"),
-        (false, true, None, "Missing<Mode>".to_string())
+        (false, Some("Option"), None, "Missing<Mode>".to_string())
     );
+    // `Nullable<..>` is the `Option` layer, spelled as written (#2294).
+    assert_eq!(
+        layers("Missing<Nullable<Mode>>"),
+        (true, Some("Nullable"), None, "Mode".to_string())
+    );
+    assert_eq!(
+        layers("miniextendr_api::Nullable<Either<Mode, f64>>"),
+        (
+            false,
+            Some("Nullable"),
+            Some("f64".to_string()),
+            "Mode".to_string()
+        )
+    );
+    assert_eq!(choice_layer_name(&ty("Nullable<Mode>")), Some("Nullable"));
     assert_eq!(choice_layer_name(&ty("Missing<Mode>")), Some("Missing"));
     assert_eq!(choice_layer_name(&ty("Either<Mode, f64>")), Some("Either"));
     assert_eq!(choice_layer_name(&ty("Either<Mode>")), None);
@@ -366,7 +404,7 @@ fn choice_layers_peel_missing_option_either() {
         layers("Either<Vec<Mode>, DataFrame>"),
         (
             false,
-            false,
+            None,
             Some("DataFrame".to_string()),
             "Vec<Mode>".to_string()
         )

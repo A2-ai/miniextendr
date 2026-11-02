@@ -314,7 +314,8 @@ run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
 
 The same works for `choices(...)` on an `Option<String>` / `Option<&str>`
-parameter. A `default = "..."` on an `Option<T>` choice parameter is a compile
+parameter, and for a `Nullable<T>` parameter, which reads as `Option<T>`
+(#2294). A `default = "..."` on an `Option<T>` choice parameter is a compile
 error (the formal is `NULL` by definition; drop the `Option` to make a choice
 the default). The generated C wrapper decodes the argument with
 `match_arg_option_from_sexp`, so any `MatchArg` type works, derived or

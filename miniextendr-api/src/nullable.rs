@@ -24,7 +24,10 @@
 //! `#[derive(ExternalPtr)]` struct, whose getter reads `NULL` for `None` and
 //! whose setter stores `None` for `NULL` (#2270); an `Option<T>` field reads
 //! `NA` for a scalar `None`, unless it is marked `#[r_data(null_if_none)]`.
-//! An optional argument is usually spelled `Option<T>`, which reads the same.
+//! As a `#[miniextendr]` argument it behaves exactly as `Option<T>` (#2294):
+//! the same R-side checks and conversion message (`'x' must be NULL or ...`),
+//! and `coerce`, `no_na` and `match_arg` look through it. An optional
+//! argument is usually spelled `Option<T>`.
 //!
 //! With the `serde` feature, `Nullable<T>` serializes and deserializes as
 //! `Option<T>` does, so a serde struct can hold one.
