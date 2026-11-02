@@ -523,7 +523,9 @@ Enabled with `features = ["time"]`.
 |-----------|--------|-------|
 | `OffsetDateTime` | `POSIXct` | UTC only; tzone attr set to `"UTC"` |
 | `Date` | `Date` | Days since 1970-01-01 |
-| `Duration` | `difftime` | Seconds unit |
+
+`time::Duration` has no R conversion; the `RDuration` adapter trait exposes
+its methods through an `ExternalPtr`.
 
 ### `jiff` feature
 
