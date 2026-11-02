@@ -1064,6 +1064,62 @@ A live pointer is checked with `Any::downcast`; one without an address by
 the crate, version and type name of the type ID in `prot[0]`, not its
 module path.
 
+#### Telling the cases apart in Rust (`TypeMismatchError`)
+
+The errors above are raised for you. Code that reads a pointer itself, say
+to re-create a restored object from data it keeps elsewhere instead of
+raising, calls `ExternalPtr::<T>::wrap_sexp_with_error` and matches the
+`TypeMismatchError` it gets back:
+
+| Variant | The pointer | Fields |
+|---------|-------------|--------|
+| `Restored` | saved by this version, restored without its Rust value | `type_name`, `package_classes`, `package_message` |
+| `OtherVersion` | saved by another version of the crate | `type_name`, `crate_name`, `saved`, `current`, `package_classes`, `package_message` |
+| `Mismatch` | holds another Rust type | `expected`, `found` |
+| `NullPointer` | NULL address, not built by `ExternalPtr` (`new("externalptr")`) | none |
+| `InvalidTypeId` | not built by `ExternalPtr` (no type ID in `prot`) | none |
+
+Its `Display` is the message the R error would carry (the package's own
+under `restored(message = ...)`), and `restored_classes()` returns the
+condition classes of the two restored variants (the package's, then the
+specific class, then `miniextendr_restored`), `None` for the others:
+
+```rust
+use miniextendr_api::externalptr::{ExternalPtr, TypeMismatchError};
+use miniextendr_api::{SEXP, SEXPTYPE, SexpExt, miniextendr};
+
+#[derive(ExternalPtr)]
+pub struct Model {
+    weights: Vec<f64>,
+}
+
+/// The model's weight count, or `NA` for a model restored from a save.
+#[miniextendr]
+pub fn model_size(x: SEXP) -> Option<i32> {
+    assert_eq!(x.type_of(), SEXPTYPE::EXTPTRSXP, "`x` must be a model");
+    // SAFETY: R's main thread; `x` is the rooted `.Call()` argument and an
+    // external pointer.
+    match unsafe { ExternalPtr::<Model>::wrap_sexp_with_error(x) } {
+        Ok(model) => Some(
+            i32::try_from(model.borrow().weights.len()).expect("fewer than i32::MAX weights"),
+        ),
+        // Saved by this version: the caller rebuilds it, NA tells it to.
+        Err(TypeMismatchError::Restored { .. }) => None,
+        Err(TypeMismatchError::OtherVersion { saved, current, .. }) => panic!(
+            "this model was saved by version {saved}; version {current} \
+             can't read it, so fit it again"
+        ),
+        Err(other) => panic!("`x` must be a model: {other}"),
+    }
+}
+```
+
+`wrap_sexp_with_error` is `unsafe` and wants an `EXTPTRSXP` (it checks with a
+`debug_assert!` only), on R's main thread. For a type that derives serde it
+first restores the value from the save when there is one (next section), so
+`Ok` comes back for a save serde reads, and a save it could not decode raises
+its refusal instead of returning `Err`.
+
 #### A serde type comes back after `readRDS()`
 
 A type that derives `Serialize` and `Deserialize` comes back after

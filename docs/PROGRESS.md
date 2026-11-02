@@ -159,7 +159,33 @@ For `#[miniextendr]` functions, this works naturally -- your function runs on th
 thread, so progress bar output works directly. Since indicatif batches draws, the simplest
 approach is to create the progress bar and call `pb.inc()` from your function directly.
 
-See [THREADS.md](THREADS.md) for the main-thread invariant.
+When the work itself runs on another thread, have it send its progress to the main thread
+and draw there: `WorkerPump` runs the work on a worker thread and calls a pump closure on
+the main thread for each message the worker sends, so `pb.inc()` goes in the pump:
+
+```rust
+use miniextendr_api::pump::WorkerPump;
+
+let total = WorkerPump::<u64>::new()
+    .run(
+        |tx| {
+            let mut total = 0;
+            for chunk in &chunks {
+                total += process(chunk); // pure Rust, no R API
+                if tx.send(1).is_err() {
+                    break;
+                }
+            }
+            Ok(total)
+        },
+        |done| pb.inc(done), // R's main thread
+    )
+    .map_err(|e| e.to_string())?;
+pb.finish();
+```
+
+See [THREADS.md](THREADS.md) for the main-thread invariant and "Progress from a worker
+thread (`WorkerPump`)" there for how an R error in the pump stops the worker.
 
 ## ANSI Cursor Support
 

@@ -11,30 +11,30 @@
 //! `run` returns, and exposes a builder API for common knobs (channel capacity,
 //! log-drain cadence).
 //!
-//! # Longjmp-safety contract
+//! # R exits in the pump
 //!
-//! **`WorkerPump::run` must be called from inside an `#[miniextendr]` FFI
-//! body** (or any code already wrapped by `with_r_unwind_protect`).
+//! Call `WorkerPump::run` from an `#[miniextendr]` body, on R's main thread,
+//! and have the pump call R only through the APIs that turn an R exit into a
+//! Rust unwind: [`RCall::eval_with_handlers`] /
+//! [`RCall::try_eval_with_handlers`] (and `Quoted::eval` /
+//! `Quosure::eval_tidy`, which use them).
 //!
-//! The reason: the pump closure may call into R's API (e.g. to render a
-//! progress bar), and R can `longjmp` out of those calls at any time — on
-//! interrupt, on allocation failure, etc.  miniextendr's macro layer wraps
-//! every `#[miniextendr]` body in `R_UnwindProtect` via
-//! `run_r_unwind_protect`.
+//! When R leaves such a call early (an error, a `tryCatch()` exit, an
+//! interrupt while R runs), it unwinds as a Rust panic carrying the R exit.
+//! The unwind runs through `run`: the receiver drops, so the worker's next
+//! `send` returns `Err`, and [`std::thread::scope`] joins the worker before
+//! the unwind leaves it. The `#[miniextendr]` boundary then continues the R
+//! exit, so the condition reaches the function's caller.
 //!
-//! The `R_UnwindProtect` strategy used by miniextendr converts R longjmps
-//! into Rust panics (via `cleanup_handler` → `std::panic::panic_any`) which
-//! are then caught by an outer `catch_unwind`.  Because the panic travels
-//! through normal Rust stack-unwinding, **all `Drop` glue runs on the way
-//! out** — including `thread::scope`'s `Drop`, which joins the worker before
-//! the scope exits.  The worker sees `tx` dropped (because `rx` dropped as
-//! the scope cleaned up), so any blocked `tx.send` returns `Err` and the
-//! worker can exit gracefully.  The panic is then re-raised as an R error via
-//! `R_ContinueUnwind`.
+//! R must never `longjmp` over `run` instead: a bare `Rf_eval` / `Rf_error`
+//! in the pump jumps past `run`'s frames without running their destructors,
+//! so the worker, which borrows from them, is never joined.
 //!
-//! If you call `WorkerPump::run` *outside* of an `#[miniextendr]` body and
-//! the pump triggers an R longjmp, the longjmp will bypass Rust destructors
-//! entirely and the worker thread will be leaked.
+//! The worker should stop when `send` returns `Err`: one that keeps computing
+//! delays the R exit until it returns.
+//!
+//! [`RCall::eval_with_handlers`]: crate::expression::RCall::eval_with_handlers
+//! [`RCall::try_eval_with_handlers`]: crate::expression::RCall::try_eval_with_handlers
 //!
 //! # Error type
 //!
@@ -83,8 +83,8 @@ pub type WorkerError = Box<dyn Error + Send + Sync>;
 
 /// Runs a worker thread in parallel with a main-thread pump loop.
 ///
-/// See [the module documentation][self] for the longjmp-safety contract and a
-/// usage example.
+/// See [the module documentation][self] for how an R exit in the pump stops
+/// the worker, and for a usage example.
 pub struct WorkerPump<T> {
     /// Capacity of the bounded MPSC channel between worker and pump.
     capacity: usize,
@@ -114,9 +114,9 @@ impl<T: Send + 'static> WorkerPump<T> {
     /// (rendezvous channel).
     ///
     /// When the channel is full the worker blocks on `tx.send` until the pump
-    /// drains a slot.  If the pump panics or a longjmp fires, `rx` is dropped
-    /// as part of scope unwinding, which unblocks `tx.send` with an `Err` and
-    /// lets the worker exit cleanly.
+    /// drains a slot.  If the pump panics, or an R exit unwinds out of it,
+    /// `rx` is dropped as part of scope unwinding, which unblocks `tx.send`
+    /// with an `Err` and lets the worker exit cleanly.
     pub fn channel_capacity(mut self, n: usize) -> Self {
         self.capacity = n;
         self
@@ -151,10 +151,11 @@ impl<T: Send + 'static> WorkerPump<T> {
     /// If the worker thread panics, `run` returns
     /// `Err("WorkerPump worker panicked")`.
     ///
-    /// If the pump closure panics, the panic propagates normally through
-    /// `thread::scope`'s `Drop` (which joins the worker), and then out of
-    /// `run`.  When called from inside an `#[miniextendr]` body the outer
-    /// `R_UnwindProtect` catches it and converts it to an R error.
+    /// If the pump closure panics (an R exit through
+    /// [`RCall::eval_with_handlers`](crate::expression::RCall::eval_with_handlers)
+    /// included), [`std::thread::scope`] joins the worker and the panic then
+    /// propagates out of `run`. The `#[miniextendr]` boundary turns a panic
+    /// into an R error and continues an R exit.
     pub fn run<R, W, P>(self, worker: W, mut pump: P) -> Result<R, WorkerError>
     where
         R: Send,
