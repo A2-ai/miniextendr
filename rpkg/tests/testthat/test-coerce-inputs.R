@@ -288,6 +288,27 @@ test_that("coerced Missing<T> reads an absent argument and coerces a supplied on
   expect_match(conditionMessage(err), "2 is neither 0 nor 1 (element 2)", fixed = TRUE)
 })
 
+test_that("an unsigned vector refuses a negative element in R, as its scalar does (#2290)", {
+  for (ty in c("u16", "u32", "u64", "usize")) {
+    scalar_fn <- getFromNamespace(paste0("coerce_input_scalar_", ty), "miniextendr")
+    vec_fn <- getFromNamespace(paste0("coerce_input_vector_", ty), "miniextendr")
+    expect_identical(conditionMessage(expect_error(scalar_fn(-1))), "'x' must be non-negative")
+    err <- expect_error(vec_fn(c(1, -1)))
+    expect_identical(conditionMessage(err), "'x' must be non-negative", label = ty)
+    expect_identical(err$param, "x", label = ty)
+    # Raw has no sign to check; zero is non-negative.
+    expect_equal(as.numeric(vec_fn(as.raw(c(0, 255)))), c(0, 255), label = ty)
+    expect_equal(as.numeric(vec_fn(c(0L, 2L))), c(0, 2), label = ty)
+    # An NA element is the conversion's to refuse, not the sign check's.
+    expect_match(
+      conditionMessage(expect_error(vec_fn(c(1, NA)))),
+      "'x' must be non-negative integer or whole-number numeric: NA is not allowed (element 2)",
+      fixed = TRUE,
+      label = ty
+    )
+  }
+})
+
 test_that("newly accepted vectors retain batched conversion diagnostics", {
   err <- expect_error(miniextendr:::coerce_input_no_preconditions(c(-1, 5, 70000, 1.5, NaN)))
   msg <- conditionMessage(err)
@@ -297,7 +318,7 @@ test_that("newly accepted vectors retain batched conversion diagnostics", {
   expect_identical(
     msg,
     paste0(
-      "'x' must be integer or whole-number numeric: value out of range (elements 1, 3); ",
+      "'x' must be non-negative integer or whole-number numeric: value out of range (elements 1, 3); ",
       "precision loss (element 4); NaN cannot be converted (element 5)"
     )
   )

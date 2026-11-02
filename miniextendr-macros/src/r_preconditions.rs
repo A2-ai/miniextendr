@@ -677,7 +677,8 @@ enum RTypeCheck {
     /// double, with length one. The vector form is [`RTypeCheck::VectorIntegerWide`].
     ScalarIntegerWide,
     /// Non-negative numeric scalar: type + length-1 + `>= 0` (3 assertions).
-    /// Used for `u16`, `u32`, `u64`, `usize`.
+    /// Used for `u16`, `u32`, `u64`, `usize`. The vector form is
+    /// [`RTypeCheck::VectorNonNegIntegerWide`].
     ScalarNonNeg,
     /// Non-numeric scalar: `is.<type>(x)` + length-1 check (2 assertions).
     /// The string is the R type predicate name (e.g., `"logical"`, `"character"`).
@@ -706,8 +707,16 @@ enum RTypeCheck {
     /// INTSXP/REALSXP/RAWSXP/LGLSXP and rejects fractional doubles element-wise
     /// (`f64: TryCoerce<T>` checks `self.fract() != 0`). We accept
     /// integer/logical/raw **and** whole-number doubles, and reject genuinely
-    /// lossy fractional doubles (`1.5`) at the boundary.
+    /// lossy fractional doubles (`1.5`) at the boundary. The unsigned element
+    /// types use [`RTypeCheck::VectorNonNegIntegerWide`].
     VectorIntegerWide,
+    /// Unsigned integer vector (`Vec<u16>` / `Vec<u32>` / `Vec<u64>` /
+    /// `Vec<usize>`, their slices and `Vec<Option<_>>` forms): the
+    /// [`RTypeCheck::VectorIntegerWide`] predicate, then every non-`NA` element
+    /// `>= 0` (2 assertions), as [`RTypeCheck::ScalarNonNeg`] checks its value
+    /// (#2290). Without it a negative element passed the R gate and failed in
+    /// Rust as "value out of range", under the whole-number requirement it met.
+    VectorNonNegIntegerWide,
     /// Non-numeric vector: `is.<type>(x)` only (1 assertion).
     /// The string is the R type predicate name.
     Vector(&'static str),
@@ -846,6 +855,21 @@ impl RTypeCheck {
                 "must be integer or whole-number numeric",
                 integer_vector_wide_check(param),
             )],
+            RTypeCheck::VectorNonNegIntegerWide => vec![
+                RAssertion::new(
+                    param,
+                    "must be integer or whole-number numeric",
+                    integer_vector_wide_check(param),
+                ),
+                RAssertion::new(
+                    param,
+                    "must be non-negative",
+                    // Raw is never negative and has no `>=`; an `NA` element is
+                    // left to the conversion, which reads it as `None` or
+                    // refuses it.
+                    format!("is.raw({p}) || all({p} >= 0, na.rm = TRUE)", p = param),
+                ),
+            ],
             RTypeCheck::Vector(r_type) => vec![RAssertion::new(
                 param,
                 format!("must be {r_type}"),
@@ -886,6 +910,7 @@ impl RTypeCheck {
             | RTypeCheck::VectorNumeric
             | RTypeCheck::VectorIntegerStrict
             | RTypeCheck::VectorIntegerWide
+            | RTypeCheck::VectorNonNegIntegerWide
             | RTypeCheck::Vector(_)
             | RTypeCheck::VectorNumericOrText
             | RTypeCheck::List => true,
@@ -931,6 +956,9 @@ impl RTypeCheck {
             RTypeCheck::VectorNumeric | RTypeCheck::VectorNumericOrText => "numeric".into(),
             RTypeCheck::VectorIntegerStrict => "integer".into(),
             RTypeCheck::VectorIntegerWide => "integer or whole-number numeric".into(),
+            RTypeCheck::VectorNonNegIntegerWide => {
+                "non-negative integer or whole-number numeric".into()
+            }
             RTypeCheck::Vector("atomic") => "coercible to character".into(),
             RTypeCheck::Vector(r_type) => (*r_type).into(),
             RTypeCheck::Nullable(inner) => match inner.expectation().as_str() {
@@ -1014,8 +1042,8 @@ fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
 /// `u64`, `isize`, `usize` and their `Vec` / `Vec<Option<_>>` forms), whose
 /// Rust conversion accepts only integer and whole-number double input
 /// (#1594): `a single whole number` / `a single non-negative whole number`
-/// for a scalar, the vector's usual `integer or whole-number numeric`
-/// otherwise.
+/// for a scalar, the vector's usual `integer or whole-number numeric` (with
+/// `non-negative` for the unsigned ones) otherwise.
 pub(crate) fn strict_conversion_expectation(ty: &syn::Type) -> Option<String> {
     let scalar = match ty {
         syn::Type::Path(tp) => tp.path.segments.last().map(|s| s.ident.to_string()),
@@ -1215,10 +1243,10 @@ fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
         // doubles element-wise via `f64: TryCoerce<T>` (the `self.fract() != 0`
         // check in `coerce.rs`). The R gate mirrors that: accept integer/logical/
         // raw + whole-number doubles, reject fractional. (64-bit ints also arrive
-        // as REALSXP since R has no native 64-bit integer type.)
-        "i8" | "i16" | "u16" | "u32" | "i64" | "u64" | "isize" | "usize" => {
-            Some(RTypeCheck::VectorIntegerWide)
-        }
+        // as REALSXP since R has no native 64-bit integer type.) The unsigned
+        // ones also refuse a negative element, as their scalars do (#2290).
+        "i8" | "i16" | "i64" | "isize" => Some(RTypeCheck::VectorIntegerWide),
+        "u16" | "u32" | "u64" | "usize" => Some(RTypeCheck::VectorNonNegIntegerWide),
 
         // Logical vector
         "bool" => Some(RTypeCheck::Vector("logical")),
