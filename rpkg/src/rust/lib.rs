@@ -290,6 +290,7 @@ mod missing_tests;
 mod multi_para_doc_demo;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
+mod native_borrow_bench_fixtures;
 mod native_sexp_altrep_fixture;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;

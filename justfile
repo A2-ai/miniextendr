@@ -543,14 +543,14 @@ bench-lint *cargo_flags:
 bench-core *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench ffi_calls --bench into_r --bench from_r --bench translate --bench strings --bench externalptr --bench unwind_protect {{cargo_flags}}
 
-# Run feature-gated benchmarks (connections, rayon, serde)
+# Run feature-gated benchmarks (connections, rayon, serde, either)
 bench-features *cargo_flags:
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde,either {{cargo_flags}}
 
 # Run full benchmark suite (core + feature matrix)
 bench-full *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
-    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,serde,either --bench connections --bench rayon --bench refcount_protect --bench native_borrow {{cargo_flags}}
 
 # Run R-side benchmarks (requires rpkg installed)
 [script("bash")]
