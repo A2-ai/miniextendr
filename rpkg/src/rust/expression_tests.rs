@@ -1,4 +1,5 @@
-//! Fixtures for the expression subsystem (`RCall`, `REnv`, `r_eval_str`).
+//! Fixtures for the expression subsystem (`RCall`, `REnv`, `RSymbol`,
+//! `r_eval_str`).
 //!
 //! Standalone `#[miniextendr]` functions run on the R main thread by default,
 //! which is exactly what the expression module requires. `RCall::eval` and
@@ -8,7 +9,9 @@
 //!
 //! See docs/EXPRESSION_EVAL.md.
 
-use miniextendr_api::expression::{RCall, REnv, REvalError, r_eval_str, r_eval_str_global};
+use miniextendr_api::expression::{
+    RCall, REnv, REvalError, RSymbol, r_eval_str, r_eval_str_global,
+};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::prelude::{OwnedProtect, SEXP, SexpExt};
 use miniextendr_api::{List, ProtectScope, miniextendr, rust_error};
@@ -121,6 +124,30 @@ pub fn expr_env_define(env: SEXP, name: &str, value: SEXP) {
     // SAFETY: R's main thread, in this call's boundary; both arguments are
     // rooted `.Call()` arguments.
     unsafe { REnv::from_sexp(env).define(name, value) }
+}
+
+/// The symbol `name` (`as.name(name)`), interned by `RSymbol::new`.
+/// @param name Character scalar name.
+#[miniextendr(noexport)]
+pub fn expr_symbol(name: &str) -> SEXP {
+    // SAFETY: R's main thread, in this call's boundary.
+    unsafe { RSymbol::new(name) }.as_sexp()
+}
+
+/// The value of the variable `name` in `env`, read as R evaluates a symbol
+/// passed in a call: `identity(<name>)`, built with the `RSymbol` as its
+/// argument and evaluated in `env`. An unbound name is R's
+/// `object '<name>' not found`, as an `REvalError`.
+/// @param env An environment.
+/// @param name Character scalar name to look up.
+#[miniextendr(noexport)]
+pub fn expr_symbol_value(env: SEXP, name: &str) -> Result<SEXP, REvalError> {
+    // SAFETY: R's main thread, in this call's boundary; `env` is the rooted
+    // `.Call()` argument, and a symbol needs no root.
+    unsafe {
+        let symbol = RSymbol::new(name);
+        RCall::new("identity").arg(symbol.as_sexp()).eval(env)
+    }
 }
 
 /// Call `f()` through `RCall::eval_base`: `list(value = <value>)`, or, when
