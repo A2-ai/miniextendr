@@ -17,6 +17,7 @@
 //! - [`coerce_tests`]: Coerce, TryCoerce, RNativeType trait tests
 //! - [`convert_pref_tests`]: Conversion preference tests
 //! - [`adapter_traits_tests`]: Adapter trait implementations
+//! - [`nullable_argument_tests`]: `Nullable<T>` arguments read as `Option<T>` (#2294)
 //!
 //! # Class Systems
 //!
@@ -294,6 +295,7 @@ mod native_sexp_altrep_fixture;
 mod ndarray_tests;
 mod newtype_check_tests;
 mod none_error_name_tests;
+mod nullable_argument_tests;
 #[cfg(feature = "num-complex")]
 mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]

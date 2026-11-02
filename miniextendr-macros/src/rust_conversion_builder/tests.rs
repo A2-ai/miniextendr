@@ -111,6 +111,7 @@ fn test_opaque_type_failure_asks_the_type_first() {
     for (src, value, nullable) in [
         ("x: Hyperparams<i32>", "Hyperparams < i32 >", false),
         ("x: Option<DocId>", "DocId", true),
+        ("x: Nullable<DocId>", "DocId", true),
         ("x: Missing<Option<Borrowed<'a>>>", "Borrowed < '_ >", true),
     ] {
         let s = conversion_text(&RustConversionBuilder::new(), src);
@@ -252,6 +253,15 @@ fn test_conversion_err_arm_states_the_r_expectation() {
         ("num: AsNumeric", "'num' must be a single number"),
         ("x: i32", "'x' must be a single integer"),
         ("x: Option<f64>", "'x' must be NULL or a single double"),
+        ("x: Nullable<f64>", "'x' must be NULL or a single double"),
+        (
+            "x: Missing<Nullable<Vec<String>>>",
+            "'x' must be NULL or character",
+        ),
+        (
+            "value: Either<Nullable<i32>, String>",
+            "'value' must be NULL or a single integer or a single string",
+        ),
         ("s: &str", "'s' must be a single string"),
         ("flag: bool", "'flag' must be TRUE or FALSE"),
         ("xs: &[f64]", "'xs' must be double"),
@@ -420,6 +430,48 @@ fn test_coercion_of_optional_types() {
     assert!(!s.contains("try_from_sexp_coerced"), "{s}");
 }
 
+/// A `Nullable<T>` converts through `Option<T>`'s coerced helper and wraps
+/// its value, under `Missing` inside the read (#2294); a non-native numeric
+/// `Nullable<T>` keeps its own `TryFromSexp`, which reads every source.
+#[test]
+fn test_coercion_of_nullable_types() {
+    let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    let api = ":: miniextendr_api ::";
+    for (ty, helper) in [
+        ("Nullable<i32>", "try_from_sexp_coerced_option_i32"),
+        (
+            "miniextendr_api::Nullable<f64>",
+            "try_from_sexp_coerced_option_f64",
+        ),
+        ("Nullable<bool>", "try_from_sexp_coerced_option_bool"),
+    ] {
+        let s = conversion_text(&builder, &format!("x: {ty}"));
+        assert!(
+            s.contains(&format!(
+                ":: core :: result :: Result :: map ({api} from_r :: {helper} (arg_0) , {api} Nullable)"
+            )),
+            "{ty}: {s}"
+        );
+    }
+    let s = conversion_text(&builder, "x: Missing<Nullable<i32>>");
+    assert!(
+        s.contains(&format!(
+            "{api} missing :: __mx_missing_or (arg_0 , | __mx_sexp | :: core :: result :: Result :: map ({api} from_r :: try_from_sexp_coerced_option_i32 (__mx_sexp) , {api} Nullable) ,)"
+        )),
+        "{s}"
+    );
+    let s = conversion_text(&builder, "x: Nullable<u16>");
+    assert!(!s.contains("try_from_sexp_coerced"), "{s}");
+    assert!(s.contains("TryFromSexp :: try_from_sexp (arg_0)"), "{s}");
+    // `Vec<Nullable<T>>` has no conversion, so no mapping either.
+    assert!(
+        crate::miniextendr_fn::CoercionMapping::from_type(
+            &syn::parse_str("Vec<Nullable<i32>>").unwrap()
+        )
+        .is_none()
+    );
+}
+
 /// The decoder of a layered choice parameter (#1473, #1551): one
 /// `match_arg_*` helper per layer, outermost first, around the choice's own
 /// decoder.
@@ -521,6 +573,29 @@ fn test_layered_choice_decoders() {
             literal.clone(),
             format!(
                 "{api}match_arg_either_or::<_,f64,_>(s,<Vec<String>as::miniextendr_api::TryFromSexp>::try_from_sexp)"
+            ),
+        ),
+        // `Nullable<..>` decodes as the `Option` layer, then wraps the value
+        // (#2294).
+        (
+            "Nullable<Mode>",
+            ChoiceLeaf::MatchArg,
+            format!(
+                "::core::result::Result::map({api}match_arg_option_from_sexp::<Mode>(s),{api}Nullable)"
+            ),
+        ),
+        (
+            "Missing<Nullable<Mode>>",
+            ChoiceLeaf::MatchArg,
+            format!(
+                "{api}match_arg_missing_or(s,|__mx_sexp|::core::result::Result::map({api}match_arg_option_from_sexp::<Mode>(__mx_sexp),{api}Nullable))"
+            ),
+        ),
+        (
+            "Nullable<Either<Route, DataFrame>>",
+            ChoiceLeaf::MatchArg,
+            format!(
+                "::core::result::Result::map({api}match_arg_null_or(s,|__mx_sexp|{api}match_arg_either_or::<_,DataFrame,_>(__mx_sexp,{api}match_arg_from_sexp::<Route>)),{api}Nullable)"
             ),
         ),
     ];

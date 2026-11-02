@@ -553,21 +553,6 @@ fn is_computed_type(ty: &syn::Type) -> bool {
         if type_path.path.segments.last().is_some_and(|seg| seg.ident == COMPUTED_TYPE_NAME))
 }
 
-/// The `T` of a `Nullable<T>` field type (`miniextendr_api::Nullable`, by
-/// its last path segment), `None` for any other type. Such a field reads
-/// `NULL` for `None` and reads `NULL` / `NA` as `None`, as an `Option<T>`
-/// field's setter does (#2270).
-fn nullable_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
-    let syn::Type::Path(type_path) = ty else {
-        return None;
-    };
-    let seg = type_path.path.segments.last()?;
-    if seg.ident != "Nullable" {
-        return None;
-    }
-    crate::type_inspect::first_type_argument(seg)
-}
-
 /// Options for a sidecar field's generated documentation, setters and Rust
 /// accessors.
 #[derive(Default)]
@@ -790,7 +775,7 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
             ))
         } else if !is_pub(field) || field.ident.is_none() {
             Some("a field that is not `pub`: only `pub` `#[r_data]` fields reach R".to_string())
-        } else if nullable_inner_type(&field.ty).is_some() {
+        } else if crate::type_inspect::nullable_inner_type(&field.ty).is_some() {
             Some("a `Nullable<T>` field, which reads `NULL` for `None` already".to_string())
         } else if !crate::type_inspect::is_option_type(&field.ty) {
             Some(format!(
@@ -1621,19 +1606,11 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
     // type's expectation, else the one the type declares or the error knows at
     // run time (a newtype, a `match_arg` enum field), as for an argument. A
     // `Nullable<T>` reads as `Option<T>` does, so it is described as one
-    // (`'f' must be NULL or ...`, #2270).
+    // (`'f' must be NULL or ...`, #2270, #2294).
     let conversion_err = |ty: &syn::Type| -> proc_macro2::TokenStream {
-        let as_option: syn::Type;
-        let expected_ty = match nullable_inner_type(ty) {
-            Some(inner) => {
-                as_option = syn::parse_quote!(::core::option::Option<#inner>);
-                &as_option
-            }
-            None => ty,
-        };
-        let prefix = crate::r_preconditions::conversion_expectation(expected_ty, false)
+        let prefix = crate::r_preconditions::conversion_expectation(ty, false)
             .map(|expected| format!("'{field_r_name}' must be {expected}"));
-        let declared = crate::rust_conversion_builder::declared_expectation(expected_ty);
+        let declared = crate::rust_conversion_builder::declared_expectation(ty);
         crate::rust_conversion_builder::conversion_value_tokens(
             &crate::rust_conversion_builder::ConversionSubject {
                 expected: prefix.as_deref().map_or(
@@ -1642,7 +1619,7 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 ),
                 quoted: &field_r_name,
                 param: "value",
-                nullable: crate::type_inspect::is_option_type(expected_ty),
+                nullable: crate::type_inspect::is_optional_type(ty),
                 rust_type: &rust_type,
             },
             &crate::rust_conversion_builder::class_slice(&crate_class),

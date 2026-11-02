@@ -974,15 +974,40 @@ impl RustConversionBuilder {
                                 let read = quote_spanned! {span=>
                                     ::miniextendr_api::from_r::#converter
                                 };
-                                if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
+                                let present = crate::miniextendr_fn::get_missing_inner_type(ty);
+                                // A `Nullable<T>` reads through the `Option<T>`
+                                // helper, then wraps its value (#2294).
+                                let nullable =
+                                    crate::type_inspect::nullable_inner_type(present.unwrap_or(ty))
+                                        .is_some();
+                                let call = |sexp: &dyn quote::ToTokens| {
+                                    let call = quote_spanned! {span=> #read(#sexp) };
+                                    if nullable {
+                                        crate::type_inspect::OptionalSpelling::Nullable
+                                            .wrap_ok(call)
+                                    } else {
+                                        call
+                                    }
+                                };
+                                if present.is_none() {
+                                    call(sexp_ident)
+                                } else {
+                                    let read = if nullable {
+                                        let arg = syn::Ident::new(
+                                            "__mx_sexp",
+                                            proc_macro2::Span::mixed_site(),
+                                        );
+                                        let value = call(&arg);
+                                        quote_spanned! {span=> |#arg| #value }
+                                    } else {
+                                        read
+                                    };
                                     quote_spanned! {span=>
                                         ::miniextendr_api::missing::__mx_missing_or(
                                             #sexp_ident,
                                             #read,
                                         )
                                     }
-                                } else {
-                                    quote_spanned! {span=> #read(#sexp_ident) }
                                 }
                             }
                         };
@@ -1132,8 +1157,9 @@ pub enum ChoiceLeaf {
 enum ChoiceLayer<'a> {
     /// `Missing<..>`: the missing-argument sentinel is `Missing::Absent`.
     Missing,
-    /// `Option<..>`: `NULL` is `None`.
-    Null,
+    /// `Option<..>` (or `Nullable<..>`, spelled as this says, #2294): `NULL`
+    /// is `None`.
+    Null(crate::type_inspect::OptionalSpelling),
     /// `Either<.., R>`: character or factor input is the choice (`Left`),
     /// anything else converts to `R` (`Right`).
     Either(&'a syn::Type),
@@ -1172,8 +1198,8 @@ fn layered_choice_expr(
     if layers.missing {
         wraps.push(ChoiceLayer::Missing);
     }
-    if layers.nullable {
-        wraps.push(ChoiceLayer::Null);
+    if let Some(spelling) = layers.nullable {
+        wraps.push(ChoiceLayer::Null(spelling));
     }
     if let Some(right) = layers.either_right {
         wraps.push(ChoiceLayer::Either(right));
@@ -1339,18 +1365,16 @@ impl LayeredValue {
                 quote! { #decoder(#sexp) }
             }
             // `Option<T>` over a scalar choice (#1473) keeps its dedicated helper.
-            [ChoiceLayer::Null] if self.leaf == ChoiceLeaf::MatchArg => {
-                quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t>(#sexp) }
-            }
+            [ChoiceLayer::Null(spelling)] if self.leaf == ChoiceLeaf::MatchArg => spelling
+                .wrap_ok(quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t>(#sexp) }),
             [first, rest @ ..] => {
                 let inner = self.decoder(rest);
                 match first {
                     ChoiceLayer::Missing => {
                         quote! { ::miniextendr_api::match_arg_missing_or(#sexp, #inner) }
                     }
-                    ChoiceLayer::Null => {
-                        quote! { ::miniextendr_api::match_arg_null_or(#sexp, #inner) }
-                    }
+                    ChoiceLayer::Null(spelling) => spelling
+                        .wrap_ok(quote! { ::miniextendr_api::match_arg_null_or(#sexp, #inner) }),
                     ChoiceLayer::Either(right) => {
                         let right = crate::type_inspect::erase_lifetimes(right);
                         quote! {
@@ -1376,7 +1400,10 @@ impl LayeredValue {
             ([], ChoiceLeaf::Literal { .. }) => {
                 quote! { <#t as ::miniextendr_api::TryFromSexp>::try_from_sexp }
             }
-            ([ChoiceLayer::Null], ChoiceLeaf::MatchArg) => {
+            (
+                [ChoiceLayer::Null(crate::type_inspect::OptionalSpelling::Option)],
+                ChoiceLeaf::MatchArg,
+            ) => {
                 quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t> }
             }
             _ => {
@@ -1461,7 +1488,7 @@ impl ArgContext {
             declared: None,
             r_name: r_name.to_string(),
             rust_type: crate::type_inspect::type_display(ty),
-            nullable: crate::type_inspect::is_option_type(value_ty),
+            nullable: crate::type_inspect::is_optional_type(value_ty),
         }
     }
 
@@ -1507,7 +1534,7 @@ impl ArgContext {
         let right = layers.either_right?;
         let suffix = crate::miniextendr_fn::choice_alternatives_suffix(
             Some(&crate::type_inspect::r_value_noun(right)),
-            layers.nullable,
+            layers.nullable.is_some(),
             "NULL",
         );
         let (choices, aliases, several) = match leaf {
@@ -1815,10 +1842,11 @@ pub(crate) fn conversion_value_tokens(
 /// does not know no longer leaves the whole parameter without an
 /// expectation; any other type is asked for its `__MX_EXPECTATION` (a
 /// `#[derive(TryFromSexp)]` newtype says what its inner type does). The
-/// `NULL or` of an `Option<_>` parameter is the prefix's (`nullable`).
+/// `NULL or` of an `Option<_>` (or `Nullable<_>`) parameter is the prefix's
+/// (`nullable`).
 pub(crate) fn declared_expectation(ty: &syn::Type) -> TokenStream {
     let value = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-    let value = crate::type_inspect::option_inner_type(value).unwrap_or(value);
+    let value = crate::type_inspect::optional_inner_type(value).unwrap_or(value);
     if crate::type_inspect::either_arms(value).is_some() {
         let arms = expected_arm(value);
         let e = crate::naming::conversion_error_ident();
@@ -1835,11 +1863,12 @@ pub(crate) fn declared_expectation(ty: &syn::Type) -> TokenStream {
 /// The `from_r::ExpectedArm` of one side of an `Either`, of type `ty`: the
 /// macro's wording when it has one
 /// ([`crate::r_preconditions::conversion_expectation`]), a nested `Either`
-/// side by side, `NULL or <T>` for an `Option<T>` or `Result<T, ()>` side,
-/// else the type's `__MX_EXPECTATION`, with its `@param` noun
-/// ([`crate::type_inspect::r_value_noun`]) for when neither the type nor its
-/// error names it. Every side is a `TryFromSexp` type, as `Either`'s own
-/// impl requires (and the `Option` / `Result` impls of their `T`).
+/// side by side, `NULL or <T>` for an `Option<T>` (or `Nullable<T>`) or
+/// `Result<T, ()>` side, else the type's `__MX_EXPECTATION`, with its
+/// `@param` noun ([`crate::type_inspect::r_value_noun`]) for when neither the
+/// type nor its error names it. Every side is a `TryFromSexp` type, as
+/// `Either`'s own impl requires (and the `Option` / `Nullable` / `Result`
+/// impls of their `T`).
 fn expected_arm(ty: &syn::Type) -> TokenStream {
     let arm = quote! { ::miniextendr_api::from_r::ExpectedArm };
     if let Some(text) = crate::r_preconditions::conversion_expectation(ty, false) {
@@ -1850,7 +1879,7 @@ fn expected_arm(ty: &syn::Type) -> TokenStream {
         return quote! { #arm::Either(&#left, &#right) };
     }
     if let Some(inner) =
-        crate::type_inspect::option_inner_type(ty).or_else(|| unit_result_ok_type(ty))
+        crate::type_inspect::optional_inner_type(ty).or_else(|| unit_result_ok_type(ty))
     {
         let inner = expected_arm(inner);
         return quote! { #arm::Nullable(&#inner) };

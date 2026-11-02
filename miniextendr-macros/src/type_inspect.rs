@@ -663,8 +663,9 @@ fn outer_param_marker(ty: &syn::Type) -> Option<(ParamMarker, &syn::Type)> {
 /// the markers in the order written and the inner type the parameter
 /// converts as. `Checked<Strict<T>>`-style stacks of different families peel
 /// in one pass; two markers of one family (`Checked<Unchecked<T>>`) are an
-/// error, as is a marker nested inside `Option` / `Missing` / `Vec` / `&`
-/// (at any depth of those), where the conversion has no marker to unwrap.
+/// error, as is a marker nested inside `Option` / `Nullable` / `Missing` /
+/// `Vec` / `&` (at any depth of those), where the conversion has no marker
+/// to unwrap.
 pub(crate) fn peel_param_markers(ty: &syn::Type) -> syn::Result<(Vec<ParamMarker>, &syn::Type)> {
     let mut markers: Vec<ParamMarker> = Vec::new();
     let mut inner = ty;
@@ -688,11 +689,16 @@ pub(crate) fn peel_param_markers(ty: &syn::Type) -> syn::Result<(Vec<ParamMarker
         markers.push(marker);
         inner = next;
     }
-    if markers.contains(&ParamMarker::NonNa) && is_option_type(inner) {
+    if markers.contains(&ParamMarker::NonNa)
+        && let Some((_, spelling)) = optional_layer(inner)
+    {
         return Err(syn::Error::new_spanned(
             ty,
-            "`NonNa<Option<T>>`: a value without `NA` leaves `Option` only `NULL` to mean; \
-             take `NonNa<T>`, or `Option<T>` with `#[miniextendr(no_na)]` to accept `NULL`",
+            format!(
+                "`NonNa<{0}<T>>`: a value without `NA` leaves `{0}` only `NULL` to mean; \
+                 take `NonNa<T>`, or `{0}<T>` with `#[miniextendr(no_na)]` to accept `NULL`",
+                spelling.name()
+            ),
         ));
     }
     if let Some(nested) = nested_param_marker(inner) {
@@ -708,19 +714,22 @@ pub(crate) fn peel_param_markers(ty: &syn::Type) -> syn::Result<(Vec<ParamMarker
     Ok((markers, inner))
 }
 
-/// A marker inside `Option<..>` / `Missing<..>` / `Vec<..>` / `&..`, at any
-/// depth of those wrappers.
+/// A marker inside `Option<..>` / `Nullable<..>` / `Missing<..>` / `Vec<..>`
+/// / `&..`, at any depth of those wrappers.
 fn nested_param_marker(ty: &syn::Type) -> Option<ParamMarker> {
     let arg = match ty {
         syn::Type::Reference(r) => r.elem.as_ref(),
         syn::Type::Paren(p) => p.elem.as_ref(),
-        syn::Type::Path(p) => {
-            let seg = p.path.segments.last()?;
-            if !matches!(seg.ident.to_string().as_str(), "Option" | "Missing" | "Vec") {
-                return None;
+        syn::Type::Path(p) => match optional_inner_type(ty) {
+            Some(inner) => inner,
+            None => {
+                let seg = p.path.segments.last()?;
+                if !matches!(seg.ident.to_string().as_str(), "Missing" | "Vec") {
+                    return None;
+                }
+                first_type_argument(seg)?
             }
-            first_type_argument(seg)?
-        }
+        },
         _ => return None,
     };
     match outer_param_marker(arg) {
@@ -922,6 +931,10 @@ pub(crate) fn is_option_type(ty: &syn::Type) -> bool {
 }
 
 /// Return `T` for an `Option<T>` type, `None` for anything else.
+///
+/// `Option` only: the callers that build a value of the written type use it.
+/// Code that classifies an argument type reads [`optional_layer`], which
+/// also takes `Nullable<T>`.
 pub(crate) fn option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     let syn::Type::Path(tp) = ty else {
         return None;
@@ -932,6 +945,85 @@ pub(crate) fn option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     }
     first_type_argument(seg)
 }
+
+// region: optional argument types (#2294)
+
+/// How an optional argument type is spelled: `Option<T>`, or
+/// `miniextendr_api::Nullable<T>`, whose `TryFromSexp` forwards to
+/// `Option<T>`'s (`NULL` and `NA` read `None`).
+///
+/// A `Nullable<T>` argument behaves as `Option<T>` (#2294): the R-side
+/// checks, the conversion's wording, `coerce`, `no_na` and the choice
+/// parameters read it through [`optional_layer`]. Code that builds the value
+/// through an `Option` helper (a `coerce` converter, a `match_arg` decoder)
+/// wraps the result for `Nullable` ([`OptionalSpelling::wrap_ok`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OptionalSpelling {
+    /// `Option<T>`.
+    Option,
+    /// `Nullable<T>`.
+    Nullable,
+}
+
+impl OptionalSpelling {
+    /// The type's name as written in source.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Option => "Option",
+            Self::Nullable => "Nullable",
+        }
+    }
+
+    /// `result`, a `Result<Option<T>, E>` expression, as a
+    /// `Result<Self<T>, E>`: unchanged for `Option`, its `Ok` value wrapped
+    /// in `Nullable` for `Nullable`.
+    pub(crate) fn wrap_ok(self, result: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        match self {
+            Self::Option => result,
+            Self::Nullable => quote::quote! {
+                ::core::result::Result::map(#result, ::miniextendr_api::Nullable)
+            },
+        }
+    }
+}
+
+/// `(T, spelling)` for an `Option<T>` or `Nullable<T>` type (matched by the
+/// last path segment, like `Missing`), `None` for anything else.
+pub(crate) fn optional_layer(ty: &syn::Type) -> Option<(&syn::Type, OptionalSpelling)> {
+    let syn::Type::Path(tp) = ty else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    let spelling = if seg.ident == "Option" {
+        OptionalSpelling::Option
+    } else if seg.ident == "Nullable" {
+        OptionalSpelling::Nullable
+    } else {
+        return None;
+    };
+    first_type_argument(seg).map(|inner| (inner, spelling))
+}
+
+/// `T` for an `Option<T>` or `Nullable<T>` type, `None` for anything else
+/// (see [`optional_layer`]).
+pub(crate) fn optional_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    optional_layer(ty).map(|(inner, _)| inner)
+}
+
+/// `true` when `ty` is `Option<T>` or `Nullable<T>` (see [`optional_layer`]).
+pub(crate) fn is_optional_type(ty: &syn::Type) -> bool {
+    optional_layer(ty).is_some()
+}
+
+/// `T` for a `Nullable<T>` type, `None` for anything else (an `Option<T>`
+/// included).
+pub(crate) fn nullable_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    optional_layer(ty)
+        .filter(|(_, spelling)| *spelling == OptionalSpelling::Nullable)
+        .map(|(inner, _)| inner)
+}
+
+// endregion
 
 /// Return `T` for an `ExternalPtr<T>` class handle, `ty` itself otherwise.
 ///
@@ -951,10 +1043,11 @@ pub(crate) fn peel_external_ptr(ty: &syn::Type) -> &syn::Type {
 // region: choice-parameter layers (`match_arg` / `choices`)
 
 /// The wrappers around the value of a `match_arg` / `choices` parameter,
-/// peeled outermost first: `Missing<..>`, then `Option<..>`, then
-/// `Either<T, R>` with the choice on the left (a scalar choice, or a
-/// `several_ok` list: `Either<Vec<T>, R>`, #1612). A plain `T` (or a plain
-/// `several_ok` container) has none.
+/// peeled outermost first: `Missing<..>`, then `Option<..>` (or
+/// `Nullable<..>`, read as `Option`, #2294), then `Either<T, R>` with the
+/// choice on the left (a scalar choice, or a `several_ok` list:
+/// `Either<Vec<T>, R>`, #1612). A plain `T` (or a plain `several_ok`
+/// container) has none.
 ///
 /// Each layer changes one contract and leaves the rest to the layer below:
 /// `Missing` reports an omitted argument as `Missing::Absent` and keeps the
@@ -965,8 +1058,9 @@ pub(crate) fn peel_external_ptr(ty: &syn::Type) -> &syn::Type {
 pub(crate) struct ChoiceLayers<'a> {
     /// `Missing<..>` is the outermost wrapper.
     pub missing: bool,
-    /// `Option<..>` wraps the value (inside `Missing`, if present).
-    pub nullable: bool,
+    /// `Option<..>` or `Nullable<..>` wraps the value (inside `Missing`, if
+    /// present), spelled as this says.
+    pub nullable: Option<OptionalSpelling>,
     /// `Either<T, R>` wraps the value (inside the others): its `R` arm.
     pub either_right: Option<&'a syn::Type>,
     /// The type under the layers: the `MatchArg` type (or the string type of a
@@ -980,9 +1074,9 @@ pub(crate) fn choice_layers(ty: &syn::Type) -> ChoiceLayers<'_> {
         Some(inner) => (true, inner),
         None => (false, ty),
     };
-    let (nullable, ty) = match option_inner_type(ty) {
-        Some(inner) => (true, inner),
-        None => (false, ty),
+    let (nullable, ty) = match optional_layer(ty) {
+        Some((inner, spelling)) => (Some(spelling), inner),
+        None => (None, ty),
     };
     let (either_right, value) = match either_arms(ty) {
         Some((left, right)) => (Some(right), left),
@@ -996,15 +1090,15 @@ pub(crate) fn choice_layers(ty: &syn::Type) -> ChoiceLayers<'_> {
     }
 }
 
-/// The layer name (`"Missing"` / `"Option"` / `"Either"`) when `ty` is itself
-/// a layer type, i.e. when it sits where the choice value should be. Used to
-/// reject layers in an unsupported order, such as `Option<Missing<T>>` or
-/// `Either<Option<T>, R>`.
+/// The layer name (`"Missing"` / `"Option"` / `"Nullable"` / `"Either"`)
+/// when `ty` is itself a layer type, i.e. when it sits where the choice value
+/// should be. Used to reject layers in an unsupported order, such as
+/// `Option<Missing<T>>` or `Either<Option<T>, R>`.
 pub(crate) fn choice_layer_name(ty: &syn::Type) -> Option<&'static str> {
     if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
         Some("Missing")
-    } else if option_inner_type(ty).is_some() {
-        Some("Option")
+    } else if let Some((_, spelling)) = optional_layer(ty) {
+        Some(spelling.name())
     } else if either_arms(ty).is_some() {
         Some("Either")
     } else {

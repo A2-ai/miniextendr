@@ -524,15 +524,16 @@ fn class_list_r(classes: &[String]) -> (String, String) {
     (what, class_arg)
 }
 
-/// Let an `Option<T>` parameter pass `NULL`, and a `Missing<T>` parameter an
-/// omitted argument, in the named checks `out` on parameter `param` of type
-/// `ty`: each condition gains an `is.null(param) || ` / `missing(param) || `
-/// prefix. The failure message names only the failed requirement: it is shown
-/// only for a present, non-`NULL` value.
+/// Let an `Option<T>` (or `Nullable<T>`) parameter pass `NULL`, and a
+/// `Missing<T>` parameter an omitted argument, in the named checks `out` on
+/// parameter `param` of type `ty`: each condition gains an
+/// `is.null(param) || ` / `missing(param) || ` prefix. The failure message
+/// names only the failed requirement: it is shown only for a present,
+/// non-`NULL` value.
 fn guarded(param: &str, ty: &syn::Type, mut out: Vec<RAssertion>) -> Vec<RAssertion> {
     let guard = if crate::miniextendr_fn::is_missing_type(ty) {
         Some(format!("missing({param})"))
-    } else if crate::type_inspect::is_option_type(ty) {
+    } else if crate::type_inspect::is_optional_type(ty) {
         Some(format!("is.null({param})"))
     } else {
         None
@@ -584,13 +585,13 @@ pub(crate) fn no_na_requirement(ty: &syn::Type) -> String {
 }
 
 /// Whether a `no_na` value of Rust type `ty` holds several values, looking
-/// through the layers `no_na` checks through: `Missing`, `Option`,
-/// `Result<T, _>` (its `T`) and `Either<L, R>`, which holds several when
-/// either arm does. The text is fixed at compile time, before the conversion
-/// picks an arm, and `contain` also reads right for one value.
+/// through the layers `no_na` checks through: `Missing`, `Option` (or
+/// `Nullable`), `Result<T, _>` (its `T`) and `Either<L, R>`, which holds
+/// several when either arm does. The text is fixed at compile time, before
+/// the conversion picks an arm, and `contain` also reads right for one value.
 fn no_na_holds_several(ty: &syn::Type) -> bool {
     let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-    let ty = crate::type_inspect::option_inner_type(ty).unwrap_or(ty);
+    let ty = crate::type_inspect::optional_inner_type(ty).unwrap_or(ty);
     if let Some((left, right)) = crate::type_inspect::either_arms(ty) {
         return no_na_holds_several(left) || no_na_holds_several(right);
     }
@@ -976,7 +977,8 @@ impl RTypeCheck {
 ///
 /// Derived from the same type classification as the R-side checks, including
 /// the `coerce` widening (`coerced`) and the `Missing<T>` / `Option<T>`
-/// wrappers, so the two paths describe an argument the same way. A few types
+/// wrappers (`Nullable<T>` reads as `Option<T>`, #2294), so the two paths
+/// describe an argument the same way. A few types
 /// without an R-side check still have an R-facing expectation
 /// ([`unchecked_expectation`]): `Either<L, R>`, the `AsFromStr` markers and
 /// tuples. `None` only for an opaque type (a custom `TryFromSexp` type, or an
@@ -1006,8 +1008,11 @@ pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<St
 /// | `Either<L, R>` | `<L> or <R>`, when both sides have one (`a single integer or a single string`) |
 /// | `(A, B, ...)` | `a list of length N` |
 /// | `DataFrame` | `a data frame` |
-/// | `Option<T>` of the above | `NULL or <T>` |
+/// | `Option<T>` / `Nullable<T>` of the above | `NULL or <T>` |
 fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
+    if let Some(inner) = crate::type_inspect::optional_inner_type(ty) {
+        return Some(format!("NULL or {}", unchecked_expectation(inner)?));
+    }
     match ty {
         syn::Type::Tuple(tuple) if !tuple.elems.is_empty() => {
             Some(format!("a list of length {}", tuple.elems.len()))
@@ -1026,10 +1031,6 @@ fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
                         conversion_expectation(left, false)?,
                         conversion_expectation(right, false)?
                     ))
-                }
-                "Option" => {
-                    let inner = extract_single_generic_arg(segment)?;
-                    Some(format!("NULL or {}", unchecked_expectation(inner)?))
                 }
                 _ => None,
             }
@@ -1091,8 +1092,13 @@ fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
 
 /// Map a Rust type to its R-side type check, if applicable.
 ///
-/// Returns `None` for types that should skip precondition checks (SEXP, Dots, ExternalPtr, etc.).
+/// `Option<T>` and `Nullable<T>` (#2294) are [`RTypeCheck::Nullable`] of
+/// `T`'s check. Returns `None` for types that should skip precondition
+/// checks (SEXP, Dots, ExternalPtr, etc.).
 fn r_check_for_type(ty: &syn::Type) -> Option<RTypeCheck> {
+    if let Some(inner) = crate::type_inspect::optional_inner_type(ty) {
+        return r_check_for_type(inner).map(|inner| RTypeCheck::Nullable(Box::new(inner)));
+    }
     match ty {
         syn::Type::Path(type_path) => r_check_for_type_path(type_path),
         syn::Type::Reference(type_ref) => r_check_for_reference(type_ref),
@@ -1103,8 +1109,9 @@ fn r_check_for_type(ty: &syn::Type) -> Option<RTypeCheck> {
 /// Map a `syn::TypePath` to its R-side type check.
 ///
 /// Handles the most common case: simple types (`i32`, `String`, `bool`),
-/// generic wrappers (`Vec<T>`, `Option<T>`), map types, and skip types.
-/// Returns `None` for types that cannot be prechecked from R.
+/// `Vec<T>`, map types, and skip types (`Option<T>` is
+/// [`r_check_for_type`]'s). Returns `None` for types that cannot be
+/// prechecked from R.
 fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
     let segment = type_path.path.segments.last()?;
     let ident = segment.ident.to_string();
@@ -1146,12 +1153,6 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
         // one for the scalar. "'x' must be atomic" is base R's own wording.
         "AsCharacter" => Some(RTypeCheck::Scalar("atomic")),
         "AsCharacterVec" => Some(RTypeCheck::Vector("atomic")),
-
-        // Option<T> → Nullable
-        "Option" => {
-            let inner_ty = extract_single_generic_arg(segment)?;
-            r_check_for_type(inner_ty).map(|inner| RTypeCheck::Nullable(Box::new(inner)))
-        }
 
         // `Cow<str>` converts as `&str` does, `Cow<[T]>` as `&[T]`. The first
         // generic argument is the lifetime, so look past it.
