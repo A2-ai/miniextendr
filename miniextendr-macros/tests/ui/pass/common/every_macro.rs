@@ -830,6 +830,31 @@ pub fn read_rows(frame: SEXP) -> i32 {
     i32::try_from(rows + events + nested + outer).unwrap_or(i32::MAX)
 }
 
+// Borrowed rows (#2307): every row shape above converts from `&[Row]` and
+// `&Vec<Row>`, through the derive's `DataFrameRowBorrow` fill.
+pub fn borrowed_rows(
+    rows: &::std::vec::Vec<Row>,
+    outer: &[Outer],
+    events: &::std::vec::Vec<Event>,
+    mixed: &[Mixed],
+    nested: &[Nested],
+    readable: &[Readable],
+) -> usize {
+    let frames = [
+        miniextendr_api::IntoDataFrame::into_dataframe(rows),
+        miniextendr_api::IntoDataFrame::into_dataframe(rows.as_slice()),
+        miniextendr_api::IntoDataFrame::into_dataframe(outer),
+        miniextendr_api::IntoDataFrame::into_dataframe(events),
+        miniextendr_api::IntoDataFrame::into_dataframe(mixed),
+        miniextendr_api::IntoDataFrame::into_dataframe(nested),
+        miniextendr_api::IntoDataFrame::into_dataframe(readable),
+    ];
+    ::core::iter::Iterator::count(::core::iter::Iterator::filter(
+        ::core::iter::IntoIterator::into_iter(frames),
+        ::core::result::Result::is_ok,
+    ))
+}
+
 miniextendr_api::typed_dataframe! {
     pub ShadowFrame {
         id: i32,

@@ -2755,6 +2755,34 @@ pub fn gc_stress_borrowed_rows() -> i32 {
 
 // endregion
 
+// region: borrowed DataFrameRow rows → data.frame (#2307)
+
+/// Convert the borrowed-rows samples of every case from `&[Row]` and
+/// `&Vec<Row>` (struct and enum rows, `&str` string columns, flattened,
+/// factor, map, list and auto-expanded columns), holding every frame across
+/// the later conversions' allocations, then read each one back.
+///
+/// No arguments: suitable for the fast gctorture no-arg sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_borrowed_rows() -> i32 {
+    use crate::dataframe_borrowed_rows_tests::{sample_events, sample_obs};
+    use miniextendr_api::dataframe::IntoDataFrame as _;
+
+    let mut frames = Vec::new();
+    for case in ["full", "na", "empty"] {
+        let obs = sample_obs(case);
+        let events = sample_events(case);
+        frames.push(obs.as_slice().into_dataframe().unwrap());
+        frames.push((&obs).into_dataframe().unwrap());
+        frames.push(events.as_slice().into_dataframe().unwrap());
+        frames.push((&events).into_dataframe().unwrap());
+    }
+    let cells: usize = frames.iter().map(|f| f.nrow() * f.ncol()).sum();
+    i32::try_from(cells).unwrap()
+}
+
+// endregion
+
 // region: STRSXP-building PROTECT discipline GC stress
 
 /// Exercise the PROTECT discipline of the migrated STRSXP-building / factor

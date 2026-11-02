@@ -46,6 +46,10 @@ pub use group::{GroupDeclaration, GroupKey, GroupedDataFrame, RealKey, group_row
 mod shape;
 pub use shape::{DataFrameShape, SplitResults};
 
+mod borrowed;
+#[doc(hidden)]
+pub use borrowed::{DataFrameRowBorrow, StringColumn};
+
 // region: Error type
 
 /// Error returned by any [`DataFrame`] construction, read, or conversion path.
@@ -1381,6 +1385,12 @@ impl std::fmt::Debug for BuiltDataFrame {
 ///
 /// Implemented for `Vec<Row>` when `Row` derives `DataFrameRow` (struct or enum), and by the
 /// serde column path. Call it on your data: `rows.into_dataframe()?`.
+///
+/// Borrowed rows convert too: `rows.as_slice().into_dataframe()?` or
+/// `(&rows).into_dataframe()?` (`&[Row]` / `&Vec<Row>`) build the same frame without
+/// consuming the rows, which is what a `&self` method holding a `Vec<Row>` needs.
+/// `String` and `Option<String>` columns are then written from `&str`, and every other
+/// field value is cloned once into its column, so those field types need `Clone`.
 ///
 /// # Parallel fast path
 ///

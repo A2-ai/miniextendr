@@ -51,7 +51,7 @@ finish; its zero-column frame is identical to `data.frame()`.
 | `IntoDataFrame` | `rows.into_dataframe()? -> BuiltDataFrame` | Rust → R | `IntoR` |
 | `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
 
-The verbs are implemented **on the data** (`Vec<Row>` / `&DataFrame`), not on a companion type. There is one error type (`DataFrameError`) and one NA contract: a missing cell maps to `None` in an `Option<T>` field, and `None` maps back to `NA`.
+The verbs are implemented **on the data** (`Vec<Row>` / `&DataFrame`, and borrowed rows `&[Row]` / `&Vec<Row>` for `IntoDataFrame`), not on a companion type. There is one error type (`DataFrameError`) and one NA contract: a missing cell maps to `None` in an `Option<T>` field, and `None` maps back to `NA`.
 
 For the full design rationale and the orphan-rule mechanics behind the blanket impls, see [`DATAFRAME_INTERFACE.md`](DATAFRAME_INTERFACE.md).
 
@@ -103,6 +103,72 @@ view (its class, attributes, row names and `NA` cells untouched), refused in
 the same words as a `DataFrame` parameter (`'df' must be NULL or a data frame:
 got numeric`). `Option<Either<L, DataFrame>>` (feature `either`) works the same
 way around an `Either`.
+
+## Borrowed rows (`&[Row]`, `&Vec<Row>`)
+
+A type that keeps its rows converts them without giving them up: `&[Row]` and
+`&Vec<Row>` implement `IntoDataFrame` for every `#[derive(DataFrameRow)]` row,
+struct or enum. From a `&self` method, borrow the rows explicitly:
+
+```rust
+#[derive(DataFrameRow)]
+struct Obs {
+    id: i32,
+    label: String,
+    note: Option<String>,
+}
+
+#[derive(ExternalPtr)]
+struct Store {
+    rows: Vec<Obs>,
+}
+
+#[miniextendr(env)]
+impl Store {
+    fn frame(&self) -> BuiltDataFrame {
+        self.rows.as_slice().into_dataframe().unwrap()
+        // or: (&self.rows).into_dataframe().unwrap()
+    }
+}
+```
+
+A bare `self.rows.into_dataframe()` picks the owned `Vec<Row>` impl, which
+cannot move the rows out of `&self`.
+
+The frame is the one the owned conversion builds from the same rows: column
+names and order, column types, factor levels, the tag column, typed all-`NA`
+columns and the 0-row frame of an empty slice. The derive runs one pass over
+the rows into column vectors, then the same column assembly as the owned path.
+
+What it costs:
+
+- `String` and `Option<String>` columns are written from `&str`: no `String`
+  is cloned; each `CHARSXP` is made from the row's bytes, as the owned path
+  makes it from the moved `String`.
+- Every other value is cloned once into its column: scalars, the elements of
+  `[T; N]` / `width` / `expand` fields, flattened struct and nested enum
+  values, `as_factor` and `as_list` values, map keys and values. That is what
+  `rows.to_vec().into_dataframe()` costs, without the intermediate `Vec<Row>`.
+  Writing those values by reference too is #2327.
+
+So each type a borrowed row clones must be `Clone`; the row type itself need
+not be. A row with a field type that is not `Clone` still derives and converts
+as an owned `Vec<Row>`; only its borrowed conversion is missing, and asking for
+it names the field type:
+
+```text
+error[E0277]: the trait bound `Inner: Clone` is not satisfied
+```
+
+`rows.as_slice().into_dataframe()` (or
+`IntoDataFrame::into_dataframe(&rows)`) reports it this way.
+`(&rows).into_dataframe()` on a `&Vec<Row>` falls through to the owned
+`Vec<Row>` impl instead, so the error there is the move out of a shared
+reference (E0507).
+
+On borrowed rows `into_dataframe_par` is the sequential fill (a parallel one is
+#2325), and enum split mode (`into_dataframe_split`) takes an owned `Vec<Row>`
+only (#2326).
 
 ## The `DataFrame` view and `BuiltDataFrame` handle
 
@@ -679,6 +745,10 @@ it, so it never adds a requirement:
   flattened struct and `as_list` values are `Clone` (they are copied out before
   the rows move to other threads). Otherwise the same call fills the columns
   sequentially.
+- Borrowed rows (`&[Row]` / `&Vec<Row>`, see "Borrowed rows" above) convert
+  when every value the borrowed fill clones is `Clone`: every field
+  type but `String` / `Option<String>` columns, `skip` fields and the row type
+  itself.
 
 Derive or write `IntoList` for the row only if you also return one row to R as
 a list, and then any impl works, derived or hand-written.
@@ -936,6 +1006,9 @@ let rows = Vec::<Measurement>::from_dataframe_par(&df)?; // off-main-thread row 
 ```
 
 Dropping `_par` (building without the `rayon` feature) degrades cleanly to the sequential call — the verb name is stable across feature sets.
+
+Borrowed rows (`rows.as_slice().into_dataframe_par()`) fill sequentially: the
+call is the same as `into_dataframe()` there (#2325).
 
 ```rust
 #[miniextendr]

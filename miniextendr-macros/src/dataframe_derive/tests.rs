@@ -697,3 +697,149 @@ fn struct_with_custom_hasher_map_has_no_reader() {
         "custom-hasher maps lack `Vec<map>: TryFromSexp`; the reader must stay gated out"
     );
 }
+
+// region: borrowed rows (#2307)
+
+/// The `where` clause of the derive's `DataFrameRowBorrow` impl for `row`.
+fn borrow_impl_header<'c>(code: &'c str, row: &str) -> &'c str {
+    let start = code
+        .find(&format!("DataFrameRowBorrow for {row}"))
+        .unwrap_or_else(|| panic!("no DataFrameRowBorrow impl for {row}: {code}"));
+    let len = code[start..].find("fn rows_ref_into_column_list").unwrap();
+    &code[start..start + len]
+}
+
+/// `for<'__mx_cond> ty: Clone`, as the derive prints it.
+fn clone_bound(ty: &str) -> String {
+    format!("for < '__mx_cond > {ty} : :: core :: clone :: Clone")
+}
+
+/// `for<'__mx_cond> ty: StringColumn`, as the derive prints it.
+fn string_bound(ty: &str) -> String {
+    format!("for < '__mx_cond > {ty} : :: miniextendr_api :: dataframe :: StringColumn")
+}
+
+/// Every value the borrowed fill clones is bounded on `Clone` behind the
+/// conditional binder (so a non-`Clone` field leaves the impl inapplicable,
+/// not an error), and `String` / `Option<String>` columns are bounded on
+/// `StringColumn` instead and hold `&str`.
+#[test]
+fn struct_borrow_impl_bounds_what_the_fill_clones() {
+    let code = expand(syn::parse_quote! {
+        #[dataframe(tag = "kind")]
+        struct Row {
+            id: i32,
+            name: String,
+            note: Option<String>,
+            inner: Inner,
+            pair: [String; 2],
+            #[dataframe(expand)]
+            rest: Vec<Col>,
+            by_key: ::std::collections::BTreeMap<i32, f64>,
+            #[dataframe(skip)]
+            cache: Cache,
+        }
+    });
+    let header = borrow_impl_header(&code, "Row");
+    for ty in ["i32", "Inner", "Col", "f64"] {
+        assert!(header.contains(&clone_bound(ty)), "{ty}: {header}");
+    }
+    // `pair: [String; 2]` expands into columns of cloned elements.
+    assert!(header.contains(&clone_bound("String")), "{header}");
+    assert!(header.contains(&string_bound("String")), "{header}");
+    assert!(!header.contains("Cache"), "{header}");
+    assert!(!header.contains("Option < String >"), "{header}");
+    assert!(
+        code.contains("__mx_col_name : :: std :: vec :: Vec < & :: core :: primitive :: str >")
+    );
+    assert!(code.contains(
+        "__mx_col_note : :: std :: vec :: Vec < :: core :: option :: Option < & :: core :: primitive :: str > >"
+    ));
+    assert!(code.contains(
+        "__mx_col__tag : :: std :: vec :: Vec < & 'static :: core :: primitive :: str >"
+    ));
+    // The auto-expand column holds slices of the rows' containers.
+    assert!(code.contains("__mx_col_rest : :: std :: vec :: Vec < & [Col] >"));
+}
+
+/// A `String` column spelled by its full path still holds `&str`; a list
+/// column's value is cloned.
+#[test]
+fn struct_borrow_impl_string_columns_by_kind() {
+    let code = expand(syn::parse_quote! {
+        struct Row {
+            qualified: ::std::string::String,
+            #[dataframe(as_list)]
+            listed: Listed,
+        }
+    });
+    let header = borrow_impl_header(&code, "Row");
+    assert!(
+        header.contains(&string_bound(":: std :: string :: String")),
+        "{header}"
+    );
+    assert!(header.contains(&clone_bound("Listed")), "{header}");
+}
+
+/// Enum rows: a plain `String` column holds `&str`; a column an expanded field
+/// feeds in some variant holds cloned values, and a `conflicts = "string"`
+/// column formats its values, with no bound at all.
+#[test]
+fn enum_borrow_impl_bounds_what_the_fill_clones() {
+    let code = expand(syn::parse_quote! {
+        #[dataframe(tag = "kind")]
+        enum Event {
+            A { name: String, pair: [String; 2], inner: Inner },
+            B { id: i32, #[dataframe(expand)] rest: Vec<Col> },
+            Empty,
+        }
+    });
+    let header = borrow_impl_header(&code, "Event");
+    for ty in ["String", "Inner", "i32", "Col"] {
+        assert!(header.contains(&clone_bound(ty)), "{ty}: {header}");
+    }
+    assert!(header.contains(&string_bound("String")), "{header}");
+    let body = &code[code.find("DataFrameRowBorrow for Event").unwrap()..];
+    assert!(
+        body.contains(
+            "__mx_col_name : :: std :: vec :: Vec < :: core :: option :: Option < & :: core :: primitive :: str >"
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains(
+            "__mx_col_pair_1 : :: std :: vec :: Vec < :: core :: option :: Option < String >"
+        ),
+        "{body}"
+    );
+
+    let code = expand(syn::parse_quote! {
+        #[dataframe(conflicts = "string")]
+        enum Mixed {
+            Number { x: f64 },
+            Text { x: String },
+        }
+    });
+    let header = borrow_impl_header(&code, "Mixed");
+    assert!(!header.contains("'__mx_cond"), "{header}");
+}
+
+/// Every fill keeps its columns in prefixed locals, so a field named like one
+/// of the fill's own bindings (`rows`, `len`) cannot shadow it.
+#[test]
+fn fills_keep_columns_in_prefixed_locals() {
+    for input in [
+        syn::parse_quote! { struct Row { rows: i32, len: String } },
+        syn::parse_quote! { enum Row { A { rows: i32, len: String }, B } },
+    ] {
+        let tokens = derive_dataframe_row(input).unwrap();
+        syn::parse2::<syn::File>(tokens.clone()).unwrap();
+        let code = tokens.to_string();
+        assert!(!code.contains("let mut rows"), "{code}");
+        assert!(!code.contains("let mut len"), "{code}");
+        assert!(!code.contains("with_capacity (len)"), "{code}");
+        assert!(code.contains("rows : __mx_col_rows"), "{code}");
+    }
+}
+
+// endregion

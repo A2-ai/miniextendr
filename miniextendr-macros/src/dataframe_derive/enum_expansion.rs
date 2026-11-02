@@ -11,11 +11,12 @@ use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, SPELL_TYPES_ALIKE, VariantInfo,
-    VariantShape, classify_field_type, companion_debug_clone, companion_lifetime_marker,
-    datetime_column_ty, datetime_feature_assertions, expanded_elem_idents, field_is_borrowed_ref,
-    fixed_array_elems, from_rows_par_override, is_bare_reader_scalar_ty, is_datetime_ty,
-    is_raw_scalar_ty, is_reader_scalar_ty, list_column_fn, option_payload, owned_elems_iter,
-    parallel_columns_impl, parse_field_attrs, raw_na_column_error, same_column_type, width_elems,
+    VariantShape, borrowed_string_column, classify_field_type, column_local, column_str,
+    companion_debug_clone, companion_lifetime_marker, conditional_where, datetime_column_ty,
+    datetime_feature_assertions, expanded_elem_idents, field_is_borrowed_ref, fixed_array_elems,
+    from_rows_par_override, is_bare_reader_scalar_ty, is_datetime_ty, is_raw_scalar_ty,
+    is_reader_scalar_ty, list_column_fn, option_payload, owned_elems_iter, parallel_columns_impl,
+    parse_field_attrs, raw_na_column_error, same_column_type, width_elems,
 };
 use crate::naming;
 use crate::type_inspect::type_display;
@@ -790,6 +791,12 @@ pub(super) fn derive_enum_dataframe(
     // endregion
 
     // region: Generate IntoDataFrame
+    //
+    // One generator assembles the column list for both column sources: the
+    // companion (`ColumnSource::into_column_list`, which reads `self.<col>`)
+    // and the borrowed fill (`DataFrameRowBorrow`, which reads its locals), so
+    // the two build the same frame: names, order, column types.
+    //
     // The first "real" column for length reference. If tag exists, use _tag.
     let length_ref = if has_tag {
         quote! { self._tag.len() }
@@ -804,272 +811,279 @@ pub(super) fn derive_enum_dataframe(
         quote! { 0usize }
     };
 
-    // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
-    // column SEXPs survive subsequent column allocations. Pre-fix the raw
-    // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
-    // next column's allocations — UAF under gctorture
-    // (reviews/2026-05-07-gctorture-audit.md).
-    let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
-    } else {
-        TokenStream::new()
-    };
-
-    let col_pairs: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let name_str = name.to_string();
-            quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name))) }
-        })
-        .collect();
-
-    // Length checks for all columns
-    let length_checks: Vec<TokenStream> = columns
-        .iter()
-        .map(|col| {
-            let name = &col.col_name;
-            let name_str = name.to_string();
-            quote! {
-                ::core::assert!(
-                    self.#name.len() == _n_rows,
-                    "column length mismatch in {}: column `{}` has length {} but expected {}",
-                    ::core::stringify!(#df_name),
-                    #name_str,
-                    self.#name.len(),
-                    _n_rows,
-                );
-            }
-        })
-        .collect();
-
     // Build the set of column names that are struct-col placeholders (to skip in normal push).
     let struct_col_names: std::collections::HashSet<String> =
         struct_cols.iter().map(|sc| sc.base_name.clone()).collect();
 
-    let into_dataframe_impl = if has_enum_auto_expand
-        || has_struct_cols
-        || has_as_list_struct_cols
-        || has_factor_cols
-    {
-        // Dynamic pair building for auto-expand, struct fields, as_list struct fields,
-        // and/or as_factor fields.
-        let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
-            quote! {
-                __df_pairs.push((
-                    #tag_name.to_string(),
-                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag)),
-                ));
-            }
+    // `col` reads column `name`. With `borrowed_rows`, an auto-expand column
+    // holds slices of the rows' containers, whose elements are cloned out,
+    // instead of the containers themselves.
+    let column_list_body = |col: &dyn Fn(&syn::Ident) -> TokenStream,
+                            length_ref: TokenStream,
+                            borrowed_rows: bool|
+     -> TokenStream {
+        let tag_col = col(&format_ident!("_tag"));
+
+        // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
+        // column SEXPs survive subsequent column allocations. Pre-fix the raw
+        // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
+        // next column's allocations — UAF under gctorture
+        // (reviews/2026-05-07-gctorture-audit.md).
+        let tag_pair = if let Some(ref tag_name) = attrs.tag {
+            quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#tag_col))), }
         } else {
             TokenStream::new()
         };
 
-        // Static columns — skip struct-col placeholders (handled in flatten block below),
-        // as-list struct fields (handled in the per-element conversion block below),
-        // and factor columns (handled in the FactorOptionVec wrapping block below).
-        let static_pair_pushes: Vec<TokenStream> = columns
+        let col_pairs: Vec<TokenStream> = columns
             .iter()
-            .filter(|col| {
-                let name_str = col.col_name.to_string();
-                !struct_col_names.contains(&name_str)
-                    && !as_list_struct_col_names.contains(&name_str)
-                    && !factor_col_names.contains(&name_str)
+            .map(|c| {
+                let column = col(&c.col_name);
+                let name_str = c.col_name.to_string();
+                quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#column))) }
             })
-            .map(|col| {
-                let name = &col.col_name;
-                let name_str = name.to_string();
+            .collect();
+
+        // Length checks for all columns
+        let length_checks: Vec<TokenStream> = columns
+            .iter()
+            .map(|c| {
+                let column = col(&c.col_name);
+                let name_str = c.col_name.to_string();
                 quote! {
-                    __df_pairs.push((
-                        #name_str.to_string(),
-                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name)),
-                    ));
+                    ::core::assert!(
+                        #column.len() == _n_rows,
+                        "column length mismatch in {}: column `{}` has length {} but expected {}",
+                        ::core::stringify!(#df_name),
+                        #name_str,
+                        #column.len(),
+                        _n_rows,
+                    );
                 }
             })
             .collect();
 
-        // as_list struct fields: convert each element via into_list() at conversion time
-        // (not during row accumulation), producing a VECSXP list-column with NULL for absent rows.
-        // `into_option_list_column` stores each list in the rooted column as it is built,
-        // so earlier cells are never unrooted while later ones allocate (#1748).
-        let as_list_struct_pushes: Vec<TokenStream> = columns
-            .iter()
-            .filter(|col| as_list_struct_col_names.contains(&col.col_name.to_string()))
-            .map(|col| {
-                let name = &col.col_name;
-                let name_str = name.to_string();
-                let into_option_list_column = list_column_fn(&col.ty, true);
+        if has_enum_auto_expand || has_struct_cols || has_as_list_struct_cols || has_factor_cols {
+            // Dynamic pair building for auto-expand, struct fields, as_list struct fields,
+            // and/or as_factor fields.
+            let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
                 quote! {
                     __df_pairs.push((
-                        #name_str.to_string(),
-                        __scope.protect_raw(#into_option_list_column(self.#name)),
+                        #tag_name.to_string(),
+                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#tag_col)),
                     ));
                 }
-            })
-            .collect();
+            } else {
+                TokenStream::new()
+            };
 
-        // as_factor columns: wrap Vec<Option<T>> in FactorOptionVec<T> before calling into_sexp.
-        // Uses the UnitEnumFactor blanket impl: impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>.
-        let factor_pair_pushes: Vec<TokenStream> = columns
-            .iter()
-            .filter(|col| factor_col_names.contains(&col.col_name.to_string()))
-            .map(|col| {
-                let name = &col.col_name;
-                let name_str = name.to_string();
-                let ty = &col.ty;
-                quote! {
-                    __df_pairs.push((
-                        #name_str.to_string(),
-                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
-                            ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(self.#name)
-                        )),
-                    ));
-                }
-            })
-            .collect();
+            // Static columns — skip struct-col placeholders (handled in flatten block below),
+            // as-list struct fields (handled in the per-element conversion block below),
+            // and factor columns (handled in the FactorOptionVec wrapping block below).
+            let static_pair_pushes: Vec<TokenStream> = columns
+                .iter()
+                .filter(|c| {
+                    let name_str = c.col_name.to_string();
+                    !struct_col_names.contains(&name_str)
+                        && !as_list_struct_col_names.contains(&name_str)
+                        && !factor_col_names.contains(&name_str)
+                })
+                .map(|c| {
+                    let column = col(&c.col_name);
+                    let name_str = c.col_name.to_string();
+                    quote! {
+                        __df_pairs.push((
+                            #name_str.to_string(),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#column)),
+                        ));
+                    }
+                })
+                .collect();
 
-        let auto_expand_pair_pushes: Vec<TokenStream> = auto_expand_cols
-            .iter()
-            .map(|ac| {
-                let df_field = &ac.df_field;
-                let base_name_str = &ac.base_name;
-                let elem_ty = &ac.elem_ty;
-                let elems_iter = owned_elems_iter(
-                    &quote! { __row_vec },
-                    field_is_borrowed_ref(&ac.container_ty),
-                    elem_ty,
-                );
-                quote! {
-                    {
-                        let __auto = self.#df_field;
-                        let __max = __auto.iter()
-                            .filter_map(|v| v.as_ref())
-                            .map(|v| v.len())
-                            .max()
-                            .unwrap_or(0);
-                        let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                            .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
-                            .collect();
-                        for __opt_vec in __auto {
-                            let mut __elems = ::core::option::Option::map(
-                                __opt_vec,
-                                |__row_vec| #elems_iter,
-                            );
-                            for __col in __cols.iter_mut() {
-                                __col.push(::core::option::Option::and_then(
-                                    ::core::option::Option::as_mut(&mut __elems),
-                                    ::core::iter::Iterator::next,
+            // as_list struct fields: convert each element via into_list() at conversion time
+            // (not during row accumulation), producing a VECSXP list-column with NULL for absent rows.
+            // `into_option_list_column` stores each list in the rooted column as it is built,
+            // so earlier cells are never unrooted while later ones allocate (#1748).
+            let as_list_struct_pushes: Vec<TokenStream> = columns
+                .iter()
+                .filter(|c| as_list_struct_col_names.contains(&c.col_name.to_string()))
+                .map(|c| {
+                    let column = col(&c.col_name);
+                    let name_str = c.col_name.to_string();
+                    let into_option_list_column = list_column_fn(&c.ty, true);
+                    quote! {
+                        __df_pairs.push((
+                            #name_str.to_string(),
+                            __scope.protect_raw(#into_option_list_column(#column)),
+                        ));
+                    }
+                })
+                .collect();
+
+            // as_factor columns: wrap Vec<Option<T>> in FactorOptionVec<T> before calling into_sexp.
+            // Uses the UnitEnumFactor blanket impl: impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>.
+            let factor_pair_pushes: Vec<TokenStream> = columns
+                .iter()
+                .filter(|c| factor_col_names.contains(&c.col_name.to_string()))
+                .map(|c| {
+                    let column = col(&c.col_name);
+                    let name_str = c.col_name.to_string();
+                    let ty = &c.ty;
+                    quote! {
+                        __df_pairs.push((
+                            #name_str.to_string(),
+                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(
+                                ::miniextendr_api::factor::FactorOptionVec::<#ty>::from(#column)
+                            )),
+                        ));
+                    }
+                })
+                .collect();
+
+            let auto_expand_pair_pushes: Vec<TokenStream> = auto_expand_cols
+                .iter()
+                .map(|ac| {
+                    let column = col(&ac.df_field);
+                    let base_name_str = &ac.base_name;
+                    let elem_ty = &ac.elem_ty;
+                    let elems_iter = owned_elems_iter(
+                        &quote! { __row_vec },
+                        field_is_borrowed_ref(&ac.container_ty) || borrowed_rows,
+                        elem_ty,
+                    );
+                    quote! {
+                        {
+                            let __auto = #column;
+                            let __max = __auto.iter()
+                                .filter_map(|v| v.as_ref())
+                                .map(|v| v.len())
+                                .max()
+                                .unwrap_or(0);
+                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
+                                .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
+                                .collect();
+                            for __opt_vec in __auto {
+                                let mut __elems = ::core::option::Option::map(
+                                    __opt_vec,
+                                    |__row_vec| #elems_iter,
+                                );
+                                for __col in __cols.iter_mut() {
+                                    __col.push(::core::option::Option::and_then(
+                                        ::core::option::Option::as_mut(&mut __elems),
+                                        ::core::iter::Iterator::next,
+                                    ));
+                                }
+                            }
+                            for (__i, __col) in __cols.into_iter().enumerate() {
+                                __df_pairs.push((
+                                    ::std::format!("{}_{}", #base_name_str, __i + 1),
+                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
                                 ));
                             }
                         }
-                        for (__i, __col) in __cols.into_iter().enumerate() {
-                            __df_pairs.push((
-                                ::std::format!("{}_{}", #base_name_str, __i + 1),
-                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
-                            ));
-                        }
                     }
-                }
-            })
-            .collect();
+                })
+                .collect();
 
-        // Struct field flatten blocks: for each Vec<Option<Inner>> column, collect present
-        // rows into a dense Vec<Inner>, track presence indices, call Inner::to_dataframe,
-        // extract named columns via into_named_columns(), scatter them to full row count
-        // with None-fill, and push with prefixed names.
-        let struct_flatten_pushes: Vec<TokenStream> = struct_cols
-            .iter()
-            .map(|sc| {
-                let df_field = &sc.df_field;
-                let base_name_str = &sc.base_name;
-                let inner_ty = &sc.inner_ty;
-                quote! {
-                    {
-                        // Separate the Some/None rows — collect present rows densely
-                        // (no Clone needed: we consume the Vec<Option<Inner>>).
-                        let mut __present_idx: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
-                        let mut __inner_rows: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
-                        for (__row_i, __opt) in self.#df_field.into_iter().enumerate() {
-                            if let ::core::option::Option::Some(__inner) = __opt {
-                                __present_idx.push(__row_i);
-                                __inner_rows.push(__inner);
+            // Struct field flatten blocks: for each Vec<Option<Inner>> column, collect present
+            // rows into a dense Vec<Inner>, track presence indices, call Inner::to_dataframe,
+            // extract named columns via into_named_columns(), scatter them to full row count
+            // with None-fill, and push with prefixed names.
+            let struct_flatten_pushes: Vec<TokenStream> = struct_cols
+                .iter()
+                .map(|sc| {
+                    let column = col(&sc.df_field);
+                    let base_name_str = &sc.base_name;
+                    let inner_ty = &sc.inner_ty;
+                    quote! {
+                        {
+                            // Separate the Some/None rows — collect present rows densely
+                            // (no Clone needed: we consume the Vec<Option<Inner>>).
+                            let mut __present_idx: ::std::vec::Vec<usize> = ::std::vec::Vec::new();
+                            let mut __inner_rows: ::std::vec::Vec<#inner_ty> = ::std::vec::Vec::new();
+                            for (__row_i, __opt) in #column.into_iter().enumerate() {
+                                if let ::core::option::Option::Some(__inner) = __opt {
+                                    __present_idx.push(__row_i);
+                                    __inner_rows.push(__inner);
+                                }
+                            }
+                            // Call Inner::to_dataframe and extract named column SEXPs.
+                            let __inner_df = <#inner_ty>::to_dataframe(__inner_rows);
+                            // into_named_columns roots the inner column list in __scope, so
+                            // every source column outlives the scatter allocations below.
+                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                                __inner_df,
+                                &__scope,
+                            );
+                            // Scatter each column back to full _n_rows with NA/NULL-fill,
+                            // preserving the source column's SEXPTYPE and attributes (a factor
+                            // stays a factor).
+                            for (__inner_col_name, __inner_col_sexp) in __inner_cols {
+                                let __prefixed = ::std::format!("{}_{}", #base_name_str, __inner_col_name);
+                                let __scattered = __scope.protect_raw(
+                                    ::miniextendr_api::convert::scatter_column(
+                                        __inner_col_sexp,
+                                        &__present_idx,
+                                        _n_rows,
+                                    ),
+                                );
+                                __df_pairs.push((__prefixed, __scattered));
                             }
                         }
-                        // Call Inner::to_dataframe and extract named column SEXPs.
-                        let __inner_df = <#inner_ty>::to_dataframe(__inner_rows);
-                        // into_named_columns roots the inner column list in __scope, so
-                        // every source column outlives the scatter allocations below.
-                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
-                            __inner_df,
-                            &__scope,
-                        );
-                        // Scatter each column back to full _n_rows with NA/NULL-fill,
-                        // preserving the source column's SEXPTYPE and attributes (a factor
-                        // stays a factor).
-                        for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                            let __prefixed = ::std::format!("{}_{}", #base_name_str, __inner_col_name);
-                            let __scattered = __scope.protect_raw(
-                                ::miniextendr_api::convert::scatter_column(
-                                    __inner_col_sexp,
-                                    &__present_idx,
-                                    _n_rows,
-                                ),
-                            );
-                            __df_pairs.push((__prefixed, __scattered));
-                        }
                     }
-                }
-            })
-            .collect();
+                })
+                .collect();
 
-        quote! {
-            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
-                fn into_column_list(self) -> ::miniextendr_api::List {
-                    let _n_rows = #length_ref;
-                    #(#length_checks)*
-                    // SAFETY: into_column_list only runs on the R main thread.
-                    // ProtectScope keeps each column SEXP rooted across the
-                    // next column's allocations; from_raw_pairs writes them
-                    // into the parent VECSXP before we drop the scope.
-                    unsafe {
-                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        let mut __df_pairs: ::std::vec::Vec<(
-                            ::std::string::String,
-                            ::miniextendr_api::SEXP,
-                        )> = ::std::vec::Vec::new();
-                        #tag_push_pair
-                        #(#static_pair_pushes)*
-                        #(#factor_pair_pushes)*
-                        #(#auto_expand_pair_pushes)*
-                        #(#struct_flatten_pushes)*
-                        #(#as_list_struct_pushes)*
-                        ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
-                            .set_class_str(&["data.frame"])
-                            .set_row_names_int(_n_rows)
-                    }
+            quote! {
+                let _n_rows = #length_ref;
+                #(#length_checks)*
+                // SAFETY: the column list is only assembled on the R main thread.
+                // ProtectScope keeps each column SEXP rooted across the
+                // next column's allocations; from_raw_pairs writes them
+                // into the parent VECSXP before we drop the scope.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    let mut __df_pairs: ::std::vec::Vec<(
+                        ::std::string::String,
+                        ::miniextendr_api::SEXP,
+                    )> = ::std::vec::Vec::new();
+                    #tag_push_pair
+                    #(#static_pair_pushes)*
+                    #(#factor_pair_pushes)*
+                    #(#auto_expand_pair_pushes)*
+                    #(#struct_flatten_pushes)*
+                    #(#as_list_struct_pushes)*
+                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                }
+            }
+        } else {
+            quote! {
+                let _n_rows = #length_ref;
+                #(#length_checks)*
+                // SAFETY: see the auto-expand branch.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    // Explicit type annotation so the vec![] case (unit-only enum
+                    // with no columns and no tag) doesn't hit E0282 inference failure.
+                    let __pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
+                        #tag_pair
+                        #(#col_pairs),*
+                    ];
+                    ::miniextendr_api::list::List::from_raw_pairs(__pairs)
+                    .set_class_str(&["data.frame"])
+                    .set_row_names_int(_n_rows)
                 }
             }
         }
-    } else {
-        quote! {
-            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
-                fn into_column_list(self) -> ::miniextendr_api::List {
-                    let _n_rows = #length_ref;
-                    #(#length_checks)*
-                    // SAFETY: see auto-expand branch.
-                    unsafe {
-                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        // Explicit type annotation so the vec![] case (unit-only enum
-                        // with no columns and no tag) doesn't hit E0282 inference failure.
-                        let __pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
-                            #tag_pair
-                            #(#col_pairs),*
-                        ];
-                        ::miniextendr_api::list::List::from_raw_pairs(__pairs)
-                        .set_class_str(&["data.frame"])
-                        .set_row_names_int(_n_rows)
-                    }
-                }
+    };
+
+    let companion_column_list = column_list_body(&|name| quote! { self.#name }, length_ref, false);
+    let into_dataframe_impl = quote! {
+        impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+            fn into_column_list(self) -> ::miniextendr_api::List {
+                #companion_column_list
             }
         }
     };
@@ -1169,197 +1183,278 @@ pub(super) fn derive_enum_dataframe(
     // endregion
 
     // region: Generate From<Vec<Enum>>
+    //
+    // Both fills keep each column in a prefixed local (`column_local`), so no
+    // column name can shadow the fill's own bindings (`rows`, `__mx_len`).
+    let local_column = |name: &syn::Ident| -> TokenStream {
+        let local = column_local(name);
+        quote! { #local }
+    };
     let mut col_vec_inits: Vec<TokenStream> = columns
         .iter()
         .map(|col| {
-            let name = &col.col_name;
+            let local = column_local(&col.col_name);
             let ty = &col.ty;
-            quote! { let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> = ::std::vec::Vec::with_capacity(len); }
+            quote! { let mut #local: ::std::vec::Vec<::core::option::Option<#ty>> = ::std::vec::Vec::with_capacity(__mx_len); }
         })
         .collect();
     for ac in &auto_expand_cols {
-        let name = &ac.df_field;
+        let local = column_local(&ac.df_field);
         let cty = &ac.container_ty;
         col_vec_inits.push(
-            quote! { let mut #name: ::std::vec::Vec<::core::option::Option<#cty>> = ::std::vec::Vec::with_capacity(len); },
+            quote! { let mut #local: ::std::vec::Vec<::core::option::Option<#cty>> = ::std::vec::Vec::with_capacity(__mx_len); },
         );
     }
 
     let tag_init = if has_tag {
-        quote! { let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(len); }
+        let local = column_local(&format_ident!("_tag"));
+        quote! { let mut #local: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(__mx_len); }
     } else {
         TokenStream::new()
     };
 
-    // Build match arms for each variant
-    let match_arms: Vec<TokenStream> = variant_infos
+    // The `String` columns the borrowed fill (`DataFrameRowBorrow`) writes from
+    // the rows' `&str` (`Vec<Option<&str>>`): every plain `String` column that
+    // only plain fields feed. Not the `conflicts = "string"` ones, whose values
+    // are formatted anyway, nor a column an expanded field feeds in some
+    // variant (`pair: [String; 2]` feeds `pair_1`), whose values are cloned.
+    let expanded_col_names: std::collections::HashSet<String> = variant_infos
         .iter()
-        .enumerate()
-        .map(|(variant_idx, vi)| {
-            let variant_name = &vi.name;
-            let variant_name_str = variant_name.to_string();
-
-            let tag_push = if has_tag {
-                quote! { _tag.push(#variant_name_str.to_string()); }
-            } else {
-                TokenStream::new()
-            };
-
-            // Build push statements for each schema column.
-            // For present columns: push Some(value), for absent: push None.
-            // Expanded fields contribute multiple columns from one binding.
-
-            // First, build a map of which schema columns this variant contributes to.
-            let col_pushes: Vec<TokenStream> = columns
-                .iter()
-                .map(|col| {
-                    let col_name = &col.col_name;
-                    if col.present_in.contains(&variant_idx) {
-                        let col_name_str = col_name.to_string();
-
-                        for (pos, erf) in vi.fields.iter().enumerate() {
-                            match erf {
-                                EnumResolvedField::Single(data)
-                                    if data.col_name == *col_name =>
-                                {
-                                    let binding = &data.binding;
-                                    if col.string_coerced {
-                                        return quote! { #col_name.push(::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
-                                    } else {
-                                        return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
-                                    }
-                                }
-                                EnumResolvedField::ExpandedFixed(data) => {
-                                    let elems = enum_elem_idents(pos, data.len);
-                                    for (i, elem) in elems.iter().enumerate() {
-                                        let expanded_name = format!("{}_{}", data.base_name, i + 1);
-                                        if expanded_name == col_name_str {
-                                            return quote! { #col_name.push(::core::option::Option::Some(#elem)); };
-                                        }
-                                    }
-                                }
-                                EnumResolvedField::ExpandedVec(data) => {
-                                    let elems = enum_elem_idents(pos, data.width);
-                                    for (i, elem) in elems.iter().enumerate() {
-                                        let expanded_name = format!("{}_{}", data.base_name, i + 1);
-                                        if expanded_name == col_name_str {
-                                            return quote! { #col_name.push(#elem); };
-                                        }
-                                    }
-                                }
-                                EnumResolvedField::Map(data) => {
-                                    let keys_name = format!("{}_keys", data.base_name);
-                                    let vals_name = format!("{}_values", data.base_name);
-                                    let binding = &data.binding;
-                                    // Use unzip() to guarantee pairwise alignment of keys and values.
-                                    // Both columns are emitted together when the _keys column is
-                                    // processed; the _values column is skipped (already handled).
-                                    if col_name_str == keys_name {
-                                        let vals_col = format_ident!("{}", vals_name);
-                                        return quote! {
-                                            let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
-                                            #col_name.push(::core::option::Option::Some(__mx_keys));
-                                            #vals_col.push(::core::option::Option::Some(__mx_vals));
-                                        };
-                                    }
-                                    if col_name_str == vals_name {
-                                        // Already handled when keys col was processed; emit no-op.
-                                        return quote! {};
-                                    }
-                                }
-                                // Struct field: push Some(binding) to the Vec<Option<Inner>> column.
-                                EnumResolvedField::Struct(data)
-                                    if data.base_name == col_name_str =>
-                                {
-                                    let binding = &data.binding;
-                                    return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
-                                }
-                                // AutoExpandVec doesn't contribute to static columns
-                                _ => {}
-                            }
-                        }
-                        quote! { #col_name.push(::core::option::Option::None); }
-                    } else {
-                        quote! { #col_name.push(::core::option::Option::None); }
-                    }
-                })
-                .collect();
-
-            let elem_prelude = expanded_elem_prelude(vi);
-
-            // Auto-expand push statements
-            let auto_expand_pushes: Vec<TokenStream> = auto_expand_cols
-                .iter()
-                .map(|ac| {
-                    let ac_field = &ac.df_field;
-                    if ac.present_in.contains(&variant_idx) {
-                        // Find the binding for this auto-expand field
-                        for erf in &vi.fields {
-                            if let EnumResolvedField::AutoExpandVec(data) = erf
-                                && data.base_name == ac.base_name
-                            {
-                                let binding = &data.binding;
-                                return quote! { #ac_field.push(::core::option::Option::Some(#binding)); };
-                            }
-                        }
-                        // shouldn't reach here
-                        quote! { #ac_field.push(::core::option::Option::None); }
-                    } else {
-                        quote! { #ac_field.push(::core::option::Option::None); }
-                    }
-                })
-                .collect();
-
-            // Generate destructure pattern based on variant shape
-            match vi.shape {
-                VariantShape::Named => {
-                    let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let rust_name = erf.rust_name();
-                        let binding = erf.binding();
-                        quote! { #rust_name: #binding }
-                    }).collect();
-                    // Add skipped fields as wildcard bindings
-                    for skipped in &vi.skipped_fields {
-                        field_bindings.push(quote! { #skipped: _ });
-                    }
-                    quote! {
-                        #row_name::#variant_name { #(#field_bindings),* } => {
-                            #tag_push
-                            #elem_prelude
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Tuple => {
-                    let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
-                        let binding = erf.binding();
-                        quote! { #binding }
-                    }).collect();
-                    quote! {
-                        #row_name::#variant_name(#(#field_bindings),*) => {
-                            #tag_push
-                            #elem_prelude
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
-                }
-                VariantShape::Unit => {
-                    quote! {
-                        #row_name::#variant_name => {
-                            #tag_push
-                            #(#col_pushes)*
-                            #(#auto_expand_pushes)*
-                        }
-                    }
-                }
-            }
+        .flat_map(|vi| &vi.fields)
+        .flat_map(|erf| match erf {
+            EnumResolvedField::ExpandedFixed(data) => (1..=data.len)
+                .map(|i| format!("{}_{}", data.base_name, i))
+                .collect::<Vec<_>>(),
+            EnumResolvedField::ExpandedVec(data) => (1..=data.width)
+                .map(|i| format!("{}_{}", data.base_name, i))
+                .collect(),
+            _ => Vec::new(),
         })
         .collect();
+    let borrowed_string_cols: std::collections::HashSet<String> = columns
+        .iter()
+        .filter(|col| {
+            let name_str = col.col_name.to_string();
+            !col.string_coerced
+                && !col.is_factor
+                && !struct_col_names.contains(&name_str)
+                && !as_list_struct_col_names.contains(&name_str)
+                && !expanded_col_names.contains(&name_str)
+                && option_payload(&col.ty).is_none()
+                && borrowed_string_column(&col.ty).is_some()
+        })
+        .map(|col| col.col_name.to_string())
+        .collect();
+
+    // The match arms that push one row's values into the columns. `col` names
+    // the column vector to push into. The owned fill (`From<Vec<Enum>>`) moves
+    // each value out of its row; the borrowed fill (`borrowed`, matching on
+    // `&Enum`, so every binding is a reference) clones it, or borrows the
+    // `&str` of a `String` column, and keeps an auto-expand field as a slice.
+    let fill_arms = |borrowed: bool,
+                     col: &dyn Fn(&syn::Ident) -> TokenStream|
+     -> Vec<TokenStream> {
+        let tag_col = col(&format_ident!("_tag"));
+        variant_infos
+            .iter()
+            .enumerate()
+            .map(|(variant_idx, vi)| {
+                let variant_name = &vi.name;
+                let variant_name_str = variant_name.to_string();
+
+                let tag_push = if !has_tag {
+                    TokenStream::new()
+                } else if borrowed {
+                    quote! { #tag_col.push(#variant_name_str); }
+                } else {
+                    quote! { #tag_col.push(#variant_name_str.to_string()); }
+                };
+
+                // Build push statements for each schema column.
+                // For present columns: push Some(value), for absent: push None.
+                // Expanded fields contribute multiple columns from one binding.
+                let col_pushes: Vec<TokenStream> = columns
+                    .iter()
+                    .map(|c| {
+                        let col_name = &c.col_name;
+                        let target = col(col_name);
+                        if c.present_in.contains(&variant_idx) {
+                            let col_name_str = col_name.to_string();
+
+                            for (pos, erf) in vi.fields.iter().enumerate() {
+                                match erf {
+                                    EnumResolvedField::Single(data)
+                                        if data.col_name == *col_name =>
+                                    {
+                                        let binding = &data.binding;
+                                        let value = if c.string_coerced {
+                                            quote! { ::std::string::ToString::to_string(&#binding) }
+                                        } else if !borrowed {
+                                            quote! { #binding }
+                                        } else if borrowed_string_cols.contains(&col_name_str) {
+                                            column_str(quote! { #binding })
+                                        } else {
+                                            quote! { ::core::clone::Clone::clone(#binding) }
+                                        };
+                                        return quote! { #target.push(::core::option::Option::Some(#value)); };
+                                    }
+                                    EnumResolvedField::ExpandedFixed(data) => {
+                                        let elems = enum_elem_idents(pos, data.len);
+                                        for (i, elem) in elems.iter().enumerate() {
+                                            let expanded_name = format!("{}_{}", data.base_name, i + 1);
+                                            if expanded_name == col_name_str {
+                                                return quote! { #target.push(::core::option::Option::Some(#elem)); };
+                                            }
+                                        }
+                                    }
+                                    EnumResolvedField::ExpandedVec(data) => {
+                                        let elems = enum_elem_idents(pos, data.width);
+                                        for (i, elem) in elems.iter().enumerate() {
+                                            let expanded_name = format!("{}_{}", data.base_name, i + 1);
+                                            if expanded_name == col_name_str {
+                                                return quote! { #target.push(#elem); };
+                                            }
+                                        }
+                                    }
+                                    EnumResolvedField::Map(data) => {
+                                        let keys_name = format!("{}_keys", data.base_name);
+                                        let vals_name = format!("{}_values", data.base_name);
+                                        let binding = &data.binding;
+                                        // Use unzip() to guarantee pairwise alignment of keys and values.
+                                        // Both columns are emitted together when the _keys column is
+                                        // processed; the _values column is skipped (already handled).
+                                        if col_name_str == keys_name {
+                                            let vals_col = col(&format_ident!("{}", vals_name));
+                                            let pairs = if borrowed {
+                                                quote! {
+                                                    ::core::iter::Iterator::map(
+                                                        ::core::iter::IntoIterator::into_iter(#binding),
+                                                        |(__mx_key, __mx_val)| (
+                                                            ::core::clone::Clone::clone(__mx_key),
+                                                            ::core::clone::Clone::clone(__mx_val),
+                                                        ),
+                                                    )
+                                                }
+                                            } else {
+                                                quote! { #binding.into_iter() }
+                                            };
+                                            return quote! {
+                                                let (__mx_keys, __mx_vals) = #pairs.unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
+                                                #target.push(::core::option::Option::Some(__mx_keys));
+                                                #vals_col.push(::core::option::Option::Some(__mx_vals));
+                                            };
+                                        }
+                                        if col_name_str == vals_name {
+                                            // Already handled when keys col was processed; emit no-op.
+                                            return quote! {};
+                                        }
+                                    }
+                                    // Struct field: push Some(binding) to the Vec<Option<Inner>> column.
+                                    EnumResolvedField::Struct(data)
+                                        if data.base_name == col_name_str =>
+                                    {
+                                        let binding = &data.binding;
+                                        let value = if borrowed {
+                                            quote! { ::core::clone::Clone::clone(#binding) }
+                                        } else {
+                                            quote! { #binding }
+                                        };
+                                        return quote! { #target.push(::core::option::Option::Some(#value)); };
+                                    }
+                                    // AutoExpandVec doesn't contribute to static columns
+                                    _ => {}
+                                }
+                            }
+                            quote! { #target.push(::core::option::Option::None); }
+                        } else {
+                            quote! { #target.push(::core::option::Option::None); }
+                        }
+                    })
+                    .collect();
+
+                let elem_prelude = expanded_elem_prelude(vi, borrowed);
+
+                // Auto-expand push statements
+                let auto_expand_pushes: Vec<TokenStream> = auto_expand_cols
+                    .iter()
+                    .map(|ac| {
+                        let target = col(&ac.df_field);
+                        if ac.present_in.contains(&variant_idx) {
+                            // Find the binding for this auto-expand field
+                            for erf in &vi.fields {
+                                if let EnumResolvedField::AutoExpandVec(data) = erf
+                                    && data.base_name == ac.base_name
+                                {
+                                    let binding = &data.binding;
+                                    let value = if borrowed {
+                                        quote! { &(#binding)[..] }
+                                    } else {
+                                        quote! { #binding }
+                                    };
+                                    return quote! { #target.push(::core::option::Option::Some(#value)); };
+                                }
+                            }
+                            // shouldn't reach here
+                            quote! { #target.push(::core::option::Option::None); }
+                        } else {
+                            quote! { #target.push(::core::option::Option::None); }
+                        }
+                    })
+                    .collect();
+
+                // Generate destructure pattern based on variant shape
+                match vi.shape {
+                    VariantShape::Named => {
+                        let mut field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
+                            let rust_name = erf.rust_name();
+                            let binding = erf.binding();
+                            quote! { #rust_name: #binding }
+                        }).collect();
+                        // Add skipped fields as wildcard bindings
+                        for skipped in &vi.skipped_fields {
+                            field_bindings.push(quote! { #skipped: _ });
+                        }
+                        quote! {
+                            #row_name::#variant_name { #(#field_bindings),* } => {
+                                #tag_push
+                                #elem_prelude
+                                #(#col_pushes)*
+                                #(#auto_expand_pushes)*
+                            }
+                        }
+                    }
+                    VariantShape::Tuple => {
+                        let field_bindings: Vec<TokenStream> = vi.fields.iter().map(|erf| {
+                            let binding = erf.binding();
+                            quote! { #binding }
+                        }).collect();
+                        quote! {
+                            #row_name::#variant_name(#(#field_bindings),*) => {
+                                #tag_push
+                                #elem_prelude
+                                #(#col_pushes)*
+                                #(#auto_expand_pushes)*
+                            }
+                        }
+                    }
+                    VariantShape::Unit => {
+                        quote! {
+                            #row_name::#variant_name => {
+                                #tag_push
+                                #(#col_pushes)*
+                                #(#auto_expand_pushes)*
+                            }
+                        }
+                    }
+                }
+            })
+            .collect()
+    };
+    let match_arms = fill_arms(false, &local_column);
 
     let tag_struct_field = if has_tag {
-        quote! { _tag, }
+        let local = column_local(&format_ident!("_tag"));
+        quote! { _tag: #local, }
     } else {
         TokenStream::new()
     };
@@ -1368,22 +1463,24 @@ pub(super) fn derive_enum_dataframe(
         .iter()
         .map(|col| {
             let name = &col.col_name;
-            quote! { #name }
+            let local = column_local(name);
+            quote! { #name: #local }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        col_struct_fields.push(quote! { #name });
+        let local = column_local(name);
+        col_struct_fields.push(quote! { #name: #local });
     }
 
     let from_vec_impl = quote! {
         impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
             fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                let len = rows.len();
+                let __mx_len = rows.len();
                 #tag_init
                 #(#col_vec_inits)*
-                for row in rows {
-                    match row {
+                for __mx_row in rows {
+                    match __mx_row {
                         #(#match_arms)*
                     }
                 }
@@ -1392,6 +1489,107 @@ pub(super) fn derive_enum_dataframe(
                     #phantom_init
                     #(#col_struct_fields),*
                 }
+            }
+        }
+    };
+    // endregion
+
+    // region: DataFrameRowBorrow — the borrowed fill (#2307)
+    //
+    // The owned fill's match arms over `&Enum` into locals with the companion's
+    // column types, then the column assembly above. Plain `String` columns hold
+    // the rows' `&str`; every other value is cloned into its column. What the
+    // fill needs of a field type (`Clone`, `StringColumn`) is the impl's
+    // conditional `where` clause, so a row with a non-`Clone` field still
+    // derives: the borrowed conversion just does not apply to it.
+    let mut borrow_inits: Vec<TokenStream> = Vec::new();
+    if has_tag {
+        let local = column_local(&format_ident!("_tag"));
+        borrow_inits.push(quote! {
+            let mut #local: ::std::vec::Vec<&'static ::core::primitive::str> = ::std::vec::Vec::with_capacity(__mx_len);
+        });
+    }
+    for col in &columns {
+        let local = column_local(&col.col_name);
+        let elem_ty = if borrowed_string_cols.contains(&col.col_name.to_string()) {
+            quote! { &::core::primitive::str }
+        } else {
+            let ty = &col.ty;
+            quote! { #ty }
+        };
+        borrow_inits.push(quote! {
+            let mut #local: ::std::vec::Vec<::core::option::Option<#elem_ty>> = ::std::vec::Vec::with_capacity(__mx_len);
+        });
+    }
+    for ac in &auto_expand_cols {
+        let local = column_local(&ac.df_field);
+        let elem_ty = &ac.elem_ty;
+        borrow_inits.push(quote! {
+            let mut #local: ::std::vec::Vec<::core::option::Option<&[#elem_ty]>> = ::std::vec::Vec::with_capacity(__mx_len);
+        });
+    }
+    let clone_bound = quote! { ::core::clone::Clone };
+    let mut borrow_bounds: Vec<(TokenStream, TokenStream)> = Vec::new();
+    for vi in &variant_infos {
+        for erf in &vi.fields {
+            match erf {
+                EnumResolvedField::Single(data) => {
+                    let col_name_str = data.col_name.to_string();
+                    let column = columns.iter().find(|c| c.col_name == data.col_name);
+                    if column.is_some_and(|c| c.string_coerced) {
+                        continue;
+                    }
+                    let ty = &data.ty;
+                    let bound = if borrowed_string_cols.contains(&col_name_str) {
+                        quote! { ::miniextendr_api::dataframe::StringColumn }
+                    } else {
+                        clone_bound.clone()
+                    };
+                    borrow_bounds.push((quote! { #ty }, bound));
+                }
+                EnumResolvedField::ExpandedFixed(data) => {
+                    let ty = &data.elem_ty;
+                    borrow_bounds.push((quote! { #ty }, clone_bound.clone()));
+                }
+                EnumResolvedField::ExpandedVec(data) => {
+                    let ty = &data.elem_ty;
+                    borrow_bounds.push((quote! { #ty }, clone_bound.clone()));
+                }
+                EnumResolvedField::AutoExpandVec(data) => {
+                    let ty = &data.elem_ty;
+                    borrow_bounds.push((quote! { #ty }, clone_bound.clone()));
+                }
+                EnumResolvedField::Map(data) => {
+                    let key_ty = &data.key_ty;
+                    let val_ty = &data.val_ty;
+                    borrow_bounds.push((quote! { #key_ty }, clone_bound.clone()));
+                    borrow_bounds.push((quote! { #val_ty }, clone_bound.clone()));
+                }
+                EnumResolvedField::Struct(data) => {
+                    let ty = &data.inner_ty;
+                    borrow_bounds.push((quote! { #ty }, clone_bound.clone()));
+                }
+            }
+        }
+    }
+    let borrow_arms = fill_arms(true, &local_column);
+    let borrowed_column_list = column_list_body(&local_column, quote! { __mx_len }, true);
+    let borrow_where = conditional_where(where_clause, &borrow_bounds);
+    let borrow_impl = quote! {
+        #[automatically_derived]
+        #[allow(unused_lifetimes)]
+        impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowBorrow
+            for #row_name #ty_generics #borrow_where
+        {
+            fn rows_ref_into_column_list(rows: &[Self]) -> ::miniextendr_api::List {
+                let __mx_len = <[Self]>::len(rows);
+                #(#borrow_inits)*
+                for __mx_row in rows {
+                    match __mx_row {
+                        #(#borrow_arms)*
+                    }
+                }
+                #borrowed_column_list
             }
         }
     };
@@ -1423,15 +1621,16 @@ pub(super) fn derive_enum_dataframe(
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
+                let mut __mx_col__tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); __mx_len];
             });
         }
         let nones = |name: &syn::Ident, ty: &syn::Type| {
+            let local = column_local(name);
             quote! {
-                let mut #name: ::std::vec::Vec<::core::option::Option<#ty>> =
+                let mut #local: ::std::vec::Vec<::core::option::Option<#ty>> =
                     ::core::iter::Iterator::collect(::core::iter::Iterator::take(
                         ::core::iter::repeat_with(|| ::core::option::Option::None),
-                        len,
+                        __mx_len,
                     ));
             }
         };
@@ -1447,25 +1646,27 @@ pub(super) fn derive_enum_dataframe(
         if has_tag {
             writer_decls.push(quote! {
                 let __w_tag = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut _tag)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut __mx_col__tag)
                 };
             });
         }
         for col in &columns {
             let name = &col.col_name;
+            let local = column_local(name);
             let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #local)
                 };
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
+            let local = column_local(name);
             let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #local)
                 };
             });
         }
@@ -1559,7 +1760,7 @@ pub(super) fn derive_enum_dataframe(
                     })
                     .collect();
 
-                let elem_prelude = expanded_elem_prelude(vi);
+                let elem_prelude = expanded_elem_prelude(vi, false);
 
                 // Auto-expand write calls
                 let auto_expand_writes: Vec<TokenStream> = auto_expand_cols
@@ -1631,7 +1832,7 @@ pub(super) fn derive_enum_dataframe(
 
         // Return struct fields
         let par_tag_field = if has_tag {
-            quote! { _tag, }
+            quote! { _tag: __mx_col__tag, }
         } else {
             TokenStream::new()
         };
@@ -1639,12 +1840,14 @@ pub(super) fn derive_enum_dataframe(
             .iter()
             .map(|col| {
                 let name = &col.col_name;
-                quote! { #name }
+                let local = column_local(name);
+                quote! { #name: #local }
             })
             .collect();
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
-            par_struct_fields.push(quote! { #name });
+            let local = column_local(name);
+            par_struct_fields.push(quote! { #name: #local });
         }
 
         let parallel_columns_item = parallel_columns_impl(
@@ -1655,7 +1858,7 @@ pub(super) fn derive_enum_dataframe(
             quote! {
                 use ::miniextendr_api::rayon_bridge::rayon::prelude::*;
                 ::miniextendr_api::optionals::parallel::ensure_pool();
-                let len = rows.len();
+                let __mx_len = rows.len();
                 #(#par_col_decls)*
                 {
                     #(#writer_decls)*
@@ -2031,6 +2234,7 @@ pub(super) fn derive_enum_dataframe(
         #marker_impl
         #payload_fields_impl
         #datarow_convert_impl
+        #borrow_impl
         #(#struct_assertions)*
         #(#datetime_assertions)*
         #(#payload_collision_assertions)*
@@ -2051,8 +2255,9 @@ fn enum_elem_idents(pos: usize, n: usize) -> Vec<syn::Ident> {
 
 /// Bind the elements of variant `vi`'s `[T; N]` / `width = N` fields to the
 /// variables [`enum_elem_idents`] names, for a match arm whose pattern binds
-/// each field to its `binding`.
-fn expanded_elem_prelude(vi: &VariantInfo) -> TokenStream {
+/// each field to its `binding`. With `borrowed_rows` the arm matches a
+/// borrowed row, so each binding is a reference and every element is cloned.
+fn expanded_elem_prelude(vi: &VariantInfo, borrowed_rows: bool) -> TokenStream {
     let lets: Vec<TokenStream> = vi
         .fields
         .iter()
@@ -2063,7 +2268,7 @@ fn expanded_elem_prelude(vi: &VariantInfo) -> TokenStream {
                 let elems = enum_elem_idents(pos, data.len);
                 Some(fixed_array_elems(
                     &quote! { #binding },
-                    data.borrowed,
+                    data.borrowed || borrowed_rows,
                     &data.elem_ty,
                     &elems,
                 ))
@@ -2072,9 +2277,16 @@ fn expanded_elem_prelude(vi: &VariantInfo) -> TokenStream {
                 let binding = &data.binding;
                 let elems = enum_elem_idents(pos, data.width);
                 let iter = format_ident!("__mxv_f{}", pos);
+                // A borrowed row's binding may be a `&&[T]`, which is not
+                // `IntoIterator`; its slice is, whatever the container.
+                let access = if borrowed_rows {
+                    quote! { &(#binding)[..] }
+                } else {
+                    quote! { #binding }
+                };
                 Some(width_elems(
-                    &quote! { #binding },
-                    data.borrowed,
+                    &access,
+                    data.borrowed || borrowed_rows,
                     &data.elem_ty,
                     &iter,
                     &elems,
