@@ -20,24 +20,16 @@ GEN="$HERE/generated"
 mkdir -p "$GEN"
 
 DOC_TOOLCHAIN="${1:-nightly}"
-export RUSTDOCFLAGS="-D warnings -Z unstable-options --output-format json"
-DOC_FLAGS=(--no-deps --document-private-items)
+# RUSTDOCFLAGS, DOC_FLAGS, cargo_target_dir, doc_api_full
+# shellcheck source=rust-llm-docs/rustdoc-json.sh
+. "$HERE/rustdoc-json.sh"
 
 cd "$ROOT"
-
-# Cargo target directories are configurable globally, per workspace, and via
-# `CARGO_TARGET_DIR`. Resolve them from the same working directory as each
-# `cargo doc` invocation so the renderer reads the JSON Cargo actually wrote.
-cargo_target_dir() {
-  cargo "+$DOC_TOOLCHAIN" metadata --format-version 1 --no-deps \
-    | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
-}
 
 ROOT_TARGET="$(cargo_target_dir)"
 REVENDOR_TARGET="$(cd "$ROOT/cargo-revendor" && cargo_target_dir)"
 
-echo ">> cargo doc (api, full features)"
-cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}" -p miniextendr-api --features full
+doc_api_full
 
 echo ">> cargo doc (macros, engine, lint, cli)"
 cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}" \

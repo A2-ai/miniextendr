@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **rust-llm-docs** is a Python utility for converting Rust crate documentation from the rustdoc JSON format into human-readable markdown files. It's designed to make Rust API documentation more accessible to LLMs by providing structured markdown output.
 
+It also builds the miniextendr **type matrix** (`just type-matrix`, below): a
+color-coded table of every type the framework defines or converts.
+
 The project provides two main conversion strategies:
 - **`rustdoc_megadoc.py`**: Generates a single comprehensive markdown file covering every public item kind in rustdoc JSON format 57. Container items are nested under parents, trait impl headers live in the companion inventory, and unknown schema kinds fail instead of disappearing silently.
 - **`rustdoc_split.py`**: Generates split documentation with individual files for each type (better for LLM consumption with separate files for easier chunking)
@@ -32,6 +35,25 @@ just llm-docs-check
 ```
 `just llm-docs` writes `generated/` (gitignored, never committed);
 `just llm-docs-check` runs the `test_*.py` renderer tests, then regenerates.
+
+### Build the type matrix
+```bash
+just type-matrix
+```
+`generate-type-matrix.sh` builds the rustdoc JSON of `miniextendr-api`
+(`--features full`) and `miniextendr-engine` (flags and `cargo_target_dir` come
+from `rustdoc-json.sh`, which `generate-miniextendr-docs.sh` sources too), then:
+- `rustdoc_type_matrix.py` → `generated/type-matrix.json`: one row per reachable
+  public type (canonical path, re-exports as evidence) and one per normalized
+  converted std / third-party shape; each cell a status + evidence. Traits and
+  types are classified by rustdoc id, never by bare name; features come from
+  rustdoc's `CfgTrace` attrs on the item / impl and its module chain. Every rule
+  is in the `LEGEND` dict, which the outputs render: change a rule there and in
+  its builder together.
+- `rustdoc_type_matrix_html.py` → `generated/type-matrix.html` (self-contained).
+- `type-matrix.typ` (typst) → `generated/type-matrix.pdf` and `type-matrix-<page>.svg`.
+
+Tests: `test_rustdoc_type_matrix.py` (hand-made rustdoc fixture + temp repo).
 
 ### Generate split markdown documentation
 ```bash

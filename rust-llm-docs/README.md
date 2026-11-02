@@ -58,6 +58,52 @@ the same sources and rustdoc JSON render byte-identical files. `just llm-docs-ch
 renderer tests, then regenerates the corpus; the regeneration fails on any
 rustdoc item kind the renderer does not cover.
 
+## generated/type-matrix.* — the type matrix
+
+`just type-matrix` lines up every type miniextendr defines or converts and
+shows how each one behaves across the framework, as a color-coded table. It is
+built from the same rustdoc JSON as the corpus (`miniextendr-api` with `full`,
+plus `miniextendr-engine`) and from scans of the repository sources, and lands
+in `generated/` with the rest (gitignored, never committed).
+
+| File | Contents |
+|---|---|
+| `type-matrix.json` | The data: two tables of rows, each cell a status plus evidence (`file:line` where there is one), the legend with every rule, per-column counts, the commit. Deterministic for a given commit. |
+| `type-matrix.html` | One self-contained page (embedded JSON, inline CSS and JS): two tabs, sticky header and first column, sortable columns, filters (crate / origin, module, kind, feature, text, rows with gaps only), per-column counts, and a side panel with a cell's evidence linked to GitHub at the commit. |
+| `type-matrix.pdf`, `type-matrix-<page>.svg` | Both tables from `type-matrix.typ` (typst), one page per table, cells as colored glyph chips, legend and commit; evidence reduced to the counts. |
+
+The two tables:
+
+- **miniextendr types**: every public struct, enum, union, trait and type alias
+  reachable from the crate roots (one row per item at its canonical path;
+  prelude and other re-export paths are evidence).
+- **converted types**: the std and third-party types the conversion traits are
+  implemented for, folded to one row per shape (`Vec<i32>` and `Vec<f64>` are
+  the row `Vec<T>`; `Vec<Option<T>>` and `HashMap<String, V>` stay their own).
+
+The columns: capabilities (`arg`, `ret`, `opt/vec`, `coerce`, `serde`,
+`altrep`, `class`: yes / partial / no / n/a, where `no` is neutral), `macro`
+(the proc macros match the type's name), and coverage (`rustdoc`, `docs/`,
+`rpkg`, `R tests`, `rust tests`, `cross-pkg`: yes / partial / gap / n/a, where
+`gap` is red). The legend in the page and in the JSON states each rule; the
+`R tests` column is a heuristic (an rpkg `#[miniextendr]` fn using the type is
+named in a testthat file).
+
+```bash
+just type-matrix                      # nightly + typst
+just type-matrix nightly-YYYY-MM-DD   # another installed nightly
+```
+
+To render from JSON you already have (from the repository root):
+
+```bash
+python3 rust-llm-docs/rustdoc_type_matrix.py --api target/doc/miniextendr_api.json \
+  --engine target/doc/miniextendr_engine.json \
+  --out rust-llm-docs/generated/type-matrix.json --html rust-llm-docs/generated/type-matrix.html
+typst compile rust-llm-docs/type-matrix.typ rust-llm-docs/generated/type-matrix.pdf
+typst compile rust-llm-docs/type-matrix.typ 'rust-llm-docs/generated/type-matrix-{p}.svg'
+```
+
 ## Using the scripts for other crates
 
 ### Public crate from docs.rs
@@ -112,3 +158,8 @@ python3 rustdoc_split.py target/doc/<crate>.json ./docs-out
 | `rustdoc_manual_vs_macro.py` | Hand-rolled-vs-macro analysis |
 | `rustdoc_common.py` | Shared type-formatting utilities |
 | `generate-miniextendr-docs.sh` | Regenerate `generated/` for the miniextendr workspace |
+| `rustdoc_type_matrix.py` | The type matrix data (`generated/type-matrix.json`) from rustdoc JSON and source scans |
+| `rustdoc_type_matrix_html.py` | The type matrix as one self-contained HTML page |
+| `type-matrix.typ` | The type matrix as typst tables (SVG / PDF) |
+| `generate-type-matrix.sh` | Build the rustdoc JSON, then every type matrix output (`just type-matrix`) |
+| `rustdoc-json.sh` | Shared rustdoc JSON flags and helpers, sourced by both generate scripts |

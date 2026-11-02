@@ -60,6 +60,7 @@
 #     just docs-examples-check - Compile-check the marked Rust examples in docs/ and skills
 #     just llm-docs            - Regenerate LLM-ready Rust API docs
 #     just llm-docs-check      - Test the renderer and regenerate the LLM docs
+#     just type-matrix         - Build the color-coded type matrix (JSON, HTML, SVG, PDF)
 #     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
 #
 #   Issue cache:
@@ -1860,6 +1861,14 @@ llm-docs-check toolchain="nightly":
     set -euo pipefail
     python3 -m unittest discover -s rust-llm-docs -p 'test_*.py'
     just llm-docs "{{toolchain}}"
+
+# Every type miniextendr defines or converts, color-coded by how it behaves
+# (argument / return / Option-Vec / coerce / serde / ALTREP / class, macro
+# awareness, docs and test coverage). Writes type-matrix.{json,html,pdf} and
+# type-matrix-<page>.svg to rust-llm-docs/generated/ (gitignored). Needs typst.
+[doc("Build the type matrix (JSON, HTML, SVG, PDF) in rust-llm-docs/generated/")]
+type-matrix toolchain="nightly":
+    bash rust-llm-docs/generate-type-matrix.sh "{{toolchain}}"
 
 # Regenerate site/content/manual/ from docs/.
 # Run before site-build or site-serve when previewing doc changes locally.
