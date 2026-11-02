@@ -10,5 +10,6 @@ encoding_df_names(df)
 \item{df}{A data.frame.}
 }
 \description{
-\code{DataFrame::names()}, read with each name's encoding.
+\code{DataFrame::names()}, read with each name's encoding; a name that is not
+text (marked as bytes) is an error.
 }

@@ -68,6 +68,10 @@ test_that("as_name() reads a symbol or a string, and nothing else", {
   expect_identical(miniextendr:::quoted_name(f(TIME)), NA_character_)
   expect_identical(miniextendr:::quoted_name(1), NA_character_)
   expect_identical(miniextendr:::quoted_name(c("a", "b")), NA_character_)
+  # A string that is not text is an error, not a panic.
+  nm <- "\u00b5x"
+  Encoding(nm) <- "bytes"
+  expect_error(do.call(miniextendr:::quoted_name, list(nm)), "marked as bytes, not text", fixed = TRUE)
 })
 
 test_that("an omitted Quoted argument is a conversion error; Missing<Quoted> gets Absent", {
@@ -307,6 +311,12 @@ test_that("Quosure as_name() reads a symbol or a string, and nothing else", {
   expect_identical(miniextendr:::quosure_name(TIME), "TIME")
   expect_identical(miniextendr:::quosure_name("TIME"), "TIME")
   expect_identical(miniextendr:::quosure_name(f(TIME)), NA_character_)
+  # A string that is not text is an error, not a panic.
+  nm <- "\u00b5x"
+  Encoding(nm) <- "bytes"
+  expect_error(miniextendr:::quosure_name(!!nm), "marked as bytes, not text", fixed = TRUE)
+  name_of <- function(col) miniextendr:::quosure_name({{ col }})
+  expect_error(name_of(!!nm), "marked as bytes, not text", fixed = TRUE)
 })
 
 test_that("an omitted Quosure argument is a conversion error; Missing<Quosure> gets Absent", {

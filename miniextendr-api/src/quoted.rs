@@ -61,26 +61,30 @@
 use std::marker::PhantomData;
 
 use crate::expression::RCall;
-use crate::from_r::charsxp_to_str_or_panic;
+use crate::from_r::{SexpError, try_charsxp_to_str};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::missing::Missing;
 use crate::{PairListExt, SEXP, SEXPTYPE, SexpExt};
 
 /// The name an argument expression stands for: a symbol's name, or the value
-/// of a length-1 character literal. `None` for anything else, and for `NA`.
-fn expr_name<'a>(expr: SEXP) -> Option<&'a str> {
+/// of a length-1 character literal. `None` for anything else, and for `NA`;
+/// an error for a name that is not text (marked as bytes, or not valid UTF-8).
+fn expr_name<'a>(expr: SEXP) -> Result<Option<&'a str>, SexpError> {
     match expr.type_of() {
         // Symbols are never collected; their print names live for the session.
         SEXPTYPE::SYMSXP => {
-            let name = unsafe { charsxp_to_str_or_panic(expr.printname()) };
-            (!name.is_empty()).then_some(name)
+            let name = unsafe { try_charsxp_to_str(expr.printname()) }?;
+            Ok((!name.is_empty()).then_some(name))
         }
         SEXPTYPE::STRSXP if expr.len() == 1 => {
             let elt = expr.string_elt(0);
+            if elt.is_na_string() {
+                return Ok(None);
+            }
             // The CHARSXP is held by `expr`, which the caller keeps rooted.
-            (!elt.is_na_string()).then(|| unsafe { charsxp_to_str_or_panic(elt) })
+            unsafe { try_charsxp_to_str(elt) }.map(Some)
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
@@ -95,11 +99,11 @@ fn expr_name<'a>(expr: SEXP) -> Option<&'a str> {
 /// which never forces the argument. See the [module docs](self).
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, Quoted, SEXP};
+/// use miniextendr_api::{miniextendr, Quoted, SEXP, SexpError};
 ///
 /// #[miniextendr]
-/// pub fn column_name(col: Quoted) -> Option<String> {
-///     col.as_name().map(str::to_owned)   // column_name(TIME), column_name("TIME")
+/// pub fn column_name(col: Quoted) -> Result<Option<String>, SexpError> {
+///     Ok(col.as_name()?.map(str::to_owned))   // column_name(TIME), column_name("TIME")
 /// }
 ///
 /// #[miniextendr]
@@ -184,8 +188,13 @@ impl<'a> Quoted<'a> {
 
     /// The name the argument stands for: `TIME` and `"TIME"` both give
     /// `"TIME"`. `None` for any other expression (a call, a number, `NA`).
+    ///
+    /// # Errors
+    ///
+    /// A name that is not text: a string marked as bytes, or one that is not
+    /// valid UTF-8.
     #[inline]
-    pub fn as_name(&self) -> Option<&'a str> {
+    pub fn as_name(&self) -> Result<Option<&'a str>, SexpError> {
         expr_name(self.expr)
     }
 
@@ -627,7 +636,12 @@ impl<'a> Quosure<'a> {
     /// `col = TIME` and `!!rlang::sym("TIME")` all give `"TIME"`. A quosure
     /// nested in the expression is looked through. `None` for any other
     /// expression.
-    pub fn as_name(&self) -> Option<&'a str> {
+    ///
+    /// # Errors
+    ///
+    /// A name that is not text: a string marked as bytes (`!!x` with
+    /// `Encoding(x) == "bytes"`), or one that is not valid UTF-8.
+    pub fn as_name(&self) -> Result<Option<&'a str>, SexpError> {
         let mut expr = self.expr;
         while is_quosure(expr) {
             expr = expr.cdr().car();

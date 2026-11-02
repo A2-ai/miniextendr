@@ -670,7 +670,11 @@ fn expect_data_frame(
     let df = miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
         .unwrap_or_else(|e| panic!("`{what}` is not a data.frame: {e}"));
     assert_eq!(df.nrow(), nrow, "`{what}` has the wrong row count");
-    assert_eq!(df.names(), cols, "`{what}` has the wrong columns");
+    assert_eq!(
+        df.names().expect("text column names"),
+        cols,
+        "`{what}` has the wrong columns"
+    );
     df
 }
 
@@ -1024,7 +1028,7 @@ pub fn gc_stress_dataframe_split_held() -> SEXP {
         panic!("gc_stress_dataframe_split_held: expected Bare");
     };
     assert_eq!(
-        single_df.names(),
+        single_df.names().expect("text column names"),
         ["x", "y"],
         "gc_stress_dataframe_split_held: single-variant columns"
     );
@@ -2512,7 +2516,7 @@ pub fn gc_stress_built_dataframe() {
     assert_eq!(built.nrow(), N as usize, "row count changed under GC");
     assert_eq!(built.ncol(), 3, "column count changed under GC");
     assert_eq!(
-        built.names(),
+        built.names().expect("text column names"),
         vec!["id", "ratio", "label"],
         "names reclaimed under GC"
     );
@@ -2601,7 +2605,7 @@ pub fn gc_stress_dataframe_edit_chain() {
     let dropped = build().drop("y");
     churn();
     assert_eq!(
-        dropped.names(),
+        dropped.names().expect("text column names"),
         vec!["x", "label"],
         "drop: names corrupted under GC"
     );
@@ -2611,7 +2615,7 @@ pub fn gc_stress_dataframe_edit_chain() {
     let selected = build().select(&["label", "x"]);
     churn();
     assert_eq!(
-        selected.names(),
+        selected.names().expect("text column names"),
         vec!["label", "x"],
         "select: names corrupted under GC"
     );
@@ -2647,7 +2651,7 @@ pub fn gc_stress_dataframe_edit_chain() {
     drop(newcol);
     churn();
     assert_eq!(
-        chained.names(),
+        chained.names().expect("text column names"),
         vec!["x", "tag", "doubled"],
         "with_column/rename/drop chain: names corrupted under GC"
     );
@@ -2672,7 +2676,7 @@ pub fn gc_stress_dataframe_edit_chain() {
     drop(idcol);
     churn();
     assert_eq!(
-        prepended.names(),
+        prepended.names().expect("text column names"),
         vec!["id", "x", "tag", "doubled"],
         "prepend_column/strip_prefix: names corrupted under GC"
     );
@@ -3165,7 +3169,10 @@ pub fn gc_stress_dataframe_shape_held() {
         assert_eq!(parts.len(), 2, "shape_held: partition count");
         for (name, df) in parts {
             assert_eq!(
-                df.names().first().map(String::as_str),
+                df.names()
+                    .expect("text column names")
+                    .first()
+                    .map(String::as_str),
                 Some("variant"),
                 "shape_held: tag column lost in {name}"
             );
@@ -3198,7 +3205,10 @@ pub fn gc_stress_dataframe_shape_held() {
         };
         assert_eq!(df.nrow(), 24, "shape_held: collated nrow");
         assert_eq!(
-            df.names().first().map(String::as_str),
+            df.names()
+                .expect("text column names")
+                .first()
+                .map(String::as_str),
             Some("kind"),
             "shape_held: collated tag column"
         );

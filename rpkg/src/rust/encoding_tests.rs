@@ -22,7 +22,7 @@ pub fn encoding_info_available() -> bool {
 use std::borrow::Cow;
 
 use miniextendr_api::sys::{Rf_allocVector, Rf_mkCharLenCE};
-use miniextendr_api::{SEXPTYPE, cetype_t};
+use miniextendr_api::{SEXPTYPE, SexpError, cetype_t};
 
 /// Echo a `String` argument. A string marked as bytes is refused with an
 /// argument error; a Latin-1 one is translated.
@@ -77,10 +77,11 @@ pub fn encoding_echo_vec_str(x: Vec<&str>) -> Vec<String> {
     x.into_iter().map(str::to_owned).collect()
 }
 
-/// `DataFrame::names()`, read with each name's encoding.
+/// `DataFrame::names()`, read with each name's encoding; a name that is not
+/// text (marked as bytes) is an error.
 /// @param df A data.frame.
 #[miniextendr]
-pub fn encoding_df_names(df: DataFrame) -> Vec<String> {
+pub fn encoding_df_names(df: DataFrame) -> Result<Vec<String>, SexpError> {
     df.names()
 }
 
@@ -155,7 +156,7 @@ pub fn gc_stress_latin1_string_reads() -> Vec<String> {
         frame.set_row_names(row_names);
 
         let df = DataFrame::from_sexp(frame).expect("a data.frame");
-        let names = df.names();
+        let names = df.names().expect("text names");
         assert_eq!(names, expected, "DataFrame::names");
         assert!(df.contains_column("DéV3"), "contains_column");
         names

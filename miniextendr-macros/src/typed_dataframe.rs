@@ -286,9 +286,16 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
             // Strict mode: reject any column not declared.
             const __DECLARED: &[&str] = &[#( #declared_names ),*];
             let mut __extras: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-            for col_name in view.names() {
-                if !__DECLARED.contains(&col_name.as_str()) {
-                    __extras.push(col_name.to_string());
+            match view.names() {
+                ::core::result::Result::Ok(__names) => {
+                    for col_name in __names {
+                        if !__DECLARED.contains(&col_name.as_str()) {
+                            __extras.push(col_name);
+                        }
+                    }
+                }
+                ::core::result::Result::Err(__e) => {
+                    __errs.push(::std::format!("column names: {}", __e));
                 }
             }
             if !__extras.is_empty() {

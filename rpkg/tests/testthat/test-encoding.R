@@ -200,6 +200,24 @@ test_that("DataFrame::names() translates a Latin-1 name", {
   expect_identical(miniextendr:::encoding_df_names(d), c("a", "DéV"))
 })
 
+test_that("DataFrame::names() returns an error naming each column whose name is bytes", {
+  bytes_name <- function() {
+    nm <- "\u00b5x"
+    Encoding(nm) <- "bytes"
+    nm
+  }
+  d <- data.frame(a = 1, b = 2, c = 3, e = 4)
+  names(d)[c(2, 4)] <- c(bytes_name(), bytes_name())
+  expect_identical(Encoding(names(d))[c(2, 4)], c("bytes", "bytes"))
+  expect_error(
+    miniextendr:::encoding_df_names(d),
+    "marked as bytes, not text (elements 2, 4)",
+    fixed = TRUE
+  )
+  # A lookup by another name still finds its column.
+  expect_true(miniextendr:::encoding_df_has_column(d, "c"))
+})
+
 test_that("a Latin-1 name and a Latin-1 argument find each other", {
   d <- data.frame(a = 1)
   names(d) <- latin1_name()
