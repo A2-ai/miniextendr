@@ -24,16 +24,16 @@ use super::ParsedImpl;
 ///   with the ExternalPtr extracted from `x`
 /// - Static methods: regular functions named `<class>_<method>(...)`
 /// - Class environment: `ClassName <- new.env(parent = emptyenv())` for `Class$new()`
-///   syntax and trait namespaces, when the impl has a constructor or the class
-///   is named as its Rust type (#1918); the wrapper writer keeps it only for a
-///   constructor or a trait impl that writes into it (#2264)
+///   syntax and trait namespaces (see [`class_env`])
 ///
 /// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
 ///
 /// The constructor and the field methods are the head; the S3 methods and the
-/// static methods are the members; the class environment is the env part, and
-/// its `$new` binding the tail.
+/// static methods are the members. With a constructor, the tail is the class
+/// environment and its `$new` binding; without one, the class environment is
+/// the env part, which the wrapper writer keeps only when a trait impl writes
+/// into it (#2264, #2289).
 pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, emit_s3_generic_guard,
@@ -317,45 +317,50 @@ pub fn generate_s3_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
 
     // The class environment holds `Class$new()` and the trait namespaces
     // (`Class$Trait`, for a trait's static methods and consts; static methods
-    // of the impl are plain functions). Whether one of them lands in it is
-    // known only when the wrappers are written, where the trait impls
-    // register (#2264): the env part is kept for a constructor or a trait
-    // namespace. A class the package names and builds itself has none to
-    // keep unless it has a constructor, so no second binding of a same-named
-    // constructor, export or `\alias` (#1918).
-    let has_class_env = parsed_impl.constructor_context().is_some() || *type_ident == class_name;
-    let export_line = if should_export { "#' @export\n" } else { "" };
-    if has_class_env {
-        if class_has_no_rd {
-            w.env.push(format!(
-                "#' @noRd
-{} <- new.env(parent = emptyenv())",
-                class_name
-            ));
-        } else {
-            // On the impl's `@rdname` topic when it names one, after the topic's
-            // own block (#1900).
-            let topic = super::field_syntax::topic(parsed_impl);
-            let order = if topic == class_name {
-                String::new()
-            } else {
-                format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
-            };
-            w.env.push(format!(
-                "#' @rdname {topic}\n{order}{export_line}{class_name} <- new.env(parent = emptyenv())"
-            ));
-        }
-        w.env.push(String::new());
-    }
-
-    // Add $new binding to class environment (for Class$new() syntax)
+    // of the impl are plain functions). With a constructor it is the tail,
+    // with the `$new` binding. Without one, only a trait namespace can land
+    // in it, which is known only when the wrappers are written, where the
+    // trait impls register: it is the env part, kept for a trait namespace
+    // (#2264, #2289). A readers-only impl of a class the package names and
+    // builds itself then binds no same-named constructor a second time
+    // (#1918).
+    let env = class_env(parsed_impl, class_has_no_rd, should_export);
     if parsed_impl.constructor_context().is_some() {
-        lines.push(format!("{}$new <- {}", class_name, ctor_name));
-        lines.push(String::new());
+        w.tail = env;
+        w.tail.push(format!("{}$new <- {}", class_name, ctor_name));
+        w.tail.push(String::new());
+    } else {
+        w.env = env;
     }
-
-    w.tail = lines;
     w
+}
+
+/// The class environment of an S3 or vctrs class, `Class <- new.env(...)`
+/// with its roxygen block: `@noRd` for a class without a page
+/// (`class_has_no_rd`), else on the class's topic (the impl's `@rdname` when
+/// it names one, after the topic's own block, #1900) and exported when the
+/// class is (`should_export`). It holds S3's `Class$new()` and the trait
+/// namespaces `Class$Trait` of both systems.
+pub(super) fn class_env(
+    parsed_impl: &ParsedImpl,
+    class_has_no_rd: bool,
+    should_export: bool,
+) -> Vec<String> {
+    let class_name = parsed_impl.class_name();
+    let binding = format!("{class_name} <- new.env(parent = emptyenv())");
+    let block = if class_has_no_rd {
+        format!("#' @noRd\n{binding}")
+    } else {
+        let topic = super::field_syntax::topic(parsed_impl);
+        let order = if topic == class_name {
+            String::new()
+        } else {
+            format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
+        };
+        let export_line = if should_export { "#' @export\n" } else { "" };
+        format!("#' @rdname {topic}\n{order}{export_line}{binding}")
+    };
+    vec![block, String::new()]
 }
 
 /// The S3 class as one string: [`generate_s3_class`], rendered.
@@ -370,12 +375,13 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// (#2069).
 ///
 /// - A class named as its Rust type has its class block on `NULL`, without
-///   an `@export` of the class name: S3's class environment exports it when
-///   a trait impl writes into it (#2264), and vctrs has no object of that
-///   name.
-/// - A class the package names and builds itself (`class = "..."`) has no
-///   class environment either (#1918). Its roxygen block only carries the
-///   impl docs ([`super::docs_only_class_block`]).
+///   an `@export` of the class name: the class environment ([`class_env`])
+///   exports it when a trait impl writes into it (#2264, #2289).
+/// - A class the package names and builds itself (`class = "..."`) may name
+///   its own constructor like the class (#1918). Its roxygen block only
+///   carries the impl docs ([`super::docs_only_class_block`]), and the writer
+///   drops the block when they say nothing, unless the class environment is
+///   kept for a trait impl and needs the page.
 pub(super) fn no_constructor_head(
     parsed_impl: &ParsedImpl,
     w: &mut super::ClassWrapper,

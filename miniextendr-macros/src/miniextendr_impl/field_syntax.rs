@@ -281,7 +281,8 @@ pub(super) fn env_subset_dots_check(parsed_impl: &ParsedImpl) -> String {
     dots_check(ENV_SUBSET_FORMALS, class.as_deref(), "  ")
 }
 
-/// The help topic of the field methods (and of the S3 class environment):
+/// The help topic of the field methods (and of the S3 and vctrs class
+/// environment):
 /// the impl block's own `@rdname`, else the class page (#1900).
 pub(super) fn topic(parsed_impl: &ParsedImpl) -> String {
     crate::roxygen::rdname_value(&parsed_impl.doc_tags)

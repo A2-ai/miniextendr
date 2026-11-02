@@ -29,6 +29,7 @@
 //! - [`s7_tests`]: S7 class system tests
 //! - [`class_system_matrix`]: Cross-class-system compatibility matrix
 //! - [`constructor_tests`]: inferred constructors, classes without one, the decision across impl blocks
+//! - [`trait_class_env_tests`]: class environments only a trait impl's statics and consts fill (#2289)
 //! - [`receiver_tests`]: Receiver-style impl block tests
 //! - [`env_method_lookup_tests`]: `obj$name` on an env class whose traits share member names (#1677)
 //!
@@ -400,6 +401,7 @@ mod tinyvec_adapter_tests;
 #[cfg(feature = "toml")]
 mod toml_adapter_tests;
 mod trait_abi_tests;
+mod trait_class_env_tests;
 mod trait_marker_tests;
 mod trait_method_options_tests;
 mod trait_r6_collision;

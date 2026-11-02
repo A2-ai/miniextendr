@@ -2995,7 +2995,12 @@ fn candidates_in_two_blocks_without_a_declared_constructor_are_refused() {
 
 // endregion
 
-// region: the S3 class environment decided per type (#2264)
+// region: the class environment decided per type (#2264, #2289)
+
+/// The class environment of `Widget` as the macro writes it, with its
+/// roxygen block, framed like a part.
+const WIDGET_ENV: &str =
+    "\n#' @rdname Widget\n#' @export\nWidget <- new.env(parent = emptyenv())\n\n";
 
 /// An S3 impl block of `Widget` without a constructor, as the macro emits
 /// it: its page on `NULL`, a method, and the class environment as its `env`
@@ -3007,9 +3012,56 @@ fn s3_widget_block() -> ClassBlockEntry {
         "\nsize.Widget <- function(x, ...) 1\n\n",
     );
     block.settings = "s3";
-    block.env = "\n#' @rdname Widget\n#' @export\nWidget <- new.env(parent = emptyenv())\n\n";
+    block.env = WIDGET_ENV;
     block
 }
+
+/// An S3 impl block of `Widget` with the constructor `new`, as the macro
+/// emits it: the class environment and its `$new` binding are the tail, and
+/// the env part is empty.
+fn s3_constructor_block(line: u32) -> ClassBlockEntry {
+    let mut block = widget_block(
+        line,
+        "\n#' @title Widget S3 Class\n#' @name Widget\nnew_widget <- function() 1\n\n",
+        "\n\n",
+    );
+    block.settings = "s3";
+    block.constructor = "new";
+    block.defines = &["a constructor"];
+    block.tail = "\n#' @rdname Widget\n#' @export\nWidget <- new.env(parent = emptyenv())\n\n\
+                  Widget$new <- new_widget\n\n";
+    block
+}
+
+/// A vctrs impl block of `Widget`, as the macro emits it: the class page on
+/// the constructor `new_widget()` when `constructor` is set, the
+/// self-coercion methods, and the class environment as its `env` part.
+fn vctrs_widget_block(constructor: bool) -> ClassBlockEntry {
+    let mut block = widget_block(
+        10,
+        if constructor {
+            "\n#' @title Widget vctrs S3 Class\n#' @name Widget\n\
+             new_widget <- function(x) vctrs::new_vctr(x, class = \"Widget\")\n\n\
+             vec_cast.Widget.Widget <- function(x, to, ...) x\n\n"
+        } else {
+            "\n#' @title Widget vctrs S3 Class\n#' @name Widget\nNULL\n\n\
+             vec_cast.Widget.Widget <- function(x, to, ...) x\n\n"
+        },
+        "\nwidget_total <- function(x) 1\n\n",
+    );
+    block.settings = "vctrs(kind = \"vctr\")";
+    if constructor {
+        block.constructor = "new";
+        block.defines = &["a constructor"];
+    }
+    block.env = WIDGET_ENV;
+    block
+}
+
+/// A trait namespace registered for `Widget`.
+const WIDGET_NAMESPACE: TraitNamespaceEntry = TraitNamespaceEntry {
+    type_path: widget_path,
+};
 
 /// The classes `blocks` merge into, with `trait_namespaces` registered.
 fn merged_with(blocks: &[ClassBlockEntry], trait_namespaces: &[TraitNamespaceEntry]) -> String {
@@ -3020,11 +3072,11 @@ fn merged_with(blocks: &[ClassBlockEntry], trait_namespaces: &[TraitNamespaceEnt
         .into_owned()
 }
 
-/// Without a constructor or a trait impl writing into it, nothing lands in
-/// the class environment: it is not written, nor exported, and no header is
-/// left behind for the parts after the members.
+/// Without a trait impl writing into it, nothing lands in the class
+/// environment: it is not written, nor exported, and no header is left
+/// behind for the parts after the members.
 #[test]
-fn class_env_without_constructor_or_trait_namespace_is_dropped() {
+fn class_env_without_a_trait_namespace_is_dropped() {
     assert_eq!(
         merged_with(&[s3_widget_block()], &[]),
         "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
@@ -3039,12 +3091,7 @@ fn class_env_without_constructor_or_trait_namespace_is_dropped() {
 /// A trait impl's `Class$Trait` namespace keeps the environment.
 #[test]
 fn class_env_with_a_trait_namespace_is_kept() {
-    let output = merged_with(
-        &[s3_widget_block()],
-        &[TraitNamespaceEntry {
-            type_path: widget_path,
-        }],
-    );
+    let output = merged_with(&[s3_widget_block()], &[WIDGET_NAMESPACE]);
     assert!(
         output.contains(
             "size.Widget <- function(x, ...) 1\n\n\
@@ -3056,30 +3103,30 @@ fn class_env_with_a_trait_namespace_is_kept() {
     );
 }
 
-/// A constructor keeps the environment for `Class$new()`, written between
-/// the members and the tail that binds it.
+/// An S3 constructor's environment is its tail, written before `Class$new`
+/// whether or not a trait impl writes into it, and only once when one does.
 #[test]
-fn class_env_with_a_constructor_is_kept_before_the_tail() {
-    let mut block = s3_widget_block();
-    block.constructor = "new";
-    block.defines = &["a constructor"];
-    block.tail = "\nWidget$new <- new_widget\n\n";
-    let output = merged_with(&[block], &[]);
-    assert!(
-        output.contains(
-            "Widget <- new.env(parent = emptyenv())\n\n\
-             Widget$new <- new_widget"
-        ),
-        "{output}"
-    );
+fn s3_constructor_env_is_the_tail() {
+    for namespaces in [&[][..], &[WIDGET_NAMESPACE][..]] {
+        let output = merged_with(&[s3_constructor_block(10)], namespaces);
+        assert!(
+            output.contains(
+                "Widget <- new.env(parent = emptyenv())\n\n\
+                 Widget$new <- new_widget"
+            ),
+            "{output}"
+        );
+        assert_eq!(output.matches("new.env(").count(), 1, "{output}");
+    }
 }
 
 /// An S3 block of `Widget` that infers `from_value` as its constructor, with
-/// its `demoted` rendering (no constructor), as [`inferring_block`].
+/// its `demoted` rendering (no constructor, the environment in the env part),
+/// as [`inferring_block`].
 fn s3_inferring_block() -> ClassBlockEntry {
     let mut demoted = s3_widget_block();
     demoted.constructor_candidates = &["from_value"];
-    let mut block = s3_widget_block();
+    let mut block = s3_constructor_block(10);
     block.constructor = "from_value";
     block.constructor_inferred = true;
     block.constructor_candidates = &["from_value"];
@@ -3089,24 +3136,25 @@ fn s3_inferring_block() -> ClassBlockEntry {
 }
 
 /// The constructor is decided across the type's blocks (#1776), and the
-/// environment with it: a lone inferred constructor keeps it, and so does a
-/// constructor declared in another block, whose environment is written once.
+/// environment with it: a lone inferred constructor writes it, and so does a
+/// constructor declared in another block, the definer, whose environment is
+/// written once, also when a trait impl writes into it.
 #[test]
 fn class_env_follows_the_resolved_constructor() {
     let lone = merged_with(&[s3_inferring_block()], &[]);
-    assert!(lone.contains("Widget <- new.env("), "{lone}");
+    assert_eq!(lone.matches("new.env(").count(), 1, "{lone}");
 
-    let mut declared = widget_block(30, "\n\n", "\n\n");
-    declared.settings = "s3";
-    declared.constructor = "new";
-    declared.defines = &["a constructor"];
-    declared.env = "\n#' @export\nWidget <- new.env(parent = emptyenv()) # new\n\n";
-    let output = merged_with(&[s3_inferring_block(), declared], &[]);
-    assert!(
-        output.contains("Widget <- new.env(parent = emptyenv()) # new"),
-        "{output}"
-    );
-    assert_eq!(output.matches("new.env(").count(), 1, "{output}");
+    for namespaces in [&[][..], &[WIDGET_NAMESPACE][..]] {
+        let mut declared = s3_constructor_block(30);
+        declared.tail =
+            "\nWidget <- new.env(parent = emptyenv()) # new\n\nWidget$new <- new_widget\n\n";
+        let output = merged_with(&[s3_inferring_block(), declared], namespaces);
+        assert!(
+            output.contains("Widget <- new.env(parent = emptyenv()) # new"),
+            "{output}"
+        );
+        assert_eq!(output.matches("new.env(").count(), 1, "{output}");
+    }
 }
 
 /// Trait namespaces are matched by `core::any::type_name`: a trait impl on
@@ -3121,6 +3169,92 @@ fn class_env_trait_namespaces_match_the_type_path() {
     );
     assert!(!output.contains("new.env("), "{output}");
     assert!(!output.contains("@export"), "{output}");
+}
+
+/// A vctrs class binds nothing in its environment itself, not even with a
+/// constructor (`new_widget()` is a function of its own): the environment
+/// is written only for a trait namespace (#2289).
+#[test]
+fn vctrs_class_env_is_kept_only_for_a_trait_namespace() {
+    for constructor in [false, true] {
+        let dropped = merged_with(&[vctrs_widget_block(constructor)], &[]);
+        assert!(!dropped.contains("new.env("), "{dropped}");
+        assert!(!dropped.contains("@export"), "{dropped}");
+
+        let kept = merged_with(&[vctrs_widget_block(constructor)], &[WIDGET_NAMESPACE]);
+        assert!(
+            kept.contains(
+                "widget_total <- function(x) 1\n\n\
+                 #' @rdname Widget\n\
+                 #' @export\n\
+                 Widget <- new.env(parent = emptyenv())"
+            ),
+            "{kept}"
+        );
+    }
+}
+
+/// An S3 class without a constructor that the package names and builds
+/// itself (`class = "widget_rec"`), as the macro emits it: a docs-only class
+/// block, a method, and the class environment, named by the class, as its
+/// `env` part.
+fn renamed_s3_widget_block(class_docs: &'static str) -> ClassBlockEntry {
+    let mut block = widget_block(
+        10,
+        "\n.__MX_CLASS_DOCS_ONLY__\n\
+         .__MX_CLASS_DEFAULT__#' @title widget_rec S3 Class\n\
+         .__MX_CLASS_DEFAULT__#' @name widget_rec\n\
+         .__MX_CLASS_DOCS__\n.__MX_CLASS_DOC_LINES__\nNULL\n\n",
+        "\nsize.widget_rec <- function(x, ...) 1\n\n",
+    );
+    block.r_class_name = "widget_rec";
+    block.settings = "s3, class = \"widget_rec\"";
+    block.class_docs = class_docs;
+    block.env =
+        "\n#' @rdname widget_rec\n#' @export\nwidget_rec <- new.env(parent = emptyenv())\n\n";
+    block
+}
+
+/// A readers-only impl of a class the package names and builds itself
+/// binds no `widget_rec`, so the package's own constructor of that name is
+/// the only one, and with docs that say nothing it adds no page (#1918).
+#[test]
+fn renamed_class_env_without_a_trait_namespace_is_dropped() {
+    assert_eq!(
+        merged_with(&[renamed_s3_widget_block("\n\n")], &[]),
+        "# Generated from Rust impl `Widget` (lib.rs:10:6)\n\
+         size.widget_rec <- function(x, ...) 1\n"
+    );
+    let documented = merged_with(
+        &[renamed_s3_widget_block(
+            "\n#' @description Records the package builds.\n",
+        )],
+        &[],
+    );
+    assert!(documented.contains("#' @name widget_rec\n"), "{documented}");
+    assert!(!documented.contains("new.env("), "{documented}");
+    assert!(!documented.contains("@export"), "{documented}");
+}
+
+/// A trait impl writing `widget_rec$Trait` keeps the environment, named by
+/// the class, and the class block, whose page documents it, even when the
+/// impl docs say nothing (#2289).
+#[test]
+fn renamed_class_env_with_a_trait_namespace_is_kept_with_its_page() {
+    let output = merged_with(&[renamed_s3_widget_block("\n\n")], &[WIDGET_NAMESPACE]);
+    assert!(
+        output.contains("#' @title widget_rec S3 Class\n#' @name widget_rec\nNULL\n"),
+        "{output}"
+    );
+    assert!(
+        output.contains(
+            "size.widget_rec <- function(x, ...) 1\n\n\
+             #' @rdname widget_rec\n\
+             #' @export\n\
+             widget_rec <- new.env(parent = emptyenv())"
+        ),
+        "{output}"
+    );
 }
 
 // endregion

@@ -42,7 +42,10 @@ const VCTRS_IMPORTS: &str =
 /// (and roxygen2 warns on any recognized-but-unregistered S3 method).
 ///
 /// The constructor, `vec_ptype_abbr` and the self-coercion methods are the
-/// head; the static methods and protocol methods are the members.
+/// head; the static methods and protocol methods are the members. The class
+/// environment (`Class <- new.env(...)`, [`super::s3_class::class_env`]) is
+/// the env part: only a trait impl's static methods and consts land in it
+/// (`Class$Trait`), and the wrapper writer keeps it only for one (#2289).
 pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     use crate::r_class_formatter::{
         ClassDocBuilder, MethodDocBuilder, ParsedImplExt, should_export_from_tags,
@@ -350,6 +353,7 @@ pub fn generate_vctrs_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     }
 
     w.members = lines;
+    w.env = super::s3_class::class_env(parsed_impl, class_has_no_rd, should_export);
     w
 }
 

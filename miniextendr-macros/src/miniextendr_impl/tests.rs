@@ -9183,7 +9183,8 @@ fn s3_field_methods_without_a_constructor() {
     let mut attrs = default_impl_attrs(ClassSystem::S3);
     attrs.r_data_accessors = RDataAccessors::GetOnly;
     attrs.class_name = Some("engine_rec".to_string());
-    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    let class = super::s3_class::generate_s3_class(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    let wrapper = class.render();
     assert!(!wrapper.contains("new_engine_rec"), "{wrapper}");
     assert_eq!(s3_method_formals(&wrapper, "$.engine_rec"), "x, name");
     assert_eq!(
@@ -9197,9 +9198,19 @@ fn s3_field_methods_without_a_constructor() {
         wrapper.contains("#' @rdname engine_rec\n#' @param x An object.\n#' @param name"),
         "{wrapper}"
     );
-    // No class environment: nothing lands in it, and it would bind a
-    // same-named constructor of the package a second time (#1918).
-    assert!(!wrapper.contains("engine_rec <- new.env("), "{wrapper}");
+    // The class environment, named by the class, is only the env part,
+    // which the writer keeps for a trait namespace (#2289). Without one it
+    // binds nothing: it would bind a same-named constructor of the package
+    // a second time (#1918).
+    assert!(
+        class.env.join("\n").contains(
+            "#' @rdname engine_rec\n#' @export\nengine_rec <- new.env(parent = emptyenv())"
+        ),
+        "{:?}",
+        class.env
+    );
+    assert!(!wrapper.contains("new.env("), "{wrapper}");
+    assert!(class.tail.is_empty(), "{:?}", class.tail);
 }
 
 /// A readers-only impl of a class named as its Rust type has the class
@@ -9221,17 +9232,13 @@ fn s3_field_methods_without_a_constructor_mark_the_type_env() {
     for part in [&class.head, &class.members, &class.tail] {
         assert!(!part.join("\n").contains("new.env("), "{part:?}");
     }
-    assert!(
-        class.tail.iter().all(|line| line.is_empty()),
-        "{:?}",
-        class.tail
-    );
+    assert!(class.tail.is_empty(), "{:?}", class.tail);
 }
 
-/// With a constructor the env part holds the environment and the tail
-/// binds `Class$new` into it.
+/// With a constructor the class environment holds `Class$new`, so it is
+/// the tail, with that binding, and the env part is empty.
 #[test]
-fn s3_constructor_env_is_the_env_part() {
+fn s3_constructor_env_is_the_tail() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Engine {
             pub fn new(n: i32) -> Self { unimplemented!() }
@@ -9240,16 +9247,12 @@ fn s3_constructor_env_is_the_env_part() {
     let class = super::s3_class::generate_s3_class(
         &ParsedImpl::parse(default_impl_attrs(ClassSystem::S3), item_impl).unwrap(),
     );
+    assert!(class.env.is_empty(), "{:?}", class.env);
     assert!(
-        class
-            .env
-            .join("\n")
-            .contains("Engine <- new.env(parent = emptyenv())"),
-        "{:?}",
-        class.env
-    );
-    assert!(
-        class.tail.join("\n").contains("Engine$new <- new_engine"),
+        class.tail.join("\n").contains(
+            "#' @rdname Engine\n#' @export\nEngine <- new.env(parent = emptyenv())\n\n\
+             Engine$new <- new_engine"
+        ),
         "{:?}",
         class.tail
     );
@@ -10524,7 +10527,8 @@ fn s3_no_constructor_class_docs_get_the_class_page() {
         at < wrapper.find("#' @title S3 generic for `size`").unwrap(),
         "{wrapper}"
     );
-    // Still no constructor and no class environment (#1918).
+    // Still no constructor, and the class environment only in the env part,
+    // which the writer keeps for a trait namespace (#1918, #2289).
     assert!(!wrapper.contains("new_engine_rec"), "{wrapper}");
     assert!(!wrapper.contains("engine_rec <- new.env("), "{wrapper}");
 }
@@ -10656,6 +10660,66 @@ fn vctrs_no_constructor_class_docs() {
              #' @description Temperatures the package builds itself.\nNULL\n"
         ),
         "{renamed}"
+    );
+}
+
+/// A vctrs class, with or without a constructor and named as its Rust type
+/// or by `class = "..."`, has its class environment, named by the class, as
+/// its env part: only a trait impl's statics and consts land in it
+/// (`Class$Trait`), and the writer keeps it only for one (#2289). Under
+/// `noexport` it is `@noRd` and not exported.
+#[test]
+fn vctrs_class_env_is_the_env_part() {
+    let class = |class_name: Option<&str>, noexport: bool, code: syn::ItemImpl| {
+        let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+        attrs.vctrs_attrs = VctrsAttrs {
+            kind: VctrsKind::Vctr,
+            base: Some("double".to_string()),
+            inherit_base_type: None,
+            ptype: None,
+            abbr: None,
+        };
+        attrs.class_name = class_name.map(str::to_string);
+        attrs.noexport = noexport;
+        super::vctrs_class::generate_vctrs_class(&ParsedImpl::parse(attrs, code).unwrap())
+    };
+    let with_new: syn::ItemImpl = syn::parse_quote! {
+        impl Temp {
+            pub fn new(x: Vec<f64>) -> Vec<f64> { unimplemented!() }
+        }
+    };
+    let without_new: syn::ItemImpl = syn::parse_quote! {
+        impl Temp {
+            pub fn freezing(x: Vec<f64>) -> Vec<bool> { unimplemented!() }
+        }
+    };
+    for (class_name, code) in [
+        (None, &with_new),
+        (None, &without_new),
+        (Some("temp_rec"), &with_new),
+        (Some("temp_rec"), &without_new),
+    ] {
+        let name = class_name.unwrap_or("Temp");
+        let class = class(class_name, false, code.clone());
+        assert_eq!(
+            class.env,
+            [
+                format!("#' @rdname {name}\n#' @export\n{name} <- new.env(parent = emptyenv())"),
+                String::new()
+            ],
+        );
+        for part in [&class.head, &class.members, &class.tail] {
+            assert!(!part.join("\n").contains("new.env("), "{part:?}");
+        }
+    }
+
+    let hidden = class(None, true, with_new);
+    assert_eq!(
+        hidden.env,
+        [
+            "#' @noRd\nTemp <- new.env(parent = emptyenv())".to_string(),
+            String::new()
+        ],
     );
 }
 

@@ -46,7 +46,3 @@ id.Handle <- function(x, ...) {
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   .val
 }
-
-#' @rdname Handle
-#' @export
-Handle <- new.env(parent = emptyenv())

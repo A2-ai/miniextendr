@@ -36,7 +36,7 @@ pub(super) struct TraitWrapperOpts {
 /// ([`trait_namespace_env`]): Env always, R6 for any member, S3 and vctrs for
 /// a static method or a const; S4 and S7 keep theirs elsewhere. The trait
 /// impl then registers a `TraitNamespaceEntry`, so the wrapper writer keeps
-/// the S3 class environment it writes into (#2264).
+/// the S3 or vctrs class environment it writes into (#2264, #2289).
 pub(super) fn binds_trait_namespace(
     class_system: ClassSystem,
     methods: &[TraitMethod],
