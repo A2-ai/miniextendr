@@ -1,6 +1,7 @@
 //! `TryFromSexpElement::check_sexp`, given by
-//! `#[try_from_sexp(validate = ...)]`: the scalar and every container of a
-//! newtype run it on the R value before the inner type reads it (#1815).
+//! `#[try_from_sexp(validate = ...)]` or by a hand-written
+//! `TryFromSexpElement` impl: the scalar and every container of a newtype run
+//! it on the R value before the inner type reads it (#1815).
 
 mod r_test_utils;
 
@@ -9,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use miniextendr_api::condition::RError;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use miniextendr_api::gc_protect::OwnedProtect;
-use miniextendr_api::{RValue, SEXP, SexpExt, r_str};
+use miniextendr_api::{RValue, SEXP, SexpExt, TryFromSexpElement, r_str};
 
 /// How many times [`plain_number`] ran.
 static CHECKS: AtomicUsize = AtomicUsize::new(0);
@@ -532,6 +533,137 @@ fn vec_of_list_newtype_argument_error() {
             .map(|(name, _)| name.as_str())
             .collect();
         assert_eq!(names, ["param", "rust_type", "what"]);
+    });
+}
+
+// endregion
+
+// region: a hand-written `TryFromSexpElement`
+
+/// How many times [`Meters`]'s check ran.
+static METER_CHECKS: AtomicUsize = AtomicUsize::new(0);
+
+/// A length in metres, with the element trait written out by hand rather
+/// than derived: the containers read `f64` and wrap it, and the check
+/// refuses a `units` attribute other than `"m"` before anything is read.
+#[derive(Debug, PartialEq)]
+struct Meters(f64);
+
+impl TryFromSexpElement for Meters {
+    type Inner = f64;
+
+    fn from_inner(inner: f64) -> Self {
+        Meters(inner)
+    }
+
+    fn check_sexp(sexp: SEXP) -> Result<(), SexpError> {
+        METER_CHECKS.fetch_add(1, Ordering::Relaxed);
+        let units = sexp.get_attr(SEXP::symbol("units"));
+        if units.is_nil() {
+            return Ok(());
+        }
+        match String::try_from_sexp(units) {
+            Ok(unit) if unit == "m" => Ok(()),
+            _ => Err(RError::new("give lengths in metres")
+                .class(["unit_refused", "test_error"])
+                .into()),
+        }
+    }
+}
+
+/// The scalar keeps the forwarding rule: the check, then the inner type's
+/// conversion, then `from_inner`, since no container calls it.
+impl TryFromSexp for Meters {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        Self::check_sexp(sexp)?;
+        f64::try_from_sexp(sexp).map(Self::from_inner)
+    }
+}
+
+/// `src` evaluated and converted to `T`, with how many times
+/// [`Meters`]'s check ran.
+fn convert_meters<T>(src: &str) -> (Result<T, SexpError>, usize)
+where
+    T: TryFromSexp<Error = SexpError>,
+{
+    let input = unsafe { OwnedProtect::new(r_str!(src).expect("R source should evaluate")) };
+    let before = METER_CHECKS.load(Ordering::Relaxed);
+    let value = T::try_from_sexp(input.get());
+    (value, METER_CHECKS.load(Ordering::Relaxed) - before)
+}
+
+fn assert_meters_refused<T: std::fmt::Debug>(result: Result<T, SexpError>) {
+    match result {
+        Err(SexpError::Condition(e)) => {
+            assert_eq!(e.message_str(), "give lengths in metres");
+            assert_eq!(e.classes(), ["unit_refused", "test_error"]);
+        }
+        other => panic!("expected the units refusal, got {other:?}"),
+    }
+}
+
+/// The scalar, `Vec<T>`, `Option<T>` and `Vec<Option<T>>` all come from the
+/// two impls above; each reads `f64`'s container and runs the check once.
+#[test]
+fn hand_written_element_lights_up_every_container() {
+    r_test_utils::with_r_thread(|| {
+        let (value, checks) = convert_meters::<Meters>("2.5");
+        assert_eq!((value.unwrap(), checks), (Meters(2.5), 1));
+        let (value, checks) = convert_meters::<Meters>("structure(2.5, units = 'm')");
+        assert_eq!((value.unwrap(), checks), (Meters(2.5), 1));
+
+        let (value, checks) = convert_meters::<Vec<Meters>>("c(1.5, 2)");
+        assert_eq!(
+            (value.unwrap(), checks),
+            (vec![Meters(1.5), Meters(2.0)], 1)
+        );
+        let (value, checks) = convert_meters::<Vec<Meters>>("numeric()");
+        assert_eq!((value.unwrap(), checks), (vec![], 1));
+
+        let (value, checks) = convert_meters::<Option<Meters>>("NULL");
+        assert_eq!((value.unwrap(), checks), (None, 0));
+        let (value, checks) = convert_meters::<Option<Meters>>("3");
+        assert_eq!((value.unwrap(), checks), (Some(Meters(3.0)), 1));
+        // `NA` is `None`, as for `Option<f64>`.
+        let (value, checks) = convert_meters::<Option<Meters>>("NA_real_");
+        assert_eq!((value.unwrap(), checks), (None, 1));
+
+        let (value, checks) = convert_meters::<Vec<Option<Meters>>>("c(1, NA, 4)");
+        assert_eq!(
+            (value.unwrap(), checks),
+            (vec![Some(Meters(1.0)), None, Some(Meters(4.0))], 1)
+        );
+    });
+}
+
+/// The check refuses in every shape, and the inner type's own errors come
+/// after it.
+#[test]
+fn hand_written_element_check_refuses_in_every_shape() {
+    r_test_utils::with_r_thread(|| {
+        const FOOT: &str = "structure(1, units = 'ft')";
+        const FEET: &str = "structure(c(1, 2), units = 'ft')";
+        let (value, checks) = convert_meters::<Meters>(FOOT);
+        assert_eq!(checks, 1);
+        assert_meters_refused(value);
+        let (value, checks) = convert_meters::<Vec<Meters>>(FEET);
+        assert_eq!(checks, 1);
+        assert_meters_refused(value);
+        let (value, checks) = convert_meters::<Option<Meters>>(FOOT);
+        assert_eq!(checks, 1);
+        assert_meters_refused(value);
+        let (value, checks) = convert_meters::<Vec<Option<Meters>>>(FEET);
+        assert_eq!(checks, 1);
+        assert_meters_refused(value);
+
+        let (value, checks) = convert_meters::<Vec<Meters>>("c('1', '2')");
+        assert_eq!(checks, 1);
+        assert!(matches!(value, Err(SexpError::Type(_))), "{value:?}");
+        let (value, checks) = convert_meters::<Meters>("c(1, 2)");
+        assert_eq!(checks, 1);
+        assert!(matches!(value, Err(SexpError::Length(_))), "{value:?}");
     });
 }
 
