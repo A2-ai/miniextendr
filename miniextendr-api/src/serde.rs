@@ -62,10 +62,7 @@
 //!
 //! An empty `Vec<T>` has no element to dispatch on and becomes `list()`, and a
 //! `Vec<Option<T>>` with a `None` a list with a `NULL` hole. A field under
-//! [`as_character`](crate::serde::as_character),
-//! [`as_integer`](crate::serde::as_integer),
-//! [`as_double`](crate::serde::as_double) or
-//! [`as_logical`](crate::serde::as_logical)
+//! [`as_character`], [`as_integer`], [`as_double`] or [`as_logical`]
 //! (`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`) is
 //! always that atomic vector: `character(0)` when empty, `NA` for `None`.
 //!

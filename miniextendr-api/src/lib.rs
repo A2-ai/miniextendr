@@ -579,14 +579,14 @@ macro_rules! r_str {
 /// `r!` takes a single R expression as a token stream, `stringify!`s it into a
 /// static R source string at build time, and evaluates it via
 /// [`expression::r_eval_str`] (the same protect-safe parse + eval path as
-/// [`r_str!`](crate::r_str)).
+/// [`r_str!`]).
 ///
 /// # What you get today
 ///
 /// Because the argument is a Rust token tree, the Rust front-end already
 /// rejects **unbalanced delimiters** (`r!(f(1, 2)` won't compile) and
 /// lexically invalid tokens before R ever sees the string — a cheap
-/// compile-time guard over the pure-runtime [`r_str!`](crate::r_str). The
+/// compile-time guard over the pure-runtime [`r_str!`]. The
 /// source is lowered to a `&'static str` (`stringify!`), so there is no
 /// `format!` allocation at the call site.
 ///
@@ -621,7 +621,7 @@ macro_rules! r_str {
 ///
 /// Both evaluate to `Result<SEXP, REvalError>`; the `SEXP` is **unprotected**.
 ///
-/// For genuinely dynamic code, use [`r_str!`](crate::r_str) instead.
+/// For genuinely dynamic code, use [`r_str!`] instead.
 ///
 /// # Note on `stringify!` spacing
 ///
@@ -631,7 +631,7 @@ macro_rules! r_str {
 ///
 /// # Safety
 ///
-/// Expands to an `unsafe` block; see [`r_str!`](crate::r_str).
+/// Expands to an `unsafe` block; see [`r_str!`].
 ///
 /// # Example
 ///

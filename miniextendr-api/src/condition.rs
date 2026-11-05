@@ -3314,7 +3314,7 @@ macro_rules! serde_error_shape {
 ///
 /// `serde_condition!(&err)` takes a reference to the error and runs the probe
 /// a `Result` return's `Err` arm runs, with the calling crate's marker and
-/// family class: the shape [`serde_error_shape!`](crate::serde_error_shape)
+/// family class: the shape [`serde_error_shape!`]
 /// declared for the type in this crate, else the type's [`RConditionData`]
 /// impl, else its serde shape with the `<crate>_error` family class. The
 /// condition is an error ([`RCondition::Error`]) with the classes, message,
@@ -3384,7 +3384,7 @@ macro_rules! serde_condition {
     };
 }
 
-/// Internal: [`serde_condition!`](crate::serde_condition)'s argument, a
+/// Internal: [`serde_condition!`]'s argument, a
 /// reference to a `Serialize + Display` error, unchanged. Taking `&E` fixes
 /// the reference depth the probe's stages see: one reference more would
 /// skip the declared shape and the [`RConditionData`] stage.

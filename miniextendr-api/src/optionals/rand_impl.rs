@@ -15,9 +15,8 @@
 //!
 //! # Usage
 //!
-//! An [`RRng`] borrows an [`RngGuard`][crate::RngGuard], the proof that R's
-//! RNG state is loaded on R's main thread:
-//! [`RngGuard::rng`][crate::RngGuard::rng] makes one. Under
+//! An [`RRng`] borrows an [`RngGuard`], the proof that R's RNG state is loaded
+//! on R's main thread: [`RngGuard::rng`] makes one. Under
 //! `#[miniextendr(rng)]`, take the guard as a `&RngGuard` parameter (it is no R
 //! argument):
 //!

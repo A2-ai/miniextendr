@@ -400,7 +400,7 @@ unsafe fn wrap_in_quosure(new_quosure: SEXP, expr: SEXP, env: SEXP) -> SEXP {
 /// [`Self::eval_tidy`] evaluates through `rlang::eval_tidy()`, which resolves
 /// nested quosures and the `.data` / `.env` pronouns. Hand [`Self::sexp`] to
 /// other quosure-aware R functions (`tidyselect::eval_select()`) with
-/// [`RCall::eval_with_handlers`](crate::expression::RCall::eval_with_handlers).
+/// [`RCall::eval_with_handlers`].
 ///
 /// An argument holding several selections, a role map such as
 /// `cols = c(time = TAD, dose = NA)`, reads entry by entry with
