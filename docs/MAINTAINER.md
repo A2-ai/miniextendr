@@ -130,11 +130,12 @@ green `CI Success` therefore means only that nothing which ran failed:
   framework-crate changes; Docs Link Check needs docs, README, site or rustdoc
   inputs. Scheduled, dispatched and tag runs skip the filter and run every
   path-filtered job.
-- **R versions.** R CMD check / Linux checks R 4.4 and the current release on
-  every run. Pushes, tags, the schedule and dispatched runs add oldrel and
-  devel. On a pull request, a label named after an R version alias (`oldrel` or
-  `oldrel/N`, `devel`, `next`) adds that leg, and `full-ci` adds oldrel and
-  devel. The devel and next legs may fail without failing the run.
+- **R versions.** R CMD check / Linux checks R 4.4 on every run, and the
+  CRAN-like check covers the current release (it replaced a `release` leg that
+  ran the same check, #2343). Pushes, tags, the schedule and dispatched runs
+  add oldrel and devel. On a pull request, a label named after an R version
+  alias (`oldrel` or `oldrel/N`, `devel`, `next`) adds that leg, and `full-ci`
+  adds oldrel and devel. The devel and next legs may fail without failing the run.
 - **Label-gated jobs.** On a pull request, the three `MALLOC_CHECK_` rounds
   in R tests / Linux need `heap-check`; other events run them. The GC-stress
   shards need `MX_GC_STRESS_CI=true` on every event, plus `gc-stress` on a
@@ -152,7 +153,7 @@ green `CI Success` therefore means only that nothing which ran failed:
 | Check | Merge | Release |
 |---|---|---|
 | `CI Success` | Blocking on every pull request. | Blocking on the commit to be tagged, from the dispatched release run. That run checks R 4.4, release, oldrel and devel and the heap-check rounds. Feature combos and Windows skip; the GC-stress shards also skip unless `MX_GC_STRESS_CI=true`. |
-| CRAN-like check (inside `CI Success`) | Blocking when R inputs change. | Blocking for every `rpkg` release. It builds the vendored source tarball and checks the tarball with `--as-cran`. |
+| CRAN-like check (inside `CI Success`) | Blocking when R inputs change. It is also the current-release-R check, and fails on a WARNING. | Blocking for every `rpkg` release. It builds the vendored source tarball and checks the tarball with `--as-cran`. |
 | Docs Link Check (inside `CI Success`) | Blocking when docs inputs change. | Blocking when the release changes docs. `just site-check` runs it locally. |
 | Docs Examples Check (inside `CI Success`) | Blocking when docs/rustdoc inputs change. Compiles the marked examples in docs and end-user skills. | Blocking on the dispatched release run. |
 | webR (`webr.yml`, not in `CI Success`) | Triggers only on pull requests and pushes that touch its paths (framework crates, `rpkg`, `minirextendr`, the cross-package and webR test fixtures, the webR Dockerfiles, Cargo manifests). On a pull request, every job except `pin-lockstep` also needs the `webr` label; apply it when the PR touches wasm-specific code (see [WEBR.md](WEBR.md#ci)). A labeled run must pass. Pushes to `main` run it in full. | Blocking when the release changes webR-covered paths: dispatch it and require every job, including the tier-2 install and the tier-3 session. |
