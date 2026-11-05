@@ -2,10 +2,15 @@
 //!
 //! - A return value whose `IntoR` fails raises a classed R error,
 //!   `kind = "result_err"`, from a free function, a method and a computed
-//!   getter: the error's classes and fields when it implements
-//!   `RConditionData`, else its `Display` text. No panic, so no file location.
+//!   getter: the error's message, classes and fields (`IntoR::Error`
+//!   implements `RConditionData`). No panic, so no file location.
 //! - `AsSerialize` (and `#[miniextendr(serialize)]`) that serde refuses, a map
-//!   whose keys are not strings, raises `miniextendr_serde_error`.
+//!   whose keys are not strings, raises `miniextendr_serde_error`; so does
+//!   `AsJson` that `serde_json` refuses.
+//! - Inside a tuple or a `Vec` of tuples (#2282), the failing elements raise
+//!   one error: the batched message, the class they all share (else only
+//!   `rust_error`), and `e$errors`, each failing element's own condition with
+//!   its position.
 //! - A computed getter returning `Result` is an error boundary: `Ok` reads the
 //!   value, `Err` raises its classed error, `Err(())` of `Result<T, ()>` reads
 //!   `NULL`.
@@ -67,12 +72,12 @@ impl IntoR for Capped {
     }
 }
 
-/// A refusal that only has `Display`.
+/// A refusal that only has a message: no classes, no fields.
 pub struct PlainRefusal(i32);
 
-impl std::fmt::Display for PlainRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} is not convertible", self.0)
+impl RConditionData for PlainRefusal {
+    fn message(&self) -> String {
+        format!("{} is not convertible", self.0)
     }
 }
 
@@ -111,8 +116,8 @@ pub fn return_conversion_capped(x: i32) -> Capped {
     Capped(x)
 }
 
-/// Return `x` through a conversion that refuses values above 10 with a
-/// `Display`-only error.
+/// Return `x` through a conversion that refuses values above 10 with an
+/// error that has only a message.
 /// @param x An integer.
 #[miniextendr(noexport)]
 pub fn return_conversion_plain(x: i32) -> PlainCapped {
@@ -189,8 +194,8 @@ pub fn return_conversion_serde_string_keys()
     ]))
 }
 
-/// The refused map inside a tuple: the tuple's batched conversion error
-/// (`IntoRError`, `Display` only) carries serde's message.
+/// The refused map inside a tuple: the tuple raises serde's class, and the
+/// field's own condition is `e$errors[[1]]$condition`, at index 2.
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn return_conversion_serde_in_tuple() -> (
@@ -198,6 +203,84 @@ pub fn return_conversion_serde_in_tuple() -> (
     miniextendr_api::serde::AsSerialize<std::collections::BTreeMap<i32, f64>>,
 ) {
     (1, miniextendr_api::serde::AsSerialize(integer_keyed()))
+}
+
+/// Rows of tuples whose second field serde refuses in rows 2 and 3: one
+/// error naming both, `e$errors` indexed by row and field.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport)]
+pub fn return_conversion_serde_in_tuple_rows() -> Vec<(
+    i32,
+    miniextendr_api::serde::AsSerialize<std::collections::BTreeMap<i32, f64>>,
+)> {
+    vec![
+        (1, miniextendr_api::serde::AsSerialize(Default::default())),
+        (2, miniextendr_api::serde::AsSerialize(integer_keyed())),
+        (3, miniextendr_api::serde::AsSerialize(integer_keyed())),
+    ]
+}
+
+/// The capped value of `x` and the refused map: when `x` is above 10 both
+/// fields fail with different classes, so the tuple raises only the
+/// `rust_error` classes and `e$errors` has both.
+/// @param x An integer.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport)]
+pub fn return_conversion_mixed_in_tuple(
+    x: i32,
+) -> (
+    Capped,
+    miniextendr_api::serde::AsSerialize<std::collections::BTreeMap<i32, f64>>,
+) {
+    (
+        Capped(x),
+        miniextendr_api::serde::AsSerialize(integer_keyed()),
+    )
+}
+
+/// The refused map as the `Ok` of an `unwrap_in_r` `Result`: the map's own
+/// serde error, not `list(error = ...)`, which is only for an `Err`.
+#[cfg(feature = "serde")]
+#[miniextendr(unwrap_in_r, noexport)]
+pub fn return_conversion_serde_unwrap_in_r()
+-> Result<miniextendr_api::serde::AsSerialize<std::collections::BTreeMap<i32, f64>>, String> {
+    Ok(miniextendr_api::serde::AsSerialize(integer_keyed()))
+}
+// endregion
+
+// region: JSON text serde_json refuses
+
+/// A map whose keys are pairs: JSON object keys must be strings, so
+/// `serde_json` refuses it.
+#[cfg(feature = "serde_json")]
+type PairKeyed = std::collections::BTreeMap<(i32, i32), f64>;
+
+/// A [`PairKeyed`] map with one entry.
+#[cfg(feature = "serde_json")]
+fn pair_keyed() -> PairKeyed {
+    PairKeyed::from([((1, 2), 2.5)])
+}
+
+/// An `AsJson` return that `serde_json` refuses: `miniextendr_serde_error`.
+#[cfg(feature = "serde_json")]
+#[miniextendr(noexport)]
+pub fn return_conversion_json_pair_keys() -> miniextendr_api::serde::AsJson<PairKeyed> {
+    miniextendr_api::serde::AsJson(pair_keyed())
+}
+
+/// The refused JSON inside a tuple, as its first field.
+#[cfg(feature = "serde_json")]
+#[miniextendr(noexport)]
+pub fn return_conversion_json_in_tuple() -> (miniextendr_api::serde::AsJson<PairKeyed>, i32) {
+    (miniextendr_api::serde::AsJson(pair_keyed()), 2)
+}
+
+/// JSON text of three maps, the first and third refused: every refused
+/// element is named, with its position.
+#[cfg(feature = "serde_json")]
+#[miniextendr(noexport)]
+pub fn return_conversion_json_vec() -> miniextendr_api::serde::AsJsonVec<PairKeyed> {
+    miniextendr_api::serde::AsJsonVec(vec![pair_keyed(), Default::default(), pair_keyed()])
 }
 // endregion
 

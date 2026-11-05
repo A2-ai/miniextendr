@@ -7,9 +7,33 @@
 //! Requires the `serde_json` feature.
 
 use crate::SEXP;
+use crate::condition::RConditionData;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::into_r_error::IntoRError;
+use crate::into_r_error::{ElementFailures, IntoRError};
+use crate::serde::RSerdeError;
+
+/// `serde_json`'s refusal as the serde error R gets: class
+/// `miniextendr_serde_error`, serde_json's message.
+fn json_error(error: serde_json::Error) -> RSerdeError {
+    RSerdeError::Message(error.to_string())
+}
+
+/// The JSON text as an R character scalar; text longer than an R string can
+/// hold is refused with the same serde error class.
+fn json_text(json: String) -> Result<SEXP, RSerdeError> {
+    json.try_into_sexp()
+        .map_err(|error| RSerdeError::Message(error.message()))
+}
+
+/// [`json_text`] without thread checks.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+unsafe fn json_text_unchecked(json: String) -> Result<SEXP, RSerdeError> {
+    unsafe { json.try_into_sexp_unchecked() }.map_err(|error| RSerdeError::Message(error.message()))
+}
 
 // region: AsJson — T: Serialize → R character (compact JSON)
 
@@ -31,19 +55,20 @@ use crate::into_r_error::IntoRError;
 /// ```
 pub struct AsJson<T>(pub T);
 
+/// A value `serde_json` refuses (a map whose keys are not strings, a
+/// `Serialize` impl's own `Error::custom`) is an [`RSerdeError`]: in R, an
+/// error of class `miniextendr_serde_error` with serde_json's message.
 impl<T: serde::Serialize> IntoR for AsJson<T> {
-    type Error = IntoRError;
+    type Error = RSerdeError;
 
     #[inline]
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let json = serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(json.into_sexp())
+        json_text(serde_json::to_string(&self.0).map_err(json_error)?)
     }
 
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        let json = serde_json::to_string(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(unsafe { json.into_sexp_unchecked() })
+        unsafe { json_text_unchecked(serde_json::to_string(&self.0).map_err(json_error)?) }
     }
 }
 // endregion
@@ -55,21 +80,18 @@ impl<T: serde::Serialize> IntoR for AsJson<T> {
 /// Same as [`AsJson`] but with indentation for human readability.
 pub struct AsJsonPretty<T>(pub T);
 
+/// Refuses what [`AsJson`] refuses, with the same [`RSerdeError`].
 impl<T: serde::Serialize> IntoR for AsJsonPretty<T> {
-    type Error = IntoRError;
+    type Error = RSerdeError;
 
     #[inline]
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let json =
-            serde_json::to_string_pretty(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(json.into_sexp())
+        json_text(serde_json::to_string_pretty(&self.0).map_err(json_error)?)
     }
 
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        let json =
-            serde_json::to_string_pretty(&self.0).map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(unsafe { json.into_sexp_unchecked() })
+        unsafe { json_text_unchecked(serde_json::to_string_pretty(&self.0).map_err(json_error)?) }
     }
 }
 // endregion
@@ -128,29 +150,41 @@ impl<T: for<'de> serde::Deserialize<'de>> TryFromSexp for FromJson<T> {
 /// ```
 pub struct AsJsonVec<T>(pub Vec<T>);
 
+/// Every element `serde_json` refuses is reported, with its position, in one
+/// [`IntoRError::Elements`]: in R, an error of class
+/// `miniextendr_serde_error` naming each refused element, and `e$errors`.
 impl<T: serde::Serialize> IntoR for AsJsonVec<T> {
     type Error = IntoRError;
 
     #[inline]
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let strings: Vec<String> = self
-            .0
-            .iter()
-            .map(|v| serde_json::to_string(v))
-            .collect::<Result<_, _>>()
-            .map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(strings.into_sexp())
+        Ok(json_strings(&self.0)?.into_sexp())
     }
 
     #[inline]
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
-        let strings: Vec<String> = self
-            .0
-            .iter()
-            .map(|v| serde_json::to_string(v))
-            .collect::<Result<_, _>>()
-            .map_err(|e| IntoRError::Inner(e.to_string()))?;
-        Ok(unsafe { strings.into_sexp_unchecked() })
+        Ok(unsafe { json_strings(&self.0)?.into_sexp_unchecked() })
+    }
+}
+
+/// Each value as JSON text, or the refusal of every value `serde_json`
+/// refuses.
+fn json_strings<T: serde::Serialize>(values: &[T]) -> Result<Vec<String>, IntoRError> {
+    let mut errors = ElementFailures::default();
+    let strings = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            serde_json::to_string(value).unwrap_or_else(|error| {
+                errors.push(index, &json_error(error));
+                String::new()
+            })
+        })
+        .collect();
+    if errors.is_empty() {
+        Ok(strings)
+    } else {
+        Err(errors.into_error())
     }
 }
 // endregion

@@ -741,8 +741,8 @@ Access via Sidecar".
 | a converted (non-scalar) struct field with `#[r_data(cache)]` | the Rust struct, and the R value the first read made | that same R object, until the value is next borrowed exclusively (#2271) | as without `cache`; the write drops the kept value |
 
 A getter whose value fails to convert raises the error a function's failed
-return conversion raises (`e$kind == "result_err"`, the error's
-`RConditionData` classes and fields, else its `Display` text; #2272). A
+return conversion raises (`e$kind == "result_err"`, the error's message,
+classes and fields through `RConditionData`; #2272). A
 computed getter returning `Result<T, E>` raises `Err(e)` as a `#[miniextendr]`
 function returning it would: `E`'s `RConditionData` classes and fields, else
 its serde shape (under the `serde` feature), else its `Debug` text (#2269). To

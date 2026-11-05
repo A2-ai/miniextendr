@@ -492,8 +492,8 @@ fn optional_class_payload_none_is_null() {
 
 /// Every arm that converts a value converts it with `try_into_sexp` and turns
 /// a failed conversion into the `result_err` condition of the error (its
-/// classes or its `Display` text, `__mx_into_r_err_parts!`) on the wrapper's
-/// call, never into a panic of `into_sexp` (#2272).
+/// message, classes and fields, `condition::into_r_err_parts`) on the
+/// wrapper's call, never into a panic of `into_sexp` (#2272).
 #[test]
 fn every_return_conversion_raises_its_error() {
     let handlings = [
@@ -526,8 +526,9 @@ fn every_return_conversion_raises_its_error() {
         assert!(!tokens.contains(":: into_sexp ("), "{handling:?}: {tokens}");
         assert!(
             tokens.contains(
-                "result_err_condition_value (:: miniextendr_api :: __mx_into_r_err_parts ! \
-                 (__mx_error) , :: core :: option :: Option :: Some (__miniextendr_call) ,)"
+                "result_err_condition_value (:: miniextendr_api :: condition :: \
+                 into_r_err_parts (& __mx_error) , :: core :: option :: Option :: Some \
+                 (__miniextendr_call) ,)"
             ),
             "{handling:?}: {tokens}"
         );
@@ -548,7 +549,7 @@ fn return_conversion_without_a_call_slot() {
         "{tokens}"
     );
     assert!(
-        tokens.contains("(__mx_error) , :: core :: option :: Option :: None ,)"),
+        tokens.contains("into_r_err_parts (& __mx_error) , :: core :: option :: Option :: None ,)"),
         "{tokens}"
     );
 }

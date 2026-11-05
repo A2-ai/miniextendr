@@ -122,7 +122,15 @@ pub trait IntoR {
     /// Use [`std::convert::Infallible`] for types that can never fail.
     /// Use [`IntoRError`](crate::into_r_error::IntoRError) for types
     /// that may fail (e.g. strings exceeding R's i32 length limit).
-    type Error: std::fmt::Display;
+    ///
+    /// It implements [`RConditionData`](crate::condition::RConditionData):
+    /// a returned value whose conversion fails raises the error's message,
+    /// classes and fields in R (`kind = "result_err"`), and so does a failed
+    /// element inside a tuple, as an entry of `e$errors`
+    /// ([`IntoRError::Elements`](crate::into_r_error::IntoRError::Elements)).
+    /// An error type with only a message implements `message()` alone; a
+    /// foreign error converts into [`RError`](crate::condition::RError).
+    type Error: crate::condition::RConditionData;
 
     /// Try to convert this value to an R SEXP.
     ///
@@ -150,7 +158,10 @@ pub trait IntoR {
     {
         match self.try_into_sexp() {
             Ok(sexp) => sexp,
-            Err(e) => panic!("IntoR conversion failed: {e}"),
+            Err(e) => panic!(
+                "IntoR conversion failed: {}",
+                crate::condition::RConditionData::message(&e)
+            ),
         }
     }
 
@@ -702,7 +713,7 @@ pub use result::*;
 impl<T, E, const N: usize> IntoR for [T; N]
 where
     for<'a> &'a [T]: IntoR<Error = E>,
-    E: std::fmt::Display,
+    E: crate::condition::RConditionData,
 {
     type Error = E;
     #[inline]
@@ -2012,13 +2023,13 @@ macro_rules! impl_tuple_vec_into_r {
             type Error = crate::into_r_error::IntoRError;
 
             fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-                let mut errors = crate::from_r::BatchedErrors::default();
+                let mut errors = crate::into_r_error::ElementFailures::default();
                 let result = unsafe {
                     vecsxp_from_iter(self.into_iter().enumerate().map(|(index, row)| {
                         match row.try_into_sexp() {
                             Ok(child) => child,
                             Err(error) => {
-                                errors.push(index, || error.to_string());
+                                errors.push_row(index, error);
                                 crate::SEXP::nil()
                             }
                         }
@@ -2027,18 +2038,18 @@ macro_rules! impl_tuple_vec_into_r {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                    Err(errors.into_error())
                 }
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-                let mut errors = crate::from_r::BatchedErrors::default();
+                let mut errors = crate::into_r_error::ElementFailures::default();
                 let result = unsafe {
                     vecsxp_from_iter_unchecked(self.into_iter().enumerate().map(|(index, row)| {
                         match row.try_into_sexp_unchecked() {
                             Ok(child) => child,
                             Err(error) => {
-                                errors.push(index, || error.to_string());
+                                errors.push_row(index, error);
                                 crate::SEXP::nil()
                             }
                         }
@@ -2047,7 +2058,7 @@ macro_rules! impl_tuple_vec_into_r {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                    Err(errors.into_error())
                 }
             }
         }
@@ -2056,7 +2067,8 @@ macro_rules! impl_tuple_vec_into_r {
 
 /// Convert Rust tuples to unnamed R lists, collecting every failing field.
 /// Field error types may differ; their messages share the existing batched
-/// conversion format with 1-based positions, wrapped in `IntoRError::Inner`.
+/// conversion format with 1-based positions, and each field's condition is
+/// kept with its position, in `IntoRError::Elements`.
 macro_rules! impl_tuple_into_r {
     ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
         impl<$($T: IntoR),+> IntoR for ($($T,)+) {
@@ -2066,17 +2078,17 @@ macro_rules! impl_tuple_into_r {
                 unsafe {
                     let scope = ProtectScope::new();
                     let builder = ListBuilder::new(&scope, $n);
-                    let mut errors = crate::from_r::BatchedErrors::default();
+                    let mut errors = crate::into_r_error::ElementFailures::default();
                     $(
                         match self.$idx.try_into_sexp() {
                             Ok(child) => builder.set($idx as isize, child),
-                            Err(error) => errors.push($idx, || error.to_string()),
+                            Err(error) => errors.push($idx, &error),
                         }
                     )+
                     if errors.is_empty() {
                         Ok(builder.into_sexp())
                     } else {
-                        Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                        Err(errors.into_error())
                     }
                 }
             }
@@ -2085,17 +2097,17 @@ macro_rules! impl_tuple_into_r {
                 unsafe {
                     let scope = ProtectScope::new();
                     let builder = ListBuilder::new_unchecked(&scope, $n);
-                    let mut errors = crate::from_r::BatchedErrors::default();
+                    let mut errors = crate::into_r_error::ElementFailures::default();
                     $(
                         match self.$idx.try_into_sexp_unchecked() {
                             Ok(child) => builder.set_unchecked($idx as isize, child),
-                            Err(error) => errors.push($idx, || error.to_string()),
+                            Err(error) => errors.push($idx, &error),
                         }
                     )+
                     if errors.is_empty() {
                         Ok(builder.into_sexp())
                     } else {
-                        Err(crate::into_r_error::IntoRError::Inner(errors.element_message()))
+                        Err(errors.into_error())
                     }
                 }
             }

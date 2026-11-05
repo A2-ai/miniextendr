@@ -344,7 +344,7 @@ impl RCondition {
         RCondition::Error {
             message: e.message(),
             class: e.class(),
-            data: check_err_fields(e.data(), e.__mx_keeps_parent()),
+            data: check_err_fields(e.data(), e.__mx_keeps_internal_fields()),
             call: e.call(),
         }
     }
@@ -460,33 +460,8 @@ impl RCondition {
     /// `kind`, `class`, `call`, `data`), in [`RValue`](crate::RValue) form so
     /// it can travel inside another condition's data ([`Self::with_parent`]).
     fn into_tagged_rvalue(self) -> crate::RValue {
-        use crate::RValue;
         let (kind, parts) = self.into_parts();
-        let text = |value: String| RValue::Character(vec![Some(value)]);
-        let class = if parts.class.is_empty() {
-            RValue::Null
-        } else {
-            RValue::Character(parts.class.into_iter().map(Some).collect())
-        };
-        let call = match parts.call {
-            ConditionCall::Inherit => RValue::Null,
-            ConditionCall::None => RValue::Logical(vec![Some(false)]),
-        };
-        let data = parts.data.map_or(RValue::Null, |fields| {
-            RValue::List(
-                fields
-                    .into_iter()
-                    .map(|(name, value)| (Some(name), value))
-                    .collect(),
-            )
-        });
-        RValue::List(vec![
-            (Some("error".to_owned()), text(parts.message)),
-            (Some("kind".to_owned()), text(kind.to_owned())),
-            (Some("class".to_owned()), class),
-            (Some("call".to_owned()), call),
-            (Some("data".to_owned()), data),
-        ])
+        tagged_rvalue(kind, parts)
     }
 
     /// Which call the condition reports when R raises it: see
@@ -633,6 +608,41 @@ pub fn catch_condition<T>(f: impl FnOnce() -> T) -> Result<T, RCondition> {
     }
 }
 
+/// A condition of `kind` as the tagged value the R raise helper reads
+/// (`error`, `kind`, `class`, `call`, `data`), in [`RValue`](crate::RValue)
+/// form, so it can travel inside another condition's data: a cause
+/// ([`RCondition::with_parent`], `e$parent`) or a failed element
+/// ([`IntoRError::Elements`](crate::into_r_error::IntoRError::Elements),
+/// `e$errors`).
+pub(crate) fn tagged_rvalue(kind: &str, parts: ErrParts) -> crate::RValue {
+    use crate::RValue;
+    let text = |value: String| RValue::Character(vec![Some(value)]);
+    let class = if parts.class.is_empty() {
+        RValue::Null
+    } else {
+        RValue::Character(parts.class.into_iter().map(Some).collect())
+    };
+    let call = match parts.call {
+        ConditionCall::Inherit => RValue::Null,
+        ConditionCall::None => RValue::Logical(vec![Some(false)]),
+    };
+    let data = parts.data.map_or(RValue::Null, |fields| {
+        RValue::List(
+            fields
+                .into_iter()
+                .map(|(name, value)| (Some(name), value))
+                .collect(),
+        )
+    });
+    RValue::List(vec![
+        (Some("error".to_owned()), text(parts.message)),
+        (Some("kind".to_owned()), text(kind.to_owned())),
+        (Some("class".to_owned()), class),
+        (Some("call".to_owned()), call),
+        (Some("data".to_owned()), data),
+    ])
+}
+
 // endregion
 
 // region: Macros
@@ -651,14 +661,14 @@ macro_rules! __mx_condition_field_name {
     (lit $name:literal) => {{
         const _: () = ::core::assert!(
             !$crate::condition::is_reserved_condition_field($name),
-            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` carries its parent; rename the field"
+            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` and `.mx_errors` carry its parent and its failed elements; rename the field"
         );
         ($name).to_string()
     }};
     (ident $name:ident) => {{
         const _: () = ::core::assert!(
             !$crate::condition::is_reserved_condition_field(::core::stringify!($name)),
-            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` carries its parent; rename the field"
+            "condition data field name is reserved: `message`, `call` and `kind` are the condition's own slots, and `.mx_parent` and `.mx_errors` carry its parent and its failed elements; rename the field"
         );
         ::core::stringify!($name).to_string()
     }};
@@ -1467,6 +1477,7 @@ pub const fn is_reserved_condition_field(name: &str) -> bool {
         || str_eq(name, "call")
         || str_eq(name, "kind")
         || str_eq(name, PARENT_FIELD)
+        || str_eq(name, ERRORS_FIELD)
 }
 
 /// `a == b`, usable in `const fn`.
@@ -1489,6 +1500,19 @@ const fn str_eq(a: &str, b: &str) -> bool {
 /// R; the raise helper turns it into the condition object `e$parent`.
 const PARENT_FIELD: &str = ".mx_parent";
 
+/// The `data` field under which a container's failed conversion
+/// ([`IntoRError::Elements`](crate::into_r_error::IntoRError::Elements)) sends
+/// its failed elements to R: a list of `list(index, condition)` entries whose
+/// `condition` is a tagged value. The raise helper turns it into `e$errors`,
+/// each entry's condition built like `e$parent`.
+pub(crate) const ERRORS_FIELD: &str = ".mx_errors";
+
+/// Whether `name` is a field the framework itself puts among a condition's
+/// data ([`PARENT_FIELD`], [`ERRORS_FIELD`]).
+fn is_internal_field(name: &str) -> bool {
+    name == PARENT_FIELD || name == ERRORS_FIELD
+}
+
 /// Runtime half of the reserved-name check, for computed field names (the
 /// macros' `expr` path and [`RConditionData::data`] on user types). Panics
 /// when `name` is reserved; the panic becomes a plain `rust_error` in R,
@@ -1498,7 +1522,8 @@ pub fn check_condition_field_name(name: String) -> String {
     if is_reserved_condition_field(&name) {
         panic!(
             "condition data field `{name}` is reserved: `message`, `call` and `kind` are the \
-             condition's own slots, and `.mx_parent` carries its parent; rename the field."
+             condition's own slots, and `.mx_parent` and `.mx_errors` carry its parent and its \
+             failed elements; rename the field."
         );
     }
     name
@@ -1633,35 +1658,43 @@ pub trait RConditionData {
     fn argument_message(&self) -> Option<String> {
         None
     }
-    /// Internal: whether a `.mx_parent` field among
-    /// [`data()`](RConditionData::data) is a cause
-    /// [`RCondition::with_parent`] attached, which the generated `Err` arms
-    /// pass on as `e$parent`. Every other reserved name is refused
-    /// ([`check_condition_data`]). True for an [`RCondition`](enum@RCondition)
-    /// and for an [`RError`] converted from one.
+    /// Internal: whether the framework's own fields among
+    /// [`data()`](RConditionData::data) are what they say, which the
+    /// generated `Err` arms pass on: a `.mx_parent` field is a cause
+    /// [`RCondition::with_parent`] attached (`e$parent`), a `.mx_errors`
+    /// field the failed elements of a container's conversion (`e$errors`,
+    /// [`IntoRError::Elements`](crate::into_r_error::IntoRError::Elements)).
+    /// Every other reserved name is refused ([`check_condition_data`]). True
+    /// for an [`RCondition`](enum@RCondition), an
+    /// [`IntoRError`](crate::into_r_error::IntoRError) and an [`RError`]
+    /// converted from either.
     #[doc(hidden)]
-    fn __mx_keeps_parent(&self) -> bool {
+    fn __mx_keeps_internal_fields(&self) -> bool {
         false
     }
 }
 
-/// [`check_condition_data`] for an `Err` arm's fields, passing a
-/// `.mx_parent` field when `keeps_parent`
-/// ([`RConditionData::__mx_keeps_parent`]).
+/// [`check_condition_data`] for an `Err` arm's fields, passing the
+/// framework's own fields when `keeps_internal_fields`
+/// ([`RConditionData::__mx_keeps_internal_fields`]).
 #[track_caller]
-fn check_err_fields(data: Option<ConditionData>, keeps_parent: bool) -> Option<ConditionData> {
+fn check_err_fields(
+    data: Option<ConditionData>,
+    keeps_internal_fields: bool,
+) -> Option<ConditionData> {
     data.map(|fields| {
         fields
             .into_iter()
-            .map(|(name, value)| (check_err_field(name, keeps_parent), value))
+            .map(|(name, value)| (check_err_field(name, keeps_internal_fields), value))
             .collect()
     })
 }
 
-/// [`check_condition_field_name`], passing `.mx_parent` when `keeps_parent`.
+/// [`check_condition_field_name`], passing the framework's own fields
+/// (`.mx_parent`, `.mx_errors`) when `keeps_internal_fields`.
 #[track_caller]
-fn check_err_field(name: String, keeps_parent: bool) -> String {
-    if keeps_parent && name == PARENT_FIELD {
+fn check_err_field(name: String, keeps_internal_fields: bool) -> String {
+    if keeps_internal_fields && is_internal_field(&name) {
         name
     } else {
         check_condition_field_name(name)
@@ -1713,9 +1746,11 @@ pub struct RError {
     data: ConditionData,
     call: ConditionCall,
     argument_message: Option<String>,
-    /// Converted from an [`RCondition`](enum@RCondition): a `.mx_parent`
-    /// field is the cause it carried ([`RConditionData::__mx_keeps_parent`]).
-    keeps_parent: bool,
+    /// Converted from an [`RCondition`](enum@RCondition) or an
+    /// [`IntoRError`](crate::into_r_error::IntoRError): a `.mx_parent` field
+    /// is the cause it carried, a `.mx_errors` field its failed elements
+    /// ([`RConditionData::__mx_keeps_internal_fields`]).
+    keeps_internal_fields: bool,
 }
 
 impl RError {
@@ -1727,7 +1762,7 @@ impl RError {
             data: Vec::new(),
             call: ConditionCall::Inherit,
             argument_message: None,
-            keeps_parent: false,
+            keeps_internal_fields: false,
         }
     }
 
@@ -1834,8 +1869,8 @@ impl RConditionData for RError {
     fn argument_message(&self) -> Option<String> {
         self.argument_message.clone()
     }
-    fn __mx_keeps_parent(&self) -> bool {
-        self.keeps_parent
+    fn __mx_keeps_internal_fields(&self) -> bool {
+        self.keeps_internal_fields
     }
 }
 
@@ -1872,9 +1907,20 @@ impl RConditionData for RCondition {
         RCondition::call(self)
     }
     /// A `.mx_parent` field is the cause [`RCondition::with_parent`]
-    /// attached (a refusal [`catch_condition`] caught carries one).
-    fn __mx_keeps_parent(&self) -> bool {
+    /// attached (a refusal [`catch_condition`] caught carries one), a
+    /// `.mx_errors` field the failed elements of an
+    /// [`IntoRError`](crate::into_r_error::IntoRError) it was built from.
+    fn __mx_keeps_internal_fields(&self) -> bool {
         true
+    }
+}
+
+/// The error of a conversion that cannot fail (an
+/// [`IntoR`](crate::into_r::IntoR) with `Error = Infallible`): no value
+/// exists, so nothing is ever read.
+impl RConditionData for std::convert::Infallible {
+    fn message(&self) -> String {
+        match *self {}
     }
 }
 
@@ -1891,7 +1937,7 @@ impl<E: RConditionData> From<E> for crate::from_r::SexpError {
             data: e.data().unwrap_or_default(),
             call: e.call(),
             argument_message: e.argument_message(),
-            keeps_parent: e.__mx_keeps_parent(),
+            keeps_internal_fields: e.__mx_keeps_internal_fields(),
         })
     }
 }
@@ -2004,12 +2050,7 @@ pub trait ErrPartsClassed {
 impl<E: RConditionData> ErrPartsClassed for E {
     #[track_caller]
     fn __mx_classed_parts(&self) -> Option<ErrParts> {
-        Some(ErrParts {
-            message: self.message(),
-            class: self.class(),
-            data: check_err_fields(self.data(), self.__mx_keeps_parent()),
-            call: self.call(),
-        })
+        Some(into_r_err_parts(self))
     }
 }
 
@@ -2091,40 +2132,23 @@ macro_rules! __mx_result_err_parts {
     }};
 }
 
-/// The parts of an error that only has `Display`: its text as the message,
-/// no class, no data. The fallback of [`crate::__mx_into_r_err_parts!`].
-#[doc(hidden)]
-pub fn display_err_parts<E: ?Sized + std::fmt::Display>(e: &E) -> ErrParts {
-    ErrParts {
-        message: e.to_string(),
-        class: Vec::new(),
-        data: None,
-        call: ConditionCall::Inherit,
-    }
-}
-
-/// Internal: the probe of a failed return conversion (`IntoR::try_into_sexp`
-/// returned `Err(e)`) in generated code. Not public API.
+/// Internal: the condition parts of a failed return conversion
+/// (`IntoR::try_into_sexp` returned `Err(e)`) in generated code, and of each
+/// failed element of a container's conversion. Not public API.
 ///
-/// The classed stage of [`crate::__mx_result_err_parts!`] (an
-/// [`RConditionData`] error gives its message, classes, fields and call
-/// choice), then the error's `Display` ([`display_err_parts`]): every
-/// `IntoR::Error` has `Display`, and nothing else is known of it, in a
-/// generic trait shim least of all. No declared serde shape, so the expansion
+/// Every `IntoR::Error` implements [`RConditionData`], so the error gives its
+/// message, classes, fields and call choice wherever it fails, in a generic
+/// trait shim and inside a tuple too. No declared serde shape, so the call
 /// site needs no `__MiniextendrInitMarker`.
 #[doc(hidden)]
-#[macro_export]
-macro_rules! __mx_into_r_err_parts {
-    ($e:expr) => {{
-        #[allow(unused_imports)]
-        use $crate::condition::{ErrPartsClassed as _, ErrPartsUnclassed as _};
-        match &$e {
-            __mx_e => match __mx_e.__mx_classed_parts() {
-                ::core::option::Option::Some(parts) => parts,
-                ::core::option::Option::None => $crate::condition::display_err_parts(__mx_e),
-            },
-        }
-    }};
+#[track_caller]
+pub fn into_r_err_parts<E: RConditionData + ?Sized>(e: &E) -> ErrParts {
+    ErrParts {
+        message: e.message(),
+        class: e.class(),
+        data: check_err_fields(e.data(), e.__mx_keeps_internal_fields()),
+        call: e.call(),
+    }
 }
 
 // endregion
@@ -2158,7 +2182,7 @@ impl<E: RConditionData> ConversionErrClassed for E {
         ErrParts {
             message: self.message(),
             class: self.class(),
-            data: check_err_fields(self.data(), self.__mx_keeps_parent()),
+            data: check_err_fields(self.data(), self.__mx_keeps_internal_fields()),
             call: self.call(),
         }
     }
@@ -2241,7 +2265,7 @@ impl ConversionErrBuiltin for crate::from_r::SexpError {
             for (name, value) in refusal.fields() {
                 if !data.iter().any(|(seen, _)| seen == name) {
                     data.push((
-                        check_err_field(name.clone(), refusal.keeps_parent),
+                        check_err_field(name.clone(), refusal.keeps_internal_fields),
                         value.clone(),
                     ));
                 }

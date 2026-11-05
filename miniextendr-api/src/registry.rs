@@ -3610,6 +3610,17 @@ macro_rules! raise_condition_helper_fn {
       .data[[".mx_parent"]] <- NULL
       .data[["parent"]] <- .parent
     }
+    # The failed elements of a container's conversion (a tuple's fields, the
+    # rows of a `Vec` of tuples) travel as `.mx_errors`, entries
+    # `list(index, condition)` whose condition is a tagged value; they become
+    # `e$errors`, each condition built like `e$parent` and not signalled.
+    if (is.list(.data) && !is.null(.data[[".mx_errors", exact = TRUE]])) {
+      .errors <- lapply(.data[[".mx_errors", exact = TRUE]], function(.e) {
+        list(index = .e$index, condition = .cond(.e$condition))
+      })
+      .data[[".mx_errors"]] <- NULL
+      .data[["errors"]] <- .errors
+    }
     .cond_fields <- function(base) {
       if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
         base

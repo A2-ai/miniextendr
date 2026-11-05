@@ -131,9 +131,11 @@ impl IntoR for Username {
 the panicking and unchecked convenience methods have defaults. Generated
 wrappers call `try_into_sexp` on a return value: an `Err` reaches R as the
 error a `Result` return raises (`kind = "result_err"`), with the error's
-classes and fields when `Error` implements `RConditionData`, else its
-`Display` text (#2272). Return `Err` rather than panic for a value that has no
-R form. Likewise, omit
+message, classes and fields (#2272). `Error` must implement `RConditionData`:
+an error with only a message implements `message()` alone, a foreign error
+converts into `RError`, and `Infallible` already does. A tuple holding your
+type reads the same parts for its `e$errors` (#2282). Return `Err` rather than
+panic for a value that has no R form. Likewise, omit
 `try_from_sexp_unchecked` unless your type has a real checked-wrapper bypass.
 
 `TryFromSexp::CHARACTER_ONLY` says that the conversion accepts only character

@@ -43,6 +43,11 @@ It lives in `miniextendr-api/src/into_r.rs`. The trait is infallible by
 convention for scalar types (using `std::convert::Infallible` as the error
 type), but fallible for types that can fail (such as strings exceeding R's
 i32 length limit — `IntoRError` is the error type for those).
+`IntoR::Error` is bounded by `RConditionData`, so a failed return conversion
+raises the error's message, classes and fields (`kind = "result_err"`); the
+failing fields of a tuple raise one error with the class they all share and
+each field's own condition and position in `e$errors`
+(`IntoRError::Elements`, #2282).
 
 ### Coerce and TryCoerce — R-side type coercion
 

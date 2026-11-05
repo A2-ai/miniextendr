@@ -83,21 +83,16 @@ where
     T: IntoR,
     E: std::fmt::Display,
 {
-    type Error = std::convert::Infallible;
+    /// `T`'s error: an `Ok` value that fails to convert raises its own condition.
+    type Error = T::Error;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
         match self {
-            Ok(value) => value.into_sexp(),
+            Ok(value) => value.try_into_sexp(),
             Err(msg) => {
                 // Create list(error = msg) for R-side error handling
                 let mut map = HashMap::with_capacity(1);
                 map.insert("error".to_string(), msg.to_string());
-                map.into_sexp()
+                Ok(map.into_sexp())
             }
         }
     }
@@ -140,17 +135,12 @@ pub struct NullOnErr;
 /// Fires whenever the error type is `()`, independent of
 /// `#[miniextendr(unwrap_in_r)]`.
 impl<T: IntoR> IntoR for Result<T, NullOnErr> {
-    type Error = std::convert::Infallible;
+    /// `T`'s error: an `Ok` value that fails to convert raises its own condition.
+    type Error = T::Error;
     fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
-        Ok(self.into_sexp())
-    }
-    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
-        self.try_into_sexp()
-    }
-    fn into_sexp(self) -> crate::SEXP {
         match self {
-            Ok(value) => value.into_sexp(),
-            Err(NullOnErr) => crate::SEXP::nil(),
+            Ok(value) => value.try_into_sexp(),
+            Err(NullOnErr) => Ok(crate::SEXP::nil()),
         }
     }
 }

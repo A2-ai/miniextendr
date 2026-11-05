@@ -452,8 +452,9 @@ fn conversion_fields_raise_a_failed_conversion() {
         "{getter}"
     );
     assert!(
-        getter
-            .contains("__mx_into_r_err_parts ! (__mx_error) , :: core :: option :: Option :: None"),
+        getter.contains(
+            "condition :: into_r_err_parts (& __mx_error) , :: core :: option :: Option :: None"
+        ),
         "{getter}"
     );
     assert!(!getter.contains(":: into_sexp ("), "{getter}");

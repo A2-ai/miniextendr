@@ -190,10 +190,10 @@ impl ErrPartsMode {
 /// The conversion of a returned value to the `SEXP` a generated entry point
 /// returns (#2272): `IntoR::try_into_sexp(value)`, and a failed conversion
 /// becomes the tagged condition value of a `Result` error (`kind =
-/// "result_err"`): the error's classes, fields and message when it
-/// implements `RConditionData`, else its `Display` text
-/// (`__mx_into_r_err_parts!`). No panic, so no framework file location in
-/// the message.
+/// "result_err"`): the error's message, classes and fields, read through
+/// `RConditionData`, which every `IntoR::Error` implements
+/// (`condition::into_r_err_parts`). No panic, so no framework file location
+/// in the message.
 ///
 /// `call` is the call slot: `Some(__miniextendr_call)` in a `.Call` wrapper,
 /// `None` where the entry has none (sidecar getters, trait vtable shims; the
@@ -245,7 +245,7 @@ fn into_r_err_value(call: &TokenStream) -> TokenStream {
         // inside its R unwind guard, on R's main thread.
         unsafe {
             ::miniextendr_api::error_value::result_err_condition_value(
-                ::miniextendr_api::__mx_into_r_err_parts!(__mx_error),
+                ::miniextendr_api::condition::into_r_err_parts(&__mx_error),
                 #call,
             )
         }
