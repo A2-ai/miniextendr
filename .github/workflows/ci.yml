@@ -181,7 +181,9 @@ jobs:
       r_check_matrix: ${{ steps.r-check-matrix.outputs.matrix }}
     steps:
       # The R versions r-check-linux checks. Every run checks the minimum
-      # supported R (4.4) and the current release. Pushes, the weekly schedule
+      # supported R (4.4); the current release is checked by cran-check, which
+      # ran the same --as-cran check of the same vendored tarball as a release
+      # leg here did (#2343). Pushes, the weekly schedule
       # and manual runs add oldrel and devel. On a PR, a label named after an
       # R version alias adds that leg: `oldrel` or `oldrel/N`, `devel`, `next`.
       # rig and r-lib/actions/setup-r spell the aliases the same way, so the
@@ -207,7 +209,7 @@ jobs:
               versions+=("$label")
             fi
           done
-          legs='{"r":"4.4"},{"r":"release"}'
+          legs='{"r":"4.4"}'
           seen=' '
           for r in "${versions[@]}"; do
             case "$seen" in *" $r "*) continue ;; esac
@@ -888,12 +890,13 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
-      # The `changes` job picks the R versions: the fixed minimum and the
-      # current release on every PR, plus oldrel and devel on main, the weekly
-      # schedule and manual runs, and any R version alias label on a PR.
+      # The `changes` job picks the R versions: the fixed minimum on every PR,
+      # plus oldrel and devel on main, the weekly schedule and manual runs, and
+      # any R version alias label on a PR. The current release is checked by
+      # cran-check (#2343).
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.r_check_matrix
-          || '[{"r":"4.4"},{"r":"release"},{"r":"oldrel"},{"r":"devel","allow_failure":true}]') }}
+          || '[{"r":"4.4"},{"r":"oldrel"},{"r":"devel","allow_failure":true}]') }}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -1347,7 +1350,11 @@ jobs:
     # ALTREP pass. Before the stress split this
     # job bundled everything and had outgrown even a 90-min cap on main pushes
     # (suite 34 min + 3 heap-check rounds = ~140 min -> guaranteed timeout).
-    timeout-minutes: 60
+    # Without the stress blocks a heap-checked run measures ~75 min at worst
+    # (cold install 10, suite 15, rounds 3 x ~14, Valgrind 5, setup), so a
+    # 60-min cap cancelled it on nearly every main push (#2342). Runs without
+    # the rounds (PRs lacking the `heap-check` label) take ~30 min.
+    timeout-minutes: 90
     needs: changes
     if: needs.changes.outputs.r == 'true'
 
@@ -1399,39 +1406,10 @@ jobs:
         run: R CMD INSTALL rpkg
 
       - name: Run tests
+        id: suite
         working-directory: rpkg
         shell: bash
         run: Rscript -e "testthat::test_local()"
-
-      - name: Run tests with heap checking (3 rounds, randomized order)
-        # Heap checking (glibc MALLOC_CHECK_, 3 randomized rounds) is the
-        # malloc-discipline guard. Gate it on PRs behind the `heap-check` label
-        # so routine PRs stay fast; still run it unconditionally on
-        # push-to-main, the weekly schedule, and manual dispatch so merged code
-        # keeps its safety net. The rounds skip the stress blocks too, as
-        # MINIEXTENDR_STRESS is unset (~5 min each, not ~35): heap-check hunts
-        # malloc/free corruption across the whole suite, while the gctorture
-        # blocks have their own dedicated job — running torture under
-        # MALLOC_CHECK_ three extra times is what used to push this job past
-        # any timeout.
-        if: >-
-          github.event_name != 'pull_request' ||
-          contains(github.event.pull_request.labels.*.name, 'heap-check')
-        working-directory: rpkg
-        shell: bash
-        env:
-          # MALLOC_CHECK_=3: glibc checks heap consistency on every malloc/free
-          # and aborts immediately on corruption (not lazily). This catches
-          # heap-corrupting UB at the point it happens, not later.
-          MALLOC_CHECK_: "3"
-          # MALLOC_PERTURB_: fills freed memory with a non-zero pattern,
-          # making use-after-free crashes deterministic instead of sporadic.
-          MALLOC_PERTURB_: "165"
-        run: |
-          for i in 1 2 3; do
-            echo "=== Heap-checked test run $i/3 ==="
-            Rscript -e "testthat::test_local()" || exit 1
-          done
 
       # Fails on memory errors (invalid reads/writes, uninitialised values) and
       # definite leaks. "Possibly lost" blocks do not count: they are the
@@ -1453,6 +1431,40 @@ jobs:
           echo "=== Valgrind summary ==="
           grep -A 5 "ERROR SUMMARY\|definitely lost\|Invalid read\|Invalid write\|Use of uninitialised" /tmp/valgrind.log || echo "No errors found"
           exit "$status"
+
+      - name: Run tests with heap checking (3 rounds)
+        # Heap checking (glibc MALLOC_CHECK_, 3 rounds) is the
+        # malloc-discipline guard. Gate it on PRs behind the `heap-check` label
+        # so routine PRs stay fast; still run it unconditionally on
+        # push-to-main, the weekly schedule, and manual dispatch so merged code
+        # keeps its safety net. The rounds skip the stress blocks too, as
+        # MINIEXTENDR_STRESS is unset (~14 min each, a full suite run, not ~35):
+        # heap-check hunts malloc/free corruption across the whole suite, while
+        # the gctorture blocks have their own dedicated job — running torture
+        # under MALLOC_CHECK_ three extra times is what used to push this job
+        # past any timeout. It runs after the Valgrind pass, so a timeout here
+        # no longer skips that pass (#2342).
+        # Keyed to the suite step, not success(), so a Valgrind failure above
+        # doesn't skip the rounds.
+        if: >-
+          !cancelled() && steps.suite.outcome == 'success' &&
+          (github.event_name != 'pull_request' ||
+          contains(github.event.pull_request.labels.*.name, 'heap-check'))
+        working-directory: rpkg
+        shell: bash
+        env:
+          # MALLOC_CHECK_=3: glibc checks heap consistency on every malloc/free
+          # and aborts immediately on corruption (not lazily). This catches
+          # heap-corrupting UB at the point it happens, not later.
+          MALLOC_CHECK_: "3"
+          # MALLOC_PERTURB_: fills freed memory with a non-zero pattern,
+          # making use-after-free crashes deterministic instead of sporadic.
+          MALLOC_PERTURB_: "165"
+        run: |
+          for i in 1 2 3; do
+            echo "=== Heap-checked test run $i/3 ==="
+            Rscript -e "testthat::test_local()" || exit 1
+          done
 
       - name: Print the sccache server log
         if: always()
@@ -1927,6 +1939,10 @@ jobs:
   # ===========================================================================
   # CRAN-like check (stricter, simulates CRAN environment)
   # ===========================================================================
+  # Also the current-release-R leg of the R CMD check matrix: r-check-linux no
+  # longer has a `release` leg, because it ran the same --as-cran check of the
+  # same vendored tarball on the same R (#2343). It therefore fails on a
+  # WARNING, as check-r-package's error-on: '"warning"' does there.
   cran-check:
     name: CRAN-like check
     runs-on: ubuntu-latest
@@ -2014,6 +2030,11 @@ jobs:
           # install mode from the presence of inst/vendor.tar.xz (shipped inside
           # the built tarball by `just vendor` above).
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}
+          # R CMD check exits non-zero only on an ERROR; fail on a WARNING too.
+          if grep -E '^Status: .*WARNING' miniextendr.Rcheck/00check.log; then
+            echo "::error::R CMD check reported a WARNING"
+            exit 1
+          fi
 
       # The checked source package, with inst/vendor.tar.xz inside, is the
       # offline-installable build. Publishing it here means nobody needs to
