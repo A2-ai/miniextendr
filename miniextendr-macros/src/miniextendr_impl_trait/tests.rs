@@ -1002,7 +1002,8 @@ fn declared_scale_expansion(
 }
 
 /// A trait impl whose wrappers bind `Class$Trait` registers its type for the
-/// wrapper writer, which keeps the S3 class environment for it (#2264): an
+/// wrapper writer, which keeps the S3 or vctrs class environment for it
+/// (#2264, #2289): an
 /// S3 or vctrs impl with a static method or a const, any Env or R6 impl. An
 /// S3 impl whose methods all dispatch on the object, and S4 / S7 impls, whose
 /// namespaces live elsewhere, register nothing.

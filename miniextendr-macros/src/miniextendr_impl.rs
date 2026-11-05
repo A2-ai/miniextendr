@@ -4453,8 +4453,10 @@ pub(crate) fn class_default(line: impl std::fmt::Display) -> String {
 /// Opens a class's roxygen block that only carries the impl docs
 /// ([`docs_only_class_block`]). The wrapper writer writes the block, up to its
 /// closing `NULL`, only when the type's impl docs or member-derived class docs
-/// say something, so a readers-only impl adds no page (#1918). Spelled the
-/// same as `miniextendr_api::registry::CLASS_DOCS_ONLY_MARKER`.
+/// say something, so a readers-only impl adds no page (#1918), or when it
+/// keeps the class environment, whose block goes on the class's page
+/// (#2289). Spelled the same as
+/// `miniextendr_api::registry::CLASS_DOCS_ONLY_MARKER`.
 pub(crate) const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
 
 /// The roxygen block of an S3 or vctrs class without a constructor that the
@@ -4469,8 +4471,8 @@ pub(crate) const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
 ///   give a `@title`.
 ///
 /// Ends with `NULL`, before which [`ClassWrapper::mark_class_doc_lines`]
-/// goes; the writer drops the block when there is nothing to say
-/// ([`CLASS_DOCS_ONLY_MARKER`]).
+/// goes; the writer drops the block when there is nothing to say and no
+/// class environment to document ([`CLASS_DOCS_ONLY_MARKER`]).
 pub(crate) fn docs_only_class_block(parsed_impl: &ParsedImpl, kind: &str) -> Vec<String> {
     let class_name = parsed_impl.class_name();
     let tags = &parsed_impl.doc_tags;
@@ -4539,9 +4541,11 @@ pub struct ClassWrapper {
     pub class_doc_lines: Vec<String>,
     /// The block's methods and static methods.
     pub members: Vec<String>,
-    /// The S3 class environment with its roxygen block, which the wrapper
-    /// writer keeps only when the type has a constructor or a trait impl
-    /// writes `Class$Trait` into it (#2264). Empty for the other systems.
+    /// The class environment with its roxygen block when only a trait impl
+    /// can land in it: an S3 class without a constructor, and a vctrs class.
+    /// The wrapper writer keeps it only when a trait impl writes
+    /// `Class$Trait` into it (#2264, #2289). Empty for the other systems; an
+    /// S3 constructor's class environment is in the [`tail`](Self::tail).
     pub env: Vec<String>,
     /// What follows the members of every block, such as R6's `$lock()`.
     pub tail: Vec<String>,
@@ -4567,8 +4571,9 @@ impl ClassWrapper {
         }
     }
 
-    /// Local macro rendering for snapshots, with merge markers stripped and
-    /// the [`env`](Self::env) written, as for a class something lands in.
+    /// Local macro rendering for snapshots, with merge markers stripped, as
+    /// the writer writes a type with this one impl block and no trait impl
+    /// writing into its class environment: without the [`env`](Self::env).
     /// Write-time topic inheritance and the env decision are covered by the
     /// registry and rpkg tests.
     #[cfg(test)]
@@ -4592,7 +4597,6 @@ impl ClassWrapper {
             }
         }
         lines.extend(self.members.iter().cloned());
-        lines.extend(self.env.iter().cloned());
         lines.extend(self.tail.iter().cloned());
         lines
             .join("\n")

@@ -1044,7 +1044,7 @@ vctrs define no `TypeName()` or `new_typename()`: a package that builds its
 objects in R may define its own under that name (#2069). S3 defines no
 `new_typename()` and no class environment `TypeName` either, unless a trait
 impl's static methods or consts land in its `TypeName$Trait` namespace
-(#2264). An abstract S7
+(#2264, #2289). An abstract S7
 class (`s7(abstract)`) keeps S7's own refusal to construct it. A vctrs class
 without a constructor gets its vectors from `vctrs::new_vctr()`
 (`new_rcrd()`, `new_list_of()`) with `class = "TypeName"`.
@@ -1063,8 +1063,8 @@ constructor.
 The class keeps the doc comments of its impl blocks in every system. A class
 named as its Rust type has its class page, `TypeName.Rd`, titled by default.
 An S3 or vctrs class the package names itself (`class = "..."`) has no class
-environment either (#1918), so its impl docs go in a roxygen block of their
-own:
+environment of its own either (#1918), so its impl docs go in a roxygen block
+of their own:
 
 - Without `@rdname` in the impl docs, the block is on a page named after the
   class (`engine.Rd`, aliased `engine`), titled `engine S3 Class` (`engine
@@ -1074,7 +1074,9 @@ own:
   documents the class on a topic of its own, even one named after the class,
   puts `@rdname <that topic>` on the impl docs. Without it, the generated
   page and the package's own would both title the page.
-- Without impl docs there is no block.
+- Without impl docs there is no block, unless a trait impl's static methods
+  or consts land in `engine$Trait`: the class environment `engine` then
+  exists, documented on that page, and the block is written for it (#2289).
 
 ### Method Access
 
@@ -2025,12 +2027,14 @@ objects itself (`structure(make_engine(), class = "engine")`) writes
 {}` and gets the readers for the pointer it classes by hand. Such an impl
 emits no class environment (`engine <- new.env(...)`), so the package's own
 constructor can be named `engine()` without a second binding. The environment
-exists only when something lands in it: `Class$new()` for a class with a
+exists only when something lands in it: `Class$new()` for an S3 class with a
 constructor, or a trait impl's `Class$Trait` namespace (its static methods and
-consts) for a class named as its Rust type. The impl blocks can't see the
-trait impls, so this is decided when the wrappers are written, where each
-trait impl that binds a namespace registers its type (#2264). The readers
-are documented on the class's topic (or the impl's `@rdname`) under
+consts) for any S3 or vctrs class, renamed or not. The impl blocks can't see
+the trait impls, so this is decided when the wrappers are written, where each
+trait impl that binds a namespace registers its type (#2264, #2289). A trait
+impl with statics or consts on such a class therefore binds `engine`, and the
+package's own `engine()` must take another name. The readers are documented
+on the class's topic (or the impl's `@rdname`) under
 `#[miniextendr(internal)]` too, which only drops the exports (#1918).
 
 #### A fallback for names no field has

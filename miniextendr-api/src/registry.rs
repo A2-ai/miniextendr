@@ -107,8 +107,8 @@ pub static MX_CLASS_BLOCKS: [ClassBlockEntry];
 /// The types whose class environment a trait impl writes into: one entry
 /// per `#[miniextendr] impl Trait for Type` whose wrappers bind the
 /// `Class$Trait` namespace. **Host-only.** [`collect_r_wrappers`] keeps a
-/// class's [`env`](ClassBlockEntry::env) part only for a type with a
-/// constructor or an entry here (#2264).
+/// class's [`env`](ClassBlockEntry::env) part only for a type with an entry
+/// here (#2264, #2289).
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_TRAIT_NAMESPACES: [TraitNamespaceEntry];
@@ -430,7 +430,9 @@ pub const CLASS_DOCS_MARKER: &str = ".__MX_CLASS_DOCS__";
 /// The writer writes the block, up to its closing `NULL`, only when the
 /// type's [`class_docs`](ClassBlockEntry::class_docs) or
 /// [`class_doc_lines`](ClassBlockEntry::class_doc_lines) say something beyond
-/// the page and export tags, so a readers-only impl adds no page (#1918).
+/// the page and export tags, so a readers-only impl adds no page (#1918), or
+/// when it writes the class environment ([`ClassBlockEntry::env`]), whose
+/// block goes on the class's page (#2289).
 /// Spelled the same as `miniextendr_macros`'s `CLASS_DOCS_ONLY_MARKER`.
 pub const CLASS_DOCS_ONLY_MARKER: &str = ".__MX_CLASS_DOCS_ONLY__";
 
@@ -529,12 +531,14 @@ pub struct ClassBlockEntry {
     /// Top-level functions are left to the duplicate-definition scan of the
     /// written file.
     pub member_names: &'static [&'static str],
-    /// The S3 class environment, `Class <- new.env(...)` with its roxygen
-    /// block, which holds `Class$new()` and the trait namespaces
-    /// `Class$Trait`; empty for the other class systems. Written after the
-    /// members, before the [`tail`](Self::tail), only when the type has a
-    /// constructor or a trait impl writes into it ([`MX_TRAIT_NAMESPACES`]),
-    /// so a class without either exports no empty environment (#2264).
+    /// The class environment, `Class <- new.env(...)` with its roxygen
+    /// block, when only the trait namespaces `Class$Trait` can land in it:
+    /// an S3 class without a constructor, and a vctrs class. Empty for the
+    /// other class systems; an S3 class with a constructor has its
+    /// environment, which holds `Class$new()`, in the [`tail`](Self::tail).
+    /// Written after the members, before the tail, only when a trait impl
+    /// writes into it ([`MX_TRAIT_NAMESPACES`]), so a class exports no empty
+    /// environment (#2264, #2289).
     pub env: &'static str,
     /// What follows every block's members, such as R6's `$lock()`.
     pub tail: &'static str,
@@ -550,7 +554,7 @@ unsafe impl Sync for ClassBlockEntry {}
 /// too). Registered in [`MX_TRAIT_NAMESPACES`] by
 /// `#[miniextendr] impl Trait for Type`, a separate expansion from the
 /// type's impl blocks, which can't see it: the wrapper writer keeps the
-/// type's [`ClassBlockEntry::env`] for it (#2264).
+/// type's [`ClassBlockEntry::env`] for it (#2264, #2289).
 pub struct TraitNamespaceEntry {
     /// The implementing type's `core::any::type_name`, matched against
     /// [`ClassBlockEntry::type_path`].
@@ -1341,9 +1345,10 @@ fn class_block_name(block: &ClassBlockEntry) -> String {
 /// `class_docs` of every block (the defining block's first) at its
 /// [`CLASS_DOCS_MARKER`] line and the `class_doc_lines` of every block at its
 /// [`CLASS_DOC_LINES_MARKER`] line, then each block's members, then the
-/// defining block's env and tail. The env is written only when the type has
-/// a constructor (`Class$new()`) or a trait impl writes into it (an entry of
-/// `trait_namespaces` for the type, #2264). A tag repeated exactly is written once, and a
+/// defining block's env and tail. The env is written only when a trait impl
+/// writes into it (an entry of `trait_namespaces` for the type, #2264,
+/// #2289), and then a docs-only class block ([`CLASS_DOCS_ONLY_MARKER`]) is
+/// written too, as the env's page. A tag repeated exactly is written once, and a
 /// generated [`CLASS_DEFAULT_PREFIX`] line gives way to the same tag on
 /// another block. A `# Generated from Rust impl` header precedes each
 /// part whose block differs from the previous part's, so the
@@ -1496,10 +1501,7 @@ fn merge_class_blocks(
         if errors.len() > type_errors {
             continue;
         }
-        // Decided over the resolved renderings: the constructor may sit in
-        // another block than the definer's env.
-        let keep_env =
-            type_blocks.iter().any(|b| !b.constructor.is_empty()) || namespaced.contains(path);
+        let keep_env = namespaced.contains(path);
         fragments.push(WrapperFragment {
             priority: RWrapperPriority::Class,
             source_file: first.source_file,
@@ -1842,8 +1844,10 @@ fn merged_class_content(
         }
     }
     // A docs-only block (`CLASS_DOCS_ONLY_MARKER`) is written when the docs
-    // say something beyond the page and export tags.
-    let says_something = !class_doc_lines.is_empty()
+    // say something beyond the page and export tags, or when the class
+    // environment is written: its block goes on the class's page (#2289).
+    let says_something = keep_env
+        || !class_doc_lines.is_empty()
         || class_docs.iter().any(|t| {
             !matches!(
                 t.name(),

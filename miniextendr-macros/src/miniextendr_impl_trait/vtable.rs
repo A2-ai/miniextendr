@@ -151,8 +151,9 @@ pub(super) fn generate_vtable_static(
     };
 
     // A trait impl that binds `Class$Trait` tells the wrapper writer, which
-    // keeps the type's S3 class environment for it (#2264): the type's own
-    // impl blocks are separate expansions and can't see this one.
+    // keeps the type's S3 or vctrs class environment for it (#2264, #2289):
+    // the type's own impl blocks are separate expansions and can't see this
+    // one.
     let trait_namespace_entry = if binds_trait_namespace(
         impl_attrs.class_system,
         &methods_owned,
