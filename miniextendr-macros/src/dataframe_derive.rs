@@ -1633,28 +1633,69 @@ pub(super) fn expanded_elem_idents(key: &str, n: usize) -> Vec<syn::Ident> {
 
 // region: Struct path (existing logic, extracted)
 
-/// Convert a companion column without adding R objects to the companion:
-/// `as_list` uses the rooted list builder, `as_factor` uses `UnitEnumFactor`,
-/// and ordinary columns convert the whole `Vec` through `IntoR`.
+/// Convert a column (`access`: the companion's field, or the borrowed fill's
+/// local) without adding R objects to the companion: `as_list` uses the rooted
+/// list builder, `as_factor` uses `UnitEnumFactor`, and ordinary columns
+/// convert the whole `Vec` through `IntoR`.
 fn column_sexp(
-    name: &syn::Ident,
+    access: &TokenStream,
     ty: &syn::Type,
     needs_into_list: bool,
     is_factor: bool,
 ) -> TokenStream {
     if needs_into_list {
         let into_list_column = list_column_fn(ty, false);
-        quote! { #into_list_column(self.#name) }
+        quote! { #into_list_column(#access) }
     } else if is_factor {
         let span = syn::spanned::Spanned::span(ty);
         quote_spanned! {span=>
             ::miniextendr_api::IntoR::into_sexp(
-                ::miniextendr_api::factor::FactorVec::<#ty>::from(self.#name)
+                ::miniextendr_api::factor::FactorVec::<#ty>::from(#access)
             )
         }
     } else {
-        quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) }
+        quote! { ::miniextendr_api::IntoR::into_sexp(#access) }
     }
+}
+
+/// The local a fill (the owned `From<Vec<Row>>`, or the borrowed
+/// `DataFrameRowBorrow`) keeps column `name` in. Prefixed, so no column can
+/// shadow the fill's own bindings (`rows`, `row`, `len`, `__mx_row`,
+/// `__mx_len`): a field named `len` used to break the owned fill.
+///
+/// The call-site span keeps `non_snake_case` off the user's field: the
+/// prefixed name of a field `_x` (`__mx_col__x`) is not snake case.
+pub(super) fn column_local(name: &syn::Ident) -> syn::Ident {
+    format_ident!("__mx_col_{}", name, span = proc_macro2::Span::call_site())
+}
+
+/// The element type of a borrowed fill's string column, with the `String` type
+/// it borrows from: `&str` for a `String` column, `Option<&str>` for an
+/// `Option<String>` one, `None` for every other column. These columns are
+/// written from the row's own string (`StringColumn`, which only
+/// `std::string::String` implements), and `Vec<&str>` / `Vec<Option<&str>>`
+/// convert to the same character vector as the owned column.
+pub(super) fn borrowed_string_column(ty: &syn::Type) -> Option<(TokenStream, &syn::Type)> {
+    if is_string_ty(ty) {
+        return Some((quote! { &::core::primitive::str }, ty));
+    }
+    let inner = option_payload(ty)?;
+    is_string_ty(inner).then(|| {
+        (
+            quote! { ::core::option::Option<&::core::primitive::str> },
+            inner,
+        )
+    })
+}
+
+/// The `&str` of a `String` value (`value`: an expression of type `&String`).
+pub(super) fn column_str(value: TokenStream) -> TokenStream {
+    quote! { ::miniextendr_api::dataframe::StringColumn::__mx_column_str(#value) }
+}
+
+/// `StringColumn::__mx_column_str` as a function, for `Option::map`.
+pub(super) fn column_str_fn() -> TokenStream {
+    quote! { ::miniextendr_api::dataframe::StringColumn::__mx_column_str }
 }
 
 /// `into_list_column::<#ty>` (or `into_option_list_column::<#ty>`, for a column
@@ -1959,6 +2000,11 @@ fn derive_struct_dataframe(
     // endregion
 
     // region: IntoDataFrame
+    //
+    // One generator assembles the column list for both column sources: the
+    // companion (`ColumnSource::into_column_list`, which reads `self.<col>`)
+    // and the borrowed fill (`DataFrameRowBorrow`, which reads its locals), so
+    // the two build the same frame: names, order, column types.
     let length_ref = if has_tag {
         quote! { self._tag.len() }
     } else if !flat_cols.is_empty() {
@@ -1974,228 +2020,422 @@ fn derive_struct_dataframe(
         quote! { self._len }
     };
 
-    // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
-    // column SEXPs survive subsequent column allocations. Pre-fix the raw
-    // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
-    // next column's allocations — UAF under gctorture
-    // (reviews/2026-05-07-gctorture-audit.md).
-    let tag_pair = if let Some(ref tag_name) = attrs.tag {
-        quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))), }
-    } else {
-        TokenStream::new()
-    };
+    // `col` reads column `name`. With `borrowed_rows`, an auto-expand column
+    // holds slices of the rows' containers, whose elements are cloned out,
+    // instead of the containers themselves.
+    let column_list_body = |col: &dyn Fn(&syn::Ident) -> TokenStream,
+                            length_ref: TokenStream,
+                            borrowed_rows: bool|
+     -> TokenStream {
+        let tag_col = col(&format_ident!("_tag"));
 
-    let df_pairs: Vec<TokenStream> = flat_cols
-        .iter()
-        .map(|fc| {
-            let name = &fc.df_field;
-            let name_str = &fc.col_name_str;
-            let column = column_sexp(name, &fc.vec_elem_ty, fc.needs_into_list, fc.is_factor);
-            quote! { (#name_str, __scope.protect_raw(#column)) }
-        })
-        .collect();
-
-    let mut length_checks: Vec<TokenStream> = flat_cols
-        .iter()
-        .map(|fc| {
-            let name = &fc.df_field;
-            let name_str = &fc.col_name_str;
-            quote! {
-                ::core::assert!(
-                    self.#name.len() == _n_rows,
-                    "column length mismatch in {}: column `{}` has length {} but expected {}",
-                    ::core::stringify!(#df_name),
-                    #name_str,
-                    self.#name.len(),
-                    _n_rows,
-                );
-            }
-        })
-        .collect();
-    for sc in &struct_cols {
-        let name = &sc.df_field;
-        let name_str = &sc.col_name_str;
-        length_checks.push(quote! {
-            ::core::assert!(
-                self.#name.len() == _n_rows,
-                "column length mismatch in {}: struct column `{}` has length {} but expected {}",
-                ::core::stringify!(#df_name),
-                #name_str,
-                self.#name.len(),
-                _n_rows,
-            );
-        });
-    }
-
-    let into_dataframe_impl = if has_auto_expand || has_struct {
-        // Dynamic pair building: iterate resolved fields in order,
-        // emitting static pairs for flat columns and runtime-expanded
-        // pairs for auto-expand fields.
-        let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
-            quote! {
-                __df_pairs.push((#tag_name.to_string(), __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self._tag))));
-            }
+        // Each pair protects its SEXP via `__scope.protect_raw` so previously-built
+        // column SEXPs survive subsequent column allocations. Pre-fix the raw
+        // `vec![(name, into_sexp(...)), ...]` left every SEXP unrooted across the
+        // next column's allocations — UAF under gctorture
+        // (reviews/2026-05-07-gctorture-audit.md).
+        let tag_pair = if let Some(ref tag_name) = attrs.tag {
+            quote! { (#tag_name, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#tag_col))), }
         } else {
             TokenStream::new()
         };
 
-        let pair_pushes: Vec<TokenStream> = resolved
+        let df_pairs: Vec<TokenStream> = flat_cols
             .iter()
-            .map(|rf| match rf {
-                ResolvedField::Single(data) => {
-                    let col_name = &data.col_name;
-                    let col_name_str = &data.col_name_str;
-                    let column = column_sexp(col_name, &data.ty, data.needs_into_list, data.is_factor);
-                    quote! {
-                        __df_pairs.push((
-                            #col_name_str.to_string(),
-                            __scope.protect_raw(#column),
-                        ));
-                    }
-                }
-                ResolvedField::ExpandedFixed(data) => {
-                    let pushes: Vec<TokenStream> = (1..=data.len)
-                        .map(|i| {
-                            let name = format!("{}_{}", data.base_name, i);
-                            let ident = format_ident!("{}_{}", data.base_name, i);
-                            quote! {
-                                __df_pairs.push((
-                                    #name.to_string(),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
-                                ));
-                            }
-                        })
-                        .collect();
-                    quote! { #(#pushes)* }
-                }
-                ResolvedField::ExpandedVec(data) => {
-                    let pushes: Vec<TokenStream> = (1..=data.width)
-                        .map(|i| {
-                            let name = format!("{}_{}", data.base_name, i);
-                            let ident = format_ident!("{}_{}", data.base_name, i);
-                            quote! {
-                                __df_pairs.push((
-                                    #name.to_string(),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#ident)),
-                                ));
-                            }
-                        })
-                        .collect();
-                    quote! { #(#pushes)* }
-                }
-                ResolvedField::AutoExpandVec(data) => {
-                    let col_name = &data.col_name;
-                    let col_name_str = &data.col_name_str;
-                    let elem_ty = &data.elem_ty;
-                    let elems_iter =
-                        owned_elems_iter(&quote! { __row_vec }, data.borrowed, elem_ty);
-                    quote! {
-                        {
-                            let __auto = self.#col_name;
-                            let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                            let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
-                                .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
-                                .collect();
-                            for __row_vec in __auto {
-                                let mut __elems = #elems_iter;
-                                for __col in __cols.iter_mut() {
-                                    __col.push(::core::iter::Iterator::next(&mut __elems));
-                                }
-                            }
-                            for (__i, __col) in __cols.into_iter().enumerate() {
-                                __df_pairs.push((
-                                    ::std::format!("{}_{}", #col_name_str, __i + 1),
-                                    __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
-                                ));
-                            }
-                        }
-                    }
-                }
-                ResolvedField::Struct(data) => {
-                    // Issue #485: convert `Vec<Inner>` via Inner::to_dataframe,
-                    // extract its named columns, and push under `<base>_` prefix.
-                    let col_name = &data.col_name;
-                    let base_name_str = &data.col_name_str;
-                    let inner_ty = &data.inner_ty;
-                    quote! {
-                        {
-                            let __inner_df = <#inner_ty>::to_dataframe(self.#col_name);
-                            // The inner column list is rooted in __scope, which keeps its
-                            // columns alive across the later columns' allocations.
-                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
-                                __inner_df,
-                                &__scope,
-                            );
-                            for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                                __df_pairs.push((
-                                    ::std::format!("{}_{}", #base_name_str, __inner_col_name),
-                                    __inner_col_sexp,
-                                ));
-                            }
-                        }
-                    }
-                }
-                // Map (#919): push two list-columns `<base>_keys` / `<base>_values`.
-                ResolvedField::Map(data) => {
-                    let keys_ident = format_ident!("{}_keys", data.base_name);
-                    let vals_ident = format_ident!("{}_values", data.base_name);
-                    let keys_name = format!("{}_keys", data.base_name);
-                    let vals_name = format!("{}_values", data.base_name);
-                    quote! {
-                        __df_pairs.push((
-                            #keys_name.to_string(),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#keys_ident)),
-                        ));
-                        __df_pairs.push((
-                            #vals_name.to_string(),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#vals_ident)),
-                        ));
-                    }
-                }
+            .map(|fc| {
+                let name_str = &fc.col_name_str;
+                let column = column_sexp(
+                    &col(&fc.df_field),
+                    &fc.vec_elem_ty,
+                    fc.needs_into_list,
+                    fc.is_factor,
+                );
+                quote! { (#name_str, __scope.protect_raw(#column)) }
             })
             .collect();
 
-        quote! {
-            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
-                fn into_column_list(self) -> ::miniextendr_api::List {
-                    let _n_rows = #length_ref;
-                    #(#length_checks)*
-                    // SAFETY: into_column_list only runs on the R main thread.
-                    // ProtectScope keeps each column SEXP rooted across the
-                    // next column's allocations; from_raw_pairs writes them
-                    // into the parent VECSXP before we drop the scope.
-                    unsafe {
-                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        let mut __df_pairs: ::std::vec::Vec<(
-                            ::std::string::String,
-                            ::miniextendr_api::SEXP,
-                        )> = ::std::vec::Vec::new();
-                        #tag_push_pair
-                        #(#pair_pushes)*
-                        ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
-                            .set_class_str(&["data.frame"])
-                            .set_row_names_int(_n_rows)
+        let mut length_checks: Vec<TokenStream> = flat_cols
+            .iter()
+            .map(|fc| {
+                let column = col(&fc.df_field);
+                let name_str = &fc.col_name_str;
+                quote! {
+                    ::core::assert!(
+                        #column.len() == _n_rows,
+                        "column length mismatch in {}: column `{}` has length {} but expected {}",
+                        ::core::stringify!(#df_name),
+                        #name_str,
+                        #column.len(),
+                        _n_rows,
+                    );
+                }
+            })
+            .collect();
+        for sc in &struct_cols {
+            let column = col(&sc.df_field);
+            let name_str = &sc.col_name_str;
+            length_checks.push(quote! {
+                ::core::assert!(
+                    #column.len() == _n_rows,
+                    "column length mismatch in {}: struct column `{}` has length {} but expected {}",
+                    ::core::stringify!(#df_name),
+                    #name_str,
+                    #column.len(),
+                    _n_rows,
+                );
+            });
+        }
+
+        if has_auto_expand || has_struct {
+            // Dynamic pair building: iterate resolved fields in order,
+            // emitting static pairs for flat columns and runtime-expanded
+            // pairs for auto-expand fields.
+            let tag_push_pair = if let Some(ref tag_name) = attrs.tag {
+                quote! {
+                    __df_pairs.push((#tag_name.to_string(), __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#tag_col))));
+                }
+            } else {
+                TokenStream::new()
+            };
+
+            let pair_pushes: Vec<TokenStream> = resolved
+                .iter()
+                .map(|rf| match rf {
+                    ResolvedField::Single(data) => {
+                        let col_name_str = &data.col_name_str;
+                        let column = column_sexp(
+                            &col(&data.col_name),
+                            &data.ty,
+                            data.needs_into_list,
+                            data.is_factor,
+                        );
+                        quote! {
+                            __df_pairs.push((
+                                #col_name_str.to_string(),
+                                __scope.protect_raw(#column),
+                            ));
+                        }
                     }
+                    ResolvedField::ExpandedFixed(data) => {
+                        let pushes: Vec<TokenStream> = (1..=data.len)
+                            .map(|i| {
+                                let name = format!("{}_{}", data.base_name, i);
+                                let column = col(&format_ident!("{}_{}", data.base_name, i));
+                                quote! {
+                                    __df_pairs.push((
+                                        #name.to_string(),
+                                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#column)),
+                                    ));
+                                }
+                            })
+                            .collect();
+                        quote! { #(#pushes)* }
+                    }
+                    ResolvedField::ExpandedVec(data) => {
+                        let pushes: Vec<TokenStream> = (1..=data.width)
+                            .map(|i| {
+                                let name = format!("{}_{}", data.base_name, i);
+                                let column = col(&format_ident!("{}_{}", data.base_name, i));
+                                quote! {
+                                    __df_pairs.push((
+                                        #name.to_string(),
+                                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#column)),
+                                    ));
+                                }
+                            })
+                            .collect();
+                        quote! { #(#pushes)* }
+                    }
+                    ResolvedField::AutoExpandVec(data) => {
+                        let column = col(&data.col_name);
+                        let col_name_str = &data.col_name_str;
+                        let elem_ty = &data.elem_ty;
+                        let elems_iter = owned_elems_iter(
+                            &quote! { __row_vec },
+                            data.borrowed || borrowed_rows,
+                            elem_ty,
+                        );
+                        quote! {
+                            {
+                                let __auto = #column;
+                                let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
+                                let mut __cols: ::std::vec::Vec<::std::vec::Vec<::core::option::Option<#elem_ty>>> = (0..__max)
+                                    .map(|_| ::std::vec::Vec::with_capacity(_n_rows))
+                                    .collect();
+                                for __row_vec in __auto {
+                                    let mut __elems = #elems_iter;
+                                    for __col in __cols.iter_mut() {
+                                        __col.push(::core::iter::Iterator::next(&mut __elems));
+                                    }
+                                }
+                                for (__i, __col) in __cols.into_iter().enumerate() {
+                                    __df_pairs.push((
+                                        ::std::format!("{}_{}", #col_name_str, __i + 1),
+                                        __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__col)),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    ResolvedField::Struct(data) => {
+                        // Issue #485: convert `Vec<Inner>` via Inner::to_dataframe,
+                        // extract its named columns, and push under `<base>_` prefix.
+                        let column = col(&data.col_name);
+                        let base_name_str = &data.col_name_str;
+                        let inner_ty = &data.inner_ty;
+                        quote! {
+                            {
+                                let __inner_df = <#inner_ty>::to_dataframe(#column);
+                                // The inner column list is rooted in __scope, which keeps its
+                                // columns alive across the later columns' allocations.
+                                let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                                    __inner_df,
+                                    &__scope,
+                                );
+                                for (__inner_col_name, __inner_col_sexp) in __inner_cols {
+                                    __df_pairs.push((
+                                        ::std::format!("{}_{}", #base_name_str, __inner_col_name),
+                                        __inner_col_sexp,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    // Map (#919): push two list-columns `<base>_keys` / `<base>_values`.
+                    ResolvedField::Map(data) => {
+                        let keys_col = col(&format_ident!("{}_keys", data.base_name));
+                        let vals_col = col(&format_ident!("{}_values", data.base_name));
+                        let keys_name = format!("{}_keys", data.base_name);
+                        let vals_name = format!("{}_values", data.base_name);
+                        quote! {
+                            __df_pairs.push((
+                                #keys_name.to_string(),
+                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#keys_col)),
+                            ));
+                            __df_pairs.push((
+                                #vals_name.to_string(),
+                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#vals_col)),
+                            ));
+                        }
+                    }
+                })
+                .collect();
+
+            quote! {
+                let _n_rows = #length_ref;
+                #(#length_checks)*
+                // SAFETY: the column list is only assembled on the R main thread.
+                // ProtectScope keeps each column SEXP rooted across the
+                // next column's allocations; from_raw_pairs writes them
+                // into the parent VECSXP before we drop the scope.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    let mut __df_pairs: ::std::vec::Vec<(
+                        ::std::string::String,
+                        ::miniextendr_api::SEXP,
+                    )> = ::std::vec::Vec::new();
+                    #tag_push_pair
+                    #(#pair_pushes)*
+                    ::miniextendr_api::list::List::from_raw_pairs(__df_pairs)
+                        .set_class_str(&["data.frame"])
+                        .set_row_names_int(_n_rows)
+                }
+            }
+        } else {
+            quote! {
+                let _n_rows = #length_ref;
+                #(#length_checks)*
+                // SAFETY: see the auto-expand branch.
+                unsafe {
+                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
+                    // Annotated, so a row with no columns and no tag (a unit
+                    // struct) doesn't hit E0282 on the empty `vec![]`.
+                    let __pairs: ::std::vec::Vec<(&str, ::miniextendr_api::SEXP)> = ::std::vec![
+                        #tag_pair
+                        #(#df_pairs),*
+                    ];
+                    ::miniextendr_api::list::List::from_raw_pairs(__pairs)
+                    .set_class_str(&["data.frame"])
+                    .set_row_names_int(_n_rows)
                 }
             }
         }
-    } else {
-        quote! {
-            impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
-                fn into_column_list(self) -> ::miniextendr_api::List {
-                    let _n_rows = #length_ref;
-                    #(#length_checks)*
-                    // SAFETY: see auto-expand branch.
-                    unsafe {
-                        let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                        ::miniextendr_api::list::List::from_raw_pairs(::std::vec![
-                            #tag_pair
-                            #(#df_pairs),*
-                        ])
-                        .set_class_str(&["data.frame"])
-                        .set_row_names_int(_n_rows)
-                    }
+    };
+
+    let companion_column_list = column_list_body(&|name| quote! { self.#name }, length_ref, false);
+    let into_dataframe_impl = quote! {
+        impl #impl_generics ::miniextendr_api::convert::ColumnSource for #df_name #ty_generics #where_clause {
+            fn into_column_list(self) -> ::miniextendr_api::List {
+                #companion_column_list
+            }
+        }
+    };
+    // endregion
+
+    // region: DataFrameRowBorrow — the borrowed fill (#2307)
+    //
+    // One pass over `&[Row]` into locals with the companion's column types,
+    // then the column assembly above. `String` / `Option<String>` columns
+    // hold the rows' `&str`; every other value is cloned into its column. What
+    // the fill needs of a field type (`Clone`, `StringColumn`) is the impl's
+    // conditional `where` clause, so a row with a non-`Clone` field still
+    // derives: the borrowed conversion just does not apply to it.
+    let borrowed_local = |name: &syn::Ident| -> TokenStream {
+        let local = column_local(name);
+        quote! { #local }
+    };
+    let clone_bound = quote! { ::core::clone::Clone };
+    let string_bound = quote! { ::miniextendr_api::dataframe::StringColumn };
+    let mut borrow_bounds: Vec<(TokenStream, TokenStream)> = Vec::new();
+    let mut borrow_inits: Vec<TokenStream> = Vec::new();
+    let mut borrow_pushes: Vec<TokenStream> = Vec::new();
+    let mut borrow_column = |name: &syn::Ident, elem_ty: TokenStream| {
+        let local = column_local(name);
+        borrow_inits.push(quote! {
+            let mut #local: ::std::vec::Vec<#elem_ty> = ::std::vec::Vec::with_capacity(__mx_len);
+        });
+        local
+    };
+    if has_tag {
+        let local = borrow_column(
+            &format_ident!("_tag"),
+            quote! { &'static ::core::primitive::str },
+        );
+        borrow_pushes.push(quote! { #local.push(#row_name_str); });
+    }
+    for rf in &resolved {
+        let (rust_name, tuple_index) = match rf {
+            ResolvedField::Single(d) => (&d.rust_name, &d.tuple_index),
+            ResolvedField::ExpandedFixed(d) => (&d.rust_name, &d.tuple_index),
+            ResolvedField::ExpandedVec(d) => (&d.rust_name, &d.tuple_index),
+            ResolvedField::AutoExpandVec(d) => (&d.rust_name, &d.tuple_index),
+            ResolvedField::Struct(d) => (&d.rust_name, &d.tuple_index),
+            ResolvedField::Map(d) => (&d.rust_name, &d.tuple_index),
+        };
+        // The field, borrowed from the row: `&__mx_row.<field>`.
+        let field = match tuple_index {
+            Some(idx) => quote! { (&__mx_row.#idx) },
+            None => quote! { (&__mx_row.#rust_name) },
+        };
+        match rf {
+            ResolvedField::Single(data) => {
+                let ty = &data.ty;
+                let string_column = (!data.needs_into_list && !data.is_factor)
+                    .then(|| borrowed_string_column(ty))
+                    .flatten();
+                if let Some((str_ty, string_ty)) = string_column {
+                    let local = borrow_column(&data.col_name, str_ty);
+                    let value = if option_payload(ty).is_some() {
+                        let as_str = column_str_fn();
+                        quote! {
+                            ::core::option::Option::map(::core::option::Option::as_ref(#field), #as_str)
+                        }
+                    } else {
+                        column_str(field)
+                    };
+                    borrow_pushes.push(quote! { #local.push(#value); });
+                    borrow_bounds.push((quote! { #string_ty }, string_bound.clone()));
+                } else {
+                    let local = borrow_column(&data.col_name, quote! { #ty });
+                    borrow_pushes
+                        .push(quote! { #local.push(::core::clone::Clone::clone(#field)); });
+                    borrow_bounds.push((quote! { #ty }, clone_bound.clone()));
                 }
+            }
+            ResolvedField::ExpandedFixed(data) => {
+                let elem_ty = &data.elem_ty;
+                let elems = expanded_elem_idents(
+                    &crate::naming::unraw(&data.rust_name).to_string(),
+                    data.len,
+                );
+                borrow_pushes.push(fixed_array_elems(&field, true, elem_ty, &elems));
+                for (i, elem) in elems.iter().enumerate() {
+                    let local = borrow_column(
+                        &format_ident!("{}_{}", data.base_name, i + 1),
+                        quote! { #elem_ty },
+                    );
+                    borrow_pushes.push(quote! { #local.push(#elem); });
+                }
+                borrow_bounds.push((quote! { #elem_ty }, clone_bound.clone()));
+            }
+            ResolvedField::ExpandedVec(data) => {
+                let elem_ty = &data.elem_ty;
+                let unraw = crate::naming::unraw(&data.rust_name).to_string();
+                let iter = format_ident!("__mxv_{}", unraw.trim_start_matches('_'));
+                let elems = expanded_elem_idents(&unraw, data.width);
+                borrow_pushes.push(width_elems(
+                    &quote! { &(#field)[..] },
+                    true,
+                    elem_ty,
+                    &iter,
+                    &elems,
+                ));
+                for (i, elem) in elems.iter().enumerate() {
+                    let local = borrow_column(
+                        &format_ident!("{}_{}", data.base_name, i + 1),
+                        quote! { ::core::option::Option<#elem_ty> },
+                    );
+                    borrow_pushes.push(quote! { #local.push(#elem); });
+                }
+                borrow_bounds.push((quote! { #elem_ty }, clone_bound.clone()));
+            }
+            ResolvedField::AutoExpandVec(data) => {
+                let elem_ty = &data.elem_ty;
+                let local = borrow_column(&data.col_name, quote! { &[#elem_ty] });
+                borrow_pushes.push(quote! { #local.push(&(#field)[..]); });
+                borrow_bounds.push((quote! { #elem_ty }, clone_bound.clone()));
+            }
+            ResolvedField::Struct(data) => {
+                let inner_ty = &data.inner_ty;
+                let local = borrow_column(&data.col_name, quote! { #inner_ty });
+                borrow_pushes.push(quote! { #local.push(::core::clone::Clone::clone(#field)); });
+                borrow_bounds.push((quote! { #inner_ty }, clone_bound.clone()));
+            }
+            ResolvedField::Map(data) => {
+                let key_ty = &data.key_ty;
+                let val_ty = &data.val_ty;
+                let keys = borrow_column(
+                    &format_ident!("{}_keys", data.base_name),
+                    quote! { ::std::vec::Vec<#key_ty> },
+                );
+                let vals = borrow_column(
+                    &format_ident!("{}_values", data.base_name),
+                    quote! { ::std::vec::Vec<#val_ty> },
+                );
+                // One pass over the map, so each key stays next to its value.
+                borrow_pushes.push(quote! {
+                    let (__mx_keys, __mx_vals) = ::core::iter::Iterator::unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>(
+                        ::core::iter::Iterator::map(
+                            ::core::iter::IntoIterator::into_iter(#field),
+                            |(__mx_key, __mx_val)| (
+                                ::core::clone::Clone::clone(__mx_key),
+                                ::core::clone::Clone::clone(__mx_val),
+                            ),
+                        ),
+                    );
+                    #keys.push(__mx_keys);
+                    #vals.push(__mx_vals);
+                });
+                borrow_bounds.push((quote! { #key_ty }, clone_bound.clone()));
+                borrow_bounds.push((quote! { #val_ty }, clone_bound.clone()));
+            }
+        }
+    }
+    let borrowed_column_list = column_list_body(&borrowed_local, quote! { __mx_len }, true);
+    let borrow_where = conditional_where(where_clause, &borrow_bounds);
+    let borrow_impl = quote! {
+        #[automatically_derived]
+        #[allow(unused_lifetimes)]
+        impl #impl_generics ::miniextendr_api::dataframe::DataFrameRowBorrow
+            for #row_name #ty_generics #borrow_where
+        {
+            fn rows_ref_into_column_list(rows: &[Self]) -> ::miniextendr_api::List {
+                let __mx_len = <[Self]>::len(rows);
+                #(#borrow_inits)*
+                for __mx_row in rows {
+                    #(#borrow_pushes)*
+                }
+                #borrowed_column_list
             }
         }
     };
@@ -2205,34 +2445,34 @@ fn derive_struct_dataframe(
     let mut col_vec_inits: Vec<TokenStream> = flat_cols
         .iter()
         .map(|fc| {
-            let name = &fc.df_field;
+            let local = column_local(&fc.df_field);
             let ty = &fc.vec_elem_ty;
-            quote! { let mut #name: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(len); }
+            quote! { let mut #local: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(__mx_len); }
         })
         .collect();
     for ac in &auto_expand_cols {
-        let name = &ac.df_field;
+        let local = column_local(&ac.df_field);
         let cty = &ac.container_ty;
         col_vec_inits.push(
-            quote! { let mut #name: ::std::vec::Vec<#cty> = ::std::vec::Vec::with_capacity(len); },
+            quote! { let mut #local: ::std::vec::Vec<#cty> = ::std::vec::Vec::with_capacity(__mx_len); },
         );
     }
     for sc in &struct_cols {
-        let name = &sc.df_field;
+        let local = column_local(&sc.df_field);
         let ity = &sc.inner_ty;
         col_vec_inits.push(
-            quote! { let mut #name: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(len); },
+            quote! { let mut #local: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(__mx_len); },
         );
     }
 
     let tag_init = if has_tag {
-        quote! { let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(len); }
+        quote! { let mut __mx_col__tag: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::with_capacity(__mx_len); }
     } else {
         TokenStream::new()
     };
 
     let tag_push = if has_tag {
-        quote! { _tag.push(#row_name_str.to_string()); }
+        quote! { __mx_col__tag.push(#row_name_str.to_string()); }
     } else {
         TokenStream::new()
     };
@@ -2243,20 +2483,20 @@ fn derive_struct_dataframe(
         .map(|rf| match rf {
             ResolvedField::Single(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
-                let col_name = &data.col_name;
+                let col_name = column_local(&data.col_name);
                 quote! { #col_name.push(#access); }
             }
             ResolvedField::ExpandedFixed(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
                 let elems = expanded_elem_idents(
                     &crate::naming::unraw(&data.rust_name).to_string(),
@@ -2267,7 +2507,8 @@ fn derive_struct_dataframe(
                     .iter()
                     .enumerate()
                     .map(|(i, elem)| {
-                        let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
+                        let col_ident =
+                            column_local(&format_ident!("{}_{}", data.base_name, i + 1));
                         quote! { #col_ident.push(#elem); }
                     })
                     .collect();
@@ -2278,10 +2519,10 @@ fn derive_struct_dataframe(
             }
             ResolvedField::ExpandedVec(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
                 let iter = format_ident!(
                     "__mxv_{}",
@@ -2298,7 +2539,8 @@ fn derive_struct_dataframe(
                     .iter()
                     .enumerate()
                     .map(|(i, elem)| {
-                        let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
+                        let col_ident =
+                            column_local(&format_ident!("{}_{}", data.base_name, i + 1));
                         quote! { #col_ident.push(#elem); }
                     })
                     .collect();
@@ -2309,34 +2551,34 @@ fn derive_struct_dataframe(
             }
             ResolvedField::AutoExpandVec(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
-                let col_name = &data.col_name;
+                let col_name = column_local(&data.col_name);
                 quote! { #col_name.push(#access); }
             }
             ResolvedField::Struct(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
-                let col_name = &data.col_name;
+                let col_name = column_local(&data.col_name);
                 quote! { #col_name.push(#access); }
             }
             // Map (#919): unzip into parallel keys/values vecs.
             ResolvedField::Map(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
-                    quote! { row.#idx }
+                    quote! { __mx_row.#idx }
                 } else {
                     let rust_name = &data.rust_name;
-                    quote! { row.#rust_name }
+                    quote! { __mx_row.#rust_name }
                 };
-                let keys_col = format_ident!("{}_keys", data.base_name);
-                let vals_col = format_ident!("{}_values", data.base_name);
+                let keys_col = column_local(&format_ident!("{}_keys", data.base_name));
+                let vals_col = column_local(&format_ident!("{}_values", data.base_name));
                 quote! {
                     let (__mx_keys, __mx_vals) = #access
                         .into_iter()
@@ -2349,7 +2591,7 @@ fn derive_struct_dataframe(
         .collect();
 
     let tag_struct_field = if has_tag {
-        quote! { _tag, }
+        quote! { _tag: __mx_col__tag, }
     } else {
         TokenStream::new()
     };
@@ -2359,7 +2601,7 @@ fn derive_struct_dataframe(
         && struct_cols.is_empty()
         && !has_tag
     {
-        quote! { _len: len, }
+        quote! { _len: __mx_len, }
     } else {
         TokenStream::new()
     };
@@ -2368,31 +2610,34 @@ fn derive_struct_dataframe(
         .iter()
         .map(|fc| {
             let name = &fc.df_field;
-            quote! { #name }
+            let local = column_local(name);
+            quote! { #name: #local }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
-        col_struct_fields.push(quote! { #name });
+        let local = column_local(name);
+        col_struct_fields.push(quote! { #name: #local });
     }
     for sc in &struct_cols {
         let name = &sc.df_field;
-        col_struct_fields.push(quote! { #name });
+        let local = column_local(name);
+        col_struct_fields.push(quote! { #name: #local });
     }
 
     // For skipped fields in destructure: bind to `_`
     let skip_bindings: Vec<TokenStream> = skipped_fields
         .iter()
-        .map(|(name, _)| quote! { let _ = row.#name; })
+        .map(|(name, _)| quote! { let _ = __mx_row.#name; })
         .collect();
 
     let from_vec_impl = quote! {
         impl #impl_generics ::core::convert::From<::std::vec::Vec<#row_name #ty_generics>> for #df_name #ty_generics #where_clause {
             fn from(rows: ::std::vec::Vec<#row_name #ty_generics>) -> Self {
-                let len = rows.len();
+                let __mx_len = rows.len();
                 #tag_init
                 #(#col_vec_inits)*
-                for row in rows {
+                for __mx_row in rows {
                     #tag_push
                     #(#skip_bindings)*
                     #(#col_pushes)*
@@ -2463,14 +2708,14 @@ fn derive_struct_dataframe(
         let mut par_col_decls = Vec::new();
         if has_tag {
             par_col_decls.push(quote! {
-                let mut _tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); len];
+                let mut __mx_col__tag: ::std::vec::Vec<::std::string::String> = ::std::vec![::std::string::String::new(); __mx_len];
             });
         }
         // Sequential pre-pass: struct fields.
         // Iterate resolved to pick up tuple_index for tuple-struct outers.
         for rf in &resolved {
             if let ResolvedField::Struct(data) = rf {
-                let col_name = &data.col_name;
+                let col_name = column_local(&data.col_name);
                 let ity = &data.inner_ty;
                 let access = if let Some(idx) = &data.tuple_index {
                     quote! { __prerow.#idx }
@@ -2479,7 +2724,7 @@ fn derive_struct_dataframe(
                     quote! { __prerow.#rust_name }
                 };
                 par_col_decls.push(quote! {
-                    let mut #col_name: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(len);
+                    let mut #col_name: ::std::vec::Vec<#ity> = ::std::vec::Vec::with_capacity(__mx_len);
                     for __prerow in &rows {
                         #col_name.push(::core::clone::Clone::clone(&#access));
                     }
@@ -2492,7 +2737,7 @@ fn derive_struct_dataframe(
             if let ResolvedField::Single(data) = rf
                 && data.needs_into_list
             {
-                let col_name = &data.col_name;
+                let col_name = column_local(&data.col_name);
                 let rust_name = &data.rust_name;
                 let ty = &data.ty;
                 let access = if let Some(idx) = &data.tuple_index {
@@ -2501,7 +2746,7 @@ fn derive_struct_dataframe(
                     quote! { __prerow.#rust_name }
                 };
                 par_col_decls.push(quote! {
-                    let mut #col_name: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(len);
+                    let mut #col_name: ::std::vec::Vec<#ty> = ::std::vec::Vec::with_capacity(__mx_len);
                     for __prerow in &rows {
                         #col_name.push(::core::clone::Clone::clone(&#access));
                     }
@@ -2510,11 +2755,12 @@ fn derive_struct_dataframe(
         }
         // Parallel scalar/expand columns.
         let placeholders = |name: &syn::Ident, ty: &syn::Type| {
+            let local = column_local(name);
             quote! {
-                let mut #name: ::std::vec::Vec<#ty> = ::core::iter::Iterator::collect(
+                let mut #local: ::std::vec::Vec<#ty> = ::core::iter::Iterator::collect(
                     ::core::iter::Iterator::take(
                         ::core::iter::repeat_with(<#ty as ::core::default::Default>::default),
-                        len,
+                        __mx_len,
                     ),
                 );
             }
@@ -2536,7 +2782,7 @@ fn derive_struct_dataframe(
         if has_tag {
             writer_decls.push(quote! {
                 let __w_tag = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut _tag)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut __mx_col__tag)
                 };
             });
         }
@@ -2545,19 +2791,21 @@ fn derive_struct_dataframe(
                 continue;
             }
             let name = &fc.df_field;
+            let local = column_local(name);
             let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #local)
                 };
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
+            let local = column_local(name);
             let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
-                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
+                    ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #local)
                 };
             });
         }
@@ -2683,7 +2931,7 @@ fn derive_struct_dataframe(
 
         // Return struct fields
         let par_tag_field = if has_tag {
-            quote! { _tag, }
+            quote! { _tag: __mx_col__tag, }
         } else {
             TokenStream::new()
         };
@@ -2691,16 +2939,19 @@ fn derive_struct_dataframe(
             .iter()
             .map(|fc| {
                 let name = &fc.df_field;
-                quote! { #name }
+                let local = column_local(name);
+                quote! { #name: #local }
             })
             .collect();
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
-            par_struct_fields.push(quote! { #name });
+            let local = column_local(name);
+            par_struct_fields.push(quote! { #name: #local });
         }
         for sc in &struct_cols {
             let name = &sc.df_field;
-            par_struct_fields.push(quote! { #name });
+            let local = column_local(name);
+            par_struct_fields.push(quote! { #name: #local });
         }
 
         // Only emit an into_par_iter call when there are scalar/expand/tag cols
@@ -2732,7 +2983,7 @@ fn derive_struct_dataframe(
             &input.generics,
             &par_bounds,
             quote! {
-                let len = rows.len();
+                let __mx_len = rows.len();
                 #(#par_col_decls)*
                 #par_loop
                 #df_name { #par_tag_field #phantom_init #(#par_struct_fields),* }
@@ -2949,8 +3200,19 @@ fn derive_struct_dataframe(
             match rf {
                 ResolvedField::Single(data) => {
                     let rust_name = &data.rust_name;
-                    let col_var = format_ident!("__col_{}", crate::naming::unraw(rust_name));
-                    let it_var = format_ident!("__it_{}", crate::naming::unraw(rust_name));
+                    // Call-site spans: a generated local carries no span of the
+                    // user's field, so a field named `_x` (`__col__x`) does not
+                    // trip `non_snake_case` at the field.
+                    let col_var = format_ident!(
+                        "__col_{}",
+                        crate::naming::unraw(rust_name),
+                        span = proc_macro2::Span::call_site()
+                    );
+                    let it_var = format_ident!(
+                        "__it_{}",
+                        crate::naming::unraw(rust_name),
+                        span = proc_macro2::Span::call_site()
+                    );
                     match &data.list_elem_ty {
                         // Un-annotated owned collection: opaque list-column (VECSXP). Read
                         // each row's element back via `Vec<elem>: TryFromSexp`, then
@@ -3551,6 +3813,7 @@ fn derive_struct_dataframe(
         #marker_impl
         #payload_fields_impl
         #datarow_convert_impl
+        #borrow_impl
         #(#struct_assertions)*
         #(#datetime_assertions)*
     })

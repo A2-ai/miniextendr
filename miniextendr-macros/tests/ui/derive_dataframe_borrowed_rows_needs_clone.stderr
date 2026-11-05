@@ -1,0 +1,107 @@
+error[E0277]: the trait bound `Inner: Clone` is not satisfied
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:38:43
+   |
+38 |     let _ = IntoDataFrame::into_dataframe(rows);
+   |             ----------------------------- ^^^^ the trait `Clone` is not implemented for `Inner`
+   |             |
+   |             required by a bound introduced by this call
+   |
+help: the trait `IntoDataFrame` is conditionally implemented for `&[T]`
+  --> $WORKSPACE/miniextendr-api/src/dataframe/borrowed.rs
+   |
+   | impl<T: DataFrameRowBorrow> IntoDataFrame for &[T] {
+   | ^^^^^^^^------------------^^^^^^^^^^^^^^^^^^^^^^^^
+   |         |
+   |         unsatisfied requirement introduced here: `Row: miniextendr_api::dataframe::DataFrameRowBorrow`
+note: required for `Row` to implement `miniextendr_api::dataframe::DataFrameRowBorrow`
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:20:8
+   |
+19 | #[derive(DataFrameRow)]
+   |          ------------ type parameter would need to implement `miniextendr_api::dataframe::DataFrameRowBorrow`
+20 | struct Row {
+   |        ^^^
+   = help: consider manually implementing `miniextendr_api::dataframe::DataFrameRowBorrow` to avoid undesired bounds caused by "imperfect derives"
+   = note: to learn more, visit <https://github.com/rust-lang/rust/issues/26925>
+   = note: required for `&[Row]` to implement `IntoDataFrame`
+help: consider annotating `Inner` with `#[derive(Clone)]`
+   |
+15 + #[derive(Clone)]
+16 | struct Inner {
+   |
+
+error[E0599]: the method `into_dataframe` exists for reference `&[Row]`, but its trait bounds were not satisfied
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:39:18
+   |
+20 | struct Row {
+   | ---------- doesn't satisfy `_: DataFrameRowBorrow`
+...
+39 |     let _ = rows.into_dataframe();
+   |                  ^^^^^^^^^^^^^^ method cannot be called on `&[Row]` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `Row: miniextendr_api::dataframe::DataFrameRowBorrow`
+           which is required by `&[Row]: IntoDataFrame`
+note: the trait `miniextendr_api::dataframe::DataFrameRowBorrow` must be implemented
+  --> $WORKSPACE/miniextendr-api/src/dataframe/borrowed.rs
+   |
+   | pub trait DataFrameRowBorrow: Sized {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `Inner: Clone` is not satisfied
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:40:43
+   |
+40 |     let _ = IntoDataFrame::into_dataframe(events);
+   |             ----------------------------- ^^^^^^ the trait `Clone` is not implemented for `Inner`
+   |             |
+   |             required by a bound introduced by this call
+   |
+help: the following other types implement trait `IntoDataFrame`
+  --> $WORKSPACE/miniextendr-api/src/dataframe.rs
+   |
+   | impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Vec<T>`
+   |
+  ::: $WORKSPACE/miniextendr-api/src/dataframe/borrowed.rs
+   |
+   | impl<T: DataFrameRowBorrow> IntoDataFrame for &Vec<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&Vec<T>`
+note: required for `Event` to implement `miniextendr_api::dataframe::DataFrameRowBorrow`
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:27:6
+   |
+25 | #[derive(DataFrameRow)]
+   |          ------------ type parameter would need to implement `miniextendr_api::dataframe::DataFrameRowBorrow`
+26 | #[dataframe(tag = "kind")]
+27 | enum Event {
+   |      ^^^^^
+   = help: consider manually implementing `miniextendr_api::dataframe::DataFrameRowBorrow` to avoid undesired bounds caused by "imperfect derives"
+   = note: to learn more, visit <https://github.com/rust-lang/rust/issues/26925>
+   = note: required for `&Vec<Event>` to implement `IntoDataFrame`
+help: consider annotating `Inner` with `#[derive(Clone)]`
+   |
+15 + #[derive(Clone)]
+16 | struct Inner {
+   |
+
+error[E0277]: `i32` is not a `#[derive(DataFrameRow)]` row, so borrowed rows of it have no data.frame conversion
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:41:43
+   |
+41 |     let _ = IntoDataFrame::into_dataframe(numbers);
+   |             ----------------------------- ^^^^^^^ `&[i32]` / `&Vec<i32>` convert only for `DataFrameRow` rows
+   |             |
+   |             required by a bound introduced by this call
+   |
+   = help: the trait `miniextendr_api::dataframe::DataFrameRowBorrow` is not implemented for `i32`
+   = note: derive `DataFrameRow` on `i32`
+help: the following other types implement trait `miniextendr_api::dataframe::DataFrameRowBorrow`
+  --> tests/ui/derive_dataframe_borrowed_rows_needs_clone.rs:14:10
+   |
+14 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ `Inner`
+...
+19 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ `Row`
+...
+25 | #[derive(DataFrameRow)]
+   |          ^^^^^^^^^^^^ `Event`
+   = note: required for `&[i32]` to implement `IntoDataFrame`
+   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
