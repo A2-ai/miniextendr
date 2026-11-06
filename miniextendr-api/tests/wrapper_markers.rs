@@ -10,7 +10,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::condition::RCondition;
+use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::expression::{RCall, REnv, r_eval_str_global};
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
@@ -299,11 +299,11 @@ pub fn marker_meter_or_null(reading: f64) -> Option<WrapAsS3<Meter>> {
 struct Capped(i32);
 
 impl IntoR for Capped {
-    type Error = String;
+    type Error = RError;
 
-    fn try_into_sexp(self) -> Result<SEXP, String> {
+    fn try_into_sexp(self) -> Result<SEXP, RError> {
         if self.0 > 10 {
-            Err(format!("{} is over 10", self.0))
+            Err(RError::new(format!("{} is over 10", self.0)))
         } else {
             Ok(self.0.into_sexp())
         }
@@ -328,8 +328,8 @@ fn wrap_as_s3_converts_the_payload_unchanged() {
         let value = unsafe { OwnedProtect::new(WrapAsS3(vec![1, 2]).into_sexp()) };
         assert!(identical(value.get(), "1:2"));
         // The payload's error is the marker's.
-        let error: Result<SEXP, String> = WrapAsS3(Capped(11)).try_into_sexp();
-        assert_eq!(error.unwrap_err(), "11 is over 10");
+        let error: Result<SEXP, RError> = WrapAsS3(Capped(11)).try_into_sexp();
+        assert_eq!(error.unwrap_err().message_str(), "11 is over 10");
         let ok = unsafe { OwnedProtect::new(WrapAsS3(Capped(4)).try_into_sexp().unwrap()) };
         assert!(identical(ok.get(), "4L"));
     });
