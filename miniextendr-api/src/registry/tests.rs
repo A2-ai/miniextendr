@@ -3325,3 +3325,190 @@ fn class_ref_forms_resolve_independently() {
         "x <- .__MX_CLASS_REF_OR_BARE_Point"
     );
 }
+
+/// The names a trait impl builds from its class (#2285) embed the quiet
+/// placeholder: the S4 flat statics and consts, an operator member quoted as
+/// one symbol, the S7 shortcuts, the S7 local namespace and class variables
+/// and their prose. Each takes the registered R name, or the Rust name on a
+/// miss, and the rest of the name is kept.
+#[test]
+fn class_names_resolve_inside_generated_names() {
+    let entries = [ClassNameEntry {
+        rust_type: "RustPoint",
+        r_class_name: "Point",
+        class_system: "s7",
+        field_syntax: false,
+        read_only_fields: false,
+    }];
+    const P: &str = ".__MX_CLASS_REF_OR_BARE_RustPoint__";
+    let input = format!(
+        "#' Static trait method Area::unit() for {P}\n\
+         #' @name {P}_Area_unit\n\
+         {P}_Area_unit <- function() {{\n\
+         `{P}_Area_[[` <- function() {{\n\
+         .s7_class_{P} <- .__MX_CLASS_REF_RustPoint__\n\
+         #' @param .mx_self A `{P}` object.\n\
+         {P}_area <- function(.mx_self, ...) {{\n\
+         .{P}__Area <- new.env(parent = emptyenv())\n\
+         .{P}__Area$unit <- function() {{\n\
+         attr(.__MX_CLASS_REF_RustPoint__, \"Area\") <- .{P}__Area"
+    );
+    let expected = "#' Static trait method Area::unit() for Point\n\
+                    #' @name Point_Area_unit\n\
+                    Point_Area_unit <- function() {\n\
+                    `Point_Area_[[` <- function() {\n\
+                    .s7_class_Point <- Point\n\
+                    #' @param .mx_self A `Point` object.\n\
+                    Point_area <- function(.mx_self, ...) {\n\
+                    .Point__Area <- new.env(parent = emptyenv())\n\
+                    .Point__Area$unit <- function() {\n\
+                    attr(Point, \"Area\") <- .Point__Area";
+    assert_eq!(resolve_refs(&input, &entries), expected);
+    // A type no impl block registers keeps its Rust name, quietly.
+    assert_eq!(
+        resolve_refs(&input, &[]),
+        expected.replace("Point", "RustPoint")
+    );
+}
+
+/// A name a trait impl builds from a renamed class can now be one the class's
+/// own impl block binds under the R name (#2285): an S7 trait shortcut
+/// `Point_area` next to the class's static or shortcut `area`, an S4 trait
+/// static next to a class static `Area_unit`, a trait shortcut next to a
+/// sidecar accessor. Resolved as the writer does, then scanned: the second
+/// definition is refused, with both members named, not written over the first.
+#[test]
+fn trait_names_built_from_a_renamed_class_collide_with_its_members() {
+    let entries = [ClassNameEntry {
+        rust_type: "RustPoint",
+        r_class_name: "Point",
+        class_system: "s7",
+        field_syntax: false,
+        read_only_fields: false,
+    }];
+    const P: &str = ".__MX_CLASS_REF_OR_BARE_RustPoint__";
+    let class = "# Generated from Rust impl `RustPoint` (point.rs:10:6)\n\
+                 Point <- S7::new_class(\"Point\")\n\
+                 # RustPoint::area (point.rs:12:12)\n\
+                 Point_area <- function(.mx_self, ...) {\n\
+                 }\n\
+                 # RustPoint::Area_unit (point.rs:15:12)\n\
+                 Point_Area_unit <- function() {\n\
+                 }\n";
+    for (trait_part, name, class_member, trait_member) in [
+        (
+            format!("# Area::area\n{P}_area <- function(.mx_self, ...) {{\n}}\n"),
+            "Point_area",
+            "function from `RustPoint::area` (point.rs:12:12) in Rust impl `RustPoint` \
+             (point.rs:10:6)",
+            "function from `Area::area` in Rust impl `Area` for `RustPoint` (point.rs:20:6)",
+        ),
+        (
+            format!("# Area::unit\n{P}_Area_unit <- function() {{\n}}\n"),
+            "Point_Area_unit",
+            "function from `RustPoint::Area_unit` (point.rs:15:12) in Rust impl `RustPoint` \
+             (point.rs:10:6)",
+            "function from `Area::unit` in Rust impl `Area` for `RustPoint` (point.rs:20:6)",
+        ),
+    ] {
+        let content = format!(
+            "{class}# Generated from Rust impl `Area` for `RustPoint` (point.rs:20:6)\n\
+             .{P}__Area <- new.env(parent = emptyenv())\n{trait_part}"
+        );
+        let resolved = resolve_refs(&content, &entries);
+        let error = detect_duplicate_wrapper_defs(&resolved, &std::collections::HashMap::new())
+            .expect_err("the trait's name is the class member's");
+        assert!(error.contains(&format!("`{name}`")), "{error}");
+        assert!(error.contains(class_member), "{error}");
+        assert!(error.contains(trait_member), "{error}");
+        assert!(error.contains("rename the trait method"), "{error}");
+        // Before the rename the names differed, and still do on a miss.
+        let unrenamed = resolve_refs(&content, &[]);
+        assert!(
+            detect_duplicate_wrapper_defs(&unrenamed, &std::collections::HashMap::new()).is_ok(),
+            "{unrenamed}"
+        );
+    }
+
+    // A trait shortcut on a sidecar accessor's name names the field.
+    let content = format!(
+        "# Generated from Rust source (point.rs:4:5)\n\
+         # Wraps sidecar field `x` on Rust type `RustPoint` via `C_get` and `C_set`.\n\
+         Point_get_x <- function(x) .Call(C_get, x)\n\
+         # Generated from Rust impl `Area` for `RustPoint` (point.rs:20:6)\n\
+         # Area::get_x\n\
+         {P}_get_x <- function(.mx_self, ...) {{\n}}\n"
+    );
+    let map = accessor_map(
+        &[SidecarPropEntry {
+            rust_type: "RustPoint",
+            field_name: "x",
+            prop_doc: "",
+            read_only: false,
+        }],
+        &entries,
+    );
+    let error = detect_duplicate_wrapper_defs(&resolve_refs(&content, &entries), &map)
+        .expect_err("the shortcut is the accessor's name");
+    assert!(error.contains("`Point_get_x`"), "{error}");
+    assert!(error.contains("sidecar field `x`"), "{error}");
+    assert!(
+        error.contains("`Area::get_x` in Rust impl `Area` for `RustPoint` (point.rs:20:6)"),
+        "{error}"
+    );
+}
+
+/// A member line attributes the functions after it to that member, up to the
+/// next member line or fragment header; a class or namespace object stays
+/// the fragment's, and other comments are no member lines.
+#[test]
+fn wrapper_names_attribute_definitions_to_their_member() {
+    let content = "# Generated from Rust impl `Foo` (foo.rs:1:6)\n\
+                   Foo <- S7::new_class(\"Foo\")\n\
+                   # Foo::get (foo.rs:3:12)\n\
+                   #' @export\n\
+                   Foo_get <- function(.mx_self, ...) {\n\
+                   }\n\
+                   # Note: a comment, not a member\n\
+                   Foo_more <- function() {\n\
+                   }\n\
+                   .Foo__env <- new.env(parent = emptyenv())\n\
+                   # Generated from Rust impl `Bar` for `Foo` (foo.rs:9:6)\n\
+                   Foo_first <- function() {\n\
+                   }\n\
+                   # Bar::make\n\
+                   Foo_Bar_make <- function() {\n\
+                   }\n";
+    let names: Vec<(&str, String)> = wrapper_names(content)
+        .into_iter()
+        .map(|n| (n.name, n.producer.to_string()))
+        .collect();
+    let class = "Rust impl `Foo` (foo.rs:1:6)";
+    let get = format!("`Foo::get` (foo.rs:3:12) in {class}");
+    let trait_impl = "Rust impl `Bar` for `Foo` (foo.rs:9:6)";
+    assert_eq!(
+        names,
+        [
+            ("Foo", class.to_string()),
+            ("Foo_get", get.clone()),
+            ("Foo_more", get),
+            (".Foo__env", class.to_string()),
+            ("Foo_first", trait_impl.to_string()),
+            ("Foo_Bar_make", format!("`Bar::make` in {trait_impl}")),
+        ]
+    );
+    for line in ["# Foo::get (foo.rs:3:12)", "# Bar::make", "# Foo::get"] {
+        assert!(member_line(line).is_some(), "{line}");
+    }
+    for line in [
+        "# Note: Foo::get",
+        "# S7 trait methods for Foo implementing Bar",
+        "# Foo::get extra",
+        "#' Foo::get",
+        "  # Foo::get (foo.rs:3:12)",
+        "# ::get",
+        "# Foo::",
+    ] {
+        assert!(member_line(line).is_none(), "{line}");
+    }
+}

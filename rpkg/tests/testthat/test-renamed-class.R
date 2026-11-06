@@ -41,3 +41,35 @@ test_that("an R6 trait impl on a renamed class lives in its R class", {
   expect_identical(board$width(), 7L)
   expect_identical(RenamedBoard$MatrixCounter$default_value(), 12L)
 })
+
+# The names a trait impl builds from a renamed class take its R name too
+# (#2285): the S4 trait statics, the S7 trait shortcuts and the S7 trait
+# namespace. The Rust-named ones are gone, not kept as aliases.
+test_that("an S4 trait impl's static on a renamed class is named after it", {
+  shape <- RenamedShape(3)
+  expect_true(methods::is(shape, "RenamedShape"))
+  expect_identical(s4_trait_Area_area(shape), 9)
+  expect_identical(RenamedShape_Area_unit(), "shape")
+  ns <- asNamespace("miniextendr")
+  expect_false(exists("RenamedShapeS4_Area_unit", envir = ns, inherits = FALSE))
+  exports <- getNamespaceExports("miniextendr")
+  expect_true("RenamedShape_Area_unit" %in% exports)
+  expect_false("RenamedShapeS4_Area_unit" %in% exports)
+})
+
+test_that("an S7 trait impl's shortcut and namespace on a renamed class are named after it", {
+  skip_if_not_installed("S7")
+  point <- RenamedPoint(3)
+  expect_identical(s7_trait_Area_area(point), 9)
+  expect_identical(RenamedPoint_area(point), 9)
+  expect_identical(attr(RenamedPoint, "Area")$unit(), "point")
+  ns <- asNamespace("miniextendr")
+  expect_identical(get(".RenamedPoint__Area", envir = ns, inherits = FALSE)$unit(), "point")
+  rust_named <- c("RenamedPointS7_area", ".RenamedPointS7__Area", ".s7_class_RenamedPointS7")
+  for (name in rust_named) {
+    expect_false(exists(name, envir = ns, inherits = FALSE), info = name)
+  }
+  exports <- getNamespaceExports("miniextendr")
+  expect_true("RenamedPoint_area" %in% exports)
+  expect_false("RenamedPointS7_area" %in% exports)
+})
