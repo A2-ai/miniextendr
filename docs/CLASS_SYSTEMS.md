@@ -678,7 +678,9 @@ Every non-fallback S7 instance method also gets a plain function
 `<ClassName>_<method>(.mx_self, ...)` whose body calls the underlying Rust routine
 directly, bypassing `S7::S7_dispatch()` (the class walk + method-table lookup).
 On hot loops this is several times faster than calling the generic. Trait-impl
-S7 methods (`#[miniextendr(s7)] impl Trait for Type`) get the same shortcuts.
+S7 methods (`#[miniextendr(s7)] impl Trait for Type`) get the same shortcuts,
+named by the class's R name too: with `class = "Point"` on `impl RustPoint`,
+`impl Area for RustPoint` writes `Point_area()`.
 The dotted receiver leaves an argument named `self` free; pass the object by
 position. The generic's dispatch arguments are unchanged.
 
@@ -706,8 +708,9 @@ functions emitted for static methods. A collision inside one impl block
 (typically via an `r_name` alias) is a compile error suggesting a rename or
 `s7(no_shortcut)`. The wrapper writer checks across separate expansions too,
 including `#[derive(ExternalPtr)]` sidecar accessors
-(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`), free functions and
-other class impl blocks. Rename the colliding method or field, or use
+(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`), free functions,
+other class impl blocks and trait impls, whose shortcuts take the same
+`<ClassName>_` prefix. Rename the colliding method or field, or use
 `s7(no_shortcut)` (see #991).
 
 The writer's other name checks cover every class system; see
@@ -1306,7 +1309,9 @@ function or sidecar field, with its source position):
   replaced by it.
 - **Two functions of the same name**, such as an S7 shortcut and a sidecar
   accessor or a free function (#991), including two blocks of one type whose
-  S3 methods or static methods get one name.
+  S3 methods or static methods get one name, and a trait impl's S7 shortcut
+  or S4 static next to a member of the class's own impl block of that name
+  (both named after the class's R name, #2285).
 
 Rename the function or method with `r_name = "..."`, or the class with
 `class = "..."`.
@@ -1349,6 +1354,17 @@ exist (R6, S7, S4), an unregistered name prints a warning when the wrappers
 are written and falls through to the bare identifier, which fails at R load.
 Where any string is a class (S3, Env, vctrs), the fallback to the Rust name
 is quiet (`.__MX_CLASS_REF_OR_BARE_<Type>__`).
+
+The R names a trait impl builds from its class take the quiet form too
+(#2285): the S4 trait statics and consts (`Point_Trait_member()`), the S7
+trait shortcuts (`Point_method()`) and the S7 trait namespace variable
+(`.Point__Trait`), in their definitions, `@name` and `@export` lines and every
+use. With `class = "Point"` on `impl RustPoint`, they are named after `Point`,
+as the class's own statics and shortcuts are; a type with no impl block keeps
+its Rust name. Such a name can then be one the class's own impl block also
+binds (a static, a shortcut, a sidecar accessor), which the wrapper writer
+refuses (see
+[Names the wrapper writer rejects](#names-the-wrapper-writer-rejects)).
 
 ### Explicit Return Class Systems
 
