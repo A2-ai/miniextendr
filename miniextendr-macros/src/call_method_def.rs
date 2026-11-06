@@ -11,6 +11,18 @@ pub(crate) fn call_method_def(
     c_ident: &syn::Ident,
     num_args: usize,
 ) -> TokenStream {
+    let def = call_method_def_value(c_ident, num_args);
+    quote! {
+        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals, non_snake_case)]
+        static #def_ident: ::miniextendr_api::sys::R_CallMethodDef = #def;
+    }
+}
+
+/// The `R_CallMethodDef` value of [`call_method_def`] alone, for a
+/// registration kept outside `MX_CALL_DEFS` (a sidecar setter's, which goes
+/// to `MX_SIDECAR_SETTERS` with its type, #2292).
+pub(crate) fn call_method_def_value(c_ident: &syn::Ident, num_args: usize) -> TokenStream {
     let c_name = syn::LitCStr::new(
         std::ffi::CString::new(crate::naming::ident_name(c_ident))
             .expect("valid C symbol")
@@ -20,19 +32,16 @@ pub(crate) fn call_method_def(
     let arity = syn::LitInt::new(&num_args.to_string(), c_ident.span());
     let params = std::iter::repeat_n(quote!(::miniextendr_api::SEXP), num_args);
     quote! {
-        #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
-        #[allow(non_upper_case_globals, non_snake_case)]
-        static #def_ident: ::miniextendr_api::sys::R_CallMethodDef =
-            ::miniextendr_api::sys::R_CallMethodDef {
-                name: #c_name.as_ptr(),
-                fun: ::core::option::Option::Some(unsafe {
-                    ::core::mem::transmute::<
-                        unsafe extern "C-unwind" fn(#(#params),*) -> ::miniextendr_api::SEXP,
-                        unsafe extern "C-unwind" fn() -> *mut ::core::ffi::c_void,
-                    >(#c_ident)
-                }),
-                numArgs: #arity,
-            };
+        ::miniextendr_api::sys::R_CallMethodDef {
+            name: #c_name.as_ptr(),
+            fun: ::core::option::Option::Some(unsafe {
+                ::core::mem::transmute::<
+                    unsafe extern "C-unwind" fn(#(#params),*) -> ::miniextendr_api::SEXP,
+                    unsafe extern "C-unwind" fn() -> *mut ::core::ffi::c_void,
+                >(#c_ident)
+            }),
+            numArgs: #arity,
+        }
     }
 }
 

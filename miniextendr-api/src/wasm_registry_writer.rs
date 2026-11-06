@@ -3,9 +3,11 @@
 //!
 //! On native installs, `tools/write-wrappers.R` loads the linked package `.so`, which runs
 //! [`crate::wasm_registry_writer::write_wasm_registry_to_file`] to emit
-//! Rust source listing every `MX_CALL_DEFS` / `MX_ALTREP_REGISTRATIONS` /
-//! `MX_TRAIT_DISPATCH` entry as `extern "C-unwind" {}` declarations + ordinary
-//! `&[T]` static slices, plus the crate's `MX_CONVERSION_ERROR_CLASS` classes.
+//! Rust source listing every registered `.Call` routine
+//! ([`crate::registry::call_defs`]: `MX_CALL_DEFS` and the sidecar setters R
+//! may reach) and every `MX_ALTREP_REGISTRATIONS` / `MX_TRAIT_DISPATCH` entry
+//! as `extern "C-unwind" {}` declarations + ordinary `&[T]` static slices,
+//! plus the crate's `MX_CONVERSION_ERROR_CLASS` classes.
 //! On `wasm32-*` targets, the user crate compiles that
 //! file in place of the linkme distributed_slices (`miniextendr_init!` emits
 //! the wasm32-gated `mod __miniextendr_wasm_registry;` that includes it).
@@ -20,8 +22,7 @@
 
 use crate::abi::mx_tag;
 use crate::registry::{
-    AltrepRegistration, MX_ALTREP_REGISTRATIONS, MX_CALL_DEFS, MX_TRAIT_DISPATCH,
-    TraitDispatchEntry,
+    AltrepRegistration, MX_ALTREP_REGISTRATIONS, MX_TRAIT_DISPATCH, TraitDispatchEntry,
 };
 use std::ffi::CStr;
 use std::fmt::Write as _;
@@ -330,8 +331,12 @@ fn fnv1a_64(data: &[u8]) -> u64 {
 
 /// Read the live linkme distributed slices and return rows safe to pass to
 /// [`format_wasm_registry`].
+///
+/// The routines are the ones the package registers on a native load
+/// ([`crate::registry::call_defs`]), so the snapshot leaves out the sidecar
+/// setters of a read-only type there too (#2292).
 fn read_runtime_slices() -> (Vec<CallDefRow>, Vec<AltrepRegRow>, Vec<TraitDispatchRow>) {
-    let call_defs: Vec<CallDefRow> = MX_CALL_DEFS
+    let call_defs: Vec<CallDefRow> = crate::registry::call_defs()
         .iter()
         .map(|d| {
             // SAFETY: every emission site sets `name` from a static CStr literal
@@ -340,7 +345,7 @@ fn read_runtime_slices() -> (Vec<CallDefRow>, Vec<AltrepRegRow>, Vec<TraitDispat
             // ASCII string.
             let name = unsafe { CStr::from_ptr(d.name) }
                 .to_str()
-                .expect("MX_CALL_DEFS.name is not valid UTF-8")
+                .expect("a registered routine name is not valid UTF-8")
                 .to_string();
             CallDefRow {
                 name,

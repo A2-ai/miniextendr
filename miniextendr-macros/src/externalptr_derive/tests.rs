@@ -216,8 +216,13 @@ fn r_data_name_renames_the_r_field_only() {
     assert_eq!(info.slots[1].r_name, "n.rows");
     let pub_slots: Vec<_> = info.slots.iter().collect();
 
-    let helpers =
-        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
+    let helpers = super::generate_field_syntax_helpers(
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+        false,
+        true,
+    );
     assert!(
         helpers.contains(".rdata_fields_Engine <- c(\"keys\", \"n.rows\")\n"),
         "{helpers}"
@@ -381,8 +386,13 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
     );
 
     let pub_slots: Vec<_> = info.slots.iter().collect();
-    let helpers =
-        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
+    let helpers = super::generate_field_syntax_helpers(
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+        false,
+        true,
+    );
     assert!(
         helpers
             .contains(".rdata_fields_Engine <- c(\"group_by\", \"keys\", \"n_rows\", \"base\")\n"),
@@ -1136,6 +1146,7 @@ fn field_syntax_helpers_switch_over_the_accessors() {
         &[&keys, &reserved],
         &Default::default(),
         false,
+        true,
     );
     assert!(
         out.contains(".rdata_fields_Engine <- c(\"keys\", \"for\")\n"),
@@ -1175,6 +1186,7 @@ fn field_syntax_helpers_switch_over_the_accessors() {
             ..Default::default()
         },
         false,
+        true,
     );
     assert!(
         out.contains(
@@ -1240,7 +1252,7 @@ fn read_only_fields_get_a_getter_and_a_refusing_setter_arm() {
         read_only_hint: Some("Use `set_%s()` (100% Rust).".to_string()),
         ..Default::default()
     };
-    let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &options, false);
+    let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots, &options, false, true);
     assert!(
         helpers.contains(
             ".rdata_set_Engine <- function(x, name, value) switch(name,\n  \
@@ -1274,8 +1286,13 @@ fn read_only_fields_get_a_getter_and_a_refusing_setter_arm() {
     );
 
     // Without a hint the message is the sentence alone.
-    let helpers =
-        super::generate_field_syntax_helpers("Engine", &pub_slots, &Default::default(), false);
+    let helpers = super::generate_field_syntax_helpers(
+        "Engine",
+        &pub_slots,
+        &Default::default(),
+        false,
+        true,
+    );
     assert!(
         helpers.contains(
             "  sprintf(\"`%s` of `%s` %s\", name, if (is.null(oldClass(x))) \"Engine\" else \
@@ -1288,7 +1305,10 @@ fn read_only_fields_get_a_getter_and_a_refusing_setter_arm() {
 /// The standalone accessors come in a third rendering without the setters,
 /// which the wrapper writer picks for `r_data_accessors = "read_only"`
 /// (#2268): there a writable field's standalone setter is not written
-/// either. Its setter C entry point stays, for the other renderings.
+/// either, nor the field methods' `.rdata_set_<Type>`. Its setter C function
+/// stays for the other renderings, registered with its type in
+/// `MX_SIDECAR_SETTERS`, so the routine list can leave it out for that form
+/// (#2292); the getters stay in `MX_CALL_DEFS`.
 #[test]
 fn standalone_accessors_come_without_setters_for_the_read_only_form() {
     let input: syn::DeriveInput = syn::parse_str(
@@ -1316,11 +1336,32 @@ fn standalone_accessors_come_without_setters_for_the_read_only_form() {
         out.contains(&crate::naming::sidecar_setter_c_name("Engine", "base")),
         "{out}"
     );
-    // Both internal renderings carry the field-syntax helpers.
+    // Both internal renderings carry the field-syntax helpers; only the
+    // writing one has the setter `switch()`.
     assert_eq!(
         out.matches(".rdata_read_only_Engine <- function(").count(),
         2
     );
+    assert_eq!(out.matches(".rdata_set_Engine <- function(").count(), 1);
+    assert_eq!(out.matches(".rdata_get_Engine <- function(").count(), 2);
+
+    // The setter registers with its type, outside `MX_CALL_DEFS`; the
+    // getters register as every other routine does.
+    let setter_static = "static __MX_CALL_DEF_RDATA_SET_Engine_base : :: miniextendr_api :: registry :: SidecarSetterEntry = :: miniextendr_api :: registry :: SidecarSetterEntry { rust_type : \"Engine\" , def : :: miniextendr_api :: sys :: R_CallMethodDef {";
+    assert!(out.contains(setter_static), "{out}");
+    let before_setter = &out[..out.find(setter_static).unwrap()];
+    let attrs = &before_setter[before_setter.rfind("# [cfg_attr").unwrap()..];
+    assert!(attrs.contains("registry :: MX_SIDECAR_SETTERS"), "{attrs}");
+    assert!(!attrs.contains("MX_CALL_DEFS"), "{attrs}");
+    for field in ["base", "level"] {
+        assert!(
+            out.contains(&format!(
+                "static __MX_CALL_DEF_RDATA_GET_Engine_{field} : :: miniextendr_api :: sys :: R_CallMethodDef"
+            )),
+            "{field}: {out}"
+        );
+    }
+    assert_eq!(out.matches("MX_SIDECAR_SETTERS").count(), 1, "{out}");
 }
 
 /// An R6 binding of a field without an R setter refuses a value with the

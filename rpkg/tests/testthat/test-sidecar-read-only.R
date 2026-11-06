@@ -3,8 +3,9 @@
 # read-only field syntax `r_data_accessors = "read_only"` under S3, S4 and
 # env. A refused write raises `miniextendr_read_only_field` with the type's
 # `field_error` classes in front and its `read_only_hint` after the message;
-# S7 refuses a property without a setter itself. Read-only applies to R
-# only: Rust writes the fields.
+# S7 refuses a property without a setter itself. A field R can't write has
+# no registered setter routine, under either form (#2292). Read-only
+# applies to R only: Rust writes the fields.
 
 caught <- function(expr) tryCatch(expr, error = identity)
 
@@ -106,6 +107,52 @@ test_that("the read-only field syntax writes no standalone setter", {
   for (getter in c("FrozenS3_get_size", "FrozenS3_get_items", "FrozenS4_get_depth", "FrozenEnv_get_count")) {
     expect_true(exists(getter, envir = ns, inherits = FALSE), label = getter)
   }
+})
+
+test_that("the read-only field syntax registers no setter routine (#2292)", {
+  ns <- asNamespace("miniextendr")
+  # By the DLL: the package forces symbols, so a lookup by package name
+  # finds nothing at all.
+  dll <- getLoadedDLLs()[["miniextendr"]]
+  routines <- names(getDLLRegisteredRoutines(dll)$.Call)
+  # The getter's registered name, found by its unprefixed tail; the setter's
+  # is the same with `set` for `get`.
+  getter_of <- function(type, field) {
+    getter <- grep(sprintf("__mx_rdata_get_%s_%s$", type, field), routines, value = TRUE)
+    expect_length(getter, 1L)
+    getter
+  }
+  setter_of <- function(getter) sub("__mx_rdata_get_", "__mx_rdata_set_", getter, fixed = TRUE)
+  unreachable <- function(type, field) {
+    getter <- getter_of(type, field)
+    expect_s3_class(getNativeSymbolInfo(getter, dll), "NativeSymbolInfo")
+    setter <- setter_of(getter)
+    expect_false(setter %in% routines, label = setter)
+    expect_false(exists(setter, envir = ns, inherits = FALSE), label = setter)
+    # Dynamic lookup is off, so R resolves only registered routines: the
+    # setter's C function is still in the library, and R can't find it.
+    expect_error(getNativeSymbolInfo(setter, dll), "no such symbol", fixed = TRUE)
+  }
+  unreachable("FrozenS3", "size")
+  unreachable("FrozenS3", "r_items")
+  unreachable("FrozenS4", "depth")
+  unreachable("FrozenS4", "label")
+  unreachable("FrozenEnv", "count")
+  expect_false(exists(".rdata_set_FrozenS3", envir = ns, inherits = FALSE))
+  expect_false(exists(".rdata_set_FrozenS4", envir = ns, inherits = FALSE))
+  expect_false(exists(".rdata_set_FrozenEnv", envir = ns, inherits = FALSE))
+
+  # A per-field `read_only` has no setter at all, as before.
+  unreachable("ReadOnlyS3", "id")
+  # A writable field of a class with get/set field syntax keeps its
+  # registered setter, which writes through its namespace binding.
+  note_setter <- setter_of(getter_of("ReadOnlyS3", "note"))
+  expect_true(note_setter %in% routines)
+  expect_s3_class(getNativeSymbolInfo(note_setter, dll), "NativeSymbolInfo")
+  x <- new_readonlys3(3L, "hi")
+  .Call(get(note_setter, envir = ns), x, "direct", FALSE)
+  expect_identical(x$note, "direct")
+  expect_true(exists(".rdata_set_ReadOnlyS3", envir = ns, inherits = FALSE))
 })
 
 test_that("S4 `r_data_accessors = \"read_only\"` reads every field and refuses every write", {

@@ -129,6 +129,10 @@ static slices, declared in `miniextendr-api/src/registry.rs`:
 
 - `MX_CALL_DEFS` — `R_CallMethodDef` entries. These are the C-callable function
   pointers registered with R during `R_init_*`.
+- `MX_SIDECAR_SETTERS` — the sidecar setters' `R_CallMethodDef` entries, each
+  with its Rust type. Registered with the others (`registry::call_defs`)
+  unless an impl block of the type has `r_data_accessors = "read_only"`
+  (`ClassNameEntry::read_only_fields`, #2292).
 - `MX_R_WRAPPERS` — R wrapper code fragments with priority ordering. Consumed
   by `miniextendr_write_wrappers()` after the link to produce
   `R/miniextendr-wrappers.R`.

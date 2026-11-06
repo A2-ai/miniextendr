@@ -60,7 +60,10 @@
 //! (`r_data_accessors = "read_only"`, #2268) there are no standalone setters.
 //! The derive emits the three renderings in a `SidecarAccessorsEntry`; the
 //! wrapper writer picks one by the class's `ClassNameEntry::field_syntax` and
-//! `read_only_fields`, since the impl block is a separate expansion.
+//! `read_only_fields`, since the impl block is a separate expansion. For the
+//! same reason each setter registers with its type in `MX_SIDECAR_SETTERS`,
+//! and `registry::call_defs` leaves a read-only type's setters out of the
+//! routines R registers (#2292).
 //! Otherwise they are exported on the type's page.
 //!
 //! | Class System | Attribute | R Accessors |
@@ -2048,6 +2051,9 @@ fn r6_read_only_refusal(slot: &SidecarSlot, classes: &[String], hint: Option<&st
 /// put in front of their own errors (`field_error`, `NULL` without them,
 /// #1899), and the liveness check of `restored(refuse = "every_read")`
 /// with the flag that gates it (`FALSE` and a stub without it, #1901).
+/// Without `writes` there is no setter `switch()`: the read-only form's
+/// writers refuse every field, and its setter routines are not registered
+/// (#2292).
 ///
 /// Prepared for every type with R accessors, whatever `#[externalptr(...)]`
 /// names, and bundled with its internal accessor rendering. The writer selects
@@ -2080,6 +2086,7 @@ fn generate_field_syntax_helpers(
     pub_slots: &[&SidecarSlot],
     field_error: &FieldErrorOptions,
     every_read: bool,
+    writes: bool,
 ) -> String {
     use crate::naming::{RDataHelper, rdata_helper_name};
 
@@ -2156,6 +2163,17 @@ fn generate_field_syntax_helpers(
         "function(x, raise) TRUE".to_string()
     };
     let every_read = if every_read { "TRUE" } else { "FALSE" };
+    // The read-only form's `$<-` / `[[<-` refuse every field without
+    // calling it, and its setter routines are not registered (#2292).
+    let set_helper = if writes {
+        format!(
+            "{set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n",
+            set_fn = rdata_helper_name(RDataHelper::Set, type_name),
+            set_arms = arms(true),
+        )
+    } else {
+        String::new()
+    };
     let no_field_message =
         format!("sprintf(\"`%s` is not a field of `%s`; its fields are {listed}\", name, cls)");
     let no_field_message = match &field_error.no_field_hint {
@@ -2180,7 +2198,7 @@ fn generate_field_syntax_helpers(
          # is the accessors' `require_live` flag: the methods refuse a restored pointer.\n\
          {fields_var} <- c({names})\n\
          {get_fn} <- function(x, name) switch(name,\n{get_arms})\n\
-         {set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n\
+         {set_helper}\
          {error_class_var} <- {error_class}\n\
          {no_field_fn} <- function(name, env, cls) stop(errorCondition(\n\
          \x20 {no_field_message},\n\
@@ -2192,12 +2210,10 @@ fn generate_field_syntax_helpers(
          {live_fn} <- {live}\n",
         fields_var = rdata_helper_name(RDataHelper::Fields, type_name),
         get_fn = rdata_helper_name(RDataHelper::Get, type_name),
-        set_fn = rdata_helper_name(RDataHelper::Set, type_name),
         no_field_fn = rdata_helper_name(RDataHelper::NoField, type_name),
         every_read_var = rdata_helper_name(RDataHelper::EveryRead, type_name),
         live_fn = rdata_helper_name(RDataHelper::Live, type_name),
         get_arms = arms(false),
-        set_arms = arms(true),
     )
 }
 
@@ -2217,7 +2233,10 @@ fn r_hint_parts(hint: &str) -> String {
 /// For each public `#[r_data]` field, generates:
 /// - A getter FFI function (`C_<crate>__mx_rdata_get_Type_field`)
 /// - A setter FFI function (`C_<crate>__mx_rdata_set_Type_field`)
-/// - `R_CallMethodDef` entries for routine registration
+/// - `R_CallMethodDef` entries for routine registration: the getters' in
+///   `MX_CALL_DEFS`, the setters' with their type in `MX_SIDECAR_SETTERS`,
+///   which leaves them unregistered under `r_data_accessors = "read_only"`
+///   (#2292)
 /// - R wrapper function code (roxygen-documented)
 /// - Class-integration code for R6 / S7 (active bindings / properties)
 /// - The helpers of the S3 / S4 / env field methods
@@ -2228,6 +2247,7 @@ fn r_hint_parts(hint: &str) -> String {
 ///
 /// The generated statics are:
 /// - `__MX_CALL_DEF_RDATA_*`: the `R_CallMethodDef` entries
+///   (`__MX_CALL_DEF_RDATA_SET_*` a `registry::SidecarSetterEntry` each)
 /// - `R_WRAPPERS_RDATA_{Type}`: the R6 / S7 integration, when present
 /// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported,
 ///   internal, and internal without the setters, which the wrapper writer
@@ -2410,15 +2430,24 @@ fn generate_sidecar_accessors(
                 }
             });
 
+            // Registered with its type, not in `MX_CALL_DEFS`: the routines
+            // R gets leave it out when an impl block of the type makes the
+            // fields read-only (`r_data_accessors = "read_only"`), which this
+            // expansion can't see (#2292).
             let setter_def_ident = Ident::new(
                 &format!("__MX_CALL_DEF_RDATA_SET_{}_{}", name_symbol, field_name_str),
                 Span::call_site(),
             );
-            let setter_registration =
-                crate::call_method_def::call_method_def(&setter_def_ident, &setter_fn_name, 3);
+            let setter_def = crate::call_method_def::call_method_def_value(&setter_fn_name, 3);
             c_functions.push(quote::quote! {
                 #[doc(hidden)]
-                #setter_registration
+                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_SIDECAR_SETTERS), linkme(crate = ::miniextendr_api::linkme))]
+                #[allow(non_upper_case_globals, non_snake_case)]
+                static #setter_def_ident: ::miniextendr_api::registry::SidecarSetterEntry =
+                    ::miniextendr_api::registry::SidecarSetterEntry {
+                        rust_type: #name_str,
+                        def: #setter_def,
+                    };
             });
         }
 
@@ -2519,10 +2548,17 @@ fn generate_sidecar_accessors(
         generate_class_integration_r_code(info.class_system, &name_str, &pub_slots, field_error);
     // The writer selects these renderings only when an impl enables field
     // syntax. Other types need their standalone accessors, not these helpers.
-    let helpers =
-        generate_field_syntax_helpers(&name_str, &pub_slots, field_error, restored.every_read);
-    internal.push_str(&helpers);
-    internal_read_only.push_str(&helpers);
+    let helpers = |writes| {
+        generate_field_syntax_helpers(
+            &name_str,
+            &pub_slots,
+            field_error,
+            restored.every_read,
+            writes,
+        )
+    };
+    internal.push_str(&helpers(true));
+    internal_read_only.push_str(&helpers(false));
 
     let const_name_wrappers = Ident::new(
         &format!("R_WRAPPERS_RDATA_{}", name_symbol),

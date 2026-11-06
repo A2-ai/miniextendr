@@ -90,6 +90,8 @@ pub static MX_MATCH_ARG_PARAM_DOCS: [MatchArgParamDocEntry];
 /// placeholders other expansions write where they name the class (see
 /// `resolve_class_refs`) are replaced with the registered R class name
 /// (which may differ when `class = "Override"` is set on the impl block).
+/// Package load reads it too: [`call_defs`] leaves out the sidecar setters
+/// of a type whose entry has [`ClassNameEntry::read_only_fields`] (#2292).
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_CLASS_NAMES: [ClassNameEntry];
@@ -131,6 +133,16 @@ pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 #[distributed_slice]
 pub static MX_SIDECAR_ACCESSORS: [SidecarAccessorsEntry];
 
+/// The `.Call` registrations of the sidecar setters `#[derive(ExternalPtr)]`
+/// generates, one per public `#[r_data]` field R can write, each with its
+/// type. **Host-only.** [`call_defs`] registers a type's setters unless a
+/// [`ClassNameEntry`] of the type makes its fields read-only
+/// (`r_data_accessors = "read_only"`, #2292); the wasm snapshot is written
+/// from the same list.
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_SIDECAR_SETTERS: [SidecarSetterEntry];
+
 /// The `all.equal()` methods `#[derive(AllEqual)]` generates (#2149).
 /// **Host-only.** [`collect_r_wrappers`] names and registers each for the
 /// type's R class, which the type's impl block gives in its
@@ -164,18 +176,53 @@ pub static MX_CONVERSION_ERROR_CLASS: [ConversionErrorClassEntry];
 
 // region: Runtime slice access (cfg-uniform)
 
-/// Native: read directly from the linkme distributed slice.
-/// wasm32: read from a `OnceLock` populated by `install_wasm_runtime_slices`.
-#[inline]
-pub(crate) fn call_defs() -> &'static [R_CallMethodDef] {
+/// The `.Call` routines the package registers with R.
+///
+/// Native: [`MX_CALL_DEFS`] and the [`MX_SIDECAR_SETTERS`] of every type
+/// whose fields R can write (#2292). The wasm snapshot is written from this
+/// list. wasm32: that snapshot, read from a `OnceLock` populated by
+/// `install_wasm_runtime_slices`.
+pub fn call_defs() -> Vec<R_CallMethodDef> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        &MX_CALL_DEFS
+        registered_call_defs(&MX_CALL_DEFS, &MX_SIDECAR_SETTERS, &MX_CLASS_NAMES)
     }
     #[cfg(target_arch = "wasm32")]
     {
-        wasm_runtime::call_defs()
+        wasm_runtime::call_defs().to_vec()
     }
+}
+
+/// `call_defs` and the setters of `setters` whose type keeps its fields
+/// writable from R: a type with an impl block that makes them read-only
+/// (`r_data_accessors = "read_only"`, [`read_only_fields`]) keeps its setter
+/// functions in the binary, unregistered (#2292). `package_init` turns off
+/// dynamic symbol lookup, so R can't reach a routine left out here.
+#[cfg(not(target_arch = "wasm32"))]
+fn registered_call_defs(
+    call_defs: &[R_CallMethodDef],
+    setters: &[SidecarSetterEntry],
+    classes: &[ClassNameEntry],
+) -> Vec<R_CallMethodDef> {
+    let mut defs = call_defs.to_vec();
+    defs.extend(
+        setters
+            .iter()
+            .filter(|setter| !read_only_fields(classes, setter.rust_type))
+            .map(|setter| setter.def),
+    );
+    defs
+}
+
+/// Whether an impl block of `rust_type` makes its fields read-only from R
+/// (`r_data_accessors = "read_only"`, #2268). Its standalone setters are
+/// then not written ([`sidecar_accessor_fragments`]) and its setter
+/// routines not registered ([`registered_call_defs`], #2292).
+#[cfg(not(target_arch = "wasm32"))]
+fn read_only_fields(classes: &[ClassNameEntry], rust_type: &str) -> bool {
+    classes
+        .iter()
+        .any(|class| class.rust_type == rust_type && class.read_only_fields)
 }
 
 #[inline]
@@ -406,7 +453,8 @@ pub struct ClassNameEntry {
     /// The field syntax is the read-only form, `r_data_accessors =
     /// "read_only"` (#2268): every field is read-only from R, so the
     /// standalone setters are not written either
-    /// ([`SidecarAccessorsEntry::internal_read_only`]).
+    /// ([`SidecarAccessorsEntry::internal_read_only`]), and the setter
+    /// routines are not registered ([`MX_SIDECAR_SETTERS`], #2292).
     pub read_only_fields: bool,
 }
 
@@ -614,6 +662,18 @@ pub struct SidecarAccessorsEntry {
 
 // SAFETY: &'static str fields and a u32 — immutable and valid for program lifetime.
 unsafe impl Sync for SidecarAccessorsEntry {}
+
+/// The `.Call` registration of one sidecar setter,
+/// `C_<crate>__mx_rdata_set_<Type>_<field>` ([`MX_SIDECAR_SETTERS`]). The
+/// derive can't see the impl's `r_data_accessors = "read_only"`, a separate
+/// expansion, so it registers the setter with its type, and [`call_defs`]
+/// leaves it out for a type whose fields are read-only (#2292).
+pub struct SidecarSetterEntry {
+    /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
+    pub rust_type: &'static str,
+    /// The setter's registration.
+    pub def: R_CallMethodDef,
+}
 
 /// The `all.equal()` method `#[derive(AllEqual)]` generates for a type
 /// (#2149), without the parts that depend on the type's R class: its name,
@@ -843,7 +903,7 @@ pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo)
     }
 
     // 2. Build call method defs with null sentinel
-    let mut call_defs: Vec<R_CallMethodDef> = self::call_defs().to_vec();
+    let mut call_defs: Vec<R_CallMethodDef> = self::call_defs();
     // Always register the wrapper-gen entry points so they're visible
     // via getNativeSymbolInfo even when R_forceSymbols(TRUE) is set. wasm32
     // doesn't run wrapper-gen (it's host-only), so these are gated off there.
@@ -907,14 +967,12 @@ fn sidecar_accessor_fragments(
     accessors
         .iter()
         .map(|entry| {
-            let of_type = || {
-                classes
-                    .iter()
-                    .filter(|class| class.rust_type == entry.rust_type)
-            };
-            let content = if of_type().any(|class| class.read_only_fields) {
+            let content = if read_only_fields(classes, entry.rust_type) {
                 entry.internal_read_only
-            } else if of_type().any(|class| class.field_syntax) {
+            } else if classes
+                .iter()
+                .any(|class| class.rust_type == entry.rust_type && class.field_syntax)
+            {
                 entry.internal
             } else {
                 entry.exported

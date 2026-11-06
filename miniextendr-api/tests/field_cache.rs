@@ -71,8 +71,9 @@ unsafe fn entry(
     suffix: &str,
     arity: i32,
 ) -> unsafe extern "C-unwind" fn() -> *mut core::ffi::c_void {
-    let entry = miniextendr_api::registry::MX_CALL_DEFS
-        .iter()
+    // The routines the package registers, sidecar setters included.
+    let entry = miniextendr_api::registry::call_defs()
+        .into_iter()
         .find(|entry| {
             !entry.name.is_null()
                 && unsafe { std::ffi::CStr::from_ptr(entry.name) }
