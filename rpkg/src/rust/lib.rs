@@ -95,6 +95,7 @@
 //! - `tabled_adapter_tests`: Table formatting adapter (feature: `tabled`)
 //! - `nalgebra_adapter_tests`: Linear algebra adapter (feature: `nalgebra`)
 //! - `either_adapter_tests`: Either type adapter (feature: `either`)
+//! - `either_borrow_tests`: native-borrow checks that follow an `Either`'s converted arm (feature: `either`)
 //! - `match_arg_either_tests`: `match_arg` / `choices` on `Either<T, R>` and, with `several_ok`, `Either<Vec<T>, R>` (feature: `either`)
 //! - `optional_input_tests`: `Option<DataFrame>` / `Option<Either<L, R>>` parameters, `NULL` as `None` (feature: `either`)
 //! - `serde_json_adapter_tests`: JSON serialization adapter (feature: `serde_json`)
@@ -227,6 +228,8 @@ mod dots_position_tests;
 mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;
+#[cfg(feature = "either")]
+mod either_borrow_tests;
 mod encoding_tests;
 mod env_method_lookup_tests;
 mod error_in_r_tests;
@@ -292,6 +295,7 @@ mod missing_tests;
 mod multi_para_doc_demo;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_adapter_tests;
+mod native_borrow_bench_fixtures;
 mod native_sexp_altrep_fixture;
 #[cfg(feature = "ndarray")]
 mod ndarray_tests;

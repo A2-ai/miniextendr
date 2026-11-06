@@ -33,6 +33,7 @@
 //! `Option<T>` does, so a serde struct can hold one.
 
 use crate::SEXP;
+use crate::from_r::prepared::{Arms, Prepared};
 use crate::from_r::{NativeBorrow, TryFromSexp};
 use crate::into_r::IntoR;
 
@@ -111,6 +112,14 @@ where
     #[inline]
     unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
         unsafe { <Option<T> as TryFromSexp>::__mx_try_from_rooted(root) }.map(Self)
+    }
+
+    fn __mx_prepare(sexp: SEXP) -> Prepared<Self> {
+        <Option<T> as TryFromSexp>::__mx_prepare(sexp).map(Self, |e| e)
+    }
+
+    fn __mx_materialize(sexp: SEXP, arms: Arms) -> Result<Self, Self::Error> {
+        <Option<T> as TryFromSexp>::__mx_materialize(sexp, arms).map(Self)
     }
 
     #[inline]

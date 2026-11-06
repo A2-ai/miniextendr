@@ -1,49 +1,71 @@
 //! Shared pre-conversion alias checks and Self-reference lowering for trait shims.
 
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 
 /// Check native arguments before conversion can create references. Arity
 /// must already be checked, and the caller must be inside the shim's R unwind
 /// boundary. `&Self` uses ExternalPtr handles and its separate address check.
+///
+/// An argument that [`argument`] converts through plain `TryFromSexp` can be
+/// prepared, so an `Either` is checked against the arm its conversion takes
+/// (#1504): the check declares its [`prepared_binding`], which [`argument`]
+/// converts from.
 pub(crate) fn native_borrow_checks<'a>(
     args: impl IntoIterator<Item = (usize, String, &'a syn::Type)>,
     argv: &syn::Ident,
     targets: Option<&[syn::Ident]>,
 ) -> TokenStream {
+    // The argument pairs inside the one-pass check's `unsafe` block, and
+    // outside it in the two-pass check.
     let mut values = Vec::new();
+    let mut guarded_values = Vec::new();
     let mut metadata = Vec::new();
+    let mut preparations = Vec::new();
     for (index, name, ty) in args {
         if crate::type_inspect::self_ref_mutability(ty).is_some() {
             continue;
         }
+        let input = quote! { unsafe { *#argv.add(#index) } };
         values.push(quote! { (*#argv.add(#index), #name) });
-        if let Some(targets) = targets {
-            let target = &targets[index];
-            metadata.push(
-                if crate::type_inspect::is_rooted_view(ty)
-                    || crate::type_inspect::is_rooted_reference(ty)
-                {
-                    quote! { #target.rooted_native_borrow() }
-                } else {
-                    quote! { #target.native_borrow() }
+        guarded_values.push(quote! { (#input, #name) });
+        let rooted =
+            crate::type_inspect::is_rooted_view(ty) || crate::type_inspect::is_rooted_reference(ty);
+        let target = targets.map(|targets| &targets[index]);
+        if !rooted {
+            let prepare = match target {
+                Some(target) => quote! { #target.prepare(#input) },
+                None => quote! {
+                    <#ty as ::miniextendr_api::TryFromSexp>::__mx_prepare(#input)
                 },
-            );
-            continue;
+            };
+            preparations.push((
+                metadata.len(),
+                crate::rust_conversion_builder::Preparation {
+                    binding: prepared_binding(index),
+                    prepare,
+                },
+            ));
         }
-        metadata.push(
-            if crate::type_inspect::is_rooted_view(ty)
-                || crate::type_inspect::is_rooted_reference(ty)
-            {
+        metadata.push(match (target, rooted) {
+            (Some(target), true) => quote! { #target.rooted_native_borrow() },
+            (Some(target), false) => quote! { #target.native_borrow() },
+            (None, true) => {
                 let ty = crate::type_inspect::erase_lifetimes(ty);
                 quote! { <#ty as ::miniextendr_api::TryFromRoot<'_>>::NATIVE_BORROW }
-            } else {
-                quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW }
-            },
-        );
+            }
+            (None, false) => quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW },
+        });
     }
     if values.is_empty() {
         return TokenStream::new();
+    }
+    if !preparations.is_empty() {
+        return crate::rust_conversion_builder::two_pass_alias_guard(
+            &metadata,
+            &guarded_values,
+            &preparations,
+        );
     }
     let borrows = syn::Ident::new(
         "__miniextendr_native_borrows",
@@ -61,6 +83,18 @@ pub(crate) fn native_borrow_checks<'a>(
             }
         }
     }}
+}
+
+/// The prepared state of the shim argument at `index` (#1504), declared by
+/// [`native_borrow_checks`] and read by [`argument`]. Keyed by position:
+/// both generators know it, and the shims name their parameters
+/// differently.
+fn prepared_binding(index: usize) -> syn::Ident {
+    format_ident!(
+        "__mx_prepared_{}",
+        index,
+        span = proc_macro2::Span::mixed_site()
+    )
 }
 
 /// Convert one shim argument with the C wrapper's structured error arm.
@@ -120,8 +154,11 @@ pub(crate) fn argument(
             true,
         )
     } else {
-        let conversion = quote! {
-            <#ty as ::miniextendr_api::TryFromSexp>::try_from_sexp(#input)
+        // `native_borrow_checks` declared its prepared state.
+        let prepared = prepared_binding(index);
+        let erased = crate::type_inspect::erase_lifetimes(ty);
+        let conversion = quote_spanned! {syn::spanned::Spanned::span(ty)=>
+            ::miniextendr_api::from_r::prepared::convert::<#erased>(#prepared, #input)
         };
         (
             TokenStream::new(),
@@ -141,7 +178,8 @@ pub(crate) fn argument(
             );
             quote! { #target.rooted(unsafe { #slot.rooted(*#argv.add(#index)) }) }
         } else {
-            quote! { #target.convert(#input) }
+            let prepared = prepared_binding(index);
+            quote! { #target.convert_prepared(#prepared, #input) }
         };
     }
     let err_arm = crate::rust_conversion_builder::shim_conversion_err_arm(

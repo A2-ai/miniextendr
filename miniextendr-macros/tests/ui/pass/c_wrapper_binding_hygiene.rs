@@ -40,6 +40,24 @@ impl Builder {
     }
 }
 
+// The alias check of an `Either` argument (#1504) binds its prepared state,
+// borrows, arguments and selection: none may capture a parameter.
+#[miniextendr]
+pub fn either_preflight(
+    __mx_prepared_a: i32,
+    a: miniextendr_api::either_impl::Either<i32, &mut i32>,
+    __miniextendr_native_borrows: &i32,
+    __miniextendr_native_args: i32,
+    __miniextendr_select: i32,
+) -> i32 {
+    let a = match a {
+        miniextendr_api::either_impl::Either::Left(n) => n,
+        miniextendr_api::either_impl::Either::Right(r) => *r,
+    };
+    __mx_prepared_a + a + __miniextendr_native_borrows + __miniextendr_native_args
+        + __miniextendr_select
+}
+
 // The generated Dots owner must not replace the scalar parameter.
 #[miniextendr]
 pub fn dots_owner(d_storage: i32, d: &Dots) -> i32 {

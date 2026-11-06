@@ -107,7 +107,7 @@ fn alias_guard_emission() {
     let ctx = ctx_for(syn::parse_quote!(
         fn alias_probe(a: &mut [i32], b: &mut [i32]) {}
     ));
-    let guard = ctx.build_alias_guard(&sexp_idents).to_string();
+    let guard = ctx.build_alias_guard(&sexp_idents).0.to_string();
     assert!(guard.contains("assert"), "guard = {guard}");
     assert!(!guard.contains("debug_assert"), "guard = {guard}");
     assert!(guard.contains("arg_0"), "guard = {guard}");
@@ -117,14 +117,14 @@ fn alias_guard_emission() {
     let ctx = ctx_for(syn::parse_quote!(
         fn opt_mut(a: &mut [i32], b: Option<&mut [i32]>) {}
     ));
-    assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
+    assert!(!ctx.build_alias_guard(&sexp_idents).0.is_empty());
 
     // One &mut [T] + one &[T]: a mutable and a shared borrow over the same
     // buffer is also UB, so a guard IS emitted (#1104 mixed-aliasing case).
     let ctx = ctx_for(syn::parse_quote!(
         fn one_mut(a: &mut [i32], b: &[i32]) {}
     ));
-    assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
+    assert!(!ctx.build_alias_guard(&sexp_idents).0.is_empty());
 
     // Shared-only metadata is filtered before entering the runtime check.
     let ctx = ctx_for(syn::parse_quote!(
@@ -132,6 +132,7 @@ fn alias_guard_emission() {
     ));
     assert!(
         ctx.build_alias_guard(&sexp_idents)
+            .0
             .to_string()
             .contains("needs_check")
     );
@@ -142,6 +143,7 @@ fn alias_guard_emission() {
     ));
     let guard = ctx
         .build_alias_guard(&[syn::parse_quote!(arg_0)])
+        .0
         .to_string();
     assert!(guard.contains("BorrowAlias as :: miniextendr_api :: TryFromSexp"));
 }
@@ -173,6 +175,7 @@ fn alias_guard_covers_borrowed_lists() {
             .build();
         assert!(
             !ctx.build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+                .0
                 .is_empty(),
             "borrowed list elements must participate in the pre-conversion alias guard"
         );
@@ -191,6 +194,7 @@ fn alias_guard_also_rejects_conflicts_in_release() {
         .build();
     let guard = ctx
         .build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+        .0
         .to_string();
     assert!(
         !guard.contains("debug_assert"),
@@ -225,10 +229,41 @@ fn alias_guard_covers_native_scalar_and_boxed_borrows() {
             .build();
         assert!(
             !ctx.build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+                .0
                 .is_empty(),
             "scalar, boxed, and aliased conversion types need native borrow preflight"
         );
     }
+}
+
+/// A parameter its own `TryFromSexp` converts may be an `Either` (#1504):
+/// the guard marks the arguments to prepare, prepares them and checks again.
+/// A rooted reference converts another way and is never prepared.
+#[test]
+fn alias_guard_prepares_plainly_converted_parameters() {
+    let sig: syn::ItemFn = syn::parse_quote!(
+        fn probe(a: Either<i32, &mut i32>, b: &i32) {}
+    );
+    let ctx = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_probe))
+        .r_wrapper_const(syn::parse_quote!(R_WRAPPER_probe))
+        .call_expr(quote::quote!(probe()))
+        .inputs(sig.sig.inputs)
+        .build();
+    let (guard, prepared) =
+        ctx.build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)]);
+    assert_eq!(prepared, ["a"]);
+    let guard = guard.to_string();
+    for part in [
+        "assert_or_select",
+        "NativeBorrow :: selects",
+        "__mx_prepare (arg_0)",
+        "Prepared :: Unprepared",
+        "Prepared :: borrow",
+        "assert_no_aliases",
+    ] {
+        assert!(guard.contains(part), "{part} missing from guard = {guard}");
+    }
+    assert!(!guard.contains("__mx_prepare (arg_1)"), "guard = {guard}");
 }
 
 /// A `no_na` parameter's converted value is checked in the wrapper.
@@ -622,12 +657,24 @@ fn convert_on_a_native_reference_keeps_its_conversion() {
             "< {} as :: miniextendr_api :: TryFromSexp > :: try_from_sexp",
             quote::quote!(#ty)
         );
+        // Without `convert` a mutable reference converts plainly, from the
+        // state the alias check prepared (#1504); with it, directly.
+        let mut plain = conversion_of_x(&ty, false);
+        let prepared_call = ":: miniextendr_api :: from_r :: prepared :: convert :: <";
+        let prepared_args = "(__mx_prepared_x , arg_0)";
+        if let Some(start) = plain.find(prepared_call) {
+            let end = start + plain[start..].find(prepared_args).unwrap() + prepared_args.len();
+            plain.replace_range(
+                start..end,
+                ":: miniextendr_api :: TryFromSexp :: try_from_sexp (arg_0)",
+            );
+        }
         assert_eq!(
             conversion_of_x(&ty, true).replace(
                 &qualified,
                 ":: miniextendr_api :: TryFromSexp :: try_from_sexp"
             ),
-            conversion_of_x(&ty, false),
+            plain,
             "{}",
             quote::quote!(#ty)
         );
