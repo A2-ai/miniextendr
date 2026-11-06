@@ -4311,6 +4311,11 @@ fn sidecar_accessor_names(
 ///    `<Class>_<method>` shortcut -- cross-impl-block, also invisible to a
 ///    single expansion.
 ///
+/// A trait impl names its S7 shortcuts and S4 statics after the class's R
+/// name, which only this pass knows (#2285), so a trait member can land on a
+/// name the class's own impl block binds too: it runs after the class-name
+/// placeholders are resolved.
+///
 /// Without this check the second definition silently clobbers the first
 /// (last-write-wins in R), so a call dispatches to the wrong implementation.
 ///
@@ -4330,7 +4335,9 @@ fn sidecar_accessor_names(
 /// there ([`merge_class_blocks`], #1776), so this is the last line of defence.
 ///
 /// Every message names both producers, read from the
-/// `# Generated from Rust …` header that opens each wrapper fragment.
+/// `# Generated from Rust …` header that opens each wrapper fragment, and
+/// the member of each that binds the name when a member line names it
+/// ([`member_line`]).
 ///
 /// Returns `Err(message)` naming the offending binding on the first collision
 /// found; `Ok(())` when names are unique apart from shared generic declarations.
@@ -4407,9 +4414,12 @@ fn detect_duplicate_wrapper_defs(
              at load time. Common causes: two `#[miniextendr(s7)]` impl blocks (or an S7 \
              shortcut and another generated function) sharing a `<Class>_<method>` \
              name — rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or opt it out \
-             of the shortcut (`#[miniextendr(s7(no_shortcut))]`); or two trait impls \
-             whose generated standalone wrapper names are not class-qualified — rename \
-             the colliding method (`#[miniextendr(<system>(r_name = \"...\"))]`)."
+             of the shortcut (`#[miniextendr(s7(no_shortcut))]`); or a trait impl's S7 \
+             shortcut (`<Class>_<method>`) or S4 static method or const \
+             (`<Class>_<Trait>_<member>`), named after the class's R name, and a static \
+             method or shortcut of the class's own impl block — rename the trait method \
+             (`#[miniextendr(<system>(r_name = \"...\"))]`), opt it out of the shortcut, \
+             or rename the class's member."
         ));
     }
 
@@ -4418,7 +4428,8 @@ fn detect_duplicate_wrapper_defs(
 
 /// A name the assembled wrappers bind at top level or export, and the
 /// fragment that does, as the `# Generated from Rust …` header opening each
-/// fragment names it.
+/// fragment names it, with the member of the fragment that binds it when a
+/// member line names one ([`member_line`]).
 #[cfg(not(target_arch = "wasm32"))]
 struct WrapperName<'a> {
     name: &'a str,
@@ -4430,17 +4441,53 @@ struct WrapperName<'a> {
     producer: std::rc::Rc<str>,
 }
 
+/// The member a wrapper line opens, as the comment line before it names it:
+/// `` `Type::method` (lib.rs:114:12) `` for `# Type::method (lib.rs:114:12)`,
+/// the line an impl block writes before each method, and `` `Trait::method` ``
+/// for `# Trait::method`, the line a trait impl writes before each member
+/// whose R name it builds from the class (an S7 shortcut, an S4 static or
+/// const, #2285). Any other line is `None`.
+#[cfg(not(target_arch = "wasm32"))]
+fn member_line(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("# ")?;
+    let (path, at) = rest.split_once(' ').unwrap_or((rest, ""));
+    let (owner, member) = path.split_once("::")?;
+    let ident = |s: &str| {
+        s.chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_')
+            && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+    };
+    let at_ok = at.is_empty() || (at.starts_with('(') && at.ends_with(')'));
+    (ident(owner) && ident(member) && at_ok).then(|| {
+        if at.is_empty() {
+            format!("`{path}`")
+        } else {
+            format!("`{path}` {at}")
+        }
+    })
+}
+
 /// The names of the assembled wrappers `content` in file order: see
 /// [`WrapperName`]. Read by [`detect_duplicate_wrapper_defs`] and
 /// [`reexport_conflicts`].
+///
+/// A function, guarded generic or export after a [`member_line`] is
+/// attributed to that member, up to the next member line or fragment header;
+/// a class or namespace object is attributed to its fragment alone, since
+/// the class definition and the environments after the last member belong to
+/// no member.
 #[cfg(not(target_arch = "wasm32"))]
 fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
     let mut names = Vec::new();
     let mut producer: std::rc::Rc<str> = std::rc::Rc::from("an unattributed wrapper fragment");
+    // `producer` with the member the current lines belong to, if any.
+    let mut member_producer: Option<std::rc::Rc<str>> = None;
     let mut lines = content.lines();
     while let Some(line) = lines.next() {
         if let Some(header) = line.strip_prefix("# Generated from ") {
             producer = std::rc::Rc::from(header);
+            member_producer = None;
             continue;
         }
         // A sidecar accessor's header gives only a source position
@@ -4452,11 +4499,16 @@ fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
             producer = std::rc::Rc::from(format!("{what} {at}"));
             continue;
         }
+        if let Some(member) = member_line(line) {
+            member_producer = Some(std::rc::Rc::from(format!("{member} in {producer}")));
+            continue;
+        }
+        let member_or_fragment = member_producer.as_ref().unwrap_or(&producer);
         if let Some(targets) = line.strip_prefix("#' @export ") {
             names.extend(targets.split_whitespace().map(|target| WrapperName {
                 name: unquote_r_name(target),
                 kind: "export",
-                producer: producer.clone(),
+                producer: member_or_fragment.clone(),
             }));
             continue;
         }
@@ -4464,7 +4516,7 @@ fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
             names.extend(raw_namespace_exports(directives).map(|name| WrapperName {
                 name,
                 kind: "export",
-                producer: producer.clone(),
+                producer: member_or_fragment.clone(),
             }));
             continue;
         }
@@ -4487,6 +4539,11 @@ fn wrapper_names(content: &str) -> Vec<WrapperName<'_>> {
                 continue;
             };
             (name, kind)
+        };
+        let producer = if kind == "class/namespace object" {
+            &producer
+        } else {
+            member_or_fragment
         };
         names.push(WrapperName {
             name,

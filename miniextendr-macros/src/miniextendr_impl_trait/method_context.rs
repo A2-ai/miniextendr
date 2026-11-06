@@ -19,10 +19,25 @@ use crate::miniextendr_impl::ClassSystem;
 /// [`class_ref_for`](crate::r_class_formatter::class_ref_for)). Used for every
 /// R object the trait impl attaches to or wraps in (S3 method suffixes and
 /// registrations, the `Class$Trait` namespace, the S4 method signature, the S7
-/// class object, a `Self` return). Rust-side names (C symbols, the S7 and S4
-/// flat member names) and the `@rdname` page keep the Rust identifier.
+/// class object, a `Self` return). The R names the trait impl builds from the
+/// class take [`class_name`]. The C symbols and the `@rdname` page keep the
+/// Rust identifier (#2144).
 pub(super) fn class_ref(class_system: ClassSystem, type_ident: &syn::Ident) -> String {
     crate::r_class_formatter::class_ref_for(class_system, &type_ident.to_string())
+}
+
+/// The class part of an R name a trait impl builds from the class of
+/// `type_ident`: the S4 flat statics and consts (`Class_Trait_member`), the
+/// S7 shortcuts (`Class_method`), the S7 local variables (`.Class__Trait`,
+/// `.s7_class_Class`), and the prose of their blocks. The class's R name,
+/// resolved when the wrappers are written, else the Rust name, quietly
+/// ([`quiet_class_ref`](crate::r_class_formatter::quiet_class_ref), #2265,
+/// #2285), so a `class = "..."` rename gives `Point_Trait_member()` and
+/// `Point_method()` as on the type's own impl block. The wrapper writer
+/// refuses a resolved name that another generated function also binds, such
+/// as the class's own static or shortcut of that name.
+pub(super) fn class_name(type_ident: &syn::Ident) -> String {
+    crate::r_class_formatter::quiet_class_ref(&type_ident.to_string())
 }
 
 /// The trait namespace environment, `Class$Trait`, of Env, S3, R6 and vctrs
@@ -50,7 +65,8 @@ pub(super) fn trait_namespace_env(
 ///   name ([`trait_namespace_env`]).
 /// - **S4**: flat `Type_Trait_member` standalone name. S4 objects intercept
 ///   `$<-`, so `Type$Trait$member` cannot be assigned onto them; the class
-///   component in the flat name keeps it collision-free.
+///   component in the flat name keeps it collision-free. `Type` is the
+///   class's R name ([`class_name`], #2285).
 /// - **S7**: `env_var$member`, where `env_var` = [`trait_namespace_env_var`]
 ///   (`.Type__Trait`) is a local env attached to `Type` via `attr()` at the end
 ///   of the generator. S7 objects also intercept `$<-`, and `$` too, so users
@@ -69,7 +85,7 @@ pub(super) fn trait_namespace_target(
                 trait_namespace_env(class_system, type_ident, trait_name)
             )
         }
-        ClassSystem::S4 => format!("{type_ident}_{trait_name}_{member}"),
+        ClassSystem::S4 => format!("{}_{trait_name}_{member}", class_name(type_ident)),
         ClassSystem::S7 => {
             format!(
                 "{}${member}",
@@ -106,11 +122,12 @@ pub(super) fn trait_namespace_symbol(
 }
 
 /// The local environment variable S7 trait wrappers assign members into before
-/// attaching it to the class object via `attr()`. One owner so
+/// attaching it to the class object via `attr()`, `.Type__Trait` with the
+/// class's R name ([`class_name`], #2285). One owner so
 /// [`trait_namespace_target`]'s S7 arm and the generator's `new.env` / `attr()`
 /// lines can't drift apart.
 pub(super) fn trait_namespace_env_var(type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
-    format!(".{type_ident}__{trait_name}")
+    format!(".{}__{trait_name}", class_name(type_ident))
 }
 
 /// How R code reaches an S7 trait static or const: `attr(Type, "Trait")$member`,
