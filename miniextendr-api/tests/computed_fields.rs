@@ -93,9 +93,10 @@ fn gauge(level: i32) -> Gauge {
 }
 
 /// The registered `.Call` entry whose name ends with `suffix`, if any.
-fn entry(suffix: &str) -> Option<&'static miniextendr_api::sys::R_CallMethodDef> {
-    miniextendr_api::registry::MX_CALL_DEFS
-        .iter()
+fn entry(suffix: &str) -> Option<miniextendr_api::sys::R_CallMethodDef> {
+    // The routines the package registers, sidecar setters included.
+    miniextendr_api::registry::call_defs()
+        .into_iter()
         .find(|entry| {
             !entry.name.is_null()
                 && unsafe { std::ffi::CStr::from_ptr(entry.name) }
