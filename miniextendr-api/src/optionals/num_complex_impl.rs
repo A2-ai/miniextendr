@@ -6,7 +6,7 @@
 //! |--------|-----------|-------|
 //! | `complex(1)` | `Complex<f64>` | Single complex number |
 //! | `complex` | `Vec<Complex<f64>>` | Vector of complex numbers |
-//! | `NA_complex_` | `Option<Complex<f64>>` | NA maps to None |
+//! | `NA_complex_` | `Option<Complex<f64>>` | NA maps to None, as do `NULL` and a plain `NA` |
 //!
 //! # Features
 //!
@@ -116,15 +116,15 @@ into_r_infallible!(Complex<f64>, |this| SEXP::scalar_complex(to_rcomplex(this)))
 
 // region: Option conversions (NA support)
 
+/// `NULL`, `NA_complex_` and a plain `NA` (#2305) read as `None`.
 impl TryFromSexp for Option<Complex<f64>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        // NULL -> None
-        if actual == SEXPTYPE::NILSXP {
+        if crate::from_r::is_null_or_plain_na(sexp) {
             return Ok(None);
         }
+        let actual = sexp.type_of();
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::CPLXSXP,

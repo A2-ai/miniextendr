@@ -2039,7 +2039,8 @@ fn parsed_fn_absent_formals() {
                 placeholder("opt")
             ),
             format!(
-                "if (!.mx_absent_opt && !is.null(opt)) \
+                "if (!.mx_absent_opt && !is.null(opt) && \
+                 !(is.logical(opt) && length(opt) == 1L && is.na(opt))) \
                  opt <- .miniextendr_match_arg(opt, {}, \"opt\")",
                 placeholder("opt")
             ),

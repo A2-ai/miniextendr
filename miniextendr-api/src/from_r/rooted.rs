@@ -88,7 +88,10 @@ where
     }
 }
 
-/// `NULL` (and `NA` for strings) is `None`, as in the raw conversion.
+/// `NULL` (and, for strings, `NA_character_` or a plain `NA`, #2305) is
+/// `None`, as in the raw conversion. A native element borrow
+/// (`Option<&i32>`, ...) reads only `NULL` as `None`: it points at the
+/// element, `NA` included.
 impl<'a, T: ?Sized + 'static> TryFromRoot<'a> for Option<&'a T>
 where
     Option<&'static T>: TryFromSexp,

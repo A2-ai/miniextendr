@@ -23,10 +23,18 @@
 //! surfaces as `SexpNaError` at the call site, which is usually not what you
 //! want for an interactive R API.
 //!
+//! The optional native scalars live here too: `Option<i32>`, `Option<f64>`,
+//! `Option<u8>` and `Option<Rcomplex>` read `NULL`, their own type's `NA`
+//! (raw has none) and a plain `NA`, R's untyped missing value, as `None`
+//! (#2305, [`is_null_or_plain_na`]). A logical `NA` is already `None` for
+//! the logical forms.
+//!
 //! Outbound counterpart: `bool` / `Option<bool>` impls in
 //! [`crate::into_r`].
 
-use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
+use crate::from_r::{
+    SexpError, SexpNaError, TryFromSexp, is_null_or_plain_na, is_null_or_plain_na_unchecked,
+};
 use crate::{IsNA, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 impl TryFromSexp for Rboolean {
@@ -166,8 +174,7 @@ impl TryFromSexp for Option<i32> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // NULL -> None
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
         // The i32 TryFromSexp impl now returns SexpNaError for NA_integer_.
@@ -181,8 +188,7 @@ impl TryFromSexp for Option<i32> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // NULL -> None
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if unsafe { is_null_or_plain_na_unchecked(sexp) } {
             return Ok(None);
         }
         match unsafe { TryFromSexp::try_from_sexp_unchecked(sexp) } {
@@ -198,8 +204,7 @@ impl TryFromSexp for Option<f64> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // NULL -> None
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
         let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
@@ -212,8 +217,7 @@ impl TryFromSexp for Option<f64> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // NULL -> None
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if unsafe { is_null_or_plain_na_unchecked(sexp) } {
             return Ok(None);
         }
         let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
@@ -230,7 +234,7 @@ impl TryFromSexp for Option<u8> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
         let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
@@ -239,7 +243,7 @@ impl TryFromSexp for Option<u8> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if unsafe { is_null_or_plain_na_unchecked(sexp) } {
             return Ok(None);
         }
         let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
@@ -252,7 +256,7 @@ impl TryFromSexp for Option<crate::Rcomplex> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
         let value: crate::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
@@ -266,7 +270,7 @@ impl TryFromSexp for Option<crate::Rcomplex> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if unsafe { is_null_or_plain_na_unchecked(sexp) } {
             return Ok(None);
         }
         let value: crate::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };

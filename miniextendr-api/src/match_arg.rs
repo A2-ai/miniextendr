@@ -28,13 +28,13 @@
 //! matching.
 //!
 //! An `Option<T>` parameter (`#[miniextendr(match_arg)] mode: Option<Mode>`)
-//! is the optional form: the R formal defaults to `NULL`, `NULL` converts to
-//! `None`, and any other value is matched as usual. The generated C wrapper
-//! decodes it with [`match_arg_option_from_sexp`] (there is no
-//! `TryFromSexp for Option<T>` blanket: that slot belongs to the newtype
-//! forwarding impls in [`crate::newtype`], and a downstream crate cannot add
-//! one for its own enum under the orphan rule), so a hand-written `MatchArg`
-//! impl needs nothing extra.
+//! is the optional form: the R formal defaults to `NULL`, `NULL` and a plain
+//! `NA` convert to `None` (#2305), and any other value is matched as usual.
+//! The generated C wrapper decodes it with [`match_arg_option_from_sexp`]
+//! (there is no `TryFromSexp for Option<T>` blanket: that slot belongs to the
+//! newtype forwarding impls in [`crate::newtype`], and a downstream crate
+//! cannot add one for its own enum under the orphan rule), so a hand-written
+//! `MatchArg` impl needs nothing extra.
 //!
 //! A `Missing<..>` around the parameter type (`Missing<T>`,
 //! `Missing<Option<T>>`, `Missing<Vec<T>>` for `several_ok`) keeps the choice
@@ -859,19 +859,29 @@ pub fn match_arg_param_with_default<T: MatchArg>(
 /// Optional form of [`match_arg_from_sexp`] for `Option<T>` parameters (#1473).
 ///
 /// `NULL` is `None` (the R formal of an `Option<T>` choice parameter defaults
-/// to `NULL`, meaning no choice was made); anything else goes through the same
-/// exact-or-partial matching as the plain type and becomes `Some`.
+/// to `NULL`, meaning no choice was made), and so is a plain `NA`, R's
+/// untyped missing value (#2305), which the R wrapper's check lets through
+/// unmatched; anything else goes through the same exact-or-partial matching
+/// as the plain type and becomes `Some`. A typed `NA` (`NA_character_`) is
+/// matched, and refused as `NA`.
 ///
 /// Used by the generated C wrapper for `#[miniextendr(match_arg)] x: Option<T>`
 /// parameters instead of `TryFromSexp`, because `Option<T>` cannot carry a
 /// `TryFromSexp` impl for a downstream enum (orphan rule) and a `T: MatchArg`
 /// blanket would collide with the newtype blanket in [`crate::newtype`].
 pub fn match_arg_option_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Option<T>, MatchArgError> {
-    match_arg_null_or(sexp, match_arg_from_sexp)
+    if crate::from_r::is_null_or_plain_na(sexp) {
+        return Ok(None);
+    }
+    match_arg_from_sexp(sexp).map(Some)
 }
 
 /// The `Option<_>` layer of a choice parameter: `NULL` is `None`, anything
 /// else is decoded by `inner` and becomes `Some`.
+///
+/// Unlike [`match_arg_option_from_sexp`], it reads a plain `NA` as a value:
+/// it is the layer over a `several_ok` list and over an `Either`, where a
+/// plain `NA` is a logical vector, not "no value" (#2305).
 ///
 /// Generated C wrappers compose this with the other layer helpers
 /// ([`match_arg_missing_or`]) around the decoder of the choice itself;

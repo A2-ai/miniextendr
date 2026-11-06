@@ -113,8 +113,11 @@ impl RAssertion {
     }
 
     /// Wrap for nullable: prepend `is.null(param) || ` to the condition,
-    /// and adjust the requirement to mention NULL.
-    fn nullable(self) -> Self {
+    /// and adjust the requirement to mention NULL. With `plain_na` (an
+    /// optional scalar, #2305) a plain `NA` passes too
+    /// ([`plain_na_check`]): the Rust conversion reads either as `None`.
+    /// The requirement keeps naming the type a value must have.
+    fn nullable(self, plain_na: bool) -> Self {
         let requirement = if let Some(rest) = self.requirement.strip_prefix("must be ") {
             // "must be character" → "must be NULL or character"
             format!("must be NULL or {rest}")
@@ -124,13 +127,38 @@ impl RAssertion {
         } else {
             format!("{} (or NULL)", self.requirement)
         };
+        let absent = if plain_na {
+            format!(
+                "is.null({p}) || {}",
+                plain_na_check(&self.param),
+                p = self.param
+            )
+        } else {
+            format!("is.null({})", self.param)
+        };
         Self {
-            condition: format!("is.null({}) || {}", self.param, self.condition),
+            condition: format!("{absent} || {}", self.condition),
             param: self.param,
             requirement,
             message: self.message,
         }
     }
+}
+
+/// The R test for a plain `NA`, R's untyped missing value, as the argument
+/// `param`: `(is.logical(p) && length(p) == 1L && is.na(p))`. An optional
+/// scalar argument (`Option<T>` / `Nullable<T>` of a scalar `T`, a scalar
+/// `match_arg` / `choices` choice under `Option`) reads it as "no value",
+/// like `NULL` (#2305): the type checks pass it ([`RAssertion::nullable`])
+/// and the choice prelude skips it
+/// ([`crate::r_wrapper_builder::CallAttribution::match_arg_statement`]),
+/// as the Rust conversions read it as `None`
+/// (`miniextendr_api::from_r::is_null_or_plain_na`). `&&` stops before
+/// `is.na()` for a value of another type or length, so the test is always
+/// `TRUE` or `FALSE`. An optional vector keeps `is.null()` alone: there a
+/// plain `NA` is a logical vector of length one.
+pub(crate) fn plain_na_check(param: &str) -> String {
+    format!("(is.logical({param}) && length({param}) == 1L && is.na({param}))")
 }
 
 /// Per-function knobs that influence precondition codegen.
@@ -728,7 +756,10 @@ enum RTypeCheck {
     /// `AsNumericVec`: numeric, logical, character, or factor (1 assertion).
     VectorNumericOrText,
     /// Nullable wrapper around an inner check: prepends `is.null(x) ||` to each assertion
-    /// and adjusts messages to mention NULL.
+    /// and adjusts messages to mention NULL. Around a scalar check a plain
+    /// `NA` passes too (`is.null(x) || (is.logical(x) && length(x) == 1L &&
+    /// is.na(x)) ||`, [`plain_na_check`], #2305); around a vector check it
+    /// does not.
     Nullable(Box<RTypeCheck>),
     /// List check: `is.list(x)` (1 assertion).
     /// Used for `HashMap`, `BTreeMap`, `NamedList`, `List`, `ListMut`.
@@ -889,11 +920,15 @@ impl RTypeCheck {
                 "must be numeric, logical, character, or factor",
                 numeric_or_text_check(param),
             )],
-            RTypeCheck::Nullable(inner) => inner
-                .assertions(param)
-                .into_iter()
-                .map(RAssertion::nullable)
-                .collect(),
+            RTypeCheck::Nullable(inner) => {
+                // An optional scalar reads a plain `NA` as `None` (#2305).
+                let plain_na = !inner.is_vector();
+                inner
+                    .assertions(param)
+                    .into_iter()
+                    .map(|a| a.nullable(plain_na))
+                    .collect()
+            }
             RTypeCheck::List => vec![RAssertion::new(
                 param,
                 "must be a list",

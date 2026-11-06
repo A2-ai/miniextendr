@@ -297,18 +297,21 @@ pub fn run(#[miniextendr(match_arg)] mode: Option<Mode>) -> String {
 ```
 
 The R formal defaults to `NULL` instead of the choice vector, the prelude
-skips the check for `NULL`, and the auto-generated `@param` line ends in
-", or NULL for no choice". `NULL` arrives as `None`; any other value is
-matched exactly as for the plain type:
+skips the check for `NULL` and for a plain `NA` (R's untyped missing value, a
+logical `NA` of length one, #2305), and the auto-generated `@param` line ends
+in ", or NULL for no choice". Both arrive as `None`; any other value is
+matched exactly as for the plain type, so `NA_character_` and `c(NA, NA)`
+are refused as `NA`:
 
 ```r
 run <- function(mode = NULL) {
-  if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  if (!is.null(mode) && !(is.logical(mode) && length(mode) == 1L && is.na(mode))) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
   .Call(C_mypkg_run, mode)
 }
 
 run()             # None
 run(NULL)         # None
+run(NA)           # None
 run("Sa")         # Some(Safe)
 run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
@@ -345,13 +348,14 @@ pub fn run(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
 ```r
 run <- function(mode = c("Fast", "Safe", "Debug")) {
   .mx_absent_mode <- missing(mode) || identical(mode, c("Fast", "Safe", "Debug"))
-  if (!.mx_absent_mode && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  if (!.mx_absent_mode && !is.null(mode) && !(is.logical(mode) && length(mode) == 1L && is.na(mode))) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
   .Call(C_mypkg_run, .call = sys.call(), if (.mx_absent_mode) quote(expr=) else mode)
 }
 
 run()                               # Missing::Absent
 run(c("Fast", "Safe", "Debug"))     # Missing::Absent, the formal passed whole
 run(NULL)                           # Missing::Present(None)
+run(NA)                             # Missing::Present(None)
 run("Sa")                           # Missing::Present(Some(Safe))
 run("X")                            # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```

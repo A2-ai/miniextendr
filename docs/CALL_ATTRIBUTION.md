@@ -197,9 +197,10 @@ function and a bad choice or a non-integer argument the bridge
 every precondition guard, and the caller's call to every choice parameter's
 helper:
 `.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
-`match_arg` / `choices` parameter, the same form inside `if (!is.null(kind))`
-for an `Option<T>` choice (`if (!missing(kind) && ...)` when it is wrapped in
-`Missing<..>`, #1551), and
+`match_arg` / `choices` parameter, the same form inside `if (!is.null(kind) &&
+!(is.logical(kind) && length(kind) == 1L && is.na(kind)))` for an `Option<T>`
+choice (`NULL` and a plain `NA` are no choice, #2305; `if (!.mx_absent_kind &&
+...)` when it is wrapped in `Missing<..>`, #1551, #2182), and
 `.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
 `several_ok`, behind `if (is.character(kinds) || is.factor(kinds))` when the
 list sits in an `Either<Vec<T>, R>` (#1612). Default-attribution wrappers emit

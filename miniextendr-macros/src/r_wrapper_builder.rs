@@ -1012,7 +1012,10 @@ impl CallAttribution {
     /// [`Self::match_arg_lines`] binds in front of this statement, which the
     /// `.Call()` argument reads as well (see
     /// [`RArgumentBuilder::with_absent_formals`]); then `!is.null(..)` for `Option<..>`
-    /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>` and
+    /// (#1473), with `!(is.logical(..) && length(..) == 1L && is.na(..))`
+    /// after it, since the Rust decoder reads a plain `NA` as `None` too
+    /// (#2305, [`crate::r_preconditions::plain_na_check`]), or
+    /// `is.character(..) || is.factor(..)` for `Either<T, R>` and
     /// `Either<Vec<T>, R>` (#1612), which leaves `NULL` out too: Rust reads it
     /// as `None` under `Option`, and otherwise converts it to the `R` arm, even
     /// for `several_ok`, whose plain form reads `NULL` as every choice. The
@@ -1071,7 +1074,14 @@ impl CallAttribution {
                 format!("({reads})")
             });
         } else if attrs.optional {
+            // A choice under `Option` is a scalar one (`classify_choice_param`
+            // refuses a bare `Option<Vec<T>>`), so it reads a plain `NA` as
+            // `None` too (#2305).
             guards.push(format!("!is.null({param})"));
+            guards.push(format!(
+                "!{}",
+                crate::r_preconditions::plain_na_check(param)
+            ));
         }
         if guards.is_empty() {
             statement

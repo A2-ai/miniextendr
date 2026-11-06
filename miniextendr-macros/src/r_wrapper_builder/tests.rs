@@ -844,9 +844,12 @@ fn match_arg_statement_per_attribution() {
         wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", None, &scalar),
         "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
     );
+    // An optional choice skips `NULL` and a plain `NA` (#2305), which Rust
+    // reads as `None`.
     assert_eq!(
         wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", None, &optional),
-        "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
+        "if (!is.null(mode) && !(is.logical(mode) && length(mode) == 1L && is.na(mode))) \
+         mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
     );
     assert_eq!(
         wrapper.match_arg_statement("modes", ".__MX_CHOICES__", None, &several),
@@ -861,7 +864,8 @@ fn match_arg_statement_per_attribution() {
     );
     assert_eq!(
         caller.match_arg_statement("mode", "c(\"a\", \"b\")", None, &optional),
-        "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
+        "if (!is.null(mode) && !(is.logical(mode) && length(mode) == 1L && is.na(mode))) \
+         mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
     );
     assert_eq!(
         caller.match_arg_statement("modes", ".__MX_CHOICES__", None, &several),

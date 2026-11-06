@@ -22,11 +22,11 @@
 //! error in R: `'x' must be a single string: marked as bytes, not text`). Outbound
 //! counterparts: `String` / `&str` impls in [`crate::into_r`].
 
+use crate::SEXP;
 use crate::from_r::{
-    SexpError, TryFromSexp, scalar_charsxp, scalar_charsxp_unchecked, try_charsxp_to_str,
-    try_charsxp_to_str_unchecked,
+    SexpError, TryFromSexp, is_null_or_plain_na, is_null_or_plain_na_unchecked, scalar_charsxp,
+    scalar_charsxp_unchecked, try_charsxp_to_str, try_charsxp_to_str_unchecked,
 };
-use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Convert R character vector (STRSXP) to Rust &str.
 ///
@@ -93,13 +93,14 @@ impl TryFromSexp for &'static str {
     }
 }
 
+/// `NULL`, `NA_character_` and a plain `NA` (#2305) read as `None`.
 impl TryFromSexp for Option<&'static str> {
     type Error = SexpError;
     const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
 
@@ -115,7 +116,7 @@ impl TryFromSexp for Option<&'static str> {
     }
 
     unsafe fn __mx_try_from_rooted(root: crate::Root<'_>) -> Result<Self, Self::Error> {
-        if root.get().type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(root.get()) {
             return Ok(None);
         }
         let charsxp = scalar_charsxp(root.get())?;
@@ -131,7 +132,7 @@ impl TryFromSexp for Option<&'static str> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if unsafe { is_null_or_plain_na_unchecked(sexp) } {
             return Ok(None);
         }
 
@@ -225,7 +226,8 @@ impl TryFromSexp for String {
     }
 }
 
-/// NA-aware string conversion: returns `None` for `NA_character_`.
+/// NA-aware string conversion: returns `None` for `NA_character_`, and for
+/// `NULL` and a plain `NA`, R's untyped missing value (#2305).
 ///
 /// Use this when you need to distinguish between NA and empty strings:
 /// ```ignore
@@ -241,8 +243,7 @@ impl TryFromSexp for Option<String> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // NULL -> None
-        if sexp.type_of() == SEXPTYPE::NILSXP {
+        if is_null_or_plain_na(sexp) {
             return Ok(None);
         }
 

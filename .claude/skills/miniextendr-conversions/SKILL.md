@@ -91,9 +91,12 @@ R NA values are type-specific sentinel values:
 - `NA_character_` becomes `""` for `String` / `&str` (lossy). Use
   `Option<String>` / `Option<&str>` to receive it as `None`.
 
-`Option<T>` maps both NA and NULL to `None` for scalar types. Around a type
+`Option<T>` maps both NA and NULL to `None` for scalar types; the NA may be
+the type's own (`NA_integer_` for `Option<i32>`) or a plain `NA`, R's untyped
+logical one, for every optional scalar (#2305). Around a type
 with no NA of its own (`Vec<T>`, maps, sets, `DataFrame`, `Either<L, R>`) only
-NULL is `None`; any other value converts as the inner type, with its error.
+NULL is `None`; any other value, a plain `NA` included, converts as the inner
+type, with its error.
 
 On output, `Option<T>` produces NA (not NULL) for `None` when T is a scalar
 type. `Option<Vec<T>>` produces NULL.

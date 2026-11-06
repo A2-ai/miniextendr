@@ -22,10 +22,11 @@
 //! is what the derive emits, and refusing values a type's inner type
 //! accepts belongs in [`TryFromSexpElement::check_sexp`], not in
 //! `try_from_sexp`. The check runs on the R value before it is read, in the
-//! scalar `try_from_sexp`, on a non-`NULL` input for `Option<T>` (`NULL` is
-//! "not given"), and for `Vec<T>` / `Vec<Option<T>>` where R keeps the
-//! element's class. `#[derive(TryFromSexp)]` takes it as
-//! `#[try_from_sexp(validate = path)]` (#1815).
+//! scalar `try_from_sexp`, on any input but `NULL` and a plain `NA` for
+//! `Option<T>` (both are "not given", #2305), and for `Vec<T>` /
+//! `Vec<Option<T>>` where R keeps the element's class.
+//! `#[derive(TryFromSexp)]` takes it as `#[try_from_sexp(validate = path)]`
+//! (#1815).
 //!
 //! # Where a `Vec`'s check runs: the inner container decides
 //!
@@ -119,9 +120,9 @@
 //! beside them because `List` is not a `TryFromSexpElement`, and no other
 //! crate can make it one (both are `miniextendr-api`'s).
 
+use crate::SEXP;
 use crate::from_r::{ElementCheck, NativeBorrow, SexpError, TryFromSexp, no_element_check};
 use crate::into_r::IntoR;
-use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: marker traits (emitted by the derives, not hand-written)
 
@@ -171,12 +172,12 @@ pub trait TryFromSexpElement: Sized {
     ///
     /// Called with the input of every shape, before its inner conversion: by
     /// the scalar `TryFromSexp` (the derive's calls it), for `Option<Self>`
-    /// on any input but `NULL`, which stays "not given", and for `Vec<Self>`
-    /// and `Vec<Option<Self>>` where R keeps the element's class: once on the
-    /// whole vector for an atomic inner type, on each element (but `NULL`)
-    /// for a list of R objects (`Self::Inner` is `List`, or a newtype over
-    /// it). It sees the value as R holds it, attributes and all, before
-    /// anything is read from it.
+    /// on any input but `NULL` and a plain `NA`, which stay "not given"
+    /// (#2305), and for `Vec<Self>` and `Vec<Option<Self>>` where R keeps
+    /// the element's class: once on the whole vector for an atomic inner
+    /// type, on each element (but `NULL`) for a list of R objects
+    /// (`Self::Inner` is `List`, or a newtype over it). It sees the value as
+    /// R holds it, attributes and all, before anything is read from it.
     ///
     /// Return an [`RError`](crate::condition::RError), or any
     /// [`RConditionData`](crate::condition::RConditionData) type, with `?`
@@ -474,10 +475,12 @@ where
         self.as_ref().is_some_and(T::__mx_has_na)
     }
 
-    // `NULL` is "not given" too, so the check sees only a value.
+    // `NULL` and a plain `NA` (#2305) are "not given" too, so the check sees
+    // only a value. The inner `Option` decides what a plain `NA` reads as:
+    // `None` for a scalar, a refusal for a vector.
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() != SEXPTYPE::NILSXP {
+        if !crate::from_r::is_null_or_plain_na(sexp) {
             T::check_sexp(sexp)?;
         }
         Ok(<T::Inner as OptionInner>::option_try_from_sexp(sexp)?.map(T::from_inner))
@@ -485,7 +488,7 @@ where
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        if sexp.type_of() != SEXPTYPE::NILSXP {
+        if !unsafe { crate::from_r::is_null_or_plain_na_unchecked(sexp) } {
             T::check_sexp(sexp)?;
         }
         Ok(

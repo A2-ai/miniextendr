@@ -11,6 +11,12 @@ fn assertions_for(ty_str: &str, param: &str) -> Vec<RAssertion> {
     r_check_for_type(&ty).unwrap().assertions(param)
 }
 
+/// What an optional scalar's checks pass before their own test (#2305):
+/// `NULL`, then a plain `NA`.
+fn absent(param: &str) -> String {
+    format!("is.null({param}) || {}", plain_na_check(param))
+}
+
 #[test]
 fn scalar_numeric_produces_two_assertions() {
     let asserts = assertions_for("i64", "x");
@@ -255,9 +261,9 @@ fn coerced_numeric_checks_are_preserved() {
     }
 }
 
-/// `Option<T>` takes its scalar's widened check behind `is.null()`;
-/// `Vec<Option<T>>` its vector's, which lets `NA` elements through and, like
-/// `Vec<T>`'s, refuses `NULL` (#2274).
+/// `Option<T>` takes its scalar's widened check behind `is.null()` and the
+/// plain `NA` test (#2305); `Vec<Option<T>>` its vector's, which lets `NA`
+/// elements through and, like `Vec<T>`'s, refuses `NULL` (#2274).
 #[test]
 fn coerced_optional_checks_widen_with_their_element() {
     for (name, scalar) in [
@@ -273,7 +279,7 @@ fn coerced_optional_checks_widen_with_their_element() {
         for (actual, expected) in actual.iter().zip(&expected) {
             assert_eq!(
                 actual.condition,
-                format!("is.null(x) || {}", expected.condition)
+                format!("{} || {}", absent("x"), expected.condition)
             );
         }
     }
@@ -540,12 +546,91 @@ fn nullable_wraps_inner_assertions() {
     );
     assert_eq!(
         asserts[0].condition,
-        "is.null(x) || is.numeric(x) || is.logical(x) || is.raw(x)"
+        format!(
+            "{} || is.numeric(x) || is.logical(x) || is.raw(x)",
+            absent("x")
+        )
     );
     let asserts = assertions_for("Option<i32>", "x");
-    assert_eq!(asserts[0].condition, "is.null(x) || is.integer(x)");
+    assert_eq!(asserts[0].message(), "'x' must be NULL or integer");
+    assert_eq!(
+        asserts[0].condition,
+        "is.null(x) || (is.logical(x) && length(x) == 1L && is.na(x)) || is.integer(x)"
+    );
     assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
-    assert_eq!(asserts[1].condition, "is.null(x) || length(x) == 1L");
+    assert_eq!(
+        asserts[1].condition,
+        format!("{} || length(x) == 1L", absent("x"))
+    );
+}
+
+/// Every optional scalar passes a plain `NA`, R's untyped missing value, as
+/// it passes `NULL` (#2305): the Rust conversion reads either as `None`.
+/// Every other value keeps its check, and the messages keep naming the type.
+#[test]
+fn optional_scalars_pass_a_plain_na() {
+    for ty in [
+        "Option<i32>",
+        "Option<f64>",
+        "Option<f32>",
+        "Option<i64>",
+        "Option<u32>",
+        "Option<usize>",
+        "Option<bool>",
+        "Option<String>",
+        "Option<&str>",
+        "Option<PathBuf>",
+        "Option<u8>",
+        "Option<Rcomplex>",
+        "Option<AsNumeric>",
+        "Option<AsCharacter>",
+        "Nullable<i32>",
+        "Nullable<String>",
+    ] {
+        let scalar = parse_type(ty);
+        let scalar = crate::type_inspect::optional_inner_type(&scalar).unwrap();
+        let plain = r_check_for_type(scalar).unwrap().assertions("x");
+        let optional = assertions_for(ty, "x");
+        assert_eq!(optional.len(), plain.len(), "{ty}");
+        for (optional, plain) in optional.iter().zip(&plain) {
+            assert_eq!(
+                optional.condition,
+                format!("{} || {}", absent("x"), plain.condition),
+                "{ty}"
+            );
+            assert!(
+                optional.message().starts_with("'x' must be NULL or "),
+                "{ty}: {}",
+                optional.message()
+            );
+        }
+    }
+}
+
+/// An optional vector keeps `is.null()` alone: a plain `NA` there is a
+/// logical vector of length one, which the vector's own check decides.
+#[test]
+fn optional_vectors_do_not_pass_a_plain_na() {
+    for (ty, condition) in [
+        ("Option<Vec<i32>>", "is.null(x) || is.integer(x)"),
+        ("Option<Vec<f64>>", "is.null(x) || is.double(x)"),
+        ("Option<Vec<String>>", "is.null(x) || is.character(x)"),
+        ("Option<Vec<bool>>", "is.null(x) || is.logical(x)"),
+        ("Nullable<Vec<i32>>", "is.null(x) || is.integer(x)"),
+        ("Option<&[f64]>", "is.null(x) || is.double(x)"),
+        ("Option<List>", "is.null(x) || is.list(x)"),
+        (
+            "Option<AsNumericVec>",
+            "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)",
+        ),
+    ] {
+        let asserts = assertions_for(ty, "x");
+        assert_eq!(asserts[0].condition, condition, "{ty}");
+        assert!(
+            asserts.iter().all(|a| !a.condition.contains("is.na(")),
+            "{ty}"
+        );
+    }
 }
 
 #[test]
@@ -553,7 +638,10 @@ fn nullable_character() {
     let asserts = assertions_for("Option<String>", "s");
     assert_eq!(asserts.len(), 2);
     assert_eq!(asserts[0].message(), "'s' must be NULL or character");
-    assert_eq!(asserts[0].condition, "is.null(s) || is.character(s)");
+    assert_eq!(
+        asserts[0].condition,
+        format!("{} || is.character(s)", absent("s"))
+    );
     assert_eq!(asserts[1].message(), "'s' must be NULL or have length 1");
 }
 
@@ -590,12 +678,19 @@ fn optional_as_numeric_is_nullable() {
     );
     assert_eq!(
         asserts[0].condition,
-        "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)"
+        format!(
+            "{} || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)",
+            absent("x")
+        )
     );
     assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
     let asserts = assertions_for("Option<AsNumericVec>", "x");
     assert_eq!(asserts.len(), 1);
-    assert!(asserts[0].condition.starts_with("is.null(x) || "));
+    assert!(
+        asserts[0]
+            .condition
+            .starts_with("is.null(x) || is.numeric(x)")
+    );
 }
 
 #[test]
@@ -619,7 +714,10 @@ fn optional_as_character_is_nullable() {
     let asserts = assertions_for("Option<AsCharacter>", "x");
     assert_eq!(asserts.len(), 2);
     assert_eq!(asserts[0].message(), "'x' must be NULL or atomic");
-    assert_eq!(asserts[0].condition, "is.null(x) || is.atomic(x)");
+    assert_eq!(
+        asserts[0].condition,
+        format!("{} || is.atomic(x)", absent("x"))
+    );
     assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
     let asserts = assertions_for("Option<AsCharacterVec>", "x");
     assert_eq!(asserts.len(), 1);
@@ -1159,8 +1257,8 @@ fn not_inherits_precedes_the_type_checks_and_keeps_their_messages() {
         vec![
             "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
             "if (!isTRUE(is.null(tau) || !inherits(tau, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` must be a plain number\")",
-            "if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
-            "if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error(\"tau\", \"must be NULL or have length 1\")",
+            "if (!isTRUE(is.null(tau) || (is.logical(tau) && length(tau) == 1L && is.na(tau)) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
+            "if (!isTRUE(is.null(tau) || (is.logical(tau) && length(tau) == 1L && is.na(tau)) || length(tau) == 1L)) .miniextendr_arg_error(\"tau\", \"must be NULL or have length 1\")",
         ]
     );
 }
@@ -1942,7 +2040,10 @@ fn nullable_reads_as_option() {
     let asserts = assertions_for("Nullable<i32>", "x");
     assert_eq!(asserts.len(), 2);
     assert_eq!(asserts[0].message(), "'x' must be NULL or integer");
-    assert_eq!(asserts[0].condition, "is.null(x) || is.integer(x)");
+    assert_eq!(
+        asserts[0].condition,
+        format!("{} || is.integer(x)", absent("x"))
+    );
     assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
     let exp = |ty: &str, coerced: bool| conversion_expectation(&parse_type(ty), coerced);
     assert_eq!(

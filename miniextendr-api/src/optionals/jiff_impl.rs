@@ -203,14 +203,15 @@ impl IntoR for Zoned {
 
 // region: Option<Zoned>
 
+/// `NULL`, an `NA` time and a plain `NA` (#2305) read as `None`.
 impl TryFromSexp for Option<Zoned> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual == SEXPTYPE::NILSXP {
+        if crate::from_r::is_null_or_plain_na(sexp) {
             return Ok(None);
         }
+        let actual = sexp.type_of();
         if actual != SEXPTYPE::REALSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::REALSXP,

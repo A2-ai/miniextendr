@@ -69,6 +69,9 @@ Use `Option<T>` to handle NA safely on both input and output.
 
 Note: `i32` rejects `NA_integer_` (= `i32::MIN`) on input; you must use `Option<i32>` to receive integer NA.
 Note: `bool` rejects logical NA on input; use `Option<bool>` to receive logical NA.
+Note: a plain `NA` (R's untyped missing value, a logical `NA` of length one)
+reads as `None` for every row, `Option<i32>` and `Option<String>` included, as
+`NULL` does (#2305). An optional vector (`Option<Vec<i32>>`) reads it as a value.
 
 **This table covers owned scalars only.** A reference return
 (`Option<&i32>`) or a container return (`Option<Vec<T>>`,
