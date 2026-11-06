@@ -2254,8 +2254,10 @@ fn test_tpie_self_return_rewrapped() {
 /// and their registration, the `Class$Trait` namespace, the S4 signature, the
 /// S7 class object and a `Self` return carry the class placeholder. It is the
 /// quiet one where any string is a class (S3, Env, vctrs), the loud one where
-/// the class object must exist (R6, S7, S4). The C symbols, the S4 flat
-/// static names, the `@rdname` page and the header keep the Rust name.
+/// the class object must exist (R6, S7, S4). The names built from the class
+/// (S4 flat statics, the S7 local namespace) carry the quiet one (#2285, see
+/// `trait_wrappers_build_names_from_the_class_name`). The C symbols, the
+/// `@rdname` page and the header keep the Rust name.
 #[test]
 fn trait_wrappers_name_the_class_through_the_registry() {
     let mut dup = make_test_method("dup", true);
@@ -2318,19 +2320,110 @@ fn trait_wrappers_name_the_class_through_the_registry() {
         &[
             &format!("methods::setMethod(\"s4_trait_Bar_dup\", \"{LOUD}\", function(x, ...) {{"),
             &format!("methods::new(\"{LOUD}\", ptr = .val)"),
-            "Foo_Bar_make <- function() {",
+            &format!("{QUIET}_Bar_make <- function() {{"),
         ],
     );
     has(
         &emit(ClassSystem::S7),
         &[
-            &format!(".s7_class_Foo <- {LOUD}"),
+            &format!(".s7_class_{QUIET} <- {LOUD}"),
             &format!("{LOUD}(.ptr = .val)"),
-            &format!("attr({LOUD}, \"Bar\") <- .Foo__Bar"),
+            &format!("attr({LOUD}, \"Bar\") <- .{QUIET}__Bar"),
             &format!("#' @name attr({LOUD}, \"Bar\")$make"),
-            ".Foo__Bar$make <- function() {",
+            &format!(".{QUIET}__Bar$make <- function() {{"),
         ],
     );
+}
+
+/// The R names a trait impl builds from its class take the class's R name
+/// through the quiet placeholder, which the wrapper writer resolves through
+/// `MX_CLASS_NAMES` (the Rust name on a miss), so a `class = "..."` rename
+/// gives `Point_Bar_make()` and `Point_dup()` (#2285): the S4 flat statics
+/// and consts (definition, `@name`, the intro line), the S7 shortcuts
+/// (definition, `@name`, the advisory and `.mx_self` prose) and the S7 local
+/// variables (`.Class__Bar`, `.s7_class_Class`) at their definition and every
+/// use. No Rust-named member name is left; the `@rdname` page and the header
+/// keep the Rust name (#2144).
+#[test]
+fn trait_wrappers_build_names_from_the_class_name() {
+    const QUIET: &str = ".__MX_CLASS_REF_OR_BARE_Foo__";
+    let dup = make_test_method("dup", true);
+    let make = make_test_method("make", false);
+    let mut index = make_test_method("index", false);
+    index.r_name = Some("[[".to_string());
+    let consts = [TraitConst {
+        ident: format_ident!("MAX"),
+        ty: syn::parse_quote!(i32),
+    }];
+    let emit = |cs| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &[dup.clone(), make.clone(), index.clone()],
+            &consts,
+            opts(cs, false, false, false),
+        )
+        .unwrap()
+    };
+    let has = |r: &str, expected: &[String]| {
+        for line in expected {
+            assert!(r.contains(line.as_str()), "missing {line:?} in:\n{r}");
+        }
+    };
+    // Outside the class placeholders, the Rust name is left only in the
+    // header comments, the C symbols and the `@rdname` page.
+    let rust_named = |r: &str| {
+        let rest = r
+            .replace(QUIET, "<class>")
+            .replace(".__MX_CLASS_REF_Foo__", "<class>");
+        for line in rest.lines() {
+            if line.starts_with("# ") || line.contains(".Call(") || line == "#' @rdname Foo" {
+                continue;
+            }
+            // `Foo` as a name, not inside a word (`Footgun`).
+            let named = line
+                .match_indices("Foo")
+                .any(|(at, _)| !line[at + 3..].starts_with(char::is_alphanumeric));
+            assert!(!named, "Rust name in {line:?} of:\n{r}");
+        }
+    };
+
+    let s4 = emit(ClassSystem::S4);
+    has(
+        &s4,
+        &[
+            format!("#' Static trait method Bar::make() for {QUIET}"),
+            format!("#' @name {QUIET}_Bar_make"),
+            "#' @rdname Foo".to_string(),
+            format!("{QUIET}_Bar_make <- function() {{"),
+            // An operator member is quoted as one symbol, placeholder and all.
+            format!("`{QUIET}_Bar_[[` <- function() {{"),
+            format!("#' @name {QUIET}_Bar_MAX"),
+            format!("{QUIET}_Bar_MAX <- function() {{"),
+            "# S4 trait methods for Foo implementing Bar".to_string(),
+        ],
+    );
+    assert!(!s4.contains("Foo_Bar_"), "got:\n{s4}");
+    rust_named(&s4);
+
+    let s7 = emit(ClassSystem::S7);
+    has(
+        &s7,
+        &[
+            format!(".s7_class_{QUIET} <- .__MX_CLASS_REF_Foo__"),
+            format!("S7::method(s7_trait_Bar_dup, .s7_class_{QUIET}) <- function(x, ...) {{"),
+            format!("#' Fast-path shortcut for the `dup` S7 method on `{QUIET}`."),
+            format!("#' @param .mx_self A `{QUIET}` object."),
+            format!("#' @name {QUIET}_dup"),
+            format!("{QUIET}_dup <- function(.mx_self, ...) {{"),
+            format!(".{QUIET}__Bar <- new.env(parent = emptyenv())"),
+            format!(".{QUIET}__Bar$make <- function() {{"),
+            format!(".{QUIET}__Bar$MAX <- function() {{"),
+            format!("attr(.__MX_CLASS_REF_Foo__, \"Bar\") <- .{QUIET}__Bar"),
+            "# S7 trait methods for Foo implementing Bar".to_string(),
+        ],
+    );
+    rust_named(&s7);
 }
 
 /// An explicit `WrapAs*<Self>` in a trait method names the class through the
