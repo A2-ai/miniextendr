@@ -175,3 +175,26 @@ test_that("expr_env_lookup resolves base-namespace bindings", {
   expect_false(expr_env_lookup("pi")) # resolves, but not a function
   expect_error(expr_env_lookup("no_such_symbol_xyz"))
 })
+
+test_that("RSymbol::new interns the symbol R's as.name() gives", {
+  expect_identical(expr_symbol("x"), quote(x))
+  expect_true(is.symbol(expr_symbol("x")))
+  # Interned: the same name is the same object.
+  expect_identical(expr_symbol("x"), expr_symbol("x"))
+  # A name that isn't syntactic, and one that isn't ASCII.
+  expect_identical(expr_symbol("my var"), as.name("my var"))
+  expect_identical(expr_symbol("café"), as.name("café"))
+  # R refuses an empty name with its own error.
+  expect_error(expr_symbol(""), "zero-length variable name")
+})
+
+test_that("an RSymbol call argument is a variable reference", {
+  env <- new.env()
+  assign("answer", 42L, envir = env)
+  assign("my var", "spaced", envir = env)
+  expect_identical(expr_symbol_value(env, "answer"), 42L)
+  expect_identical(expr_symbol_value(env, "my var"), "spaced")
+  # Looked up from `env` outward, as R evaluates a symbol.
+  expect_identical(expr_symbol_value(env, "pi"), pi)
+  expect_error(expr_symbol_value(env, "no_such_variable_xyz"), "not found")
+})

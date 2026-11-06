@@ -171,6 +171,7 @@ mod blas_lapack_tests;
 #[cfg(feature = "borsh")]
 mod borsh_adapter_tests;
 mod box_slice_tests;
+mod built_list_tests;
 #[cfg(feature = "bytes")]
 mod bytes_adapter_tests;
 mod call_attribution_demo;
@@ -230,6 +231,7 @@ mod dots_tests;
 mod either_adapter_tests;
 #[cfg(feature = "either")]
 mod either_borrow_tests;
+mod element_trait_tests;
 mod encoding_tests;
 mod env_method_lookup_tests;
 mod error_in_r_tests;
@@ -410,6 +412,7 @@ mod trait_class_env_tests;
 mod trait_marker_tests;
 mod trait_method_options_tests;
 mod trait_r6_collision;
+mod type_mismatch_tests;
 mod typed_dataframe_tests;
 mod unified_dataframe_tests;
 mod unwind_protect_tests;
@@ -419,6 +422,7 @@ mod url_adapter_tests;
 mod uuid_adapter_tests;
 mod vec_externalptr_tests;
 mod visibility_tests;
+mod worker_pump_tests;
 mod zero_copy_tests;
 #[cfg(feature = "zstd")]
 mod zstd_adapter_tests;

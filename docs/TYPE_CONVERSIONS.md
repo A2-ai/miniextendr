@@ -842,6 +842,60 @@ pub fn get_option(config: NamedList) -> Option<String> {
 
 `NamedList` implements `TryFromSexp`, so it can be used directly as a function parameter. `NA` and empty-string names are excluded from the index; a repeated name resolves to its first occurrence, as `x[["name"]]` does in R.
 
+### Returning name/value pairs (`AsNamedList`, `AsNamedVector`)
+
+To return pairs as a named R object, wrap a `Vec<(K, V)>`, an array
+`[(K, V); N]` or a slice `&[(K, V)]` (`K: AsRef<str>`):
+
+- `AsNamedList(pairs)` gives a named list; `V` is any `IntoR` type, one type
+  for all the values.
+- `AsNamedVector(pairs)` gives a named atomic vector; `V` is `i32`, `f64`,
+  `u8`, `bool`, `String` or an `Option` of `i32`, `f64`, `bool` or `String`
+  (`None` is `NA`).
+
+Both keep the pairs' order and every name, repeated ones included, as R's
+`c()` and `list()` do:
+
+```rust
+use miniextendr_api::{AsNamedList, AsNamedVector, miniextendr};
+
+#[miniextendr]
+pub fn column_widths() -> AsNamedVector<Vec<(&'static str, i32)>> {
+    AsNamedVector(vec![("id", 8), ("name", 24), ("id", 4)])
+}
+// column_widths()  #> c(id = 8L, name = 24L, id = 4L)
+
+#[miniextendr]
+pub fn readings() -> AsNamedVector<[(&'static str, Option<f64>); 2]> {
+    AsNamedVector([("before", Some(1.5)), ("after", None)])
+}
+// readings()  #> c(before = 1.5, after = NA)
+
+#[miniextendr]
+pub fn bands() -> AsNamedList<Vec<(String, Vec<f64>)>> {
+    AsNamedList(vec![
+        ("low".to_string(), vec![0.0, 0.5]),
+        ("high".to_string(), vec![0.5, 1.0, 2.0]),
+    ])
+}
+// bands()  #> list(low = c(0, 0.5), high = c(0.5, 1, 2))
+```
+
+`pairs.wrap_named_list()` / `pairs.wrap_named_vector()` (the
+`AsNamedListExt` / `AsNamedVectorExt` traits, in the prelude) do the same in
+method position, at the end of an iterator chain:
+`counts.into_iter().collect::<Vec<_>>().wrap_named_vector()`.
+
+They differ from `NamedVector<M>`, which converts a `HashMap<String, V>` or
+`BTreeMap<String, V>` to and from a named atomic vector: a map has one value
+per name, in its own order (sorted for a `BTreeMap`, unspecified for a
+`HashMap`), and reading a vector with a repeated name into one is an error.
+`AsNamedList` and `AsNamedVector` only return values; they have no
+`TryFromSexp`. Give them typed values, not raw `SEXP`s: each value is converted
+and rooted as the list is built, and a `SEXP` built earlier is unrooted
+until then. For values of several types, or a list built up across other
+allocations, use `NamedListBuilder`.
+
 ---
 
 ## Mutable Input

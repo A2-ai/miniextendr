@@ -1,11 +1,13 @@
-//! Owned list construction: growth, both finishes, and GC/drop-order invariants.
+//! Owned list construction: growth, both finishes (the rooted `BuiltList` and
+//! `BuiltDataFrame` handles, and the data frame's editing chain), and
+//! GC/drop-order invariants.
 
 mod r_test_utils;
 
-use miniextendr_api::expression::r_eval_str_global;
+use miniextendr_api::expression::{RCall, r_eval_str_global};
 use miniextendr_api::{
-    DataFrame, DataFrameError, IntoList, IntoR, NamedListBuilder, OwnedProtect, Preserved, SEXP,
-    SEXPTYPE, SexpExt, TryFromSexp, sys,
+    BuiltDataFrame, BuiltList, DataFrame, DataFrameError, IntoList, IntoR, NamedListBuilder,
+    OwnedProtect, Preserved, SEXP, SEXPTYPE, SexpExt, TryFromSexp, sys,
 };
 
 fn with_gctorture(f: impl FnOnce()) {
@@ -103,6 +105,80 @@ fn list_finish_stays_rooted_while_attributes_are_set() {
 }
 
 #[test]
+fn built_list_reads_through_its_list_view_and_is_handed_to_r() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            let mut parts = NamedListBuilder::new();
+            parts.push("id", vec![1, 2, 3]);
+            parts.push("label", "three");
+            parts.push("missing", Option::<f64>::None);
+            let built: BuiltList = parts.into_list();
+            allocation_burst();
+            assert_eq!(format!("{built:?}"), "BuiltList { len: 3 }");
+
+            // Reads go through `Deref<Target = List>`.
+            assert_eq!(built.len(), 3);
+            assert!(!built.is_empty());
+            assert_eq!(built.get_named::<Vec<i32>>("id"), Some(vec![1, 2, 3]));
+            assert_eq!(built.get_named::<String>("label").as_deref(), Some("three"));
+            assert_eq!(built.get_named::<Option<f64>>("missing"), Some(None));
+            assert_eq!(built.get_named::<i32>("absent"), None);
+            assert_eq!(built.get_index::<Vec<i32>>(0), Some(vec![1, 2, 3]));
+            assert_eq!(built.get_index::<Vec<i32>>(3), None);
+
+            // Handed to R in the middle of a chain: the handle keeps the list
+            // alive while R evaluates a call on it, and while the class and the
+            // attribute allocate afterwards.
+            let built = built.set_class(&["three_parts", "list"]);
+            let names: Vec<String> =
+                unsafe { RCall::new("names").arg(built.as_sexp()).eval_base_as() }.unwrap();
+            assert_eq!(names, ["id", "label", "missing"]);
+            let inherits: bool = unsafe {
+                RCall::new("inherits")
+                    .arg(built.as_sexp())
+                    .arg_value("three_parts")
+                    .eval_base_as()
+            }
+            .unwrap();
+            assert!(inherits);
+            let built = built.set_attr("source", "rust");
+            allocation_burst();
+
+            // `IntoR` releases the root and hands the list over.
+            let value = Preserved::new(built);
+            assert_r_identical(
+                value.as_sexp(),
+                "structure(list(id = 1:3, label = 'three', missing = NA_real_), \
+                 class = c('three_parts', 'list'), source = 'rust')",
+            );
+        });
+    });
+}
+
+#[test]
+fn empty_built_list_keeps_empty_names_and_takes_attributes() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            let built: BuiltList = NamedListBuilder::with_capacity(5).into_list();
+            allocation_burst();
+            assert_eq!(format!("{built:?}"), "BuiltList { len: 0 }");
+            assert!(built.is_empty());
+            assert_eq!(built.get_index::<i32>(0), None);
+            assert_eq!(built.get_named::<i32>(""), None);
+            let names = built.names().expect("an empty finish has names");
+            assert_eq!(names.type_of(), SEXPTYPE::STRSXP);
+            assert_eq!(names.xlength(), 0);
+
+            let value = Preserved::new(built.set_class(&["empty_result"]));
+            assert_r_identical(
+                value.as_sexp(),
+                "structure(setNames(list(), character()), class = 'empty_result')",
+            );
+        });
+    });
+}
+
+#[test]
 fn data_frame_finish_stays_rooted_and_has_compact_row_names() {
     r_test_utils::with_r_thread(|| {
         with_gctorture(|| {
@@ -119,6 +195,122 @@ fn data_frame_finish_stays_rooted_and_has_compact_row_names() {
                 "data.frame(id = c(1L, 2L, 3L), value = c(0.5, 1.5, 2.5), \
                  label = c('a', 'b', 'c'))",
             );
+        });
+    });
+}
+
+#[test]
+fn built_data_frame_editing_chain_is_rooted_at_every_link() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            let mut columns = NamedListBuilder::new();
+            columns.push("x_id", vec![1, 2, 3]);
+            columns.push("x_value", vec![0.5, 1.5, 2.5]);
+            columns.push("x_label", vec!["a", "b", "c"]);
+            columns.push("note", vec!["n1", "n2", "n3"]);
+            let frame: BuiltDataFrame = columns.into_data_frame().unwrap();
+            allocation_burst();
+            assert_eq!(format!("{frame:?}"), "BuiltDataFrame { nrow: 3, ncol: 4 }");
+
+            // The added columns are the caller's to keep reachable.
+            let flag = Preserved::new(vec![true, false, true]);
+            let row = Preserved::new(vec!["r1", "r2", "r3"]);
+            // Each link allocates (new lists, names, CHARSXPs) while only the
+            // previous link's handle roots its input.
+            let edited: BuiltDataFrame = frame
+                .strip_prefix("x_")
+                .rename("value", "estimate")
+                .drop("label")
+                .with_column("flag", flag.as_sexp())
+                .prepend_column("row", row.as_sexp())
+                .select(&["row", "id", "estimate", "flag"]);
+            allocation_burst();
+            assert_eq!((edited.nrow(), edited.ncol()), (3, 4));
+            assert_eq!(edited.names().unwrap(), ["row", "id", "estimate", "flag"]);
+            // Reads go through `Deref<Target = DataFrame>`.
+            assert_eq!(edited.column::<Vec<i32>>("id"), Some(vec![1, 2, 3]));
+            assert_eq!(edited.column::<Vec<f64>>("value"), None);
+            assert!(!edited.contains_column("note"));
+
+            let rows: BuiltDataFrame = edited.select_rows(&[2, 0]);
+            allocation_burst();
+            assert_r_identical(
+                edited.as_sexp(),
+                "data.frame(row = c('r1', 'r2', 'r3'), id = 1:3, \
+                 estimate = c(0.5, 1.5, 2.5), flag = c(TRUE, FALSE, TRUE))",
+            );
+            assert_r_identical(
+                rows.as_sexp(),
+                "data.frame(row = c('r3', 'r1'), id = c(3L, 1L), \
+                 estimate = c(2.5, 0.5), flag = c(TRUE, TRUE))",
+            );
+            drop(edited);
+            allocation_burst();
+            // The row subset owns its own root.
+            assert_eq!(rows.column::<Vec<String>>("row").unwrap(), ["r3", "r1"]);
+        });
+    });
+}
+
+#[test]
+fn built_data_frame_no_op_and_empty_edits() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            let mut columns = NamedListBuilder::new();
+            columns.push("id", vec![1, 2]);
+            columns.push("label", vec!["a", "b"]);
+            let frame = columns.into_data_frame().unwrap();
+            let original = frame.as_sexp();
+
+            // Dropping or renaming a column that isn't there keeps the frame.
+            let same = frame.drop("absent").rename("absent", "other");
+            assert_eq!(same.as_sexp(), original);
+            assert_eq!(same.names().unwrap(), ["id", "label"]);
+
+            // Replacing a column writes into the same frame.
+            let replacement = Preserved::new(vec![10, 20]);
+            let replaced = same.with_column("id", replacement.as_sexp());
+            assert_eq!(replaced.as_sexp(), original);
+            allocation_burst();
+            assert_eq!(replaced.column::<Vec<i32>>("id"), Some(vec![10, 20]));
+
+            // No rows: every column keeps its type.
+            let no_rows = replaced.select_rows(&[]);
+            allocation_burst();
+            assert_eq!((no_rows.nrow(), no_rows.ncol()), (0, 2));
+            assert_r_identical(
+                no_rows.as_sexp(),
+                "data.frame(id = integer(), label = character())",
+            );
+
+            // No columns: unknown names are skipped, the rows stay.
+            let no_columns = replaced.select(&["absent"]);
+            allocation_burst();
+            assert_eq!((no_columns.nrow(), no_columns.ncol()), (2, 0));
+            assert_r_identical(
+                no_columns.as_sexp(),
+                "data.frame(id = 1:2)[, character(0), drop = FALSE]",
+            );
+        });
+    });
+}
+
+#[test]
+fn adopted_frames_are_rooted_by_their_handle() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            // A frame R made, rooted only by the handle once adopted.
+            let adopted = unsafe {
+                BuiltDataFrame::adopt_sexp(
+                    r_eval_str_global("data.frame(a = 1:2, b = c('x', 'y'))").unwrap(),
+                )
+            };
+            allocation_burst();
+            // Two handles over one frame each hold their own root.
+            let second = unsafe { BuiltDataFrame::adopt(*adopted) };
+            drop(adopted);
+            allocation_burst();
+            assert_r_identical(second.as_sexp(), "data.frame(a = 1:2, b = c('x', 'y'))");
         });
     });
 }

@@ -1904,6 +1904,47 @@ pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
     out
 }
 
+/// Exercise a classed `BuiltList` that R reads (`names()`) while Rust is
+/// still building it, then sets an attribute from what R read.
+///
+/// No arguments, so the no-arg GC sweep exercises the path.
+#[miniextendr(noexport)]
+pub fn gc_stress_built_list()
+-> Result<miniextendr_api::BuiltList, miniextendr_api::expression::REvalError> {
+    crate::built_list_tests::built_list_summary((1..=64).map(f64::from).collect())
+}
+
+/// Exercise `WorkerPump` with a pump that collects every progress message
+/// into a growing R list on R's main thread, so the list is held across the
+/// allocations of later ticks.
+///
+/// No arguments, so the no-arg GC sweep exercises the path.
+#[miniextendr(noexport)]
+pub fn gc_stress_worker_pump() -> miniextendr_api::NamedListBuilder {
+    use miniextendr_api::NamedListBuilder;
+    use miniextendr_api::pump::WorkerPump;
+
+    let mut log = NamedListBuilder::new();
+    WorkerPump::<i32>::new()
+        .channel_capacity(2)
+        .run(
+            |tx| {
+                for i in 0..32 {
+                    if tx.send(i).is_err() {
+                        break;
+                    }
+                }
+                Ok(())
+            },
+            |i| {
+                log.push(format!("tick{i}"), vec![i; 8]);
+                let _ = vec!["allocation"; 16].into_sexp();
+            },
+        )
+        .expect("the worker sends every tick");
+    log
+}
+
 /// Exercise named lists of data frames under GC pressure.
 ///
 /// Holds both serde-built frames in the preserved list across allocations.
