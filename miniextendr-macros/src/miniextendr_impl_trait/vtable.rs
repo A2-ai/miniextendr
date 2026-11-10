@@ -578,13 +578,7 @@ fn generate_concrete_vtable_shims(
                 };
             }
         } else {
-            crate::trait_self_ref::receiver_borrow(
-                &cell,
-                &guard,
-                &self_ref,
-                method.is_mut,
-                crate::trait_self_ref::ReceiverStorage::Erased,
-            )
+            crate::trait_self_ref::receiver_borrow(&cell, &guard, &self_ref, method.is_mut)
         };
 
         // Generate result conversion
@@ -1622,7 +1616,6 @@ pub(super) fn generate_trait_method_c_wrapper(
                 &guard,
                 &self_ref,
                 method.is_mut,
-                crate::trait_self_ref::ReceiverStorage::Ordinary,
             ));
             let self_setup = (!self_ref_params.is_empty()).then(|| {
                 let address = crate::trait_self_ref::cell_address(&cell);
