@@ -6,7 +6,7 @@ test_that("field helpers are emitted only for classes with field syntax", {
     "FallbackS3", "FallbackList", "FallbackS4", "FallbackEnv",
     "ComputedResult",
     "ReadOnlyS3", "FrozenS3", "FrozenS4", "FrozenEnv",
-    "NullS3", "CacheEnv", "CacheS3"
+    "NullS3"
   )
   # The read-only form (`r_data_accessors = "read_only"`) writes no
   # `.rdata_set_<Type>`: its `$<-` / `[[<-` refuse every field, and its setter
