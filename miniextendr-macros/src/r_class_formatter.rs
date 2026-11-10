@@ -167,10 +167,18 @@ pub(crate) fn class_ref_for(system: ClassSystem, name: &str) -> String {
     }
     match system {
         ClassSystem::R6 | ClassSystem::S7 | ClassSystem::S4 => class_ref_or_verbatim(name),
-        ClassSystem::S3 | ClassSystem::Env | ClassSystem::Vctrs => {
-            format!(".__MX_CLASS_REF_OR_BARE_{name}__")
-        }
+        ClassSystem::S3 | ClassSystem::Env | ClassSystem::Vctrs => quiet_class_ref(name),
     }
+}
+
+/// `.__MX_CLASS_REF_OR_BARE_<name>__`: the R class name the impl block of
+/// the Rust type `name` registers, or `name` itself, quietly, when none does
+/// (#2265). [`class_ref_for`]'s form for a class any string can be, and the
+/// class part of a generated R name another expansion builds from the class
+/// (`<Class>_<Trait>_<member>`, `<Class>_<method>`, #2285). `name` must be a
+/// bare identifier.
+pub(crate) fn quiet_class_ref(name: &str) -> String {
+    format!(".__MX_CLASS_REF_OR_BARE_{name}__")
 }
 
 pub(crate) use crate::match_arg_keys::{
