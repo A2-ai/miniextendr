@@ -8,6 +8,8 @@ include Makevars
 # - bcrypt: Cryptography
 # - advapi32: Security functions
 # - secur32: Security Support Provider Interface (GetUserNameExW for whoami crate)
+# - synchronization: WaitOnAddress / WakeByAddress* (Rust std >= 1.100 imports them
+#   through libsynchronization.a; earlier releases carried the stubs in the staticlib)
 # Use the full path to the staticlib so the MinGW linker cannot pick a .dll.a import lib
 #
 # Note: when rtools is detected via `R CMD config CC`, configure.ac writes a
@@ -17,7 +19,7 @@ include Makevars
 # *-pc-windows-gnu triple when unset, so cargo does not build for MSVC.
 # BLAS_LAPACK_PKG_LIBS (from Makevars): R's BLAS/LAPACK when the `blas-lapack`
 # feature is on, empty otherwise.
-PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a $(BLAS_LAPACK_PKG_LIBS) -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
+PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a $(BLAS_LAPACK_PKG_LIBS) -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32 -lsynchronization
 
 # rustc's windows-gnu target asks the linker for -lgcc_eh and -lgcc_s whenever it
 # links an artifact whose Rust dependencies are all static, build scripts and

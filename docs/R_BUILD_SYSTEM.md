@@ -237,7 +237,7 @@ gcc -shared -o miniextendr.dll \
     stub.o \
     /path/to/rust-target/release/librpkg.a \      # ← our PKG_LIBS
     -lws2_32 -lntdll -luserenv -lbcrypt \        # ← Windows system libs
-    -ladvapi32 -lsecur32 \
+    -ladvapi32 -lsecur32 -lsynchronization \
     $(SHLIB_LIBADD) $(SAN_LIBS) -lR $(LIBINTL)
 ```
 
