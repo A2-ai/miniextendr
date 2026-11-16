@@ -1224,8 +1224,14 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.10
         continue-on-error: true
 
+      # Off on Windows: sccache 0.17.0 to 0.19.0 expands cargo's rustc argfile
+      # and spawns rustc with the whole command line (mozilla/sccache#2397).
+      # Cargo 1.100's build-dir layout passes one -L per dependency, so under
+      # R CMD check's deep path datafusion-physical-plan exceeds Windows'
+      # 32767-character limit (os error 206). Fixed by mozilla/sccache#3026,
+      # not yet released. Plain cargo falls back to an argfile itself.
       - name: Set RUSTC_WRAPPER if sccache available
-        if: steps.sccache.outcome == 'success'
+        if: false && steps.sccache.outcome == 'success'
         run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Cache Cargo
