@@ -50,14 +50,16 @@ impl_map_try_from_sexp!(
     ///
     /// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
     /// names map to key `""` and may silently overwrite each other).
-    HashMap, HashMap::with_capacity
+    HashMap,
+    HashMap::with_capacity
 );
 impl_map_try_from_sexp!(
     /// Convert R named list (VECSXP) to BTreeMap<String, V>.
     ///
     /// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
     /// names map to key `""` and may silently overwrite each other).
-    BTreeMap, |_| BTreeMap::new()
+    BTreeMap,
+    |_| BTreeMap::new()
 );
 
 /// Helper to convert R named list to a map type.

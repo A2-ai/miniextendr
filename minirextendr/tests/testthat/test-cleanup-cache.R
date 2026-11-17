@@ -58,8 +58,10 @@ test_that("real preclean and clean installs reuse the opted-in Cargo cache", {
   }
   install()
   target <- file.path(pkg, "rust-target")
-  artifact <- list.files(file.path(target, "debug/deps"),
-                         pattern = "^liblinkme-.*\\.rlib$", full.names = TRUE)
+  # Searched below the profile directory: cargo keeps the rlib in `deps/`, or
+  # since 1.100 in `build/linkme/<hash>/out/`.
+  artifact <- list.files(file.path(target, "debug"), pattern = "^liblinkme-.*\\.rlib$",
+                         recursive = TRUE, full.names = TRUE)
   expect_length(artifact, 1L)
   before <- file.info(artifact)$mtime
   writeLines("cache survives", file.path(target, "sentinel"))
