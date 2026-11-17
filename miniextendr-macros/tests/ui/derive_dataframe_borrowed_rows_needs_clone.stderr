@@ -20,8 +20,6 @@ note: required for `Row` to implement `miniextendr_api::dataframe::DataFrameRowB
    |          ------------ type parameter would need to implement `miniextendr_api::dataframe::DataFrameRowBorrow`
 20 | struct Row {
    |        ^^^
-   = help: consider manually implementing `miniextendr_api::dataframe::DataFrameRowBorrow` to avoid undesired bounds caused by "imperfect derives"
-   = note: to learn more, visit <https://github.com/rust-lang/rust/issues/26925>
    = note: required for `&[Row]` to implement `IntoDataFrame`
 help: consider annotating `Inner` with `#[derive(Clone)]`
    |
@@ -73,8 +71,6 @@ note: required for `Event` to implement `miniextendr_api::dataframe::DataFrameRo
 26 | #[dataframe(tag = "kind")]
 27 | enum Event {
    |      ^^^^^
-   = help: consider manually implementing `miniextendr_api::dataframe::DataFrameRowBorrow` to avoid undesired bounds caused by "imperfect derives"
-   = note: to learn more, visit <https://github.com/rust-lang/rust/issues/26925>
    = note: required for `&Vec<Event>` to implement `IntoDataFrame`
 help: consider annotating `Inner` with `#[derive(Clone)]`
    |

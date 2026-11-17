@@ -284,7 +284,10 @@ console_input_child <- function(call, input) {
   code <- sprintf("dput(%s); q(save = \"no\")\n", call)
   writeBin(charToRaw(paste0(code, input)), script)
   out <- callr::rscript(script, libpath = .libPaths(), show = FALSE)
-  eval(parse(text = out$stdout))
+  # On Windows the child ends its output lines with \r\n, and parse() refuses
+  # a \r. dput() writes a carriage return inside a string as an escape, so
+  # every \r here is a line ending.
+  eval(parse(text = gsub("\r", "", out$stdout, fixed = TRUE)))
 }
 
 test_that("RStdin reads R's console input one line per read", {
