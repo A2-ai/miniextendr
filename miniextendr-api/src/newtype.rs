@@ -11,6 +11,9 @@
 //! [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse), which
 //! implements [`TryFromSexpElement`] with
 //! [`ParsedRStr`](crate::from_r::ParsedRStr) as the inner type (#1766).
+//! `#[derive(RFactor)]` implements [`TryFromSexpElement`] and
+//! [`IntoRNewtype`] with [`FactorValue`](crate::factor::FactorValue) as the
+//! inner type, so an `RFactor` enum's containers are factors (#2365).
 //!
 //! # The containers forward; a check refuses
 //!
@@ -101,7 +104,8 @@
 //! coherence reasons:
 //!
 //! - **`IntoR for Vec<T>` (granted, but shared).** This slot has exactly one
-//!   blanket and `MatchArg` already needs it (`Vec<MyEnum>` → STRSXP). Rather
+//!   blanket and `MatchArg` already needs it (`Vec<MyEnum>` → STRSXP, or a
+//!   factor for an `RFactor` enum). Rather
 //!   than a second, conflicting `Vec<T>` blanket (E0119), both paths funnel
 //!   through [`IntoRVecElement`]: `MatchArg` types reach it via a bridge blanket
 //!   in `match_arg.rs`, newtypes via a concrete impl emitted by
@@ -150,14 +154,16 @@ use crate::into_r::IntoR;
 /// runs.
 ///
 /// Emitted by `#[derive(TryFromSexp)]` (the inner type is the newtype's field;
-/// `#[try_from_sexp(validate = path)]` gives the check) and by
+/// `#[try_from_sexp(validate = path)]` gives the check), by
 /// [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse)
-/// (the inner type is [`ParsedRStr<Self>`](crate::from_r::ParsedRStr)). See
-/// the module docs for why both share this one trait.
+/// (the inner type is [`ParsedRStr<Self>`](crate::from_r::ParsedRStr)) and
+/// by `#[derive(RFactor)]` (the inner type is
+/// [`FactorValue<Self>`](crate::factor::FactorValue), #2365). See the module
+/// docs for why they share this one trait.
 #[diagnostic::on_unimplemented(
     message = "this `Vec` or `Option` of `{Self}` has no conversion from R",
     label = "`{Self}` does not implement `TryFromSexpElement`",
-    note = "`Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`"
+    note = "`Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, `#[derive(RFactor)]` enums, and types given `try_from_sexp_via_str_parse!`"
 )]
 pub trait TryFromSexpElement: Sized {
     /// The type whose containers are read first.
@@ -196,10 +202,14 @@ pub trait TryFromSexpElement: Sized {
     }
 }
 
-/// Unwrap a forwarding newtype into its inner value (Rust → R side).
+/// Unwrap a forwarding newtype into its inner value (Rust → R side): the
+/// element side of the `IntoR` blanket for `Vec<Option<T>>` in this module,
+/// which converts `Vec<Option<Self::Inner>>`.
 ///
-/// Emitted by `#[derive(IntoR)]`. Powers the `IntoR` container blankets for
-/// `Option<T>` / `Vec<Option<T>>` in this module.
+/// Emitted by `#[derive(IntoR)]` (the inner type is the newtype's field) and
+/// by `#[derive(RFactor)]` (the inner type is
+/// [`FactorValue<Self>`](crate::factor::FactorValue), whose
+/// `Vec<Option<_>>` is a factor, #2365).
 pub trait IntoRNewtype {
     /// The wrapped inner type, whose conversions are forwarded to.
     type Inner;
@@ -213,8 +223,10 @@ pub trait IntoRNewtype {
 /// This is the shared element-marker behind the **one** `impl<T: …> IntoR for
 /// Vec<T>` blanket slot. Implemented concretely per type — by `#[derive(IntoR)]`
 /// for newtypes (forwarding to `Vec<Inner>`), and by the `MatchArg` bridge in
-/// `match_arg.rs` for `match.arg` enums (STRSXP by variant name). See the module
-/// docs for why this cannot be two competing blankets.
+/// `match_arg.rs` for `match.arg` enums (STRSXP by variant name; a factor for
+/// a `#[derive(RFactor)]` enum, whose `MatchArg` impl overrides the hook the
+/// bridge calls, #2365). See the module docs for why this cannot be two
+/// competing blankets.
 pub trait IntoRVecElement: Sized {
     /// Convert all elements into one R vector SEXP.
     fn elements_into_sexp(values: Vec<Self>) -> SEXP;

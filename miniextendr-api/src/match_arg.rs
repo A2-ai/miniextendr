@@ -113,6 +113,16 @@ pub trait MatchArg: Sized + Copy + 'static {
 
     /// Convert the enum variant to its canonical choice string.
     fn to_choice(self) -> &'static str;
+
+    /// How `Vec<Self>` converts to R, through the
+    /// [`IntoRVecElement`](crate::newtype::IntoRVecElement) bridge below:
+    /// a character vector of the choices ([`match_arg_vec_into_sexp`]).
+    /// `#[derive(RFactor)]` overrides it with a factor of the type's levels,
+    /// so `Vec<Self>` converts like `Self` (#2365).
+    #[doc(hidden)]
+    fn __mx_vec_into_sexp(values: Vec<Self>) -> SEXP {
+        match_arg_vec_into_sexp(values)
+    }
 }
 
 /// One entry of [`MatchArg::ALIASES`]: `alias`, another spelling of the
@@ -1061,8 +1071,10 @@ fn match_string<T: MatchArg>(input: &str, aliases: &[MatchArgAlias]) -> Result<T
 /// Each element is written as its canonical choice string via [`MatchArg::to_choice`].
 /// Empty choice strings are stored as `R_BlankString` (parity with [`choices_sexp`]).
 ///
-/// Called by the [`MatchArg`]→[`IntoRVecElement`](crate::newtype::IntoRVecElement)
-/// bridge below, which backs `IntoR for Vec<MyEnum>`.
+/// The default of the hidden `MatchArg::__mx_vec_into_sexp`, which the
+/// [`MatchArg`]→[`IntoRVecElement`](crate::newtype::IntoRVecElement) bridge
+/// below calls for `IntoR for Vec<MyEnum>`. An `RFactor` enum overrides it
+/// with a factor.
 pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
     unsafe {
         let scope = ProtectScope::new();
@@ -1083,8 +1095,9 @@ pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
 }
 
 /// Bridge: every [`MatchArg`] type is an [`IntoRVecElement`](crate::newtype::IntoRVecElement),
-/// so `Vec<MyEnum>` converts to an R character vector (STRSXP) via
-/// [`match_arg_vec_into_sexp`].
+/// so `Vec<MyEnum>` converts through the type's hidden `__mx_vec_into_sexp`:
+/// an R character vector (STRSXP, [`match_arg_vec_into_sexp`]) for a
+/// `match.arg` enum, a factor for a `#[derive(RFactor)]` enum (#2365).
 ///
 /// `IntoR for Vec<T>` has a single blanket slot (see [`crate::newtype`]). Routing
 /// `MatchArg` through `IntoRVecElement` lets `#[derive(IntoR)]` newtypes share
@@ -1096,7 +1109,7 @@ pub fn match_arg_vec_into_sexp<T: MatchArg>(values: Vec<T>) -> SEXP {
 /// indirection is what avoids that.
 impl<T: MatchArg> crate::newtype::IntoRVecElement for T {
     fn elements_into_sexp(values: Vec<Self>) -> SEXP {
-        match_arg_vec_into_sexp(values)
+        T::__mx_vec_into_sexp(values)
     }
 }
 

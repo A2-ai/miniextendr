@@ -21,6 +21,12 @@
 //!         Color::Blue => "blue",
 //!     }
 //! }
+//!
+//! // So do their containers: a factor with the levels Red, Green, Blue.
+//! #[miniextendr]
+//! fn primaries() -> Vec<Color> {
+//!     vec![Color::Red, Color::Green, Color::Blue]
+//! }
 //! ```
 
 use std::ops::Deref;
@@ -49,7 +55,13 @@ pub(crate) fn factor_class_sexp() -> SEXP {
 /// Trait for mapping Rust enums to R factors.
 ///
 /// Typically implemented via `#[derive(RFactor)]` for C-style enums.
-/// The derive macro also generates `IntoR` and `TryFromSexp` implementations.
+/// The derive macro also generates `IntoR` and `TryFromSexp` implementations,
+/// and makes the containers convert as the enum does (#2365): `Vec<T>`,
+/// `Box<[T]>` and `Vec<Option<T>>` become a factor of the type's levels
+/// (`NA` for `None`), and `Vec<T>`, `Box<[T]>`, `Option<T>` and
+/// `Vec<Option<T>>` read one. A hand-written impl gets none of these: its
+/// `Vec<T>` converts as the `MatchArg` choices (a character vector), and
+/// [`FactorVec`] / [`FactorOptionVec`] convert it as a factor.
 pub trait RFactor: crate::match_arg::MatchArg + Copy + 'static {
     /// Convert variant to 1-based level index.
     fn to_level_index(self) -> i32;
@@ -208,9 +220,8 @@ fn read_factor_codes<U>(
     }
 }
 
-/// Convert an R factor SEXP to a single enum value.
-#[inline]
-pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
+/// Read a length-one factor of `T`: its value, or `None` for `NA`.
+fn factor_scalar_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Option<T>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
 
     let len = sexp.len();
@@ -224,13 +235,23 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 
     let idx = sexp.integer_elt(0);
     if idx.is_na() {
-        return Err(SexpNaError {
-            sexp_type: SEXPTYPE::INTSXP,
-        }
-        .into());
+        return Ok(None);
     }
 
-    T::from_level_index(idx).ok_or_else(|| SexpError::InvalidValue(code_not_a_level(idx)))
+    T::from_level_index(idx)
+        .map(Some)
+        .ok_or_else(|| SexpError::InvalidValue(code_not_a_level(idx)))
+}
+
+/// Convert an R factor SEXP to a single enum value.
+#[inline]
+pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
+    factor_scalar_from_sexp(sexp)?.ok_or_else(|| {
+        SexpNaError {
+            sexp_type: SEXPTYPE::INTSXP,
+        }
+        .into()
+    })
 }
 
 /// Convert an R factor SEXP to a Vec of enum values. Every `NA` and every
@@ -458,6 +479,84 @@ impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T> {
     }
 }
 // endregion: UnitEnumFactor
+
+// region: Containers of an RFactor enum (#2365)
+
+/// A value of the factor type `T`: the inner type of the
+/// [`TryFromSexpElement`](crate::TryFromSexpElement) and
+/// [`IntoRNewtype`](crate::IntoRNewtype) impls `#[derive(RFactor)]` emits.
+///
+/// The container blankets in [`crate::newtype`] read and write the same
+/// container of `FactorValue<T>`, whose conversions here are factors of `T`'s
+/// levels, `NA` for `None`. So an `RFactor` enum's containers convert as the
+/// enum does: `Vec<T>`, `Box<[T]>`, `Option<T>` and `Vec<Option<T>>` read a
+/// factor, and `Vec<Option<T>>` writes one (`Vec<T>` and `Box<[T]>` write a
+/// factor through the hidden `MatchArg` hook the derive overrides). Plumbing
+/// for the derive, as [`ParsedRStr`](crate::from_r::ParsedRStr) is for
+/// string-parsed types.
+pub struct FactorValue<T>(pub T);
+
+/// A factor of `T`'s levels; every `NA` and every code outside the levels
+/// is reported, with its position.
+impl<T: RFactor> TryFromSexp for Vec<FactorValue<T>> {
+    type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Ok(factor_vec_from_sexp::<T>(sexp)?
+            .into_iter()
+            .map(FactorValue)
+            .collect())
+    }
+}
+
+/// `NULL` and a plain `NA` → `None`; otherwise a length-one factor of `T`'s
+/// levels, whose `NA` is `None`.
+impl<T: RFactor> TryFromSexp for Option<FactorValue<T>> {
+    type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if crate::from_r::is_null_or_plain_na(sexp) {
+            return Ok(None);
+        }
+        Ok(factor_scalar_from_sexp::<T>(sexp)?.map(FactorValue))
+    }
+}
+
+/// A factor of `T`'s levels, `NA` → `None`; every code outside the levels is
+/// reported, with its position.
+impl<T: RFactor> TryFromSexp for Vec<Option<FactorValue<T>>> {
+    type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Ok(factor_option_vec_from_sexp::<T>(sexp)?
+            .into_iter()
+            .map(|value| value.map(FactorValue))
+            .collect())
+    }
+}
+
+/// A factor of `T`'s levels, `None` → `NA`.
+impl<T: RFactor> IntoR for Vec<Option<FactorValue<T>>> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    fn into_sexp(self) -> SEXP {
+        FactorOptionVec(
+            self.into_iter()
+                .map(|value| value.map(|value| value.0))
+                .collect(),
+        )
+        .into_sexp()
+    }
+}
+// endregion
 
 // region: Tests
 

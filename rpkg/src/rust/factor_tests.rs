@@ -184,3 +184,82 @@ pub fn factor_outcome_stage_levels() -> Vec<&'static str> {
     OutcomeStage::CHOICES.to_vec()
 }
 // endregion
+
+// region: Containers of an RFactor enum are factors (#2365)
+
+/// Test returning a `Vec<Color>`: a factor with Color's levels, like a scalar Color.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_vec() -> Vec<Color> {
+    vec![Color::Blue, Color::Red, Color::Blue]
+}
+
+/// Test returning a `Box<[Color]>`: a factor with Color's levels.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_boxed() -> Box<[Color]> {
+    vec![Color::Green, Color::Red].into_boxed_slice()
+}
+
+/// Test returning an `Option<Vec<Color>>`: a factor, or `NULL` for `None`.
+/// @param present Whether to return the colors.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_maybe(present: bool) -> Option<Vec<Color>> {
+    present.then(|| vec![Color::Green])
+}
+
+/// Test returning a `Vec<Option<Color>>`: a factor, `NA` for `None`.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_with_missing() -> Vec<Option<Color>> {
+    vec![Some(Color::Green), None, Some(Color::Blue)]
+}
+
+/// Test returning a `Vec` of an interaction factor enum.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_stages() -> Vec<OutcomeStage> {
+    vec![
+        OutcomeStage::Value(Outcome::Output),
+        OutcomeStage::Error(Outcome::Error),
+    ]
+}
+
+/// Test reading a factor as `Vec<Color>` and returning it.
+/// @param colors A factor with Color's levels.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_round_trip(colors: Vec<Color>) -> Vec<Color> {
+    colors
+}
+
+/// Test reading a factor as `Box<[Color]>` and returning it reversed.
+/// @param colors A factor with Color's levels.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_boxed_reversed(colors: Box<[Color]>) -> Box<[Color]> {
+    let mut colors = colors;
+    colors.reverse();
+    colors
+}
+
+/// Test reading a factor with `NA` as `Vec<Option<Color>>` and returning it.
+/// @param colors A factor with Color's levels, `NA` allowed.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_option_round_trip(colors: Vec<Option<Color>>) -> Vec<Option<Color>> {
+    colors
+}
+
+/// Test reading an `Option<Color>`: `NULL`, `NA` and a factor `NA` are `None`.
+/// @param color A length-one factor with Color's levels, `NA` or `NULL`.
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_optional_color(color: Option<Color>) -> &'static str {
+    match color {
+        Some(Color::Red) => "The color is red!",
+        Some(Color::Green) => "The color is green!",
+        Some(Color::Blue) => "The color is blue!",
+        None => "No color",
+    }
+}
+
+/// Test reading a `Vec` of an interaction factor enum and returning it.
+/// @param stages A factor with OutcomeStage's levels.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_stages_round_trip(stages: Vec<OutcomeStage>) -> Vec<OutcomeStage> {
+    stages
+}
+// endregion
