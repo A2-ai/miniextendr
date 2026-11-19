@@ -5,6 +5,9 @@ $font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
 $max-width: 960px;
 $max-width-wide: 1200px;
+// Running prose (paragraphs, lists, quotes, table cells) stops at about 70
+// characters a line; code blocks and tables keep the full column.
+$measure: 34rem;
 $nav-height: 60px;
 $radius: 6px;
 
@@ -307,7 +310,7 @@ main.content.wide {
   &-summary {
     margin-top: 1.2rem;
     font-size: 1.02rem;
-    max-width: 640px;
+    max-width: $measure;
     color: var(--text);
     line-height: 1.7;
   }
@@ -370,9 +373,11 @@ main.content.wide {
   > p {
     color: var(--text);
     margin-bottom: 1rem;
+    max-width: $measure;
   }
   > ul {
     margin: 0.5rem 0 1.5rem 1.5rem;
+    max-width: $measure;
     li { margin-bottom: 0.4rem; }
   }
 }
@@ -687,6 +692,7 @@ main.content.wide {
 
   .page-description {
     margin-top: 0.5rem;
+    max-width: $measure;
     color: var(--text-muted);
     font-size: 1rem;
   }
@@ -721,6 +727,13 @@ main.content.wide {
   }
   p { margin-bottom: 1rem; }
   ul, ol { margin: 0.5rem 0 1rem 1.5rem; }
+  > p, > ul, > ol, > blockquote { max-width: $measure; }
+  // A list that holds a code block keeps the full column for it; its other
+  // items and paragraphs keep the measure.
+  > ul:has(pre), > ol:has(pre) {
+    max-width: none;
+    li:not(:has(pre)), li > p { max-width: $measure; }
+  }
   li { margin-bottom: 0.35rem; }
 
   blockquote {
@@ -749,6 +762,7 @@ main.content.wide {
     overflow-x: auto;
 
     th, td {
+      max-width: $measure;
       padding: 0.55rem 0.75rem;
       border-bottom: 1px solid var(--border);
       text-align: left;
