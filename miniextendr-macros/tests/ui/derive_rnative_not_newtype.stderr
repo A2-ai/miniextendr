@@ -1,5 +1,9 @@
 error: #[derive(RNativeType)] requires a newtype struct with exactly one field
- --> tests/ui/derive_rnative_not_newtype.rs:6:8
+ --> tests/ui/derive_rnative_not_newtype.rs:6:12
   |
-6 | struct Bad {
-  |        ^^^
+6 |   struct Bad {
+  |  ____________^
+7 | |     a: i32,
+8 | |     b: i32,
+9 | | }
+  | |_^

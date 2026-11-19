@@ -1334,8 +1334,8 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             // align is implicit for enums — accept but don't require
             derive_enum_dataframe(row_name, &input, data, &df_name, &attrs)
         }
-        Data::Union(_) => Err(syn::Error::new_spanned(
-            row_name,
+        Data::Union(data) => Err(syn::Error::new(
+            data.union_token.span,
             "DataFrameRow does not support unions",
         )),
     }?;

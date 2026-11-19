@@ -1,0 +1,5 @@
+error: #[derive(MatchArg)] can only be applied to enums
+ --> tests/ui/derive_match_arg_on_struct.rs:8:5
+  |
+8 | pub struct Bad {
+  |     ^^^^^^

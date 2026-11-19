@@ -12,6 +12,31 @@ pub(crate) fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute>
         .collect()
 }
 
+/// The `struct` / `enum` / `union` keyword of a derive input: where a derive
+/// that refuses the item's kind points its error. `DeriveInput`'s own span is
+/// its first token (`pub`, or the first `///` line), and `new_spanned` on the
+/// input underlines the whole item.
+pub(crate) fn data_keyword_span(data: &syn::Data) -> proc_macro2::Span {
+    match data {
+        syn::Data::Struct(data) => data.struct_token.span,
+        syn::Data::Enum(data) => data.enum_token.span,
+        syn::Data::Union(data) => data.union_token.span,
+    }
+}
+
+/// A refusal of a struct's field count, at its fields (`{ .. }` / `( .. )`),
+/// or at its name for a unit struct, which has no field tokens to point at.
+pub(crate) fn field_count_error(
+    ident: &syn::Ident,
+    fields: &syn::Fields,
+    message: &str,
+) -> syn::Error {
+    match fields {
+        syn::Fields::Unit => syn::Error::new_spanned(ident, message),
+        fields => syn::Error::new_spanned(fields, message),
+    }
+}
+
 /// Rewrites a leading `Self` in `path` to `type_ident`: a path an attribute
 /// names (`#[r_data(get = "Self::f")]`, `fallback = "Self::f"`) is called
 /// from a free function the macro emits outside any impl, where `Self` means

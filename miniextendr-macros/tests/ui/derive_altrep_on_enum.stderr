@@ -1,0 +1,5 @@
+error: #[derive(Altrep)] can only be applied to structs
+  --> tests/ui/derive_altrep_on_enum.rs:11:5
+   |
+11 | pub enum Die {
+   |     ^^^^

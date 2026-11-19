@@ -1,0 +1,5 @@
+error: `#[derive(RCondition)]` supports structs and enums, not unions
+ --> tests/ui/derive_condition_on_union.rs:7:1
+  |
+7 | union Bad {
+  | ^^^^^

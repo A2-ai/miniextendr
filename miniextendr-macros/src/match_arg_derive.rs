@@ -192,15 +192,9 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
     // Get enum variants
     let variants = match &input.data {
         Data::Enum(data) => &data.variants,
-        Data::Struct(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
-                "#[derive(MatchArg)] can only be applied to enums",
-            ));
-        }
-        Data::Union(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
+        Data::Struct(_) | Data::Union(_) => {
+            return Err(syn::Error::new(
+                crate::util::data_keyword_span(&input.data),
                 "#[derive(MatchArg)] can only be applied to enums",
             ));
         }
@@ -208,7 +202,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
 
     if variants.is_empty() {
         return Err(syn::Error::new_spanned(
-            &input,
+            &input.ident,
             "#[derive(MatchArg)] requires at least one variant",
         ));
     }

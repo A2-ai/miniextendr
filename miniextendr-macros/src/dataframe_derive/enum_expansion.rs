@@ -302,7 +302,7 @@ pub(super) fn derive_enum_dataframe(
                                         EnumResolvedField::Single(d)
                                             if d.col_name == discriminant_col.as_str() =>
                                         {
-                                            Some(d.col_name.span())
+                                            Some(d.rust_name.span())
                                         }
                                         _ => None,
                                     })

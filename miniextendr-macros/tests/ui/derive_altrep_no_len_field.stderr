@@ -1,0 +1,5 @@
+error: no length field found; specify with #[altrep(len = "field_name")]
+ --> tests/ui/derive_altrep_no_len_field.rs:8:12
+  |
+8 | pub struct NoLen {
+  |            ^^^^^

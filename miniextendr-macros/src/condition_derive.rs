@@ -225,13 +225,13 @@ fn parse_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
         })?;
     }
     if out.skip && (out.rename.is_some() || out.debug || out.skip_none) {
-        return Err(syn::Error::new(
-            attrs
-                .iter()
-                .find(|a| a.path().is_ident("condition"))
-                .map_or_else(Span::call_site, Spanned::span),
-            "`skip` cannot be combined with `rename`, `debug` or `skip_none`",
-        ));
+        let message = "`skip` cannot be combined with `rename`, `debug` or `skip_none`";
+        return Err(
+            match attrs.iter().find(|a| a.path().is_ident("condition")) {
+                Some(attr) => syn::Error::new_spanned(attr, message),
+                None => syn::Error::new(Span::call_site(), message),
+            },
+        );
     }
     Ok(out)
 }
@@ -315,12 +315,13 @@ impl<'a> Shape<'a> {
             let data_name = if attrs.skip {
                 None
             } else {
-                let name = match (&attrs.rename, &field.ident) {
-                    (Some(lit), _) => lit.value(),
-                    (None, Some(ident)) => ident_name(ident),
+                // The name and where it is written: the `rename`, else the field.
+                let (name, name_span) = match (&attrs.rename, &field.ident) {
+                    (Some(lit), _) => (lit.value(), lit.span()),
+                    (None, Some(ident)) => (ident_name(ident), ident.span()),
                     (None, None) => {
-                        return Err(syn::Error::new(
-                            field.span(),
+                        return Err(syn::Error::new_spanned(
+                            &field.ty,
                             format!(
                                 "tuple field {index} of {context} needs a `data` name: add \
                                  `#[condition(rename = \"name\")]`, or `#[condition(skip)]` to leave it out"
@@ -328,13 +329,13 @@ impl<'a> Shape<'a> {
                         ));
                     }
                 };
-                check_data_name(&name, &seen, field.span(), context)?;
+                check_data_name(&name, &seen, name_span, context)?;
                 seen.push(name.clone());
                 Some(name)
             };
             if attrs.skip_none && !is_option(&field.ty) {
-                return Err(syn::Error::new(
-                    field.ty.span(),
+                return Err(syn::Error::new_spanned(
+                    &field.ty,
                     "`skip_none` needs an `Option<_>` field: it leaves the entry out when the field is `None`",
                 ));
             }
@@ -684,9 +685,9 @@ fn derive_condition(
             };
             (message, class, data, call, argument_message)
         }
-        Data::Union(_) => {
+        Data::Union(data) => {
             return Err(syn::Error::new(
-                name.span(),
+                data.union_token.span,
                 "`#[derive(RCondition)]` supports structs and enums, not unions",
             ));
         }

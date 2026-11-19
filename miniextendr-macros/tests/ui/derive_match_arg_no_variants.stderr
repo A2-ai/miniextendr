@@ -1,0 +1,5 @@
+error: #[derive(MatchArg)] requires at least one variant
+ --> tests/ui/derive_match_arg_no_variants.rs:7:10
+  |
+7 | pub enum Empty {}
+  |          ^^^^^

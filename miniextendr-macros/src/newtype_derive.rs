@@ -73,8 +73,8 @@ fn parse_newtype(input: &DeriveInput) -> syn::Result<Newtype> {
     let data = match &input.data {
         Data::Struct(data) => data,
         _ => {
-            return Err(syn::Error::new_spanned(
-                &input.ident,
+            return Err(syn::Error::new(
+                crate::util::data_keyword_span(&input.data),
                 "this derive only works on single-field newtype structs",
             ));
         }
@@ -91,8 +91,9 @@ fn parse_newtype(input: &DeriveInput) -> syn::Result<Newtype> {
                 named_field: Some(field.ident.clone().unwrap()),
             })
         }
-        _ => Err(syn::Error::new_spanned(
+        fields => Err(crate::util::field_count_error(
             &input.ident,
+            fields,
             "this derive requires a struct with exactly one field",
         )),
     }

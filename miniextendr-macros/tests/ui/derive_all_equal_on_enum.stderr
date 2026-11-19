@@ -1,0 +1,5 @@
+error: `AllEqual` derives on a struct: it compares the struct's fields
+ --> tests/ui/derive_all_equal_on_enum.rs:8:5
+  |
+8 | pub enum Bad {
+  |     ^^^^
