@@ -1,13 +1,13 @@
 # Releasing miniextendr
 
-How to cut a tagged release of the two shippable artifacts — the **`miniextendr`
+How to cut a tagged release of the two shippable artifacts, the **`miniextendr`
 CLI** (a Rust binary) and **`rpkg`** (the R package, which installs as
 `library(miniextendr)`). There is no release-automation workflow today; releases
 are manual tag-and-push. This document is the recipe.
 
 > Not to be confused with [`RELEASE_WORKFLOW.md`](RELEASE_WORKFLOW.md), which
 > is about the CI workflow *downstream consumers* scaffold
-> (`minirextendr::use_release_workflow()`) — not about releasing miniextendr
+> (`minirextendr::use_release_workflow()`), not about releasing miniextendr
 > itself.
 
 ## Release gates
@@ -36,11 +36,11 @@ the tag commands.
 ## Releasing the CLI
 
 The CLI is a plain binary crate (`[[bin]] name = "miniextendr"`). Its only
-dependencies are crates.io packages — it does **not** depend on
+dependencies are crates.io packages. It does **not** depend on
 `miniextendr-api`/`-macros`, so it has no vendoring or git-pin entanglement.
 
-Once the tag is pushed, users install straight from it — no crates.io publish, no
-CI infrastructure required:
+Once the tag is pushed, users install straight from it, with no crates.io publish
+and no CI infrastructure:
 
 ```bash
 cargo install --git https://github.com/A2-ai/miniextendr --tag v0.2.0 miniextendr-cli
@@ -66,9 +66,9 @@ remotes::install_github("A2-ai/miniextendr", subdir = "rpkg", ref = "v0.2.0")
 # pak::pak("A2-ai/miniextendr/rpkg@v0.2.0")
 ```
 
-`remotes` downloads the **whole-repo** zipball (no `.git`) — so the framework
+`remotes` downloads the **whole-repo** zipball (no `.git`), so the framework
 crates (`miniextendr-api`, `-lint`, `-macros`) travel along as sibling
-directories — and builds via `pkgbuild`. Because DESCRIPTION sets
+directories, and builds it via `pkgbuild`. Because DESCRIPTION sets
 `Config/build/bootstrap: TRUE`, `pkgbuild` runs `rpkg/bootstrap.R` first.
 
 On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`, which never
@@ -83,7 +83,7 @@ dependencies all live inside it (the exemplar's `satellite`) or that has none
 
 How the framework crates resolve (read from `configure.ac`):
 
-- configure detects the monorepo by a **filesystem probe** — it walks up ≤5
+- configure detects the monorepo by a **filesystem probe** that walks up ≤5
   levels looking for `miniextendr-api/Cargo.toml` (configure.ac:463–473),
   *not* by a `.git` ancestor. The full-repo zipball satisfies this, so the
   siblings are found and (in pure source mode) a
@@ -93,11 +93,11 @@ How the framework crates resolve (read from `configure.ac`):
   (shipped via `Config/build/extra-sources`); its framework entries carry
   `source = "git+…#<sha>"`, and the vendor/offline branch reproduces that sha.
   The unpinned `git = …` in `Cargo.toml` only decides resolution when the lock
-  is regenerated — see "Known gap".
+  is regenerated (see "Known gap").
 
 **Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`)
 and network access. `cargo-revendor` is not needed.
-`autoconf` is **not** needed — `configure` is committed.
+`autoconf` is **not** needed, because `configure` is committed.
 
 ### Mode B — released vendored tarball (reproducible, offline, CRAN-shaped)
 
@@ -126,12 +126,12 @@ install.packages("miniextendr_0.2.0.tar.gz", repos = NULL, type = "source")
 # remotes::install_url(".../releases/download/v0.2.0/miniextendr_0.2.0.tar.gz")
 ```
 
-At install, `configure` detects `inst/vendor.tar.xz` — the **single latch** — and
+At install, `configure` detects `inst/vendor.tar.xz`, the **single latch**, and
 switches to tarball mode: offline build from `vendored-sources`, no network, no
 `cargo-revendor`.
 
-**Why prefer this over Mode A:** the tarball is **self-contained and offline** —
-vendored sources are sealed inside, so the user needs no network and no
+**Why prefer this over Mode A:** the tarball is **self-contained and offline**.
+Vendored sources are sealed inside, so the user needs no network and no
 `cargo-revendor`, and the framework code is frozen at build time (built inside
 the monorepo, `configure` writes a `[patch."git+url"]` override and
 `cargo-revendor` vendors the framework crates from the local checkout). Mode A
@@ -142,7 +142,7 @@ toolchain, network access, and the committed lock sha.
 > match CRAN's R, or the `.so` fails to load / trips `--as-cran`. configure bakes
 > a per-install `MACOSX_DEPLOYMENT_TARGET` floor into `.cargo/config.toml`
 > (configure.ac:520–577), but a release runner should also pin the SDK. See
-> [RELEASE_WORKFLOW.md](RELEASE_WORKFLOW.md) Gotchas 5–6 — and note
+> [RELEASE_WORKFLOW.md](RELEASE_WORKFLOW.md) Gotchas 5–6. Note also that
 > `minirextendr::use_release_workflow(rpkg_subdir = "rpkg")` scaffolds a
 > known-good workflow for this exact subdir layout.
 
@@ -151,9 +151,9 @@ toolchain, network access, and the committed lock sha.
 The framework git dependencies in `rpkg/src/rust/Cargo.toml` (and the
 `tests/model_project` / `minirextendr` fixtures) are declared **unpinned**
 (`git = "…"`, no `tag`/`rev`). Reproducibility today rests entirely on the
-committed `Cargo.lock` sha — not the manifest. If anything regenerates the lock
+committed `Cargo.lock` sha, not the manifest. If anything regenerates the lock
 during a release build (a `cargo update`, or a cargo old enough to rewrite a v4
-lock — see configure.ac:920), the framework jumps to whatever `main` HEAD is at
+lock; see configure.ac:920), the framework jumps to whatever `main` HEAD is at
 that moment, silently. Pinning `tag =`/`rev =` in the manifest would make the
 release self-describing instead of lock-dependent. Track as an issue rather than
 leave implicit.

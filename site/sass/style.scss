@@ -5,6 +5,15 @@ $font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
 
 $max-width: 960px;
 $max-width-wide: 1200px;
+// Running prose (paragraphs, lists, quotes, table cells) stops at about 70
+// characters a line; code blocks and tables keep the full column.
+$measure: 34rem;
+$content-pad: 1.5rem;
+// The manual's page list (left of the column) and "on this page" list (right).
+$sidebar-width: 220px;
+$toc-width: 200px;
+$rail-gap: 2rem;
+$rail-edge: 1rem;
 $nav-height: 60px;
 $radius: 6px;
 
@@ -27,7 +36,6 @@ $radius: 6px;
   --blockquote-bg: rgba(0, 0, 0, 0.02);
   --kind-tag-bg: rgba(0, 0, 0, 0.04);
   --nav-bg: rgba(255, 255, 255, 0.92);
-  --nav-bg-mobile: rgba(255, 255, 255, 0.98);
   --btn-text: #ffffff;
   --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
   --focus-ring: rgba(81, 22, 96, 0.45);
@@ -49,7 +57,6 @@ $radius: 6px;
   --blockquote-bg: rgba(255, 255, 255, 0.03);
   --kind-tag-bg: rgba(255, 255, 255, 0.06);
   --nav-bg: rgba(34, 34, 64, 0.92);
-  --nav-bg-mobile: rgba(34, 34, 64, 0.98);
   --btn-text: #1a1a2e;
   --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.2);
   --focus-ring: rgba(192, 132, 252, 0.55);
@@ -82,6 +89,12 @@ h1, h2, h3, h4, h5, h6 {
   font-family: $font-heading;
   font-weight: 700;
   line-height: 1.25;
+  text-wrap: balance;
+}
+
+// Avoid a lone word on the last line of a paragraph or list item.
+p, li, td {
+  text-wrap: pretty;
 }
 
 a {
@@ -99,6 +112,9 @@ code {
   background: var(--code-bg);
   padding: 0.15em 0.4em;
   border-radius: 3px;
+  // A long identifier breaks rather than widening the page on a phone.
+  // break-word (not anywhere) leaves table column widths alone.
+  overflow-wrap: break-word;
 }
 
 pre {
@@ -271,7 +287,7 @@ pre {
 main.content {
   max-width: $max-width;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem 4rem;
+  padding: 2.5rem $content-pad 4rem;
   width: 100%;
   flex: 1;
 }
@@ -304,7 +320,7 @@ main.content.wide {
   &-summary {
     margin-top: 1.2rem;
     font-size: 1.02rem;
-    max-width: 640px;
+    max-width: $measure;
     color: var(--text);
     line-height: 1.7;
   }
@@ -367,9 +383,11 @@ main.content.wide {
   > p {
     color: var(--text);
     margin-bottom: 1rem;
+    max-width: $measure;
   }
   > ul {
     margin: 0.5rem 0 1.5rem 1.5rem;
+    max-width: $measure;
     li { margin-bottom: 0.4rem; }
   }
 }
@@ -411,6 +429,13 @@ main.content.wide {
 
 @media (max-width: 640px) {
   .api-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+// Tables in section and API page bodies scroll inside the column instead of
+// widening the page.
+.section-body table {
+  display: block;
+  overflow-x: auto;
 }
 
 .roadmap-count {
@@ -568,7 +593,12 @@ main.content.wide {
 // ── Doc (single) page with sidebar + TOC ──────────────
 // Reading column stays at $max-width; sidebars float outside as position: fixed
 // at wide viewports so they never compress the main text column (matches the
-// cgmossa.github.io CV layout).
+// cgmossa.github.io CV layout). The page list shows from 1280px. The column
+// stays centred where the list fits to its left (about 1500px and up);
+// narrower, the column moves right just far enough to make room, so the list
+// is never clipped. The "on this page" list shows from 1500px, the first width
+// where it fits right of the column with a classic 17px scrollbar. Below those
+// widths a list is hidden.
 .doc-layout {
   position: relative;
   max-width: $max-width;
@@ -626,24 +656,31 @@ main.content.wide {
 }
 
 @media (min-width: 1280px) {
+  // Lift the wide cap so the column can be placed against the viewport:
+  // centred, or with its left edge past the page list.
+  main.content.wide:has(> .doc-layout > .doc-sidebar) { max-width: none; }
+  .doc-layout:has(> .doc-sidebar) {
+    margin-left: max(#{$rail-edge} + #{$sidebar-width} + #{$rail-gap} - #{$content-pad}, (100% - #{$max-width}) / 2);
+  }
+
   .doc-sidebar {
     display: block;
     position: fixed;
     top: calc(#{$nav-height} + 1.5rem);
-    right: calc(50% + (#{$max-width} / 2) + 2rem);
-    width: 220px;
+    left: max(#{$rail-edge}, 50% - #{$max-width} / 2 - #{$rail-gap} - #{$sidebar-width});
+    width: $sidebar-width;
     max-height: calc(100vh - #{$nav-height} - 2rem);
     overflow-y: auto;
   }
 }
 
-@media (min-width: 1480px) {
+@media (min-width: 1500px) {
   .doc-toc {
     display: block;
     position: fixed;
     top: calc(#{$nav-height} + 1.5rem);
-    left: calc(50% + (#{$max-width} / 2) + 2rem);
-    width: 200px;
+    left: max(#{$rail-edge} + #{$sidebar-width} + 2 * #{$rail-gap} + #{$max-width}, 50% + #{$max-width} / 2 + #{$rail-gap});
+    width: $toc-width;
     max-height: calc(100vh - #{$nav-height} - 2rem);
     overflow-y: auto;
   }
@@ -675,6 +712,7 @@ main.content.wide {
 
   .page-description {
     margin-top: 0.5rem;
+    max-width: $measure;
     color: var(--text-muted);
     font-size: 1rem;
   }
@@ -709,6 +747,13 @@ main.content.wide {
   }
   p { margin-bottom: 1rem; }
   ul, ol { margin: 0.5rem 0 1rem 1.5rem; }
+  > p, > ul, > ol, > blockquote { max-width: $measure; }
+  // A list that holds a code block keeps the full column for it; its other
+  // items and paragraphs keep the measure.
+  > ul:has(pre), > ol:has(pre) {
+    max-width: none;
+    li:not(:has(pre)), li > p { max-width: $measure; }
+  }
   li { margin-bottom: 0.35rem; }
 
   blockquote {
@@ -737,6 +782,7 @@ main.content.wide {
     overflow-x: auto;
 
     th, td {
+      max-width: $measure;
       padding: 0.55rem 0.75rem;
       border-bottom: 1px solid var(--border);
       text-align: left;
@@ -808,18 +854,19 @@ main.content.wide {
   .hero-subtitle { font-size: 0.98rem; }
   main.content { padding: 1.5rem 1rem 3rem; }
 
-  .nav-inner { gap: 0.75rem; }
-  .nav-toggle { display: block; }
+  // The search takes a row of its own below the logo and buttons.
+  .nav-inner { gap: 0.75rem; flex-wrap: wrap; padding-bottom: 0.75rem; }
+  .nav-toggle { display: block; margin-left: auto; }
   .nav-links {
     display: none;
     flex-direction: column;
     gap: 0;
     position: absolute;
-    top: $nav-height;
+    top: 100%;
     left: 0;
     right: 0;
-    background: var(--nav-bg-mobile);
-    backdrop-filter: blur(12px);
+    // Opaque: a translucent fill let the page show through the open menu.
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1.5rem 1rem;
     a {
@@ -832,4 +879,9 @@ main.content.wide {
   .nav-toggle.open + .nav-links { display: flex; }
 
   .site-search { flex-basis: 100%; order: 10; }
+
+  // The two-row nav is taller, so anchor jumps need more clearance.
+  .doc-layout :is(h2, h3, h4, h5, h6) {
+    scroll-margin-top: calc(#{$nav-height} + 4rem);
+  }
 }

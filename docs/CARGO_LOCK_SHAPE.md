@@ -1,7 +1,7 @@
 # Cargo.lock shape: why it's not just a Cargo.lock
 
 The committed `Cargo.lock` in a miniextendr-based R package is **not** a vanilla
-Cargo.lock. It's in a specific shape — *tarball-shape* — that the offline
+Cargo.lock. It's in a specific shape, called *tarball-shape*, that the offline
 install path needs. Every R package built with miniextendr (the example `rpkg/`
 in this repo, and any package scaffolded via `minirextendr`) ships its
 `src/rust/Cargo.lock` in this shape.
@@ -47,8 +47,8 @@ records the resolved entries with `source = "path+file:///..."`.
 That `path+...` entry is **fatal at offline install time**: the install
 machine doesn't have `/home/your-username/checkout/...`. Even if it did,
 the path would be different. The lock has to record a portable identifier
-that source replacement can match against vendored sources — and that's the
-git URL plus commit hash.
+that source replacement can match against vendored sources, and that
+identifier is the git URL plus commit hash.
 
 So the regen flow is:
 
@@ -56,15 +56,15 @@ So the regen flow is:
    against the local workspace checkout. This is what makes a coordinated
    cross-crate change resolve correctly (see below). The framework crates land
    as local (no-`source`) entries at this point.
-2. Run `cargo revendor` — it **stamps** `source = "git+https://...#<commit>"`
+2. Run `cargo revendor`. It **stamps** `source = "git+https://...#<commit>"`
    back onto those entries (reconstructing the portable attribution that offline
    source replacement matches), and recomputes `.cargo-checksum.json` for each
    crate after CRAN-trim, so the lock's `checksum =` lines stay valid.
 
 That's exactly what `just vendor` / `just update` (in this repo) and
 `miniextendr::miniextendr_vendor()` (for scaffolded packages) do. There is no
-longer a "move `.cargo/config.toml` aside and resolve against bare git" step —
-that was what broke cross-crate renames (#883).
+longer a "move `.cargo/config.toml` aside and resolve against bare git" step,
+which was what broke cross-crate renames (#883).
 
 ## The cross-crate cargo-surface case (solved by #883)
 
@@ -77,7 +77,7 @@ like `default-coerce` → `coerce-default` everywhere.
 With the patch override moved aside, `cargo generate-lockfile` followed the
 bare git URL (`https://github.com/A2-ai/miniextendr`, no rev) to origin's
 default branch (`main`). main still had the *old* feature names; the PR's
-`rpkg/src/rust/Cargo.toml` asked for the *new* names; cargo errored — across
+`rpkg/src/rust/Cargo.toml` asked for the *new* names, and cargo errored in
 `just vendor`, the `Bootstrap Vendor Test`, R CMD check, and the CRAN-like
 check:
 
@@ -91,8 +91,8 @@ but `miniextendr-api` does not have that feature.
 ### Why cargo can't record a git source from a local resolve
 
 Cargo's lockfile model couples source attribution with resolution. To record
-`source = "git+url#<sha>"`, cargo must *resolve* the dep against that git URL —
-it can't be told to "resolve locally but record a git source." Every lever that
+`source = "git+url#<sha>"`, cargo must *resolve* the dep against that git URL.
+It can't be told to "resolve locally but record a git source." Every lever that
 looks like it might bridge the two is rejected:
 
 | Attempted lever | Cargo's response |
@@ -100,14 +100,14 @@ looks like it might bridge the two is rejected:
 | `dep = { path = "...", git = "..." }` | rejected: *"specification is ambiguous. Only one of `git` or `path` is allowed."* |
 | `[patch."url"] dep = { git = "url", rev = "..." }` (same URL) | rejected: *"patches must point to different sources."* |
 | Same-URL patch via different scheme (`https` vs `ssh`) | URLs are normalized; same rejection. |
-| Hand-inject `source = "git+url#<sha>"` into Cargo.lock | cargo strips it on the next `cargo metadata` / `cargo build` *while the patch is active* — the patch override is authoritative. |
+| Hand-inject `source = "git+url#<sha>"` into Cargo.lock | cargo strips it on the next `cargo metadata` / `cargo build` *while the patch is active*, because the patch override is authoritative. |
 | `cargo update -p <crate> --precise <sha>` | only works for already-resolved deps; can't bootstrap from the failing resolve. |
 
 ### How #883 resolves it
 
 Stop pre-resolving against bare git. Keep the `[patch."<git-url>"]` override
 **active** so cargo resolves the framework crates against the *local PR
-checkout* — which has the renamed feature — and let them land as local
+checkout*, which has the renamed feature, and let them land as local
 (no-`source`) entries. Then `cargo revendor` **stamps** the `git+<url>#<sha>`
 attribution back on, *after* resolution is done.
 
@@ -116,14 +116,14 @@ attribution* (git URL, what offline replacement needs). The hand-inject lever
 above fails only because the patch is still authoritative during a later
 re-resolve; the offline tarball build is **frozen** against `vendored-sources`,
 so nothing re-resolves and the stamped source survives. The stamped sha is the
-framework checkout's live `git HEAD` — cosmetic, since cargo's
+framework checkout's live `git HEAD`. That is cosmetic, since cargo's
 `[source."git+<url>"]` replacement keys on the URL, not the commit.
 
 `cargo revendor --stamp-lock` exposes the stamp step on its own (no full
 re-vendor), for the lock-only `just update` recipe.
 
 > Historically this was handled by **admin-merging the PR red** after eyeballing
-> the diff — the CI failure was treated as a transitional state. PR #710
+> the diff, treating the CI failure as a transitional state. PR #710
 > (`default-* → *-default`) was the last PR to need that; PR #735 explored a
 > `rev`-pin workaround (withdrawn). #883 removed the need for both.
 
@@ -144,7 +144,7 @@ After any of these, you'll see (under `git diff`):
   `miniextendr-{api,lint,macros}` (they become path deps via `[patch]`)
 
 `checksum = "..."` lines may also be added/changed by cargo build, but
-those are now harmless — `just vendor` will put them back in sync.
+those are now harmless, because `just vendor` will put them back in sync.
 
 **This drift is expected and harmless for local iteration. Don't commit it.**
 The pre-commit hook will block the `path+` drift. Re-run the canonical
@@ -205,7 +205,7 @@ The vendor tarball is a separate artifact:
 
 - This repo: **gitignored**. Regenerated by CI's `just vendor` before every
   R CMD check. Never committed (binary blob, 22 MB/commit historically).
-- Scaffolded packages: **typically also gitignored** — generated by
+- Scaffolded packages: **typically also gitignored**, and generated by
   `miniextendr_vendor()` only at release time. CRAN submissions ship the
   tarball *inside* the source `.tar.gz` (because it lives at
   `inst/vendor.tar.xz`), but it's regenerated, not tracked.
@@ -217,11 +217,11 @@ hook + `lock-shape-check` enforce this even when the tarball is absent.
 
 ## See also
 
-- [CRAN compatibility][cran-compat] — the install-mode decision tree, what
-  triggers source vs tarball mode, the maintainer release workflow.
-- [`cargo-revendor` README][cargo-revendor] — the vendoring tool that
+- [CRAN compatibility][cran-compat] covers the install-mode decision tree, what
+  triggers source vs tarball mode, and the maintainer release workflow.
+- The [`cargo-revendor` README][cargo-revendor] describes the vendoring tool that
   produces the matched `vendor/` tree from a tarball-shape lock.
-- Cargo book: [source replacement][cargo-source-replacement] — the offline
+- The Cargo book's [source replacement][cargo-source-replacement] page explains the offline
   install mechanism that depends on the lock being in this shape.
 
 [cran-compat]: ./CRAN_COMPATIBILITY.md
