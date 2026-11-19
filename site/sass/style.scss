@@ -99,6 +99,9 @@ code {
   background: var(--code-bg);
   padding: 0.15em 0.4em;
   border-radius: 3px;
+  // A long identifier breaks rather than widening the page on a phone.
+  // break-word (not anywhere) leaves table column widths alone.
+  overflow-wrap: break-word;
 }
 
 pre {
@@ -413,6 +416,13 @@ main.content.wide {
   .api-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+// Tables in section and API page bodies scroll inside the column instead of
+// widening the page.
+.section-body table {
+  display: block;
+  overflow-x: auto;
+}
+
 .roadmap-count {
   font-size: 0.85em;
   font-weight: 400;
@@ -568,7 +578,9 @@ main.content.wide {
 // ── Doc (single) page with sidebar + TOC ──────────────
 // Reading column stays at $max-width; sidebars float outside as position: fixed
 // at wide viewports so they never compress the main text column (matches the
-// cgmossa.github.io CV layout).
+// cgmossa.github.io CV layout). Each rail appears only from the width where it
+// fits beside the column: $max-width + 2 × (2rem gap + rail width), plus room
+// for a classic 17px scrollbar. Below that the rail is hidden, not clipped.
 .doc-layout {
   position: relative;
   max-width: $max-width;
@@ -625,7 +637,7 @@ main.content.wide {
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1500px) {
   .doc-sidebar {
     display: block;
     position: fixed;
@@ -808,14 +820,15 @@ main.content.wide {
   .hero-subtitle { font-size: 0.98rem; }
   main.content { padding: 1.5rem 1rem 3rem; }
 
-  .nav-inner { gap: 0.75rem; }
-  .nav-toggle { display: block; }
+  // The search takes a row of its own below the logo and buttons.
+  .nav-inner { gap: 0.75rem; flex-wrap: wrap; padding-bottom: 0.75rem; }
+  .nav-toggle { display: block; margin-left: auto; }
   .nav-links {
     display: none;
     flex-direction: column;
     gap: 0;
     position: absolute;
-    top: $nav-height;
+    top: 100%;
     left: 0;
     right: 0;
     background: var(--nav-bg-mobile);
@@ -832,4 +845,9 @@ main.content.wide {
   .nav-toggle.open + .nav-links { display: flex; }
 
   .site-search { flex-basis: 100%; order: 10; }
+
+  // The two-row nav is taller, so anchor jumps need more clearance.
+  .doc-layout :is(h2, h3, h4, h5, h6) {
+    scroll-margin-top: calc(#{$nav-height} + 4rem);
+  }
 }
