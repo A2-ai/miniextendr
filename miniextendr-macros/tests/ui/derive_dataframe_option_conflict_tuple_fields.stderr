@@ -1,0 +1,11 @@
+error: `as_list` and `width` are mutually exclusive
+  --> tests/ui/derive_dataframe_option_conflict_tuple_fields.rs:11:17
+   |
+11 |     #[dataframe(width = 2)]
+   |                 ^^^^^
+
+error: `as_factor` and `expand`/`unnest` are mutually exclusive
+  --> tests/ui/derive_dataframe_option_conflict_tuple_fields.rs:17:31
+   |
+17 |     Moved(#[dataframe(expand, as_factor)] [f64; 2]),
+   |                               ^^^^^^^^^

@@ -154,6 +154,9 @@ pub(super) struct FieldAttrs {
 /// Returns `Err` for unknown keys, invalid width values, or conflicting options.
 pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
     let mut attrs = FieldAttrs::default();
+    // The options of the mutually exclusive pairs at their keys, in the order
+    // written, so a conflict is reported at the option written second.
+    let mut exclusive: Vec<(&'static str, Span)> = Vec::new();
 
     for attr in &field.attrs {
         if !attr.path().is_ident("dataframe") {
@@ -171,14 +174,18 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
                 Ok(())
             } else if meta.path.is_ident("as_list") {
                 attrs.as_list = true;
+                exclusive.push(("as_list", syn::spanned::Spanned::span(&meta.path)));
                 Ok(())
             } else if meta.path.is_ident("as_factor") {
                 attrs.as_factor = true;
+                exclusive.push(("as_factor", syn::spanned::Spanned::span(&meta.path)));
                 Ok(())
             } else if meta.path.is_ident("expand") || meta.path.is_ident("unnest") {
                 attrs.expand = true;
+                exclusive.push(("expand", syn::spanned::Spanned::span(&meta.path)));
                 Ok(())
             } else if meta.path.is_ident("width") {
+                exclusive.push(("width", syn::spanned::Spanned::span(&meta.path)));
                 let value = meta.value()?;
                 let lit: syn::LitInt = value.parse()?;
                 let n: usize = lit.base10_parse()?;
@@ -195,38 +202,40 @@ pub(super) fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
         })?;
     }
 
-    let span = field.ident.as_ref().map_or(Span::call_site(), |i| i.span());
-
-    // Validation: conflicting options
-    if attrs.as_list && attrs.expand {
-        return Err(syn::Error::new(
-            span,
+    // Validation: conflicting options, at the one of the pair written second
+    // (a tuple field has no name to point at instead).
+    const CONFLICTS: [(&str, &str, &str); 5] = [
+        (
+            "as_list",
+            "expand",
             "`as_list` and `expand`/`unnest` are mutually exclusive",
-        ));
-    }
-    if attrs.as_list && attrs.width.is_some() {
-        return Err(syn::Error::new(
-            span,
+        ),
+        (
+            "as_list",
+            "width",
             "`as_list` and `width` are mutually exclusive",
-        ));
-    }
-    if attrs.as_factor && attrs.as_list {
-        return Err(syn::Error::new(
-            span,
+        ),
+        (
+            "as_factor",
+            "as_list",
             "`as_factor` and `as_list` are mutually exclusive",
-        ));
-    }
-    if attrs.as_factor && attrs.expand {
-        return Err(syn::Error::new(
-            span,
+        ),
+        (
+            "as_factor",
+            "expand",
             "`as_factor` and `expand`/`unnest` are mutually exclusive",
-        ));
-    }
-    if attrs.as_factor && attrs.width.is_some() {
-        return Err(syn::Error::new(
-            span,
+        ),
+        (
+            "as_factor",
+            "width",
             "`as_factor` and `width` are mutually exclusive",
-        ));
+        ),
+    ];
+    let first = |key: &str| exclusive.iter().position(|(k, _)| *k == key);
+    for (a, b, message) in CONFLICTS {
+        if let (Some(i), Some(j)) = (first(a), first(b)) {
+            return Err(syn::Error::new(exclusive[i.max(j)].1, message));
+        }
     }
 
     Ok(attrs)
