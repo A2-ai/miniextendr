@@ -72,8 +72,8 @@ const SCAFFOLD_PKGS = (process.env.SMOKE_SCAFFOLD_PKG ?? "")
   .filter((s) => s.length > 0);
 
 // Informational testthat pass (#1255): opt-in via SMOKE_TESTTHAT=1. The local
-// smoke (tests/webr-smoke.sh) defaults it ON; CI keeps per-PR tier-3
-// load-only and enables it on main-push / workflow_dispatch. See the header
+// smoke (tests/webr-smoke.sh) defaults it ON; CI enables it on
+// workflow_dispatch only (#2377). See the header
 // comment and informationalTestthat() below for the tolerate-and-report
 // semantics.
 const SMOKE_TESTTHAT = process.env.SMOKE_TESTTHAT === "1";

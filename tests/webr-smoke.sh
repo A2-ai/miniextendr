@@ -695,8 +695,8 @@ phase_webr_session() {
         scaffold_pkg_env="${SCAFFOLD_PKG_NAME},${MONO_PKG_NAME}"
     fi
     # Informational testthat pass (#1255): defaults ON locally — a local run
-    # wants the information (SMOKE_TESTTHAT=0 disables; CI keeps per-PR
-    # tier-3 load-only and enables it on main-push/dispatch). The wall-clock
+    # wants the information (SMOKE_TESTTHAT=0 disables; CI enables it on
+    # workflow_dispatch only, #2377). The wall-clock
     # cap grows 900 -> 2400 when enabled: ~10 min for the load smoke plus the
     # runner's own 20-min in-session testthat budget. Test failures never
     # gate; a cap hit or a harness error before the counts line does.
