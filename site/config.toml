@@ -21,7 +21,7 @@ smart_punctuation = true
 lazy_async_image = true
 
 [markdown.highlighting]
-theme = "github-dark"
+theme = "github-dark-default"
 
 [extra]
 repo_url = "https://github.com/A2-ai/miniextendr"
