@@ -62,8 +62,8 @@ Only `default` features are enabled automatically.
 | **Formatting** | | |
 | `tabled` | ASCII/Unicode table formatting | tabled |
 | **Arrow / DataFusion** | | |
-| `arrow` | Zero-copy R vector / data.frame to Apache Arrow array conversions | arrow-array, arrow-buffer, arrow-schema, arrow-select |
-| `datafusion` | SQL query engine on R data frames via DataFusion (implies `arrow`) | datafusion, tokio |
+| `arrow` | Zero-copy R vector / data.frame to Apache Arrow array conversions | arrow-array, arrow-buffer, arrow-schema |
+| `datafusion` | SQL query engine on R data frames via DataFusion (implies `arrow`) | arrow-select, datafusion, tokio |
 | **Logging** | | |
 | `log` | Routes Rust `log` macros (`info!`, `warn!`, `error!`) to R console | log |
 | **Diagnostics** | | |
