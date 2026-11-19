@@ -284,7 +284,7 @@ impl AltrepAttrs {
             syn::Data::Struct(data_struct) => &data_struct.fields,
             _ => {
                 return Err(syn::Error::new(
-                    input.span(),
+                    crate::util::data_keyword_span(&input.data),
                     "Altrep derive only supports structs",
                 ));
             }
@@ -299,7 +299,7 @@ impl AltrepAttrs {
         }
 
         Err(syn::Error::new(
-            input.span(),
+            input.ident.span(),
             "no length field found; specify with #[altrep(len = \"field_name\")]",
         ))
     }

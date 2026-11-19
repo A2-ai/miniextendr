@@ -281,13 +281,11 @@ pub(crate) fn generate_direct_altrep_registration(
 /// #[altrep(class = "CustomName")]  // override ALTREP class name (default: struct name)
 /// ```
 pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    use syn::spanned::Spanned;
-
     let ident = &input.ident;
 
     if !matches!(input.data, syn::Data::Struct(_)) {
         return Err(syn::Error::new(
-            input.span(),
+            crate::util::data_keyword_span(&input.data),
             "#[derive(Altrep)] can only be applied to structs",
         ));
     }

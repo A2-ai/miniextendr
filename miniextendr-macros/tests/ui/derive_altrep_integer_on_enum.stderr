@@ -1,0 +1,5 @@
+error: Altrep derive only supports structs
+ --> tests/ui/derive_altrep_integer_on_enum.rs:8:5
+  |
+8 | pub enum Bad {
+  |     ^^^^
