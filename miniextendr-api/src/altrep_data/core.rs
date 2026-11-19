@@ -113,6 +113,13 @@ impl From<bool> for Logical {
     }
 }
 
+/// Convert from R's binary boolean (no NA representation).
+impl From<crate::Rboolean> for Logical {
+    fn from(b: crate::Rboolean) -> Self {
+        Logical::from_bool(b == crate::Rboolean::TRUE)
+    }
+}
+
 /// Convert from RLogical (FFI type) to Logical (semantic type).
 impl From<crate::RLogical> for Logical {
     fn from(r: crate::RLogical) -> Self {
@@ -441,11 +448,10 @@ impl<T: crate::externalptr::TypedExternal> AltrepExtract for T {
 
 // region: InferBase trait - automatic base type inference from data traits
 
-/// Trait for inferring the R base type from a data type's implemented traits.
+/// The R base type of an ALTREP data type, and how to make and fill its class.
 ///
-/// This is automatically implemented via blanket impls for types that implement
-/// one of the `Alt*Data` traits. It allows the `#[miniextendr]` macro to infer
-/// the base type without requiring an explicit `base = \"...\"` attribute.
+/// The family derives implement it through the `impl_inferbase_*!` macros;
+/// a `#[derive(Altrep)]` slice owner gets it from its element's family.
 pub trait InferBase {
     /// The inferred R base type.
     const BASE: crate::altrep::RBase;

@@ -8,7 +8,7 @@
 //! Each per-family `impl_alt<family>_from_data!` macro takes a type plus an
 //! optional knob list of `dataptr` / `serialize` / `subset` (in canonical
 //! alphabetical order). The default arm (no knobs) is the materialising
-//! path — `__impl_altvec_<family>_dataptr!` provides a trivial
+//! path — `__impl_altvec_materializing_dataptr!` provides a trivial
 //! `AltrepDataptr<T>` returning `None`, falling through to data2
 //! materialisation.
 //!
@@ -335,9 +335,8 @@ macro_rules! __impl_altvec_string_dataptr {
 /// Thin wrapper, parameterised by element type: installs a trivial
 /// `AltrepDataptr<$elem>` (no direct pointer — `dataptr` returns `None`) and
 /// delegates to [`__impl_altvec_dataptr`], which materializes into `data2` via
-/// `RNativeType::elt`. The 5 per-family aliases below pin `$elem` so the derive
-/// and the public `impl_alt*_from_data!` macros can reference them by a stable
-/// per-family name.
+/// `RNativeType::elt`. `$elem` is the family's R storage type: `i32`, `f64`,
+/// `RLogical`, `u8` or `Rcomplex`.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __impl_altvec_materializing_dataptr {
@@ -352,53 +351,6 @@ macro_rules! __impl_altvec_materializing_dataptr {
             }
         }
         $crate::__impl_altvec_dataptr!({$($gen)*} $ty {$($whr)*}, $elem);
-    };
-}
-
-/// Internal macro: materializing dataptr for logical ALTREP.
-///
-/// R logicals are stored as `i32` but accessed through `RLogical` for type safety.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __impl_altvec_logical_dataptr {
-    ($ty:ty) => {
-        $crate::__impl_altvec_materializing_dataptr!($ty, $crate::RLogical);
-    };
-}
-
-/// Internal macro: materializing dataptr for integer ALTREP.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __impl_altvec_integer_dataptr {
-    ($ty:ty) => {
-        $crate::__impl_altvec_materializing_dataptr!($ty, i32);
-    };
-}
-
-/// Internal macro: materializing dataptr for real ALTREP.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __impl_altvec_real_dataptr {
-    ($ty:ty) => {
-        $crate::__impl_altvec_materializing_dataptr!($ty, f64);
-    };
-}
-
-/// Internal macro: materializing dataptr for raw ALTREP.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __impl_altvec_raw_dataptr {
-    ($ty:ty) => {
-        $crate::__impl_altvec_materializing_dataptr!($ty, u8);
-    };
-}
-
-/// Internal macro: materializing dataptr for complex ALTREP.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __impl_altvec_complex_dataptr {
-    ($ty:ty) => {
-        $crate::__impl_altvec_materializing_dataptr!($ty, $crate::Rcomplex);
     };
 }
 

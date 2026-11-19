@@ -14,7 +14,11 @@ impl AltListData for CrateList {
 }
 
 #[derive(miniextendr_api::Altrep)]
+#[altrep(manual)]
 struct PrivateRegistration;
+
+#[derive(miniextendr_api::Altrep)]
+struct PrivateSlice<const N: usize>([i32; N]);
 impl AltrepLen for PrivateRegistration { fn altrep_len(&self) -> usize { 0 } }
 impl AltIntegerData for PrivateRegistration { fn elt(&self, _: usize) -> i32 { 0 } }
 miniextendr_api::impl_altinteger_from_data!(PrivateRegistration);

@@ -3014,7 +3014,7 @@ fn test_derive_altrep_integer_basic() {
         "migrated integer family must not delegate to the declarative macro"
     );
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("__impl_altinteger_methods"));
     assert!(output_str.contains("impl_inferbase_integer"));
 
@@ -3127,7 +3127,7 @@ fn test_derive_altrep_logical_basic() {
         "migrated logical family must not delegate to the declarative macro"
     );
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_logical_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("__impl_altlogical_methods"));
     assert!(output_str.contains("impl_inferbase_logical"));
 
@@ -3221,7 +3221,7 @@ fn test_derive_altrep_real_generates_registration() {
         "migrated real family must not delegate to the declarative macro"
     );
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_real_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("__impl_altreal_methods"));
     assert!(output_str.contains("impl_inferbase_real"));
 
@@ -3280,7 +3280,7 @@ fn test_derive_altrep_raw_generates_registration() {
         "migrated raw family must not delegate to the declarative macro"
     );
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_raw_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("__impl_altraw_methods"));
     assert!(output_str.contains("impl_inferbase_raw"));
 
@@ -3400,7 +3400,7 @@ fn test_derive_altrep_complex_generates_registration() {
         "migrated complex family must not delegate to the declarative macro"
     );
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_complex_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("__impl_altcomplex_methods"));
     assert!(output_str.contains("impl_inferbase_complex"));
 
@@ -3575,7 +3575,7 @@ fn test_derive_altrep_integer_unsafe_guard() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("Unsafe"));
-    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
 }
 
 #[test]
@@ -3596,7 +3596,7 @@ fn test_derive_altrep_integer_r_unwind_guard() {
     // underlying __impl_* macros directly (with the default RUnwind guard).
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
-    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
     assert!(output_str.contains("RUnwind"));
 }
 
@@ -3617,7 +3617,7 @@ fn test_derive_altrep_integer_rust_unwind_guard_uses_expanded_path() {
     assert!(!output_str.contains("impl_altinteger_from_data"));
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("RustUnwind"));
-    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
 }
 
 #[test]
@@ -3637,7 +3637,7 @@ fn test_derive_altrep_unsafe_guard_with_serialize() {
     assert!(output_str.contains("__impl_altrep_base"));
     assert!(output_str.contains("with_serialize"));
     assert!(output_str.contains("Unsafe"));
-    assert!(output_str.contains("__impl_altvec_integer_dataptr"));
+    assert!(output_str.contains("__impl_altvec_materializing_dataptr"));
 }
 
 #[test]

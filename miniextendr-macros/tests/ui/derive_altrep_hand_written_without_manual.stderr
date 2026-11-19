@@ -1,0 +1,19 @@
+error[E0119]: conflicting implementations of trait `AltrepLen` for type `Counts`
+  --> tests/ui/derive_altrep_hand_written_without_manual.rs:14:1
+   |
+14 | impl AltrepLen for Counts {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: conflicting implementation in crate `miniextendr_api`:
+           - impl<T> AltrepLen for T
+             where T: miniextendr_api::altrep_data::AltrepSlice;
+
+error[E0119]: conflicting implementations of trait `AltIntegerData` for type `Counts`
+  --> tests/ui/derive_altrep_hand_written_without_manual.rs:20:1
+   |
+20 | impl AltIntegerData for Counts {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: conflicting implementation in crate `miniextendr_api`:
+           - impl<T> AltIntegerData for T
+             where <<T as miniextendr_api::altrep_data::AltrepSlice>::Element as miniextendr_api::altrep_data::AltrepElement>::Family == miniextendr_api::altrep_data::family::Integer, T: miniextendr_api::altrep_data::AltrepSlice, <T as miniextendr_api::altrep_data::AltrepSlice>::Element: miniextendr_api::altrep_data::AltrepElement, <T as miniextendr_api::altrep_data::AltrepSlice>::Element: ?Sized;

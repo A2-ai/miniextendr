@@ -144,7 +144,7 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     };
 
     // Branch based on whether this is an interaction factor
-    if let Some(inner_levels) = &attrs.interaction {
+    let factor = if let Some(inner_levels) = &attrs.interaction {
         derive_interaction_factor(
             name,
             &impl_generics,
@@ -154,7 +154,7 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
             inner_levels,
             attrs.sep.as_deref().unwrap_or("."),
             attrs.rename_all.as_deref(),
-        )
+        )?
     } else {
         derive_simple_factor(
             name,
@@ -163,7 +163,43 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
             where_clause,
             variants,
             attrs.rename_all.as_deref(),
-        )
+        )?
+    };
+    let altrep_element = altrep_element_impl(name, &impl_generics, &ty_generics, where_clause);
+    Ok(quote! {
+        #factor
+        #altrep_element
+    })
+}
+
+/// The element's R form in a `#[derive(Altrep)]` slice (#2363): a factor,
+/// whose codes are the level indices and whose `levels` are the choices.
+fn altrep_element_impl(
+    name: &syn::Ident,
+    impl_generics: &syn::ImplGenerics,
+    ty_generics: &syn::TypeGenerics,
+    where_clause: Option<&syn::WhereClause>,
+) -> TokenStream {
+    quote! {
+        // SAFETY: not `NATIVE`; R reads the codes through `altrep_value`.
+        unsafe impl #impl_generics ::miniextendr_api::altrep_data::AltrepElement for #name #ty_generics #where_clause {
+            type Family = ::miniextendr_api::altrep_data::family::Integer;
+
+            #[inline]
+            fn altrep_value(&self) -> i32 {
+                <Self as ::miniextendr_api::RFactor>::to_level_index(*self)
+            }
+
+            fn altrep_levels() -> ::core::option::Option<::miniextendr_api::SEXP> {
+                static LEVELS: ::std::sync::OnceLock<::miniextendr_api::SEXP> =
+                    ::std::sync::OnceLock::new();
+                ::core::option::Option::Some(*LEVELS.get_or_init(|| {
+                    ::miniextendr_api::build_levels_sexp_cached(
+                        <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
+                    )
+                }))
+            }
+        }
     }
 }
 

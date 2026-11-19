@@ -82,13 +82,13 @@ Common attributes for both paths:
 
 Control how panics and R errors are handled in ALTREP callbacks:
 
-- **`#[altrep(rust_unwind)]`** (default) -- `catch_unwind` for Rust panics
-- **`#[altrep(r_unwind)]`** -- `with_r_unwind_protect` for callbacks that call R API
+- **`#[altrep(rust_unwind)]`** -- `catch_unwind` for Rust panics
+- **`#[altrep(r_unwind)]`** (default) -- `with_r_unwind_protect` for callbacks that call R API
 - **`#[altrep(unsafe)]`** -- no protection (fastest, requires manual safety guarantee)
 
 ## Supported Vector Types
 
-Each type has a corresponding derive (`#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.) and a `manual` fallback (`#[derive(Altrep)]`).
+Each type has a corresponding derive (`#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.), and each takes `#[altrep(manual)]` when you implement the data traits yourself. A bare `#[derive(Altrep)]` on a struct with an array, `Vec`, boxed or `'static` slice field picks the vector from the element type (a factor for an `RFactor` enum).
 
 | Derive | Data Trait | R Type | Element |
 |--------|-----------|--------|---------|

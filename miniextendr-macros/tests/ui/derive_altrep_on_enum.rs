@@ -1,6 +1,7 @@
-//! Test: `#[derive(Altrep)]` can only be applied to structs. On an enum with
-//! doc comments, the error points at the `enum` keyword, not at the first
-//! `///` line or at `pub`.
+//! Test: `#[derive(Altrep)]` on an enum points at `RFactor` / `MatchArg`: an
+//! enum is an element of a slice field, not the vector. On an enum with doc
+//! comments, the error points at the `enum` keyword, not at the first `///`
+//! line or at `pub`.
 
 use miniextendr_macros::Altrep;
 

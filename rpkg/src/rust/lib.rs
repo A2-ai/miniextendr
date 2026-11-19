@@ -149,6 +149,7 @@ mod altrep_sexp_tests;
 mod altrep_shared_slice_tests;
 mod altrep_short_source_tests;
 mod altrep_sidecar_tests;
+mod altrep_slice_tests;
 mod argument_error_tests;
 mod argument_message_tests;
 #[cfg(feature = "arrow")]
@@ -428,10 +429,11 @@ mod zero_copy_tests;
 mod zstd_adapter_tests;
 
 // region: proc-macro ALTREP test
-// This tests #[derive(Altrep)] for custom ALTREP classes.
+// This tests the family derives (#[derive(AltrepInteger)], ...) for custom
+// ALTREP classes; `altrep_slice_tests.rs` tests #[derive(Altrep)] on slices.
 //
 // The direct registration pattern requires:
-// 1. A data type with #[derive(Altrep)] + #[altrep(class = "...")]
+// 1. A data type with #[derive(Altrep<Family>)] + #[altrep(class = "...")]
 // 2. High-level data trait impls (AltrepLen, AltIntegerData, etc.)
 //    — or write them by hand and use #[altrep(manual)] to skip auto-generation.
 // 3. The impl_alt*_from_data! registration macro is emitted automatically by the
@@ -513,7 +515,7 @@ pub fn constant_int() -> ConstantIntData {
 // region: Additional ALTREP examples - using direct registration pattern
 //
 // The ALTREP API requires:
-// 1. A data type with #[derive(Altrep)] + #[altrep(class = "...")]
+// 1. A data type with #[derive(Altrep<Family>)] + #[altrep(class = "...")]
 // 2. High-level data trait impls (AltrepLen, Alt*Data) — either auto-generated
 //    by the derive, or hand-written with #[altrep(manual)].
 // 3. The impl_alt*_from_data! registration is emitted automatically by the derive

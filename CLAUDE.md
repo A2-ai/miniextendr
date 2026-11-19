@@ -437,9 +437,10 @@ flag in the PR.
   on plain Rust data and hands the result back to the main thread.
 - **ExternalPtr**: Box-like owned pointer over `EXTPTRSXP`. Stores `Box<Box<dyn Any>>` — thin ptr in `R_ExternalPtrAddr` → fat ptr on heap (carries `Any` vtable). Type safety via `Any::downcast`, not R symbols. Non-generic `release_any` finalizer. `cached_ptr` must have mutable provenance. Every read is checked (#2106): a `#[miniextendr]` fn takes `&T` / `&mut T` (or the views `ExternalPtrRef` / `ExternalPtrMut`) and the wrapper borrows the `RefCell` for the call; an `ExternalPtr<T>` handle has no `Deref` and reads through `borrow()` / `borrow_mut()`.
 - **TypedExternal**: R-visible type name (`TYPE_NAME_CSTR` display tag, `TYPE_ID_CSTR` errors). Not authoritative for type safety — `Any::downcast` is.
-- **ALTREP**: Single-struct pattern, no wrapper. Two paths:
+- **ALTREP**: Single-struct pattern, no wrapper. Three paths:
+  - *Slice field* — a bare `#[derive(Altrep)]` on a struct with a `[T; N]` / `Vec<T>` / `Box<[T]>` / `&'static [T]` field: the element type picks the vector through the hidden `AltrepElement` (natives in place, `bool`, `String`, `RFactor` enum → factor, `MatchArg` enum → character); a family derive on such a field converts with `Coerce` (#2363). Generic structs get one class per instantiation, registered lazily, no `serialize` (#2364).
   - *Field-based derive* — `#[derive(AltrepInteger)]` with `#[altrep(len = "field", elt = "field", class = "Name")]` generates everything.
-  - *Manual* — `#[altrep(manual)]` generates lowlevel traits + registration; user writes `AltrepLen` and `Alt*Data`.
+  - *Manual* — `#[altrep(manual)]` generates lowlevel traits + registration; user writes `AltrepLen` and `Alt*Data`; a bare `#[derive(Altrep)]` with `manual` registers only.
   - `AltrepExtract` trait abstracts data extraction (blanket impl for `TypedExternal`; override for custom storage).
   - `#[miniextendr]` on 1-field structs is **removed** — use derives.
 - **R_UnwindProtect**: runs Rust destructors on R errors.

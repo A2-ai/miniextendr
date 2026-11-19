@@ -41,8 +41,15 @@ mod deque;
 mod iter;
 /// Helper macros for implementing ALTREP data traits.
 pub mod macros;
+mod slice;
 mod stream;
 mod traits;
+
+#[doc(hidden)]
+pub use slice::{
+    AltrepElement, AltrepFamily, AltrepSlice, family, native_view, native_view_mut,
+    set_slice_altrep_attributes,
+};
 
 pub use buffer::AltrepBuffer;
 pub(crate) use core::fill_region;

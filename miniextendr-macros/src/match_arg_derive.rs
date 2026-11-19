@@ -320,7 +320,19 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        // The element's R form in a `#[derive(Altrep)]` slice (#2363): the
+        // choice name.
+        // SAFETY: not `NATIVE`.
+        unsafe impl #impl_generics ::miniextendr_api::altrep_data::AltrepElement for #name #ty_generics #where_clause {
+            type Family = ::miniextendr_api::altrep_data::family::Character;
 
+            #[inline]
+            fn altrep_value(&self) -> ::core::option::Option<&str> {
+                ::core::option::Option::Some(
+                    <Self as ::miniextendr_api::match_arg::MatchArg>::to_choice(*self),
+                )
+            }
+        }
     })
 }
 

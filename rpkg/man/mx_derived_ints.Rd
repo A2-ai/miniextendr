@@ -7,5 +7,5 @@
 mx_derived_ints()
 }
 \description{
-Test creating an ALTREP integer vector via derive(Altrep).
+Test creating an ALTREP integer vector via derive(AltrepInteger).
 }

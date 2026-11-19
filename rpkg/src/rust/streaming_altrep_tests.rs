@@ -1,6 +1,7 @@
 //! Test fixtures for streaming ALTREP data types.
 //!
-//! Uses the direct registration pattern: data struct with #[derive(Altrep)].
+//! Uses the direct registration pattern: a data struct with a family derive
+//! (`#[derive(AltrepInteger)]` / `AltrepReal`) and `#[altrep(manual)]`.
 
 use miniextendr_api::altrep_data::{
     AltIntegerData, AltRealData, AltrepLen, StreamingIntData, StreamingRealData,

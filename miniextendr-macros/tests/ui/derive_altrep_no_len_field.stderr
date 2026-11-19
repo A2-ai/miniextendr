@@ -1,4 +1,4 @@
-error: no length field found; specify with #[altrep(len = "field_name")]
+error: no length field found; specify with #[altrep(len = "field_name")], or give the struct a slice field (`[T; N]`, `Vec<T>`, `Box<[T]>` or `&'static [T]`) to read the length and elements from
  --> tests/ui/derive_altrep_no_len_field.rs:8:12
   |
 8 | pub struct NoLen {

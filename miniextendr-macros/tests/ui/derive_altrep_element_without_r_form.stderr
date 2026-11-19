@@ -1,0 +1,28 @@
+error[E0277]: `Pip` has no R vector form for `#[derive(Altrep)]`
+  --> tests/ui/derive_altrep_element_without_r_form.rs:10:30
+   |
+10 | struct Pips<const N: usize>([Pip; N]);
+   |                              ^^^ no R vector form for this element type
+   |
+help: the trait `miniextendr_api::altrep_data::AltrepElement` is not implemented for `Pip`
+  --> tests/ui/derive_altrep_element_without_r_form.rs:7:1
+   |
+ 7 | struct Pip(u16);
+   | ^^^^^^^^^^
+   = note: an enum element takes `#[derive(RFactor)]` (a factor) or `#[derive(MatchArg)]` (a character vector); a `#[repr(transparent)]` newtype of `i32`, `f64`, `u8`, `RLogical` or `Rcomplex` takes `#[derive(RNativeType)]`
+   = note: for a mapping only you know, implement `Coerce<i32>` (or `Coerce<f64>`, `Coerce<Rboolean>`, `Coerce<u8>`, `Coerce<Rcomplex>`) for the element and derive the matching family (`#[derive(AltrepInteger)]`, ...) instead
+   = help: the following other types implement trait `miniextendr_api::altrep_data::AltrepElement`:
+             RLogical
+             Rcomplex
+             bool
+             f64
+             i32
+             std::string::String
+             u8
+note: required by a bound in `miniextendr_api::altrep_data::AltrepSlice::Element`
+  --> $WORKSPACE/miniextendr-api/src/altrep_data/slice.rs
+   |
+   | pub trait AltrepSlice: TypedExternal + Sized {
+   |     /// The element type; its [`AltrepElement::Family`] picks the R vector type.
+   |     type Element: AltrepElement;
+   |                   ^^^^^^^^^^^^^ required by this bound in `AltrepSlice::Element`

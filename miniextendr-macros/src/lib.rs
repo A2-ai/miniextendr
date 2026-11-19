@@ -2489,46 +2489,50 @@ pub fn r_ffi_checked(
 /// - Must use `#[repr(transparent)]` so native R buffers have the same layout
 /// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
 /// - Must also be `Copy` (`RNativeType: Copy`): derive `Clone, Copy` with it
+///
+/// The newtype is also an element of a `#[derive(Altrep)]` slice field: R
+/// reads a `Vec<UserId>` as the inner type's vector, in place.
 #[proc_macro_derive(RNativeType)]
 pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // Extract inner type and constructor — must be a newtype (single field)
-    let (inner_ty, elt_ctor): (syn::Type, proc_macro2::TokenStream) = match &input.data {
-        syn::Data::Struct(data) => match &data.fields {
-            syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-                let ty = fields.unnamed.first().unwrap().ty.clone();
-                let ctor = quote::quote! { Self(val) };
-                (ty, ctor)
-            }
-            syn::Fields::Named(fields) if fields.named.len() == 1 => {
-                let field = fields.named.first().unwrap();
-                let ty = field.ty.clone();
-                let field_name = field.ident.as_ref().unwrap();
-                let ctor = quote::quote! { Self { #field_name: val } };
-                (ty, ctor)
-            }
-            fields => {
-                return util::field_count_error(
-                    name,
-                    fields,
-                    "#[derive(RNativeType)] requires a newtype struct with exactly one field",
+    // Extract inner type, constructor and field — must be a newtype (single field)
+    let (inner_ty, elt_ctor, field): (syn::Type, proc_macro2::TokenStream, syn::Member) =
+        match &input.data {
+            syn::Data::Struct(data) => match &data.fields {
+                syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                    let ty = fields.unnamed.first().unwrap().ty.clone();
+                    let ctor = quote::quote! { Self(val) };
+                    (ty, ctor, syn::Member::Unnamed(syn::Index::from(0)))
+                }
+                syn::Fields::Named(fields) if fields.named.len() == 1 => {
+                    let field = fields.named.first().unwrap();
+                    let ty = field.ty.clone();
+                    let field_name = field.ident.as_ref().unwrap();
+                    let ctor = quote::quote! { Self { #field_name: val } };
+                    (ty, ctor, syn::Member::Named(field_name.clone()))
+                }
+                fields => {
+                    return util::field_count_error(
+                        name,
+                        fields,
+                        "#[derive(RNativeType)] requires a newtype struct with exactly one field",
+                    )
+                    .into_compile_error()
+                    .into();
+                }
+            },
+            _ => {
+                return syn::Error::new(
+                    util::data_keyword_span(&input.data),
+                    "#[derive(RNativeType)] only works on structs",
                 )
                 .into_compile_error()
                 .into();
             }
-        },
-        _ => {
-            return syn::Error::new(
-                util::data_keyword_span(&input.data),
-                "#[derive(RNativeType)] only works on structs",
-            )
-            .into_compile_error()
-            .into();
-        }
-    };
+        };
 
     // RNativeType exposes slices of Self over the inner type's R allocation.
     // A one-field Rust struct alone does not guarantee the required layout.
@@ -2550,6 +2554,17 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
         .into_compile_error()
         .into();
     }
+
+    // A generic inner type states its slice-element form; a concrete one is
+    // one of the native types, which have it.
+    let mut element_generics = input.generics.clone();
+    if element_generics.type_params().next().is_some() {
+        element_generics
+            .make_where_clause()
+            .predicates
+            .push(syn::parse_quote!(#inner_ty: ::miniextendr_api::altrep_data::AltrepElement));
+    }
+    let element_where_clause = &element_generics.where_clause;
 
     let expanded = quote::quote! {
         impl #impl_generics ::miniextendr_api::RNativeType for #name #ty_generics #where_clause {
@@ -2576,6 +2591,21 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
             }
         }
 
+        // The element's R form in a `#[derive(Altrep)]` slice (#2363): the
+        // inner type's, read in place when the inner type's is.
+        // SAFETY: `repr(transparent)` over the inner type, so a NATIVE inner
+        // type's layout and bit patterns are the newtype's.
+        unsafe impl #impl_generics ::miniextendr_api::altrep_data::AltrepElement for #name #ty_generics #element_where_clause {
+            type Family = <#inner_ty as ::miniextendr_api::altrep_data::AltrepElement>::Family;
+            const NATIVE: bool = <#inner_ty as ::miniextendr_api::altrep_data::AltrepElement>::NATIVE;
+
+            #[inline]
+            fn altrep_value(
+                &self,
+            ) -> <Self::Family as ::miniextendr_api::altrep_data::AltrepFamily>::Value<'_> {
+                <#inner_ty as ::miniextendr_api::altrep_data::AltrepElement>::altrep_value(&self.#field)
+            }
+        }
     };
 
     expanded.into()
@@ -2785,46 +2815,64 @@ pub fn derive_all_equal(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 /// Derive macro for ALTREP integer vector data types.
 ///
 /// Auto-implements `AltrepLen`, `AltIntegerData`, and the low-level ALTREP
-/// trait impls (`Altrep`, `AltVec`, `AltInteger`, `InferBase`).
+/// trait impls (`Altrep`, `AltVec`, `AltInteger`, `InferBase`), plus the
+/// class registration and `IntoR`.
 ///
 /// # Attributes
 ///
+/// - `#[altrep(field = "field_name")]` - Read length and elements from a slice field
+///   (`[T; N]`, `Vec<T>`, `Box<[T]>`, `&'static [T]`); only needed with several
 /// - `#[altrep(len = "field_name")]` - Specify length field (auto-detects "len" or "length")
 /// - `#[altrep(elt = "field_name")]` - For constant vectors, specify which field provides elements
+/// - `#[altrep(manual)]` - Write `AltrepLen` and `AltIntegerData` yourself
 /// - `#[altrep(dataptr)]` - Enable direct data-pointer access
-/// - `#[altrep(serialize)]` - Enable ALTREP serialization support
+/// - `#[altrep(serialize)]` - Enable ALTREP serialization support (not on generic structs, #2364)
 /// - `#[altrep(subset)]` - Enable `Extract_subset` optimization
 /// - `#[altrep(no_lowlevel)]` - Skip the automatic low-level trait impls
 ///
-/// # Example (Constant Vector - Zero Boilerplate!)
+/// Field selectors take a field name or a tuple index (`"0"`).
+///
+/// # Example (slice field)
+///
+/// Element `i` is `Coerce::<i32>::coerce` of the field's element `i`; an
+/// `i32` field is read by R in place. Generic structs get one R class per
+/// instantiation (`Dice_3`, `Dice_5`):
 ///
 /// ```ignore
-/// #[derive(ExternalPtr, AltrepInteger)]
+/// impl Coerce<i32> for Die {
+///     fn coerce(self) -> i32 { self.value().into() }
+/// }
+///
+/// #[derive(AltrepInteger)]
+/// struct Dice<const N: usize> { value: [Die; N], _secret: () }
+/// ```
+///
+/// # Example (constant vector)
+///
+/// ```ignore
+/// #[derive(AltrepInteger)]
 /// #[altrep(elt = "value")]  // All elements return this field
 /// pub struct ConstantIntData {
 ///     value: i32,
 ///     len: usize,
 /// }
-///
-/// // That's it! 3 lines instead of 30!
-/// // AltrepLen, AltIntegerData, and low-level impls are auto-generated
-///
-/// #[miniextendr(class = "ConstantInt")]
-/// pub struct ConstantIntClass(pub ConstantIntData);
 /// ```
 ///
-/// # Example (Custom elt() - Override One Method)
+/// # Example (computed elements)
 ///
 /// ```ignore
-/// #[derive(ExternalPtr, AltrepInteger)]
+/// #[derive(AltrepInteger)]
+/// #[altrep(manual)]
 /// pub struct ArithSeqData {
 ///     start: i32,
 ///     step: i32,
 ///     len: usize,
 /// }
 ///
-/// // Auto-generates AltrepLen and stub AltIntegerData
-/// // Just override elt() for custom logic:
+/// impl AltrepLen for ArithSeqData {
+///     fn altrep_len(&self) -> usize { self.len }
+/// }
+///
 /// impl AltIntegerData for ArithSeqData {
 ///     fn elt(&self, i: usize) -> i32 {
 ///         self.start + (i as i32) * self.step
@@ -2915,31 +2963,48 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
-/// Derive ALTREP registration for a data struct.
+/// Derive an ALTREP vector from a struct's slice field.
 ///
-/// Generates `TypedExternal`, `AltrepClass`, `RegisterAltrep`, `IntoR`,
-/// linkme registration entry, and `Ref`/`Mut` accessor types.
+/// The struct has one field the derive reads as a slice (`[T; N]`,
+/// `Vec<T>`, `Box<[T]>`, `&'static [T]`; a tuple struct's `.0` works), and
+/// the element type picks the R vector:
 ///
-/// The struct must already have low-level ALTREP traits implemented.
-/// For most use cases, prefer a family-specific derive:
-/// `#[derive(AltrepInteger)]`, `#[derive(AltrepReal)]`, etc.
-/// Use `#[altrep(manual)]` on a family derive to skip data trait generation
-/// when you provide your own `AltrepLen` + `Alt*Data` impls.
+/// | Element | R vector |
+/// |---|---|
+/// | `i32`, `f64`, `u8`, `RLogical`, `Rcomplex`, `#[derive(RNativeType)]` newtypes | that type; R reads the Rust slice in place |
+/// | `bool`, `String` | logical, character |
+/// | `#[derive(RFactor)]` enum | factor (levels = the enum's levels) |
+/// | `#[derive(MatchArg)]` enum | character (the choice names) |
+///
+/// Any other element type is a compile error naming these options; for a
+/// mapping only you know, implement `Coerce<i32>` (or another family's
+/// target) for the element and use the family derive
+/// ([`AltrepInteger`](derive@AltrepInteger), ...) instead.
+///
+/// R writes through the pointer to an owned field of a native element; a
+/// `&'static [T]` field is copied before R writes. Generic structs (const
+/// and type parameters) get one R class per instantiation, named by the
+/// class name and the parameters (`Dice_5`), registered on first
+/// conversion; R saves such a vector as the plain vector.
+///
+/// Also generates `TypedExternal`, `AltrepClass`, `RegisterAltrep`, `IntoR`,
+/// the registration entry of a concrete type, and `Ref`/`Mut` accessor types.
 ///
 /// # Attributes
 ///
 /// - `#[altrep(class = "Name")]` — custom ALTREP class name (defaults to struct name)
+/// - `#[altrep(field = "name")]` — the slice field, when there are several (a tuple index works)
+/// - `#[altrep(manual)]` — registration only, for a struct that implements
+///   the low-level ALTREP traits itself
 ///
 /// # Example
 ///
 /// ```ignore
-/// // Prefer family derives with manual:
-/// #[derive(AltrepInteger)]
-/// #[altrep(manual, class = "MyCustom", serialize)]
-/// struct MyData { ... }
+/// #[derive(Clone, Copy, RFactor)]
+/// enum Die { One, Two, Three, Four, Five, Six }
 ///
-/// impl AltrepLen for MyData { ... }
-/// impl AltIntegerData for MyData { ... }
+/// #[derive(Altrep)]
+/// struct Dice<const N: usize>([Die; N]);   // a factor in R
 /// ```
 #[proc_macro_derive(Altrep, attributes(altrep, r_data))]
 pub fn derive_altrep(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

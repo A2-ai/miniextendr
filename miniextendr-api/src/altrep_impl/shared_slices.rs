@@ -128,7 +128,7 @@ impl_shared_native!(
     __impl_altlogical_methods,
     impl_inferbase_logical
 );
-crate::__impl_altvec_logical_dataptr!(Rc<[bool]>);
+crate::__impl_altvec_materializing_dataptr!(Rc<[bool]>, crate::RLogical);
 crate::__impl_altlogical_methods!(Rc<[bool]>);
 crate::impl_inferbase_logical!(Rc<[bool]>);
 crate::__impl_altvec_string_dataptr!(Rc<[String]>);
@@ -206,7 +206,7 @@ impl_shared_native!(
     __impl_altlogical_methods,
     impl_inferbase_logical
 );
-crate::__impl_altvec_logical_dataptr!(Arc<[bool]>);
+crate::__impl_altvec_materializing_dataptr!(Arc<[bool]>, crate::RLogical);
 crate::__impl_altlogical_methods!(Arc<[bool]>);
 crate::impl_inferbase_logical!(Arc<[bool]>);
 crate::__impl_altvec_string_dataptr!(Arc<[String]>);

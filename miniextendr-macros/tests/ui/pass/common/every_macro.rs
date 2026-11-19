@@ -1206,9 +1206,10 @@ impl AltrepSerialize for SavedLists {
     }
 }
 
-// `derive(Altrep)` registers the class; the `impl_alt*_from_data!` macros
-// supply the low-level traits.
+// `derive(Altrep)` with `manual` registers the class; the
+// `impl_alt*_from_data!` macros supply the low-level traits.
 #[derive(miniextendr_api::Altrep)]
+#[altrep(manual)]
 pub struct Registered {
     data: ::std::vec::Vec<i32>,
 }
@@ -1237,7 +1238,7 @@ impl AltrepSerialize for Registered {
 miniextendr_api::impl_altinteger_from_data!(Registered, serialize);
 
 #[derive(miniextendr_api::Altrep)]
-#[altrep(class = "ShadowRegisteredStrings")]
+#[altrep(manual, class = "ShadowRegisteredStrings")]
 pub struct RegisteredStrings {
     data: ::std::vec::Vec<::std::string::String>,
 }
@@ -1255,6 +1256,80 @@ impl AltStringData for RegisteredStrings {
 }
 
 miniextendr_api::impl_altstring_from_data!(RegisteredStrings);
+
+// `derive(Altrep)` reads a slice field; the element picks the R vector
+// (#2363). One class per instantiation of a generic struct.
+#[derive(miniextendr_api::Altrep)]
+pub struct LevelSlice<const N: usize>([Level; N]);
+
+#[derive(miniextendr_api::Altrep)]
+#[altrep(field = "modes", class = "ShadowModeSlice")]
+pub struct ModeSlice {
+    modes: ::std::vec::Vec<Mode>,
+    _skipped: ::std::vec::Vec<i32>,
+}
+
+#[derive(miniextendr_api::Altrep)]
+pub struct NativeSlice(::std::boxed::Box<[Native]>);
+
+#[derive(miniextendr_api::Altrep)]
+pub struct BorrowedSlice {
+    values: &'static [f64],
+}
+
+#[derive(miniextendr_api::Altrep)]
+pub struct GenericSlice<T>(::std::vec::Vec<T>);
+
+#[derive(miniextendr_api::Altrep)]
+pub struct TextSlice(::std::vec::Vec<::std::string::String>);
+
+// The family derives coerce each element of a slice field.
+impl miniextendr_api::Coerce<i32> for Level {
+    fn coerce(self) -> i32 {
+        match self {
+            Level::Low => 1,
+            Level::High => 2,
+        }
+    }
+}
+
+#[derive(miniextendr_api::AltrepInteger)]
+pub struct LevelCodes<const N: usize> {
+    levels: [Level; N],
+    _note: (),
+}
+
+#[derive(miniextendr_api::AltrepLogical)]
+pub struct Flags(&'static [bool]);
+
+#[derive(miniextendr_api::AltrepReal)]
+pub struct GenericReals<T, const N: usize>([T; N]);
+
+#[derive(miniextendr_api::AltrepRaw)]
+#[altrep(dataptr)]
+pub struct Bytes(::std::vec::Vec<u8>);
+
+#[derive(miniextendr_api::AltrepComplex)]
+#[altrep(class = "ShadowComplexSlice")]
+pub struct ComplexSlice(::std::boxed::Box<[Rcomplex]>);
+
+#[derive(miniextendr_api::AltrepString)]
+pub struct Words(&'static [&'static str]);
+
+#[miniextendr]
+pub fn slice_altreps() -> (
+    LevelSlice<2>,
+    GenericSlice<i32>,
+    LevelCodes<1>,
+    GenericReals<f64, 2>,
+) {
+    (
+        LevelSlice([Level::Low, Level::High]),
+        GenericSlice(::std::vec![1i32, 2]),
+        LevelCodes { levels: [Level::High], _note: () },
+        GenericReals([1.0f64, 2.0]),
+    )
+}
 
 #[miniextendr]
 pub fn altrep_values(n: i32) -> Repeated {

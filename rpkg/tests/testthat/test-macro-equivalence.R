@@ -55,7 +55,7 @@ test_that("#[miniextendr(match_arg)] on enum creates match_arg type", {
   expect_equal(result, "Quiet")
 })
 
-test_that("#[derive(Altrep)] on 1-field struct creates ALTREP vector", {
+test_that("#[derive(AltrepInteger)] with manual data traits creates an ALTREP vector", {
   ints <- mx_derived_ints()
   expect_equal(ints, c(10L, 20L, 30L))
 })

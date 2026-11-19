@@ -1,5 +1,5 @@
-//! Test: the ALTREP family derives only support structs; on an enum the
-//! error points at the `enum` keyword.
+//! Test: an ALTREP family derive on an enum without `#[altrep(manual)]` is
+//! pointed at `manual` and at `Coerce`; the error points at the `enum` keyword.
 
 use miniextendr_macros::AltrepInteger;
 
