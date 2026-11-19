@@ -135,15 +135,9 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     // Get enum variants
     let variants = match &input.data {
         Data::Enum(data) => &data.variants,
-        Data::Struct(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
-                "#[derive(RFactor)] can only be applied to enums",
-            ));
-        }
-        Data::Union(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
+        Data::Struct(_) | Data::Union(_) => {
+            return Err(syn::Error::new(
+                crate::util::data_keyword_span(&input.data),
                 "#[derive(RFactor)] can only be applied to enums",
             ));
         }

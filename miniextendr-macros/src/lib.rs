@@ -2510,9 +2510,10 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 let ctor = quote::quote! { Self { #field_name: val } };
                 (ty, ctor)
             }
-            _ => {
-                return syn::Error::new_spanned(
+            fields => {
+                return util::field_count_error(
                     name,
+                    fields,
                     "#[derive(RNativeType)] requires a newtype struct with exactly one field",
                 )
                 .into_compile_error()
@@ -2520,9 +2521,12 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
             }
         },
         _ => {
-            return syn::Error::new_spanned(name, "#[derive(RNativeType)] only works on structs")
-                .into_compile_error()
-                .into();
+            return syn::Error::new(
+                util::data_keyword_span(&input.data),
+                "#[derive(RNativeType)] only works on structs",
+            )
+            .into_compile_error()
+            .into();
         }
     };
 

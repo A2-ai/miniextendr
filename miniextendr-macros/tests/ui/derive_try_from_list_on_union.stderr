@@ -1,5 +1,5 @@
 error: TryFromList can only be derived for structs
- --> tests/ui/derive_try_from_list_on_union.rs:6:7
+ --> tests/ui/derive_try_from_list_on_union.rs:6:1
   |
 6 | union Bad {
-  |       ^^^
+  | ^^^^^

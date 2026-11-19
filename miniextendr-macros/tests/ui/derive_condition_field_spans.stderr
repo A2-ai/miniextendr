@@ -1,0 +1,29 @@
+error: `message` is one of the condition's own slots (`message`, `call`, `kind`); rename the field with `#[condition(rename = "…")]` or exclude it with `#[condition(skip)]`
+  --> tests/ui/derive_condition_field_spans.rs:11:26
+   |
+11 |     #[condition(rename = "message")]
+   |                          ^^^^^^^^^
+
+error: duplicate `data` field name `row` in `Duplicate`
+  --> tests/ui/derive_condition_field_spans.rs:19:26
+   |
+19 |     #[condition(rename = "row")]
+   |                          ^^^^^
+
+error: tuple field 0 of `Tuple` needs a `data` name: add `#[condition(rename = "name")]`, or `#[condition(skip)]` to leave it out
+  --> tests/ui/derive_condition_field_spans.rs:25:42
+   |
+25 | pub struct Tuple(#[condition(debug)] pub Vec<i32>);
+   |                                          ^^^^^^^^
+
+error: `skip_none` needs an `Option<_>` field: it leaves the entry out when the field is `None`
+  --> tests/ui/derive_condition_field_spans.rs:31:17
+   |
+31 |     pub values: Vec<i32>,
+   |                 ^^^^^^^^
+
+error: `skip` cannot be combined with `rename`, `debug` or `skip_none`
+  --> tests/ui/derive_condition_field_spans.rs:37:5
+   |
+37 |     #[condition(skip, rename = "x")]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

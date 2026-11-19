@@ -1,0 +1,5 @@
+error: #[derive(Vctrs)] can only be applied to structs
+ --> tests/ui_vctrs/derive_vctrs_on_union.rs:8:1
+  |
+8 | union Bad {
+  | ^^^^^

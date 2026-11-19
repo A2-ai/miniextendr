@@ -155,7 +155,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         syn::Data::Struct(data) => data,
         _ => {
             return Err(syn::Error::new(
-                input.ident.span(),
+                crate::util::data_keyword_span(&input.data),
                 "IntoList can only be derived for structs",
             ));
         }
@@ -308,7 +308,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
         syn::Data::Struct(data) => data,
         _ => {
             return Err(syn::Error::new(
-                input.ident.span(),
+                crate::util::data_keyword_span(&input.data),
                 "TryFromList can only be derived for structs",
             ));
         }

@@ -1,0 +1,11 @@
+error: this derive requires a struct with exactly one field
+ --> tests/ui/derive_newtype_wrong_field_count.rs:7:15
+  |
+7 | pub struct Two(pub i32, pub i32);
+  |               ^^^^^^^^^^^^^^^^^^
+
+error: this derive requires a struct with exactly one field
+  --> tests/ui/derive_newtype_wrong_field_count.rs:10:12
+   |
+10 | pub struct Unit;
+   |            ^^^^

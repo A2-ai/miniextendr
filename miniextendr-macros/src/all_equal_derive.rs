@@ -442,8 +442,8 @@ fn getter_path(lit: &LitStr, struct_name: &syn::Ident) -> syn::Result<syn::Path>
 /// The fields the method compares, in declaration order.
 fn compared_fields(input: &DeriveInput) -> syn::Result<Vec<ComparedField>> {
     let syn::Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(
-            &input.ident,
+        return Err(syn::Error::new(
+            crate::util::data_keyword_span(&input.data),
             "`AllEqual` derives on a struct: it compares the struct's fields",
         ));
     };

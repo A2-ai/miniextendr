@@ -68,8 +68,9 @@ struct VctrsAttrs {
     /// R class name (e.g., `"vctrs_percent"`). Required.
     class: Option<String>,
     /// Base vector type: `"double"`, `"integer"`, `"character"`, `"list"`, `"record"`, etc.
-    /// Defaults to `"double"` if not specified.
-    base: Option<String>,
+    /// Defaults to `"double"` if not specified. Kept as the literal, so an
+    /// unknown value is reported there.
+    base: Option<syn::LitStr>,
     /// Short abbreviation for `vec_ptype_abbr` display (e.g., `"pct"`).
     abbr: Option<String>,
     /// Whether to include the base type in the class vector (`inherit_base_type` in `new_vctr`).
@@ -133,8 +134,7 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.class = Some(value.value());
                 } else if meta.path.is_ident("base") {
-                    let value: syn::LitStr = meta.value()?.parse()?;
-                    result.base = Some(value.value());
+                    result.base = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("abbr") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.abbr = Some(value.value());
@@ -961,14 +961,14 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     match &input.data {
         Data::Struct(_) => {}
         Data::Enum(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
+            return Err(syn::Error::new(
+                crate::util::data_keyword_span(&input.data),
                 "#[derive(Vctrs)] can only be applied to structs (use #[derive(RFactor)] for enums)",
             ));
         }
         Data::Union(_) => {
-            return Err(syn::Error::new_spanned(
-                &input,
+            return Err(syn::Error::new(
+                crate::util::data_keyword_span(&input.data),
                 "#[derive(Vctrs)] can only be applied to structs",
             ));
         }
@@ -996,18 +996,19 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     // Require class attribute
     let class_name = attrs.class.ok_or_else(|| {
         syn::Error::new_spanned(
-            &input,
+            &input.ident,
             "#[derive(Vctrs)] requires #[vctrs(class = \"name\")] attribute",
         )
     })?;
 
     // Get base type (default to "double")
-    let base = attrs.base.as_deref().unwrap_or("double");
+    let base_value = attrs.base.as_ref().map(syn::LitStr::value);
+    let base = base_value.as_deref().unwrap_or("double");
 
-    // Validate base type
+    // Validate base type (the default is valid, so an unknown one was written)
     let sexptype = base_to_sexptype(base).ok_or_else(|| {
-        syn::Error::new_spanned(
-            &input,
+        syn::Error::new(
+            attrs.base.as_ref().map_or_else(Span::call_site, syn::LitStr::span),
             format!(
                 "unknown base type '{}'; expected one of: double, integer, logical, character, raw, list, record",
                 base

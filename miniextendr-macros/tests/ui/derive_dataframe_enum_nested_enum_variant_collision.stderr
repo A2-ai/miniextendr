@@ -1,7 +1,5 @@
 error: column name collision: the flatten field `kind` (a nested `DataFrameRow` enum) will emit a discriminant column named `kind_variant`, but a sibling field already produces a column with the same name. Rename the sibling field or use `#[dataframe(tag = "...")]` on the inner enum to choose a different discriminant column name (e.g. `#[dataframe(tag = "type")]` → `kind_type`)
-  --> tests/ui/derive_dataframe_enum_nested_enum_variant_collision.rs:15:10
+  --> tests/ui/derive_dataframe_enum_nested_enum_variant_collision.rs:21:9
    |
-15 | #[derive(DataFrameRow)]
-   |          ^^^^^^^^^^^^
-   |
-   = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)
+21 |         kind_variant: String, // collides with kind's discriminant column
+   |         ^^^^^^^^^^^^

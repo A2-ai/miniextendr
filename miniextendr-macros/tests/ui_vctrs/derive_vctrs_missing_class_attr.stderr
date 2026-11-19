@@ -1,7 +1,5 @@
 error: #[derive(Vctrs)] requires #[vctrs(class = "name")] attribute
- --> tests/ui_vctrs/derive_vctrs_missing_class_attr.rs:6:1
+ --> tests/ui_vctrs/derive_vctrs_missing_class_attr.rs:6:8
   |
-6 | / struct Bad {
-7 | |     x: f64,
-8 | | }
-  | |_^
+6 | struct Bad {
+  |        ^^^
