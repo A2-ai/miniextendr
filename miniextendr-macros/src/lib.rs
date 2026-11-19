@@ -3169,6 +3169,11 @@ pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::Token
 
 /// Derive `RFactor`: enables conversion between Rust enums and R factors.
 ///
+/// The enum's containers convert the same way (#2365): `Vec<T>`, `Box<[T]>`
+/// and `Vec<Option<T>>` are factors of the type's levels (`NA` for `None`)
+/// both as arguments and as return values, and an `Option<T>` argument reads
+/// a length-one factor.
+///
 /// # Usage
 ///
 /// ```ignore

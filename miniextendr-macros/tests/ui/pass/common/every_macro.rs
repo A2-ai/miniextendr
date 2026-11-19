@@ -224,6 +224,15 @@ pub fn levels(level: Level, staged: Staged) -> Staged {
     staged
 }
 
+#[miniextendr]
+pub fn level_containers(
+    levels: ::std::vec::Vec<Level>,
+    staged: ::std::vec::Vec<::core::option::Option<Staged>>,
+) -> ::std::vec::Vec<::core::option::Option<Level>> {
+    let _ = (levels, staged);
+    ::std::vec::Vec::new()
+}
+
 // endregion
 
 // region: conditions

@@ -77,6 +77,19 @@ pub fn outcome_by_round_trip(x: OutcomeBy) -> OutcomeBy {
     x
 }
 
+/// Variants named after the `Inner` type of the container impls the derive
+/// writes (`TryFromSexpElement`, `IntoRNewtype`, #2365).
+#[derive(Copy, Clone, Debug, RFactor)]
+pub enum Wrapping {
+    Inner,
+    Outer,
+}
+
+#[miniextendr]
+pub fn wrapping_round_trip(x: Vec<Wrapping>) -> Vec<Option<Wrapping>> {
+    x.into_iter().map(Some).collect()
+}
+
 // endregion
 
 // region: DataFrameRow
