@@ -951,21 +951,21 @@ pub mod markers;
 /// method are `r_`-prefixed in Rust and keep the std name in R, so importing
 /// these traits leaves std calls alone. See module docs for usage.
 ///
-/// [`RDebug`]: adapter_traits::RDebug
-/// [`RDisplay`]: adapter_traits::RDisplay
-/// [`RHash`]: adapter_traits::RHash
-/// [`ROrd`]: adapter_traits::ROrd
-/// [`RPartialOrd`]: adapter_traits::RPartialOrd
-/// [`RError`]: adapter_traits::RError
-/// [`RFromStr`]: adapter_traits::RFromStr
-/// [`RClone`]: adapter_traits::RClone
-/// [`RCopy`]: adapter_traits::RCopy
-/// [`RDefault`]: adapter_traits::RDefault
-/// [`RIterator`]: adapter_traits::RIterator
-/// [`RExtend`]: adapter_traits::RExtend
-/// [`RFromIter`]: adapter_traits::RFromIter
-/// [`RToVec`]: adapter_traits::RToVec
-/// [`RMakeIter`]: adapter_traits::RMakeIter
+/// [`RDebug`]: trait@adapter_traits::RDebug
+/// [`RDisplay`]: trait@adapter_traits::RDisplay
+/// [`RHash`]: trait@adapter_traits::RHash
+/// [`ROrd`]: trait@adapter_traits::ROrd
+/// [`RPartialOrd`]: trait@adapter_traits::RPartialOrd
+/// [`RError`]: trait@adapter_traits::RError
+/// [`RFromStr`]: trait@adapter_traits::RFromStr
+/// [`RClone`]: trait@adapter_traits::RClone
+/// [`RCopy`]: trait@adapter_traits::RCopy
+/// [`RDefault`]: trait@adapter_traits::RDefault
+/// [`RIterator`]: trait@adapter_traits::RIterator
+/// [`RExtend`]: trait@adapter_traits::RExtend
+/// [`RFromIter`]: trait@adapter_traits::RFromIter
+/// [`RToVec`]: trait@adapter_traits::RToVec
+/// [`RMakeIter`]: trait@adapter_traits::RMakeIter
 pub mod adapter_traits;
 pub use adapter_traits::{
     RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,

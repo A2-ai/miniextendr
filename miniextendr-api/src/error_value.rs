@@ -203,7 +203,7 @@ pub unsafe fn make_rust_condition_value(
     }
 }
 
-/// Build the tagged value for an [`RCondition`] payload (`error!()`,
+/// Build the tagged value for an [`RCondition`](enum@RCondition) payload (`error!()`,
 /// `warning!()`, `message!()`, `condition!()`, a queued `defer_*` entry, or a
 /// payload reconstructed across a package boundary): its kind, message,
 /// classes and data, and `call` unless the payload says

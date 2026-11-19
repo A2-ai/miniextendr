@@ -178,7 +178,7 @@ pub static MX_CONVERSION_ERROR_CLASS: [ConversionErrorClassEntry];
 
 /// The `.Call` routines the package registers with R.
 ///
-/// Native: [`MX_CALL_DEFS`] and the [`MX_SIDECAR_SETTERS`] of every type
+/// Native: [`static@MX_CALL_DEFS`] and the [`static@MX_SIDECAR_SETTERS`] of every type
 /// whose fields R can write (#2292). The wasm snapshot is written from this
 /// list. wasm32: that snapshot, read from a `OnceLock` populated by
 /// `install_wasm_runtime_slices`.
@@ -251,7 +251,7 @@ pub(crate) fn trait_dispatch() -> &'static [TraitDispatchEntry] {
 
 /// The package crate's `conversion_error_class` (empty when it sets none).
 ///
-/// Native: the [`MX_CONVERSION_ERROR_CLASS`] entry `miniextendr_init!`
+/// Native: the [`static@MX_CONVERSION_ERROR_CLASS`] entry `miniextendr_init!`
 /// registers (a package has one). wasm32: the copy the `wasm_registry.rs`
 /// snapshot carries, installed by `install_wasm_runtime_slices`.
 #[inline]
@@ -381,7 +381,7 @@ pub struct RWrapperEntry {
 unsafe impl Sync for RWrapperEntry {}
 
 /// The package crate's `conversion_error_class`, registered by
-/// `miniextendr_init!` in [`MX_CONVERSION_ERROR_CLASS`].
+/// `miniextendr_init!` in [`MX_CONVERSION_ERROR_CLASS`](static@MX_CONVERSION_ERROR_CLASS).
 pub struct ConversionErrorClassEntry {
     /// The classes, most specific first; empty when the crate sets none.
     pub classes: &'static [&'static str],
@@ -454,7 +454,7 @@ pub struct ClassNameEntry {
     /// "read_only"` (#2268): every field is read-only from R, so the
     /// standalone setters are not written either
     /// ([`SidecarAccessorsEntry::internal_read_only`]), and the setter
-    /// routines are not registered ([`MX_SIDECAR_SETTERS`], #2292).
+    /// routines are not registered ([`static@MX_SIDECAR_SETTERS`], #2292).
     pub read_only_fields: bool,
 }
 
@@ -585,7 +585,7 @@ pub struct ClassBlockEntry {
     /// other class systems; an S3 class with a constructor has its
     /// environment, which holds `Class$new()`, in the [`tail`](Self::tail).
     /// Written after the members, before the tail, only when a trait impl
-    /// writes into it ([`MX_TRAIT_NAMESPACES`]), so a class exports no empty
+    /// writes into it ([`static@MX_TRAIT_NAMESPACES`]), so a class exports no empty
     /// environment (#2264, #2289).
     pub env: &'static str,
     /// What follows every block's members, such as R6's `$lock()`.
@@ -599,7 +599,7 @@ unsafe impl Sync for ClassBlockEntry {}
 /// A trait impl that writes into its type's class environment: the
 /// `Class$Trait` namespace an Env, S3, vctrs or R6 trait impl binds for its
 /// static methods and consts (and an Env or R6 one for its instance methods
-/// too). Registered in [`MX_TRAIT_NAMESPACES`] by
+/// too). Registered in [`MX_TRAIT_NAMESPACES`](static@MX_TRAIT_NAMESPACES) by
 /// `#[miniextendr] impl Trait for Type`, a separate expansion from the
 /// type's impl blocks, which can't see it: the wrapper writer keeps the
 /// type's [`ClassBlockEntry::env`] for it (#2264, #2289).
@@ -613,7 +613,7 @@ pub struct TraitNamespaceEntry {
 /// declares its class constructor (`#[miniextendr(<system>(constructor))]`,
 /// or a receiver-less `new` returning `Self`). `Block` is a type private to that
 /// impl block, so two such blocks don't conflict here; the wrapper writer
-/// refuses them ([`merge_class_blocks`]).
+/// refuses them (`merge_class_blocks`).
 ///
 /// An impl block with several methods that could be the constructor and
 /// none declared requires it ([`require_class_constructor`]): the type then
@@ -664,7 +664,8 @@ pub struct SidecarAccessorsEntry {
 unsafe impl Sync for SidecarAccessorsEntry {}
 
 /// The `.Call` registration of one sidecar setter,
-/// `C_<crate>__mx_rdata_set_<Type>_<field>` ([`MX_SIDECAR_SETTERS`]). The
+/// `C_<crate>__mx_rdata_set_<Type>_<field>`
+/// ([`MX_SIDECAR_SETTERS`](static@MX_SIDECAR_SETTERS)). The
 /// derive can't see the impl's `r_data_accessors = "read_only"`, a separate
 /// expansion, so it registers the setter with its type, and [`call_defs`]
 /// leaves it out for a type whose fields are read-only (#2292).
@@ -821,7 +822,7 @@ unsafe impl Send for TraitDispatchEntry {}
 
 /// ALTREP class registration entry: fn pointer + `#[no_mangle]` symbol name.
 ///
-/// See [`MX_ALTREP_REGISTRATIONS`] for context.
+/// See [`static@MX_ALTREP_REGISTRATIONS`] for context.
 #[repr(C)]
 pub struct AltrepRegistration {
     /// Registration function called inside the package-init unwind boundary.
@@ -841,7 +842,7 @@ unsafe impl Send for AltrepRegistration {}
 
 /// Universal query function for trait dispatch.
 ///
-/// Scans [`MX_TRAIT_DISPATCH`] for a matching `(concrete_tag, trait_tag)` pair.
+/// Scans [`static@MX_TRAIT_DISPATCH`] for a matching `(concrete_tag, trait_tag)` pair.
 /// Returns the vtable pointer, or null if the trait is not implemented.
 ///
 /// This replaces per-type query functions — a single function handles all types
@@ -2419,7 +2420,7 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 ///
 /// With a `default = "..."` (`preferred`: the literal's text without its
 /// quotes, so escaped as R source is), that choice comes first and the others
-/// keep their order ([`crate::match_arg::default_first`], the order
+/// keep their order (`crate::match_arg::default_first`, the order
 /// [`crate::match_arg::match_arg_param_with_default`] matches against,
 /// #1767). An empty `preferred` keeps the declaration order.
 ///
@@ -3806,7 +3807,8 @@ const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class'
 
 /// The `.miniextendr_conversion_error_class` binding that closes the wrappers
 /// preamble: the classes `.miniextendr_arg_error` puts on every R-side
-/// argument error, from the [`MX_CONVERSION_ERROR_CLASS`] entry that
+/// argument error, from the
+/// [`MX_CONVERSION_ERROR_CLASS`](static@MX_CONVERSION_ERROR_CLASS) entry that
 /// `miniextendr_init!` registers for the package crate (#1591).
 ///
 /// The Rust conversion arms carry the same classes, emitted by the macro from

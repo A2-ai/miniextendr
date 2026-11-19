@@ -209,7 +209,7 @@ where
 
 /// `Dataptr` for bridge-generated string ALTREPs: fill every cache slot and
 /// return the cache's pointer. A writable request marks the cache written
-/// first (see [`altstring_cache_written`]), since R writes through it.
+/// first (see `altstring_cache_written`), since R writes through it.
 ///
 /// A panic part-way leaves the filled slots cached; a retry fills the rest.
 ///

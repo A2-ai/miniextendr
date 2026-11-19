@@ -98,7 +98,8 @@ macro_rules! impl_altinteger_from_data_generic {
 /// - `unserialize(class, state)` (load-side)
 ///
 /// The `unserialize` implementation reconstructs the backing Rust value via
-/// [`AltrepSerialize::unserialize`] and then creates a fresh ALTREP instance via
+/// [`AltrepSerialize::unserialize`](crate::altrep_data::AltrepSerialize::unserialize)
+/// and then creates a fresh ALTREP instance via
 /// `R_new_altrep(class, data1, SEXP::nil())` where `data1` is an `ExternalPtr<$ty>`.
 ///
 /// This matches the proc-macro-generated `IntoR::into_sexp` behavior (data is stored in `data1`,
