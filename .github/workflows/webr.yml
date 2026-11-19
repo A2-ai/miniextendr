@@ -301,7 +301,7 @@ jobs:
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'webr')
     # Main-push/dispatch runs get extra headroom for the informational
-    # testthat pass in tier 3 (#1255, up to 40 min at the step cap) plus the
+    # testthat pass in tier 3 (#1255, dispatch only, up to 40 min at the step cap) plus the
     # monorepo scaffold leg (#1271, two extra compiles of a minimal crate —
     # one native, one wasm+build-std); per-PR runs keep the historical 90.
     timeout-minutes: ${{ github.event_name == 'pull_request' && 90 || 150 }}
@@ -762,14 +762,14 @@ jobs:
           # above which only run there. Unset (e.g. in tests/webr-smoke.sh
           # without --scaffold) the runner behaves exactly as before.
           SMOKE_SCAFFOLD_PKG: ${{ github.event_name != 'pull_request' && 'mxsmoke,mxmono' || 'mxsmoke' }}
-          # Informational testthat pass (#1255): on main-push and
-          # workflow_dispatch only, run rpkg's testthat suite inside the webR
-          # session and report counts. Per-PR runs stay load-only — wall time
-          # gates PRs; the counts are informational and main-push visibility
-          # is enough to catch a wasm-runtime-behavior regression. Test
-          # failures never gate (many legitimately fail under wasm); only a
-          # harness error before the counts line turns the step red.
-          SMOKE_TESTTHAT: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          # Informational testthat pass (#1255): on workflow_dispatch only,
+          # run rpkg's testthat suite inside the webR session and report
+          # counts. PRs and pushes to main stay load-only: on main pushes the
+          # whole suite ran past smoke.mjs's 20-min budget every time and
+          # printed no counts (#2377). Test failures never gate (many
+          # legitimately fail under wasm); only a harness error before the
+          # counts line turns the step red.
+          SMOKE_TESTTHAT: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: |
           set -euo pipefail
           # Hard wall-clock cap: webR init + Imports install + library load
