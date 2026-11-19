@@ -8,6 +8,12 @@ $max-width-wide: 1200px;
 // Running prose (paragraphs, lists, quotes, table cells) stops at about 70
 // characters a line; code blocks and tables keep the full column.
 $measure: 34rem;
+$content-pad: 1.5rem;
+// The manual's page list (left of the column) and "on this page" list (right).
+$sidebar-width: 220px;
+$toc-width: 200px;
+$rail-gap: 2rem;
+$rail-edge: 1rem;
 $nav-height: 60px;
 $radius: 6px;
 
@@ -283,7 +289,7 @@ pre {
 main.content {
   max-width: $max-width;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem 4rem;
+  padding: 2.5rem $content-pad 4rem;
   width: 100%;
   flex: 1;
 }
@@ -589,9 +595,12 @@ main.content.wide {
 // ── Doc (single) page with sidebar + TOC ──────────────
 // Reading column stays at $max-width; sidebars float outside as position: fixed
 // at wide viewports so they never compress the main text column (matches the
-// cgmossa.github.io CV layout). Each rail appears only from the width where it
-// fits beside the column: $max-width + 2 × (2rem gap + rail width), plus room
-// for a classic 17px scrollbar. Below that the rail is hidden, not clipped.
+// cgmossa.github.io CV layout). The page list shows from 1280px. The column
+// stays centred where the list fits to its left (about 1500px and up);
+// narrower, the column moves right just far enough to make room, so the list
+// is never clipped. The "on this page" list shows from 1500px, the first width
+// where it fits right of the column with a classic 17px scrollbar. Below those
+// widths a list is hidden.
 .doc-layout {
   position: relative;
   max-width: $max-width;
@@ -648,25 +657,32 @@ main.content.wide {
   }
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 1280px) {
+  // Lift the wide cap so the column can be placed against the viewport:
+  // centred, or with its left edge past the page list.
+  main.content.wide:has(> .doc-layout > .doc-sidebar) { max-width: none; }
+  .doc-layout:has(> .doc-sidebar) {
+    margin-left: max(#{$rail-edge} + #{$sidebar-width} + #{$rail-gap} - #{$content-pad}, (100% - #{$max-width}) / 2);
+  }
+
   .doc-sidebar {
     display: block;
     position: fixed;
     top: calc(#{$nav-height} + 1.5rem);
-    right: calc(50% + (#{$max-width} / 2) + 2rem);
-    width: 220px;
+    left: max(#{$rail-edge}, 50% - #{$max-width} / 2 - #{$rail-gap} - #{$sidebar-width});
+    width: $sidebar-width;
     max-height: calc(100vh - #{$nav-height} - 2rem);
     overflow-y: auto;
   }
 }
 
-@media (min-width: 1480px) {
+@media (min-width: 1500px) {
   .doc-toc {
     display: block;
     position: fixed;
     top: calc(#{$nav-height} + 1.5rem);
-    left: calc(50% + (#{$max-width} / 2) + 2rem);
-    width: 200px;
+    left: max(#{$rail-edge} + #{$sidebar-width} + 2 * #{$rail-gap} + #{$max-width}, 50% + #{$max-width} / 2 + #{$rail-gap});
+    width: $toc-width;
     max-height: calc(100vh - #{$nav-height} - 2rem);
     overflow-y: auto;
   }
