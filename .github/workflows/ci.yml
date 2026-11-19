@@ -964,10 +964,16 @@ jobs:
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
+        env:
+          # Installed size (150 Mb, every integration compiled in, #2371):
+          # a NOTE on R 4.4, only INFO on R 4.5 and later.
+          _R_CHECK_PKG_SIZES_: "false"
         with:
           working-directory: rpkg
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"warning"'
+          # 4.4 and oldrel(/N) run R < 4.6, which NOTEs a non-API call (docs/NONAPI.md, "R_ext/Connections.h
+          # non-API (before R 4.6)"). Drop this exemption once that NOTE is resolved or R 4.5 leaves the matrix.
+          error-on: ${{ (matrix.r == '4.4' || startsWith(matrix.r, 'oldrel')) && '"warning"' || '"note"' }}
           check-dir: '"check"'
 
       - name: Print failed tests
@@ -1125,7 +1131,7 @@ jobs:
         with:
           working-directory: rpkg
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"warning"'
+          error-on: '"note"'
           check-dir: '"check"'
           # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
 
@@ -1931,7 +1937,7 @@ jobs:
         with:
           working-directory: minirextendr
           args: 'c("--no-manual", "--as-cran")'
-          error-on: '"warning"'
+          error-on: '"note"'
           check-dir: '"check"'
 
       - name: Upload check results
@@ -1948,7 +1954,7 @@ jobs:
   # Also the current-release-R leg of the R CMD check matrix: r-check-linux no
   # longer has a `release` leg, because it ran the same --as-cran check of the
   # same vendored tarball on the same R (#2343). It therefore fails on a
-  # WARNING, as check-r-package's error-on: '"warning"' does there.
+  # WARNING or NOTE, as check-r-package's error-on: '"note"' does there.
   cran-check:
     name: CRAN-like check
     runs-on: ubuntu-latest
@@ -2031,14 +2037,19 @@ jobs:
           echo "TARBALL=$(ls -1 miniextendr_*.tar.gz)" >> "$GITHUB_ENV"
 
       - name: R CMD check (CRAN-like, from tarball)
+        env:
+          # The CRAN incoming feasibility check always NOTEs "New submission"
+          # and the tarball size (24.6 MB, #2371).
+          # This also turns off the other incoming checks (URLs, spelling, README conversion).
+          _R_CHECK_CRAN_INCOMING_: "false"
         run: |
           # Check the tarball without NOT_CRAN — configure.ac detects tarball
           # install mode from the presence of inst/vendor.tar.xz (shipped inside
           # the built tarball by `just vendor` above).
           R CMD check --as-cran --no-manual ${{ env.TARBALL }}
-          # R CMD check exits non-zero only on an ERROR; fail on a WARNING too.
-          if grep -E '^Status: .*WARNING' miniextendr.Rcheck/00check.log; then
-            echo "::error::R CMD check reported a WARNING"
+          # R CMD check exits non-zero only on an ERROR; fail on a WARNING or NOTE too.
+          if grep -E '^Status: .*(WARNING|NOTE)' miniextendr.Rcheck/00check.log; then
+            echo "::error::R CMD check reported a WARNING or NOTE"
             exit 1
           fi
 
