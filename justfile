@@ -1589,7 +1589,7 @@ vendor-sync-check:
       exit 0
     fi
 
-    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+    for crate in miniextendr-api miniextendr-macros miniextendr-lint; do
       # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
       crate_dir=""
       if [[ -d "$vendor_dir/$crate" ]]; then
@@ -1602,7 +1602,8 @@ vendor-sync-check:
       fi
 
       if [[ -z "$crate_dir" ]]; then
-        echo "WARNING: $vendor_dir/$crate (or versioned) not found (run 'just configure' first)"
+        echo "MISSING: $vendor_dir/$crate (or versioned) not found"
+        drift_found=1
         continue
       fi
 
@@ -1615,7 +1616,7 @@ vendor-sync-check:
 
     if [[ $drift_found -eq 1 ]]; then
       echo ""
-      echo "Vendored crates have drifted from workspace sources."
+      echo "Vendored crates are missing or have drifted from workspace sources."
       echo "Run 'just vendor' to refresh vendored copies."
       exit 1
     else
@@ -1700,7 +1701,7 @@ vendor-sync-diff:
 
     vendor_dir="rpkg/vendor"
 
-    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+    for crate in miniextendr-api miniextendr-macros miniextendr-lint; do
       # Accept both flat (vendor/<name>/) and versioned (vendor/<name>-<version>/) layouts
       crate_dir=""
       if [[ -d "$vendor_dir/$crate" ]]; then
