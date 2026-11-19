@@ -1050,14 +1050,16 @@ jobs:
       # the same toolchain ABI we tell downstream maintainers to use.
       # Mirrors `minirextendr/inst/templates/r-release.yml`; docs are the
       # single source of truth, this duplication is by design.
-      # See docs/RELEASE_WORKFLOW.md Gotcha 5.
+      # See docs/RELEASE_WORKFLOW.md Gotcha 5. Unlike the template, CI has no
+      # `|| true` on xcode-select: if the runner image drops the pinned Xcode,
+      # the job fails instead of building against the image's default SDK.
       - name: Pin macOS SDK and deployment target
         run: |
           if [ "$(uname -m)" = "x86_64" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app || true
+            sudo xcode-select -s /Applications/Xcode_16.2.app
             echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
           else
-            sudo xcode-select -s /Applications/Xcode_26.0.app || true
+            sudo xcode-select -s /Applications/Xcode_26.0.app
             echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> "$GITHUB_ENV"
           fi
           echo "xcode is set: $(xcode-select --print-path)"
