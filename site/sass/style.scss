@@ -36,7 +36,6 @@ $radius: 6px;
   --blockquote-bg: rgba(0, 0, 0, 0.02);
   --kind-tag-bg: rgba(0, 0, 0, 0.04);
   --nav-bg: rgba(255, 255, 255, 0.92);
-  --nav-bg-mobile: rgba(255, 255, 255, 0.98);
   --btn-text: #ffffff;
   --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
   --focus-ring: rgba(81, 22, 96, 0.45);
@@ -58,7 +57,6 @@ $radius: 6px;
   --blockquote-bg: rgba(255, 255, 255, 0.03);
   --kind-tag-bg: rgba(255, 255, 255, 0.06);
   --nav-bg: rgba(34, 34, 64, 0.92);
-  --nav-bg-mobile: rgba(34, 34, 64, 0.98);
   --btn-text: #1a1a2e;
   --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.2);
   --focus-ring: rgba(192, 132, 252, 0.55);
@@ -867,8 +865,8 @@ main.content.wide {
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--nav-bg-mobile);
-    backdrop-filter: blur(12px);
+    // Opaque: a translucent fill let the page show through the open menu.
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1.5rem 1rem;
     a {
