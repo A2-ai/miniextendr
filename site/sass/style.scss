@@ -85,6 +85,12 @@ h1, h2, h3, h4, h5, h6 {
   font-family: $font-heading;
   font-weight: 700;
   line-height: 1.25;
+  text-wrap: balance;
+}
+
+// Avoid a lone word on the last line of a paragraph or list item.
+p, li, td {
+  text-wrap: pretty;
 }
 
 a {
