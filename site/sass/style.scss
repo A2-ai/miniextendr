@@ -712,12 +712,14 @@ main.content.wide {
   li { margin-bottom: 0.35rem; }
 
   blockquote {
-    border-left: 3px solid var(--primary);
+    border: 1px solid var(--border);
     padding: 0.5em 1em;
     margin: 1.5em 0;
     color: var(--text-muted);
     background: var(--blockquote-bg);
-    border-radius: 0 $radius $radius 0;
+    border-radius: $radius;
+
+    > :last-child { margin-bottom: 0; }
   }
 
   hr {
