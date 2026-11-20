@@ -861,7 +861,7 @@ where
 
 /// Adapter trait for collections that can be converted to vectors.
 ///
-/// This is the complement to [`RFromIter`]: while `RFromIter` creates collections
+/// This is the complement to [`trait@RFromIter`]: while `RFromIter` creates collections
 /// from vectors, `RToVec` extracts vectors from collections.
 ///
 /// # Methods
@@ -877,7 +877,7 @@ where
 /// this trait borrows the collection and clones elements. This is necessary
 /// because R's `ExternalPtr` pattern provides `&self`, not owned `self`.
 ///
-/// For consuming iteration, use [`RIterator`] with interior mutability.
+/// For consuming iteration, use [`trait@RIterator`] with interior mutability.
 ///
 /// # Example
 ///
@@ -957,14 +957,14 @@ where
 
 /// Adapter trait for creating iterator wrappers from collections.
 ///
-/// This trait provides a way to create an [`RIterator`] wrapper from a collection.
+/// This trait provides a way to create an [`trait@RIterator`] wrapper from a collection.
 /// Since `ExternalPtr` methods receive `&self`, this trait clones the underlying
 /// data to create an independent iterator.
 ///
 /// # Type Parameters
 ///
 /// - `T`: The element type yielded by the iterator
-/// - `I`: The iterator type returned (must implement [`RIterator`])
+/// - `I`: The iterator type returned (must implement [`trait@RIterator`])
 ///
 /// # Design Note
 ///

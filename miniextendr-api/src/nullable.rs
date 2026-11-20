@@ -5,7 +5,7 @@
 //! (`Option<i32>` gives `NA_integer_`), because R stores a missing scalar as
 //! `NA`. Where `None` means that there is no value at all, whatever `T` is,
 //! return `Nullable<T>`: `Some(v)` converts as `v` does, and `None` is `NULL`.
-//! The [`RIterator` adapter](crate::RIterator) uses it for the end of
+//! The [`RIterator` adapter](trait@crate::RIterator) uses it for the end of
 //! iteration, which an `NA` item would be indistinguishable from.
 //!
 //! ```ignore

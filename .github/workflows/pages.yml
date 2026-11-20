@@ -52,6 +52,7 @@ jobs:
           RUSTFLAGS: --cfg=docsrs
           RUSTDOCFLAGS: >-
             --cfg=docsrs
+            -D warnings
             -Z unstable-options
             --document-private-items
             --document-hidden-items
@@ -61,84 +62,32 @@ jobs:
             --generate-macro-expansion
         run: cargo doc --no-deps -Z rustdoc-map -p miniextendr-api -p miniextendr-macros -p miniextendr-lint -p miniextendr-engine
 
-      # rpkg/src/rust/Cargo.toml [patch.crates-io] points at
-      # ../../vendor/miniextendr-api etc. Populate vendor/ so the
-      # patch paths resolve. `just vendor` calls `cargo revendor` directly;
-      # does NOT need autoconf or `just configure` (no Rscript, no Makevars).
-      #
-      # The rpkg rustdoc build requires `just vendor` (autoconf + cargo-revendor
-      # + R headers) and adds ~5 min plus failure points. Mark these steps
-      # continue-on-error so the site still deploys when rpkg-specific tooling
-      # regresses; workspace rustdoc + Zola build remain strict (#79).
-      - name: Install cargo-revendor
-        continue-on-error: true
-        run: cargo install --path cargo-revendor
-
-      - name: Restore rpkg vendor directory cache
-        continue-on-error: true
-        id: rpkg-vendor-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: rpkg/vendor
-          key: ${{ runner.os }}-rpkg-vendor-${{ hashFiles('Cargo.lock', 'rpkg/src/rust/Cargo.lock', 'miniextendr-api/**/*.rs', 'miniextendr-macros/**/*.rs', 'miniextendr-lint/**/*.rs') }}
-
-      - name: Install just
-        continue-on-error: true
-        if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@just
-
-      - name: Generate rpkg/vendor
-        continue-on-error: true
-        if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
-        run: just vendor
-
-      - name: Save rpkg vendor directory cache
-        continue-on-error: true
-        if: steps.rpkg-vendor-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: rpkg/vendor
-          key: ${{ steps.rpkg-vendor-cache.outputs.cache-primary-key }}
-
+      # rpkg/src/rust is its own workspace, and its Cargo.lock pins the
+      # framework crates to an older git commit. Patch them to the crates in
+      # this checkout, as `just clippy-rpkg` / `just test-rpkg` do, so the docs
+      # describe the commit being deployed and need no configure or vendoring.
+      # Building into the workspace's target dir with --enable-index-page (as
+      # `just doc-all` does) adds the crate to the same crate index, search
+      # index and source pages.
       - name: Build rustdoc (rpkg)
-        continue-on-error: true
         env:
-          # rpkg/src/rust is its own workspace; left alone, cargo would put its
-          # target dir under src/. Use configure's rpkg/rust-target instead.
-          CARGO_TARGET_DIR: ${{ github.workspace }}/rpkg/rust-target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
           RUSTFLAGS: --cfg=docsrs
           RUSTDOCFLAGS: >-
             --cfg=docsrs
+            -D warnings
             -Z unstable-options
             --document-private-items
             --document-hidden-items
             --show-type-layout
+            --enable-index-page
             --generate-link-to-definition
             --generate-macro-expansion
-        run: cargo doc --no-deps -Z rustdoc-map --manifest-path rpkg/src/rust/Cargo.toml
-
-      # Merge rpkg rustdoc crate dirs into the workspace target/doc WITHOUT
-      # overwriting the workspace index.html / crates.js that the workspace
-      # build produced with --enable-index-page. After merging, regenerate
-      # crates.js so the workspace index links to rpkg crates too.
-      - name: Merge rpkg rustdoc into main docs
-        continue-on-error: true
         run: |
-          if [ -d rpkg/rust-target/doc ]; then
-            # Copy rpkg crate directories but preserve workspace index.html,
-            # crates.js, and search-index.js.
-            for item in rpkg/rust-target/doc/*; do
-              name=$(basename "$item")
-              case "$name" in
-                index.html|crates.js|search-index.js|help.html|settings.html|static.files|SourceFiles.html) ;;
-                *)
-                  if [ ! -e "target/doc/$name" ]; then
-                    cp -r "$item" "target/doc/$name"
-                  fi
-                  ;;
-              esac
-            done
-          fi
+          cargo doc --no-deps -Z rustdoc-map --manifest-path rpkg/src/rust/Cargo.toml \
+            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$GITHUB_WORKSPACE/miniextendr-api\"" \
+            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$GITHUB_WORKSPACE/miniextendr-macros\"" \
+            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$GITHUB_WORKSPACE/miniextendr-lint\""
 
       - name: Install Zola
         run: |

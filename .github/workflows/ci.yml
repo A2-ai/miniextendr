@@ -739,11 +739,10 @@ jobs:
         with:
           shared-key: rust-tests
           cache-on-failure: true
-          # rpkg/src/rust is its own workspace; `test-rpkg` builds it in
-          # rpkg/rust-target, the same directory configure uses.
-          workspaces: |
-            . -> target
-            rpkg/src/rust -> ../../rust-target
+          # Root workspace only. The post step runs `cargo metadata` in every
+          # listed workspace, and rpkg/src/rust does not resolve without the
+          # framework patches `just test-rpkg` passes on its command line. Its
+          # few dependencies (proc-macro2, quote, syn, linkme) come from sccache.
 
       - name: Put libR on LD_LIBRARY_PATH
         run: |
@@ -2237,8 +2236,9 @@ jobs:
         with:
           # Tarball installs build in a temporary unpack directory, and the
           # Makevars deletes its rust-target afterwards, so no target dir is
-          # left to cache. Cache only the cargo registry and git checkouts.
-          workspaces: rpkg/src/rust -> ../../rust-target
+          # left to cache. Cache only the cargo registry and git checkouts,
+          # kept for the dependencies of the root workspace (rust-cache's
+          # default; this job never builds rpkg/src/rust).
           cache-targets: false
           shared-key: roundtrip-e2e
           cache-on-failure: true

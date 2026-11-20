@@ -197,8 +197,8 @@ pub use crate::dataframe::ColumnSource;
 /// - anything else → VECSXP (R_NilValue fill)
 ///
 /// Contiguous primitive columns (real/integer/logical/raw/complex) scatter as a
-/// flat slice write via [`scatter_native`] — the NA-filled inverse of
-/// [`gather_native`]. String and list columns stay element-by-element because
+/// flat slice write via `scatter_native` — the NA-filled inverse of
+/// `gather_native`. String and list columns stay element-by-element because
 /// they are write-barriered arrays of `SEXP` pointers, not flat buffers.
 ///
 /// When the output type mirrors the input, the column keeps every attribute
@@ -343,7 +343,7 @@ unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) 
 /// columns before calling this.
 ///
 /// Contiguous primitive columns (real/integer/logical/raw/complex) are copied as
-/// a slice gather via [`gather_native`]; string and list columns are copied
+/// a slice gather via `gather_native`; string and list columns are copied
 /// element-by-element because they are write-barriered arrays of `SEXP` pointers,
 /// not flat buffers. The output type mirrors the input; any other type falls back
 /// to a logical `NA` column (normal `data.frame` columns never reach it).

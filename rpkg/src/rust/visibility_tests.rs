@@ -227,7 +227,7 @@ pub trait QuietBell {
     fn rings_quietly(&self) -> Invisible<i32>;
 }
 
-/// Env-class bell implementing [`QuietBell`].
+/// Env-class bell implementing [`QuietBell`](trait@QuietBell).
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct Bell {
     rings: i32,

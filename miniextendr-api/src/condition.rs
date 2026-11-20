@@ -351,7 +351,7 @@ impl RCondition {
 
     /// Split into the kind (one of [`crate::error_value::kind`]) and the
     /// [`ErrParts`] (message, class, data, call choice) that
-    /// [`crate::error_value::condition_parts_value`] builds the tagged value
+    /// `crate::error_value::condition_parts_value` builds the tagged value
     /// from.
     #[doc(hidden)]
     pub fn into_parts(self) -> (&'static str, ErrParts) {
@@ -520,7 +520,7 @@ impl RCondition {
 /// the condition (a raising guard: an ALTREP `RUnwind` callback,
 /// [`crate::unwind_protect::with_r_unwind_protect_or_raise`]) Rust replaces it
 /// with the classes `miniextendr_init!` registered for the package
-/// ([`resolve_conversion_error_class_marker`]). So does a trait-ABI shim
+/// (`resolve_conversion_error_class_marker`). So does a trait-ABI shim
 /// ([`crate::unwind_protect::with_r_unwind_protect_shim`]): the condition is
 /// raised by another package's wrapper, and takes the implementing package's
 /// classes, as from that package's own wrapper.
@@ -548,7 +548,7 @@ pub(crate) fn resolve_conversion_error_class_marker(
 
 /// The package crate's `conversion_error_class`, from the entry
 /// `miniextendr_init!` registers in
-/// [`MX_CONVERSION_ERROR_CLASS`](crate::registry::MX_CONVERSION_ERROR_CLASS)
+/// [`MX_CONVERSION_ERROR_CLASS`](static@crate::registry::MX_CONVERSION_ERROR_CLASS)
 /// (each package links its own copy of this crate, so it is that package's),
 /// or on wasm32 from the `wasm_registry.rs` snapshot (#1768). Empty when the
 /// crate sets none.
@@ -2067,7 +2067,7 @@ impl<E> ErrPartsUnclassed for &E {
 }
 
 /// Second stage, preferred arm: `E: Serialize + Display` under the `serde`
-/// feature, classed via [`serde_err_parts`] with the defaults (`kind` tag,
+/// feature, classed via `serde_err_parts` with the defaults (`kind` tag,
 /// the `<crate>_error` prefix the macro passes in, no shapes).
 /// `#[miniextendr(serde_error(..))]` bypasses the probe with explicit options.
 ///
