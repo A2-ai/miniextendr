@@ -68,3 +68,24 @@ fn test_interaction_with_rename() {
     assert!(code.contains("green.S"));
     assert!(code.contains("green.L"));
 }
+
+/// Both paths make the enum's containers factors (#2365): the `MatchArg`
+/// hook for `Vec<T>` and the element impls through `FactorValue<T>`.
+#[test]
+fn both_paths_emit_the_container_impls() {
+    let simple: DeriveInput = syn::parse_quote! {
+        enum Size { Small, Large }
+    };
+    let interaction: DeriveInput = syn::parse_quote! {
+        #[r_factor(interaction = ["Small", "Large"])]
+        enum ColorSize { Red(Size), Green(Size) }
+    };
+    for input in [simple, interaction] {
+        let code = derive_r_factor(input).unwrap().to_string();
+        assert!(code.contains("fn __mx_vec_into_sexp"), "{code}");
+        assert!(code.contains("FactorVec (values)"), "{code}");
+        assert!(code.contains("TryFromSexpElement for"), "{code}");
+        assert!(code.contains("IntoRNewtype for"), "{code}");
+        assert!(code.contains("FactorValue < Self >"), "{code}");
+    }
+}

@@ -1845,7 +1845,8 @@ pub enum Season {
 ```
 
 Generates `MatchArg` + `RFactor` + `IntoR` + `TryFromSexp`. The enum maps to
-an R factor with levels matching variant names.
+an R factor with levels matching variant names, and so do `Vec<Season>`,
+`Box<[Season]>` and `Vec<Option<Season>>` (`NA` for `None`).
 
 ```r
 s <- get_season()  # factor("Summer", levels = c("Spring", "Summer", "Autumn", "Winter"))

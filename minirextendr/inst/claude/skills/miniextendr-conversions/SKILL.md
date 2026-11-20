@@ -122,6 +122,10 @@ supported path and runs Rust destructors first.
 - **Factors are integers + levels**: a factor arrives as its integer codes
   unless you take it as a dedicated factor-aware type or convert in R first
   (`as.character()` / `as.integer()` at the call site is often simplest).
+  A `#[derive(RFactor)]` enum is one: `E`, `Option<E>`, `Vec<E>`,
+  `Box<[E]>` and `Vec<Option<E>>` read a factor with exactly `E`'s levels,
+  and `E`, `Vec<E>`, `Box<[E]>` and `Vec<Option<E>>` return one (`NA` for
+  `None`).
 
 ## Where to look things up
 

@@ -85,19 +85,21 @@ Supported `rename_all` values: `snake_case`, `kebab-case`, `lower`, `upper`.
 
 ### Factor Vectors
 
-Use `FactorVec<T>` for vectors and `FactorOptionVec<T>` for vectors with NA:
+The containers of an `RFactor` enum convert as the enum does: `Vec<T>`,
+`Box<[T]>` and `Vec<Option<T>>` are factors with the type's levels, `NA` for
+`None`, both as arguments and as return values (`Option<Vec<T>>` returns `NULL`
+for `None`). An `Option<T>` argument reads a length-one factor, and `NULL`, `NA`
+or a factor `NA` read as `None`.
 
 ```rust
-use miniextendr_api::{FactorVec, FactorOptionVec};
-
 #[miniextendr]
-pub fn all_colors() -> FactorVec<Color> {
-    FactorVec(vec![Color::Red, Color::Green, Color::Blue])
+pub fn all_colors() -> Vec<Color> {
+    vec![Color::Red, Color::Green, Color::Blue]
 }
 
 #[miniextendr]
-pub fn parse_colors(input: FactorOptionVec<Color>) -> Vec<&'static str> {
-    input.0.iter().map(|c| match c {
+pub fn parse_colors(input: Vec<Option<Color>>) -> Vec<&'static str> {
+    input.iter().map(|c| match c {
         Some(Color::Red) => "red",
         Some(Color::Green) => "green",
         Some(Color::Blue) => "blue",
@@ -117,6 +119,17 @@ x <- factor(c("Red", NA, "Blue"), levels = c("Red", "Green", "Blue"))
 parse_colors(x)
 # [1] "red" "NA"  "blue"
 ```
+
+An argument has to be a factor with exactly the type's levels, in order, as for
+the scalar; a `Vec<T>` (or `Box<[T]>`) argument also refuses `NA`, naming every
+refused element in one error. `[T; N]` and an `Option<T>` return have no
+conversion (#2367).
+
+`FactorVec<T>` and `FactorOptionVec<T>` convert the same way. They also accept
+a unit-only `#[derive(DataFrameRow)]` enum (a `UnitEnumFactor` without
+`RFactor`), and they make a hand-written `RFactor` impl a factor: the
+containers above need the derive, and a hand-written impl's `Vec<T>` returns
+its `MatchArg` choices as a character vector.
 
 ### Caching
 
@@ -1012,7 +1025,8 @@ for a free function without `@rdname`).
 ### Returning `Vec<Enum>`
 
 Functions can return `Vec<T>` for any `MatchArg` enum. Each variant round-trips
-to its choice string:
+to its choice string (an `RFactor` enum's `Vec<T>` is a factor instead, see
+[Factor Vectors](#factor-vectors)):
 
 ```rust
 #[miniextendr]
@@ -1026,8 +1040,8 @@ all_modes()
 # [1] "Fast"  "Safe"  "Debug"
 ```
 
-This is provided by a blanket `impl<T: MatchArg> IntoR for Vec<T>` in
-`miniextendr-api`. No extra derive is required.
+This is provided by the `impl<T: MatchArg> IntoRVecElement for T` bridge behind
+`IntoR for Vec<T>` in `miniextendr-api`. No extra derive is required.
 
 ---
 
@@ -1061,7 +1075,7 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 | Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
 | Default on NULL | Error | First choice (`Option<T>`: `None`; `several_ok`: all choices; under `Either`: the `R` arm) |
 | Omitted argument | Error | First choice (`Option<T>`: `None`; `Missing<..>`: `Absent`) |
-| Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | `Vec<T>` return + `several_ok` inputs |
+| Vec support | `Vec<T>`, `Box<[T]>`, `Vec<Option<T>>` (factors both ways) | `Vec<T>` return + `several_ok` inputs |
 | Partial matching | No | Yes (`"F"` → `"Fast"`) |
 | Factor input | Native | Converted to character first |
 | Use case | Categorical data | Parameter selection |

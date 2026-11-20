@@ -191,6 +191,11 @@ Do you need NA-awareness?
         Vec<i32>, Vec<f64>, Vec<u8>, Vec<bool>, Vec<String>, Vec<RLogical>
         Vec<Option<T>> for NA-aware variants
         &[T] for borrowed read-only slices (no copying)
+    Is it a factor?
+      → a #[derive(RFactor)] enum E: E, Option<E>, Vec<E>, Box<[E]>,
+        Vec<Option<E>> (factor NA → None). Returned, Vec<E> / Box<[E]> /
+        Vec<Option<E>> are factors of E's levels too; a plain MatchArg
+        enum's Vec<E> is a character vector.
 Do you want multi-source coercion (INTSXP or REALSXP or RAWSXP)?
   Yes → use i8, i16, u16, u32, f32, i64, u64, isize, usize (coerce mode)
 ```
