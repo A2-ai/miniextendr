@@ -1,5 +1,5 @@
 error: `as_factor` and `as_list` are mutually exclusive
-  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_as_list_conflict.rs:16:9
+  --> tests/ui/derive_dataframe_enum_nested_enum_as_factor_as_list_conflict.rs:15:32
    |
-16 |         dir: Dir,
-   |         ^^^
+15 |         #[dataframe(as_factor, as_list)]
+   |                                ^^^^^^^

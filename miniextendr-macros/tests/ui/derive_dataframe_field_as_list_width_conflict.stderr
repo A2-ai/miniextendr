@@ -1,5 +1,5 @@
 error: `as_list` and `width` are mutually exclusive
- --> tests/ui/derive_dataframe_field_as_list_width_conflict.rs:8:5
+ --> tests/ui/derive_dataframe_field_as_list_width_conflict.rs:7:26
   |
-8 |     scores: Vec<f64>,
-  |     ^^^^^^
+7 |     #[dataframe(as_list, width = 3)]
+  |                          ^^^^^
