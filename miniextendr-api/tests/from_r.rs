@@ -51,6 +51,106 @@ fn embedded_scalar_returns_a_provider_error_without_an_mx_boundary() {
     });
 }
 
+#[test]
+fn matrix_metadata_unwinds_owners_and_preserves_provider_errors() {
+    use miniextendr_api::{Preserved, RMatrix, Rboolean, sys};
+    use std::cell::Cell;
+    use std::ffi::c_void;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static FAIL_LENGTH: AtomicBool = AtomicBool::new(false);
+
+    // A foreign-style provider: the Length method exits directly through R.
+    // Keep working even when R has already requested the dimension buffer.
+    unsafe extern "C-unwind" fn length(x: SEXP) -> R_xlen_t {
+        if FAIL_LENGTH.swap(false, Ordering::Relaxed) {
+            unsafe { sys::Rf_eval(sys::R_altrep_data2(x), sys::R_GlobalEnv) };
+        }
+        2
+    }
+    unsafe extern "C-unwind" fn dataptr(x: SEXP, _: Rboolean) -> *mut c_void {
+        unsafe { <i32 as miniextendr_api::RNativeType>::dataptr_mut(sys::R_altrep_data1(x)).cast() }
+    }
+    struct Witness<'a>(&'a Cell<bool>);
+    impl Drop for Witness<'_> {
+        fn drop(&mut self) {
+            self.0.set(true);
+        }
+    }
+
+    // Model the generated wrapper inside an R error catcher. A missed inner
+    // bridge still reaches the catcher, but skips the Rust witness.
+    unsafe extern "C-unwind" fn read_length(data: *mut c_void) {
+        let (matrix, dropped) = unsafe { &*data.cast::<(RMatrix<i32>, Cell<bool>)>() };
+        miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise(
+            || {
+                let _witness = Witness(dropped);
+                matrix.is_empty()
+            },
+            None,
+        );
+    }
+    unsafe extern "C-unwind" {
+        fn R_ToplevelExec(
+            f: unsafe extern "C-unwind" fn(*mut c_void),
+            data: *mut c_void,
+        ) -> Rboolean;
+    }
+    r_test_utils::with_r_thread(|| unsafe {
+        let class = sys::altrep::R_make_altinteger_class(
+            c"MatrixMetadataInts".as_ptr(),
+            c"miniextendr_test".as_ptr(),
+            miniextendr_api::altrep_dll_info(),
+        );
+        class.set_length_method(Some(length));
+        class.set_dataptr_method(Some(dataptr));
+        let backing = Preserved::new([1_i32, 2]);
+        let signal = Preserved::new(miniextendr_api::r_eval_str_global(
+            "quote(stop(errorCondition('length failed', class='matrix_length_error', detail=42L)))",
+        ).unwrap());
+        let provider = Preserved::new(class.new_altrep(backing.as_sexp(), signal.as_sexp()));
+        provider.as_sexp().set_dim(backing.as_sexp());
+        let matrix = RMatrix::<i32>::try_from_sexp(provider.as_sexp()).unwrap();
+
+        FAIL_LENGTH.store(true, Ordering::Relaxed);
+        let err = matrix.try_len().unwrap_err();
+        assert!(err.inherits("matrix_length_error"));
+        assert_eq!(err.message(), "length failed");
+        let condition = miniextendr_api::List::try_from_sexp(err.condition()).unwrap();
+        assert_eq!(condition.get_named::<i32>("detail"), Some(42));
+
+        FAIL_LENGTH.store(true, Ordering::Relaxed);
+        let mut call = (matrix, Cell::new(false));
+        assert_eq!(
+            R_ToplevelExec(read_length, (&raw mut call).cast()),
+            Rboolean::FALSE
+        );
+        assert!(call.1.get());
+        assert_eq!(matrix.len(), 2);
+
+        // Rf_dimgets may materialize the integer dim to validate it. It keeps
+        // the very same ALTREP object, whose Length method can still fail.
+        let ordinary = Preserved::new([10_i32, 20]);
+        ordinary.as_sexp().set_dim(provider.as_sexp());
+        assert_eq!(ordinary.as_sexp().get_dim(), provider.as_sexp());
+        let view = RMatrix::<i32>::try_from_sexp(ordinary.as_sexp()).unwrap();
+        FAIL_LENGTH.store(true, Ordering::Relaxed);
+        assert!(view.try_dims().unwrap_err().inherits("matrix_length_error"));
+        assert_eq!(view.dims(), [1, 2]);
+        FAIL_LENGTH.store(true, Ordering::Relaxed);
+        let Err(SexpError::Condition(error)) = RMatrix::<i32>::try_from_sexp(ordinary.as_sexp())
+        else {
+            panic!("expected a condition from dimension rank admission");
+        };
+        assert!(
+            error
+                .classes()
+                .iter()
+                .any(|class| class == "matrix_length_error")
+        );
+    });
+}
+
 // A genuinely unguarded native entry that R reaches through .Call(). Catch
 // the old inherited-boundary unwind here so the regression itself can never
 // unwind through R's evaluator.

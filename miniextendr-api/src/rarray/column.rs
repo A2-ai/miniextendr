@@ -26,20 +26,23 @@ impl RMatrix<f64> {
     pub unsafe fn copy_column_to_r(&self, col: usize) -> Result<Preserved, SexpError> {
         // The result allocation and the provider can both signal. The bridge
         // lets Rust owners unwind before R resumes the original condition.
-        unsafe { crate::unwind_protect::call_r_callback(|| copy_column(*self, col)) }?
+        let dim = self.as_sexp().get_dim();
+        let _dim = unsafe { crate::OwnedProtect::new(dim) };
+        unsafe { crate::unwind_protect::call_r_callback(|| copy_column(*self, dim, col)) }?
     }
 }
 
 // Keep only plain stack data across R calls in the bridge. Its R context
 // restores the protect stack automatically if a provider longjmps.
-unsafe fn copy_column(matrix: RMatrix<f64>, col: usize) -> Result<Preserved, SexpError> {
-    let [rows, cols] = unsafe { matrix.dims() };
+unsafe fn copy_column(matrix: RMatrix<f64>, dim: SEXP, col: usize) -> Result<Preserved, SexpError> {
+    let src = matrix.as_sexp();
+    // This whole operation is already inside the callback bridge.
+    let [rows, cols] = unsafe { super::get_dims(src, dim) };
     if col >= cols {
         return Err(SexpError::InvalidValue(format!(
             "column index {col} out of bounds for a matrix with {cols} columns"
         )));
     }
-    let src = matrix.as_sexp();
     let shape_len = rows
         .checked_mul(cols)
         .and_then(|n| R_xlen_t::try_from(n).ok());

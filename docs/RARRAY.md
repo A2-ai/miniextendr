@@ -201,6 +201,13 @@ let len = m.len();
 let empty = m.is_empty();
 ```
 
+Ordinary dimensions and length are read directly. When an ALTREP payload
+supplies the length or an ALTREP `dim` attribute supplies the shape, those
+metadata reads can run provider code. In standalone Rust, use `m.try_len()`
+and `unsafe { m.try_dims() }` to inspect the original provider condition.
+`len()` and `dims()` panic on a standalone provider failure. In an exported
+function the provider condition reaches the R caller after Rust cleanup.
+
 ### Copy to Vec
 
 ```rust
