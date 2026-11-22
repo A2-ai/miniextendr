@@ -7,10 +7,10 @@
 rarray_matrix_column(x, col)
 }
 \arguments{
-\item{x}{An R vector or matrix accepted by the selected helper.}
+\item{x}{A double matrix.}
 
 \item{col}{1-based column index. Errors if \code{col} is not in \verb{1..=ncol}.}
 }
 \description{
-Get a specific column from a numeric matrix as a Vec.
+Copy one column of a double matrix to an ordinary, unnamed double vector.
 }
