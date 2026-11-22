@@ -1373,30 +1373,48 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
     /// Allocates the R vector on the main thread, then fills it in parallel
     /// using Rayon's `zip` (each output slot is paired with an iterator item).
     /// Zero intermediate allocation.
+    ///
+    /// # Panics
+    ///
+    /// If the iterator gives fewer items than its `len()` said.
     fn collect_r(self) -> SEXP
     where
         Self::Item: RNativeType + Send + Sync,
     {
         super::parallel::ensure_pool();
         let len = self.len();
+        let r_len =
+            crate::R_xlen_t::try_from(len).expect("collect_r: length exceeds R_xlen_t maximum");
 
-        // Allocate and protect on the R main thread, and get the data
-        // pointer; the vector stays protected until the fill is done
+        // Allocate and protect on the R main thread; the vector stays
+        // protected until the fill is done.
         let sexp = with_r_thread(move || unsafe {
             crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
                 Self::Item::SEXP_TYPE,
-                len as crate::R_xlen_t,
+                r_len,
             ))
         });
-        let ptr = unsafe { Self::Item::dataptr_mut(sexp.get()) };
-
-        // Parallel zip: iterator items → output slots (zero intermediate allocation)
-        if len > 0 {
-            let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
-            slice.par_iter_mut().zip(self).for_each(|(slot, item)| {
-                *slot = item;
-            });
-        }
+        // The payload is uninitialized: write-only slots, each paired with one
+        // item (zero intermediate allocation).
+        let slots = unsafe {
+            std::slice::from_raw_parts_mut(
+                Self::Item::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<Self::Item>>(),
+                len,
+            )
+        };
+        // `len()` belongs to a safe trait and may be wrong. Each slot is in at
+        // most one pair, so `len` pairs means every slot has a value.
+        let written = slots
+            .par_iter_mut()
+            .zip(self)
+            .map(|(slot, item)| {
+                slot.write(item);
+            })
+            .count();
+        assert_eq!(
+            written, len,
+            "collect_r: the iterator gave {written} items but its len() was {len}"
+        );
 
         sexp.get()
     }
