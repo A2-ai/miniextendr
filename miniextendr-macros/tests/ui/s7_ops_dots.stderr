@@ -1,0 +1,5 @@
+error: S7's `+` generic is `function(e1, e2)`, without `...`, and S7 registers a method on it only when the method's formals are exactly `e1, e2`, so `add` cannot take R's `...`: drop its dots parameter
+  --> tests/ui/s7_ops_dots.rs:14:8
+   |
+14 |     fn add(&self, e2: f64, _dots: &miniextendr_api::Dots) -> f64 {
+   |        ^^^
