@@ -88,6 +88,8 @@ use crate::into_r::IntoR;
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::marker::PhantomData;
 
+mod column;
+
 // region: Type aliases
 
 /// A 1-dimensional R vector with explicit dim attribute.
@@ -312,7 +314,8 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         unsafe { self.as_slice().to_vec() }
     }
 
-    /// Get an element by N-dimensional indices.
+    /// Get an element by N-dimensional indices. ALTREP inputs use the
+    /// provider's element accessor, which may run R code or allocate.
     ///
     /// # Safety
     ///
@@ -327,7 +330,10 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         T: Copy,
     {
         let idx = unsafe { self.linear_index(indices) };
-        unsafe { *self.as_slice().get_unchecked(idx) }
+        T::elt(
+            self.sexp,
+            R_xlen_t::try_from(idx).expect("array index exceeds R_xlen_t"),
+        )
     }
 
     /// Set an element by N-dimensional indices.

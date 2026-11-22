@@ -66,7 +66,7 @@ pub fn column_means(m: RMatrix<f64>) -> Vec<f64> {
 From R:
 
 ```r
-m <- matrix(1:12, nrow = 3, ncol = 4)
+m <- matrix(as.double(1:12), nrow = 3, ncol = 4)
 matrix_sum(m)
 #> [1] 78
 
@@ -121,7 +121,7 @@ memory.
 
 ## Reading Data
 
-### Slice Access (Fastest)
+### Slice access
 
 ```rust
 // Full buffer as a flat slice (column-major order)
@@ -131,7 +131,7 @@ let slice: &[f64] = unsafe { m.as_slice() };
 let sum: f64 = unsafe { m.as_slice().iter().sum() };
 ```
 
-### Column Access (Fast, Matrix Only)
+### Column access
 
 ```rust
 let ncol = unsafe { m.ncol() };
@@ -141,7 +141,26 @@ for col in 0..ncol {
 }
 ```
 
-### Element Access (Slower)
+A slice needs a contiguous backing and can materialize an ALTREP matrix. To
+return an ordinary R double vector holding one column, request that range
+directly. The generated call keeps the input matrix rooted throughout the copy.
+
+```rust
+use miniextendr_api::{miniextendr, Preserved, RMatrix, SexpError};
+
+#[miniextendr]
+pub fn real_column(m: RMatrix<f64>, col: usize) -> Result<Preserved, SexpError> {
+    unsafe { m.copy_column_to_r(col) }
+}
+```
+
+The index is zero-based. For an ordinary double matrix this makes one bulk
+copy into the R result. For ALTREP the reader requests at most 256 doubles at
+a time and consumes short reads until the column is complete. A provider can
+allocate or materialize data when it handles a request. The result contains
+the values in row order and carries its own GC root.
+
+### Element access
 
 ```rust
 // By N-dimensional indices (any NDIM)
@@ -150,6 +169,9 @@ let val: f64 = unsafe { m.get([row, col]) };
 // By row/col (matrix convenience)
 let val: f64 = unsafe { m.get_rc(row, col) };
 ```
+
+A native element query uses R's element accessor. An ALTREP provider can
+compute that one value without supplying a pointer to the entire payload.
 
 ### Dimensions
 
@@ -296,15 +318,16 @@ unsafe { m.set_dimnames(dimnames_sexp) };
 
 ### Access Method Comparison
 
-| Method | Speed | Use Case |
-|--------|-------|----------|
-| `as_slice()` | Fastest | Full-buffer iteration, SIMD |
-| `column()` | Fast | Per-column operations (matrices) |
-| `column_mut()` | Fast | Per-column mutation |
-| `get()` / `get_rc()` | Slower | Single-element random access |
+| Method | Data requested from R | Use case |
+|--------|-----------------------|----------|
+| `as_slice()` | A contiguous pointer to the whole payload | Full-buffer iteration, SIMD |
+| `column()` | A contiguous pointer to the whole payload | Borrow a column when contiguous storage is available |
+| `column_mut()` | A writable pointer to the whole payload | Mutate an exclusively owned matrix column |
+| `get()` / `get_rc()` | One native element after a bounds check | Sparse element access |
+| `copy_column_to_r()` | One ordinary column span or bounded ALTREP regions | Return an owned R double vector |
 
-Per-element methods like `get()` perform index translation and bounds checks on
-every call. For tight loops, this overhead dominates.
+Each `get()` call translates coordinates and checks bounds. For traversal of
+an ordinary matrix a borrowed slice amortizes those checks across the loop.
 
 ### Prefer Columns Over Rows
 

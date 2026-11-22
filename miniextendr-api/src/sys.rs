@@ -565,6 +565,8 @@ unsafe extern "C-unwind" {
     // Element-wise accessors (ALTREP-aware) — encapsulated by SexpExt methods
     pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    /// Fill up to `n` values starting at `i`, returning the number read.
+    pub fn REAL_GET_REGION(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut f64) -> R_xlen_t;
     pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
