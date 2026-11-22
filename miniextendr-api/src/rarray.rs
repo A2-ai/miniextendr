@@ -361,7 +361,10 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// # Safety
     ///
-    /// The SEXP must be protected and valid.
+    /// Call on R's main thread. Keep the source array rooted for the entire
+    /// call, including reentrant ALTREP callbacks. A `.Call` argument or a
+    /// live [`crate::Preserved`] handle suffices. The underlying type and
+    /// shape must remain valid for this view throughout the read.
     ///
     /// # Panics
     ///
@@ -444,7 +447,8 @@ impl<T: RNativeType> RMatrix<T> {
     ///
     /// # Safety
     ///
-    /// The SEXP must be protected and valid.
+    /// The main-thread, rooting, and validity requirements of [`Self::get`]
+    /// apply.
     #[inline]
     pub unsafe fn get_rc(&self, row: usize, col: usize) -> T
     where

@@ -151,6 +151,69 @@ fn matrix_metadata_unwinds_owners_and_preserves_provider_errors() {
     });
 }
 
+#[test]
+fn standalone_matrix_cell_panics_and_column_returns_provider_condition() {
+    use miniextendr_api::{Preserved, RMatrix, sys};
+    use std::panic::catch_unwind;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static FAIL_NEXT: AtomicBool = AtomicBool::new(false);
+
+    unsafe extern "C-unwind" fn length(_: SEXP) -> R_xlen_t {
+        1
+    }
+    unsafe extern "C-unwind" fn elt(x: SEXP, _: R_xlen_t) -> f64 {
+        if FAIL_NEXT.swap(false, Ordering::Relaxed) {
+            unsafe { sys::Rf_eval(sys::R_altrep_data1(x), sys::R_GlobalEnv) };
+        }
+        17.0
+    }
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let class = sys::altrep::R_make_altreal_class(
+            c"StandaloneMatrixReal".as_ptr(),
+            c"miniextendr_test".as_ptr(),
+            miniextendr_api::altrep_dll_info(),
+        );
+        class.set_length_method(Some(length));
+        // R's default real Get_region reads through this same Elt callback.
+        class.set_real_elt_method(Some(elt));
+        let signal = Preserved::new(
+            miniextendr_api::r_eval_str_global(
+                "quote(stop(errorCondition('matrix read failed', class='matrix_read_error')))",
+            )
+            .unwrap(),
+        );
+        let provider = Preserved::new(class.new_altrep(signal.as_sexp(), SEXP::nil()));
+        let shape = Preserved::new([1_i32, 1]);
+        provider.as_sexp().set_dim(shape.as_sexp());
+        let matrix = RMatrix::<f64>::try_from_sexp(provider.as_sexp()).unwrap();
+
+        FAIL_NEXT.store(true, Ordering::Relaxed);
+        let panic =
+            catch_unwind(|| matrix.get([0, 0])).expect_err("standalone cell read should panic");
+        assert_eq!(
+            panic.downcast_ref::<String>().map(String::as_str),
+            Some("R array element access failed: matrix read failed")
+        );
+        assert_eq!(matrix.get([0, 0]), 17.0);
+
+        FAIL_NEXT.store(true, Ordering::Relaxed);
+        let Err(SexpError::Condition(error)) = matrix.copy_column_to_r(0) else {
+            panic!("standalone column read should return a provider condition");
+        };
+        assert_eq!(error.message_str(), "matrix read failed");
+        assert!(
+            error
+                .classes()
+                .iter()
+                .any(|class| class == "matrix_read_error")
+        );
+        let column = matrix.copy_column_to_r(0).unwrap();
+        assert_eq!(column.real_elt(0), 17.0);
+    });
+}
+
 // A genuinely unguarded native entry that R reaches through .Call(). Catch
 // the old inherited-boundary unwind here so the regression itself can never
 // unwind through R's evaluator.
