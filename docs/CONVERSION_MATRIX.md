@@ -10,7 +10,7 @@ This document describes R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`) conver
 
 ### Normal Mode (default)
 
-Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. The generated R precondition says the same (`is.integer()` for `i32` / `Vec<i32>`, `is.double()` for `f64` / `Vec<f64>`), so `f(3)` on an `i32` parameter fails at the R boundary with "'x' must be integer" rather than inside Rust with "expected INTSXP, got REALSXP". A non-optional numeric vector (`Vec<i64>`, `Vec<f32>`, ...) rejects `NA` at its index; bind `Vec<Option<T>>` when the caller may pass NA. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
+Native Rust types use their corresponding R storage: `i32` accepts a non-factor `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. The generated R precondition says the same (`is.integer()` for `i32` / `Vec<i32>`, `is.double()` for `f64` / `Vec<f64>`), so `f(3)` on an `i32` parameter fails at the R boundary with "'x' must be integer" rather than inside Rust with "expected INTSXP, got REALSXP". A non-optional numeric vector (`Vec<i64>`, `Vec<f32>`, ...) rejects `NA` at its index; bind `Vec<Option<T>>` when the caller may pass NA. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
 
 ### Coerce Mode (`#[miniextendr(coerce)]`)
 
@@ -47,7 +47,7 @@ These types require an exact R type match. Length must be 1.
 
 | Rust Type | Accepted R Type | On NA | On Type Mismatch |
 |-----------|----------------|-------|------------------|
-| `i32` | INTSXP | Error (`SexpError::Na`): use `Option<i32>` for NA | Error |
+| `i32` | non-factor INTSXP | Error (`SexpError::Na`): use `Option<i32>` for NA | Error |
 | `f64` | REALSXP | Returns NA_real_ (specific NaN) | Error |
 | `u8` | RAWSXP | No NA concept in raw | Error |
 | `Rcomplex` | CPLXSXP | Returns `Rcomplex { r: NA_real_, i: NA_real_ }` | Error |
@@ -63,7 +63,7 @@ These types require an exact R type match. Length must be 1.
 
 | Rust Type | Accepted R Type | On NA | On plain `NA` | On NULL |
 |-----------|----------------|-------|---------------|---------|
-| `Option<i32>` | INTSXP | `None` | `None` | `None` |
+| `Option<i32>` | non-factor INTSXP | `None` | `None` | `None` |
 | `Option<f64>` | REALSXP | `None` | `None` | `None` |
 | `Option<u8>` | RAWSXP | `Some(val)` (raw has no NA) | `None` | `None` |
 | `Option<Rcomplex>` | CPLXSXP | `None` | `None` | `None` |

@@ -8,12 +8,14 @@ This guide documents how miniextendr converts between R and Rust types, includin
 
 | R Type | Rust Type | Notes |
 |--------|-----------|-------|
-| `integer` (length 1) | `i32` | NA → panic |
+| Non-factor `integer` (length 1) | `i32` | Reads one integer element. NA produces a conversion error. |
 | `numeric` (length 1) | `f64` | NA preserved as `NA_REAL` |
 | `logical` (length 1) | `bool` | NA → panic |
 | `character` (length 1) | `String`, `&str` | NA → `""` (lossy); use `Option` to preserve NA |
 | `raw` (length 1) | `u8` | No NA in raw |
 | `complex` (length 1) | `Rcomplex` | Has real/imag NA |
+
+A plain `i32` parameter accepts `7L`. It rejects `TRUE`, `NA_integer_` and a factor, including an ordered factor. A direct registered call used to decode a scalar factor as its internal level code. To use that code deliberately, extract it in R with `as.integer(f)`. For a numeric label such as `"42"`, use the label conversion described under [AsNumeric](#numbers-from-text-factors-or-numbers-asnumeric). An integer ALTREP can supply the scalar through its element method.
 
 ### Vector Types
 
