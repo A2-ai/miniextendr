@@ -100,7 +100,9 @@ of data and never need to call `par_iter()` or manage thread dispatch.
 #### `with_r_vec(len, f)`: chunk-based parallel fill
 
 Allocates an R vector of `len` elements, splits into chunks, calls `f(chunk, offset)`
-in parallel. The closure receives a mutable slice and the starting index.
+in parallel. The closure receives a mutable slice and the starting index. R leaves
+a fresh vector's elements uninitialized, so each chunk starts as `NA` (`0` for raw)
+before the closure sees it: an element the closure leaves alone is `NA` in R.
 
 ```rust
 pub fn with_r_vec<T, F>(len: usize, f: F) -> SEXP
@@ -119,7 +121,8 @@ with_r_vec(1000, |chunk: &mut [f64], offset: usize| {
 
 #### `with_r_vec_map(len, f)`: index-based fill (sugar)
 
-Each element depends only on its index. Sugar over `with_r_vec`.
+Each element depends only on its index. Every element is written once, straight
+into R memory, with no `NA` pass first.
 
 ```rust
 with_r_vec_map(1000, |i: usize| (i as f64).sqrt());
@@ -166,7 +169,8 @@ par_map3(a, b, c, |&x, &y, &z| x * y + z)
 #### `with_r_matrix(nrow, ncol, f)`: column-wise parallel fill
 
 Each column is a natural chunk (contiguous in R's column-major layout).
-The closure receives `(column_slice, col_idx)`.
+The closure receives `(column_slice, col_idx)`; each column starts as `NA`
+(`0` for raw).
 
 ```rust
 with_r_matrix(100, 50, |col: &mut [f64], col_idx: usize| {
@@ -180,7 +184,7 @@ with_r_matrix(100, 50, |col: &mut [f64], col_idx: usize| {
 
 For dims `[d0, d1, ..., dN]`, each slab has `d0 * d1 * ... * d(N-1)` elements.
 The closure receives `(slab_slice, slab_idx)` where `slab_idx` is the index along
-the last dimension.
+the last dimension; each slab starts as `NA` (`0` for raw).
 
 ```rust
 // 2×3×4 array: 4 slabs of 6 elements each
@@ -290,7 +294,9 @@ perf::thread_index()     // Current thread index (if in pool)
 
 The `ParCollectR` extension trait adds `.collect_r()` to every indexed parallel
 iterator. It allocates an R vector on the main thread, then fills it in parallel
-using Rayon's `zip`. No intermediate allocation is needed.
+using Rayon's `zip`. No intermediate allocation is needed. The vector is sized
+from the iterator's `len()`; an iterator that then gives fewer items panics
+rather than return elements it never wrote.
 
 ```rust
 use miniextendr_api::rayon_bridge::{rayon::prelude::*, ParCollectR};

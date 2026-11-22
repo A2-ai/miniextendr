@@ -41,6 +41,7 @@ fn rayon_suite() {
         test_with_r_array_parallel();
         test_new_r_matrix();
         test_new_r_array();
+        test_untouched_elements_are_na();
     });
 }
 
@@ -333,3 +334,38 @@ fn test_new_r_array() {
     assert_eq!(array.len(), 120);
 }
 // endregion
+
+fn test_untouched_elements_are_na() {
+    use miniextendr_api::RNativeType;
+    let na = f64::R_NA.to_bits();
+
+    let v = with_r_vec::<f64, _>(1000, |chunk, offset| {
+        for (i, x) in chunk.iter_mut().enumerate() {
+            assert_eq!(x.to_bits(), na, "a fresh chunk starts as NA");
+            if (offset + i) % 3 == 0 {
+                *x = 1.0;
+            }
+        }
+    });
+    let v = unsafe { read_real_vec(v) };
+    for (i, x) in v.iter().enumerate() {
+        if i % 3 == 0 {
+            assert_eq!(*x, 1.0);
+        } else {
+            assert_eq!(x.to_bits(), na, "index {i} was left alone");
+        }
+    }
+
+    let m = with_r_matrix::<i32, _>(4, 3, |col, col_idx| {
+        if col_idx == 1 {
+            col.fill(5);
+        }
+    });
+    let m = unsafe { m.as_slice::<i32>() };
+    assert_eq!(&m[..4], &[i32::R_NA; 4]);
+    assert_eq!(&m[4..8], &[5; 4]);
+    assert_eq!(&m[8..], &[i32::R_NA; 4]);
+
+    let a = with_r_array::<u8, 3, _>([2, 2, 2], |_, _| {});
+    assert_eq!(unsafe { a.as_slice::<u8>() }, &[0u8; 8]);
+}

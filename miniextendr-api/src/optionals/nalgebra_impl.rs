@@ -1080,15 +1080,21 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
         })
     }
 
-    /// Allocate a new R vector and initialize it.
+    /// Allocate a new R vector and initialize it. `init` receives the
+    /// elements, each `NA` (`0` for raw) until it writes one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len as R_xlen_t) };
+        let r_len = R_xlen_t::try_from(len).expect("vector length exceeds R_xlen_t");
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, r_len) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
@@ -1136,16 +1142,25 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
         })
     }
 
-    /// Allocate a new R matrix and initialize it.
+    /// Allocate a new R matrix and initialize it. `init` receives the
+    /// elements in column-major order, each `NA` (`0` for raw) until it writes
+    /// one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_matrix(nrows: usize, ncols: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let total = nrows * ncols;
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total as R_xlen_t) };
+        let total = nrows
+            .checked_mul(ncols)
+            .expect("matrix size overflows usize");
+        let r_total = R_xlen_t::try_from(total).expect("matrix length exceeds R_xlen_t");
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, r_total) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..total {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };
         init(slice);
         Self {

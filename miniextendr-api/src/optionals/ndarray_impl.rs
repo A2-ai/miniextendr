@@ -3150,15 +3150,21 @@ impl<T: RNativeType> RndVec<T> {
         })
     }
 
-    /// Allocate a new R vector and initialize it.
+    /// Allocate a new R vector and initialize it. `init` receives the
+    /// elements, each `NA` (`0` for raw) until it writes one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, len as crate::R_xlen_t) };
+        let r_len = crate::R_xlen_t::try_from(len).expect("vector length exceeds R_xlen_t");
+        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, r_len) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
@@ -3299,7 +3305,9 @@ impl<T: RNativeType> RndMat<T> {
         })
     }
 
-    /// Allocate a new R matrix and initialize it.
+    /// Allocate a new R matrix and initialize it. `init` receives the
+    /// elements in column-major order, each `NA` (`0` for raw) until it writes
+    /// one.
     ///
     /// # Safety
     ///
@@ -3313,8 +3321,13 @@ impl<T: RNativeType> RndMat<T> {
             )
         };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
-        let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
+        let len = nrow * ncol;
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
             sexp,

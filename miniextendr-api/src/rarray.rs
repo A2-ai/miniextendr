@@ -601,7 +601,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// Allocate a new R array with the given dimensions.
     ///
     /// The array is allocated. The closure receives a mutable slice to
-    /// initialize the data.
+    /// initialize the data; every element starts as `NA` (`0` for raw).
     ///
     /// # Safety
     ///
@@ -639,8 +639,12 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         // Set dimensions
         unsafe { set_dims::<NDIM>(sexp, &dims) };
 
-        // Initialize data
+        // The payload is uninitialized and `init` may read it, so every element
+        // starts as `NA`.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..total_len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
         init(slice);
 

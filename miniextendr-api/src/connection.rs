@@ -731,6 +731,9 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
             return 0;
         }
         let state = unsafe { get_state::<T>(conn) };
+        // R's read buffer is not filled (`readBin` allocates it fresh), so zero
+        // it before it becomes the `&mut [u8]` the implementation reads into.
+        unsafe { std::ptr::write_bytes(buf.cast::<u8>(), 0, total_bytes) };
         let slice = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), total_bytes) };
         let bytes_read = state.read(slice);
         // Return number of items read

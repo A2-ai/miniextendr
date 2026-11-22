@@ -413,7 +413,8 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 /// INTSXP, or RAWSXP depending on `T`). When this buffer is later used in
 /// an Arrow array and that array is converted back to R via `IntoR`, the
 /// buffer registry (`r_backed_buffers`) finds the original R vector —
-/// zero-copy round-trip for the Rust→Arrow→R direction.
+/// zero-copy round-trip for the Rust→Arrow→R direction. Every element starts
+/// as `NA` (`0` for raw).
 ///
 /// Returns `(buffer, sexp)` so callers can also work with the SEXP directly.
 ///
@@ -451,6 +452,13 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
     }
     let len_isize: isize = len.try_into().expect("vector length exceeds isize::MAX");
     let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len_isize) };
+    // Arrow reads a buffer as initialized memory and the fresh payload is not,
+    // so every element starts as `NA`. Nothing here allocates before
+    // `sexp_to_arrow_buffer` roots the vector.
+    let ptr = unsafe { T::dataptr_mut(sexp) };
+    for i in 0..len {
+        unsafe { ptr.add(i).write(T::R_NA) };
+    }
     // freshly allocated R vectors always have a valid data pointer
     let buffer = unsafe { sexp_to_arrow_buffer::<T>(sexp) }
         .expect("freshly allocated R vector must have a valid data pointer");
