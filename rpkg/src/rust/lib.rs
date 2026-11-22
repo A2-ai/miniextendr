@@ -265,6 +265,7 @@ mod impl_trait_tests;
 mod indexmap_adapter_tests;
 #[cfg(feature = "indicatif")]
 mod indicatif_adapter_tests;
+mod integer_factor_tests;
 mod interrupt_tests;
 mod into_r_as_tests;
 mod into_r_error_tests;

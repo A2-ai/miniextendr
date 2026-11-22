@@ -15,18 +15,26 @@ This guide documents how miniextendr converts between R and Rust types, includin
 | `raw` (length 1) | `u8` | No NA in raw |
 | `complex` (length 1) | `Rcomplex` | Has real/imag NA |
 
-A plain `i32` parameter accepts `7L`. It rejects `TRUE`, `NA_integer_` and a factor, including an ordered factor. A direct registered call used to decode a scalar factor as its internal level code. To use that code deliberately, extract it in R with `as.integer(f)`. For a numeric label such as `"42"`, use the label conversion described under [AsNumeric](#numbers-from-text-factors-or-numbers-asnumeric). An integer ALTREP can supply the scalar through its element method.
+A plain `i32` parameter accepts `7L`. It rejects `TRUE`, `NA_integer_` and a factor, ordered factors included. Every native scalar (`i32`, `f64`, `bool` / `RLogical`, `u8`, `Rcomplex`) reads its one value through R's element accessor (`INTEGER_ELT`, `REAL_ELT`, ...), so an ALTREP class that supplies elements but no data pointer converts too.
 
 ### Vector Types
 
 | R Type | Rust Type | Notes |
 |--------|-----------|-------|
-| `integer` | `Vec<i32>`, `&[i32]` | NA = `i32::MIN` |
+| Non-factor `integer` | `Vec<i32>`, `&[i32]` | NA = `i32::MIN` |
 | `numeric` | `Vec<f64>`, `&[f64]` | NA = special bit pattern |
 | `logical` | `Vec<bool>` | NA → error; use `Vec<Option<bool>>` to preserve it |
 | `character` | `Vec<String>` | NA → `""` (lossy); use `Vec<Option<String>>` to preserve it |
 | `raw` | `Vec<u8>`, `&[u8]` | No NA |
 | `list` | Various | See Lists and Collections sections |
+
+No integer conversion reads a factor, whose values are level codes. `i32`,
+`Option<i32>`, `&[i32]`, `Vec<i32>` and the containers read through it,
+`Vec<Option<i32>>`, `RArray<i32, N>`, and the integer input of the wider
+numeric types (`i64`, `Vec<i64>`, `Option<u32>`, ...) refuse it with
+`got a factor`, also when the R-side check is off (`no_preconditions`, a
+direct `.Call`). Take the codes with `as.integer(f)` in R, or a numeric label
+such as `"42"` with [AsNumeric](#numbers-from-text-factors-or-numbers-asnumeric).
 
 For Rust-to-R returns, `[T; N]` uses the same conversion as `&[T]`, without
 an intermediate Rust allocation. This includes native values, smart integers

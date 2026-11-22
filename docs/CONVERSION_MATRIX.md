@@ -161,7 +161,7 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 
 | Rust Type | Accepted R Type(s) | Element Behavior |
 |-----------|--------------------|------------------|
-| `Vec<i32>` / `&[i32]` | INTSXP only | Direct memcpy |
+| `Vec<i32>` / `&[i32]` | INTSXP only, not a factor | Direct memcpy |
 | `Vec<f64>` / `&[f64]` | REALSXP only | Direct memcpy |
 | `Vec<u8>` / `&[u8]` | RAWSXP only | Direct memcpy |
 | `Vec<bool>` | LGLSXP only | Each logical->bool; NA causes error |
@@ -379,7 +379,7 @@ vector rather than a `list(NULL, NULL, ...)`.
 
 | Rust Type | R Output Type | Notes |
 |-----------|--------------|-------|
-| `Vec<i32>` / `&[i32]` | INTSXP | Bulk memcpy |
+| `Vec<i32>` / `&[i32]` | INTSXP, not a factor | Bulk memcpy |
 | `Vec<f64>` / `&[f64]` | REALSXP | Bulk memcpy |
 | `Vec<u8>` / `&[u8]` | RAWSXP | Bulk memcpy |
 | `Vec<bool>` / `&[bool]` | LGLSXP | Element-wise `bool as i32` |

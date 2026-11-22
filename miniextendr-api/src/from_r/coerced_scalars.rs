@@ -175,29 +175,9 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            // Read raw i32 without the NA guard — we handle NA here by returning None.
-            let len = sexp.len();
-            if len != 1 {
-                return Err(crate::from_r::SexpLengthError {
-                    expected: 1,
-                    actual: len,
-                }
-                .into());
-            }
-            let value = unsafe { sexp.as_slice::<i32>() }
-                .first()
-                .cloned()
-                .ok_or_else(|| {
-                    SexpError::from(crate::from_r::SexpLengthError {
-                        expected: 1,
-                        actual: 0,
-                    })
-                })?;
-            if value.is_na() {
-                Ok(None)
-            } else {
-                coerce_value(value).map(Some)
-            }
+            // Option<i32>: one non-factor element, NA read as None.
+            let value: Option<i32> = TryFromSexp::try_from_sexp(sexp)?;
+            value.map(coerce_value).transpose()
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
@@ -240,29 +220,9 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            // Read raw i32 without the NA guard — we handle NA here by returning None.
-            let len = unsafe { sexp.len_unchecked() };
-            if len != 1 {
-                return Err(crate::from_r::SexpLengthError {
-                    expected: 1,
-                    actual: len,
-                }
-                .into());
-            }
-            let value = unsafe { sexp.as_slice_unchecked::<i32>() }
-                .first()
-                .cloned()
-                .ok_or_else(|| {
-                    SexpError::from(crate::from_r::SexpLengthError {
-                        expected: 1,
-                        actual: 0,
-                    })
-                })?;
-            if value.is_na() {
-                Ok(None)
-            } else {
-                coerce_value(value).map(Some)
-            }
+            // Option<i32>: one non-factor element, NA read as None.
+            let value: Option<i32> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            value.map(coerce_value).transpose()
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };

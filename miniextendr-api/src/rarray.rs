@@ -234,19 +234,12 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The SEXP type doesn't match `T::SEXP_TYPE`
+    /// - The SEXP type doesn't match `T::SEXP_TYPE`, or it is a factor (`T` an integer)
     /// - The dim attribute has wrong number of dimensions
     #[inline]
     pub unsafe fn from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
-        // Type check
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
+        // Type, and for integers not a factor (#1660).
+        crate::from_r::native_slice_type::<T>(sexp)?;
 
         // Validate dimensions count
         let ndim = get_ndim(sexp);
