@@ -25,6 +25,7 @@ test_that("integer admission also holds at the registered .Call entry", {
 
   cases <- list(
     list(f, "got a factor"),
+    list(ordered("a"), "got a factor"),
     list(TRUE, "got logical"),
     list(37, "got numeric"),
     list(only(NA_integer_), "NA is not allowed"),
@@ -37,5 +38,34 @@ test_that("integer admission also holds at the registered .Call entry", {
     expect_identical(direct$kind, "conversion")
     expect_match(direct$error, case[[2L]], fixed = TRUE)
     expect_identical(direct$data$param, "x")
+  }
+})
+
+test_that("factor codes require explicit extraction on scalar paths", {
+  for (x in list(factor("b"), ordered("b"))) {
+    expect_error(miniextendr:::element_only_scalar_alias(x))
+    expect_error(ReceiverCounter$new(0L)$add(x))
+    expect_error(miniextendr:::coerce_input_scalar_i32(x))
+    for (native in list(miniextendr:::C_miniextendr_coerce_input_scalar_i32,
+                        miniextendr:::C_miniextendr_plain_na_i32)) {
+      direct <- .Call(native, NULL, x)
+      expect_identical(direct$kind, "conversion")
+      expect_match(direct$error, "got a factor", fixed = TRUE)
+    }
+  }
+})
+
+test_that("an ALTREP exit drops a previously converted argument and preserves the condition", {
+  inputs <- list(
+    scalar_length_error = miniextendr:::element_only_ints(1L, fail_length = TRUE),
+    scalar_element_error = altrep_classed_error_on_elt(1L, "scalar_element_error",
+                                                       "element callback failed")
+  )
+  for (kind in names(inputs)) {
+    before <- miniextendr:::dropped_scalar_args()
+    error <- tryCatch(miniextendr:::scalar_after_drop_guard(NULL, inputs[[kind]]),
+                      error = identity)
+    expect_s3_class(error, kind)
+    expect_identical(miniextendr:::dropped_scalar_args(), before + 1L)
   }
 })

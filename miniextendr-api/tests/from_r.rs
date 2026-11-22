@@ -10,6 +10,47 @@ use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use miniextendr_api::{R_xlen_t, SEXPTYPE};
 use std::collections::{BTreeSet, HashSet};
 
+// A provider that signals a classed R condition when its Elt callback runs.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, class = "EmbeddedFailingScalar")]
+struct EmbeddedFailingScalar;
+
+impl miniextendr_api::altrep_data::AltrepLen for EmbeddedFailingScalar {
+    fn altrep_len(&self) -> usize {
+        1
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for EmbeddedFailingScalar {
+    fn elt(&self, _: usize) -> i32 {
+        miniextendr_api::error!(class = "embedded_scalar_error", "embedded element failed")
+    }
+}
+
+#[test]
+fn embedded_scalar_returns_a_provider_error_without_an_mx_boundary() {
+    use miniextendr_api::IntoR;
+    r_test_utils::with_r_thread(|| unsafe {
+        let root =
+            miniextendr_api::gc_protect::OwnedProtect::new(EmbeddedFailingScalar.into_sexp());
+        for result in [
+            i32::try_from_sexp(root.get()),
+            i32::try_from_sexp_unchecked(root.get()),
+        ] {
+            let Err(SexpError::Condition(error)) = result else {
+                panic!("expected the provider's condition, got {result:?}");
+            };
+            assert!(
+                error
+                    .classes()
+                    .iter()
+                    .any(|class| class == "embedded_scalar_error")
+            );
+            assert_eq!(error.message_str(), "embedded element failed");
+        }
+    });
+}
+
 #[derive(Default)]
 struct ProtectCount(i32);
 

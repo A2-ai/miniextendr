@@ -524,6 +524,50 @@ pub(crate) unsafe fn call_unwinding(
     }
 }
 
+/// Run a potentially dispatching R accessor while Rust callers hold live values.
+/// Within an mx boundary, an R exit unwinds Rust before resuming the original R
+/// condition or restart. In a standalone embedding, return the isolated R error.
+/// Rust panics leave the trampoline only after R has restored its context.
+///
+/// # Safety
+///
+/// R's main thread. Root all SEXP inputs and SEXP outputs across the call.
+/// An R exit can jump out of `body`, so it must hold no Rust values requiring
+/// destruction across a dispatching operation. Captures must be copyable.
+pub(crate) unsafe fn call_r_callback<T, F>(body: F) -> Result<T, crate::expression::REvalError>
+where
+    F: FnOnce() -> T + Copy,
+{
+    struct Callback<F, T> {
+        body: F,
+        outcome: Option<std::thread::Result<T>>,
+    }
+
+    unsafe extern "C-unwind" fn run<T, F: FnOnce() -> T + Copy>(data: *mut c_void) -> SEXP {
+        let callback = unsafe { &mut *data.cast::<Callback<F, T>>() };
+        callback.outcome = Some(catch_unwind(AssertUnwindSafe(callback.body)));
+        SEXP::nil()
+    }
+
+    let mut callback: Callback<F, T> = Callback {
+        body,
+        outcome: None,
+    };
+    let data = (&raw mut callback).cast();
+    if BOUNDARY.with(Cell::get) != 0 {
+        unsafe { call_unwinding(run::<T, F>, data) };
+    } else {
+        unsafe { crate::expression::try_call(run::<T, F>, data)? };
+    }
+    match callback
+        .outcome
+        .expect("R accessor returned without an outcome")
+    {
+        Ok(value) => Ok(value),
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
 // endregion
 
 // region: Log drain integration

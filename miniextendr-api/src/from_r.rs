@@ -1399,35 +1399,48 @@ impl TryFromSexp for i32 {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // R's isInteger checks both the tag and factor class. Only inspect the
-        // tag again on failure, to distinguish a factor from a storage mismatch.
-        if unsafe { crate::sys::Rf_isInteger_unchecked(sexp) } == crate::Rboolean::FALSE {
-            let actual = unsafe { crate::sys::TYPEOF_unchecked(sexp) };
-            if actual == SEXPTYPE::INTSXP {
-                return Err(SexpError::InvalidValue("got a factor".to_string()));
-            }
+        let actual = unsafe { crate::sys::TYPEOF_unchecked(sexp) };
+        if actual != SEXPTYPE::INTSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::INTSXP,
                 actual,
             }
             .into());
         }
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
+
+        let classed = unsafe { crate::sys::Rf_isObject_unchecked(sexp) } != crate::Rboolean::FALSE;
+        let read = || {
+            if classed
+                && unsafe { crate::sys::Rf_isFactor_unchecked(sexp) } != crate::Rboolean::FALSE
+            {
+                return Err(SexpError::InvalidValue("got a factor".to_string()));
             }
-            .into());
-        }
-        let value = unsafe { crate::sys::INTEGER_ELT_unchecked(sexp, 0) };
-        if value.is_na() {
-            return Err(SexpNaError {
-                sexp_type: SEXPTYPE::INTSXP,
+            let len = unsafe { sexp.len_unchecked() };
+            if len != 1 {
+                return Err(SexpLengthError {
+                    expected: 1,
+                    actual: len,
+                }
+                .into());
             }
-            .into());
+            let value = unsafe { crate::sys::INTEGER_ELT_unchecked(sexp, 0) };
+            if value.is_na() {
+                return Err(SexpNaError {
+                    sexp_type: SEXPTYPE::INTSXP,
+                }
+                .into());
+            }
+            Ok(value)
+        };
+
+        if classed || unsafe { crate::sys::ALTREP_unchecked(sexp) } != 0 {
+            // Class lookup can dispatch on an ALTSTRING class attribute, and
+            // ALTINTEGER Length or Elt may raise an arbitrary R condition.
+            let _root = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
+            unsafe { crate::unwind_protect::call_r_callback(read)? }
+        } else {
+            read()
         }
-        Ok(value)
     }
 }
 

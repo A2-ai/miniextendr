@@ -1725,7 +1725,6 @@ unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
 ///
 /// As [`try_call_raw`]. An R error jumps out of `body`, so it must hold
 /// nothing to drop.
-#[cfg(all(feature = "connections", r_4_6))]
 pub(crate) unsafe fn try_call(body: TryBody, body_data: *mut c_void) -> Result<SEXP, REvalError> {
     unsafe { into_result(try_call_raw(body, body_data)) }
 }

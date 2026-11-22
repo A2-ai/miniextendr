@@ -65,12 +65,18 @@ pub fn make_no_lowlevel_altrep(length: i32) -> NoLowlevelAltrep {
 /// Integer ALTREP whose default R data-pointer method refuses materialization.
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(no_lowlevel, manual, class = "ElementOnlyInts")]
-pub struct ElementOnlyInts(Vec<i32>);
+pub struct ElementOnlyInts {
+    values: Vec<i32>,
+    fail_length: bool,
+}
 
 impl miniextendr_api::altrep_traits::Altrep for ElementOnlyInts {
     fn length(x: SEXP) -> miniextendr_api::R_xlen_t {
         let data = unsafe { Self::altrep_extract_ref(x) };
-        miniextendr_api::R_xlen_t::try_from(data.0.len()).unwrap()
+        if data.fail_length {
+            miniextendr_api::error!(class = "scalar_length_error", "length callback failed");
+        }
+        miniextendr_api::R_xlen_t::try_from(data.values.len()).unwrap()
     }
 }
 
@@ -81,7 +87,7 @@ impl miniextendr_api::altrep_traits::AltInteger for ElementOnlyInts {
 
     fn elt(x: SEXP, i: miniextendr_api::R_xlen_t) -> i32 {
         let data = unsafe { Self::altrep_extract_ref(x) };
-        data.0[usize::try_from(i).unwrap()]
+        data.values[usize::try_from(i).unwrap()]
     }
 }
 
@@ -89,8 +95,14 @@ miniextendr_api::impl_inferbase_integer!(ElementOnlyInts);
 
 /// Wrap integers in a class that supports only element reads.
 #[miniextendr(noexport)]
-pub fn element_only_ints(values: Vec<i32>) -> ElementOnlyInts {
-    ElementOnlyInts(values)
+pub fn element_only_ints(
+    values: Vec<i32>,
+    #[miniextendr(default = "FALSE")] fail_length: bool,
+) -> ElementOnlyInts {
+    ElementOnlyInts {
+        values,
+        fail_length,
+    }
 }
 
 type ScalarInteger = i32;
@@ -99,6 +111,38 @@ type ScalarInteger = i32;
 #[miniextendr(no_coerce, noexport)]
 pub fn element_only_scalar_alias(x: ScalarInteger) -> i32 {
     x
+}
+
+thread_local! {
+    static DROPPED_SCALAR_ARGS: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
+}
+
+pub struct ScalarArgGuard;
+
+impl TryFromSexp for ScalarArgGuard {
+    type Error = miniextendr_api::from_r::SexpError;
+
+    fn try_from_sexp(_: SEXP) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+}
+
+impl Drop for ScalarArgGuard {
+    fn drop(&mut self) {
+        DROPPED_SCALAR_ARGS.with(|n| n.set(n.get() + 1));
+    }
+}
+
+/// Convert a scalar after a Rust argument whose destructor records cleanup.
+#[miniextendr(no_coerce, no_preconditions, noexport)]
+pub fn scalar_after_drop_guard(_guard: ScalarArgGuard, x: i32) -> i32 {
+    x
+}
+
+/// Number of earlier scalar arguments whose destructor ran.
+#[miniextendr(noexport)]
+pub fn dropped_scalar_args() -> i32 {
+    DROPPED_SCALAR_ARGS.with(std::cell::Cell::get)
 }
 
 // endregion
