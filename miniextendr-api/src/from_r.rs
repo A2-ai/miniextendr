@@ -1388,7 +1388,10 @@ macro_rules! impl_try_from_sexp_scalar_native {
 }
 
 /// Read a length-one, non-factor integer vector, rejecting R's NA sentinel.
-/// An ALTREP class can supply the element without exposing a data pointer.
+/// Classless ordinary integers take an allocation-free path on success. Classed
+/// and ALTREP inputs are rooted across a protected R callback, which can
+/// allocate and reenter R. An ALTREP provider can supply the element without
+/// exposing a data pointer.
 impl TryFromSexp for i32 {
     type Error = SexpError;
 

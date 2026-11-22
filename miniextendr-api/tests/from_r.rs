@@ -51,6 +51,46 @@ fn embedded_scalar_returns_a_provider_error_without_an_mx_boundary() {
     });
 }
 
+// A genuinely unguarded native entry that R reaches through .Call(). Catch
+// the old inherited-boundary unwind here so the regression itself can never
+// unwind through R's evaluator.
+unsafe extern "C-unwind" fn unguarded_scalar_probe(x: SEXP) -> SEXP {
+    let result = std::panic::catch_unwind(|| i32::try_from_sexp(x));
+    SEXP::scalar_logical(matches!(result, Ok(Err(SexpError::Condition(_)))))
+}
+
+#[test]
+fn unguarded_r_reentry_cannot_resume_an_outer_rust_boundary() {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::unwind_protect::with_r_unwind_protect;
+    use miniextendr_api::{IntoR, OwnedProtect};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let value = OwnedProtect::new(EmbeddedFailingScalar.into_sexp());
+        let address = OwnedProtect::new(miniextendr_api::sys::R_MakeExternalPtrFn(
+            Some(std::mem::transmute::<
+                unsafe extern "C-unwind" fn(SEXP) -> SEXP,
+                unsafe extern "C-unwind" fn() -> *mut std::ffi::c_void,
+            >(unguarded_scalar_probe)),
+            miniextendr_api::sys::Rf_install(c"native symbol".as_ptr()),
+            SEXP::nil(),
+        ));
+        let call = RCall::new(".Call").arg(address.get()).arg(value.get());
+        let both_returned_errors = with_r_unwind_protect(
+            || {
+                let isolated = call.eval_base().unwrap().logical_elt(0);
+                let with_handlers = call
+                    .try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+                    .unwrap()
+                    .logical_elt(0);
+                SEXP::scalar_logical(isolated == 1 && with_handlers == 1)
+            },
+            None,
+        );
+        assert_eq!(both_returned_errors.logical_elt(0), 1);
+    });
+}
+
 #[derive(Default)]
 struct ProtectCount(i32);
 

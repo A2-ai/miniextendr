@@ -1692,7 +1692,7 @@ unsafe fn try_call_raw(body: TryBody, body_data: *mut c_void) -> Caught {
         unsafe { catch_error(data) };
     }
 
-    unsafe {
+    crate::unwind_protect::Boundary::without_inherited(|| unsafe {
         let slot = OwnedProtect::new(SEXP::alloc_list(1));
         let mut data = TryEvalData::new(body, body_data, slot.get());
         let completed = sys::R_ToplevelExec(Some(toplevel), (&raw mut data).cast());
@@ -1700,7 +1700,7 @@ unsafe fn try_call_raw(body: TryBody, body_data: *mut c_void) -> Caught {
             return Caught::Exit;
         }
         data.outcome()
-    }
+    })
 }
 
 /// Evaluate `expr` in `env` as [`try_call_raw`] calls a body.

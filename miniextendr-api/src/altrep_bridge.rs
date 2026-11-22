@@ -53,7 +53,7 @@ where
     F: FnOnce() -> R,
 {
     match T::GUARD {
-        AltrepGuard::Unsafe => f(),
+        AltrepGuard::Unsafe => crate::unwind_protect::Boundary::without_inherited(f),
         AltrepGuard::RustUnwind => crate::ffi_guard::guarded_ffi_call(
             f,
             crate::ffi_guard::GuardMode::CatchUnwind,

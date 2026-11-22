@@ -257,6 +257,18 @@ impl Boundary {
         Boundary { id, outer }
     }
 
+    /// Hide the caller's Rust boundary while R may enter another native routine.
+    /// A guarded reentry establishes its own boundary; an unguarded routine
+    /// has no Rust frame here that could safely resume its R continuation.
+    #[inline]
+    pub(crate) fn without_inherited<T>(f: impl FnOnce() -> T) -> T {
+        let _restore = Self {
+            id: 0,
+            outer: BOUNDARY.with(|current| current.replace(0)),
+        };
+        f()
+    }
+
     /// Make the enclosing boundary the innermost again. Call it before leaving
     /// by an R jump, which skips `Drop`.
     #[inline]
@@ -500,11 +512,11 @@ pub(crate) unsafe fn call_unwinding(
         }
     }
 
-    unsafe {
+    let boundary = BOUNDARY.with(Cell::get);
+    Boundary::without_inherited(|| unsafe {
         release_abandoned_off_main();
         let token = sys::R_MakeUnwindCont();
         sys::R_PreserveObject(token);
-        let boundary = BOUNDARY.with(Cell::get);
         let mut data = CallData {
             fun,
             data,
@@ -518,15 +530,16 @@ pub(crate) unsafe fn call_unwinding(
             (&raw mut data).cast(),
             token,
         );
-        BOUNDARY.with(|current| current.set(boundary));
         sys::R_ReleaseObject(token);
         value
-    }
+    })
 }
 
 /// Run a potentially dispatching R accessor while Rust callers hold live values.
 /// Within an mx boundary, an R exit unwinds Rust before resuming the original R
-/// condition or restart. In a standalone embedding, return the isolated R error.
+/// condition or restart. In a standalone embedding or unguarded reentry, return
+/// the isolated R error. An isolated non-error exit yields the same generic
+/// evaluation error as `RCall::eval`.
 /// Rust panics leave the trampoline only after R has restored its context.
 ///
 /// # Safety
