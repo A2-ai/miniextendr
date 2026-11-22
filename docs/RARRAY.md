@@ -142,8 +142,10 @@ for col in 0..ncol {
 ```
 
 A slice needs a contiguous backing and can materialize an ALTREP matrix. To
-return an ordinary R double vector holding one column, request that range
-directly. The generated call keeps the input matrix rooted throughout the copy.
+return an ordinary R vector holding one column, request that range directly.
+`copy_column_to_r()` exists for every native element type (`i32`, `f64`,
+`RLogical`, `u8`, `Rcomplex`, and their derived newtypes); the result has the
+matrix's type. The generated call keeps the input matrix rooted throughout the copy.
 
 ```rust
 use miniextendr_api::{miniextendr, Preserved, RMatrix, SexpError};
@@ -158,10 +160,11 @@ pub fn real_column(m: RMatrix<f64>, col: usize) -> Result<Preserved, SexpError> 
 ```
 
 The exported function accepts R's one-based column index. The Rust method
-takes a zero-based index. An ordinary double matrix or an ALTREP that exposes
-a contiguous buffer takes one bulk copy into the R result. If the provider
-returns a null buffer pointer, the reader requests at most 256 doubles at a
-time and consumes short reads until the column is complete. A provider can
+takes a zero-based index. An ordinary matrix or an ALTREP that exposes a
+contiguous buffer takes one bulk copy into the R result. If the provider
+returns a null buffer pointer, the reader requests at most 256 elements at a
+time through the type's `*_GET_REGION` accessor and consumes short reads
+until the column is complete. A provider can
 allocate or materialize data when it handles a request. The result contains
 the values in row order and carries its own GC root.
 
@@ -181,6 +184,10 @@ If the provider raises an error in a generated function, Rust owners unwind
 before the original condition reaches R. In standalone embedding, a failed
 `get()` panics in Rust and `copy_column_to_r()` returns a `SexpError::Condition`
 carrying the provider error's message and specific classes.
+
+That bridge costs one small R allocation (a continuation token) per `get()`
+on an ALTREP array. To read many cells of an ALTREP matrix, copy whole
+columns with `copy_column_to_r()` instead.
 
 ### Dimensions
 
@@ -340,7 +347,7 @@ unsafe { m.set_dimnames(dimnames_sexp) };
 | `column()` | A contiguous pointer to the whole payload | Borrow a column when contiguous storage is available |
 | `column_mut()` | A writable pointer to the whole payload | Mutate an exclusively owned matrix column |
 | `get()` / `get_rc()` | One native element after a bounds check | Sparse element access |
-| `copy_column_to_r()` | One exposed column span or bounded ALTREP regions | Return an owned R double vector |
+| `copy_column_to_r()` | One exposed column span or bounded ALTREP regions | Return one column as an owned R vector |
 
 Each `get()` call translates coordinates and checks bounds. For traversal of
 an ordinary matrix a borrowed slice amortizes those checks across the loop.

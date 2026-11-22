@@ -2468,6 +2468,8 @@ pub fn r_ffi_checked(
 ///     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
 ///         <i32 as RNativeType>::dataptr_mut(sexp).cast()
 ///     }
+///
+///     // elt, dataptr_or_null and get_region forward to i32's the same way.
 /// }
 /// ```
 ///
@@ -2588,6 +2590,26 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
             fn elt(sexp: ::miniextendr_api::SEXP, i: isize) -> Self {
                 let val = <#inner_ty as ::miniextendr_api::RNativeType>::elt(sexp, i);
                 #elt_ctor
+            }
+
+            #[inline]
+            unsafe fn dataptr_or_null(sexp: ::miniextendr_api::SEXP) -> *const Self {
+                // repr(transparent): the inner type's storage is this type's.
+                unsafe {
+                    <#inner_ty as ::miniextendr_api::RNativeType>::dataptr_or_null(sexp).cast()
+                }
+            }
+
+            #[inline]
+            unsafe fn get_region(
+                sexp: ::miniextendr_api::SEXP,
+                i: ::miniextendr_api::R_xlen_t,
+                n: ::miniextendr_api::R_xlen_t,
+                buf: *mut Self,
+            ) -> ::miniextendr_api::R_xlen_t {
+                unsafe {
+                    <#inner_ty as ::miniextendr_api::RNativeType>::get_region(sexp, i, n, buf.cast())
+                }
             }
         }
 

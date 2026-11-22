@@ -1,17 +1,19 @@
-//! Copying one selected real column into ordinary R storage.
+//! Copying one selected matrix column into ordinary R storage.
 
 use crate::from_r::SexpError;
-use crate::{Preserved, R_xlen_t, SEXP, SEXPTYPE, SexpExt, sys};
+use crate::{Preserved, R_xlen_t, RNativeType, SEXP, SexpExt, sys};
 
 use super::RMatrix;
 
-impl RMatrix<f64> {
-    /// Copy one zero-based column into a rooted, ordinary R double vector.
+impl<T: RNativeType> RMatrix<T> {
+    /// Copy one zero-based column into a rooted, ordinary R vector of the
+    /// matrix's type (integer, double, logical, raw or complex).
     ///
     /// The result contains the column's values without matrix attributes. An
     /// ordinary matrix or ALTREP with an exposed buffer takes one bulk copy.
-    /// An ALTREP without a buffer is read in bounded regions. A provider can
-    /// allocate or materialize its own backing during a callback.
+    /// An ALTREP without a buffer is read in bounded regions
+    /// ([`RNativeType::get_region`]). A provider can allocate or materialize
+    /// its own backing during a callback.
     ///
     /// # Errors
     ///
@@ -34,7 +36,11 @@ impl RMatrix<f64> {
 
 // Keep only plain stack data across R calls in the bridge. Its R context
 // restores the protect stack automatically if a provider longjmps.
-unsafe fn copy_column(matrix: RMatrix<f64>, dim: SEXP, col: usize) -> Result<Preserved, SexpError> {
+unsafe fn copy_column<T: RNativeType>(
+    matrix: RMatrix<T>,
+    dim: SEXP,
+    col: usize,
+) -> Result<Preserved, SexpError> {
     let src = matrix.as_sexp();
     // This whole operation is already inside the callback bridge.
     let [rows, cols] = unsafe { super::get_dims(src, dim) };
@@ -54,12 +60,13 @@ unsafe fn copy_column(matrix: RMatrix<f64>, dim: SEXP, col: usize) -> Result<Pre
     // The shape check and col < cols bound both conversions by XLENGTH.
     let count = R_xlen_t::try_from(rows).expect("validated column length");
     let start = R_xlen_t::try_from(col * rows).expect("validated column offset");
-    let out = unsafe { sys::Rf_protect(sys::Rf_allocVector(SEXPTYPE::REALSXP, count)) };
+    let out = unsafe { sys::Rf_protect(sys::Rf_allocVector(T::SEXP_TYPE, count)) };
     let result = if rows == 0 {
         Ok(())
     } else {
-        let dst = unsafe { sys::REAL(out) };
-        let input = unsafe { sys::REAL_OR_NULL(src) };
+        // A non-empty vector: the pointer is R's real storage.
+        let dst = unsafe { T::dataptr_mut(out) };
+        let input = unsafe { T::dataptr_or_null(src) };
         if input.is_null() {
             unsafe { copy_regions(src, start, count, dst) }
         } else {
@@ -74,22 +81,20 @@ unsafe fn copy_column(matrix: RMatrix<f64>, dim: SEXP, col: usize) -> Result<Pre
     result
 }
 
-unsafe fn copy_regions(
+unsafe fn copy_regions<T: RNativeType>(
     src: SEXP,
     start: R_xlen_t,
     count: R_xlen_t,
-    dst: *mut f64,
+    dst: *mut T,
 ) -> Result<(), SexpError> {
-    // Called only from the main-thread unwind trampoline. A provider may
-    // expose its destination as an initialized &mut [f64].
-    let mut scratch = [0.0; 256];
+    // Called only from the main-thread unwind trampoline. The scratch is
+    // initialized, so a provider may expose its destination as a `&mut [T]`.
+    let mut scratch = [T::R_NA; 256];
     let block_len = R_xlen_t::try_from(scratch.len()).expect("bounded scratch length");
     let mut done = 0;
     while done < count {
         let wanted = (count - done).min(block_len);
-        let got = unsafe {
-            sys::REAL_GET_REGION_unchecked(src, start + done, wanted, scratch.as_mut_ptr())
-        };
+        let got = unsafe { T::get_region(src, start + done, wanted, scratch.as_mut_ptr()) };
         if !(1..=wanted).contains(&got) {
             return Err(SexpError::InvalidValue(format!(
                 "ALTREP column reader returned {got} values for a request of {wanted}"

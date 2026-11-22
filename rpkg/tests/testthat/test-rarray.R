@@ -147,3 +147,24 @@ test_that("row-name getters report absent row names", {
   expect_error(miniextendr:::rarray_matrix_rownames(numeric_matrix), "expected row names")
   expect_error(miniextendr:::list_matrix_rownames(list_matrix), "expected row names")
 })
+
+test_that("a column keeps the matrix's native type", {
+  column <- miniextendr:::rarray_native_matrix_column
+  expect_identical(column(matrix(1:6, 3L), 2L), 4:6)
+  expect_identical(column(matrix(c(TRUE, NA, FALSE, TRUE), 2L), 1L), c(TRUE, NA))
+  expect_identical(column(matrix(as.raw(1:6), 2L), 3L), as.raw(5:6))
+  z <- complex(real = 1:4, imaginary = -(1:4))
+  expect_identical(column(matrix(z, 2L), 2L), z[3:4])
+  expect_identical(column(matrix(c(1.5, NA), 1L), 2L), NA_real_)
+  expect_identical(column(matrix(integer(), 0L, 2L), 2L), integer())
+  expect_error(column(matrix(1:6, 3L), 3L), "out of bounds")
+  expect_error(column(matrix(1:6, 3L), 0L), "start at 1")
+})
+
+test_that("a compact integer matrix gives a column without a buffer", {
+  x <- structure(seq_len(600L), dim = c(300L, 2L))
+  has_buffer <- miniextendr:::rarray_int_matrix_has_buffer
+  expect_false(has_buffer(x))
+  expect_identical(miniextendr:::rarray_int_matrix_column(x, 2L), 301:600)
+  expect_false(has_buffer(x))
+})

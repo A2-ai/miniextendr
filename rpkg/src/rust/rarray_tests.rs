@@ -8,6 +8,7 @@ use miniextendr_api::list::List;
 use miniextendr_api::prelude::SEXP;
 use miniextendr_api::prelude::*;
 use miniextendr_api::rarray::{RMatrix, RVector};
+use miniextendr_api::{RNativeType, SEXPTYPE};
 
 fn strings_from_sexp(sexp: SEXP) -> Vec<String> {
     Vec::<String>::try_from_sexp(sexp).expect("expected character names")
@@ -71,6 +72,68 @@ pub fn rarray_matrix_cell(x: RMatrix<f64>, row: usize, col: usize) -> f64 {
 #[miniextendr(noexport)]
 pub fn rarray_matrix_has_buffer(x: RMatrix<f64>) -> bool {
     !unsafe { miniextendr_api::sys::REAL_OR_NULL(x.as_sexp()) }.is_null()
+}
+
+/// Run `f::<T>` for the native element type of `x`.
+fn with_native_type<R>(x: SEXP, f: impl NativeTypeFn<R>) -> Result<R, SexpError> {
+    use miniextendr_api::{RLogical, Rcomplex};
+    match x.type_of() {
+        SEXPTYPE::INTSXP => f.call::<i32>(x),
+        SEXPTYPE::REALSXP => f.call::<f64>(x),
+        SEXPTYPE::LGLSXP => f.call::<RLogical>(x),
+        SEXPTYPE::RAWSXP => f.call::<u8>(x),
+        SEXPTYPE::CPLXSXP => f.call::<Rcomplex>(x),
+        other => Err(SexpError::InvalidValue(format!(
+            "expected a native vector, got {other:?}"
+        ))),
+    }
+}
+
+/// A function generic over the native element type.
+trait NativeTypeFn<R> {
+    fn call<T: RNativeType>(self, x: SEXP) -> Result<R, SexpError>;
+}
+
+/// Copy one column of a matrix of any native type; the result keeps the type.
+/// @param x An integer, double, logical, raw or complex matrix.
+/// @param col 1-based column index.
+#[miniextendr(noexport)]
+pub fn rarray_native_matrix_column(x: SEXP, col: usize) -> Result<Preserved, SexpError> {
+    struct Column(usize);
+    impl NativeTypeFn<Preserved> for Column {
+        fn call<T: RNativeType>(self, x: SEXP) -> Result<Preserved, SexpError> {
+            let matrix = RMatrix::<T>::try_from_sexp(x)?;
+            let index = self
+                .0
+                .checked_sub(1)
+                .ok_or_else(|| SexpError::InvalidValue("column indices start at 1".into()))?;
+            // The .Call arguments root x for the full read on R's main thread.
+            unsafe { matrix.copy_column_to_r(index) }
+        }
+    }
+    with_native_type(x, Column(col))
+}
+
+/// Copy one column of an integer matrix. An `RMatrix` argument is not
+/// materialized (a bare `SEXP` one is), so a compact matrix is read through
+/// its regions.
+/// @param x An integer matrix.
+/// @param col 1-based column index.
+#[miniextendr(noexport)]
+pub fn rarray_int_matrix_column(x: RMatrix<i32>, col: usize) -> Result<Preserved, SexpError> {
+    let index = col
+        .checked_sub(1)
+        .ok_or_else(|| SexpError::InvalidValue("column indices start at 1".into()))?;
+    // The .Call arguments root x for the full read on R's main thread.
+    unsafe { x.copy_column_to_r(index) }
+}
+
+/// Does this integer matrix currently expose a buffer? Asking doesn't
+/// materialize it.
+/// @param x An integer matrix.
+#[miniextendr(noexport)]
+pub fn rarray_int_matrix_has_buffer(x: RMatrix<i32>) -> bool {
+    !unsafe { i32::dataptr_or_null(x.as_sexp()) }.is_null()
 }
 
 /// A matrix provider that fills at most two values per region call.

@@ -214,6 +214,107 @@ fn standalone_matrix_cell_panics_and_column_returns_provider_condition() {
     });
 }
 
+#[test]
+fn matrix_columns_of_every_native_type_copy_through_regions() {
+    use miniextendr_api::{Preserved, RLogical, RMatrix, RNativeType, Rcomplex, sys};
+    use std::os::raw::c_int;
+
+    // 300-by-2 providers with an Elt method and no Dataptr: the second column
+    // arrives through R's default Get_region, a 256- then a 44-element read.
+    const ROWS: R_xlen_t = 300;
+    unsafe extern "C-unwind" fn length(_: SEXP) -> R_xlen_t {
+        2 * ROWS
+    }
+    fn small(i: R_xlen_t) -> i32 {
+        i32::try_from(i).unwrap()
+    }
+    unsafe extern "C-unwind" fn integer(_: SEXP, i: R_xlen_t) -> c_int {
+        small(i)
+    }
+    unsafe extern "C-unwind" fn logical(_: SEXP, i: R_xlen_t) -> c_int {
+        [0, 1, NA_LOGICAL][usize::try_from(i % 3).unwrap()]
+    }
+    unsafe extern "C-unwind" fn raw(_: SEXP, i: R_xlen_t) -> u8 {
+        u8::try_from(i % 256).unwrap()
+    }
+    unsafe extern "C-unwind" fn complex(_: SEXP, i: R_xlen_t) -> Rcomplex {
+        Rcomplex {
+            r: f64::from(small(i)),
+            i: -f64::from(small(i)),
+        }
+    }
+
+    unsafe fn second_column<T: RNativeType>(provider: SEXP) -> Vec<T> {
+        let provider = Preserved::new(provider);
+        let shape = Preserved::new([300_i32, 2]);
+        provider.as_sexp().set_dim(shape.as_sexp());
+        assert!(unsafe { T::dataptr_or_null(provider.as_sexp()) }.is_null());
+        let matrix = RMatrix::<T>::try_from_sexp(provider.as_sexp()).unwrap();
+        let column = unsafe { matrix.copy_column_to_r(1) }.unwrap();
+        assert_eq!(column.as_sexp().type_of(), T::SEXP_TYPE);
+        assert!(column.as_sexp().get_dim().is_nil());
+        unsafe { column.as_sexp().as_slice::<T>() }.to_vec()
+    }
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let info = miniextendr_api::altrep_dll_info();
+        let pkg = c"miniextendr_test".as_ptr();
+        let integer_class =
+            sys::altrep::R_make_altinteger_class(c"RegionColumnInteger".as_ptr(), pkg, info);
+        integer_class.set_length_method(Some(length));
+        integer_class.set_integer_elt_method(Some(integer));
+        let logical_class =
+            sys::altrep::R_make_altlogical_class(c"RegionColumnLogical".as_ptr(), pkg, info);
+        logical_class.set_length_method(Some(length));
+        logical_class.set_logical_elt_method(Some(logical));
+        let raw_class = sys::altrep::R_make_altraw_class(c"RegionColumnRaw".as_ptr(), pkg, info);
+        raw_class.set_length_method(Some(length));
+        raw_class.set_raw_elt_method(Some(raw));
+        let complex_class =
+            sys::altrep::R_make_altcomplex_class(c"RegionColumnComplex".as_ptr(), pkg, info);
+        complex_class.set_length_method(Some(length));
+        complex_class.set_complex_elt_method(Some(complex));
+
+        let rows = ROWS..2 * ROWS;
+        let nil = SEXP::nil();
+        assert_eq!(
+            second_column::<i32>(integer_class.new_altrep(nil, nil)),
+            rows.clone().map(small).collect::<Vec<_>>()
+        );
+        let logicals = second_column::<RLogical>(logical_class.new_altrep(nil, nil));
+        assert_eq!(
+            logicals.iter().map(|x| x.to_i32()).collect::<Vec<_>>(),
+            rows.clone().map(|i| logical(nil, i)).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            second_column::<u8>(raw_class.new_altrep(nil, nil)),
+            rows.clone().map(|i| raw(nil, i)).collect::<Vec<_>>()
+        );
+        let complexes = second_column::<Rcomplex>(complex_class.new_altrep(nil, nil));
+        assert_eq!(
+            complexes.iter().map(|z| (z.r, z.i)).collect::<Vec<_>>(),
+            rows.map(|i| (f64::from(small(i)), -f64::from(small(i))))
+                .collect::<Vec<_>>()
+        );
+
+        // R's compact integer sequence keeps no buffer: its column is read
+        // through the class's own Get_region, and the sequence stays compact.
+        let compact = Preserved::new(
+            miniextendr_api::r_eval_str_global("structure(seq_len(600L), dim = c(300L, 2L))")
+                .unwrap(),
+        );
+        assert!(compact.as_sexp().is_altrep());
+        assert!(i32::dataptr_or_null(compact.as_sexp()).is_null());
+        let matrix = RMatrix::<i32>::try_from_sexp(compact.as_sexp()).unwrap();
+        let column = matrix.copy_column_to_r(1).unwrap();
+        assert_eq!(
+            column.as_sexp().as_slice::<i32>(),
+            (301..=600).collect::<Vec<_>>().as_slice()
+        );
+        assert!(i32::dataptr_or_null(compact.as_sexp()).is_null());
+    });
+}
+
 // A genuinely unguarded native entry that R reaches through .Call(). Catch
 // the old inherited-boundary unwind here so the regression itself can never
 // unwind through R's evaluator.
