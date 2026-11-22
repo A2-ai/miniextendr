@@ -6321,3 +6321,20 @@ pub fn gc_stress_saved_robject() {
 }
 
 // endregion
+
+/// `RArray::new` under GC pressure: the payload stays rooted while `set_dims`
+/// allocates the `dim` vector and while `init` runs, and the elements `init`
+/// leaves alone are `NA`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_rarray_new() -> SEXP {
+    let matrix = unsafe {
+        miniextendr_api::RMatrix::<f64>::new([4, 3], |slice| {
+            for (i, v) in slice.iter_mut().take(8).enumerate() {
+                *v = f64::from(u32::try_from(i).expect("index fits u32"));
+            }
+        })
+    };
+    matrix.into_inner()
+}

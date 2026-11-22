@@ -750,3 +750,14 @@ test_that("rooted list borrows retain transient ALTREP elements", {
   on.exit(gctorture(FALSE), add = TRUE)
   expect_null(miniextendr:::gc_stress_rooted_list_borrows())
 })
+
+test_that("RArray::new keeps its payload rooted while it sets the dims", {
+  expected <- matrix(c(0, 1, 2, 3, 4, 5, 6, 7, NA, NA, NA, NA), 4L, 3L)
+  expect_identical(miniextendr:::gc_stress_rarray_new(), expected)
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  for (i in seq_len(10L)) {
+    expect_identical(miniextendr:::gc_stress_rarray_new(), expected)
+  }
+})
