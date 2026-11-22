@@ -292,13 +292,14 @@ unsafe fn scatter_native<T: RNativeType + Copy>(
     unsafe {
         use crate::SexpExt as _;
         let src_vals: &[T] = src.as_slice::<T>();
-        let out = crate::sys::Rf_allocVector(T::SEXP_TYPE, n_rows as isize);
-        let out_vals: &mut [T] = out.as_mut_slice::<T>();
+        let (out, slots) = crate::into_r::alloc_r_vector::<T>(n_rows);
         // NA-fill the whole output, then place present values. No allocation
         // between alloc and fill — `out` is GC-safe.
-        out_vals.fill(T::R_NA);
+        for slot in slots.iter_mut() {
+            slot.write(T::R_NA);
+        }
         for (pi, &row_i) in present_idx.iter().enumerate() {
-            out_vals[row_i] = src_vals[pi];
+            slots[row_i].write(src_vals[pi]);
         }
         out
     }
@@ -323,10 +324,9 @@ unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) 
     unsafe {
         use crate::SexpExt as _;
         let src_vals: &[T] = src.as_slice::<T>();
-        let out = crate::sys::Rf_allocVector(T::SEXP_TYPE, idx.len() as isize);
-        let out_vals: &mut [T] = out.as_mut_slice::<T>();
-        for (dst, &row_i) in out_vals.iter_mut().zip(idx) {
-            *dst = src_vals[row_i];
+        let (out, slots) = crate::into_r::alloc_r_vector::<T>(idx.len());
+        for (slot, &row_i) in slots.iter_mut().zip(idx) {
+            slot.write(src_vals[row_i]);
         }
         out
     }
@@ -390,9 +390,10 @@ pub unsafe fn gather_column(src: crate::SEXP, idx: &[usize]) -> crate::SEXP {
             }
             _ => {
                 // Unknown SEXPTYPE: fall back to a logical NA column of the right length.
-                let out = crate::sys::Rf_allocVector(SEXPTYPE::LGLSXP, idx.len() as isize);
-                let na_vals: &mut [RLogical] = out.as_mut_slice::<RLogical>();
-                na_vals.fill(RLogical::NA);
+                let (out, slots) = crate::into_r::alloc_r_vector::<RLogical>(idx.len());
+                for slot in slots.iter_mut() {
+                    slot.write(RLogical::NA);
+                }
                 out
             }
         }
@@ -1282,7 +1283,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<T>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val;
+                slot.write(val);
             }
             sexp
         }
@@ -1293,7 +1294,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<T>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val;
+                slot.write(val);
             }
             sexp
         }
@@ -1378,7 +1379,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val.unwrap_or(crate::altrep_traits::NA_REAL);
+                slot.write(val.unwrap_or(crate::altrep_traits::NA_REAL));
             }
             sexp
         }
@@ -1389,7 +1390,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<f64>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val.unwrap_or(crate::altrep_traits::NA_REAL);
+                slot.write(val.unwrap_or(crate::altrep_traits::NA_REAL));
             }
             sexp
         }
@@ -1423,7 +1424,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val.unwrap_or(crate::altrep_traits::NA_INTEGER);
+                slot.write(val.unwrap_or(crate::altrep_traits::NA_INTEGER));
             }
             sexp
         }
@@ -1434,7 +1435,7 @@ where
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector_unchecked::<i32>(self.0.len());
             for (slot, val) in dst.iter_mut().zip(self.0) {
-                *slot = val.unwrap_or(crate::altrep_traits::NA_INTEGER);
+                slot.write(val.unwrap_or(crate::altrep_traits::NA_INTEGER));
             }
             sexp
         }

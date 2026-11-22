@@ -1,4 +1,5 @@
 use super::*;
+use crate::altrep_traits::NA_LOGICAL;
 use serde::Serialize;
 
 // region: TypeSpec → ColumnType collapse

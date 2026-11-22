@@ -173,8 +173,13 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Return the SEXP - guard drops and unprotects
             guard.get()
@@ -295,8 +300,13 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), R * C);
-            dst.copy_from_slice(self.as_slice());
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                R * C,
+            );
+            for (slot, &value) in dst.iter_mut().zip(self.as_slice()) {
+                slot.write(value);
+            }
 
             guard.get()
         })
@@ -1357,8 +1367,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 let ncol = self.ncols();
                 let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector::<i32>(2);
                 let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
-                dim_s[0] = i32::try_from(nrow).expect("nrow exceeds i32");
-                dim_s[1] = i32::try_from(ncol).expect("ncol exceeds i32");
+                dim_s[0].write(i32::try_from(nrow).expect("nrow exceeds i32"));
+                dim_s[1].write(i32::try_from(ncol).expect("ncol exceeds i32"));
                 sexp.set_dim(dim_sexp);
             }
         }

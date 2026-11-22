@@ -249,7 +249,7 @@ macro_rules! impl_realsxp_datetime {
                 let (vec, dst) = $crate::into_r::alloc_r_vector::<f64>(this.len());
                 let _guard = $crate::OwnedProtect::new(vec);
                 for (slot, t) in dst.iter_mut().zip(this) {
-                    *slot = ($encode)(t);
+                    slot.write(($encode)(t));
                 }
                 ($set_class)(vec);
                 vec
@@ -265,10 +265,10 @@ macro_rules! impl_realsxp_datetime {
                 let (vec, dst) = $crate::into_r::alloc_r_vector::<f64>(this.len());
                 let _guard = $crate::OwnedProtect::new(vec);
                 for (slot, opt) in dst.iter_mut().zip(this) {
-                    *slot = match opt {
+                    slot.write(match opt {
                         Some(t) => ($encode)(t),
                         None => f64::NAN,
-                    };
+                    });
                 }
                 ($set_class)(vec);
                 vec

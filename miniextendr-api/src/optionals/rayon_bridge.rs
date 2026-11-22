@@ -305,8 +305,8 @@ where
 
 /// Pre-allocate an R vector, fill element-wise in parallel, return the SEXP.
 ///
-/// This is syntactic sugar over [`with_r_vec`] for the common case where each
-/// element depends only on its index.
+/// Like [`with_r_vec`] for the common case where each element depends only on
+/// its index. Each element is written once, with no `NA` pass first.
 ///
 /// # Example
 ///
@@ -320,11 +320,24 @@ where
     T: RNativeType + Send + Sync,
     F: Fn(usize) -> T + Send + Sync,
 {
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(offset + i);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(len).expect("with_r_vec_map: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            T::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<T>>(),
+            len,
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(i));
+    });
+    sexp.get()
 }
 
 /// Transform an input slice into a new R vector, element-wise in parallel.
@@ -355,12 +368,24 @@ where
     U: RNativeType + Send + Sync,
     F: Fn(&T) -> U + Send + Sync,
 {
-    let len = input.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&input[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(input.len()).expect("par_map: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(U::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            U::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<U>>(),
+            input.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&input[i]));
+    });
+    sexp.get()
 }
 
 /// Two-input element-wise parallel map into a new R vector.
@@ -399,12 +424,24 @@ where
         a.len(),
         b.len()
     );
-    let len = a.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&a[offset + i], &b[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(a.len()).expect("par_map2: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(V::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            V::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<V>>(),
+            a.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&a[i], &b[i]));
+    });
+    sexp.get()
 }
 
 /// Three-input element-wise parallel map into a new R vector.
@@ -439,12 +476,24 @@ where
         b.len(),
         c.len()
     );
-    let len = a.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&a[offset + i], &b[offset + i], &c[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(a.len()).expect("par_map3: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(V::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            V::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<V>>(),
+            a.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&a[i], &b[i], &c[i]));
+    });
+    sexp.get()
 }
 
 /// Pre-allocate an R matrix, fill columns in parallel, return the SEXP.
@@ -623,11 +672,7 @@ where
         crate::sys::Rf_protect_unchecked(dim_sexp);
 
         for (slot, &d) in dim_s.iter_mut().zip(dims.iter()) {
-            // SAFETY: every `d <= i32::MAX` asserted above, so the narrowing
-            // cast cannot truncate.
-            #[allow(clippy::cast_possible_truncation)]
-            let d = d as i32;
-            *slot = d;
+            slot.write(i32::try_from(d).expect("dimension exceeds i32"));
         }
 
         sexp.set_attr_unchecked(SEXP::dim_symbol(), dim_sexp);

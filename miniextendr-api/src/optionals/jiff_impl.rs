@@ -358,8 +358,9 @@ impl IntoR for Vec<Zoned> {
             let _guard = crate::OwnedProtect::new(vec);
             for (slot, z) in dst.iter_mut().zip(self) {
                 let ts = z.timestamp();
-                *slot =
-                    ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0);
+                slot.write(
+                    ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0),
+                );
             }
             set_posixct_tz(vec, &first_iana);
             vec
@@ -442,14 +443,14 @@ impl IntoR for Vec<Option<Zoned>> {
             let (vec, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             let _guard = crate::OwnedProtect::new(vec);
             for (slot, opt) in dst.iter_mut().zip(self) {
-                *slot = match opt {
+                slot.write(match opt {
                     Some(z) => {
                         let ts = z.timestamp();
                         ts.as_second() as f64
                             + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0)
                     }
                     None => f64::NAN,
-                };
+                });
             }
             set_posixct_tz(vec, &first_iana);
             vec
@@ -1068,7 +1069,7 @@ pub mod vctrs_support {
         // rooted for the caller's entire alloc-and-list-build sequence.
         let guard = unsafe { crate::gc_protect::OwnedProtect::new(col) };
         for (i, slot) in dst.iter_mut().enumerate() {
-            *slot = extract(i);
+            slot.write(extract(i));
         }
         guard
     }
@@ -1167,8 +1168,9 @@ pub mod vctrs_support {
 
         for (i, z) in zones.iter().enumerate() {
             let ts = z.timestamp();
-            ts_dst[i] =
-                ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0);
+            ts_dst[i].write(
+                ts.as_second() as f64 + (f64::from(ts.subsec_nanosecond()) / 1_000_000_000.0),
+            );
             let iana = z.time_zone().iana_name().unwrap_or("UTC");
             tz_col.set_string_elt(i as crate::R_xlen_t, SEXP::charsxp(iana));
         }

@@ -236,8 +236,10 @@ fn r_len(n: usize) -> isize {
 fn atomic<T: crate::RNativeType>(values: impl IntoIterator<Item = T>) -> SEXP {
     let values: Vec<T> = values.into_iter().collect();
     // SAFETY: R's main thread; filling the slice allocates nothing.
-    let (sexp, slice) = unsafe { alloc_r_vector::<T>(values.len()) };
-    slice.copy_from_slice(&values);
+    let (sexp, slots) = unsafe { alloc_r_vector::<T>(values.len()) };
+    for (slot, value) in slots.iter_mut().zip(values) {
+        slot.write(value);
+    }
     sexp
 }
 

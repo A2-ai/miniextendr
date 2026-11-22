@@ -112,6 +112,9 @@ pub trait SexpExt {
     ///   slices derived from this SEXP may exist simultaneously. Multiple calls to
     ///   `as_mut_slice` on the same SEXP without dropping the previous slice is UB.
     /// - The SEXP must not be shared (ALTREP or NAMED > 0 objects may alias).
+    /// - Every element must be initialized. `Rf_allocVector` leaves a numeric
+    ///   payload uninitialized; write a fresh vector through
+    ///   `MaybeUninit<T>` slots (or raw pointer writes) instead.
     unsafe fn as_mut_slice<T: RNativeType>(&self) -> &'static mut [T];
 
     // Type checking methods (equivalent to R's type check macros)

@@ -809,33 +809,23 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                 });
 
                 if all_i32 {
-                    let sexp = unsafe {
-                        Rf_allocVector(
-                            SEXPTYPE::INTSXP,
-                            isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                        )
-                    };
-                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp) };
-                    for (i, v) in arr.iter().enumerate() {
+                    let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<i32>(arr.len()) };
+                    for (slot, v) in dst.iter_mut().zip(arr) {
                         if let JsonValue::Number(n) = v {
                             let i64_val = n.as_i64().expect("all_i32 check verified this");
-                            dst[i] = i32::try_from(i64_val).expect("all_i32 check verified range");
+                            slot.write(
+                                i32::try_from(i64_val).expect("all_i32 check verified range"),
+                            );
                         }
                     }
                     return sexp;
                 }
 
                 // Fall back to f64
-                let sexp = unsafe {
-                    Rf_allocVector(
-                        SEXPTYPE::REALSXP,
-                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    )
-                };
-                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp) };
-                for (i, v) in arr.iter().enumerate() {
+                let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<f64>(arr.len()) };
+                for (slot, v) in dst.iter_mut().zip(arr) {
                     if let JsonValue::Number(n) = v {
-                        dst[i] = n.as_f64().unwrap_or(f64::NAN);
+                        slot.write(n.as_f64().unwrap_or(f64::NAN));
                     }
                 }
                 return sexp;

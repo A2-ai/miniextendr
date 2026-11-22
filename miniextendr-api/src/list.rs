@@ -465,11 +465,11 @@ impl List {
             // R's compact row.names: c(NA_integer_, -n)
             let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             let _guard = OwnedProtect::new(row_names);
-            rn[0] = i32::MIN; // NA_INTEGER
+            rn[0].write(i32::MIN); // NA_INTEGER
             let n_i32 = i32::try_from(n).unwrap_or_else(|_| {
                 panic!("row count {n} exceeds i32::MAX");
             });
-            rn[1] = -n_i32;
+            rn[1].write(-n_i32);
             self.0.set_row_names(row_names);
         }
         self
@@ -1148,24 +1148,26 @@ impl List {
             SEXPTYPE::INTSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<i32>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<i32>().first().expect("scalar has length 1");
+                    slot.write(*elem.as_slice::<i32>().first().expect("scalar has length 1"));
                 }
                 v
             },
             SEXPTYPE::REALSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<f64>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem.as_slice::<f64>().first().expect("scalar has length 1");
+                    slot.write(*elem.as_slice::<f64>().first().expect("scalar has length 1"));
                 }
                 v
             },
             SEXPTYPE::LGLSXP => unsafe {
                 let (v, dst) = alloc_r_vector::<crate::RLogical>(n);
                 for (slot, &elem) in dst.iter_mut().zip(elements.iter()) {
-                    *slot = *elem
-                        .as_slice::<crate::RLogical>()
-                        .first()
-                        .expect("scalar has length 1");
+                    slot.write(
+                        *elem
+                            .as_slice::<crate::RLogical>()
+                            .first()
+                            .expect("scalar has length 1"),
+                    );
                 }
                 v
             },

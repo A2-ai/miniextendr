@@ -867,9 +867,9 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
         let _guard = crate::OwnedProtect::new(dim_sexp);
 
         for (slot, &d) in dim_slice.iter_mut().zip(dims.iter()) {
-            *slot = i32::try_from(d).unwrap_or_else(|_| {
+            slot.write(i32::try_from(d).unwrap_or_else(|_| {
                 panic!("array dimension {d} exceeds i32::MAX");
-            });
+            }));
         }
 
         sexp.set_dim(dim_sexp);

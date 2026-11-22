@@ -889,11 +889,11 @@ impl IntoR for StringDictionaryArray {
             let (codes, codes_dst) = crate::into_r::alloc_r_vector::<i32>(n);
             scope.protect_raw(codes);
             for (i, slot) in codes_dst.iter_mut().enumerate() {
-                *slot = if self.is_null(i) {
+                slot.write(if self.is_null(i) {
                     NA_INTEGER
                 } else {
                     keys.value(i) + 1 // Arrow 0-based → R 1-based
-                };
+                });
             }
 
             // Create levels character vector
@@ -930,12 +930,12 @@ impl IntoR for Date32Array {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(n);
             scope.protect_raw(sexp);
             for (i, slot) in dst.iter_mut().enumerate() {
-                *slot = if self.is_null(i) {
+                slot.write(if self.is_null(i) {
                     NA_REAL
                 } else {
                     // Date32 value is i32 days; widening to f64 is lossless.
                     f64::from(self.value(i))
-                };
+                });
             }
 
             // Set class = "Date"
@@ -967,11 +967,11 @@ impl IntoR for TimestampSecondArray {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(n);
             scope.protect_raw(sexp);
             for (i, slot) in dst.iter_mut().enumerate() {
-                *slot = if self.is_null(i) {
+                slot.write(if self.is_null(i) {
                     NA_REAL
                 } else {
                     self.value(i) as f64
-                };
+                });
             }
 
             // Set class = c("POSIXct", "POSIXt")
@@ -1185,14 +1185,16 @@ impl IntoR for Float64Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) {
+                    slot.write(if self.is_null(i) {
                         NA_REAL
                     } else {
                         self.value(i)
-                    };
+                    });
                 }
             }
             sexp
@@ -1216,14 +1218,16 @@ impl IntoR for Int32Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) {
+                    slot.write(if self.is_null(i) {
                         NA_INTEGER
                     } else {
                         self.value(i)
-                    };
+                    });
                 }
             }
             sexp
@@ -1248,10 +1252,12 @@ impl IntoR for UInt8Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<u8>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) { 0 } else { self.value(i) };
+                    slot.write(if self.is_null(i) { 0 } else { self.value(i) });
                 }
             }
             sexp
@@ -1270,13 +1276,13 @@ impl IntoR for BooleanArray {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<crate::RLogical>(self.len());
             for (i, slot) in dst.iter_mut().enumerate() {
-                *slot = if self.is_null(i) {
+                slot.write(if self.is_null(i) {
                     crate::RLogical::NA
                 } else if self.value(i) {
                     crate::RLogical::TRUE
                 } else {
                     crate::RLogical::FALSE
-                };
+                });
             }
             sexp
         }
@@ -1532,8 +1538,8 @@ impl IntoR for RecordBatch {
             // Set compact row.names: c(NA_integer_, -nrow)
             let (rownames, rn) = crate::into_r::alloc_r_vector::<i32>(2);
             scope.protect_raw(rownames);
-            rn[0] = NA_INTEGER;
-            rn[1] = -i32::try_from(nrow).expect("data frame nrow exceeds i32::MAX");
+            rn[0].write(NA_INTEGER);
+            rn[1].write(-i32::try_from(nrow).expect("data frame nrow exceeds i32::MAX"));
             list.set_row_names(rownames);
 
             list
@@ -1792,14 +1798,16 @@ impl crate::altrep_data::AltrepSerialize for Float64Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<f64>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) {
+                    slot.write(if self.is_null(i) {
                         NA_REAL
                     } else {
                         self.value(i)
-                    };
+                    });
                 }
             }
             sexp
@@ -1815,14 +1823,16 @@ impl crate::altrep_data::AltrepSerialize for Int32Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) {
+                    slot.write(if self.is_null(i) {
                         NA_INTEGER
                     } else {
                         self.value(i)
-                    };
+                    });
                 }
             }
             sexp
@@ -1838,10 +1848,12 @@ impl crate::altrep_data::AltrepSerialize for UInt8Array {
         unsafe {
             let (sexp, dst) = crate::into_r::alloc_r_vector::<u8>(self.len());
             if self.null_count() == 0 {
-                dst.copy_from_slice(self.values().as_ref());
+                for (slot, &value) in dst.iter_mut().zip(self.values().iter()) {
+                    slot.write(value);
+                }
             } else {
                 for (i, slot) in dst.iter_mut().enumerate() {
-                    *slot = if self.is_null(i) { 0 } else { self.value(i) };
+                    slot.write(if self.is_null(i) { 0 } else { self.value(i) });
                 }
             }
             sexp
