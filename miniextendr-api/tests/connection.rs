@@ -1,4 +1,6 @@
-#![cfg(feature = "connections")]
+// Most of these tests build custom connections, which need R >= 4.6 or the
+// `nonapi` feature (`RCustomConnection::build`); the file is gated whole.
+#![cfg(all(feature = "connections", any(r_4_6, feature = "nonapi")))]
 
 mod r_test_utils;
 

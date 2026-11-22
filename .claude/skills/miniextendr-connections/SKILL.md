@@ -24,7 +24,7 @@ R's `R_ext/Connections.h` states: "we do not expect future connection APIs to be
 
 The `connections` feature in miniextendr is gated for this reason. Before using it in production, verify that `R_CONNECTIONS_VERSION` matches `EXPECTED_CONNECTIONS_VERSION` (both are constants from `connection.rs`). The `check_connections_version()` function asserts this at runtime; call it during `R_init_<pkg>` when the feature is enabled.
 
-The API requires R >= 4.3.0. Use `check_connections_runtime()` for a runtime probe.
+The API requires R >= 4.3.0. Use `check_connections_runtime()` for a runtime probe. Building a custom connection (`RCustomConnection::build`, the `RConnectionIo` `build_*` methods) also needs a build against R >= 4.6, or the `nonapi` feature on older R: `R_new_custom_connection` is non-API before R 4.6, so without `nonapi` it is not declared there and `build` panics.
 
 ### Connections from `RCustomConnection::build` are returned open
 

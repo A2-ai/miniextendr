@@ -146,6 +146,8 @@ this feature flag to make the instability opt-in.
 - `RConnectionIo` builder -- auto-wraps any `std::io` type with zero boilerplate
 - Helper functions: `read_connection()` / `write_connection()` on a connection SEXP (every R), `get_connection()` for the raw handle (R >= 4.6)
 
+Building a custom connection (`RCustomConnection`, `RConnectionIo`) needs R >= 4.6, or the `nonapi` feature on older R. Without it, building one panics (an R error from a `#[miniextendr]` function).
+
 See [CONNECTIONS.md](CONNECTIONS.md) for the full guide with examples.
 
 ### `indicatif`

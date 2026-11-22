@@ -1033,6 +1033,10 @@ pub enum ParseStatus {
 unsafe extern "C-unwind" {
     /// Create a new custom connection.
     ///
+    /// R 4.6 made it (experimental) API; R 4.4 and 4.5 export it, but
+    /// `R CMD check` notes it there as a non-API call. So it is declared
+    /// only built against R >= 4.6 (`r_4_6`) or with the `nonapi` feature.
+    ///
     /// # WARNING
     ///
     /// This API is UNSTABLE. Check `R_CONNECTIONS_VERSION` before use.
@@ -1042,6 +1046,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `description`, `mode`, and `class_name` must be valid C strings
     /// - `ptr` must be a valid pointer to store the connection handle
+    #[cfg(any(r_4_6, feature = "nonapi"))]
     pub(crate) fn R_new_custom_connection(
         description: *const ::std::os::raw::c_char,
         mode: *const ::std::os::raw::c_char,
