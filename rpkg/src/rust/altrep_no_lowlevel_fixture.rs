@@ -7,7 +7,7 @@
 //!
 //! See also `altrep_manual_fixture.rs` for the `manual` auto-bridge path.
 
-use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
+use miniextendr_api::altrep_data::{AltIntegerData, AltrepExtract, AltrepLen};
 use miniextendr_api::impl_altinteger_from_data;
 use miniextendr_api::prelude::*;
 
@@ -56,6 +56,49 @@ impl_altinteger_from_data!(NoLowlevelAltrep);
 #[miniextendr]
 pub fn make_no_lowlevel_altrep(length: i32) -> NoLowlevelAltrep {
     NoLowlevelAltrep { length }
+}
+
+// endregion
+
+// region: ALTREP with only length and element access
+
+/// Integer ALTREP whose default R data-pointer method refuses materialization.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(no_lowlevel, manual, class = "ElementOnlyInts")]
+pub struct ElementOnlyInts(Vec<i32>);
+
+impl miniextendr_api::altrep_traits::Altrep for ElementOnlyInts {
+    fn length(x: SEXP) -> miniextendr_api::R_xlen_t {
+        let data = unsafe { Self::altrep_extract_ref(x) };
+        miniextendr_api::R_xlen_t::try_from(data.0.len()).unwrap()
+    }
+}
+
+impl miniextendr_api::altrep_traits::AltVec for ElementOnlyInts {}
+
+impl miniextendr_api::altrep_traits::AltInteger for ElementOnlyInts {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: SEXP, i: miniextendr_api::R_xlen_t) -> i32 {
+        let data = unsafe { Self::altrep_extract_ref(x) };
+        data.0[usize::try_from(i).unwrap()]
+    }
+}
+
+miniextendr_api::impl_inferbase_integer!(ElementOnlyInts);
+
+/// Wrap integers in a class that supports only element reads.
+#[miniextendr(noexport)]
+pub fn element_only_ints(values: Vec<i32>) -> ElementOnlyInts {
+    ElementOnlyInts(values)
+}
+
+type ScalarInteger = i32;
+
+/// Exercise type-directed argument conversion when the signature uses an alias.
+#[miniextendr(no_coerce, noexport)]
+pub fn element_only_scalar_alias(x: ScalarInteger) -> i32 {
+    x
 }
 
 // endregion

@@ -5,7 +5,8 @@
 //!
 //! | R Type | Rust Type | Access Method |
 //! |--------|-----------|---------------|
-//! | INTSXP | `i32`, `&[i32]` | `INTEGER()` / `DATAPTR_RO` |
+//! | INTSXP (non-factor) | `i32` | `INTEGER_ELT(x, 0)` after checking length one |
+//! | INTSXP | `&[i32]` | `DATAPTR_RO` |
 //! | REALSXP | `f64`, `&[f64]` | `REAL()` / `DATAPTR_RO` |
 //! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
@@ -1386,51 +1387,25 @@ macro_rules! impl_try_from_sexp_scalar_native {
     };
 }
 
-// i32 has a bespoke impl that checks for NA_integer_ (i32::MIN).
-// The shared macro is NOT used for i32 — it would silently pass NA through.
+/// Read a length-one, non-factor integer vector, rejecting R's NA sentinel.
+/// An ALTREP class can supply the element without exposing a data pointer.
 impl TryFromSexp for i32 {
     type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
-            }
-            .into());
-        }
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        let v = unsafe { sexp.as_slice::<i32>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpError::from(SexpLengthError {
-                    expected: 1,
-                    actual: 0,
-                })
-            })?;
-        if v.is_na() {
-            return Err(SexpNaError {
-                sexp_type: SEXPTYPE::INTSXP,
-            }
-            .into());
-        }
-        Ok(v)
+        crate::with_r_thread(|| unsafe { Self::try_from_sexp_unchecked(sexp) })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
+        // R's isInteger checks both the tag and factor class. Only inspect the
+        // tag again on failure, to distinguish a factor from a storage mismatch.
+        if unsafe { crate::sys::Rf_isInteger_unchecked(sexp) } == crate::Rboolean::FALSE {
+            let actual = unsafe { crate::sys::TYPEOF_unchecked(sexp) };
+            if actual == SEXPTYPE::INTSXP {
+                return Err(SexpError::InvalidValue("got a factor".to_string()));
+            }
             return Err(SexpTypeError {
                 expected: SEXPTYPE::INTSXP,
                 actual,
@@ -1445,22 +1420,14 @@ impl TryFromSexp for i32 {
             }
             .into());
         }
-        let v = unsafe { sexp.as_slice_unchecked::<i32>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpError::from(SexpLengthError {
-                    expected: 1,
-                    actual: 0,
-                })
-            })?;
-        if v.is_na() {
+        let value = unsafe { crate::sys::INTEGER_ELT_unchecked(sexp, 0) };
+        if value.is_na() {
             return Err(SexpNaError {
                 sexp_type: SEXPTYPE::INTSXP,
             }
             .into());
         }
-        Ok(v)
+        Ok(value)
     }
 }
 
