@@ -86,7 +86,7 @@ pub(crate) fn s7_shortcut_name(class_name: &str, method_name: &str) -> Option<St
 // region: S7 generic targets and dispatch arguments
 
 /// R's `Ops` group operators. S7 dispatches them on both operands through its
-/// own `(e1, e2, ...)` generics.
+/// own `(e1, e2)` generics.
 pub(crate) const S7_OPS_OPERATORS: &[&str] = &[
     "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", "<=", ">=", ">", "&", "|",
 ];
@@ -97,6 +97,11 @@ const S7_BASE_S3_OPERATORS: &[&str] = &["[", "[[", "$"];
 
 /// The dispatch arguments S7 fixes for a two-operand operator generic:
 /// `(e1, e2)` for the `Ops` group, `(x, y)` for `%*%` (the `matrixOps` group).
+///
+/// They are the generic's only formals: S7 defines these generics without
+/// `...`, so a method's formals must be exactly the pair (S7 refuses any other
+/// method when the package loads under `R CMD check`, and skips it under
+/// `devtools::load_all()`).
 pub(crate) fn s7_operator_dispatch_args(op: &str) -> Option<[&'static str; 2]> {
     if S7_OPS_OPERATORS.contains(&op) {
         Some(["e1", "e2"])
@@ -132,6 +137,15 @@ impl S7GenericTarget {
             Self::External { name, .. } => name,
         }
     }
+
+    /// Whether the S7 method gets the dispatch `...` formal: unless
+    /// `s7(no_dots)`, and never on a two-operand operator, whose S7 generic
+    /// has no `...` ([`s7_operator_dispatch_args`]).
+    pub(crate) fn method_takes_dots(&self, method: &ParsedMethod) -> bool {
+        let two_operand_operator =
+            matches!(self, Self::BaseOperator(op) if s7_operator_dispatch_args(op).is_some());
+        !method.method_attrs.s7.no_dots && !two_operand_operator
+    }
 }
 
 /// The line that follows an `S7::method(<op>, ...) <-` registration on a base
@@ -165,6 +179,16 @@ pub(crate) fn s7_generic_target(generic_name: &str) -> S7GenericTarget {
         },
         None => S7GenericTarget::Local(name.to_string()),
     }
+}
+
+/// Classify an instance method's generic: `generic = "..."`, else its R name.
+pub(crate) fn s7_method_target(method: &ParsedMethod) -> S7GenericTarget {
+    let generic = method
+        .method_attrs
+        .generic
+        .clone()
+        .unwrap_or_else(|| method.r_method_name());
+    s7_generic_target(&generic)
 }
 
 /// The S7 dispatch arguments of an instance method: `s7(dispatch = "a, b")`,
@@ -452,7 +476,9 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// - Class definition: `ClassName <- S7::new_class("ClassName", ...)` with a `.ptr` property
 ///   of `class_any` holding the `ExternalPtr`, plus optional computed properties
 /// - Constructor: inline in `new_class(constructor = function(...) ...)`, supports
-///   `.ptr` shortcut parameter for wrapping pre-built ExternalPtr returns
+///   `.ptr` shortcut parameter for wrapping pre-built ExternalPtr returns; a
+///   subclass's `new_object()` starts from `Parent(.ptr = ...)`
+///   (`S7::S7_object()` without a parent)
 /// - Properties: `S7::new_property(...)` for each getter/setter/validator annotated
 ///   with `#[miniextendr(s7(getter))]` etc., with support for class constraints,
 ///   defaults, required, frozen, and deprecated modifiers
@@ -462,7 +488,7 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// - External generics: `S7::new_external_generic("pkg", "name", dispatch_args)`
 ///   for `s7(generic = "pkg::name")`
 /// - Multiple dispatch: via `#[miniextendr(s7(dispatch = "x, other"))]`, and on
-///   `(e1, e2)` for the `Ops` operators
+///   `(e1, e2)` for the `Ops` operators (formals without `...`)
 /// - Fallback methods: `S7::method(generic, S7::class_any)` with `tryCatch` for
 ///   safe slot access on non-S7 objects
 /// - Static methods: regular functions named `ClassName_method(...)`
@@ -905,6 +931,17 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("  ),".to_string());
     }
 
+    // `S7::new_object()`'s first argument for an object holding `ptr`. S7
+    // requires an instance of the parent class there, so a subclass builds its
+    // parent part with the parent's constructor, through the `.ptr` shortcut
+    // every generated constructor has. S7 lets an abstract parent's constructor
+    // run while it builds that part. A class without a parent starts from
+    // `S7::S7_object()`.
+    let parent_object = |ptr: &str| match &parsed_impl.s7_parent {
+        Some(parent) => format!("{}(.ptr = {ptr})", class_ref_or_verbatim(parent)),
+        None => "S7::S7_object()".to_string(),
+    };
+
     if let Some(ctx) = parsed_impl.constructor_context() {
         let ctor_preconditions = ctx.precondition_checks();
         let ctor_match_arg = ctx.match_arg_prelude();
@@ -926,13 +963,19 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             lines.push("    }".to_string());
         }
         lines.push("    if (!is.null(.ptr)) {".to_string());
-        lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
+        lines.push(format!(
+            "      S7::new_object({}, .ptr = .ptr)",
+            parent_object(".ptr")
+        ));
         lines.push("    } else {".to_string());
         lines.push(format!("      .val <- {}", ctx.static_call()));
         lines.extend(crate::method_return_builder::condition_check_lines(
             "      ",
         ));
-        lines.push("      S7::new_object(S7::S7_object(), .ptr = .val)".to_string());
+        lines.push(format!(
+            "      S7::new_object({}, .ptr = .val)",
+            parent_object(".val")
+        ));
         lines.push("    }".to_string());
         lines.push("  }".to_string());
     } else {
@@ -945,7 +988,10 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         if !parsed_impl.s7_abstract {
             lines.push(format!("    {}", super::no_constructor_guard(&class_name)));
         }
-        lines.push("    S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
+        lines.push(format!(
+            "    S7::new_object({}, .ptr = .ptr)",
+            parent_object(".ptr")
+        ));
         lines.push("  }".to_string());
     }
 
@@ -975,7 +1021,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         // arguments, as S7 requires.
         let dispatch_args = s7_dispatch_args(ctx.method, &target);
         let receiver = dispatch_args[0].as_str();
-        let include_dots = !method_attrs.s7.no_dots;
+        let include_dots = target.method_takes_dots(ctx.method);
         let method_formals = ctx.instance_formals_with_receiver(receiver, include_dots);
         let signature =
             s7_method_signature(&class_name, dispatch_args.len(), method_attrs.s7.fallback);

@@ -53,6 +53,38 @@ test_that("use_s7() adds an .onLoad that registers S7 methods, once", {
   expect_match(msgs, "already registers S7 methods", fixed = TRUE)
 })
 
+test_that("use_s7() requires the S7 release the generated wrappers need", {
+  s7_imports <- function(pkg) {
+    deps <- mx_desc_get_deps(file.path(pkg, "DESCRIPTION"))
+    deps$version[deps$type == "Imports" & deps$package == "S7"]
+  }
+
+  pkg <- make_s7_pkg()
+  suppressMessages(use_s7(pkg))
+  expect_identical(s7_imports(pkg), ">= 1.0.0")
+
+  # An entry that admits an older S7 is raised; a newer one is kept.
+  for (old in c("S7", "S7 (>= 0.2.0)")) {
+    pkg <- make_s7_pkg(desc_extra = paste("Imports:", old))
+    msgs <- flat_messages(use_s7(pkg))
+    expect_identical(s7_imports(pkg), ">= 1.0.0", info = old)
+    expect_match(msgs, "Raised S7 in Imports", fixed = TRUE)
+  }
+  pkg <- make_s7_pkg(desc_extra = "Imports: S7 (>= 1.1.0)")
+  msgs <- flat_messages(use_s7(pkg))
+  expect_identical(s7_imports(pkg), ">= 1.1.0")
+  expect_match(msgs, "S7 already in Imports", fixed = TRUE)
+})
+
+test_that("s7_requirement_met() accepts only requirements that rule out S7 < 1.0.0", {
+  for (ok in c(">= 1.0.0", ">=1.0.0", "> 1.0.0", "== 1.2.3", ">= 2.0")) {
+    expect_true(s7_requirement_met(ok), info = ok)
+  }
+  for (bad in c("*", ">= 0.2.0", "> 0.9", "<= 2.0.0", "== 0.2.2")) {
+    expect_false(s7_requirement_met(bad), info = bad)
+  }
+})
+
 test_that("use_s7() moves S7 from Suggests to Imports", {
   pkg <- make_s7_pkg(desc_extra = c("Suggests:", "    S7,", "    testthat (>= 3.0.0)"))
   msgs <- flat_messages(use_s7(pkg))
@@ -158,6 +190,25 @@ test_that("doctor flags an S7 package whose .onLoad does not register methods", 
   suppressMessages(result <- miniextendr_doctor(pkg))
   expect_true("S7 methods registered on load" %in% result$pass)
   expect_false(any(grepl("S7", result$warn, fixed = TRUE)))
+})
+
+test_that("doctor flags an S7 requirement that admits S7 < 1.0.0", {
+  warning <- "S7 requirement admits releases older than 1.0.0"
+  hook <- list("zzz.R" = MX_S7_LOAD_HOOK)
+
+  pkg <- make_s7_pkg(hook, desc_extra = "Imports: S7 (>= 0.2.0)")
+  msgs <- flat_messages(result <- miniextendr_doctor(pkg))
+  expect_true(warning %in% result$warn)
+  expect_match(msgs, "S7 (>= 0.2.0)", fixed = TRUE)
+  expect_match(msgs, "minirextendr::use_s7()", fixed = TRUE)
+
+  pkg <- make_s7_pkg(hook, desc_extra = "Imports: S7")
+  suppressMessages(result <- miniextendr_doctor(pkg))
+  expect_true(warning %in% result$warn)
+
+  suppressMessages(use_s7(pkg))
+  suppressMessages(result <- miniextendr_doctor(pkg))
+  expect_false(warning %in% result$warn)
 })
 
 test_that("doctor flags wrappers that use S7 without importing it", {

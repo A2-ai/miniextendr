@@ -2740,6 +2740,9 @@ fn parse_s7_method(attr: proc_macro2::TokenStream, params: proc_macro2::TokenStr
 /// The `Ops` operators and `%*%` get a two-class `(e1, e2)` / `(x, y)` method on
 /// base's generic: the receiver takes the left operand's name, the Rust
 /// operand parameter is the right one, and nothing is defined or exported.
+/// The method has no `...`: S7 1.0 defines these generics without it and
+/// refuses a method whose formals are not exactly the pair. The shortcut, a
+/// plain function, keeps its `...`.
 #[test]
 fn s7_ops_operator_methods_dispatch_on_both_operands() {
     for op in [
@@ -2756,7 +2759,7 @@ fn s7_ops_operator_methods_dispatch_on_both_operands() {
             let symbol = format!("`{op}`");
             for expected in [
                 format!(
-                    "#' @usage NULL\nS7::method({symbol}, list(Money, S7::class_any)) <- function(e1, e2, ...) {{"
+                    "#' @usage NULL\nS7::method({symbol}, list(Money, S7::class_any)) <- function(e1, e2) {{"
                 ),
                 "e1@.ptr, e2)".to_string(),
                 // The registration binds the operator in the namespace;
@@ -2784,7 +2787,7 @@ fn s7_ops_operator_methods_dispatch_on_both_operands() {
     check_s7_dispatch(&parsed).expect("a `y` operand is accepted for `%*%`");
     let wrapper = generate_s7_r_wrapper(&parsed);
     assert!(
-        wrapper.contains("S7::method(`%*%`, list(Money, S7::class_any)) <- function(x, y, ...) {"),
+        wrapper.contains("S7::method(`%*%`, list(Money, S7::class_any)) <- function(x, y) {"),
         "{wrapper}"
     );
     // The Rust name keeps its shortcut with a dotted receiver.
@@ -2809,7 +2812,7 @@ fn s7_dispatch_receiver_is_the_chain_value() {
     );
     let wrapper = generate_s7_r_wrapper(&parsed);
     let method = wrapper
-        .split("S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) {")
+        .split("S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) {")
         .nth(1)
         .and_then(|rest| rest.split("\n}\n").next())
         .expect("method body");
@@ -2818,7 +2821,7 @@ fn s7_dispatch_receiver_is_the_chain_value() {
 }
 
 /// Operator methods S7 cannot register stay a compile error, each naming the
-/// fix: `!` (S7 does not dispatch it), a wrongly named or missing operand, a
+/// fix: `!` (its S7 generic is unary), R's `...`, a wrongly named or missing operand, a
 /// second operand, a conflicting `dispatch` and `fallback`.
 #[test]
 fn s7_ops_operator_misuse_is_a_compile_error() {
@@ -2832,7 +2835,27 @@ fn s7_ops_operator_misuse_is_a_compile_error() {
         quote::quote!(#[miniextendr(r_name = "!")]),
         quote::quote!(e2: f64),
     );
-    assert!(msg.contains("S7 does not dispatch `!`"), "{msg}");
+    assert!(msg.contains("S7's `!` generic is unary"), "{msg}");
+
+    // Ops / `%*%` generics have no `...`, so neither can the method.
+    for (attr, params, op) in [
+        (
+            quote::quote!(#[miniextendr(s7(generic = "+"))]),
+            quote::quote!(e2: f64, _dots: &miniextendr_api::Dots),
+            "S7's `+` generic is `function(e1, e2)`, without `...`",
+        ),
+        (
+            quote::quote!(#[miniextendr(s7(generic = "%*%"))]),
+            quote::quote!(y: f64, _dots: &miniextendr_api::Dots),
+            "S7's `%*%` generic is `function(x, y)`, without `...`",
+        ),
+    ] {
+        let msg = err(attr, params);
+        assert!(
+            msg.contains(op) && msg.contains("cannot take R's `...`"),
+            "{msg}"
+        );
+    }
 
     let msg = err(
         quote::quote!(#[miniextendr(r_name = "+")]),
@@ -5394,6 +5417,36 @@ fn s7_wrapper_parent() {
     assert!(
         wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = .__MX_CLASS_REF_Shape__,")
     );
+
+    // S7 1.0 requires `new_object()`'s first argument to be an instance of the
+    // parent class: the constructor builds it with the parent's constructor,
+    // through its `.ptr` shortcut, on both of its paths.
+    for expected in [
+        "S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .ptr), .ptr = .ptr)",
+        "S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .val), .ptr = .val)",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+    assert!(!wrapper.contains("S7::S7_object()"), "{wrapper}");
+
+    // A subclass without a constructor wraps its pointer the same way.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Circle {
+            pub fn area(&self) -> f64 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.s7_parent = Some("Shape".to_string());
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("    S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .ptr), .ptr = .ptr)"),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("S7::S7_object()"), "{wrapper}");
 }
 
 #[test]

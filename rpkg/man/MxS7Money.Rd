@@ -27,9 +27,9 @@ MxS7Money_equals(.mx_self, e2, ...)
 
 \item{e2}{Another \code{MxS7Money}.}
 
-\item{...}{Additional arguments; ignored by the fast-path shortcut.}
-
 \item{.mx_self}{A \code{MxS7Money} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
 S7 money class with \code{+}, \code{*}, \code{==} and \code{<} methods.

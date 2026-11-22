@@ -41,7 +41,9 @@
 #' (base generics and operators such as `[[`, `format()` or `+`, and external
 #' generics) when the package is built, and only that call registers them in a
 #' new session; [use_s7()] adds it. The check parses `R/` without running it,
-#' so a call reached through a helper function is not seen.
+#' so a call reached through a helper function is not seen. It also warns when
+#' DESCRIPTION's S7 requirement admits a release older than 1.0.0, which the
+#' generated S7 wrappers need.
 #'
 #' In a git work tree the doctor also fails on a tracked `vendor.tar.xz`
 #' (`inst/vendor.tar.xz`, or one elsewhere in the package) and prints the
@@ -455,6 +457,13 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
       )
       cli::cli_bullets(c("i" = "Fix: run {.code minirextendr::use_s7()}."))
       results$warn <- c(results$warn, "S7 used by the wrappers but not in Imports")
+    } else if (!s7_requirement_met(s7$requirement)) {
+      declared <- if (identical(s7$requirement, "*")) "S7" else paste0("S7 (", s7$requirement, ")")
+      cli::cli_alert_warning(
+        "DESCRIPTION declares {.code {declared}}, which admits S7 releases older than {MX_S7_MIN_VERSION}: the generated S7 wrappers need S7 {MX_S7_MIN_VERSION} or later."
+      )
+      cli::cli_bullets(c("i" = "Fix: run {.code minirextendr::use_s7()}."))
+      results$warn <- c(results$warn, "S7 requirement admits releases older than 1.0.0")
     }
     hooks <- s7$hooks
     if (length(s7$failed) > 0L) {
@@ -869,15 +878,20 @@ tracked_vendor_tarballs <- function(proj_dir = usethis::proj_get()) {
 #'
 #' @param pkg_dir Package directory to inspect.
 #' @return `NULL` when the package does not use S7; otherwise
-#'   `list(imported = <lgl>, hooks = , failed = )` with `hooks` / `failed`
-#'   from `s7_load_hooks()`.
+#'   `list(imported = <lgl>, requirement = , hooks = , failed = )`, where
+#'   `requirement` is the version requirement of the `Imports` / `Depends`
+#'   entry (`"*"` for none, `NA` when not imported), and `hooks` / `failed`
+#'   come from `s7_load_hooks()`.
 #' @keywords internal
 s7_registration_status <- function(pkg_dir = usethis::proj_get()) {
   desc_path <- file.path(pkg_dir, "DESCRIPTION")
-  imported <- file.exists(desc_path) && {
+  requirement <- NA_character_
+  if (file.exists(desc_path)) {
     deps <- mx_desc_get_deps(desc_path)
-    "S7" %in% deps$package[deps$type %in% c("Imports", "Depends")]
+    entry <- deps$version[deps$package == "S7" & deps$type %in% c("Imports", "Depends")]
+    if (length(entry) > 0L) requirement <- entry[[1L]]
   }
+  imported <- !is.na(requirement)
   wrappers <- list.files(file.path(pkg_dir, "R"), pattern = "-wrappers\\.R$", full.names = TRUE)
   in_wrappers <- any(vapply(wrappers, function(f) {
     any(grepl("S7::", readLines(f, warn = FALSE), fixed = TRUE))
@@ -885,7 +899,7 @@ s7_registration_status <- function(pkg_dir = usethis::proj_get()) {
   if (!imported && !in_wrappers) {
     return(NULL)
   }
-  c(list(imported = imported), s7_load_hooks(pkg_dir))
+  c(list(imported = imported, requirement = requirement), s7_load_hooks(pkg_dir))
 }
 
 #' Stale NAMESPACE exports (#1304/#1305)

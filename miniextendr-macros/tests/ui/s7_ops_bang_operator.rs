@@ -1,5 +1,5 @@
-//! Test: an S7 method on `!` is a compile error. S7 dispatches the binary Ops
-//! operators only, so no signature can register a method for `!`.
+//! Test: an S7 method on `!` is a compile error. S7's `!` generic is unary,
+//! and miniextendr generates methods for the binary operators only.
 
 use miniextendr_macros::miniextendr;
 

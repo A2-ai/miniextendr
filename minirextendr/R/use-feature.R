@@ -187,6 +187,10 @@ use_r6 <- function(path = ".") {
 #' `#[miniextendr(s7)]`, and makes the package register its S7 methods when it
 #' loads.
 #'
+#' The generated S7 wrappers need S7 1.0.0 or later, so `use_s7()` adds
+#' `S7 (>= 1.0.0)` to `Imports` (moving S7 from `Suggests`), and raises an
+#' `Imports` entry whose requirement admits an older S7.
+#'
 #' S7 records methods for generics that belong to other packages (base
 #' generics such as `format()`, base operators such as `[[` and `+`, and
 #' generics from other packages) when the package is built, and registers them
@@ -202,7 +206,8 @@ use_r6 <- function(path = ".") {
 #'
 #' Running it again changes nothing. A package that never calls `use_s7()`
 #' does not depend on S7. [miniextendr_doctor()] reports an S7 package whose
-#' `.onLoad()` does not register its methods.
+#' `.onLoad()` does not register its methods, or whose `Imports` admits an S7
+#' older than 1.0.0.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
@@ -214,7 +219,7 @@ use_r6 <- function(path = ".") {
 #' }
 use_s7 <- function(path = ".") {
   with_project(path)
-  add_import("S7", ">= 0.2.0")
+  use_s7_requirement()
   # The generated S7 wrappers classify any existing binding of a method name
   # before creating a generic (#1114): they call `utils::isS3stdGeneric()` and
   # `methods::isGeneric()`. Declare both so `R CMD check` does not NOTE an
@@ -227,6 +232,54 @@ use_s7 <- function(path = ".") {
   cli::cli_alert_info("See {.url https://rconsortium.github.io/S7/} for S7 documentation")
 
   invisible(TRUE)
+}
+
+#' Oldest S7 release the generated S7 wrappers work with
+#'
+#' A generated subclass constructor builds its parent part with the parent's
+#' constructor: S7 1.0.0 checks that `new_object()` gets an instance of the
+#' parent class, and runs an abstract parent's constructor there. A generated
+#' `Ops` or `%*%` method has no `...`, as S7 1.0.0's operator generics have
+#' none. [use_s7()] requires this version and [miniextendr_doctor()] checks it.
+#' @keywords internal
+MX_S7_MIN_VERSION <- "1.0.0"
+
+#' Require the S7 release the generated wrappers need
+#'
+#' Adds `S7 (>= MX_S7_MIN_VERSION)` to `Imports` (moving S7 from `Suggests`),
+#' or raises an `Imports` entry whose requirement admits an older S7.
+#'
+#' @return Invisibly, `TRUE` if DESCRIPTION changed.
+#' @keywords internal
+use_s7_requirement <- function() {
+  desc_path <- usethis::proj_path("DESCRIPTION")
+  required <- paste(">=", MX_S7_MIN_VERSION)
+  deps <- mx_desc_get_deps(desc_path)
+  current <- deps$version[deps$type == "Imports" & deps$package == "S7"]
+  if (length(current) == 0L) {
+    return(add_import("S7", required))
+  }
+  if (s7_requirement_met(current[[1L]])) {
+    cli::cli_alert_info("{.pkg S7} already in Imports")
+    return(invisible(FALSE))
+  }
+  mx_desc_set_dep(desc_path, "S7", type = "Imports", version = required)
+  cli::cli_alert_success(
+    "Raised {.pkg S7} in Imports to {.code S7 ({required})}, which the generated S7 wrappers need"
+  )
+  invisible(TRUE)
+}
+
+#' Whether a DESCRIPTION requirement rules out S7 releases the wrappers can't use
+#'
+#' @param requirement A version requirement as [mx_desc_get_deps()] reads it,
+#'   such as `">= 1.0.0"`, or `"*"` for none.
+#' @return `TRUE` when every version the requirement admits is at least
+#'   [MX_S7_MIN_VERSION].
+#' @keywords internal
+s7_requirement_met <- function(requirement) {
+  m <- regmatches(requirement, regexec("^(>=|>|==)\\s*([0-9]+([.-][0-9]+)*)$", trimws(requirement)))[[1L]]
+  length(m) > 0L && package_version(m[[3L]]) >= MX_S7_MIN_VERSION
 }
 
 #' Load hook that `use_s7()` writes when a package has no `.onLoad()`

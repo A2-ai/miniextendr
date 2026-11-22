@@ -59,7 +59,9 @@ call it), the doctor also checks that \code{.onLoad()} calls
 (base generics and operators such as \code{[[}, \code{format()} or \code{+}, and external
 generics) when the package is built, and only that call registers them in a
 new session; \code{\link[=use_s7]{use_s7()}} adds it. The check parses \verb{R/} without running it,
-so a call reached through a helper function is not seen.
+so a call reached through a helper function is not seen. It also warns when
+DESCRIPTION's S7 requirement admits a release older than 1.0.0, which the
+generated S7 wrappers need.
 
 In a git work tree the doctor also fails on a tracked \code{vendor.tar.xz}
 (\code{inst/vendor.tar.xz}, or one elsewhere in the package) and prints the

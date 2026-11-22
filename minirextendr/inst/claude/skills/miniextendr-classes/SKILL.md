@@ -34,6 +34,10 @@ time, and only that call registers them in a new session. Without it,
 subsettable" in the next session. `minirextendr::use_s7()` writes the hook to a
 `zzz.R` file in the package's R directory, or names the line to add when the
 package already has an `.onLoad()`; `minirextendr::miniextendr_doctor()` warns when it is missing.
+The generated S7 code needs **S7 1.0.0 or later** (a subclass constructor
+passes an instance of its parent class to `S7::new_object()`): `use_s7()`
+requires `S7 (>= 1.0.0)` in `Imports`, and the doctor warns about an older
+requirement.
 
 ## A complete R6 example
 

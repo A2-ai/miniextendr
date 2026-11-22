@@ -18,6 +18,10 @@ Adds S7 as a dependency for using the S7 class system with
 loads.
 }
 \details{
+The generated S7 wrappers need S7 1.0.0 or later, so \code{use_s7()} adds
+\verb{S7 (>= 1.0.0)} to \code{Imports} (moving S7 from \code{Suggests}), and raises an
+\code{Imports} entry whose requirement admits an older S7.
+
 S7 records methods for generics that belong to other packages (base
 generics such as \code{format()}, base operators such as \code{[[} and \code{+}, and
 generics from other packages) when the package is built, and registers them
@@ -34,7 +38,8 @@ that installed the package and nowhere else. So \code{use_s7()} also:
 
 Running it again changes nothing. A package that never calls \code{use_s7()}
 does not depend on S7. \code{\link[=miniextendr_doctor]{miniextendr_doctor()}} reports an S7 package whose
-\code{.onLoad()} does not register its methods.
+\code{.onLoad()} does not register its methods, or whose \code{Imports} admits an S7
+older than 1.0.0.
 }
 \examples{
 \dontrun{
