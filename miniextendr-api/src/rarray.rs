@@ -164,7 +164,7 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
     /// The SEXP must be valid.
     #[inline]
     pub unsafe fn dims(&self) -> [usize; NDIM] {
-        unsafe { get_dims::<NDIM>(self.sexp) }
+        unsafe { get_dims::<NDIM>(self.sexp, self.sexp.get_dim()) }
     }
 
     /// Get a specific dimension size.
@@ -205,7 +205,11 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
     /// Panics if any index is out of bounds.
     #[inline]
     pub unsafe fn linear_index(&self, indices: [usize; NDIM]) -> usize {
-        let dims = unsafe { self.dims() };
+        Self::index_from_dims(unsafe { self.dims() }, indices)
+    }
+
+    #[inline]
+    fn index_from_dims(dims: [usize; NDIM], indices: [usize; NDIM]) -> usize {
         let mut linear = 0;
         let mut stride = 1;
         for i in 0..NDIM {
@@ -316,6 +320,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
 
     /// Get an element by N-dimensional indices. ALTREP inputs use the
     /// provider's element accessor, which may run R code or allocate.
+    /// A provider error propagates to the enclosing R handler.
     ///
     /// # Safety
     ///
@@ -323,17 +328,32 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// # Panics
     ///
-    /// Panics if any index is out of bounds.
+    /// Panics if any index is out of bounds, or if an ALTREP reader raises
+    /// an R error in a standalone Rust embedding.
     #[inline]
     pub unsafe fn get(&self, indices: [usize; NDIM]) -> T
     where
         T: Copy,
     {
-        let idx = unsafe { self.linear_index(indices) };
-        T::elt(
-            self.sexp,
-            R_xlen_t::try_from(idx).expect("array index exceeds R_xlen_t"),
-        )
+        let sexp = self.sexp;
+        let dim = sexp.get_dim();
+        let read = |dim| {
+            let dims = unsafe { get_dims(sexp, dim) };
+            let idx = Self::index_from_dims(dims, indices);
+            T::elt(
+                sexp,
+                R_xlen_t::try_from(idx).expect("array index exceeds R_xlen_t"),
+            )
+        };
+        if sexp.is_altrep() || dim.is_altrep() {
+            // Elt, implicit vector length, and a lazy dim attribute may all
+            // enter foreign code. Fetch the live attribute from the rooted
+            // array after the callback bridge has set up its R context.
+            unsafe { crate::unwind_protect::call_r_callback(|| read(sexp.get_dim())) }
+                .unwrap_or_else(|err| panic!("R array element access failed: {err}"))
+        } else {
+            read(dim)
+        }
     }
 
     /// Set an element by N-dimensional indices.
@@ -835,12 +855,10 @@ fn get_ndim(sexp: SEXP) -> usize {
 /// # Safety
 ///
 /// Caller must ensure SEXP has NDIM dimensions.
-unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
+unsafe fn get_dims<const NDIM: usize>(sexp: SEXP, dim_sexp: SEXP) -> [usize; NDIM] {
     let mut dims = [0usize; NDIM];
 
     unsafe {
-        let dim_sexp = sexp.get_dim();
-
         if dim_sexp.type_of() != SEXPTYPE::INTSXP {
             // No dim attribute - treat as 1D with length
             if NDIM == 1 {

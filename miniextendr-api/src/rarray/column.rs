@@ -1,7 +1,5 @@
 //! Copying one selected real column into ordinary R storage.
 
-use std::ffi::c_void;
-
 use crate::from_r::SexpError;
 use crate::{Preserved, R_xlen_t, SEXP, SEXPTYPE, SexpExt, sys};
 
@@ -11,48 +9,29 @@ impl RMatrix<f64> {
     /// Copy one zero-based column into a rooted, ordinary R double vector.
     ///
     /// The result contains the column's values without matrix attributes. An
-    /// ordinary matrix takes one bulk copy. For ALTREP, only the selected
-    /// range is requested, using bounded scratch space. A provider can
-    /// allocate or materialize its own backing during a region callback.
+    /// ordinary matrix or ALTREP with an exposed buffer takes one bulk copy.
+    /// An ALTREP without a buffer is read in bounded regions. A provider can
+    /// allocate or materialize its own backing during a callback.
     ///
     /// # Errors
     ///
     /// Returns an error for an out-of-range column, inconsistent dimensions,
     /// or an ALTREP reader that returns an invalid count. R errors propagate
-    /// to the enclosing boundary.
+    /// to the enclosing R handler. Standalone Rust callers receive an error.
     ///
     /// # Safety
     ///
     /// Keep this matrix valid and rooted on R's main thread throughout the
-    /// call, inside a miniextendr unwind boundary. Its type and shape must
-    /// remain valid across any reentrant R code.
+    /// call. Its type and shape must remain valid across reentrant R code.
     pub unsafe fn copy_column_to_r(&self, col: usize) -> Result<Preserved, SexpError> {
-        struct CopyColumn {
-            matrix: RMatrix<f64>,
-            col: usize,
-            result: Option<Result<Preserved, SexpError>>,
-        }
-
-        unsafe extern "C-unwind" fn copy(data: *mut c_void) -> SEXP {
-            let data = unsafe { &mut *data.cast::<CopyColumn>() };
-            data.result = Some(unsafe { copy_column(data.matrix, data.col) });
-            SEXP::nil()
-        }
-
-        let mut data = CopyColumn {
-            matrix: *self,
-            col,
-            result: None,
-        };
-        // The callbacks for dimensions, length and regions can signal an R
-        // error. Translate the jump here so the Rust caller's owners unwind.
-        unsafe { crate::unwind_protect::call_unwinding(copy, (&raw mut data).cast()) };
-        data.result.expect("the column copy callback returned")
+        // The result allocation and the provider can both signal. The bridge
+        // lets Rust owners unwind before R resumes the original condition.
+        unsafe { crate::unwind_protect::call_r_callback(|| copy_column(*self, col)) }?
     }
 }
 
-// Runs inside call_unwinding. Keep only plain stack data across R calls. Its
-// R context restores the protect stack automatically if a provider longjmps.
+// Keep only plain stack data across R calls in the bridge. Its R context
+// restores the protect stack automatically if a provider longjmps.
 unsafe fn copy_column(matrix: RMatrix<f64>, col: usize) -> Result<Preserved, SexpError> {
     let [rows, cols] = unsafe { matrix.dims() };
     if col >= cols {
@@ -77,13 +56,13 @@ unsafe fn copy_column(matrix: RMatrix<f64>, col: usize) -> Result<Preserved, Sex
         Ok(())
     } else {
         let dst = unsafe { sys::REAL(out) };
-        if src.is_altrep() {
+        let input = unsafe { sys::REAL_OR_NULL(src) };
+        if input.is_null() {
             unsafe { copy_regions(src, start, count, dst) }
         } else {
-            // Both payloads are nonempty and distinct. Write into fresh
-            // storage without creating a Rust slice of uninitialized values.
-            let input = unsafe { sys::DATAPTR_RO(src).cast::<f64>().offset(start) };
-            unsafe { std::ptr::copy_nonoverlapping(input, dst, rows) };
+            // No R call intervenes between obtaining the exposed buffer and
+            // copying. Destination is fresh and distinct from the input.
+            unsafe { std::ptr::copy_nonoverlapping(input.offset(start), dst, rows) };
             Ok(())
         }
     };

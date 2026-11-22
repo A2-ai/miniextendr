@@ -150,13 +150,18 @@ use miniextendr_api::{miniextendr, Preserved, RMatrix, SexpError};
 
 #[miniextendr]
 pub fn real_column(m: RMatrix<f64>, col: usize) -> Result<Preserved, SexpError> {
-    unsafe { m.copy_column_to_r(col) }
+    let index = col.checked_sub(1).ok_or_else(|| {
+        SexpError::InvalidValue("column indices start at 1".into())
+    })?;
+    unsafe { m.copy_column_to_r(index) }
 }
 ```
 
-The index is zero-based. For an ordinary double matrix this makes one bulk
-copy into the R result. For ALTREP the reader requests at most 256 doubles at
-a time and consumes short reads until the column is complete. A provider can
+The exported function accepts R's one-based column index. The Rust method
+takes a zero-based index. An ordinary double matrix or an ALTREP that exposes
+a contiguous buffer takes one bulk copy into the R result. If the provider
+returns a null buffer pointer, the reader requests at most 256 doubles at a
+time and consumes short reads until the column is complete. A provider can
 allocate or materialize data when it handles a request. The result contains
 the values in row order and carries its own GC root.
 
@@ -172,6 +177,10 @@ let val: f64 = unsafe { m.get_rc(row, col) };
 
 A native element query uses R's element accessor. An ALTREP provider can
 compute that one value without supplying a pointer to the entire payload.
+If the provider raises an error in a generated function, Rust owners unwind
+before the original condition reaches R. In standalone embedding, a failed
+`get()` panics in Rust and `copy_column_to_r()` returns a `SexpError::Condition`
+carrying the provider error's message and specific classes.
 
 ### Dimensions
 
@@ -324,7 +333,7 @@ unsafe { m.set_dimnames(dimnames_sexp) };
 | `column()` | A contiguous pointer to the whole payload | Borrow a column when contiguous storage is available |
 | `column_mut()` | A writable pointer to the whole payload | Mutate an exclusively owned matrix column |
 | `get()` / `get_rc()` | One native element after a bounds check | Sparse element access |
-| `copy_column_to_r()` | One ordinary column span or bounded ALTREP regions | Return an owned R double vector |
+| `copy_column_to_r()` | One exposed column span or bounded ALTREP regions | Return an owned R double vector |
 
 Each `get()` call translates coordinates and checks bounds. For traversal of
 an ordinary matrix a borrowed slice amortizes those checks across the loop.
