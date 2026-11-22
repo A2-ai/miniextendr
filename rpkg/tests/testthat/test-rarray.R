@@ -59,6 +59,15 @@ test_that("matrix metadata, a cell and a column can leave compact real input une
   }
 })
 
+test_that("a compact matrix with an existing buffer yields the same column", {
+  x <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L))
+  expect_false(miniextendr:::rarray_matrix_has_buffer(x))
+  # The slice conversion deliberately requests contiguous data from this provider.
+  expect_identical(miniextendr:::test_f64_slice_len(x), 3075L)
+  expect_true(miniextendr:::rarray_matrix_has_buffer(x))
+  expect_identical(rarray_matrix_column(x, 3L), as.double(2050L + seq_len(1025L)))
+})
+
 test_that("a returned column preserves double values and drops matrix attributes", {
   values <- c(NA_real_, NaN, -0, Inf, -Inf)
   x <- matrix(values, ncol = 1L, dimnames = list(letters[1:5], "column"))
@@ -70,13 +79,28 @@ test_that("a returned column preserves double values and drops matrix attributes
   expect_identical(dimnames(x), list(letters[1:5], "column"))
   expect_identical(rarray_matrix_column(matrix(numeric(), 0L, 2L), 2L), numeric())
   expect_error(rarray_matrix_column(matrix(numeric(), 3L, 0L), 1L), "out of bounds")
-  expect_error(rarray_matrix_column(as.double(1:5), 1L))
-  expect_error(rarray_matrix_column(matrix(1:5), 1L))
+  expect_error(rarray_matrix_column(as.double(1:5), 1L), "length 1")
+  expect_error(rarray_matrix_column(matrix(1:5), 1L), "integer")
+})
+
+test_that("direct matrix entry validates the current shape and returns a tagged Result error", {
+  x <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L))
+  direct <- function(x, col) .Call(miniextendr:::C_miniextendr_rarray_matrix_column, NULL, x, col)
+  expect_identical(direct(x, 3L), as.double(2050L + seq_len(1025L)))
+  # Attach a different shape to the same compact values, invalidating column 3.
+  x <- structure(x, dim = c(3075L, 1L))
+  expect_false(miniextendr:::rarray_matrix_has_buffer(x))
+  bad <- direct(x, 3L)
+  expect_s3_class(bad, "rust_condition_value")
+  expect_identical(bad$kind, "result_err")
+  expect_match(bad$error, "out of bounds")
+  expect_false(miniextendr:::rarray_matrix_has_buffer(x))
 })
 
 test_that("a matrix column consumes short reads and reports an incomplete provider", {
   x <- miniextendr:::rarray_region_matrix(FALSE)
   expect_false(miniextendr:::rarray_matrix_has_buffer(x))
+  expect_identical(miniextendr:::rarray_matrix_cell(x, 3L, 2L), 7)
   expect_identical(rarray_matrix_column(x, 2L), c(5, 6, 7, 8, 9))
   expect_false(miniextendr:::rarray_matrix_has_buffer(x))
 

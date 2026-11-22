@@ -53,7 +53,7 @@ impl SharedData {
 pub fn gc_stress_rarray_column() {
     use miniextendr_api::rarray::RMatrix;
 
-    let source = crate::rarray_tests::rarray_region_matrix(false);
+    let source = crate::rarray_tests::rarray_region_matrix(false, false);
     let matrix = unsafe { RMatrix::<f64>::from_sexp(source.as_sexp()) }.unwrap();
     let column = unsafe { matrix.copy_column_to_r(1) }.unwrap();
     drop(source);

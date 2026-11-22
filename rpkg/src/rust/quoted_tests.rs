@@ -27,7 +27,7 @@ use crate::expression_tests::caught_parts;
 static SENTINEL_DROPS: AtomicI32 = AtomicI32::new(0);
 
 /// Counts its drops in [`SENTINEL_DROPS`].
-struct DropSentinel;
+pub(crate) struct DropSentinel;
 
 impl Drop for DropSentinel {
     fn drop(&mut self) {

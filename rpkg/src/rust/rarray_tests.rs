@@ -1,6 +1,9 @@
 //! Test fixtures for RArray/RMatrix/RVector.
 
+use std::cell::Cell;
+
 use miniextendr_api::SexpError;
+use miniextendr_api::expression::RCall;
 use miniextendr_api::list::List;
 use miniextendr_api::prelude::SEXP;
 use miniextendr_api::prelude::*;
@@ -75,6 +78,7 @@ pub fn rarray_matrix_has_buffer(x: RMatrix<f64>) -> bool {
 #[altrep(manual, class = "MatrixColumnRegions")]
 pub struct MatrixColumnRegions {
     stall: bool,
+    signal_once: Cell<bool>,
 }
 
 impl AltrepLen for MatrixColumnRegions {
@@ -85,6 +89,23 @@ impl AltrepLen for MatrixColumnRegions {
 
 impl AltRealData for MatrixColumnRegions {
     fn elt(&self, i: usize) -> f64 {
+        if i == 7 && self.signal_once.replace(false) {
+            // The default ALTREP guard and eval_with_handlers propagate R's
+            // original condition to the enclosing Elt or Get_region caller.
+            unsafe {
+                let base = miniextendr_api::sys::R_BaseEnv;
+                let condition = OwnedProtect::new(
+                    RCall::new("errorCondition")
+                        .arg_value("matrix provider read failed")
+                        .named_value("class", "matrix_provider_error")
+                        .named_value("offset", i32::try_from(i).unwrap())
+                        .eval_with_handlers(base),
+                );
+                RCall::new("stop")
+                    .arg(condition.get())
+                    .eval_with_handlers(base);
+            }
+        }
         f64::from(u8::try_from(i).unwrap())
     }
 
@@ -95,9 +116,8 @@ impl AltRealData for MatrixColumnRegions {
         // Force an R allocation while the caller holds its unfinished column.
         let count = len.min(2).min(self.altrep_len().saturating_sub(start));
         if count > 0 {
-            let _scratch = unsafe {
-                miniextendr_api::sys::Rf_allocVector(miniextendr_api::SEXPTYPE::REALSXP, 2)
-            };
+            // Same size and R allocation class as the unfinished output.
+            let _churn = [-999.0_f64; 5].into_sexp();
             for (i, slot) in buf[..count].iter_mut().enumerate() {
                 *slot = self.elt(start + i);
             }
@@ -108,12 +128,32 @@ impl AltRealData for MatrixColumnRegions {
 
 /// Create a 5-by-2 double ALTREP matrix with short region reads.
 /// @param stall Whether the second column stops after its first two values.
+/// @param signal Whether R signals its own error once at zero-based offset 7.
 #[miniextendr(noexport)]
-pub fn rarray_region_matrix(stall: bool) -> Preserved {
-    let matrix = Preserved::new(MatrixColumnRegions { stall });
+pub fn rarray_region_matrix(
+    stall: bool,
+    #[miniextendr(default = "FALSE")] signal: bool,
+) -> Preserved {
+    let matrix = Preserved::new(MatrixColumnRegions {
+        stall,
+        signal_once: Cell::new(signal),
+    });
     let dims = unsafe { OwnedProtect::new([5_i32, 2].into_sexp()) };
     matrix.as_sexp().set_dim(dims.get());
     matrix
+}
+
+/// Hold a Rust drop sentinel across a read that may signal an R condition.
+/// @param x A matrix from `rarray_region_matrix()`.
+/// @param column Read its second column or, if false, the third cell of that column.
+#[miniextendr(noexport)]
+pub fn rarray_guarded_read(x: RMatrix<f64>, column: bool) -> Result<Preserved, SexpError> {
+    let _sentinel = crate::quoted_tests::DropSentinel;
+    if column {
+        unsafe { x.copy_column_to_r(1) }
+    } else {
+        Ok(Preserved::new(unsafe { x.get_rc(2, 1) }))
+    }
 }
 
 /// Return row names through `RMatrix::get_rownames`.
