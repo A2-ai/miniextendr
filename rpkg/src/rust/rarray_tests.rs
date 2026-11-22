@@ -1,5 +1,6 @@
 //! Test fixtures for RArray/RMatrix/RVector.
 
+use miniextendr_api::SexpError;
 use miniextendr_api::list::List;
 use miniextendr_api::prelude::SEXP;
 use miniextendr_api::prelude::*;
@@ -10,20 +11,18 @@ fn strings_from_sexp(sexp: SEXP) -> Vec<String> {
 }
 
 /// Get dimensions of a matrix as integer vector.
-/// @param x An R vector or matrix accepted by the selected helper.
+/// @param x A double matrix.
 #[miniextendr]
-pub fn rarray_matrix_dims(x: SEXP) -> Vec<i32> {
-    let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
-    let dims = unsafe { mat.dims() };
-    vec![dims[0] as i32, dims[1] as i32]
+pub fn rarray_matrix_dims(x: RMatrix<f64>) -> [i32; 2] {
+    // R stores each dimension in an integer vector.
+    unsafe { x.dims() }.map(|n| i32::try_from(n).unwrap())
 }
 
 /// Get total length of a matrix.
-/// @param x An R vector or matrix accepted by the selected helper.
+/// @param x A double matrix.
 #[miniextendr]
-pub fn rarray_matrix_len(x: SEXP) -> i32 {
-    let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
-    mat.len() as i32
+pub fn rarray_matrix_len(x: RMatrix<f64>) -> usize {
+    x.len()
 }
 
 /// Sum all elements of a numeric vector via RVector.
@@ -35,37 +34,101 @@ pub fn rarray_vector_sum(x: SEXP) -> f64 {
     slice.iter().sum()
 }
 
-/// Get a specific column from a numeric matrix as a Vec.
-/// @param x An R vector or matrix accepted by the selected helper.
+/// Copy one column of a double matrix to an ordinary, unnamed double vector.
+/// @param x A double matrix.
 /// @param col 1-based column index. Errors if `col` is not in `1..=ncol`.
 #[miniextendr]
-pub fn rarray_matrix_column(x: SEXP, col: i32) -> Vec<f64> {
-    let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
-    let ncol = unsafe { mat.dims()[1] };
+pub fn rarray_matrix_column(x: RMatrix<f64>, col: i32) -> Result<Preserved, SexpError> {
     if col < 1 {
-        panic!(
+        let ncol = unsafe { x.ncol() };
+        return Err(SexpError::InvalidValue(format!(
             "column {col} is out of bounds (must be a positive 1-based index, matrix has {ncol} columns)"
-        );
+        )));
     }
-    let column = unsafe { mat.column(col as usize - 1) };
-    column.to_vec()
+    // The .Call arguments root x for the full read on R's main thread.
+    unsafe { x.copy_column_to_r(usize::try_from(col - 1).unwrap()) }
+}
+
+/// Read one double matrix cell.
+/// @param x A double matrix.
+/// @param row,col 1-based row and column indices.
+#[miniextendr(noexport)]
+pub fn rarray_matrix_cell(x: RMatrix<f64>, row: usize, col: usize) -> f64 {
+    let row = row
+        .checked_sub(1)
+        .expect("row must be a positive 1-based index");
+    let col = col
+        .checked_sub(1)
+        .expect("column must be a positive 1-based index");
+    unsafe { x.get_rc(row, col) }
+}
+
+/// Does this matrix provider currently expose a contiguous double buffer?
+/// @param x A double matrix.
+#[miniextendr(noexport)]
+pub fn rarray_matrix_has_buffer(x: RMatrix<f64>) -> bool {
+    !unsafe { miniextendr_api::sys::REAL_OR_NULL(x.as_sexp()) }.is_null()
+}
+
+/// A matrix provider that fills at most two values per region call.
+#[derive(miniextendr_api::AltrepReal)]
+#[altrep(manual, class = "MatrixColumnRegions")]
+pub struct MatrixColumnRegions {
+    stall: bool,
+}
+
+impl AltrepLen for MatrixColumnRegions {
+    fn altrep_len(&self) -> usize {
+        10
+    }
+}
+
+impl AltRealData for MatrixColumnRegions {
+    fn elt(&self, i: usize) -> f64 {
+        f64::from(u8::try_from(i).unwrap())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        if self.stall && start >= 7 {
+            return 0;
+        }
+        // Force an R allocation while the caller holds its unfinished column.
+        let count = len.min(2).min(self.altrep_len().saturating_sub(start));
+        if count > 0 {
+            let _scratch = unsafe {
+                miniextendr_api::sys::Rf_allocVector(miniextendr_api::SEXPTYPE::REALSXP, 2)
+            };
+            for (i, slot) in buf[..count].iter_mut().enumerate() {
+                *slot = self.elt(start + i);
+            }
+        }
+        count
+    }
+}
+
+/// Create a 5-by-2 double ALTREP matrix with short region reads.
+/// @param stall Whether the second column stops after its first two values.
+#[miniextendr(noexport)]
+pub fn rarray_region_matrix(stall: bool) -> Preserved {
+    let matrix = Preserved::new(MatrixColumnRegions { stall });
+    let dims = unsafe { OwnedProtect::new([5_i32, 2].into_sexp()) };
+    matrix.as_sexp().set_dim(dims.get());
+    matrix
 }
 
 /// Return row names through `RMatrix::get_rownames`.
-/// @param x An R vector or matrix accepted by the selected helper.
+/// @param x A double matrix.
 #[miniextendr(noexport)]
-pub fn rarray_matrix_rownames(x: SEXP) -> Vec<String> {
-    let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
-    let names = unsafe { mat.get_rownames().expect("expected row names") };
+pub fn rarray_matrix_rownames(x: RMatrix<f64>) -> Vec<String> {
+    let names = unsafe { x.get_rownames().expect("expected row names") };
     strings_from_sexp(names)
 }
 
 /// Return column names through `RMatrix::get_colnames`.
-/// @param x An R vector or matrix accepted by the selected helper.
+/// @param x A double matrix.
 #[miniextendr(noexport)]
-pub fn rarray_matrix_colnames(x: SEXP) -> Vec<String> {
-    let mat = unsafe { RMatrix::<f64>::from_sexp(x).expect("expected numeric matrix") };
-    let names = unsafe { mat.get_colnames().expect("expected column names") };
+pub fn rarray_matrix_colnames(x: RMatrix<f64>) -> Vec<String> {
+    let names = unsafe { x.get_colnames().expect("expected column names") };
     strings_from_sexp(names)
 }
 

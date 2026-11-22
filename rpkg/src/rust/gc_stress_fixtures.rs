@@ -47,6 +47,23 @@ impl SharedData {
     }
 }
 
+/// Copy a matrix column in several allocating ALTREP callbacks and check it
+/// after the source root is dropped.
+#[miniextendr(noexport)]
+pub fn gc_stress_rarray_column() {
+    use miniextendr_api::rarray::RMatrix;
+
+    let source = crate::rarray_tests::rarray_region_matrix(false);
+    let matrix = unsafe { RMatrix::<f64>::from_sexp(source.as_sexp()) }.unwrap();
+    let column = unsafe { matrix.copy_column_to_r(1) }.unwrap();
+    drop(source);
+    unsafe { miniextendr_api::sys::R_gc() };
+    assert_eq!(
+        unsafe { column.as_sexp().as_slice::<f64>() },
+        &[5., 6., 7., 8., 9.]
+    );
+}
+
 /// Build a `Vec<ExternalPtr<T>>` the *naive* way and read every handle back
 /// through `R_ExternalPtrAddr`, under GC pressure.
 ///
