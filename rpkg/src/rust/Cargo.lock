@@ -2082,6 +2082,7 @@ dependencies = [
  "rayon",
  "regex",
  "rust_decimal",
+ "rustversion",
  "serde",
  "serde_json",
  "sha2",

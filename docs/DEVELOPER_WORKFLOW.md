@@ -42,6 +42,33 @@ just clippy             # Lint
 just fmt                # Format
 ```
 
+### Using a standard-library API newer than the minimum Rust
+
+The workspace declares its minimum Rust in `[workspace.package] rust-version`.
+When a newer standard-library API makes an item simpler or safer, gate that
+item with `rustversion` instead of raising the minimum, and keep the existing
+code as the fallback:
+
+```rust
+#[rustversion::since(1.99)]
+pub fn new(slice: Vec<T>) -> Self {
+    let (ptr, len, capacity) = slice.into_parts();
+    Self { ptr, len, capacity }
+}
+
+#[rustversion::before(1.99)]
+pub fn new(slice: Vec<T>) -> Self {
+    // the pre-1.99 implementation
+}
+```
+
+Only the selected item is type-checked, so the newer side may call APIs the
+minimum compiler lacks. Both sides must behave the same; a test runs whichever
+one the compiler picks. Drop the `before` side when the minimum reaches the
+threshold. `rustversion` is a private dependency of `miniextendr-api`, not
+part of its public API: downstream packages that want the same gates depend
+on `rustversion` themselves.
+
 ### R package development
 
 ```bash
