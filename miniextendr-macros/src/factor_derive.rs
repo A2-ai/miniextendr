@@ -15,7 +15,8 @@
 //! }
 //!
 //! // Generates impl RFactor for Color, IntoR for Color, TryFromSexp for Color,
-//! // and Vec/Option variants.
+//! // and makes Vec<Color>, Box<[Color]> and Vec<Option<Color>> convert to and
+//! // from factors too (Option<Color> reads one).
 //! ```
 //!
 //! ## Attributes
@@ -123,6 +124,9 @@ fn parse_r_factor_attrs(attrs: &[syn::Attribute]) -> syn::Result<RFactorAttrs> {
 /// - `impl RFactor` (1-based level index conversion)
 /// - `impl IntoR` (Rust enum -> R factor SEXP)
 /// - `impl TryFromSexp` (R factor SEXP -> Rust enum)
+/// - `impl TryFromSexpElement` and `impl IntoRNewtype`, plus a `MatchArg`
+///   hook override, so `Vec<T>`, `Box<[T]>` and `Vec<Option<T>>` convert to
+///   and from factors too, and `Option<T>` reads one (#2365)
 ///
 /// Returns `Err` for structs, unions, or invalid attribute combinations.
 pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -252,6 +256,8 @@ fn derive_simple_factor(
     // Generate indices (1-based for R)
     let indices: Vec<i32> = (1..=variant_idents.len() as i32).collect();
     let level_name_strs: Vec<&str> = level_names.iter().map(|s| s.as_str()).collect();
+    let vec_into_sexp = vec_into_sexp_override();
+    let containers = container_impls(name, impl_generics, ty_generics, where_clause);
 
     Ok(quote! {
         impl #impl_generics ::miniextendr_api::match_arg::MatchArg for #name #ty_generics #where_clause {
@@ -269,6 +275,8 @@ fn derive_simple_factor(
                     #(Self::#variant_idents => #level_name_strs,)*
                 }
             }
+
+            #vec_into_sexp
         }
 
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
@@ -317,6 +325,8 @@ fn derive_simple_factor(
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }
+
+        #containers
     })
 }
 
@@ -448,6 +458,8 @@ fn derive_interaction_factor(
 
     // Generate inner level strings for the const assertion
     let inner_level_strs: Vec<&str> = inner_levels.iter().map(|s| s.as_str()).collect();
+    let vec_into_sexp = vec_into_sexp_override();
+    let containers = container_impls(name, impl_generics, ty_generics, where_clause);
 
     Ok(quote! {
         // Compile-time assertion: verify specified inner levels match the actual inner type's CHOICES.
@@ -494,6 +506,8 @@ fn derive_interaction_factor(
             fn to_choice(self) -> &'static str {
                 <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES[(<Self as ::miniextendr_api::RFactor>::to_level_index(self) - 1) as usize]
             }
+
+            #vec_into_sexp
         }
 
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
@@ -542,7 +556,51 @@ fn derive_interaction_factor(
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }
+
+        #containers
     })
+}
+
+/// The `MatchArg::__mx_vec_into_sexp` override spliced into the derive's
+/// `impl MatchArg`: `Vec<T>` (and `Box<[T]>`, `Option<Vec<T>>`), which the
+/// `MatchArg` bridge would write as a character vector, is a factor of the
+/// type's levels, as the scalar is (#2365).
+fn vec_into_sexp_override() -> TokenStream {
+    quote! {
+        fn __mx_vec_into_sexp(values: ::std::vec::Vec<Self>) -> ::miniextendr_api::SEXP {
+            ::miniextendr_api::IntoR::into_sexp(::miniextendr_api::FactorVec(values))
+        }
+    }
+}
+
+/// The element impls behind the container blankets in
+/// `miniextendr_api::newtype`, with `FactorValue<T>` as the inner type:
+/// `TryFromSexpElement` reads `Vec<T>`, `Box<[T]>`, `Option<T>` and
+/// `Vec<Option<T>>` from a factor, `IntoRNewtype` writes `Vec<Option<T>>` as
+/// one, `NA` for `None` (#2365).
+fn container_impls(
+    name: &syn::Ident,
+    impl_generics: &syn::ImplGenerics,
+    ty_generics: &syn::TypeGenerics,
+    where_clause: Option<&syn::WhereClause>,
+) -> TokenStream {
+    quote! {
+        impl #impl_generics ::miniextendr_api::TryFromSexpElement for #name #ty_generics #where_clause {
+            type Inner = ::miniextendr_api::factor::FactorValue<Self>;
+
+            fn from_inner(inner: ::miniextendr_api::factor::FactorValue<Self>) -> Self {
+                inner.0
+            }
+        }
+
+        impl #impl_generics ::miniextendr_api::IntoRNewtype for #name #ty_generics #where_clause {
+            type Inner = ::miniextendr_api::factor::FactorValue<Self>;
+
+            fn into_inner(self) -> ::miniextendr_api::factor::FactorValue<Self> {
+                ::miniextendr_api::factor::FactorValue(self)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

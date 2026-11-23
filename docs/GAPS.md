@@ -50,16 +50,16 @@ pub fn get_color(name: &str) -> Color {
     }
 }
 
-// Vector of enums - use FactorVec wrapper
+// Vector of enums - a factor both ways
 #[miniextendr]
-pub fn count_colors(colors: FactorVec<Color>) -> Vec<i32> { ... }
+pub fn count_colors(colors: Vec<Color>) -> Vec<i32> { ... }
 
-// Vector with NAs - use FactorOptionVec wrapper
+// Vector with NAs - a factor with NA both ways
 #[miniextendr]
-pub fn colors_with_na(colors: FactorOptionVec<Color>) -> Vec<&'static str> { ... }
+pub fn colors_with_na(colors: Vec<Option<Color>>) -> Vec<Option<Color>> { ... }
 ```
 
-The wrapper types (`FactorVec<T>`, `FactorOptionVec<T>`) are needed for vectors due to Rust's orphan rules preventing `impl IntoR for Vec<T: RFactor>`.
+The derive makes `Vec<T>`, `Box<[T]>` and `Vec<Option<T>>` factors through the element traits of `miniextendr_api::newtype` (#2365), since the orphan rule keeps a downstream crate from writing `impl IntoR for Vec<Color>`. The wrapper types (`FactorVec<T>`, `FactorOptionVec<T>`) convert the same way and also take unit-only `DataFrameRow` enums.
 
 ---
 

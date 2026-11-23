@@ -28,7 +28,7 @@ help: the trait `TryFromSexpElement` is not implemented for `Timestamp`
    |
  9 |     pub struct Timestamp;
    |     ^^^^^^^^^^^^^^^^^^^^
-   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, `#[derive(RFactor)]` enums, and types given `try_from_sexp_via_str_parse!`
    = help: the following other types implement trait `TryFromSexp`:
              Vec<&RLogical>
              Vec<&Rcomplex>
