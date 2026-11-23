@@ -120,9 +120,9 @@ use_miniextendr_description <- function(path = ".") {
   sys_req <- mx_desc_get_field("SystemRequirements", file = desc_path, default = "")
   if (!grepl("Rust", sys_req, ignore.case = TRUE)) {
     if (nzchar(sys_req)) {
-      sys_req <- paste0(sys_req, ", Rust (>= 1.85)")
+      sys_req <- paste0(sys_req, ", Rust (>= 1.88)")
     } else {
-      sys_req <- "Rust (>= 1.85)"
+      sys_req <- "Rust (>= 1.88)"
     }
     mx_desc_set(desc_path, "SystemRequirements" = sys_req)
   }

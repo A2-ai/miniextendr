@@ -337,6 +337,9 @@ release (release through the CRAN-like check, #2343); a label named after an
 R version alias (`oldrel`, `devel`, `next`, spelled as rig and `setup-r`
 spell them) adds that Linux R CMD check leg, so it tracks R's yearly releases. Label a PR that touches R-version cfgs
 (`r_4_5`, `r_4_6`) `oldrel`. The leg still needs an R-path change to run.
+The MSRV job (`cargo check` on the declared `rust-version`) runs only on
+`v*` tags, `workflow_dispatch` and the `msrv` label: label a PR that raises
+the floor or adopts a newer std API.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with

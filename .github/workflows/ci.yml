@@ -5,7 +5,7 @@ on:
     # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
     # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
     # rounds in r-tests), `gc-stress` (r-stress-tests), `windows`
-    # (r-check-windows), and the R version aliases `oldrel`, `devel` and
+    # (r-check-windows), `msrv` (msrv), and the R version aliases `oldrel`, `devel` and
     # `next` (an extra r-check-linux leg; see the `changes` job). The default
     # activity types (opened/synchronize/reopened) cover everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -706,6 +706,47 @@ jobs:
       - name: Print the sccache server log
         if: always()
         uses: ./.github/actions/sccache-log
+
+  # ===========================================================================
+  # MSRV: the workspace still builds on its declared rust-version
+  # ===========================================================================
+  # Opt-in: `v*` release tags, `workflow_dispatch`, or the `msrv` PR label.
+  # The floor moves rarely, so a check on every PR isn't worth its runner
+  # time. No sccache or rust-cache either: an older rustc shares no
+  # artifacts with the other jobs, and a job this rare would only write
+  # cache entries nobody reads back.
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'msrv')
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same trick as rust-lint: cargo check never links libR, so a dummy
+      # R_HOME satisfies build.rs without installing R.
+      - name: Set dummy R_HOME
+        run: echo "R_HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      # [workspace.package] rust-version is the single source of the floor.
+      - name: Read rust-version
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      # rust-toolchain.toml floats on stable; RUSTUP_TOOLCHAIN overrides it.
+      - name: Check on the declared rust-version
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+        run: cargo check --workspace --all-targets --locked
 
   # ===========================================================================
   # Rust tests (cargo test) — runs independently of R CMD check
@@ -2334,6 +2375,7 @@ jobs:
       - docs-link-check
       - docs-examples-check
       - rust-lint
+      - msrv
       - rust-tests
       - changes
       - r-check-linux

@@ -14,7 +14,7 @@ Description: Demonstrates miniextendr's cross-package trait dispatch capabilitie
 License: MIT + file LICENSE
 Config/build/bootstrap: TRUE
 Encoding: UTF-8
-SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
+SystemRequirements: Cargo (Rust package manager), rustc >= 1.88
 Imports:
     methods,
     R6,

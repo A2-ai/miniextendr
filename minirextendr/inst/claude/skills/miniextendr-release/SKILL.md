@@ -66,7 +66,7 @@ R CMD INSTALL --library=$(mktemp -d) mypkg_X.Y.Z.tar.gz
 ```
 
 DESCRIPTION fields the scaffold set up — keep them:
-`SystemRequirements: Rust (>= 1.85)`, `Config/build/bootstrap: TRUE`,
+`SystemRequirements: Rust (>= 1.88)`, `Config/build/bootstrap: TRUE`,
 `Config/build/extra-sources: src/rust/Cargo.lock`.
 
 ## The classic failure: a leaked tarball in the dev tree

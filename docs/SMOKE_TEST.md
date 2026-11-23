@@ -92,7 +92,7 @@ updated. This includes:
 
 ### 5. Toolchain requirements
 
-- Rust >= 1.85
+- Rust >= 1.88
 - `autoconf` available on PATH
 - R toolchain capable of compiling package shared libraries
 - R packages: `devtools`, `roxygen2`, `rcmdcheck`, `testthat`, `usethis`,
