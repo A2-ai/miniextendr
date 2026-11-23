@@ -42,13 +42,12 @@ env:
   # the long R jobs finished, and their stats then read 0), and log the
   # server's cache-write failures, which sccache reports only at debug level,
   # to a file that .github/actions/sccache-log prints as each job's last step.
-  # Every sccache-action step pins `version: "v0.19.0"` (#2396): the action
-  # installs the latest release otherwise. 0.20.0 retries a rate-limited (429)
-  # GitHub cache request up to six times, its server's startup cache check
-  # included, so under rate limiting the server outlasts the client's 10 s wait
-  # and the job fails at `rustc -vV` with "Timed out waiting for server
-  # startup". 0.19.0 does not retry: its server starts at once, read-only for
-  # the job if the check's write was rate-limited.
+  # SCCACHE_SKIP_CACHE_CHECK (#2396): the server skips its startup read and
+  # write of `.sccache_check` in the GitHub Actions cache and starts
+  # read-write. Under cache rate limiting (429), 0.20.0 retries that check
+  # (mozilla/sccache#2911) past the client's 10 s wait for the server, and the
+  # job failed at `rustc -vV` with "Timed out waiting for server startup".
+  SCCACHE_SKIP_CACHE_CHECK: "true"
   SCCACHE_IDLE_TIMEOUT: "0"
   SCCACHE_ERROR_LOG: /tmp/sccache-server.log
   SCCACHE_LOG: warn,sccache::server=debug
@@ -393,8 +392,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -509,8 +506,6 @@ jobs:
           targets: aarch64-unknown-linux-gnu
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -744,8 +739,6 @@ jobs:
         uses: taiki-e/install-action@just
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -873,8 +866,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -952,8 +943,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1122,8 +1111,6 @@ jobs:
       - name: Setup sccache
         id: sccache
         uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
         continue-on-error: true
 
       - name: Set RUSTC_WRAPPER if sccache available
@@ -1246,8 +1233,6 @@ jobs:
       - name: Setup sccache
         id: sccache
         uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
         continue-on-error: true
 
       # Off on Windows: sccache 0.17.0 to 0.19.0 expands cargo's rustc argfile
@@ -1420,8 +1405,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1603,8 +1586,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1720,8 +1701,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1856,8 +1835,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -2033,8 +2010,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -2184,8 +2159,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -2274,8 +2247,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
