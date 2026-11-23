@@ -19,14 +19,14 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::SEXP;
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, map_strsxp_with, try_charsxp_to_str};
+use crate::from_r::{SexpError, TryFromSexp, map_strsxp_with, try_charsxp_to_str};
 
 /// Convert an R native vector to an owned `Cow`.
 ///
 /// A raw SEXP carries no borrow lifetime. Use [`super::TryFromRoot`] to borrow
 /// without copying; generated wrappers select that path for `Cow<'_, [T]>`.
 impl<T: crate::RNativeType> TryFromSexp for Cow<'_, [T]> {
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;

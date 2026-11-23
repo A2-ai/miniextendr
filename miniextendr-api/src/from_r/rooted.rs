@@ -1,8 +1,8 @@
 //! Conversions whose borrowed result cannot outlive an R root.
 
 use super::{
-    NativeBorrow, SexpError, SexpTypeError, TryFromSexp, map_strsxp_with, map_vecsxp_batched,
-    try_charsxp_to_cow, try_charsxp_to_str,
+    NativeBorrow, SexpError, TryFromSexp, map_strsxp_with, map_vecsxp_batched, try_charsxp_to_cow,
+    try_charsxp_to_str,
 };
 use crate::{RCow, RNativeType, Root, SEXP, SEXPTYPE, SexpExt, StrVec};
 use std::borrow::Cow;
@@ -114,7 +114,7 @@ impl<'a> TryFromRoot<'a> for StrVec<'a> {
 }
 
 impl<'a, T: RNativeType> TryFromRoot<'a> for RCow<'a, T> {
-    type Error = SexpTypeError;
+    type Error = SexpError;
     const NATIVE_BORROW: Option<NativeBorrow> = RCow::<'a, T>::NATIVE_BORROW;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {
@@ -123,7 +123,7 @@ impl<'a, T: RNativeType> TryFromRoot<'a> for RCow<'a, T> {
 }
 
 impl<'a, T: RNativeType> TryFromRoot<'a> for Cow<'a, [T]> {
-    type Error = SexpTypeError;
+    type Error = SexpError;
     const NATIVE_BORROW: Option<NativeBorrow> = <&[T] as TryFromRoot<'a>>::NATIVE_BORROW;
 
     fn try_from_root(root: Root<'a>) -> Result<Self, Self::Error> {

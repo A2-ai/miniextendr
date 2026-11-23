@@ -179,7 +179,7 @@ where
 macro_rules! impl_set_try_from_sexp_native {
     ($set:ident<$t:ty>) => {
         impl TryFromSexp for $set<$t> {
-            type Error = SexpTypeError;
+            type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
@@ -198,7 +198,7 @@ impl_set_try_from_sexp_native!(BTreeSet<u8>);
 macro_rules! impl_vec_try_from_sexp_native {
     ($t:ty) => {
         impl TryFromSexp for Vec<$t> {
-            type Error = SexpTypeError;
+            type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;

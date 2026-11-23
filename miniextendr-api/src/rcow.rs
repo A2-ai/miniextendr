@@ -41,7 +41,7 @@
 
 use std::ops::Deref;
 
-use crate::from_r::{SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::{RNativeType, SEXP};
 
@@ -183,7 +183,7 @@ impl<'a, T: RNativeType> RCow<'a, T> {
     /// }
     /// ```
     #[inline]
-    pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpTypeError> {
+    pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpError> {
         let sexp = root.get();
         // The root keeps the source reachable for `'a`, which bounds the
         // slice; the conversion checks the element type.

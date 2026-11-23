@@ -10,6 +10,197 @@ use miniextendr_api::sys::{Rf_allocVector, Rf_protect, Rf_unprotect};
 use miniextendr_api::{R_xlen_t, SEXPTYPE};
 use std::collections::{BTreeSet, HashSet};
 
+// A provider that signals a classed R condition when its Elt callback runs.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, class = "EmbeddedFailingScalar")]
+struct EmbeddedFailingScalar;
+
+impl miniextendr_api::altrep_data::AltrepLen for EmbeddedFailingScalar {
+    fn altrep_len(&self) -> usize {
+        1
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for EmbeddedFailingScalar {
+    fn elt(&self, _: usize) -> i32 {
+        miniextendr_api::error!(class = "embedded_scalar_error", "embedded element failed")
+    }
+}
+
+#[test]
+fn embedded_scalar_returns_a_provider_error_without_an_mx_boundary() {
+    use miniextendr_api::IntoR;
+    r_test_utils::with_r_thread(|| unsafe {
+        let root =
+            miniextendr_api::gc_protect::OwnedProtect::new(EmbeddedFailingScalar.into_sexp());
+        for result in [
+            i32::try_from_sexp(root.get()),
+            i32::try_from_sexp_unchecked(root.get()),
+        ] {
+            let Err(SexpError::Condition(error)) = result else {
+                panic!("expected the provider's condition, got {result:?}");
+            };
+            assert!(
+                error
+                    .classes()
+                    .iter()
+                    .any(|class| class == "embedded_scalar_error")
+            );
+            assert_eq!(error.message_str(), "embedded element failed");
+        }
+    });
+}
+
+// A genuinely unguarded native entry that R reaches through .Call(). Catch
+// the old inherited-boundary unwind here so the regression itself can never
+// unwind through R's evaluator.
+unsafe extern "C-unwind" fn unguarded_scalar_probe(x: SEXP) -> SEXP {
+    let result = std::panic::catch_unwind(|| i32::try_from_sexp(x));
+    SEXP::scalar_logical(matches!(result, Ok(Err(SexpError::Condition(_)))))
+}
+
+#[test]
+fn unguarded_r_reentry_cannot_resume_an_outer_rust_boundary() {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::unwind_protect::with_r_unwind_protect;
+    use miniextendr_api::{IntoR, OwnedProtect};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let value = OwnedProtect::new(EmbeddedFailingScalar.into_sexp());
+        let address = OwnedProtect::new(miniextendr_api::sys::R_MakeExternalPtrFn(
+            Some(std::mem::transmute::<
+                unsafe extern "C-unwind" fn(SEXP) -> SEXP,
+                unsafe extern "C-unwind" fn() -> *mut std::ffi::c_void,
+            >(unguarded_scalar_probe)),
+            miniextendr_api::sys::Rf_install(c"native symbol".as_ptr()),
+            SEXP::nil(),
+        ));
+        let call = RCall::new(".Call").arg(address.get()).arg(value.get());
+        let both_returned_errors = with_r_unwind_protect(
+            || {
+                let isolated = call.eval_base().unwrap().logical_elt(0);
+                let with_handlers = call
+                    .try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+                    .unwrap()
+                    .logical_elt(0);
+                SEXP::scalar_logical(isolated == 1 && with_handlers == 1)
+            },
+            None,
+        );
+        assert_eq!(both_returned_errors.logical_elt(0), 1);
+    });
+}
+
+#[test]
+fn native_scalars_read_an_element_only_altrep() {
+    use miniextendr_api::{Preserved, RLogical, Rcomplex, sys};
+    use std::os::raw::c_int;
+
+    // Length-one classes with an Elt method and no Dataptr: R's default
+    // Dataptr refuses them, so only an element read converts them.
+    unsafe extern "C-unwind" fn length(_: SEXP) -> R_xlen_t {
+        1
+    }
+    unsafe extern "C-unwind" fn real(_: SEXP, _: R_xlen_t) -> f64 {
+        2.5
+    }
+    unsafe extern "C-unwind" fn logical(_: SEXP, _: R_xlen_t) -> c_int {
+        1
+    }
+    unsafe extern "C-unwind" fn raw(_: SEXP, _: R_xlen_t) -> u8 {
+        7
+    }
+    unsafe extern "C-unwind" fn complex(_: SEXP, _: R_xlen_t) -> Rcomplex {
+        Rcomplex { r: 1.0, i: -1.0 }
+    }
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let info = miniextendr_api::altrep_dll_info();
+        let pkg = c"miniextendr_test".as_ptr();
+        let real_class = sys::altrep::R_make_altreal_class(c"ElementOnlyReal".as_ptr(), pkg, info);
+        real_class.set_length_method(Some(length));
+        real_class.set_real_elt_method(Some(real));
+        let logical_class =
+            sys::altrep::R_make_altlogical_class(c"ElementOnlyLogical".as_ptr(), pkg, info);
+        logical_class.set_length_method(Some(length));
+        logical_class.set_logical_elt_method(Some(logical));
+        let raw_class = sys::altrep::R_make_altraw_class(c"ElementOnlyRaw".as_ptr(), pkg, info);
+        raw_class.set_length_method(Some(length));
+        raw_class.set_raw_elt_method(Some(raw));
+        let complex_class =
+            sys::altrep::R_make_altcomplex_class(c"ElementOnlyComplex".as_ptr(), pkg, info);
+        complex_class.set_length_method(Some(length));
+        complex_class.set_complex_elt_method(Some(complex));
+
+        let real_x = Preserved::new(real_class.new_altrep(SEXP::nil(), SEXP::nil()));
+        let logical_x = Preserved::new(logical_class.new_altrep(SEXP::nil(), SEXP::nil()));
+        let raw_x = Preserved::new(raw_class.new_altrep(SEXP::nil(), SEXP::nil()));
+        let complex_x = Preserved::new(complex_class.new_altrep(SEXP::nil(), SEXP::nil()));
+
+        assert_eq!(f64::try_from_sexp(real_x.as_sexp()).unwrap(), 2.5);
+        assert_eq!(f64::try_from_sexp_unchecked(real_x.as_sexp()).unwrap(), 2.5);
+        assert_eq!(
+            Option::<f64>::try_from_sexp(real_x.as_sexp()).unwrap(),
+            Some(2.5)
+        );
+        assert_eq!(
+            RLogical::try_from_sexp(logical_x.as_sexp()).unwrap(),
+            RLogical::TRUE
+        );
+        assert!(bool::try_from_sexp(logical_x.as_sexp()).unwrap());
+        assert_eq!(u8::try_from_sexp(raw_x.as_sexp()).unwrap(), 7);
+        let z = Rcomplex::try_from_sexp(complex_x.as_sexp()).unwrap();
+        assert_eq!((z.r, z.i), (1.0, -1.0));
+    });
+}
+
+#[test]
+fn integer_conversions_refuse_a_factor_but_not_another_class() {
+    use miniextendr_api::{Preserved, RArray};
+    use std::collections::VecDeque;
+
+    fn is_factor_error<T>(result: Result<T, SexpError>) -> bool {
+        matches!(result, Err(SexpError::InvalidValue(ref m)) if m == "got a factor")
+    }
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let eval = |code: &str| Preserved::new(miniextendr_api::r_eval_str_global(code).unwrap());
+        for code in ["factor(c('b', 'a'))", "ordered(c('b', 'a'))"] {
+            let f = eval(code);
+            let x = f.as_sexp();
+            assert!(is_factor_error(<&[i32]>::try_from_sexp(x)), "{code}");
+            assert!(is_factor_error(<&[i32]>::try_from_sexp_unchecked(x)));
+            assert!(is_factor_error(Vec::<i32>::try_from_sexp(x)));
+            assert!(is_factor_error(Box::<[i32]>::try_from_sexp(x)));
+            assert!(is_factor_error(VecDeque::<i32>::try_from_sexp(x)));
+            assert!(is_factor_error(HashSet::<i32>::try_from_sexp(x)));
+            assert!(is_factor_error(Vec::<Option<i32>>::try_from_sexp(x)));
+            assert!(is_factor_error(Vec::<i64>::try_from_sexp(x)));
+            assert!(is_factor_error(Vec::<Option<i64>>::try_from_sexp(x)));
+            assert!(is_factor_error(RArray::<i32, 1>::from_sexp(x)));
+        }
+        let one = eval("factor('b', levels = c('a', 'b'))");
+        assert!(is_factor_error(i32::try_from_sexp(one.as_sexp())));
+        assert!(is_factor_error(Option::<i32>::try_from_sexp(one.as_sexp())));
+        assert!(is_factor_error(Option::<i64>::try_from_sexp(one.as_sexp())));
+        assert!(is_factor_error(i64::try_from_sexp(one.as_sexp())));
+
+        // Another S3 class on an integer is not refused.
+        let classed = eval("structure(c(3L, 4L), class = 'my_ids')");
+        assert_eq!(<&[i32]>::try_from_sexp(classed.as_sexp()).unwrap(), &[3, 4]);
+        assert_eq!(
+            Vec::<i32>::try_from_sexp(classed.as_sexp()).unwrap(),
+            [3, 4]
+        );
+        let scalar = eval("structure(7L, class = 'my_id')");
+        assert_eq!(i32::try_from_sexp(scalar.as_sexp()).unwrap(), 7);
+        assert_eq!(
+            Option::<i64>::try_from_sexp(scalar.as_sexp()).unwrap(),
+            Some(7)
+        );
+    });
+}
+
 #[derive(Default)]
 struct ProtectCount(i32);
 

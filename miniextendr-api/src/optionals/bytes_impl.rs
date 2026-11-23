@@ -379,7 +379,7 @@ impl IntoR for Bytes {
 
 /// Convert R raw vector (RAWSXP) to `Bytes`.
 impl TryFromSexp for Bytes {
-    type Error = crate::from_r::SexpTypeError;
+    type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
@@ -413,7 +413,7 @@ impl IntoR for BytesMut {
 
 /// Convert R raw vector (RAWSXP) to `BytesMut`.
 impl TryFromSexp for BytesMut {
-    type Error = crate::from_r::SexpTypeError;
+    type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         let vec: Vec<u8> = TryFromSexp::try_from_sexp(sexp)?;
@@ -428,7 +428,7 @@ impl TryFromSexp for BytesMut {
 
 /// Convert R to `Option<Bytes>`: NULL → None, raw vector → Some.
 impl TryFromSexp for Option<Bytes> {
-    type Error = crate::from_r::SexpTypeError;
+    type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         use crate::{SEXPTYPE, SexpExt};
@@ -449,7 +449,7 @@ impl TryFromSexp for Option<Bytes> {
 
 /// Convert R to `Option<BytesMut>`: NULL → None, raw vector → Some.
 impl TryFromSexp for Option<BytesMut> {
-    type Error = crate::from_r::SexpTypeError;
+    type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         use crate::{SEXPTYPE, SexpExt};

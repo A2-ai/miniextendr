@@ -5,11 +5,15 @@
 //!
 //! | R Type | Rust Type | Access Method |
 //! |--------|-----------|---------------|
-//! | INTSXP | `i32`, `&[i32]` | `INTEGER()` / `DATAPTR_RO` |
-//! | REALSXP | `f64`, `&[f64]` | `REAL()` / `DATAPTR_RO` |
-//! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
-//! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
-//! | CPLXSXP | `Rcomplex` | `COMPLEX()` / `DATAPTR_RO` |
+//! | INTSXP (non-factor) | `i32`, `&[i32]` | `INTEGER_ELT(x, 0)` / `DATAPTR_RO` |
+//! | REALSXP | `f64`, `&[f64]` | `REAL_ELT(x, 0)` / `DATAPTR_RO` |
+//! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL_ELT(x, 0)` / `DATAPTR_RO` |
+//! | RAWSXP | `u8`, `&[u8]` | `RAW_ELT(x, 0)` / `DATAPTR_RO` |
+//! | CPLXSXP | `Rcomplex`, `&[Rcomplex]` | `COMPLEX_ELT(x, 0)` / `DATAPTR_RO` |
+//!
+//! A scalar reads its one element through [`native_scalar_elt`], so an ALTREP
+//! that supplies elements without a data pointer converts; an integer
+//! conversion first refuses a factor ([`refuse_factor`]).
 //! | STRSXP | `&str`, `String` | `STRING_ELT()` + encoding-aware UTF-8 extraction |
 //!
 //! # Submodules
@@ -1319,6 +1323,77 @@ where
 }
 // endregion
 
+// region: Native scalars and integer factors
+
+/// Refuse a factor where a conversion reads an integer vector's values: they
+/// are level codes, which an integer conversion would hand on as numbers
+/// (#1660). Every native `INTSXP` conversion asks this after its type check:
+/// `i32`, `Option<i32>`, `&[i32]` / `&mut [i32]` and the containers read
+/// through them (`Vec<i32>`, sets, boxed slices), `Vec<Option<i32>>`,
+/// `RArray<i32>`, and the numeric coercions of an integer input. R code gets
+/// the codes with `as.integer(f)`; the `AsNumeric` markers read the labels.
+///
+/// Only a classed value can be a factor. An S3 class held in an ordinary
+/// character vector is read in place. For an S4 object, or a class attribute
+/// that is itself ALTREP, `inherits()` can run R code, so the check goes
+/// through [`call_r_callback`](crate::unwind_protect::call_r_callback): Rust
+/// values the caller holds unwind before R resumes an error it raises.
+///
+/// # Safety
+///
+/// R's main thread; `sexp` is a valid `INTSXP` that stays reachable for the
+/// call (a `.Call()` argument or a rooted value).
+pub(crate) unsafe fn refuse_factor(sexp: SEXP) -> Result<(), SexpError> {
+    if !sexp.is_object() {
+        return Ok(());
+    }
+    let is_factor = || sexp.is_factor();
+    let factor = if sexp.is_s4() || sexp.get_class().is_altrep() {
+        let _root = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
+        unsafe { crate::unwind_protect::call_r_callback(is_factor)? }
+    } else {
+        is_factor()
+    };
+    if factor {
+        Err(SexpError::InvalidValue("got a factor".to_string()))
+    } else {
+        Ok(())
+    }
+}
+
+/// Read the one element of a length-one native vector through its `*_ELT`
+/// accessor, so an ALTREP class that supplies elements but no data pointer
+/// converts too. An ALTREP's `Length` and `Elt` methods can raise an R error,
+/// so for an ALTREP the reads go through
+/// [`call_r_callback`](crate::unwind_protect::call_r_callback). An ordinary
+/// vector is read in place, without allocating.
+///
+/// # Safety
+///
+/// R's main thread; `sexp` is a valid vector of `T`'s `SEXPTYPE` that stays
+/// reachable for the call.
+pub(crate) unsafe fn native_scalar_elt<T: crate::RNativeType>(sexp: SEXP) -> Result<T, SexpError> {
+    let read = || {
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpError::from(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }));
+        }
+        Ok(T::elt(sexp, 0))
+    };
+    if sexp.is_altrep() {
+        let _root = unsafe { crate::gc_protect::OwnedProtect::new(sexp) };
+        unsafe { crate::unwind_protect::call_r_callback(read)? }
+    } else {
+        read()
+    }
+}
+
+/// A native scalar (`f64`, `u8`, `RLogical`, `Rcomplex`): a length-one vector
+/// of its `SEXPTYPE`, read with [`native_scalar_elt`]. NA passes through as
+/// the type's NA value.
 macro_rules! impl_try_from_sexp_scalar_native {
     ($t:ty, $sexptype:ident) => {
         impl TryFromSexp for $t {
@@ -1326,32 +1401,7 @@ macro_rules! impl_try_from_sexp_scalar_native {
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::$sexptype {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::$sexptype,
-                        actual,
-                    }
-                    .into());
-                }
-                let len = sexp.len();
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
-                unsafe { sexp.as_slice::<$t>() }
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| {
-                        SexpLengthError {
-                            expected: 1,
-                            actual: 0,
-                        }
-                        .into()
-                    })
+                crate::with_r_thread(|| unsafe { Self::try_from_sexp_unchecked(sexp) })
             }
 
             #[inline]
@@ -1364,68 +1414,21 @@ macro_rules! impl_try_from_sexp_scalar_native {
                     }
                     .into());
                 }
-                let len = unsafe { sexp.len_unchecked() };
-                if len != 1 {
-                    return Err(SexpLengthError {
-                        expected: 1,
-                        actual: len,
-                    }
-                    .into());
-                }
-                unsafe { sexp.as_slice_unchecked::<$t>() }
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| {
-                        SexpLengthError {
-                            expected: 1,
-                            actual: 0,
-                        }
-                        .into()
-                    })
+                unsafe { native_scalar_elt::<$t>(sexp) }
             }
         }
     };
 }
 
-// i32 has a bespoke impl that checks for NA_integer_ (i32::MIN).
-// The shared macro is NOT used for i32 — it would silently pass NA through.
+/// A length-one, non-factor integer vector ([`refuse_factor`]), read with
+/// [`native_scalar_elt`]; R's NA sentinel is an error (`Option<i32>` reads it
+/// as `None`).
 impl TryFromSexp for i32 {
     type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
-            }
-            .into());
-        }
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        let v = unsafe { sexp.as_slice::<i32>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpError::from(SexpLengthError {
-                    expected: 1,
-                    actual: 0,
-                })
-            })?;
-        if v.is_na() {
-            return Err(SexpNaError {
-                sexp_type: SEXPTYPE::INTSXP,
-            }
-            .into());
-        }
-        Ok(v)
+        crate::with_r_thread(|| unsafe { Self::try_from_sexp_unchecked(sexp) })
     }
 
     #[inline]
@@ -1438,30 +1441,15 @@ impl TryFromSexp for i32 {
             }
             .into());
         }
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        let v = unsafe { sexp.as_slice_unchecked::<i32>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpError::from(SexpLengthError {
-                    expected: 1,
-                    actual: 0,
-                })
-            })?;
-        if v.is_na() {
+        unsafe { refuse_factor(sexp)? };
+        let value = unsafe { native_scalar_elt::<i32>(sexp)? };
+        if value.is_na() {
             return Err(SexpNaError {
                 sexp_type: SEXPTYPE::INTSXP,
             }
             .into());
         }
-        Ok(v)
+        Ok(value)
     }
 }
 
@@ -1469,6 +1457,7 @@ impl_try_from_sexp_scalar_native!(f64, REALSXP);
 impl_try_from_sexp_scalar_native!(u8, RAWSXP);
 impl_try_from_sexp_scalar_native!(RLogical, LGLSXP);
 impl_try_from_sexp_scalar_native!(crate::Rcomplex, CPLXSXP);
+// endregion
 
 /// Pass-through conversion for raw SEXP values with ALTREP auto-materialization.
 ///
@@ -1544,18 +1533,26 @@ mod references;
 
 // region: Blanket implementations for slices with arbitrary lifetimes
 
-/// The one check of a native slice conversion: `sexp` has `T`'s R type.
-/// Shared with its preparation, which defers the slice (#1504).
+/// The check of a native vector conversion: `sexp` has `T`'s R type, and an
+/// integer vector is not a factor ([`refuse_factor`]). Shared with the slice
+/// conversions' preparation, which defers the slice (#1504), and with the
+/// other conversions that read a native vector's storage.
 #[inline]
-fn native_slice_type<T: crate::RNativeType>(sexp: SEXP) -> Result<(), SexpTypeError> {
+pub(crate) fn native_slice_type<T: crate::RNativeType>(sexp: SEXP) -> Result<(), SexpError> {
     let actual = sexp.type_of();
-    if actual == T::SEXP_TYPE {
-        Ok(())
-    } else {
-        Err(SexpTypeError {
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
             expected: T::SEXP_TYPE,
             actual,
-        })
+        }
+        .into());
+    }
+    if T::SEXP_TYPE == SEXPTYPE::INTSXP {
+        // Every conversion of an R value runs on the main thread, and the
+        // value is the caller's (a .Call() argument or rooted).
+        unsafe { refuse_factor(sexp) }
+    } else {
+        Ok(())
     }
 }
 
@@ -1570,7 +1567,7 @@ where
 {
     const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::slice(T::SEXP_TYPE, false));
 
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1607,7 +1604,7 @@ where
 {
     const NATIVE_BORROW: Option<NativeBorrow> = Some(NativeBorrow::slice(T::SEXP_TYPE, true));
 
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1644,7 +1641,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &[T] = TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
         Ok(Some(slice))
     }
 
@@ -1653,8 +1650,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &[T] =
-            unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         Ok(Some(slice))
     }
 
@@ -1662,7 +1658,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return prepared::Prepared::Ready(None);
         }
-        prepared::native_leaf(native_slice_type::<T>(sexp).map_err(SexpError::from))
+        prepared::native_leaf(native_slice_type::<T>(sexp))
     }
 }
 
@@ -1680,7 +1676,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &mut [T] = TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+        let slice: &mut [T] = TryFromSexp::try_from_sexp(sexp)?;
         Ok(Some(slice))
     }
 
@@ -1689,8 +1685,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &mut [T] =
-            unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
+        let slice: &mut [T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         Ok(Some(slice))
     }
 
@@ -1698,7 +1693,7 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return prepared::Prepared::Ready(None);
         }
-        prepared::native_leaf(native_slice_type::<T>(sexp).map_err(SexpError::from))
+        prepared::native_leaf(native_slice_type::<T>(sexp))
     }
 }
 // endregion
@@ -1809,7 +1804,7 @@ impl<T> TryFromSexp for VecDeque<T>
 where
     T: crate::RNativeType + Copy,
 {
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
@@ -1834,7 +1829,7 @@ impl<T> TryFromSexp for BinaryHeap<T>
 where
     T: crate::RNativeType + Copy + Ord,
 {
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
@@ -2118,7 +2113,7 @@ pub fn try_from_sexp_coerced_f64(sexp: SEXP) -> Result<f64, SexpError> {
 #[doc(hidden)]
 pub fn try_from_sexp_coerced_i32_vec(sexp: SEXP) -> Result<Vec<i32>, SexpError> {
     if sexp.type_of() == SEXPTYPE::INTSXP {
-        return Vec::<i32>::try_from_sexp(sexp).map_err(SexpError::from);
+        return Vec::<i32>::try_from_sexp(sexp);
     }
     from_numeric_vec_with(
         sexp,
@@ -2143,7 +2138,7 @@ pub fn try_from_sexp_coerced_i32_vec(sexp: SEXP) -> Result<Vec<i32>, SexpError> 
 #[doc(hidden)]
 pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> {
     if sexp.type_of() == SEXPTYPE::REALSXP {
-        return Vec::<f64>::try_from_sexp(sexp).map_err(SexpError::from);
+        return Vec::<f64>::try_from_sexp(sexp);
     }
     from_numeric_vec_with(
         sexp,
@@ -2427,7 +2422,7 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            let slice: &[i32] = unsafe { sexp.as_slice() };
+            let slice: &[i32] = TryFromSexp::try_from_sexp(sexp)?;
             collect_coerced(slice.len(), slice.iter().copied().map(map_i32))
         }
         SEXPTYPE::REALSXP => {

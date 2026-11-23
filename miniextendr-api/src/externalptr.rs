@@ -3003,7 +3003,7 @@ impl Drop for AbortIfUnwinding {
 pub fn drop_catching_panic<F: FnOnce()>(f: F) {
     let _guard = AbortIfUnwinding::new();
     let _conditions = crate::deferred_condition::Suppress::new();
-    f();
+    crate::unwind_protect::Boundary::without_inherited(f);
     // guard dropped here with panicking() unchanged → no-op
 }
 

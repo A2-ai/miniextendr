@@ -80,7 +80,7 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
@@ -180,7 +180,7 @@ where
     T: RNativeType + Copy,
     [T; N]: tinyvec::Array<Item = T>,
 {
-    type Error = SexpTypeError;
+    type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if sexp.type_of() == SEXPTYPE::NILSXP {

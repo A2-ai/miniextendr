@@ -37,14 +37,8 @@ macro_rules! impl_vec_option_try_from_sexp {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != SEXPTYPE::$sexptype {
-                    return Err(SexpTypeError {
-                        expected: SEXPTYPE::$sexptype,
-                        actual,
-                    }
-                    .into());
-                }
+                // Type, and for integers not a factor (#1660).
+                crate::from_r::native_slice_type::<$t>(sexp)?;
 
                 let len = sexp.len();
                 let ptr = unsafe { crate::sys::$dataptr(sexp) };

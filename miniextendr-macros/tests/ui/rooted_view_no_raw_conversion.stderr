@@ -26,11 +26,11 @@ error[E0599]: no variant, associated function, or constant named `try_from_sexp`
 12 |     RCow::try_from_sexp(sexp).unwrap()
    |           ^^^^^^^^^^^^^ variant, associated function, or constant not found in `RCow<'_, _>`
    |
-note: if you're trying to build a new `RCow<'_, _>`, consider using `RCow::<'a, T>::try_from_root` which returns `Result<RCow<'_, _>, SexpTypeError>`
+note: if you're trying to build a new `RCow<'_, _>`, consider using `RCow::<'a, T>::try_from_root` which returns `Result<RCow<'_, _>, SexpError>`
   --> $WORKSPACE/miniextendr-api/src/rcow.rs
    |
-   |     pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpTypeError> {
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     pub fn try_from_root(root: crate::Root<'a>) -> Result<Self, SexpError> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 help: there is an associated function `try_from` with a similar name
    |
 12 -     RCow::try_from_sexp(sexp).unwrap()
