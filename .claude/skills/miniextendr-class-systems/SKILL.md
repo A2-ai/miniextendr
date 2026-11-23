@@ -362,10 +362,19 @@ five generators previously hand-rolled independently, unified by #1141 / #1219:
 - **S7**: an S7 generic named `s7_trait_<Trait>_<method>` (via `S7::new_generic`),
   plus an optional per-method fast-path shortcut `Type_method(obj)` that bypasses
   `S7::S7_dispatch()` (opt out with `#[miniextendr(s7(no_shortcut))]`). Static
-  methods and consts are assigned into a local env attached to the class via
-  `attr()`, and are called as `attr(Type, "Trait")$name()`, which is also their
-  help alias. `Type$Trait$name` does not work: S7's `$` method errors on the
-  class object ("Can't get S7 properties with `$`").
+  methods and consts are assigned into a local env (`.Type__Trait`) attached to
+  the class via `attr()`, and are called as `attr(Type, "Trait")$name()`, which
+  is also their help alias. `Type$Trait$name` does not work: S7's `$` method
+  errors on the class object ("Can't get S7 properties with `$`").
+
+`Type` in these names is the class's R name: a trait impl is a separate
+expansion that cannot see the type's `class = "..."`, so it names the class
+through the write-time placeholders resolved from `MX_CLASS_NAMES` (#2266 for
+class references; #2285 for the names built from the class, the S4 flat
+statics, the S7 shortcuts and the S7 local env, via
+`method_context::class_name`). The `@rdname` page keeps the Rust name (#2144).
+A built name that the class's own impl block also binds is refused when the
+wrappers are written.
 
 `-> Self` / `Result<Self, E>` / `Option<Self>` trait methods re-wrap their return
 into a classed object of the implementing type on every system (via the shared
@@ -408,7 +417,9 @@ The generated class is named after the Rust type by default. Override with
 `#[miniextendr(r6, class = "OverrideName")]`. Other expansions that name the
 class (`WrapAs*` returns, trait impls, `inherit =` / `parent =`) emit a
 `.__MX_CLASS_REF_*` placeholder that the wrappers writer resolves to the
-override through `MX_CLASS_NAMES` (#2265, #2266).
+override through `MX_CLASS_NAMES` (#2265, #2266), and so do the names a trait
+impl builds from the class (`Override_Trait_member()`, `Override_method()`,
+#2285).
 
 ### How do I implement a trait for multiple class systems?
 
