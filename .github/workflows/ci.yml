@@ -2012,7 +2012,8 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: minirextendr
-          extra-packages: any::rcmdcheck, any::testthat, any::devtools
+          # svines: the include-path and blocklist tests in test-use-native.R.
+          extra-packages: any::rcmdcheck, any::testthat, any::devtools, any::svines
           needs: check
           cache: false
 
