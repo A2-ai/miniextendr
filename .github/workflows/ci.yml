@@ -5,7 +5,7 @@ on:
     # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
     # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
     # rounds in r-tests), `gc-stress` (r-stress-tests), `windows`
-    # (r-check-windows), and the R version aliases `oldrel`, `devel` and
+    # (r-check-windows), `msrv` (msrv), and the R version aliases `oldrel`, `devel` and
     # `next` (an extra r-check-linux leg; see the `changes` job). The default
     # activity types (opened/synchronize/reopened) cover everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
@@ -710,15 +710,19 @@ jobs:
   # ===========================================================================
   # MSRV: the workspace still builds on its declared rust-version
   # ===========================================================================
+  # Opt-in: `v*` release tags, `workflow_dispatch`, or the `msrv` PR label.
+  # The floor moves rarely, so a check on every PR isn't worth its runner
+  # time. No sccache or rust-cache either: an older rustc shares no
+  # artifacts with the other jobs, and a job this rare would only write
+  # cache entries nobody reads back.
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'msrv')
 
     steps:
       - uses: actions/checkout@v7
@@ -738,25 +742,11 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
 
-      - uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: msrv
-          cache-on-failure: true
-
       # rust-toolchain.toml floats on stable; RUSTUP_TOOLCHAIN overrides it.
       - name: Check on the declared rust-version
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
         run: cargo check --workspace --all-targets --locked
-
-      - name: Print the sccache server log
-        if: always()
-        uses: ./.github/actions/sccache-log
 
   # ===========================================================================
   # Rust tests (cargo test) — runs independently of R CMD check
