@@ -739,6 +739,8 @@ jobs:
           toolchain: ${{ steps.msrv.outputs.version }}
 
       - uses: mozilla-actions/sccache-action@v0.0.10
+        with:
+          version: "v0.19.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2

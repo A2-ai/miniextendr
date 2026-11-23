@@ -619,14 +619,14 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
 
 /// Check length constraint.
 fn check_length(name: &str, expected: Option<usize>, actual: isize) -> Result<(), TypedListError> {
-    if let Some(exp) = expected {
-        if actual != exp as isize {
-            return Err(TypedListError::WrongLen {
-                name: name.to_string(),
-                expected: exp,
-                actual,
-            });
-        }
+    if let Some(exp) = expected
+        && actual != exp as isize
+    {
+        return Err(TypedListError::WrongLen {
+            name: name.to_string(),
+            expected: exp,
+            actual,
+        });
     }
     Ok(())
 }
