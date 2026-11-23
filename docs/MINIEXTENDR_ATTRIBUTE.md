@@ -1502,19 +1502,19 @@ Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `doubl
 #[miniextendr(r6)]
 impl MyClass {
     // Private method (R6 convention: prefixed with .)
-    #[miniextendr(private)]
+    #[miniextendr(r6(private))]
     pub fn internal_calc(&self) -> f64 { /* ... */ }
 
     // Active binding getter
-    #[miniextendr(active, prop = "count")]
+    #[miniextendr(r6(active, prop = "count"))]
     pub fn get_count(&self) -> i32 { self.count }
 
     // Active binding setter
-    #[miniextendr(setter, prop = "count")]
+    #[miniextendr(r6(setter, prop = "count"))]
     pub fn set_count(&mut self, value: i32) { self.count = value; }
 
     // Destructor
-    #[miniextendr(finalize)]
+    #[miniextendr(r6(finalize))]
     pub fn cleanup(&mut self) { /* ... */ }
 }
 ```

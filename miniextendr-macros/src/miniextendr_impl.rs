@@ -1886,7 +1886,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, wrap, serialize, serde_error, generic, receiver, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_entry, r_post_checks, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -2242,7 +2242,7 @@ impl ParsedMethod {
                     }
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, formal, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, wrap, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, convert, formal, dots = typed_list!(...) | empty | forward(allow = [...]) | data"
                     ));
                 }
                 Ok(())

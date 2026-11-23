@@ -93,13 +93,19 @@ impl Calculator {
 
 ### Per-Function Override
 
-```rust
-#[miniextendr(strict)]               // impl-level: strict
-impl Calculator {
-    pub fn normal_method(&self, x: i64) -> i64 { x }     // strict (inherited)
+On a function, `no_strict` overrides the project-wide default (below). A method takes no
+`strict` / `no_strict` of its own; it follows its impl block. A type can have several impl
+blocks, and they may differ in `strict`, so the relaxed methods go in a second block:
 
-    #[miniextendr(no_strict)]
-    pub fn relaxed_method(&self, x: i64) -> i64 { x }    // not strict (overridden)
+```rust
+#[miniextendr(s3, strict)]
+impl Calculator {
+    pub fn normal_method(&self, x: i64) -> i64 { x }     // strict
+}
+
+#[miniextendr(s3, no_strict)]
+impl Calculator {
+    pub fn relaxed_method(&self, x: i64) -> i64 { x }    // not strict
 }
 ```
 
