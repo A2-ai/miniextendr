@@ -561,10 +561,11 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
 installs the package's Imports from `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
-is what proves it *loads* in a real webR runtime. On main-push and
-`workflow_dispatch` runs (not per-PR, to keep PR wall time down) tier 3 also
-runs the informational testthat pass (#1255, `SMOKE_TESTTHAT=1`, never
-gating on test failures; see "Building locally" above).
+is what proves it *loads* in a real webR runtime. On `workflow_dispatch`
+runs only, tier 3 also runs the informational testthat pass (#1255,
+`SMOKE_TESTTHAT=1`, never gating on test failures; see "Building locally"
+above). PRs and pushes to `main` skip it: in CI the whole suite runs past
+the pass's 20-minute budget without printing counts (#2377).
 
 The same job also runs a **scaffold leg** (#1259): it installs minirextendr
 from the checkout, scaffolds a fresh end-user package with
