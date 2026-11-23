@@ -3062,6 +3062,14 @@ pub struct ExternalSlice<T: 'static> {
 
 impl<T: 'static> ExternalSlice<T> {
     /// Create an external slice from a `Vec`, preserving its allocation.
+    #[rustversion::since(1.99)]
+    pub fn new(slice: Vec<T>) -> Self {
+        let (ptr, len, capacity) = slice.into_parts();
+        Self { ptr, len, capacity }
+    }
+
+    /// Create an external slice from a `Vec`, preserving its allocation.
+    #[rustversion::before(1.99)]
     pub fn new(slice: Vec<T>) -> Self {
         let mut vec = ManuallyDrop::new(slice);
         Self {

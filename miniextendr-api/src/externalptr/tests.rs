@@ -1,4 +1,22 @@
-use super::drop_catching_panic;
+use super::{ExternalSlice, drop_catching_panic};
+
+#[test]
+fn external_slice_preserves_vec_allocation_and_drops_elements_once() {
+    use std::rc::Rc;
+
+    let value = Rc::new(42);
+    let mut vec = Vec::with_capacity(8);
+    vec.push(value.clone());
+    let (ptr, capacity) = (vec.as_ptr(), vec.capacity());
+
+    let slice = ExternalSlice::new(vec);
+    assert_eq!(slice.as_slice().as_ptr(), ptr);
+    assert_eq!(slice.capacity(), capacity);
+    assert_eq!(slice.as_slice().len(), 1);
+    assert_eq!(Rc::strong_count(&value), 2);
+    drop(slice);
+    assert_eq!(Rc::strong_count(&value), 1);
+}
 
 #[test]
 fn drop_catching_panic_does_not_propagate_panic() {
