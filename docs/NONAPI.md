@@ -220,8 +220,10 @@ R 4.6 lists these as experimental API (`tools:::funAPI()` gives `eapi`). R
 4.4 and 4.5 export the same symbols and ship the same header, but
 `R CMD check` notes them there as non-API calls. Built against R < 4.6, the
 `connections` feature reaches a connection's state and bytes through R
-functions instead (`CONNECTIONS.md`, "R versions before 4.6"), and only
-`R_new_custom_connection`, which has no R-level alternative, remains.
+functions instead (`CONNECTIONS.md`, "R versions before 4.6").
+`R_new_custom_connection` has no R-level alternative, so there it is declared
+only with the `nonapi` feature; without it, building a custom connection is an
+R error.
 
 ### Deprecated/removed
 

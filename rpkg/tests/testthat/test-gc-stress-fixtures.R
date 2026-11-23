@@ -447,6 +447,10 @@ test_that("every no-arg gc_stress_* fixture survives gctorture", {
   ns <- getNamespace("miniextendr")
   fixtures <- ls(ns, pattern = "^gc_stress_")
   fixtures <- Filter(function(f) length(formals(get(f, ns))) == 0L, fixtures)
+  # Builds a custom connection: R >= 4.6 or nonapi only (helper-connections.R).
+  if (getRversion() < "4.6.0" && !miniextendr_has_feature("nonapi")) {
+    fixtures <- setdiff(fixtures, "gc_stress_deferred_connection_open")
+  }
   # CI's r-stress-tests job splits this sweep across parallel shards via
   # MINIEXTENDR_STRESS_SHARD=k/n (helper-gc-stress.R); locally the env var
   # is unset and the full fixture list runs.

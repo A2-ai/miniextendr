@@ -374,6 +374,9 @@ define_io_adapter! {
 /// Automatically selects the appropriate adapter based on trait bounds
 /// and configures connection capabilities accordingly.
 ///
+/// The `build_*` methods go through [`RCustomConnection::build`] and panic
+/// where it does: built against R < 4.6 without the `nonapi` feature.
+///
 /// # Example
 ///
 /// ```ignore

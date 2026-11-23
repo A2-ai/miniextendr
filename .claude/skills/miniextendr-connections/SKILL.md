@@ -24,7 +24,7 @@ R's `R_ext/Connections.h` states: "we do not expect future connection APIs to be
 
 The `connections` feature in miniextendr is gated for this reason. Before using it in production, verify that `R_CONNECTIONS_VERSION` matches `EXPECTED_CONNECTIONS_VERSION` (both are constants from `connection.rs`). The `check_connections_version()` function asserts this at runtime; call it during `R_init_<pkg>` when the feature is enabled.
 
-The API requires R >= 4.3.0. Use `check_connections_runtime()` for a runtime probe.
+The API requires R >= 4.3.0. Use `check_connections_runtime()` for a runtime probe. Building a custom connection (`RCustomConnection::build`, the `RConnectionIo` `build_*` methods) also needs a build against R >= 4.6, or the `nonapi` feature on older R: `R_new_custom_connection` is non-API before R 4.6, so without `nonapi` it is not declared there and `build` panics.
 
 ### Connections from `RCustomConnection::build` are returned open
 
@@ -77,26 +77,26 @@ let conn = RCustomConnection::new()
 
 `.build(impl)` boxes the impl, registers the trampolines, and returns a SEXP. The resulting SEXP is an R connection object of class `c("myconn", "connection")`.
 
-### `catch_connection_panic` trampolines
+### Panic-safe trampolines (`connection_callback`, `catch_connection_panic`)
 
-Every connection callback is wrapped in `catch_connection_panic`. This uses `guarded_ffi_call_with_fallback` from `miniextendr-api/src/ffi_guard.rs`:
+No callback lets a panic unwind into R's C frames. The callbacks fall into two groups, both guarded through `miniextendr-api/src/ffi_guard.rs`:
 
-- On panic: fires `PanicSource::Connection` telemetry and returns the fallback value (e.g., `0` for read/write, `Rboolean::FALSE` for open, no-op for close/flush).
-- Does **not** raise an R error from inside the trampoline — connection callbacks cannot safely longjmp. The error is absorbed and reported via telemetry only.
+- `read`, `write`, `fgetc`, `seek`, `truncate` and `flush` run in `connection_callback`, which is `guarded_ffi_call` with `GuardMode::RUnwind`. A panic or an `error!` condition becomes an R error after Rust destructors run. It does not become EOF or a short write.
+- `open`, `close` and `destroy` run in `catch_connection_panic`, which is `guarded_ffi_call_with_fallback`. A panic there returns a fallback instead of raising: `FALSE` from `open` (the builder then tears the connection down), and a status of `-1` from `close`, which R reports with its own warning, "Problem closing connection". `close` and `destroy` can run during garbage collection, so they raise nothing themselves.
 
-This means panics inside connection callbacks are silent from R's perspective (the operation appears to have failed with 0 bytes / `FALSE`). Log or record errors in your impl struct if you need to surface them.
+`PanicSource::Connection` telemetry fires in both groups.
 
 ## How it works
 
 The builder generates one `extern "C-unwind"` trampoline per connection callback method. Each trampoline:
 
 1. Retrieves `&mut T` from the Rconn's private data pointer.
-2. Calls the corresponding `RConnectionImpl` method inside `catch_connection_panic(fallback, || …)`.
-3. Returns either the method's return value or the fallback if the method panicked.
+2. Calls the corresponding `RConnectionImpl` method inside its guard: `connection_callback(|| …)` for the I/O callbacks, `catch_connection_panic(fallback, || …)` for `open`, `close` and `destroy`.
+3. Returns the method's return value. If the method panicked, an I/O callback raises an R error and the other three return their fallback.
 
-R calls these trampolines through its internal connection dispatch table. The implementation pattern mirrors `simple_trampoline!` macros in `miniextendr-api/src/connection.rs` (lines 659–680).
+R calls these trampolines through its internal connection dispatch table. The `simple_trampoline!` macro in `miniextendr-api/src/connection.rs` generates the `fgetc`, `seek`, `truncate` and `flush` ones.
 
-The connection's Rust state is heap-allocated and stored in `Rconn`'s private data pointer. The `close` callback is responsible for freeing it (the builder generates a `close` trampoline that drops the boxed impl).
+The connection's Rust state is heap-allocated and stored in `Rconn`'s private data pointer. The `destroy` trampoline frees it: it calls `destroy()` and then drops the boxed impl, even if `destroy()` panics. `close` only calls `close()`.
 
 ## Decision trees
 
@@ -109,18 +109,23 @@ The connection's Rust state is heap-allocated and stored in `Rconn`'s private da
 
 ### Where do panics in connection callbacks go?
 
-Panics inside `RConnectionImpl` methods are caught by `catch_connection_panic`. They do NOT propagate to R as errors. The trampoline returns the fallback value (the operation silently fails). Panic telemetry fires, which logs via `PanicSource::Connection`. To surface errors to the R caller, store the error in your impl struct and check it after the connection operation from R.
+- In `read`, `write`, `fgetc`, `seek`, `truncate` or `flush`: an R error at the R call that used the connection (`readLines(con)`, `writeBin(x, con)`, ...), raised after Rust destructors run. To fail an operation, panic or use `error!`; the `std::io` adapters raise a failed `io::Result` as the classed condition `miniextendr_connection_io_error`.
+- In `open`: the callback returns `FALSE` and the builder tears the connection down.
+- In `close`: `close(con)` warns "Problem closing connection" and returns `-1L`.
+- In `destroy`: caught, and the Rust state is still dropped.
+
+Panic telemetry (`PanicSource::Connection`) fires in every case.
 
 ## Key files
 
-- `miniextendr-api/src/connection.rs` — `RConnectionImpl` trait, `RCustomConnection` builder, `catch_connection_panic`, `check_connections_version`, `check_connections_runtime`, trampolines.
-- `miniextendr-api/src/ffi_guard.rs` — `guarded_ffi_call_with_fallback` used by `catch_connection_panic`.
+- `miniextendr-api/src/connection.rs` — `RConnectionImpl` trait, `RCustomConnection` builder, `connection_callback`, `catch_connection_panic`, `check_connections_version`, `check_connections_runtime`, trampolines.
+- `miniextendr-api/src/ffi_guard.rs` — `guarded_ffi_call` (`GuardMode::RUnwind`) used by `connection_callback`, and `guarded_ffi_call_with_fallback` used by `catch_connection_panic`.
 
 ## Common pitfalls
 
 - **Underlying API starts CLOSED with `text = TRUE`**: `R_new_custom_connection` returns a closed connection with `text = TRUE` regardless of mode. `RCustomConnection::build` opens it for you and infers `text` from the mode string before returning, so this is invisible to callers — but if you ever bypass the builder and call `R_new_custom_connection` directly, you need to handle both yourself.
 
-- **Panics are silently absorbed**: unlike `#[miniextendr]` functions (which use the tagged-SEXP error transport to surface Rust panics as R errors), connection trampolines use the fallback-value pattern. A panic in `read()` returns `0` bytes — the R caller sees a short read, not an error. Design your `RConnectionImpl` to return error signals through return values, not panics.
+- **A panic is an R error in the I/O callbacks and a fallback in the other three**: a panic in `read`, `write`, `fgetc`, `seek`, `truncate` or `flush` becomes an R error, not EOF or a short write. Only `open` (returns `FALSE`), `close` (status `-1`, R warns) and `destroy` (caught) do not raise. `warning!()` and `message!()` inside a callback become errors too; queue them with `defer_warning!()` / `defer_message!()`.
 
 - **ABI version mismatch**: if the connections API changes in a future R version, `check_connections_version()` will panic at package load time. This is intentional — operating with a mismatched ABI is unsafe. Do not suppress this check.
 

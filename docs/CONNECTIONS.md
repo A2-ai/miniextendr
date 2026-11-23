@@ -340,8 +340,12 @@ instead (#1905):
   exists only on R >= 4.6. `read_connection` / `write_connection` take the
   connection SEXP and work on every R.
 - **Custom connections** (`RCustomConnection`, `RConnectionIo`) still need
-  `R_new_custom_connection`, which has no R-level alternative, so a package
-  that uses them carries that one NOTE on R < 4.6.
+  `R_new_custom_connection`, which has no R-level alternative. On R < 4.6 it
+  is declared only with the `nonapi` feature. Without `nonapi`, the types
+  compile as on any R, but `RCustomConnection::build` and the `RConnectionIo`
+  `build_*` methods panic, which a `#[miniextendr]` function raises as an R
+  error; the package has no non-API call. With `nonapi`, they work and
+  `R CMD check` notes the call.
 
 miniextendr mitigates this with **two layers of defense**:
 
@@ -375,7 +379,7 @@ unsafe {
 }
 ```
 
-This calls `R.Version()` at runtime and verifies R >= 4.3.0 (when `R_CONNECTIONS_VERSION = 1` was stabilized). Use this in package initialization or before creating your first connection to fail early with a clear error message.
+This calls `R.Version()` at runtime and verifies R >= 4.3.0 (when `R_CONNECTIONS_VERSION = 1` was stabilized). Use this in package initialization or before creating your first connection to fail early with a clear error message. It checks the running R only: building a custom connection also needs a build against R >= 4.6, or the `nonapi` feature (see "R versions before 4.6" above).
 
 The `Rconn` struct layout (`#[repr(C)]`) mirrors R's `struct Rconn` exactly. Any field reordering or resizing in a future R version would cause memory corruption. The version checks are the first line of defense.
 

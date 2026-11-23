@@ -9,6 +9,7 @@ skip_if_missing_feature("connections")
 # =============================================================================
 
 test_that("string_input_connection reads multi-line content", {
+  skip_if_no_custom_connections()
   con <- string_input_connection("line1\nline2\nline3")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -17,6 +18,7 @@ test_that("string_input_connection reads multi-line content", {
 })
 
 test_that("string_input_connection reads single line", {
+  skip_if_no_custom_connections()
   con <- string_input_connection("hello")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -25,6 +27,7 @@ test_that("string_input_connection reads single line", {
 })
 
 test_that("string_input_connection reads empty string", {
+  skip_if_no_custom_connections()
   con <- string_input_connection("")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -36,6 +39,7 @@ test_that("string_input_connection reads empty string", {
 # =============================================================================
 
 test_that("counter_connection generates sequential integers", {
+  skip_if_no_custom_connections()
   con <- counter_connection(1L, 5L)
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -43,6 +47,7 @@ test_that("counter_connection generates sequential integers", {
 })
 
 test_that("counter_connection with single value", {
+  skip_if_no_custom_connections()
   con <- counter_connection(42L, 42L)
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -54,6 +59,7 @@ test_that("counter_connection with single value", {
 # =============================================================================
 
 test_that("memory_connection write then read roundtrip", {
+  skip_if_no_custom_connections()
   con <- memory_connection()
   on.exit(close(con))
   writeLines("Hello, World!", con)
@@ -63,6 +69,7 @@ test_that("memory_connection write then read roundtrip", {
 })
 
 test_that("memory_connection write multiple lines", {
+  skip_if_no_custom_connections()
   con <- memory_connection()
   on.exit(close(con))
   writeLines(c("foo", "bar", "baz"), con)
@@ -72,6 +79,7 @@ test_that("memory_connection write multiple lines", {
 })
 
 test_that("memory_connection preserves long formatted writes", {
+  skip_if_no_custom_connections()
   con <- memory_connection()
   on.exit(close(con))
   expected <- strrep("x", 12000L)
@@ -87,6 +95,7 @@ test_that("memory_connection preserves long formatted writes", {
 # =============================================================================
 
 test_that("uppercase_connection transforms to uppercase", {
+  skip_if_no_custom_connections()
   con <- uppercase_connection("hello world")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -94,6 +103,7 @@ test_that("uppercase_connection transforms to uppercase", {
 })
 
 test_that("uppercase_connection preserves non-alpha characters", {
+  skip_if_no_custom_connections()
   con <- uppercase_connection("abc 123 !@#")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -105,6 +115,7 @@ test_that("uppercase_connection preserves non-alpha characters", {
 # =============================================================================
 
 test_that("rot13_connection encodes text", {
+  skip_if_no_custom_connections()
   con <- rot13_connection("hello")
   on.exit(close(con))
   lines <- readLines(con, warn = FALSE)
@@ -112,6 +123,7 @@ test_that("rot13_connection encodes text", {
 })
 
 test_that("rot13 double-application returns original", {
+  skip_if_no_custom_connections()
   # ROT13 is its own inverse
   con1 <- rot13_connection("hello world")
   on.exit(close(con1), add = TRUE)
@@ -129,6 +141,7 @@ test_that("rot13 double-application returns original", {
 # =============================================================================
 
 test_that("empty_cursor_connection binary roundtrip", {
+  skip_if_no_custom_connections()
   con <- empty_cursor_connection()
   on.exit(close(con))
   data <- as.raw(1:10)
@@ -139,6 +152,7 @@ test_that("empty_cursor_connection binary roundtrip", {
 })
 
 test_that("cursor_connection reads pre-filled data", {
+  skip_if_no_custom_connections()
   data <- charToRaw("Hello")
   con <- cursor_connection(data)
   on.exit(close(con))
@@ -151,6 +165,7 @@ test_that("cursor_connection reads pre-filled data", {
 # =============================================================================
 
 test_that("a failing read, write, flush or seek raises a classed condition", {
+  skip_if_no_custom_connections()
   con <- failing_io_connection()
   on.exit(expect_warning(close(con), "Problem closing connection"))
   catch <- function(expr) {
@@ -173,6 +188,7 @@ test_that("a failing read, write, flush or seek raises a classed condition", {
 })
 
 test_that("seek() returns the position before the move, as rawConnection's does", {
+  skip_if_no_custom_connections()
   x <- cursor_connection(charToRaw("abcde"))
   y <- rawConnection(charToRaw("abcde"), "rb")
   on.exit({
@@ -196,6 +212,7 @@ test_that("seek() returns the position before the move, as rawConnection's does"
 })
 
 test_that("seek() before the start stays put, as file()'s does", {
+  skip_if_no_custom_connections()
   positions <- function(con) c(seek(con, 3L), seek(con, -1L), seek(con))
   x <- cursor_connection(charToRaw("abcde"))
   on.exit(close(x))
@@ -214,6 +231,7 @@ test_that("seek() before the start stays put, as file()'s does", {
 })
 
 test_that("seek() and truncate() refuse a connection that supports neither", {
+  skip_if_no_custom_connections()
   con <- counter_connection(1L, 3L)
   on.exit(close(con))
   expect_error(seek(con), "'seek' not enabled for this connection", fixed = TRUE)
@@ -227,10 +245,12 @@ test_that("seek() and truncate() refuse a connection that supports neither", {
 })
 
 test_that("close() flushes a buffered writer before dropping it (#2043)", {
+  skip_if_no_custom_connections()
   expect_identical(miniextendr:::buffered_connection_close_bytes(), charToRaw("buffered"))
 })
 
 test_that("a failed final flush warns and returns a negative close status (#2043)", {
+  skip_if_no_custom_connections()
   con <- failing_io_connection()
   expect_warning(status <- close(con), "Problem closing connection")
   expect_identical(status, -1L)
@@ -411,6 +431,7 @@ test_that("a connection passed in as RNullConnection stays open after the call (
 })
 
 test_that("a refused write through a borrowed RNullConnection is an error", {
+  skip_if_no_custom_connections()
   con <- failing_io_connection()
   on.exit(suppressWarnings(close(con)))
   expect_error(rust_null_conn_write(con, "x"), "write refused", fixed = TRUE)

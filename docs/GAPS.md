@@ -385,12 +385,9 @@ check_connections_version();  // Expects R_CONNECTIONS_VERSION == 1
 **Warning from R source:**
 > "We do not expect future connection APIs to be backward-compatible so if you use this, you *must* check the version and proceed only if it matches what you expect."
 
-**Recommended pattern:** Gate connection usage behind feature detection and always check the ABI version:
-```rust
-if check_connections_version().is_ok() {
-    // Safe to use connection API
-}
-```
+**Recommended pattern:** Gate connection usage behind feature detection and always check the ABI version. `check_connections_version()` returns nothing: it panics on a mismatch. `RCustomConnection::build` calls it for you; call it in `R_init_<pkg>` as well to fail at load.
+
+**R versions before 4.6:** building a custom connection needs the `nonapi` feature there, because `R_new_custom_connection` is not part of R's API before R 4.6. Without it, `RCustomConnection::build` panics. See [CONNECTIONS.md](CONNECTIONS.md), "R versions before 4.6".
 
 See [FEATURES.md](FEATURES.md#connections) for the `connections` feature flag.
 

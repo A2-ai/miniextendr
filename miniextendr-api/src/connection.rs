@@ -28,6 +28,11 @@
 //! Always verify [`sys::R_CONNECTIONS_VERSION`](crate::sys::R_CONNECTIONS_VERSION)
 //! matches the expected version before using these APIs (see [`check_connections_version`]).
 //!
+//! Creating a custom connection ([`RCustomConnection::build`] and the
+//! [`RConnectionIo`] builders) needs R >= 4.6, or the `nonapi` feature on older R,
+//! because `R_new_custom_connection` is not part of R's API before R 4.6; otherwise
+//! `build` panics. Reading and writing an existing connection works on every R.
+//!
 //! # Usage
 //!
 //! ```ignore
@@ -106,7 +111,9 @@ pub fn check_connections_version() {
 /// when the API was stabilized with `R_CONNECTIONS_VERSION = 1`.
 ///
 /// This is a **runtime** check using `R.Version()`, complementing the
-/// compile-time [`check_connections_version`] assertion.
+/// compile-time [`check_connections_version`] assertion. It checks the running
+/// R only: [`RCustomConnection::build`] also needs a build against R >= 4.6, or
+/// the `nonapi` feature.
 ///
 /// # Safety
 ///
@@ -772,6 +779,9 @@ simple_trampoline!(flush_trampoline, c_int => flush());
 
 /// Builder for creating custom R connections.
 ///
+/// [`build`](Self::build) needs R >= 4.6, or the `nonapi` feature on older R
+/// (see its `# Panics`). The type itself compiles on every R.
+///
 /// # Example
 ///
 /// ```ignore
@@ -931,6 +941,11 @@ impl RCustomConnection {
     ///
     /// Panics if `R_CONNECTIONS_VERSION` doesn't match the expected version.
     ///
+    /// Also panics (and drops `state`) when built against R < 4.6 without the
+    /// `nonapi` feature: `R_new_custom_connection` is not part of R's API
+    /// before R 4.6, so that build does not reference it. Called from a
+    /// `#[miniextendr]` function, the panic is an R error.
+    ///
     /// # Safety
     ///
     /// This function is safe to call, but the returned SEXP must be properly
@@ -938,6 +953,14 @@ impl RCustomConnection {
     pub fn build<T: RConnectionImpl>(self, state: T) -> SEXP {
         // Verify API version
         check_connections_version();
+
+        if cfg!(not(any(r_4_6, feature = "nonapi"))) {
+            panic!(
+                "custom connections need R >= 4.6, or the `nonapi` feature of \
+                 miniextendr-api on older R: `R_new_custom_connection` is not part \
+                 of R's API before R 4.6"
+            );
+        }
 
         // Infer text vs binary from the mode string when the caller did not
         // explicitly set `text`. R's `R_new_custom_connection` defaults
@@ -973,12 +996,19 @@ impl RCustomConnection {
             // free the temporary before R reads it (silent UAF, not caught
             // by basic tests because R has already copied the bytes by then).
             let mut conn_ptr: Rconnection = std::ptr::null_mut();
+            #[cfg(any(r_4_6, feature = "nonapi"))]
             let sexp = crate::sys::R_new_custom_connection(
                 self.description.as_ptr(),
                 self.mode.as_ptr(),
                 self.class_name.as_ptr(),
                 &mut conn_ptr,
             );
+            // Not reached: `build` panicked above. Uses what the call would.
+            #[cfg(not(any(r_4_6, feature = "nonapi")))]
+            let sexp = {
+                let _ = (&self.description, &self.class_name, &mut conn_ptr);
+                SEXP::nil()
+            };
             // open() can defer a condition; signalling may allocate or run GC
             // before this connection is returned to an R stack frame.
             let _connection_root = crate::OwnedProtect::new(sexp);

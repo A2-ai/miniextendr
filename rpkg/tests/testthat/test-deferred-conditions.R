@@ -286,6 +286,7 @@ test_that("finalizers neither signal nor strand their deferred conditions", {
 
 test_that("connection writes flush locally and finalization suppresses queues", {
   skip_if_not(exists("deferred_guard_connection", mode = "function"))
+  skip_if_no_custom_connections()
   opened <- collect_conditions(deferred_guard_connection())
   expect_length(opened$conditions, 1L)
   expect_s3_class(opened$conditions[[1L]], "guard_connection_open")
@@ -320,6 +321,7 @@ test_that("deferred ALTREP SEXP results survive gctorture and handler allocation
 
 test_that("connection open signalling keeps the new connection alive under GC", {
   skip_if_not(exists("deferred_guard_connection", mode = "function"))
+  skip_if_no_custom_connections()
   skip_gc_stress_if_disabled()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)

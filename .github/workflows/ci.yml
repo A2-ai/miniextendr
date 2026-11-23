@@ -1000,9 +1000,7 @@ jobs:
         with:
           working-directory: rpkg
           args: 'c("--no-manual", "--as-cran")'
-          # 4.4 and oldrel(/N) run R < 4.6, which NOTEs a non-API call (docs/NONAPI.md, "R_ext/Connections.h
-          # non-API (before R 4.6)"). Drop this exemption once that NOTE is resolved or R 4.5 leaves the matrix.
-          error-on: ${{ (matrix.r == '4.4' || startsWith(matrix.r, 'oldrel')) && '"warning"' || '"note"' }}
+          error-on: '"note"'
           check-dir: '"check"'
 
       - name: Print failed tests
