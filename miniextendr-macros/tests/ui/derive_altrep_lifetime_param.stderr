@@ -1,0 +1,11 @@
+error: ALTREP derives take no lifetime parameters: R keeps the struct in an external pointer, which needs `'static` data; own the elements (`Vec<T>`, `Box<[T]>`, `[T; N]`) or borrow `'static` ones (`&'static [T]`)
+ --> tests/ui/derive_altrep_lifetime_param.rs:7:13
+  |
+7 | struct View<'a>(&'a [i32]);
+  |             ^^
+
+error: ALTREP derives take no lifetime parameters: R keeps the struct in an external pointer, which needs `'static` data; own the elements (`Vec<T>`, `Box<[T]>`, `[T; N]`) or borrow `'static` ones (`&'static [T]`)
+  --> tests/ui/derive_altrep_lifetime_param.rs:10:14
+   |
+10 | struct Reals<'a> {
+   |              ^^

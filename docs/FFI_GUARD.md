@@ -139,15 +139,15 @@ fn guarded_altrep_call<T: Altrep, F, R>(f: F) -> R {
 Set the guard per ALTREP type via the derive attribute:
 
 ```rust
-#[derive(Altrep)]
-#[altrep(rust_unwind)]  // default: catch_unwind only
+#[derive(AltrepInteger)]
+#[altrep(rust_unwind)]  // catch_unwind only
 struct MyVec { ... }
 
-#[derive(Altrep)]
-#[altrep(r_unwind)]     // R_UnwindProtect (for callbacks that call R APIs)
+#[derive(AltrepInteger)]
+#[altrep(r_unwind)]     // default: R_UnwindProtect (for callbacks that call R APIs)
 struct MyLazyVec { ... }
 
-#[derive(Altrep)]
+#[derive(AltrepInteger)]
 #[altrep(unsafe)]       // no guard (trivial accessors that cannot panic)
 struct MyTrivialVec { ... }
 ```

@@ -1,0 +1,5 @@
+error: `serialize` is not available on a generic struct: each instantiation's ALTREP class is registered when it is first converted, so a fresh R session reading the save may not have it yet; without `serialize` R saves the plain vector (#2364)
+ --> tests/ui/derive_altrep_serialize_generic.rs:7:10
+  |
+7 | #[altrep(serialize)]
+  |          ^^^^^^^^^

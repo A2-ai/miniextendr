@@ -72,7 +72,7 @@ Typed derives generate the full ALTREP class from field attributes. The manual `
 | `#[derive(AltrepString)]` | Character ALTREP class (`Vec<Option<String>>` preserves `NA_character_`) |
 | `#[derive(AltrepComplex)]` | Complex ALTREP class |
 | `#[derive(AltrepList)]` | List ALTREP class |
-| `#[derive(Altrep)]` | Manual pattern -- registers the class; you implement `AltrepLen` and `Alt*Data` |
+| `#[derive(Altrep)]` | A vector from an array, `Vec`, boxed or `'static` slice field; the element type picks the R vector (a factor for an `RFactor` enum). With `#[altrep(manual)]` it only registers the class |
 
 ### List / data-frame round-tripping
 

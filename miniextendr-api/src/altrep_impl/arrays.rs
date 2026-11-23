@@ -1,9 +1,10 @@
 //! ALTREP for owned const-generic arrays.
 //!
 //! The shared family generators keep native pointers and materialized data2
-//! behaviour consistent with Vec/Box. Each element family caches a separate
-//! class per N: a static inside a generic function alone would be shared by
-//! every N and install callbacks for whichever length registered first.
+//! behaviour consistent with Vec/Box. Each element family has a separate
+//! class per N ([`generic_altrep_class`](crate::altrep::generic_altrep_class)):
+//! a static inside a generic function alone would be shared by every N and
+//! install callbacks for whichever length registered first.
 //!
 //! Classes register on first conversion. Duplication and serialization keep
 //! R's default ordinary-vector fallback, so restoring a value never depends
@@ -21,39 +22,7 @@ macro_rules! register_array_family {
     ($elem:ty, $name:literal) => {
         impl<const N: usize> crate::altrep::RegisterAltrep for [$elem; N] {
             fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
-                use std::cell::RefCell;
-                use std::collections::BTreeMap;
-                use std::ffi::CString;
-
-                // Only R's main thread uses the cache: every access is
-                // inside `with_r_thread`.
-                thread_local! {
-                    static CLASSES: RefCell<BTreeMap<usize, crate::sys::altrep::R_altrep_class_t>> =
-                        const { RefCell::new(BTreeMap::new()) };
-                }
-
-                crate::with_r_thread(|| {
-                    let cached = CLASSES.with_borrow(|classes| classes.get(&N).copied());
-                    if let Some(class) = cached {
-                        return class;
-                    }
-
-                    // R copies/interns these bytes. Do not hold the cache borrow
-                    // across R allocation or callback installation.
-                    let name = CString::new(format!("{}_{}", $name, N))
-                        .expect("array class name contains no NUL");
-                    let class = unsafe {
-                        <Self as crate::altrep_data::InferBase>::make_class(
-                            name.as_ptr(),
-                            crate::AltrepPkgName::as_ptr(),
-                        )
-                    };
-                    unsafe {
-                        <Self as crate::altrep_data::InferBase>::install_methods(class);
-                    }
-                    CLASSES.with_borrow_mut(|classes| classes.insert(N, class));
-                    class
-                })
+                crate::altrep::generic_altrep_class::<Self>(|| format!("{}_{}", $name, N))
             }
         }
     };

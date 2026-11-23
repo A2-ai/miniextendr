@@ -105,8 +105,62 @@ pub trait RegisterAltrep {
     /// The implementation should:
     /// 1. Create the class handle via `R_make_alt*` (or via `InferBase::make_class`)
     /// 2. Install methods via `install_*` functions from `altrep_bridge`
-    /// 3. Cache the result in a static `OnceLock`
+    /// 3. Cache the result: in a `static OnceLock` for a concrete type, through
+    ///    [`generic_altrep_class`] for a generic one
     fn get_or_init_class() -> R_altrep_class_t;
+}
+
+/// The ALTREP class of one instantiation of a generic type, registered on
+/// its first use under the name `name()` returns.
+///
+/// A `static` in a generic function is one static for every instantiation,
+/// and each instantiation needs its own class: R calls the class's methods
+/// for one type's data. So the classes live in one map keyed by
+/// [`TypeId`](core::any::TypeId), on R's main thread. The derives build the
+/// name from the class name and the type's parameters (`Dice_5`); a name
+/// that an earlier class already has is an error, since R would confuse
+/// the two classes.
+///
+/// Such a class is made after package initialization, so a fresh R session
+/// that reads a saved vector may not have it yet: the derives refuse
+/// `serialize` on generic types (#2364), and R saves the plain vector.
+///
+/// # Panics
+///
+/// Off R's main thread, or when `name()` is already a registered class name.
+pub fn generic_altrep_class<T>(name: impl FnOnce() -> String) -> R_altrep_class_t
+where
+    T: crate::altrep_data::InferBase + 'static,
+{
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CLASSES: RefCell<HashMap<core::any::TypeId, R_altrep_class_t>> =
+            RefCell::new(HashMap::new());
+    }
+
+    crate::with_r_thread(|| {
+        let key = core::any::TypeId::of::<T>();
+        if let Some(class) = CLASSES.with_borrow(|classes| classes.get(&key).copied()) {
+            return class;
+        }
+        let name = name();
+        if REGISTERED_CLASS_NAMES.with_borrow(|names| names.contains(&name)) {
+            panic!(
+                "miniextendr: ALTREP class name \"{name}\" of `{}` is already registered \
+                 — each ALTREP type must have a unique class name within the package",
+                core::any::type_name::<T>()
+            );
+        }
+        let c_name = std::ffi::CString::new(name).expect("ALTREP class name contains no NUL");
+        // Don't hold the map's borrow across R allocation or method installation.
+        // `make_class` records the name (`validate_altrep_class`), so a later
+        // class is checked against this one too.
+        let class = unsafe { T::make_class(c_name.as_ptr(), crate::AltrepPkgName::as_ptr()) };
+        unsafe { T::install_methods(class) };
+        CLASSES.with_borrow_mut(|classes| classes.insert(key, class));
+        class
+    })
 }
 
 // region: Runtime dispatch helper for class creation
@@ -115,10 +169,11 @@ thread_local! {
     /// Records every ALTREP class name registered during `package_init()`.
     ///
     /// After all registrations complete, [`assert_altrep_class_uniqueness`]
-    /// checks for duplicates. Only R's main thread makes classes:
+    /// checks for duplicates; [`generic_altrep_class`] checks a class made
+    /// later against it. Only R's main thread makes classes:
     /// `package_init()` registers them there, and a class made on first use
-    /// is made by a conversion to R, which runs there too (`[T; N]` arrays
-    /// enter it through `with_r_thread`).
+    /// is made by a conversion to R, which runs there too (generic types,
+    /// `[T; N]` arrays included, enter it through `with_r_thread`).
     static REGISTERED_CLASS_NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 

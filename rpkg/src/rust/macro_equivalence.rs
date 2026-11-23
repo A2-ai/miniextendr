@@ -160,7 +160,7 @@ pub fn mx_verbosity_check(v: MxVerbosity) -> String {
 }
 // endregion
 
-// region: 6. #[derive(Altrep)] on data struct → ALTREP registration (direct pattern)
+// region: 6. #[derive(AltrepInteger)] on data struct → ALTREP registration (direct pattern)
 
 /// Data struct via derive: generates full ALTREP registration.
 #[derive(miniextendr_api::AltrepInteger)]
@@ -193,7 +193,7 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for MxDerivedIntsData {
     }
 }
 
-/// Test creating an ALTREP integer vector via derive(Altrep).
+/// Test creating an ALTREP integer vector via derive(AltrepInteger).
 #[miniextendr]
 pub fn mx_derived_ints() -> MxDerivedIntsData {
     MxDerivedIntsData {

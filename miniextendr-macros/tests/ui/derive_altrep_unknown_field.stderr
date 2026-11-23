@@ -1,0 +1,17 @@
+error: `Dice` has no field `values`; its fields are `value`
+ --> tests/ui/derive_altrep_unknown_field.rs:7:18
+  |
+7 | #[altrep(field = "values")]
+  |                  ^^^^^^^^
+
+error: `Outcomes` has no field `1`; its fields are `0`
+  --> tests/ui/derive_altrep_unknown_field.rs:13:16
+   |
+13 | #[altrep(len = "1")]
+   |                ^^^
+
+error: `field = "n"` names a `usize` field; `#[derive(AltrepInteger)]` reads `[T; N]`, `Vec<T>`, `Box<[T]>` or `&'static [T]`
+  --> tests/ui/derive_altrep_unknown_field.rs:17:18
+   |
+17 | #[altrep(field = "n")]
+   |                  ^^^

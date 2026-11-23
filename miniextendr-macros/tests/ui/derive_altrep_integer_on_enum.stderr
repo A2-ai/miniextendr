@@ -1,4 +1,4 @@
-error: Altrep derive only supports structs
+error: `#[derive(AltrepInteger)]` on an enum needs `#[altrep(manual)]`: the derive can't read a length or elements from an enum, so you implement `AltrepLen` and `AltIntegerData`; to make a vector of `Bad` values, put them in a struct field (`[Bad; N]`, `Vec<Bad>`) and implement `Coerce<i32>` for `Bad`
  --> tests/ui/derive_altrep_integer_on_enum.rs:8:5
   |
 8 | pub enum Bad {

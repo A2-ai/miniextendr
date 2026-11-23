@@ -68,6 +68,25 @@ fn int_range(from: i32, to: i32) -> SEXP {
 | character | `AltStringData` | `Option<&str>` | `fn elt(&self, i: usize) -> Option<&str>` |
 | list | `AltListData` | `SEXP` | `fn elt(&self, i: usize) -> SEXP` |
 
+## Minimal Example: Slice Field (no attributes)
+
+```rust
+// The element type picks the vector: i32 -> integer, read in place.
+#[derive(miniextendr_api::Altrep)]
+pub struct Counts(Vec<i32>);
+
+// An RFactor enum element -> factor; a const-generic struct is fine.
+#[derive(miniextendr_api::Altrep)]
+pub struct Dice<const N: usize>([Die; N]);
+
+// A mapping you choose: impl Coerce<i32> for Die, then the family derive.
+#[derive(miniextendr_api::AltrepInteger)]
+pub struct Pips<const N: usize>([Die; N]);
+```
+
+Fields: `[T; N]`, `Vec<T>`, `Box<[T]>`, `&'static [T]`; pick one of several
+with `#[altrep(field = "name")]`. Details: [ALTREP.md](ALTREP.md#a-vector-from-a-slice-field).
+
 ## Minimal Example: Field-Based Derive (1 step)
 
 ```rust

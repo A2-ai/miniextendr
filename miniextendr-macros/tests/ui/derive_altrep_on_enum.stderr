@@ -1,5 +1,5 @@
-error: #[derive(Altrep)] can only be applied to structs
-  --> tests/ui/derive_altrep_on_enum.rs:11:5
+error: `#[derive(Altrep)]` makes an R vector from a struct's slice field, and an enum is an element: derive `RFactor` on `Die` for a factor or `MatchArg` for a character vector, and put it in a field such as `[Die; N]` or `Vec<Die>`
+  --> tests/ui/derive_altrep_on_enum.rs:12:5
    |
-11 | pub enum Die {
+12 | pub enum Die {
    |     ^^^^

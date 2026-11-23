@@ -1,6 +1,6 @@
 ---
 name: miniextendr-altrep
-description: "Use when the user asks about implementing ALTREP (Alternative Representation) vectors in miniextendr, including derive macros (#[derive(AltrepInteger)], #[derive(AltrepReal)], etc.), guard modes (unsafe/rust_unwind/r_unwind), the manual derive path, AltrepExtract trait, no_lowlevel opt-out, option validation rules (subset/dataptr/serialize), the single-struct pattern, why #[miniextendr] on 1-field structs is removed, or compute-on-access iterator patterns."
+description: "Use when the user asks about implementing ALTREP (Alternative Representation) vectors in miniextendr, including derive macros (#[derive(AltrepInteger)], #[derive(AltrepReal)], etc.), the bare #[derive(Altrep)] over an array / Vec / Box<[T]> / &'static [T] field (element type picks the R vector, Coerce for family derives, generic structs), guard modes (unsafe/rust_unwind/r_unwind), the manual derive path, AltrepExtract trait, no_lowlevel opt-out, option validation rules (subset/dataptr/serialize), the single-struct pattern, why #[miniextendr] on 1-field structs is removed, or compute-on-access iterator patterns."
 ---
 
 # miniextendr ALTREP
@@ -48,11 +48,30 @@ The struct is **not** wrapped in another struct. The macro generates everything 
 
 All derives accept the same `#[altrep(...)]` attribute keys documented below.
 
+### Slice fields: the bare `#[derive(Altrep)]` (#2363)
+
+A struct with one `[T; N]`, `Vec<T>`, `Box<[T]>` or `&'static [T]` field (a tuple struct's `.0` works; several: `#[altrep(field = "name")]`, a tuple index works) gets a full ALTREP class from `#[derive(Altrep)]`; the element type picks the vector through the hidden `AltrepElement` trait (`miniextendr-api/src/altrep_data/slice.rs`):
+
+| Element | R vector |
+|---|---|
+| `i32`, `f64`, `u8`, `RLogical`, `Rcomplex`, `#[derive(RNativeType)]` newtype | that type, read in place |
+| `bool` / `String` | logical / character |
+| `#[derive(RFactor)]` enum | factor (`levels` + `class` set on the ALTREP) |
+| `#[derive(MatchArg)]` enum | character (choice names) |
+
+- The RFactor, MatchArg and RNativeType derives emit `AltrepElement`; any other element is a compile error naming these routes.
+- A mapping only the author knows: `impl Coerce<i32> for Die` (or `Coerce<f64>` / `Coerce<Rboolean>` / `Coerce<u8>` / `Coerce<Rcomplex>`, `AsRef<str>` for strings) and the family derive on the slice struct. An element of the family's own type stays zero-copy (`native_view`).
+- Writes: an owned native field is written in place; a `&'static [T]` field or non-native elements are copied into data2 first.
+- Generic structs (const and type params, every derive): one class per instantiation (`Dice_5`), registered lazily by `generic_altrep_class` (TypeId-keyed); `serialize` refused (#2364); lifetime params refused (`ExternalPtr` needs `'static`).
+- Registration only (what a bare `#[derive(Altrep)]` used to mean): `#[derive(Altrep)] #[altrep(manual)]`.
+- Other std collections (VecDeque, BinaryHeap, sets, LinkedList, shared slices): #2368.
+
 ### `#[altrep(...)]` attribute keys
 
 | Key | Description |
 |-----|-------------|
-| `len = "field"` | Field holding the vector length. Auto-detected if named `len` or `length`. |
+| `field = "name"` | The slice field the vector reads (array, `Vec`, `Box<[T]>`, `&'static [T]`); needed only with several. A tuple index works. Conflicts with `len` / `elt` / `elt_delegate` / `manual`. |
+| `len = "field"` | Field holding the vector length. Auto-detected if named `len` or `length`. A tuple index works. |
 | `elt = "field"` | Field to return as element value (constant-value vector). |
 | `elt_delegate = "field"` | Field whose `.elt(i)` method is called (delegation pattern). |
 | `manual` | Skip `AltrepLen` and `Alt*Data` generation. User writes those trait impls. Registration still emitted automatically. |
@@ -211,6 +230,7 @@ String ALTREP: always use `r_unwind` (or leave default). String `elt` must alloc
 
 ### Field-based vs manual derive?
 
+- Are the elements already in an array, `Vec`, boxed or `'static` slice field? Use the bare `#[derive(Altrep)]` (element type picks the vector) or a family derive with `Coerce` (you pick the mapping); no `len` / `elt` needed.
 - Is your element value a single struct field or a delegation to an inner type? Use field-based with `elt = "field"` or `elt_delegate = "field"`.
 - Do you need computed elements, conditional NA, or custom `get_region` logic? Use `#[altrep(manual)]` and implement `AltrepLen` + `Alt*Data` yourself.
 - Do you want to write all low-level traits by hand (rare)? Add `no_lowlevel` on top of `manual`.
@@ -232,7 +252,10 @@ Never enable `dataptr` and `subset` together — they are mutually exclusive by 
 - `miniextendr-api/src/altrep_ext.rs` — `AltrepExtract` trait and blanket impl for `TypedExternal`.
 - `miniextendr-api/src/altrep_impl.rs` — `impl_altinteger_from_data!` and sibling macros for each family.
 - `miniextendr-api/src/altrep_data.rs` — `AltrepLen`, `AltIntegerData`, `AltRealData`, and friends.
-- `miniextendr-macros/src/altrep_derive.rs` — derive macro implementation, `AltrepAttrs` parser, `AltrepFamilyConfig`.
+- `miniextendr-macros/src/altrep_derive.rs` — derive macro implementation, `AltrepAttrs` parser, `AltrepFamilyConfig`, `SliceFamily` (the family derives' slice path).
+- `miniextendr-macros/src/altrep_derive/shape.rs` — slice-field detection, `field` / `len` selectors (tuple indices), generics (lifetime refusal, `'static` bounds).
+- `miniextendr-macros/src/altrep.rs` — the bare `#[derive(Altrep)]` and registration (`generic_altrep_class` for generic structs).
+- `miniextendr-api/src/altrep_data/slice.rs` — `AltrepSlice`, `AltrepElement`, the families and the one blanket impl per ALTREP trait.
 - `miniextendr-api/src/ffi_guard.rs` — `guarded_ffi_call` and `guarded_ffi_call_with_fallback` (used by `guarded_altrep_call`).
 - `docs/SPARSE_ITERATOR_ALTREP.md` — compute-on-access iterator pattern guide.
 
