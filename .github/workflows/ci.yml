@@ -719,6 +719,19 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # Test and dev builds without debuginfo (cargo's dev default is
+      # `debug = 2`). Generating and linking it cost a third of the build
+      # time. Two ubuntu-latest runners each built all three settings, cold
+      # and without sccache: `cargo test --workspace --no-run` took 111-123 s
+      # at 2, 75-89 s at "line-tables-only" and 62-79 s at 0, and
+      # `just test-rpkg --no-run` 138-172 s, 115-143 s and 97-117 s.
+      # A failing test still prints `panicked at <file>:<line>:<col>`: that
+      # location is compiled into the panic, not read from debuginfo.
+      # RUST_BACKTRACE frames keep their function names and lose file:line.
+      # This job only: sccache and rust-cache hash CARGO_* variables into
+      # their keys, and the R jobs build the release profile, which carries
+      # no debuginfo anyway.
+      CARGO_PROFILE_DEV_DEBUG: "0"
 
     steps:
       - uses: actions/checkout@v7
@@ -1909,6 +1922,14 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       MINIEXTENDR_CLI: ${{ github.workspace }}/target/debug/miniextendr
+      # The dev-profile tests (cached-feature-relink, cleanup-cache,
+      # dev-bootstrap*, vendor-cache) build scaffolded packages with
+      # CARGO_PROFILE=dev. Without debuginfo they took 797-814 s on two
+      # ubuntu-latest runners that each ran both settings, against
+      # 966-1016 s at cargo's default `debug = 2`. This job has no sccache or
+      # rust-cache, so no cache key changes. See rust-tests for what a failing
+      # build or test still reports.
+      CARGO_PROFILE_DEV_DEBUG: "0"
 
     steps:
       - uses: actions/checkout@v7
