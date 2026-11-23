@@ -899,8 +899,13 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
@@ -942,15 +947,20 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
                 .alloc_vector(T::SEXP_TYPE, data.len() as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Set dim attribute
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
             scope.protect_raw(dim);
-            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
-            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
-            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
+            dim_s[0].write(i32::try_from(d0).expect("dimension exceeds i32"));
+            dim_s[1].write(i32::try_from(d1).expect("dimension exceeds i32"));
+            dim_s[2].write(i32::try_from(d2).expect("dimension exceeds i32"));
             arr.set_dim(dim);
 
             arr
@@ -987,15 +997,20 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
                 .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(4);
             scope.protect_raw(dim);
-            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
-            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
-            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
-            dim_s[3] = i32::try_from(d3).expect("dimension exceeds i32");
+            dim_s[0].write(i32::try_from(d0).expect("dimension exceeds i32"));
+            dim_s[1].write(i32::try_from(d1).expect("dimension exceeds i32"));
+            dim_s[2].write(i32::try_from(d2).expect("dimension exceeds i32"));
+            dim_s[3].write(i32::try_from(d3).expect("dimension exceeds i32"));
             arr.set_dim(dim);
 
             arr
@@ -1032,13 +1047,18 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
                 .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(5);
             scope.protect_raw(dim);
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4].iter()) {
-                *slot = i32::try_from(d).expect("dimension exceeds i32");
+                slot.write(i32::try_from(d).expect("dimension exceeds i32"));
             }
             arr.set_dim(dim);
 
@@ -1073,13 +1093,18 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
                 .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(6);
             scope.protect_raw(dim);
             for (slot, &d) in dim_s.iter_mut().zip([d0, d1, d2, d3, d4, d5].iter()) {
-                *slot = i32::try_from(d).expect("dimension exceeds i32");
+                slot.write(i32::try_from(d).expect("dimension exceeds i32"));
             }
             arr.set_dim(dim);
 
@@ -1121,15 +1146,20 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
                 .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Set dim attribute if ndim > 1
             if ndim > 1 {
                 let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
                 scope.protect_raw(dim);
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
-                    *slot = i32::try_from(d).expect("dimension exceeds i32");
+                    slot.write(i32::try_from(d).expect("dimension exceeds i32"));
                 }
                 arr.set_dim(dim);
             }
@@ -1202,7 +1232,7 @@ fn str_array_to_sexp<'a>(
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(shape.len());
             scope.protect_raw(dim);
             for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
-                *slot = i32::try_from(d).expect("dimension exceeds i32");
+                slot.write(i32::try_from(d).expect("dimension exceeds i32"));
             }
             arr.set_dim(dim);
         }
@@ -1350,8 +1380,13 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Return the SEXP - guard drops and unprotects
             // (R manages protection of .Call return values)
@@ -1387,15 +1422,20 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
                 .alloc_vector(T::SEXP_TYPE, data.len() as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Set dim attribute
             let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(3);
             scope.protect_raw(dim);
-            dim_s[0] = i32::try_from(d0).expect("dimension exceeds i32");
-            dim_s[1] = i32::try_from(d1).expect("dimension exceeds i32");
-            dim_s[2] = i32::try_from(d2).expect("dimension exceeds i32");
+            dim_s[0].write(i32::try_from(d0).expect("dimension exceeds i32"));
+            dim_s[1].write(i32::try_from(d1).expect("dimension exceeds i32"));
+            dim_s[2].write(i32::try_from(d2).expect("dimension exceeds i32"));
             arr.set_dim(dim);
 
             arr
@@ -1428,15 +1468,20 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
                 .alloc_vector(T::SEXP_TYPE, total_len as crate::R_xlen_t)
                 .into_raw();
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(arr), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(arr).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Set dim attribute if ndim > 1
             if ndim > 1 {
                 let (dim, dim_s) = crate::into_r::alloc_r_vector::<i32>(ndim);
                 scope.protect_raw(dim);
                 for (slot, &d) in dim_s.iter_mut().zip(shape.iter()) {
-                    *slot = i32::try_from(d).expect("dimension exceeds i32");
+                    slot.write(i32::try_from(d).expect("dimension exceeds i32"));
                 }
                 arr.set_dim(dim);
             }
@@ -3105,15 +3150,21 @@ impl<T: RNativeType> RndVec<T> {
         })
     }
 
-    /// Allocate a new R vector and initialize it.
+    /// Allocate a new R vector and initialize it. `init` receives the
+    /// elements, each `NA` (`0` for raw) until it writes one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, len as crate::R_xlen_t) };
+        let r_len = crate::R_xlen_t::try_from(len).expect("vector length exceeds R_xlen_t");
+        let sexp = unsafe { crate::sys::Rf_allocVector(T::SEXP_TYPE, r_len) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
@@ -3254,7 +3305,9 @@ impl<T: RNativeType> RndMat<T> {
         })
     }
 
-    /// Allocate a new R matrix and initialize it.
+    /// Allocate a new R matrix and initialize it. `init` receives the
+    /// elements in column-major order, each `NA` (`0` for raw) until it writes
+    /// one.
     ///
     /// # Safety
     ///
@@ -3268,8 +3321,13 @@ impl<T: RNativeType> RndMat<T> {
             )
         };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
-        let slice = unsafe { crate::from_r::r_slice_mut(ptr, nrow * ncol) };
+        let len = nrow * ncol;
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
             sexp,

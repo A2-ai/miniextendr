@@ -173,8 +173,13 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), data.len());
-            dst.copy_from_slice(&data);
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                data.len(),
+            );
+            for (slot, &value) in dst.iter_mut().zip(&data) {
+                slot.write(value);
+            }
 
             // Return the SEXP - guard drops and unprotects
             guard.get()
@@ -295,8 +300,13 @@ impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<
             );
             let guard = OwnedProtect::new(mat);
 
-            let dst = crate::from_r::r_slice_mut(T::dataptr_mut(guard.get()), R * C);
-            dst.copy_from_slice(self.as_slice());
+            let dst = std::slice::from_raw_parts_mut(
+                T::dataptr_mut(guard.get()).cast::<std::mem::MaybeUninit<T>>(),
+                R * C,
+            );
+            for (slot, &value) in dst.iter_mut().zip(self.as_slice()) {
+                slot.write(value);
+            }
 
             guard.get()
         })
@@ -1070,15 +1080,21 @@ impl<T: RNativeType> RVecStorage<T, Dyn, U1> {
         })
     }
 
-    /// Allocate a new R vector and initialize it.
+    /// Allocate a new R vector and initialize it. `init` receives the
+    /// elements, each `NA` (`0` for raw) until it writes one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_vector(len: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, len as R_xlen_t) };
+        let r_len = R_xlen_t::try_from(len).expect("vector length exceeds R_xlen_t");
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, r_len) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         init(slice);
         Self {
@@ -1126,16 +1142,25 @@ impl<T: RNativeType> RVecStorage<T, Dyn, Dyn> {
         })
     }
 
-    /// Allocate a new R matrix and initialize it.
+    /// Allocate a new R matrix and initialize it. `init` receives the
+    /// elements in column-major order, each `NA` (`0` for raw) until it writes
+    /// one.
     ///
     /// # Safety
     ///
     /// Must be called on R's main thread.
     pub unsafe fn new_matrix(nrows: usize, ncols: usize, init: impl FnOnce(&mut [T])) -> Self {
-        let total = nrows * ncols;
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total as R_xlen_t) };
+        let total = nrows
+            .checked_mul(ncols)
+            .expect("matrix size overflows usize");
+        let r_total = R_xlen_t::try_from(total).expect("matrix length exceeds R_xlen_t");
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, r_total) };
         unsafe { crate::sys::R_PreserveObject(sexp) };
+        // The payload is uninitialized and `init` may read it.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..total {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total) };
         init(slice);
         Self {
@@ -1357,8 +1382,8 @@ impl<T: RNativeType + Scalar + Copy> IntoR for RDMatrix<T> {
                 let ncol = self.ncols();
                 let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector::<i32>(2);
                 let _guard = crate::gc_protect::OwnedProtect::new(dim_sexp);
-                dim_s[0] = i32::try_from(nrow).expect("nrow exceeds i32");
-                dim_s[1] = i32::try_from(ncol).expect("ncol exceeds i32");
+                dim_s[0].write(i32::try_from(nrow).expect("nrow exceeds i32"));
+                dim_s[1].write(i32::try_from(ncol).expect("ncol exceeds i32"));
                 sexp.set_dim(dim_sexp);
             }
         }

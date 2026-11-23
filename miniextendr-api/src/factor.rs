@@ -111,7 +111,9 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
         let (sexp, dst) = crate::into_r::alloc_r_vector::<i32>(indices.len());
         // Attribute assignment and the cold class-cache initializer allocate.
         let sexp = OwnedProtect::new(sexp);
-        dst.copy_from_slice(indices);
+        for (slot, &index) in dst.iter_mut().zip(indices) {
+            slot.write(index);
+        }
         sexp.set_levels(levels);
         sexp.set_class(factor_class_sexp());
         sexp.get()

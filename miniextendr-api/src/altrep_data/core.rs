@@ -325,7 +325,10 @@ pub unsafe fn materialize_altrep_data2<T: crate::RNativeType>(x: SEXP) -> *mut c
     let (vec, dst) = unsafe { crate::into_r::alloc_r_vector_unchecked::<T>(n) };
     unsafe { sys::Rf_protect_unchecked(vec) };
     for (i, slot) in dst.iter_mut().enumerate() {
-        *slot = T::elt(x, i as isize);
+        slot.write(T::elt(
+            x,
+            isize::try_from(i).expect("ALTREP length fits isize"),
+        ));
     }
 
     unsafe {

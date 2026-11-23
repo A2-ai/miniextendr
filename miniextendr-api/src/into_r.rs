@@ -473,7 +473,10 @@ where
 // for typed vectors and obtain a mutable data slice. All conversion code
 // uses these helpers instead of raw FFI pointer arithmetic.
 
-/// Allocate an R vector of type `T` with `n` elements and return `(SEXP, &mut [T])`.
+/// Allocate an R vector of type `T` with `n` elements and return it with its
+/// slots. R does not initialize a numeric payload, so the slots are
+/// `MaybeUninit<T>`: write every one (`slot.write(v)`) before R or Rust reads
+/// the vector.
 ///
 /// The returned SEXP is **unprotected** — caller must protect via `Rf_protect`,
 /// `OwnedProtect`, or `ProtectScope` before any further R allocation.
@@ -484,11 +487,13 @@ where
 #[inline]
 pub(crate) unsafe fn alloc_r_vector<T: crate::RNativeType>(
     n: usize,
-) -> (crate::SEXP, &'static mut [T]) {
+) -> (crate::SEXP, &'static mut [std::mem::MaybeUninit<T>]) {
+    let len = crate::R_xlen_t::try_from(n).expect("vector length exceeds R_xlen_t");
     unsafe {
-        let sexp = crate::sys::Rf_allocVector(T::SEXP_TYPE, n as crate::R_xlen_t);
-        let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
-        (sexp, slice)
+        let sexp = crate::sys::Rf_allocVector(T::SEXP_TYPE, len);
+        // An empty vector's pointer is aligned and dangling (`dataptr_mut`).
+        let slots = std::slice::from_raw_parts_mut(T::dataptr_mut(sexp).cast(), n);
+        (sexp, slots)
     }
 }
 
@@ -500,32 +505,37 @@ pub(crate) unsafe fn alloc_r_vector<T: crate::RNativeType>(
 #[inline]
 pub(crate) unsafe fn alloc_r_vector_unchecked<T: crate::RNativeType>(
     n: usize,
-) -> (crate::SEXP, &'static mut [T]) {
+) -> (crate::SEXP, &'static mut [std::mem::MaybeUninit<T>]) {
+    let len = crate::R_xlen_t::try_from(n).expect("vector length exceeds R_xlen_t");
     unsafe {
-        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::R_xlen_t);
-        let slice = crate::from_r::r_slice_mut(T::dataptr_mut(sexp), n);
-        (sexp, slice)
+        let sexp = crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, len);
+        let slots = std::slice::from_raw_parts_mut(T::dataptr_mut(sexp).cast(), n);
+        (sexp, slots)
     }
 }
 
 // endregion
 
-/// Convert a slice to an R vector (checked) using `copy_from_slice`.
+/// Convert a slice to an R vector (checked).
 #[inline]
 unsafe fn vec_to_sexp<T: crate::RNativeType>(slice: &[T]) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector::<T>(slice.len());
-        dst.copy_from_slice(slice);
+        for (slot, &value) in dst.iter_mut().zip(slice) {
+            slot.write(value);
+        }
         sexp
     }
 }
 
-/// Convert a slice to an R vector (unchecked) using `copy_from_slice`.
+/// Convert a slice to an R vector (unchecked).
 #[inline]
 unsafe fn vec_to_sexp_unchecked<T: crate::RNativeType>(slice: &[T]) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector_unchecked::<T>(slice.len());
-        dst.copy_from_slice(slice);
+        for (slot, &value) in dst.iter_mut().zip(slice) {
+            slot.write(value);
+        }
         sexp
     }
 }
@@ -553,7 +563,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = <$to>::from(val);
+                        slot.write(<$to>::from(val));
                     }
                     sexp
                 }
@@ -563,7 +573,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = <$to>::from(val);
+                        slot.write(<$to>::from(val));
                     }
                     sexp
                 }
@@ -585,7 +595,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
-                        *slot = <$to>::from(val);
+                        slot.write(<$to>::from(val));
                     }
                     sexp
                 }
@@ -595,7 +605,7 @@ macro_rules! impl_vec_coerce_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$to>(self.len());
                     for (slot, &val) in dst.iter_mut().zip(self.iter()) {
-                        *slot = <$to>::from(val);
+                        slot.write(<$to>::from(val));
                     }
                     sexp
                 }
@@ -633,14 +643,14 @@ macro_rules! impl_vec_smart_i64_into_r {
                         let (sexp, dst) = alloc_r_vector::<i32>(self.len());
                         for (slot, &val) in dst.iter_mut().zip(self.iter()) {
                             // fits_i32 guard verified range
-                            *slot = val as i32;
+                            slot.write(val as i32);
                         }
                         sexp
                     } else {
                         let (sexp, dst) = alloc_r_vector::<f64>(self.len());
                         for (slot, &val) in dst.iter_mut().zip(self.iter()) {
                             // R has no 64-bit integer; f64 loses precision > 2^53
-                            *slot = val as f64;
+                            slot.write(val as f64);
                         }
                         sexp
                     }
@@ -652,14 +662,14 @@ macro_rules! impl_vec_smart_i64_into_r {
                         let (sexp, dst) = alloc_r_vector_unchecked::<i32>(self.len());
                         for (slot, &val) in dst.iter_mut().zip(self.iter()) {
                             // fits_i32 guard verified range
-                            *slot = val as i32;
+                            slot.write(val as i32);
                         }
                         sexp
                     } else {
                         let (sexp, dst) = alloc_r_vector_unchecked::<f64>(self.len());
                         for (slot, &val) in dst.iter_mut().zip(self.iter()) {
                             // R has no 64-bit integer; f64 loses precision > 2^53
-                            *slot = val as f64;
+                            slot.write(val as f64);
                         }
                         sexp
                     }
@@ -1744,7 +1754,7 @@ macro_rules! impl_vec_option_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector::<$t>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = val.unwrap_or($na_value);
+                        slot.write(val.unwrap_or($na_value));
                     }
                     sexp
                 }
@@ -1754,7 +1764,7 @@ macro_rules! impl_vec_option_into_r {
                 unsafe {
                     let (sexp, dst) = alloc_r_vector_unchecked::<$t>(self.len());
                     for (slot, val) in dst.iter_mut().zip(self.into_iter()) {
-                        *slot = val.unwrap_or($na_value);
+                        slot.write(val.unwrap_or($na_value));
                     }
                     sexp
                 }
@@ -1781,19 +1791,19 @@ macro_rules! impl_vec_option_smart_i64_into_r {
             }) {
                 let (sexp, dst) = alloc_r_vector::<i32>(this.len());
                 for (slot, val) in dst.iter_mut().zip(this.into_iter()) {
-                    *slot = match val {
+                    slot.write(match val {
                         Some(x) => x as i32,
                         None => NA_INTEGER,
-                    };
+                    });
                 }
                 sexp
             } else {
                 let (sexp, dst) = alloc_r_vector::<f64>(this.len());
                 for (slot, val) in dst.iter_mut().zip(this.into_iter()) {
-                    *slot = match val {
+                    slot.write(match val {
                         Some(x) => x as f64,
                         None => NA_REAL,
-                    };
+                    });
                 }
                 sexp
             }
@@ -1837,10 +1847,8 @@ impl_vec_option_coerce_into_r!(f32 => f64);
 fn logical_iter_to_lglsxp(n: usize, iter: impl Iterator<Item = i32>) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector::<crate::RLogical>(n);
-        // RLogical is repr(transparent) over i32, safe to write i32 values.
-        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
-        for (slot, val) in dst_i32.iter_mut().zip(iter) {
-            *slot = val;
+        for (slot, val) in dst.iter_mut().zip(iter) {
+            slot.write(crate::RLogical::from_i32(val));
         }
         sexp
     }
@@ -1853,9 +1861,8 @@ unsafe fn logical_iter_to_lglsxp_unchecked(
 ) -> crate::SEXP {
     unsafe {
         let (sexp, dst) = alloc_r_vector_unchecked::<crate::RLogical>(n);
-        let dst_i32: &mut [i32] = std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), n);
-        for (slot, val) in dst_i32.iter_mut().zip(iter) {
-            *slot = val;
+        for (slot, val) in dst.iter_mut().zip(iter) {
+            slot.write(crate::RLogical::from_i32(val));
         }
         sexp
     }

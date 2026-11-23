@@ -433,7 +433,8 @@ pub(crate) unsafe fn r_slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
 ///
 /// # Safety
 ///
-/// If `len > 0`, `ptr` must satisfy the requirements of [`std::slice::from_raw_parts_mut`].
+/// If `len > 0`, `ptr` must satisfy the requirements of [`std::slice::from_raw_parts_mut`],
+/// which include initialized elements: never pass a fresh `Rf_allocVector` payload.
 #[inline(always)]
 pub(crate) unsafe fn r_slice_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
     if len == 0 {
@@ -1784,23 +1785,13 @@ where
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        if slice.len() != N {
-            return Err(SexpLengthError {
+        <[T; N]>::try_from(slice).map_err(|_| {
+            SexpLengthError {
                 expected: N,
                 actual: slice.len(),
             }
-            .into());
-        }
-
-        // T: Copy, length verified above. Use MaybeUninit + copy_from_slice.
-        let mut arr = std::mem::MaybeUninit::<[T; N]>::uninit();
-        unsafe {
-            // SAFETY: MaybeUninit<[T; N]> and [T; N] have the same layout.
-            // We write all N elements via copy_from_slice, so assume_init is safe.
-            let dst: &mut [T] = std::slice::from_raw_parts_mut(arr.as_mut_ptr().cast::<T>(), N);
-            dst.copy_from_slice(&slice[..N]);
-            Ok(arr.assume_init())
-        }
+            .into()
+        })
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {

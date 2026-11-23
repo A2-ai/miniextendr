@@ -439,61 +439,42 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 if all_fit {
                     // Protect sexp for consistency with the String/float/boolean
                     // branches — PROTECT discipline against R-devel's aggressive GC.
-                    let sexp = unsafe {
-                        OwnedProtect::new(Rf_allocVector(
-                            SEXPTYPE::INTSXP,
-                            isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                        ))
-                    };
-                    let dst: &mut [i32] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
-                    for (i, v) in arr.iter().enumerate() {
+                    let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<i32>(arr.len()) };
+                    let sexp = unsafe { OwnedProtect::new(sexp) };
+                    for (slot, v) in dst.iter_mut().zip(arr) {
                         if let TomlValue::Integer(n) = v {
-                            dst[i] = i32::try_from(*n).expect("validated by i64_fits_r_int");
+                            slot.write(i32::try_from(*n).expect("validated by i64_fits_r_int"));
                         }
                     }
                     return sexp.get();
                 }
                 // Fall back to REALSXP if any value is out of range
-                let sexp = unsafe {
-                    OwnedProtect::new(Rf_allocVector(
-                        SEXPTYPE::REALSXP,
-                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    ))
-                };
-                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
-                for (i, v) in arr.iter().enumerate() {
+                let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<f64>(arr.len()) };
+                let sexp = unsafe { OwnedProtect::new(sexp) };
+                for (slot, v) in dst.iter_mut().zip(arr) {
                     if let TomlValue::Integer(n) = v {
-                        dst[i] = i64_precise_as_f64(*n);
+                        slot.write(i64_precise_as_f64(*n));
                     }
                 }
                 return sexp.get();
             }
             TomlValue::Float(_) => {
-                let sexp = unsafe {
-                    OwnedProtect::new(Rf_allocVector(
-                        SEXPTYPE::REALSXP,
-                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    ))
-                };
-                let dst: &mut [f64] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
-                for (i, v) in arr.iter().enumerate() {
+                let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<f64>(arr.len()) };
+                let sexp = unsafe { OwnedProtect::new(sexp) };
+                for (slot, v) in dst.iter_mut().zip(arr) {
                     if let TomlValue::Float(f) = v {
-                        dst[i] = *f;
+                        slot.write(*f);
                     }
                 }
                 return sexp.get();
             }
             TomlValue::Boolean(_) => {
-                let sexp = unsafe {
-                    OwnedProtect::new(Rf_allocVector(
-                        SEXPTYPE::LGLSXP,
-                        isize::try_from(arr.len()).expect("length exceeds R_xlen_t"),
-                    ))
-                };
-                let dst: &mut [crate::RLogical] = unsafe { SexpExt::as_mut_slice(&sexp.get()) };
-                for (i, v) in arr.iter().enumerate() {
+                let (sexp, dst) =
+                    unsafe { crate::into_r::alloc_r_vector::<crate::RLogical>(arr.len()) };
+                let sexp = unsafe { OwnedProtect::new(sexp) };
+                for (slot, v) in dst.iter_mut().zip(arr) {
                     if let TomlValue::Boolean(b) = v {
-                        dst[i] = crate::RLogical::from(*b);
+                        slot.write(crate::RLogical::from(*b));
                     }
                 }
                 return sexp.get();

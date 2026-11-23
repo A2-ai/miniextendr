@@ -601,7 +601,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// Allocate a new R array with the given dimensions.
     ///
     /// The array is allocated. The closure receives a mutable slice to
-    /// initialize the data.
+    /// initialize the data; every element starts as `NA` (`0` for raw).
     ///
     /// # Safety
     ///
@@ -628,19 +628,21 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             .try_fold(1usize, |acc, &d| acc.checked_mul(d))
             .expect("array total length overflows usize");
 
-        assert!(
-            total_len <= R_xlen_t::MAX as usize,
-            "array total length {total_len} exceeds R_xlen_t::MAX"
-        );
+        let r_len = R_xlen_t::try_from(total_len)
+            .unwrap_or_else(|_| panic!("array total length {total_len} exceeds R_xlen_t::MAX"));
 
-        // Allocate the vector
-        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, total_len as R_xlen_t) };
+        // Rooted until it is returned: `set_dims` and `init` may allocate.
+        let sexp = unsafe { sys::Rf_allocVector(T::SEXP_TYPE, r_len) };
+        let _root = unsafe { crate::OwnedProtect::new(sexp) };
 
-        // Set dimensions
         unsafe { set_dims::<NDIM>(sexp, &dims) };
 
-        // Initialize data
+        // The payload is uninitialized and `init` may read it, so every element
+        // starts as `NA`.
         let ptr = unsafe { T::dataptr_mut(sexp) };
+        for i in 0..total_len {
+            unsafe { ptr.add(i).write(T::R_NA) };
+        }
         let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
         init(slice);
 
@@ -867,9 +869,9 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
         let _guard = crate::OwnedProtect::new(dim_sexp);
 
         for (slot, &d) in dim_slice.iter_mut().zip(dims.iter()) {
-            *slot = i32::try_from(d).unwrap_or_else(|_| {
+            slot.write(i32::try_from(d).unwrap_or_else(|_| {
                 panic!("array dimension {d} exceeds i32::MAX");
-            });
+            }));
         }
 
         sexp.set_dim(dim_sexp);

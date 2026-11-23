@@ -1024,7 +1024,7 @@ Parallel fill is most beneficial for large row counts (10k+), wide data frames (
 
 ## Heterogeneous columns without a row type
 
-When you are filling columns directly (not transposing a `Vec<Row>`), use `DataFrame::builder(nrow)`. `column::<T>` takes a native element type (`f64` / `i32` / `RLogical` / `u8` / `Rcomplex`) and a chunk-fill closure; `column_str` builds a character column from a per-row closure returning `Option<String>` (`None` → `NA_character_`). `build()` yields a rooted `BuiltDataFrame`:
+When you are filling columns directly (not transposing a `Vec<Row>`), use `DataFrame::builder(nrow)`. `column::<T>` takes a native element type (`f64` / `i32` / `RLogical` / `u8` / `Rcomplex`) and a chunk-fill closure, whose chunk starts as `NA` (`0` for raw); `column_str` builds a character column from a per-row closure returning `Option<String>` (`None` → `NA_character_`). `build()` yields a rooted `BuiltDataFrame`:
 
 ```rust
 let df = DataFrame::builder(nrow)

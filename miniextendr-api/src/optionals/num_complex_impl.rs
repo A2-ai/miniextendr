@@ -191,16 +191,10 @@ impl TryFromSexp for Vec<Complex<f64>> {
 }
 
 into_r_infallible!(Vec<Complex<f64>>, |this| {
-    use crate::sys::Rf_allocVector;
-
-    let len = this.len();
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
-    let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
-
-    for (i, c) in this.into_iter().enumerate() {
-        dst[i] = to_rcomplex(c);
+    let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<Rcomplex>(this.len()) };
+    for (slot, c) in dst.iter_mut().zip(this) {
+        slot.write(to_rcomplex(c));
     }
-
     sexp
 });
 // endregion
@@ -237,19 +231,13 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
 }
 
 into_r_infallible!(Vec<Option<Complex<f64>>>, |this| {
-    use crate::sys::Rf_allocVector;
-
-    let len = this.len();
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::CPLXSXP, len as crate::R_xlen_t) };
-    let dst: &mut [Rcomplex] = unsafe { SexpExt::as_mut_slice(&sexp) };
-
-    for (i, opt) in this.into_iter().enumerate() {
-        dst[i] = match opt {
+    let (sexp, dst) = unsafe { crate::into_r::alloc_r_vector::<Rcomplex>(this.len()) };
+    for (slot, opt) in dst.iter_mut().zip(this) {
+        slot.write(match opt {
             Some(c) => to_rcomplex(c),
             None => na_rcomplex(),
-        };
+        });
     }
-
     sexp
 });
 // endregion

@@ -210,7 +210,7 @@ use rayon::prelude::*;
 /// Pre-allocate an R vector, fill chunks in parallel, return the SEXP.
 ///
 /// The closure `f(chunk, offset)` is called in parallel for each chunk:
-/// - `chunk`: mutable slice to fill
+/// - `chunk`: mutable slice to fill; every element starts as `NA` (`0` for raw)
 /// - `offset`: starting index of this chunk in the overall vector
 ///
 /// The framework handles splitting and parallel dispatch via Rayon's
@@ -256,46 +256,39 @@ where
     T: RNativeType + Send + Sync,
     F: Fn(&mut [T], usize) + Send + Sync,
 {
-    // Validate length fits in R_xlen_t.
-    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
-    // is the exact `R_xlen_t` ceiling and cannot truncate.
-    #[cfg(target_pointer_width = "64")]
-    {
-        #[allow(clippy::cast_possible_truncation)]
-        let max = i64::MAX as usize;
-        assert!(
-            len <= max,
-            "with_r_vec: length {len} exceeds R_xlen_t maximum"
-        );
-    }
-    #[cfg(target_pointer_width = "32")]
-    assert!(
-        len <= i32::MAX as usize,
-        "with_r_vec: length {} exceeds R_xlen_t maximum",
-        len
-    );
+    let r_len =
+        crate::R_xlen_t::try_from(len).expect("with_r_vec: length exceeds R_xlen_t maximum");
 
     super::parallel::ensure_pool();
 
-    // Allocate and protect on the R main thread, and get the data pointer;
-    // the vector stays protected until the fill is done
+    // Allocate and protect on the R main thread; the vector stays protected
+    // until the fill is done.
     let sexp = with_r_thread(move || unsafe {
-        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            T::SEXP_TYPE,
-            len as crate::R_xlen_t,
-        ))
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, r_len))
     });
-    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
-
-    // Create slice and dispatch chunks in parallel
-    let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+    // The payload is uninitialized: write-only slots until each worker has
+    // given its chunk a value.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            T::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<T>>(),
+            len,
+        )
+    };
 
     if len > 0 {
         let chunk_size = std::cmp::max(1, len / (rayon::current_num_threads() * 4));
-        slice
+        slots
             .par_chunks_mut(chunk_size)
             .enumerate()
             .for_each(|(chunk_idx, chunk)| {
+                // `f` may read its chunk, so it starts as `NA`.
+                for slot in chunk.iter_mut() {
+                    slot.write(T::R_NA);
+                }
+                // SAFETY: every element of the chunk was just written.
+                let chunk = unsafe {
+                    std::slice::from_raw_parts_mut(chunk.as_mut_ptr().cast::<T>(), chunk.len())
+                };
                 f(chunk, chunk_idx * chunk_size);
             });
     }
@@ -305,8 +298,8 @@ where
 
 /// Pre-allocate an R vector, fill element-wise in parallel, return the SEXP.
 ///
-/// This is syntactic sugar over [`with_r_vec`] for the common case where each
-/// element depends only on its index.
+/// Like [`with_r_vec`] for the common case where each element depends only on
+/// its index. Each element is written once, with no `NA` pass first.
 ///
 /// # Example
 ///
@@ -320,11 +313,24 @@ where
     T: RNativeType + Send + Sync,
     F: Fn(usize) -> T + Send + Sync,
 {
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(offset + i);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(len).expect("with_r_vec_map: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            T::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<T>>(),
+            len,
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(i));
+    });
+    sexp.get()
 }
 
 /// Transform an input slice into a new R vector, element-wise in parallel.
@@ -355,12 +361,24 @@ where
     U: RNativeType + Send + Sync,
     F: Fn(&T) -> U + Send + Sync,
 {
-    let len = input.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&input[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(input.len()).expect("par_map: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(U::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            U::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<U>>(),
+            input.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&input[i]));
+    });
+    sexp.get()
 }
 
 /// Two-input element-wise parallel map into a new R vector.
@@ -399,12 +417,24 @@ where
         a.len(),
         b.len()
     );
-    let len = a.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&a[offset + i], &b[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(a.len()).expect("par_map2: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(V::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            V::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<V>>(),
+            a.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&a[i], &b[i]));
+    });
+    sexp.get()
 }
 
 /// Three-input element-wise parallel map into a new R vector.
@@ -439,18 +469,31 @@ where
         b.len(),
         c.len()
     );
-    let len = a.len();
-    with_r_vec(len, |chunk, offset| {
-        for (i, slot) in chunk.iter_mut().enumerate() {
-            *slot = f(&a[offset + i], &b[offset + i], &c[offset + i]);
-        }
-    })
+    let r_len =
+        crate::R_xlen_t::try_from(a.len()).expect("par_map3: length exceeds R_xlen_t maximum");
+    super::parallel::ensure_pool();
+    let sexp = with_r_thread(move || unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(V::SEXP_TYPE, r_len))
+    });
+    // Every slot is written below, so the uninitialized payload needs no
+    // prefill.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            V::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<V>>(),
+            a.len(),
+        )
+    };
+    slots.par_iter_mut().enumerate().for_each(|(i, slot)| {
+        slot.write(f(&a[i], &b[i], &c[i]));
+    });
+    sexp.get()
 }
 
 /// Pre-allocate an R matrix, fill columns in parallel, return the SEXP.
 ///
 /// The closure `f(column, col_idx)` is called in parallel for each column:
-/// - `column`: mutable slice of length `nrow` (one column)
+/// - `column`: mutable slice of length `nrow` (one column); every element
+///   starts as `NA` (`0` for raw)
 /// - `col_idx`: column index (0-based)
 ///
 /// R matrices are column-major, so each column is a contiguous slice.
@@ -493,24 +536,7 @@ where
         .checked_mul(ncol)
         .expect("with_r_matrix: nrow * ncol overflow");
 
-    // Validate total length fits in R_xlen_t.
-    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
-    // is the exact `R_xlen_t` ceiling and cannot truncate.
-    #[cfg(target_pointer_width = "64")]
-    {
-        #[allow(clippy::cast_possible_truncation)]
-        let max = i64::MAX as usize;
-        assert!(
-            len <= max,
-            "with_r_matrix: total length {len} exceeds R_xlen_t maximum"
-        );
-    }
-    #[cfg(target_pointer_width = "32")]
-    assert!(
-        len <= i32::MAX as usize,
-        "with_r_matrix: total length {} exceeds R_xlen_t maximum",
-        len
-    );
+    crate::R_xlen_t::try_from(len).expect("with_r_matrix: total length exceeds R_xlen_t maximum");
 
     super::parallel::ensure_pool();
 
@@ -527,16 +553,28 @@ where
             ncol_i32,
         ))
     });
-    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
-
-    // Split into columns and dispatch in parallel
-    let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
+    // The payload is uninitialized: write-only slots until each worker has
+    // given its column a value.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            T::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<T>>(),
+            len,
+        )
+    };
 
     if nrow > 0 && ncol > 0 {
-        slice
+        slots
             .par_chunks_mut(nrow)
             .enumerate()
             .for_each(|(col_idx, col)| {
+                // `f` may read its column, so it starts as `NA`.
+                for slot in col.iter_mut() {
+                    slot.write(T::R_NA);
+                }
+                // SAFETY: every element of the column was just written.
+                let col = unsafe {
+                    std::slice::from_raw_parts_mut(col.as_mut_ptr().cast::<T>(), col.len())
+                };
                 f(col, col_idx);
             });
     }
@@ -547,7 +585,8 @@ where
 /// Pre-allocate an N-dimensional R array, fill slabs in parallel, return the SEXP.
 ///
 /// The closure `f(slab, slab_idx)` is called in parallel for each slab:
-/// - `slab`: mutable slice of one slab (product of all dims except the last)
+/// - `slab`: mutable slice of one slab (product of all dims except the last);
+///   every element starts as `NA` (`0` for raw)
 /// - `slab_idx`: slab index along the last dimension (0-based)
 ///
 /// For dims `[d0, d1, ..., dN]`, each slab has `d0 * d1 * ... * d(N-1)` elements
@@ -590,51 +629,36 @@ where
         .try_fold(1usize, |acc, &d| acc.checked_mul(d))
         .expect("with_r_array: dimension product overflow");
 
-    // Validate total length fits in R_xlen_t.
-    // SAFETY (lint): on a 64-bit target `usize == u64`, so `i64::MAX as usize`
-    // is the exact `R_xlen_t` ceiling and cannot truncate.
-    #[cfg(target_pointer_width = "64")]
-    {
-        #[allow(clippy::cast_possible_truncation)]
-        let max = i64::MAX as usize;
-        assert!(
-            total_len <= max,
-            "with_r_array: total length {total_len} exceeds R_xlen_t maximum"
-        );
-    }
-    #[cfg(target_pointer_width = "32")]
-    assert!(
-        total_len <= i32::MAX as usize,
-        "with_r_array: total length {} exceeds R_xlen_t maximum",
-        total_len
-    );
+    let r_len = crate::R_xlen_t::try_from(total_len)
+        .expect("with_r_array: total length exceeds R_xlen_t maximum");
 
     super::parallel::ensure_pool();
 
     // Allocate, protect and set dims on the R main thread, and get the data
     // pointer; the array stays protected until the fill is done
     let sexp = with_r_thread(move || unsafe {
-        let sexp = crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            T::SEXP_TYPE,
-            total_len as crate::R_xlen_t,
-        ));
+        let sexp =
+            crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(T::SEXP_TYPE, r_len));
 
         let (dim_sexp, dim_s) = crate::into_r::alloc_r_vector_unchecked::<i32>(NDIM);
         crate::sys::Rf_protect_unchecked(dim_sexp);
 
         for (slot, &d) in dim_s.iter_mut().zip(dims.iter()) {
-            // SAFETY: every `d <= i32::MAX` asserted above, so the narrowing
-            // cast cannot truncate.
-            #[allow(clippy::cast_possible_truncation)]
-            let d = d as i32;
-            *slot = d;
+            slot.write(i32::try_from(d).expect("dimension exceeds i32"));
         }
 
         sexp.set_attr_unchecked(SEXP::dim_symbol(), dim_sexp);
         crate::sys::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
         sexp
     });
-    let ptr = unsafe { T::dataptr_mut(sexp.get()) };
+    // The payload is uninitialized: write-only slots until each worker has
+    // given its slab a value.
+    let slots = unsafe {
+        std::slice::from_raw_parts_mut(
+            T::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<T>>(),
+            total_len,
+        )
+    };
 
     // Calculate slab size (product of all dims except the last)
     let slab_size: usize = if NDIM <= 1 {
@@ -643,14 +667,19 @@ where
         dims[..NDIM - 1].iter().product()
     };
 
-    // Split into slabs and dispatch in parallel
-    let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
-
     if total_len > 0 && slab_size > 0 {
-        slice
+        slots
             .par_chunks_mut(slab_size)
             .enumerate()
             .for_each(|(slab_idx, slab)| {
+                // `f` may read its slab, so it starts as `NA`.
+                for slot in slab.iter_mut() {
+                    slot.write(T::R_NA);
+                }
+                // SAFETY: every element of the slab was just written.
+                let slab = unsafe {
+                    std::slice::from_raw_parts_mut(slab.as_mut_ptr().cast::<T>(), slab.len())
+                };
                 f(slab, slab_idx);
             });
     }
@@ -1344,30 +1373,48 @@ pub trait ParCollectR: rayon::iter::IndexedParallelIterator + Sized {
     /// Allocates the R vector on the main thread, then fills it in parallel
     /// using Rayon's `zip` (each output slot is paired with an iterator item).
     /// Zero intermediate allocation.
+    ///
+    /// # Panics
+    ///
+    /// If the iterator gives fewer items than its `len()` said.
     fn collect_r(self) -> SEXP
     where
         Self::Item: RNativeType + Send + Sync,
     {
         super::parallel::ensure_pool();
         let len = self.len();
+        let r_len =
+            crate::R_xlen_t::try_from(len).expect("collect_r: length exceeds R_xlen_t maximum");
 
-        // Allocate and protect on the R main thread, and get the data
-        // pointer; the vector stays protected until the fill is done
+        // Allocate and protect on the R main thread; the vector stays
+        // protected until the fill is done.
         let sexp = with_r_thread(move || unsafe {
             crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
                 Self::Item::SEXP_TYPE,
-                len as crate::R_xlen_t,
+                r_len,
             ))
         });
-        let ptr = unsafe { Self::Item::dataptr_mut(sexp.get()) };
-
-        // Parallel zip: iterator items → output slots (zero intermediate allocation)
-        if len > 0 {
-            let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
-            slice.par_iter_mut().zip(self).for_each(|(slot, item)| {
-                *slot = item;
-            });
-        }
+        // The payload is uninitialized: write-only slots, each paired with one
+        // item (zero intermediate allocation).
+        let slots = unsafe {
+            std::slice::from_raw_parts_mut(
+                Self::Item::dataptr_mut(sexp.get()).cast::<std::mem::MaybeUninit<Self::Item>>(),
+                len,
+            )
+        };
+        // `len()` belongs to a safe trait and may be wrong. Each slot is in at
+        // most one pair, so `len` pairs means every slot has a value.
+        let written = slots
+            .par_iter_mut()
+            .zip(self)
+            .map(|(slot, item)| {
+                slot.write(item);
+            })
+            .count();
+        assert_eq!(
+            written, len,
+            "collect_r: the iterator gave {written} items but its len() was {len}"
+        );
 
         sexp.get()
     }

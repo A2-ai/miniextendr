@@ -3429,9 +3429,8 @@ pub fn gc_stress_factor_labels() -> i32 {
 
         let row_names = Rf_allocVector(SEXPTYPE::INTSXP, 2);
         let _rn_guard = OwnedProtect::new(row_names);
-        let rn = row_names.as_mut_slice::<i32>();
-        rn[0] = i32::MIN;
-        rn[1] = -(codes.len() as i32);
+        row_names.set_integer_elt(0, i32::MIN);
+        row_names.set_integer_elt(1, -i32::try_from(codes.len()).expect("row count fits i32"));
         list.set_row_names(row_names);
 
         // Hand `list` to dataframe_to_vec while every transient is still
@@ -6322,3 +6321,20 @@ pub fn gc_stress_saved_robject() {
 }
 
 // endregion
+
+/// `RArray::new` under GC pressure: the payload stays rooted while `set_dims`
+/// allocates the `dim` vector and while `init` runs, and the elements `init`
+/// leaves alone are `NA`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_rarray_new() -> SEXP {
+    let matrix = unsafe {
+        miniextendr_api::RMatrix::<f64>::new([4, 3], |slice| {
+            for (i, v) in slice.iter_mut().take(8).enumerate() {
+                *v = f64::from(u32::try_from(i).expect("index fits u32"));
+            }
+        })
+    };
+    matrix.into_inner()
+}

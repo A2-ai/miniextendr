@@ -13,7 +13,7 @@ use crate::NamedListBuilder;
 use std::collections::HashMap;
 
 use super::error::RSerdeError;
-use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
+use crate::altrep_traits::NA_REAL;
 use crate::dataframe::{BuiltDataFrame, DataFrameShape, SplitResults};
 use crate::{Preserved, SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
@@ -2410,8 +2410,8 @@ fn empty_dataframe() -> SEXP {
         // Set compact row.names: c(NA_integer_, 0)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         scope.protect_raw(row_names);
-        rn[0] = i32::MIN; // NA_integer_
-        rn[1] = 0;
+        rn[0].write(i32::MIN); // NA_integer_
+        rn[1].write(0);
         list.set_row_names(row_names);
 
         list
@@ -2483,8 +2483,8 @@ unsafe fn assemble_dataframe(fields: &[FieldInfo], columns: &[ColumnBuffer], nro
         // Set compact row.names: c(NA_integer_, -nrow)
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         scope.protect_raw(row_names);
-        rn[0] = i32::MIN; // NA_integer_
-        rn[1] = -i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX");
+        rn[0].write(i32::MIN); // NA_integer_
+        rn[1].write(-i32::try_from(nrow).expect("data.frame row count exceeds i32::MAX"));
         list.set_row_names(row_names);
 
         list
@@ -2499,19 +2499,23 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
         match col {
             ColumnBuffer::Logical(v) => {
                 let (sexp, dst) = alloc_r_vector::<crate::RLogical>(nrow);
-                let dst_i32: &mut [i32] =
-                    std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
-                dst_i32.copy_from_slice(v);
+                for (slot, &value) in dst.iter_mut().zip(v) {
+                    slot.write(crate::RLogical::from_i32(value));
+                }
                 sexp
             }
             ColumnBuffer::Integer(v) => {
                 let (sexp, dst) = alloc_r_vector::<i32>(nrow);
-                dst.copy_from_slice(v);
+                for (slot, &value) in dst.iter_mut().zip(v) {
+                    slot.write(value);
+                }
                 sexp
             }
             ColumnBuffer::Real(v) => {
                 let (sexp, dst) = alloc_r_vector::<f64>(nrow);
-                dst.copy_from_slice(v);
+                for (slot, &value) in dst.iter_mut().zip(v) {
+                    slot.write(value);
+                }
                 sexp
             }
             ColumnBuffer::Character(v) => {
@@ -2559,9 +2563,9 @@ unsafe fn column_to_sexp(col: &ColumnBuffer, nrow: usize) -> SEXP {
                 });
                 if all_null {
                     let (sexp, dst) = alloc_r_vector::<crate::RLogical>(nrow);
-                    let dst_i32: &mut [i32] =
-                        std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<i32>(), nrow);
-                    dst_i32.fill(NA_LOGICAL);
+                    for slot in dst.iter_mut() {
+                        slot.write(crate::RLogical::NA);
+                    }
                     return sexp;
                 }
                 // No allocation occurs in the loop below — every element is a
@@ -3053,8 +3057,8 @@ fn unit_variant_dataframe(nrow: usize) -> SEXP {
         list.set_class(crate::cached_class::data_frame_class_sexp());
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         scope.protect_raw(row_names);
-        rn[0] = i32::MIN;
-        rn[1] = -i32::try_from(nrow).expect("nrow overflow");
+        rn[0].write(i32::MIN);
+        rn[1].write(-i32::try_from(nrow).expect("nrow overflow"));
         list.set_row_names(row_names);
         list
     }

@@ -41,6 +41,9 @@ fn rayon_suite() {
         test_with_r_array_parallel();
         test_new_r_matrix();
         test_new_r_array();
+        test_untouched_elements_are_na();
+        test_collect_r();
+        test_collect_r_refuses_a_short_iterator();
     });
 }
 
@@ -333,3 +336,123 @@ fn test_new_r_array() {
     assert_eq!(array.len(), 120);
 }
 // endregion
+
+fn test_untouched_elements_are_na() {
+    use miniextendr_api::RNativeType;
+    let na = f64::R_NA.to_bits();
+
+    let v = with_r_vec::<f64, _>(1000, |chunk, offset| {
+        for (i, x) in chunk.iter_mut().enumerate() {
+            assert_eq!(x.to_bits(), na, "a fresh chunk starts as NA");
+            if (offset + i) % 3 == 0 {
+                *x = 1.0;
+            }
+        }
+    });
+    let v = unsafe { read_real_vec(v) };
+    for (i, x) in v.iter().enumerate() {
+        if i % 3 == 0 {
+            assert_eq!(*x, 1.0);
+        } else {
+            assert_eq!(x.to_bits(), na, "index {i} was left alone");
+        }
+    }
+
+    let m = with_r_matrix::<i32, _>(4, 3, |col, col_idx| {
+        if col_idx == 1 {
+            col.fill(5);
+        }
+    });
+    let m = unsafe { m.as_slice::<i32>() };
+    assert_eq!(&m[..4], &[i32::R_NA; 4]);
+    assert_eq!(&m[4..8], &[5; 4]);
+    assert_eq!(&m[8..], &[i32::R_NA; 4]);
+
+    let a = with_r_array::<u8, 3, _>([2, 2, 2], |_, _| {});
+    assert_eq!(unsafe { a.as_slice::<u8>() }, &[0u8; 8]);
+}
+
+fn test_collect_r() {
+    use miniextendr_api::rayon_bridge::ParCollectR;
+    use rayon::prelude::*;
+    let sexp = (0..1000i32)
+        .into_par_iter()
+        .map(|i| f64::from(i) * 0.5)
+        .collect_r();
+    let v = unsafe { read_real_vec(sexp) };
+    assert_eq!(v.len(), 1000);
+    for (i, x) in v.iter().enumerate() {
+        assert_eq!(*x, i as f64 * 0.5);
+    }
+}
+
+/// An indexed parallel iterator whose `len()` claims more items than its one
+/// producer gives. `IndexedParallelIterator` is a safe trait, so `collect_r`
+/// cannot trust it.
+struct ShortIter {
+    claimed: usize,
+    actual: usize,
+}
+
+struct ShortProducer(usize);
+
+impl rayon::iter::ParallelIterator for ShortIter {
+    type Item = f64;
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: rayon::iter::plumbing::UnindexedConsumer<f64>,
+    {
+        rayon::iter::plumbing::bridge(self, consumer)
+    }
+    fn opt_len(&self) -> Option<usize> {
+        Some(self.claimed)
+    }
+}
+
+impl rayon::iter::IndexedParallelIterator for ShortIter {
+    fn len(&self) -> usize {
+        self.claimed
+    }
+    fn drive<C: rayon::iter::plumbing::Consumer<f64>>(self, consumer: C) -> C::Result {
+        rayon::iter::plumbing::bridge(self, consumer)
+    }
+    fn with_producer<CB: rayon::iter::plumbing::ProducerCallback<f64>>(
+        self,
+        callback: CB,
+    ) -> CB::Output {
+        callback.callback(ShortProducer(self.actual))
+    }
+}
+
+impl rayon::iter::plumbing::Producer for ShortProducer {
+    type Item = f64;
+    type IntoIter = std::iter::Map<std::ops::Range<u32>, fn(u32) -> f64>;
+    fn into_iter(self) -> Self::IntoIter {
+        (0..u32::try_from(self.0).unwrap()).map(f64::from as fn(u32) -> f64)
+    }
+    // One leaf: the bridge never splits it.
+    fn min_len(&self) -> usize {
+        usize::MAX
+    }
+    fn split_at(self, _index: usize) -> (Self, Self) {
+        unreachable!("min_len keeps the producer whole")
+    }
+}
+
+fn test_collect_r_refuses_a_short_iterator() {
+    use miniextendr_api::rayon_bridge::ParCollectR;
+    let short = ShortIter {
+        claimed: 5,
+        actual: 3,
+    };
+    let err = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| short.collect_r()))
+        .expect_err("a short iterator must not leave slots unwritten");
+    let msg = err
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .unwrap_or_default();
+    assert!(
+        msg.contains("collect_r: the iterator gave 3 items but its len() was 5"),
+        "{msg}"
+    );
+}

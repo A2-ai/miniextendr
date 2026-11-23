@@ -340,7 +340,8 @@ where
 ///
 /// Called by the bridge trampolines (`altrep_bridge.rs`) to convert the raw
 /// `*mut T` buffer from R's ALTREP dispatch into a `&mut [T]` before passing
-/// it to the trait methods.
+/// it to the trait methods. R has not filled that buffer (`ITERATE_BY_REGION`
+/// passes a stack array), so it is zeroed first.
 ///
 /// # Safety
 ///
@@ -348,9 +349,14 @@ where
 /// - The caller must ensure no aliasing references to the same memory exist.
 /// - This is guaranteed when called from R's ALTREP `Get_region` dispatch, which
 ///   provides a freshly allocated buffer.
+/// - All-zero bytes must be a valid `T`, as they are for R's element types
+///   (`i32`, `f64`, `u8`, `Rcomplex`).
 #[inline]
 pub unsafe fn altrep_region_buf<T>(buf: *mut T, len: usize) -> &'static mut [T] {
-    unsafe { std::slice::from_raw_parts_mut(buf, len) }
+    unsafe {
+        std::ptr::write_bytes(buf, 0, len);
+        std::slice::from_raw_parts_mut(buf, len)
+    }
 }
 // endregion
 

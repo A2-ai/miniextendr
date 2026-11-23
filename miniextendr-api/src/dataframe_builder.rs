@@ -140,8 +140,8 @@ struct ColumnReg {
 ///
 /// - [`column::<T>`][RDataFrameBuilder::column] — a native-typed column
 ///   (`f64`/`i32`/`RLogical`/`u8`/`Rcomplex`). The fill closure receives a
-///   mutable chunk and its offset. The buffer is R memory, filled directly with
-///   zero intermediate allocation.
+///   mutable chunk, every element `NA` (`0` for raw), and its offset. The
+///   buffer is R memory, filled directly with zero intermediate allocation.
 /// - [`column_str`][RDataFrameBuilder::column_str] — a character (`STRSXP`)
 ///   column. The per-row `Option<String>` values are computed during the fill
 ///   pass, but the `CHARSXP`s are set **serially** afterward. `None` becomes
@@ -220,7 +220,8 @@ impl RDataFrameBuilder {
     /// The fill closure `f(chunk, offset)` is dispatched over chunks of the
     /// (already-allocated) R column buffer — in parallel with `rayon`, or in one
     /// full-range pass otherwise. Chunk boundaries are deterministic for a given
-    /// `nrow` and thread count.
+    /// `nrow` and thread count. Each chunk starts as `NA` (`0` for raw), so a
+    /// row the closure leaves alone is `NA` in R.
     pub fn column<T>(
         mut self,
         name: impl Into<String>,
@@ -252,6 +253,11 @@ impl RDataFrameBuilder {
                     // is the `Send + Sync` `ColPtr`; cast inside the closure so
                     // the closure stays `Send + Sync`.
                     let ptr = base.cast::<T>();
+                    // A fresh R vector's payload is uninitialized and `f` may
+                    // read its chunk, so give every slot a value (`NA`) first.
+                    for k in offset..offset + len {
+                        unsafe { ptr.add(k).write(T::R_NA) };
+                    }
                     let slice = unsafe { std::slice::from_raw_parts_mut(ptr.add(offset), len) };
                     f(slice, offset);
                 })

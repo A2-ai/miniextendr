@@ -184,7 +184,8 @@ let data: Vec<f64> = unsafe { m.to_vec() };
 ```rust
 use miniextendr_api::rarray::{RMatrix, RArray3D};
 
-// Matrix: 3 rows x 4 columns, initialized via closure
+// Matrix: 3 rows x 4 columns, initialized via closure. The slice starts as
+// NA (0 for raw): R leaves a fresh vector's elements uninitialized.
 let matrix = unsafe {
     RMatrix::<f64>::new([3, 4], |slice| {
         for (i, v) in slice.iter_mut().enumerate() {

@@ -898,8 +898,8 @@ unsafe fn select_frame_rows(frame: SEXP, idx: &[usize]) -> crate::OwnedProtect {
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         {
             let _rn_guard = crate::OwnedProtect::new(row_names);
-            rn[0] = i32::MIN;
-            rn[1] = -new_nrow;
+            rn[0].write(i32::MIN);
+            rn[1].write(-new_nrow);
             new_list.set_row_names(row_names);
         }
 
@@ -960,8 +960,10 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
         {
             let (new_dim, dim_vals) = crate::into_r::alloc_r_vector::<i32>(dims.len());
             let _dim_guard = crate::OwnedProtect::new(new_dim);
-            dim_vals[0] = i32::try_from(idx.len()).expect("row count exceeds i32::MAX");
-            dim_vals[1..].copy_from_slice(&dim.as_slice::<i32>()[1..]);
+            dim_vals[0].write(i32::try_from(idx.len()).expect("row count exceeds i32::MAX"));
+            for (slot, &extent) in dim_vals[1..].iter_mut().zip(&dim.as_slice::<i32>()[1..]) {
+                slot.write(extent);
+            }
             out.set_dim(new_dim);
         }
 
