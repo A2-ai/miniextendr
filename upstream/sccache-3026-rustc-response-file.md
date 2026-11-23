@@ -39,10 +39,13 @@ dependencies. Not reproduced outside CI.
 
 ## Closes when
 
-An sccache release includes #3026 (the first after v0.19.0), and the Windows
-job sets `RUSTC_WRAPPER=sccache` again on that release.
+CI runs an sccache release that includes #3026 (v0.20.0 or later), and the
+Windows job sets `RUSTC_WRAPPER=sccache` again on that release. CI pins
+v0.19.0 until #2396 is resolved, so this waits on #2396 too.
 
 ## Last checked
 
-2026-11-16: #3026 merged 2026-11-14. Latest release v0.19.0 (2026-10-24).
-#2397 open, with a 2026-11-10 report of the same failure on 0.19.0.
+2026-11-23: v0.20.0 released 2026-11-23 and includes #3026. CI pins v0.19.0
+because 0.20.0's server times out starting under GitHub cache rate limiting
+(#2396). #2397 open; mozilla/sccache#3053 (2026-11-20) reports the same os
+error 206.

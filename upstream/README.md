@@ -24,7 +24,8 @@ merged pull request, and say in **Closes when** which release we wait for.
 | File | Project | Upstream | State (last checked) |
 | --- | --- | --- | --- |
 | [`sccache-2313-server-keeps-inherited-fds.md`](sccache-2313-server-keeps-inherited-fds.md) | mozilla/sccache | #2313 | open (2026-09-23) |
-| [`sccache-3026-rustc-response-file.md`](sccache-3026-rustc-response-file.md) | mozilla/sccache | #3026 | fixed on main, unreleased (2026-11-16) |
+| [`sccache-3026-rustc-response-file.md`](sccache-3026-rustc-response-file.md) | mozilla/sccache | #3026 | released in v0.20.0; CI pins v0.19.0 (2026-11-23) |
+| [`sccache-2911-gha-retry-outlasts-startup.md`](sccache-2911-gha-retry-outlasts-startup.md) | mozilla/sccache | #2911 (no issue) | released in v0.20.0; CI pins v0.19.0 (2026-11-23) |
 | [`S7-721-external-generic-s3-registration.md`](S7-721-external-generic-s3-registration.md) | RConsortium/S7 | #721 | fixed on main, unreleased (2026-09-24) |
 | [`S7-490-unary-ops.md`](S7-490-unary-ops.md) | RConsortium/S7 | #490 | PR open; works on main, unreleased (2026-09-24) |
 | [`serde-1682-content-no-128-bit-integers.md`](serde-1682-content-no-128-bit-integers.md) | serde-rs/serde | #1682 | open (2026-10-29) |
