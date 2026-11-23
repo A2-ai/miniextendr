@@ -2369,6 +2369,14 @@ jobs:
       # No rust-cache: this job never runs on a push to main, the only event
       # that saves caches (see the top-level `env:`), so there is no entry to
       # restore.
+
+      # test-scaffold-smoke.R vendors through miniextendr_vendor(), and
+      # test-monorepo-existing.R skips without cargo-revendor on PATH.
+      - name: Set up cargo-revendor (install only)
+        uses: ./.github/actions/setup-vendor
+        with:
+          configure-and-vendor: 'false'
+
       - name: Run standalone round-trip e2e
         run: just minirextendr-roundtrip
 

@@ -1127,8 +1127,9 @@ minirextendr-rcmdcheck:
 
 # Drives the gated testthat e2e tests in minirextendr/tests/testthat/test-templates.R
 # — including the #757/#775 standalone build → wrapper-gen → library() round-trip
-# at :521 — by flipping the MINIEXTENDR_RUN_E2E bypass so skip_e2e() does NOT
-# skip_on_ci(). MINIEXTENDR_LOCAL_PATH points the scaffolder at this checkout.
+# — plus test-scaffold-smoke.R and test-monorepo-existing.R, by flipping the
+# MINIEXTENDR_RUN_E2E bypass so their skips do NOT skip_on_ci().
+# MINIEXTENDR_LOCAL_PATH points the scaffolder at this checkout.
 #
 # Cold-compiles a Rust crate, runs autoconf, and (for the standalone test)
 # network-fetches + vendors miniextendr `main` via cargo-revendor — minutes per
@@ -1142,7 +1143,7 @@ minirextendr-rcmdcheck:
 minirextendr-roundtrip:
     export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     export MINIEXTENDR_RUN_E2E=1
-    Rscript scripts/r-test.R minirextendr templates
+    Rscript scripts/r-test.R minirextendr 'templates|scaffold-smoke|monorepo-existing'
 
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check

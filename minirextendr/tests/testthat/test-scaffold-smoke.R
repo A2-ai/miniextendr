@@ -1,16 +1,14 @@
-# Scaffold smoke tests for CI
+# Scaffold smoke tests
 #
 # Validate CRAN prep workflows end-to-end on a freshly scaffolded package.
+# On CI they run only in the weekly round-trip job (skip_e2e(), helper.R).
 
 # =============================================================================
 # Standalone CRAN prep smoke test (requires cargo + autoconf)
 # =============================================================================
 
 test_that("standalone scaffold can vendor for CRAN prep", {
-  skip_on_ci()
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-  skip_if_no_local_repo()
+  skip_e2e()
 
   miniextendr_path <- find_miniextendr_repo()
 
@@ -67,10 +65,7 @@ test_that("standalone scaffold can vendor for CRAN prep", {
 # =============================================================================
 
 test_that("monorepo scaffold can vendor for CRAN prep", {
-  skip_on_ci()
-  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
-  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
-  skip_if_no_local_repo()
+  skip_e2e()
 
   miniextendr_path <- find_miniextendr_repo()
 
