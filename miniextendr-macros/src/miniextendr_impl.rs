@@ -5186,15 +5186,15 @@ fn check_dots_policies(parsed: &ParsedImpl) -> syn::Result<()> {
 
 /// Whether the class system gives `m`'s R wrapper a `...` formal the Rust
 /// method doesn't take: the dispatch `...` of an S3, S4 or S7 instance method
-/// (unless `no_dispatch_dots` / `s7(no_dots)`), and of a vctrs protocol
-/// method. Env and R6 methods and every other static method have only the
-/// formals of the Rust signature.
+/// (unless `no_dispatch_dots` / `s7(no_dots)`, or an S7 method on a
+/// two-operand operator), and of a vctrs protocol method. Env and R6 methods
+/// and every other static method have only the formals of the Rust signature.
 fn has_dispatch_dots(class_system: ClassSystem, m: &ParsedMethod) -> bool {
     match class_system {
         ClassSystem::Vctrs => m.method_attrs.vctrs_protocol.is_some(),
         _ if !m.env.is_instance() => false,
         ClassSystem::S3 | ClassSystem::S4 => !m.method_attrs.no_dispatch_dots,
-        ClassSystem::S7 => !m.method_attrs.s7.no_dots,
+        ClassSystem::S7 => s7_class::s7_method_target(m).method_takes_dots(m),
         ClassSystem::Env | ClassSystem::R6 => false,
     }
 }
@@ -5208,9 +5208,11 @@ fn has_dispatch_dots(class_system: ClassSystem, m: &ParsedMethod) -> bool {
 /// wrong number of classes in the signature; any violation stops the package
 /// from loading. The generator names the receiver after the first dispatch
 /// argument and takes the others from the method's leading parameters, so the
-/// rules are checked here, where the error can name the fix. `!` is rejected
-/// outright because S7 does not dispatch it. Non-S7 class systems, static
-/// methods and property accessors are a no-op.
+/// rules are checked here, where the error can name the fix. An `Ops` / `%*%`
+/// generic has no `...`, so a method on it cannot take R's dots. `!` is
+/// rejected outright: its S7 generic is unary, and only binary operator methods
+/// are generated. Non-S7 class systems, static methods and property accessors
+/// are a no-op.
 fn check_s7_dispatch(parsed: &ParsedImpl) -> syn::Result<()> {
     if parsed.class_system != ClassSystem::S7 {
         return Ok(());
@@ -5229,21 +5231,17 @@ fn check_s7_dispatch(parsed: &ParsedImpl) -> syn::Result<()> {
 /// [`check_s7_dispatch`] for one method; `params` is its R formals string
 /// (normalized names, with defaults).
 fn check_s7_method_dispatch(m: &ParsedMethod, params: &str) -> Result<(), String> {
-    use s7_class::{S7GenericTarget, s7_dispatch_args, s7_generic_target};
+    use s7_class::{S7GenericTarget, s7_dispatch_args, s7_method_target};
 
     let rust_name = crate::naming::ident_name(&m.ident);
-    let generic = m
-        .method_attrs
-        .generic
-        .clone()
-        .unwrap_or_else(|| m.r_method_name());
-    let target = s7_generic_target(&generic);
+    let target = s7_method_target(m);
     let op = target.name();
     if op == "!" {
         return Err(
-            "S7 methods cannot be generated for the `!` operator: S7 does not dispatch \
-                    `!` (its Ops handling covers the binary operators only). Keep this method \
-                    under an ordinary name and call it directly."
+            "S7 methods cannot be generated for the `!` operator: S7's `!` generic is unary \
+                    (`function(e1)`), and miniextendr generates methods for the binary \
+                    operators only. Keep this method under an ordinary name and call it \
+                    directly."
                 .to_string(),
         );
     }
@@ -5304,20 +5302,27 @@ fn check_s7_method_dispatch(m: &ParsedMethod, params: &str) -> Result<(), String
                  it would register the method for every pair of operands, not for this class"
             ));
         }
-        let operands: Vec<&str> = names.iter().copied().filter(|n| *n != "...").collect();
-        if operands.len() != 1 {
+        if names.contains(&"...") {
+            return Err(format!(
+                "S7's `{op}` generic is `function({left}, {right})`, without `...`, and S7 \
+                 registers a method on it only when the method's formals are exactly \
+                 `{left}, {right}`, so `{rust_name}` cannot take R's `...`: drop its dots \
+                 parameter"
+            ));
+        }
+        if names.len() != 1 {
             return Err(format!(
                 "`{rust_name}` implements the `{op}` operator, so it takes exactly one parameter \
                  besides the receiver: the right operand, named `{right}` (S7 calls the method \
                  as `{left} {op} {right}`); {listed}"
             ));
         }
-        if operands[0] != right {
+        if names[0] != right {
             return Err(format!(
                 "S7 dispatches `{op}` on `{left}` and `{right}`: the receiver becomes `{left}` and \
                  the right operand of `{rust_name}` must be named `{right}`. Rename the parameter \
                  `{}` to `{right}`.",
-                operands[0]
+                names[0]
             ));
         }
     }

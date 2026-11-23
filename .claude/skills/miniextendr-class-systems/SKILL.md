@@ -497,9 +497,17 @@ later, unpredictably.
   `Type_<method>` shortcut. The `Ops` operators (`+`, `==`, ...) and `%*%`
   dispatch on `(e1, e2)` / `(x, y)`: the method's single parameter must be
   named `e2` / `y`, and it is registered as
-  `` S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) ``.
-  `!` is a compile error (S7 does not dispatch it); `1 + money` and unary
-  `-money` are not covered (S7 limitations).
+  `` S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) ``, with
+  no `...` (S7 1.0's operator generics have none and refuse a method whose
+  formals differ, so a `&Dots` parameter is a compile error). `!` is a
+  compile error (its S7 generic is unary); `1 + money` and unary `-money` are
+  not covered.
+
+- **S7 subclass constructor**: a class with `s7(parent = "P")` calls
+  `S7::new_object(P(.ptr = .val), .ptr = .val)`: S7 1.0 requires an instance
+  of the parent class as `new_object()`'s first argument (and runs an
+  abstract parent's constructor while building that part). Root classes use
+  `S7::S7_object()`. The generated S7 code needs S7 >= 1.0.0.
 
 - **S3 `@export` on conditional generic**: `if (!exists("generic", mode = "function")) { generic <- function(x, ...) UseMethod("generic") }` is not introspectable by roxygen2. Adding `#' @export` directly above it causes roxygen to drift the export onto the next function. Use `#' @export generic_name` (explicit target) instead. The macro generator handles this correctly.
 

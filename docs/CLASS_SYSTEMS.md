@@ -662,6 +662,31 @@ S7::method(print, Point) <- function(x, ...) {
 }
 ```
 
+A subclass (`s7(parent = "Shape")`) builds its parent part with the parent's
+constructor, through that constructor's `.ptr` shortcut, since S7 requires the
+first argument of `new_object()` to be an instance of the parent class:
+
+```r
+Circle <- S7::new_class("Circle", parent = Shape,
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(radius, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(Shape(.ptr = .ptr), .ptr = .ptr)
+        } else {
+            .val <- .Call(C_mypkg_Circle__new, radius)
+            S7::new_object(Shape(.ptr = .val), .ptr = .val)
+        }
+    }
+)
+```
+
+The parent may be abstract (`s7(abstract)`): S7 runs an abstract class's
+constructor while it builds the parent part of a subclass. The generated S7
+code needs S7 1.0.0 or later, so `minirextendr::use_s7()` adds
+`S7 (>= 1.0.0)` to `Imports`.
+
 ### Usage
 
 ```r
@@ -815,10 +840,12 @@ and `Bag_concat()` above).
 
 R's `Ops` group (`+`, `-`, `*`, `/`, `^`, `%%`, `%/%`, `==`, `!=`, `<`, `<=`,
 `>=`, `>`, `&`, `|`) and `%*%` are dispatched by S7 on both operands, through
-its own `(e1, e2, ...)` and `(x, y, ...)` generics. A method on one of them
+its own `(e1, e2)` and `(x, y)` generics. A method on one of them
 dispatches on that pair without an `s7(dispatch = ...)`: the receiver becomes
 `e1` (`x` for `%*%`), and the method takes exactly one parameter, the right
-operand, which must be named `e2` (`y`):
+operand, which must be named `e2` (`y`). These generics have no `...`, and S7
+registers a method on them only when its formals are exactly the pair, so the
+generated method has no `...` either (its fast-path shortcut keeps one):
 
 ```rust
 #[miniextendr(s7)]
@@ -834,15 +861,17 @@ impl Money {
 ```
 
 ```r
-S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) { ... }
+S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) { ... }
 ```
 
-A wrong operand name, a second parameter, a conflicting `s7(dispatch = ...)` or
-`s7(fallback)` are compile errors, and so is `!`, which S7 does not dispatch.
-Two S7 limitations apply to these methods: only `Money + x` is registered, so
-`1 + money` needs a reversed method in R
-(`` S7::method(`+`, list(S7::class_any, Money)) ``), and unary `-money` fails
-inside S7, which always calls the method with two operands.
+A wrong operand name, a second parameter, a `...` parameter (`&Dots`,
+`LazyDots`), a conflicting `s7(dispatch = ...)` or `s7(fallback)` are compile
+errors, and so is `!`, whose S7 generic is unary: only methods for the binary
+operators are generated. Two limitations apply to these methods: only
+`Money + x` is registered, so `1 + money` needs a reversed method in R
+(`` S7::method(`+`, list(S7::class_any, Money)) ``), and unary `-money` finds
+no method, since S7 dispatches it on `list(Money, S7::class_missing)`
+(generating unary methods is #2385).
 
 ### Registering methods when the package loads
 

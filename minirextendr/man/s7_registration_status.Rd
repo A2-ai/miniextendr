@@ -11,8 +11,10 @@ s7_registration_status(pkg_dir = usethis::proj_get())
 }
 \value{
 \code{NULL} when the package does not use S7; otherwise
-\verb{list(imported = <lgl>, hooks = , failed = )} with \code{hooks} / \code{failed}
-from \code{s7_load_hooks()}.
+\verb{list(imported = <lgl>, requirement = , hooks = , failed = )}, where
+\code{requirement} is the version requirement of the \code{Imports} / \code{Depends}
+entry (\code{"*"} for none, \code{NA} when not imported), and \code{hooks} / \code{failed}
+come from \code{s7_load_hooks()}.
 }
 \description{
 A package uses S7 when DESCRIPTION lists it in \code{Imports} or \code{Depends}, or

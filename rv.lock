@@ -26,7 +26,7 @@ dependencies = []
 
 [[packages]]
 name = "S7"
-version = "0.2.2"
+version = "1.0.0"
 source = { repository = "https://cloud.r-project.org/" }
 force_source = false
 dependencies = []
@@ -621,7 +621,7 @@ dependencies = [
     "cli",
     "lifecycle",
     "R6",
-    "S7",
+    { name = "S7", requirement = "(>= 1.0.0)" },
     "vctrs",
 ]
 
