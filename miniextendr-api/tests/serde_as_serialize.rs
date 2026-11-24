@@ -29,6 +29,12 @@ struct Reading {
     at: Point,
 }
 
+#[derive(serde::Serialize)]
+struct Wide {
+    id: i32,
+    count: i128,
+}
+
 /// A `Serialize` impl that refuses, as a type's own validation would.
 struct Refuses;
 
@@ -109,6 +115,50 @@ fn collections_options_and_empty_values() {
         assert_identical(serialized(Some(4)).get(), "4L");
         let map: BTreeMap<String, i32> = [("b".to_string(), 2), ("a".to_string(), 1)].into();
         assert_identical(serialized(map).get(), "list(a = 1L, b = 2L)");
+    });
+}
+
+#[test]
+fn wide_integers_take_the_r_type_that_holds_the_value() {
+    r_test_utils::with_r_thread(|| {
+        // R has no type for `u32`, `i64` or `u64`: a value an R integer holds
+        // is `integer(1)`, any other `numeric(1)`.
+        assert_identical(serialized(7u16).get(), "7L");
+        assert_identical(serialized(7u32).get(), "7L");
+        assert_identical(serialized(-7i64).get(), "-7L");
+        assert_identical(serialized(7u64).get(), "7L");
+        assert_identical(serialized(u32::MAX).get(), "4294967295");
+        assert_identical(serialized(-3_000_000_000i64).get(), "-3e9");
+        assert_identical(serialized(3_000_000_000u64).get(), "3e9");
+        // `i32::MIN` is `NA_integer_`'s bit pattern, so an `i64` holding it
+        // is a double.
+        assert_identical(serialized(i64::from(i32::MIN)).get(), "-2147483648");
+    });
+}
+
+#[test]
+fn integers_of_128_bits_are_refused() {
+    r_test_utils::with_r_thread(|| {
+        // Not widened to a double: writing and reading both refuse them, with
+        // serde's own message, which names the type.
+        let error = AsSerialize(u128::MAX)
+            .try_into_sexp()
+            .expect_err("no R type holds a u128");
+        assert!(RConditionData::message(&error).contains("u128"), "{error}");
+        assert_eq!(RConditionData::class(&error), [SERDE_ERROR_CLASS]);
+
+        // In a struct field too.
+        let error = AsSerialize(Wide { id: 7, count: -1 })
+            .try_into_sexp()
+            .expect_err("no R type holds an i128");
+        assert!(RConditionData::message(&error).contains("i128"), "{error}");
+        assert_eq!(RConditionData::class(&error), [SERDE_ERROR_CLASS]);
+
+        let seven = serialized(7);
+        let error = from_r::<u128>(seven.get()).expect_err("from_r reads no u128");
+        assert!(RConditionData::message(&error).contains("u128"), "{error}");
+        let error = from_r::<i128>(seven.get()).expect_err("from_r reads no i128");
+        assert!(RConditionData::message(&error).contains("i128"), "{error}");
     });
 }
 

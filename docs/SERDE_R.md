@@ -93,11 +93,13 @@ use `serialize`.
 | Rust Type | R Type | Notes |
 |-----------|--------|-------|
 | `bool` | `logical(1)` | Scalar |
-| `i8/i16/i32` | `integer(1)` | Widened to i32 |
-| `i64/u64/f32/f64` | `numeric(1)` | Converted to f64 |
+| `i8/i16/i32`, `u8/u16` | `integer(1)` | Widened to i32 |
+| `u32/i64/u64` | `integer(1)` or `numeric(1)` | `integer(1)` when an R integer holds the value, else converted to f64 |
+| `f32/f64` | `numeric(1)` | `f32` converted to f64 |
+| `i128/u128` | none | An error naming the type, on reading too. The [snapshot encoding](EXTERNALPTR.md#the-snapshot-encoding) keeps them |
 | `String/&str` | `character(1)` | UTF-8 preserved |
 | `Option<T>::Some(v)` | T | Transparent |
-| `Option<T>::None` | `NULL` | |
+| `Option<T>::None` | `NULL` | The type's `NA` in a [typed field](#typed-fields-as-character-co) |
 | `Nullable<T>` | as `Option<T>` | Serializes as `Option<T>` does (#2270) |
 | `Vec<i32>` | `integer` vector | Smart dispatch |
 | `Vec<f64>` | `numeric` vector | Smart dispatch |
