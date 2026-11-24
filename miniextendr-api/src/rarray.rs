@@ -88,6 +88,8 @@ use crate::into_r::IntoR;
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::marker::PhantomData;
 
+mod column;
+
 // region: Type aliases
 
 /// A 1-dimensional R vector with explicit dim attribute.
@@ -157,12 +159,36 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
 
     /// Get the dimensions as an array.
     ///
+    /// # Panics
+    ///
+    /// Panics on a provider error in standalone Rust. Use [`Self::try_dims`]
+    /// to inspect the condition.
+    ///
     /// # Safety
     ///
     /// The SEXP must be valid.
     #[inline]
     pub unsafe fn dims(&self) -> [usize; NDIM] {
-        unsafe { get_dims::<NDIM>(self.sexp) }
+        unsafe { self.try_dims() }
+            .unwrap_or_else(|err| panic!("R array dimension access failed: {err}"))
+    }
+
+    /// Read the shape, returning a provider's condition to standalone Rust.
+    /// In a miniextendr boundary the original condition resumes in R.
+    ///
+    /// # Safety
+    ///
+    /// The array must be valid and rooted on R's main thread.
+    pub unsafe fn try_dims(&self) -> Result<[usize; NDIM], crate::REvalError> {
+        let sexp = self.sexp;
+        let dim = sexp.get_dim();
+        // An implicit 1-D shape reads the vector's own length.
+        let source = if dim.type_of() == SEXPTYPE::INTSXP {
+            dim
+        } else {
+            sexp
+        };
+        read_metadata(sexp, source, || unsafe { get_dims(sexp, dim) })
     }
 
     /// Get a specific dimension size.
@@ -181,9 +207,21 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
     }
 
     /// Get the total number of elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a provider error in standalone Rust. Use [`Self::try_len`]
+    /// to inspect the condition.
     #[inline]
     pub fn len(&self) -> usize {
-        self.sexp.len()
+        self.try_len()
+            .unwrap_or_else(|err| panic!("R array length access failed: {err}"))
+    }
+
+    /// Read the payload length, returning a provider's condition to standalone
+    /// Rust. In a miniextendr boundary the original condition resumes in R.
+    pub fn try_len(&self) -> Result<usize, crate::REvalError> {
+        read_metadata(self.sexp, self.sexp, || self.sexp.len())
     }
 
     /// Check if the array is empty.
@@ -203,7 +241,11 @@ impl<T, const NDIM: usize> RArray<T, NDIM> {
     /// Panics if any index is out of bounds.
     #[inline]
     pub unsafe fn linear_index(&self, indices: [usize; NDIM]) -> usize {
-        let dims = unsafe { self.dims() };
+        Self::index_from_dims(unsafe { self.dims() }, indices)
+    }
+
+    #[inline]
+    fn index_from_dims(dims: [usize; NDIM], indices: [usize; NDIM]) -> usize {
         let mut linear = 0;
         let mut stride = 1;
         for i in 0..NDIM {
@@ -242,7 +284,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         crate::from_r::native_slice_type::<T>(sexp)?;
 
         // Validate dimensions count
-        let ndim = get_ndim(sexp);
+        let ndim = get_ndim(sexp)?;
         if ndim != NDIM {
             return Err(SexpLengthError {
                 expected: NDIM,
@@ -276,8 +318,9 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     #[inline]
     pub unsafe fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe {
+            let len = self.len();
             let ptr = T::dataptr_mut(self.sexp);
-            crate::from_r::r_slice_mut(ptr, self.len())
+            crate::from_r::r_slice_mut(ptr, len)
         }
     }
 
@@ -312,22 +355,46 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         unsafe { self.as_slice().to_vec() }
     }
 
-    /// Get an element by N-dimensional indices.
+    /// Get an element by N-dimensional indices. ALTREP inputs use the
+    /// provider's element accessor, which may run R code or allocate.
+    /// A provider error propagates to the enclosing R handler.
     ///
     /// # Safety
     ///
-    /// The SEXP must be protected and valid.
+    /// Call on R's main thread. Keep the source array rooted for the entire
+    /// call, including reentrant ALTREP callbacks. A `.Call` argument or a
+    /// live [`crate::Preserved`] handle suffices. The underlying type and
+    /// shape must remain valid for this view throughout the read.
     ///
     /// # Panics
     ///
-    /// Panics if any index is out of bounds.
+    /// Panics if any index is out of bounds, or if an ALTREP reader raises
+    /// an R error in a standalone Rust embedding.
     #[inline]
     pub unsafe fn get(&self, indices: [usize; NDIM]) -> T
     where
         T: Copy,
     {
-        let idx = unsafe { self.linear_index(indices) };
-        unsafe { *self.as_slice().get_unchecked(idx) }
+        let sexp = self.sexp;
+        let dim = sexp.get_dim();
+        let read = |dim| {
+            let dims = unsafe { get_dims(sexp, dim) };
+            let idx = Self::index_from_dims(dims, indices);
+            T::elt(
+                sexp,
+                R_xlen_t::try_from(idx).expect("array index exceeds R_xlen_t"),
+            )
+        };
+        if sexp.is_altrep() || dim.is_altrep() {
+            // Elt, implicit length, and lazy dimensions can all enter R.
+            // Keep the dimension snapshot reachable if reentrant R code
+            // replaces the attribute. The caller already roots the array.
+            let _dim = unsafe { crate::OwnedProtect::new(dim) };
+            unsafe { crate::unwind_protect::call_r_callback(|| read(dim)) }
+                .unwrap_or_else(|err| panic!("R array element access failed: {err}"))
+        } else {
+            read(dim)
+        }
     }
 
     /// Set an element by N-dimensional indices.
@@ -380,7 +447,8 @@ impl<T: RNativeType> RMatrix<T> {
     ///
     /// # Safety
     ///
-    /// The SEXP must be protected and valid.
+    /// The main-thread, rooting, and validity requirements of [`Self::get`]
+    /// apply.
     #[inline]
     pub unsafe fn get_rc(&self, row: usize, col: usize) -> T
     where
@@ -722,7 +790,7 @@ macro_rules! impl_rarray_try_from_sexp_coerce {
                 }
 
                 // Validate dimensions count
-                let ndim = get_ndim(sexp);
+                let ndim = get_ndim(sexp)?;
                 if ndim != NDIM {
                     return Err(SexpLengthError {
                         expected: NDIM,
@@ -811,16 +879,31 @@ impl<T: RNativeType, const NDIM: usize> IntoR for RArray<T, NDIM> {
 
 // region: Helper functions
 
-/// Get number of dimensions from SEXP.
-fn get_ndim(sexp: SEXP) -> usize {
-    {
-        let dim_sexp = sexp.get_dim();
-        if dim_sexp.type_of() != SEXPTYPE::INTSXP {
-            // No dim attribute - treat as 1D
-            1
-        } else {
-            dim_sexp.len()
-        }
+/// Guard exactly the metadata source that can dispatch. During admission the
+/// incoming array may have no other root. Keep the source as well when it is
+/// a dim attribute that reentrant R code could replace.
+fn read_metadata<T>(
+    array: SEXP,
+    source: SEXP,
+    read: impl FnOnce() -> T + Copy,
+) -> Result<T, crate::REvalError> {
+    if source.is_altrep() {
+        let _array = unsafe { crate::OwnedProtect::new(array) };
+        let _attribute = (source != array).then(|| unsafe { crate::OwnedProtect::new(source) });
+        unsafe { crate::unwind_protect::call_r_callback(read) }
+    } else {
+        Ok(read())
+    }
+}
+
+/// Get the rank without requesting any element of the array payload.
+fn get_ndim(sexp: SEXP) -> Result<usize, crate::REvalError> {
+    let dim = sexp.get_dim();
+    if dim.type_of() == SEXPTYPE::INTSXP {
+        read_metadata(sexp, dim, || dim.len())
+    } else {
+        // No dim attribute - treat as 1D.
+        Ok(1)
     }
 }
 
@@ -829,21 +912,23 @@ fn get_ndim(sexp: SEXP) -> usize {
 /// # Safety
 ///
 /// Caller must ensure SEXP has NDIM dimensions.
-unsafe fn get_dims<const NDIM: usize>(sexp: SEXP) -> [usize; NDIM] {
+unsafe fn get_dims<const NDIM: usize>(sexp: SEXP, dim_sexp: SEXP) -> [usize; NDIM] {
     let mut dims = [0usize; NDIM];
 
     unsafe {
-        let dim_sexp = sexp.get_dim();
-
         if dim_sexp.type_of() != SEXPTYPE::INTSXP {
             // No dim attribute - treat as 1D with length
             if NDIM == 1 {
                 dims[0] = sexp.len();
             }
         } else {
-            let dim_slice: &[i32] = dim_sexp.as_slice();
-            for (i, &d) in dim_slice.iter().take(NDIM).enumerate() {
-                dims[i] = d as usize;
+            // Fetch length first. No R call may invalidate the buffer between
+            // obtaining the pointer and copying its dimension values.
+            let count = dim_sexp.len().min(NDIM);
+            let ptr = sys::DATAPTR_RO(dim_sexp).cast::<i32>();
+            let values = crate::from_r::r_slice(ptr, count);
+            for (slot, &d) in dims.iter_mut().zip(values) {
+                *slot = usize::try_from(d).expect("R array dimension is negative");
             }
         }
     }

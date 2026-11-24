@@ -9,7 +9,9 @@
 use crate::SEXP;
 use crate::altrep_traits::NA_REAL;
 use crate::sys::{
-    COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
+    COMPLEX, COMPLEX_ELT, COMPLEX_GET_REGION, COMPLEX_OR_NULL, INTEGER, INTEGER_ELT,
+    INTEGER_GET_REGION, INTEGER_OR_NULL, LOGICAL, LOGICAL_ELT, LOGICAL_GET_REGION, LOGICAL_OR_NULL,
+    RAW, RAW_ELT, RAW_GET_REGION, RAW_OR_NULL, REAL, REAL_ELT, REAL_GET_REGION, REAL_OR_NULL,
     Rf_type2char, Rf_xlength,
 };
 
@@ -144,6 +146,28 @@ pub trait RNativeType: Sized + Copy + 'static {
     ///
     /// Goes through R's ALTREP dispatch for ALTREP vectors.
     fn elt(sexp: SEXP, i: isize) -> Self;
+
+    /// The vector's data pointer when it has one without materializing
+    /// (`*_OR_NULL`): an ordinary vector's storage, or an ALTREP's buffer when
+    /// its class exposes one. Null otherwise, and for an empty vector it may be
+    /// R's unaligned `0x1` sentinel, so read no elements from it then.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; `sexp` is a valid vector of this type. An ALTREP's
+    /// `Dataptr_or_null` method may run R code.
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self;
+
+    /// Copy up to `n` elements starting at `i` into `buf` through the
+    /// `*_GET_REGION` accessor, returning how many were copied. An ALTREP
+    /// supplies them through its `Get_region` method, or its `Elt` method by
+    /// R's default, either of which may allocate or raise an R error.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; `sexp` is a valid vector of this type, `buf` is valid
+    /// for `n` writes, and `i..i + n` lies within the vector.
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t;
 }
 
 /// Native R elements with an actual NA representation.
@@ -275,6 +299,15 @@ impl RNativeType for i32 {
     fn elt(sexp: SEXP, i: isize) -> Self {
         unsafe { INTEGER_ELT(sexp, i) }
     }
+    #[inline]
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self {
+        unsafe { INTEGER_OR_NULL(sexp) }
+    }
+
+    #[inline]
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t {
+        unsafe { INTEGER_GET_REGION(sexp, i, n, buf) }
+    }
 }
 
 impl RNativeType for f64 {
@@ -295,6 +328,15 @@ impl RNativeType for f64 {
     #[inline]
     fn elt(sexp: SEXP, i: isize) -> Self {
         unsafe { REAL_ELT(sexp, i) }
+    }
+    #[inline]
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self {
+        unsafe { REAL_OR_NULL(sexp) }
+    }
+
+    #[inline]
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t {
+        unsafe { REAL_GET_REGION(sexp, i, n, buf) }
     }
 }
 
@@ -318,6 +360,15 @@ impl RNativeType for u8 {
     fn elt(sexp: SEXP, i: isize) -> Self {
         unsafe { RAW_ELT(sexp, i) }
     }
+    #[inline]
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self {
+        unsafe { RAW_OR_NULL(sexp) }
+    }
+
+    #[inline]
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t {
+        unsafe { RAW_GET_REGION(sexp, i, n, buf) }
+    }
 }
 
 impl RNativeType for RLogical {
@@ -339,6 +390,16 @@ impl RNativeType for RLogical {
     #[inline]
     fn elt(sexp: SEXP, i: isize) -> Self {
         RLogical(unsafe { LOGICAL_ELT(sexp, i) })
+    }
+    #[inline]
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self {
+        unsafe { LOGICAL_OR_NULL(sexp) }.cast()
+    }
+
+    #[inline]
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t {
+        // RLogical is repr(transparent) over the c_int R fills.
+        unsafe { LOGICAL_GET_REGION(sexp, i, n, buf.cast()) }
     }
 }
 
@@ -363,6 +424,15 @@ impl RNativeType for Rcomplex {
     #[inline]
     fn elt(sexp: SEXP, i: isize) -> Self {
         unsafe { COMPLEX_ELT(sexp, i) }
+    }
+    #[inline]
+    unsafe fn dataptr_or_null(sexp: SEXP) -> *const Self {
+        unsafe { COMPLEX_OR_NULL(sexp) }
+    }
+
+    #[inline]
+    unsafe fn get_region(sexp: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Self) -> R_xlen_t {
+        unsafe { COMPLEX_GET_REGION(sexp, i, n, buf) }
     }
 }
 

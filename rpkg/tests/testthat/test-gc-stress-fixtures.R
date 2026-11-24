@@ -765,3 +765,33 @@ test_that("RArray::new keeps its payload rooted while it sets the dims", {
     expect_identical(miniextendr:::gc_stress_rarray_new(), expected)
   }
 })
+
+# The region reader delivers offsets 5 and 6, then base::stop() signals an
+# error at offset 7. The single-cell reader requests offset 7 directly.
+matrix_provider_recovery <- function(column) {
+  x <- miniextendr:::rarray_region_matrix(FALSE, signal = TRUE)
+  before <- miniextendr:::quoted_sentinel_drops()
+  caught <- tryCatch(miniextendr:::rarray_guarded_read(x, column), error = identity)
+  drops <- miniextendr:::quoted_sentinel_drops() - before
+  retried <- miniextendr:::rarray_guarded_read(x, column)
+  list(caught = caught, drops = drops, retried = retried)
+}
+
+check_matrix_provider_recovery <- function(results) {
+  expected <- errorCondition("matrix provider read failed", class = "matrix_provider_error", offset = 7L)
+  expect_identical(results[[1L]], list(caught = expected, drops = 1L, retried = c(5, 6, 7, 8, 9)))
+  expect_identical(results[[2L]], list(caught = expected, drops = 1L, retried = 7))
+}
+
+test_that("an R provider condition unwinds matrix readers and the next read succeeds", {
+  check_matrix_provider_recovery(lapply(c(TRUE, FALSE), matrix_provider_recovery))
+})
+
+test_that("matrix readers unwind R provider conditions and recover under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  results <- lapply(c(TRUE, FALSE), matrix_provider_recovery)
+  gctorture(FALSE)
+  check_matrix_provider_recovery(results)
+})

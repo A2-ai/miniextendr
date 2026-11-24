@@ -565,6 +565,23 @@ unsafe extern "C-unwind" {
     // Element-wise accessors (ALTREP-aware) — encapsulated by SexpExt methods
     pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    // Region reads (ALTREP-aware): fill up to `n` values starting at `i` into
+    // `buf`, returning the number read.
+    pub fn INTEGER_GET_REGION(
+        x: SEXP,
+        i: R_xlen_t,
+        n: R_xlen_t,
+        buf: *mut ::std::os::raw::c_int,
+    ) -> R_xlen_t;
+    pub fn REAL_GET_REGION(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut f64) -> R_xlen_t;
+    pub fn LOGICAL_GET_REGION(
+        x: SEXP,
+        i: R_xlen_t,
+        n: R_xlen_t,
+        buf: *mut ::std::os::raw::c_int,
+    ) -> R_xlen_t;
+    pub fn RAW_GET_REGION(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Rbyte) -> R_xlen_t;
+    pub fn COMPLEX_GET_REGION(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Rcomplex) -> R_xlen_t;
     pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;

@@ -13,36 +13,24 @@ To make your type work with miniextendr, you have two main options:
 
 If your type has the same memory layout as `i32`, `f64`, `u8`, `RLogical`, or
 `Rcomplex`, implement `RNativeType` to participate in the blanket scalar,
-slice, vector, and collection conversions.
+slice, vector, and collection conversions. For a one-field
+`#[repr(transparent)]` newtype, derive it: the derive forwards every item to
+the field's type.
 
 ### Example: Newtype Wrapper
 
 ```rust
-use miniextendr_api::{RNativeType, SEXP, SEXPTYPE, SexpExt};
-use miniextendr_api::altrep_traits::NA_REAL;
+use miniextendr_api::RNativeType;
 
 /// A temperature in Celsius, stored as f64
 #[repr(transparent)]
+#[derive(Clone, Copy, RNativeType)]
 pub struct Celsius(pub f64);
-
-impl RNativeType for Celsius {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
-    const R_NA: Self = Self(NA_REAL);
-
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        // Safe because Celsius is repr(transparent) over f64
-        unsafe { miniextendr_api::sys::REAL(sexp).cast::<Self>() }
-    }
-
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        Self(sexp.real_elt(i))
-    }
-}
 ```
 
 ### What You Get Automatically
 
-With just that impl, these all work:
+With just that derive, these all work:
 
 ```rust
 // Scalar
@@ -74,8 +62,12 @@ Your type must:
 1. **Be `#[repr(transparent)]`** over an R-native element representation
 2. **Implement `Copy`** (required by the trait bound)
 3. **Be `'static`** (no borrowed data)
-4. **Define `R_NA`** for missing sparse/padded slots and implement both
-   `dataptr_mut` and ALTREP-aware `elt`
+4. **Define `SEXP_TYPE` and `R_NA`** (the fill for missing sparse or padded
+   slots) and the four accessors: `dataptr_mut` (the writable buffer),
+   `elt` (one element, through ALTREP dispatch), `dataptr_or_null` (the
+   buffer only when it exists without materializing) and `get_region` (a
+   bounded copy through `*_GET_REGION`). The derive forwards all of them;
+   a hand-written impl casts the inner type's pointers, as the derive does.
 
 ### Memory Layout Correspondence
 
@@ -465,13 +457,12 @@ fn process_dataset(data: &LargeDataset) -> f64 {
 ## Complete Example: Custom Numeric Type
 
 ```rust
-use miniextendr_api::{RNativeType, SEXP, SEXPTYPE, SexpExt};
-use miniextendr_api::altrep_traits::NA_REAL;
+use miniextendr_api::RNativeType;
 use miniextendr_api::markers::WidensToF64;
 
 /// Probability value in [0, 1]
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, RNativeType)]
 pub struct Probability(f64);
 
 impl Probability {
@@ -485,20 +476,6 @@ impl Probability {
 
     pub fn value(self) -> f64 {
         self.0
-    }
-}
-
-// Enable automatic conversions for all containers
-impl RNativeType for Probability {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
-    const R_NA: Self = Self(NA_REAL);
-
-    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe { miniextendr_api::sys::REAL(sexp).cast::<Self>() }
-    }
-
-    fn elt(sexp: SEXP, i: isize) -> Self {
-        Self(sexp.real_elt(i))
     }
 }
 
