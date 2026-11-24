@@ -1436,11 +1436,15 @@ jobs:
     # ALTREP pass. Before the stress split this
     # job bundled everything and had outgrown even a 90-min cap on main pushes
     # (suite 34 min + 3 heap-check rounds = ~140 min -> guaranteed timeout).
-    # Without the stress blocks a heap-checked run measures ~75 min at worst
+    # Without the stress blocks a heap-checked run measured ~75 min at worst
     # (cold install 10, suite 15, rounds 3 x ~14, Valgrind 5, setup), so a
-    # 60-min cap cancelled it on nearly every main push (#2342). Runs without
-    # the rounds (PRs lacking the `heap-check` label) take ~30 min.
-    timeout-minutes: 90
+    # 60-min cap cancelled it on nearly every main push (#2342). By 2026-11
+    # a warm main run took ~70 min (install 8, suite 13, rounds 41) and a cold
+    # one passed 90 (install 17, suite 19, rounds 46+: run 45287192444), so
+    # the cap is 120: a cold main run (a flushed cache, a new sccache
+    # version) must still finish. Runs without the rounds (PRs lacking the
+    # `heap-check` label) take ~30 min.
+    timeout-minutes: 120
     needs: changes
     if: needs.changes.outputs.r == 'true'
 
