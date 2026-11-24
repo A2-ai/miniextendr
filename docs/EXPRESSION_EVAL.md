@@ -386,6 +386,20 @@ Both must run inside a miniextendr boundary on the main thread, and the unwind
 they start must not be caught with `catch_unwind` on the way. Details:
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#handler-keeping-evaluation).
 
+### R code under a foreign frame
+
+A callback that a C or Fortran library calls sits under frames an unwind must
+not cross, so the exit has to stop in the callback and continue once the
+library has returned. `unwind_protect::call_unwinding(fun, data)` is the layer
+both evaluators are built on: it calls `fun(data)` (which may use the R API
+directly) in its own `R_UnwindProtect`, in the caller's R context, and an R
+exit leaves it as a Rust unwind. Catch that unwind with `catch_unwind` in the
+callback, return normally through the library, then
+`std::panic::resume_unwind(payload)` in the same call; the boundary hands the
+exit back to R with the original condition or restart. Dropping the payload
+abandons the exit, and resuming it in a later call raises an error instead.
+The rustdoc of `call_unwinding` has the full pattern.
+
 ## Safety Requirements
 
 All functions in this module require:
