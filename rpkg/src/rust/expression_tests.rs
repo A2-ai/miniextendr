@@ -126,6 +126,33 @@ pub fn expr_env_define(env: SEXP, name: &str, value: SEXP) {
     unsafe { REnv::from_sexp(env).define(name, value) }
 }
 
+/// `REnv::exists` on `env`, or `REnv::exists_inherits` when `inherits`.
+/// @param env An environment.
+/// @param name Character scalar name to look for.
+/// @param inherits Whether to search the enclosing environments.
+#[miniextendr(noexport)]
+pub fn expr_env_exists(env: SEXP, name: &str, inherits: bool) -> bool {
+    // SAFETY: R's main thread; `env` is the rooted `.Call()` argument.
+    unsafe {
+        let env = REnv::from_sexp(env);
+        if inherits {
+            env.exists_inherits(name)
+        } else {
+            env.exists(name)
+        }
+    }
+}
+
+/// `REnv::parent` of `env`: its enclosing environment, `NULL` for the empty
+/// environment.
+/// @param env An environment.
+#[miniextendr(noexport)]
+pub fn expr_env_parent(env: SEXP) -> SEXP {
+    // SAFETY: R's main thread; `env` is the rooted `.Call()` argument, which
+    // keeps its parent reachable.
+    unsafe { REnv::from_sexp(env).parent() }.map_or(SEXP::nil(), |parent| parent.as_sexp())
+}
+
 /// The symbol `name` (`as.name(name)`), interned by `RSymbol::new`.
 /// @param name Character scalar name.
 #[miniextendr(noexport)]
