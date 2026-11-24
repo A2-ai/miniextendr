@@ -29,6 +29,7 @@
 /// }
 /// ```
 use crate::expression::{RCall, REnv, REvalError};
+use crate::unwind_protect::Boundary;
 use crate::{SEXP, SexpExt};
 
 /// Get the `methods` package namespace for evaluating S4 functions.
@@ -67,12 +68,17 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 
 /// Get the value of a named slot from an S4 object.
 ///
-/// Uses R's `slot(obj, name)` to access the slot value.
+/// Uses R's `slot(obj, name)` to access the slot value. Inside a miniextendr
+/// boundary it is evaluated with the caller's condition handlers, as
+/// [`s4_set_slot`] is; elsewhere isolated from them.
 ///
 /// # Safety
 ///
 /// - `obj` must be a valid S4 SEXP with the named slot.
 /// - Must be called from the R main thread.
+/// - Inside a miniextendr boundary, not from a `Drop` implementation: an exit
+///   a caller's handler takes unwinds through the Rust frames, as under
+///   [`RCall::try_eval_with_handlers`].
 ///
 /// # Returns
 ///
@@ -82,22 +88,39 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, REvalError> {
     unsafe {
         let env = methods_namespace()?;
-        RCall::new("slot")
+        let call = RCall::new("slot")
             .arg(obj)
-            .named_arg("name", scalar_string(slot_name))
-            .eval(env.as_sexp())
+            .named_arg("name", scalar_string(slot_name));
+        if Boundary::active() {
+            call.try_eval_with_handlers(env.as_sexp())
+        } else {
+            call.eval(env.as_sexp())
+        }
     }
 }
 
 /// Set the value of a named slot on an S4 object.
 ///
-/// Uses R's `slot(obj, name) <- value` to assign the slot value.
+/// Uses R's `slot(obj, name) <- value` to assign the slot value. A value of a
+/// class that `setIs()` relates to the slot's class is coerced first, by that
+/// relation's `coerce` function: user R code.
+///
+/// Inside a miniextendr boundary (a `#[miniextendr]` function body, say) the
+/// assignment is evaluated with the caller's condition handlers, as
+/// [`RCall::try_eval_with_handlers`] evaluates: `suppressWarnings()` and
+/// `withCallingHandlers()` see the coercion's warnings and messages, and an
+/// exit one of them takes (`tryCatch(warning = )`) unwinds to that boundary.
+/// Elsewhere (code outside a boundary, an ALTREP callback with the `unsafe`
+/// guard, a finalizer) it is isolated from them, as [`RCall::eval`] is.
 ///
 /// # Safety
 ///
 /// - `obj` must be a valid S4 SEXP with the named slot.
 /// - `value` must be a valid SEXP of the appropriate type for the slot.
 /// - Must be called from the R main thread.
+/// - Inside a miniextendr boundary, not from a `Drop` implementation: an exit
+///   a caller's handler takes unwinds through the Rust frames, as under
+///   [`RCall::try_eval_with_handlers`].
 ///
 /// # Returns
 ///
@@ -108,11 +131,15 @@ pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(),
     unsafe {
         // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
         let env = methods_namespace()?;
-        RCall::new("slot<-")
+        let call = RCall::new("slot<-")
             .arg(obj)
             .named_arg("name", scalar_string(slot_name))
-            .named_arg("value", value)
-            .eval(env.as_sexp())?;
+            .named_arg("value", value);
+        if Boundary::active() {
+            call.try_eval_with_handlers(env.as_sexp())?;
+        } else {
+            call.eval(env.as_sexp())?;
+        }
         Ok(())
     }
 }

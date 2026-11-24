@@ -2473,6 +2473,13 @@ unsafe {
 
 All functions require the R main thread and operate on raw SEXP values.
 
+Inside a `#[miniextendr]` call, `s4_get_slot` and `s4_set_slot` evaluate with
+the caller's condition handlers: a warning from a `setIs()` relation's
+`coerce` function, which `slot<-` runs on a value of a related class, reaches
+`suppressWarnings()` and `tryCatch(warning = )` around the call. An R error
+still comes back as `Err`. Outside a boundary they evaluate isolated from the
+caller's handlers, as `RCall::eval` does.
+
 ---
 
 ## Enums: value vs instance

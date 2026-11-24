@@ -8,6 +8,7 @@ use crate::from_r::{
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::unwind_protect::Boundary;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Marker types
@@ -69,6 +70,17 @@ pub struct AsCharacter(pub Option<String>);
 /// double underneath, and `coerceVector()` alone would give its day count
 /// (`"19737"`). An error in the method becomes the conversion error, as does a
 /// method that returns something other than a character vector.
+///
+/// The method's warnings and messages reach the caller's handlers, as those
+/// of a top-level `as.character(x)` do: `suppressWarnings(f(x))` silences
+/// them, `tryCatch(f(x), warning = )` returns the handler's value, and the
+/// condition's call names `x`, not the data. That holds wherever the marker
+/// converts inside a miniextendr boundary, as a `#[miniextendr]` function's
+/// arguments do. Converted elsewhere (hand-written code outside a boundary,
+/// an ALTREP callback with the `unsafe` guard, a finalizer), the method runs
+/// isolated from the caller's handlers, as under
+/// [`RCall::eval`](crate::expression::RCall::eval), since no frame there
+/// could carry a handler's exit past the Rust code.
 ///
 /// Names and `dim` are dropped, as `as.character()` drops them: a matrix is
 /// read in column-major order. Zero-length input gives an empty vector.
@@ -254,26 +266,49 @@ pub(crate) fn read_character(sexp: SEXP) -> Result<Vec<Option<String>>, SexpErro
 /// Evaluate `as.character(x)` for a classed `x`, so its method decides the
 /// text (factor labels, formatted dates, ...).
 ///
-/// The call's head is the function bound in the base environment, and it is
-/// evaluated in the global environment: R finds the methods a top-level
-/// `as.character(x)` would find, and a global binding named `as.character`
-/// does not replace the function. [`RCall::eval`] catches an R error as
-/// `Err`, so a failing method never unwinds through Rust frames; its message
-/// (R's own, without the `Error in` prefix) goes into the conversion error.
+/// The call is `as.character(x)` in a new environment whose parent is the
+/// global environment, holding `x` (the value) and `as.character` (the
+/// function bound in the base environment). R finds the methods a top-level
+/// `as.character(x)` would find, a global binding named `as.character` does
+/// not replace the function, and a condition's call names `x` rather than a
+/// deparse of the data.
+///
+/// Inside a miniextendr boundary (a `#[miniextendr]` call's argument
+/// conversion, say) it runs under [`RCall::try_eval_with_handlers`]: the
+/// caller's `withCallingHandlers()`, `suppressWarnings()` and
+/// `tryCatch(warning = )` see the method's warnings and messages, and an exit
+/// one of them takes unwinds to that boundary. Elsewhere (hand-written code
+/// outside a boundary, an ALTREP callback with the `unsafe` guard, a
+/// finalizer) no frame could resume such an exit, so it runs under
+/// [`RCall::eval`], isolated from the caller's handlers. Either way an R error
+/// comes back as `Err`, so a failing method never unwinds through Rust frames;
+/// its message (R's own, without the `Error in` prefix) goes into the
+/// conversion error.
 fn dispatch_as_character(sexp: SEXP) -> Result<OwnedProtect, SexpError> {
     // SAFETY: argument conversion runs on R's main thread, and `as.character`
     // is always bound in the base environment, so `Rf_findFun` cannot fail.
     unsafe {
-        let fun = crate::sys::Rf_findFun(
-            RSymbol::from_cstr(c"as.character").as_sexp(),
-            crate::sys::R_BaseEnv,
+        let name = RSymbol::from_cstr(c"as.character").as_sexp();
+        let x = RSymbol::from_cstr(c"x").as_sexp();
+        let env = OwnedProtect::new(crate::sys::R_NewEnv(
+            crate::sys::R_GlobalEnv,
+            crate::Rboolean::FALSE,
+            2,
+        ));
+        crate::sys::Rf_defineVar(
+            name,
+            crate::sys::Rf_findFun(name, crate::sys::R_BaseEnv),
+            env.get(),
         );
-        let call = RCall::from_sexp(fun).arg(sexp);
-        let result = call
-            .eval(crate::sys::R_GlobalEnv)
-            .map_err(|e| SexpError::InvalidValue(format!("as.character() failed: {e}")))?;
-        // `eval` returns the value unprotected: root it before anything else
-        // allocates.
+        crate::sys::Rf_defineVar(x, sexp, env.get());
+        let call = RCall::from_sexp(name).arg(x);
+        let result = if Boundary::active() {
+            call.try_eval_with_handlers(env.get())
+        } else {
+            call.eval(env.get())
+        }
+        .map_err(|e| SexpError::InvalidValue(format!("as.character() failed: {e}")))?;
+        // The value is unprotected: root it before anything else allocates.
         let result = OwnedProtect::new(result);
         let actual = result.get().type_of();
         if actual != SEXPTYPE::STRSXP {

@@ -505,6 +505,22 @@ double underneath a `Date` would give its day count (`"19737"`); an error in
 that method becomes the conversion error. Names and `dim` are dropped, as
 `as.character()` drops them: a matrix is read in column-major order.
 
+The method's warnings and messages reach the caller's handlers, as those of a
+top-level `as.character(x)` do, and their call names `x` rather than the data:
+
+```r
+x <- structure(0, class = c("POSIXct", "POSIXt"), tzone = "Foo/Bar")
+n_subjects(x)                                         # warns: unknown timezone 'Foo/Bar'
+suppressWarnings(n_subjects(x))                       # 1, silently
+tryCatch(n_subjects(x), warning = function(w) "tz")   # "tz"
+```
+
+That holds for a `#[miniextendr]` function's arguments, which convert inside
+the call's boundary. Code that converts outside a boundary (an ALTREP callback
+with the `unsafe` guard, a finalizer) runs the method isolated from the
+caller's handlers, as `RCall::eval` does: nothing there could carry a
+handler's exit past the Rust frames.
+
 Unlike `AsNumeric`, which reads the token `"NA"` and blank strings as missing,
 `AsCharacter` keeps `"NA"` and `""` as strings, as `as.character()` does: only
 `NA` itself is `None`. `NaN` becomes `"NaN"`; `#[miniextendr(no_na)]` refuses it

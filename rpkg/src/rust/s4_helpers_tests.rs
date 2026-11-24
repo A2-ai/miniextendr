@@ -21,3 +21,19 @@ pub fn s4_has_slot_test(obj: SEXP, slot_name: String) -> bool {
 pub fn s4_class_name_test(obj: SEXP) -> String {
     unsafe { s4_helpers::s4_class_name(obj) }.unwrap_or_else(|| "NA".to_string())
 }
+
+/// Read a slot; an R error is raised again as a Rust error.
+#[miniextendr]
+pub fn s4_get_slot_test(obj: SEXP, slot_name: String) -> SEXP {
+    unsafe { s4_helpers::s4_get_slot(obj, &slot_name) }
+        .unwrap_or_else(|e| panic!("slot() failed: {e}"))
+}
+
+/// Assign a slot in place and return the object; an R error is raised again
+/// as a Rust error.
+#[miniextendr]
+pub fn s4_set_slot_test(obj: SEXP, slot_name: String, value: SEXP) -> SEXP {
+    unsafe { s4_helpers::s4_set_slot(obj, &slot_name, value) }
+        .unwrap_or_else(|e| panic!("slot<-() failed: {e}"));
+    obj
+}
