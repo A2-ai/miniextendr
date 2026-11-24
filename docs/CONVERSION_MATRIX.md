@@ -181,6 +181,8 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Option<List>` / `Option<NamedList>` | VECSXP or NULL | NULL -> None; anything else as for `List` |
 | `Vec<List>` | VECSXP only | Each element must be a list (VECSXP; a pairlist is refused, not coerced); all failing elements reported in one batched error |
 | `Vec<Option<List>>` | VECSXP only | NULL element -> None; any other element as for `Vec<List>` |
+| `NamedVec<T>` | What `Vec<T>` accepts, without a `dim` or `class` attribute | Values as `Vec<T>` reads them, so NA follows `T`; names in order, duplicates and `""` kept, `None` without a `names` attribute, an NA name refused with every position listed. A matrix or array and a classed object (factor, `Date`, ...) are refused, saying why (#1945). Returned, it gives the values with their names |
+| `Option<NamedVec<T>>` | The same, or NULL | NULL -> None; anything else as for `NamedVec<T>` |
 
 ### Parsing and Reading Markers
 

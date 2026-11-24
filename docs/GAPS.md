@@ -193,6 +193,7 @@ All common nested collection types are supported:
 | `HashMap<K, Vec<V>>` | Works via nested conversion |
 | `NamedVector<HashMap<String, V>>` | Works (converts to/from named atomic vector) |
 | `NamedVector<BTreeMap<String, V>>` | Works (converts to/from named atomic vector) |
+| `NamedVec<T>` | Works (a named vector or list, values and names in order, duplicate names kept; #1945) |
 
 ---
 

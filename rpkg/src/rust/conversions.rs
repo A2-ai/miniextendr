@@ -1624,6 +1624,85 @@ pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::Li
 }
 // endregion
 
+// region: NamedVec (values and names in order, #1945)
+
+use miniextendr_api::NamedVec;
+
+/// Test `NamedVec<f64>` both ways: each value times `by`, the names kept.
+/// @param x A double vector, names optional.
+/// @param by The factor.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_scaled(x: NamedVec<f64>, by: f64) -> NamedVec<f64> {
+    let (values, names) = x.into_parts();
+    NamedVec::new(values.into_iter().map(|v| v * by).collect(), names)
+}
+
+/// Test `NamedVec::names`: the names as read, `NULL` when there are none.
+/// @param x A double vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_names(x: NamedVec<f64>) -> Option<Vec<String>> {
+    x.names().map(<[String]>::to_vec)
+}
+
+/// Test `NamedVec<Option<f64>>`: which values read as `None`.
+/// @param x A double vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_none_at(x: NamedVec<Option<f64>>) -> Vec<bool> {
+    x.values().iter().map(Option::is_none).collect()
+}
+
+/// Test `NamedVec<i32>` both ways: `NA` is `i32::MIN`, as for `Vec<i32>`.
+/// @param x An integer vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_i32(x: NamedVec<i32>) -> NamedVec<i32> {
+    x
+}
+
+/// Test `NamedVec<bool>` both ways: refuses `NA`, as `Vec<bool>` does.
+/// @param x A logical vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_bool(x: NamedVec<bool>) -> NamedVec<bool> {
+    x
+}
+
+/// Test `NamedVec<String>` both ways.
+/// @param x A character vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_strings(x: NamedVec<String>) -> NamedVec<String> {
+    x
+}
+
+/// Test `NamedVec<Vec<f64>>` on a named list: each element's sum, the names
+/// kept.
+/// @param x A list of double vectors, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_list_sums(x: NamedVec<Vec<f64>>) -> NamedVec<f64> {
+    let (values, names) = x.into_parts();
+    NamedVec::new(values.iter().map(|v| v.iter().sum()).collect(), names)
+}
+
+/// Test `Option<NamedVec<f64>>`: whether a vector was passed (`NULL` reads
+/// as `None`).
+/// @param x `NULL` or a double vector.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_is_some(x: Option<NamedVec<f64>>) -> bool {
+    x.is_some()
+}
+
+/// Test `NamedVec::sexp`: the argument the vector was read from.
+/// @param x A double vector, names optional.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_sexp(x: NamedVec<f64>) -> SEXP {
+    x.sexp().expect("a NamedVec read from R keeps its SEXP")
+}
+
+/// Test `NamedVec::new` with fewer names than values: it panics.
+#[miniextendr(noexport)]
+pub fn conv_named_vec_new_short_names() -> NamedVec<f64> {
+    NamedVec::new(vec![1.0, 2.0], Some(vec!["a".to_string()]))
+}
+// endregion
+
 // region: Repeated list names (#1754)
 
 /// What `conv_list_names_report` returns: the list's length and its first

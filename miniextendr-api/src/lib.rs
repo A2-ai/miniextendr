@@ -818,7 +818,7 @@ pub use list::{
     TryFromList, collect_list,
 };
 pub use missing::{Missing, is_missing_arg};
-pub use named_vector::{AtomicElement, NamedVector};
+pub use named_vector::{AtomicElement, NamedVec, NamedVector};
 pub use rcow::{RBorrow, RCow};
 pub use strvec::{
     ProtectedStrVec, ProtectedStrVecCowIter, ProtectedStrVecIter, StrVec, StrVecBuilder,
