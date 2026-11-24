@@ -24,10 +24,12 @@
 //! | Rust Type | R Type |
 //! |-----------|--------|
 //! | `bool` | `logical(1)` |
-//! | `i8/i16/i32` | `integer(1)` |
-//! | `i64/u64/f32/f64` | `numeric(1)` |
+//! | `i8/i16/i32`, `u8/u16` | `integer(1)` |
+//! | `u32/i64/u64` | `integer(1)` when an R integer holds the value, else `numeric(1)` |
+//! | `f32/f64` | `numeric(1)` |
+//! | `i128/u128` | none: an error |
 //! | `String/&str` | `character(1)` |
-//! | `Option<T>::None` | NA or NULL |
+//! | `Option<T>::None` | `NULL` (the type's `NA` in a field under an `as_*` helper, below) |
 //! | `Vec<primitive>` | atomic vector (smart dispatch) |
 //! | `Vec<struct>` | list of lists |
 //! | `HashMap<String, T>` | named list |
@@ -66,16 +68,26 @@
 //! (`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`) is
 //! always that atomic vector: `character(0)` when empty, `NA` for `None`.
 //!
+// Crate paths: `pub mod serde;` in lib.rs has outer docs as well, and rustdoc
+// then resolves this file's links from the crate root, not from this module.
+//! [`as_character`]: crate::serde::as_character
+//! [`as_integer`]: crate::serde::as_integer
+//! [`as_double`]: crate::serde::as_double
+//! [`as_logical`]: crate::serde::as_logical
+//!
 //! # NA Roundtrip
 //!
-//! NA values are preserved through `Option<T>`:
+//! `None` is written as `NULL`: the serializer never sees the type of the
+//! absent value. A field under an `as_*` helper (above) writes its type's `NA`
+//! instead. Reading takes both: for an `Option<T>`, `NULL` and `NA` are
+//! `None`. An `NA` for a bare `T` is an error.
 //!
 //! ```rust,ignore
 //! // Serialization
 //! let v: Option<i32> = None;
-//! // → NA_integer_
+//! // → NULL
 //!
-//! // Deserialization
+//! // Deserialization: NULL and NA_integer_ are both None
 //! let v: Option<i32> = from_r(na_integer_sexp)?;
 //! assert!(v.is_none());
 //! ```

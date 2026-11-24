@@ -42,12 +42,15 @@ mappings. The full mapping tables are in `miniextendr-api/src/serde.rs`.
 Rust scalar types produce R scalars of the corresponding type. `Vec<primitive>`
 uses smart dispatch: `Vec<i32>` becomes an integer vector, `Vec<f64>` a numeric
 vector, `Vec<bool>` a logical vector, `Vec<String>` a character vector. A
-`Vec<struct>` becomes a list of lists.
+`Vec<struct>` becomes a list of lists. A `u32`, `i64` or `u64` is `integer(1)`
+when an R integer holds the value and `numeric(1)` otherwise; `i128` and `u128`
+are refused with an error.
 
 Structs serialize as named R lists. `HashMap<String, T>` serializes as a named
 list. Unit enum variants serialize as a character scalar. Data enum variants
 serialize as a tagged list `list(tag = value)`. `Option<T>::None` serializes
-as NA (for primitive types) or as NULL.
+as `NULL`, or as the type's `NA` in a field under an `as_*` helper
+(`#[serde(serialize_with = "miniextendr_api::serde::as_character")]`).
 
 ### RSerializeNative and RDeserializeNative
 

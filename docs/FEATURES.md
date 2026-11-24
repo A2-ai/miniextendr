@@ -199,7 +199,8 @@ native R objects (named lists, atomic vectors, etc.) using serde's `Serialize` a
 - `AsSerialize<T>` wrapper for returning `Serialize` types from `#[miniextendr]` functions
 
 **Type mappings:** structs become named lists, `Vec<primitive>` becomes atomic vectors,
-`Option::None` becomes NA or NULL. See [SERDE_R.md](SERDE_R.md) for details.
+`Option::None` becomes `NULL` (the type's `NA` in a field under an `as_*` helper).
+See [SERDE_R.md](SERDE_R.md) for details.
 
 ### `serde_json`
 
