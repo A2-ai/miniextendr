@@ -299,7 +299,9 @@ fn matrix_columns_of_every_native_type_copy_through_regions() {
 
         // R's compact integer sequence keeps no buffer: its column is read
         // through the class's own Get_region, and the sequence stays compact.
-        // The dim is set in place, as for the providers above.
+        // The dim is set in place, as for the providers above: `structure()`
+        // would return a wrapper, whose `Dataptr_or_null` expands shared
+        // compact data from R 4.6.2.
         let compact = Preserved::new(miniextendr_api::r_eval_str_global("seq_len(600L)").unwrap());
         let shape = Preserved::new([300_i32, 2]);
         compact.as_sexp().set_dim(shape.as_sexp());

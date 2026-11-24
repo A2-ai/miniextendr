@@ -136,6 +136,36 @@ pub fn rarray_int_matrix_has_buffer(x: RMatrix<i32>) -> bool {
     !unsafe { i32::dataptr_or_null(x.as_sexp()) }.is_null()
 }
 
+/// R's compact sequence `seq_len(nrow * ncol)` as an `nrow`-by-`ncol` matrix,
+/// its `dim` and `dimnames` set in place. `structure()` and `dim<-` return a
+/// wrapper around the shared compact data instead, and from R 4.6.2 a
+/// wrapper's `Dataptr_or_null` duplicates shared data, which expands it: the
+/// buffer probe would expand the input it checks. Wrapped input is #2391's.
+/// @param nrow,ncol The shape.
+/// @param double A double sequence, `as.double(seq_len(n))`, instead of an integer one.
+/// @param dimnames `NULL` or the matrix's dimnames.
+#[miniextendr(noexport)]
+pub fn rarray_compact_matrix(
+    nrow: i32,
+    ncol: i32,
+    double: bool,
+    #[miniextendr(default = "NULL")] dimnames: SEXP,
+) -> Preserved {
+    let n = nrow.checked_mul(ncol).expect("nrow * ncol fits an integer");
+    let mut x = Preserved::new(unsafe { RCall::new("seq_len").arg_value(n).eval_base() }.unwrap());
+    if double {
+        x = Preserved::new(
+            unsafe { RCall::new("as.double").arg(x.as_sexp()).eval_base() }.unwrap(),
+        );
+    }
+    let dims = unsafe { OwnedProtect::new([nrow, ncol].into_sexp()) };
+    x.as_sexp().set_dim(dims.get());
+    if !dimnames.is_nil() {
+        x.as_sexp().set_dimnames(dimnames);
+    }
+    x
+}
+
 /// A matrix provider that fills at most two values per region call.
 #[derive(miniextendr_api::AltrepReal)]
 #[altrep(manual, class = "MatrixColumnRegions")]
