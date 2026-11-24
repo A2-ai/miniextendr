@@ -29,11 +29,10 @@ pub fn s4_get_slot_test(obj: SEXP, slot_name: String) -> SEXP {
         .unwrap_or_else(|e| panic!("slot() failed: {e}"))
 }
 
-/// Assign a slot in place and return the object; an R error is raised again
-/// as a Rust error.
+/// The object with a slot set (`obj` keeps its value); an R error is raised
+/// again as a Rust error.
 #[miniextendr]
-pub fn s4_set_slot_test(obj: SEXP, slot_name: String, value: SEXP) -> SEXP {
-    unsafe { s4_helpers::s4_set_slot(obj, &slot_name, value) }
-        .unwrap_or_else(|e| panic!("slot<-() failed: {e}"));
-    obj
+pub fn s4_with_slot_test(obj: SEXP, slot_name: String, value: SEXP) -> SEXP {
+    unsafe { s4_helpers::s4_with_slot(obj, &slot_name, value) }
+        .unwrap_or_else(|e| panic!("slot<-() failed: {e}"))
 }

@@ -11,24 +11,27 @@
 //! as a fallback.
 //!
 //! All functions require being called from the R main thread and operate
-/// on raw SEXP values.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::SEXP;
-/// use miniextendr_api::s4_helpers;
-///
-/// unsafe {
-///     if s4_helpers::s4_is(obj) {
-///         if let Some(class) = s4_helpers::s4_class_name(obj) {
-///             println!("S4 class: {class}");
-///         }
-///         let slot_val = s4_helpers::s4_get_slot(obj, "data")?;
-///     }
-/// }
-/// ```
+//! on raw SEXP values.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use miniextendr_api::SEXP;
+//! use miniextendr_api::s4_helpers;
+//!
+//! unsafe {
+//!     if s4_helpers::s4_is(obj) {
+//!         if let Some(class) = s4_helpers::s4_class_name(obj) {
+//!             println!("S4 class: {class}");
+//!         }
+//!         let slot_val = s4_helpers::s4_get_slot(obj, "data")?;
+//!         // A copy with the slot set; `obj` keeps its value.
+//!         let relabelled = s4_helpers::s4_with_slot(obj, "label", new_label)?;
+//!     }
+//! }
+//! ```
 use crate::expression::{RCall, REnv, REvalError};
+use crate::gc_protect::OwnedProtect;
 use crate::unwind_protect::Boundary;
 use crate::{SEXP, SexpExt};
 
@@ -70,7 +73,7 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 ///
 /// Uses R's `slot(obj, name)` to access the slot value. Inside a miniextendr
 /// boundary it is evaluated with the caller's condition handlers, as
-/// [`s4_set_slot`] is; elsewhere isolated from them.
+/// [`s4_with_slot`] is; elsewhere isolated from them.
 ///
 /// # Safety
 ///
@@ -99,11 +102,16 @@ pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, REvalError
     }
 }
 
-/// Set the value of a named slot on an S4 object.
+/// An S4 object with a named slot set: R's `obj@name <- value`.
 ///
-/// Uses R's `slot(obj, name) <- value` to assign the slot value. A value of a
-/// class that `setIs()` relates to the slot's class is coerced first, by that
-/// relation's `coerce` function: user R code.
+/// Assigns into a copy of `obj` (a shallow one: the other slots are shared)
+/// with R's `slot<-`, and returns it; `obj` keeps its value, as R's own
+/// replacement leaves a shared object unchanged. `slot<-` itself assigns into
+/// the object it is given, and for the `.Data` slot returns a new object
+/// rather than changing it, so the result is the only place the value lands.
+///
+/// A value of a class that `setIs()` relates to the slot's class is coerced
+/// first, by that relation's `coerce` function: user R code.
 ///
 /// Inside a miniextendr boundary (a `#[miniextendr]` function body, say) the
 /// assignment is evaluated with the caller's condition handlers, as
@@ -124,23 +132,22 @@ pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, REvalError
 ///
 /// # Returns
 ///
-/// - `Ok(())` on success.
+/// - `Ok(SEXP)` with the object, the slot set (unprotected).
 /// - `Err(REvalError)` with R's error if the slot doesn't exist or the value
 ///   type is incompatible.
-pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), REvalError> {
+pub unsafe fn s4_with_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<SEXP, REvalError> {
     unsafe {
-        // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
         let env = methods_namespace()?;
+        let copy = OwnedProtect::new(crate::sys::Rf_shallow_duplicate(obj));
         let call = RCall::new("slot<-")
-            .arg(obj)
+            .arg(copy.get())
             .named_arg("name", scalar_string(slot_name))
             .named_arg("value", value);
         if Boundary::active() {
-            call.try_eval_with_handlers(env.as_sexp())?;
+            call.try_eval_with_handlers(env.as_sexp())
         } else {
-            call.eval(env.as_sexp())?;
+            call.eval(env.as_sexp())
         }
-        Ok(())
     }
 }
 

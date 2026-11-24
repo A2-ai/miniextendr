@@ -31,6 +31,25 @@ test_that("s4_get_slot_test reads a slot and refuses a missing one", {
   expect_error(s4_get_slot_test(obj, "nope"), "slot() failed: ", fixed = TRUE)
 })
 
+test_that("s4_with_slot_test returns a copy and leaves the argument unchanged", {
+  setClass("TestS4Set", representation(label = "character"))
+  setClass("TestS4NumBox", contains = "numeric", representation(label = "character"))
+  on.exit({
+    removeClass("TestS4NumBox")
+    removeClass("TestS4Set")
+  }, add = TRUE)
+  obj <- new("TestS4Set", label = "a")
+  out <- s4_with_slot_test(obj, "label", "z")
+  expect_identical(out@label, "z")
+  expect_identical(obj@label, "a")
+  # `slot<-` returns a new object for `.Data` instead of changing its argument.
+  box <- new("TestS4NumBox", c(1, 2), label = "b")
+  out <- s4_with_slot_test(box, ".Data", c(9, 9, 9))
+  expect_identical(out@.Data, c(9, 9, 9))
+  expect_identical(out@label, "b")
+  expect_identical(box@.Data, c(1, 2))
+})
+
 test_that("The caller's handlers see a warning from slot<-'s coercion (#1840)", {
   # `slot<-` coerces a value of a class that `setIs()` relates to the slot's
   # class with that relation's `coerce`, the user code it runs.
@@ -56,13 +75,13 @@ test_that("The caller's handlers see a warning from slot<-'s coercion (#1840)", 
   fresh <- function() new("TestS4Holder", a = new("TestS4Target", v = 1))
   src <- new("TestS4Source", n = 2)
 
-  expect_no_warning(out <- suppressWarnings(s4_set_slot_test(fresh(), "a", src)))
+  expect_no_warning(out <- suppressWarnings(s4_with_slot_test(fresh(), "a", src)))
   expect_identical(out@a@v, 2)
   expect_identical(
-    tryCatch(s4_set_slot_test(fresh(), "a", src), warning = function(w) "caught"),
+    tryCatch(s4_with_slot_test(fresh(), "a", src), warning = function(w) "caught"),
     "caught"
   )
-  expect_warning(s4_set_slot_test(fresh(), "a", src), "coercing source to target", fixed = TRUE)
+  expect_warning(s4_with_slot_test(fresh(), "a", src), "coercing source to target", fixed = TRUE)
   # An invalid value is still R's error, raised again by the fixture.
-  expect_error(s4_set_slot_test(fresh(), "a", "text"), "slot<-() failed: ", fixed = TRUE)
+  expect_error(s4_with_slot_test(fresh(), "a", "text"), "slot<-() failed: ", fixed = TRUE)
 })
