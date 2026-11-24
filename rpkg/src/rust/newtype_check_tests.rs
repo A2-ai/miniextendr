@@ -105,3 +105,46 @@ impl TryFromSexp for RaisedElapsed {
 pub fn newtype_check_raised(x: RaisedElapsed) -> f64 {
     x.0
 }
+
+// region: plain-message checks (#1947)
+
+/// Refuse a factor: its codes are no labels. The refusal is a message only.
+fn not_a_factor(x: SEXP) -> Result<(), &'static str> {
+    if x.inherits_class(c"factor") {
+        return Err("got a factor; pass as.character(x)");
+    }
+    Ok(())
+}
+
+/// A label, refused as a factor by a check returning `&'static str`.
+#[derive(TryFromSexp)]
+#[try_from_sexp(validate = not_a_factor)]
+pub struct Label(String);
+
+/// A validated newtype whose check returns `&'static str`.
+/// @param x A string.
+#[miniextendr(noexport)]
+pub fn newtype_check_str_message(x: Label) -> String {
+    x.0
+}
+
+/// Refuse an empty string, naming the length allowed: a `String` message.
+fn not_empty(x: SEXP) -> Result<(), String> {
+    match String::try_from_sexp(x) {
+        Ok(s) if s.is_empty() => Err(format!("got \"\"; give 1 to {} characters", 64)),
+        _ => Ok(()),
+    }
+}
+
+/// A name, refused when empty by a check returning `String`.
+#[derive(TryFromSexp)]
+#[try_from_sexp(validate = not_empty)]
+pub struct Name(String);
+
+/// A validated newtype whose check returns `String`.
+/// @param x A string.
+#[miniextendr(noexport)]
+pub fn newtype_check_string_message(x: Name) -> String {
+    x.0
+}
+// endregion

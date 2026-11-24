@@ -3419,7 +3419,9 @@ pub fn derive_r_condition(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// An `RError` refusal (or one of any `RConditionData` type) keeps its classes
 /// and fields on the argument error, before the crate's
 /// `conversion_error_class`, with `e$param` and the message
-/// `'<p>' must be <expected>: <message>`. With `validate`, the newtype's
+/// `'<p>' must be <expected>: <message>`. A check with nothing to add but the
+/// message returns `Result<(), &'static str>` or `Result<(), String>` (#1947):
+/// `Err("must be finite")` is that message, with no classes. With `validate`, the newtype's
 /// scalar error is `SexpError`, so the inner type's error must convert into it,
 /// as every built-in conversion error and every `RConditionData` type does.
 /// `validate` is the only key, and the attribute goes on the struct.

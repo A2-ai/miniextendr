@@ -183,6 +183,8 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<List>>` | VECSXP only | NULL element -> None; any other element as for `Vec<List>` |
 | `NamedVec<T>` | What `Vec<T>` accepts, without a `dim` or `class` attribute | Values as `Vec<T>` reads them, so NA follows `T`; names in order, duplicates and `""` kept, `None` without a `names` attribute, an NA name refused with every position listed. A matrix or array and a classed object (factor, `Date`, ...) are refused, saying why (#1945). Returned, it gives the values with their names |
 | `Option<NamedVec<T>>` | The same, or NULL | NULL -> None; anything else as for `NamedVec<T>` |
+| `RFunction` | CLOSXP, BUILTINSXP, SPECIALSXP (what `is.function()` accepts) | A view of the function, no copy, not rooted past the call (#1947). Refused otherwise: R check `'f' must be a function`, conversion `'f' must be a function: got integer`. Returned, it is the function |
+| `Option<RFunction>` | A function or NULL | NULL -> None; a plain `NA` is refused (`'f' must be NULL or a function`) |
 
 ### Parsing and Reading Markers
 

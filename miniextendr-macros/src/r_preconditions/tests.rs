@@ -747,6 +747,42 @@ fn coerce_keeps_the_as_numeric_gate() {
     assert!(asserts[0].condition.contains("is.factor(x)"));
 }
 
+/// `RFunction` checks `is.function()` and is worded with its article (#1947).
+#[test]
+fn function_check() {
+    let asserts = assertions_for("RFunction", "f");
+    assert_eq!(asserts.len(), 1);
+    assert_eq!(asserts[0].condition, "is.function(f)");
+    assert_eq!(asserts[0].message(), "'f' must be a function");
+    let exp = |ty: &str| conversion_expectation(&parse_type(ty), false);
+    assert_eq!(exp("RFunction").as_deref(), Some("a function"));
+    assert_eq!(
+        exp("miniextendr_api::RFunction").as_deref(),
+        Some("a function")
+    );
+}
+
+/// `Option<RFunction>` adds `is.null()` only: a plain `NA` is no function,
+/// so it is refused, as an optional vector refuses it.
+#[test]
+fn optional_function_does_not_pass_a_plain_na() {
+    for ty in ["Option<RFunction>", "Nullable<RFunction>"] {
+        let asserts = assertions_for(ty, "f");
+        assert_eq!(asserts.len(), 1, "{ty}");
+        assert_eq!(asserts[0].condition, "is.null(f) || is.function(f)", "{ty}");
+        assert_eq!(
+            asserts[0].message(),
+            "'f' must be NULL or a function",
+            "{ty}"
+        );
+        assert_eq!(
+            conversion_expectation(&parse_type(ty), false).as_deref(),
+            Some("NULL or a function"),
+            "{ty}"
+        );
+    }
+}
+
 #[test]
 fn map_types() {
     for ty_str in &["HashMap<String, i32>", "BTreeMap<String, f64>"] {

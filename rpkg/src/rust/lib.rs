@@ -355,6 +355,7 @@ mod refcount_protect_tests;
 mod regex_adapter_tests;
 mod renamed_class_tests;
 mod return_conversion_tests;
+mod rfunction_tests;
 mod rmath_tests;
 mod rng_seed_tests;
 mod rng_tests;

@@ -257,9 +257,25 @@ case: a list of such objects keeps each object's class on the element, so its
 
 It is a `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. Return an
 `RError`, or any `RConditionData` type such as a `#[derive(RCondition)]`
-enum, for a refusal with its own classes and fields, or a plain `SexpError`
-(`SexpError::InvalidValue(...)`) for one without. A classed refusal is the
-argument error, with the parameter context around it:
+enum, for a refusal with its own classes and fields. For one without, return
+the message: a `&'static str` or a `String` (#1947), or a plain `SexpError`
+(`SexpError::InvalidValue(...)`):
+
+```rust
+/// A factor's codes are no labels.
+fn not_a_factor(x: SEXP) -> Result<(), &'static str> {
+    if x.inherits_class(c"factor") {
+        return Err("got a factor; pass as.character(x)");
+    }
+    Ok(())
+}
+
+#[derive(TryFromSexp)]
+#[try_from_sexp(validate = not_a_factor)]
+pub struct Label(String);
+```
+
+A classed refusal is the argument error, with the parameter context around it:
 
 ```r
 e <- tryCatch(total_time(Sys.Date()), error = identity)

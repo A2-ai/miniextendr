@@ -728,6 +728,36 @@ let call = RCallValue::with_function(
 - `.arg("x")` adds the string `"x"`, as R's `call("f", "x")` does; a name is
   `RCallPart::symbol("x")`, and the empty symbol is the empty argument.
 
+### Functions (`RFunction`)
+
+An `RFunction` parameter takes an R function, a closure, a builtin (`sum`) or
+a special (`quote`), what `is.function()` accepts. Anything else is refused,
+`'f' must be a function`; `Option<RFunction>` reads `NULL` as `None`.
+`f.call()` starts an `RCall` with the function as its head:
+
+```rust
+use miniextendr_api::expression::REvalError;
+use miniextendr_api::{RFunction, SEXP, miniextendr, sys::R_BaseEnv};
+
+/// `f(x)`; an error in `f` is raised with its own message and classes.
+#[miniextendr]
+pub fn call_on(f: RFunction, x: f64) -> Result<SEXP, REvalError> {
+    unsafe { f.call().arg_value(x).try_eval_with_handlers(R_BaseEnv) }
+}
+```
+
+`try_eval_with_handlers` keeps the user's handlers: `withCallingHandlers()`
+and `suppressWarnings()` see the function's warnings and messages, and its
+error comes back as `Err`, raised again with its classes.
+`eval_with_handlers` lets the error unwind instead. `RCall::eval` runs the
+function at top level, where the user's handlers don't reach.
+
+An `RFunction` is a view, like `List`: the `.Call()` keeps the function alive
+for the call. Root it with `Preserved::new(f.as_sexp())` to keep it longer.
+An R error cannot unwind through C, C++ or Fortran frames, so a function
+called from a foreign library's callback goes through
+`unwind_protect::call_unwinding`.
+
 ### Matrices
 
 With the `ndarray` feature:

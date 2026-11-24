@@ -1021,6 +1021,24 @@ impl From<SexpNaError> for SexpError {
     }
 }
 
+/// A plain message is a refusal with that message and no classes, as
+/// [`RError::new`](crate::condition::RError::new) gives: a
+/// `#[try_from_sexp(validate = check)]` function can return
+/// `Result<(), &'static str>` (#1947).
+impl From<&str> for SexpError {
+    fn from(message: &str) -> Self {
+        SexpError::Condition(crate::condition::RError::new(message))
+    }
+}
+
+/// A plain message is a refusal with that message and no classes; see
+/// `From<&str>`.
+impl From<String> for SexpError {
+    fn from(message: String) -> Self {
+        SexpError::Condition(crate::condition::RError::new(message))
+    }
+}
+
 pub mod borrow;
 pub use borrow::NativeBorrow;
 
