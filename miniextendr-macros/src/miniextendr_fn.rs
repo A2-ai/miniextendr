@@ -2907,7 +2907,7 @@ const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, coerce, n
      preconditions, no_preconditions, internal, noexport, export, call_arg";
 
 /// Comma-separated list of fn-level nested options, for error messages.
-const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `defaults(...)`, `r_on_exit(...)`, \
+const FN_NESTED_OPTIONS_HELP: &str = "`s3(...)`, `lifecycle(...)`, `r_on_exit(...)`, \
      `serde_error(...)`, `rng(seed = ...)`";
 
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
@@ -4326,7 +4326,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller | none`, `r_entry = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `wrap = \"...\"`, \
+                                 `call = wrapper | caller | none`, `r_entry = \"...\"`, \
                                  `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
@@ -4336,8 +4337,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 }
                 syn::Meta::List(list) => {
                     if list.path.is_ident("defaults") {
-                        // Ignore defaults(...) - it's handled by impl method parsing
-                        // This allows #[miniextendr(defaults(...))] on impl methods
+                        // `defaults(...)` is an impl / trait method option (those
+                        // parsers read it); a function's formal default sits on
+                        // its parameter.
+                        return Err(syn::Error::new_spanned(
+                            &list.path,
+                            "`defaults(...)` is an impl method option; on a function, put \
+                             `#[miniextendr(default = \"...\")]` on the parameter",
+                        ));
                     } else if list.path.is_ident("lifecycle") {
                         // lifecycle(stage = "deprecated", when = "0.4.0", ...)
                         if let Some(spec) =

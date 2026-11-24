@@ -2234,6 +2234,20 @@ fn miniextendr_attr_rejects_the_worker_options() {
     }
 }
 
+/// `defaults(...)` is a method option. A function used to accept and drop it,
+/// so the formal kept no default; it now points at the parameter spelling.
+#[test]
+fn miniextendr_attr_refuses_defaults_on_a_function() {
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(defaults(n = "1")))
+        .err()
+        .expect("`defaults(...)` on a function must error");
+    assert!(
+        err.to_string()
+            .contains("put `#[miniextendr(default = \"...\")]` on the parameter"),
+        "{err}"
+    );
+}
+
 #[test]
 fn miniextendr_attr_rejects_option_arguments() {
     let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(invisible("string_value")))

@@ -346,18 +346,20 @@ impl InternalHelper {
 }
 ```
 
-Individual methods can override the impl-level flag:
+Export is a property of the class, not of its methods: a method takes no `export`, and every
+impl block of a type must spell `noexport` / `internal` the same (the wrapper writer refuses
+blocks that differ). The one method-level flag is on an R6 active binding, where `noexport`
+(or `internal`) documents the binding as `(internal)` on the class page:
 
 ```rust
-#[miniextendr(noexport)]
+#[miniextendr(r6)]
 impl MyType {
-    pub fn internal_method(&self) -> i32 { ... }
-
-    // Override: this one is exported despite the block-level noexport
-    #[miniextendr(export)]
-    pub fn public_method(&self) -> String { ... }
+    #[miniextendr(r6(active), noexport)]
+    pub fn cache_size(&self) -> i32 { ... }
 }
 ```
+
+On any other method, `noexport` / `internal` is a compile error that points at the impl block.
 
 ---
 
