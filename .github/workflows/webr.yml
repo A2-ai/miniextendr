@@ -119,10 +119,12 @@ jobs:
         with:
           targets: wasm32-unknown-emscripten
 
+      # Only a push to main saves caches: see the top-level `env:` in ci.yml.
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: wasm32-check
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: cargo check (miniextendr-api)
@@ -189,6 +191,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: monorepo-wasm-check
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Setup R
@@ -205,6 +208,7 @@ jobs:
           # scaffolds + installs — no roxygenise, no testthat, so Suggests
           # (roxygen2, pkgload, devtools, ...) would be dead weight here.
           dependencies: '"hard"'
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback

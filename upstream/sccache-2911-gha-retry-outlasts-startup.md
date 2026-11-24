@@ -6,7 +6,8 @@
   retry temporary cache errors", merged 2026-11-03, released in v0.20.0 on
   2026-11-23), which fixed
   [mozilla/sccache#2821](https://github.com/mozilla/sccache/issues/2821).
-- **Our issue**: #2396. We have not commented upstream.
+- **Our issue**: #2396, closed by the CI change that applies the workaround
+  below. We have not commented upstream.
 
 ## Impact
 
@@ -30,17 +31,28 @@ the GHA backend (`SCCACHE_GHA_ENABLED`).
 
 ## Workaround
 
-- CI pins `version: "v0.19.0"` on every `sccache-action` step (#2397).
-- On v0.20.x, `SCCACHE_SKIP_CACHE_CHECK=true` skips the startup check and
-  starts the server in its configured read-write mode.
+CI sets `SCCACHE_SKIP_CACHE_CHECK=true` in the top-level `env:` of
+`.github/workflows/ci.yml` and `gctorture-nightly.yml`, and pins
+`version: "v0.20.0"` on their `sccache-action` steps. With the variable,
+`check()` returns the configured mode (`SCCACHE_GHA_RW_MODE`: read-write on a
+push to main, read-only elsewhere) before it sends any request, so the server
+starts without touching the cache. v0.19.0 reads the variable too.
+
+Run 45275264437 (2026-11-23, every CI job, v0.20.0 with the variable) had no
+startup timeout while the cache was rate limiting: the Rust lint job's server
+log has 74 retried reads and 79 retried writes, and the job ended with a 90 %
+hit rate.
+
+Without it, pin `version: "v0.19.0"` (what CI did in #2397).
 
 ## Closes when
 
-CI runs a release after v0.19.0 without the startup timeout, with
-`SCCACHE_SKIP_CACHE_CHECK=true` or on a release whose startup check does not
-outlast the client's wait, and #2396 closes.
+An sccache release starts its server without waiting on the retried startup
+check (or the client waits longer than the retries take), and CI drops
+`SCCACHE_SKIP_CACHE_CHECK`. Nothing else is pending on our side.
 
 ## Last checked
 
-2026-11-23: v0.20.0 is the latest release. No upstream issue about the
-startup check and the retry layer; the newest issue is #3053 (unrelated).
+2026-11-24: v0.20.0 is the latest release. No upstream issue about the
+startup check and the retry layer (searched for the error text again); the
+newest item is #3061 (unrelated).

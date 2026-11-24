@@ -40,6 +40,14 @@ env:
   SCCACHE_IDLE_TIMEOUT: "0"
   SCCACHE_ERROR_LOG: /tmp/sccache-server.log
   SCCACHE_LOG: warn,sccache::server=debug
+  # This workflow reads the Actions cache and writes nothing to it: only a
+  # push to main in ci.yml does (see its top-level `env:`). Hence sccache's
+  # read-only mode, `save-if: false` on rust-cache and `cache: false` on
+  # setup-r-dependencies. The sccache-action `version:` below must be the one
+  # ci.yml pins: sccache names its cache namespace after its version.
+  SCCACHE_GHA_RW_MODE: READ_ONLY
+  # No startup cache check: see ci.yml (#2396).
+  SCCACHE_SKIP_CACHE_CHECK: "true"
 
 jobs:
   gctorture-full:
@@ -87,6 +95,7 @@ jobs:
           working-directory: rpkg
           extra-packages: any::testthat
           needs: check
+          cache: false
 
       - name: Install autoconf
         run: |
@@ -98,7 +107,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -107,6 +116,7 @@ jobs:
           # rpkg/rust-target: the same dependencies CI's r-tests caches.
           workspaces: rpkg/src/rust -> ../../rust-target
           shared-key: rpkg-source
+          save-if: false
           cache-on-failure: true
 
       - name: Configure Linux

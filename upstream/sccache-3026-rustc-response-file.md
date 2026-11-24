@@ -2,7 +2,7 @@
 
 - **Upstream**: [mozilla/sccache#3026](https://github.com/mozilla/sccache/pull/3026)
   ("rust: spawn a long command line through a response file"), merged
-  2026-11-14, not released yet. Reports:
+  2026-11-14, released in v0.20.0 on 2026-11-23. Reports:
   [mozilla/sccache#2397](https://github.com/mozilla/sccache/issues/2397) (open,
   filed 2025-05-22) and
   [mozilla/sccache#2787](https://github.com/mozilla/sccache/issues/2787)
@@ -40,12 +40,13 @@ dependencies. Not reproduced outside CI.
 ## Closes when
 
 CI runs an sccache release that includes #3026 (v0.20.0 or later), and the
-Windows job sets `RUSTC_WRAPPER=sccache` again on that release. CI pins
-v0.19.0 until #2396 is resolved, so this waits on #2396 too.
+Windows job sets `RUSTC_WRAPPER=sccache` again on that release. The other
+jobs pin v0.20.0 (#2396 is resolved). The Windows job still pins v0.19.0 and
+leaves `RUSTC_WRAPPER` unset: Windows CI is deferred (#1654).
 
 ## Last checked
 
-2026-11-23: v0.20.0 released 2026-11-23 and includes #3026. CI pins v0.19.0
-because 0.20.0's server times out starting under GitHub cache rate limiting
-(#2396). #2397 open; mozilla/sccache#3053 (2026-11-20) reports the same os
-error 206.
+2026-11-24: v0.20.0 (released 2026-11-23) includes #3026 and is the latest
+release. CI's Linux jobs run it; the Windows job was left as it was (#1654).
+mozilla/sccache#2397 open; mozilla/sccache#3053 (2026-11-20) reports the same
+os error 206.
