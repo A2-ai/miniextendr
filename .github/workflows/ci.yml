@@ -919,6 +919,12 @@ jobs:
       - name: Tests (cargo-revendor)
         run: cargo test --manifest-path cargo-revendor/Cargo.toml --locked --no-fail-fast
 
+      # The step above skips cargo-revendor's 62 `#[ignore]`d tests, which run
+      # `cargo vendor` against crates.io. The weekly and manual runs add them.
+      - name: Tests (cargo-revendor, ignored network tests)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: just revendor-test-all
+
       # rpkg/src/rust is a standalone workspace too, so the `--workspace` step
       # never reaches its `#[cfg(test)]` modules (#1474). The rust-lint rpkg
       # clippy gate compiles them; only this leg runs them. The recipe supplies
