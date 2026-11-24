@@ -467,18 +467,99 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
 /// Call `fun(data)` in its own `R_UnwindProtect`, in the caller's R context,
 /// and return its value.
 ///
-/// An R exit from `fun` (an error, an exiting handler of the caller's
-/// `tryCatch()`, a restart, an interrupt) stops at that frame, never jumping
-/// over a Rust frame. Its cleanup turns the exit into a Rust unwind
-/// ([`RUnwind`]); the boundary resumes it.
+/// `fun` may call the R API directly (`Rf_eval`, `R_forceAndCall`, ...). The
+/// caller's condition handlers and restarts stay in place, as under
+/// [`eval_with_handlers`](crate::expression::eval_with_handlers), which is
+/// this function around `Rf_eval`. An R exit from `fun` (an error, an exiting
+/// handler of the caller's `tryCatch()`, a restart, an interrupt) stops at
+/// this function's frame, never jumping over a Rust frame, and leaves it as a
+/// Rust unwind whose payload is an opaque `Box<dyn Any + Send>`. The
+/// miniextendr boundary of the current call (the generated wrapper of a
+/// `#[miniextendr]` function) recognises the payload and hands the exit back
+/// to R, which carries on to the handler or restart it was going to, with the
+/// original condition object.
+///
+/// Use it where R code runs under frames an unwind must not cross: a callback
+/// that a C or Fortran library calls. Catch the unwind in the callback with
+/// [`catch_unwind`], return normally through the foreign frames, then continue
+/// the exit with [`resume_unwind`](std::panic::resume_unwind) once they have
+/// returned:
+///
+/// ```ignore
+/// use std::any::Any;
+/// use std::ffi::c_void;
+/// use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+///
+/// use miniextendr_api::unwind_protect::call_unwinding;
+/// use miniextendr_api::{SEXP, miniextendr, sys};
+///
+/// // A solver in C or Fortran, calling `callback(data)` once per step. An
+/// // unwind must not cross its frames.
+/// unsafe extern "C" {
+///     fn solve(callback: extern "C" fn(*mut c_void) -> i32, data: *mut c_void) -> i32;
+/// }
+///
+/// struct Step {
+///     f: SEXP,
+///     exit: Option<Box<dyn Any + Send>>,
+/// }
+///
+/// // Called from C by `call_unwinding`: it holds nothing to drop.
+/// unsafe extern "C-unwind" fn call_f(data: *mut c_void) -> SEXP {
+///     let step = unsafe { &*data.cast::<Step>() };
+///     unsafe {
+///         let call = sys::Rf_protect(sys::Rf_lang1(step.f));
+///         let value = sys::Rf_eval(call, sys::R_GlobalEnv);
+///         sys::Rf_unprotect(1);
+///         value
+///     }
+/// }
+///
+/// extern "C" fn callback(data: *mut c_void) -> i32 {
+///     // The R exit leaves `call_unwinding` as a Rust unwind: stop it here,
+///     // before it reaches the solver's frames.
+///     let outcome = catch_unwind(AssertUnwindSafe(|| unsafe { call_unwinding(call_f, data) }));
+///     let step = unsafe { &mut *data.cast::<Step>() };
+///     match outcome {
+///         Ok(_value) => 0,
+///         Err(exit) => {
+///             step.exit = Some(exit);
+///             1 // tell the solver to stop
+///         }
+///     }
+/// }
+///
+/// #[miniextendr]
+/// pub fn run_solver(f: SEXP) -> i32 {
+///     let mut step = Step { f, exit: None };
+///     let status = unsafe { solve(callback, (&raw mut step).cast()) };
+///     if let Some(exit) = step.exit.take() {
+///         // Past the solver, in the same call: continue the R exit.
+///         resume_unwind(exit);
+///     }
+///     status
+/// }
+/// ```
+///
+/// A caught payload has exactly one correct use: `resume_unwind(payload)` on
+/// the same thread before the current call returns. Dropping it abandons the
+/// R exit (R carries on as after `R_tryEval`: the caller's handler never
+/// runs, the restart is never taken). Resuming it in a later call finds its
+/// target gone, and the boundary raises an error in its place.
 ///
 /// # Safety
 ///
-/// R's main thread, inside a miniextendr boundary (a `#[miniextendr]` body, a
-/// `with_r_unwind_protect*` closure, a guarded callback). `fun` holds nothing
-/// to drop across an R jump (it is called from C), and what `data` points to
-/// outlives the call. The result is unprotected.
-pub(crate) unsafe fn call_unwinding(
+/// - R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
+///   function body, a [`with_r_unwind_protect`] closure, an ALTREP callback
+///   with the `r_unwind` or `rust_unwind` guard, a connection callback.
+/// - `fun` holds nothing to drop across an R jump (it is called from C), and
+///   what `data` points to outlives the call.
+/// - A caught payload is resumed as above.
+///
+/// # Returns
+///
+/// `fun`'s value, **unprotected**: protect it before the next allocation.
+pub unsafe fn call_unwinding(
     fun: unsafe extern "C-unwind" fn(*mut c_void) -> SEXP,
     data: *mut c_void,
 ) -> SEXP {
