@@ -3,8 +3,9 @@ description: >-
   Print the log the sccache server wrote to $SCCACHE_ERROR_LOG (set in the
   workflow env), headed by the failed cache writes, so a job's "Cache write
   errors" count comes with its causes; sccache logs those failures only at
-  debug level (#1651). Use as the last step, with `if: always()`, in every
-  job that sets RUSTC_WRAPPER=sccache.
+  debug level (#1651). The writes a read-only server refuses are not counted.
+  Use as the last step, with `if: always()`, in every job that sets
+  RUSTC_WRAPPER=sccache.
 runs:
   using: composite
   steps:
@@ -16,8 +17,13 @@ runs:
           echo "No sccache server log at '${log}'."
           exit 0
         fi
-        echo "Failed cache writes: $(grep -c 'Error executing cache write' "$log" || true)"
-        grep 'Error executing cache write' "$log" | head -n 20 || true
+        # A read-only server (SCCACHE_GHA_RW_MODE: every run but a push to
+        # main) refuses each write and logs the refusal as a failed write, so
+        # its "Cache write errors" count is its count of cache misses. Those
+        # are not failures; leave them out.
+        failed="$(grep 'Error executing cache write' "$log" | grep -v 'read-only storage' || true)"
+        echo "Failed cache writes: $(grep -c . <<< "$failed" || true)"
+        if [ -n "$failed" ]; then head -n 20 <<< "$failed"; fi
         echo "::group::Full sccache server log ($log)"
         cat "$log"
         echo "::endgroup::"

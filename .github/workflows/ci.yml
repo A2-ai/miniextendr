@@ -42,16 +42,46 @@ env:
   # the long R jobs finished, and their stats then read 0), and log the
   # server's cache-write failures, which sccache reports only at debug level,
   # to a file that .github/actions/sccache-log prints as each job's last step.
-  # Every sccache-action step pins `version: "v0.19.0"` (#2396): the action
-  # installs the latest release otherwise. 0.20.0 retries a rate-limited (429)
-  # GitHub cache request up to six times, its server's startup cache check
-  # included, so under rate limiting the server outlasts the client's 10 s wait
-  # and the job fails at `rustc -vV` with "Timed out waiting for server
-  # startup". 0.19.0 does not retry: its server starts at once, read-only for
-  # the job if the check's write was rate-limited.
   SCCACHE_IDLE_TIMEOUT: "0"
   SCCACHE_ERROR_LOG: /tmp/sccache-server.log
   SCCACHE_LOG: warn,sccache::server=debug
+  # Only a push to main writes to the Actions cache. Every other run (pull
+  # requests, tags, the weekly schedule, manual runs) reads main's entries and
+  # saves none. The repository limit is 10 GB and GitHub evicts only after the
+  # fact: with every run writing, the cache held 11.4 GB on 2026-11-23, 7.9 GB
+  # of it on pull request and branch refs, whose entries no other ref can read.
+  #   - sccache: SCCACHE_GHA_RW_MODE below. A pull request gets its
+  #     dependencies from main's entries and compiles the workspace crates it
+  #     changes, and the crates that depend on them, on every push.
+  #   - Swatinem/rust-cache: `save-if` on each step.
+  #   - r-lib/actions/setup-r-dependencies: `cache: false` on each step. It
+  #     has no restore-only mode, and its key changes with every CRAN release
+  #     of a dependency (CI installs the latest), after which each ref saved
+  #     its own ~110 MB library per job. Uncached, the step takes 70-120 s
+  #     instead of 40-60 s; on R-devel, which builds the packages from source,
+  #     ~6.5 min instead of ~1.
+  # The weekly schedule and manual runs are left out because the jobs only
+  # they run would hold their entries for a week to read them once, if they
+  # last that long: on 2026-11-21 the macOS arm64 leg had 0 sccache hits in
+  # 444 compiles, and neither it nor check-features had a rust-cache entry to
+  # restore. So check-features, r-check-macos and r-roundtrip-e2e have no
+  # rust-cache step, and r-check-macos no sccache. To refill an emptied cache,
+  # re-run a CI run of a push to main.
+  SCCACHE_GHA_RW_MODE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'READ_WRITE' || 'READ_ONLY' }}
+  # Every sccache-action step pins `version:`, and gctorture-nightly.yml pins
+  # the same one; the action installs the latest release otherwise. sccache
+  # names its cache namespace after its version, so a new release starts from
+  # an empty cache that only a push to main can fill. Bump the pin in a pull
+  # request: its merge changes this file, so main then runs every
+  # path-filtered job and writes the new namespace. (The Windows job is
+  # label-only and keeps its own pin until #1654.)
+  # SCCACHE_SKIP_CACHE_CHECK (#2396): the server starts without reading and
+  # writing `.sccache_check` in the cache. 0.20.0 retries a rate-limited (429)
+  # cache request up to six times (mozilla/sccache#2911), that startup check
+  # included, so under rate limiting the server outlasted the client's 10 s
+  # wait and the job failed at `rustc -vV` with "Timed out waiting for server
+  # startup". See upstream/sccache-2911-gha-retry-outlasts-startup.md.
+  SCCACHE_SKIP_CACHE_CHECK: "true"
 
 jobs:
   # ===========================================================================
@@ -351,6 +381,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: docs-examples
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Compile-check the marked examples
         run: just docs-examples-check
@@ -394,7 +425,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -404,6 +435,7 @@ jobs:
           # so only its dependencies come back warm.
           workspaces: rpkg/src/rust -> ../../rust-target
           shared-key: rpkg-source
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Set up cargo-revendor (install only)
@@ -417,6 +449,7 @@ jobs:
           working-directory: rpkg
           extra-packages: any::devtools, any::roxygen2
           needs: check
+          cache: false
 
       - name: Configure (dev mode — no vendor tarball yet)
         run: just configure
@@ -510,12 +543,13 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-lint
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       # `just fmt-check` iterates every manifest (root workspace +
@@ -799,12 +833,13 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-tests
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
           # Root workspace only. The post step runs `cargo metadata` in every
           # listed workspace, and rpkg/src/rust does not resolve without the
@@ -928,14 +963,11 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: check-features
-          cache-on-failure: true
-
+      # No rust-cache: this job runs on the weekly schedule only, and only a
+      # push to main saves caches (see the top-level `env:`). sccache still
+      # reads what main's pushes wrote.
       - name: Install just
         uses: taiki-e/install-action@just
 
@@ -995,6 +1027,7 @@ jobs:
           working-directory: rpkg
           extra-packages: any::rcmdcheck
           needs: check
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback
@@ -1007,7 +1040,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1018,6 +1051,7 @@ jobs:
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: r-linux-${{ matrix.r }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Configure Linux
@@ -1098,7 +1132,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      SCCACHE_GHA_ENABLED: "true"
       # The gctorture-heavy test blocks are opt-in (MINIEXTENDR_STRESS) and
       # run in r-stress-tests, as for the Linux check legs. Running them here
       # too pushed `checking tests` past timeout-minutes.
@@ -1169,32 +1202,14 @@ jobs:
           working-directory: rpkg
           extra-packages: any::rcmdcheck
           needs: check
+          cache: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup sccache
-        id: sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-        with:
-          version: "v0.19.0"
-        continue-on-error: true
-
-      - name: Set RUSTC_WRAPPER if sccache available
-        if: steps.sccache.outcome == 'success'
-        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          # Tarball installs build in a temporary unpack directory, and the
-          # Makevars deletes its rust-target afterwards, so no target dir is
-          # left to cache. Cache only the cargo registry and git checkouts.
-          workspaces: rpkg/src/rust -> ../../rust-target
-          cache-targets: false
-          shared-key: r-macos-${{ matrix.arch }}
-          cache-on-failure: true
-
+      # No sccache or rust-cache: this job never runs on a push to main, the
+      # only event that writes caches (see the top-level `env:`), and nothing
+      # the Linux jobs write there is built for macOS.
       - name: Set up cargo-revendor and vendor
         uses: ./.github/actions/setup-vendor
 
@@ -1232,10 +1247,6 @@ jobs:
             rpkg/check
             rpkg/config.log
           retention-days: 7
-
-      - name: Print the sccache server log
-        if: always()
-        uses: ./.github/actions/sccache-log
 
   # ===========================================================================
   # R Package: R CMD check on Windows
@@ -1469,13 +1480,14 @@ jobs:
           working-directory: rpkg
           extra-packages: any::testthat
           needs: check
+          cache: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1485,6 +1497,7 @@ jobs:
           # so only its dependencies come back warm.
           workspaces: rpkg/src/rust -> ../../rust-target
           shared-key: rpkg-source
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Install package (source mode)
@@ -1652,13 +1665,14 @@ jobs:
           working-directory: rpkg
           extra-packages: any::testthat
           needs: check
+          cache: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1667,6 +1681,7 @@ jobs:
           # Same source-mode build as r-tests: share its cache rather than
           # keeping per-shard copies of an identical target dir.
           shared-key: rpkg-source
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Install package (source mode)
@@ -1769,13 +1784,14 @@ jobs:
           working-directory: rpkg
           extra-packages: any::testthat, any::roxygen2
           needs: check
+          cache: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1899,6 +1915,7 @@ jobs:
           working-directory: rpkg
           extra-packages: any::testthat, any::devtools
           needs: check
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback
@@ -1911,7 +1928,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -1920,6 +1937,7 @@ jobs:
             tests/cross-package/producer.pkg/src/rust -> ../../rust-target
             tests/cross-package/consumer.pkg/src/rust -> ../../rust-target
           shared-key: cross-package
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Configure Linux
@@ -1992,6 +2010,7 @@ jobs:
           working-directory: minirextendr
           extra-packages: any::rcmdcheck, any::testthat, any::devtools
           needs: check
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback
@@ -2084,6 +2103,7 @@ jobs:
           working-directory: rpkg
           extra-packages: any::rcmdcheck
           needs: check
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback
@@ -2096,7 +2116,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -2107,6 +2127,7 @@ jobs:
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: cran-check
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Configure Linux
@@ -2247,7 +2268,7 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -2259,6 +2280,7 @@ jobs:
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: bootstrap-vendor-test
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           cache-on-failure: true
 
       - name: Set up cargo-revendor (install only)
@@ -2325,6 +2347,7 @@ jobs:
           working-directory: minirextendr
           extra-packages: any::testthat, any::devtools, any::withr, any::roxygen2
           needs: check
+          cache: false
 
       - name: Install autoconf
         # ubuntu-latest images ship autoconf; the apt path is only a fallback
@@ -2337,20 +2360,11 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.10
         with:
-          version: "v0.19.0"
+          version: "v0.20.0"
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          # Tarball installs build in a temporary unpack directory, and the
-          # Makevars deletes its rust-target afterwards, so no target dir is
-          # left to cache. Cache only the cargo registry and git checkouts,
-          # kept for the dependencies of the root workspace (rust-cache's
-          # default; this job never builds rpkg/src/rust).
-          cache-targets: false
-          shared-key: roundtrip-e2e
-          cache-on-failure: true
-
+      # No rust-cache: this job never runs on a push to main, the only event
+      # that saves caches (see the top-level `env:`), so there is no entry to
+      # restore.
       - name: Run standalone round-trip e2e
         run: just minirextendr-roundtrip
 

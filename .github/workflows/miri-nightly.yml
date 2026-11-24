@@ -50,11 +50,9 @@ jobs:
         with:
           components: miri
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: miri-nightly
-          cache-on-failure: true
+      # No rust-cache: its key includes the rustc version, so each night's new
+      # nightly found no entry and saved a 91 MB one that nothing read back
+      # (2026-11-21 to 2026-11-23). The whole job takes about a minute.
 
       # Sets up Miri's sysroot once (cargo miri test would otherwise do it
       # implicitly on first run; doing it explicitly keeps the run step's output
