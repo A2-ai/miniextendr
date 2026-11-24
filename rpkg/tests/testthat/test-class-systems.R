@@ -407,17 +407,6 @@ test_that("S7 multi-level inheritance: own and inherited methods", {
   # This is a known limitation of ExternalPtr-based S7 inheritance.
 })
 
-test_that("S7Animal legs property works via getter", {
-  skip_if_not_installed("S7")
-
-  # legs is a computed property on S7Animal (abstract), accessible via @
-
-  # S7Dog inherits from S7Animal, so S7Dog and S7GoldenRetriever should
-  # also have the legs property in the S7 class hierarchy.
-  # However, since each struct is separate in Rust, the legs property
-  # is defined on S7Animal's class definition only.
-})
-
 # =============================================================================
 # R6 Inheritance tests
 # =============================================================================
@@ -474,12 +463,12 @@ test_that("S7 class = 'Shape' override is reflected in the wrapper file", {
     wrapper_path <- file.path(find.package("miniextendr"), "..", "..", "rpkg", "R", "miniextendr-wrappers.R")
   }
 
-  # The wrappers file must not contain any unresolved placeholders.
-  if (file.exists(wrapper_path)) {
-    wrapper_content <- readLines(wrapper_path, warn = FALSE)
-    placeholder_lines <- grep("\\.__MX_CLASS_REF_", wrapper_content, value = TRUE)
-    expect_length(placeholder_lines, 0L)
-  }
+  # The wrappers file must not contain any unresolved placeholders. It exists
+  # only in a source tree (load_all); a tarball check runs without it.
+  skip_if_not(file.exists(wrapper_path), "needs the generated wrappers of a source tree")
+  wrapper_content <- readLines(wrapper_path, warn = FALSE)
+  placeholder_lines <- grep("\\.__MX_CLASS_REF_", wrapper_content, value = TRUE)
+  expect_length(placeholder_lines, 0L)
 })
 
 test_that("S7OverrideCircle parent is resolved to 'Shape'", {
