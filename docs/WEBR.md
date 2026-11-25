@@ -528,6 +528,40 @@ installed copy, recursing through pure-R umbrellas' `Depends`/`Imports`)
 and falls back to a curated known-compiled list for dependencies that are
 not installed locally. No `loadNamespace()`, no network.
 
+### S7 1.0.0 and webR's default repository (#2417)
+
+A package with S7 classes imports `S7 (>= 1.0.0)` (#2386). Examples are rpkg
+and whatever `minirextendr::use_s7()` writes. repo.r-wasm.org, webR's default
+repository, still serves S7 0.2.2 (`upstream/webr-580-repo-lags-cran-s7.md`),
+so in a session on default settings the package fails to load:
+
+```
+namespace 'S7' 0.2.2 is being loaded, but >= 1.0.0 is required
+```
+
+Name cran.r-universe.dev, which builds wasm binaries of current CRAN
+releases, ahead of webR's default repository:
+
+```r
+webr::install(pkgs, repos = c("https://cran.r-universe.dev", "https://repo.r-wasm.org"))
+```
+
+In JavaScript the same list goes in `webR.installPackages(pkgs, { repos: [...] })`, as
+`tests/webr-node-smoke/smoke.mjs` does.
+
+- **Order of installs.** `webr::install()` skips a package that is
+  already installed, without comparing versions, so S7 has to come from this
+  list before 0.2.2 lands in the library.
+- **Which version wins.** Where both repositories carry a package,
+  `available.packages()` keeps the later version.
+
+The floor stays at 1.0.0 on purpose. S7 objects take their format from the S7
+present when the package is *built*, which for a wasm binary is the build
+host's native copy (see "Two R installations" above). A package built with S7
+1.0.0 and loaded on 0.2.2 half-works: `S7::method()` on a generated generic
+fails with `Can't find property <S7_generic>@dispatch_args`. The floor turns
+that into a clean refusal to load. Keep the host's S7 at 1.0.0 or later too.
+
 ## CI
 
 `.github/workflows/webr.yml` runs three tiers plus two scaffold legs (#1259
